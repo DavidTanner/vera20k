@@ -167,7 +167,7 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 
 // Schema171: fresh-turn admission/residual clearing and retained-owner hashes.
 // See TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md, PR415 causal attribution.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 13373273516379981258;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x69BD_02BE_0371_FACB;
 // Schema174 removes folds instead of adding them: OreGrowthState's node-era
 // scanner cursor, candidate lists and sample counters, and ProductionState's
 // fallback ore overlay id. The pre-174 projection folds the values those fields
@@ -176,10 +176,10 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 133732735
 // id. It is not a general reconstruction; a scenario finalized by the map
 // loader held Some(first TIB* id). The projection must still equal the previous
 // current pin, asserted below. Rust hash-composition ratchet, not a native golden.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 11676800805813330078;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 0xB0D4_5F94_6372_F9D3;
 // v181 adds the default Foot+580 factor to every entity's hash. The pre-181
 // assertion below retains the previous entire fixture state/RNG ratchet.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x686B_8277_BDC6_59E4;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x254E_B2B7_6684_7D3B;
 // Snapshot182 adds ordered display vectors. The pre-182 projection below
 // must reproduce the previous whole-fixture hash, including all RNG/state.
 // Schema186 removes the always-None release-tail byte from each entity. This
@@ -327,16 +327,28 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x686B_8277_BDC6_
 // old place, this change reproduced every facing-only pin (final
 // 0x6158_8E4E_3576_4D36), RNG streams included. Old values: the commit that
 // moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xDE28_6F37_CDCF_80D4;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x07E8_4E75_EFCC_E5EF;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x5803_1F3D_ED11_D1E5;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0xE359_BBD2_629E_0B70;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0x82FD_FA62_B8A1_8392;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0xF38C_791B_0F74_244B;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0xFFAD_363E_CAD7_3CD8;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206: u64 = 0x955F_889C_13DF_A5EE;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0xB8F7_3027_8DFE_18C3;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 5509271762107960375;
+// 2026-09-28 houses in the fixture (#824): the harvester's Dock check reads
+// its house's tracked BuildingType counts (`+0x5500`), so `seed_scenario` now
+// makes the two owners' houses, as computer houses in no house order, before
+// placing objects. Every projection folds the houses, so this one step re-pins
+// every projection in this test. Ceremony: on origin/main 58605c6e and on this
+// change, a probe printing every object's mission, queued mission, NavCom,
+// health, position and attack target and the RNG state matched at all 600
+// ticks (the probe patch was not committed), and `FINAL_STREAM_STATES` holds:
+// the only change is the houses' state in the hash. A human house would
+// change behaviour (its AttackMove tank keeps moving when hit), and a `[Map]
+// Size=` would clip the threat scan to its diamond; neither is in this step.
+// Old values: the commit that moved them.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x257F_70F5_6DC2_3391;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x3808_F3F1_9C24_1E33;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x259A_EA8C_76DA_2FB0;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0x3BC4_57DE_BF36_3E96;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0x00A2_873E_E8F2_1832;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x3B36_2DFC_1CE8_E5E5;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0x3081_76C1_85A3_8A3D;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206: u64 = 0xB719_9345_4351_47A4;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0xCEDB_7BD3_9DA9_2471;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xDDD2_5A8E_B0E4_C1CE;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -442,6 +454,20 @@ fn seed_scenario(
         off_104: 128,
         off_108: 65,
     });
+    // The owners' houses exist before a map load places objects, so each
+    // object's constructor `Add_Tracking` counts it: the harvester's Dock
+    // checks read the house's tracked BuildingType counts (`+0x5500`). They
+    // are computer houses, which keep this run's behaviour: the damage
+    // response treated a house-less owner as a computer's (a human house's
+    // AttackMove tank keeps moving when hit), and the harvester branches that
+    // treat a missing house as human are not reached in these 600 ticks. They
+    // join no house order, so no house AI runs.
+    for (owner, side) in [("Americans", 0), ("Soviet", 1)] {
+        let id = sim.interner.intern(owner);
+        sim.houses.entry(id).or_insert_with(|| {
+            crate::sim::house_state::HouseState::new(id, side, None, false, 0, 10)
+        });
+    }
     sim.spawn_from_map(
         &[
             unit("Americans", "GAWEAP", 3, 3, EntityCategory::Structure), // 1
@@ -711,17 +737,17 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     );
     assert_eq!(
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(190)),
-        0xF269_6A06_979B_8AFC,
+        0x2A3E_349E_3AAE_5547,
         "v190 changes only the Foot neighbor-history hash composition in this fixture"
     );
     assert_eq!(
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        0x8E40_C75D_77C5_5211,
+        0xDEFC_B5B3_71E1_6D35,
         "v189 adds only the retained Techno+3D4 hash fold"
     );
     let before_burst_hash = rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(187));
     assert_eq!(
-        before_burst_hash, 0xEDD5_908D_2588_B4AF,
+        before_burst_hash, 0xB41E_BAB8_799C_43E1,
         "schema187 only replaces zero remaining-shot fields with the retained index in this fixture"
     );
     let before_release_hash =
@@ -785,7 +811,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // 2026-09-28: moved by the one-body-facing fold and Drive's retired turn
     // target (same place).
     assert_eq!(
-        before_power_hash, 8703820812092358087,
+        before_power_hash, 0xF465_BA7D_5E2E_A309,
         "full08 projection moved: investigate behavior or another hash owner; do not rebaseline"
     );
 

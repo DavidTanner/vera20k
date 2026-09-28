@@ -1357,30 +1357,26 @@ fn queue_guard_from_harvest(sim: &mut Simulation, snap: &MinerSnapshot) {
     );
 }
 
-/// `HouseClass::CountOwnedInstances > 0` for at least one entry of the
-/// harvester type's `Dock=` list, as the Harvest preamble loop tests it.
+/// The Harvest preamble's loop (`0x0073E67F..0x0073E6B1`): the house owns
+/// a tracked instance of an entry of the harvester type's `Dock=` list
+/// ([`HouseTracking::owns_any_building`]). A `Dock=` name the interner has
+/// never seen has no instances, and a missing house (fixtures only) owns
+/// none. A miner whose type is unknown to the rules cannot evaluate the list
+/// and reads as "owns one" (fixture tolerance; no production type lacks a
+/// rules entry).
 ///
-/// Reads the store's O(1) per-(owner, type) count
-/// (`EntityStore::count_owned_of_type`), the analogue of the native per-house
-/// per-type counter array `CountOwnedInstances @ 0x0049FAE0` indexes. Native
-/// counts an instance from Unlimbo until Limbo, so a refinery still under
-/// construction and a dying one both count; the Rust count spans store
-/// insert..remove and so agrees on both (the earlier `!in_limbo && !dying &&
-/// health > 0` scan excluded the dying case — a mismatch, now removed). A
-/// `Dock=` name the interner has never seen has no instances. A miner whose
-/// type is unknown to the rules cannot evaluate the list and reads as "owns
-/// one" (fixture tolerance; no production type lacks a rules entry).
+/// [`HouseTracking::owns_any_building`]: crate::sim::house_tracking::HouseTracking::owns_any_building
 fn house_owns_dock_instance(sim: &Simulation, rules: &RuleSet, snap: &MinerSnapshot) -> bool {
     let Some(harvester) = rules.object_case_insensitive(sim.interner.resolve(snap.type_id)) else {
         return true;
     };
-    harvester.dock.iter().any(|dock_type| {
-        sim.interner.get(dock_type).is_some_and(|type_ref| {
-            sim.substrate
-                .entities
-                .count_owned_of_type(snap.owner, type_ref)
-                > 0
-        })
+    sim.houses.get(&snap.owner).is_some_and(|house| {
+        house.tracking.owns_any_building(
+            harvester
+                .dock
+                .iter()
+                .filter_map(|name| sim.interner.get(name)),
+        )
     })
 }
 
@@ -1552,9 +1548,20 @@ fn find_docking_bay(
         .map(|loc| loc.movement_zone)
         .unwrap_or(MovementZone::Normal);
 
-    let buildings = sim.houses.get(&snap.owner)?.base_projection.buildings();
+    let house = sim.houses.get(&snap.owner)?;
+    let buildings = house.base_projection.buildings();
     let mut best: Option<(i64, u64)> = None;
     for dock_type in &harvester.dock {
+        // `0x004DEE9B..0x004DEEAC`: a type of which the house tracks no
+        // instance (`+0x5500`, `JZ`) finds nothing, whatever the list holds.
+        if sim.interner.get(dock_type).is_none_or(|type_ref| {
+            house
+                .tracking
+                .owned_count(EntityCategory::Structure, type_ref)
+                == 0
+        }) {
+            continue;
+        }
         for &sid in buildings {
             let Some(entity) = sim.substrate.entities.get(sid) else {
                 continue;
@@ -2094,6 +2101,11 @@ mod harvest_scan_dispatch_tests {
         // Unlimbo's House+0x68 append.
         register_house(sim);
         sim.append_house_base_building_for_test(REFINERY_ID);
+        // The class constructor's `Add_Tracking`, which a direct insert skips.
+        sim.update_house_tracking(
+            REFINERY_ID,
+            crate::sim::house_tracking::HouseTracking::add_tracking,
+        );
         for y in nw.1..nw.1 + 3 {
             for x in nw.0..nw.0 + 4 {
                 sim.substrate.occupancy.add(
@@ -2326,13 +2338,14 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
-        spawn_search_miner_without_refinery(&mut sim, (10, 10));
-        spawn_owned_refinery(&mut sim, REFINERY_NW);
+        // A computer house, made before the refinery counts into it.
         let owner = sim.interner.intern("Americans");
         sim.houses.insert(
             owner,
             crate::sim::house_state::HouseState::new(owner, 0, None, false, 0, 10),
         );
+        spawn_search_miner_without_refinery(&mut sim, (10, 10));
+        spawn_owned_refinery(&mut sim, REFINERY_NW);
 
         tick_miners(&mut sim, &rules, &config, Some(&grid));
         {

@@ -362,8 +362,8 @@ impl Simulation {
                 .is_some_and(crate::sim::game_entity::GameEntity::is_warped_out);
             if dx <= 1 && dy <= 1 && !target_warped {
                 self.announce_engineer_capture(building_id, engineer_owner, rules);
-                // CAPTURE: the ownership chokepoint moves HouseState counts,
-                // the by-owner index, and the entity owner exactly once.
+                // CAPTURE: the ownership chokepoint moves HouseState counts
+                // and the entity owner exactly once.
                 self.change_owner_with_rules(building_id, engineer_owner, rules);
                 // Destroy engineer (consumed on capture).
                 self.uninit_with_rules(engineer_id, rules);

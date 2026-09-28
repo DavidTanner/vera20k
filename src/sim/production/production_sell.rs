@@ -735,9 +735,8 @@ fn place_garrison_passenger_at_cell(
     building_height: u16,
     context: UninitContext<'_>,
 ) -> bool {
-    // Owner transfer (if any) goes through the substrate chokepoint first, so
-    // the by_owner index stays in sync; then take the mutable borrow for the
-    // remaining field writes. change_owner is a no-op if the id is absent —
+    // Owner transfer (if any) goes through the substrate chokepoint first;
+    // then take the mutable borrow for the remaining field writes. change_owner is a no-op if the id is absent —
     // the get_mut below still guards absence.
     if let Some(owner) = owner_override {
         sim.change_owner_with_rules(passenger_id, owner, rules);
