@@ -614,17 +614,23 @@ pub(crate) fn encode_comma_hex_utf16(units: &[u16]) -> String {
     out
 }
 
-/// ReadInt's parse of a present value: `$`-prefix or `h`-suffix hex (no hex
-/// digit -> `None`, the caller's default), else [`crt_atoi`].
+/// ReadInt's parse of the stored value, untrimmed (`0x0052784A..0x005278C6`):
+/// a leading `$` scans `"$%x"`, a last byte `h`/`H` scans `"%xh"` (a failed
+/// `%x`, `None`, keeps the caller's default), anything else is [`crt_atoi`].
+/// Executed controls: tools/rules_oracle/ini_token_readers.
 pub(crate) fn parse_read_int_value(raw: &str) -> Option<i32> {
-    let value = strtrim_ascii(raw);
-    if let Some(rest) = value.strip_prefix('$') {
-        parse_leading_hex(rest)
-    } else if ends_with_h(value) {
-        parse_leading_hex(&value[..value.len() - 1])
+    let hex = if let Some(rest) = raw.strip_prefix('$') {
+        rest
+    } else if raw
+        .as_bytes()
+        .last()
+        .is_some_and(|b| b.eq_ignore_ascii_case(&b'h'))
+    {
+        raw
     } else {
-        Some(crt_atoi(value))
-    }
+        return Some(crt_atoi(raw));
+    };
+    scan_hex_u32(hex.as_bytes()).map(|value| value as i32)
 }
 
 /// ReadBool's parse of a present value; see [`IniSection::read_bool`].
@@ -632,13 +638,10 @@ pub(crate) fn parse_read_bool(default: bool, raw: &str) -> bool {
     read_bool_decision(raw).unwrap_or(default)
 }
 
-/// ReadBool's verdict on a value: `None` where it returns its default.
+/// ReadBool's verdict on the stored value's untrimmed first byte
+/// (`0x0052976B`): `None` where it returns its default.
 fn read_bool_decision(raw: &str) -> Option<bool> {
-    match strtrim_ascii(raw)
-        .bytes()
-        .next()
-        .map(|byte| byte.to_ascii_uppercase())
-    {
+    match raw.bytes().next().map(|byte| byte.to_ascii_uppercase()) {
         Some(b'1') | Some(b'T') | Some(b'Y') => Some(true),
         Some(b'0') | Some(b'F') | Some(b'N') => Some(false),
         _ => None,
@@ -682,19 +685,29 @@ pub(crate) fn truncate_native_bytes(value: &str, max_bytes: usize) -> &str {
         .map_or(value, |(end, _)| &value[..end])
 }
 
-/// strtrim equivalent (P5): strip bytes <= 0x20 from BOTH ends. ASCII-only by
-/// design (RA2 INI is ASCII); does NOT use `str::trim` (Unicode whitespace).
+/// `strtrim` @ `0x00727CF0`, over chars (one per native byte): drop the
+/// leading chars <= 0x20, shift the text down, then clear trailing chars
+/// <= 0x20 until one is kept or the char at the old start offset has been
+/// cleared. A trailing run therefore reaches back no further than that
+/// offset: `"  x  "` -> `"x "`, `"  x "` -> `"x "`, `" ab "` -> `"ab"`.
+/// Executed controls: tools/rules_oracle/ini_token_readers.
 pub(crate) fn strtrim_ascii(s: &str) -> &str {
-    let b = s.as_bytes();
-    let mut start = 0usize;
-    while start < b.len() && b[start] <= STRTRIM_MAX {
-        start += 1;
+    let leading = s.bytes().take_while(|&b| b <= STRTRIM_MAX).count();
+    let text = &s[leading..];
+    let trimmed = text.trim_end_matches(|c: char| u32::from(c) <= u32::from(STRTRIM_MAX));
+    if leading == 0 {
+        return trimmed;
     }
-    let mut end = b.len();
-    while end > start && b[end - 1] <= STRTRIM_MAX {
-        end -= 1;
-    }
-    &s[start..end]
+    let chars = text.chars().count();
+    let kept = trimmed.chars().count();
+    let end = match leading.cmp(&chars) {
+        std::cmp::Ordering::Less => kept.max(leading),
+        // The cleared char is the shifted text's terminator: nothing is trimmed.
+        std::cmp::Ordering::Equal => chars,
+        // The old offset lies past the shifted text and is never cleared.
+        std::cmp::Ordering::Greater => kept,
+    };
+    truncate_native_bytes(text, end)
 }
 
 /// CRT `strtok` (`0x007C9CC2`) over one copied value: tokens are the maximal
@@ -709,53 +722,6 @@ pub(crate) fn strtok<'a>(value: &'a str, delimiters: &'a [char]) -> impl Iterato
 /// tab, LF, VT, FF, CR and space.
 fn is_crt_space(byte: u8) -> bool {
     matches!(byte, b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | b' ')
-}
-
-/// tolower(last char) == 'h' (P2). Case-insensitive via ASCII.
-fn ends_with_h(s: &str) -> bool {
-    s.as_bytes().last().map(|b| b.to_ascii_lowercase()) == Some(b'h')
-}
-
-/// Parse a leading run of hex digits (after `$` strip or before `h` strip).
-/// sscanf "$%x"/"%xh" accepts an optional sign and `0x` prefix, then stops at
-/// the first non-hex char. No conversion returns `None`, leaving the caller's
-/// initialized default untouched.
-pub(crate) fn parse_leading_hex(s: &str) -> Option<i32> {
-    let bytes = s.as_bytes();
-    let mut index = 0;
-    let negative = if bytes.first() == Some(&b'-') {
-        index += 1;
-        true
-    } else {
-        index += usize::from(bytes.first() == Some(&b'+'));
-        false
-    };
-    if bytes.get(index) == Some(&b'0')
-        && bytes
-            .get(index + 1)
-            .is_some_and(|byte| matches!(byte, b'x' | b'X'))
-        && bytes.get(index + 2).is_some_and(u8::is_ascii_hexdigit)
-    {
-        index += 2;
-    }
-
-    let mut acc: u32 = 0;
-    let mut any = false;
-    for &c in &bytes[index..] {
-        let d = match c {
-            b'0'..=b'9' => u32::from(c - b'0'),
-            b'a'..=b'f' => u32::from(c - b'a' + 10),
-            b'A'..=b'F' => u32::from(c - b'A' + 10),
-            _ => break,
-        };
-        any = true;
-        acc = acc.wrapping_mul(16).wrapping_add(d);
-    }
-    any.then_some(if negative {
-        0u32.wrapping_sub(acc) as i32
-    } else {
-        acc as i32
-    })
 }
 
 /// CRT `atoi` (`0x007C9B72`, reached through `0x007C9BFD`): skip C-locale
