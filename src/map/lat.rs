@@ -96,9 +96,8 @@ pub struct SlopeFixupConfig {
 
 fn tileset_bounds(
     lookup: &TilesetLookup,
-    ordinal: Option<i32>,
+    ordinal: i32,
 ) -> Option<&crate::map::theater::TilesetBounds> {
-    let ordinal = ordinal?;
     (ordinal >= 0)
         .then(|| lookup.bounds().get(ordinal as usize))
         .flatten()
@@ -115,10 +114,12 @@ pub fn parse_lat_config(ini_data: &[u8], lookup: &TilesetLookup) -> LatConfig {
             grounds: Vec::new(),
         };
     };
-    let general = ini.section("General");
-    if general.is_none() {
+    if ini.section("General").is_none() {
         log::info!("LAT: no [General] section in theater INI");
     }
+    // Theater init reads each `[General]` set ordinal with ReadInt over -1
+    // (`0x0054555A..0x00545A1A`).
+    let general = ini.section_or_empty("General");
 
     // The array type keeps the empty Rough/Sand slices typed without a
     // speculative shared terrain abstraction.
@@ -155,18 +156,14 @@ pub fn parse_lat_config(ini_data: &[u8], lookup: &TilesetLookup) -> LatConfig {
 
     let mut grounds = Vec::with_capacity(definitions.len());
     for (name, base_key, lat_key, exemption_defs, enable_guard) in definitions {
-        let base_tile = tileset_bounds(
-            lookup,
-            general.and_then(|section| section.get_i32(base_key)),
-        )
-        .map_or(-1, |bounds| i32::from(bounds.start));
-        let lat_base = tileset_bounds(lookup, general.and_then(|section| section.get_i32(lat_key)))
+        let base_tile = tileset_bounds(lookup, general.read_int(base_key, -1))
+            .map_or(-1, |bounds| i32::from(bounds.start));
+        let lat_base = tileset_bounds(lookup, general.read_int(lat_key, -1))
             .map_or(-1, |bounds| i32::from(bounds.start));
         let exemptions = exemption_defs
             .iter()
             .filter_map(|&(key, last_offset)| {
-                let bounds =
-                    tileset_bounds(lookup, general.and_then(|section| section.get_i32(key)))?;
+                let bounds = tileset_bounds(lookup, general.read_int(key, -1))?;
                 // Retail Lunar leaves these two ordinal sections present with
                 // zero tiles, while native theater init clears their effective
                 // LAT globals. Do not expand their shared next-tile start into
@@ -252,11 +249,7 @@ fn apply_lat_cell(
 
 /// Runtime form of the LAT half for one CellClass. Native changes only the tile
 /// identity here; the owning caller decides whether/when RecalcAttributes runs.
-pub(crate) fn lat_fixed_tile(
-    tile: i32,
-    cardinal_tiles: [i32; 4],
-    lat_config: &LatConfig,
-) -> i32 {
+pub(crate) fn lat_fixed_tile(tile: i32, cardinal_tiles: [i32; 4], lat_config: &LatConfig) -> i32 {
     lat_fixed_tile_live(tile, lat_config, || cardinal_tiles)
 }
 
@@ -344,7 +337,10 @@ pub(crate) fn slope_fixed_tile_live(
     } else {
         // 47D1C0..47D1C8 zero-extends11C before DWORD LEA arithmetic.
         // The subtraction does not wrap in a byte: slope0 selects base-1.
-        config.ramp_base.wrapping_add(i32::from(slope)).wrapping_sub(1)
+        config
+            .ramp_base
+            .wrapping_add(i32::from(slope))
+            .wrapping_sub(1)
     }
 }
 
@@ -859,7 +855,10 @@ RoughConnectTo=14
         );
         assert_eq!(calls, 2);
 
-        assert_eq!(lat_fixed_tile_live(99, &config, || panic!("guarded lookup")), 99);
+        assert_eq!(
+            lat_fixed_tile_live(99, &config, || panic!("guarded lookup")),
+            99
+        );
     }
 
     #[test]

@@ -83,9 +83,8 @@
 //!   Typed readers fold passes via
 //!   `projected_values`, which cannot model per-pass clamps or literal defaults. Fields:
 //!   each type's `from_ini_section`; `art_data.rs`, `team_ai_ini.rs`, `sound_ini.rs`.
-//! - VERA-only: `sound.ini` under SOUNDMD, case-insensitive sound keys, fatal missing
-//!   mode INI (native: empty INI, 0x005D67B0); no scenario-named `.INI`, `TMCJ4F.INI` or
-//!   `[Digest]` handling.
+//! - VERA-only: `sound.ini` under SOUNDMD, fatal missing mode INI (native: empty INI,
+//!   0x005D67B0); no scenario-named `.INI`, `TMCJ4F.INI` or `[Digest]` handling.
 //!
 //! ### Retail INIs in tests
 //! - `cargo run --bin extract-ini` fills the gitignored `ini/`, RA2 base files included;
@@ -117,7 +116,6 @@ pub mod foundation;
 pub mod gattling_type;
 pub mod house_colors;
 pub mod infantry_sequence;
-pub mod ini_enum;
 pub mod ini_parser;
 pub mod ini_value;
 pub mod jumpjet_params;
@@ -152,6 +150,8 @@ pub mod weapon_type;
 
 #[cfg(test)]
 mod path_delay_rules_tests;
+#[cfg(test)]
+mod ini_token_readers_tests;
 #[cfg(test)]
 mod read_double_percent_tests;
 #[cfg(test)]

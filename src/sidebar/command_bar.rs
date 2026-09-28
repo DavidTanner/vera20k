@@ -4,6 +4,7 @@
 //! `674650`. Assets own dimensions; the bar tiles at integer native pixels.
 
 use super::Rect;
+use crate::rules::ini_parser::IniSection;
 
 pub const COMMAND_NAMES: [&str; 11] = [
     "Team01",
@@ -20,15 +21,15 @@ pub const COMMAND_NAMES: [&str; 11] = [
 ];
 
 /// UIMD.INI maps command identities to slots, rather than numbering artwork
-/// by slot. Unknown entries leave a slot unused, as the native name search does.
-pub fn parse_button_list(value: &str) -> Vec<Option<usize>> {
-    let mut slots: Vec<_> = value
-        .split(',')
-        .map(|name| {
-            COMMAND_NAMES
-                .iter()
-                .position(|known| known.eq_ignore_ascii_case(name.trim()))
-        })
+/// by slot. `674650` reads `ButtonList` into 0x200 bytes and gives each
+/// `strtok(",")` token the next slot; the name search `6CFCC0` is an exact
+/// `strcmp`, and an unknown name leaves its slot unused.
+pub fn read_button_list(section: &IniSection) -> Vec<Option<usize>> {
+    let mut slots: Vec<_> = section
+        .read_list("ButtonList", 0x200)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| COMMAND_NAMES.iter().position(|known| *known == name))
         .collect();
     // 674650 stores command -> slot; a repeated name replaces its earlier slot.
     for i in 0..slots.len() {
@@ -101,9 +102,12 @@ mod tests {
     use super::*;
     #[test]
     fn command_identity_keeps_unknown_slots_and_last_duplicate() {
+        let ini = crate::rules::ini_parser::IniFile::from_str(
+            "[AdvancedCommandBar]\nButtonList=Team01,unknown,,Deploy,team01,Team01\n",
+        );
         assert_eq!(
-            parse_button_list("Team01,unknown,Deploy,team01"),
-            [None, None, Some(4), Some(0)]
+            read_button_list(ini.section_or_empty("AdvancedCommandBar")),
+            [None, None, Some(4), None, Some(0)]
         );
     }
     #[test]

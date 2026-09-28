@@ -5,7 +5,7 @@
 //! defaults are *not* zero, so an absent file still produces trees and ore.
 
 use crate::assets::asset_manager::AssetManager;
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
 
 /// Constructor defaults, used when `RMGMD.INI` (or an individual key) is absent.
 const DEFAULT_MIN_TIBERIUM: i32 = 2500;
@@ -60,40 +60,30 @@ impl RmgSettings {
         settings
     }
 
+    /// `[General]` through ReadInt over each field and the IntVector reader
+    /// (`0x00475D70`) for the lists (`0x005982D0..0x0059877A`).
     fn apply(&mut self, ini: &IniFile) {
-        if let Some(value) = int_key(ini, "RMGMinimumTiberium") {
-            self.min_tiberium = value;
-        }
-        if let Some(value) = int_key(ini, "RMGMaximumTiberium") {
-            self.max_tiberium = value;
-        }
-        if let Some(value) = int_key(ini, "MaxTrees") {
-            self.max_trees = value;
-        }
-        if let Some(value) = int_list::<TIME_BUCKETS>(ini, "RMGLevelLightSettings") {
+        let general = ini.section_or_empty("General");
+        self.min_tiberium = general.read_int("RMGMinimumTiberium", self.min_tiberium);
+        self.max_tiberium = general.read_int("RMGMaximumTiberium", self.max_tiberium);
+        self.max_trees = general.read_int("MaxTrees", self.max_trees);
+        if let Some(value) = int_list::<TIME_BUCKETS>(general, "RMGLevelLightSettings") {
             self.level_light = value;
         }
-        if let Some(value) = int_list::<MAP_TYPE_BUCKETS>(ini, "RMGVegetationMinimums") {
+        if let Some(value) = int_list::<MAP_TYPE_BUCKETS>(general, "RMGVegetationMinimums") {
             self.vegetation_min = value;
         }
-        if let Some(value) = int_list::<MAP_TYPE_BUCKETS>(ini, "RMGVegetationMaximums") {
+        if let Some(value) = int_list::<MAP_TYPE_BUCKETS>(general, "RMGVegetationMaximums") {
             self.vegetation_max = value;
         }
     }
 }
 
-fn int_key(ini: &IniFile, key: &str) -> Option<i32> {
-    ini.section("General")?.get_i32(key)
-}
-
-/// Parse a comma-separated integer list. A short list is rejected outright
-/// rather than partially applied, so a malformed key falls back to the default.
-fn int_list<const N: usize>(ini: &IniFile, key: &str) -> Option<[i32; N]> {
-    let raw = ini.section("General")?.get(key)?;
-    let parsed: Vec<i32> = raw
-        .split(',')
-        .filter_map(|part| part.trim().parse().ok())
-        .collect();
+/// Native keeps the whole vector and indexes it by bucket. Rust holds fixed
+/// arrays, so a list shorter than its bucket count keeps the default rather
+/// than letting a lookup run past the vector.
+fn int_list<const N: usize>(general: &IniSection, key: &str) -> Option<[i32; N]> {
+    let parsed = general.read_int_list(key)?;
     (parsed.len() >= N).then(|| std::array::from_fn(|i| parsed[i]))
 }
 

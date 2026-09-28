@@ -521,12 +521,15 @@ fn side_registry_and_house_side_lookup_do_not_apply_generic_none_sentinels() {
 
 #[test]
 fn constructor_lists_collapse_empty_fields_without_trimming_individual_tokens() {
+    let list = IniFile::from_str(
+        "[General]\nDamageFireTypes=FIRST, SECOND ,,FIRST,,,none,<NoNe>, none , THIRD\n",
+    );
     assert_eq!(
-        native_strtok_comma_tokens("FIRST, SECOND ,,FIRST,,,none,<NoNe>, none , THIRD",)
-            .collect::<Vec<_>>(),
-        vec![
+        list.section_or_empty("General")
+            .read_list("DamageFireTypes", 0x80),
+        Some(vec![
             "FIRST", " SECOND ", "FIRST", "none", "<NoNe>", " none ", " THIRD",
-        ]
+        ])
     );
     let processed = RulesLayerStack::new(IniFile::from_str(
         "[BuildingTypes]\n0=FIRST\n\

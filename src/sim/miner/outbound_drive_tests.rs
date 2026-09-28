@@ -338,6 +338,16 @@ fn spawn_inert_dock_instance(sim: &mut Simulation) {
     );
     ge.lifecycle.in_limbo = false;
     sim.substrate.entities.insert(ge);
+    // The house counts the instance (a fixture without one gets a human
+    // house, as the miner code treats a missing House); the class
+    // constructor's `Add_Tracking`, which a direct insert skips.
+    if !sim.houses.contains_key(&owner_id) {
+        seed_human_house(sim, "Americans");
+    }
+    sim.update_house_tracking(
+        INERT_DOCK_ID,
+        crate::sim::house_tracking::HouseTracking::add_tracking,
+    );
     if sim.substrate.next_stable_object_id <= INERT_DOCK_ID {
         sim.substrate.next_stable_object_id = INERT_DOCK_ID + 1;
     }

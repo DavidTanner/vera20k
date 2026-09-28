@@ -6133,7 +6133,7 @@ fn crusher_driveover_destroys_wall_but_noncrusher_does_not() {
             Some(crate::sim::movement::locomotor::LocomotorState::from_object_type(obj, 0));
         veh.health = Health { current: 300 };
         sim.substrate.entities.insert(veh);
-        sim.substrate.entities.rebuild_owner_index();
+        sim.substrate.entities.rebuild_infantry_registry();
         sim
     };
 
@@ -6230,7 +6230,7 @@ fn crushable_fence_falls_to_any_crusher_and_plays_its_crush_sound() {
         veh.locomotor =
             Some(crate::sim::movement::locomotor::LocomotorState::from_object_type(obj, 0));
         sim.substrate.entities.insert(veh);
-        sim.substrate.entities.rebuild_owner_index();
+        sim.substrate.entities.rebuild_infantry_registry();
         sim
     };
     let wall_present = |sim: &Simulation| -> bool {
@@ -6313,7 +6313,7 @@ fn build_minimal_sim_with_gawall_row(
         next_id += 1;
     }
     sim.overlay_grid = Some(grid);
-    sim.substrate.entities.rebuild_owner_index();
+    sim.substrate.entities.rebuild_infantry_registry();
 
     (sim, rules, registry)
 }
@@ -10603,7 +10603,7 @@ fn a_drive_crusher_without_crusherall_leaves_a_plain_wall_standing() {
         veh.locomotor =
             Some(crate::sim::movement::locomotor::LocomotorState::from_object_type(obj, 0));
         sim.substrate.entities.insert(veh);
-        sim.substrate.entities.rebuild_owner_index();
+        sim.substrate.entities.rebuild_infantry_registry();
         sim
     };
 

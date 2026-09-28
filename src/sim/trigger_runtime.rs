@@ -487,12 +487,12 @@ fn resolve_trigger_house(
 }
 
 fn parse_visible_map_area(fields: &[String]) -> Option<[i32; 4]> {
-    Some([
-        crate::rules::ini_value::atoi_lenient(fields.get(2)?.trim()),
-        crate::rules::ini_value::atoi_lenient(fields.get(3)?.trim()),
-        crate::rules::ini_value::atoi_lenient(fields.get(4)?.trim()),
-        crate::rules::ini_value::atoi_lenient(fields.get(5)?.trim()),
-    ])
+    let atoi = |index: usize| {
+        fields
+            .get(index)
+            .map(|field| crate::rules::ini_value::crt_atoi(field))
+    };
+    Some([atoi(2)?, atoi(3)?, atoi(4)?, atoi(5)?])
 }
 
 fn parse_trigger_id_param(fields: &[String], index: usize) -> Option<String> {

@@ -12,7 +12,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::rules::color_scheme::{ColorSchemeEntry, scheme_entry_by_name};
 use crate::rules::house_colors::{DEFAULT_SCHEME_ENTRY, HouseColorIndex};
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
+use crate::rules::ini_value::{crt_atoi, strtok};
 use crate::rules::ruleset::RuleSet;
 
 /// Ordered map-side BasePlan node, installed into House simulation state before
@@ -56,8 +57,8 @@ pub struct HouseDefinition {
     pub side: Option<String>,
     /// Optional player-control hint from `PlayerControl=`.
     pub player_control: Option<bool>,
-    /// Optional scenario-authored `IQ=` read into HouseClass CurrentIQ.
-    pub iq: Option<i32>,
+    /// Scenario-authored `IQ=` read into HouseClass CurrentIQ (ReadInt over 0).
+    pub iq: i32,
     /// Allies listed in the house section.
     pub allies: Vec<String>,
     /// Scenario-authored BasePlan in numeric node order.
@@ -68,11 +69,7 @@ impl HouseDefinition {
     /// Resolve the named scenario-house `IQ=` exactly as
     /// `HouseClass::Read_Scenario_INI @ 0x00500B40` does.
     pub const fn scenario_current_iq(&self, max_iq_levels: i32) -> i32 {
-        match self.iq {
-            Some(iq) if iq > max_iq_levels => 1,
-            Some(iq) => iq,
-            None => 0,
-        }
+        if self.iq > max_iq_levels { 1 } else { self.iq }
     }
 }
 
@@ -186,31 +183,34 @@ pub fn parse_house_roster(
 
     let mut houses = Vec::new();
 
-    // [Houses] has numbered keys: 0=Americans, 1=Russians, etc.
+    // [Houses] has numbered keys: 0=Americans, 1=Russians, etc. `0x005009B0`
+    // walks them by index, each value a 0x14-byte ReadString.
     for key in houses_section.keys() {
-        let Some(house_name) = houses_section.get(key) else {
+        let Some(house_name) = houses_section.read_name(key, 0x14) else {
             continue;
         };
-        let house_name = house_name.trim().to_string();
-        if house_name.is_empty() {
-            continue;
-        }
+        let house_name = house_name.to_string();
 
+        // `HouseClass::Read_Scenario_INI @ 0x00500B40` reads the house's own
+        // section; `Country` is the 0x80-byte index read at `0x00500A05`.
         let section = ini.section(&house_name);
-        let color = section
-            .and_then(|s| s.get("Color"))
+        let fields = section.unwrap_or(IniSection::empty());
+        let color = fields
+            .read_name("Color", 0x20)
             .and_then(|name| scheme_entry_by_name(schemes, name))
             .map(|entry| HouseColorIndex(entry as u8))
             .unwrap_or(HouseColorIndex(DEFAULT_SCHEME_ENTRY as u8));
-        let country = section.and_then(|s| s.get("Country")).map(str::to_string);
-        let side = section.and_then(|s| s.get("Side")).map(str::to_string);
-        let player_control = section.and_then(|s| s.get_bool("PlayerControl"));
-        let iq = section.and_then(|s| s.get_i32("IQ"));
-        let allies = section
-            .and_then(|s| s.get_list("Allies"))
+        let country = fields.read_name("Country", 0x80).map(str::to_string);
+        // No native read: Rust keeps `Side` as the side fallback for a country
+        // it cannot resolve.
+        let side = fields.read_name("Side", 0x80).map(str::to_string);
+        let player_control = fields.read_bool_value("PlayerControl");
+        let iq = fields.read_int("IQ", 0);
+        // `0x00475260`: the house list read, tokens resolved as written.
+        let allies = fields
+            .read_list("Allies", 0x80)
             .unwrap_or_default()
             .into_iter()
-            .filter(|s| !s.is_empty())
             .map(str::to_string)
             .collect();
         let base_plan = parse_scenario_base_plan(section, rules);
@@ -238,39 +238,39 @@ pub fn parse_house_roster(
 /// `BaseClass__Constructor @ 0x0042E6F0`.
 ///
 /// Native formats numeric keys as `%03d`, reads each value into `char[128]`
-/// (127 payload bytes before NUL), classifies a control only when byte zero is
-/// `'-'`, otherwise resolves `BuildingTypeClass__FindIndexByName @ 0x0045E7B0`,
-/// comma-tokenizes, applies signed `atoi`, narrows X/Y to 16 bits, and appends
-/// in numeric-key order. Its undefined trailing node locals are not scenario
-/// fields, so Rust deterministically normalizes filled/retry below.
+/// (ReadString, 127 payload bytes), classifies a control only when byte zero
+/// is `'-'` (`atoi` of the first `strtok` token), otherwise resolves that
+/// token through `BuildingTypeClass__FindIndexByName @ 0x0045E7B0`, reads
+/// X/Y as `atoi` of the next two tokens narrowed to 16 bits, and appends in
+/// numeric-key order. The row read passes a NULL default (`0x0042EC69`);
+/// Rust reads an absent row as empty. Its undefined trailing node locals are
+/// not scenario fields, so Rust deterministically normalizes filled/retry
+/// below.
 fn parse_scenario_base_plan(
-    section: Option<&crate::rules::ini_parser::IniSection>,
+    section: Option<&IniSection>,
     rules: Option<&RuleSet>,
 ) -> ScenarioBasePlanDefinition {
-    const NATIVE_ROW_PAYLOAD_BYTES: usize = 127;
-
     let Some(section) = section else {
         return ScenarioBasePlanDefinition::default();
     };
-    let percent_built = section.get_i32("PercentBuilt").unwrap_or(0);
-    let node_count = section.get_i32("NodeCount").unwrap_or(0);
+    let percent_built = section.read_int("PercentBuilt", 0);
+    let node_count = section.read_int("NodeCount", 0);
     let mut nodes = Vec::new();
     for index in 0..node_count.max(0) {
-        let key = format!("{index:03}");
-        let value = section.get(&key).unwrap_or("");
-        let value = value.as_bytes();
-        let value = &value[..value.len().min(NATIVE_ROW_PAYLOAD_BYTES)];
-        let mut tokens = value.split(|byte| *byte == b',');
-        let type_token = std::str::from_utf8(tokens.next().unwrap_or_default()).unwrap_or("");
-        let type_or_control = if value.first() == Some(&b'-') {
-            crate::rules::ini_value::atoi_lenient(type_token)
+        let value = section
+            .read_name(&format!("{index:03}"), 0x80)
+            .unwrap_or("");
+        let mut tokens = strtok(value, &[',']);
+        let type_token = tokens.next().unwrap_or("");
+        let type_or_control = if value.starts_with('-') {
+            crt_atoi(type_token)
         } else {
             rules
                 .and_then(|rules| rules.building_type_index(type_token))
                 .unwrap_or(-1)
         };
-        let x = atoi_scenario_base_plan_coordinate(tokens.next().unwrap_or_default());
-        let y = atoi_scenario_base_plan_coordinate(tokens.next().unwrap_or_default());
+        let x = crt_atoi(tokens.next().unwrap_or(""));
+        let y = crt_atoi(tokens.next().unwrap_or(""));
         nodes.push(ScenarioBasePlanNode {
             type_or_control,
             packed_cell: pack_scenario_base_plan_cell(x, y),
@@ -284,29 +284,6 @@ fn parse_scenario_base_plan(
         percent_built,
         nodes,
     }
-}
-
-/// Coordinate-token projection through the CRT `atoi @ 0x007C9B72` reached by
-/// `FUN_0042EBE0 @ 0x0042EBE0`. CRT `atoi` skips only its ASCII whitespace set
-/// before inspecting the optional sign and leading decimal digits.
-fn atoi_scenario_base_plan_coordinate(value: &[u8]) -> i32 {
-    let leading_whitespace = value
-        .iter()
-        .take_while(|&&byte| matches!(byte, b'\t'..=b'\r' | b' '))
-        .count();
-    let value = &value[leading_whitespace..];
-    let sign_bytes = usize::from(
-        value
-            .first()
-            .is_some_and(|byte| matches!(*byte, b'-' | b'+')),
-    );
-    let digit_bytes = value[sign_bytes..]
-        .iter()
-        .take_while(|byte| byte.is_ascii_digit())
-        .count();
-    let numeric_bytes = &value[..sign_bytes + digit_bytes];
-    let numeric = std::str::from_utf8(numeric_bytes).expect("BasePlan numeric grammar is ASCII");
-    crate::rules::ini_value::atoi_lenient(numeric)
 }
 
 #[cfg(test)]
@@ -366,7 +343,7 @@ mod tests {
         assert_eq!(roster.houses[0].side.as_deref(), Some("Allies"));
         assert_eq!(roster.houses[0].country.as_deref(), Some("America"));
         assert_eq!(roster.houses[0].player_control, Some(true));
-        assert_eq!(roster.houses[0].iq, None);
+        assert_eq!(roster.houses[0].iq, 0);
         assert_eq!(
             roster.houses[1].allies,
             vec!["Confederation".to_string(), "YuriCountry".to_string()]
@@ -415,7 +392,7 @@ mod tests {
         let roster = parse_house_roster(&ini, &test_schemes(), None);
         let map = roster.color_map();
         assert_eq!(map["Neutral"], HouseColorIndex(DEFAULT_SCHEME_ENTRY as u8));
-        assert_eq!(roster.houses[0].iq, Some(5));
+        assert_eq!(roster.houses[0].iq, 5);
         assert_eq!(roster.houses[0].scenario_current_iq(5), 5);
         assert_eq!(roster.houses[0].scenario_current_iq(4), 1);
     }
@@ -491,11 +468,6 @@ mod tests {
                 .map(|node| node.type_or_control)
                 .collect::<Vec<_>>(),
             [0, 1, 0]
-        );
-
-        assert_eq!(
-            atoi_scenario_base_plan_coordinate(b" \t\n\x0b\x0c\r-14tail"),
-            -14
         );
     }
 

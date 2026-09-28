@@ -4,10 +4,9 @@
 //! freshly loaded INI by MapSeed Load 0x00597A30 and metadata 0x00597D60.
 //! See docs/research/skirmish-ui/2026-09-12-seed-description-reader.md.
 
+use crate::rules::ini_parser::IniSection;
+
 const DESCRIPTION_UNITS: usize = 128;
-// On a section-pointer cache miss, 0x00529023 leaves this native CRC in the
-// sscanf destination. An initial failed conversion therefore emits 0xB573.
-const RANDOM_MAP_SECTION_CRC: u32 = 0x1597_b573;
 
 /// Native wide text, including unpaired surrogate units created by NewEdit's
 /// one-unit Backspace/Delete. Display conversion must not rewrite stored data.
@@ -50,30 +49,24 @@ impl PartialEq<&str> for SeedDescription {
     }
 }
 
-/// Decode the visible UTF-16 units without changing unpaired surrogates.
-fn decode_units(raw: Option<&str>, default: &[u16]) -> Vec<u16> {
-    crate::rules::ini_value::read_comma_hex_utf16(
-        raw,
-        default,
-        DESCRIPTION_UNITS,
-        RANDOM_MAP_SECTION_CRC,
-    )
-}
-
-pub(super) fn read_description(raw: Option<&str>, default: &SeedDescription) -> SeedDescription {
-    SeedDescription(decode_units(raw, default.units()))
+/// `[RandomMap] Description` through [`IniSection::read_comma_hex_utf16`],
+/// keeping unpaired surrogate units. On the fresh-file section-pointer cache
+/// miss a failed first conversion emits the low half of the `RandomMap`
+/// section CRC (0xB573).
+pub(super) fn read_description(section: &IniSection, default: &SeedDescription) -> SeedDescription {
+    SeedDescription(section.read_comma_hex_utf16("Description", default.units(), DESCRIPTION_UNITS))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn random_map_section_crc_is_the_crc_engine_of_its_name() {
-        assert_eq!(
-            crate::assets::mix_hash::crc_engine(b"RandomMap"),
-            RANDOM_MAP_SECTION_CRC
-        );
+    fn random_map(raw: Option<&str>) -> IniSection {
+        let mut section = IniSection::new("RandomMap".to_string());
+        if let Some(raw) = raw {
+            section.set("Description", raw);
+        }
+        section
     }
 
     #[test]
@@ -84,7 +77,6 @@ mod tests {
         .unwrap();
         let cases = vectors["cases"].as_array().unwrap();
         assert_eq!(cases.len(), 29);
-        let default: Vec<u16> = "DEFAULT".encode_utf16().collect();
         let mut compared = 0;
         for case in cases {
             if case["cached_section_pointer"].as_bool().unwrap() {
@@ -98,12 +90,19 @@ mod tests {
                 .iter()
                 .map(|unit| u16::try_from(unit.as_u64().unwrap()).unwrap())
                 .collect();
-            let raw = case["raw"].as_str();
-            assert_eq!(decode_units(raw, &default), expected, "{}", case["name"]);
-            assert_eq!(read_description(raw, &"DEFAULT".into()).units(), expected);
+            let section = random_map(case["raw"].as_str());
+            assert_eq!(
+                read_description(&section, &"DEFAULT".into()).units(),
+                expected,
+                "{}",
+                case["name"]
+            );
             compared += 1;
         }
         assert_eq!(compared, 28);
-        assert_eq!(read_description(None, &"Default map".into()), "Default map");
+        assert_eq!(
+            read_description(&random_map(None), &"Default map".into()),
+            "Default map"
+        );
     }
 }

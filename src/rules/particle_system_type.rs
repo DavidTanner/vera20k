@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::rules::ini_parser::IniSection;
 use crate::rules::particle_type::ParticleTypeId;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_from_f32};
+use crate::util::fixed_math::{SimFixed, sim_from_f32};
 use crate::util::native_x87::NativeF64Bits;
 
 /// Default `ParticlesPerCoord` from the constructor (Railgun field, parsed
@@ -156,88 +156,70 @@ impl ParticleSystemType {
     /// Parse a ParticleSystemType plus its unresolved `HoldsWhat=` name string.
     pub fn from_ini_section_pending(name: &str, section: &IniSection) -> PendingParticleSystemType {
         let behaves_like = section
-            .get("BehavesLike")
+            .read_name("BehavesLike", 0x40)
             .and_then(ParticleSystemBehavesLike::parse)
             // Binary's string-table loop falls through to index 0 (Smoke) when
             // the INI string doesn't match any entry.
             .unwrap_or(ParticleSystemBehavesLike::Smoke);
 
         let holds_what_name = section
-            .get("HoldsWhat")
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("none"));
+            .read_name("HoldsWhat", 0x40)
+            .filter(|s| !s.eq_ignore_ascii_case("none"))
+            .map(str::to_owned);
 
         let partial = Self {
             name: name.to_string(),
             behaves_like,
             holds_what: None,
-            spawns: section.get_bool("Spawns").unwrap_or(false),
-            spawn_frames: section
-                .get_i32("SpawnFrames")
-                .map(|n| n.max(0) as u32)
-                .unwrap_or(1),
-            slowdown: section
-                .get_f32("Slowdown")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
-            particle_cap: section
-                .get_i32("ParticleCap")
-                .map(|n| n.max(0) as u32)
-                .unwrap_or(50),
-            spawn_radius: section.get_i32("SpawnRadius").unwrap_or(0),
-            spawn_cutoff: section
-                .get_f32("SpawnCutoff")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
-            spawn_translucency_cutoff: section
-                .get_f32("SpawnTranslucencyCutoff")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
-            lifetime: section.get_i32("Lifetime").unwrap_or(-1),
-            spawn_direction: section
-                .get("SpawnDirection")
-                .map(parse_coord_offset)
-                .unwrap_or(IVec3::ZERO),
+            spawns: section.read_bool("Spawns", false),
+            spawn_frames: section.read_int("SpawnFrames", 1).max(0) as u32,
+            // Float fields (`FSTP dword` at `0x0064439F..0x006443DD`).
+            slowdown: sim_from_f32(section.read_float("Slowdown", 0.0)),
+            particle_cap: section.read_int("ParticleCap", 50).max(0) as u32,
+            spawn_radius: section.read_int("SpawnRadius", 0),
+            spawn_cutoff: sim_from_f32(section.read_float("SpawnCutoff", 0.0)),
+            spawn_translucency_cutoff: sim_from_f32(
+                section.read_float("SpawnTranslucencyCutoff", 0.0),
+            ),
+            lifetime: section.read_int("Lifetime", -1),
+            // A float vector natively; VERA keeps whole components for its
+            // integer velocity math. Retail sets no `SpawnDirection=`.
+            spawn_direction: IVec3::from_array(
+                section
+                    .read_float_tokens("SpawnDirection", [0.0; 3])
+                    .map(|component| component as i32),
+            ),
 
-            particles_per_coord: section
-                .get_f32("ParticlesPerCoord")
-                .map(sim_from_f32)
-                .unwrap_or(DEFAULT_PARTICLES_PER_COORD),
-            spiral_delta_per_coord: section
-                .get_f32("SpiralDeltaPerCoord")
-                .map(sim_from_f32)
-                .unwrap_or(DEFAULT_SPIRAL_DELTA_PER_COORD),
-            spiral_radius: section
-                .get_f32("SpiralRadius")
-                .map(sim_from_f32)
-                .unwrap_or(DEFAULT_SPIRAL_RADIUS),
-            position_perturbation_coefficient: section
-                .get_f32("PositionPerturbationCoefficient")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
-            movement_perturbation_coefficient: section
-                .get_f32("MovementPerturbationCoefficient")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
-            velocity_perturbation_coefficient: section
-                .get_f32("VelocityPerturbationCoefficient")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
+            // Double fields (`FSTP qword` at `0x006444B0..0x00644555`).
+            particles_per_coord: sim_from_f32(
+                section.read_double("ParticlesPerCoord", DEFAULT_PARTICLES_PER_COORD.to_num())
+                    as f32,
+            ),
+            spiral_delta_per_coord: sim_from_f32(section.read_double(
+                "SpiralDeltaPerCoord",
+                DEFAULT_SPIRAL_DELTA_PER_COORD.to_num(),
+            ) as f32),
+            spiral_radius: sim_from_f32(
+                section.read_double("SpiralRadius", DEFAULT_SPIRAL_RADIUS.to_num()) as f32,
+            ),
+            position_perturbation_coefficient: sim_from_f32(
+                section.read_double("PositionPerturbationCoefficient", 0.0) as f32,
+            ),
+            movement_perturbation_coefficient: sim_from_f32(
+                section.read_double("MovementPerturbationCoefficient", 0.0) as f32,
+            ),
+            velocity_perturbation_coefficient: sim_from_f32(
+                section.read_double("VelocityPerturbationCoefficient", 0.0) as f32,
+            ),
 
             spawn_spark_percentage: NativeF64Bits::from_bits(
                 section.read_double("SpawnSparkPercentage", 0.0).to_bits(),
             ),
-            spark_spawn_frames: section
-                .get_i32("SparkSpawnFrames")
-                .map(|n| n.max(0) as u32)
-                .unwrap_or(0),
-            light_size: section.get_i32("LightSize").unwrap_or(0),
-            one_frame_light: section.get_bool("OneFrameLight").unwrap_or(false),
-            laser: section.get_bool("Laser").unwrap_or(false),
-            laser_color: section
-                .get("LaserColor")
-                .map(parse_rgb_color)
-                .unwrap_or([0, 0, 0]),
+            spark_spawn_frames: section.read_int("SparkSpawnFrames", 0).max(0) as u32,
+            light_size: section.read_int("LightSize", 0),
+            one_frame_light: section.read_bool("OneFrameLight", false),
+            laser: section.read_bool("Laser", false),
+            laser_color: section.read_color_rgb("LaserColor", [0, 0, 0]),
         };
 
         PendingParticleSystemType {
@@ -247,43 +229,11 @@ impl ParticleSystemType {
     }
 }
 
-/// Parse an `R,G,B` color string into `[u8; 3]`. Components clamp to 0–255;
-/// returns `[0, 0, 0]` if fewer than 3 numbers parse.
-fn parse_rgb_color(raw: &str) -> [u8; 3] {
-    let parts: Vec<&str> = raw.split(',').map(|s| s.trim()).collect();
-    if parts.len() >= 3 {
-        let r = parts[0].parse::<u8>().unwrap_or(0);
-        let g = parts[1].parse::<u8>().unwrap_or(0);
-        let b = parts[2].parse::<u8>().unwrap_or(0);
-        [r, g, b]
-    } else {
-        [0, 0, 0]
-    }
-}
-
-/// Parse an `X,Y,Z` coordinate offset (CoordStruct) into an `IVec3`.
-/// Missing or unparseable components default to 0.
-fn parse_coord_offset(raw: &str) -> IVec3 {
-    let mut parts = raw.split(',').map(|s| s.trim());
-    let x = parts
-        .next()
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
-    let y = parts
-        .next()
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
-    let z = parts
-        .next()
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
-    IVec3::new(x, y, z)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
+    use crate::util::fixed_math::SIM_ZERO;
 
     #[test]
     fn behaves_like_string_to_enum() {

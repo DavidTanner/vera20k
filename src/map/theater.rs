@@ -546,9 +546,11 @@ fn parse_tileset_sections(ini: &IniFile, extension: &str) -> Result<TilesetLooku
             break;
         };
 
-        let filename: &str = section.get("FileName").unwrap_or("");
-        let set_name: &str = section.get("SetName").unwrap_or("No Name");
-        let raw_tiles: Option<&str> = section.get("TilesInSet");
+        // 0x40-byte ReadStrings (`0x005460C0`, `0x005460E5`). An absent
+        // `FileName` reads the native default `TILE`; Rust keeps that set
+        // blank instead (every retail tileset names its file).
+        let filename: &str = section.read_name("FileName", 0x40).unwrap_or("");
+        let set_name: &str = section.read_name("SetName", 0x40).unwrap_or("No Name");
         let last_tiles_in_set = section.read_int("LastTilesInSet", -1);
         if last_tiles_in_set != -1 && last_tiles_in_set != tiles_in_set {
             let boundary = legacy_cursor.wrapping_add(last_tiles_in_set);
@@ -586,16 +588,15 @@ fn parse_tileset_sections(ini: &IniFile, extension: &str) -> Result<TilesetLooku
             count: tiles_in_set,
         });
         set_names.push(set_name.to_string());
-        let morphable: bool = section.get_bool("Morphable").unwrap_or(false);
+        let morphable: bool = section.read_bool("Morphable", false);
         morphable_flags.push(morphable);
-        let allow_tiberium: bool = section.get_bool("AllowTiberium").unwrap_or(false);
+        let allow_tiberium: bool = section.read_bool("AllowTiberium", false);
         allow_tiberium_flags.push(allow_tiberium);
 
-        // Diagnostic: log ALL tileset raw TilesInSet values for debugging.
+        // Diagnostic: log ALL tileset TilesInSet values for debugging.
         log::debug!(
-            "  TileSet{:04} raw_TilesInSet={:?} parsed={} start={} file={} name={}",
+            "  TileSet{:04} TilesInSet={} start={} file={} name={}",
             idx,
-            raw_tiles,
             tiles_in_set,
             start,
             filename,
@@ -685,24 +686,26 @@ fn parse_tileset_sections(ini: &IniFile, extension: &str) -> Result<TilesetLooku
 /// numeric keys pass the field's current value as their own INI default, which
 /// for a freshly constructed tile type is 0 / 0 / -1 / 0.
 fn parse_tile_anim(section: &IniSection, tile_ordinal: u32) -> Option<TileAnimAttachment> {
-    let anim_name = section.get(&format!("Tile{:02}Anim", tile_ordinal))?.trim();
-    if anim_name.is_empty() {
-        return None;
-    }
+    // 0x80-byte ReadString at `0x00546524`, then `AnimTypeClass::Find`.
+    let anim_name = section.read_name(&format!("Tile{:02}Anim", tile_ordinal), 0x80)?;
     Some(TileAnimAttachment {
         anim_name: anim_name.to_string(),
-        x_offset: section
-            .get_i32(&format!("Tile{:02}XOffset", tile_ordinal))
-            .unwrap_or(TILE_ANIM_DEFAULT_OFFSET),
-        y_offset: section
-            .get_i32(&format!("Tile{:02}YOffset", tile_ordinal))
-            .unwrap_or(TILE_ANIM_DEFAULT_OFFSET),
-        attaches_to: section
-            .get_i32(&format!("Tile{:02}AttachesTo", tile_ordinal))
-            .unwrap_or(TILE_ANIM_NO_SUBTILE),
-        z_adjust: section
-            .get_i32(&format!("Tile{:02}ZAdjust", tile_ordinal))
-            .unwrap_or(TILE_ANIM_DEFAULT_Z_ADJUST),
+        x_offset: section.read_int(
+            &format!("Tile{:02}XOffset", tile_ordinal),
+            TILE_ANIM_DEFAULT_OFFSET,
+        ),
+        y_offset: section.read_int(
+            &format!("Tile{:02}YOffset", tile_ordinal),
+            TILE_ANIM_DEFAULT_OFFSET,
+        ),
+        attaches_to: section.read_int(
+            &format!("Tile{:02}AttachesTo", tile_ordinal),
+            TILE_ANIM_NO_SUBTILE,
+        ),
+        z_adjust: section.read_int(
+            &format!("Tile{:02}ZAdjust", tile_ordinal),
+            TILE_ANIM_DEFAULT_Z_ADJUST,
+        ),
     })
 }
 

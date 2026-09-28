@@ -159,12 +159,11 @@ impl ClientRadarEvent {
             self.needs_draw = false;
         }
 
-        let min_radius = config.min_radius as i32;
         let radius = X87Chop53::sub(
             load_f32(self.radius),
             load_native_f32(config.native_scalars.speed),
         );
-        let min_radius_x87 = X87Chop53::load_i32(min_radius);
+        let min_radius_x87 = X87Chop53::load_i32(config.min_radius);
         self.radius = store_f32(
             if X87Chop53::compare(radius, min_radius_x87) == X87Ordering::Greater {
                 radius

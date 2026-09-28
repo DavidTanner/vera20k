@@ -17,7 +17,6 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::{IniFile, IniSection};
-use fixed::types::I8F8;
 
 /// A projectile definition parsed from a rules.ini section.
 ///
@@ -119,13 +118,9 @@ pub struct ProjectileType {
     pub elasticity: f64,
 
     // --- Color ---
-    /// Projectile trail color as RGB. (+0x2D4)
-    pub color: [u8; 3],
-
-    /// Per-bullet rocker force scale (RockerScale= in [Projectile] section).
-    /// Multiplies the DirectRocker impulse force. Default 1.0. Stored as Q8.8
-    /// (matches the gamemd representation).
-    pub rocker_scale: I8F8,
+    /// `Color=` color scheme name (+0x2D4 holds the scheme index; stock
+    /// `[ChemMissile] Color=DarkGreen`).
+    pub color: Option<String>,
 
     // --- String/reference fields ---
     /// Weapon fired on airburst detonation (weapon type name).
@@ -323,79 +318,61 @@ impl ProjectileType {
         section: &IniSection,
         image_section: Option<&IniSection>,
     ) -> Self {
-        // Parse "R,G,B" color string into [u8; 3], defaulting to [0,0,0].
-        let color = section
-            .get("Color")
-            .and_then(|s| {
-                let parts: Vec<&str> = s.split(',').collect();
-                if parts.len() == 3 {
-                    let r = parts[0].trim().parse::<u8>().ok()?;
-                    let g = parts[1].trim().parse::<u8>().ok()?;
-                    let b = parts[2].trim().parse::<u8>().ok()?;
-                    Some([r, g, b])
-                } else {
-                    None
-                }
-            })
-            .unwrap_or([0, 0, 0]);
-
         let mut result = Self {
             id: id.to_string(),
             // Targeting
-            aa: section.get_bool("AA").unwrap_or(false),
-            ag: section.get_bool("AG").unwrap_or(true),
+            aa: section.read_bool("AA", false),
+            ag: section.read_bool("AG", true),
             // Flight behavior
-            arcing: section.get_bool("Arcing").unwrap_or(false),
-            rot: section.get_i32("ROT").unwrap_or(0),
-            inaccurate: section.get_bool("Inaccurate").unwrap_or(false),
+            arcing: section.read_bool("Arcing", false),
+            rot: section.read_int("ROT", 0),
+            inaccurate: section.read_bool("Inaccurate", false),
             // Bool flags
-            airburst: section.get_bool("Airburst").unwrap_or(false),
-            floater: section.get_bool("Floater").unwrap_or(false),
-            subject_to_cliffs: section.get_bool("SubjectToCliffs").unwrap_or(false),
-            subject_to_elevation: section.get_bool("SubjectToElevation").unwrap_or(false),
-            subject_to_walls: section.get_bool("SubjectToWalls").unwrap_or(false),
-            very_high: section.get_bool("VeryHigh").unwrap_or(false),
-            shadow: section.get_bool("Shadow").unwrap_or(true),
-            dropping: section.get_bool("Dropping").unwrap_or(false),
-            level: section.get_bool("Level").unwrap_or(false),
-            inviso: section.get_bool("Inviso").unwrap_or(false),
-            proximity: section.get_bool("Proximity").unwrap_or(false),
-            ranged: section.get_bool("Ranged").unwrap_or(false),
+            airburst: section.read_bool("Airburst", false),
+            floater: section.read_bool("Floater", false),
+            subject_to_cliffs: section.read_bool("SubjectToCliffs", false),
+            subject_to_elevation: section.read_bool("SubjectToElevation", false),
+            subject_to_walls: section.read_bool("SubjectToWalls", false),
+            very_high: section.read_bool("VeryHigh", false),
+            shadow: section.read_bool("Shadow", true),
+            dropping: section.read_bool("Dropping", false),
+            level: section.read_bool("Level", false),
+            inviso: section.read_bool("Inviso", false),
+            proximity: section.read_bool("Proximity", false),
+            ranged: section.read_bool("Ranged", false),
             rotates: true,
-            flak_scatter: section.get_bool("FlakScatter").unwrap_or(false),
-            degenerates: section.get_bool("Degenerates").unwrap_or(false),
-            bouncy: section.get_bool("Bouncy").unwrap_or(false),
+            flak_scatter: section.read_bool("FlakScatter", false),
+            degenerates: section.read_bool("Degenerates", false),
+            bouncy: section.read_bool("Bouncy", false),
             anim_palette: false,
-            firers_palette: section.get_bool("FirersPalette").unwrap_or(false),
-            scalable: section.get_bool("Scalable").unwrap_or(false),
-            vertical: section.get_bool("Vertical").unwrap_or(false),
+            firers_palette: section.read_bool("FirersPalette", false),
+            scalable: section.read_bool("Scalable", false),
+            vertical: section.read_bool("Vertical", false),
             flat: false,
             // Integer fields
-            cluster: section.get_i32("Cluster").unwrap_or(1),
-            shrapnel_count: section.get_i32("ShrapnelCount").unwrap_or(0),
-            detonation_altitude: section.get_i32("DetonationAltitude").unwrap_or(0),
-            acceleration: section.get_i32("Acceleration").unwrap_or(3),
-            course_lock_duration: section.get_i32("CourseLockDuration").unwrap_or(0),
+            cluster: section.read_int("Cluster", 1),
+            shrapnel_count: section.read_int("ShrapnelCount", 0),
+            detonation_altitude: section.read_int("DetonationAltitude", 0),
+            acceleration: section.read_int("Acceleration", 3),
+            course_lock_duration: section.read_int("CourseLockDuration", 0),
             spawn_delay: 3,
-            arm: section.get_i32("Arm").unwrap_or(0),
+            arm: section.read_int("Arm", 0),
             anim_low: 0,
             anim_high: 0,
             anim_rate: 0,
-            // Float
-            elasticity: section
-                .get("Elasticity")
-                .and_then(|s| s.trim().parse::<f64>().ok())
-                .unwrap_or(0.75),
-            // Color
-            color,
-            // Rocker
-            rocker_scale: section
-                .get_f32("RockerScale")
-                .map(I8F8::from_num)
-                .unwrap_or(I8F8::ONE),
-            // String/reference fields
-            airburst_weapon: section.get("AirburstWeapon").map(|s| s.trim().to_string()),
-            shrapnel_weapon: section.get("ShrapnelWeapon").map(|s| s.trim().to_string()),
+            // ReadDouble -> `FSTP qword [ESI+0x2C8]` (`0x0046BF71`) over the
+            // constructor's 0.75 (`0x0046BC65`/`0x0046BC9A`).
+            elasticity: section.read_double("Elasticity", 0.75),
+            // `0x0046BFA5`: ReadString 0x20, then the color scheme lookup.
+            color: section.read_name("Color", 0x20).map(str::to_string),
+            // ReadString 0x80 ahead of each weapon lookup (`0x0046C2B9`,
+            // `0x0046C2F8`).
+            airburst_weapon: section
+                .read_name("AirburstWeapon", 0x80)
+                .map(str::to_string),
+            shrapnel_weapon: section
+                .read_name("ShrapnelWeapon", 0x80)
+                .map(str::to_string),
             image: None,
             image_load: None,
             voxel: false,
@@ -519,7 +496,7 @@ mod tests {
         // Float defaults
         assert_eq!(proj.elasticity, 0.75);
         // Color defaults
-        assert_eq!(proj.color, [0, 0, 0]);
+        assert_eq!(proj.color, None);
         // String fields default to None
         assert!(proj.airburst_weapon.is_none());
         assert!(proj.shrapnel_weapon.is_none());
@@ -571,12 +548,12 @@ mod tests {
     }
 
     #[test]
-    fn test_color_parsing() {
-        let ini: IniFile = IniFile::from_str("[Tracer]\nColor=255,128,0\n");
-        let section = ini.section("Tracer").unwrap();
-        let proj = ProjectileType::from_ini_section("Tracer", section, None);
+    fn color_names_a_color_scheme() {
+        let ini: IniFile = IniFile::from_str("[ChemMissile]\nColor=DarkGreen\n");
+        let section = ini.section("ChemMissile").unwrap();
+        let proj = ProjectileType::from_ini_section("ChemMissile", section, None);
 
-        assert_eq!(proj.color, [255, 128, 0]);
+        assert_eq!(proj.color.as_deref(), Some("DarkGreen"));
     }
 
     #[test]
@@ -591,22 +568,6 @@ mod tests {
         assert_eq!(proj.airburst_weapon.as_deref(), Some("V3Warhead"));
         assert_eq!(proj.shrapnel_weapon.as_deref(), Some("ShrapWep"));
         assert_eq!(proj.trailer.as_deref(), Some("V3TRAIL"));
-    }
-
-    #[test]
-    fn parse_rocker_scale_default_one() {
-        let ini: IniFile = IniFile::from_str("[TestBullet]\nFixtureOnly=1\n");
-        let section = ini.section("TestBullet").unwrap();
-        let p = ProjectileType::from_ini_section("TestBullet", section, None);
-        assert_eq!(p.rocker_scale, I8F8::ONE);
-    }
-
-    #[test]
-    fn parse_rocker_scale_custom() {
-        let ini: IniFile = IniFile::from_str("[TestBullet]\nRockerScale=2.5\n");
-        let section = ini.section("TestBullet").unwrap();
-        let p = ProjectileType::from_ini_section("TestBullet", section, None);
-        assert_eq!(p.rocker_scale, I8F8::from_num(2.5));
     }
 
     #[test]

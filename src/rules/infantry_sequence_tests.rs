@@ -1,7 +1,7 @@
 //! Tests for infantry animation sequence parsing from art.ini.
 
 use super::*;
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
 
 #[derive(serde::Deserialize)]
 struct NativeSequenceCorpus {
@@ -52,7 +52,9 @@ fn signed_action_records_match_original_partial_reader_corpus() {
             for layer in &row.layers {
                 for (index, name) in NATIVE_SEQUENCE_NAMES.iter().enumerate() {
                     if let Some(Some(value)) = layer.get(*name) {
-                        read_sequence_value(value, &mut records[index]);
+                        let mut section = IniSection::new(String::new());
+                        section.set(name, value);
+                        records[index] = read_sequence(&section, name, records[index]);
                     }
                 }
             }

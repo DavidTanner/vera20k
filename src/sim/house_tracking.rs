@@ -15,7 +15,9 @@
 //!   `+0x5500`, units in `+0x5514`, infantry in `+0x5528`, aircraft in
 //!   `+0x553C` (`0x004FF7AA`, `0x004FF880`, `0x004FF842`, `0x004FF7E8`). The
 //!   short game's defeat gate reads the units'; the computer's CanBuild reads
-//!   each class's for its build limit (`sim::production::production_tech`).
+//!   each class's for its build limit (`sim::production::can_build`); a
+//!   harvester's `Dock=` tests read the buildings' ([`HouseTracking::owns_any_building`],
+//!   and the dock search's `0x004DEE9B`).
 //! - On the map (`HouseClass::Added_To_Game @ 0x00502A80` from
 //!   `TechnoClass::Unlimbo` `0x006F6D8F`, `Removed_From_Game @ 0x005025F0`
 //!   from `TechnoClass::Limbo` `0x006F6BD1`, both from ChangeOwner
@@ -278,6 +280,19 @@ impl HouseTracking {
 
     /// The tracked count of one type of `category` (`0x0049FAE0` on
     /// `+0x5500`, `+0x5514`, `+0x5528` or `+0x553C`).
+    /// Whether any of `building_types` has a tracked instance: `+0x5500`
+    /// through `0x0049FAE0`, signed `> 0` (`JG`), as the Harvest preamble
+    /// (`0x0073E69B..0x0073E6A2`) and Guard's computer-harvester arm
+    /// (`0x007408AF..0x007408B6`) test a harvester's `Dock=` list.
+    pub(crate) fn owns_any_building(
+        &self,
+        building_types: impl IntoIterator<Item = InternedId>,
+    ) -> bool {
+        building_types
+            .into_iter()
+            .any(|type_id| self.owned_count(EntityCategory::Structure, type_id) > 0)
+    }
+
     pub(crate) fn owned_count(&self, category: EntityCategory, type_id: InternedId) -> i32 {
         let counts = match category {
             EntityCategory::Unit => &self.unit_types,

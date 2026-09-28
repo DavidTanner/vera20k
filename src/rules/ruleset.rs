@@ -23,7 +23,7 @@ use std::hash::{Hash, Hasher};
 use crate::rules::combat_damage::CombatDamageDefaults;
 use crate::rules::crate_rules::CrateRules;
 use crate::rules::error::RulesError;
-use crate::rules::ini_parser::{IniFile, IniSection};
+use crate::rules::ini_parser::{IniFile, IniSection, is_native_none_type_name};
 use crate::rules::mission_data::MissionControl;
 use crate::rules::native_processing::{ProcessedRulesLayers, RulesLayerStack};
 use crate::rules::object_type::{BuildCategory, FactoryType, ObjectCategory, ObjectType};
@@ -147,19 +147,19 @@ impl Default for CountryRules {
 impl CountryRules {
     fn from_ini_section(section: &crate::rules::ini_parser::IniSection) -> Self {
         Self {
-            multiplay_passive: section.get_bool("MultiplayPassive").unwrap_or(false),
-            wall_owner: section.get_bool("WallOwner").unwrap_or(true),
+            multiplay_passive: section.read_bool("MultiplayPassive", false),
+            wall_owner: section.read_bool("WallOwner", true),
             // IncomeMult is a raw multiplier (NOT a percent). Round in f64 to avoid f32
             // drift; absent -> the neutral 1.0 (stock).
-            income_ppm: section
-                .get_f32("IncomeMult")
-                .map(|v| (v as f64 * INCOME_PPM_SCALE as f64).round() as i64)
-                .unwrap_or(INCOME_PPM_SCALE),
-            armor_infantry_mult: section.get_f32("ArmorInfantryMult").unwrap_or(1.0),
-            armor_units_mult: section.get_f32("ArmorUnitsMult").unwrap_or(1.0),
-            armor_aircraft_mult: section.get_f32("ArmorAircraftMult").unwrap_or(1.0),
-            armor_buildings_mult: section.get_f32("ArmorBuildingsMult").unwrap_or(1.0),
-            armor_defenses_mult: section.get_f32("ArmorDefensesMult").unwrap_or(1.0),
+            // HouseTypeClass::ReadINI stores these as floats (`FSTP dword` at
+            // 0x00511ADD..0x00511B59 and 0x00511D0B).
+            income_ppm: (f64::from(section.read_float("IncomeMult", 1.0)) * INCOME_PPM_SCALE as f64)
+                .round() as i64,
+            armor_infantry_mult: section.read_float("ArmorInfantryMult", 1.0),
+            armor_units_mult: section.read_float("ArmorUnitsMult", 1.0),
+            armor_aircraft_mult: section.read_float("ArmorAircraftMult", 1.0),
+            armor_buildings_mult: section.read_float("ArmorBuildingsMult", 1.0),
+            armor_defenses_mult: section.read_float("ArmorDefensesMult", 1.0),
             cost_mults: [
                 "CostInfantryMult",
                 "CostUnitsMult",
@@ -177,14 +177,10 @@ impl CountryRules {
             ]
             .map(|key| section.read_double_to_float(key, NativeF32Bits::ONE)),
             rof: section.read_double("ROF", 1.0),
-            ui_name: section
-                .get("UIName")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
-            name: section
-                .get("Name")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+            // AbstractTypeClass::ReadINI: `Name` into 0x31 bytes (0x00410AA0),
+            // `UIName` into 0x20 (0x00410AFB).
+            ui_name: section.read_name("UIName", 0x20).map(str::to_owned),
+            name: section.read_name("Name", 0x31).map(str::to_owned),
         }
     }
 }
@@ -497,8 +493,6 @@ pub struct GeneralRules {
     /// Default 1024 (~4 cells). Distance to target at which the carrier aircraft
     /// reveals fog + transitions to the overfly mission.
     pub paradrop_radius: i32,
-    /// Carrier aircraft type for paradrop missions. Default `PDPLANE`.
-    pub paradrop_aircraft_type: String,
     /// Parsed `[General] Parachute=` value (uppercased AnimType name, e.g.
     /// "PARACH"), `None` if unset or empty: the canopy the simulation attaches
     /// to a dropped object. Its timing is the AnimType's own art.
@@ -1378,6 +1372,18 @@ pub(crate) fn damage_spark_spawn_threshold(band: f64) -> u32 {
 /// Matches gamemd constructor default: 1 game frame at 60fps ≈ 17ms.
 const DEFAULT_ANIM_FRAME_DELAY: u16 = 1;
 
+/// `[General] URepairRate=` and `ReloadRate=` defaults, in minutes.
+const U_REPAIR_RATE_MINUTES: f64 = 0.016;
+const RELOAD_RATE_MINUTES: f64 = 0.3;
+
+/// A `[General]` minutes value as whole logic ticks (at least one), rounded
+/// from `f32` minutes.
+fn minutes_to_ticks(minutes: f64) -> u32 {
+    ((minutes as f32) * 60.0 * (crate::util::fixed_math::RA2_LOGIC_FRAMES_PER_SECOND as f32))
+        .round()
+        .max(1.0) as u32
+}
+
 /// Stand-in for `[AudioVisual] IdleActionFrequency=` when the key is absent.
 ///
 /// Stock `rulesmd.ini` sets `.15`, so this only serves fixtures that build a
@@ -1385,18 +1391,13 @@ const DEFAULT_ANIM_FRAME_DELAY: u16 = 1;
 /// is UNCHECKED.
 const STOCK_IDLE_ACTION_FREQUENCY_X1000: i64 = 150;
 
-/// A `[General]` InfantryType reference (RulesClass binds these through
-/// `FindOrAllocate`); an absent or empty value leaves the pointer null.
-fn general_type_name(general: &crate::rules::ini_parser::IniSection, key: &str) -> Option<String> {
-    general
-        .get(key)
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
-}
-
 /// Zip a parallel pair of paradrop INI keys (`Inf` + `Num`) into `(type, count)` pairs.
-/// `skip_count_assert` mirrors gamemd's Soviet branch which lacks the equality check.
+///
+/// `RulesClass::ReadGeneral` reads each `*ParaDropInf=` through the
+/// InfantryType list reader (`0x0067BB10`, `char[128]`) and each
+/// `*ParaDropNum=` through the IntVector reader (`0x00475D70`); an absent key
+/// keeps that vector's current value. `skip_count_assert` mirrors gamemd's
+/// Soviet branch which lacks the equality check.
 fn parse_paradrop_list(
     general: &crate::rules::ini_parser::IniSection,
     inf_key: &str,
@@ -1404,21 +1405,15 @@ fn parse_paradrop_list(
     skip_count_assert: bool,
     default: Vec<(String, u32)>,
 ) -> Vec<(String, u32)> {
-    let inf: Vec<String> = match general.get_list(inf_key) {
-        Some(list) => list
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_uppercase())
-            .collect(),
-        None => return default,
-    };
-    let nums: Vec<u32> = match general.get_list(num_key) {
-        Some(list) => list
-            .into_iter()
-            .filter_map(|s| s.parse::<u32>().ok())
-            .collect(),
-        None => return default,
-    };
+    let (default_inf, default_nums): (Vec<String>, Vec<u32>) = default.iter().cloned().unzip();
+    let inf: Vec<String> = general
+        .read_list(inf_key, 0x80)
+        .map(|tokens| tokens.into_iter().map(str::to_uppercase).collect())
+        .unwrap_or(default_inf);
+    let nums: Vec<u32> = general
+        .read_int_list(num_key)
+        .map(|values| values.into_iter().map(|num| num.max(0) as u32).collect())
+        .unwrap_or(default_nums);
     if !skip_count_assert && inf.len() != nums.len() {
         log::warn!(
             "Paradrop list mismatch: {}={} entries but {}={} entries — using defaults",
@@ -1429,7 +1424,7 @@ fn parse_paradrop_list(
         );
         return default;
     }
-    inf.into_iter().zip(nums.into_iter()).collect()
+    inf.into_iter().zip(nums).collect()
 }
 
 /// `RulesClass::ReadDifficulty @ 0x0066D270`'s `RepairDelay=` default, the
@@ -1498,10 +1493,10 @@ fn read_building_identity(
     key: &str,
     current: Option<String>,
 ) -> Option<String> {
-    match general.read_string(key, "", 0x80) {
-        name if name.is_empty() => current,
-        name if name.eq_ignore_ascii_case("none") || name.eq_ignore_ascii_case("<none>") => None,
-        name => Some(name.to_ascii_uppercase()),
+    match general.read_name(key, 0x80) {
+        None => current,
+        Some(name) if is_native_none_type_name(name) => None,
+        Some(name) => Some(name.to_ascii_uppercase()),
     }
 }
 
@@ -1612,7 +1607,6 @@ impl Default for GeneralRules {
             hover_dampen: sim_from_f32(0.4),
             parachute_max_fall_rate: -3,
             paradrop_radius: 1024,
-            paradrop_aircraft_type: "PDPLANE".to_string(),
             parachute_shp: None,
             amer_paradrop_list: vec![("E1".to_string(), 8)],
             ally_paradrop_list: vec![("E1".to_string(), 6)],
@@ -1793,11 +1787,11 @@ impl Default for GeneralRules {
             // RulesClass constructor 0x00667588.
             close_enough: 0x280,
             // URepairRate=.016 min = 0.96 sec ≈ 14 ticks at 15 Hz.
-            unit_repair_rate_ticks: 14,
+            unit_repair_rate_ticks: minutes_to_ticks(U_REPAIR_RATE_MINUTES),
             repair_step: 5,
             repair_percent: 0.25,
             // ReloadRate=.3 min = 18 sec = 270 ticks at 15 Hz.
-            reload_rate_ticks: 270,
+            reload_rate_ticks: minutes_to_ticks(RELOAD_RATE_MINUTES),
             // PathDelay=.01 min = 0.6 sec = 9 ticks at 15 Hz.
             path_delay: 0.016,
             // BlockagePathDelay=60 frames (directly in frames, not minutes).
@@ -1899,22 +1893,28 @@ impl Default for GarrisonRules {
 
 impl GarrisonRules {
     fn from_ini(ini: &IniFile) -> Self {
-        let section = ini.section("CombatDamage");
-        let get_f32 = |key: &str, default: f32| -> f32 {
-            section.and_then(|s| s.get_f32(key)).unwrap_or(default)
-        };
-        let get_i32 = |key: &str, default: i32| -> i32 {
-            section.and_then(|s| s.get_i32(key)).unwrap_or(default)
-        };
+        // The multipliers are float fields (`FSTP dword` after each ReadDouble,
+        // `0x0066C68A..0x0066C75C`).
+        let section = ini.section_or_empty("CombatDamage");
+        let d = Self::default();
         Self {
-            occupy_damage_multiplier: get_f32("OccupyDamageMultiplier", 1.0),
-            occupy_rof_multiplier: get_f32("OccupyROFMultiplier", 1.0),
-            occupy_weapon_range: get_i32("OccupyWeaponRange", 5),
-            bunker_damage_multiplier: get_f32("BunkerDamageMultiplier", 1.0),
-            bunker_rof_multiplier: get_f32("BunkerROFMultiplier", 1.0),
-            bunker_weapon_range_bonus: get_i32("BunkerWeaponRangeBonus", 0),
-            open_topped_damage_multiplier: get_f32("OpenToppedDamageMultiplier", 1.0),
-            open_topped_range_bonus: get_i32("OpenToppedRangeBonus", 2),
+            occupy_damage_multiplier: section
+                .read_float("OccupyDamageMultiplier", d.occupy_damage_multiplier),
+            occupy_rof_multiplier: section
+                .read_float("OccupyROFMultiplier", d.occupy_rof_multiplier),
+            occupy_weapon_range: section.read_int("OccupyWeaponRange", d.occupy_weapon_range),
+            bunker_damage_multiplier: section
+                .read_float("BunkerDamageMultiplier", d.bunker_damage_multiplier),
+            bunker_rof_multiplier: section
+                .read_float("BunkerROFMultiplier", d.bunker_rof_multiplier),
+            bunker_weapon_range_bonus: section
+                .read_int("BunkerWeaponRangeBonus", d.bunker_weapon_range_bonus),
+            open_topped_damage_multiplier: section.read_float(
+                "OpenToppedDamageMultiplier",
+                d.open_topped_damage_multiplier,
+            ),
+            open_topped_range_bonus: section
+                .read_int("OpenToppedRangeBonus", d.open_topped_range_bonus),
         }
     }
 }
@@ -1967,15 +1967,13 @@ impl BridgeRules {
         // Published from the ordered RulesClass reader by from_processed_rules.
         let explosions = Vec::new();
         let voxel_max = ini
-            .section("General")
-            .and_then(|section| section.get_i32("BridgeVoxelMax"))
-            .unwrap_or(3)
+            .section_or_empty("General")
+            .read_int("BridgeVoxelMax", 3)
             .clamp(0, 255) as u8;
         let repair_sound = ini
-            .section("AudioVisual")
-            .and_then(|section| section.get("RepairBridgeSound"))
-            .map(|s| s.trim().to_uppercase())
-            .filter(|s| !s.is_empty());
+            .section_or_empty("AudioVisual")
+            .read_name("RepairBridgeSound", 0x80)
+            .map(str::to_uppercase);
         Self {
             strength,
             destroyable_by_default,
@@ -2042,41 +2040,30 @@ impl RadiationRules {
         let Some(section) = ini.section("Radiation") else {
             return d;
         };
-        let get_i32 = |key: &str, default: i32| -> i32 { section.get_i32(key).unwrap_or(default) };
+        let [red, green, blue] =
+            section.read_color_rgb("RadColor", [d.color.0, d.color.1, d.color.2]);
         Self {
-            duration_multiple: get_i32("RadDurationMultiple", d.duration_multiple),
+            duration_multiple: section.read_int("RadDurationMultiple", d.duration_multiple),
             // Delays are used as divisors/modulo periods — clamp to >= 1 so a
             // degenerate INI value cannot divide by zero.
-            application_delay: get_i32("RadApplicationDelay", d.application_delay).max(1),
-            level_max: get_i32("RadLevelMax", d.level_max),
-            level_delay: get_i32("RadLevelDelay", d.level_delay).max(1),
-            light_delay: get_i32("RadLightDelay", d.light_delay).max(1),
-            level_factor: section
-                .get("RadLevelFactor")
-                .and_then(|s| s.trim().parse::<f64>().ok())
-                .unwrap_or(d.level_factor),
-            light_factor: section
-                .get_f32("RadLightFactor")
-                .map(sim_from_f32)
-                .unwrap_or(d.light_factor),
-            tint_factor: section
-                .get_f32("RadTintFactor")
-                .map(sim_from_f32)
-                .unwrap_or(d.tint_factor),
-            color: section
-                .get("RadColor")
-                .and_then(|s| {
-                    let mut it = s.split(',').map(|p| p.trim().parse::<u8>());
-                    match (it.next(), it.next(), it.next()) {
-                        (Some(Ok(r)), Some(Ok(g)), Some(Ok(b))) => Some((r, g, b)),
-                        _ => None,
-                    }
-                })
-                .unwrap_or(d.color),
+            application_delay: section
+                .read_int("RadApplicationDelay", d.application_delay)
+                .max(1),
+            level_max: section.read_int("RadLevelMax", d.level_max),
+            level_delay: section.read_int("RadLevelDelay", d.level_delay).max(1),
+            light_delay: section.read_int("RadLightDelay", d.light_delay).max(1),
+            // Double fields (`0x0066D057..0x0066D0A5`).
+            level_factor: section.read_double("RadLevelFactor", d.level_factor),
+            light_factor: sim_from_f32(
+                section.read_double("RadLightFactor", d.light_factor.to_num()) as f32,
+            ),
+            tint_factor: sim_from_f32(
+                section.read_double("RadTintFactor", d.tint_factor.to_num()) as f32
+            ),
+            color: (red, green, blue),
             site_warhead: section
-                .get("RadSiteWarhead")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
+                .read_name("RadSiteWarhead", 0x80)
+                .map(str::to_owned)
                 .unwrap_or(d.site_warhead),
         }
     }
@@ -2121,45 +2108,35 @@ impl GeneralRules {
             .map_or(defaults.display_cruise_height, |s| {
                 s.read_int("CruiseHeight", defaults.display_cruise_height)
             });
+        // AI IQ thresholds live in their own [IQ] read.
+        let iq = ini.section_or_empty("IQ");
         // gamemd-derived: `RulesClass__ReadIQ @ 0x00674240` reads signed
         // `[IQ] Production` into `Rules+0x143C` at `0x006742C1`, independently
         // of the `[General]` pass and without clamping the parsed dword.
-        let iq_production = ini
-            .section("IQ")
-            .and_then(|section| section.get_i32("Production"))
-            .unwrap_or(defaults.iq_production);
+        let iq_production = iq.read_int("Production", defaults.iq_production);
         // `0x00674379..0x00674399`, the same section gate and reader.
-        let iq_harvester = ini.section("IQ").map_or(defaults.iq_harvester, |section| {
-            section.read_int("Harvester", defaults.iq_harvester)
-        });
+        let iq_harvester = iq.read_int("Harvester", defaults.iq_harvester);
         // RulesProcess668F56 reaches ReadAudioVisual6691E0 independently of
         // ReadGeneral.66B34B/66B372 pass AudioVisual to5283D0 and store raw
         // doubles in Rules+1708/+1700; a missing General section cannot skip them.
-        let audio_visual = ini.section("AudioVisual");
-        let condition_yellow_native = audio_visual
-            .map(|s| s.read_double("ConditionYellow", 0.5))
-            .unwrap_or(0.5);
-        let condition_red_native = audio_visual
-            .map(|s| s.read_double("ConditionRed", defaults.condition_red))
-            .unwrap_or(defaults.condition_red);
+        let audio_visual = ini.section_or_empty("AudioVisual");
+        let condition_yellow_native = audio_visual.read_double("ConditionYellow", 0.5);
+        let condition_red_native = audio_visual.read_double("ConditionRed", defaults.condition_red);
         // The bomb sounds (Rules+0x20C/+0x210) come from the same pass.
         let audio_visual_sound = |key: &str| {
             audio_visual
-                .and_then(|s| s.get(key))
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("none"))
+                .read_name(key, 0x80)
+                .filter(|name| !name.eq_ignore_ascii_case("none"))
+                .map(str::to_owned)
         };
         let bomb_ticking_sound = audio_visual_sound("BombTickingSound");
         let bomb_attach_sound = audio_visual_sound("BombAttachSound");
         // Rules ReadAI6739E5..673A31 is independent of ReadGeneral.
         // Constructor66760E..66761E supplies PathDelay0.016 and blockage60.
-        let ai = ini.section("AI");
-        let path_delay = ai
-            .map(|s| s.read_double("PathDelay", defaults.path_delay))
-            .unwrap_or(defaults.path_delay);
-        let blockage_path_delay_ticks = ai
-            .map(|s| s.read_int("BlockagePathDelay", defaults.blockage_path_delay_ticks))
-            .unwrap_or(defaults.blockage_path_delay_ticks);
+        let ai = ini.section_or_empty("AI");
+        let path_delay = ai.read_double("PathDelay", defaults.path_delay);
+        let blockage_path_delay_ticks =
+            ai.read_int("BlockagePathDelay", defaults.blockage_path_delay_ticks);
         let Some(general) = ini.section("General") else {
             return Self {
                 iq_production,
@@ -2175,24 +2152,16 @@ impl GeneralRules {
             };
         };
         // Combat-only globals are read in the late [CombatDamage] pass.
-        let combat_damage = ini.section("CombatDamage");
-        // AI IQ thresholds live in their own [IQ] read.
-        let iq = ini.section("IQ");
+        let combat_damage = ini.section_or_empty("CombatDamage");
         // Base-planning/credit controls live in the independent [AI] read.
         // Genetic Mutator warhead references are read by [SpecialWeapons].
-        let special_weapons = ini.section("SpecialWeapons");
+        let special_weapons = ini.section_or_empty("SpecialWeapons");
         // INI parser already strips everything after `;` (Westwood comment
         // marker), so values like `WarpOut=WARPOUT;WAKE2` are read as
         // `WARPOUT` — matching gamemd's behaviour. Rate is filled in later
         // from art.ini in `resolve_art_rates`.
-        let parse_anim_name = |key: &str, default: &str| -> String {
-            general
-                .get(key)
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .unwrap_or(default)
-                .to_string()
-        };
+        let parse_anim_name =
+            |key: &str, default: &str| -> String { general.read_string(key, default, 0x80) };
         let mut infantry_death_anims = defaults.infantry_death_anims.clone();
         for (index, key, fallback) in [
             (3, "InfantryExplode", "S_BANG34"),
@@ -2208,7 +2177,6 @@ impl GeneralRules {
         infantry_death_anims[5] = Some(
             ini.section("Animations")
                 .and_then(|section| section.get_values().get(1).copied())
-                .map(str::trim)
                 .filter(|name| !name.is_empty())
                 .unwrap_or("ELECTRO")
                 .to_string(),
@@ -2217,96 +2185,88 @@ impl GeneralRules {
         // 0.02/0.01; stock INI omits them). Raw doubles, not percentages. Bound
         // before `Self` so each band feeds both its stored value and its derived
         // integer roll threshold (a struct literal can't reference sibling fields).
-        let condition_red_spark_prob: f64 = general
-            .get_f64("ConditionRedSparkingProbability")
-            .unwrap_or(0.02);
-        let condition_yellow_spark_prob: f64 = general
-            .get_f64("ConditionYellowSparkingProbability")
-            .unwrap_or(0.01);
+        let condition_red_spark_prob: f64 =
+            general.read_double("ConditionRedSparkingProbability", 0.02);
+        let condition_yellow_spark_prob: f64 =
+            general.read_double("ConditionYellowSparkingProbability", 0.01);
         // These are ReadDouble values (single-precision parse widened to f64)
         // and the consumer's ftol boundary chops toward zero.
         let ambient_change_rate = general.read_double("AmbientChangeRate", 0.2);
         let ambient_change_step = general.read_double("AmbientChangeStep", 0.2);
         Self {
             scroll_multiplier: audio_visual
-                .and_then(|s| s.get_f64("ScrollMultiplier"))
-                .unwrap_or(defaults.scroll_multiplier),
+                .read_double("ScrollMultiplier", defaults.scroll_multiplier),
             savour_delay_minutes: audio_visual
-                .map(|s| s.read_double("SavourDelay", defaults.savour_delay_minutes))
-                .unwrap_or(defaults.savour_delay_minutes),
+                .read_double("SavourDelay", defaults.savour_delay_minutes),
             condition_red_sparking_probability: condition_red_spark_prob,
             condition_yellow_sparking_probability: condition_yellow_spark_prob,
             condition_red_spark_threshold: damage_spark_spawn_threshold(condition_red_spark_prob),
             condition_yellow_spark_threshold: damage_spark_spawn_threshold(
                 condition_yellow_spark_prob,
             ),
-            dumb_my_effectiveness_coefficient: general
-                .get_f64("DumbMyEffectivenessCoefficient")
-                .unwrap_or(defaults.dumb_my_effectiveness_coefficient),
-            dumb_target_effectiveness_coefficient: general
-                .get_f64("DumbTargetEffectivenessCoefficient")
-                .unwrap_or(defaults.dumb_target_effectiveness_coefficient),
-            dumb_target_special_threat_coefficient: general
-                .get_f64("DumbTargetSpecialThreatCoefficient")
-                .unwrap_or(defaults.dumb_target_special_threat_coefficient),
-            dumb_target_strength_coefficient: general
-                .get_f64("DumbTargetStrengthCoefficient")
-                .unwrap_or(defaults.dumb_target_strength_coefficient),
-            dumb_target_distance_coefficient: general
-                .get_f64("DumbTargetDistanceCoefficient")
-                .unwrap_or(defaults.dumb_target_distance_coefficient),
-            my_effectiveness_coefficient_default: general
-                .get_f64("MyEffectivenessCoefficientDefault")
-                .unwrap_or(defaults.my_effectiveness_coefficient_default),
-            target_effectiveness_coefficient_default: general
-                .get_f64("TargetEffectivenessCoefficientDefault")
-                .unwrap_or(defaults.target_effectiveness_coefficient_default),
-            target_special_threat_coefficient_default: general
-                .get_f64("TargetSpecialThreatCoefficientDefault")
-                .unwrap_or(defaults.target_special_threat_coefficient_default),
-            target_strength_coefficient_default: general
-                .get_f64("TargetStrengthCoefficientDefault")
-                .unwrap_or(defaults.target_strength_coefficient_default),
-            target_distance_coefficient_default: general
-                .get_f64("TargetDistanceCoefficientDefault")
-                .unwrap_or(defaults.target_distance_coefficient_default),
+            dumb_my_effectiveness_coefficient: general.read_double(
+                "DumbMyEffectivenessCoefficient",
+                defaults.dumb_my_effectiveness_coefficient,
+            ),
+            dumb_target_effectiveness_coefficient: general.read_double(
+                "DumbTargetEffectivenessCoefficient",
+                defaults.dumb_target_effectiveness_coefficient,
+            ),
+            dumb_target_special_threat_coefficient: general.read_double(
+                "DumbTargetSpecialThreatCoefficient",
+                defaults.dumb_target_special_threat_coefficient,
+            ),
+            dumb_target_strength_coefficient: general.read_double(
+                "DumbTargetStrengthCoefficient",
+                defaults.dumb_target_strength_coefficient,
+            ),
+            dumb_target_distance_coefficient: general.read_double(
+                "DumbTargetDistanceCoefficient",
+                defaults.dumb_target_distance_coefficient,
+            ),
+            my_effectiveness_coefficient_default: general.read_double(
+                "MyEffectivenessCoefficientDefault",
+                defaults.my_effectiveness_coefficient_default,
+            ),
+            target_effectiveness_coefficient_default: general.read_double(
+                "TargetEffectivenessCoefficientDefault",
+                defaults.target_effectiveness_coefficient_default,
+            ),
+            target_special_threat_coefficient_default: general.read_double(
+                "TargetSpecialThreatCoefficientDefault",
+                defaults.target_special_threat_coefficient_default,
+            ),
+            target_strength_coefficient_default: general.read_double(
+                "TargetStrengthCoefficientDefault",
+                defaults.target_strength_coefficient_default,
+            ),
+            target_distance_coefficient_default: general.read_double(
+                "TargetDistanceCoefficientDefault",
+                defaults.target_distance_coefficient_default,
+            ),
             threat_per_occupant: general
-                .get_i32("ThreatPerOccupant")
-                .unwrap_or(defaults.threat_per_occupant),
+                .read_int("ThreatPerOccupant", defaults.threat_per_occupant),
             // Passive-scan cadence, in frames. Both keys are present in stock
             // rulesmd.ini with exactly the constructor defaults (27 / 36); read
             // them rather than hardcoding so a mod's values take effect.
             dead_bodies: general
-                .get_list("DeadBodies")
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|name| !name.is_empty())
-                .map(str::to_string)
-                .collect(),
+                .read_list("DeadBodies", 0x80)
+                .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+                .unwrap_or_default(),
             normal_targeting_delay: general
-                .get_i32("NormalTargetingDelay")
-                .unwrap_or(defaults.normal_targeting_delay),
-            guard_area_targeting_delay: general
-                .get_i32("GuardAreaTargetingDelay")
-                .unwrap_or(defaults.guard_area_targeting_delay),
+                .read_int("NormalTargetingDelay", defaults.normal_targeting_delay),
+            guard_area_targeting_delay: general.read_int(
+                "GuardAreaTargetingDelay",
+                defaults.guard_area_targeting_delay,
+            ),
             // Gravity lives in [AudioVisual] (stock value 6). Reading it from
             // [General] silently fell back to the code default 3 — half stock
             // gravity for spark ballistics and the hover bob amplitude.
-            gravity: audio_visual
-                .and_then(|s| s.get_i32("Gravity"))
-                .unwrap_or(defaults.gravity),
-            veteran_sight: general
-                .get_f64("VeteranSight")
-                .unwrap_or(defaults.veteran_sight),
-            veteran_combat: general
-                .get_f64("VeteranCombat")
-                .unwrap_or(defaults.veteran_combat),
-            veteran_speed: general
-                .get_f64("VeteranSpeed")
-                .unwrap_or(defaults.veteran_speed),
-            veteran_rof: general
-                .get_f64("VeteranROF")
-                .unwrap_or(defaults.veteran_rof),
+            gravity: audio_visual.read_int("Gravity", defaults.gravity),
+            veteran_sight: general.read_double("VeteranSight", defaults.veteran_sight),
+            veteran_combat: general.read_double("VeteranCombat", defaults.veteran_combat),
+            veteran_speed: general.read_double("VeteranSpeed", defaults.veteran_speed),
+            veteran_rof: general.read_double("VeteranROF", defaults.veteran_rof),
             difficulty_rof: ["Easy", "Normal", "Difficult"].map(|name| {
                 ini.section(name)
                     .map_or(1.0, |section| section.read_double("ROF", 1.0))
@@ -2317,25 +2277,21 @@ impl GeneralRules {
                         section.read_double("RepairDelay", DIFFICULTY_REPAIR_DELAY_DEFAULT)
                     })
             }),
-            veteran_armor: general.get_f64("VeteranArmor").unwrap_or(1.0),
-            curley_shuffle: general
-                .get_bool("CurleyShuffle")
-                .unwrap_or(defaults.curley_shuffle),
-            repair_rate_minutes: general
-                .get_f64("RepairRate")
-                .unwrap_or(defaults.repair_rate_minutes),
-            veteran_ratio: general
-                .get_f64("VeteranRatio")
-                .unwrap_or(VETERAN_RATIO_DEFAULT),
-            veteran_cap: general.get_f64("VeteranCap").unwrap_or(VETERAN_CAP_DEFAULT),
-            computer_base_defense_response: general
-                .get_i32("ComputerBaseDefenseResponse")
-                .unwrap_or(defaults.computer_base_defense_response),
+            veteran_armor: general.read_double("VeteranArmor", 1.0),
+            curley_shuffle: general.read_bool("CurleyShuffle", defaults.curley_shuffle),
+            repair_rate_minutes: general.read_double("RepairRate", defaults.repair_rate_minutes),
+            veteran_ratio: general.read_double("VeteranRatio", VETERAN_RATIO_DEFAULT),
+            veteran_cap: general.read_double("VeteranCap", VETERAN_CAP_DEFAULT),
+            computer_base_defense_response: general.read_int(
+                "ComputerBaseDefenseResponse",
+                defaults.computer_base_defense_response,
+            ),
             // Signed [General] binding for native Rules+0xE48. The verified
             // report establishes default 5 and active-retail override 3.
-            maximum_building_placement_failures: general
-                .get_i32("MaximumBuildingPlacementFailures")
-                .unwrap_or(defaults.maximum_building_placement_failures),
+            maximum_building_placement_failures: general.read_int(
+                "MaximumBuildingPlacementFailures",
+                defaults.maximum_building_placement_failures,
+            ),
             placement_delay: general.read_double("PlacementDelay", defaults.placement_delay),
             ai_alternate_production_credit_cutoff: general.read_int(
                 "AIAlternateProductionCreditCutoff",
@@ -2343,22 +2299,19 @@ impl GeneralRules {
             ),
             ai_restrict_replace_time: general
                 .read_int("AIRestrictReplaceTime", defaults.ai_restrict_replace_time),
-            team_delays: read_retained_difficulty_vector(general, "TeamDelays"),
-            total_ai_team_cap: read_retained_difficulty_vector(general, "TotalAITeamCap"),
-            minimum_ai_defensive_teams: read_retained_difficulty_vector(
-                general,
-                "MinimumAIDefensiveTeams",
-            ),
-            maximum_ai_defensive_teams: read_retained_difficulty_vector(
-                general,
-                "MaximumAIDefensiveTeams",
-            ),
+            team_delays: general.read_int_list("TeamDelays").unwrap_or_default(),
+            total_ai_team_cap: general.read_int_list("TotalAITeamCap").unwrap_or_default(),
+            minimum_ai_defensive_teams: general
+                .read_int_list("MinimumAIDefensiveTeams")
+                .unwrap_or_default(),
+            maximum_ai_defensive_teams: general
+                .read_int_list("MaximumAIDefensiveTeams")
+                .unwrap_or_default(),
             use_min_defense_rule: general
                 .read_bool("UseMinDefenseRule", defaults.use_min_defense_rule),
-            fill_earliest_team_probability: read_retained_difficulty_vector(
-                general,
-                "FillEarliestTeamProbability",
-            ),
+            fill_earliest_team_probability: general
+                .read_int_list("FillEarliestTeamProbability")
+                .unwrap_or_default(),
             dissolve_unfilled_team_delay: general.read_int(
                 "DissolveUnfilledTeamDelay",
                 defaults.dissolve_unfilled_team_delay,
@@ -2375,76 +2328,39 @@ impl GeneralRules {
                 "AITriggerTrackRecordCoefficient",
                 defaults.ai_trigger_track_record_coefficient,
             ),
-            harvesters_per_refinery: read_retained_difficulty_vector(
-                general,
-                "HarvestersPerRefinery",
-            ),
+            harvesters_per_refinery: general
+                .read_int_list("HarvestersPerRefinery")
+                .unwrap_or_default(),
             ai_minor_super_ready_percent: general.read_double_to_float(
                 "AIMinorSuperReadyPercent",
                 defaults.ai_minor_super_ready_percent,
             ),
             base_defense_delay_minutes: general
                 .read_double("BaseDefenseDelay", defaults.base_defense_delay_minutes),
-            suspend_priority: general
-                .get_i32("SuspendPriority")
-                .unwrap_or(defaults.suspend_priority),
+            suspend_priority: general.read_int("SuspendPriority", defaults.suspend_priority),
             suspend_delay_minutes: general
                 .read_double("SuspendDelay", defaults.suspend_delay_minutes),
-            leptons_per_sight_increase: general.get_i32("LeptonsPerSightIncrease").unwrap_or(0),
-            gap_radius: general.get_i32("GapRadius").unwrap_or(10),
-            reveal_by_height: general.get_bool("RevealByHeight").unwrap_or(true),
-            tunnel_speed: general
-                .get_f32("TunnelSpeed")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(6.0)),
+            leptons_per_sight_increase: general.read_int("LeptonsPerSightIncrease", 0),
+            gap_radius: general.read_int("GapRadius", 10),
+            reveal_by_height: general.read_bool("RevealByHeight", true),
+            tunnel_speed: sim_from_f32(general.read_double("TunnelSpeed", 6.0) as f32),
             missile_rot_var: general.read_double("MissileROTVar", defaults.missile_rot_var),
             safety_altitude: general.read_int("MissileSafetyAltitude", defaults.safety_altitude),
-            line_trail_color_override: audio_visual.map_or(
-                defaults.line_trail_color_override,
-                |section| {
-                    section.read_color_rgb(
-                        "LineTrailColorOverride",
-                        defaults.line_trail_color_override,
-                    )
-                },
-            ),
-            flight_level: general.get_i32("FlightLevel").unwrap_or(500),
+            line_trail_color_override: audio_visual
+                .read_color_rgb("LineTrailColorOverride", defaults.line_trail_color_override),
+            flight_level: general.read_int("FlightLevel", 500),
             display_cruise_height,
-            // Hover keys. gamemd reads these with the %-aware Get_Double (150% → 1.5),
-            // which `get_percent` matches (it also passes bare floats like `.02` through).
+            // Hover keys: %-aware ReadDouble (150% → 1.5) into double fields.
             // The three time keys (bob/accel/brake) are in MINUTES; ×900 = ticks.
-            hover_height: general.get_i32("HoverHeight").unwrap_or(120),
-            hover_bob: general
-                .get_percent("HoverBob")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(0.04)),
-            hover_boost: general
-                .get_percent("HoverBoost")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(1.5)),
-            hover_acceleration: general
-                .get_percent("HoverAcceleration")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(0.02)),
-            hover_brake: general
-                .get_percent("HoverBrake")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(0.03)),
-            hover_dampen: general
-                .get_percent("HoverDampen")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(0.4)),
-            parachute_max_fall_rate: general.get_i32("ParachuteMaxFallRate").unwrap_or(-3),
-            paradrop_radius: general.get_i32("ParadropRadius").unwrap_or(1024),
-            paradrop_aircraft_type: general
-                .get("ParaDropPlane")
-                .map(|s| s.trim().to_uppercase())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "PDPLANE".to_string()),
-            parachute_shp: general
-                .get("Parachute")
-                .map(|s| s.trim().to_uppercase())
-                .filter(|s| !s.is_empty()),
+            hover_height: general.read_int("HoverHeight", 120),
+            hover_bob: sim_from_f32(general.read_double("HoverBob", 0.04) as f32),
+            hover_boost: sim_from_f32(general.read_double("HoverBoost", 1.5) as f32),
+            hover_acceleration: sim_from_f32(general.read_double("HoverAcceleration", 0.02) as f32),
+            hover_brake: sim_from_f32(general.read_double("HoverBrake", 0.03) as f32),
+            hover_dampen: sim_from_f32(general.read_double("HoverDampen", 0.4) as f32),
+            parachute_max_fall_rate: general.read_int("ParachuteMaxFallRate", -3),
+            paradrop_radius: general.read_int("ParadropRadius", 1024),
+            parachute_shp: general.read_name("Parachute", 0x80).map(str::to_uppercase),
             // Resolved later in `resolve_art_rates` once art.ini is available.
             amer_paradrop_list: parse_paradrop_list(
                 general,
@@ -2475,37 +2391,17 @@ impl GeneralRules {
                 vec![("INIT".to_string(), 6)],
             ),
             base_unit_types: general
-                .get_list("BaseUnit")
-                .map(|items| {
-                    items
-                        .into_iter()
-                        .map(|s| s.trim().to_ascii_uppercase())
-                        .filter(|s| !s.is_empty())
-                        .collect()
-                })
+                .read_list("BaseUnit", 0x80)
+                .map(|tokens| tokens.into_iter().map(str::to_ascii_uppercase).collect())
                 .unwrap_or_else(|| defaults.base_unit_types),
             multiplayer_ai_cm: general
-                .get_list("MultiplayerAICM")
-                .map(|items| {
-                    items
-                        .into_iter()
-                        .filter_map(crate::rules::ini_value::parse_read_int_value)
-                        .collect()
-                })
+                .read_int_list("MultiplayerAICM")
                 .unwrap_or_else(|| defaults.multiplayer_ai_cm),
             pad_aircraft_types: general
-                .get_list("PadAircraft")
-                .map(|items| {
-                    items
-                        .into_iter()
-                        .map(|item| item.trim().to_ascii_uppercase())
-                        .filter(|item| !item.is_empty())
-                        .collect()
-                })
+                .read_list("PadAircraft", 0x80)
+                .map(|tokens| tokens.into_iter().map(str::to_ascii_uppercase).collect())
                 .unwrap_or_else(|| defaults.pad_aircraft_types),
-            separate_aircraft: general
-                .get_bool("SeparateAircraft")
-                .unwrap_or(defaults.separate_aircraft),
+            separate_aircraft: general.read_bool("SeparateAircraft", defaults.separate_aircraft),
             // `0x00671144` -> `0x0067BCE0`. The layered reader
             // (`native_processing`) replaces this projection.
             prism_type: read_building_identity(general, "PrismType", defaults.prism_type),
@@ -2521,27 +2417,21 @@ impl GeneralRules {
                 nod_advanced_power: read_building_identity(general, "NodAdvancedPower", None),
                 third_power_plant: read_building_identity(general, "ThirdPowerPlant", None),
             },
-            tiberium_grows: general.get_bool("TiberiumGrows").unwrap_or(true),
-            tiberium_spreads: general.get_bool("TiberiumSpreads").unwrap_or(true),
-            growth_rate_minutes: general.get_f32("GrowthRate").unwrap_or(2.0),
-            attack_cursor_on_disguise: general.get_bool("AttackCursorOnDisguise").unwrap_or(false),
+            tiberium_grows: general.read_bool("TiberiumGrows", true),
+            tiberium_spreads: general.read_bool("TiberiumSpreads", true),
+            growth_rate_minutes: general.read_double("GrowthRate", 2.0) as f32,
+            attack_cursor_on_disguise: general.read_bool("AttackCursorOnDisguise", false),
             default_mirage_disguises: general
-                .get_list("DefaultMirageDisguises")
-                .unwrap_or_default()
-                .into_iter()
-                .map(|value| value.to_ascii_uppercase())
-                .collect(),
-            infantry_blink_disguise_time: general
-                .get_i32("InfantryBlinkDisguiseTime")
-                .unwrap_or(0)
-                .max(0) as u32,
-            tree_targeting: combat_damage
-                .and_then(|section| section.get_bool("TreeTargeting"))
-                .unwrap_or(false),
+                .read_list("DefaultMirageDisguises", 0x80)
+                .map(|tokens| tokens.into_iter().map(str::to_ascii_uppercase).collect())
+                .unwrap_or_default(),
+            infantry_blink_disguise_time: general.read_int("InfantryBlinkDisguiseTime", 0).max(0)
+                as u32,
+            tree_targeting: combat_damage.read_bool("TreeTargeting", false),
             tree_strength: general.read_int("TreeStrength", defaults.tree_strength),
             condition_yellow: condition_yellow_native,
             condition_red: condition_red_native,
-            cloaking_stages: general.get_i32("CloakingStages").unwrap_or(9),
+            cloaking_stages: general.read_int("CloakingStages", 9),
             cloak_delay_frames: (general.read_double("CloakDelay", 0.02) * 900.0)
                 .trunc()
                 .clamp(i32::MIN as f64, i32::MAX as f64) as i32,
@@ -2549,62 +2439,35 @@ impl GeneralRules {
             // RulesClass+0x6A0. Retain the name at the data boundary; an absent
             // or empty key leaves the native invalid-index/no-play behavior.
             cloak_sound: audio_visual
-                .and_then(|s| s.get("CloakSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("CloakSound", 0x80)
+                .map(str::to_owned),
             upgrade_veteran_sound: audio_visual
-                .and_then(|s| s.get("UpgradeVeteranSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("UpgradeVeteranSound", 0x80)
+                .map(str::to_owned),
             upgrade_elite_sound: audio_visual
-                .and_then(|s| s.get("UpgradeEliteSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("UpgradeEliteSound", 0x80)
+                .map(str::to_owned),
             slaves_free_sound: audio_visual
-                .and_then(|s| s.get("SlavesFreeSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
-            elite_flash_timer: audio_visual
-                .and_then(|s| s.get_i32("EliteFlashTimer"))
-                .unwrap_or(defaults.elite_flash_timer),
-            idle_action_frequency_x1000: (audio_visual
-                .map(|s| {
-                    s.read_double(
-                        "IdleActionFrequency",
-                        STOCK_IDLE_ACTION_FREQUENCY_X1000 as f64 / 1000.0,
-                    )
-                })
-                .unwrap_or(STOCK_IDLE_ACTION_FREQUENCY_X1000 as f64 / 1000.0)
-                * 1000.0) as i64,
+                .read_name("SlavesFreeSound", 0x80)
+                .map(str::to_owned),
+            elite_flash_timer: audio_visual.read_int("EliteFlashTimer", defaults.elite_flash_timer),
+            idle_action_frequency_x1000: (audio_visual.read_double(
+                "IdleActionFrequency",
+                STOCK_IDLE_ACTION_FREQUENCY_X1000 as f64 / 1000.0,
+            ) * 1000.0) as i64,
             building_garrisoned_sound: audio_visual
-                .and_then(|s| s.get("BuildingGarrisonedSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
-            sell_sound: audio_visual
-                .and_then(|s| s.get("SellSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("BuildingGarrisonedSound", 0x80)
+                .map(str::to_owned),
+            sell_sound: audio_visual.read_name("SellSound", 0x80).map(str::to_owned),
             base_under_attack_sound: audio_visual
-                .and_then(|s| s.get("BaseUnderAttackSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("BaseUnderAttackSound", 0x80)
+                .map(str::to_owned),
             building_die_sound: audio_visual
-                .and_then(|s| s.get("BuildingDieSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("BuildingDieSound", 0x80)
+                .map(str::to_owned),
             building_damage_sound: audio_visual
-                .and_then(|s| s.get("BuildingDamageSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("BuildingDamageSound", 0x80)
+                .map(str::to_owned),
             // `CCINIClass::ReadSoundList @ 0x00525430`: `ReadString(..., "",
             // buf, 0x80)` first (so the whole value is byte-cut and trimmed
             // once), then `strtok` on `","` (`0x00817F70`) with the tokens
@@ -2612,170 +2475,101 @@ impl GeneralRules {
             // (`VocClass::FindPtrByName`, which drops unresolvable names) is
             // deferred to the app layer, where the registry lives.
             lightning_sounds: audio_visual
-                .map(|section| section.read_string("LightningSounds", "", 0x80))
-                .map(|value| {
-                    value
-                        .split(',')
-                        .filter(|token| !token.is_empty())
-                        .map(str::to_string)
-                        .collect()
-                })
+                .read_list("LightningSounds", 0x80)
+                .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
                 .unwrap_or_default(),
             credit_ticks: audio_visual
-                .map(|section| section.read_string("CreditTicks", "", 0x80))
-                .map(|value| {
-                    value
-                        .split(',')
-                        .filter(|token| !token.is_empty())
-                        .map(str::to_string)
-                        .collect()
-                })
+                .read_list("CreditTicks", 0x80)
+                .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
                 .unwrap_or_default(),
             storm_sound: audio_visual
-                .and_then(|s| s.get("StormSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("StormSound", 0x80)
+                .map(str::to_owned),
             // `RulesClass::ReadGeneral @ 0x0067107F` passes the field's own
             // current value as the default, so an absent key keeps the
             // constructor's `true` (see the field doc).
-            lightning_print_text: general.get_bool("LightningPrintText").unwrap_or(true),
-            dig_sound: audio_visual
-                .and_then(|s| s.get("DigSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+            lightning_print_text: general.read_bool("LightningPrintText", true),
+            dig_sound: audio_visual.read_name("DigSound", 0x80).map(str::to_owned),
             psychic_dominator_activate_sound: audio_visual
-                .and_then(|s| s.get("PsychicDominatorActivateSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("PsychicDominatorActivateSound", 0x80)
+                .map(str::to_owned),
             genetic_mutator_activate_sound: audio_visual
-                .and_then(|s| s.get("GeneticMutatorActivateSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GeneticMutatorActivateSound", 0x80)
+                .map(str::to_owned),
             psychic_reveal_activate_sound: audio_visual
-                .and_then(|s| s.get("PsychicRevealActivateSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("PsychicRevealActivateSound", 0x80)
+                .map(str::to_owned),
             chute_sound: audio_visual
-                .and_then(|s| s.get("ChuteSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("ChuteSound", 0x80)
+                .map(str::to_owned),
             bunker_walls_down_sound: audio_visual
-                .and_then(|s| s.get("BunkerWallsDownSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("BunkerWallsDownSound", 0x80)
+                .map(str::to_owned),
             bunker_walls_up_sound: audio_visual
-                .and_then(|s| s.get("BunkerWallsUpSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("BunkerWallsUpSound", 0x80)
+                .map(str::to_owned),
             gui_main_button_sound: audio_visual
-                .and_then(|s| s.get("GUIMainButtonSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GUIMainButtonSound", 0x80)
+                .map(str::to_owned),
             gui_move_in_sound: audio_visual
-                .and_then(|s| s.get("GUIMoveInSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GUIMoveInSound", 0x80)
+                .map(str::to_owned),
             gui_move_out_sound: audio_visual
-                .and_then(|s| s.get("GUIMoveOutSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GUIMoveOutSound", 0x80)
+                .map(str::to_owned),
             generic_click_sound: audio_visual
-                .and_then(|s| s.get("GenericClick"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GenericClick", 0x80)
+                .map(str::to_owned),
             scold_sound: audio_visual
-                .and_then(|s| s.get("ScoldSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("ScoldSound", 0x80)
+                .map(str::to_owned),
             generic_beep_sound: audio_visual
-                .and_then(|s| s.get("GenericBeep"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GenericBeep", 0x80)
+                .map(str::to_owned),
             gui_checkbox_sound: audio_visual
-                .and_then(|s| s.get("GUICheckboxSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
-            ore_twinkle: {
-                let value = general.read_string("OreTwinkle", "", 0x80);
-                (!value.is_empty()).then_some(value)
-            },
+                .read_name("GUICheckboxSound", 0x80)
+                .map(str::to_owned),
+            ore_twinkle: general.read_name("OreTwinkle", 0x80).map(str::to_owned),
             ore_twinkle_chance: audio_visual
-                .and_then(|s| s.get_i32("OreTwinkleChance"))
-                .unwrap_or(defaults.ore_twinkle_chance),
+                .read_int("OreTwinkleChance", defaults.ore_twinkle_chance),
             gui_build_sound: audio_visual
-                .and_then(|s| s.get("GUIBuildSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GUIBuildSound", 0x80)
+                .map(str::to_owned),
             gui_tab_sound: audio_visual
-                .and_then(|s| s.get("GUITabSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GUITabSound", 0x80)
+                .map(str::to_owned),
             incoming_message_sound: audio_visual
-                .and_then(|s| s.get("IncomingMessage"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
-            message_delay_minutes: audio_visual
-                .and_then(|s| s.get_f32("MessageDelay"))
-                .unwrap_or(0.6),
-            speak_delay_minutes: audio_visual
-                .and_then(|s| s.get_f64("SpeakDelay"))
-                .unwrap_or(0.0),
+                .read_name("IncomingMessage", 0x80)
+                .map(str::to_owned),
+            message_delay_minutes: audio_visual.read_double("MessageDelay", 0.6) as f32,
+            speak_delay_minutes: audio_visual.read_double("SpeakDelay", 0.0),
             gui_combo_open_sound: audio_visual
-                .and_then(|s| s.get("GUIComboOpenSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+                .read_name("GUIComboOpenSound", 0x80)
+                .map(str::to_owned),
             gui_combo_close_sound: audio_visual
-                .and_then(|s| s.get("GUIComboCloseSound"))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
-            direct_rocking_coefficient: audio_visual
-                .and_then(|s| s.get_f32("DirectRockingCoefficient"))
-                .map(sim_from_f32)
-                .unwrap_or(SimFixed::lit("1.5")),
-            fallback_coefficient: audio_visual
-                .and_then(|s| s.get_f32("FallBackCoefficient"))
-                .map(sim_from_f32)
-                .unwrap_or(SimFixed::lit("0.1")),
+                .read_name("GUIComboCloseSound", 0x80)
+                .map(str::to_owned),
+            // Float fields (`FSTP dword` at `0x0066B8B1`/`0x0066B8DB`).
+            direct_rocking_coefficient: sim_from_f32(
+                audio_visual.read_float("DirectRockingCoefficient", 1.5),
+            ),
+            fallback_coefficient: sim_from_f32(audio_visual.read_float("FallBackCoefficient", 0.1)),
             // ChronoInSound/ChronoOutSound live in [AudioVisual], not [General].
             // No hardcoded fallback: a genuinely-absent key means no fallback
             // sound (silence), matching gamemd. Stock ships these keys present
             // (= ChronoMinerTeleport), so stock audio is unchanged.
             chrono_in_sound: audio_visual
-                .and_then(|s| s.get("ChronoInSound"))
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+                .read_name("ChronoInSound", 0x80)
+                .map(str::to_owned),
             chrono_out_sound: audio_visual
-                .and_then(|s| s.get("ChronoOutSound"))
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+                .read_name("ChronoOutSound", 0x80)
+                .map(str::to_owned),
             impact_water_sound: audio_visual
-                .and_then(|s| s.get("ImpactWaterSound"))
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+                .read_name("ImpactWaterSound", 0x80)
+                .map(str::to_owned),
             impact_land_sound: audio_visual
-                .and_then(|s| s.get("ImpactLandSound"))
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+                .read_name("ImpactLandSound", 0x80)
+                .map(str::to_owned),
             // Constructor -1 until the fixed SOUNDMD catalog resolves it.
             sinking_sound: None,
             bomb_ticking_sound,
@@ -2805,32 +2599,28 @@ impl GeneralRules {
                 frame_delay: defaults.move_flash.frame_delay,
             },
             infantry_death_anims,
-            damage_delay_minutes: general.get_f32("DamageDelay").unwrap_or(1.0),
-            spy_power_blackout_frames: general.get_i32("SpyPowerBlackout").unwrap_or(1000).max(0)
-                as u32,
+            damage_delay_minutes: general.read_double("DamageDelay", 1.0) as f32,
+            spy_power_blackout_frames: general.read_int("SpyPowerBlackout", 1000).max(0) as u32,
             damage_fire_types: general
-                .get_list("DamageFireTypes")
-                .map(|list| {
-                    list.into_iter()
-                        .filter(|s| !s.is_empty())
-                        .map(|s| AnimRef {
-                            name: s.to_uppercase(),
+                .read_list("DamageFireTypes", 0x80)
+                .map(|tokens| {
+                    tokens
+                        .into_iter()
+                        .map(|name| AnimRef {
+                            name: name.to_uppercase(),
                             frame_delay: DEFAULT_ANIM_FRAME_DELAY,
                         })
                         .collect()
                 })
                 .unwrap_or_default(),
-            barrel_particle: general
-                .get("BarrelParticle")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+            barrel_particle: general.read_name("BarrelParticle", 0x80).map(str::to_owned),
             tiberium_short_scan: general.read_range("TiberiumShortScan", 0x600),
             tiberium_long_scan: general.read_range("TiberiumLongScan", 0x2000),
             buildup_time: general.read_double("BuildupTime", f64::from_bits(0x3FA9_9999_9999_999A)),
             slave_miner_short_scan: general.read_range("SlaveMinerShortScan", 0x500),
             slave_miner_slave_scan: general.read_range("SlaveMinerSlaveScan", 0x1000),
-            drain_money_frame_delay: general.get_i32("DrainMoneyFrameDelay").unwrap_or(30),
-            drain_money_amount: general.get_i32("DrainMoneyAmount").unwrap_or(30),
+            drain_money_frame_delay: general.read_int("DrainMoneyFrameDelay", 30),
+            drain_money_amount: general.read_int("DrainMoneyAmount", 30),
             slave_miner_long_scan: general.read_range("SlaveMinerLongScan", 0x5000),
             slave_miner_scan_correction: general.read_range("SlaveMinerScanCorrection", 0x300),
             slave_miner_kick_frame_delay: general.read_int("SlaveMinerKickFrameDelay", 0x7FFF_FFFF),
@@ -2845,47 +2635,34 @@ impl GeneralRules {
                 // so the first crossing is ceil(rate × 900). Take the ceiling at
                 // full double precision to match that crossing exactly (no tenths
                 // rounding). Clamp to u16::MAX to keep the frame threshold in range.
-                let rate = general.get_f64("HarvesterDumpRate").unwrap_or(0.016);
+                let rate = general.read_double("HarvesterDumpRate", 0.016);
                 (rate * 900.0).clamp(0.0, u16::MAX as f64).ceil() as u16
             },
-            chrono_delay: general.get_i32("ChronoDelay").unwrap_or(60),
-            chrono_reinf_delay: general.get_i32("ChronoReinfDelay").unwrap_or(180),
-            chrono_distance_factor: general.get_i32("ChronoDistanceFactor").unwrap_or(48),
-            chrono_trigger: general.get_bool("ChronoTrigger").unwrap_or(true),
-            chrono_minimum_delay: general.get_i32("ChronoMinimumDelay").unwrap_or(16),
-            chrono_range_minimum: general.get_i32("ChronoRangeMinimum").unwrap_or(0),
+            chrono_delay: general.read_int("ChronoDelay", 60),
+            chrono_reinf_delay: general.read_int("ChronoReinfDelay", 180),
+            chrono_distance_factor: general.read_int("ChronoDistanceFactor", 48),
+            chrono_trigger: general.read_bool("ChronoTrigger", true),
+            chrono_minimum_delay: general.read_int("ChronoMinimumDelay", 16),
+            chrono_range_minimum: general.read_int("ChronoRangeMinimum", 0),
             // Parse-time float -> fixed-point ppm (mirrors the IncomeMult parse); the runtime
             // bonus math is all integer. Full precision — no whole-percent quantize.
-            purifier_bonus_ppm: (general.get_percent("PurifierBonus").unwrap_or(0.25) as f64
+            // A float field (`FSTP dword` at `0x0066FC70`).
+            purifier_bonus_ppm: (f64::from(general.read_float("PurifierBonus", 0.25))
                 * INCOME_PPM_SCALE as f64)
                 .round() as i64,
-            ai_virtual_purifiers: {
-                let defaults = [4, 2, 0];
-                general
-                    .get("AIVirtualPurifiers")
-                    .and_then(|raw| {
-                        let parsed: Vec<i32> = raw
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .filter_map(|s| s.parse::<i32>().ok())
-                            .collect();
-                        if parsed.len() == 3 {
-                            Some([parsed[0], parsed[1], parsed[2]])
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(defaults)
-            },
-            allied_survivor_divisor: general.get_i32("AlliedSurvivorDivisor").unwrap_or(500),
-            soviet_survivor_divisor: general.get_i32("SovietSurvivorDivisor").unwrap_or(250),
-            third_survivor_divisor: general.get_i32("ThirdSurvivorDivisor").unwrap_or(750),
-            allied_crew: general_type_name(general, "AlliedCrew"),
-            soviet_crew: general_type_name(general, "SovietCrew"),
-            third_crew: general_type_name(general, "ThirdCrew"),
-            technician: general_type_name(general, "Technician"),
-            engineer_infantry: general_type_name(general, "Engineer"),
+            // An IntVector (`0x00475D70`) indexed by difficulty.
+            ai_virtual_purifiers: general
+                .read_int_list("AIVirtualPurifiers")
+                .and_then(|values| values.get(..3)?.try_into().ok())
+                .unwrap_or([4, 2, 0]),
+            allied_survivor_divisor: general.read_int("AlliedSurvivorDivisor", 500),
+            soviet_survivor_divisor: general.read_int("SovietSurvivorDivisor", 250),
+            third_survivor_divisor: general.read_int("ThirdSurvivorDivisor", 750),
+            allied_crew: general.read_name("AlliedCrew", 0x80).map(str::to_owned),
+            soviet_crew: general.read_name("SovietCrew", 0x80).map(str::to_owned),
+            third_crew: general.read_name("ThirdCrew", 0x80).map(str::to_owned),
+            technician: general.read_name("Technician", 0x80).map(str::to_owned),
+            engineer_infantry: general.read_name("Engineer", 0x80).map(str::to_owned),
             crew_escape: crate::util::native_x87::NativeF64Bits::from_bits(
                 general
                     .read_double("CrewEscape", f64::from_bits(defaults.crew_escape.bits()))
@@ -2899,10 +2676,10 @@ impl GeneralRules {
                     )
                     .to_bits(),
             ),
-            ship_sinking_weight: general
-                .get_f32("ShipSinkingWeight")
-                .map(sim_from_f32)
-                .unwrap_or(defaults.ship_sinking_weight),
+            ship_sinking_weight: sim_from_f32(
+                general.read_double("ShipSinkingWeight", defaults.ship_sinking_weight.to_num())
+                    as f32,
+            ),
             tracked_uphill: SimFixed::from_num(
                 general.read_double("TrackedUphill", defaults.tracked_uphill.to_num::<f64>()),
             ),
@@ -2918,135 +2695,91 @@ impl GeneralRules {
             // RulesClass's AudioVisual pass stores these ReadDouble values as
             // signed milliunits after the active x87 chop-toward-zero conversion.
             extra_unit_light: (audio_visual
-                .map(|section| {
-                    section.read_double("ExtraUnitLight", defaults.extra_unit_light as f64 / 1000.0)
-                })
-                .unwrap_or(defaults.extra_unit_light as f64 / 1000.0)
+                .read_double("ExtraUnitLight", defaults.extra_unit_light as f64 / 1000.0)
                 * 1000.0) as i32,
-            extra_infantry_light: (audio_visual
-                .map(|section| {
-                    section.read_double(
-                        "ExtraInfantryLight",
-                        defaults.extra_infantry_light as f64 / 1000.0,
-                    )
-                })
-                .unwrap_or(defaults.extra_infantry_light as f64 / 1000.0)
-                * 1000.0) as i32,
-            extra_aircraft_light: (audio_visual
-                .map(|section| {
-                    section.read_double(
-                        "ExtraAircraftLight",
-                        defaults.extra_aircraft_light as f64 / 1000.0,
-                    )
-                })
-                .unwrap_or(defaults.extra_aircraft_light as f64 / 1000.0)
-                * 1000.0) as i32,
+            extra_infantry_light: (audio_visual.read_double(
+                "ExtraInfantryLight",
+                defaults.extra_infantry_light as f64 / 1000.0,
+            ) * 1000.0) as i32,
+            extra_aircraft_light: (audio_visual.read_double(
+                "ExtraAircraftLight",
+                defaults.extra_aircraft_light as f64 / 1000.0,
+            ) * 1000.0) as i32,
             close_enough: general.read_range("CloseEnough", defaults.close_enough),
             // URepairRate= is in minutes. Convert to ticks: minutes * 60 * 15 ticks/sec.
-            unit_repair_rate_ticks: general
-                .get_f32("URepairRate")
-                .map(|minutes| {
-                    (minutes * 60.0 * (crate::util::fixed_math::RA2_LOGIC_FRAMES_PER_SECOND as f32))
-                        .round()
-                        .max(1.0) as u32
-                })
-                .unwrap_or(defaults.unit_repair_rate_ticks),
+            unit_repair_rate_ticks: minutes_to_ticks(
+                general.read_double("URepairRate", U_REPAIR_RATE_MINUTES),
+            ),
             repair_step: general.read_int("RepairStep", defaults.repair_step),
             repair_percent: general.read_double("RepairPercent", defaults.repair_percent),
-            reload_rate_ticks: general
-                .get_f32("ReloadRate")
-                .map(|minutes| {
-                    (minutes * 60.0 * (crate::util::fixed_math::RA2_LOGIC_FRAMES_PER_SECOND as f32))
-                        .round()
-                        .max(1.0) as u32
-                })
-                .unwrap_or(defaults.reload_rate_ticks),
+            reload_rate_ticks: minutes_to_ticks(
+                general.read_double("ReloadRate", RELOAD_RATE_MINUTES),
+            ),
             path_delay,
             blockage_path_delay_ticks,
             // ReadGeneral670235..670267 uses the same475D70 signed vector
             // reader as the existing Recalc difficulty tables below.
-            ai_auto_deploy_frame_delay: read_retained_difficulty_vector(
-                general,
-                "AIAutoDeployFrameDelay",
-            ),
-            ai_force_prediction_fudge: ai.map_or_else(Vec::new, |section| {
-                read_retained_difficulty_vector(section, "AIForcePredictionFudge")
-            }),
-            ai_pick_wall_defense_percent: read_retained_difficulty_vector(
-                general,
-                "AIPickWallDefensePercent",
-            ),
+            ai_auto_deploy_frame_delay: general
+                .read_int_list("AIAutoDeployFrameDelay")
+                .unwrap_or_default(),
+            ai_force_prediction_fudge: ai
+                .read_int_list("AIForcePredictionFudge")
+                .unwrap_or_default(),
+            ai_pick_wall_defense_percent: general
+                .read_int_list("AIPickWallDefensePercent")
+                .unwrap_or_default(),
             // PlayerScatter belongs to the [CombatDamage] read, IQ Scatter to
             // the [IQ] read; neither is a [General] key.
-            player_scatter: combat_damage
-                .and_then(|s| s.get_bool("PlayerScatter"))
-                .unwrap_or(defaults.player_scatter),
+            player_scatter: combat_damage.read_bool("PlayerScatter", defaults.player_scatter),
             player_return_fire: combat_damage
-                .and_then(|s| s.get_bool("PlayerReturnFire"))
-                .unwrap_or(defaults.player_return_fire),
-            iq_scatter: iq
-                .and_then(|s| s.get_i32("Scatter"))
-                .unwrap_or(defaults.iq_scatter),
-            max_iq_levels: iq
-                .and_then(|s| s.get_i32("MaxIQLevels"))
-                .unwrap_or(defaults.max_iq_levels),
+                .read_bool("PlayerReturnFire", defaults.player_return_fire),
+            iq_scatter: iq.read_int("Scatter", defaults.iq_scatter),
+            max_iq_levels: iq.read_int("MaxIQLevels", defaults.max_iq_levels),
             iq_production,
             iq_harvester,
-            iq_repair_sell: iq
-                .and_then(|s| s.get_i32("RepairSell"))
-                .unwrap_or(defaults.iq_repair_sell),
-            iq_sell_back: iq
-                .and_then(|s| s.get_i32("SellBack"))
-                .unwrap_or(defaults.iq_sell_back),
-            credit_reserve: ai
-                .and_then(|s| s.get_i32("CreditReserve"))
-                .unwrap_or(defaults.credit_reserve),
-            cliff_back_impassability: general.get_i32("CliffBackImpassability").unwrap_or(2) as u8,
-            lightning_storm_duration: general.get_i32("LightningStormDuration").unwrap_or(180),
-            lightning_damage: general.get_i32("LightningDamage").unwrap_or(250),
-            lightning_deferment: general.get_i32("LightningDeferment").unwrap_or(250),
-            lightning_hit_delay: general.get_i32("LightningHitDelay").unwrap_or(10).max(1),
-            lightning_scatter_delay: general.get_i32("LightningScatterDelay").unwrap_or(5).max(1),
-            lightning_cell_spread: general.get_i32("LightningCellSpread").unwrap_or(10),
-            lightning_separation: general.get_i32("LightningSeparation").unwrap_or(3),
+            iq_repair_sell: iq.read_int("RepairSell", defaults.iq_repair_sell),
+            iq_sell_back: iq.read_int("SellBack", defaults.iq_sell_back),
+            credit_reserve: ai.read_int("CreditReserve", defaults.credit_reserve),
+            cliff_back_impassability: general.read_int("CliffBackImpassability", 2) as u8,
+            lightning_storm_duration: general.read_int("LightningStormDuration", 180),
+            lightning_damage: general.read_int("LightningDamage", 250),
+            lightning_deferment: general.read_int("LightningDeferment", 250),
+            lightning_hit_delay: general.read_int("LightningHitDelay", 10).max(1),
+            lightning_scatter_delay: general.read_int("LightningScatterDelay", 5).max(1),
+            lightning_cell_spread: general.read_int("LightningCellSpread", 10),
+            lightning_separation: general.read_int("LightningSeparation", 3),
             lightning_warhead: general.read_string("LightningWarhead", "", 128),
             weather_con_bolt_explosion: general.read_string("WeatherConBoltExplosion", "", 128),
             weapon_nullify_anim: general.read_string("WeaponNullifyAnim", "", 128),
             ambient_change_rate_nonzero: ambient_change_rate != 0.0,
             ambient_change_interval_frames: (ambient_change_rate * 900.0) as i32,
             ambient_change_step: (ambient_change_step * 100.0) as i32,
-            iron_curtain_duration: combat_damage
-                .and_then(|s| s.get_i32("IronCurtainDuration"))
-                .unwrap_or(750),
-            iron_curtain_invoke_anim: general
-                .get("IronCurtainInvokeAnim")
-                .unwrap_or("IRONBLST")
-                .to_string(),
-            ion_blast_anim: general.get("IonBlast").unwrap_or("").trim().to_string(),
-            force_shield_radius: general.get_i32("ForceShieldRadius").unwrap_or(4) as u32,
-            force_shield_duration: general.get_i32("ForceShieldDuration").unwrap_or(500),
-            force_shield_blackout_duration: general
-                .get_i32("ForceShieldBlackoutDuration")
-                .unwrap_or(1000) as u32,
-            force_shield_fade_sound_time: general
-                .get_i32("ForceShieldPlayFadeSoundTime")
-                .unwrap_or(75) as u32,
-            force_shield_invoke_anim: general
-                .get("ForceShieldInvokeAnim")
-                .unwrap_or("FORCSHLD")
-                .to_string(),
-            psychic_reveal_radius: combat_damage
-                .and_then(|section| section.get_i32("PsychicRevealRadius"))
-                .unwrap_or(15) as u32,
-            mutate_warhead: special_weapons
-                .and_then(|section| section.get("MutateWarhead"))
-                .unwrap_or("Mutate")
-                .to_string(),
-            mutate_explosion_warhead: special_weapons
-                .and_then(|section| section.get("MutateExplosionWarhead"))
-                .unwrap_or("MutateExplosion")
-                .to_string(),
-            mutate_explosion: general.get_bool("MutateExplosion").unwrap_or(true),
+            iron_curtain_duration: combat_damage.read_int("IronCurtainDuration", 750),
+            iron_curtain_invoke_anim: general.read_string(
+                "IronCurtainInvokeAnim",
+                "IRONBLST",
+                0x80,
+            ),
+            ion_blast_anim: general.read_string("IonBlast", "", 0x80),
+            force_shield_radius: general.read_int("ForceShieldRadius", 4) as u32,
+            force_shield_duration: general.read_int("ForceShieldDuration", 500),
+            force_shield_blackout_duration: general.read_int("ForceShieldBlackoutDuration", 1000)
+                as u32,
+            force_shield_fade_sound_time: general.read_int("ForceShieldPlayFadeSoundTime", 75)
+                as u32,
+            force_shield_invoke_anim: general.read_string(
+                "ForceShieldInvokeAnim",
+                "FORCSHLD",
+                0x80,
+            ),
+            psychic_reveal_radius: combat_damage.read_int("PsychicRevealRadius", 15) as u32,
+            mutate_warhead: special_weapons.read_string("MutateWarhead", "Mutate", 0x80),
+            mutate_explosion_warhead: special_weapons.read_string(
+                "MutateExplosionWarhead",
+                "MutateExplosion",
+                0x80,
+            ),
+            mutate_explosion: general.read_bool("MutateExplosion", true),
             // The processed RulesClass vector is authoritative; a merged INI
             // cannot reproduce successful-read replacement or factory identity.
             metallic_debris: Vec::new(),
@@ -3059,10 +2792,8 @@ impl GeneralRules {
     /// anim's own `[ANIM_NAME]` section for its native `Rate=` frame delay.
     pub fn resolve_art_rates(&mut self, art_ini: &IniFile) {
         fn rate_from_section(ini: &IniFile, name: &str, fallback: u16) -> u16 {
-            ini.section(name)
-                .and_then(|s| s.get_i32("Rate"))
-                .map(crate::rules::art_data::art_rate_to_logic_frames)
-                .unwrap_or(fallback)
+            crate::rules::art_data::read_anim_rate(ini.section_or_empty(name))
+                .map_or(fallback, crate::rules::art_data::art_rate_to_logic_frames)
         }
         self.warp_in.frame_delay =
             rate_from_section(art_ini, &self.warp_in.name, DEFAULT_ANIM_FRAME_DELAY);
@@ -3369,143 +3100,6 @@ pub struct RuleSet {
     source_ini_hash: u64,
 }
 
-/// Project one native AI planning type list through its `char[128]` reader.
-///
-/// gamemd-derived: `RulesClass__ReadAI @ 0x00672AE0`, seven list blocks
-/// `0x00672B14..0x00673058` and `0x0067368C..0x0067375B`, plus
-/// `RulesClass__ReadGeneral @ 0x0066D530` HarvesterUnit block
-/// `0x0066F8C8..0x0066F9CB`. Each calls `CCINIClass__ReadString @ 0x00528A10`
-/// with length `0x80`, trims the complete copied buffer, then tokenizes with
-/// comma as the sole `strtok` delimiter. `IniFile::from_bytes` stores each
-/// source byte as one zero-extended scalar, so narrowing before truncation
-/// preserves the native payload-byte boundary even when Rust UTF-8 would not.
-fn parse_native_type_list_source_tokens(value: &str) -> Vec<String> {
-    const NATIVE_PAYLOAD_BYTES: usize = 127;
-
-    let Some(mut copied) = value
-        .chars()
-        .map(|character| u8::try_from(u32::from(character)).ok())
-        .collect::<Option<Vec<_>>>()
-    else {
-        // Production INI values come through `IniFile::from_bytes` and are
-        // always in the reversible byte domain. A direct Unicode-only test
-        // value has no native narrow-byte identity and must not alias a
-        // registered BuildingType.
-        return Vec::new();
-    };
-    copied.truncate(NATIVE_PAYLOAD_BYTES);
-
-    let first = copied.iter().position(|byte| *byte > b' ');
-    let Some(first) = first else {
-        return Vec::new();
-    };
-    let last = copied
-        .iter()
-        .rposition(|byte| *byte > b' ')
-        .expect("the first non-control byte also supplies the last");
-
-    copied[first..=last]
-        .split(|byte| *byte == b',')
-        // CRT `strtok` coalesces repeated delimiters and emits no empty token
-        // for leading, repeated, or trailing commas.
-        .filter(|token| !token.is_empty())
-        .filter(|token| {
-            !token.eq_ignore_ascii_case(b"none") && !token.eq_ignore_ascii_case(b"<none>")
-        })
-        .map(crate::util::native_string::widen_bytes)
-        .collect()
-}
-
-/// Parse the signed DynamicVector payload used by Recalc difficulty tables.
-///
-/// gamemd-derived: `DifficultyClass__ReadINI_IntVector @ 0x00475D70`, reached
-/// by `RulesClass__ReadGeneral @ 0x0066D530` for AISlaveMinerNumber
-/// `0x00670585..0x006705B7`, AIExtraRefineries `0x006705F9..0x0067062A`, and
-/// the three BaseDefenseCounts vectors `0x00670013..0x006700BE`. The reader has
-/// a native `char[512]` buffer, whole-buffer trim, comma `strtok`, and CRT atoi.
-fn read_retained_difficulty_vector(
-    section: &crate::rules::ini_parser::IniSection,
-    key: &str,
-) -> Vec<i32> {
-    // ReadGeneral670232..67026C copies the existing vector before475D70.
-    // Missing/empty ReadString retains it; a nonempty delimiter-only value
-    // replaces it with an empty vector. Original42-row deploy-rules corpus.
-    let mut result = Vec::new();
-    let mut read = |value: &str| {
-        let copied = crate::rules::ini_value::truncate_bytes(value, 511);
-        if !crate::rules::ini_value::strtrim_ascii(copied).is_empty() {
-            result = parse_native_difficulty_int_vector(value);
-        }
-    };
-    if let Some(values) = section.projected_values(key) {
-        for value in values {
-            read(value);
-        }
-    } else if let Some(value) = section.get(key) {
-        read(value);
-    }
-    result
-}
-
-fn parse_native_difficulty_int_vector(value: &str) -> Vec<i32> {
-    const NATIVE_PAYLOAD_BYTES: usize = 511;
-
-    let Some(mut copied) = value
-        .chars()
-        .map(|character| u8::try_from(u32::from(character)).ok())
-        .collect::<Option<Vec<_>>>()
-    else {
-        return Vec::new();
-    };
-    copied.truncate(NATIVE_PAYLOAD_BYTES);
-
-    let Some(first) = copied.iter().position(|byte| *byte > b' ') else {
-        return Vec::new();
-    };
-    let last = copied
-        .iter()
-        .rposition(|byte| *byte > b' ')
-        .expect("the first non-control byte also supplies the last");
-
-    copied[first..=last]
-        .split(|byte| *byte == b',')
-        .filter(|token| !token.is_empty())
-        .map(native_atoi_bytes)
-        .collect()
-}
-
-/// CRT `atoi` byte-domain projection: skip exactly ASCII whitespace, accept an
-/// optional sign, consume the decimal prefix, and retain 32-bit wrapping.
-fn native_atoi_bytes(value: &[u8]) -> i32 {
-    let mut index = value
-        .iter()
-        .take_while(|&&byte| matches!(byte, b'\t'..=b'\r' | b' '))
-        .count();
-    let negative = value.get(index) == Some(&b'-');
-    if value
-        .get(index)
-        .is_some_and(|byte| matches!(*byte, b'-' | b'+'))
-    {
-        index += 1;
-    }
-    let mut result = 0u32;
-    let mut any = false;
-    while let Some(byte) = value.get(index).filter(|byte| byte.is_ascii_digit()) {
-        any = true;
-        result = result
-            .wrapping_mul(10)
-            .wrapping_add(u32::from(*byte - b'0'));
-        index += 1;
-    }
-    if !any {
-        0
-    } else if negative {
-        result.wrapping_neg() as i32
-    } else {
-        result as i32
-    }
-}
-
 impl RuleSet {
     /// Build from the active ordered rules sources.
     pub fn from_rules_layers(layers: &RulesLayerStack) -> Result<Self, RulesError> {
@@ -3625,31 +3219,26 @@ impl RuleSet {
         let mut building_ids: Vec<String> = Vec::new();
         let production: ProductionRules = ProductionRules::from_ini(ini);
         let general: GeneralRules = GeneralRules::from_ini(ini);
-        let ai_base_spacing = ini
-            .section("AI")
-            .and_then(|section| section.get_i32("AIBaseSpacing"))
-            .unwrap_or(1);
-        let parse_named_list = |section: &str, key: &str| -> Vec<String> {
-            ini.section(section)
-                .and_then(|section| section.get_list(key))
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|entry| !entry.is_empty())
-                .map(str::to_string)
-                .collect()
-        };
-        let shipyard_types = parse_named_list("General", "Shipyard");
+        let ai_base_spacing = ini.section_or_empty("AI").read_int("AIBaseSpacing", 1);
+        let shipyard_types: Vec<String> = ini
+            .section_or_empty("General")
+            .read_list("Shipyard", 0x80)
+            .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+            .unwrap_or_default();
         // gamemd-derived: `RulesClass__Process` reads type registries first
         // (`ReadBuildingTypes` 0x00668E78), then `RulesClass__ReadAI @
         // 0x00672AE0` (0x00668EC8). All seven BasePlan lists use the exact
         // char[128]/whole-buffer-trim/comma-only path owned by their blocks at
         // 0x00672B14..0x00673058 and 0x0067368C..0x0067375B. None falls back
         // to `[General]`, and individual tokens are not trimmed.
-        let parse_planning_list = |section_name: &str, key: &str| {
-            ini.section(section_name)
-                .and_then(|section| section.get(key))
-                .map(parse_native_type_list_source_tokens)
+        let parse_planning_list = |section_name: &str, key: &str| -> Vec<String> {
+            ini.section_or_empty(section_name)
+                .read_list(key, 0x80)
                 .unwrap_or_default()
+                .into_iter()
+                .filter(|token| !is_native_none_type_name(token))
+                .map(str::to_owned)
+                .collect()
         };
         let build_const_source_tokens = parse_planning_list("AI", "BuildConst");
         let build_power_source_tokens = parse_planning_list("AI", "BuildPower");
@@ -3663,10 +3252,13 @@ impl RuleSet {
         let third_base_defense_source_tokens = parse_planning_list("AI", "ThirdBaseDefenses");
         let concrete_wall_source_tokens = parse_planning_list("AI", "ConcreteWalls");
         let harvester_unit_source_tokens = parse_planning_list("General", "HarvesterUnit");
+        // `DifficultyClass::ReadINI_IntVector @ 0x00475D70`, reached by
+        // `RulesClass::ReadGeneral` for AISlaveMinerNumber
+        // `0x00670585..0x006705B7`, AIExtraRefineries `0x006705F9..0x0067062A`
+        // and the three BaseDefenseCounts vectors `0x00670013..0x006700BE`.
         let parse_difficulty_vector = |key: &str| {
-            ini.section("General")
-                .and_then(|section| section.get(key))
-                .map(parse_native_difficulty_int_vector)
+            ini.section_or_empty("General")
+                .read_int_list(key)
                 .unwrap_or_default()
         };
         let ai_slave_miner_number = parse_difficulty_vector("AISlaveMinerNumber");
@@ -3678,13 +3270,11 @@ impl RuleSet {
         // +0xE0C; `RulesClass::ReadGeneral @ 0x006701D9..0x006701FE` reads the
         // signed `AINavalYardAdjacency=` override.
         let ai_naval_yard_adjacency = ini
-            .section("General")
-            .and_then(|section| section.get_i32("AINavalYardAdjacency"))
-            .unwrap_or(20);
+            .section_or_empty("General")
+            .read_int("AINavalYardAdjacency", 20);
         let initial_veteran = ini
-            .section("SpecialFlags")
-            .and_then(|section| section.get_bool("InitialVeteran"))
-            .unwrap_or(false);
+            .section_or_empty("SpecialFlags")
+            .read_bool("InitialVeteran", false);
         let terrain_rules: TerrainRules = TerrainRules::from_ini(ini);
         let tiberium_types = TiberiumTypeRegistry::from_ini(ini);
         let bridge_rules: BridgeRules = BridgeRules::from_ini(ini);
@@ -3698,9 +3288,8 @@ impl RuleSet {
         // `[WallModel]` is absent: 0x0066D20E passes the current
         // `[ESI+0x1850]` as the default and 0x0066D22E stores the answer back.
         let allied_wall_transparency: bool = ini
-            .section("WallModel")
-            .and_then(|s| s.get_bool("AlliedWallTransparency"))
-            .unwrap_or(false);
+            .section_or_empty("WallModel")
+            .read_bool("AlliedWallTransparency", false);
         let radiation: RadiationRules = RadiationRules::from_ini(ini);
         let radar_event_config: RadarEventConfig = RadarEventConfig::from_ini(ini);
         let country_side_registry = parse_country_side_registry(ini);
@@ -3829,9 +3418,8 @@ impl RuleSet {
         // Step 2: Collect all weapon and warhead IDs referenced by objects.
         let (mut weapon_ids, warhead_refs) = collect_weapon_refs(&object_list);
         if let Some(default_death_weapon) = ini
-            .section("CombatDamage")
-            .and_then(|section| section.get("DeathWeapon"))
-            .filter(|value| !value.trim().is_empty())
+            .section_or_empty("CombatDamage")
+            .read_name("DeathWeapon", 0x80)
         {
             weapon_ids.insert(default_death_weapon.to_string());
         }
@@ -4036,19 +3624,19 @@ impl RuleSet {
 
         // [General] rocket type/frame slots + [CombatDamage] missile warheads.
         let missile_spawn = crate::rules::missile_spawn::MissileSpawnRules::from_ini_sections(
-            ini.section("General"),
-            ini.section("CombatDamage"),
+            ini.section_or_empty("General"),
+            ini.section_or_empty("CombatDamage"),
         );
 
         // [CombatDamage] C4Delay = minutes (double). Default 0.03 = 27 ticks @ 15 fps.
         // Stored as integer ticks for lockstep-safe per-tick comparison.
         const SIM_TICKS_PER_SECOND: u32 = crate::util::fixed_math::RA2_LOGIC_FRAMES_PER_SECOND;
-        let c4_delay_ticks: u32 = ini
-            .section("CombatDamage")
-            .and_then(|s| s.get("C4Delay"))
-            .and_then(|v| v.trim().parse::<f64>().ok())
-            .map(|minutes| (minutes * 60.0 * SIM_TICKS_PER_SECOND as f64).round() as u32)
-            .unwrap_or(27); // 0.03 × 60 × 15 = 27
+        let c4_delay_ticks: u32 = (ini
+            .section_or_empty("CombatDamage")
+            .read_double("C4Delay", 0.03)
+            * 60.0
+            * SIM_TICKS_PER_SECOND as f64)
+            .round() as u32; // 0.03 × 60 × 15 = 27
 
         // Per-mission behaviour table from the [<MissionName>] sections.
         let mission_control = MissionControl::from_ini(ini);
@@ -5434,7 +5022,8 @@ fn parse_country_side_registry(ini: &IniFile) -> ParsedCountrySideRegistry {
     if let Some(sides) = ini.section("Sides") {
         for side_name in sides.keys() {
             let side = find_or_allocate_side(side_name, &mut side_ids, &mut side_indices);
-            if let Some(members) = sides.get_list(side_name) {
+            // `0x004767C0`: ReadString into `char[128]`, then `strtok(",")`.
+            if let Some(members) = sides.read_list(side_name, 0x80) {
                 for member in members {
                     let country = find_or_allocate_country(
                         member,
@@ -5576,12 +5165,9 @@ fn parse_prerequisite_groups(ini: &IniFile) -> HashMap<String, Vec<String>> {
     ];
 
     for &(ini_key, alias) in PREREQ_KEYS {
-        if let Some(list) = general.get_list(ini_key) {
-            let ids: Vec<String> = list
-                .into_iter()
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_ascii_uppercase())
-                .collect();
+        // `0x004770E0`: ReadString into `char[128]`, then `strtok(",")`.
+        if let Some(list) = general.read_list(ini_key, 0x80) {
+            let ids: Vec<String> = list.into_iter().map(str::to_ascii_uppercase).collect();
             if !ids.is_empty() {
                 groups.insert(alias.to_string(), ids);
             }
@@ -6525,12 +6111,11 @@ MutateWarhead=MyMutate\n\
 
         // Warheads referenced by weapons should be loaded.
         let sa: &WarheadType = rules.warhead("SA").expect("SA exists");
-        assert_eq!(sa.verses.len(), 11);
-        assert_eq!(sa.verses[0], 100); // none: 100%
-        assert_eq!(sa.verses[5], 25); // heavy: 25%
+        assert!((sa.verses_f64[0] - 1.0).abs() < 1e-9); // none: 100%
+        assert!((sa.verses_f64[5] - 0.25).abs() < 1e-9); // heavy: 25%
 
         let ap: &WarheadType = rules.warhead("AP").expect("AP exists");
-        assert_eq!(ap.verses[6], 60); // wood: 60%
+        assert!((ap.verses_f64[6] - 0.6).abs() < 1e-9); // wood: 60%
     }
 
     #[test]
@@ -6565,10 +6150,10 @@ MutateWarhead=MyMutate\n\
         assert!(std::ptr::eq(lower, mixed));
         assert_eq!(lower.id, "RegistryOnlyWH");
         assert_eq!(lower.percent_at_max, 50);
-        assert_eq!(
-            lower.verses,
-            vec![100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0]
-        );
+        let expected = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
+        for (actual, expected) in lower.verses_f64.iter().zip(expected) {
+            assert!((actual - expected).abs() < 1e-9);
+        }
     }
 
     #[test]
@@ -7788,7 +7373,6 @@ DefaultSparkSystem=SparkSys
         let ini = IniFile::from_str("[Foo]\nBar=1\n");
         let g = GeneralRules::from_ini(&ini);
         assert_eq!(g.paradrop_radius, 1024);
-        assert_eq!(g.paradrop_aircraft_type, "PDPLANE");
         assert_eq!(g.amer_paradrop_list, vec![("E1".to_string(), 8)]);
         assert_eq!(g.ally_paradrop_list, vec![("E1".to_string(), 6)]);
         assert_eq!(g.sov_paradrop_list, vec![("E2".to_string(), 9)]);
@@ -8324,24 +7908,6 @@ Projectile=Invisible
         assert_eq!(rules.build_const_types, ["CON"]);
         assert_eq!(rules.build_power_types, ["NEWPOW"]);
         assert_eq!(rules.build_tech_types, ["TECH"]);
-    }
-
-    #[test]
-    fn recalc_difficulty_vectors_match_native_projection_and_atoi() {
-        assert_eq!(
-            parse_native_difficulty_int_vector(" \t1,,  -2junk,,+3,abc,4294967297,-2147483649  \n"),
-            [1, -2, 3, 0, 1, i32::MAX]
-        );
-        assert_eq!(parse_native_difficulty_int_vector("7"), [7]);
-        assert!(parse_native_difficulty_int_vector(" \t\r\n").is_empty());
-
-        let oversized = format!("1,{},7", "0".repeat(509));
-        assert_eq!(oversized.as_bytes()[511], b',');
-        assert_eq!(
-            parse_native_difficulty_int_vector(&oversized),
-            [1, 0],
-            "bytes beyond the char[512] payload cannot add another entry"
-        );
     }
 
     #[test]

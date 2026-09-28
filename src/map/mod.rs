@@ -26,7 +26,6 @@ pub mod scenario_menu;
 pub(crate) mod scenario_sources;
 pub mod skirmish_scenarios;
 pub(crate) mod source;
-pub mod briefing;
 pub mod cell_tags;
 pub mod entities;
 pub mod events;

@@ -22,6 +22,10 @@ use crate::sim::world::edge_cell::{Edge, find_paradrop_edge_cell};
 use crate::sim::world::{PlacementEvidence, SimSoundEvent, Simulation};
 use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
 
+/// The paradrop carrier. gamemd holds the literal (`0x00839708`, resolved at
+/// `0x0065DBAA`, `0x006CD2F9` and `0x006CD542`); no INI key names it.
+const PDPLANE: &str = "PDPLANE";
+
 #[derive(Debug, Clone, Copy)]
 pub enum ParaDropKind {
     /// Type=ParaDrop — side-branched on HouseClass.side_index.
@@ -129,13 +133,12 @@ fn spawn_pdplane(
     num: u32,
 ) -> bool {
     let owner_str = sim.interner.resolve(owner).to_string();
-    let pdplane_type = rules.general.paradrop_aircraft_type.clone();
 
     // Active FUN_0065E660 constructs each carrier before its own edge-helper
     // draw, then Unlimbos that retained identity. Standard list entries must
     // not share one precomputed edge or reverse constructor/RNG ordering.
     let pdplane_id = match sim.construct_object_limbo_at_height(
-        &pdplane_type,
+        PDPLANE,
         &owner_str,
         0,
         0,
@@ -145,10 +148,7 @@ fn spawn_pdplane(
     ) {
         Some(id) => id,
         None => {
-            log::warn!(
-                "Paradrop spawn: failed to construct carrier '{}'",
-                pdplane_type,
-            );
+            log::warn!("Paradrop spawn: failed to construct carrier '{}'", PDPLANE,);
             return false;
         }
     };
@@ -180,7 +180,7 @@ fn spawn_pdplane(
     // override. Resolve the rule itself rather than copying mutable flight
     // controller state (whose target can also represent a dive or landing).
     let flight_level = rules
-        .object(&pdplane_type)
+        .object(PDPLANE)
         .expect("constructed paradrop carrier has a rules type")
         .flight_level(rules.general.flight_level);
     if let Some(entity) = sim.substrate.entities.get_mut(pdplane_id) {
@@ -207,7 +207,7 @@ fn spawn_pdplane(
     // No FASTER stage: the carrier flies, and the fly locomotor never calls the
     // `FootClass::GetCurrentSpeed` slot (`veterancy::locomotor_consults_current_speed`).
     let speed = rules
-        .object(&pdplane_type)
+        .object(PDPLANE)
         .map(|o| ra2_speed_to_leptons_per_second(o.speed.max(1)))
         .unwrap_or(SimFixed::from_num(8));
     sim.issue_air_cell_destination(pdplane_id, (target_rx, target_ry), speed, Some(rules));
@@ -231,7 +231,7 @@ fn spawn_pdplane(
         let _ = sim.discard_constructed_limbo(pdplane_id);
         log::warn!(
             "Paradrop spawn: carrier '{}' rejected edge ({},{})",
-            pdplane_type,
+            PDPLANE,
             edge_cell.0,
             edge_cell.1,
         );
@@ -289,7 +289,7 @@ fn spawn_pdplane(
 
     log::info!(
         "Paradrop: spawned '{}' for '{}' carrying {} '{}' at edge ({},{}) → target ({},{})",
-        pdplane_type,
+        PDPLANE,
         owner_str,
         loaded,
         inf_type,

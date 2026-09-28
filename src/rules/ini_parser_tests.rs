@@ -105,71 +105,6 @@ fn test_inline_comments() {
 }
 
 #[test]
-fn test_get_i32() {
-    let ini: IniFile =
-        IniFile::from_str("[Stats]\nCost=1000\nDamage=-50\nName=tank\nBadHex=$junk\n");
-
-    let section: &IniSection = ini.section("Stats").unwrap();
-    assert_eq!(section.get_i32("Cost"), Some(1000));
-    assert_eq!(section.get_i32("Damage"), Some(-50));
-    assert_eq!(section.get_i32("Name"), Some(0)); // C atoi prefix: no digits -> 0
-    assert_eq!(section.get_i32("BadHex"), None); // `%x` converted nothing
-    assert_eq!(section.get_i32("Missing"), None); // Key doesn't exist
-}
-
-#[test]
-fn test_get_f32() {
-    let ini: IniFile = IniFile::from_str("[Stats]\nSpeed=5.5\nROF=0.1\n");
-
-    let section: &IniSection = ini.section("Stats").unwrap();
-    let speed: f32 = section.get_f32("Speed").unwrap();
-    assert!((speed - 5.5).abs() < f32::EPSILON);
-    let rof: f32 = section.get_f32("ROF").unwrap();
-    assert!((rof - 0.1).abs() < 0.001);
-}
-
-#[test]
-fn test_get_light_f32_stops_before_comma() {
-    let ini: IniFile =
-        IniFile::from_str("[Light]\nGood=0.25\nCommaDecimal=0,01\nSigned=-0.5\nBad=abc\n");
-
-    let section: &IniSection = ini.section("Light").unwrap();
-    assert!((section.get_light_f32("Good").unwrap() - 0.25).abs() < 0.001);
-    assert_eq!(section.get_light_f32("CommaDecimal"), Some(0.0));
-    assert!((section.get_light_f32("Signed").unwrap() + 0.5).abs() < 0.001);
-    assert_eq!(section.get_light_f32("Bad"), Some(0.0));
-    assert_eq!(section.get_light_f32("Missing"), None);
-}
-
-#[test]
-fn test_get_bool() {
-    let ini: IniFile = IniFile::from_str(
-        "[Flags]\nDoubleOwned=yes\nCloakable=no\nActive=true\nDebug=false\nBit=1\nOff=0\n",
-    );
-
-    let section: &IniSection = ini.section("Flags").unwrap();
-    assert_eq!(section.get_bool("DoubleOwned"), Some(true));
-    assert_eq!(section.get_bool("Cloakable"), Some(false));
-    assert_eq!(section.get_bool("Active"), Some(true));
-    assert_eq!(section.get_bool("Debug"), Some(false));
-    assert_eq!(section.get_bool("Bit"), Some(true));
-    assert_eq!(section.get_bool("Off"), Some(false));
-}
-
-#[test]
-fn test_get_list() {
-    let ini: IniFile = IniFile::from_str("[Build]\nPrereq=GAWEAP,RADAR,TECH\nEmpty=\n");
-
-    let section: &IniSection = ini.section("Build").unwrap();
-
-    let prereq: Vec<&str> = section.get_list("Prereq").unwrap();
-    assert_eq!(prereq, vec!["GAWEAP", "RADAR", "TECH"]);
-
-    assert!(section.get_list("Empty").is_none());
-    assert!(section.get_list("Missing").is_none());
-}
-
-#[test]
 fn duplicate_nonempty_section_bodies_are_retained_in_source_order() {
     let text: &str = "\
 [General]
@@ -291,24 +226,6 @@ fn test_whitespace_handling() {
 
     let section: &IniSection = ini.section("Test").unwrap();
     assert_eq!(section.get("Key"), Some("Value"));
-}
-
-#[test]
-fn test_get_percent() {
-    let ini: IniFile = IniFile::from_str(
-        "[AudioVisual]\nConditionRed=25%\nConditionYellow=50%\nBare=0.75\nBad=abc\n",
-    );
-    let section: &IniSection = ini.section("AudioVisual").unwrap();
-    let red: f32 = section.get_percent("ConditionRed").unwrap();
-    assert!((red - 0.25).abs() < f32::EPSILON);
-    let yellow: f32 = section.get_percent("ConditionYellow").unwrap();
-    assert!((yellow - 0.50).abs() < f32::EPSILON);
-    // Bare float without % suffix works too.
-    let bare: f32 = section.get_percent("Bare").unwrap();
-    assert!((bare - 0.75).abs() < f32::EPSILON);
-    // Non-numeric returns None.
-    assert_eq!(section.get_percent("Bad"), Some(0.0));
-    assert!(section.get_percent("Missing").is_none());
 }
 
 /// `content_hash` is deterministic and sensitive to every value — a scalar

@@ -18,6 +18,11 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
+use crate::rules::ini_value::truncate_native_bytes;
+
+/// `SuperWeaponTypeClass` constructor recharge, `0x1194` frames (5 minutes)
+/// at `0x006CE5E9`.
+const CTOR_RECHARGE_FRAMES: i32 = 4500;
 
 /// Maps the INI `Type=` string to an enum for launch dispatch.
 ///
@@ -125,33 +130,57 @@ pub struct SuperWeaponType {
 }
 
 impl SuperWeaponType {
-    /// Parse a SuperWeaponType from a rules.ini section.
+    /// Parse a SuperWeaponType from a rules.ini section
+    /// (`SuperWeaponTypeClass::ReadINI`, reads `0x006CEA6D`-`0x006CEDB1`).
     pub fn from_ini_section(id: &str, section: &IniSection) -> Option<Self> {
-        let kind_str = section.get("Type")?;
-        let kind = SuperWeaponKind::from_ini_str(kind_str)?;
-        let recharge_minutes = section.get_f32("RechargeTime").unwrap_or(5.0);
+        // ReadString 0x28 ahead of the kind lookup (`0x006CEC2D`).
+        let kind = SuperWeaponKind::from_ini_str(section.read_name("Type", 0x28)?)?;
         Some(Self {
             id: id.to_string(),
-            ui_name: section.get("UIName").map(|s| s.to_string()),
+            // AbstractTypeClass `UIName=`, ReadString 0x20 (`0x00410AFB`).
+            ui_name: section.read_name("UIName", 0x20).map(str::to_string),
             kind,
-            recharge_time_frames: (recharge_minutes * 900.0) as i32,
-            is_powered: section.get_bool("IsPowered").unwrap_or(true),
-            action: section.get("Action").map(|s| s.to_string()),
-            sidebar_image: section.get("SidebarImage").map(|s| s.to_string()),
-            show_timer: section.get_bool("ShowTimer").unwrap_or(false),
-            disableable_from_shell: section.get_bool("DisableableFromShell").unwrap_or(false),
-            use_charge_drain: section.get_bool("UseChargeDrain").unwrap_or(false),
-            pre_click: section.get_bool("PreClick").unwrap_or(false),
-            post_click: section.get_bool("PostClick").unwrap_or(false),
-            pre_dependent: section.get("PreDependent").map(|s| s.to_string()),
-            range: section.get_f32("Range").unwrap_or(0.0),
-            weapon_type: section.get("WeaponType").map(|s| s.to_string()),
-            aux_building: section.get("AuxBuilding").map(|s| s.to_string()),
-            special_sound: section.get("SpecialSound").map(|s| s.to_string()),
-            start_sound: section.get("StartSound").map(|s| s.to_string()),
-            flash_sidebar_tab_frames: section.get_i32("FlashSidebarTabFrames").unwrap_or(0),
-            manual_control: section.get_bool("ManualControl").unwrap_or(false),
-            line_multiplier: section.get_i32("LineMultiplier").unwrap_or(0),
+            // `0x006CED6E` ReadDouble(0.0): zero keeps the field, anything
+            // else stores `ftol(minutes * 900.0)` (`0x006CED80`). An `f32`
+            // minute count times 900 is exact in `f64`, so the cast chops
+            // the same product.
+            recharge_time_frames: section.read_double_with(
+                "RechargeTime",
+                CTOR_RECHARGE_FRAMES,
+                |frames, minutes| {
+                    if minutes == 0.0 {
+                        frames
+                    } else {
+                        (minutes * 900.0) as i32
+                    }
+                },
+            ),
+            is_powered: section.read_bool("IsPowered", true),
+            // ReadAction's 0x20-byte ReadString (`0x00474EE0`).
+            action: section.read_name("Action", 0x20).map(str::to_string),
+            // ReadString 0x100, then a 24-byte copy (`0x006CEDB1`,
+            // `0x006CEDD6`) that names the cameo.
+            sidebar_image: section
+                .read_name("SidebarImage", 0x100)
+                .map(|name| truncate_native_bytes(name, 0x18).to_string()),
+            show_timer: section.read_bool("ShowTimer", false),
+            disableable_from_shell: section.read_bool("DisableableFromShell", false),
+            use_charge_drain: section.read_bool("UseChargeDrain", false),
+            pre_click: section.read_bool("PreClick", false),
+            post_click: section.read_bool("PostClick", false),
+            // ReadString 0x28 (`0x006CEC98`).
+            pre_dependent: section.read_name("PreDependent", 0x28).map(str::to_string),
+            // ReadDouble -> `FSTP dword [EBP+0xF8]` (`0x006CEBF4`).
+            range: section.read_float("Range", 0.0),
+            // ReadString 0x80 at `0x006CEA6D`, `0x006CED0F`, `0x006CEB7C`,
+            // `0x006CEBBE`.
+            weapon_type: section.read_name("WeaponType", 0x80).map(str::to_string),
+            aux_building: section.read_name("AuxBuilding", 0x80).map(str::to_string),
+            special_sound: section.read_name("SpecialSound", 0x80).map(str::to_string),
+            start_sound: section.read_name("StartSound", 0x80).map(str::to_string),
+            flash_sidebar_tab_frames: section.read_int("FlashSidebarTabFrames", 0),
+            manual_control: section.read_bool("ManualControl", false),
+            line_multiplier: section.read_int("LineMultiplier", 0),
         })
     }
 }

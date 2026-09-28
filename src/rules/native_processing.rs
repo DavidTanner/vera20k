@@ -7,7 +7,7 @@
 
 use crate::rules::crate_rules::{CrateRules, CrateRulesAccumulator};
 use crate::rules::error::RulesError;
-use crate::rules::ini_parser::{IniFile, IniSection};
+use crate::rules::ini_parser::{IniFile, IniSection, is_native_none_type_name};
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use crate::rules::projectile_type::ProjectileArtState;
 use crate::rules::ruleset::{GeneralBuildingTypes, PrismSupportRules};
@@ -915,7 +915,7 @@ impl RulesPassProcessor {
         // boundary. List tokens deliberately arrive untrimmed. The factory
         // must therefore inspect the exact incoming string, not trim again.
         if incoming.is_empty()
-            || (family != RulesTypeFamily::Side && is_exact_native_none_type_name(incoming))
+            || (family != RulesTypeFamily::Side && is_native_none_type_name(incoming))
         {
             return None;
         }
@@ -997,12 +997,8 @@ impl RulesPassProcessor {
         family: RulesTypeFamily,
         capacity: usize,
     ) -> Option<Vec<String>> {
-        let incoming = section.read_string(key, "", capacity);
-        if incoming.is_empty() {
-            return None;
-        }
         let mut resolved = Vec::new();
-        for token in native_strtok_comma_tokens(&incoming) {
+        for token in section.read_list(key, capacity)? {
             if let Some(index) = self.find_or_allocate(family, token) {
                 resolved.push(self.families[&family][index].native_stored_id.clone());
             }
@@ -1012,7 +1008,7 @@ impl RulesPassProcessor {
 
     fn lookup_existing(&self, family: RulesTypeFamily, incoming: &str) -> Option<String> {
         if incoming.is_empty()
-            || (family != RulesTypeFamily::Side && is_exact_native_none_type_name(incoming))
+            || (family != RulesTypeFamily::Side && is_native_none_type_name(incoming))
         {
             return None;
         }
@@ -1254,8 +1250,10 @@ impl RulesPassProcessor {
             if general.get(key).is_none() {
                 continue;
             }
-            let raw = general.read_string(key, "", 0x80);
-            let resolved = native_strtok_comma_tokens(&raw)
+            let resolved = general
+                .read_list(key, 0x80)
+                .unwrap_or_default()
+                .into_iter()
                 .filter_map(|identity| self.lookup_existing(RulesTypeFamily::Building, identity))
                 .collect();
             self.prerequisite_groups.insert(key, resolved);
@@ -1839,7 +1837,7 @@ impl RulesPassProcessor {
         };
 
         for key in registry.keys() {
-            let slot = crate::rules::ini_value::atoi_lenient(key);
+            let slot = crate::rules::ini_value::crt_atoi(key);
             let identity = registry.read_string(key, "", 0x18);
             if identity.is_empty() {
                 continue;
@@ -1976,17 +1974,6 @@ impl RulesPassProcessor {
             self.general_anim_lists,
         )
     }
-}
-
-/// Native `strtok(buffer, ",")` tokenization used by Type-reference vectors.
-/// Whole-string trimming and caller truncation have already happened in
-/// `ReadString`; empty fields collapse and individual tokens remain untrimmed.
-fn native_strtok_comma_tokens(value: &str) -> impl Iterator<Item = &str> {
-    value.split(',').filter(|token| !token.is_empty())
-}
-
-fn is_exact_native_none_type_name(value: &str) -> bool {
-    value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("<none>")
 }
 
 #[cfg(test)]

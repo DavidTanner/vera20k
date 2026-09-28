@@ -2966,7 +2966,7 @@ mod tests {
         // Synthetic fixtures use unchecked snapshots and often bypass the
         // monotonic allocators. Rebuild their substrate caches directly; the
         // production path uses `restore_after_snapshot_load`.
-        sim.substrate.entities.rebuild_owner_index();
+        sim.substrate.entities.rebuild_infantry_registry();
         sim.rebuild_logic_membership();
         sim.substrate
             .occupancy

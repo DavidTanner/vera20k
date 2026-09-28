@@ -222,6 +222,8 @@ fn join_house_list(sim: &mut Simulation, sid: u64, owner: InternedId) {
         .entry(owner)
         .or_insert_with(|| HouseState::new(owner, 0, None, true, 0, 10));
     sim.append_house_base_building_for_test(sid);
+    // The class constructor's `Add_Tracking`, which a direct insert skips.
+    sim.update_house_tracking(sid, crate::sim::house_tracking::HouseTracking::add_tracking);
 }
 
 fn spawn_structure(sim: &mut Simulation, sid: u64, type_id: &str, rx: u16, ry: u16) {
@@ -288,6 +290,14 @@ fn spawn_inert_dock_instance(sim: &mut Simulation) {
     );
     ge.lifecycle.in_limbo = false;
     sim.substrate.entities.insert(ge);
+    sim.houses
+        .entry(owner_id)
+        .or_insert_with(|| HouseState::new(owner_id, 0, None, true, 0, 10));
+    // The class constructor's `Add_Tracking`, which a direct insert skips.
+    sim.update_house_tracking(
+        INERT_DOCK_ID,
+        crate::sim::house_tracking::HouseTracking::add_tracking,
+    );
     if sim.substrate.next_stable_object_id <= INERT_DOCK_ID {
         sim.substrate.next_stable_object_id = INERT_DOCK_ID + 1;
     }

@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use crate::rules::ini_parser::IniFile;
-use crate::rules::ini_value::scan_decimal_i32;
+use crate::rules::ini_value::{crt_atoi, strtok, truncate_native_bytes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TriggerDifficulty {
@@ -61,17 +61,11 @@ pub fn parse_triggers(ini: &IniFile) -> TriggerMap {
 }
 
 fn parse_record(id: String, value: &str) -> MapTrigger {
-    let fields: Vec<String> = value
-        .split(',')
-        .map(|part| part.trim().to_string())
-        .collect();
     // Original strtok skips empty tokens, but a whitespace-only token still
-    // consumes a slot. Keep diagnostic fields separate from semantic tokens.
-    let tokens: Vec<&str> = value.split(',').filter(|part| !part.is_empty()).collect();
-    let mut flags = tokens.iter().skip(3).map(|token| {
-        // Original atoi7C9BFD: decimal prefix, CRT whitespace, wrapping i32.
-        scan_decimal_i32(&mut token.as_bytes()).unwrap_or(0)
-    });
+    // consumes a slot.
+    let tokens: Vec<&str> = strtok(value, &[',']).collect();
+    // Original atoi7C9BFD: decimal prefix, CRT whitespace, wrapping i32.
+    let mut flags = tokens.iter().skip(3).map(|token| crt_atoi(token));
     // ReadINI7273B9..727475: token4 is DISABLED; difficulty tokens5..7
     // accept any nonzero atoi value. A missing token writes false, including
     // enabled+9F. Native executable comparisons: trigger_type_flags.json.
@@ -88,19 +82,22 @@ fn parse_record(id: String, value: &str) -> MapTrigger {
         name: parse_name(&tokens),
         enabled,
         difficulty,
-        repeating: parse_repeat_mode(&fields),
-        fields,
+        repeating: parse_repeat_mode(&tokens),
+        fields: tokens.iter().map(|token| token.to_string()).collect(),
     }
 }
 
+// TriggerTypeClass::Read_INI uses each `strtok` token as it stands: the owner
+// through `HouseTypeClass::FindIndex` (`0x007272B0`), the link unless it is
+// `<none>` or `none` (`0x007272E4`, `0x0072730C`), the name cut to 48 bytes
+// (`0x00727395`).
 fn parse_owner(fields: &[&str]) -> Option<String> {
-    let owner = fields.first()?.trim();
-    (!owner.is_empty()).then(|| owner.to_string())
+    fields.first().map(|owner| owner.to_string())
 }
 
 fn parse_linked_trigger(fields: &[&str]) -> Option<String> {
-    let value = fields.get(1)?.trim();
-    if value.is_empty() || value.eq_ignore_ascii_case("<none>") {
+    let value = fields.get(1)?;
+    if value.eq_ignore_ascii_case("<none>") || value.eq_ignore_ascii_case("none") {
         None
     } else {
         Some(value.to_ascii_uppercase())
@@ -108,15 +105,15 @@ fn parse_linked_trigger(fields: &[&str]) -> Option<String> {
 }
 
 fn parse_name(fields: &[&str]) -> Option<String> {
-    let name = fields.get(2)?.trim();
-    (!name.is_empty()).then(|| name.to_string())
+    fields
+        .get(2)
+        .map(|name| truncate_native_bytes(name, 0x30).to_string())
 }
 
-fn parse_repeat_mode(fields: &[String]) -> bool {
-    fields
-        .get(7)
-        .map(|value| value.trim() == "2")
-        .unwrap_or(false)
+/// Token 8 through `atoi` (`0x00727488`); native keeps `atoi != 0` at
+/// TriggerType+0xA0, and VERA's legacy flag reads 2 as repeating.
+fn parse_repeat_mode(fields: &[&str]) -> bool {
+    fields.get(7).is_some_and(|value| crt_atoi(value) == 2)
 }
 
 #[cfg(test)]
@@ -174,6 +171,21 @@ mod tests {
                 .map(|trigger| trigger.linked_trigger_id.as_deref()),
             Some(None)
         );
+    }
+
+    #[test]
+    fn reference_tokens_keep_their_spaces_and_none_spellings_unlink() {
+        let name = "N".repeat(60);
+        let trigger = parse_record(
+            "T".to_string(),
+            &format!(" Neutral,none,{name} ,0,1,1,1,02"),
+        );
+        assert_eq!(trigger.owner.as_deref(), Some(" Neutral"));
+        assert_eq!(trigger.linked_trigger_id, None);
+        assert_eq!(trigger.name.as_deref(), Some(&name[..0x30]));
+        assert!(trigger.repeating);
+        let linked = parse_record("T".to_string(), "Neutral, next,x");
+        assert_eq!(linked.linked_trigger_id.as_deref(), Some(" NEXT"));
     }
 
     #[test]

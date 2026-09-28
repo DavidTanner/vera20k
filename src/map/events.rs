@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::rules::ini_parser::IniFile;
-use crate::rules::ini_value::scan_decimal_i32;
+use crate::rules::ini_value::{crt_atoi, strtok};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EventCondition {
@@ -45,10 +45,7 @@ pub fn parse_events(ini: &IniFile) -> EventMap {
             continue;
         }
         let id = id.to_ascii_uppercase();
-        let fields: Vec<String> = raw_value
-            .split(',')
-            .map(|part| part.trim().to_string())
-            .collect();
+        let fields: Vec<String> = strtok(&raw_value, &[',']).map(str::to_string).collect();
         let conditions = parse_event_conditions(&raw_value);
         events.insert(
             id.clone(),
@@ -70,8 +67,8 @@ pub fn parse_events(ini: &IniFile) -> EventMap {
 /// TEvent Read71F4E0 consumes kind/parameter-type/value and, only for type2,
 /// one additional type-name token. Empty comma fields are skipped by strtok.
 fn parse_event_conditions(raw: &str) -> Vec<EventCondition> {
-    let number = |text: &str| scan_decimal_i32(&mut text.as_bytes()).unwrap_or(0);
-    let mut tokens = raw.split(',').filter(|part| !part.is_empty());
+    let number = crt_atoi;
+    let mut tokens = strtok(raw, &[',']);
     let count = tokens.next().map(number).unwrap_or(0);
     let mut conditions = Vec::new();
     for _ in 0..count {
@@ -90,7 +87,7 @@ fn parse_event_conditions(raw: &str) -> Vec<EventCondition> {
             1 => condition.team_name = Some(parameter.to_string()),
             2 => {
                 condition.value = number(parameter);
-                if let Some(name) = tokens.next().filter(|name| !name.is_empty()) {
+                if let Some(name) = tokens.next() {
                     let bytes = name.as_bytes();
                     condition.type_name =
                         Some(String::from_utf8_lossy(&bytes[..bytes.len().min(24)]).into_owned());

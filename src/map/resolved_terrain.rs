@@ -6328,7 +6328,6 @@ mod tests {
                 local_height: 4,
             },
             basic: crate::map::basic::BasicSection::default(),
-            briefing: crate::map::briefing::BriefingSection::default(),
             preview: crate::map::preview::PreviewSection::default(),
             cells,
             iso_map_pack_lookups: Vec::new(),

@@ -68,45 +68,44 @@ impl TerrainObjectType {
         section: &IniSection,
         tree_strength: i32,
     ) -> Self {
-        let probability_f = section
-            .get("AnimationProbability")
-            .and_then(|s| s.trim().parse::<f32>().ok())
-            .unwrap_or(0.0);
+        // ReadDouble -> `FSTP dword [ESI+0x2A4]` (`0x0071E073`) over the
+        // constructor's zero (`0x0071DACD`).
+        let probability_f = section.read_float("AnimationProbability", 0.0);
         let animation_probability_micros: u32 =
             (probability_f.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
-        let is_veinhole = section.get_bool("IsVeinhole").unwrap_or(false);
+        let is_veinhole = section.read_bool("IsVeinhole", false);
         // Terrain ctor71DBAC initializes Strength=-1. ObjectType5F94D3 reads
         // with that current default; Terrain71DEC8..71DEDC substitutes
         // Rules+1144 when the stored result is exactly -1, including an
         // authored -1. Original execution: tools/spatial_oracle/terrain_strength.
-        let strength = section.get_i32("Strength").unwrap_or(-1);
+        let strength = section.read_int("Strength", -1);
 
         Self {
             name: name.to_string(),
-            spawns_tiberium: section.get_bool("SpawnsTiberium").unwrap_or(false),
-            is_animated: section.get_bool("IsAnimated").unwrap_or(false),
-            animation_rate: section.get_i32("AnimationRate").unwrap_or(0).clamp(0, 255) as u8,
+            spawns_tiberium: section.read_bool("SpawnsTiberium", false),
+            is_animated: section.read_bool("IsAnimated", false),
+            animation_rate: section.read_int("AnimationRate", 0).clamp(0, 255) as u8,
             animation_probability_micros,
-            armor: section.get("Armor").unwrap_or("wood").to_ascii_lowercase(),
+            // ObjectType `Armor=` (`0x005F94C8`): ReadString 0x80 ahead of the
+            // armor-name lookup, over the constructor's Wood (`0x0071DBB6`).
+            armor: section
+                .read_name("Armor", 0x80)
+                .unwrap_or("wood")
+                .to_ascii_lowercase(),
             strength: if strength == -1 {
                 tree_strength
             } else {
                 strength
             },
-            immune: section.get_bool("Immune").unwrap_or(false),
-            legal_target: section.get_bool("LegalTarget").unwrap_or(false) || is_veinhole,
-            insignificant: section.get_bool("Insignificant").unwrap_or(true),
-            radar_invisible: section.get_bool("RadarInvisible").unwrap_or(true),
-            water_bound: section.get_bool("WaterBound").unwrap_or(false),
+            immune: section.read_bool("Immune", false),
+            legal_target: section.read_bool("LegalTarget", false) || is_veinhole,
+            insignificant: section.read_bool("Insignificant", true),
+            radar_invisible: section.read_bool("RadarInvisible", true),
+            water_bound: section.read_bool("WaterBound", false),
             is_veinhole,
-            temperate_occupation_bits: section
-                .get_i32("TemperateOccupationBits")
-                .unwrap_or(7)
-                .clamp(0, 7) as u8,
-            snow_occupation_bits: section
-                .get_i32("SnowOccupationBits")
-                .unwrap_or(7)
-                .clamp(0, 7) as u8,
+            temperate_occupation_bits: section.read_int("TemperateOccupationBits", 7).clamp(0, 7)
+                as u8,
+            snow_occupation_bits: section.read_int("SnowOccupationBits", 7).clamp(0, 7) as u8,
             foundation: foundation::foundation_name("1x1").to_string(),
         }
     }
@@ -243,8 +242,7 @@ mod tests {
         let general = retail
             .section("General")
             .unwrap()
-            .get_i32("TreeStrength")
-            .unwrap();
+            .read_int("TreeStrength", 0);
         let raw = retail.section("TREE01").unwrap().get("Strength");
         let row = corpus["cases"]
             .as_array()

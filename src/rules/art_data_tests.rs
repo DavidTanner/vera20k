@@ -761,12 +761,20 @@ fn test_sequence_frames_partial_some_missing() {
 }
 
 #[test]
-fn test_parse_sequence_frames_helper() {
-    assert_eq!(parse_sequence_frames("300,15,0"), Some(15));
-    assert_eq!(parse_sequence_frames(" 8 , 6 , 6 "), Some(6));
-    assert_eq!(parse_sequence_frames("only-one"), None);
-    assert_eq!(parse_sequence_frames("a,b,c"), None);
-    assert_eq!(parse_sequence_frames(""), None);
+fn test_sequence_frames_follow_the_native_sequence_scan() {
+    // 0x00523D00 scans `%d,%d,%d,%s` over the constructor's zero record; a
+    // literal comma skips no whitespace, so `8 , 6` stops after one field.
+    let deploy_frames = |value: &str| {
+        let ini = IniFile::from_str(&format!("[E1]\nSequence=S\n[S]\nDeploy={value}\n"));
+        ArtRegistry::from_ini(&ini)
+            .get("E1")
+            .expect("E1 entry")
+            .deploy_frames
+    };
+    assert_eq!(deploy_frames("300,15,0"), Some(15));
+    assert_eq!(deploy_frames(" 8 , 6 , 6 "), Some(0));
+    assert_eq!(deploy_frames("only-one"), Some(0));
+    assert_eq!(deploy_frames("a,b,c"), Some(0));
 }
 
 #[test]

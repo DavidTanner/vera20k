@@ -31,21 +31,20 @@
 //!
 //! ## Recorded DRIFTs
 //!
-//! Two native behaviours this module does not reproduce, both harmless on stock
-//! data and both written out where the field lives: the 208-lepton hover floor
-//! the Jumpjet locomotor applies to [`JumpjetParams::height`], and the integer
-//! reader type of [`JumpjetParams::speed`].
+//! One native behaviour this module does not reproduce, harmless on stock data
+//! and written out where the field lives: the 208-lepton hover floor the
+//! Jumpjet locomotor applies to [`JumpjetParams::height`].
 //!
 //! ## Dependency rules
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
-use crate::util::fixed_math::{SimFixed, sim_from_f32};
+use crate::util::fixed_math::SimFixed;
 
 /// `TechnoTypeClass::Constructor` seed for `+0xD70` (`0x007115AE`).
 const CTOR_TURN_RATE: i32 = 4;
 /// `TechnoTypeClass::Constructor` seed for `+0xD74` (`0x007115B8`, `0xE`).
-const CTOR_SPEED: f32 = 14.0;
+const CTOR_SPEED: i32 = 14;
 /// `TechnoTypeClass::Constructor` seed for `+0xD78` (`0x007115C7`,
 /// `0x40A00000`). `+0xD7C` takes the same register on the next instruction.
 const CTOR_CLIMB: f32 = 5.0;
@@ -79,11 +78,8 @@ pub struct JumpjetParams {
     /// Flight speed (`JumpjetSpeed=`, `+0xD74`). An absolute air speed, not a
     /// multiplier on `Speed=`: stock `[JUMPJET]` pairs `Speed=9` with
     /// `JumpjetSpeed=30`, and the constructor seeds 14 — the same value stock
-    /// `[JumpjetControls] Speed=` carries.
-    ///
-    /// This is the one field whose Rust type does not match its native one —
-    /// `+0xD74` is an `int`. See the residual at the read site in
-    /// [`JumpjetParams::from_ini_section`].
+    /// `[JumpjetControls] Speed=` carries. Native `+0xD74` is an `int`, read
+    /// by `ReadInt`; VERA holds that integer as `SimFixed`.
     pub speed: SimFixed,
     /// Climb/ascent rate per tick (`JumpjetClimb=`, `+0xD78`).
     pub climb: f32,
@@ -136,7 +132,7 @@ impl Default for JumpjetParams {
     fn default() -> Self {
         Self {
             turn_rate: CTOR_TURN_RATE,
-            speed: sim_from_f32(CTOR_SPEED),
+            speed: SimFixed::from_num(CTOR_SPEED),
             climb: CTOR_CLIMB,
             crash: CTOR_CRASH,
             height: CTOR_HEIGHT,
@@ -160,46 +156,25 @@ impl JumpjetParams {
             // `0x007150AF PUSH 0x8436D0` -> `0x007150C3 MOV [EBP+0xD70],EAX`.
             // Stock spells this `JumpJetTurnRate=`, which gamemd cannot see, so
             // all eight stock jumpjet sections keep the constructor's 4.
-            turn_rate: section.get_i32("JumpjetTurnRate").unwrap_or(ctor.turn_rate),
-            // `0x007150D0 PUSH 0x8436C0` -> `0x007150E4 MOV [EBP+0xD74],EAX`.
-            //
-            // RESIDUAL — DRIFT, pre-existing and not fixed here. The native
-            // reader is `CCINIClass::ReadInt @ 0x005276D0` into the *integer*
-            // field `+0xD74`, which `0x0054AD5C` copies out as a plain int;
-            // VERA reads a double and keeps the fraction in `SimFixed`. Every
-            // other key in this block matches its native reader type (ints via
-            // `get_i32`, `ReadDouble` keys via `get_f32`, the flag via
-            // `get_bool`) — this one does not. Trigger: a section authoring a
-            // fractional `JumpjetSpeed=`, e.g. 16.5, where the native integer
-            // read yields 16 and VERA keeps 16.5 — that unit cruises ~3% fast
-            // for the life of the mod. Frequency: **zero on stock** — all eight
-            // jumpjet sections author integers (5, 16, 30x5, 40) and the
-            // constructor seeds 14. Downstream risk: low; only a mod or map INI
-            // reaches it. The fix is `get_i32` here; left recorded rather than
-            // changed to keep this slice documentation-only.
-            speed: section
-                .get_f32("JumpjetSpeed")
-                .map(sim_from_f32)
-                .unwrap_or(ctor.speed),
+            turn_rate: section.read_int("JumpjetTurnRate", ctor.turn_rate),
+            // `0x007150D0 PUSH 0x8436C0` -> `0x007150E4 MOV [EBP+0xD74],EAX`:
+            // ReadInt, so a fractional `JumpjetSpeed=16.5` reads as 16.
+            speed: SimFixed::from_num(section.read_int("JumpjetSpeed", CTOR_SPEED)),
             // `0x007150F8 PUSH 0x8436B0` -> `0x0071510A FSTP [EBP+0xD78]`.
-            climb: section.get_f32("JumpjetClimb").unwrap_or(ctor.climb),
+            climb: section.read_float("JumpjetClimb", ctor.climb),
             // `0x0071511E PUSH 0x8436A0` -> `0x00715130 FSTP [EBP+0xD7C]`.
-            crash: section.get_f32("JumpjetCrash").unwrap_or(ctor.crash),
+            crash: section.read_float("JumpjetCrash", ctor.crash),
             // `0x0071513F PUSH 0x843690` -> `0x00715151 MOV [EBP+0xD80],EAX`.
-            height: section.get_i32("JumpjetHeight").unwrap_or(ctor.height),
+            height: section.read_int("JumpjetHeight", ctor.height),
             // `0x00715165 PUSH 0x843680` -> `0x00715177 FSTP [EBP+0xD84]`.
             // Stock spells this `JumpJetAccel=`; same story as the turn rate.
-            accel: section.get_f32("JumpjetAccel").unwrap_or(ctor.accel),
+            accel: section.read_float("JumpjetAccel", ctor.accel),
             // `0x0071518B PUSH 0x843670` -> `0x0071519D FSTP [EBP+0xD88]`.
-            wobbles: section.get_f32("JumpjetWobbles").unwrap_or(ctor.wobbles),
+            wobbles: section.read_float("JumpjetWobbles", ctor.wobbles),
             // `0x007151CB PUSH 0x843648` -> `0x007151DF MOV [EBP+0xD90],EAX`.
-            deviation: section
-                .get_i32("JumpjetDeviation")
-                .unwrap_or(ctor.deviation),
+            deviation: section.read_int("JumpjetDeviation", ctor.deviation),
             // `0x007151AC PUSH 0x84365C` -> `0x007151BE MOV [EBP+0xD8C],AL`.
-            no_wobbles: section
-                .get_bool("JumpjetNoWobbles")
-                .unwrap_or(ctor.no_wobbles),
+            no_wobbles: section.read_bool("JumpjetNoWobbles", ctor.no_wobbles),
         }
     }
 }
@@ -216,7 +191,7 @@ mod tests {
         let params = JumpjetParams::from_ini_section(section);
 
         assert_eq!(params.turn_rate, 4);
-        assert_eq!(params.speed, sim_from_f32(14.0));
+        assert_eq!(params.speed, SimFixed::from_num(14));
         assert_eq!(params.climb, 5.0);
         assert_eq!(params.crash, 5.0);
         assert_eq!(params.height, 500);
@@ -229,7 +204,7 @@ mod tests {
     #[test]
     fn test_parse_jumpjet_custom_values() {
         let ini = IniFile::from_str(
-            "[JUMPJET]\nJumpjetTurnRate=8\nJumpjetSpeed=20.0\n\
+            "[JUMPJET]\nJumpjetTurnRate=8\nJumpjetSpeed=20.5\n\
              JumpjetClimb=3.0\nJumpjetCrash=10.0\nJumpjetHeight=750\n\
              JumpjetAccel=4.0\nJumpjetWobbles=0.0\nJumpjetDeviation=0\n\
              JumpjetNoWobbles=yes\n",
@@ -238,7 +213,8 @@ mod tests {
         let params = JumpjetParams::from_ini_section(section);
 
         assert_eq!(params.turn_rate, 8);
-        assert_eq!(params.speed, sim_from_f32(20.0));
+        // ReadInt: the fraction is dropped.
+        assert_eq!(params.speed, SimFixed::from_num(20));
         assert_eq!(params.climb, 3.0);
         assert_eq!(params.crash, 10.0);
         assert_eq!(params.height, 750);

@@ -79,16 +79,17 @@ pub fn list_saved_seeds(dir: &Path) -> Vec<SavedSeed> {
                 return None;
             }
             let ini = crate::rules::ini_parser::IniFile::from_bytes(&bytes).ok();
-            let raw = ini
+            let section = ini
                 .as_ref()
-                .and_then(|ini| ini.section("RandomMap"))
-                .and_then(|section| section.get("Description"));
+                .map_or(crate::rules::ini_parser::IniSection::empty(), |ini| {
+                    ini.section_or_empty("RandomMap")
+                });
             Some(SavedSeed {
                 // Read using the full enumeration name; actions use the bounded
                 // copy at 0x00597E96, even if the boundary splits an ANSI character.
                 file_name: name.truncated(32),
                 description: super::description::read_description(
-                    raw,
+                    section,
                     &super::SeedDescription::default(),
                 ),
                 last_write_time: time,
