@@ -134,9 +134,7 @@
 //! ## Dependency rules
 //! - Part of sim/; sim/ never depends on render/, ui/, sidebar/, audio/, net/.
 
-use super::target_scan::{
-    can_fire_at, fire_error_with_overlay, select_weapon, weapon_at_index_for,
-};
+use super::target_scan::{can_fire_at, fire_error_with_overlay, select_weapon, weapon_at_index};
 use super::{ObjectAiCtx, mission_handlers_run};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
@@ -804,13 +802,8 @@ fn support_multiplier(modifier: i32, count: i32) -> i32 {
 /// whose projectile is not `AA=` (BulletType `+0x2A4`). BuildingClass::SetTarget
 /// admits every target when it has not (`0x00443BC0..0x00443BED`), and
 /// ReceiveDamage's retaliation block stops (`0x004429B4..0x004429E5`).
-pub(super) fn building_weapon0_aims(
-    sim: &Simulation,
-    rules: &RuleSet,
-    id: u64,
-    target: TargetKind,
-) -> bool {
-    weapon_at_index_for(sim, rules, id, Some(target), 0).is_some_and(|weapon| {
+pub(super) fn building_weapon0_aims(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
+    weapon_at_index(sim, rules, id, 0).is_some_and(|weapon| {
         !weapon
             .projectile
             .as_deref()
@@ -985,7 +978,7 @@ impl Simulation {
         let Some(target) = requested else {
             return true;
         };
-        if !building_weapon0_aims(self, rules, id, target) {
+        if !building_weapon0_aims(self, rules, id) {
             return true;
         }
         let weapon = select_weapon(self, rules, id, Some(target));

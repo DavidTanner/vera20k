@@ -638,7 +638,13 @@ fn capability_cursor_for_hover(
                 } else {
                     CursorFeedbackKind::EnemyOutOfRange
                 };
-                return ivan_attack_feedback(kind, best_is_ivan, hovered_entity, hovered_obj);
+                return ivan_attack_feedback(
+                    kind,
+                    best_is_ivan,
+                    || click_refused(sim, rules, Some(best_id), hover.stable_id, overlay_registry),
+                    hovered_entity,
+                    hovered_obj,
+                );
             }
 
             // 8. Harvester docking — selected miner hovering own/ally refinery.
@@ -704,23 +710,32 @@ fn capability_cursor_for_hover(
             } else {
                 CursorFeedbackKind::EnemyOutOfRange
             };
-            ivan_attack_feedback(kind, best_is_ivan, hovered_entity, hovered_obj)
+            ivan_attack_feedback(
+                kind,
+                best_is_ivan,
+                || click_refused(sim, rules, best_id, hover.stable_id, overlay_registry),
+                hovered_entity,
+                hovered_obj,
+            )
         }
         HoverTargetKind::HiddenEnemy => CursorFeedbackKind::Invalid,
     }
 }
 
 /// `InfantryClass::What_Action_OnObject` (`0x0051EB24..0x0051EB7E`) for a
-/// Crazy Ivan (`Ivan=`) whose action is Attack: IvanBomb on a `Bombable=`
-/// target without a bomb, NoIvanBomb (NoMove's cursor row) on any other.
-/// A target that already carries one only reaches it by force-fire: the base
-/// action is Attack only while `GetFireError` (vtable `+0x3C0`, 0x00700542)
-/// allows the shot, and the IvanBomb gate (0x006FCBAD) refuses it, so the
-/// action falls back to Select (`TechnoClass::What_Action_OnObject`,
-/// 0x0070056C).
+/// Crazy Ivan (`Ivan=`) whose action is Attack ([`ivan_bomb_action`]).
+/// Unforced, the base action stays Attack only while the Ivan's GetFireError
+/// for the target is not ILLEGAL (`refused`, [`click_refused`]), and a bombed
+/// target is ILLEGAL to him at any distance (`0x006FCBAD`). An ILLEGAL action
+/// falls back to None over another house's object and to Select over his own
+/// (`TechnoClass::What_Action_OnObject`, `0x0070056C..0x007005E9`).
+///
+/// RESIDUAL: VERA shows Select for both; over another house's object retail
+/// shows the plain arrow of None.
 fn ivan_attack_feedback(
     kind: CursorFeedbackKind,
     selector_is_ivan: bool,
+    refused: impl FnOnce() -> bool,
     target: Option<&crate::sim::game_entity::GameEntity>,
     target_obj: Option<&crate::rules::object_type::ObjectType>,
 ) -> CursorFeedbackKind {
@@ -733,29 +748,44 @@ fn ivan_attack_feedback(
     if !selector_is_ivan || !attack {
         return kind;
     }
-    ivan_bomb_action(target, target_obj, false)
+    if refused() {
+        return CursorFeedbackKind::FriendlyUnit;
+    }
+    ivan_bomb_action(target, target_obj)
 }
 
-/// The Crazy Ivan's action over an object (`0x0051EB24`): IvanBomb on a
-/// `Bombable=` target without a bomb, NoIvanBomb (NoMove's row) otherwise —
-/// except that without force-fire a bombed target never gets an Attack base
-/// action (its `GetFireError` refuses it), so it reads Select instead.
+/// The Crazy Ivan's arm itself (`0x0051EB24`): IvanBomb on a `Bombable=`
+/// target without a bomb (`+0x38`), NoIvanBomb (NoMove's row) otherwise.
 fn ivan_bomb_action(
     target: Option<&crate::sim::game_entity::GameEntity>,
     target_obj: Option<&crate::rules::object_type::ObjectType>,
-    forced: bool,
 ) -> CursorFeedbackKind {
     if target.is_some_and(|target| target.bomb.is_some()) {
-        if forced {
-            CursorFeedbackKind::Invalid
-        } else {
-            CursorFeedbackKind::FriendlyUnit
-        }
+        CursorFeedbackKind::Invalid
     } else if target_obj.is_some_and(|obj| obj.bombable) {
         CursorFeedbackKind::IvanBomb
     } else {
         CursorFeedbackKind::Invalid
     }
+}
+
+/// Whether `actor`'s GetFireError for `target` is ILLEGAL, which ends its
+/// unforced Attack action ([`crate::sim::world::Simulation::click_fire_error`]).
+fn click_refused(
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    actor: Option<u64>,
+    target: u64,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> bool {
+    rules.zip(actor).is_some_and(|(rules, actor)| {
+        sim.click_fire_error(
+            rules,
+            actor,
+            crate::sim::combat::TargetKind::Entity(target),
+            overlay_registry,
+        ) == crate::sim::combat::fire_error::FireError::Illegal
+    })
 }
 
 /// The bomb actions under force-fire. `InfantryClass::What_Action_OnObject`
@@ -789,7 +819,6 @@ fn forced_bomb_feedback(
         ivan_bomb_action(
             Some(target),
             rules.object(sim.interner.resolve(target.type_ref())),
-            true,
         )
     })
 }
@@ -2094,9 +2123,9 @@ mod tests {
 
     /// `InfantryClass::What_Action_OnObject`: a Crazy Ivan offers IvanBomb on
     /// any target without a bomb — enemy or, by AttackCursorOnFriendlies, own —
-    /// and falls back to Select on one that carries a bomb; an Engineer
-    /// offers DisarmBomb on any bombed object its player sees, own or enemy,
-    /// and nothing on an unseen one.
+    /// and falls back to Select on one that carries a bomb, whose GetFireError
+    /// is ILLEGAL near or far; an Engineer offers DisarmBomb on any bombed
+    /// object its player sees, own or enemy, and nothing on an unseen one.
     #[test]
     fn crazy_ivan_and_engineer_bomb_cursors() {
         let rules = bomb_cursor_rules();

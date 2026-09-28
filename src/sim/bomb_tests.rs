@@ -244,6 +244,8 @@ struct NativeBombCase {
     frame_index: Option<i64>,
     #[serde(default)]
     list: Option<serde_json::Value>,
+    #[serde(default)]
+    result: Option<serde_json::Value>,
 }
 
 fn native_bomb(fields: &serde_json::Value) -> Bomb {
@@ -266,7 +268,8 @@ fn native_bomb(fields: &serde_json::Value) -> Bomb {
 /// have no VERA state and are skipped. The DetonateAtCoord arm rows reduce to
 /// Attach's and Defuse's own gates (a non-Techno or missing target or firer
 /// reaches Attach as null) and are exercised end to end by the production
-/// tests below; the GetFireError rows are compared in `combat_weapon`.
+/// tests below; the GetFireError rows are compared by
+/// `native_fire_error_corpus`.
 #[test]
 fn native_bomb_corpus() {
     let cases: Vec<NativeBombCase> =
@@ -312,8 +315,65 @@ fn native_bomb_corpus() {
     }
     // 55 state-machine rows less the six VERA cannot hold (death bombs,
     // spent or carrier-less records); the GetFireError rows are compared by
-    // `combat_weapon::tests::bomb_fire_error_gates_match_native`.
+    // `native_fire_error_corpus`.
     assert_eq!(compared, 49);
+}
+
+/// The corpus's `fire_error` rows ran `TechnoClass::GetFireError`'s two bomb
+/// gates (`0x006FCB8D..0x006FCBCD`) alone: ILLEGAL (5), or on to the next
+/// gate. Here the one GetFireError port answers them in full, range unasked,
+/// for the weapon's own carrier at the planter's house (the Engineer's
+/// BombDisarm, the Ivan's IvanBomb, an omni-firing tank gun otherwise)
+/// against the row's Unit; a row that went on clears every later gate.
+#[test]
+fn native_fire_error_corpus() {
+    let rules = rules_from(&format!(
+        "{}[TankGun]\nDamage=90\nRange=5.75\nProjectile=Cannon\nWarhead=Super\nOmniFire=yes\n\
+         [Cannon]\nAG=yes\n",
+        RULES.replace("[LTNK]\n", "[LTNK]\nPrimary=TankGun\n")
+    ));
+    let cases: Vec<NativeBombCase> =
+        serde_json::from_str(include_str!("../../tools/spatial_oracle/bomb_class.json")).unwrap();
+    let mut compared = 0;
+    for case in cases
+        .iter()
+        .filter(|case| case.input["section"] == "fire_error")
+    {
+        let input = &case.input;
+        let name = input["name"].as_str().unwrap();
+        let flag = |key: &str| input[key].as_bool() == Some(true);
+        let NativeWorld { mut sim, ids, .. } = native_world(input, &rules);
+        let firer_type = if flag("bomb_disarm") {
+            "ENGINEER"
+        } else if flag("ivan_bomb") {
+            "IVAN"
+        } else {
+            "LTNK"
+        };
+        let firer = spawn(&mut sim, &rules, firer_type, "house0", 11, 11);
+        let code = crate::sim::combat::fire_error_world::FireSubject {
+            world: &sim,
+            rules: &rules,
+            overlay_registry: None,
+            fog: None,
+            firer: entity(&sim, firer),
+            obj: rules.object(firer_type).unwrap(),
+            target: Some(crate::sim::combat::TargetKind::Entity(ids[0])),
+            weapon_index: 0,
+            garrison: None,
+        }
+        .fire_error(false);
+        let expected = match case.result.as_ref().and_then(serde_json::Value::as_i64) {
+            Some(5) => crate::sim::combat::fire_error::FireError::Illegal,
+            _ => {
+                assert_eq!(case.result, Some(serde_json::json!("continue")), "{name}");
+                crate::sim::combat::fire_error::FireError::Ok
+            }
+        };
+        assert_eq!(code, expected, "{name}");
+        compared += 1;
+    }
+    assert_eq!(compared, 5);
 }
 
 /// A corpus case's world: house `n` is `house{n}`, each techno stands at its

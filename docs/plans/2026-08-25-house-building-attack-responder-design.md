@@ -63,7 +63,7 @@ This follows the existing inline lifecycle/smudge/wave pattern and the existing 
 
 ### Components
 
-`BaseDefenseResponseContext` is a short-lived bundle of mutable entity/House/Team/RNG authority and immutable rules/map/session facts. `respond_to_base_attack(victim_id, attacker_id, context)` owns literal entry order and mutations.
+`respond_to_base_attack(world, rules, victim_id, attacker_id)` owns literal entry order and mutations. Its candidate scan reads the whole `Simulation` (the weapon-0 peek is GetFireError itself, through `FireSubject`); every mutation follows the scan. (The first version bundled the authorities in a `BaseDefenseResponseContext`; #628 replaced it.)
 
 `BaseDefenseResponseCooldown { start_frame: i32, duration_frames: i32 }` defaults to `(current construction frame, 0)` for new live objects and uses a serde migration default equivalent to the native inactive sentinel. A helper implements wrapping remaining-time logic.
 

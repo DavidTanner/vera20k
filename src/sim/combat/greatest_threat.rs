@@ -66,9 +66,9 @@
 //!   the retired nearest-first key, and still carries the invented
 //!   friendly and `FogState::is_cell_visible` gates that this scan no
 //!   longer has — so "the fog gate is gone" is true of passive acquisition and
-//!   not of the garrison path. It is a separate caller with its own
-//!   `OccupyWeapon` selection ladder; folding it into this walk is follow-up
-//!   work. Native reaches an occupied building through this walk: the
+//!   not of the garrison path. It is a separate caller that ranks with the
+//!   occupant's weapon ([`super::combat_weapon::occupant_weapon`]) and asks
+//!   GetFireError of its pick; folding it into this walk is follow-up work. Native reaches an occupied building through this walk: the
 //!   IsOccupied arm at `0x006F917F..0x006F91A3` sets the ring bound to
 //!   `HalfFoundation + OccupyWeaponRange + 1` cells, the candidate gate is
 //!   In_Range's IsOccupied arm (`0x006F727E..0x006F729F`), and GetWeapon
@@ -130,7 +130,7 @@ const THREAT_SCORE_BASE: f64 = 100_000.0;
 /// — a `float` `0.02` widened to double, so the comparison is against
 /// `0.019999999552965164` and an authored `Verses=2%` (exactly `0.02` as a
 /// double) is *above* it and passes.
-const VERSES_FLOOR: f64 = 0.02f32 as f64;
+pub(crate) const VERSES_FLOOR: f64 = 0.02f32 as f64;
 /// The five weights of `TechnoClass::Calculate_Threat_Score @ 0x0070CD10`, in
 /// the order the native body loads them.
 #[derive(Debug, Clone, Copy)]
@@ -1564,7 +1564,6 @@ fn probe_is_illegal(
     let Some(firer) = world.substrate.entities.get(ctx.attacker.stable_id) else {
         return false;
     };
-    let target = super::TargetKind::Entity(candidate.stable_id());
     super::fire_error_world::FireSubject {
         world,
         rules: ctx.rules,
@@ -1572,14 +1571,13 @@ fn probe_is_illegal(
         fog: ctx.fog,
         firer,
         obj: ctx.attacker_obj,
-        target: Some(target),
+        target: Some(super::TargetKind::Entity(candidate.stable_id())),
         weapon_index,
         garrison: super::fire_error_world::garrison_weapon(
             world,
             ctx.rules,
             firer,
             ctx.attacker_obj,
-            target,
         ),
     }
     .fire_error(false)

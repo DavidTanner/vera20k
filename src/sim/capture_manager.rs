@@ -276,20 +276,9 @@ pub(crate) struct CaptureVictimFacts {
 }
 
 impl CaptureVictimFacts {
-    /// An ordinary capturable target of house zero, for fixtures that do not
-    /// model mind control.
-    #[cfg(test)]
-    pub(crate) fn capturable_for_test() -> Self {
-        Self {
-            owner: InternedId::from_index(u32::MAX),
-            capturable: true,
-        }
-    }
-
     /// `frame` evaluates gate 7 (vt+0x160, an active Iron Curtain or Force
-    /// Shield); the weapon ladder has no frame and leaves that gate to fire
-    /// admission.
-    pub(crate) fn of(target: &GameEntity, target_obj: &ObjectType, frame: Option<u32>) -> Self {
+    /// Shield).
+    pub(crate) fn of(target: &GameEntity, target_obj: &ObjectType, frame: u32) -> Self {
         // 3: `ImmuneToPsionics=` (`+0xD35`); 4: a Unit in a tank bunker
         // (`+0x2E4`); 5: already controlled; 6: a trigger transfer (`+0x2CC`,
         // no VERA producer); 7: the Iron Curtain; 9: Selling or Construction.
@@ -297,12 +286,10 @@ impl CaptureVictimFacts {
             || (target.category == EntityCategory::Unit
                 && target.bunker_link.installed_in().is_some())
             || target.mind_control.is_mind_controlled()
-            || frame.is_some_and(|frame| {
-                crate::sim::superweapon::invulnerability::is_invulnerable(
-                    target.invulnerability.as_ref(),
-                    frame,
-                )
-            })
+            || crate::sim::superweapon::invulnerability::is_invulnerable(
+                target.invulnerability.as_ref(),
+                frame,
+            )
             // CanCapture's gate 9 (`0x00471D1E..0x00471D2C`).
             || target.constructing_or_selling();
         Self {
@@ -376,7 +363,7 @@ impl Simulation {
         };
         can_capture(
             controller,
-            CaptureVictimFacts::of(target, target_obj, Some(self.session.binary_frame)),
+            CaptureVictimFacts::of(target, target_obj, self.session.binary_frame),
         )
     }
 

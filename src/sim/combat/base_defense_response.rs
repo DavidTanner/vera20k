@@ -1,28 +1,22 @@
-//! Exact arithmetic and six-slot selection for the House base-defence response.
+//! The House base-defence response (`TechnoClass::RespondToBaseAttack @
+//! 0x00708080`): its exact signed arithmetic, six-slot ranking pathology and
+//! the transaction that recruits, queues and debits in native order.
 //!
-//! The receiver integration owns entity, House, Team and mission mutations.
-//! This module keeps the native signed arithmetic and ranking pathology small
-//! enough to prove independently before those authorities are borrowed.
-
-use std::collections::BTreeMap;
+//! Its admission asks each candidate's GetFireError through the one owner
+//! ([`super::fire_error_world::FireSubject`]), so the scan reads the whole
+//! world while the transaction's mutations come before and after it.
 
 use crate::map::entities::EntityCategory;
-use crate::map::houses::{HouseAllianceMap, is_allied_with};
-use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::map::houses::is_allied_with;
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::cell_rect::{PlayfieldBounds, cell_is_in_playfield_height_aware};
-use crate::sim::entity_store::EntityStore;
-use crate::sim::house_state::HouseState;
-use crate::sim::intern::{InternedId, StringInterner};
+use crate::sim::cell_rect::cell_is_in_playfield_height_aware;
 use crate::sim::mission::authority::queue_entity_mission_deferred;
 use crate::sim::mission::concrete_effects::{
     assign_target_commits, represented_assign_target_admitted,
 };
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::pathfinding::zone_map::ZoneGrid;
-use crate::sim::rng::SimRng;
-use crate::sim::team_script_vm::TeamScriptVm;
+use crate::sim::world::Simulation;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, distance_3d_leptons};
 
 use super::TargetKind;
@@ -72,33 +66,6 @@ pub(crate) struct ResponseSelection {
 pub(crate) enum ResponseMission {
     Rescue,
     AreaGuard,
-}
-
-/// The native FireError values this partial responder peek produces.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub(crate) enum ResponderPeekFireError {
-    Clear = 0,
-    Illegal = 5,
-    Cant = 6,
-    Cloaked = 9,
-}
-
-pub(crate) struct BaseDefenseResponseContext<'a> {
-    pub(crate) entities: &'a mut EntityStore,
-    pub(crate) rules: &'a RuleSet,
-    pub(crate) interner: &'a StringInterner,
-    pub(crate) houses: &'a BTreeMap<InternedId, HouseState>,
-    pub(crate) alliances: &'a HouseAllianceMap,
-    pub(crate) scenario_rng: &'a mut SimRng,
-    pub(crate) teams: &'a mut TeamScriptVm,
-    pub(crate) zone_grid: Option<&'a ZoneGrid>,
-    pub(crate) terrain: Option<&'a ResolvedTerrainGrid>,
-    pub(crate) playfield_bounds: Option<PlayfieldBounds>,
-    pub(crate) map_size_width: i32,
-    pub(crate) map_size_height: i32,
-    pub(crate) current_frame: i32,
-    pub(crate) game_mode_nonzero: bool,
 }
 
 /// Convert the Rules double through the native x87 `ftol` path. Invalid or
@@ -274,39 +241,37 @@ use admission::{
 ///
 /// gamemd-derived: `TechnoClass__RespondToBaseAttack @ 0x00708080`.
 pub(crate) fn respond_to_base_attack(
+    world: &mut Simulation,
+    rules: &RuleSet,
     victim_id: u64,
     attacker_id: u64,
-    context: &mut BaseDefenseResponseContext<'_>,
 ) {
-    let Some(victim) = context.entities.get(victim_id) else {
+    let entities = &world.substrate.entities;
+    let interner = &world.interner;
+    let Some(victim) = entities.get(victim_id) else {
         return;
     };
-    let Some(attacker) = context.entities.get(attacker_id) else {
+    let Some(attacker) = entities.get(attacker_id) else {
         return;
     };
-    let Some(victim_object) = context
-        .rules
-        .object(context.interner.resolve(victim.type_ref()))
-    else {
+    let Some(victim_object) = rules.object(interner.resolve(victim.type_ref())) else {
         return;
     };
-    let Some(attacker_object) = context
-        .rules
-        .object(context.interner.resolve(attacker.type_ref()))
-    else {
+    let Some(attacker_object) = rules.object(interner.resolve(attacker.type_ref())) else {
         return;
     };
     let victim_owner = victim.owner();
     let attacker_owner = attacker.owner();
     let budget = attacker_object
         .cost
-        .wrapping_mul(context.rules.general.computer_base_defense_response);
+        .wrapping_mul(rules.general.computer_base_defense_response);
+    let current_frame = world.session.binary_frame as i32;
 
     if is_allied_with(
-        context.alliances,
-        context.interner.resolve(victim_owner),
-        context.interner.resolve(attacker_owner),
-    ) || context
+        &world.house_alliances,
+        interner.resolve(victim_owner),
+        interner.resolve(attacker_owner),
+    ) || world
         .houses
         .get(&victim_owner)
         .is_some_and(|house| house.is_human)
@@ -314,7 +279,7 @@ pub(crate) fn respond_to_base_attack(
         // `0x00708114`: `[g_GameMode 0x00A8B238] == 0 && this->Is_Armed
         // (vt+0x2AC)` — an armed victim in that game mode defends itself
         // instead of calling for help.
-        || (!context.game_mode_nonzero && is_armed(victim, victim_object))
+        || (!world.session.game_mode_nonzero && is_armed(victim, victim_object))
         || !matches!(
             attacker.category,
             EntityCategory::Unit | EntityCategory::Infantry
@@ -323,7 +288,7 @@ pub(crate) fn respond_to_base_attack(
         || !attacker
             .base_defense_response
             .cooldown
-            .expired(context.current_frame)
+            .expired(current_frame)
     {
         return;
     }
@@ -331,35 +296,27 @@ pub(crate) fn respond_to_base_attack(
     // Rust's map caches are derived rather than native globals. A live positive
     // scan cannot be exact without both authorities; fail atomically before the
     // native Team suspension point instead of partially mutating the response.
-    if budget > 0 && (context.zone_grid.is_none() || context.terrain.is_none()) {
+    if budget > 0 && (world.zone_grid.is_none() || world.resolved_terrain.is_none()) {
         return;
     }
 
-    context.teams.suspend_teams_for_base_defense(
+    world.team_script_vm.suspend_teams_for_base_defense(
         victim_owner,
-        context.rules.general.suspend_priority,
-        context.current_frame,
-        response_delay_frames(context.rules.general.suspend_delay_minutes),
+        rules.general.suspend_priority,
+        current_frame,
+        response_delay_frames(rules.general.suspend_delay_minutes),
     );
     let mut selection = ResponseSelection::new(budget);
     if !selection.can_scan() {
         return;
     }
 
-    let attacker_coord = entity_coord(
-        context
-            .entities
-            .get(attacker_id)
-            .expect("entry retained attacker"),
-        context.terrain,
-    );
-    let victim_is_self_anchor = context
-        .entities
-        .get(victim_id)
-        .and_then(|victim| victim.archive_target())
-        == Some(TargetKind::Entity(victim_id));
-    let candidate_ids = context.entities.keys_sorted();
-
+    // The scan only reads; every mutation comes after it.
+    let sim: &Simulation = world;
+    let entities = &sim.substrate.entities;
+    let attacker_coord = entity_coord(attacker, sim.resolved_terrain.as_ref());
+    let victim_is_self_anchor = victim.archive_target() == Some(TargetKind::Entity(victim_id));
+    let candidate_ids = entities.keys_sorted();
     for class in [ResponderClass::Infantry, ResponderClass::Unit] {
         for &candidate_id in &candidate_ids {
             if !selection.can_scan() {
@@ -369,50 +326,38 @@ pub(crate) fn respond_to_base_attack(
                 ResponderClass::Infantry => EntityCategory::Infantry,
                 ResponderClass::Unit => EntityCategory::Unit,
             };
-            let Some(candidate) = context.entities.get(candidate_id) else {
+            let Some(candidate) = entities.get(candidate_id) else {
                 continue;
             };
             if candidate.category != expected_category {
                 continue;
             }
-            let Some(candidate_object) = context
-                .rules
-                .object(context.interner.resolve(candidate.type_ref()))
+            let Some(candidate_object) = rules.object(sim.interner.resolve(candidate.type_ref()))
             else {
                 continue;
             };
-            let victim = context
-                .entities
-                .get(victim_id)
-                .expect("entry retained victim");
-            if !candidate_admitted(
-                candidate,
-                candidate_object,
-                victim,
-                victim_owner,
-                attacker_id,
-                context,
-            ) {
+            if !candidate_admitted(sim, rules, candidate, candidate_object, victim, attacker_id) {
                 continue;
             }
 
-            let destination = destination_cell(candidate, context.entities, context.terrain);
-            let victim_destination = destination_cell(victim, context.entities, context.terrain);
-            let terrain = context.terrain.expect("positive scan validated terrain");
+            let terrain = sim
+                .resolved_terrain
+                .as_ref()
+                .expect("positive scan validated terrain");
+            let destination = destination_cell(candidate, entities, Some(terrain));
+            let victim_destination = destination_cell(victim, entities, Some(terrain));
             let Some(source_should_be_on_bridge) =
-                should_be_on_bridge_for_response(candidate, context.entities, terrain)
+                should_be_on_bridge_for_response(candidate, entities, terrain)
             else {
                 continue;
             };
-            let source_in_playfield = cell_is_in_playfield_height_aware(
-                destination,
-                context.playfield_bounds,
-                Some(terrain),
-            );
+            let source_in_playfield =
+                cell_is_in_playfield_height_aware(destination, sim.playfield_bounds, Some(terrain));
             let movement_zone = (candidate_object.movement_zone != MovementZone::Invalid)
                 .then_some(candidate_object.movement_zone);
-            if !context
+            if !sim
                 .zone_grid
+                .as_ref()
                 .expect("positive scan validated zone grid")
                 .can_reach_base_defense_response(
                     movement_zone,
@@ -420,8 +365,8 @@ pub(crate) fn respond_to_base_attack(
                     victim_destination,
                     source_should_be_on_bridge,
                     source_in_playfield,
-                    context.map_size_width,
-                    context.map_size_height,
+                    i32::from(sim.session.map_width),
+                    i32::from(sim.session.map_height),
                 )
             {
                 continue;
@@ -430,24 +375,24 @@ pub(crate) fn respond_to_base_attack(
             let raw_score = evaluate_target_threat(ThreatFacts {
                 cost: candidate_object.cost,
                 speed_leptons_per_frame: candidate_object.speed,
-                current_coord: entity_coord(candidate, context.terrain),
+                current_coord: entity_coord(candidate, Some(terrain)),
                 attacker_coord,
                 primary_range_leptons: primary_range_leptons(
                     candidate,
                     candidate_object,
-                    context.entities,
-                    context.rules,
-                    context.interner,
+                    entities,
+                    rules,
+                    &sim.interner,
                 ),
                 existing_target: current_target_disposition(
                     candidate,
                     attacker_id,
-                    context.entities,
-                    context.rules,
-                    context.interner,
+                    entities,
+                    rules,
+                    &sim.interner,
                 ),
-                in_non_base_defense_team: context
-                    .teams
+                in_non_base_defense_team: sim
+                    .team_script_vm
                     .team_for_member(candidate_id)
                     .is_some_and(|(_, is_base_defense)| !is_base_defense),
                 mission_is_harvest: candidate.mission.current().known()
@@ -464,23 +409,24 @@ pub(crate) fn respond_to_base_attack(
 
     let mut accumulated = 0;
     for responder in responders {
-        let in_base_defense_team = context
-            .teams
+        let in_base_defense_team = world
+            .team_script_vm
             .team_for_member(responder.entity_id)
             .is_some_and(|(_, is_base_defense)| is_base_defense);
-        let draw = context.scenario_rng.next_range_u32_inclusive(0, 99);
+        let draw = world.scenario_rng.next_range_u32_inclusive(0, 99);
         let mission = match response_mission(draw, in_base_defense_team) {
             ResponseMission::Rescue => MissionType::Rescue,
             ResponseMission::AreaGuard => MissionType::AreaGuard,
         };
-        let attacker_commits =
-            assign_target_commits(context.entities, Some(TargetKind::Entity(attacker_id)));
-        let Some(responder_entity) = context.entities.get_mut(responder.entity_id) else {
+        let attacker_commits = assign_target_commits(
+            &world.substrate.entities,
+            Some(TargetKind::Entity(attacker_id)),
+        );
+        let Some(responder_entity) = world.substrate.entities.get_mut(responder.entity_id) else {
             continue;
         };
-        let Some(responder_object) = context
-            .rules
-            .object(context.interner.resolve(responder_entity.type_ref()))
+        let Some(responder_object) =
+            rules.object(world.interner.resolve(responder_entity.type_ref()))
         else {
             continue;
         };
@@ -494,10 +440,10 @@ pub(crate) fn respond_to_base_attack(
         let (next, overshot) = add_assigned_cost(accumulated, responder_object.cost, budget);
         accumulated = next;
         if overshot {
-            if let Some(attacker) = context.entities.get_mut(attacker_id) {
+            if let Some(attacker) = world.substrate.entities.get_mut(attacker_id) {
                 attacker.base_defense_response.cooldown.start(
-                    context.current_frame,
-                    response_delay_frames(context.rules.general.base_defense_delay_minutes),
+                    current_frame,
+                    response_delay_frames(rules.general.base_defense_delay_minutes),
                 );
             }
             break;
