@@ -52,10 +52,6 @@
 //!   against `medium`) healing a deployed Slave Miner (YAREFN,
 //!   `Armor=medium`), if its targeting admits the building. Effect: native
 //!   pings the ore-miner line and stops at the ally test; VERA pings nothing.
-//! - An occupied building's weapon 0 is the firing occupant's
-//!   (`0x004526F0`), which VERA chooses for the source as target
-//!   ([`super::target_scan::weapon_at_index_for`]). Only presence and `AA=`
-//!   are read, so this only matters if an occupant's weapons differ in them.
 //! - Is_Operational ([`Simulation::building_operational_state`]) counts no
 //!   Tesla chargers and no EMP. Trigger: a Tesla Coil in a low-power base
 //!   charged by two or more Tesla Troopers (`ElectricAssault=`), which native
@@ -127,7 +123,7 @@ impl Simulation {
                 building.owner(),
                 source_entity.owner(),
             )
-            || !building_weapon0_aims(self, rules, id, TargetKind::Entity(source))
+            || !building_weapon0_aims(self, rules, id)
             || building.attack_target.as_ref().is_some_and(|attack| {
                 let weapon = select_weapon(self, rules, id, Some(attack.target));
                 can_fire_at(self, rules, id, attack.target, weapon, overlay_registry)

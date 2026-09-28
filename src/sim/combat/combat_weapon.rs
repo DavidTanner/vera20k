@@ -81,32 +81,6 @@ pub(crate) struct SelectedWeapon<'a> {
     pub index: i32,
 }
 
-/// Behavioral gate derived from the Verses damage percentage.
-/// Controls whether a weapon can passively acquire or retaliate against a target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VersesGate {
-    /// 0% — weapon cannot target this armor type at all, even force-fire.
-    Blocked,
-    /// 1% — no passive acquire, no retaliation. Force-fire works at 1% damage.
-    Suppressed,
-    /// >1% — normal engagement allowed.
-    Normal,
-}
-
-/// Classify a Verses percentage into its behavioral gate.
-///
-/// RA2 uses these thresholds to control targeting:
-/// - 0 blocks the weapon entirely (falls back to Secondary).
-/// - 1 (1%) suppresses auto-targeting but allows force-fire.
-/// - >1 is normal combat.
-pub(crate) fn verses_gate(verses_pct: u8) -> VersesGate {
-    match verses_pct {
-        0 => VersesGate::Blocked,
-        1 => VersesGate::Suppressed,
-        _ => VersesGate::Normal,
-    }
-}
-
 /// `DeployFireWeapon=` constructor default (`TechnoTypeClass` ctor @
 /// `0x0071113A`): slot 1.
 const DEFAULT_DEPLOY_FIRE_WEAPON_INDEX: i32 = 1;
@@ -1241,15 +1215,6 @@ mod tests {
                 "the clear belongs to Infantry"
             );
         }
-    }
-
-    #[test]
-    fn test_verses_gate_thresholds() {
-        assert_eq!(verses_gate(0), VersesGate::Blocked);
-        assert_eq!(verses_gate(1), VersesGate::Suppressed);
-        assert_eq!(verses_gate(2), VersesGate::Normal);
-        assert_eq!(verses_gate(100), VersesGate::Normal);
-        assert_eq!(verses_gate(200), VersesGate::Normal);
     }
 
     /// Stock-shaped fixture: every type/weapon/projectile/warhead value below
@@ -3134,7 +3099,7 @@ IsLocomotor=yes
 
     // ---- Garrison ----------------------------------------------------------
 
-    fn make_garrison_rules(include_elite_occupy_weapon: bool) -> RuleSet {
+    fn make_garrison_rules(include_elite_occupy_weapon: bool, occupant_keys: &str) -> RuleSet {
         let elite_occupy_weapon = if include_elite_occupy_weapon {
             "EliteOccupyWeapon=EliteGarrisonRifle\n"
         } else {
@@ -3155,7 +3120,7 @@ Strength=125
 Armor=none
 Primary=PrimaryRifle
 OccupyWeapon=GarrisonRifle
-{}
+{}{}
 
 [PrimaryRifle]
 Damage=15
@@ -3185,7 +3150,7 @@ AA=no
 [SA]
 Verses=100%,100%,100%,80%,60%,40%,100%,40%,20%,100%,100%
 ",
-            elite_occupy_weapon
+            elite_occupy_weapon, occupant_keys
         );
         let ini = IniFile::from_str(&ini_str);
         RuleSet::from_ini(&ini).expect("Should parse garrison test rules")
@@ -3198,19 +3163,29 @@ Verses=100%,100%,100%,80%,60%,40%,100%,40%,20%,100%,100%
 
     #[test]
     fn normal_garrison_uses_occupy_weapon() {
-        let rules = make_garrison_rules(false);
+        let rules = make_garrison_rules(false, "");
         assert_eq!(occupant_weapon_id(&rules, 0), Some("GarrisonRifle"));
     }
 
     #[test]
     fn elite_garrison_uses_elite_occupy_weapon_when_present() {
-        let rules = make_garrison_rules(true);
+        let rules = make_garrison_rules(true, "");
         assert_eq!(occupant_weapon_id(&rules, 200), Some("EliteGarrisonRifle"));
     }
 
     #[test]
     fn elite_garrison_missing_elite_occupy_weapon_falls_back_to_primary() {
-        let rules = make_garrison_rules(false);
+        let rules = make_garrison_rules(false, "");
         assert_eq!(occupant_weapon_id(&rules, 200), Some("PrimaryRifle"));
+    }
+
+    /// Without `EliteOccupyWeapon=`, the occupied arm answers the occupant's
+    /// own GetWeapon(0) (`0x0070E140`), which reads its rank: an elite
+    /// occupant fires its `ElitePrimary=`, never the normal `OccupyWeapon`.
+    #[test]
+    fn elite_garrison_missing_elite_occupy_weapon_takes_its_elite_primary() {
+        let rules = make_garrison_rules(false, "ElitePrimary=EliteGarrisonRifle\n");
+        assert_eq!(occupant_weapon_id(&rules, 200), Some("EliteGarrisonRifle"));
+        assert_eq!(occupant_weapon_id(&rules, 0), Some("GarrisonRifle"));
     }
 }

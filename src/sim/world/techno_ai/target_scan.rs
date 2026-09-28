@@ -407,34 +407,15 @@ fn fire_subject<'a>(
     })
 }
 
-/// GetWeapon (vt+0x3F8)'s WeaponType at `index`, a garrison's occupant weapon
-/// included.
+/// GetWeapon (vt+0x3F8)'s WeaponType at `index`; an occupied building's is
+/// its firing occupant's for every index (`0x004526F0`).
 pub(super) fn weapon_at_index<'r>(
     sim: &Simulation,
     rules: &'r RuleSet,
     id: u64,
     index: i32,
 ) -> Option<&'r WeaponType> {
-    let target = sim
-        .substrate
-        .entities
-        .get(id)?
-        .attack_target
-        .as_ref()
-        .map(|attack| attack.target);
-    weapon_at_index_for(sim, rules, id, target, index)
-}
-
-/// [`weapon_at_index`] with `target` in place of the object's own: a
-/// garrison's occupant weapon is chosen for the target.
-pub(super) fn weapon_at_index_for<'r>(
-    sim: &Simulation,
-    rules: &'r RuleSet,
-    id: u64,
-    target: Option<TargetKind>,
-    index: i32,
-) -> Option<&'r WeaponType> {
-    let subject = fire_subject(sim, rules, id, target, index)?;
+    let subject = fire_subject(sim, rules, id, None, index)?;
     // `weapon_at` borrows the subject; re-resolve through the rules so the
     // weapon outlives it.
     rules.weapon(&subject.weapon_at(index)?.id)
@@ -538,6 +519,24 @@ pub(super) fn fire_error_with_overlay(
         }
         .fire_error(true)
     })
+}
+
+impl Simulation {
+    /// The legality question of `TechnoClass::What_Action_OnObject @
+    /// 0x006FFEC0`: GetFireError (vt+0x3C0, range asked, `0x00700542`) of the
+    /// slot SelectWeapon (vt+0x2E4, `0x0070022D`) picks for `target`. ILLEGAL
+    /// ends an unforced Attack action (`0x00700548`) unless the Infiltrate
+    /// arm (`0x007004A0..0x00700531`) overrides it.
+    pub(crate) fn click_fire_error(
+        &self,
+        rules: &RuleSet,
+        id: u64,
+        target: TargetKind,
+        overlay_registry: Option<&OverlayTypeRegistry>,
+    ) -> FireError {
+        let weapon = select_weapon(self, rules, id, Some(target));
+        fire_error_with_overlay(self, rules, id, target, weapon, overlay_registry)
+    }
 }
 
 /// The production scan host.

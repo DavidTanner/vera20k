@@ -42,7 +42,8 @@ pub(crate) struct FireSubject<'a> {
     pub target: Option<TargetKind>,
     pub weapon_index: i32,
     /// A garrisoned building's GetWeapon (`0x004526F0`) answers its firing
-    /// occupant's `OccupyWeapon` for every slot, with the garrison range.
+    /// occupant's weapon ([`combat_weapon::occupant_weapon`]) for every slot,
+    /// with the garrison range.
     pub garrison: Option<(&'a WeaponType, crate::util::fixed_math::SimFixed)>,
 }
 

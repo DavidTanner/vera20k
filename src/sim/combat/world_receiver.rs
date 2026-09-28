@@ -4493,9 +4493,8 @@ pub(crate) fn tick_combat(
         let scan_cells = half_foundation as i32 + rules.garrison_rules.occupy_weapon_range;
         let scan_range = SimFixed::from_num(scan_cells.max(1));
 
-        // Scan for the best hostile target. A 1% Verses target of the
-        // occupant's warhead is skipped; whether the weapon may fire at all is
-        // the pick's GetFireError below.
+        // Scan for the best hostile target; whether the weapon may fire at
+        // all is the pick's GetFireError below.
         let mut ranked: Vec<(i64, u8, u64)> = Vec::new();
         let owner_str = world.interner.resolve(owner);
         for candidate in world.substrate.entities.values() {
@@ -4519,15 +4518,14 @@ pub(crate) fn tick_combat(
                     continue;
                 }
             }
+            // Evaluate_Candidate's Verses floor (`0x006F7D1F`), on the warhead
+            // of the occupant's weapon.
             let target_armor = rules
                 .object(world.interner.resolve(candidate.type_ref()))
                 .map_or("none", |o| o.armor.as_str());
-            let verses = occupy_warhead
-                .verses
-                .get(armor_index(target_armor))
-                .copied()
-                .unwrap_or(100);
-            if combat_weapon::verses_gate(verses) == combat_weapon::VersesGate::Suppressed {
+            if occupy_warhead.verses_f64[armor_index(target_armor)]
+                <= super::greatest_threat::VERSES_FLOOR
+            {
                 continue;
             }
             // Flat distance, as GetFireError's garrison range check measures it
