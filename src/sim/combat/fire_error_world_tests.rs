@@ -286,6 +286,79 @@ fn an_empty_garrison_drops_its_target() {
     assert!(store.get(1).unwrap().attack_target.is_none());
 }
 
+/// `BuildingClass::GetWeapon @ 0x004526F0`: an occupied building fires its
+/// occupant's `OccupyWeapon` without asking the target, and the occupant's
+/// own weapon only when it has none. An OccupyWeapon that cannot hurt the
+/// target is ILLEGAL (T54), and Mission_Attack drops the target rather than
+/// switch to the occupant's Primary.
+#[test]
+fn a_garrison_fires_its_occupy_weapon_or_nothing() {
+    let shot = |occupy: &str| {
+        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[InfantryTypes]\n0=GI\n[VehicleTypes]\n0=TANK\n[BuildingTypes]\n0=BUNK\n\
+             [AircraftTypes]\n\
+             [TANK]\nStrength=300\nArmor=heavy\n\
+             [GI]\nStrength=300\nArmor=flak\nPrimary=Gun\n{occupy}\n\
+             [BUNK]\nStrength=600\nArmor=concrete\nCanBeOccupied=yes\nCanOccupyFire=yes\n\
+             MaxNumberOccupants=5\n\
+             [Gun]\nDamage=50\nROF=30\nRange=6\nWarhead=AP\n\
+             [Pea]\nDamage=50\nROF=30\nRange=6\nWarhead=Soft\n\
+             [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
+             [Soft]\nVerses=100%,100%,100%,100%,100%,0%,100%,100%,100%,100%,100%\n"
+        )))
+        .expect("garrison rules");
+        let mut store = EntityStore::new();
+        spawn(
+            &mut store,
+            1,
+            "BUNK",
+            EntityCategory::Structure,
+            "Soviet",
+            (10, 10),
+        );
+        spawn(
+            &mut store,
+            2,
+            "TANK",
+            EntityCategory::Unit,
+            "Americans",
+            (12, 10),
+        );
+        spawn(
+            &mut store,
+            3,
+            "GI",
+            EntityCategory::Infantry,
+            "Soviet",
+            (10, 10),
+        );
+        let mut cargo = crate::sim::passenger::PassengerCargo::new(5, 1);
+        assert!(cargo.board(3, 1));
+        let bunker = store.get_mut(1).unwrap();
+        bunker.passenger_role = crate::sim::passenger::PassengerRole::Transport { cargo };
+        bunker.attack_target = Some(AttackTarget::new(2));
+        store.get_mut(3).unwrap().passenger_role = crate::sim::passenger::PassengerRole::Inside {
+            transport_id: 1,
+            open_topped: false,
+        };
+        combat_frame(&mut store, &rules, &Default::default());
+        (
+            store.get(2).unwrap().health.current,
+            store.get(1).unwrap().attack_target.is_some(),
+        )
+    };
+    assert_eq!(
+        shot("OccupyWeapon=Pea"),
+        (300, false),
+        "an OccupyWeapon that cannot hurt heavy armour"
+    );
+    let (health, kept) = shot("");
+    assert!(
+        health < 300 && kept,
+        "no OccupyWeapon: the occupant's Primary"
+    );
+}
+
 /// T5 (`0x006FC109`): a unit in its Chronosphere relocation frame is
 /// ILLEGAL. `UnitClass::Fire_At_Target` (`0x00737148`) keeps the target of a
 /// weapon that does not heal, so the unit holds fire and its target.

@@ -89,7 +89,7 @@ impl Simulation {
         origin: ComponentOrigin,
     ) {
         let category = ge.category;
-        let facing = ge.facing;
+        let initial = ge.body_facing.destination();
         let uses_voxel = ge.is_voxel;
         // InitManagers6F3F40 classifies the owner after construction; it does
         // not manufacture either discovery-history byte. The launch-owned
@@ -101,31 +101,30 @@ impl Simulation {
 
         stamp_scoring_flags(ge, obj, rules);
         ge.sight_is_zero = obj.is_some_and(|object| object.sight == 0);
-        // BuildingClass::Init gives every building its `+0x388` rate from
-        // `ROT=` (`Set_ROT` at `0x00442CA5`) without testing `Turret=`: a
-        // turretless building's `+0x388` is its body, which Mission_Attack
-        // aims and ReceiveDamage's retaliation turns.
+        // The class constructor's one `+0x388` rate write (`Set_ROT`): `ROT=`
+        // for a unit (`0x00735579`), an aircraft (`0x00413FE7`) and a building
+        // (`BuildingClass::Init`, `0x00442CA5`, without testing `Turret=`: a
+        // turretless building's `+0x388` is the body Mission_Attack aims and
+        // ReceiveDamage's retaliation turns); 127 for infantry (`0x00517BC5`).
+        if let Some(obj) = obj {
+            ge.set_body_facing_rot(obj.turret_rot);
+        }
+        // `+0x3A0`: a turreted unit's turret and every aircraft's Secondary. A
+        // building aims its `+0x388`.
         if let Some(obj) = obj.filter(|obj| {
-            obj.has_turret
-                || matches!(
-                    category,
-                    EntityCategory::Aircraft | EntityCategory::Structure
-                )
+            (obj.has_turret && category != EntityCategory::Structure)
+                || category == EntityCategory::Aircraft
         }) {
-            let initial = crate::sim::movement::turret::body_facing_to_turret(facing);
-            ge.barrel_facing = Some(crate::sim::movement::FacingClass::new(
-                initial,
-                obj.turret_rot,
-            ));
+            let mut secondary = crate::sim::movement::FacingClass::new(initial, obj.turret_rot);
             if category == EntityCategory::Aircraft {
                 // Aircraft413FD2..414015 supplies ROT to BOTH controllers;
                 // Unlimbo414310 -> Foot4D7170 -> Techno6F6DAA snaps Primary;
                 // Aircraft414417 snaps Secondary. Both timers retain this frame.
-                let mut facing = crate::sim::movement::FacingClass::new(initial, obj.turret_rot);
-                facing.snap(initial, self.session.binary_frame);
-                ge.body_facing = Some(facing);
-                ge.barrel_facing = Some(facing);
+                let frame = self.session.binary_frame;
+                ge.body_facing.snap(initial, frame);
+                secondary.snap(initial, frame);
             }
+            ge.barrel_facing = Some(secondary);
         }
         if uses_voxel {
             ge.voxel_animation = Some(VoxelAnimation::new(1, 1));

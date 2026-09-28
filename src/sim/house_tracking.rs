@@ -247,7 +247,7 @@ impl HouseTracking {
         counts.get(&type_id).copied().unwrap_or(0)
     }
 
-    /// Fold the counters schema v237 (`AiTeams`) added, tagged, once any is
+    /// Fold the counters schema v238 (`AiTeams`) added, tagged, once any is
     /// set: the tracked counts of the building, infantry and aircraft types
     /// and the on-map count of `ResourceDestination=` objects.
     pub(crate) fn hash_ai_team_counters(&self, hasher: &mut impl std::hash::Hasher) {
@@ -272,7 +272,7 @@ impl HouseTracking {
         use std::hash::Hash;
         self.buildings.hash(hasher);
         self.unit_types.hash(hasher);
-        // The totals, which the per-type counts replaced (schema v237 keeps
+        // The totals, which the per-type counts replaced (schema v238 keeps
         // their bytes).
         self.active_units().hash(hasher);
         self.active_infantry().hash(hasher);

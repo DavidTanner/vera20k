@@ -462,13 +462,13 @@ pub struct HouseState {
     #[serde(default = "strategy_timer_at_construction")]
     pub(crate) strategy_timer: CdTimer,
     /// `HouseClass+0x5798`/`+0x57A0`, the timer that runs team creation
-    /// (`sim::ai_team_creation`). Persisted and hashed (schema v237).
+    /// (`sim::ai_team_creation`). Persisted and hashed (schema v238).
     #[serde(default = "team_timer_at_construction")]
     pub(crate) team_timer: CdTimer,
     /// `HouseClass+0x565C`, the percent chance a team creation pass picks an
     /// AI trigger: constructor 100, a map house's `RatioAITriggerTeam=`
     /// (`HouseClass::Read_Scenario_INI 0x00500D0D..0x00500D25`). Persisted and
-    /// hashed (schema v237).
+    /// hashed (schema v238).
     #[serde(default = "ratio_ai_trigger_team_at_construction")]
     pub(crate) ratio_ai_trigger_team: i32,
     /// Native House bytes `+0x1EE`, `+0x1EF`, `+0x1F2`, and `+0x1F3`. All four
@@ -483,7 +483,7 @@ pub struct HouseState {
     pub(crate) ai_production: crate::sim::ai_base_building::HouseAiProduction,
     /// The computer's Unit, Infantry and Aircraft choices (`HouseClass+0x5650`,
     /// `+0x5654`, `+0x5658`), owned by `sim::ai_unit_choice`. Persisted and
-    /// hashed (schema v237).
+    /// hashed (schema v238).
     #[serde(default)]
     pub(crate) ai_unit_choices: crate::sim::ai_unit_choice::HouseAiUnitChoices,
     /// Native `HouseClass+0x242`: "a harvester of this house found no ore".

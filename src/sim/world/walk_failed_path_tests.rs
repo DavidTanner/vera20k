@@ -316,7 +316,7 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     let e = sim.substrate.entities.get_mut(victim).unwrap();
     e.mission_leaf.set_infantry_doing_verified(-1).unwrap();
     let before = position_world_coord(&e.position);
-    let facing = e.facing;
+    let facing = e.body_facing;
     let attacker_house = sim.substrate.entities.get(attacker).unwrap().owner();
     let warhead = sim.interner.intern("SA");
     let event = EntityDamageEvent::area(victim, 10, 0, attacker, Some(attacker_house), warhead);
@@ -330,7 +330,7 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     );
     let e = sim.substrate.entities.get(victim).unwrap();
     assert_eq!(e.health.current, 65);
-    assert_eq!(e.facing, facing, "Scatter setter does not snap facing");
+    assert_eq!(e.body_facing, facing, "Scatter setter does not snap facing");
     assert_eq!(
         position_world_coord(&e.position),
         before,

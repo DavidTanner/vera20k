@@ -1123,7 +1123,7 @@ impl TeamScriptVm {
         result
     }
 
-    /// `ai_teams` (schema v237) adds each team's creation frame and forming
+    /// `ai_teams` (schema v238) adds each team's creation frame and forming
     /// byte and, tagged, the AI triggers whose track record left its
     /// registered state, so a state without teams or feedback hashes as
     /// before.

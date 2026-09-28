@@ -313,7 +313,7 @@ fn accepted_chain_runs_sensor_callback_and_consumes_more_paid_points_in_same_obj
     let selection = drive_track::select_drive_track(32, 64, false).unwrap();
     assert!(selection.entry_index > 0);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.facing = 32;
+    entity.body_facing.snap(0x2000, 0);
     entity.navigation.path_replay = FootPathQueue {
         directions: vec![2, 3],
         cursor: 0,

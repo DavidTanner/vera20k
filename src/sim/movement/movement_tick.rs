@@ -122,7 +122,6 @@ pub(super) fn snapshot_mover(
         on_bridge: e.on_bridge,
         runtime_bridge_transition: e.runtime_bridge_transition,
         locomotor: e.locomotor.clone(),
-        rot: e.locomotor.as_ref().map(|l| l.rot).unwrap_or(0),
         bypass_grid: e
             .movement_target
             .as_ref()
@@ -243,9 +242,6 @@ fn handle_path_exhaustion(
     ship_locomotion: &mut Option<crate::sim::components::ShipLocomotionRuntime>,
     active_ordinary_track: bool,
     position: &super::super::components::Position,
-    category: EntityCategory,
-    facing: &mut u8,
-    facing_target: &mut Option<u8>,
     _entity_id: u64,
     active_layer: MovementLayer,
     snap: &MoverSnapshot,
@@ -439,25 +435,10 @@ fn handle_path_exhaustion(
                         target.path_layers.len(),
                         "path/path_layers desync after segment repath"
                     );
-                    // Update facing toward next cell.
-                    let new_face: u8 = facing_from_delta(dx, dy);
-                    if locomotor.as_ref().is_some_and(|loco| {
-                        matches!(
-                            loco.kind,
-                            LocomotorKind::Walk | LocomotorKind::Drive | LocomotorKind::Ship
-                        )
-                    }) {
-                        // Walk75BC97 changes facing only after successful head
-                        // selection. finish_fresh_head owns that ordered call.
-                        // Drive4B3408/Ship6A2A57 owns the fresh turn after
-                        // repath too. An eager byte snap bypasses its return.
-                    } else if category == EntityCategory::Infantry
-                        || super::FacingClass::rate_from_rot(snap.rot) <= 0
-                    {
-                        *facing = new_face;
-                    } else {
-                        *facing_target = Some(new_face);
-                    }
+                    // A repath writes no facing. Walk75BC97 turns only after
+                    // successful head selection (finish_fresh_head owns that
+                    // ordered call), and Drive4B3408/Ship6A2A57 own the fresh
+                    // turn after repath.
                     // Continue processing this entity on the new segment.
                     let mut debug_events = Vec::new();
                     debug_events.push((
@@ -739,7 +720,7 @@ fn handle_deferred_drive_selection_block(
     let (entity, others) = turn.split();
     let marker_context = deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
     let cur_pos = (entity.position.rx, entity.position.ry);
-    let body_facing = entity.body_facing;
+    let body_facing = entity.body_facing.current(mcfg.binary_frame);
     let Some(ref mut target) = entity.movement_target else {
         return Vec::new();
     };
@@ -748,7 +729,6 @@ fn handle_deferred_drive_selection_block(
         &mut entity.navigation.path_replay,
         target,
         &mut entity.navigation.path_runtime,
-        &mut entity.facing,
         body_facing,
         &snap.locomotor,
         &mut entity.drive_locomotion,
@@ -1307,7 +1287,6 @@ fn advance_ordinary_mover(
         grid,
         terrain: resolved_terrain,
         playfield_bounds,
-        native_frame,
     });
 
     let mut aborted_for_stuck: bool = false;
@@ -1325,7 +1304,6 @@ fn advance_ordinary_mover(
     // The mover is lifted out of the store for each scope below, so it can be
     // mutated while the other entities are read live. The scopes end before the
     // deferred handlers, which need the whole store mutably.
-    let marker_body_facing = entities.get(entity_id).and_then(|e| e.body_facing);
     'mover: {
         {
             let Some(mut turn) = entities.take_turn(entity_id) else {
@@ -1375,9 +1353,6 @@ fn advance_ordinary_mover(
                         &mut entity.ship_locomotion,
                         active_retained_track,
                         &entity.position,
-                        entity.category,
-                        &mut entity.facing,
-                        &mut entity.facing_target,
                         entity_id,
                         active_layer,
                         &snap,
@@ -1504,9 +1479,7 @@ fn advance_ordinary_mover(
                     target,
                     &mut entity.navigation.path_runtime,
                     &mut entity.position,
-                    &mut entity.facing,
-                    &mut entity.facing_target,
-                    marker_body_facing,
+                    &entity.body_facing,
                     &mut entity.locomotor,
                     &mut entity.drive_locomotion,
                     &mut entity.ship_locomotion,
@@ -1620,7 +1593,8 @@ fn advance_ordinary_mover(
                 return;
             };
             let (entity, others) = turn.split();
-            let head_on_mover = movement_step::MoverHeadOnContext::from_entity(entity);
+            let head_on_mover =
+                movement_step::MoverHeadOnContext::from_entity(entity, native_frame);
             let Some(target) = entity.movement_target.as_mut() else {
                 return;
             };
@@ -1641,22 +1615,16 @@ fn advance_ordinary_mover(
             if snap.category != EntityCategory::Infantry {
                 if uses_hover_locomotor {
                     hover_stall = movement_step::hover_steer(
-                        &mut entity.facing,
-                        &mut entity.facing_target,
                         &mut entity.body_facing,
                         &entity.position,
                         target,
-                        snap.rot,
                         native_frame,
                     );
                 } else {
                     match movement_step::handle_vehicle_rotation(
-                        &mut entity.facing,
-                        &mut entity.facing_target,
                         &mut entity.body_facing,
-                        &mut entity.position,
+                        None,
                         &mut entity.locomotor,
-                        snap.rot,
                         native_frame,
                         sim_tick,
                     ) {
@@ -1858,13 +1826,7 @@ fn advance_ordinary_mover(
                 &mut entity.navigation.path_replay,
                 target,
                 &entity.position,
-                entity
-                    .body_facing
-                    .as_ref()
-                    .map_or(u16::from(entity.facing) << 8, |facing| {
-                        facing.current(native_frame)
-                    }),
-                &mut entity.facing_target,
+                entity.body_facing.current(native_frame),
                 &mut entity.drive_locomotion,
                 &mut entity.ship_locomotion,
                 &entity.locomotor,
@@ -1906,7 +1868,7 @@ fn advance_ordinary_mover(
                         *native_track = Some(invocation);
                         return;
                     }
-                    movement_step::NativeTrackPreparation::TurnFirst(invocation) => {
+                    movement_step::NativeTrackPreparation::TurnFirst(invocation, desired) => {
                         // Drive4B343B/Ship6A2A8A calls Do_Turn immediately,
                         // then returns before admission even for ROT=0. The
                         // earlier rotation sample cannot consume this new
@@ -1915,12 +1877,9 @@ fn advance_ordinary_mover(
                         // Native evidence: drive_fresh_turn.json.
                         if let movement_step::RotationResult::StillRotating { debug_events: evts } =
                             movement_step::handle_vehicle_rotation(
-                                &mut entity.facing,
-                                &mut entity.facing_target,
                                 &mut entity.body_facing,
-                                &mut entity.position,
+                                Some(u16::from(desired) << 8),
                                 &mut entity.locomotor,
-                                snap.rot,
                                 native_frame,
                                 sim_tick,
                             )
@@ -2049,9 +2008,7 @@ fn advance_ordinary_mover(
                     target,
                     &mut entity.navigation.path_runtime,
                     &mut entity.position,
-                    &mut entity.facing,
-                    &mut entity.facing_target,
-                    marker_body_facing,
+                    &entity.body_facing,
                     &mut entity.locomotor,
                     &mut entity.drive_locomotion,
                     &mut entity.ship_locomotion,
@@ -3684,14 +3641,9 @@ fn finalize_finished_entities(
                 );
             }
             super::navcom::finish_drive_navigation(entity, resolved_terrain);
+            // The body's +388 survives arrival: a turn still running ends on
+            // the frame clock.
             entity.movement_target = None;
-            if !entity
-                .locomotor
-                .as_ref()
-                .is_some_and(|l| l.kind == LocomotorKind::Walk)
-            {
-                entity.body_facing = None; // legacy steering/turn interpolator cleanup
-            } // Walk's retained FacingClass survives arrival, as native +388 does.
             let old_phase = entity.locomotor.as_ref().map(|l| l.phase);
             if let Some(ref mut loco) = entity.locomotor {
                 loco.phase = GroundMovePhase::Idle;

@@ -108,7 +108,7 @@ fn signed_rot_reaches_spawn_combat_turn_and_snapshot_restore() {
             100,
         );
         let entity = sim.substrate.entities.get(id).unwrap();
-        for facing in [entity.body_facing.unwrap(), entity.barrel_facing.unwrap()] {
+        for facing in [entity.body_facing, entity.barrel_facing.unwrap()] {
             assert_eq!(
                 serde_json::json!(facing.rot_per_frame()),
                 expected["rate"],
@@ -946,7 +946,7 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
         ),
         (2, 2, 0)
     );
-    assert_eq!(rejected.facing, 9);
+    assert_eq!(rejected.body_facing.destination(), 9 << 8);
     assert!(rejected.lifecycle.in_limbo && !rejected.lifecycle.cell_marked);
     assert!(
         child_ids
@@ -1855,7 +1855,7 @@ fn aircraft_spawn_initializes_both_facings_without_a_turret_flag() {
             );
             let authored = sim.substrate.entities.values().next().unwrap();
             for entity in [&runtime, authored] {
-                for facing in [entity.body_facing.unwrap(), entity.barrel_facing.unwrap()] {
+                for facing in [entity.body_facing, entity.barrel_facing.unwrap()] {
                     assert_eq!(
                         serde_json::json!(facing.rot_per_frame()),
                         *rate,

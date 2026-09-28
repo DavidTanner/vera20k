@@ -33,7 +33,7 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use super::combat_weapon::{
-    attacker_facts, is_ally_by_object, select_weapon_for_target, techno_target_facts,
+    attacker_facts, is_ally_by_object, techno_target_facts, what_weapon_should_i_use,
 };
 use super::threat_range::ScanMission;
 use crate::map::entities::EntityCategory;
@@ -41,7 +41,6 @@ use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::weapon_type::WeaponType;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::{InternedId, StringInterner};
@@ -85,7 +84,6 @@ pub(crate) struct AttackerSnapshot {
     pub sub_x: SimFixed,
     pub sub_y: SimFixed,
     pub type_id: InternedId,
-    pub facing: u8,
     pub veterancy: u16,
     pub animation_sequence: Option<crate::sim::animation::SequenceKind>,
     pub animation_frame: Option<u16>,
@@ -94,10 +92,9 @@ pub(crate) struct AttackerSnapshot {
     pub has_movement: bool,
     pub pending_infantry_fire: Option<super::PendingInfantryFire>,
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
-    /// Retained body FacingClass (`+0x388`), including infantry fire-start
-    /// snaps and vehicle turns. Facing gates and emission read its full
-    /// 16-bit value rather than the byte mirrored for presentation.
-    pub hull_facing: Option<crate::sim::movement::FacingClass>,
+    /// Body FacingClass (`+0x388`), including infantry fire-start snaps and
+    /// vehicle turns. Facing gates and emission read its full 16-bit value.
+    pub hull_facing: crate::sim::movement::FacingClass,
     /// Weapon-selection override (the Gunner-IFV slot).
     pub weapon_override: Option<super::combat_weapon::WeaponOverride>,
     /// `TechnoClass+0x82` InOpenToppedTransport.
@@ -297,9 +294,9 @@ pub(crate) fn calculate_ai_threat_score(
 
 /// SelectWeapon (vt+0x2E4) of `victim` against `source`, as ShouldRetaliate
 /// (`0x007088DB`) and ReceiveDamage's reach gate (`0x00702A5D`) each call it.
-/// Every slot of an occupied building answers its occupant's weapon
-/// (`BuildingClass::GetWeapon @ 0x004526F0`), so its choice cannot change the
-/// weapon read; slot 0 stands for it.
+/// An occupied building answers slot 0 (ladder arm B), and its GetWeapon
+/// answers the occupant's weapon for every slot (`0x004526F0`). The index is
+/// the ladder's; GetFireError judges it.
 pub(crate) fn retaliation_weapon_index(
     world: &crate::sim::world::Simulation,
     rules: &RuleSet,
@@ -307,11 +304,7 @@ pub(crate) fn retaliation_weapon_index(
     victim_type: &ObjectType,
     source: &GameEntity,
     source_type: &ObjectType,
-    garrison: Option<(&WeaponType, SimFixed)>,
-) -> Option<i32> {
-    if garrison.is_some() {
-        return Some(0);
-    }
+) -> i32 {
     let allied = is_ally_by_object(
         Some(&world.house_alliances),
         &world.interner,
@@ -326,13 +319,12 @@ pub(crate) fn retaliation_weapon_index(
         rules,
         &world.interner,
     );
-    select_weapon_for_target(
+    what_weapon_should_i_use(
         rules,
         victim_type,
         &attacker_facts(victim, victim_type),
-        &source_as_target,
+        Some(&source_as_target),
     )
-    .map(|selected| selected.index)
 }
 
 /// `TechnoClass::ShouldRetaliate @ 0x007087C0`, whose only caller is
@@ -423,9 +415,6 @@ pub(crate) fn should_retaliate(
     // Every weapon read below goes through GetWeapon (vt+0x3F8), which for an
     // occupied building answers its firing occupant's weapon for every slot
     // (`BuildingClass::GetWeapon @ 0x004526F0`).
-    let target = super::TargetKind::Entity(source_id);
-    let garrison =
-        super::fire_error_world::garrison_weapon(world, rules, victim, victim_type, target);
     let mut subject = super::fire_error_world::FireSubject {
         world,
         rules,
@@ -433,9 +422,9 @@ pub(crate) fn should_retaliate(
         fog: Some(&world.fog),
         firer: victim,
         obj: victim_type,
-        target: Some(target),
+        target: Some(super::TargetKind::Entity(source_id)),
         weapon_index: 0,
-        garrison,
+        garrison: super::fire_error_world::garrison_weapon(world, rules, victim, victim_type),
     };
     // `0x007088A7` GetWeaponDamageValue(-1) > 0 (a healer never retaliates);
     // `0x007088BC` Is_Armed (`BuildingClass::Is_Armed @ 0x00458DB0` answers
@@ -445,18 +434,8 @@ pub(crate) fn should_retaliate(
     }
     // `0x007088CA..0x007088FF`: SelectWeapon(source), then GetFireError
     // without the range test (vt+0x3BC); Illegal or Cant refuses.
-    let Some(weapon_index) = retaliation_weapon_index(
-        world,
-        rules,
-        victim,
-        victim_type,
-        source,
-        source_type,
-        garrison,
-    ) else {
-        return false;
-    };
-    subject.weapon_index = weapon_index;
+    subject.weapon_index =
+        retaliation_weapon_index(world, rules, victim, victim_type, source, source_type);
     if matches!(
         subject.fire_error(false),
         super::fire_error::FireError::Illegal | super::fire_error::FireError::Cant

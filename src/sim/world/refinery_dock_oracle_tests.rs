@@ -411,8 +411,7 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
         let raw = input["facing"].as_u64().unwrap_or(0xC000) as u16;
         let mut body = FacingClass::new(raw, 5);
         body.set(raw, frame);
-        entity.body_facing = Some(body);
-        entity.facing = (raw >> 8) as u8;
+        entity.body_facing = body;
         if let Some(miner_state) = entity.miner.as_mut() {
             miner_state.unload_active = input["unloading"] == true;
             if let Some(stage) = input["stage"].as_array() {
@@ -549,10 +548,7 @@ fn compare_state(s: &Scene, row: &Value, context: &str) {
         expected["refinery_tether"].as_u64().unwrap(),
         "{context}: refinery tether"
     );
-    let desired = miner
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(miner.facing) << 8, |body| body.destination());
+    let desired = miner.body_facing.destination();
     assert_eq!(
         u64::from(desired),
         expected["facing"]["desired"].as_u64().unwrap(),

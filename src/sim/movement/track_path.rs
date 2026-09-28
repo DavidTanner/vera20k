@@ -129,10 +129,7 @@ pub(super) fn clear_track_head(entity: &mut GameEntity) {
 
 /// `((Current >> 12) + 1) >> 1 & 7` over the body FacingClass (0x4B2A88..94).
 fn facing_octant(entity: &GameEntity, frame: u32) -> u8 {
-    let facing = entity
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(entity.facing) << 8, |f| f.current(frame));
+    let facing = entity.body_facing_current(frame);
     ((((facing >> 12) + 1) >> 1) & 7) as u8
 }
 

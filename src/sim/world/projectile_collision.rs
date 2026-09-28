@@ -876,7 +876,7 @@ mod tests {
                         .exact_z_leptons = Some(100);
                 }
                 let firer = sim.substrate.entities.get_mut(source).unwrap();
-                firer.facing = 64;
+                firer.body_facing.snap(0x4000, 0);
                 firer.attack_target = Some(AttackTarget::new(target));
                 sim.session.binary_frame = 100;
                 let mut runtime = SimRuntime::from_simulation(sim);
@@ -979,7 +979,7 @@ mod tests {
             assert!(sim.substrate.entities.get(source).unwrap().in_playfield);
             assert!(sim.substrate.entities.get(target).unwrap().in_playfield);
             let firer = sim.substrate.entities.get_mut(source).unwrap();
-            firer.facing = 64;
+            firer.body_facing.snap(0x4000, 0);
             firer.attack_target = Some(AttackTarget::new(target));
             let mut runtime = SimRuntime::from_simulation(sim);
             runtime.resources.rules = make_rules();

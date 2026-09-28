@@ -398,11 +398,11 @@ mod gsi_04_03b_tests {
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("AMERICANS");
         let type_ref = sim.interner.intern("HARV");
-        for (entity_id, rx, facing) in [(1, 1, 0x40), (2, 3, 0xC0)] {
+        for (entity_id, rx, facing) in [(1, 1, 0x40u8), (2, 3, 0xC0)] {
             let mut miner = GameEntity::test_default(entity_id, "HARV", "AMERICANS", rx, 2);
             miner.owner = owner;
             miner.type_ref = type_ref;
-            miner.facing = facing;
+            miner.body_facing.snap(u16::from(facing) << 8, 0);
             miner.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
             miner.drive_locomotion = Some(Default::default());
             sim.substrate.entities.insert(miner);

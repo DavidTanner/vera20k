@@ -372,6 +372,7 @@ impl Simulation {
                         locomotor_kind,
                         false,
                         &self.substrate.occupancy,
+                        self.session.binary_frame,
                         &self.substrate.entities,
                         &self.house_alliances,
                         &self.interner,

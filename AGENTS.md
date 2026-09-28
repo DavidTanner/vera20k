@@ -132,7 +132,9 @@ Simulation state and shared decisions have one authoritative owner. Before addin
 state or decision logic, find existing writers and name the owner in the PR. Extend
 or fix that owner instead of introducing competing state or duplicated decision
 logic. Keep authoritative state private to its owning module and expose mutations
-through the owner.
+through the owner. CI fails a change that raises the number of `src/sim` struct fields
+any simulation module can write (`pub`, `pub(crate)` and equivalents); check with
+`python tools/sim_field_ratchet.py --base origin/main`.
 
 Before porting a native function, search the code for its address (e.g. `703850`) and
 native name. Each native function has one Rust port; new callers call it instead of

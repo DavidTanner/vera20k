@@ -46,9 +46,9 @@ impl Simulation {
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        air_movement::ensure_fly_facings(e);
+        air_movement::ensure_fly_secondary_facing(e);
         if air_movement::current_fly_height(e, self.resolved_terrain.as_ref()) == 0 {
-            e.body_facing.as_mut().unwrap().snap(
+            e.body_facing.snap(
                 e.barrel_facing.unwrap().destination(),
                 self.session.binary_frame,
             );
@@ -744,14 +744,13 @@ mod tests {
             loco.powered = input["powered"].as_bool().unwrap_or(true);
             loco.set_fly_target_height(37);
             loco.fly_runtime_mut().unwrap().finish_destination();
-            for (slot, initial, target) in [
-                (&mut e.body_facing, 0x4000, 0xC000),
-                (&mut e.barrel_facing, 0x6000, 0x2000),
-            ] {
+            let facing = |initial, target| {
                 let mut facing = FacingClass::new(initial, 5);
                 facing.set(target, 90);
-                *slot = Some(facing);
-            }
+                facing
+            };
+            e.body_facing = facing(0x4000, 0xC000);
+            e.barrel_facing = Some(facing(0x6000, 0x2000));
             let rng = sim.scenario_rng.logical_state();
             if input["move"].as_bool().unwrap() {
                 sim.move_air_coordinate(
@@ -806,7 +805,7 @@ mod tests {
                 expected["state"]["destination"],
                 "{input}"
             );
-            for (facing, expected) in [e.body_facing.unwrap(), e.barrel_facing.unwrap()]
+            for (facing, expected) in [e.body_facing, e.barrel_facing.unwrap()]
                 .into_iter()
                 .zip(expected["facings"].as_array().unwrap())
             {

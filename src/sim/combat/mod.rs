@@ -106,7 +106,7 @@ mod open_topped_fire_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use self::combat_weapon::{WeaponSlot, select_weapon_against, select_weapon_slot};
+use self::combat_weapon::{WeaponSlot, select_weapon_against};
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -523,27 +523,6 @@ pub fn armor_index(armor: &str) -> usize {
     ARMOR_NAMES.iter().position(|&a| a == lower).unwrap_or(0)
 }
 
-/// Combat-only target category used for projectile AA/AG legality and weapon
-/// selection.
-///
-/// `ConsideredAircraft=yes` infantry, such as Rocketeers/JumpJets, remain
-/// infantry entities for movement, selection, crush, and animation, but weapon
-/// selection must treat them as air targets.
-pub(crate) fn combat_target_category(
-    entity: &GameEntity,
-    rules: &RuleSet,
-    interner: &StringInterner,
-) -> EntityCategory {
-    if rules
-        .object(interner.resolve(entity.type_ref()))
-        .is_some_and(|obj| obj.considered_aircraft)
-    {
-        EntityCategory::Aircraft
-    } else {
-        entity.category
-    }
-}
-
 /// Return the active wall-overlay flags at a cell, if available.
 fn wall_overlay_flags_at<'a>(
     overlay_grid: Option<&OverlayGrid>,
@@ -913,9 +892,10 @@ pub(crate) fn object_distance_to(
 /// target through the authoritative 3D `InRange` path.
 ///
 /// gamemd-derived: SpawnManager mode 0 in `SpawnManagerClass::AI` @
-/// `0x006B7230` calls the Unit owner's `TechnoClass::CanFireAtTarget` vslot,
-/// which dispatches through weapon selection @ `0x006F7780`, `CanFireAt` @
-/// `0x006F77B0`, and ordinary `TechnoClass::InRange` @ `0x006F7220`.
+/// `0x006B7230` calls the Unit owner's `TechnoClass::CanFireAtTarget` vslot
+/// `0x006F7780`, which is `CanFireAt(target, SelectWeapon(target))`
+/// (`0x006F77B0`) and ordinary `TechnoClass::InRange` @ `0x006F7220`. It asks
+/// no legality: a target the weapon may not fire at is still in range.
 pub(crate) fn can_fire_at_target(
     entities: &EntityStore,
     rules: &RuleSet,
@@ -974,11 +954,11 @@ pub(crate) fn can_fire_at_target(
 /// Uses the same weapon-select inputs as the combat tick's Phase 2 weapon
 /// selection so pursuit and combat agree on "in range" at the boundary.
 ///
-/// Returns `None` if the selected weapon cannot legally fire at the target
-/// (the selection's GetFireError subset). Pursuit treats `None` as "skip":
-/// the fire routine asks GetFireError itself, and `TechnoClass::AI`'s
-/// 16-frame check drops an ILLEGAL or CANT target (a building drops it at
-/// once).
+/// Returns `None` only when the selected slot names no weapon. Legality is
+/// not asked: `FootClass::Approach_Target @ 0x004D5690` selects (`0x004D56CA`)
+/// and measures with CanFireAt without GetFireError. The fire routine asks
+/// GetFireError itself, and `TechnoClass::AI`'s 16-frame check drops an
+/// ILLEGAL or CANT target (a building drops it at once).
 pub(crate) fn pursuit_selected_weapon<'a>(
     entity: &GameEntity,
     target: &TargetKind,
@@ -1130,59 +1110,24 @@ pub(crate) fn pursuit_in_range(
 ///
 /// Replaces any existing AttackTarget. Infantry and vehicles turn through their
 /// firing/movement owners, not through target assignment.
-pub fn issue_attack_command(
-    entities: &mut EntityStore,
-    attacker_id: u64,
-    target_id: u64,
-    rules: Option<&RuleSet>,
-    interner: &StringInterner,
-) -> bool {
-    // Read target position first (immutable borrow, lepton-precise).
-    // Use foundation center for buildings (see target_coords doc comment).
-    let target_pos = entities
-        .get(target_id)
-        .map(|t| target_coords(t, rules, interner));
-    let (trx, try_, _tsx, _tsy) = match target_pos {
-        Some(p) => p,
-        None => return false,
-    };
-
-    // Read attacker position before mutable borrow (needed for body-facing delta).
-    let attacker_pos = entities.get(attacker_id).map(|a| {
-        (
-            a.position.rx,
-            a.position.ry,
-            a.barrel_facing.is_some(),
-            a.category,
-        )
-    });
-    let (arx, ary, has_turret, category) = match attacker_pos {
-        Some(p) => p,
-        None => return false,
-    };
-
-    // Mutate attacker.
+pub fn issue_attack_command(entities: &mut EntityStore, attacker_id: u64, target_id: u64) -> bool {
+    if entities.get(target_id).is_none() {
+        return false;
+    }
     let attacker = match entities.get_mut(attacker_id) {
         Some(a) => a,
         None => return false,
     };
 
     // gamemd-derived: a target assignment writes the target pointer and nothing
-    // else — no facing. A TURRETLESS VEHICLE therefore gets no instant snap
-    // here: `UnitClass::Fire_At_Target @ 0x00736DF0` case 2 turns its hull at
-    // `ROT=` (`FacingClass::Set(+0x388)` at `0x00737004`) only once the fire
-    // gate refuses the shot for facing, and only while it is stationary.
-    //
-    // Infantry likewise snap only when their fire action starts (00520925),
-    // now owned by world_receiver::resolve_attacker_fire, and a building's
-    // order takes BuildingClass::SetTarget (`world_commands`), which writes no
-    // facing. The legacy body-only aircraft order behavior remains for its
-    // class-specific audit.
-    if !has_turret && category == EntityCategory::Aircraft {
-        let dx: i32 = trx as i32 - arx as i32;
-        let dy: i32 = try_ as i32 - ary as i32;
-        attacker.facing = crate::sim::movement::facing_from_delta(dx, dy);
-    }
+    // else — no facing, for any class. A TURRETLESS VEHICLE therefore gets no
+    // instant snap here: `UnitClass::Fire_At_Target @ 0x00736DF0` case 2 turns
+    // its hull at `ROT=` (`FacingClass::Set(+0x388)` at `0x00737004`) only once
+    // the fire gate refuses the shot for facing, and only while it is
+    // stationary. Infantry snap only when their fire action starts (00520925,
+    // world_receiver::resolve_attacker_fire), an aircraft turns through its
+    // Mission_Attack and Fly owners, and a building's order takes
+    // BuildingClass::SetTarget (`world_commands`), which writes no facing.
 
     // Walk's physical head survives a null destination. The synchronized
     // command owner applies that setter after TarCom assignment; the shared
@@ -1298,22 +1243,11 @@ pub fn issue_attack_cell_command(
     rules: Option<&RuleSet>,
     interner: &StringInterner,
 ) -> bool {
-    // Read attacker position + weapon presence before mutable borrow.
-    let attacker_info = entities.get(attacker_id).map(|a| {
-        let type_str = interner.resolve(a.type_ref());
-        let has_weapon = rules
-            .and_then(|r| r.object(type_str))
-            .is_some_and(|obj| combat_weapon::is_armed(a, obj));
-        (
-            a.position.rx,
-            a.position.ry,
-            a.barrel_facing.is_some(),
-            has_weapon,
-            a.category,
-        )
-    });
-    let (arx, ary, has_turret, has_weapon, category) = match attacker_info {
-        Some(info) => info,
+    // Read weapon presence before the mutable borrow.
+    let has_weapon = match entities.get(attacker_id) {
+        Some(a) => rules
+            .and_then(|r| r.object(interner.resolve(a.type_ref())))
+            .is_some_and(|obj| combat_weapon::is_armed(a, obj)),
         None => return false,
     };
 
@@ -1329,20 +1263,12 @@ pub fn issue_attack_cell_command(
         return false;
     }
 
-    let (trx, try_, _tsx, _tsy) = cell_center_coords(target_rx, target_ry);
-
     let attacker = match entities.get_mut(attacker_id) {
         Some(a) => a,
         None => return false,
     };
 
-    // As with entity targets, Infantry/Unit facing belongs to Fire_At_Target
-    // and a building's order takes BuildingClass::SetTarget.
-    if !has_turret && category == EntityCategory::Aircraft {
-        let dx: i32 = trx as i32 - arx as i32;
-        let dy: i32 = try_ as i32 - ary as i32;
-        attacker.facing = crate::sim::movement::facing_from_delta(dx, dy);
-    }
+    // As with entity targets, the assignment writes no facing.
 
     if !attacker
         .locomotor
@@ -2866,7 +2792,6 @@ pub(crate) fn build_attacker_snapshot(
         sub_x: entity.position.sub_x,
         sub_y: entity.position.sub_y,
         type_id: entity.type_ref(),
-        facing: entity.facing,
         veterancy: entity.veterancy,
         animation_sequence: entity.animation.as_ref().map(|a| a.sequence),
         animation_frame: entity.animation.as_ref().map(|a| a.frame_index),
@@ -3589,7 +3514,7 @@ mod impact_height_tests {
         // native body gate compares (`UnitClass::GetFireError @ 0x00740FD0`
         // step 17). Face it south at the force-fire cell so this test measures
         // impact height, not turn-to-fire.
-        firer.facing = 128;
+        firer.body_facing.snap(0x8000, 0);
         store.insert(firer);
         let mut interner = test_interner();
         assert!(

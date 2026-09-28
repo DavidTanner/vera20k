@@ -14,8 +14,9 @@
 //! ## Facing
 //! RA2 uses a 0-255 screen-relative DirStruct byte: 0=north on screen (iso -x,-y),
 //! 64=east on screen (iso +x,-y), 128=south on screen (iso +x,+y),
-//! 192=west on screen (iso -x,+y). The full heading lives in FacingClass;
-//! Walk updates it on each paid step and publishes its high-byte mirror.
+//! 192=west on screen (iso -x,+y). The full 16-bit heading is the body
+//! FacingClass (`GameEntity::body_facing`, `+0x388`), each Techno's only copy;
+//! byte readers take its high byte.
 //!
 //! ## Sub-modules
 //! - `movement_commands` — destination setters and the MovementTarget
@@ -411,7 +412,6 @@ pub(super) struct MoverSnapshot {
     pub on_bridge: bool,
     pub runtime_bridge_transition: movement_bridge::RuntimeBridgeTransitionState,
     pub locomotor: Option<locomotor::LocomotorState>,
-    pub rot: i32,
     /// Mover's `MovementTarget.bypass_grid` flag — when true, structure
     /// occupants are skipped during the foundation-cross occupancy check
     /// (harvester dock drive: buildings are not scatter targets).

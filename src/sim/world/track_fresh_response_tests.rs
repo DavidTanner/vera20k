@@ -357,10 +357,7 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
         ),
         ("latched", json!(u8::from(p.path_blocked))),
         ("retries", json!(p.retries_left)),
-        (
-            "facing",
-            json!(e.body_facing.as_ref().unwrap().destination()),
-        ),
+        ("facing", json!(e.body_facing.destination())),
         ("mission", json!(e.mission.current().raw())),
         (
             "foot_68b",
@@ -425,8 +422,7 @@ fn fresh_arm_rows_match_the_original_responses() {
         e.navigation.path_replay.cursor = 0;
         e.navigation.path_replay.reference_cell = Some((9, 8));
         let rot = e.locomotor.as_ref().map_or(0, |loco| loco.rot);
-        e.body_facing = Some(FacingClass::new(rest, rot));
-        e.facing = (rest >> 8) as u8;
+        e.body_facing = FacingClass::new(rest, rot);
         let runtime = &mut e.navigation.path_runtime;
         runtime.start_movement(movement[0] as u32, movement[2] as i32);
         runtime.start_blocked(blocked[0] as u32, blocked[2] as i32);
@@ -492,8 +488,7 @@ fn first_code7_scold_request_retains_the_native_byte() {
         e.navigation.path_replay.cursor = 0;
         e.navigation.path_replay.reference_cell = Some((9, 8));
         let rot = e.locomotor.as_ref().unwrap().rot;
-        e.body_facing = Some(FacingClass::new(2 << 13, rot));
-        e.facing = 64;
+        e.body_facing = FacingClass::new(2 << 13, rot);
         e.navigation.path_runtime.start_movement(100, 0);
         e.navigation
             .path_runtime
@@ -539,7 +534,9 @@ fn first_code7_scold_request_retains_the_native_byte() {
             .sound_events
             .iter()
             .filter_map(|event| match event {
-                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => Some(sound_id.as_str()),
+                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => {
+                    Some(sound_id.as_str())
+                }
                 _ => None,
             })
             .collect();

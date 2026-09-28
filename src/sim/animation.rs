@@ -517,12 +517,7 @@ fn tick_animations_impl(
 
         if let Some(next) = advance_animation(anim, def, game_options) {
             if let Some(facing) = def.completion_facing {
-                snap_completion_facing(
-                    &mut entity.facing,
-                    &mut entity.body_facing,
-                    facing,
-                    binary_frame,
-                );
+                snap_completion_facing(&mut entity.body_facing, facing, binary_frame);
             }
             // The Doing that installed this sequence has played to its end.
             if let Some(doing) = entity.mission_leaf.as_infantry().map(|leaf| leaf.doing())
@@ -560,18 +555,13 @@ pub fn tick_animations(
 /// `InfantryClass::DoType_Sequencer @ 0x00520AE0` (`0x00520CEB..0x00520D16`):
 /// a completed action's facing hint turns the body before the next or default
 /// action, through `FacingClass::UpdateFacing` (`FacingClass::snap`).
-/// Takes the entity's facing byte and body facing, which the cascade borrows
-/// beside its animation.
+/// Takes the body facing, which the cascade borrows beside its animation.
 pub(crate) fn snap_completion_facing(
-    facing_byte: &mut u8,
-    body_facing: &mut Option<crate::sim::movement::FacingClass>,
+    body_facing: &mut crate::sim::movement::FacingClass,
     facing: u8,
     binary_frame: u32,
 ) {
-    *facing_byte = facing;
-    if let Some(body_facing) = body_facing.as_mut() {
-        body_facing.snap(u16::from(facing) << 8, binary_frame);
-    }
+    body_facing.snap(u16::from(facing) << 8, binary_frame);
 }
 
 /// Advance only living entity animations. Dying animation completion is owned

@@ -411,9 +411,7 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
             assert!(crate::sim::combat::issue_attack_command(
                 &mut sim.substrate.entities,
                 source,
-                target,
-                Some(&rules),
-                &sim.interner
+                target
             ));
         }
         let frame = sim

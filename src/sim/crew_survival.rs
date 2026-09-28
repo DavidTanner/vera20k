@@ -539,7 +539,10 @@ impl Simulation {
         };
         let owner = building.owner();
         let on_bridge = building.on_bridge;
-        let facing = building.facing;
+        // `0x00442F3C..0x00442F63`: the building's `+0x388` Current() as a
+        // rounded DirType is the Unlimbo direction.
+        let frame = self.session.binary_frame;
+        let facing = building.body_facing_dir(frame);
         let position = building.position.clone();
         let sub_cell =
             infantry.then(|| bump_crush::priority_sub_cell(position.sub_x, position.sub_y));
@@ -548,7 +551,6 @@ impl Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(passenger) {
             entity.passenger_role = crate::sim::passenger::PassengerRole::None;
             entity.on_bridge = on_bridge;
-            entity.facing = facing;
             entity.sub_cell = sub_cell;
         }
         let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(sub_cell);
@@ -574,6 +576,10 @@ impl Simulation {
         if !revealed {
             self.uninit_with_rules(passenger, rules);
             return;
+        }
+        // Unlimbo's body snap (`0x006F6DAA`) follows the successful Reveal.
+        if let Some(entity) = self.substrate.entities.get_mut(passenger) {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
         }
         if infantry {
             self.scatter_crew(rules, registry, passenger);
@@ -769,7 +775,7 @@ impl Simulation {
         let location = position_world_coord(&unit.position);
         // `0x007380C5..0x007380E6`: FacingClass::Current (`0x004C93D0`) as a
         // rounded DirType.
-        let facing = (((u32::from(unit.body_facing_current(frame)) >> 7) + 1) >> 1) as u8;
+        let facing = unit.body_facing_dir(frame);
         let open_topped = self
             .object_type(unit.type_ref(), rules)
             .is_some_and(|object| object.open_topped);
@@ -971,16 +977,9 @@ impl Simulation {
                 on_bridge,
             ),
         };
-        let frame = self.session.binary_frame;
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.sub_cell = sub_cell;
             entity.on_bridge = on_bridge;
-            if let Some(facing) = facing {
-                entity.facing = facing;
-                if let Some(body) = entity.body_facing.as_mut() {
-                    body.snap(u16::from(facing) << 8, frame);
-                }
-            }
         }
         let outcome = self.try_reveal_entity_with_context(
             id,
@@ -997,7 +996,17 @@ impl Simulation {
             },
             UninitContext::with_rules(rules),
         );
-        matches!(outcome, RevealOutcome::Revealed { .. })
+        let revealed = matches!(outcome, RevealOutcome::Revealed { .. });
+        // Unlimbo's body snap (`+0x388` Set_Current, `0x006F6DAA`) follows a
+        // successful Reveal.
+        let frame = self.session.binary_frame;
+        if revealed
+            && let Some(facing) = facing
+            && let Some(entity) = self.substrate.entities.get_mut(id)
+        {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
+        }
+        revealed
     }
 
     /// A survivor's placement in a foundation cell: its request

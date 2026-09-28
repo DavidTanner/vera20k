@@ -179,7 +179,7 @@ fn fixture(rules: &RuleSet, input: &Value) -> (Simulation, u64, Option<u64>) {
     if input["target"].as_bool().unwrap_or(false) {
         entity.attack_target = source.map(AttackTarget::new);
     }
-    let facing = entity.barrel_facing.as_mut().unwrap();
+    let facing = &mut entity.body_facing;
     if let Some(desired) = input["initial_desired"].as_u64() {
         // The oracle writes the desired word alone; a snap leaves the same
         // settled facing (the start word only matters while rotating).
@@ -228,7 +228,7 @@ fn the_block_matches_the_original() {
             row["frame"].as_u64().unwrap() as u32
         );
         let before = sim.substrate.entities.get(building).unwrap().clone();
-        let facing_before = before.barrel_facing.unwrap();
+        let facing_before = before.body_facing;
         let mut expected_rng = sim.scenario_rng.clone();
         assert_eq!(indices(&sim.scenario_rng), row["rng"][0], "{name} indices");
 
@@ -289,7 +289,7 @@ fn the_block_matches_the_original() {
         );
         assert_eq!(indices(&sim.scenario_rng), row["rng"][1], "{name} indices");
 
-        let facing = after.barrel_facing.unwrap();
+        let facing = after.body_facing;
         let native = &row["facing_after"];
         if *native == row["facing_before"] {
             assert_eq!(facing, facing_before, "{name} +0x388 untouched");
@@ -406,7 +406,7 @@ fn a_human_defence_hit_from_out_of_range_turns_its_turret_once() {
     let entity = sim.substrate.entities.get(building).unwrap();
     assert_eq!(entity.health.current, 990);
     assert!(entity.attack_target.is_none());
-    let turret = entity.barrel_facing.unwrap();
+    let turret = entity.body_facing;
     assert_eq!(turret.destination(), 0xD500);
     assert_eq!(turret.timer_duration(), 4);
     assert!(turret.is_rotating(FRAME));
@@ -418,8 +418,8 @@ fn a_human_defence_hit_from_out_of_range_turns_its_turret_once() {
         "no draw while the turret turns"
     );
     assert_eq!(
-        sim.substrate.entities.get(building).unwrap().barrel_facing,
-        Some(turret)
+        sim.substrate.entities.get(building).unwrap().body_facing,
+        turret
     );
 }
 
@@ -430,8 +430,8 @@ fn an_insignificant_building_turns_without_a_ping() {
     let rules = production_rules("");
     let (mut sim, building, source) = production_fixture(&rules, "SHACK", true, OUT_OF_RANGE);
     assert_eq!(hit(&mut sim, &rules, building, source), 0);
-    let body = sim.substrate.entities.get(building).unwrap().barrel_facing;
-    assert_eq!(body.map(|facing| facing.destination()), Some(0xD500));
+    let body = sim.substrate.entities.get(building).unwrap().body_facing;
+    assert_eq!(body.destination(), 0xD500);
 }
 
 /// A 2x2 building that undeploys and gathers (the deployed Slave Miner)
@@ -479,11 +479,7 @@ fn a_returned_hit_takes_the_source_without_a_draw() {
             Some(TargetKind::Entity(source)),
             "human {human}"
         );
-        assert_eq!(
-            entity.barrel_facing.map(|facing| facing.destination()),
-            Some(0),
-            "human {human}"
-        );
+        assert_eq!(entity.body_facing.destination(), 0, "human {human}");
     }
 }
 

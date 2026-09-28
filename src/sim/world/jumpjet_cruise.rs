@@ -89,7 +89,10 @@ struct CruiseHost<'a> {
     piggyback_active: bool,
     simple_deployer: bool,
     deploy_to_land: bool,
-    body_facing: Option<u16>,
+    /// The owner's body (`+0x388`) as this frame reads it.
+    body_facing: u16,
+    /// The flight's `Set_Current` on the body, when it made one.
+    snapped_body_facing: Option<u16>,
     grounded_reset: bool,
     /// The owner, as the air slots identify it.
     stable_id: u64,
@@ -293,7 +296,8 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     fn arrival_notify(&mut self) {}
 
     fn snap_body_facing(&mut self, facing: u16) {
-        self.body_facing = Some(facing);
+        self.body_facing = facing;
+        self.snapped_body_facing = Some(facing);
     }
 
     fn hold_target_facing(&self) -> Option<u16> {
@@ -305,7 +309,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 
     fn body_facing(&self) -> u16 {
-        self.body_facing.unwrap_or(0)
+        self.body_facing
     }
 
     fn random_direction(&mut self) -> u32 {
@@ -499,6 +503,7 @@ struct HostEffects {
     destination: [i32; 3],
     /// The state the frame began in, so the caller can see a cruise end.
     entry_state: i32,
+    /// The flight's `Set_Current` on the body, when it made one.
     body_facing: Option<u16>,
     grounded_reset: bool,
     height: i32,
@@ -558,10 +563,7 @@ impl Simulation {
             let object =
                 rules.and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())));
             let (trig, _) = required_math_tables();
-            let body = entity
-                .body_facing
-                .as_ref()
-                .map_or(u16::from(entity.facing) << 8, |body| body.current(frame));
+            let body = entity.body_facing_current(frame);
             let mut host = CruiseHost {
                 frame,
                 trig,
@@ -583,7 +585,8 @@ impl Simulation {
                 piggyback_active: entity.foot_locomotor_swap_active,
                 simple_deployer: object.is_some_and(|object| object.is_simple_deployer),
                 deploy_to_land: object.is_some_and(|object| object.deploy_to_land),
-                body_facing: Some(body),
+                body_facing: body,
+                snapped_body_facing: None,
                 grounded_reset: false,
                 stable_id,
                 air_slots: &self.substrate.air_slots,
@@ -622,7 +625,7 @@ impl Simulation {
                 moving,
                 destination,
                 entry_state,
-                body_facing: host.body_facing,
+                body_facing: host.snapped_body_facing,
                 grounded_reset: host.grounded_reset,
                 height: host.height_above_ground(),
                 slot_ops: host.slot_ops,
@@ -664,10 +667,7 @@ impl Simulation {
             entity.on_bridge = false;
         }
         if let Some(facing) = effects.body_facing {
-            entity.facing = (facing >> 8) as u8;
-            if let Some(body) = entity.body_facing.as_mut() {
-                body.snap(facing, frame);
-            }
+            entity.body_facing.snap(facing, frame);
         }
         if effects.crash_relocated {
             // Mark(PUT) and the display resubmission after it.
@@ -924,7 +924,7 @@ mod tests {
         }
         let mut entity = GameEntity::test_default(1, "JUMPJETUNIT", "Americans", 10, 10);
         entity.category = EntityCategory::Unit;
-        entity.facing = body_facing;
+        entity.body_facing.snap(u16::from(body_facing) << 8, 0);
         entity.position.sub_x = SimFixed::from_num(128);
         entity.position.sub_y = SimFixed::from_num(128);
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
@@ -1099,7 +1099,7 @@ mod tests {
                 "{name}: frame {index}"
             );
             assert_eq!(
-                u32::from(entity.facing),
+                u32::from(entity.body_facing_byte(sim.session.binary_frame)),
                 (expected["body_facing"].as_u64().expect("body facing") >> 8) as u32,
                 "{name}: body facing, frame {index}"
             );

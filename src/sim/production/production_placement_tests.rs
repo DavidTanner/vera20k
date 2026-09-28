@@ -1134,7 +1134,8 @@ fn stock_4x3_refinery_free_unit_is_refused_its_footprint_and_placed_by_the_nearb
             "frame {frame}: the committed fallback cell must be marked"
         );
         assert_eq!(
-            miner.facing, FREE_UNIT_FACING_FALLBACK,
+            miner.body_facing.destination(),
+            u16::from(FREE_UNIT_FACING_FALLBACK) << 8,
             "frame {frame}: a placement made by the nearby search uses the fallback facing"
         );
         assert_eq!(miner.mission.current().known(), Some(MissionType::Harvest));
@@ -1201,7 +1202,8 @@ fn refinery_whose_primary_cell_clears_its_footprint_keeps_the_primary_cell_and_f
         "an admissible primary cell is used as-is; no nearby search runs"
     );
     assert_eq!(
-        free_unit.facing, FREE_UNIT_FACING_PRIMARY,
+        free_unit.body_facing.destination(),
+        u16::from(FREE_UNIT_FACING_PRIMARY) << 8,
         "a primary placement keeps the primary facing"
     );
     assert!(
@@ -1244,7 +1246,7 @@ fn occupied_primary_bay_uses_one_fallback_without_overlap() {
         (22, 22),
         "FreeUnit must not overlap an independent primary-bay blocker"
     );
-    assert_eq!(miner.facing, 0xA0);
+    assert_eq!(miner.body_facing.destination(), 0xA000);
     assert!(sim.substrate.occupancy.contains_entity(22, 22, blocker_id));
     assert!(
         !sim.substrate
@@ -1300,7 +1302,10 @@ fn live_occupant_on_a_candidate_cell_drops_that_cell_from_the_fallback_pool() {
             expected_pool[(frame as usize) % expected_pool.len()],
             "frame {frame}: the shortened pool keeps ring order and is walked by the frame counter"
         );
-        assert_eq!(miner.facing, FREE_UNIT_FACING_FALLBACK);
+        assert_eq!(
+            miner.body_facing.destination(),
+            u16::from(FREE_UNIT_FACING_FALLBACK) << 8
+        );
         assert!(
             !sim.substrate.occupancy.contains_entity(
                 OCCUPIED_CANDIDATE.0,
@@ -1415,7 +1420,10 @@ fn stock_soviet_refinery_completion_spawns_harv() {
         STOCK_4X3_FALLBACK_POOL[(SELECTION_FRAME as usize) % STOCK_4X3_FALLBACK_POOL.len()],
         "the Soviet refinery walks the same ring-ordered pool as the Allied one"
     );
-    assert_eq!(harvester.facing, FREE_UNIT_FACING_FALLBACK);
+    assert_eq!(
+        harvester.body_facing.destination(),
+        u16::from(FREE_UNIT_FACING_FALLBACK) << 8
+    );
     assert_eq!(
         harvester.mission.current().known(),
         Some(MissionType::Harvest)

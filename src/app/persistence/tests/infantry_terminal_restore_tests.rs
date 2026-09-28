@@ -153,9 +153,7 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
     assert!(crate::sim::combat::issue_attack_command(
         &mut saved.substrate.entities,
         shooter,
-        victim,
-        Some(&rules),
-        &saved.interner
+        victim
     ));
     saved.clear_lifecycle_test_events_for_test();
     let registry = OverlayTypeRegistry::empty();

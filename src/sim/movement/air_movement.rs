@@ -237,14 +237,12 @@ fn fly_speed_facts(
     }
 }
 
-/// Spawn owns Aircraft initialization. Legacy/headless movers may lack these
-/// controllers; initialize them once without replacing an existing live turn.
-pub(crate) fn ensure_fly_facings(entity: &mut crate::sim::game_entity::GameEntity) {
-    let initial = u16::from(entity.facing) << 8;
+/// Spawn owns Aircraft initialization. Legacy/headless movers may lack the
+/// Secondary controller; initialize it once from the body's heading without
+/// replacing an existing live turn.
+pub(crate) fn ensure_fly_secondary_facing(entity: &mut crate::sim::game_entity::GameEntity) {
+    let initial = entity.body_facing.destination();
     let rot = entity.locomotor.as_ref().map_or(0, |l| l.rot);
-    entity
-        .body_facing
-        .get_or_insert_with(|| super::FacingClass::new(initial, rot));
     entity
         .barrel_facing
         .get_or_insert_with(|| super::FacingClass::new(initial, rot));
@@ -350,11 +348,7 @@ pub fn tick_air_movement(
             .fly_runtime_mut()
             .unwrap()
             .prepare_process(entity.mission.effective());
-        ensure_fly_facings(entity);
-        // Fly4CDA62 reads Primary.Current before navigation/phase setters.
-        // This byte is a presentation/legacy projection; displacement below
-        // reads the full retained direction, not this quantized cache.
-        entity.facing = (entity.body_facing.unwrap().current(binary_frame) >> 8) as u8;
+        ensure_fly_secondary_facing(entity);
         // Process reaches its speed control (the target speed and the ramp)
         // on every frame the Fly is moving (4CDA0B, IsMoving 4CCA90), from
         // its ordinary path (4CD67F..4CD6A8) and its airborne crash path
@@ -451,7 +445,7 @@ pub fn tick_air_movement(
                     let current = super::ground_pose::position_world_xy(&entity.position);
                     let proposed = crate::util::native_trig::facing_step_world_xy(
                         current,
-                        entity.body_facing.unwrap().current(binary_frame),
+                        entity.body_facing.current(binary_frame),
                         speed,
                     );
                     // Existing placement boundary remains a separate residual:
@@ -530,13 +524,12 @@ pub fn tick_air_movement(
             let dx = destination.x.wrapping_sub(xy[0]);
             let dy = destination.y.wrapping_sub(xy[1]);
             if dx != 0 || dy != 0 {
-                entity.body_facing.as_mut().unwrap().set(
+                entity.body_facing.set(
                     crate::util::direction_tables::facing16_from_delta(dx, dy),
                     binary_frame,
                 );
             }
         }
-        entity.facing = (entity.body_facing.unwrap().current(binary_frame) >> 8) as u8;
         let phase_after = fly_mission_phase(entity, terrain);
         if phase_before != phase_after {
             entity.push_debug_event(

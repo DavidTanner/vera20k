@@ -569,8 +569,8 @@ fn deploy_mcv_waits_for_target_building_deploy_facing() {
         .entities
         .get(mcv)
         .expect("MCV should remain while turning");
-    assert_eq!(entity.facing, 64, "turn must not snap at the request");
-    assert_eq!(entity.facing_target, Some(0x80));
+    // Do_Turn toward the yard's DeployFacing; the deploy waits for the turn.
+    assert_eq!(entity.body_facing.destination(), 0x8000);
     assert!(
         sim.interner.get("GACNST").map_or(true, |yard| !sim
             .substrate
@@ -620,8 +620,7 @@ Buildable=yes
         .entities
         .get(mcv)
         .expect("MCV should remain while turning");
-    assert_eq!(entity.facing, 0x80, "turn must not snap at the request");
-    assert_eq!(entity.facing_target, Some(0x40));
+    assert_eq!(entity.body_facing.destination(), 0x4000);
 }
 
 #[test]

@@ -155,13 +155,8 @@ impl Simulation {
             ) else {
                 continue;
             };
-            let _ = combat::issue_attack_command(
-                &mut self.substrate.entities,
-                attacker_id,
-                target_sid,
-                Some(rules),
-                &self.interner,
-            );
+            let _ =
+                combat::issue_attack_command(&mut self.substrate.entities, attacker_id, target_sid);
         }
     }
 
@@ -1228,8 +1223,9 @@ impl Simulation {
             };
 
             // Resolve the weapon using the shared helper. None means the
-            // selection refuses; the fire routine's GetFireError and the
-            // 16-frame check decide what happens to the target.
+            // selected slot names no weapon. Legality is not asked here, as
+            // Approach_Target asks none: the fire routine's GetFireError and
+            // the 16-frame check decide what happens to the target.
             let Some(weapon) = combat::pursuit_selected_weapon(
                 entity,
                 &attack.target,

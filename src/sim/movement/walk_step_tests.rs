@@ -41,8 +41,7 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         if input["initial_duration"] != 0 {
             body.set(input["initial_facing"].as_u64().unwrap() as u16, 100);
         }
-        entity.body_facing = Some(body);
-        entity.facing = (body.current(100) >> 8) as u8;
+        entity.body_facing = body;
         entity.foot_speed.applied_fraction = SimFixed::lit("0.5");
         entity.navigation.path_runtime.path_blocked = true;
         let speed = input["speed"].as_i64().unwrap() as i32;
@@ -68,9 +67,8 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         );
         let crosses = (proposed.x / 256, proposed.y / 256) != (current.x / 256, current.y / 256);
         assert_eq!(crosses, row["crosses_cell"].as_bool().unwrap());
-        let heading = entity.body_facing.unwrap().current(100);
+        let heading = entity.body_facing.current(100);
         assert_eq!(u64::from(heading), row["facing"].as_u64().unwrap());
-        assert_eq!(entity.facing, (heading >> 8) as u8);
         assert_eq!(entity.foot_speed.applied_fraction, SIM_ONE);
         assert_eq!(entity.foot_speed.cached_current_speed, speed);
         assert!(!entity.navigation.path_runtime.path_blocked);

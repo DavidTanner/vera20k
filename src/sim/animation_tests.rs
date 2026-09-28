@@ -934,7 +934,7 @@ fn gsi_05_07_idle_completion_snaps_current_hint_before_stand_dispatch() {
     let mut store = EntityStore::new();
     let mut entity = make_infantry_entity(1, 0, &mut interner);
     entity.animation = Some(Animation::new(SequenceKind::Idle1));
-    entity.body_facing = Some(FacingClass::new(0, 4));
+    entity.body_facing = FacingClass::new(0, 4);
     store.insert(entity);
 
     let mut idle = test_def(56, 1, 1, 1, LoopMode::TransitionTo(SequenceKind::Stand));
@@ -961,8 +961,7 @@ fn gsi_05_07_idle_completion_snaps_current_hint_before_stand_dispatch() {
         entity.animation.as_ref().expect("animation").sequence,
         SequenceKind::Stand
     );
-    assert_eq!(entity.facing, 128);
-    let body = entity.body_facing.as_ref().expect("body facing");
+    let body = entity.body_facing;
     assert_eq!(body.destination(), 0x8000);
     assert_eq!(body.current(77), 0x8000);
     assert!(!body.is_rotating(77));
@@ -975,7 +974,7 @@ fn gsi_05_07_unhinted_completion_preserves_entity_and_body_facing() {
     let mut store = EntityStore::new();
     let mut entity = make_infantry_entity(1, 32, &mut interner);
     entity.animation = Some(Animation::new(SequenceKind::Idle1));
-    entity.body_facing = Some(FacingClass::new(0x2000, 4));
+    entity.body_facing = FacingClass::new(0x2000, 4);
     store.insert(entity);
 
     let mut set = SequenceSet::new();
@@ -1000,8 +999,7 @@ fn gsi_05_07_unhinted_completion_preserves_entity_and_body_facing() {
         entity.animation.as_ref().expect("animation").sequence,
         SequenceKind::Stand
     );
-    assert_eq!(entity.facing, 32);
-    let body = entity.body_facing.as_ref().expect("body facing");
+    let body = entity.body_facing;
     assert_eq!(body.destination(), 0x2000);
     assert_eq!(body.current(91), 0x2000);
 }

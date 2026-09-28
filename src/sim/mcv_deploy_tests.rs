@@ -76,8 +76,6 @@ fn finish(sim: &mut Simulation, rules: &RuleSet, id: u64) -> usize {
             &e.drive_locomotion,
             &e.movement_target,
             &e.body_facing,
-            e.facing,
-            e.facing_target,
             e.mcv_deploy_pending,
             &e.mission,
             &e.foot_speed
@@ -185,7 +183,9 @@ fn turn_completion_converts_before_the_next_mission_retry() {
     tick(&mut sim, &rules, None);
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.mcv_deploy_pending);
-    assert_eq!(e.facing, 64);
+    // Still turning toward DeployFacing=4 (0x8000) at ROT 10.
+    assert_eq!(e.body_facing.destination(), 0x8000);
+    assert!(e.body_facing.is_rotating(sim.session.binary_frame));
     let due = e.mission.dispatch_timer();
     for _ in 0..10 {
         let before = sim.session.binary_frame;

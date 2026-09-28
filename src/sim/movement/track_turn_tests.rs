@@ -288,7 +288,7 @@ fn setup_turn(sim: &mut Simulation, kind: LocomotorKind, live: bool, latch: bool
     let mut facing = FacingClass::new(0, 1);
     facing.set(0x2000, 100);
     assert_eq!(facing.is_rotating(sim.session.binary_frame), live);
-    entity.body_facing = Some(facing);
+    entity.body_facing = facing;
     set_retained(
         entity,
         kind,
@@ -558,9 +558,9 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 let mut sim = fixture(kind);
                 let entity = sim.substrate.entities.get_mut(1).unwrap();
                 entity.category = crate::map::entities::EntityCategory::Unit;
-                entity.facing = if refused { 64 } else { 0 };
-                entity.body_facing = None;
-                entity.facing_target = None;
+                // Facing the path's east octant, the refused mover reaches
+                // Can_Enter_Cell; facing north, the other turns first.
+                entity.body_facing = FacingClass::new(if refused { 0x4000 } else { 0 }, 0);
                 entity.drive_accelerates = false;
                 entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
                 entity.foot_speed.cached_current_speed = 123;
@@ -681,7 +681,7 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                     0
                 );
                 if !refused {
-                    assert_eq!(entity.facing_target, Some(64));
+                    assert_eq!(entity.body_facing.destination(), 0x4000);
                     assert_eq!(
                         entity.navigation.path_replay.remaining_directions(),
                         &[2, 2]
@@ -736,7 +736,6 @@ fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_displa
             .unwrap()
             .snap(2, 100);
         entity.drive_accelerates = false;
-        entity.facing_target = None;
         entity.navigation.nav_com = Some(NavTargetRef::cell(8, 7));
         entity.navigation.path_replay = FootPathQueue {
             directions: vec![0, 0],
@@ -774,7 +773,6 @@ fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_displa
         );
         assert_eq!(entity.navigation.path_replay, before_queue);
         assert_eq!(retained(entity, kind), (false, true, before_track));
-        assert!(entity.facing_target.is_none());
         assert_eq!(
             super::super::slope_transition::state_for_entity(entity)
                 .unwrap()

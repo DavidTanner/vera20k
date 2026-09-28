@@ -485,7 +485,8 @@ fn step_ready_docked(
     // Missile slots only launch from a fully stationary parent — the native
     // gate calls ILocomotor::Is_Moving and Is_Moving_Now on the owner. Aircraft
     // slots skip it, so Hornets launch from a moving Carrier.
-    if is_missile_slot && (owner.movement_target.is_some() || owner.facing_target.is_some()) {
+    if is_missile_slot && (owner.movement_target.is_some() || owner.body_facing.is_rotating(frame))
+    {
         return;
     }
     // A deployed parent does not launch (native reads owner+0x6AD).
@@ -497,7 +498,7 @@ fn step_ready_docked(
     let launch_rx = owner.position.rx;
     let launch_ry = owner.position.ry;
     let launch_z = owner.position.z;
-    let launch_facing = owner.facing;
+    let launch_facing = owner.body_facing_byte(frame);
     let owner_veterancy = owner.veterancy;
     let parent_missile_spawn = rules
         .object(&owner_type)
@@ -533,12 +534,13 @@ fn step_ready_docked(
         None
     };
 
-    // Place the child in the world at the launcher.
+    // Place the child in the world at the launcher; its Unlimbo snaps the
+    // body to the launch direction (`0x006F6DAA`).
     if let Some(child) = sim.substrate.entities.get_mut(child_id) {
         child.position.rx = launch_rx;
         child.position.ry = launch_ry;
         child.position.z = launch_z;
-        child.facing = launch_facing;
+        child.body_facing.snap(u16::from(launch_facing) << 8, frame);
     }
     let revealed = matches!(
         sim.reveal_entity_with_rules(child_id, rules),
@@ -724,7 +726,7 @@ fn regenerate_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, slot_i
                 owner.position.rx,
                 owner.position.ry,
                 owner.position.z,
-                owner.facing,
+                owner.body_facing_byte(sim.session.binary_frame),
             )
         })
     else {
@@ -768,9 +770,10 @@ fn step_manager_mode(
             };
             // gamemd-derived: `SpawnManagerClass::AI` @ 0x006B7230 mode 0
             // promotes +0x6C to +0x68, then Unit's vslot +0x3AC reaches
-            // `TechnoClass::CanFireAtTarget` @ 0x006F7780. A false result calls
-            // `ClearAllTargets` @ 0x006B7BB0 and returns before Launching.
-            let target_is_legal = sim.resolved_terrain.as_ref().is_some_and(|terrain| {
+            // `TechnoClass::CanFireAtTarget` @ 0x006F7780 (InRange with the
+            // selected weapon). A false result calls `ClearAllTargets` @
+            // 0x006B7BB0 and returns before Launching.
+            let can_fire_at = sim.resolved_terrain.as_ref().is_some_and(|terrain| {
                 crate::sim::combat::can_fire_at_target(
                     &sim.substrate.entities,
                     rules,
@@ -786,7 +789,7 @@ fn step_manager_mode(
                     },
                 )
             });
-            if !target_is_legal {
+            if !can_fire_at {
                 with_manager(sim, owner_id, SpawnManagerState::clear_all_targets);
                 return;
             }
@@ -1192,6 +1195,7 @@ fn launch_missile_child(
         (target_rx, target_ry),
         speed,
         Some(payload),
+        sim.session.binary_frame,
     );
 }
 

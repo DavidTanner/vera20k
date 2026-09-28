@@ -311,11 +311,8 @@ impl StrikeHost for CombatStrike<'_, '_> {
         };
         let (frame, rot) = (self.binary_frame, self.obj.turret_rot);
         if let Some(entity) = world.substrate.entities.get_mut(id) {
-            let initial = u16::from(entity.facing) << 8;
-            entity
-                .body_facing
-                .get_or_insert_with(|| crate::sim::movement::FacingClass::new(initial, rot))
-                .set(desired, frame);
+            let initial = entity.body_facing.current(frame);
+            entity.body_facing.set(desired, frame);
             entity
                 .barrel_facing
                 .get_or_insert_with(|| crate::sim::movement::FacingClass::new(initial, rot))

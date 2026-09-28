@@ -30,6 +30,12 @@
 //! Schema217 replaces approximate guided heading/age/phase with the native
 //! velocity and signed control fields. Former arbitrary guided states cannot
 //! be reconstructed; earlier feature projections do not recover those hashes.
+//! No policy folds the retired 8-bit facing mirror, turn target or optional
+//! body interpolator (dropped at snapshot 237): nothing retained records the
+//! mirror's lag or the target, so every projection folds the body FacingClass
+//! in their place and the harness pins were re-baselined in that one step.
+//! Schema230's building-facing gate went with them: a building's `+0x388` is
+//! its body FacingClass, which every projection folds.
 
 #[derive(Clone, Copy)]
 pub(super) enum HashSchema {
@@ -190,12 +196,6 @@ pub(super) enum HashFeature {
     /// f32 cost-factor fold; a tagged suffix only when the list is non-empty.
     /// Earlier schemas omit it.
     FactoryPlants = 228,
-    /// Every building's `+0x388` FacingClass (BuildingClass::Init's Set_ROT,
-    /// `0x00442CA5`), which only a turreted building carried before. Earlier
-    /// schemas fold no building's facing: the pinned fixtures hold no
-    /// turreted building, so this reproduces their old hashes, not an
-    /// arbitrary pre-230 stream.
-    BuildingFacing = 230,
     /// The computer's base building: each House's production mode, building
     /// choice and naval latch (`HouseClass+0x1E4`, `+0x564C`, `+0x1F0`) and
     /// its on-map gatherer count (`+0x158`); each Construction Yard's own
@@ -221,7 +221,7 @@ pub(super) enum HashFeature {
     /// creation frame and forming state; each AITrigger's weight record off
     /// its INI starting weight. A state without them hashes as earlier
     /// schemas, which fold none of them.
-    AiTeams = 237,
+    AiTeams = 238,
 }
 
 impl HashSchema {
@@ -267,7 +267,6 @@ impl HashSchema {
                     | HashFeature::PrismSupport
                     | HashFeature::ShipSinking
                     | HashFeature::FactoryPlants
-                    | HashFeature::BuildingFacing
                     | HashFeature::AiBaseBuilding
                     | HashFeature::AiBaseDefense
                     | HashFeature::AiStrategy

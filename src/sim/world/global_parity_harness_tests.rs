@@ -167,7 +167,7 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 
 // Schema171: fresh-turn admission/residual clearing and retained-owner hashes.
 // See TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md, PR415 causal attribution.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 15428353793257881783;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 13373273516379981258;
 // Schema174 removes folds instead of adding them: OreGrowthState's node-era
 // scanner cursor, candidate lists and sample counters, and ProductionState's
 // fallback ore overlay id. The pre-174 projection folds the values those fields
@@ -176,10 +176,10 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 154283537
 // id. It is not a general reconstruction; a scenario finalized by the map
 // loader held Some(first TIB* id). The projection must still equal the previous
 // current pin, asserted below. Rust hash-composition ratchet, not a native golden.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 17650101013315241496;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 11676800805813330078;
 // v181 adds the default Foot+580 factor to every entity's hash. The pre-181
 // assertion below retains the previous entire fixture state/RNG ratchet.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x8095_0273_D0FA_DFAD;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x686B_8277_BDC6_59E4;
 // Snapshot182 adds ordered display vectors. The pre-182 projection below
 // must reproduce the previous whole-fixture hash, including all RNG/state.
 // Schema186 removes the always-None release-tail byte from each entity. This
@@ -310,17 +310,33 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x8095_0273_D0FA_
 // RNG stream pins, per-tick replay and every older projection are unchanged:
 // neither building is armed, so ReceiveDamage's retaliation block draws and
 // targets nothing here. Old values: the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB393_7EFF_5E4A_3115;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_FACING_V230: u64 = 0xCDE2_E89E_8B4D_1FDE;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x5399_2DBF_0F41_2252;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB1CF_4893_C849_0668;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0xA0DB_A253_A90D_DD51;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0x8790_DDF6_2049_578E;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x3848_4ADD_63EA_8257;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0xAB74_CAAF_154B_C203;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206: u64 = 0x0F7E_DE95_3D20_9212;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0x14E1_BB3B_DCCA_5574;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 8122880732035786109;
+// 2026-09-28 one body facing (snapshot 237, composition only; #580): each
+// object's hash folds its body FacingClass (`+0x388`) in place of the retired
+// 8-bit facing mirror, turn target and optional turn interpolator, and a
+// building's `+0x388` moves from the turret slot into it, in every projection.
+// No schema can rebuild the mirror or the target, so this one step re-pins
+// every projection in this test. Schema 230's building-facing gate went with
+// them: its projection now equals the current hash, and its pin is gone.
+// Ceremony: on origin/main 99935d1d and on this change, a probe hash folding no
+// facing, and one folding only each object's body heading word at the hashed
+// frame (the old tree's interpolator, else its mirror), matched at all 600
+// ticks, RNG streams included (the probe patch was not committed): every other
+// fold and every object's heading are unchanged, so the only change to these
+// pins is the fold. Drive's never-written turn target (`DriveTurnState`) left
+// the fold in the same step: with its four default fields folded back in their
+// old place, this change reproduced every facing-only pin (final
+// 0x6158_8E4E_3576_4D36), RNG streams included. Old values: the commit that
+// moved them.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xDE28_6F37_CDCF_80D4;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x07E8_4E75_EFCC_E5EF;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x5803_1F3D_ED11_D1E5;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0xE359_BBD2_629E_0B70;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0x82FD_FA62_B8A1_8392;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0xF38C_791B_0F74_244B;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0xFFAD_363E_CAD7_3CD8;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206: u64 = 0x955F_889C_13DF_A5EE;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0xB8F7_3027_8DFE_18C3;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 5509271762107960375;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -695,17 +711,17 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     );
     assert_eq!(
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(190)),
-        0xE36B_709F_C883_38FD,
+        0xF269_6A06_979B_8AFC,
         "v190 changes only the Foot neighbor-history hash composition in this fixture"
     );
     assert_eq!(
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        0x6A00_79E2_C61F_D151,
+        0x8E40_C75D_77C5_5211,
         "v189 adds only the retained Techno+3D4 hash fold"
     );
     let before_burst_hash = rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(187));
     assert_eq!(
-        before_burst_hash, 0x0D37_0116_AE47_6EE4,
+        before_burst_hash, 0xEDD5_908D_2588_B4AF,
         "schema187 only replaces zero remaining-shot fields with the retained index in this fixture"
     );
     let before_release_hash =
@@ -766,8 +782,10 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // 2026-09-25: moved by the ore-field review's map cells (same place).
     // 2026-09-26: moved by the retired weapon-identity fold (same place).
     // 2026-09-27: moved by combat chain 11's building Guard (same place).
+    // 2026-09-28: moved by the one-body-facing fold and Drive's retired turn
+    // target (same place).
     assert_eq!(
-        before_power_hash, 203063483594210046,
+        before_power_hash, 8703820812092358087,
         "full08 projection moved: investigate behavior or another hash owner; do not rebaseline"
     );
 
@@ -870,11 +888,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
         GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
         "schema220 only drops the two empty rally copies from this fixture's hash"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(230)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_FACING_V230,
-        "schema230 only adds the two buildings' +0x388 facings to this fixture's hash"
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,
@@ -1106,7 +1119,7 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         let entity = sim.substrate.entities.get(1).unwrap();
         let call = &native["calls"][0];
         assert_eq!(
-            u64::from(entity.facing),
+            u64::from(entity.body_facing_byte(sim.session.binary_frame - 1)),
             call["sampled_after"].as_u64().unwrap() >> 8,
             "ROT={rot}: same-frame native sample"
         );
@@ -1118,18 +1131,12 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         assert!(drive.head_to.is_none());
         if rot > 0 {
             assert_eq!(
-                u64::from(
-                    entity
-                        .body_facing
-                        .as_ref()
-                        .unwrap()
-                        .current(sim.session.binary_frame - 1)
-                ),
+                u64::from(entity.body_facing.current(sim.session.binary_frame - 1)),
                 call["sampled_after"].as_u64().unwrap(),
                 "full16-bit native sample, before the next binary frame"
             );
             assert_eq!(
-                entity.body_facing.as_ref().unwrap().timer_start_frame(),
+                entity.body_facing.timer_start_frame(),
                 Some(call["timer_start"].as_u64().unwrap() as u32)
             );
         }
