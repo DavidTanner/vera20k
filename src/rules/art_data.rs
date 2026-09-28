@@ -2233,21 +2233,18 @@ fn parse_building_anim_variant(anim_type: String, ini: &IniFile) -> BuildingAnim
 }
 
 /// `AddOccupy%d=`/`RemoveOccupy%d=` (`0x0046143C..0x004614C9`): ReadMinMax
-/// per slot, `None` for an absent key.
+/// per slot over the `(0xFFFF, 0xFFFF)` default pushed at `0x00461448`. An
+/// absent or unscannable value leaves that default, which VERA keeps as no
+/// cell (`None`).
 fn parse_numbered_cell_offsets(
     section: &IniSection,
     prefix: &str,
 ) -> [Option<(i16, i16)>; HIDDEN_OCCUPY_SLOT_COUNT] {
-    let mut offsets = [None; HIDDEN_OCCUPY_SLOT_COUNT];
-    for i in 1..=8 {
-        let key = format!("{prefix}{i}");
-        if section.get(&key).is_none() {
-            continue;
-        }
-        let [x, y] = section.read_minmax(&key, [0, 0]);
-        offsets[i - 1] = Some((x as i16, y as i16));
-    }
-    offsets
+    const NO_CELL: [i32; 2] = [0xFFFF, 0xFFFF];
+    std::array::from_fn(|slot| {
+        let [x, y] = section.read_minmax(&format!("{prefix}{}", slot + 1), NO_CELL);
+        ([x, y] != NO_CELL).then_some((x as i16, y as i16))
+    })
 }
 
 /// BuildingType art reader4615CA..4617B8; original executable comparison in

@@ -331,18 +331,11 @@ impl WeaponType {
     }
 }
 
-/// `Report=`/`DownReport=` as `CCINIClass::ReadSoundList @ 0x00525430`
-/// reads them (`0x00772394`, `0x0077241A`): ReadString 0x80, then
-/// `strtok(",")`. Absent leaves the constructor's empty list.
-///
-/// RESIDUAL: native keeps only the tokens `VocClass::FindPtrByName` resolves;
-/// VERA keeps every token. Trigger: a list naming a sound `soundmd.ini`
-/// lacks. Effect: a longer list, so the Gattling report's draw and the
-/// per-shot report's pick can choose a different item. Frequency: never on
-/// retail data (every `Report=` names one sound).
+/// `Report=`/`DownReport=` through ReadSoundList (`0x00772394`,
+/// `0x0077241A`); absent leaves the constructor's empty list.
 fn sound_list(section: &IniSection, key: &str) -> Vec<String> {
     section
-        .read_list(key, 0x80)
+        .read_sound_list(key)
         .unwrap_or_default()
         .into_iter()
         .map(str::to_string)

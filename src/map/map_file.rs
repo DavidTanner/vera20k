@@ -691,11 +691,12 @@ mod smudge_parse_tests {
         .unwrap();
         let smudges = parse_map_smudges(&ini);
         // Three-token entries default IsBaked to zero; malformed numerics use atoi's zero.
-        // Entry 1: empty type_name accepted by parser but won't resolve to a registered SmudgeType later.
+        // Entry 1: strtok skips the empty first field, so "5" is the type name.
         assert_eq!(smudges.len(), 4);
         assert_eq!(smudges[0].type_name, "CR1");
         assert_eq!((smudges[0].rx, smudges[0].ry), (5, 6));
-        assert_eq!(smudges[1].type_name, "");
+        assert_eq!(smudges[1].type_name, "5");
+        assert_eq!((smudges[1].rx, smudges[1].ry), (6, 0));
         assert_eq!((smudges[2].rx, smudges[2].ry), (0, 6));
         assert_eq!(smudges[3].type_name, "CR1");
     }

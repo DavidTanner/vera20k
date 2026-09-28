@@ -1814,7 +1814,7 @@ impl ObjectType {
         // 0x00525430`); VERA keeps the list's first sound.
         let first_sound = |key: &str| {
             section
-                .read_list(key, 0x80)
+                .read_sound_list(key)
                 .and_then(|sounds| sounds.first().map(|sound| sound.to_string()))
         };
         // `GuardRange=` and `AirRangeBonus=` are ReadRange whole leptons
@@ -2040,11 +2040,11 @@ impl ObjectType {
             voice_capture: section.read_name("VoiceCapture", 0x80).map(str::to_owned),
             prevent_attack_move: section.read_bool("PreventAttackMove", false),
             voice_die: section
-                .read_list("VoiceDie", 0x80)
+                .read_sound_list("VoiceDie")
                 .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
                 .unwrap_or_default(),
             die_sounds: section
-                .read_list("DieSound", 0x80)
+                .read_sound_list("DieSound")
                 .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
                 .unwrap_or_default(),
             damage_sound: section.read_name("DamageSound", 0x80).map(str::to_owned),
@@ -3879,26 +3879,36 @@ mod tests {
     /// case, and leaves the prior array alone when the key is absent.
     #[test]
     fn gsi_08_12_ability_lists_parse_the_full_native_token_table() {
+        // The whole table is 163 bytes; the 0x80 ReadString copy keeps 127,
+        // ending after FEARLESS, so the last four tokens go in a second list.
         let all = Ability::NAMES.join(",");
+        assert_eq!(all[..127].rsplit(',').next(), Some("FEARLESS"));
+        let tail = Ability::NAMES[14..].join(",");
         let ini = IniFile::from_str(&format!(
-            "[X]\nVeteranAbilities={all}\nEliteAbilities=self_heal,BOGUS,Rof\n"
+            "[X]\nVeteranAbilities={all}\nEliteAbilities=self_heal,BOGUS,Rof\n\
+             [T]\nVeteranAbilities={tail}\n"
         ));
         let obj =
             ObjectType::from_ini_section("X", ini.section("X").unwrap(), ObjectCategory::Vehicle);
+        let tail_obj =
+            ObjectType::from_ini_section("T", ini.section("T").unwrap(), ObjectCategory::Vehicle);
         for (index, name) in Ability::NAMES.iter().enumerate() {
             let ability = Ability::from_ini_token(name).expect("native token");
             assert_eq!(
                 ability as usize, index,
                 "{name} sits at native index {index}"
             );
-            assert!(obj.veteran_abilities.has(ability), "{name} parsed");
+            assert_eq!(obj.veteran_abilities.has(ability), index < 14, "{name} cut");
+            if index >= 14 {
+                assert!(tail_obj.veteran_abilities.has(ability), "{name} parsed");
+            }
         }
         assert!(obj.elite_abilities.has(Ability::SelfHeal));
         assert!(obj.elite_abilities.has(Ability::Rof));
         assert!(!obj.elite_abilities.has(Ability::Faster));
         assert_eq!(Ability::from_ini_token("BOGUS"), None);
         // The projections the older readers consume come from the same array.
-        assert!(obj.veteran_explodes && obj.veteran_fearless && obj.veteran_crusher);
+        assert!(obj.veteran_explodes && obj.veteran_fearless && tail_obj.veteran_crusher);
         assert!(obj.veteran_radar_invisible && obj.veteran_cloak && obj.veteran_scatter);
         assert!(!obj.elite_explodes);
 
@@ -4215,6 +4225,8 @@ mod tests {
         // negative: the floor lands on 0, and MaxDebris rises only to 0.
         assert_eq!((obj.min_debris, obj.max_debris), (0, 0));
     }
+    /// `0x00713C37`: ReadString 0x80, then each `strtok` token as written to
+    /// `ParticleSystemTypeClass::FindOrAllocate` (`0x00644890`).
     #[test]
     fn techno_type_parses_damage_particle_systems_csv() {
         let ini: IniFile = IniFile::from_str(
@@ -4229,7 +4241,7 @@ mod tests {
             obj.damage_particle_systems,
             vec![
                 "BigGreySSys".to_string(),
-                "SmallGreySSys".to_string(),
+                " SmallGreySSys ".to_string(),
                 "SparkSys".to_string(),
             ]
         );
@@ -4486,17 +4498,18 @@ mod tests {
         assert_eq!(defaults.cloak_radius_in_cells, 20);
     }
 
+    /// ReadSoundList keeps `strtok` tokens as written; empty fields drop.
     #[test]
     fn parses_ordered_death_sound_lists() {
         let ini =
-            IniFile::from_str("[E1]\nVoiceDie= VoiceA,VoiceB, VoiceC \nDieSound= DieA, ,DieB\n");
+            IniFile::from_str("[E1]\nVoiceDie= VoiceA,VoiceB, VoiceC \nDieSound= DieA,,DieB\n");
         let object = ObjectType::from_ini_section(
             "E1",
             ini.section("E1").unwrap(),
             ObjectCategory::Infantry,
         );
 
-        assert_eq!(object.voice_die, ["VoiceA", "VoiceB", "VoiceC"]);
+        assert_eq!(object.voice_die, ["VoiceA", "VoiceB", " VoiceC"]);
         assert_eq!(object.die_sounds, ["DieA", "DieB"]);
     }
 

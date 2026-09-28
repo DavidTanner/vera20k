@@ -16,6 +16,7 @@
 //! | `read_double` (`_bits`, `_to_float`, `_with`, `read_float`) | `CCINIClass::ReadDouble` 0x005283D0 |
 //! | `read_string`, `read_name`, `read_type_name` | `CCINIClass::ReadString` 0x00528A10 |
 //! | `read_list` | ReadString, then `strtok(",")` (every type, house, sound and ability list) |
+//! | `read_sound_list` | `CCINIClass::ReadSoundList` 0x00525430 (ReadString 0x80, `strtok`) |
 //! | `read_trimmed_list` | ReadString, then `CString::Tokenize(",")` 0x007B5F10 and space trims |
 //! | `read_string_with` | ReadString, then the caller's own parse of the buffer |
 //! | `read_int_fields` (`_complete`) | ReadString, then `sscanf("%d,%d,...")` over the current fields |
@@ -169,22 +170,37 @@ impl IniSection {
     /// `CCINIClass__ReadString @ 0x00528A10` is `strncpy(dst, src, capacity)`
     /// followed by `dst[capacity - 1] = 0`: the cut counts source bytes, which
     /// are this store's characters ([`truncate_native_bytes`]).
+    /// A present value is copied even when it trims to nothing; each rules
+    /// pass passes the previous result as its default, so the last pass that
+    /// holds the key decides.
     pub fn read_string(&self, key: &str, default: &str, capacity: usize) -> String {
-        match self.read_name(key, capacity) {
-            Some(value) => value.to_string(),
-            None if capacity == 0 => String::new(),
-            None => strtrim_ascii(truncate_native_bytes(default, capacity - 1)).to_string(),
-        }
+        let Some(payload) = capacity.checked_sub(1) else {
+            return String::new();
+        };
+        strtrim_ascii(truncate_native_bytes(
+            self.get(key).unwrap_or(default),
+            payload,
+        ))
+        .to_string()
     }
 
-    /// ReadString's copy when it returns nonzero, which is every present key:
-    /// `None` for an absent key, where native callers keep their current field
-    /// (`if (ReadString(section, key, "", buffer, capacity)) ...`). Same cut
-    /// and trim as [`Self::read_string`].
+    /// ReadString's copy when it returns nonzero: `None` when no rules pass
+    /// holds a value that survives the cut and trim, where native callers keep
+    /// their current field (`if (ReadString(section, key, "", buffer,
+    /// capacity)) ...`), so a later pass whose copy is empty keeps the earlier
+    /// pass's value. Same cut and trim as [`Self::read_string`].
     pub fn read_name(&self, key: &str, capacity: usize) -> Option<&str> {
-        let raw = self.get(key)?;
-        let value = strtrim_ascii(truncate_native_bytes(raw, capacity.checked_sub(1)?));
-        (!value.is_empty()).then_some(value)
+        let payload = capacity.checked_sub(1)?;
+        let copy = |raw: &str| !strtrim_ascii(truncate_native_bytes(raw, payload)).is_empty();
+        let raw = match self.projected_values(key) {
+            Some(values) => values
+                .iter()
+                .rev()
+                .map(String::as_str)
+                .find(|raw| copy(raw))?,
+            None => self.get(key).filter(|raw| copy(raw))?,
+        };
+        Some(strtrim_ascii(truncate_native_bytes(raw, payload)))
     }
 
     /// [`Self::read_name`] for a name a type factory resolves: `None` also for
@@ -208,6 +224,19 @@ impl IniSection {
     pub fn read_list(&self, key: &str, capacity: usize) -> Option<Vec<&str>> {
         self.read_name(key, capacity)
             .map(|value| strtok(value, COMMA).collect())
+    }
+
+    /// `CCINIClass::ReadSoundList @ 0x00525430`: [`Self::read_list`] at 0x80.
+    /// `None` for an absent key, which keeps the current list.
+    ///
+    /// RESIDUAL: native adds only the tokens `VocClass::FindPtrByName`
+    /// (`0x00751520`) resolves (`0x005254AD`); VERA binds sounds later and
+    /// keeps every token. Trigger: a token naming a sound `soundmd.ini` lacks,
+    /// spaces included. Effect: a longer list, so a pick drawn over it (death
+    /// sounds, Gattling and per-shot reports) can choose a different item.
+    /// Frequency: never on retail data.
+    pub fn read_sound_list(&self, key: &str) -> Option<Vec<&str>> {
+        self.read_list(key, 0x80)
     }
 
     /// [`Self::read_list`] through the `CString` tokenizer instead: the
@@ -986,7 +1015,7 @@ mod tests {
         let s = ini.section("S").unwrap();
         assert_eq!(s.read_list("L", 0x80), Some(vec!["A", " B ", "C"]));
         assert_eq!(s.read_list("Commas", 0x80), Some(vec![]));
-        assert_eq!(s.read_list("Long", 6), Some(vec!["AB", "C"]));
+        assert_eq!(s.read_list("Long", 5), Some(vec!["AB", "C"]));
         assert_eq!(s.read_list("MISSING", 0x80), None);
         assert_eq!(
             strtok(" a\tb\n\nc ", &[' ', '\t', '\n']).collect::<Vec<_>>(),

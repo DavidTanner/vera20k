@@ -123,12 +123,16 @@ mod tests {
         }
     }
 
+    /// `strtok` skips empty fields but the type list allocates each token as
+    /// written, so a spaced name misses its art section.
     #[test]
-    fn list_entries_are_trimmed_and_blanks_dropped() {
+    fn list_entries_keep_their_spaces_and_empty_fields_drop() {
         let art = IniFile::from_str("[CAOILD]\nFoundation=2x2\n[CAPOWR]\nFoundation=2x2\n");
-        let catalog = resolve(&rules_with(" CAOILD , ,CAPOWR "), &art);
+        let catalog = resolve(&rules_with("CAOILD , ,,CAPOWR"), &art);
         let names: Vec<&str> = catalog.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(names, ["CAOILD", "CAPOWR"]);
+        assert_eq!(names, ["CAOILD ", " ", "CAPOWR"]);
+        assert_eq!(catalog[0].footprint, [(0, 0)]);
+        assert_eq!(catalog[2].footprint.len(), 4);
     }
 
     /// A non-square foundation keeps its width/height orientation.
