@@ -300,11 +300,11 @@ pub(crate) fn respond_to_base_attack(
         return;
     }
 
-    world.team_script_vm.suspend_teams_for_base_defense(
+    world.suspend_teams_for_base_defense(
         victim_owner,
         rules.general.suspend_priority,
-        current_frame,
         response_delay_frames(rules.general.suspend_delay_minutes),
+        rules,
     );
     let mut selection = ResponseSelection::new(budget);
     if !selection.can_scan() {
@@ -314,6 +314,10 @@ pub(crate) fn respond_to_base_attack(
     // The scan only reads; every mutation comes after it.
     let sim: &Simulation = world;
     let entities = &sim.substrate.entities;
+    let (Some(victim), Some(attacker)) = (entities.get(victim_id), entities.get(attacker_id))
+    else {
+        return;
+    };
     let attacker_coord = entity_coord(attacker, sim.resolved_terrain.as_ref());
     let victim_is_self_anchor = victim.archive_target() == Some(TargetKind::Entity(victim_id));
     let candidate_ids = entities.keys_sorted();

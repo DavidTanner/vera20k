@@ -547,6 +547,23 @@ pub(crate) fn commit_entities(
         {
             death.combat_light_requests.push(effect);
         }
+        // `0x00701D71..0x00701D9B`: a Psychedelic hit that turns its target
+        // berserk takes it out of its team, with its idle order, before the
+        // receiver clears its target and queues Hunt. Here the removal runs
+        // before the receiver's berserk timer and flag writes, which it does
+        // not read.
+        let starts_berserk = receiver_outcome
+            .flatten()
+            .and_then(|resolved| resolved.outcome.psychedelic_value)
+            .is_some()
+            && world
+                .substrate
+                .entities
+                .get(target_id)
+                .is_some_and(|target| !target.berserk.active);
+        if starts_berserk {
+            world.leave_team(target_id, false, Some(rules));
+        }
         let Some(receiver_health::ReceiverHealthCommit {
             building_entry_frame,
             became_fatal,
@@ -979,6 +996,24 @@ pub(crate) fn commit_entities(
         // `crew_survival` for the second SpawnSurvivors this skips). Every
         // retail `Explodes=` type is unarmed and Selling stops the block after
         // its ping, so the missing ping is the whole effect.
+        // `FootClass::ReceiveDamage @ 0x004D7442..0x004D7453`: a team member
+        // whose hit returned other than none (0) or gone (5) reports it to
+        // its team; a killed member has already left it.
+        if !matches!(
+            receive_state,
+            damage::DamageState::Unaffected | damage::DamageState::AlreadyDead
+        ) && world
+            .substrate
+            .entities
+            .get(target_id)
+            .is_some_and(|target| target.category != EntityCategory::Structure)
+        {
+            world.team_took_damage(
+                target_id,
+                (attacker_id != RAD_NO_ATTACKER).then_some(attacker_id),
+                rules,
+            );
+        }
         if receive_state != damage::DamageState::AlreadyDead
             && world
                 .substrate
@@ -1711,6 +1746,7 @@ fn run_special_detonation_arm(
     action: SpecialDetonationAction,
     owner: u64,
     target: SpecialArmTarget,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     let object = match target {
         SpecialArmTarget::Object(id) => Some(id),
@@ -1739,7 +1775,7 @@ fn run_special_detonation_arm(
             }
         }
         SpecialDetonationAction::MindControl => {
-            world.mind_control_detonation(owner, object, rules);
+            world.mind_control_detonation(owner, object, rules, overlay_registry);
         }
         SpecialDetonationAction::Temporal => {
             let target = match target {
@@ -1972,7 +2008,14 @@ fn emit_detonation_receivers(
                 }
                 ProjectileTarget::None => SpecialArmTarget::None,
             };
-            run_special_detonation_arm(world, rules, claimed, detonation.source_id, target);
+            run_special_detonation_arm(
+                world,
+                rules,
+                claimed,
+                detonation.source_id,
+                target,
+                overlay_registry,
+            );
             None
         }
     }
@@ -3205,11 +3248,11 @@ fn fireat_launch_aim(
                     .and_then(|id| rules.weapon(id))?;
                 let target_type = rules.object(world.interner.resolve(target.type_ref()));
                 let target_coords = object_get_coords(world, rules, target_id)?;
-                // `ObjectClass::Distance_AdjForFoundation @ 0x005F6360`: 3-D,
-                // no foundation term for a UnitClass target.
-                let distance = crate::util::native_x87::distance_3d_leptons(
+                // `ObjectClass::Distance @ 0x005F6360` to a UnitClass target.
+                let distance = crate::util::native_x87::object_distance(
                     [firer_coords.x, firer_coords.y, firer_coords.z],
                     [target_coords.x, target_coords.y, target_coords.z],
+                    None,
                 );
                 Some(lead_aim(
                     target_coord,
@@ -4153,13 +4196,15 @@ fn commit_fire_bookkeeping(world: &mut Simulation, rules: &RuleSet, emit: &mut C
     // `+0x304` link the setter also releases is not modelled (identity
     // UNCHECKED; no stock drainer carries a SpawnManager or that link).
     for &(drainer_id, victim_id) in &drain_links {
-        // `0x0070FDBD`: a drained Psychic Tower frees its captives.
+        // `0x0070FDBD`: a drained Psychic Tower frees its captives; then the
+        // drainer leaves its team without idling (`0x0070FE19..0x0070FE32`).
         if crate::sim::credit_income::install_drain_link(
             &mut world.substrate.entities,
             drainer_id,
             victim_id,
         ) {
             world.free_all_captures(victim_id, rules);
+            world.leave_team(drainer_id, true, Some(rules));
         }
         if let Some(drainer) = world.substrate.entities.get_mut(drainer_id) {
             represented_assign_target(drainer, None);

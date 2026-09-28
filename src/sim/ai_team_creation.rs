@@ -68,8 +68,7 @@ use crate::rules::team_ai_ini::TeamAiDefinitionSource;
 use crate::sim::intern::InternedId;
 use crate::sim::production::has_factory;
 use crate::sim::team_script_vm::{
-    TeamAiTriggerDefinition, TeamAiTriggerOwner, TeamMemberTypeIdentity, TeamRules,
-    TeamTypeDefinition,
+    TeamAiTriggerDefinition, TeamAiTriggerOwner, TeamMemberTypeIdentity, TeamTypeDefinition,
 };
 use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
@@ -217,8 +216,7 @@ pub(crate) fn select_team_types_with(
         } else if let Some(oldest) = oldest_defense_team(sim, owner) {
             teams -= 1;
             defense_full = true;
-            let team_rules = TeamRules::new(&rules.general, sim.session.game_mode_nonzero);
-            sim.team_script_vm.destroy_team(oldest, &team_rules);
+            sim.destroy_team(oldest, rules);
         }
         if teams < team_cap {
             picked = draw_ai_trigger(sim, enemy, defense_full, eligible, draw);

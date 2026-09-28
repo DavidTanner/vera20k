@@ -3699,7 +3699,7 @@ mod tests {
                 let script = world.interner.intern("ScatterFixture");
                 world
                     .team_script_vm
-                    .create_team(victim_house, script, vec![2], None, 0);
+                    .create_team(victim_house, script, vec![2], 0);
             }
             let before_rng = world.scenario_rng.state();
             let mut receiver = crate::sim::combat::world_receiver::ReceiverRun::default();

@@ -130,7 +130,8 @@ fn the_destructor_feeds_back_the_triggers_the_original_does() {
         }
         vm.teams.get_mut(&team).unwrap().succeeded = flag(&row["succeeded"]);
 
-        vm.destroy_team(team, &feedback_rules(&row, true, 5000));
+        // The destructor's feedback half; its member release is `destroy_team`'s.
+        vm.record_trigger_outcome(team, &feedback_rules(&row, true, 5000));
 
         let results = row["results"].as_array().unwrap();
         for (id, result) in triggers.iter().zip(results) {
@@ -153,9 +154,12 @@ fn the_empty_team_dissolve_matches_the_original() {
         let (mut vm, team, _) = one_team(&mut interner, game_mode_nonzero, dword(&row["created"]));
         let team = vm.teams.get_mut(&team).unwrap();
         if flag(&row["members"]) {
-            team.members.push(1);
+            team.members.push(TeamMember {
+                id: 1,
+                initiated: true,
+            });
         }
-        team.reached_required_strength_78 = flag(&row["at_strength"]);
+        team.has_been_full = flag(&row["at_strength"]);
         let rules = feedback_rules(&row, game_mode_nonzero, dword(&row["delay"]));
 
         assert_eq!(

@@ -406,6 +406,11 @@ pub struct GeneralRules {
     /// `0x0066FF80`, constructor 5000): the frames an empty team lasts in a
     /// multiplayer game (`TeamClass::AI @ 0x006E9140`).
     pub dissolve_unfilled_team_delay: i32,
+    /// `[General] AISafeDistance=` (`Rules+0xD74`, ReadInteger at
+    /// `0x0066FFA7`, constructor 8 at `0x0066682A`): the cells from its base
+    /// centre a team gathers at on script action 54 (`0x006EFB69`).
+    /// Retail: 20.
+    pub ai_safe_distance: i32,
     /// `[General] AITriggerSuccessWeightDelta=` (`Rules+0xC0`, ReadDouble at
     /// `0x006718EC`, constructor 1.0; retail 20).
     pub ai_trigger_success_weight_delta: NativeF64Bits,
@@ -1158,6 +1163,16 @@ pub struct GeneralRules {
     /// current value; the constructor writes `0x280` (`0x00667588`). Retail
     /// `CloseEnough=2.25` is 576.
     pub close_enough: i32,
+    /// `Rules+0x171C`, `[General] Stray=` in leptons: how far a team member
+    /// may be from its team's centre or goal (`TeamClass::Regroup @
+    /// 0x006EB870`, `Coordinate_Move @ 0x006EBAD0`). `ReadRange 0x00474620`
+    /// at `0x00670E93` over the constructor's `0x200` (`0x00667592`). Retail
+    /// `Stray=2.0` is 512.
+    pub stray: i32,
+    /// `Rules+0x1720`, `[General] RelaxedStray=` in leptons: `Stray=` for a
+    /// team on script action 53 or 54. `ReadRange` at `0x00670EB2` over the
+    /// constructor's `0x200` (`0x0066759C`). Retail `RelaxedStray=3.0` is 768.
+    pub relaxed_stray: i32,
 
     // -- Service depot / unit repair --
     /// Ticks between applying RepairStep HP when a unit is on a repair depot.
@@ -1582,6 +1597,7 @@ impl Default for GeneralRules {
             use_min_defense_rule: true,
             fill_earliest_team_probability: Vec::new(),
             dissolve_unfilled_team_delay: 5000,
+            ai_safe_distance: 8,
             ai_trigger_success_weight_delta: NativeF64Bits::ONE,
             ai_trigger_failure_weight_delta: NativeF64Bits::from_bits((-1.0_f64).to_bits()),
             ai_trigger_track_record_coefficient: NativeF64Bits::ONE,
@@ -1786,6 +1802,8 @@ impl Default for GeneralRules {
             extra_aircraft_light: 0,
             // RulesClass constructor 0x00667588.
             close_enough: 0x280,
+            stray: 0x200,
+            relaxed_stray: 0x200,
             // URepairRate=.016 min = 0.96 sec ≈ 14 ticks at 15 Hz.
             unit_repair_rate_ticks: minutes_to_ticks(U_REPAIR_RATE_MINUTES),
             repair_step: 5,
@@ -2316,6 +2334,7 @@ impl GeneralRules {
                 "DissolveUnfilledTeamDelay",
                 defaults.dissolve_unfilled_team_delay,
             ),
+            ai_safe_distance: general.read_int("AISafeDistance", defaults.ai_safe_distance),
             ai_trigger_success_weight_delta: general.read_double_bits(
                 "AITriggerSuccessWeightDelta",
                 defaults.ai_trigger_success_weight_delta,
@@ -2706,6 +2725,8 @@ impl GeneralRules {
                 defaults.extra_aircraft_light as f64 / 1000.0,
             ) * 1000.0) as i32,
             close_enough: general.read_range("CloseEnough", defaults.close_enough),
+            stray: general.read_range("Stray", defaults.stray),
+            relaxed_stray: general.read_range("RelaxedStray", defaults.relaxed_stray),
             // URepairRate= is in minutes. Convert to ticks: minutes * 60 * 15 ticks/sec.
             unit_repair_rate_ticks: minutes_to_ticks(
                 general.read_double("URepairRate", U_REPAIR_RATE_MINUTES),

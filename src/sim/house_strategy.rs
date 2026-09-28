@@ -48,9 +48,10 @@
 //!   sells, abandons and rechooses production to rebuild them, drawing in
 //!   AI_Choose_Building; VERA's keeps its queue.
 //! - All_To_Hunt's Psychic Dominator arm (`+0x2C4`, `sim::capture_manager`'s
-//!   residual) and its team removal (`0x006EA870`; VERA has no teams) never
-//!   apply; an occupied building's release with Hunt (`0x00457DE0(1, 0)`) is
-//!   not ported: no VERA computer house garrisons a building without teams.
+//!   residual) never applies; an occupied building's release with Hunt
+//!   (`0x00457DE0(1, 0)`, whose occupants also leave their teams at
+//!   `0x0045812B`) is not ported: no VERA computer house garrisons a
+//!   building, as no garrison script action is ported.
 //! - All_To_Hunt queues Hunt on the house's aircraft as native does, but VERA
 //!   has no aircraft Hunt mission (`sim::aircraft::idle_mode`). Trigger: a
 //!   computer house that sells off and hunts while it owns aircraft. Effect:
@@ -148,7 +149,7 @@ fn sell_off_and_hunt(sim: &mut Simulation, rules: &RuleSet, owner: InternedId, w
         sim.interner.resolve(owner)
     );
     fire_sale(sim, rules, owner);
-    all_to_hunt(sim, owner);
+    all_to_hunt(sim, rules, owner);
 }
 
 /// `0x004FD538..0x004FD71E`: see the module doc.
@@ -266,12 +267,13 @@ pub(crate) fn fire_sale(sim: &mut Simulation, rules: &RuleSet, owner: InternedId
 /// IHouse `All_To_Hunt @ 0x00501400`: from the last Techno to the first
 /// (TechnoClass::Array, stable-id order, its length read once), each of the
 /// house's objects that is on the map (`+0x74`) and not in limbo, if a Foot,
+/// leaves its team (`0x005014C5..0x005014D4`, with its idle order) and
 /// queues Hunt (vt+0x1E8, `Queue_Mission(Hunt, 0)`); then the All-To-Hunt
-/// latch (`+0x249`) is set. The Dominator, team and garrison arms are
-/// residuals (module doc).
-pub(crate) fn all_to_hunt(sim: &mut Simulation, owner: InternedId) {
-    // Queueing a mission changes no other object, so every test can be read
-    // before the first queue.
+/// latch (`+0x249`) is set. The Dominator and garrison arms are residuals
+/// (module doc).
+pub(crate) fn all_to_hunt(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
+    // Leaving a team and queueing a mission change neither another object's
+    // place nor its limbo, so every test can be read before the first one.
     let hunters: Vec<u64> = sim
         .substrate
         .entities
@@ -286,6 +288,7 @@ pub(crate) fn all_to_hunt(sim: &mut Simulation, owner: InternedId) {
         .collect();
     let hunt = MissionId::from_known(MissionType::Hunt);
     for id in hunters.into_iter().rev() {
+        sim.leave_team(id, false, Some(rules));
         let _ = sim.mission_queue_exact(
             id,
             hunt,

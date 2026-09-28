@@ -2668,8 +2668,9 @@ impl Simulation {
     ///   below, the Guard and HarvestCell arms and Stop's own copy
     ///   (0x004C769C-0x004C76AC) run it (`Simulation::reset_slave_manager`);
     ///   the other orders outside the funnel do not yet.
-    /// * **`TeamClass__Remove_Member` has no VERA equivalent.** Zero frequency
-    ///   today (no AI teams); wrong the moment AI teams exist.
+    /// * **`TeamClass__Remove_Member`** runs in the MEGAMISSION funnel
+    ///   (`queue_megamission_with_teardown`), so the arms outside it keep a
+    ///   team member in its team.
     pub(crate) fn order_actor_admits(&self, stable_id: u64) -> bool {
         self.substrate.entities.get(stable_id).is_some_and(|e| {
             e.lifecycle.object_alive && e.health.current > 0 && !e.lifecycle.in_limbo

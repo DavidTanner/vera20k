@@ -537,21 +537,38 @@ impl Simulation {
                 return Ok(());
             }
         }
+        let (owner, category) = (actor.owner(), actor.category);
         if self.team_script_vm.team_for_member(id).is_some() {
-            //0x4D40DA..0x4D4134: locomotor +B4, TeamClass::Remove_Member
-            //0x6EA870, locomotor +B8. No Rust Team membership owner exists.
-            //Production creates no TeamClass instance yet (every create_team
-            //caller is a test), so this arm has no production reach.
-            return Err(
-                "Find_Path failed-path Team detachment (TeamClass::Remove_Member 0x6EA870) is not represented"
-                    .into(),
-            );
+            //0x4D40DA..0x4D4134: the actor leaves its team (Remove_Member
+            //0x6EA870, idle order included) between its locomotor's +B4 and
+            //+B8, which clear and set Drive+65 (0x4B4BE0/0x4B4BF0), so the
+            //idle mode's END test refuses a piggybacked Drive. Ship's pair
+            //(0x6A4210/0x6A4220) writes its own +65, which VERA's Ship END
+            //does not read; Walk's (0x4B6650/0x4B6660) are empty.
+            let drive_end = |sim: &mut Self, permitted: bool| {
+                if let Some(drive) = sim
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .filter(|actor| {
+                        actor
+                            .locomotor
+                            .as_ref()
+                            .is_some_and(|loco| loco.active_kind() == LocomotorKind::Drive)
+                    })
+                    .and_then(|actor| actor.drive_locomotion.as_mut())
+                {
+                    drive.end_permitted = permitted;
+                }
+            };
+            drive_end(self, false);
+            self.leave_team(id, false, Some(rules));
+            drive_end(self, true);
         }
-        let owner = actor.owner();
         //0x4D413A: the class SetDestination(NULL, true): Infantry 0x51AA40 ->
         //Foot 0x4D94B0 -> Walk 0x75ADA0, or Unit 0x741970 -> Foot 0x4D94B0 ->
         //Drive 0x4AFE00 / Ship 0x69F510.
-        if actor.category == EntityCategory::Unit {
+        if category == EntityCategory::Unit {
             self.set_unit_null_destination(id, Some(rules));
         } else {
             self.set_walk_null_destination(id, Some(rules));
@@ -646,20 +663,21 @@ impl Simulation {
                     .entities
                     .get(id)
                     .ok_or("retired Find_Path goal actor")?;
-                if self.team_script_vm.team_for_member(id).is_some() {
-                    return Err(
-                        "Find_Path CloseEnough for a Team member (0x6F03B0) is not represented"
-                            .into(),
-                    );
-                }
+                //0x4D3A30..0x4D3A57: a team member keeps a target within its
+                //team's stray (TeamClass::Get_Stray 0x6F03B0), anyone else
+                //within CloseEnough.
+                let keep_within = match self.team_script_vm.team_for_member(id) {
+                    Some((team_id, _)) => self.team_stray(team_id, rules),
+                    None => rules.general.close_enough,
+                };
                 //0x4D3944..0x4D3A2B: |+48 coordinate - target centre| with z.
                 let coord = ground_pose::position_world_coord(&actor.position);
                 let centre = cell_centre(target);
                 let distance =
                     native_xyz_distance(coord.x - centre.x, coord.y - centre.y, coord.z - centre.z);
-                //0x4D3A9B: dist <= CloseEnough keeps the target. IsTrain (+C94)
+                //0x4D3A9B: dist <= that distance keeps the target. IsTrain (+C94)
                 //is set by no retail TechnoType (no IsTrain=yes in rulesmd).
-                if distance <= rules.general.close_enough {
+                if distance <= keep_within {
                     return Ok(destination);
                 }
                 let Some(near) = self.find_path_nearby_cell(id, target, rules)? else {

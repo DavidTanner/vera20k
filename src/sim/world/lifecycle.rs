@@ -2569,6 +2569,9 @@ impl Simulation {
         {
             crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
         }
+        // The Foot prelude (`0x004D9744`) leaves the object's team, before
+        // Limbo is set, so the object still takes its idle mode.
+        self.leave_team(stable_id, false, context.rules());
         // RESIDUAL: this Detach_All(1) (`0x005F4D61`) also visits the concealed
         // object itself, so native runs the SpawnManager owner arm on a live
         // spawner's Limbo: docked children UnInit with a zero regen timer, and
@@ -2899,12 +2902,9 @@ impl Simulation {
     /// keeps it at the surviving factory. When VERA does abandon it, the
     /// refund's Cost_Of is priced at that later phase, so a FactoryPlant lost
     /// in the same frame changes it (a quarter of a vehicle's price for an
-    /// Industrial Plant). The Foot
-    /// prelude removes the object from its Team (`TeamClass::Remove @
-    /// 0x006EA870`, at `0x004D9744`); `TeamScriptVm` keeps its members and
-    /// nothing removes a dying one, here or at UnInit. Trigger: a team member
-    /// dies. Effect: the team still lists it. Frequency: every AI team loss.
-    /// Risk: team scripts see a dead member until the team ends.
+    /// Industrial Plant). The Foot prelude removes the object from its team
+    /// (`TeamClass::Remove_Member @ 0x006EA870`, at `0x004D9744`) before its
+    /// radio contact.
     pub(crate) fn object_destroy_callback(&mut self, stable_id: u64, context: UninitContext<'_>) {
         let Some(category) = self.substrate.entities.get(stable_id).map(|e| e.category) else {
             return;
@@ -2925,6 +2925,9 @@ impl Simulation {
                 self.building_now_dead_contacts(stable_id, &contacts, context.rules());
             }
             EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft => {
+                // `0x004D9744`: the Foot prelude leaves the object's team
+                // first.
+                self.leave_team(stable_id, false, context.rules());
                 if let Some(contact) = self
                     .substrate
                     .entities
@@ -3887,6 +3890,9 @@ impl Simulation {
         // its bombs' credit as a removed one does. No listener reads a planter,
         // so running it first changes nothing.
         self.bomb_planter_expired(expired_id);
+        // `TeamClass::PointerExpired @ 0x006EAE60`, each team a listener.
+        self.team_script_vm
+            .pointer_expired(expired_id, control == PointerExpiryControl::Uninit);
         let Some((
             expired_target_cell,
             expired_is_high_flying,
@@ -4146,6 +4152,10 @@ impl Simulation {
         {
             self.free_all_captures(stable_id, rules);
         }
+        // `0x004DE604`: then the object leaves its team.
+        if foot {
+            self.leave_team(stable_id, false, context.rules());
+        }
 
         self.run_represented_uninit_pre_hook(stable_id);
         self.uninit_carried_passengers(stable_id, context);
@@ -4240,6 +4250,7 @@ impl Simulation {
         );
         // The ObjectClass destructor's defensive Defuse (`0x005F3BA6`).
         self.bomb_defuse(stable_id);
+        self.team_script_vm.object_deleted(stable_id);
         self.release_house_base_tracking(stable_id);
         self.destroy_building_light(stable_id);
         self.clear_building_damage_fire_slots(stable_id, None);

@@ -79,9 +79,9 @@ pub(super) fn commit_receiver_health(
         if let Some(value) = receive_outcome.and_then(|outcome| outcome.psychedelic_value) {
             // TechnoClass writes the signed kernel result first. The
             // first inactive->active transition then runs its callbacks
-            // in order: optional team-member detach (not represented on
-            // GameEntity), archived target clear, deferred Hunt queue.
-            // Passenger cargo is unrelated and remains intact.
+            // in order: team-member removal (done by the caller before
+            // this commit), target clear, deferred Hunt queue. Passenger
+            // cargo is unrelated and remains intact.
             target.berserk.timer = value;
             if !target.berserk.active {
                 target.berserk.active = true;

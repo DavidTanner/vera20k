@@ -310,6 +310,78 @@ fn dog_bite_kills_the_infantry_and_releases_the_dog_where_it_stood() {
     assert_eq!(arena.frame(), death_frame);
 }
 
+/// A `RejoinTeamIfLimboed=` dog in a team of two jumps a GI eight cells
+/// away; the order is given before the team forms, since a player order
+/// takes a Foot off its team (`0x004C735D`). Returns the dog, its partner
+/// and the team.
+fn team_dog_jumps(rules: &RuleSet, arena: &mut Arena) -> (u64, u64, u64) {
+    let dog = arena.spawn(rules, "DOG", "Russians", (4, 10));
+    let partner = arena.spawn(rules, "DOG", "Russians", (4, 12));
+    let gi = arena.spawn(rules, "E1", "Americans", (12, 10));
+    arena.attack(dog, gi);
+    arena.step(rules);
+    arena.step(rules);
+    assert!(!arena.in_limbo(dog), "the dog has not jumped yet");
+    let team = crate::sim::team_script_vm::join_team_for_test(
+        &mut arena.sim,
+        &[dog, partner],
+        false,
+        false,
+    );
+    arena.until(rules, 300, |sim| {
+        sim.substrate
+            .entities
+            .get(dog)
+            .is_some_and(|d| d.lifecycle.in_limbo)
+    });
+    // TechnoClass::Fire 0x006FF7A3..0x006FF7E9 keeps the team (+0x434); the
+    // jump's Limbo takes the dog off it (0x004D9744).
+    assert_eq!(arena.sim.team_script_vm.team_for_member(dog), None);
+    assert_eq!(arena.sim.team_script_vm.team_to_rejoin(dog), Some(team));
+    (dog, partner, team)
+}
+
+#[test]
+fn a_team_dog_rejoins_its_team_when_its_kill_releases_it() {
+    let rules = rules();
+    let mut arena = Arena::new(&rules);
+    let (dog, _, team) = team_dog_jumps(&rules, &mut arena);
+    arena.until(&rules, 200, |sim| {
+        sim.substrate
+            .entities
+            .get(dog)
+            .is_some_and(|d| !d.lifecycle.in_limbo)
+    });
+    // PointerExpired's release re-adds it (0x0062A3AD..0x0062A3BC).
+    assert_eq!(
+        arena
+            .sim
+            .team_script_vm
+            .team_for_member(dog)
+            .map(|(id, _)| id),
+        Some(team)
+    );
+}
+
+#[test]
+fn a_dog_whose_team_died_while_it_was_away_stays_teamless() {
+    let rules = rules();
+    let mut arena = Arena::new(&rules);
+    let (dog, partner, team) = team_dog_jumps(&rules, &mut arena);
+    // The last member dies: the has-been-full team is destroyed, and
+    // TechnoClass::PointerExpired (0x00707BB2) forgets it.
+    arena.hit(&rules, partner, None, 1000, "Super");
+    arena.until(&rules, 200, |sim| {
+        sim.substrate
+            .entities
+            .get(dog)
+            .is_some_and(|d| !d.lifecycle.in_limbo)
+    });
+    assert!(arena.sim.team_script_vm.team(team).is_none());
+    assert_eq!(arena.sim.team_script_vm.team_to_rejoin(dog), None);
+    assert_eq!(arena.sim.team_script_vm.team_for_member(dog), None);
+}
+
 #[test]
 fn drone_bites_on_its_weapon_rate_until_the_host_dies_then_drops_off() {
     let rules = rules();

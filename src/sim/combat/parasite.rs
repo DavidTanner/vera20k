@@ -310,6 +310,22 @@ impl Simulation {
         crate::sim::world::queue_foot_enter_idle_mode(self, owner, rules);
     }
 
+    /// A successful ExitUnit or PointerExpired release re-adds the owner to
+    /// its team to rejoin (`+0x434`, `Add_Member(owner, 0)` at `0x0062A759`
+    /// and `0x0062A3BC`), which asks `Can_Add`.
+    ///
+    /// RESIDUAL: the release paths carry no overlay registry, so the
+    /// `Calc_Center` a centreless team runs on the rejoin tests the closest
+    /// member's cell without overlays. Trigger: the dog's team lost its
+    /// centre (no joined member left) while it was away. Effect: that centre
+    /// can be the mean cell where an overlay would refuse it, until the next
+    /// `Calc_Center`.
+    fn parasite_rejoin_team(&mut self, owner: u64, rules: &RuleSet) {
+        if let Some(team) = self.team_script_vm.team_to_rejoin(owner) {
+            self.team_add_member(team, owner, false, rules, None);
+        }
+    }
+
     /// `+0x432` reselect memo, consumed only by successful releases
     /// (`0x0062A71C`, `0x0062A37F`) for the local player's house.
     fn parasite_reselect(&mut self, owner: u64) {
@@ -520,6 +536,7 @@ impl Simulation {
         });
         if placed {
             self.parasite_reselect(owner);
+            self.parasite_rejoin_team(owner, rules);
             self.parasite_released_owner_orders(owner, true, rules);
             if let Some(entity) = self.substrate.entities.get_mut(owner) {
                 entity.paralysis_timer = CdTimer::started(frame as i32, rof.wrapping_mul(3));
@@ -610,6 +627,7 @@ impl Simulation {
         });
         if placed {
             self.parasite_reselect(owner);
+            self.parasite_rejoin_team(owner, rules);
             self.parasite_released_owner_orders(owner, true, rules);
         } else {
             self.substrate
@@ -1042,17 +1060,19 @@ impl Simulation {
             && entity.selected
             && self.session.current_house == Some(entity.owner())
             && target_infantry;
-        // RESIDUAL: 0x006FF7A3..0x006FF7E9 stores the Team (+0x434) for
-        // RejoinTeamIfLimboed, and Limbo's Detach_All removes the member
-        // (0x006EA870). VERA has no Team membership owner, so a jumping AI
-        // dog or drone stays listed in its team while limboed and a
-        // RejoinTeamIfLimboed=no drone is never dropped from it.
         if reselect {
             self.substrate
                 .entities
                 .get_mut(firer)
                 .unwrap()
                 .limbo_reselect = true;
+        }
+        // 0x006FF7A3..0x006FF7E9: a RejoinTeamIfLimboed= Foot jumping an
+        // Infantry target remembers its team (+0x434) before the Limbo below
+        // takes it off the team (0x004D9744); its release re-adds it
+        // (`parasite_rejoin_team`).
+        if object.rejoin_team_if_limboed && target_infantry {
+            self.team_script_vm.remember_team_to_rejoin(firer);
         }
         self.techno_limbo_with_rules(firer, rules);
         let parasite = weapon

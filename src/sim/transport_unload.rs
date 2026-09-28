@@ -68,7 +68,8 @@ const STATE_EJECT: u32 = 3;
 const STATE_DONE: u32 = 4;
 
 /// Aircraft handler states on `aircraft+0xBC`. Native state 1 (written only
-/// at `0x0041541F`, inside the team arm) is EXCLUDED: VERA has no teams.
+/// at `0x0041541F`, inside the team arm) is not ported with the rest of that
+/// arm (the team residual on [`dispatch_aircraft_unload`]).
 const AIR_STATE_CHECK_LANDED: u32 = 0;
 const AIR_STATE_WAIT_STOP: u32 = 2;
 const AIR_STATE_EJECT: u32 = 3;
@@ -456,7 +457,9 @@ enum EjectOutcome {
 /// the FNPC placement cell for a vehicle passenger — and `LeaveTransportSound`
 /// plays at the transport (`0x0073DC28`..`0x0073DC67`). Any failure
 /// re-inserts the passenger with `AddPassenger` (`0x0073DC78`) and re-applies
-/// the gunner weapon (`0x0073DC96`).
+/// the gunner weapon (`0x0073DC96`). A transport in a team would add the
+/// passenger to it after `Set_Destination` (`0x0073DC0C..0x0073DC19`; the
+/// team residual on [`dispatch_aircraft_unload`]).
 ///
 /// Infantry `Unlimbo` (`InfantryClass::Unlimbo @ 0x0051DFF0`) runs
 /// `PlaceInfantryInCell` a second time from the already-adjusted sub-cell
@@ -752,7 +755,7 @@ fn aircraft_landed(entity: &GameEntity) -> bool {
 /// The Aircraft Unload slot `0x004151E0` (Nighthawk and any other landed
 /// `Passengers > 0` aircraft). Timer-gated inside; writes its own epilogue.
 ///
-/// Team-less state graph (`+0x5A4 == NULL`, the only case VERA carries):
+/// Team-less state graph (`+0x5A4 == NULL`; the team arm is a residual below):
 ///
 /// - State 0 (`0x004151FB`): `GetHeight() == 0` (`0x004151FF`) and
 ///   `+0x2E8 == 0.0` (`0x0041520D`) → the team test at `0x00415228` jumps a
@@ -770,7 +773,7 @@ fn aircraft_landed(entity: &GameEntity) -> bool {
 ///   (`0x004154BB`..`0x004154C3`); its writer and meaning are UNCHECKED and
 ///   VERA does not represent it.
 /// - State 1 (`0x0041542A`): written only at `0x0041541F` inside the team
-///   arm — EXCLUDED, unreachable without teams.
+///   arm (residual below).
 /// - State 2 (`0x00415480`): locomotor `Is_Moving` (`+0x10`, `0x0041549D`)
 ///   false → state 3 (`0x004154A4`); `return 1` either way (`0x004154B1`),
 ///   NO epilogue draw while it polls.
@@ -781,6 +784,15 @@ fn aircraft_landed(entity: &GameEntity) -> bool {
 ///   re-enters, and — when that emptied the hold — goes idle in the same
 ///   dispatch; epilogue draw.
 /// - State 4 (`0x004155C0`): → 0, `return 1`.
+///
+/// RESIDUAL: the arms for a transport in a team are not ported: state 0's
+/// destination compare and state 1 (`0x0041522A..0x0041524E`,
+/// `0x0041541F`), the team join of each passenger ejected
+/// (`0x0041556A..0x00415587`), and the unit's join (`Team->Add_Member(
+/// passenger, 0)` at `0x0073DC0C..0x0073DC19`). Trigger: a team's transport
+/// unloads. Only script actions 8, 14 and 43 load or unload one, and they
+/// are not ported (`team_script_vm::actions`), so no ported path reaches
+/// these arms; once they are, passengers would leave their team at unload.
 pub(crate) fn dispatch_aircraft_unload(
     sim: &mut Simulation,
     id: u64,
@@ -802,7 +814,8 @@ pub(crate) fn dispatch_aircraft_unload(
     let delay = match entity.mission.handler_state() {
         AIR_STATE_CHECK_LANDED => {
             // Team-less: landed → 3 (`0x00415250`), otherwise → 2
-            // (`0x0041530C`). The destination compare is team-only.
+            // (`0x0041530C`). The destination compare is team-only
+            // (residual above).
             let next = if aircraft_landed(entity) {
                 AIR_STATE_EJECT
             } else {

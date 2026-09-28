@@ -131,6 +131,13 @@ impl TeamScriptVm {
                     are_team_members_recruitable: fields
                         .read_bool("AreTeamMembersRecruitable", true),
                     reinforce: fields.read_bool("Reinforce", false),
+                    group: fields.read_int("Group", -1),
+                    recruiter: fields.read_bool("Recruiter", false),
+                    annoyance: fields.read_bool("Annoyance", false),
+                    guard_slower: fields.read_bool("GuardSlower", false),
+                    transports_return_on_unload: fields
+                        .read_bool("TransportsReturnOnUnload", false),
+                    mind_control_decision: fields.read_int("MindControlDecision", 0),
                     source: team_type.source,
                 },
             );

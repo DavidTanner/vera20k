@@ -3119,7 +3119,7 @@ mod tests {
             house.player_control = flag("player_control", false);
             let mut teams = crate::sim::team_script_vm::TeamScriptVm::default();
             if flag("team", false) {
-                teams.create_team(victim.owner(), victim.type_ref(), vec![1], None, 0);
+                teams.create_team(victim.owner(), victim.type_ref(), vec![1], 0);
             }
             let admitted = infantry_damage_scatter_admitted(
                 &victim,

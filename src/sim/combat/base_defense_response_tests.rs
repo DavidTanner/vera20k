@@ -204,7 +204,6 @@ fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
             entity_id: 99,
             member_type: member_identity,
         }],
-        None,
         0,
     );
     sim.scenario_rng = SimRng::new(0x0405);
@@ -212,13 +211,7 @@ fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
 
     respond(&mut sim, &rules);
 
-    assert!(
-        sim.team_script_vm
-            .team(team_id)
-            .unwrap()
-            .members()
-            .is_empty()
-    );
+    assert!(sim.team_script_vm.team(team_id).unwrap().member_count() == 0);
     assert_eq!(
         sim.team_script_vm
             .team(team_id)

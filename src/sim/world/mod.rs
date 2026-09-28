@@ -129,7 +129,7 @@ use crate::map::trigger_graph::TriggerGraph;
 use crate::map::triggers::TriggerMap;
 use crate::rules::locomotor_type::SpeedType;
 use crate::rules::object_type::ObjectType;
-use crate::rules::ruleset::{GeneralRules, RuleSet};
+use crate::rules::ruleset::RuleSet;
 use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::animation;
 use crate::sim::bridge_state::BridgeRuntimeState;
@@ -172,7 +172,7 @@ use crate::sim::projectile::{
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::rng::{SimRng, SimRngLogicalState, SimRngLogicalView};
 use crate::sim::scenario_session::ScenarioSession;
-use crate::sim::team_script_vm::{TeamRules, TeamScriptEffect, TeamScriptVm};
+use crate::sim::team_script_vm::TeamScriptVm;
 use crate::sim::tiberium::TiberiumPlacementObjectContext;
 use crate::sim::trigger_runtime::{TriggerEffect, TriggerRuntime};
 use crate::sim::vision::{self, FogState};
@@ -4251,6 +4251,14 @@ impl Simulation {
         }
     }
 
+    /// `HouseClass::IsControlledByHuman @ 0x0050B730` for `owner`'s house;
+    /// false for an owner without one.
+    pub(crate) fn owner_is_human(&self, owner: InternedId) -> bool {
+        self.houses
+            .get(&owner)
+            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero))
+    }
+
     /// Apply `house_tracking`'s Add_Tracking or Remove_Tracking for an object
     /// on its owner's house.
     pub(crate) fn update_house_tracking(
@@ -4513,6 +4521,13 @@ impl Simulation {
         // read the type and skips it.
         if let Some(rules) = rules {
             self.change_owner_mission_half(stable_id, rules);
+        }
+        // `FootClass::ChangeOwner @ 0x004DBF13..0x004DBF32`: a Foot given to
+        // a human house leaves its team.
+        if category != EntityCategory::Structure
+            && self.houses.get(&new_owner).is_some_and(|house| house.is_human)
+        {
+            self.leave_team(stable_id, false, rules);
         }
         self.foot_neighbors_after_owner_change(stable_id, rules);
         self.refresh_waypoint_edge_from_committed_structure(stable_id);
@@ -5777,46 +5792,15 @@ impl Simulation {
     /// afterwards can Building/Foot `ReceiveDamage` reach the base-defense
     /// suspension writer. A frame-N hit therefore arms suspension for the next
     /// Team visit, not the Team visit already completed on frame N.
-    fn run_team_script_pass(&mut self, rules: Option<&RuleSet>) {
+    fn run_team_script_pass(
+        &mut self,
+        rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::TeamScript);
-        let game_mode_nonzero = self.session.game_mode_nonzero;
-        let team_rules = match rules {
-            Some(rules) => TeamRules::new(&rules.general, game_mode_nonzero),
-            None => TeamRules::new(&GeneralRules::default(), game_mode_nonzero),
-        };
-        let mut team_script_vm = std::mem::take(&mut self.team_script_vm);
-        let team_tick = team_script_vm.tick_effects(
-            self.session.binary_frame as i32,
-            &team_rules,
-            |owner| {
-                !crate::sim::house_state::house_state_for_owner_id(&self.houses, owner)
-                    .is_some_and(|house| house.is_defeated)
-            },
-        );
-        self.team_script_vm = team_script_vm;
-        for effect in team_tick.effects {
-            match effect {
-                // Original: TeamClass::AI action 19 walks TeamClass+0x54 and
-                // invokes FootClass's panic-family virtual in member order.
-                TeamScriptEffect::PanicMember { entity_id } => {
-                    let Some(rules) = rules else { continue };
-                    let Some(type_ref) = self
-                        .substrate
-                        .entities
-                        .get(entity_id)
-                        .map(|entity| entity.type_ref())
-                    else {
-                        continue;
-                    };
-                    let Some(object_type) = rules.object(self.interner.resolve(type_ref)) else {
-                        continue;
-                    };
-                    if let Some(entity) = self.substrate.entities.get_mut(entity_id) {
-                        crate::sim::infantry::apply_panic_force(object_type, entity);
-                    }
-                }
-            }
+        if let Some(rules) = rules {
+            self.run_team_ai_pass(rules, overlay_registry);
         }
     }
 
@@ -6087,7 +6071,7 @@ impl Simulation {
         // Native TeamClass AI precedes the main LogicClass object vector. In
         // particular, ordinary object ReceiveDamage paths that arm a Team's
         // base-defense suspension occur only after this frame's Team visit.
-        self.run_team_script_pass(rules);
+        self.run_team_script_pass(rules, overlay_registry);
         // The live pass commits each object's AI, movement and lifecycle effects
         // before advancing its cursor; later phases need only these outcomes.
         #[cfg(test)]

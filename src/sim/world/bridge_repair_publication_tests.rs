@@ -259,7 +259,6 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
                     owner,
                     script_id,
                     vec![id],
-                    None,
                     sim.session.binary_frame as i32,
                 );
                 assert!(sim.team_script_vm.team_for_member(id).is_some());

@@ -2305,12 +2305,7 @@ fn gsi_04_07_should_retaliate_world_refusals() {
     // `0x00708A2C..0x00708A54`: a member of a `Suicide=` team.
     for suicide in [false, true] {
         let (mut sim, rules) = tank(false);
-        crate::sim::team_script_vm::join_one_member_team_for_test(
-            &mut sim,
-            GATE_VICTIM,
-            suicide,
-            false,
-        );
+        crate::sim::team_script_vm::join_team_for_test(&mut sim, &[GATE_VICTIM], suicide, false);
         assert_eq!(
             should_retaliate(&sim, &rules, GATE_VICTIM, GATE_SOURCE),
             !suicide,

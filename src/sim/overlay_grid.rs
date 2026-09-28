@@ -15,7 +15,7 @@ use crate::map::overlay_types::{
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::intern::InternedId;
 use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
-use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::object_distance;
 use std::collections::BTreeSet;
 
 const MARK_MAX_SLOPE: u8 = 4;
@@ -24,22 +24,6 @@ const MARK_STEEP_SLOPE_EXCEPTION_ID: u8 = 0xB2;
 /// Universal pre-stamp slope gate shared by native-style Mark entry points.
 fn mark_rejects_steep_slope(slope_type: u8, overlay_id: u8) -> bool {
     slope_type > MARK_MAX_SLOPE && overlay_id != MARK_STEEP_SLOPE_EXCEPTION_ID
-}
-
-/// `FUN_005F6360`'s x87/LUT/ftol 3-D distance sequence.
-fn native_wall_owner_distance(dx: i32, dy: i32, dz: i32) -> i32 {
-    let x = X87Chop53::load_i32(dx);
-    let y = X87Chop53::load_i32(dy);
-    let z = X87Chop53::load_i32(dz);
-    let squared = X87Chop53::add(
-        X87Chop53::add(X87Chop53::mul(x, x), X87Chop53::mul(z, z)),
-        X87Chop53::mul(y, y),
-    );
-    let root_bits =
-        sqrt_approx_f32(squared).expect("map-space squared distance stays in finite f32 range");
-    let root =
-        X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    X87Chop53::ftol_i64(root).expect("map-space distance fits a signed integer") as i32
 }
 
 /// Building facts consumed by the one-shot map-wall owner reconstruction pass.
@@ -868,13 +852,14 @@ impl OverlayGrid {
                     {
                         continue;
                     }
-                    let dx = wall_x.wrapping_sub(building.world_x);
-                    let dy = wall_y.wrapping_sub(building.world_y);
-                    let dz = wall_z.wrapping_sub(building.world_z);
-                    let raw = i64::from(native_wall_owner_distance(dx, dy, dz));
-                    let adjustment =
-                        64 * i64::from(building.foundation_width + building.foundation_height);
-                    let adjusted = raw.saturating_sub(adjustment).max(0);
+                    let adjusted = i64::from(object_distance(
+                        [wall_x, wall_y, wall_z],
+                        [building.world_x, building.world_y, building.world_z],
+                        Some((
+                            i32::from(building.foundation_width),
+                            i32::from(building.foundation_height),
+                        )),
+                    ));
                     if adjusted < best_distance {
                         best_distance = adjusted;
                         best_owner = Some(building.owner);
@@ -3165,8 +3150,8 @@ mod tests {
 
     #[test]
     fn gsi_04_07_placement_map_wall_owner_uses_native_lut_distance_tie() {
-        assert_eq!(native_wall_owner_distance(0, 3968, 1040), 4101);
-        assert_eq!(native_wall_owner_distance(0, 4096, 208), 4101);
+        assert_eq!(object_distance([0, 3968, 1040], [0, 0, 0], None), 4101);
+        assert_eq!(object_distance([0, 4096, 208], [0, 0, 0], None), 4101);
 
         let registry = gsi_04_07_placement_registry();
         let terrain = clear_terrain_grid(5, 5);

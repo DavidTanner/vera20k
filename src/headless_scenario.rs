@@ -835,7 +835,7 @@ mod retail_construction_tests {
                     .teams_in_order()
                     .filter(|team| team.owner() == owner)
                     .fold((0, 0), |(teams, members), team| {
-                        (teams + 1, members + team.members().len())
+                        (teams + 1, members + team.member_count())
                     });
                 let foot = sim
                     .entities()
