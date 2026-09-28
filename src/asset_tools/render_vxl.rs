@@ -16,8 +16,9 @@
 //!
 //! Turret and barrel are composited in, through the same depth-correct CPU
 //! merge the unit atlas bakes with (`render::unit_atlas::composite_unit_vxl_cpu`)
-//! — so a tank is drawn with its gun, and the picture cannot drift from what the
-//! game builds. Which layers were merged is reported in the warnings.
+//! — so a tank is drawn with its gun. The render is per image, not per type: a
+//! vehicle type without `Turret=` draws its image bare. Which layers were merged
+//! is reported in the warnings.
 //!
 //! ## Dependency rules
 //! - Depends on `assets/` (VXL/HVA/VPL/palette), `rules/` (`[Colors]` schemes
@@ -90,9 +91,8 @@ const COMPASS_NAMES: [&str; 8] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 const COMPASS_STEP: u8 = (FACINGS_PER_TURN / COMPASS_NAMES.len() as u32) as u8;
 
 /// Suffixes the production compositor appends to an image id when it looks for
-/// the separately-modelled gun parts. `BARREL` is the alternate spelling a
-/// minority of retail units use instead of `BARL`.
-const LAYER_SUFFIXES: [&str; 3] = ["TUR", "BARL", "BARREL"];
+/// the separately-modelled gun parts, as gamemd's voxel loader formats them.
+const LAYER_SUFFIXES: [&str; 2] = ["TUR", "BARL"];
 
 /// Cyan: the sprite's own bounds, so an off-centre or clipped model is visible.
 const SPRITE_OUTLINE_COLOR: [u8; 4] = [0, 200, 255, 255];
@@ -519,7 +519,8 @@ fn load_vpl(
 ///
 /// These images go through the same CPU compositor the atlas bake uses, so a
 /// tank is drawn with its gun. Naming the layers tells a caller the image is a
-/// composite rather than a bare hull.
+/// composite rather than a bare hull. A vehicle type without `Turret=` loads no
+/// gun parts, so the game draws that type's image bare.
 ///
 /// The one asymmetry worth reporting: the compositor resolves siblings through
 /// production lookup, which cannot reach catalogued archives, while this verb's
@@ -545,7 +546,8 @@ fn sibling_layer_warnings(asset_manager: &AssetManager, image_id: &str) -> Vec<S
     let mut notes = Vec::new();
     if !composited.is_empty() {
         notes.push(format!(
-            "composite: {} were depth-merged into the body, matching what the unit atlas bakes",
+            "composite: {} were depth-merged into the body, as the unit atlas bakes them for a \
+             type with a turret; a vehicle type without Turret= draws the body alone",
             composited.join(", ")
         ));
     }
