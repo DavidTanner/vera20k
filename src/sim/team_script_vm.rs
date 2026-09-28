@@ -136,30 +136,30 @@ pub struct TeamTypeIniMetadata {
     /// team's group, else its TaskForce's (`TeamTypeClass::Get_Group @
     /// 0x006F1870`).
     #[serde(default = "minus_one")]
-    pub group: i32,
+    group: i32,
     /// `Recruiter=` (`+0xA8`, ReadBool at `0x006F1249`): recruitment passes
     /// over the group filter.
     #[serde(default)]
-    pub recruiter: bool,
+    recruiter: bool,
     /// `Annoyance=` (`+0xA6`, ReadBool at `0x006F1193`): a formed team
     /// regroups when a member is hit (`0x006EB416`).
     #[serde(default)]
-    pub annoyance: bool,
+    annoyance: bool,
     /// `GuardSlower=` (`+0xA7`, ReadBool at `0x006F11AD`): the centre counts
     /// slow members twice (`0x006EB24F`).
     #[serde(default)]
-    pub guard_slower: bool,
+    guard_slower: bool,
     /// `TransportsReturnOnUnload=` (`+0xF4`, ReadBool at `0x006F13EE`): a
     /// transport member keeps its ArchiveTarget as the script advances
     /// (`0x006E9393`).
     #[serde(default)]
-    pub transports_return_on_unload: bool,
+    transports_return_on_unload: bool,
     /// `MindControlDecision=` (`+0xC0`, ReadInt at `0x006F1139`, constructor
     /// 0 at `0x006F0781`): when not 0, the fate a member's mind control
     /// gives its captives (`CaptureManagerClass::DecideUnitFate @
     /// 0x00472586`), in place of the roll.
     #[serde(default)]
-    pub mind_control_decision: i32,
+    mind_control_decision: i32,
     pub source: TeamAiDefinitionSource,
 }
 
@@ -412,13 +412,13 @@ pub enum TeamScriptRefusal {
 /// `FootClass+0x5D8`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TeamMember {
-    pub(crate) id: u64,
+    id: u64,
     /// `FootClass+0x689`: the member has joined up. `Add_Member` sets it only
     /// on a team's first member (`0x006EA554..0x006EA55C`); the forming step,
     /// `Regroup` and the move routines set it once the member is within
     /// `Stray=` of the team's centre. Only team code reads it, and the Foot
     /// CRC; the byte outlives a removal natively, which nothing reads.
-    pub(crate) initiated: bool,
+    initiated: bool,
 }
 
 /// An `AbstractClass*` a team keeps: its centre (`+0x34`), mission target
