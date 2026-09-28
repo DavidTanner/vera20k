@@ -7834,7 +7834,11 @@ Projectile=Invisible
               [GACNST]\nFoundation=1x1\n[LATE]\nFoundation=1x1\n",
         );
         let ini = IniFile::from_bytes(&bytes).expect("byte-domain BuildConst rules");
-        let stored = ini.section("AI").unwrap().get("BuildConst").unwrap();
+        let stored = ini
+            .section("AI")
+            .unwrap()
+            .get_for_test("BuildConst")
+            .unwrap();
         assert_eq!(stored.chars().nth(126), Some(char::from(0xE9)));
         assert_eq!(stored.chars().nth(127), Some(','));
         let rules = RuleSet::from_ini(&ini).expect("byte-domain BuildConst RuleSet");

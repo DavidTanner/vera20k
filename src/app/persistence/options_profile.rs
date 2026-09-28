@@ -1066,7 +1066,7 @@ IsScoreRepeat=no\r\nIsScoreShuffle=no\r\nSoundLatency=9\r\nInGameMusic=yes\r\n\
             let section = parsed.section(section_name).unwrap();
             for (key, expected) in values {
                 assert_eq!(
-                    section.get(key),
+                    section.get_for_test(key),
                     Some(expected.as_str()),
                     "{section_name}/{key}"
                 );

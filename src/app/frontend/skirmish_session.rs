@@ -1045,14 +1045,17 @@ Credits=12345\r\n";
             let bytes = std::fs::read(&path).expect("persisted profile");
             let ini = IniFile::from_bytes(&bytes).expect("profile INI");
             assert_eq!(
-                ini.section("Skirmish").unwrap().get("Credits"),
+                ini.section("Skirmish").unwrap().get_for_test("Credits"),
                 Some(credits.to_string().as_str())
             );
             assert_eq!(
-                ini.section("Options").unwrap().get("ScrollRate"),
+                ini.section("Options").unwrap().get_for_test("ScrollRate"),
                 Some(scroll_rate.to_string().as_str())
             );
-            assert_eq!(ini.section("Unrelated").unwrap().get("Key"), Some("kept"));
+            assert_eq!(
+                ini.section("Unrelated").unwrap().get_for_test("Key"),
+                Some("kept")
+            );
             assert!(bytes.starts_with(b"; keep this comment"));
         }
 

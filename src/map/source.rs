@@ -319,7 +319,7 @@ mod tests {
             let path = directory.path().join(name);
             let metadata = read_map_ini_for_metadata(&path).expect("lightweight metadata");
             assert_eq!(
-                metadata.section("Map").unwrap().get("Theater"),
+                metadata.section("Map").unwrap().get_for_test("Theater"),
                 Some("SNOW")
             );
             assert!(map_file::load_from_path(&path).is_err());

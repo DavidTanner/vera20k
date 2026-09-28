@@ -1652,8 +1652,8 @@ fn assert_contract_section(contract: &IniFile, retail: &IniFile, section_name: &
         .unwrap_or_else(|| panic!("retail section [{section_name}]"));
     for key in contract_section.keys() {
         assert_eq!(
-            retail_section.get(key),
-            contract_section.get(key),
+            retail_section.get_for_test(key),
+            contract_section.get_for_test(key),
             "retail [{section_name}] {key}= must match the tracked contract"
         );
     }

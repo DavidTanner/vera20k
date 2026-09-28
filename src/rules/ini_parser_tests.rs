@@ -246,39 +246,3 @@ fn content_hash_is_deterministic_and_value_sensitive() {
     let c = IniFile::from_str("; header\n[General]\nBuildSpeed = .7   ; speed\nFlightLevel=1500\n");
     assert_eq!(a.content_hash(), c.content_hash());
 }
-
-/// Stored text leaves the store only through the readers, except where
-/// entries are copied between stores or shown raw. A new caller of the raw
-/// door belongs in a reader instead.
-#[test]
-fn raw_entries_callers_are_pinned() {
-    fn walk(dir: &std::path::Path, needle: &str, found: &mut Vec<String>) {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                walk(&path, needle, found);
-            } else if path.extension().is_some_and(|ext| ext == "rs")
-                && std::fs::read_to_string(&path).unwrap().contains(needle)
-            {
-                let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-                let relative = path.strip_prefix(root).unwrap();
-                found.push(relative.to_string_lossy().replace('\\', "/"));
-            }
-        }
-    }
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut found = Vec::new();
-    walk(&root.join("src"), concat!(".raw_", "entries("), &mut found);
-    found.sort();
-    assert_eq!(
-        found,
-        [
-            // `ini-get --reader raw` and the presence report.
-            "src/asset_tools/verb_ini.rs",
-            // `[Colors]` entries copied into the processed registry.
-            "src/rules/native_processing.rs",
-            // TeamType fields overlaid pass over pass.
-            "src/rules/team_ai_ini.rs",
-        ]
-    );
-}

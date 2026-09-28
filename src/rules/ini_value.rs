@@ -4,7 +4,9 @@
 //! and the token parsers under them. `ini_parser.rs` is the raw store (the
 //! `INIClass` analog): loading and exact-case lookup. This module is its child,
 //! so only these readers see raw value text; other code tests presence with
-//! `IniSection::is_present`.
+//! `IniSection::is_present`. The store's two walks, `raw_entries` and
+//! `registry_ids`, are not readers, and `architecture_guards` pins their
+//! callers. Its unit tests run under `rules::ini_parser::ini_value::`.
 //!
 //! Each reader reproduces one native reader's contract on the resolved value.
 //! Where gamemd reads some keys through a different parser, that parser is its
@@ -32,7 +34,6 @@
 //! | `read_speed`, `read_range`, `read_speed_type` | 0x00474810, 0x00474620, 0x00476FC0 |
 //! | `read_comma_hex_utf16` | `INIClass::ReadCommaHexUTF16` 0x00528F00 |
 //! | `read_packed_text` | packed-section reader 0x00526FB0 (IsoMapPack5, OverlayPack, PreviewPack) |
-//! | `registry_ids` | the stored IDs of a registry `native_processing` rewrote |
 //!
 //! Token parsers for text a reader has already copied: [`strtok`] (CRT
 //! 0x007C9CC2), [`crt_atoi`] (CRT 0x007C9B72), [`parse_leading_f64`] (CRT

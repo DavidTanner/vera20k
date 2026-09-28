@@ -4732,7 +4732,7 @@ mod tests {
         for id in ["ZEP", "DISK"] {
             let section = ini.section(id).unwrap_or_else(|| panic!("[{id}] section"));
             assert!(
-                section.get("JumpJet").is_none(),
+                section.get_for_test("JumpJet").is_none(),
                 "[{id}] is only interesting because stock omits JumpJet="
             );
             let obj = ObjectType::from_ini_section(id, section, ObjectCategory::Vehicle);
@@ -4843,12 +4843,12 @@ mod tests {
             }
             jumpjet_sections += 1;
             for key in ["JumpjetTurnRate", "JumpjetAccel"] {
-                if section.get(key).is_some() {
+                if section.get_for_test(key).is_some() {
                     native_spelling += 1;
                 }
             }
             for key in ["JumpJetTurnRate", "JumpJetAccel"] {
-                if section.get(key).is_some() {
+                if section.get_for_test(key).is_some() {
                     ini_spelling += 1;
                 }
             }
