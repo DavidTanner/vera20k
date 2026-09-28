@@ -227,7 +227,9 @@ Before fixing a bug whose expected behavior is established, first make a focused
 
 Run Cargo through `python -m tools.cargo_run -- <cargo arguments>` from the checkout.
 It waits for other builds and serializes cooperating worktrees; do not compete with or
-kill a compile. Use `--label <unique-name>` before `--` to preserve a build or
+kill a compile. Each run blocks every other session's Cargo until it finishes, so
+batch edits and run the narrowest command that answers your question.
+Use `--label <unique-name>` before `--` to preserve a build or
 `test --lib --no-run` executable with source and binary hashes. See the
 [tool index](tools/README.md) for cache locations and limits. Confirm fresh-worktree config/assets.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
