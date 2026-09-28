@@ -123,7 +123,7 @@ impl Simulation {
     /// scans every eligible object visit with mask1/2, without the native
     /// targeting-timer/4DF3A0 engagement gates or scanner jitter draw. Native
     /// +5C4/+5C8/+5CC/+5D1 setup, resume and pointer-expiry state is not yet
-    /// represented; only the existing OrderIntent is saved/hashed. Trigger:
+    /// represented; the existing OrderIntent is serialized but not hashed. Trigger:
     /// player AttackMove/Guard with no held target; effect: acquisition and
     /// subsequent fire/resume cadence can differ. Evidence for that separate
     /// mechanism: tools/spatial_oracle/foot_attack_move.py and target_scan.rs.
