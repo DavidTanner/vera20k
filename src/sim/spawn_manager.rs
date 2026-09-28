@@ -768,9 +768,10 @@ fn step_manager_mode(
             };
             // gamemd-derived: `SpawnManagerClass::AI` @ 0x006B7230 mode 0
             // promotes +0x6C to +0x68, then Unit's vslot +0x3AC reaches
-            // `TechnoClass::CanFireAtTarget` @ 0x006F7780. A false result calls
-            // `ClearAllTargets` @ 0x006B7BB0 and returns before Launching.
-            let target_is_legal = sim.resolved_terrain.as_ref().is_some_and(|terrain| {
+            // `TechnoClass::CanFireAtTarget` @ 0x006F7780 (InRange with the
+            // selected weapon). A false result calls `ClearAllTargets` @
+            // 0x006B7BB0 and returns before Launching.
+            let can_fire_at = sim.resolved_terrain.as_ref().is_some_and(|terrain| {
                 crate::sim::combat::can_fire_at_target(
                     &sim.substrate.entities,
                     rules,
@@ -786,7 +787,7 @@ fn step_manager_mode(
                     },
                 )
             });
-            if !target_is_legal {
+            if !can_fire_at {
                 with_manager(sim, owner_id, SpawnManagerState::clear_all_targets);
                 return;
             }

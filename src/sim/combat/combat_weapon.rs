@@ -1,16 +1,14 @@
 //! Weapon selection — the native `TechnoClass::What_Weapon_Should_I_Use`
-//! ladder, its Infantry/Unit class overrides, the `NavalTargeting=` selector,
-//! `TechnoClass::GetWeapon` (elite tier), and the target-legality subset of
-//! `TechnoClass::GetFireError` that turns a selected slot into "can engage /
-//! cannot engage".
+//! ladder, its Infantry/Unit class overrides, the `NavalTargeting=` selector
+//! and `TechnoClass::GetWeapon` (elite tier), with a garrison's occupant
+//! weapon.
 //!
 //! Shape: `what_weapon_should_i_use` reproduces the native predicate ladder in
 //! native order as one function with the same early returns and returns a
-//! weapon-slot INDEX (never "no weapon"). `select_weapon_for_target` then
-//! resolves that index through `GetWeapon` and applies the GetFireError
-//! targeting verdicts (AA vs high-flying, naval `-1`, `LandTargeting=1`,
-//! `Verses == 0`) so callers keep the existing `Option<SelectedWeapon>`
-//! contract: `None` means the shot is ILLEGAL, not that no slot was chosen.
+//! weapon-slot INDEX (never "no weapon"). `resolve_selected_weapon` resolves
+//! that index through `GetWeapon`; its `None` means the slot names no weapon.
+//! Neither asks whether the shot is legal: that is GetFireError
+//! ([`super::fire_error`]), which each caller asks where native asks it.
 //!
 //! gamemd-derived (all read live this session):
 //! - `TechnoClass::What_Weapon_Should_I_Use @ 0x006F3330` (vtable `+0x2E4` in
@@ -18,8 +16,8 @@
 //! - `InfantryClass` override `@ 0x005218E0` (`0x007EB33C`), `UnitClass`
 //!   override `@ 0x00746CD0` (`0x007F5F54`).
 //! - `TechnoClass::SelectNavalTargetingWeapon @ 0x006F3820` (vtable `+0x2E8`).
-//! - `TechnoClass::GetWeapon @ 0x0070E140` (elite tier).
-//! - `TechnoClass::GetFireError @ 0x006FC0B0` (targeting subset only).
+//! - `TechnoClass::GetWeapon @ 0x0070E140` (elite tier) and the occupied arm
+//!   of `BuildingClass::GetWeapon @ 0x004526F0`.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/ terrain facts, and sim entity state.
@@ -71,17 +69,12 @@ pub enum WeaponOverride {
     IfvSlot(u32),
 }
 
-/// Result of weapon selection: the chosen weapon, its warhead, and the
-/// effective Verses percentage against the target's armor.
+/// Result of weapon selection: the chosen weapon and its warhead.
 pub(crate) struct SelectedWeapon<'a> {
     /// Section id of the selected weapon.
     pub weapon_id: &'a str,
     pub weapon: &'a WeaponType,
     pub warhead: &'a WarheadType,
-    /// Damage percentage for target armor (0–200). Already looked up from Verses.
-    /// 100 = full damage, 0 = immune. Cell targets report 100 (native reads
-    /// no Verses for a non-Techno target).
-    pub verses_pct: u8,
     /// FLH slot: index 1 is `Secondary`, every other index is `Primary`.
     pub slot: WeaponSlot,
     /// Native weapon-array index returned by the selection ladder.
@@ -174,9 +167,6 @@ pub(crate) struct AttackerFacts {
     /// `AircraftClass+0x6CA` spawn retreat/collision flag
     /// (`SpawnRetreat__Push 0x0054E47D`).
     pub aircraft_spawn_collision: bool,
-    /// The firer's CaptureManager half of CanCapture, which GetFireError asks
-    /// for a MindControl warhead (`0x006FCB24..0x006FCB50`).
-    pub capture: Option<crate::sim::capture_manager::CaptureControllerFacts>,
 }
 
 /// Flight virtuals are queried only where the selection ladder asks them.
@@ -190,7 +180,7 @@ pub(crate) enum TargetFlight<'a> {
         interner: &'a StringInterner,
     },
     #[cfg(test)]
-    Supplied { high: bool, low: bool },
+    Supplied { high: bool },
 }
 
 impl TargetFlight<'_> {
@@ -207,29 +197,12 @@ impl TargetFlight<'_> {
                 Some((rules, interner)),
             ),
             #[cfg(test)]
-            Self::Supplied { high, .. } => high,
-        }
-    }
-
-    fn low(self) -> bool {
-        match self {
-            Self::Live {
-                entity,
-                terrain,
-                rules,
-                interner,
-            } => crate::sim::movement::air_movement::is_low_flying(
-                entity,
-                terrain,
-                Some((rules, interner)),
-            ),
-            #[cfg(test)]
-            Self::Supplied { low, .. } => low,
+            Self::Supplied { high } => high,
         }
     }
 }
 
-/// Target-side facts read by the ladder and the GetFireError subset.
+/// Target-side facts read by the ladder.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum TargetFacts<'a> {
     /// Real TerrainClass Object target: neither CellClass nor TechnoClass.
@@ -262,15 +235,6 @@ pub(crate) enum TargetFacts<'a> {
         /// `HouseClass::Is_Ally_ByObject @ 0x004F9A90` of the attacker's
         /// owner against this target.
         is_ally: bool,
-        /// CanInfect `0x0062A8E0`'s victim-side gates, which GetFireError
-        /// `0x006FCA81..0x006FCAC2` applies to a Parasite warhead.
-        parasite: ParasiteVictimFacts,
-        /// CanCapture `0x00471C90`'s victim-side gates, which GetFireError
-        /// applies to a MindControl warhead (the Iron Curtain gate reads the
-        /// frame and is applied at fire admission).
-        capture: crate::sim::capture_manager::CaptureVictimFacts,
-        /// `ObjectClass+0x38`: it carries a Crazy Ivan bomb.
-        has_bomb: bool,
     },
 }
 
@@ -285,13 +249,6 @@ pub(crate) struct ParasiteVictimFacts {
 }
 
 impl ParasiteVictimFacts {
-    /// An ordinary infectable land victim; fixtures that do not model parasites.
-    #[cfg(test)]
-    pub(crate) const INFECTABLE_ON_LAND: Self = Self {
-        infectable: true,
-        on_water_set: false,
-    };
-
     /// A NULL victim cell passes the water gate (`0x00485060` is not reached).
     pub(crate) fn of(
         target: &GameEntity,
@@ -683,19 +640,10 @@ pub(crate) fn passive_scan_has_aa(
         && let Some((occupant_type, veterancy)) = garrison
     {
         // Building4526F0's occupied override returns this same identity for
-        // either index. It does not test target legality or fall back after
-        // refusing a target. Use the actual firing-occupant snapshot.
+        // either index. Use the actual firing-occupant snapshot.
         return rules
             .object(occupant_type)
-            .and_then(|occupant| {
-                let occupy = if veterancy >= ELITE_VETERANCY {
-                    occupant.elite_occupy_weapon.as_deref()
-                } else {
-                    occupant.occupy_weapon.as_deref()
-                };
-                occupy.or_else(|| primary_for_tier(occupant, veterancy))
-            })
-            .and_then(|id| rules.weapon(id))
+            .and_then(|occupant| occupant_weapon(rules, occupant, veterancy))
             .is_some_and(|weapon| projectile_aa(rules, weapon));
     }
     let slot_has_aa = |index| {
@@ -723,14 +671,6 @@ pub(crate) fn passive_scan_has_aa(
     has_aa
 }
 
-fn projectile_ag(rules: &RuleSet, weapon: &WeaponType) -> bool {
-    weapon
-        .projectile
-        .as_ref()
-        .and_then(|id| rules.projectile(id))
-        .is_none_or(|projectile| projectile.ag)
-}
-
 pub(crate) fn warhead_of<'a>(rules: &'a RuleSet, weapon: &WeaponType) -> Option<&'a WarheadType> {
     weapon.warhead.as_ref().and_then(|id| rules.warhead(id))
 }
@@ -748,7 +688,7 @@ fn verses_is_zero(warhead: Option<&WarheadType>, armor: usize) -> bool {
 
 /// Weapon-slot selection with the class overrides that run BEFORE the base
 /// ladder. Returns the weapon-array index native returns; it never returns
-/// "no weapon" — legality is `GetFireError`'s job (`select_weapon_for_target`).
+/// "no weapon" — legality is `GetFireError`'s job ([`super::fire_error`]).
 ///
 /// - `InfantryClass @ 0x005218E0`: a `DeployFire=yes` infantry never enters
 ///   the ladder — deployed sequences fire `DeployFireWeapon`, otherwise
@@ -961,166 +901,9 @@ fn techno_what_weapon_should_i_use(
     0
 }
 
-/// The target-legality subset of `TechnoClass::GetFireError @ 0x006FC0B0`
-/// that depends only on the selected weapon and the target. Returns true when
-/// the shot is ILLEGAL (native 5) or CANNOT (native 6). Ammo, ROF, cloak,
-/// busy-effect and range verdicts live elsewhere.
-fn targeting_fire_error_blocks(
-    rules: &RuleSet,
-    obj: &ObjectType,
-    weapon: &WeaponType,
-    warhead: &WarheadType,
-    target: &TargetFacts,
-    capture: Option<crate::sim::capture_manager::CaptureControllerFacts>,
-) -> bool {
-    let aa = projectile_aa(rules, weapon);
-    match *target {
-        // Terrain is admitted only to the index-selection owner above. No
-        // Terrain firing caller is delivered by the repair query; retain an
-        // explicit unsupported legality result instead of treating it as Cell.
-        TargetFacts::Terrain => true,
-        TargetFacts::Cell { land_type, .. } => {
-            // 0x006FCA81: CanInfect(NULL) refuses every cell target.
-            if warhead.parasite {
-                return true;
-            }
-            // 0x006FC7EB..0x006FC812: a non-Techno target that is not
-            // high-flying needs an AG projectile. `CellClass` vtable `+0x54`
-            // (`0x00410530`) always returns 0, so for a cell this is exactly
-            // "no AG projectile → ILLEGAL"; the AA-only Flak Cannon and Aegis
-            // cannot force-fire terrain at all.
-            if !projectile_ag(rules, weapon) {
-                return true;
-            }
-            // 0x006FC815..0x006FC868: a cell whose LandType is neither
-            // Water(2) nor Beach(6), fired at by a `LandTargeting=1` type.
-            if land_type != LandType::Water.as_index()
-                && land_type != LandType::Beach.as_index()
-                && obj.land_targeting == 1
-            {
-                return true;
-            }
-            false
-        }
-        TargetFacts::Techno {
-            obj: target_obj,
-            flight,
-            on_bridge,
-            cell_land_type,
-            parasite,
-            capture: capture_victim,
-            has_bomb,
-            ..
-        } => {
-            // 0x006FCA81..0x006FCAC2: a Parasite warhead is ILLEGAL unless the
-            // firer's ParasiteClass could infect this target (CanInfect
-            // 0x0062A8E0; buildings reach it as NULL). The launch lock
-            // (0x006FCAE1) and Iron Curtain (0x006FCB21) gates read the frame
-            // and are applied at fire admission instead.
-            if warhead.parasite && !parasite.admits(obj.naval) {
-                return true;
-            }
-            // 0x006FCB24..0x006FCB50: a MindControl warhead is ILLEGAL unless
-            // the firer's CaptureManager could capture this target.
-            if warhead.mind_control
-                && !capture.is_some_and(|controller| {
-                    crate::sim::capture_manager::can_capture(controller, capture_victim)
-                })
-            {
-                return true;
-            }
-            // 0x006FC705..0x006FC739: `IsHighFlying && !AA` → 5 (its REARM arm
-            // needs the Magnetron's held target, which T4 answers first).
-            //
-            // RESIDUAL (UNCHECKED) — 0x006FC73C..0x006FC75C is a second gate:
-            // a Foot target whose `InWhichLayer (vt+0x78) != 2` also needs an
-            // AA projectile. For a Foot target that slot is NOT
-            // `ObjectClass::InWhichLayer @ 0x005F4260` (which would make the
-            // gate identical to `IsHighFlying`) — `FootClass 0x004DB7E0` and
-            // `AircraftClass 0x0041ADC0` both forward it to the attached
-            // locomotor's own vtable `+0x74`, which VERA does not model.
-            // Trigger: a ground weapon shooting an airborne unit whose
-            // locomotor reports a non-ground layer while its altitude is still
-            // under two levels — a Rocketeer or Kirov just after lift-off, an
-            // aircraft mid-landing. Player effect: VERA lets the shot through
-            // where gamemd may answer ILLEGAL. Frequency: brief windows at the
-            // start and end of every flight. Downstream: none — the verdict is
-            // recomputed every tick.
-            if flight.high() && !aa {
-                return true;
-            }
-            // 0x006FC76A..0x006FC7CA: the naval `-1` verdict, under the same
-            // water/not-high-flying/not-on-bridge gate ladder step T used.
-            let mut on_water = (cell_land_type == LandType::Water.as_index()
-                || cell_land_type == LandType::Beach.as_index())
-                && !flight.high();
-            if !on_bridge {
-                if on_water && select_naval_targeting_weapon(obj, Some(target)) == -1 {
-                    return true;
-                }
-            } else {
-                on_water = false;
-            }
-            // 0x006FC7D0..0x006FC868: `target->IsLowFlying (vt+0x50)` and not
-            // on water, fired at by a `LandTargeting=1` type.
-            if flight.low() && !on_water && obj.land_targeting == 1 {
-                return true;
-            }
-            // 0x006FCB6A: `FLD Warhead.Verses[armor]`, `FCOMP 0.0` → 5.
-            if verses_is_zero(Some(warhead), armor_index(&target_obj.armor)) {
-                return true;
-            }
-            // 0x006FCB8D..0x006FCBCD: a BombDisarm weapon needs a bombed
-            // target and an IvanBomb weapon an unbombed one (→ 5).
-            if (warhead.bomb_disarm && !has_bomb) || (warhead.ivan_bomb && has_bomb) {
-                return true;
-            }
-            false
-        }
-    }
-}
-
-/// Turn a ladder index into the weapon it names and apply the GetFireError
-/// targeting verdicts.
-///
-/// RESIDUAL (UNCHECKED) — `BuildingClass::GetWeapon @ 0x004526F0` (vtable
-/// `+0x3F8`) is a real override: when `IsOccupied (vt+0x400)` is set and a
-/// firing occupant is selected, it returns the occupant type's `OccupyWeapon`
-/// (`+0xE04`, elite `+0xE20`), falling back to that occupant's `GetWeapon(0)`,
-/// instead of the building's own slot. Ladder arm B therefore resolves to the
-/// occupant's weapon natively, not to the building's `Primary=`. VERA performs
-/// the substitution only on the fire path (`select_garrison_weapon`) and in the
-/// dedicated garrison auto-acquire scan (`combat::tick_combat`, the
-/// `can_be_occupied && can_occupy_fire` block); `resolve_index` here reads the
-/// building's own slot 0. (Retaliation reads the occupant's weapon through
-/// `FireSubject`.) *Trigger:* a garrisoned building reached through
-/// `calculate_ai_threat_score`. *Player effect:* a garrisoned civilian building
-/// (no `Primary=` of its own) resolves to no weapon, so it scores no AI threat.
-/// *Frequency:* every garrisoned building on a city map that an AI weighs.
-/// *Downstream:* AI threat ranking only.
-fn resolve_index<'a>(
-    rules: &'a RuleSet,
-    obj: &'a ObjectType,
-    veterancy: u16,
-    index: i32,
-    target: &TargetFacts,
-    capture: Option<crate::sim::capture_manager::CaptureControllerFacts>,
-) -> Option<SelectedWeapon<'a>> {
-    let selected = resolve_weapon_index(rules, obj, veterancy, index, Some(target))?;
-    (!targeting_fire_error_blocks(
-        rules,
-        obj,
-        selected.weapon,
-        selected.warhead,
-        target,
-        capture,
-    ))
-    .then_some(selected)
-}
-
-/// Native SelectWeapon/GetWeapon resolution without a GetFireError filter.
-/// Evaluate owns the subsequent full fire-error query; Mission_Attack
-/// 418432..418476 selects on each burst iteration after one admission only.
+/// Native SelectWeapon/GetWeapon resolution. It asks no legality: Evaluate owns
+/// the subsequent full fire-error query; Mission_Attack 418432..418476 selects
+/// on each burst iteration after one admission only.
 pub(crate) fn resolve_selected_weapon<'a>(
     rules: &'a RuleSet,
     obj: &'a ObjectType,
@@ -1128,79 +911,42 @@ pub(crate) fn resolve_selected_weapon<'a>(
     target: Option<&TargetFacts>,
 ) -> Option<SelectedWeapon<'a>> {
     let index = what_weapon_should_i_use(rules, obj, attacker, target);
-    resolve_weapon_index(rules, obj, attacker.veterancy, index, target)
+    resolve_weapon_index(rules, obj, attacker.veterancy, index)
 }
 
-/// GetWeapon of an index SelectWeapon already answered, without a
-/// GetFireError filter.
+/// GetWeapon of an index SelectWeapon already answered (a delayed building
+/// shot resolves its saved slot here without re-running the ladder).
+///
+/// RESIDUAL (UNCHECKED) — `BuildingClass::GetWeapon @ 0x004526F0` (vtable
+/// `+0x3F8`) is a real override: when `IsOccupied (vt+0x400)` is set and a
+/// firing occupant is selected, it returns that occupant's weapon
+/// ([`occupant_weapon`]) instead of the building's own slot. Ladder arm B
+/// therefore resolves to the occupant's weapon natively, not to the
+/// building's `Primary=`. VERA performs the substitution through
+/// `fire_error_world::garrison_weapon` (GetFireError, InRange and the damage
+/// value), on the fire path and in the dedicated garrison auto-acquire scan
+/// (`combat::tick_combat`, the `can_be_occupied && can_occupy_fire` block);
+/// this reads the building's own slot. *Trigger:* a garrisoned building
+/// reached through `calculate_ai_threat_score`. *Player effect:* a garrisoned
+/// civilian building (no `Primary=` of its own) resolves to no weapon, so it
+/// scores no AI threat. *Frequency:* every garrisoned building on a city map
+/// that an AI weighs. *Downstream:* AI threat ranking only.
 pub(crate) fn resolve_weapon_index<'a>(
     rules: &'a RuleSet,
     obj: &'a ObjectType,
     veterancy: u16,
     index: i32,
-    target: Option<&TargetFacts>,
 ) -> Option<SelectedWeapon<'a>> {
     let (weapon_id, slot) = weapon_for_index(obj, veterancy, index)?;
     let weapon = rules.weapon(weapon_id)?;
     let warhead = warhead_of(rules, weapon)?;
-    let verses_pct = match target {
-        Some(TargetFacts::Techno {
-            obj: target_obj, ..
-        }) => warhead
-            .verses
-            .get(armor_index(&target_obj.armor))
-            .copied()
-            .unwrap_or(100),
-        _ => 100,
-    };
     Some(SelectedWeapon {
         weapon_id,
         weapon,
         warhead,
-        verses_pct,
         slot,
         index,
     })
-}
-
-/// Run the selection ladder against a resolved target and apply the
-/// GetFireError targeting verdicts. `None` = the selected weapon cannot
-/// legally fire at this target.
-pub(crate) fn select_weapon_for_target<'a>(
-    rules: &'a RuleSet,
-    obj: &'a ObjectType,
-    attacker: &AttackerFacts,
-    target: &TargetFacts,
-) -> Option<SelectedWeapon<'a>> {
-    let index = what_weapon_should_i_use(rules, obj, attacker, Some(target));
-    resolve_index(
-        rules,
-        obj,
-        attacker.veterancy,
-        index,
-        target,
-        attacker.capture,
-    )
-}
-
-/// Resolve exactly one saved static weapon slot against the current target.
-///
-/// Unlike normal selection, this never re-runs the ladder. The delayed
-/// Building fire path stores `CurrentWeaponNumber` while arming and asks that
-/// same slot for its live tier/legality when the delay expires.
-pub(crate) fn select_weapon_slot<'a>(
-    rules: &'a RuleSet,
-    obj: &'a ObjectType,
-    veterancy: u16,
-    slot: WeaponSlot,
-    target: &TargetFacts,
-    capture: Option<crate::sim::capture_manager::CaptureControllerFacts>,
-) -> Option<SelectedWeapon<'a>> {
-    let index = match slot {
-        WeaponSlot::Primary => 0,
-        WeaponSlot::Secondary => 1,
-    };
-    resolve_index(rules, obj, veterancy, index, target, capture)
 }
 
 /// `HouseClass::Is_Ally_ByObject @ 0x004F9A90` reduced to house identity:
@@ -1285,7 +1031,6 @@ pub(crate) fn attacker_facts(entity: &GameEntity, obj: &ObjectType) -> AttackerF
         mission_is_unload: entity.mission.effective().known() == Some(MissionType::Unload),
         is_overpowered_building: false,
         aircraft_spawn_collision: false,
-        capture: crate::sim::capture_manager::CaptureControllerFacts::of(entity),
     }
 }
 
@@ -1320,8 +1065,6 @@ pub(crate) fn attacker_facts_from_snapshot(
         mission_is_unload: false,
         is_overpowered_building: false,
         aircraft_spawn_collision: false,
-        // No entity, no manager: a MindControl weapon reads as illegal.
-        capture: None,
     }
 }
 
@@ -1352,9 +1095,6 @@ pub(crate) fn techno_target_facts<'a>(
         cell_land_type,
         submerged: target.cloak.as_ref().is_some_and(|cloak| cloak.state != 0),
         is_ally,
-        parasite: ParasiteVictimFacts::of(target, target_obj, terrain),
-        capture: crate::sim::capture_manager::CaptureVictimFacts::of(target, target_obj, None),
-        has_bomb: target.bomb.is_some(),
     }
 }
 
@@ -1384,8 +1124,10 @@ pub(crate) fn cell_target_facts(
     }
 }
 
-/// Production entry: resolve the target, build both fact sets, run the
-/// ladder and the GetFireError targeting subset.
+/// SelectWeapon (vt+0x2E4) against a `TargetKind`, then GetWeapon of its
+/// index: resolve the target, build both fact sets and run the ladder. No
+/// legality is asked; `None` means the target is gone or the slot names no
+/// weapon.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn select_weapon_against<'a>(
     rules: &'a RuleSet,
@@ -1408,82 +1150,27 @@ pub(crate) fn select_weapon_against<'a>(
         }
         TargetKind::Cell(rx, ry) => cell_target_facts(rx, ry, terrain),
     };
-    select_weapon_for_target(rules, attacker_obj, attacker, &target_facts)
+    resolve_selected_weapon(rules, attacker_obj, attacker, Some(&target_facts))
 }
 
-/// Select the weapon used by a garrisoned occupant firing from a building.
-///
-/// Priority chain (matching gamemd `BuildingClass::GetWeapon` 0x004526F0):
-/// 1. Elite occupant → `EliteOccupyWeapon`
-/// 2. Normal occupant → `OccupyWeapon`
-/// 3. Fallback → occupant's Primary weapon
-///
-/// Returns None if no weapon can engage the target type.
-pub(crate) fn select_garrison_weapon<'a>(
+/// The occupied arm of `BuildingClass::GetWeapon @ 0x004526F0`, which answers
+/// every index: the firing occupant's `EliteOccupyWeapon` (`+0xE20`) when it
+/// is elite, else its `OccupyWeapon` (`+0xE04`); when that names no weapon,
+/// the occupant's own GetWeapon(0) (vt+0x3F8, `0x0070E140`) at its rank. An
+/// elite occupant without `EliteOccupyWeapon=` therefore fires its elite
+/// primary, never the normal `OccupyWeapon`. No target is read; whether the
+/// weapon may fire is GetFireError's.
+pub(crate) fn occupant_weapon<'a>(
     rules: &'a RuleSet,
-    occupant_type_ref: &str,
-    occupant_veterancy: u16,
-    target_category: EntityCategory,
-    target_armor: &str,
-) -> Option<SelectedWeapon<'a>> {
-    let occupant_obj = rules.object(occupant_type_ref)?;
-    let is_elite = occupant_veterancy >= ELITE_VETERANCY;
-
-    // Elite missing EliteOccupyWeapon falls directly to Primary; it does not
-    // reuse the normal OccupyWeapon path.
-    let occupy_weapon_id = if is_elite {
-        occupant_obj.elite_occupy_weapon.as_deref()
+    occupant: &ObjectType,
+    veterancy: u16,
+) -> Option<&'a WeaponType> {
+    let occupy = if veterancy >= ELITE_VETERANCY {
+        occupant.elite_occupy_weapon.as_deref()
     } else {
-        occupant_obj.occupy_weapon.as_deref()
+        occupant.occupy_weapon.as_deref()
     };
-
-    if let Some(wid) = occupy_weapon_id {
-        if let Some(sw) = try_garrison_weapon(rules, wid, target_category, target_armor) {
-            return Some(sw);
-        }
-    }
-
-    // Fallback: occupant's primary weapon.
-    if let Some(ref primary) = occupant_obj.primary {
-        return try_garrison_weapon(rules, primary, target_category, target_armor);
-    }
-    None
-}
-
-/// Garrison-only legality: projectile AA/AG against the target category and
-/// a non-zero Verses entry. VERA-internal shape retained for the occupant
-/// path; the building's own `GetFireError` verdicts for occupant fire are
-/// UNCHECKED here.
-fn try_garrison_weapon<'a>(
-    rules: &'a RuleSet,
-    weapon_id: &'a str,
-    target_category: EntityCategory,
-    target_armor: &str,
-) -> Option<SelectedWeapon<'a>> {
-    let weapon: &WeaponType = rules.weapon(weapon_id)?;
-    let legal = match target_category {
-        EntityCategory::Aircraft => projectile_aa(rules, weapon),
-        EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Structure => {
-            projectile_ag(rules, weapon)
-        }
-    };
-    if !legal {
-        return None;
-    }
-    let warhead: &WarheadType = warhead_of(rules, weapon)?;
-    let idx: usize = armor_index(target_armor);
-    let verses_pct: u8 = warhead.verses.get(idx).copied().unwrap_or(100);
-    if verses_gate(verses_pct) == VersesGate::Blocked {
-        return None;
-    }
-    Some(SelectedWeapon {
-        weapon_id,
-        weapon,
-        warhead,
-        verses_pct,
-        slot: WeaponSlot::Primary,
-        index: 0,
-    })
+    rules.weapon(occupy.or_else(|| primary_for_tier(occupant, veterancy))?)
 }
 
 #[cfg(test)]
@@ -2120,7 +1807,6 @@ IsLocomotor=yes
             mission_is_unload: false,
             is_overpowered_building: false,
             aircraft_spawn_collision: false,
-            capture: None,
         }
     }
 
@@ -2128,17 +1814,11 @@ IsLocomotor=yes
         TargetFacts::Techno {
             obj,
             kind,
-            flight: TargetFlight::Supplied {
-                high: false,
-                low: true,
-            },
+            flight: TargetFlight::Supplied { high: false },
             on_bridge: false,
             cell_land_type: LandType::Clear.as_index(),
             submerged: false,
             is_ally: false,
-            parasite: ParasiteVictimFacts::INFECTABLE_ON_LAND,
-            capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-            has_bomb: false,
         }
     }
 
@@ -2151,7 +1831,6 @@ IsLocomotor=yes
                 on_bridge,
                 submerged,
                 is_ally,
-                parasite,
                 ..
             } => TargetFacts::Techno {
                 obj,
@@ -2161,12 +1840,6 @@ IsLocomotor=yes
                 cell_land_type: LandType::Water.as_index(),
                 submerged,
                 is_ally,
-                parasite: ParasiteVictimFacts {
-                    on_water_set: true,
-                    ..parasite
-                },
-                capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-                has_bomb: false,
             },
             cell => cell,
         }
@@ -2181,22 +1854,15 @@ IsLocomotor=yes
                 cell_land_type,
                 submerged,
                 is_ally,
-                parasite,
                 ..
             } => TargetFacts::Techno {
                 obj,
                 kind,
-                flight: TargetFlight::Supplied {
-                    high: true,
-                    low: false,
-                },
+                flight: TargetFlight::Supplied { high: true },
                 on_bridge,
                 cell_land_type,
                 submerged,
                 is_ally,
-                parasite,
-                capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-                has_bomb: false,
             },
             cell => cell,
         }
@@ -2211,7 +1877,6 @@ IsLocomotor=yes
                 on_bridge,
                 cell_land_type,
                 submerged,
-                parasite,
                 ..
             } => TargetFacts::Techno {
                 obj,
@@ -2221,9 +1886,6 @@ IsLocomotor=yes
                 cell_land_type,
                 submerged,
                 is_ally: true,
-                parasite,
-                capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-                has_bomb: false,
             },
             cell => cell,
         }
@@ -2238,13 +1900,15 @@ IsLocomotor=yes
         what_weapon_should_i_use(rules, rules.object(attacker).unwrap(), facts, target)
     }
 
+    /// The weapon GetWeapon answers for the ladder's slot. Whether it may
+    /// fire is GetFireError's (`fire_error`, pinned by its native rows).
     fn selected<'a>(
         rules: &'a RuleSet,
         attacker: &str,
         facts: &AttackerFacts,
         target: &TargetFacts,
     ) -> Option<&'a str> {
-        select_weapon_for_target(rules, rules.object(attacker).unwrap(), facts, target)
+        resolve_selected_weapon(rules, rules.object(attacker).unwrap(), facts, Some(target))
             .map(|selected| selected.weapon_id)
     }
 
@@ -2366,20 +2030,11 @@ IsLocomotor=yes
         let submerged_sub = TargetFacts::Techno {
             obj: sub,
             kind: TechnoKind::Unit,
-            flight: TargetFlight::Supplied {
-                high: false,
-                low: true,
-            },
+            flight: TargetFlight::Supplied { high: false },
             on_bridge: false,
             cell_land_type: LandType::Water.as_index(),
             submerged: true,
             is_ally: false,
-            parasite: ParasiteVictimFacts {
-                on_water_set: true,
-                ..ParasiteVictimFacts::INFECTABLE_ON_LAND
-            },
-            capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-            has_bomb: false,
         };
         let sqd_t = techno(sqd, TechnoKind::Unit);
         let bsub_t = techno(bsub, TechnoKind::Unit);
@@ -2464,8 +2119,7 @@ IsLocomotor=yes
         let mut fv = facts(TechnoKind::Unit);
         fv.current_weapon_number = 1;
         assert_eq!(slot(&rules, "FV", &fv, Some(&building)), 1);
-        assert_eq!(selected(&rules, "FV", &fv, &building), None);
-        // Against a vehicle with repairable armor the repair slot fires.
+        assert_eq!(selected(&rules, "FV", &fv, &building), Some("RepairBullet"));
         let fv_obj = rules.object("FV").unwrap();
         let light = techno(fv_obj, TechnoKind::Unit);
         assert_eq!(selected(&rules, "FV", &fv, &light), Some("RepairBullet"));
@@ -3076,7 +2730,6 @@ IsLocomotor=yes
             cell_land_type,
             submerged,
             is_ally,
-            parasite,
             ..
         } = typhoon
         else {
@@ -3090,58 +2743,46 @@ IsLocomotor=yes
             cell_land_type,
             submerged,
             is_ally,
-            parasite,
-            capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-            has_bomb: false,
         };
         assert_eq!(slot(&rules, "DEST", &dest, Some(&bridged)), 0);
     }
 
+    /// Arm T turns the selector's `-1` into slot 0. GetFireError's T40 then
+    /// asks the same selector (`FireQuery::naval_selector`) and refuses the
+    /// shot on `-1` (ILLEGAL, pinned by `fire_error`'s native rows).
     #[test]
-    fn arm_t_naval_minus_one_collapses_to_zero_and_fire_error_makes_it_illegal() {
+    fn arm_t_naval_minus_one_collapses_to_zero() {
         let rules = stock_rules();
+        let aegis = rules.object("AEGIS").unwrap();
+        let htnk = rules.object("HTNK").unwrap();
         let dest_obj = rules.object("DEST").unwrap();
         let sub = rules.object("SUB").unwrap();
         let ship = on_water(techno(dest_obj, TechnoKind::Unit));
-        // AEGIS (NavalTargeting=6) vs a ship: selector 0, GetFireError ILLEGAL.
-        assert_eq!(
-            slot(&rules, "AEGIS", &facts(TechnoKind::Unit), Some(&ship)),
-            0
-        );
+        // AEGIS (NavalTargeting=6) vs a ship: selector -1, slot 0.
+        assert_eq!(select_naval_targeting_weapon(aegis, Some(&ship)), -1);
         assert_eq!(
             selected(&rules, "AEGIS", &facts(TechnoKind::Unit), &ship),
-            None
+            Some("Medusa")
         );
-        // Rhino vs a submerged sub: ILLEGAL; vs a surfaced sub: legal.
+        // Rhino vs a submerged sub: selector -1; vs a surfaced sub: 0.
         let submerged = TargetFacts::Techno {
             obj: sub,
             kind: TechnoKind::Unit,
-            flight: TargetFlight::Supplied {
-                high: false,
-                low: true,
-            },
+            flight: TargetFlight::Supplied { high: false },
             on_bridge: false,
             cell_land_type: LandType::Water.as_index(),
             submerged: true,
             is_ally: false,
-            parasite: ParasiteVictimFacts {
-                on_water_set: true,
-                ..ParasiteVictimFacts::INFECTABLE_ON_LAND
-            },
-            capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-            has_bomb: false,
         };
+        assert_eq!(select_naval_targeting_weapon(htnk, Some(&submerged)), -1);
         assert_eq!(
             selected(&rules, "HTNK", &facts(TechnoKind::Unit), &submerged),
-            None
+            Some("120mm")
         );
+        let surfaced = on_water(techno(sub, TechnoKind::Unit));
+        assert_eq!(select_naval_targeting_weapon(htnk, Some(&surfaced)), 0);
         assert_eq!(
-            selected(
-                &rules,
-                "HTNK",
-                &facts(TechnoKind::Unit),
-                &on_water(techno(sub, TechnoKind::Unit))
-            ),
+            selected(&rules, "HTNK", &facts(TechnoKind::Unit), &surfaced),
             Some("120mm")
         );
         // Beach counts as water for the gate.
@@ -3151,21 +2792,15 @@ IsLocomotor=yes
         let beach = TargetFacts::Techno {
             obj,
             kind,
-            flight: TargetFlight::Supplied {
-                high: false,
-                low: true,
-            },
+            flight: TargetFlight::Supplied { high: false },
             on_bridge: false,
             cell_land_type: LandType::Beach.as_index(),
             submerged: false,
             is_ally: false,
-            parasite: ParasiteVictimFacts::INFECTABLE_ON_LAND,
-            capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-            has_bomb: false,
         };
         assert_eq!(
-            selected(&rules, "AEGIS", &facts(TechnoKind::Unit), &beach),
-            None
+            slot(&rules, "AEGIS", &facts(TechnoKind::Unit), Some(&beach)),
+            0
         );
     }
 
@@ -3200,11 +2835,12 @@ IsLocomotor=yes
             ),
             Some("SquidPunch")
         );
-        // Squid vs a tank on land: LandTargeting=1 → ILLEGAL.
+        // Squid vs a tank on land: the ladder answers slot 0, which
+        // GetFireError's T40 refuses (LandTargeting=1).
         let htnk = rules.object("HTNK").unwrap();
         assert_eq!(
             selected(&rules, "SQD", &sqd, &techno(htnk, TechnoKind::Unit)),
-            None
+            Some("SquidGrab")
         );
     }
 
@@ -3278,9 +2914,10 @@ IsLocomotor=yes
         let orca = rules.object("ORCA").unwrap();
         let air = high_flying(techno(orca, TechnoKind::Aircraft));
         let mut ggi = facts(TechnoKind::Infantry);
-        // Undeployed GGI vs aircraft: slot 0 → M60 has no AA → ILLEGAL.
+        // Undeployed GGI vs aircraft: slot 0, the M60 (no AA), which
+        // GetFireError's T38 refuses.
         assert_eq!(slot(&rules, "GGI", &ggi, Some(&air)), 0);
-        assert_eq!(selected(&rules, "GGI", &ggi, &air), None);
+        assert_eq!(selected(&rules, "GGI", &ggi, &air), Some("M60"));
         // Deployed (Deploy..DeployedIdle): DeployFireWeapon (default 1).
         ggi.deploy_fire_active = true;
         assert_eq!(slot(&rules, "GGI", &ggi, None), 1);
@@ -3357,58 +2994,10 @@ IsLocomotor=yes
         assert_eq!(slot(&rules, "SIEGE", &attacker, None), 0);
     }
 
-    // ---- GetFireError subset ----------------------------------------------
+    // ---- GetWeapon of the selected slot ------------------------------------
 
     #[test]
-    fn fire_error_aa_only_matters_for_high_flying_targets() {
-        let rules = stock_rules();
-        let orca = rules.object("ORCA").unwrap();
-        let rhino = facts(TechnoKind::Unit);
-        // Landed aircraft is a ground target: the 120mm fires.
-        assert_eq!(
-            selected(&rules, "HTNK", &rhino, &techno(orca, TechnoKind::Aircraft)),
-            Some("120mm")
-        );
-        assert_eq!(
-            selected(
-                &rules,
-                "HTNK",
-                &rhino,
-                &high_flying(techno(orca, TechnoKind::Aircraft))
-            ),
-            None
-        );
-        // AEGIS vs high-flying aircraft: Medusa (AA=yes, AG=no); vs a landed
-        // aircraft on land: LandTargeting=1 → ILLEGAL.
-        assert_eq!(
-            selected(
-                &rules,
-                "AEGIS",
-                &rhino,
-                &high_flying(techno(orca, TechnoKind::Aircraft))
-            ),
-            Some("Medusa")
-        );
-        assert_eq!(
-            selected(&rules, "AEGIS", &rhino, &techno(orca, TechnoKind::Aircraft)),
-            None
-        );
-        // Destroyer's ASWLauncher (AG=no) is not rejected for a sub: no AG
-        // test exists for object targets.
-        let sub = rules.object("SUB").unwrap();
-        assert_eq!(
-            selected(
-                &rules,
-                "DEST",
-                &rhino,
-                &on_water(techno(sub, TechnoKind::Unit))
-            ),
-            Some("ASWLauncher")
-        );
-    }
-
-    #[test]
-    fn fire_error_cell_rules() {
+    fn cell_targets_resolve_the_ladders_slot() {
         let rules = stock_rules();
         let land = TargetFacts::Cell {
             land_type: LandType::Clear.as_index(),
@@ -3425,22 +3014,8 @@ IsLocomotor=yes
             tile_in_water_set: false,
             bridge_flag: false,
         };
-        // NAFLAK (LandTargeting=1, FlakProj AG=no): every cell is ILLEGAL —
-        // the land cell twice over (no AG projectile, then LandTargeting=1),
-        // the water and beach cells on the AG test alone. The AG gate at
-        // 0x006FC7EB is unconditional for a cell target: a cell is never
-        // high-flying, so an AA-only defense cannot force-fire terrain.
-        let flak = facts(TechnoKind::Building);
-        assert_eq!(selected(&rules, "NAFLAK", &flak, &land), None);
-        assert_eq!(selected(&rules, "NAFLAK", &flak, &water), None);
-        assert_eq!(selected(&rules, "NAFLAK", &flak, &beach), None);
-        // AEGIS: Medusa is AA-only and there is no secondary, so the same
-        // holds even on the water it sits in.
-        let aegis = facts(TechnoKind::Unit);
-        assert_eq!(selected(&rules, "AEGIS", &aegis, &water), None);
-        assert_eq!(selected(&rules, "AEGIS", &aegis, &beach), None);
         // Destroyer force-firing a beach cell: the ladder picks slot 0 (the
-        // AG 155mm), not the AG-less ASWLauncher, so the shot is legal.
+        // 155mm), not the ASWLauncher.
         assert_eq!(
             selected(&rules, "DEST", &facts(TechnoKind::Unit), &beach),
             Some("155mm")
@@ -3454,27 +3029,22 @@ IsLocomotor=yes
             selected(&rules, "HTNK", &facts(TechnoKind::Unit), &water),
             Some("120mm")
         );
-        // Cell targets read no Verses.
-        let sel = select_weapon_for_target(
+        let sel = resolve_selected_weapon(
             &rules,
             rules.object("HTNK").unwrap(),
             &facts(TechnoKind::Unit),
-            &land,
+            Some(&land),
         )
         .unwrap();
-        assert_eq!(sel.verses_pct, 100);
         assert_eq!(sel.index, 0);
         assert_eq!(sel.slot, WeaponSlot::Primary);
     }
 
     #[test]
-    fn select_weapon_slot_reuses_saved_slot_without_the_ladder() {
+    fn a_saved_slot_resolves_without_the_ladder() {
         let rules = stock_rules();
-        let htnk = rules.object("HTNK").unwrap();
-        let tank = techno(htnk, TechnoKind::Unit);
         let tesla = rules.object("TESLA").unwrap();
-        let saved =
-            select_weapon_slot(&rules, tesla, 0, WeaponSlot::Secondary, &tank, None).unwrap();
+        let saved = resolve_weapon_index(&rules, tesla, 0, 1).unwrap();
         assert_eq!(saved.weapon_id, "OPCoilBolt");
         assert_eq!(saved.slot, WeaponSlot::Secondary);
         assert_eq!(saved.index, 1);
@@ -3621,140 +3191,26 @@ Verses=100%,100%,100%,80%,60%,40%,100%,40%,20%,100%,100%
         RuleSet::from_ini(&ini).expect("Should parse garrison test rules")
     }
 
+    fn occupant_weapon_id(rules: &RuleSet, veterancy: u16) -> Option<&str> {
+        occupant_weapon(rules, rules.object("E1").unwrap(), veterancy)
+            .map(|weapon| weapon.id.as_str())
+    }
+
     #[test]
     fn normal_garrison_uses_occupy_weapon() {
         let rules = make_garrison_rules(false);
-        let sel =
-            select_garrison_weapon(&rules, "E1", 0, EntityCategory::Infantry, "none").unwrap();
-        assert_eq!(sel.weapon_id, "GarrisonRifle");
-        assert_eq!(sel.slot, WeaponSlot::Primary);
+        assert_eq!(occupant_weapon_id(&rules, 0), Some("GarrisonRifle"));
     }
 
     #[test]
     fn elite_garrison_uses_elite_occupy_weapon_when_present() {
         let rules = make_garrison_rules(true);
-        let sel =
-            select_garrison_weapon(&rules, "E1", 200, EntityCategory::Infantry, "none").unwrap();
-        assert_eq!(sel.weapon_id, "EliteGarrisonRifle");
-        assert_eq!(sel.slot, WeaponSlot::Primary);
+        assert_eq!(occupant_weapon_id(&rules, 200), Some("EliteGarrisonRifle"));
     }
 
     #[test]
     fn elite_garrison_missing_elite_occupy_weapon_falls_back_to_primary() {
         let rules = make_garrison_rules(false);
-        let sel =
-            select_garrison_weapon(&rules, "E1", 200, EntityCategory::Infantry, "none").unwrap();
-        assert_eq!(sel.weapon_id, "PrimaryRifle");
-        assert_eq!(sel.slot, WeaponSlot::Primary);
-    }
-
-    /// GetFireError's bomb gates (0x006FCB8D..0x006FCBCD) against the
-    /// `fire_error` rows of `tools/spatial_oracle/bomb_class.json`, produced by
-    /// running the original body under Unicorn: 5 is ILLEGAL, "continue"
-    /// passes on to the next gate. Weapons and warheads are retail's.
-    #[test]
-    fn bomb_fire_error_gates_match_native() {
-        let rules = RuleSet::from_ini(&IniFile::from_str(
-            "[InfantryTypes]
-0=ENGINEER
-1=IVAN
-[VehicleTypes]
-0=HTNK
-[Warheads]
-0=BombDisarm
-1=IvanBomb
-2=AP
-[ENGINEER]
-Primary=DefuseKit
-[IVAN]
-Primary=IvanBomber
-[HTNK]
-Strength=900
-Armor=heavy
-Primary=120mm
-[DefuseKit]
-Damage=1
-Range=1.5
-Projectile=InvisibleAll
-Warhead=BombDisarm
-[IvanBomber]
-Damage=400
-Range=1.5
-Projectile=Invisible
-Warhead=IvanBomb
-[120mm]
-Damage=90
-Range=5.75
-Projectile=Cannon
-Warhead=AP
-[InvisibleAll]
-Inviso=yes
-[Invisible]
-Inviso=yes
-[Cannon]
-AG=yes
-[BombDisarm]
-BombDisarm=yes
-[IvanBomb]
-IvanBomb=yes
-[AP]
-Verses=100%,100%,90%,75%,50%,50%,100%,50%,25%,100%,100%
-",
-        ))
-        .unwrap();
-        let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/bomb_class.json"
-        ))
-        .unwrap();
-        let engineer = rules.object("ENGINEER").unwrap();
-        let tank = rules.object("HTNK").unwrap();
-        let mut compared = 0;
-        for case in cases
-            .iter()
-            .filter(|case| case["input"]["section"] == "fire_error")
-        {
-            let input = &case["input"];
-            let flag = |key: &str| input[key].as_bool() == Some(true);
-            let weapon = rules
-                .weapon(if flag("bomb_disarm") {
-                    "DefuseKit"
-                } else if flag("ivan_bomb") {
-                    "IvanBomber"
-                } else {
-                    "120mm"
-                })
-                .unwrap();
-            let target = TargetFacts::Techno {
-                obj: tank,
-                kind: TechnoKind::Unit,
-                flight: TargetFlight::Supplied {
-                    high: false,
-                    low: true,
-                },
-                on_bridge: false,
-                cell_land_type: LandType::Clear.as_index(),
-                submerged: false,
-                is_ally: false,
-                parasite: ParasiteVictimFacts::INFECTABLE_ON_LAND,
-                capture: crate::sim::capture_manager::CaptureVictimFacts::capturable_for_test(),
-                has_bomb: flag("bombed"),
-            };
-            let blocked = targeting_fire_error_blocks(
-                &rules,
-                engineer,
-                weapon,
-                warhead_of(&rules, weapon).unwrap(),
-                &target,
-                None,
-            );
-            let native = &case["result"];
-            assert!(
-                (blocked && native == 5) || (!blocked && native == "continue"),
-                "{}: {native}",
-                input["name"]
-            );
-            compared += 1;
-        }
-        assert_eq!(compared, 5);
+        assert_eq!(occupant_weapon_id(&rules, 200), Some("PrimaryRifle"));
     }
 }

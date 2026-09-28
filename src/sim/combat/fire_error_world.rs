@@ -419,15 +419,14 @@ impl FireSubject<'_> {
 }
 
 /// A garrisoned building's GetWeapon (`0x004526F0` through `IsOccupied`
-/// `0x00458DD0`): its firing occupant's OccupyWeapon, as the attacker
-/// snapshot resolves it, with the garrison fire range (half the foundation
-/// plus `OccupyWeaponRange`).
+/// `0x00458DD0`): its firing occupant's weapon for every index and target
+/// ([`combat_weapon::occupant_weapon`]), with the garrison fire range (half
+/// the foundation plus `OccupyWeaponRange`).
 pub(crate) fn garrison_weapon<'r>(
     world: &Simulation,
     rules: &'r RuleSet,
     building: &GameEntity,
     obj: &ObjectType,
-    target: TargetKind,
 ) -> Option<(&'r WeaponType, crate::util::fixed_math::SimFixed)> {
     if !obj.can_be_occupied || !obj.can_occupy_fire {
         return None;
@@ -440,31 +439,15 @@ pub(crate) fn garrison_weapon<'r>(
         .substrate
         .entities
         .get(cargo.passengers[cargo.garrison_fire_index as usize % cargo.count() as usize])?;
-    let (category, armor) = match target {
-        TargetKind::Entity(id) => {
-            let target = world.substrate.entities.get(id)?;
-            (
-                super::combat_target_category(target, rules, &world.interner),
-                rules
-                    .object(world.interner.resolve(target.type_ref()))
-                    .map_or("none", |target| target.armor.as_str()),
-            )
-        }
-        // The fire path reads a cell target as a Structure of the firer's
-        // own type.
-        TargetKind::Cell(..) => (EntityCategory::Structure, obj.armor.as_str()),
-    };
-    let selected = combat_weapon::select_garrison_weapon(
-        rules,
-        world.interner.resolve(occupant.type_ref()),
-        occupant.veterancy,
-        category,
-        armor,
-    )?;
+    let weapon = rules
+        .object(world.interner.resolve(occupant.type_ref()))
+        .and_then(|occupant_obj| {
+            combat_weapon::occupant_weapon(rules, occupant_obj, occupant.veterancy)
+        })?;
     let (width, height) = crate::sim::production::foundation_dimensions(&obj.foundation);
     let cells = i32::from(width.min(height) / 2) + rules.garrison_rules.occupy_weapon_range;
     Some((
-        selected.weapon,
+        weapon,
         crate::util::fixed_math::SimFixed::from_num(cells.max(1)),
     ))
 }

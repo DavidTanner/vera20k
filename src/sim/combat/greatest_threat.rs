@@ -1564,7 +1564,6 @@ fn probe_is_illegal(
     let Some(firer) = world.substrate.entities.get(ctx.attacker.stable_id) else {
         return false;
     };
-    let target = super::TargetKind::Entity(candidate.stable_id());
     super::fire_error_world::FireSubject {
         world,
         rules: ctx.rules,
@@ -1572,14 +1571,13 @@ fn probe_is_illegal(
         fog: ctx.fog,
         firer,
         obj: ctx.attacker_obj,
-        target: Some(target),
+        target: Some(super::TargetKind::Entity(candidate.stable_id())),
         weapon_index,
         garrison: super::fire_error_world::garrison_weapon(
             world,
             ctx.rules,
             firer,
             ctx.attacker_obj,
-            target,
         ),
     }
     .fire_error(false)

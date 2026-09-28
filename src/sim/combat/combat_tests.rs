@@ -6485,9 +6485,81 @@ fn pursuit_weapon_range_for_cell_target() {
         None,
     )
     .map(|w| w.range);
-    // Cell target: the ladder returns slot 0 and the GetFireError cell subset
-    // clears it — the 105mm Cannon projectile is AG, and MTNK is not
-    // LandTargeting=1. Range = 6.
+    // Cell target: the ladder returns slot 0, the 105mm. Range = 6.
+    assert_eq!(range, Some(crate::util::fixed_math::SimFixed::from_num(6)));
+}
+
+/// `TechnoClass::CanFireAtTarget @ 0x006F7780` is `CanFireAt(target,
+/// SelectWeapon(target))` (`0x006F77B0`, then `InRange @ 0x006F7220`), and
+/// `FootClass::Approach_Target @ 0x004D5690` measures the same way: neither
+/// asks GetFireError. A gun whose warhead cannot hurt the target (T54,
+/// ILLEGAL) still has it in range, and pursuit still measures with it.
+#[test]
+fn an_illegal_shot_is_still_in_range() {
+    use crate::sim::combat::{TargetKind, pursuit_selected_weapon};
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n1=HTNK\n[AircraftTypes]\n[BuildingTypes]\n\
+         [MTNK]\nStrength=300\nArmor=light\nSpeed=6\nPrimary=Pea\n\
+         [HTNK]\nStrength=300\nArmor=heavy\nSpeed=6\n\
+         [Pea]\nDamage=50\nROF=30\nRange=6\nWarhead=Soft\n\
+         [Soft]\nVerses=100%,100%,100%,100%,100%,0%,100%,100%,100%,100%,100%\n",
+    ))
+    .expect("illegal-shot rules");
+    let mut sim = crate::sim::world::Simulation::new();
+    sim.substrate
+        .entities
+        .insert(make_entity_owned(1, "MTNK", 2, 2, 300, "Soviet"));
+    sim.substrate
+        .entities
+        .insert(make_entity_owned(2, "HTNK", 5, 2, 300, "Americans"));
+    sim.interner = test_interner();
+    let cells = (0..16u16)
+        .flat_map(|ry| {
+            (0..16u16).map(move |rx| crate::map::resolved_terrain::test_flat_cell(rx, ry))
+        })
+        .collect();
+    sim.resolved_terrain =
+        Some(crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(16, 16, cells));
+    let target = TargetKind::Entity(2);
+    let tank = sim.substrate.entities.get(1).unwrap();
+    let code = crate::sim::combat::fire_error_world::FireSubject {
+        world: &sim,
+        rules: &rules,
+        overlay_registry: None,
+        fog: None,
+        firer: tank,
+        obj: rules.object("MTNK").unwrap(),
+        target: Some(target),
+        weapon_index: 0,
+        garrison: None,
+    }
+    .fire_error(false);
+    assert_eq!(code, crate::sim::combat::fire_error::FireError::Illegal);
+
+    assert!(can_fire_at_target(
+        &sim.substrate.entities,
+        &rules,
+        &sim.interner,
+        1,
+        &target,
+        sim.resolved_terrain.as_ref().unwrap(),
+        None,
+        &crate::sim::combat::line_of_fire::LineOfFireInputs {
+            overlay_grid: None,
+            overlay_registry: None,
+            alliances: None,
+        },
+    ));
+    let range = pursuit_selected_weapon(
+        tank,
+        &target,
+        &sim.substrate.entities,
+        &rules,
+        &sim.interner,
+        sim.resolved_terrain.as_ref(),
+        None,
+    )
+    .map(|weapon| weapon.range);
     assert_eq!(range, Some(crate::util::fixed_math::SimFixed::from_num(6)));
 }
 

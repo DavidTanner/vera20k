@@ -106,7 +106,7 @@ mod open_topped_fire_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use self::combat_weapon::{WeaponSlot, select_weapon_against, select_weapon_slot};
+use self::combat_weapon::{WeaponSlot, select_weapon_against};
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -913,9 +913,10 @@ pub(crate) fn object_distance_to(
 /// target through the authoritative 3D `InRange` path.
 ///
 /// gamemd-derived: SpawnManager mode 0 in `SpawnManagerClass::AI` @
-/// `0x006B7230` calls the Unit owner's `TechnoClass::CanFireAtTarget` vslot,
-/// which dispatches through weapon selection @ `0x006F7780`, `CanFireAt` @
-/// `0x006F77B0`, and ordinary `TechnoClass::InRange` @ `0x006F7220`.
+/// `0x006B7230` calls the Unit owner's `TechnoClass::CanFireAtTarget` vslot
+/// `0x006F7780`, which is `CanFireAt(target, SelectWeapon(target))`
+/// (`0x006F77B0`) and ordinary `TechnoClass::InRange` @ `0x006F7220`. It asks
+/// no legality: a target the weapon may not fire at is still in range.
 pub(crate) fn can_fire_at_target(
     entities: &EntityStore,
     rules: &RuleSet,
@@ -974,11 +975,11 @@ pub(crate) fn can_fire_at_target(
 /// Uses the same weapon-select inputs as the combat tick's Phase 2 weapon
 /// selection so pursuit and combat agree on "in range" at the boundary.
 ///
-/// Returns `None` if the selected weapon cannot legally fire at the target
-/// (the selection's GetFireError subset). Pursuit treats `None` as "skip":
-/// the fire routine asks GetFireError itself, and `TechnoClass::AI`'s
-/// 16-frame check drops an ILLEGAL or CANT target (a building drops it at
-/// once).
+/// Returns `None` only when the selected slot names no weapon. Legality is
+/// not asked: `FootClass::Approach_Target @ 0x004D5690` selects (`0x004D56CA`)
+/// and measures with CanFireAt without GetFireError. The fire routine asks
+/// GetFireError itself, and `TechnoClass::AI`'s 16-frame check drops an
+/// ILLEGAL or CANT target (a building drops it at once).
 pub(crate) fn pursuit_selected_weapon<'a>(
     entity: &GameEntity,
     target: &TargetKind,

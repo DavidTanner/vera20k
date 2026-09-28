@@ -403,7 +403,7 @@ fn fire_subject<'a>(
         obj,
         target,
         weapon_index,
-        garrison: target.and_then(|target| garrison_weapon(sim, rules, firer, obj, target)),
+        garrison: garrison_weapon(sim, rules, firer, obj),
     })
 }
 

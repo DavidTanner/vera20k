@@ -419,34 +419,33 @@ fn can_capture_gates() {
     assert!(!sim.can_capture(yuri, seller, &rules), "Selling");
 }
 
-/// GetFireError's MindControl gate in the weapon ladder: Yuri's only weapon is
-/// illegal against an immune or own-house target and legal against an enemy.
+/// GetFireError's MindControl gate (T53, `0x006FCB24..0x006FCB50`) asks
+/// CanCapture: Yuri's only weapon is illegal against an immune target and
+/// legal against an enemy.
 #[test]
-fn the_weapon_ladder_refuses_an_uncapturable_target() {
+fn get_fire_error_refuses_an_uncapturable_target() {
+    use crate::sim::combat::fire_error::FireError;
     let rules = rules();
     let mut sim = sim(9);
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
     let dog = spawn(&mut sim, &rules, "DOG", "Americans", 12, 11);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 13, 11);
-    let yuri_entity = sim.substrate.entities.get(yuri).unwrap();
-    let yuri_obj = rules.object("YURI").unwrap();
-    let facts = crate::sim::combat::combat_weapon::attacker_facts(yuri_entity, yuri_obj);
-    let select = |target: u64| {
-        crate::sim::combat::combat_weapon::select_weapon_against(
-            &rules,
-            yuri_obj,
-            &facts,
-            yuri_entity.owner(),
-            &crate::sim::combat::TargetKind::Entity(target),
-            &sim.substrate.entities,
-            &sim.interner,
-            None,
-            None,
-        )
-        .is_some()
+    let code = |target: u64| {
+        crate::sim::combat::fire_error_world::FireSubject {
+            world: &sim,
+            rules: &rules,
+            overlay_registry: None,
+            fog: Some(&sim.fog),
+            firer: sim.substrate.entities.get(yuri).unwrap(),
+            obj: rules.object("YURI").unwrap(),
+            target: Some(crate::sim::combat::TargetKind::Entity(target)),
+            weapon_index: 0,
+            garrison: None,
+        }
+        .fire_error(false)
     };
-    assert!(!select(dog));
-    assert!(select(gi));
+    assert_eq!(code(dog), FireError::Illegal);
+    assert_ne!(code(gi), FireError::Illegal);
 }
 
 /// The controller's death frees every captive, newest node first, before its

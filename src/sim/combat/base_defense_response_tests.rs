@@ -2,14 +2,18 @@
 
 use super::*;
 use crate::map::entities::EntityCategory;
-use crate::map::resolved_terrain::ResolvedTerrainCell;
+use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::team_ai_ini::TeamAiDefinitionSource;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::intern::test_interner;
+use crate::sim::house_state::HouseState;
+use crate::sim::intern::{test_intern, test_interner};
 use crate::sim::pathfinding::PathGrid;
+use crate::sim::pathfinding::zone_map::ZoneGrid;
+use crate::sim::rng::SimRng;
 use crate::sim::team_script_vm::{
     TeamMemberTypeIdentity, TeamScriptAction, TeamScriptDefinition, TeamScriptMember,
     TeamTaskForceDefinition, TeamTaskForceEntry, TeamTypeDefinition,
@@ -97,6 +101,52 @@ fn gsi_04_05_response_delay_is_the_native_ftol() {
     assert_eq!(response_delay_frames(-0.25), -225);
 }
 
+/// A game-mode-nonzero world at `frame` whose Victim and Enemy houses are
+/// computer players, with the victim building (1) and the attacking unit (2).
+/// Fixture names go through the thread-local test interner; [`respond`]
+/// hands the world a copy of it.
+fn response_world(frame: u32, attacker_at: (u16, u16)) -> Simulation {
+    let mut sim = Simulation::new();
+    sim.session.binary_frame = frame;
+    sim.session.game_mode_nonzero = true;
+    for (name, side) in [("Victim", 0), ("Enemy", 1)] {
+        let id = test_intern(name);
+        sim.houses
+            .insert(id, HouseState::new(id, side, None, false, 0, 10));
+    }
+    let mut victim = GameEntity::test_default(1, "VICTIM", "Victim", 4, attacker_at.1);
+    victim.category = EntityCategory::Structure;
+    sim.substrate.entities.insert(victim);
+    let mut attacker =
+        GameEntity::test_default(2, "ATTACKER", "Enemy", attacker_at.0, attacker_at.1);
+    attacker.lifecycle.in_limbo = false;
+    attacker.lifecycle.cell_marked = true;
+    sim.substrate.entities.insert(attacker);
+    sim
+}
+
+/// An 8x8 clear map with its zone grid, which a positive scan needs.
+fn with_clear_map(sim: &mut Simulation) {
+    let terrain = clear_terrain(8, 8);
+    let path_grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.zone_grid = Some(ZoneGrid::build_with_terrain(
+        &path_grid,
+        &terrain,
+        &[],
+        8,
+        8,
+    ));
+    sim.resolved_terrain = Some(terrain);
+    sim.session.map_width = 8;
+    sim.session.map_height = 8;
+}
+
+/// The victim building (1) calls for help against the attacker (2).
+fn respond(sim: &mut Simulation, rules: &RuleSet) {
+    sim.interner = test_interner();
+    respond_to_base_attack(sim, rules, 1, 2);
+}
+
 #[test]
 fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
@@ -107,31 +157,13 @@ fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
          [VICTIM]\nStrength=100\nArmor=wood\n",
     ))
     .expect("zero-budget response fixture");
-    let mut entities = EntityStore::new();
-    let mut victim = GameEntity::test_default(1, "VICTIM", "Victim", 4, 4);
-    victim.category = EntityCategory::Structure;
-    entities.insert(victim);
-    let mut attacker = GameEntity::test_default(2, "ATTACKER", "Enemy", 6, 4);
-    attacker.lifecycle.in_limbo = false;
-    entities.insert(attacker);
-    let mut interner = test_interner();
-    let victim_owner = interner.intern("Victim");
-    let enemy_owner = interner.intern("Enemy");
-    let member_type = interner.intern("DEFENDER");
-    let script_id = interner.intern("LOW_SCRIPT");
-    let task_force_id = interner.intern("LOW_TASK_FORCE");
-    let team_type_id = interner.intern("LOW_TEAM");
-    let houses = BTreeMap::from([
-        (
-            victim_owner,
-            HouseState::new(victim_owner, 0, None, false, 0, 10),
-        ),
-        (
-            enemy_owner,
-            HouseState::new(enemy_owner, 1, None, false, 0, 10),
-        ),
-    ]);
-    let mut teams = TeamScriptVm::default();
+    let mut sim = response_world(9, (6, 4));
+    let victim_owner = test_intern("Victim");
+    let member_type = test_intern("DEFENDER");
+    let script_id = test_intern("LOW_SCRIPT");
+    let task_force_id = test_intern("LOW_TASK_FORCE");
+    let team_type_id = test_intern("LOW_TEAM");
+    let teams = &mut sim.team_script_vm;
     let member_identity = TeamMemberTypeIdentity {
         category: ObjectCategory::Infantry,
         id: member_type,
@@ -175,40 +207,28 @@ fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
         None,
         0,
     );
-    let alliances = HouseAllianceMap::new();
-    let mut scenario_rng = SimRng::new(0x0405);
-    let rng_before = scenario_rng.logical_state();
-    let mut context = BaseDefenseResponseContext {
-        entities: &mut entities,
-        rules: &rules,
-        interner: &interner,
-        houses: &houses,
-        alliances: &alliances,
-        scenario_rng: &mut scenario_rng,
-        teams: &mut teams,
-        zone_grid: None,
-        terrain: None,
-        playfield_bounds: None,
-        map_size_width: 64,
-        map_size_height: 64,
-        current_frame: -9,
-        game_mode_nonzero: true,
-    };
+    sim.scenario_rng = SimRng::new(0x0405);
+    let rng_before = sim.scenario_rng.logical_state();
 
-    respond_to_base_attack(1, 2, &mut context);
+    respond(&mut sim, &rules);
 
-    assert!(context.teams.team(team_id).unwrap().members().is_empty());
+    assert!(
+        sim.team_script_vm
+            .team(team_id)
+            .unwrap()
+            .members()
+            .is_empty()
+    );
     assert_eq!(
-        context
-            .teams
+        sim.team_script_vm
             .team(team_id)
             .unwrap()
             .response_suspension_state(),
-        (true, true, true, -9, 1800)
+        (true, true, true, 9, 1800)
     );
-    assert_eq!(context.scenario_rng.logical_state(), rng_before);
+    assert_eq!(sim.scenario_rng.logical_state(), rng_before);
     assert_eq!(
-        context
+        sim.substrate
             .entities
             .get(2)
             .unwrap()
@@ -231,61 +251,26 @@ fn gsi_04_05_positive_transaction_queues_in_order_and_arms_only_on_overshoot() {
          [DEFENDERWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("positive response fixture");
-    let mut entities = EntityStore::new();
-    let mut victim = GameEntity::test_default(1, "VICTIM", "Victim", 4, 0);
-    victim.category = EntityCategory::Structure;
-    entities.insert(victim);
-    let mut attacker = GameEntity::test_default(2, "ATTACKER", "Enemy", 5, 0);
-    attacker.lifecycle.in_limbo = false;
-    entities.insert(attacker);
-    entities.insert(GameEntity::test_default(3, "DEFENDER", "Victim", 2, 0));
-    entities.insert(GameEntity::test_default(4, "DEFENDER", "Victim", 3, 0));
-    let mut interner = test_interner();
-    let victim_owner = interner.intern("Victim");
-    let enemy_owner = interner.intern("Enemy");
-    let houses = BTreeMap::from([
-        (
-            victim_owner,
-            HouseState::new(victim_owner, 0, None, false, 0, 10),
-        ),
-        (
-            enemy_owner,
-            HouseState::new(enemy_owner, 1, None, false, 0, 10),
-        ),
-    ]);
-    let terrain = clear_terrain(8, 8);
-    let path_grid = PathGrid::from_resolved_terrain(&terrain);
-    let zone_grid = ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], 8, 8);
-    let alliances = HouseAllianceMap::new();
-    let mut teams = TeamScriptVm::default();
+    let mut sim = response_world(41, (5, 0));
+    with_clear_map(&mut sim);
+    sim.substrate
+        .entities
+        .insert(GameEntity::test_default(3, "DEFENDER", "Victim", 2, 0));
+    sim.substrate
+        .entities
+        .insert(GameEntity::test_default(4, "DEFENDER", "Victim", 3, 0));
     let seed = 0x504F_5349;
-    let mut scenario_rng = SimRng::new(seed);
+    sim.scenario_rng = SimRng::new(seed);
     let mut expected_rng = SimRng::new(seed);
     let expected_missions = [
         response_mission(expected_rng.next_range_u32_inclusive(0, 99), false),
         response_mission(expected_rng.next_range_u32_inclusive(0, 99), false),
     ];
-    let mut context = BaseDefenseResponseContext {
-        entities: &mut entities,
-        rules: &rules,
-        interner: &interner,
-        houses: &houses,
-        alliances: &alliances,
-        scenario_rng: &mut scenario_rng,
-        teams: &mut teams,
-        zone_grid: Some(&zone_grid),
-        terrain: Some(&terrain),
-        playfield_bounds: None,
-        map_size_width: 8,
-        map_size_height: 8,
-        current_frame: 41,
-        game_mode_nonzero: true,
-    };
 
-    respond_to_base_attack(1, 2, &mut context);
+    respond(&mut sim, &rules);
 
     for (id, expected_mission) in [3_u64, 4].into_iter().zip(expected_missions) {
-        let responder = context.entities.get(id).unwrap();
+        let responder = sim.substrate.entities.get(id).unwrap();
         let expected_mission = match expected_mission {
             ResponseMission::Rescue => MissionType::Rescue,
             ResponseMission::AreaGuard => MissionType::AreaGuard,
@@ -301,13 +286,64 @@ fn gsi_04_05_positive_transaction_queues_in_order_and_arms_only_on_overshoot() {
         );
     }
     assert_eq!(
-        context.scenario_rng.logical_state(),
+        sim.scenario_rng.logical_state(),
         expected_rng.logical_state()
     );
-    let attacker = context.entities.get(2).unwrap();
+    let attacker = sim.substrate.entities.get(2).unwrap();
     assert_eq!(
         attacker.base_defense_response.cooldown,
         CdTimer::started(41, 225)
+    );
+}
+
+/// The weapon-0 peek is GetFireError itself (vt+0x3BC at `0x007084B8`), and
+/// only ILLEGAL refuses. A `LandTargeting=1` defender's shot at an attacker
+/// on land is ILLEGAL (T40), so it is never recruited; an ordinary defender
+/// beside it is.
+#[test]
+fn gsi_04_05_a_defender_whose_weapon_zero_is_illegal_is_not_recruited() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[General]\nComputerBaseDefenseResponse=3\nBaseDefenseDelay=.25\n\
+         [VehicleTypes]\n0=ATTACKER\n1=DEFENDER\n2=SEAGUARD\n\
+         [BuildingTypes]\n0=VICTIM\n\
+         [ATTACKER]\nStrength=100\nArmor=heavy\nCost=50\n\
+         [DEFENDER]\nStrength=100\nArmor=heavy\nCost=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
+         [SEAGUARD]\nStrength=100\nArmor=heavy\nCost=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
+         LandTargeting=1\n\
+         [VICTIM]\nStrength=100\nArmor=wood\n\
+         [DEFENDERGUN]\nDamage=10\nRange=5\nWarhead=DEFENDERWH\n\
+         [DEFENDERWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    ))
+    .expect("illegal responder fixture");
+    let mut sim = response_world(41, (5, 0));
+    with_clear_map(&mut sim);
+    sim.substrate
+        .entities
+        .insert(GameEntity::test_default(3, "SEAGUARD", "Victim", 2, 0));
+    sim.substrate
+        .entities
+        .insert(GameEntity::test_default(4, "DEFENDER", "Victim", 3, 0));
+    let seed = 0x504F_5349;
+    sim.scenario_rng = SimRng::new(seed);
+    let mut expected_rng = SimRng::new(seed);
+    expected_rng.next_range_u32_inclusive(0, 99);
+
+    respond(&mut sim, &rules);
+
+    let target_of = |id: u64| {
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .attack_target
+            .as_ref()
+            .map(|target| target.target)
+    };
+    assert_eq!(target_of(3), None);
+    assert_eq!(target_of(4), Some(TargetKind::Entity(2)));
+    assert_eq!(
+        sim.scenario_rng.logical_state(),
+        expected_rng.logical_state()
     );
 }
 

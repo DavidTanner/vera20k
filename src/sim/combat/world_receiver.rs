@@ -37,23 +37,7 @@ fn respond_to_base_attack(
             });
         return;
     }
-    let mut context = base_defense_response::BaseDefenseResponseContext {
-        entities: &mut world.substrate.entities,
-        rules,
-        interner: &world.interner,
-        houses: &mut world.houses,
-        alliances: &world.house_alliances,
-        scenario_rng: &mut world.scenario_rng,
-        teams: &mut world.team_script_vm,
-        zone_grid: world.zone_grid.as_ref(),
-        terrain: world.resolved_terrain.as_ref(),
-        playfield_bounds: world.playfield_bounds,
-        map_size_width: i32::from(world.session.map_width),
-        map_size_height: i32::from(world.session.map_height),
-        current_frame: world.session.binary_frame as i32,
-        game_mode_nonzero: world.session.game_mode_nonzero,
-    };
-    base_defense_response::respond_to_base_attack(victim_id, attacker_id, &mut context);
+    base_defense_response::respond_to_base_attack(world, rules, victim_id, attacker_id);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2449,73 +2433,22 @@ fn admit_attacker_fire<'r>(
     // Check if target is alive and get its data.
     // For structures, target_coords returns the foundation center instead
     // of the NW corner.
-    // For Cell targets (force-fire on terrain), synthesize a target_data
-    // tuple: cell-center coords, "always alive" (cells don't despawn), no
-    // category/type/owner — the unit fires its primary weapon and splash
-    // delivers the damage.
-    let target_data: Option<(
-        u16,
-        u16,
-        SimFixed,
-        SimFixed,
-        i32,
-        EntityCategory,
-        InternedId,
-        InternedId,
-        bool,
-    )> = match snap.target {
+    // For Cell targets (force-fire on terrain), synthesize the data:
+    // cell-center coords, "always alive" (hp 1: cells don't despawn), and the
+    // attacker's own type as the target type.
+    let target_data: Option<(u16, u16, SimFixed, SimFixed, i32, InternedId)> = match snap.target {
         TargetKind::Entity(target_id) => world.substrate.entities.get(target_id).map(|t| {
             let (trx, try_, tsx, tsy) = target_coords(t, Some(rules), &world.interner);
-            (
-                trx,
-                try_,
-                tsx,
-                tsy,
-                t.health.current,
-                combat_target_category(t, rules, &world.interner),
-                t.type_ref(),
-                t.owner(),
-                t.category == EntityCategory::Infantry && infantry::is_prone_for_damage(t),
-            )
+            (trx, try_, tsx, tsy, t.health.current, t.type_ref())
         }),
         TargetKind::Cell(rx, ry) => {
-            // Synthetic target_data for force-fire-on-cell.
-            // - hp = 1: a cell is never a dead target.
-            // - category = Structure so weapon-vs-armor selection picks an
-            //   anti-structure weapon when one exists; otherwise falls
-            //   through to primary (matches "fire your default weapon at
-            //   the ground" intent).
-            // - type_ref/owner = attacker's own — friendly-fire check
-            //   sees self-vs-self and is short-circuited downstream.
             let (trx, try_, tsx, tsy) = cell_center_coords(rx, ry);
-            Some((
-                trx,
-                try_,
-                tsx,
-                tsy,
-                1i32,
-                EntityCategory::Structure,
-                snap.type_id,
-                snap.owner,
-                false,
-            ))
+            Some((trx, try_, tsx, tsy, 1i32, snap.type_id))
         }
     };
 
-    let (
-        target_rx,
-        target_ry,
-        target_sub_x,
-        target_sub_y,
-        _target_hp,
-        target_cat,
-        target_type_ref,
-        _target_owner,
-        _target_prone_infantry,
-    ) = match target_data {
-        Some((rx, ry, sx, sy, hp, cat, tr, own, prone)) if hp > 0 => {
-            (rx, ry, sx, sy, hp, cat, tr, own, prone)
-        }
+    let (target_rx, target_ry, target_sub_x, target_sub_y, target_type_ref) = match target_data {
+        Some((rx, ry, sx, sy, hp, type_ref)) if hp > 0 => (rx, ry, sx, sy, type_ref),
         _ => {
             if delayed_building_slot.is_some() {
                 return None;
@@ -2527,14 +2460,9 @@ fn admit_attacker_fire<'r>(
         }
     };
 
-    let target_armor: String = rules
-        .object(world.interner.resolve(target_type_ref))
-        .map(|o| o.armor.clone())
-        .unwrap_or_else(|| "none".to_string());
-
-    // Target facts for `What_Weapon_Should_I_Use` and the GetFireError
-    // targeting subset. Cell targets read the terrain cell; entity targets
-    // read the target's occupied cell, altitude, bridge and cloak state.
+    // Target facts for `What_Weapon_Should_I_Use`. Cell targets read the
+    // terrain cell; entity targets read the target's occupied cell, altitude,
+    // bridge and cloak state.
     let target_facts = match snap.target {
         TargetKind::Entity(target_id) => {
             let Some((target_entity, target_obj)) =
@@ -2569,66 +2497,45 @@ fn admit_attacker_fire<'r>(
         }
     };
 
-    // Weapon selection: garrison uses occupant's OccupyWeapon, a building's
-    // Mission_Attack shot the weapon its visit selected
-    // ([`super::BuildingShot::Mission`]), everything else runs the native
-    // selection ladder (`What_Weapon_Should_I_Use` `0x006F3330`, which asks no
-    // legality; GetFireError below does).
-    //
-    // RESIDUAL: two arms still filter before GetFireError, as the selection
-    // owner does until it loses its legality subset.
-    // - A delayed building shot resolves its saved slot through
-    //   `select_weapon_slot` (`targeting_fire_error_blocks`). Effect: none;
-    //   ProcessDelayedFire's GetFireError answered OK for that weapon in the
-    //   building's visit this frame.
-    // - Garrison fire picks the occupant's weapon by AA/AG and Verses and drops
-    //   the target when none fits. Native GetWeapon (`0x004526F0`) hands the
-    //   occupant weapon over whatever the target, and the base asks AA only of
-    //   a high-flying or airborne Foot (T38/T39) and AG of no techno. Trigger: a
-    //   garrison aimed at a landed aircraft, or an occupant with an AA-only
-    //   weapon at a ground target. Effect: VERA drops a target native would
-    //   shoot. Frequency: rare.
+    // Weapon selection, none of which asks legality (GetFireError below, or
+    // the building's own visit, does): a delayed building shot resolves the
+    // slot it saved while arming, and a building's Mission_Attack shot the
+    // weapon its visit selected ([`super::BuildingShot::Mission`]). A garrison
+    // fires its occupant's weapon whatever the target (ladder arm B's index 0,
+    // whose GetWeapon `0x004526F0` answers the occupant's weapon); everything
+    // else runs the native selection ladder (`What_Weapon_Should_I_Use`
+    // `0x006F3330`).
     let (weapon_index, selected, is_garrison) = if let Some(saved_slot) = delayed_building_slot {
-        let capture = world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .and_then(crate::sim::capture_manager::CaptureControllerFacts::of);
-        match select_weapon_slot(
-            rules,
-            obj,
-            snap.veterancy,
-            saved_slot,
-            &target_facts,
-            capture,
-        ) {
+        let index = match saved_slot {
+            WeaponSlot::Primary => 0,
+            WeaponSlot::Secondary => 1,
+        };
+        match combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, index) {
             Some(selected) => (selected.index, Some(selected), false),
             None => return None,
         }
     } else if let Some(ref gs) = snap.garrison {
-        match combat_weapon::select_garrison_weapon(
-            rules,
-            world.interner.resolve(gs.occupant_type_id),
-            gs.occupant_veterancy,
-            target_cat,
-            &target_armor,
-        ) {
-            Some(s) => (s.index, Some(s), true),
-            None => {
-                out.remove_attack.push(snap.stable_id);
-                return None;
-            }
-        }
+        // An occupant without a weapon is refused by the visit's GetFireError
+        // (T21, CANT), whose drop tail lets the target go.
+        let selected = rules
+            .object(world.interner.resolve(gs.occupant_type_id))
+            .and_then(|occupant| {
+                combat_weapon::occupant_weapon(rules, occupant, gs.occupant_veterancy)
+            })
+            .and_then(|weapon| {
+                Some(combat_weapon::SelectedWeapon {
+                    weapon_id: &weapon.id,
+                    weapon,
+                    warhead: combat_weapon::warhead_of(rules, weapon)?,
+                    slot: WeaponSlot::Primary,
+                    index: 0,
+                })
+            })?;
+        (selected.index, Some(selected), true)
     } else if let Some(weapon) = mission_building_weapon {
         (
             weapon,
-            combat_weapon::resolve_weapon_index(
-                rules,
-                obj,
-                snap.veterancy,
-                weapon,
-                Some(&target_facts),
-            ),
+            combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, weapon),
             false,
         )
     } else {
@@ -3149,20 +3056,6 @@ fn retaliation_reaches(
     ) else {
         return false;
     };
-    let target = TargetKind::Entity(source_id);
-    let garrison =
-        super::fire_error_world::garrison_weapon(world, rules, victim, victim_type, target);
-    let Some(weapon_index) = combat_targeting::retaliation_weapon_index(
-        world,
-        rules,
-        victim,
-        victim_type,
-        source,
-        source_type,
-        garrison,
-    ) else {
-        return false;
-    };
     let in_range = super::fire_error_world::FireSubject {
         world,
         rules,
@@ -3170,9 +3063,16 @@ fn retaliation_reaches(
         fog: Some(&world.fog),
         firer: victim,
         obj: victim_type,
-        target: Some(target),
-        weapon_index,
-        garrison,
+        target: Some(TargetKind::Entity(source_id)),
+        weapon_index: combat_targeting::retaliation_weapon_index(
+            world,
+            rules,
+            victim,
+            victim_type,
+            source,
+            source_type,
+        ),
+        garrison: super::fire_error_world::garrison_weapon(world, rules, victim, victim_type),
     }
     .in_range();
     let human = world
@@ -4064,7 +3964,7 @@ pub(super) fn emit_admitted_fire(
             .entities
             .get(snap.stable_id)
             .and_then(|building| {
-                super::fire_error_world::garrison_weapon(world, rules, building, obj, snap.target)
+                super::fire_error_world::garrison_weapon(world, rules, building, obj)
             })
             .map_or(weapon, |(occupant_weapon, _)| occupant_weapon)
     } else {
@@ -4569,10 +4469,22 @@ pub(crate) fn tick_combat(
             (occ_id, fw.min(fh) / 2)
         };
 
-        // Resolve occupant type + veterancy for garrison weapon validation.
-        let (occ_type, occ_vet) = match world.substrate.entities.get(occ_id) {
-            Some(occ) => (occ.type_ref(), occ.veterancy),
-            None => continue,
+        // The warhead of the occupant's weapon, which the building's GetWeapon
+        // (`0x004526F0`) answers for every target.
+        let Some(occupy_warhead) = world
+            .substrate
+            .entities
+            .get(occ_id)
+            .and_then(|occ| {
+                rules
+                    .object(world.interner.resolve(occ.type_ref()))
+                    .and_then(|occupant| {
+                        combat_weapon::occupant_weapon(rules, occupant, occ.veterancy)
+                    })
+            })
+            .and_then(|weapon| combat_weapon::warhead_of(rules, weapon))
+        else {
+            continue;
         };
 
         // Native In_Range's IsOccupied arm (`0x006F727E..0x006F729F`): the
@@ -4583,9 +4495,9 @@ pub(crate) fn tick_combat(
         let scan_cells = half_foundation as i32 + rules.garrison_rules.occupy_weapon_range;
         let scan_range = SimFixed::from_num(scan_cells.max(1));
 
-        // Scan for best hostile target using garrison weapon for Verses/projectile checks.
-        // gamemd's Greatest_Threat calls GetWeapon on the building, which returns
-        // the occupant's OccupyWeapon — not the occupant's primary weapon.
+        // Scan for the best hostile target. A 1% Verses target of the
+        // occupant's warhead is skipped; whether the weapon may fire at all is
+        // the pick's GetFireError below.
         let mut ranked: Vec<(i64, u8, u64)> = Vec::new();
         let owner_str = world.interner.resolve(owner);
         for candidate in world.substrate.entities.values() {
@@ -4609,26 +4521,15 @@ pub(crate) fn tick_combat(
                     continue;
                 }
             }
-            let target_cat = combat_target_category(candidate, rules, &world.interner);
             let target_armor = rules
                 .object(world.interner.resolve(candidate.type_ref()))
-                .map(|o| o.armor.as_str())
-                .unwrap_or("none");
-            // Use garrison weapon (OccupyWeapon) for target compatibility check.
-            let occ_type_str = world.interner.resolve(occ_type);
-            let selected = match combat_weapon::select_garrison_weapon(
-                rules,
-                occ_type_str,
-                occ_vet,
-                target_cat,
-                target_armor,
-            ) {
-                Some(s) => s,
-                None => continue,
-            };
-            if combat_weapon::verses_gate(selected.verses_pct)
-                == combat_weapon::VersesGate::Suppressed
-            {
+                .map_or("none", |o| o.armor.as_str());
+            let verses = occupy_warhead
+                .verses
+                .get(armor_index(target_armor))
+                .copied()
+                .unwrap_or(100);
+            if combat_weapon::verses_gate(verses) == combat_weapon::VersesGate::Suppressed {
                 continue;
             }
             // Flat distance, as GetFireError's garrison range check measures it
@@ -4675,7 +4576,7 @@ pub(crate) fn tick_combat(
                         target: Some(target),
                         weapon_index: 0,
                         garrison: fire_error_world::garrison_weapon(
-                            world_view, rules, building, obj, target,
+                            world_view, rules, building, obj,
                         ),
                     }
                     .fire_error(true);
