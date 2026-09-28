@@ -7,22 +7,21 @@
 //! - Part of sim/ - depends on sim/zone_map, pathfinding passability, and rules movement zones.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::passability;
 use super::zone_map::{ZONE_INVALID, ZoneId};
 use crate::rules::locomotor_type::MovementZone;
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53};
 
 pub(crate) const ZONE_PRECHECK_LEVELS: usize = 3;
 const TOP_LEVEL: usize = 2;
-/// Per-terrain-type base cost `Zone_precheck` @ `0x0042C290` adds per hop, ×1000.
+/// Per-terrain-type base cost `Zone_precheck` @ `0x0042C290` adds per hop.
 ///
 /// The native table is the eight f32s at `0x007E3794`
-/// (`[1.0, 0, 0, 1.0, 1.0, 0, 1.0, 1.0]`); this is that table scaled to
-/// integers, as is the `+1` edge-flag term against the native `0.001`.
-const ZONE_BASE_COSTS: [i32; passability::TERRAIN_TYPE_COUNT] =
-    [1000, 0, 0, 1000, 1000, 0, 1000, 1000];
+/// (`[1.0, 0, 0, 1.0, 1.0, 0, 1.0, 1.0]`). Costs are spilled to binary32
+/// after every edge, including the binary64 `0.001` edge-flag contribution.
+const ZONE_BASE_COSTS: [i32; passability::TERRAIN_TYPE_COUNT] = [1, 0, 0, 1, 1, 0, 1, 1];
 
 /// Per-zone record in the binary-style hierarchy graph.
 ///
@@ -377,6 +376,8 @@ impl ZonePrecheckExclusions {
 pub(crate) struct ZonePrecheckResult {
     pub paths: [Vec<ZoneId>; ZONE_PRECHECK_LEVELS],
     pub marked: [BTreeSet<ZoneId>; ZONE_PRECHECK_LEVELS],
+    #[cfg(test)]
+    pub pops: Vec<(usize, ZoneId, u32, u32)>,
 }
 
 impl ZonePrecheckResult {
@@ -384,6 +385,8 @@ impl ZonePrecheckResult {
         Self {
             paths: std::array::from_fn(|_| Vec::new()),
             marked: std::array::from_fn(|_| BTreeSet::new()),
+            #[cfg(test)]
+            pops: Vec::new(),
         }
     }
 }
@@ -394,47 +397,102 @@ pub(crate) enum ZonePrecheckOutcome {
     Failed,
 }
 
-/// **VERA-internal tie-break, gamemd equivalent UNCHECKED.** `Zone_precheck`
-/// @ `0x0042C290` uses a raw binary min-heap keyed on the float cost — sift-up
-/// stops on `parent <= new`, sift-down uses strict `<` — so its pop order among
-/// equal costs is heap-array order, not insertion order. This entry breaks ties
-/// FIFO on `sequence` instead, because heap-array order is not reproducible
-/// from a `BinaryHeap`.
-///
-/// Trigger: any two frontier zones with the same accumulated cost — pervasive,
-/// since [`ZONE_BASE_COSTS`] only ever contributes 0 or 1000 plus the `+1` edge
-/// flag. Player effect: a different coarse route is chosen, which stamps a
-/// different corridor and can hand the cell A* a different (still valid) path,
-/// so units take a different but legal route. Frequency: continuous on any real
-/// map. Downstream risk: the corridor is deterministic within VERA, so this
-/// costs replay nothing; it costs frame-for-frame comparison against gamemd.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-struct PrecheckQueueEntry {
-    cost: i32,
-    sequence: u32,
+/// One native `+64` search record per accepted edge, not per zone. A queued
+/// record retains its own predecessor even if that zone receives a cheaper
+/// record later (`42C666..42C690`).
+struct PrecheckNode {
+    parent: Option<usize>,
     zone: ZoneId,
+    cost: NativeF32Bits,
+    depth: u32,
 }
 
-impl Ord for PrecheckQueueEntry {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .cost
-            .cmp(&self.cost)
-            .then_with(|| other.sequence.cmp(&self.sequence))
+/// The native heap's strict comparisons preserve its array order on ties.
+/// `BinaryHeap` with a sequence tie-break does not reproduce this order.
+/// All costs in the zero-threat domain are finite/nonnegative, so their
+/// binary32 bit ordering is their numerical ordering.
+#[derive(Default)]
+struct PrecheckQueue(Vec<usize>);
+
+impl PrecheckQueue {
+    fn push(&mut self, node: usize, nodes: &[PrecheckNode]) {
+        let mut position = self.0.len();
+        self.0.push(node);
+        while position != 0 {
+            let parent = (position - 1) / 2;
+            if nodes[self.0[parent]].cost.bits() <= nodes[node].cost.bits() {
+                break;
+            }
+            self.0[position] = self.0[parent];
+            position = parent;
+        }
+        self.0[position] = node;
+    }
+
+    fn pop(&mut self, nodes: &[PrecheckNode]) -> Option<usize> {
+        let first = *self.0.first()?;
+        let last = self.0.pop().expect("nonempty precheck heap");
+        if self.0.is_empty() {
+            return Some(first);
+        }
+        self.0[0] = last;
+        let mut position = 0;
+        loop {
+            let mut smallest = position;
+            for child in [position * 2 + 1, position * 2 + 2] {
+                if child < self.0.len()
+                    && nodes[self.0[child]].cost.bits() < nodes[self.0[smallest]].cost.bits()
+                {
+                    smallest = child;
+                }
+            }
+            if smallest == position {
+                break;
+            }
+            self.0.swap(position, smallest);
+            position = smallest;
+        }
+        Some(first)
     }
 }
 
-impl PartialOrd for PrecheckQueueEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+/// `42C5BB..42C5D2`: add base type cost, then the edge flag and spill once.
+/// The active-retail control word is PC53/chop, including this binary32
+/// store. Native FV heap-pop bits and equal-cost route controls are pinned in
+/// `tools/spatial_oracle/fv_cell_attack/zone_cost.json`.
+/// Its two eleven-edge/five-flag routes have equal rational cost, but the
+/// different spill histories choose different paths than integer1000 scaling.
+/// The selected hierarchy corridor therefore requires these deterministic
+/// binary32 stores; reusing the existing arithmetic owner avoids host FP modes.
+fn precheck_edge_cost(cost: NativeF32Bits, base: i32, flag: u8) -> NativeF32Bits {
+    let mut total = X87Chop53::add(
+        X87Chop53::load_i32(base),
+        X87Chop53::load_f32(cost).expect("finite precheck node cost"),
+    );
+    if flag != 0 {
+        total = X87Chop53::add(
+            total,
+            X87Chop53::load_f64(NativeF64Bits::from_bits(0x3f50_624d_d2f1_a9fc))
+                .expect("native 0.001 edge cost"),
+        );
     }
+    X87Chop53::store_f32(total).expect("bounded hierarchy cost")
 }
 
-/// Flat/no-slope `Zone_precheck` @ `0x0042C290` foundation.
+struct PrecheckLevelResult {
+    path: Vec<ZoneId>,
+    #[cfg(test)]
+    pops: Vec<(usize, ZoneId, u32, u32)>,
+}
+
+/// Zero-threat `Zone_precheck` @ `0x0042C290`.
 ///
-/// This intentionally models the precheck consumer and output shape only. Slope
-/// contribution is zero in this slice, and automatic failed-A* exclusion
-/// producers remain a separate follow-up.
+/// The old "slope" annotation was wrong: `4DC760` reads Foot+530 (or the
+/// TeamType+F2 override); `585F40` reads the House threat grid. Ordinary human
+/// FV has +530=0 and no Team, so that branch is absent. Nonzero threat-avoidance
+/// cost remains a separate mechanism; it can change routes for miners and AI
+/// teams. This owner preserves edge flags, float stores, heap order and each
+/// accepted node's predecessor for every existing caller.
 pub(crate) fn zone_precheck_flat(
     hierarchy: &ZoneHierarchy,
     start_level0: ZoneId,
@@ -456,7 +514,7 @@ pub(crate) fn zone_precheck_flat(
         } else {
             None
         };
-        let Some(path) = search_precheck_level(
+        let Some(selected) = search_precheck_level(
             hierarchy.level(level).expect("fixed hierarchy level"),
             level,
             start_zones[level],
@@ -467,8 +525,10 @@ pub(crate) fn zone_precheck_flat(
         ) else {
             return ZonePrecheckOutcome::Failed;
         };
-        result.marked[level] = path.iter().copied().collect();
-        result.paths[level] = path;
+        result.marked[level] = selected.path.iter().copied().collect();
+        result.paths[level] = selected.path;
+        #[cfg(test)]
+        result.pops.extend(selected.pops);
     }
 
     ZonePrecheckOutcome::Passed(result)
@@ -482,55 +542,49 @@ fn search_precheck_level(
     movement_zone: MovementZone,
     parent_marked: Option<&BTreeSet<ZoneId>>,
     exclusions: &ZonePrecheckExclusions,
-) -> Option<Vec<ZoneId>> {
-    if start == ZONE_INVALID || goal == ZONE_INVALID {
-        return None;
-    }
-    let start_record = graph.record(start)?;
-    let goal_record = graph.record(goal)?;
-    // VERA-internal, gamemd has no equivalent: the two `start_record` terms.
-    // `Zone_precheck` @ 0x0042C290 never type-checks the start zone — it stamps
-    // it and searches, and short-circuits `start == goal` to success without
-    // any check at all. The goal is effectively gated on both sides, because
-    // native can only reach it through the `matrix[row*8+type] == 1` neighbour
-    // gate. Trigger: a start zone whose record type is impassable for the
-    // mover's row. Player effect: VERA refuses the whole precheck where gamemd
-    // would search. Frequency: near zero — a level-0 zone's record type is the
-    // class of its whole base node, so a unit standing on a cell legal for it
-    // has a passable record; it takes a bridge or wall boundary oddity to fire.
-    // Downstream risk: none, it is a head predicate.
-    if !is_valid_zone_type(start_record.zone_type)
-        || !is_valid_zone_type(goal_record.zone_type)
-        || !passability::is_passable_for_zone(start_record.zone_type, movement_zone)
-        || !passability::is_passable_for_zone(goal_record.zone_type, movement_zone)
-    {
-        return None;
-    }
+) -> Option<PrecheckLevelResult> {
+    graph.record(start)?;
+    graph.record(goal)?;
+    // 42C3B0..42C3E4 checks equality before any movement-type gate. The
+    // start record is not type-gated even when a search is needed.
     if start == goal {
-        return Some(vec![start]);
+        return Some(PrecheckLevelResult {
+            path: vec![start],
+            #[cfg(test)]
+            pops: Vec::new(),
+        });
     }
 
     let zone_count = graph.zone_count() as usize;
-    let mut dist = vec![i32::MAX; zone_count + 1];
-    let mut prev = vec![ZONE_INVALID; zone_count + 1];
-    let mut heap = BinaryHeap::new();
-    let mut next_sequence = 1u32;
-
-    dist[start as usize] = 0;
-    heap.push(PrecheckQueueEntry {
-        cost: 0,
-        sequence: 0,
+    let mut best = vec![u32::MAX; zone_count + 1];
+    let mut nodes = vec![PrecheckNode {
+        parent: None,
         zone: start,
-    });
+        cost: NativeF32Bits::from_bits(0),
+        depth: 0,
+    }];
+    let mut heap = PrecheckQueue::default();
+    best[start as usize] = 0;
+    heap.push(0, &nodes);
+    #[cfg(test)]
+    let mut pops = Vec::new();
 
-    while let Some(PrecheckQueueEntry { cost, zone, .. }) = heap.pop() {
+    while let Some(index) = heap.pop(&nodes) {
+        let node = &nodes[index];
+        let (zone, cost, depth) = (node.zone, node.cost, node.depth);
+        #[cfg(test)]
+        pops.push((level, zone, cost.bits(), depth));
         if zone == goal {
-            return reconstruct_zone_path(&prev, goal);
-        }
-        if cost > dist[zone as usize] {
-            continue;
+            return Some(PrecheckLevelResult {
+                path: reconstruct_zone_path(&nodes, index),
+                #[cfg(test)]
+                pops,
+            });
         }
 
+        // Native pops and expands retained records even after a cheaper
+        // record for that zone was queued; the neighbour best-cost gate is
+        // the only repeated-visit filter (42C5D8..42C5EA).
         for edge in graph.edges(zone) {
             let neighbor = edge.neighbor;
             if neighbor as usize > zone_count || exclusions.contains(level, zone, neighbor) {
@@ -551,19 +605,17 @@ fn search_precheck_level(
             let Some(base_cost) = ZONE_BASE_COSTS.get(record.zone_type as usize).copied() else {
                 continue;
             };
-            let edge_flag_cost = i32::from(edge.flag != 0);
-            let new_cost = cost
-                .saturating_add(base_cost)
-                .saturating_add(edge_flag_cost);
-            if new_cost < dist[neighbor as usize] {
-                dist[neighbor as usize] = new_cost;
-                prev[neighbor as usize] = zone;
-                heap.push(PrecheckQueueEntry {
-                    cost: new_cost,
-                    sequence: next_sequence,
+            let new_cost = precheck_edge_cost(cost, base_cost, edge.flag);
+            if new_cost.bits() < best[neighbor as usize] {
+                best[neighbor as usize] = new_cost.bits();
+                let next = nodes.len();
+                nodes.push(PrecheckNode {
+                    parent: Some(index),
                     zone: neighbor,
+                    cost: new_cost,
+                    depth: depth + 1,
                 });
-                next_sequence = next_sequence.wrapping_add(1);
+                heap.push(next, &nodes);
             }
         }
     }
@@ -571,24 +623,20 @@ fn search_precheck_level(
     None
 }
 
-fn is_valid_zone_type(zone_type: u8) -> bool {
-    (zone_type as usize) < passability::TERRAIN_TYPE_COUNT
-}
-
-fn reconstruct_zone_path(prev: &[ZoneId], goal: ZoneId) -> Option<Vec<ZoneId>> {
+fn reconstruct_zone_path(nodes: &[PrecheckNode], goal: usize) -> Vec<ZoneId> {
     let mut path = Vec::new();
-    let mut current = goal;
-    while current != ZONE_INVALID {
-        let idx = current as usize;
-        if idx >= prev.len() {
-            return None;
-        }
-        path.push(current);
-        current = prev[idx];
+    let mut current = Some(goal);
+    while let Some(index) = current {
+        path.push(nodes[index].zone);
+        current = nodes[index].parent;
     }
     path.reverse();
-    Some(path)
+    path
 }
+
+#[cfg(test)]
+#[path = "zone_cost_native_tests.rs"]
+mod zone_cost_native_tests;
 
 #[cfg(test)]
 mod tests {

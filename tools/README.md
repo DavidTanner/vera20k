@@ -23,6 +23,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Reproduce ground-height setters and Unit/Infantry placement leaves | [checked ramp-height oracle](ramp_height_oracle.md) |
 | Reproduce native animation boundary decisions and stores | [checked Anim boundary oracle](anim_oracle/README.md) |
 | Refresh Anytown packet source provenance after helper maintenance | [checked native replay and receipt refresh](spatial_oracle/anytown_damage/README.md) |
+| Compare empty-IFV bridge pursuit, missiles, collapse, Stop and restoration | [conditional native continuation and input provenance](spatial_oracle/fv_cell_attack/README.md) |
 | Read/disassemble native VAs; scan callers, fields and bytes | [native inspection](native_inspect.md), `python -m tools.native_inspect` |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |

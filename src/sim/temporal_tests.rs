@@ -918,9 +918,9 @@ fn a_warped_object_is_frozen_and_immune() {
 /// Rhino warps it with no damage and erases it after Strength * 10 / Damage
 /// = 500 of the tank's AI turns, the first on the frame after the shot. The
 /// tank is spawned first, so it precedes the legionnaire in the logic vector:
-/// natively its AI has already run when the shot lands, as in VERA, whose fire
-/// phase follows the live pass (for the reverse order see the module's
-/// fire-phase residual). Nothing survives, WarpAway plays, the kill is scored
+/// its AI has already run when the shot lands. The reverse order is covered
+/// by `a_legionnaires_inviso_bullet_warps_after_existing_object_turns`.
+/// Nothing survives, WarpAway plays, the kill is scored
 /// and the legionnaire gains `Add(1500, 900)` twice (the Update's and
 /// Record_The_Kill's).
 #[test]
@@ -994,6 +994,72 @@ fn a_chrono_legionnaire_erases_a_tank() {
             && entity.owner() == sim.interner.get("Americans").unwrap()),
         "no survivors"
     );
+}
+
+/// Infantry51BF59 admits its Inviso Bullet into the live Logic list. Fire
+/// 468670 places it at the target; its later Bullet AI detonates it, after
+/// both pre-existing objects have had their turns. The target's next Temporal
+/// prologue then freezes its mission. This production ordering regression
+/// complements the original Temporal Update and Infantry caller corpora.
+#[test]
+fn a_legionnaires_inviso_bullet_warps_after_existing_object_turns() {
+    use crate::sim::command::{Command, CommandEnvelope};
+    let rules = rules();
+    for target_first in [false, true] {
+        let (mut sim, grid) = arena(11, &rules);
+        let (cleg, tank) = if target_first {
+            let tank = spawn(&mut sim, &rules, "HTNK", "Americans", 13, 10);
+            (spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10), tank)
+        } else {
+            let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);
+            (cleg, spawn(&mut sim, &rules, "HTNK", "Americans", 13, 10))
+        };
+        let owner = sim.interner.intern("Russians");
+        sim.queue_command(CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: cleg,
+                target_id: tank,
+            },
+        ));
+        let mut started = false;
+        for _ in 0..60 {
+            let before = entity(&sim, tank).mission.ai_counter();
+            let commands = sim.take_due_commands();
+            sim.advance_tick(
+                &commands,
+                Some(&rules),
+                &std::collections::BTreeMap::new(),
+                Some(&grid),
+                None,
+                33,
+            );
+            if head_of(&sim, tank) == Some(cleg) {
+                assert_eq!(
+                    entity(&sim, tank).mission.ai_counter(),
+                    before.wrapping_add(1),
+                    "target_first={target_first}: Bullet AI follows the existing target's turn"
+                );
+                sim.advance_tick(
+                    &[],
+                    Some(&rules),
+                    &std::collections::BTreeMap::new(),
+                    Some(&grid),
+                    None,
+                    33,
+                );
+                assert_eq!(
+                    entity(&sim, tank).mission.ai_counter(),
+                    before.wrapping_add(1),
+                    "target_first={target_first}: the next Temporal prologue freezes the mission"
+                );
+                started = true;
+                break;
+            }
+        }
+        assert!(started, "the production fire path must start the warp");
+    }
 }
 
 /// GetFireError `0x006FC5D5`: only Temporal shots may hit a warped target.
@@ -1258,10 +1324,10 @@ fn only_a_temporal_scanner_acquires_a_warped_enemy() {
 
 /// Stop clears the TarCom (`0x004C75F8`) and assigns no mission; the
 /// legionnaire's Attack mission then takes its idle exit and lets go
-/// (`0x00709A54`). VERA's Stop replaces the mission, so it lets go with the
-/// event.
+/// (`0x004D4E72 -> 0x00709A54`) when its retained dispatch timer becomes due.
+/// Native deadline controls: `tools/spatial_oracle/temporal_stop.json`.
 #[test]
-fn stop_frees_the_legionnaires_victim() {
+fn stop_retains_the_legionnaires_victim_until_attack_dispatch() {
     use crate::sim::command::{Command, CommandEnvelope};
     let rules = rules();
     let (mut sim, grid) = arena(23, &rules);
@@ -1294,12 +1360,39 @@ fn stop_frees_the_legionnaires_victim() {
         }
     }
     assert_eq!(head_of(&sim, tank), Some(cleg));
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Stop { entity_id: cleg },
+    let dispatch = entity(&sim, cleg).mission.dispatch_timer();
+    let pending = dispatch
+        .remaining_if_pending(sim.session.binary_frame)
+        .expect("the first shot precedes the next Attack dispatch");
+    assert!(sim.apply_command_with_overlays(
+        "Russians",
+        &Command::Stop { entity_id: cleg },
+        Some(&rules),
+        Some(&grid),
+        &std::collections::BTreeMap::new(),
+        None,
     ));
-    step(&mut sim);
+    assert!(entity(&sim, cleg).attack_target.is_none());
+    assert_eq!(
+        entity(&sim, cleg).mission.current().known(),
+        Some(MissionType::Attack)
+    );
+    assert_eq!(entity(&sim, cleg).mission.dispatch_timer(), dispatch);
+    assert_eq!(
+        head_of(&sim, tank),
+        Some(cleg),
+        "Event6 does not release the beam"
+    );
+    for _ in 0..pending {
+        assert!(!dispatch.due(sim.session.binary_frame));
+        step(&mut sim);
+        assert_eq!(
+            head_of(&sim, tank),
+            Some(cleg),
+            "retained until due dispatch"
+        );
+    }
+    assert!(dispatch.due(sim.session.binary_frame));
     step(&mut sim);
     assert_eq!(head_of(&sim, tank), None, "released");
     assert!(!entity(&sim, cleg).temporal.is_warping_someone());

@@ -66,6 +66,7 @@ mod cell_arrival;
 mod cell_contact;
 mod drive_locomotion;
 mod foot_coordinate;
+mod foot_approach;
 mod foot_mark;
 mod foot_path;
 #[cfg(test)]

@@ -16,15 +16,15 @@
 
 pub(crate) mod authored_load_host;
 mod bridge_hut_scatter;
+pub(crate) mod bridge_orchestrator;
 #[cfg(test)]
 pub(crate) mod bridge_test_evidence;
-pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
 mod cell_content;
-mod object_entry;
+mod crash;
 #[cfg(test)]
 mod entry_test_fixture;
-mod crash;
+mod object_entry;
 mod sinking;
 pub(crate) use sinking::SinkingState;
 pub mod edge_cell;
@@ -1803,6 +1803,69 @@ impl Simulation {
         }
     }
 
+    /// One Unit/Infantry fire slot within the live Logic cursor. The combat
+    /// owner executes gameplay; this owner consumes the resulting deliveries.
+    fn visit_foot_fire_slot(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        path_grid: Option<&PathGrid>,
+    ) -> Option<damage_consequences::DamageCommitReceipt> {
+        if self.substrate.entities.get(id).is_none_or(|entity| {
+            !matches!(
+                entity.category,
+                EntityCategory::Unit | EntityCategory::Infantry
+            )
+        }) {
+            return None;
+        }
+        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut emit = crate::sim::combat::CombatEmit::default();
+        let mut under_attack_events = Vec::new();
+        crate::sim::combat::world_receiver::foot_fire_at_target(
+            self,
+            &mut run,
+            rules,
+            overlay_registry,
+            id,
+            &mut emit,
+            &mut under_attack_events,
+        );
+        let crate::sim::combat::CombatEmit {
+            effects,
+            projectile_spawns,
+            fire_events,
+            // FireCommitBoundary and foot_fire_at_target already applied
+            // these outputs inline. Facing also retains fixture observations;
+            // none of these are another delivery for the world to perform.
+            damage_events: _,
+            remove_attack: _,
+            ammo_deduct: _,
+            pending_infantry_updates: _,
+            animation_switches: _,
+            current_weapon_updates: _,
+            unit_facing: _,
+            spawn_target_updates: _,
+            drain_links: _,
+        } = emit;
+        // FireAt has admitted its own Bullet already. These are recursive
+        // receiver/shrapnel emissions, through the same admission owner.
+        for projectile in projectile_spawns {
+            let stable_id = self.allocate_stable_id();
+            self.admit_projectile(stable_id, projectile);
+        }
+        Some(
+            damage_consequences::DamageConsequences::fire(
+                effects,
+                under_attack_events,
+                run.finish(),
+                fire_events,
+            )
+            .commit(self, rules, overlay_registry, path_grid),
+        )
+    }
+
     fn tick_combat_with_fatal_lifecycle(
         &mut self,
         rules: &RuleSet,
@@ -1985,8 +2048,9 @@ impl Simulation {
         self.active_wave_links.insert(attacker_id, stable_id);
     }
 
-    /// Finish the live Logic pass after combat has modeled the pre-existing
-    /// Techno callbacks. FireAt appends each bullet, muzzle anim and wave to
+    /// Compatibility continuation for emissions from the remaining global
+    /// combat hosts. Live Unit/Infantry firing uses the main object pass.
+    /// FireAt appends each bullet, muzzle anim and wave to
     /// the Logic vector as it fires, and `LogicClass::PerTickUpdate` re-reads
     /// the vector's length after every AI call (`0x0055B613`), so those objects
     /// take their first AI later in the same pass, in append order; an Inviso
@@ -1995,9 +2059,10 @@ impl Simulation {
     /// (`LogicClass::Remove @ 0x0055BAE0`), which shifts the next entry into
     /// its slot, and the cursor moves past it: that entry waits a frame.
     ///
-    /// RESIDUAL: a Techno created in this window (a crew survivor, a spawned
-    /// aircraft) still takes its first AI next frame; VERA's Techno AI runs its
-    /// fire routine in the combat phase, not in its Logic visit.
+    /// RESIDUAL: a Techno created in this global-tail window (a crew survivor
+    /// or spawned aircraft) still takes its first AI next frame. This tail
+    /// visits only non-Techno objects; the remaining global hosts must migrate
+    /// to their original live slots to close that same-frame lifecycle.
     pub(crate) fn visit_combat_tail(
         &mut self,
         first_tail_id: u64,
@@ -4081,6 +4146,8 @@ impl Simulation {
         let mut i = 0;
         while i < self.substrate.logic.len() {
             let id = self.substrate.logic.as_slice()[i];
+            #[cfg(test)]
+            let _draw_context = crate::sim::rng::observe_logic_object(id);
             body(self, id)?;
             i += 1;
         }
@@ -6035,9 +6102,10 @@ impl Simulation {
         self.fog
             .flush_pending_gap_conceal(self.session.binary_frame as i32);
 
-        // Object-AI stage: the authoritative per-object Mission host, run
-        // immediately BEFORE Phase-1 ground movement — gamemd decides each
-        // object's mission, then moves it, within one pass. Each live object
+        // Interleaved object-AI pass: each object's mission precedes its own
+        // locomotion. Unit/Infantry firing and their class-specific tails run
+        // in that same slot; newly appended Bullets/Anims join the live walk.
+        // Each live object
         // gets its `+0xC4` AI-counter tick, its owner-local queued-mission
         // promotion (Ready→Commence), and its absorbed mission-handler
         // dispatch (Harvest: the miner FSM, timer-gated with the post-handler
@@ -6194,21 +6262,13 @@ impl Simulation {
             // --- Phase 4.6: Deploy/Undeploy state machine ---
             // DEPENDS ON: the prior frame's command tail
             //   (ToggleInfantryDeploy may have set Deploying/Undeploying).
-            // PRODUCES: phase advances (Deploying→Deployed, Undeploying→None)
-            //   that combat (Phase 5) and animation (post-tick) read this tick.
+            // Remaining compatibility host: these phase advances follow the
+            // live Infantry fire slot. Native Doing/sequencer ownership of
+            // ordinary deployment remains separate migration work.
             crate::sim::deploy::tick_deploy_state(&mut self.substrate.entities);
 
-            // Infantry fear decay and runtime prone transitions happen after
-            // deploy state and before combat consumes the prone bit.
-            crate::sim::infantry::tick_fear_for_entities(
-                &mut self.substrate.entities,
-                &self.houses,
-                rules,
-                &self.interner,
-            );
-
-            // Idle fidgets, immediately after the stance pass so a man who just
-            // stood back up is not eligible on the same tick he was prone.
+            // Idle fidgets retain this compatibility cadence; their native
+            // Guard/Hunt/AreaGuard dispatch ownership remains in infantry.rs.
             // Driven from the logic vector, not the entity store: limboed
             // objects never reach this in the original.
             // DEPENDS ON: prone bit, deploy phase, attack target, mission.
@@ -6231,12 +6291,12 @@ impl Simulation {
                 }
             }
 
-            // --- Phase 5: Combat + Turret rotation ---
+            // --- Phase 5: Remaining combat hosts + turret rotation ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking).
-            // Combat reads barrel.current(binary_frame) at the START of the tick
-            // (matching gamemd's Fire_At_Target which uses last-frame facing).
-            // tick_turret_rotation runs AFTER combat to drive rotation toward the
-            // target for the NEXT frame's fire decision (matches Facing_Update order).
+            // Units and Infantry fired in their own live slots after paid
+            // movement. Units also committed Facing_Update. This tail hosts
+            // the remaining classes;
+            // tick_turret_rotation excludes Units whose facing is already owned.
             // tick_c4_plants runs alongside tick_capture_orders — both convert
             // walk-up intent into a state change on arrival. Detonation damage
             // is applied here so combat-pre conditions (invulnerability, dying)
@@ -6254,18 +6314,17 @@ impl Simulation {
             destroyed_structure |= c4_outcome.destroyed_structure;
             bridge_state_changed |= c4_outcome.bridge_state_changed;
             self.tick_order_intents_pre_combat(rules, overlay_registry, &tube_turn_owned_ids);
-            // Pursuit: walk units with out-of-range attack_target into range,
-            // halt movement on range entry. Must run before combat so combat
-            // sees the up-to-date movement_target this tick.
+            // The compatibility pursuit host excludes native Unit Cell
+            // Approach. Its remaining consumers retain their existing order
+            // before the remaining combat hosts.
             self.tick_attack_pursuit_with_overlay_registry(
                 rules,
                 active_path_grid,
                 overlay_registry,
                 &tube_turn_owned_ids,
             );
-            // LogicClass live-object order drives the firing/damage/kill-credit
-            // resolution sequence. Snapshot is owned, so it does not conflict
-            // with the &mut self.entities borrow below.
+            // Preserve live-object order among the remaining class requests.
+            // Foot fire and its same-pass Bullet visits have already completed.
             let logic_order = self.live_object_order_snapshot();
             // BulletClass/WaveClass AI already ran at each object's mixed
             // LogicClass slot. Keep their established receiver boundary here.
@@ -6303,19 +6362,8 @@ impl Simulation {
                 self.session.binary_frame,
                 &self.interner,
             );
-            // S3: Unit barrel destinations were computed per-object in the
-            // combat Phase-2 window (pre-death state — a unit whose target died
-            // this tick keeps aiming at it this tick; idle-return starts next
-            // tick). This is the unchanged write point; tick_turret_rotation
-            // above skips Units (it owns only the legacy Infantry barrels; a
-            // building's turns through its Mission_Attack).
-            crate::sim::world::unit_post::apply_unit_facing(
-                &mut self.substrate.entities,
-                &combat_result.unit_facing,
-                rules,
-                &self.interner,
-                self.session.binary_frame,
-            );
+            // Unit facing already committed immediately after that Unit's
+            // FireAt, before this frame's next live Logic object.
             // SpawnManager pass. Native dispatches it per object from
             // `TechnoClass::AI_Update` (+0x2D0 → vtable+0x5C), after that
             // object's Mission_Dispatch → Fire_At → SetTarget. Running it

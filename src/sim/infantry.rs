@@ -199,55 +199,29 @@ pub fn tick_fear_decay_and_prone(
     None
 }
 
-/// RESIDUAL (GSI-08.13) — death sequences are not selected. `SequenceKind`
-/// carries `Die1`..`Die5` and the sprite atlas can play them, but nothing in
-/// sim ever picks one: a killed infantryman spawns the warhead's `InfDeath=`
-/// anim (100 stock entries) and nothing else, so burn, electrocute, tumble and
-/// vaporise all collapse into a single generic death. `WetDie1/2`, `Tumble` and
-/// the `AirDeath*` ids are unmapped as well.
-/// - Trigger: every infantry death.
-/// - Player effect: no flame death, no Tesla frazzle, no vaporise — the visual
-///   payoff of picking the right weapon against infantry is missing.
-/// - Frequency: continuous; infantry are the most-killed class in the game.
-/// - Downstream risk: sequence choice reads the warhead's death type, so it
-///   couples this row to the warhead-effect row above it; the animation itself
-///   is presentation, but the selection is sim state and hashed.
-pub fn tick_fear_for_entities(
-    entities: &mut crate::sim::entity_store::EntityStore,
-    houses: &std::collections::BTreeMap<
-        crate::sim::intern::InternedId,
-        crate::sim::house_state::HouseState,
-    >,
+/// InfantryAI51BF0B calls Fear5200B0 after Ready/Commence and before Fire.
+/// This live-object owner replaces the late whole-store stance sweep.
+pub(crate) fn tick_fear_for_entity(
+    entity: &mut GameEntity,
+    player_controlled: bool,
     rules: &crate::rules::ruleset::RuleSet,
     interner: &crate::sim::intern::StringInterner,
 ) {
-    let keys = entities.keys_sorted();
-    for id in keys {
-        // InfantryClass::AI returns before its fear work while warped. With no
-        // fear to decay and no prone stance to leave the handler changes
-        // nothing.
-        let Some(entity) = entities.get_mut_if(id, |entity| {
-            !entity.ai_frozen()
-                && entity
-                    .infantry
-                    .as_ref()
-                    .is_some_and(|infantry| infantry.fear_level > 0 || infantry.is_prone)
-        }) else {
-            continue;
-        };
-        let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
-            continue;
-        };
-        // `HouseState::is_human` is this model's collapsed player-control fact —
-        // the same byte pair gamemd's `IsPlayerControl` reads.
-        let player_controlled = houses
-            .get(&entity.owner())
-            .is_some_and(|house| house.is_human);
-        if let Some(sequence) = tick_fear_decay_and_prone(obj, entity, player_controlled) {
-            if let Some(anim) = entity.animation.as_mut() {
-                anim.switch_to(sequence);
-            }
-        }
+    if entity.ai_frozen()
+        || entity
+            .infantry
+            .as_ref()
+            .is_none_or(|infantry| infantry.fear_level == 0 && !infantry.is_prone)
+    {
+        return;
+    }
+    let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
+        return;
+    };
+    if let Some(sequence) = tick_fear_decay_and_prone(obj, entity, player_controlled)
+        && let Some(anim) = entity.animation.as_mut()
+    {
+        anim.switch_to(sequence);
     }
 }
 
@@ -568,6 +542,9 @@ mod tests {
     const ORDER: [u64; 1] = [1];
 
     fn infantry(hp: i32) -> GameEntity {
+        use crate::sim::mission::state::MissionTestFixture;
+        use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+
         let mut e = GameEntity::new_at_frame_zero_for_test(
             1,
             0,
@@ -583,9 +560,20 @@ mod tests {
             false,
         );
         e.infantry = Some(InfantryRuntime::new());
-        // `ObjectLifecycle` defaults to in-limbo; a man standing on the map has
-        // been unlimboed, and the idle gate reads that.
+        // Supply the standing post-Unlimbo boundary this leaf fixture skips:
+        // Techno 0x006F6E2A..0x006F6E4F enters idle and commences Guard.
+        // The constructor itself correctly leaves the committed selector at NONE.
         e.lifecycle.in_limbo = false;
+        e.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_known(MissionType::Guard),
+            suspended: MissionId::NONE,
+            queued: MissionId::NONE,
+            movement_bypass_latch: 0,
+            handler_state: 0,
+            mission_start_frame: 0,
+            ai_counter: 0,
+            dispatch_timer: MissionDispatchTimer::at_frame(0),
+        });
         e
     }
 
@@ -958,8 +946,10 @@ mod tests {
         let rules = rules_for("");
         let houses = std::collections::BTreeMap::new();
 
-        // Each of these is one of gamemd's idle-readiness rejections.
+        // Each removes either the idle caller's admission or native readiness.
         let busy: Vec<Box<dyn Fn(&mut GameEntity)>> = vec![
+            // Constructor state has not entered a mission that calls the idle leaf.
+            Box::new(|e: &mut GameEntity| e.mission = crate::sim::mission::MissionCom::at_frame(0)),
             Box::new(|e: &mut GameEntity| e.navigation.nav_com = Some(NavTargetRef::cell(3, 3))),
             Box::new(|e: &mut GameEntity| e.infantry.as_mut().unwrap().is_prone = true),
             Box::new(|e: &mut GameEntity| e.dying = true),
@@ -975,6 +965,7 @@ mod tests {
             let mut store = EntityStore::new();
             let mut e = infantry(100);
             e.animation = Some(Animation::new(SequenceKind::Stand));
+            assert!(idle_action_ready(&e, 0), "case {index}: eligible baseline");
             make_busy(&mut e);
             store.insert(e);
             let interner = crate::sim::intern::test_interner();

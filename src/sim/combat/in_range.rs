@@ -204,12 +204,13 @@ fn minimum_range_blocks(weapon: &WeaponType, src: (i64, i64, i64), tgt: (i64, i6
     if weapon.minimum_range_leptons == 0 {
         return false;
     }
-    let (sx, sy, sz) = src;
-    let (tx, ty, tz) = tgt;
-    let dx = sx - tx;
-    let dy = sy - ty;
-    let dz = sz - tz;
-    isqrt_i64(dx * dx + dy * dy + dz * dz) < i64::from(weapon.minimum_range_leptons)
+    // 6F7386..6F73E4 and6F7594..6F75F2 use the same native approximate
+    // distance as CoordStruct41C380. Executed lepton ties (255→254,
+    // 1537→1536) are retained in fv_cell_attack/range_vectors.json.
+    crate::util::native_x87::distance_3d_leptons(
+        [src.0 as i32, src.1 as i32, src.2 as i32],
+        [tgt.0 as i32, tgt.1 as i32, tgt.2 as i32],
+    ) < weapon.minimum_range_leptons
 }
 
 /// Whether the attacker is standing INSIDE `weapon`'s `MinimumRange` — the one
@@ -283,7 +284,7 @@ pub(crate) fn compute_in_range_in_query(
     compute_range_target(
         attacker,
         src,
-        RangeTarget::Abstract(target),
+        RangeTarget::from_target(target, cells.terrain()),
         weapon,
         rules,
         interner,
@@ -297,6 +298,14 @@ pub(crate) fn compute_in_range_in_query(
 enum RangeTarget<'a> {
     Abstract(&'a TargetKind),
     Cell(NativeCellIdentity),
+}
+
+impl<'a> RangeTarget<'a> {
+    fn from_target(target: &'a TargetKind, terrain: &ResolvedTerrainGrid) -> Self {
+        target
+            .cell_identity(terrain)
+            .map_or(Self::Abstract(target), Self::Cell)
+    }
 }
 
 /// Foot6F7970 has already converted the target's coordinates to a CellClass.
@@ -369,8 +378,6 @@ fn compute_range_target(
         return false;
     };
 
-    let (sx, sy, sz) = src;
-
     // MinimumRange, 0x006F737F–0x006F73E8, before the arcing split.
     if minimum_range_blocks(weapon, src, (tx, ty, tz)) {
         return false;
@@ -416,11 +423,10 @@ fn compute_range_target(
         max_range_lep += (width as i64 + height as i64) * 0x40;
     }
 
-    let dx = sx - tx;
-    let dy = sy - ty;
-    let dz = sz - tz;
-    let dist_sq: i64 = dx * dx + dy * dy + dz * dz;
-    let dist_lep = isqrt_i64(dist_sq);
+    let dist_lep = i64::from(crate::util::native_x87::distance_3d_leptons(
+        [src.0 as i32, src.1 as i32, src.2 as i32],
+        [tx as i32, ty as i32, tz as i32],
+    ));
 
     if dist_lep > max_range_lep {
         return false;
@@ -524,8 +530,8 @@ fn compute_in_range_arcing_2d(
 }
 
 /// Resolve target coords for the 3D path. Applies LowFlying ground-snap on
-/// entity targets; cell targets get cell-center XY and ground-Z from the
-/// terrain (with bridge deck offset if present).
+/// entity targets; Cell targets retain their allocation and run their native
+/// +48/+50 getters, including the WaterSet gate and raw structural bridge bit.
 fn resolve_target_coords_3d(
     target: &TargetKind,
     entities: &EntityStore,
@@ -536,9 +542,7 @@ fn resolve_target_coords_3d(
     let terrain = cells.terrain();
     match *target {
         TargetKind::Entity(id) => {
-            let Some(t) = entities.get(id) else {
-                return Some((i64::MAX / 4, i64::MAX / 4, 0));
-            };
+            let t = entities.get(id)?;
             let (rx, ry, sub_x, sub_y) = super::target_coords(t, Some(rules), interner);
             let tx = rx as i64 * 256 + sub_x.to_num::<i64>();
             let ty = ry as i64 * 256 + sub_y.to_num::<i64>();
@@ -553,12 +557,7 @@ fn resolve_target_coords_3d(
             };
             Some((tx, ty, tz))
         }
-        TargetKind::Cell(rx, ry) => {
-            let tx = rx as i64 * 256 + 128;
-            let ty = ry as i64 * 256 + 128;
-            let tz = ground_z_with_bridge_offset(rx, ry, terrain)?;
-            Some((tx, ty, tz))
-        }
+        TargetKind::Cell(..) => native_cell_range_coords(target.cell_identity(terrain)?, cells),
     }
 }
 
@@ -568,14 +567,7 @@ fn resolve_target_coords_3d(
 /// the deck offset belongs to whoever is standing on the deck, and
 /// `TechnoClass::CanFireAt` adds it separately from the object's own OnBridge
 /// byte at 0x006F7887.
-fn cell_own_coords(rx: u16, ry: u16, terrain: &ResolvedTerrainGrid) -> Option<(i64, i64, i64)> {
-    let world_x = i32::from(rx).wrapping_mul(256).wrapping_add(128);
-    let world_y = i32::from(ry).wrapping_mul(256).wrapping_add(128);
-    let z = terrain_ground_z_at(terrain, rx, ry, world_x, world_y)?;
-    Some((i64::from(world_x), i64::from(world_y), z))
-}
-
-fn native_cell_own_coords(
+pub(crate) fn native_cell_own_coords(
     cell: NativeCellIdentity,
     cells: &NativeCellQuery<'_>,
 ) -> Option<(i64, i64, i64)> {
@@ -587,7 +579,7 @@ fn native_cell_own_coords(
     Some((i64::from(x), i64::from(y), i64::from(z)))
 }
 
-fn native_cell_range_coords(
+pub(crate) fn native_cell_range_coords(
     cell: NativeCellIdentity,
     cells: &NativeCellQuery<'_>,
 ) -> Option<(i64, i64, i64)> {
@@ -604,7 +596,7 @@ fn native_cell_range_coords(
 
 /// InRange6F7340/6F7353: first read ground through Map578080, then
 /// independently resolve Cell flags through Map565730. Both may stamp Dummy.
-fn native_ground_target_z(x: i32, y: i32, cells: &NativeCellQuery<'_>) -> Option<i64> {
+pub(crate) fn native_ground_target_z(x: i32, y: i32, cells: &NativeCellQuery<'_>) -> Option<i64> {
     let ground = crate::sim::movement::ground_pose::query_ground_height(
         cells,
         crate::sim::components::DriveCoord { x, y, z: 0 },
@@ -651,11 +643,13 @@ fn native_source_under_bridge(
 fn target_own_z_leptons(
     target: &TargetKind,
     entities: &EntityStore,
-    terrain: &ResolvedTerrainGrid,
+    cells: &NativeCellQuery<'_>,
 ) -> Option<i64> {
     match *target {
-        TargetKind::Entity(id) => effective_z_leptons(entities.get(id)?, terrain),
-        TargetKind::Cell(rx, ry) => cell_own_coords(rx, ry, terrain).map(|(_, _, z)| z),
+        TargetKind::Entity(id) => effective_z_leptons(entities.get(id)?, cells.terrain()),
+        TargetKind::Cell(..) => {
+            native_cell_own_coords(target.cell_identity(cells.terrain())?, cells).map(|(_, _, z)| z)
+        }
     }
 }
 
@@ -684,8 +678,8 @@ fn target_own_z_leptons(
 /// the caller's query domain, including signed truncation. The remaining
 /// `Option` is a compatibility boundary for targets removed from the store,
 /// unsupported slopes, or fixtures lacking exact physical Z and terrain;
-/// ordinary live objects retain exact coordinates. General Abstract Cell
-/// target identity/projection remains the separate residual recorded below.
+/// ordinary live objects retain exact coordinates. Cell targets recover their
+/// allocation before source queries, without restamping a retained Dummy.
 pub(crate) fn fire_source_coords(
     attacker: &GameEntity,
     target: &TargetKind,
@@ -715,7 +709,7 @@ pub(crate) fn fire_source_coords_in_query(
 ) -> Option<(i64, i64, i64)> {
     fire_source_for_target(
         attacker,
-        RangeTarget::Abstract(target),
+        RangeTarget::from_target(target, cells.terrain()),
         weapon,
         entities,
         cells,
@@ -734,12 +728,8 @@ fn fire_source_for_target(
     let terrain = cells.terrain();
     let mut x = i64::from(attacker.position.rx) * 256 + attacker.position.sub_x.to_num::<i64>();
     let mut y = i64::from(attacker.position.ry) * 256 + attacker.position.sub_y.to_num::<i64>();
-    let mut z = match target {
-        RangeTarget::Abstract(_) => effective_z_leptons(attacker, terrain)?,
-        RangeTarget::Cell(_) => {
-            i64::from(crate::sim::movement::ground_pose::position_world_coord(&attacker.position).z)
-        }
-    };
+    // Object+48 supplies the same physical origin for every target class.
+    let mut z = effective_z_leptons(attacker, terrain)?;
 
     if weapon.cell_rangefinding {
         // 6F7821..6F7845 truncates signed world XY toward zero before the
@@ -759,25 +749,12 @@ fn fire_source_for_target(
 
     if is_high_flying_in_query(attacker, cells, Some(rules_context)) {
         z = match target {
-            RangeTarget::Abstract(target) => target_own_z_leptons(target, entities, terrain)?,
+            RangeTarget::Abstract(target) => target_own_z_leptons(target, entities, cells)?,
             RangeTarget::Cell(cell) => native_cell_own_coords(cell, cells)?.2,
         };
     }
 
     Some((x, y, z))
-}
-
-/// Ground Z in leptons for a cell, plus bridge deck offset if a bridge deck
-/// is present on the cell.
-fn ground_z_with_bridge_offset(rx: u16, ry: u16, terrain: &ResolvedTerrainGrid) -> Option<i64> {
-    let cell = terrain.cell(rx, ry)?;
-    let world_x = i32::from(rx).wrapping_mul(256).wrapping_add(128);
-    let world_y = i32::from(ry).wrapping_mul(256).wrapping_add(128);
-    let mut z = terrain_ground_z_at(terrain, rx, ry, world_x, world_y)?;
-    if cell.has_bridge_deck {
-        z += BRIDGE_HEIGHT_DELTA_LEPTONS;
-    }
-    Some(z)
 }
 
 /// `TechnoClass::IsOnBridge_ForFiring @ 0x00703B10`, GetFireError T35's
@@ -1133,6 +1110,54 @@ mod tests {
                 row["dummy_coord"],
                 "row {index}: final Dummy"
             );
+            // Ordinary force-fire represents the same retained allocation as
+            // TargetKind::Cell. Source lookups must be allowed to restamp a
+            // shared Dummy before target+48 reads it; resolving the requested
+            // target coordinate again would undo that native ordering.
+            for isolated in [true, false] {
+                terrain.stamp_dummy_cell_requested_coord(99, 98);
+                let cells = if isolated {
+                    NativeCellQuery::isolated(&terrain)
+                } else {
+                    NativeCellQuery::canonical(&terrain)
+                };
+                cells.lookup(coord);
+                let target = TargetKind::Cell(coord.0 as u16, coord.1 as u16);
+                let source = fire_source_coords_in_query(
+                    &actor,
+                    &target,
+                    &weapon,
+                    &entities,
+                    &cells,
+                    (&rules, &interner),
+                )
+                .unwrap();
+                let actual = compute_in_range_in_query(
+                    &actor,
+                    source,
+                    &target,
+                    &weapon,
+                    &rules,
+                    &interner,
+                    &entities,
+                    &cells,
+                    &LineOfFireInputs::terrain_only(),
+                );
+                assert_eq!(
+                    Some(actual),
+                    row["result"].as_bool(),
+                    "row {index}: ordinary isolated={isolated}"
+                );
+                let dummy = cells.dummy().snapshot().coord;
+                assert_eq!(
+                    serde_json::json!([dummy.0, dummy.1]),
+                    row["dummy_coord"],
+                    "row {index}: ordinary Dummy isolated={isolated}"
+                );
+                if isolated {
+                    assert_eq!(terrain.dummy_cell_requested_coord(), (99, 98));
+                }
+            }
         }
     }
 
@@ -1335,10 +1360,21 @@ mod tests {
             &terrain,
             &LineOfFireInputs::terrain_only(),
         );
-        assert!(
-            !one_past,
-            "one lepton past max range should be out of range"
-        );
+        // Original full InRange: range_ties.json, limit1024 distances1024..1026.
+        // Approximate sqrt truncates1025 to1024; the following lepton fails.
+        assert!(one_past, "native approximate distance admits 1025 leptons");
+        entities2.get_mut(200).unwrap().position.sub_x = SimFixed::from_num(130);
+        assert!(!compute_in_range(
+            &attacker,
+            src_at_cell(0, 0, 0),
+            &TargetKind::Entity(200),
+            weapon,
+            &rules,
+            &interner,
+            &entities2,
+            &terrain,
+            &LineOfFireInputs::terrain_only(),
+        ));
     }
 
     // Test 3: Boundary strict min
@@ -1536,12 +1572,22 @@ mod tests {
     #[test]
     fn gsi_04_03b_cell_ground_z_uses_center_and_range_bridge_delta() {
         let mut terrain = flat_terrain(1, 1);
+        terrain.set_projectile_water_set_base(314);
         terrain.cells[0].slope_type = 1;
-        assert_eq!(ground_z_with_bridge_offset(0, 0, &terrain), Some(52));
+        let cell = terrain.native_cell_identity((0, 0));
+        assert_eq!(
+            native_cell_range_coords(cell, &NativeCellQuery::canonical(&terrain)),
+            Some((128, 128, 52))
+        );
         terrain.cells[0].has_bridge_deck = true;
         assert_eq!(
-            ground_z_with_bridge_offset(0, 0, &terrain),
-            Some(52 + BRIDGE_HEIGHT_DELTA_LEPTONS)
+            native_cell_range_coords(cell, &NativeCellQuery::canonical(&terrain)),
+            Some((128, 128, 52))
+        );
+        terrain.cells[0].bridge_facts.raw_flags = 0x100;
+        assert_eq!(
+            native_cell_range_coords(cell, &NativeCellQuery::canonical(&terrain)),
+            Some((128, 128, 52 + BRIDGE_HEIGHT_DELTA_LEPTONS))
         );
     }
 
@@ -1811,8 +1857,8 @@ mod tests {
 
         // The fraction itself, pinned at the boundary: the Kirov fires from the
         // centre of (5,5) = 1408 leptons, so a target at x = 1792 is exactly
-        // 384 away and one lepton further is out. Truncating `Range=1.5` to a
-        // whole cell refuses both.
+        // 384 away. Native's shared approximate distance also admits385;
+        // original full InRange controls are in fv_cell_attack/range_ties.json.
         let mut at_reach = ground_target(7, 5, 0, "TGT");
         at_reach.position.sub_x = SIM_ZERO;
         assert!(
@@ -1823,9 +1869,12 @@ mod tests {
         let mut past_reach = ground_target(7, 5, 0, "TGT");
         past_reach.position.sub_x = SimFixed::from_num(1);
         assert!(
-            !kirov_can_engage(&rules, &kirov, past_reach),
-            "385 leptons is out — Range=1.5 must not become an unbounded reach"
+            kirov_can_engage(&rules, &kirov, past_reach),
+            "385 leptons truncates to384 in native's shared distance owner"
         );
+        let mut past_reach = ground_target(7, 5, 0, "TGT");
+        past_reach.position.sub_x = SimFixed::from_num(2);
+        assert!(!kirov_can_engage(&rules, &kirov, past_reach));
     }
 
     /// `MOV AL,byte ptr [EDI + 0x134]` at 0x006F7803, then
@@ -2072,7 +2121,9 @@ mod tests {
             cells[idx].bridge_deck_level = 4;
             cells[idx].bridge_facts.raw_flags |= crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
         }
-        ResolvedTerrainGrid::from_cells(16, 16, cells)
+        let mut terrain = ResolvedTerrainGrid::from_cells(16, 16, cells);
+        terrain.set_projectile_water_set_base(314);
+        terrain
     }
 
     fn in_range_at(
@@ -2438,16 +2489,6 @@ mod tests {
             &ridged,
             &LineOfFireInputs::terrain_only(),
         ));
-    }
-
-    /// Abstract Cell callers still use the legacy terrain projection. The
-    /// composed retained-Cell path above proves the actual WaterSet+50 gate,
-    /// own-ground read, map relookup and structural offset. General force-fire
-    /// callers must preserve that identity across their source/range pair too.
-    #[test]
-    #[ignore = "legacy Abstract Cell callers do not yet use the retained Cell source/range transaction"]
-    fn abstract_cell_range_transaction_remains_unintegrated() {
-        panic!("unimplemented: general Abstract Cell source/range identity and WaterSet gate");
     }
 
     /// RESIDUAL — gamemd address 0x006F724E, `CMP EDI,0xFFFFFE00`, the first

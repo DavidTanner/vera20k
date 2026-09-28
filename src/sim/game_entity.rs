@@ -1334,118 +1334,19 @@ impl GameEntity {
         })
     }
 
-    /// The mission the passive target-acquisition gate reads.
-    ///
-    /// The original always holds a real mission selector, so the gate can read
-    /// it directly. VERA's mission substrate is mid-migration: an object that
-    /// was never explicitly ordered still holds the `NONE` sentinel, so the
-    /// authoritative selector wins when it names a known mission and the live
-    /// machines fill in otherwise. A machine-less Structure reads as Guard —
-    /// the original has no idle mission, and Guard is the arm that makes a base
-    /// defence engage.
-    ///
-    /// A target the object's own scanner installed does NOT change its mission:
-    /// the passive commit writes the target pointer and nothing else, so the
-    /// object stays on Guard (or Move, or Harvest) and keeps rescanning on
-    /// cadence. The legacy derivation reads any `attack_target` as Attack, which
-    /// would latch the object out of the gate after a single scan — it would
-    /// acquire once per target and then go dormant.
-    ///
-    /// VERA-INTERNAL bridge: the mission a freshly unlimboed object holds in
-    /// the original is UNCHECKED, so this is a representation choice, not a
-    /// verified value.
-    ///
-    /// The bridge also covers a committed mission whose work is over. VERA's
-    /// mission substrate is written on the way IN — a Move, Stop, AttackMove,
-    /// Enter or Capture order commits its selector — but almost nothing writes
-    /// one back when the job finishes, so a unit that was ordered once holds
-    /// that selector for the rest of the match. Read literally, a single move
-    /// order would deafen a unit permanently: the gate admits Move only for the
-    /// handful of stock types with `OpportunityFire`, and Stop is one of the
-    /// missions that strips a scanner target outright. The original has no idle
-    /// mission and its Move and Stop handlers return the object to Guard when
-    /// they complete — the same shape as the building Attack handler's
-    /// null-target arm. VERA has no equivalent handler, so when the committed
-    /// mission's live machinery has gone quiet the derived reading wins instead.
-    /// The gamemd handler equivalent is UNCHECKED.
-    ///
-    /// The bridge explicitly does NOT cover the missions that mean "stand still
-    /// and do nothing" ([`MissionType::holds_until_retasked`]). Those never
-    /// finish, so letting the derived Guard reading win there would make every
-    /// map-authored Sleep/Sticky/Harmless placement scan and shoot.
-    ///
-    /// A building needs no bridge: its Update dispatches its committed
-    /// missions (`world::techno_ai::building_missions`), so the block reads
-    /// `+0xAC` as it stands.
+    /// The committed mission read at TechnoAI6FA697, before its class's
+    /// subsequent Ready/Commence checkpoint. Clearing a target or destination
+    /// does not change this selector; only the mission owner can commence a
+    /// queued Guard. Native FV bridge-collapse execution at Logic45 rejects
+    /// Attack here and consumes no scan draw (`fv_cell_attack` continuation).
     pub fn passive_acquire_mission(&self) -> MissionType {
-        // A Health-0 wreck runs no mission handler (`MissionClass::AI @
-        // 0x005B30A7`), so no job of its can finish and hand it back to Guard:
-        // the passive block reads its committed mission as it stands
-        // (`0x006FA697`).
-        if self.health.current <= 0 || self.category == EntityCategory::Structure {
-            return self.mission.current().known().unwrap_or(MissionType::None);
-        }
-        let (derived, _) = self.derived_mission_with(!self.passively_acquired_target);
-        let derived = if derived == MissionType::None
-            && self.category == EntityCategory::Infantry
-            && self.guards_when_idle()
-        {
-            MissionType::Guard
-        } else {
-            derived
-        };
-        match self.mission.current().known() {
-            // "Stand still and do nothing" is not a job that finishes — those
-            // missions have no completion transition in the original either, so
-            // the derived reading must never take one back to Guard. This is
-            // what a map placement authored as Sleep, Sticky or Harmless means,
-            // and without it every such neutral object scans and opens fire.
-            Some(known) if known.holds_until_retasked() => known,
-            // Area Guard is a job that never finishes: "hold this spot and
-            // cover it" is the standing state, not a leftover selector. It also
-            // has its own handler, which owns its target acquisition, and the
-            // passive-acquire block admits {Move, Harvest, Guard} only. Letting
-            // the finished-job bridge read it as Guard would put the object
-            // through BOTH scanners on the same cadence.
-            Some(MissionType::AreaGuard) => MissionType::AreaGuard,
-            // A sale runs until the building converts or leaves
-            // (`BuildingClass::Sell`, `building_down`); Selling is one of the
-            // twelve missions that strip a scanner target, and the passive
-            // block never admits it.
-            Some(MissionType::Selling) => MissionType::Selling,
-            // A committed mission still doing something wins; one whose work is
-            // finished defers to what the object is actually doing (nothing).
-            Some(known) if !self.committed_mission_is_finished() => known,
-            _ => derived,
-        }
+        self.mission.current().known().unwrap_or(MissionType::None)
     }
 
-    /// Whether the committed mission selector has outlived the work it named:
-    /// nowhere to drive, no navigation goal, no standing player order, and no
-    /// target beyond one the passive scanner installed. See
-    /// [`GameEntity::passive_acquire_mission`] for why this exists.
-    fn committed_mission_is_finished(&self) -> bool {
-        self.movement_target.is_none()
-            && self.navigation.nav_com.is_none()
-            && self.order_intent.is_none()
-            && (self.attack_target.is_none() || self.passively_acquired_target)
-    }
-
-    /// Classifier: the mission + sub-phase the legacy `Option<T>` machines
-    /// imply. Since the authority flip, `mission` advances only through the
-    /// exact verbs — this derivation is no longer projected into it and
-    /// survives as the cross-check the harvest seam asserts against and as the
-    /// fallback [`GameEntity::passive_acquire_mission`] uses for an object that
-    /// still holds the `NONE` sentinel.
+    /// Legacy machine classifier used only by migration regression tests.
+    /// Gameplay reads the authoritative MissionCom; this never selects a mission.
     #[cfg(test)]
     pub fn derived_mission(&self) -> (MissionType, u8) {
-        self.derived_mission_with(true)
-    }
-
-    /// [`GameEntity::derived_mission`], with control over whether an installed
-    /// `attack_target` implies mission Attack. Only the passive-acquire path
-    /// passes `false`, and only for a target its own scanner installed.
-    fn derived_mission_with(&self, attack_target_implies_attack: bool) -> (MissionType, u8) {
         if self.miner.is_some() {
             // The whole harvest loop is one mission; the FSM cursor of record
             // (MissionCom.handler_state) is its sub-phase.
@@ -1467,7 +1368,7 @@ impl GameEntity {
         if self.dock_state.is_some() {
             return (MissionType::Enter, 0);
         }
-        if attack_target_implies_attack && self.attack_target.is_some() {
+        if self.attack_target.is_some() {
             return (MissionType::Attack, 0);
         }
         if self.movement_target.is_some() {
@@ -1485,11 +1386,8 @@ impl GameEntity {
         (MissionType::None, 0)
     }
 
-    /// Whether the finished-job bridge reads an idle object as Guard. A closed
-    /// transport's passenger keeps the None placeholder: it has left the logic
-    /// list and runs no AI. An open-topped transport's rider stays on it and
-    /// was put on Guard as it boarded (`SetInOpenTransport @ 0x00710470` ->
-    /// `ResetOrdersToGuard`).
+    /// Legacy classifier used only by migration regression tests.
+    #[cfg(test)]
     fn guards_when_idle(&self) -> bool {
         !self.passenger_role.is_inside_transport() || self.passenger_role.in_open_transport()
     }
@@ -2175,9 +2073,7 @@ mod mission_shadow_tests {
             ] {
                 let mut e = GameEntity::test_default(1, "CIVBTM", "Neutral", 3, 3);
                 e.category = category;
-                // No destination, no order, no target: the committed mission
-                // reads as "finished", which is what used to hand it to Guard.
-                assert!(e.committed_mission_is_finished());
+                // No destination, order or target may override this mission.
                 e.mission.apply_test_fixture(MissionTestFixture {
                     current: MissionId::from_known(mission),
                     suspended: MissionId::NONE,
@@ -2197,10 +2093,10 @@ mod mission_shadow_tests {
         }
     }
 
-    /// The bridge still applies to missions whose work really does end: an
-    /// idle Unit that was ordered to Move once must not stay deaf forever.
+    /// Arrival belongs to the Move handler, not the passive consumer. Until
+    /// that owner commences Guard, an empty NavCom still reads Move.
     #[test]
-    fn a_finished_ordinary_mission_still_defers_to_the_derived_reading() {
+    fn an_empty_navigation_goal_does_not_commence_guard() {
         let mut e = GameEntity::test_default(1, "MTNK", "Americans", 3, 3); // Unit
         e.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_known(MissionType::Move),
@@ -2212,8 +2108,7 @@ mod mission_shadow_tests {
             ai_counter: 0,
             dispatch_timer: MissionDispatchTimer::at_frame(0),
         });
-        assert!(e.committed_mission_is_finished());
-        assert_eq!(e.passive_acquire_mission(), MissionType::Guard);
+        assert_eq!(e.passive_acquire_mission(), MissionType::Move);
     }
 
     /// Area Guard is a job that never finishes AND has its own handler, which
@@ -2229,7 +2124,6 @@ mod mission_shadow_tests {
         ] {
             let mut e = GameEntity::test_default(1, "MTNK", "Americans", 3, 3);
             e.category = category;
-            assert!(e.committed_mission_is_finished());
             e.mission.apply_test_fixture(MissionTestFixture {
                 current: MissionId::from_known(MissionType::AreaGuard),
                 suspended: MissionId::NONE,

@@ -1052,7 +1052,7 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
     sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules, &height_map)
         .expect("dynamic blocker should spawn");
     assert!(sim.substrate.entities.get(refinery_id).is_some());
-    assert!(sim.set_unit_cell_destination(miner_id, (1, 0), &rules));
+    assert!(sim.set_unit_cell_destination(miner_id, (1, 0), &rules, true));
 
     let movement = first_track_process_route(&mut sim, miner_id, Some(&rules), &path_grid)
         .expect("the dock leg's first Process should install the hierarchy-backed route");

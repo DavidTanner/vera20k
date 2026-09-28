@@ -50,6 +50,35 @@ fn entity(id: u64, kind: LocomotorKind, current: DriveCoord, head: DriveCoord) -
 }
 
 #[test]
+fn lazy_track_constructor_projects_original_null_head_coordinates() {
+    let rows: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_navigation_coordinate.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for row in rows.as_array().unwrap() {
+        let input = &row["input"];
+        let kind = match input["family"].as_str().unwrap() {
+            "drive" => LocomotorKind::Drive,
+            "ship" => LocomotorKind::Ship,
+            _ => continue,
+        };
+        if input["stored_head"] != serde_json::json!([0, 0, 0]) || input["tube"].is_array() {
+            continue;
+        }
+        let mut actor = entity(1, kind, coord(&input["current"]), NULL_COORD);
+        actor.drive_locomotion = None;
+        actor.ship_locomotion = None;
+        assert_eq!(
+            navigation_coordinate(&actor, None).unwrap(),
+            coord(&row["coordinate"])
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 4);
+}
+
+#[test]
 fn world_queries_match_all_original_foot_coordinate_rows_and_snapshot() {
     let rows: Value = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/foot_navigation_coordinate.json"
@@ -230,7 +259,7 @@ fn production_drive_reaim_reads_retained_target_head() {
 #[test]
 fn missing_foot_receiver_is_an_error_and_tube_does_not_hide_missing_descriptor() {
     let mut e = entity(1, LocomotorKind::Drive, NULL_COORD, NULL_COORD);
-    e.drive_locomotion = None;
+    e.locomotor = None;
     assert!(navigation_coordinate(&e, None).is_err());
     e.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
         tube_id: TubeId(0),

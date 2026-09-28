@@ -407,14 +407,7 @@ impl FireSubject<'_> {
     /// coordinate used to resolve it; recover allocation identity without an
     /// extra lookup before GetFireError's first native map query at 0x006FC197.
     fn cell_target_identity(&self) -> Option<NativeCellIdentity> {
-        let TargetKind::Cell(rx, ry) = self.target? else {
-            return None;
-        };
-        let terrain = self.terrain()?;
-        let cell = terrain
-            .native_fixed_cell_index(rx as i16, ry as i16)
-            .map_or(NativeCellIdentity::Dummy, NativeCellIdentity::Real);
-        Some(cell)
+        self.target?.cell_identity(self.terrain()?)
     }
 }
 

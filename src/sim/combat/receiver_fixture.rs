@@ -633,14 +633,16 @@ pub(crate) fn resolve_attacker_fire(
             }
             world.session.binary_frame = binary_frame;
             world.receiver_fixture.as_mut().unwrap().current_tick = u64::from(binary_frame);
+            if let Some(fog) = fog {
+                world.fog = fog.clone();
+            }
             world_receiver::resolve_attacker_fire(
                 world,
                 rules,
                 overlay_registry,
                 snap,
-                fog,
+                fog.is_some(),
                 binary_frame,
-                _tick_ms,
                 has_active_wave,
                 out,
             );

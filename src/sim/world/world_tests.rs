@@ -2520,7 +2520,7 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
             // `TechnoClass::Evaluate_Candidate @ 0x006F85AB` refuses an enemy
             // building with no weapon or no posed threat, which is a targeting
             // fact this Tube-ordering test is not about.
-            sim.tick_order_intents_pre_combat(&rules, None, &std::collections::BTreeSet::new());
+            sim.acquire_order_intent_target_one(1, &rules, None);
             assert!(matches!(
                 sim.substrate
                     .entities
@@ -2988,16 +2988,16 @@ fn combat_test_rules() -> RuleSet {
     RuleSet::from_ini(&ini).expect("combat test rules should parse")
 }
 
-fn sonic_wave_test_rules() -> RuleSet {
-    RuleSet::from_ini(&IniFile::from_str(
+fn sonic_wave_test_rules(range: u8) -> RuleSet {
+    RuleSet::from_ini(&IniFile::from_str(&format!(
         "[VehicleTypes]\n0=DLPH\n1=TARGET\n\n\
          [DLPH]\nStrength=200\nArmor=light\nSpeed=8\nPrimary=SonicZap\nElitePrimary=SonicZapE\n\n\
          [TARGET]\nStrength=100\nArmor=wood\n\n\
-         [SonicZap]\nDamage=4\nAmbientDamage=10\nROF=20\nRange=6\nProjectile=Sonic\nSpeed=100\nWarhead=SonicWH\nIsSonic=yes\n\n\
-         [SonicZapE]\nDamage=8\nAmbientDamage=15\nROF=20\nRange=6\nProjectile=Sonic\nSpeed=100\nWarhead=SonicWH\nIsSonic=yes\n\n\
+         [SonicZap]\nDamage=4\nAmbientDamage=10\nROF=20\nRange={range}\nProjectile=Sonic\nSpeed=100\nWarhead=SonicWH\nIsSonic=yes\n\n\
+         [SonicZapE]\nDamage=8\nAmbientDamage=15\nROF=20\nRange={range}\nProjectile=Sonic\nSpeed=100\nWarhead=SonicWH\nIsSonic=yes\n\n\
          [Sonic]\nLevel=yes\n\n\
          [SonicWH]\nWood=yes\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n",
-    ))
+    )))
     .expect("Sonic Wave fixture")
 }
 
@@ -3059,7 +3059,7 @@ fn sonic_fire_event(sim: &mut Simulation, attacker_id: u64, target_id: u64) -> S
 
 #[test]
 fn sonic_constructor_dead_pointer_link_lives_until_deferred_delete_at_239() {
-    let rules = sonic_wave_test_rules();
+    let rules = sonic_wave_test_rules(6);
     let mut sim = Simulation::new();
     let firer_id = sim.allocate_stable_id();
     let target_id = sim.allocate_stable_id();
@@ -3096,7 +3096,7 @@ fn sonic_constructor_dead_pointer_link_lives_until_deferred_delete_at_239() {
 
 #[test]
 fn sonic_constructor_at_240_registers_then_runs_at_same_pass_tail() {
-    let rules = sonic_wave_test_rules();
+    let rules = sonic_wave_test_rules(6);
     let mut sim = Simulation::new();
     let firer_id = sim.allocate_stable_id();
     let target_id = sim.allocate_stable_id();
@@ -3139,7 +3139,7 @@ fn sonic_constructor_at_240_registers_then_runs_at_same_pass_tail() {
 
 #[test]
 fn sonic_cell_target_uses_persistent_dummy_gettargetcoords_on_create_and_refresh() {
-    let rules = sonic_wave_test_rules();
+    let rules = sonic_wave_test_rules(6);
     let mut sim = Simulation::new();
     let terrain = ResolvedTerrainGrid::from_cells(0, 0, Vec::new());
     terrain.test_set_dummy_cell_level_slope(2, 0);
@@ -3212,7 +3212,7 @@ fn sonic_cell_target_uses_persistent_dummy_gettargetcoords_on_create_and_refresh
 /// bullets that land in each frame's Logic tail until the target dies, then
 /// holds no target.
 #[test]
-fn a_gi_on_guard_acquires_an_enemy_infantryman_and_fires_until_it_dies() {
+fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=E1\n\n[VehicleTypes]\n\n[AircraftTypes]\n\n[BuildingTypes]\n\n\
          [E1]\nStrength=125\nArmor=none\nSpeed=4\nSight=5\nPrimary=M60\n\
@@ -3245,49 +3245,74 @@ fn a_gi_on_guard_acquires_an_enemy_infantryman_and_fires_until_it_dies() {
     runtime.resources.rules = rules;
     runtime.resources.height_map = heights;
 
-    let mut gi_shots = 0;
-    let mut enemy_health = Vec::new();
+    // The two identical guards both acquire and return fire. A fixed winner
+    // was an accidental property of the old globally delayed firing host:
+    // the live Infantry51BF59 slot interleaves GetROF's jitter before the next
+    // actor's Techno AI draws. Winner identity here is not a native golden.
+    // Follow both actors through the same production chain instead.
+    let actors = [gi, enemy];
+    let mut shots = [0; 2];
+    let mut health_history = [Vec::new(), Vec::new()];
+    let mut survivor = None;
     for _ in 0..600 {
         let output = runtime
             .advance_frame(&[], 67, TickLane::Ordinary)
             .expect("fixture frame must complete");
         assert!(output.tick.frame_committed);
         let sim = &runtime.simulation;
-        gi_shots += output
-            .fire_events
-            .iter()
-            .filter(|event| event.attacker_id == gi)
-            .count();
-        match sim.substrate.entities.get(enemy) {
-            Some(target) if !target.dying => enemy_health.push(target.health.current),
-            _ => break,
+        let mut alive = Vec::new();
+        for (index, &id) in actors.iter().enumerate() {
+            shots[index] += output
+                .fire_events
+                .iter()
+                .filter(|event| event.attacker_id == id)
+                .count();
+            if let Some(target) = sim.substrate.entities.get(id)
+                && !target.dying
+            {
+                health_history[index].push(target.health.current);
+                alive.push(index);
+            }
+        }
+        if alive.len() < 2 {
+            assert_eq!(alive.len(), 1, "this seeded duel has one survivor");
+            survivor = alive.first().copied();
+            break;
         }
     }
-    let sim = &runtime.simulation;
-    assert!(
-        sim.substrate
+    let survivor = survivor.expect("one guard must finish the duel");
+    for history in &mut health_history {
+        history.dedup();
+        assert_eq!(history.first(), Some(&125));
+        assert!(
+            history.windows(2).all(|pair| pair[0] - pair[1] == 25),
+            "each hit is one M60 bullet: {history:?}"
+        );
+    }
+    assert_eq!(shots[survivor], 5, "five 25-damage shots kill 125 HP");
+    assert_eq!(shots[1 - survivor], 4, "the other guard returned fire");
+    let survivor = actors[survivor];
+    assert_eq!(
+        runtime
+            .simulation
+            .substrate
             .entities
-            .get(enemy)
-            .is_none_or(|target| target.dying),
-        "the enemy infantryman dies"
+            .get(survivor)
+            .unwrap()
+            .health
+            .current,
+        25,
+        "the survivor received four bullets"
     );
-    enemy_health.dedup();
-    assert_eq!(enemy_health.first(), Some(&125));
-    assert!(
-        enemy_health.windows(2).all(|pair| pair[0] - pair[1] == 25),
-        "every hit is one M60 bullet: {enemy_health:?}"
-    );
-    assert_eq!(gi_shots, 5, "five 25-damage shots kill 125 HP");
-    // The enemy fired back, which put the GI on Attack (retaliation). With its
-    // target gone, Mission_Attack's next visits return it to Guard, where it
-    // idles holding nothing.
+    // Return fire puts the survivor on Attack. Once its target dies, the
+    // next Mission_Attack visits return it to Guard, holding no target.
     let guard = crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Guard);
     for _ in 0..60 {
         if runtime
             .simulation
             .substrate
             .entities
-            .get(gi)
+            .get(survivor)
             .unwrap()
             .mission
             .current()
@@ -3299,14 +3324,14 @@ fn a_gi_on_guard_acquires_an_enemy_infantryman_and_fires_until_it_dies() {
             .advance_frame(&[], 67, TickLane::Ordinary)
             .expect("fixture frame must complete");
     }
-    let gi = runtime
+    let survivor = runtime
         .simulation
         .substrate
         .entities
-        .get(gi)
-        .expect("the GI survives");
-    assert_eq!(gi.mission.current(), guard);
-    assert!(gi.attack_target.is_none());
+        .get(survivor)
+        .expect("the winning guard survives");
+    assert_eq!(survivor.mission.current(), guard);
+    assert!(survivor.attack_target.is_none());
 }
 
 #[test]
@@ -3339,6 +3364,14 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
     let later_target_id = sim
         .spawn_object("TARGET", "Russians", 2, 2, 0, &rules, &heights)
         .expect("later shooter's target");
+    // These later Units take their Techno AI between the firers and the Wave.
+    // Hold their unrelated Guard/scan timers so the RNG equality below
+    // isolates the two FireAt transactions and the Wave receiver boundary.
+    for id in [sonic_endpoint_id, wave_receiver_id, later_target_id] {
+        let target = sim.substrate.entities.get_mut(id).unwrap();
+        target.mission.write_dispatch_epilogue(0, 1000);
+        target.passive_scan_timer.arm(0, 1000);
+    }
     assert!(crate::sim::combat::issue_attack_command(
         &mut sim.substrate.entities,
         dolphin_id,
@@ -3450,7 +3483,10 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
 
 #[test]
 fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
-    let rules = sonic_wave_test_rules();
+    // Range6 cannot reach this six-cell horizontal separation plus the
+    // source deck/target WaterSet-ground difference. Keep the Wave's tested
+    // geometry while placing the shot strictly inside the weapon's range.
+    let rules = sonic_wave_test_rules(7);
     let mut sim = Simulation::with_seed(0x5EED_6240);
     sim.input_delay_ticks = 0;
     let mut cells = (0..8)
@@ -3495,6 +3531,28 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
         0,
         Some(&rules),
         &sim.interner,
+    ));
+    let terrain = sim.resolved_terrain.as_ref().unwrap();
+    let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+    let target = cells.lookup((6, 0));
+    assert_eq!(
+        crate::sim::combat::in_range::native_cell_range_coords(target, &cells),
+        Some((6 * 256 + 128, 128, 208)),
+        "WaterSet Cell range uses its ground coordinate before Wave construction"
+    );
+    let source = sim.substrate.entities.get(dolphin_id).unwrap();
+    let source_z = crate::sim::combat::in_range::effective_z_leptons(source, terrain).unwrap();
+    assert_eq!(source_z, 624);
+    assert!(crate::sim::combat::in_range::compute_in_range(
+        source,
+        (128, 128, source_z),
+        &crate::sim::combat::TargetKind::Cell(6, 0),
+        rules.weapon("SonicZap").unwrap(),
+        &rules,
+        &sim.interner,
+        &sim.substrate.entities,
+        terrain,
+        &Default::default(),
     ));
 
     let path = PathGrid::test_all_passable(8, 1);

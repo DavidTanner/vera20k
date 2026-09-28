@@ -386,7 +386,7 @@ fn unit_setter_teleporter_arm_matches_the_original_assign_destination() {
         match input.get("dest").filter(|d| !d.is_null()) {
             Some(dest) => {
                 s.sim
-                    .set_unit_cell_destination(s.miner, cell(dest), &s.rules);
+                    .set_unit_cell_destination(s.miner, cell(dest), &s.rules, true);
             }
             None => {
                 s.sim.set_unit_null_destination(s.miner, Some(&s.rules));

@@ -499,6 +499,20 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     let row = serde_json::json!({"doing": DO_READY, "fraction": 0.0, "height": 0,
         "owner": {"phase": 0, "moving": false}});
     let (mut sim, rules, _) = rocketeer_crash_fixture(&row);
+    // The crash fixture's rules-free Reveal intentionally skips Techno
+    // Unlimbo's idle selection (0x006F6E2A..0x006F6E4F). This live idle test
+    // needs the committed Guard that the ordinary rules-bearing owner sets.
+    super::foot_unlimbo_idle_mode(&mut sim, 1, &rules);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .mission
+            .current()
+            .known(),
+        Some(crate::sim::mission::MissionType::Guard)
+    );
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
     let mut fidgets = Vec::new();
     let mut playing: Option<i32> = None;

@@ -1,5 +1,6 @@
-//! The objects whose attack routine does not run this frame, collected before
-//! the combat snapshot loop so the loop can skip them.
+//! Shared admission for whether an object's attack routine runs this frame.
+//! Unit/Infantry live slots query it directly; remaining class hosts collect a blocked
+//! set before their combat snapshot loop.
 //!
 //! Every refusal that is a GetFireError code (a teleport's warp, low power,
 //! an empty garrison) is decided by `fire_error` and acted on by the firer's
@@ -18,42 +19,46 @@ pub fn collect_fire_blocked_entities(entities: &EntityStore) -> BTreeSet<u64> {
     let mut blocked: BTreeSet<u64> = BTreeSet::new();
 
     for entity in entities.values() {
-        // Rockets are projectiles, not weapon-bearing units — never fire.
-        if entity.rocket_state.is_some() {
+        if fire_blocked(entity) {
             blocked.insert(entity.stable_id());
-            continue;
-        }
-
-        // An empty aircraft (Ammo `+0x2FC` exactly zero; -1 is unlimited)
-        // outside a Mission_Attack visit: GetFireError's T47 (`0x006FCA0D`)
-        // refuses it anyway, and skipping the routine keeps the generic
-        // retarget from handing it a new target. A visit its dispatch asked
-        // for runs regardless; state 4's prefix (`0x004182A3`) is its own.
-        if let Some(ref ammo) = entity.aircraft_ammo
-            && ammo.current == 0
-        {
-            blocked.insert(entity.stable_id());
-            continue;
-        }
-
-        // Attack dispatch is admitted by a call-local mission receipt in the
-        // combat host. Docked aircraft cannot fire.
-        if let Some(ref mission) = entity.aircraft_mission
-            && mission.is_docked_idle()
-        {
-            blocked.insert(entity.stable_id());
-            continue;
-        }
-
-        // A building still playing its build-up runs its Construction
-        // mission, not Mission_Attack.
-        if entity.building_up.is_some() {
-            blocked.insert(entity.stable_id());
-            continue;
         }
     }
 
     blocked
+}
+
+/// The same owner predicate at an individual object's live fire slot.
+pub(crate) fn fire_blocked(entity: &crate::sim::game_entity::GameEntity) -> bool {
+    // Rockets are projectiles, not weapon-bearing units — never fire.
+    if entity.rocket_state.is_some() {
+        return true;
+    }
+
+    // An empty aircraft (Ammo `+0x2FC` exactly zero; -1 is unlimited)
+    // outside a Mission_Attack visit: GetFireError's T47 (`0x006FCA0D`)
+    // refuses it anyway, and skipping the routine keeps the generic
+    // retarget from handing it a new target. A visit its dispatch asked
+    // for runs regardless; state 4's prefix (`0x004182A3`) is its own.
+    if let Some(ref ammo) = entity.aircraft_ammo
+        && ammo.current == 0
+    {
+        return true;
+    }
+
+    // Attack dispatch is admitted by a call-local mission receipt in the
+    // combat host. Docked aircraft cannot fire.
+    if let Some(ref mission) = entity.aircraft_mission
+        && mission.is_docked_idle()
+    {
+        return true;
+    }
+
+    // A building still playing its build-up runs its Construction
+    // mission, not Mission_Attack.
+    if entity.building_up.is_some() {
+        return true;
+    }
+    false
 }
 
 #[cfg(test)]

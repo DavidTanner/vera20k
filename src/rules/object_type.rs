@@ -631,6 +631,15 @@ pub struct ObjectType {
     /// `CanRetaliate=` — when false, the unit does not fire back when hit
     /// (suppresses the damage-triggered retaliation acquisition). Default yes.
     pub can_retaliate: bool,
+    /// TechnoType+D33, read by Foot Approach_Target4D5690. Constructor
+    /// 71152A sets true; ReadINI7144AF uses native ReadBool with the current
+    /// value as its default. Attack still searches when this flag is false.
+    /// Original constructor/reader controls and retail layer inputs:
+    /// `tools/spatial_oracle/fv_cell_attack/approach_rules.json`.
+    pub can_approach_target: bool,
+    /// TechnoType+D34 (constructor711530, ReadINI7144C9): permit Approach
+    /// to discard a retained destination too far from the current target.
+    pub can_recalc_approach_target: bool,
     /// `CanPassiveAquire=` (the key is misspelled in the original INI and in
     /// the binary's key table — parsed verbatim). When false the object never
     /// reaches the passive target scanner, so it only ever fires at a target it
@@ -2094,6 +2103,11 @@ impl ObjectType {
             opportunity_fire: section.get_bool("OpportunityFire").unwrap_or(false),
             // Default yes (retaliation allowed unless the type opts out).
             can_retaliate: section.get_bool("CanRetaliate").unwrap_or(true),
+            // ReadINI7144AF then7144C9. The shared bool reader folds only
+            // post-allocation passes retained by native_processing, preserving
+            // an earlier false when a later key is missing or malformed.
+            can_approach_target: section.read_bool("CanApproachTarget", true),
+            can_recalc_approach_target: section.read_bool("CanRecalcApproachTarget", true),
             // Default yes. The INI spelling really is "Aquire" — do not correct it.
             can_passive_acquire: section.get_bool("CanPassiveAquire").unwrap_or(true),
             spray_attack: section.get_bool("SprayAttack").unwrap_or(false),

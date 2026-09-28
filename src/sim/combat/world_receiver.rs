@@ -2360,9 +2360,8 @@ pub(super) fn resolve_attacker_fire(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     snap: &AttackerSnapshot,
-    fog: Option<&FogState>,
+    use_fog: bool,
     binary_frame: u32,
-    _tick_ms: u32,
     has_active_wave: bool,
     out: &mut CombatEmit,
 ) -> Option<fire_error::FireError> {
@@ -2372,9 +2371,8 @@ pub(super) fn resolve_attacker_fire(
         rules,
         overlay_registry,
         snap,
-        fog,
+        use_fog,
         binary_frame,
-        _tick_ms,
         has_active_wave,
         &mut fire_error,
         out,
@@ -2408,9 +2406,8 @@ fn admit_attacker_fire<'r>(
     rules: &'r RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     snap: &AttackerSnapshot,
-    fog: Option<&FogState>,
+    use_fog: bool,
     binary_frame: u32,
-    _tick_ms: u32,
     has_active_wave: bool,
     fire_error_out: &mut Option<fire_error::FireError>,
     out: &mut CombatEmit,
@@ -2551,7 +2548,7 @@ fn admit_attacker_fire<'r>(
                 return None;
             };
             let is_ally = combat_weapon::is_ally_by_object(
-                fog.map(|fog_state| &fog_state.alliances),
+                use_fog.then_some(&world.fog.alliances),
                 &mut world.interner,
                 snap.owner,
                 target_entity.owner(),
@@ -2722,7 +2719,7 @@ fn admit_attacker_fire<'r>(
                 world,
                 rules,
                 overlay_registry,
-                fog,
+                fog: use_fog.then_some(&world.fog),
                 firer,
                 obj,
                 target: Some(snap.target),
@@ -2956,72 +2953,11 @@ fn unit_reaches_fire_update(world: &Simulation, id: u64) -> bool {
     })
 }
 
-/// Whether an attacker's own AI still reaches its fire this frame. A Unit's
-/// does while IsAlive (`UnitClass::AI 0x007365BB`), which a crashing wreck
-/// keeps at Health 0; a Building's `ProcessDelayedFire` and an Infantry's fire
-/// read Health here, and an Aircraft fires only when its mission (which a
-/// Health-0 wreck does not run) asks.
+/// Non-Unit fire hosts require Health: a Building's delayed fire,
+/// an Infantry's fire and an Aircraft's attack mission do not run for a
+/// Health-0 wreck. Units use their own live-slot IsAlive guard above.
 fn attacker_reaches_fire(entity: &crate::sim::game_entity::GameEntity) -> bool {
-    if entity.category == EntityCategory::Unit {
-        entity.is_ai_alive()
-    } else {
-        entity.is_alive() && !entity.dying
-    }
-}
-
-/// The gattling units whose AI reaches the firing update this frame without
-/// an attack snapshot, keyed by their place in the live walk (`live_order`,
-/// or stable id when a fixture passes none). A unit in a transport or in
-/// Limbo is not in the walk; a warped-out one (`0x007362FB`) and one in a
-/// tube (`0x007363A4`) return before the update; a dead one does not reach
-/// it. Only a gattling type does anything there with no target. The caller
-/// asks [`unit_reaches_fire_update`] again at each unit's slot.
-///
-/// RESIDUAL (dormant): a unit riding an `OpenTopped=` transport is in the
-/// walk (`SetInOpenTransport 0x00710470` registers it), so an idle gattling
-/// rider would spin down there. No retail gattling vehicle fits the Battle
-/// Fortress (`SizeLimit=2`).
-fn idle_unit_fire_updates(
-    world: &Simulation,
-    rules: &RuleSet,
-    snapshots: &[AttackerSnapshot],
-    live_order: &[u64],
-    keys: &[u64],
-    fire_suppressed: &BTreeSet<u64>,
-) -> Vec<((usize, u64), u64)> {
-    let idle_gattling = |id: u64| {
-        !fire_suppressed.contains(&id)
-            && world.substrate.entities.get(id).is_some_and(|entity| {
-                entity.category == EntityCategory::Unit
-                    && entity.is_ai_alive()
-                    && !entity.lifecycle.in_limbo
-                    && !entity.passenger_role.is_inside_transport()
-                    && !entity.is_warped_out()
-                    && world
-                        .object_type(entity.type_ref(), rules)
-                        .is_some_and(|object| object.is_gattling)
-            })
-    };
-    let mut idle: Vec<((usize, u64), u64)> = if live_order.is_empty() {
-        keys.iter()
-            .copied()
-            .filter(|&id| idle_gattling(id))
-            .map(|id| ((usize::MAX, id), id))
-            .collect()
-    } else {
-        live_order
-            .iter()
-            .copied()
-            .enumerate()
-            .filter(|&(_, id)| idle_gattling(id))
-            .map(|(index, id)| ((index, id), id))
-            .collect()
-    };
-    if !idle.is_empty() {
-        let with_snapshot: BTreeSet<u64> = snapshots.iter().map(|snap| snap.stable_id).collect();
-        idle.retain(|&(_, id)| !with_snapshot.contains(&id));
-    }
-    idle
+    entity.is_alive() && !entity.dying
 }
 
 /// `Fire_At_Target`'s ILLEGAL arm (Unit `0x00736E7E`, Infantry `0x00520721`):
@@ -4357,6 +4293,192 @@ impl FireCommitBoundary {
     }
 }
 
+fn deduct_fire_ammo(world: &mut Simulation, firers: &[u64]) {
+    for &id in firers {
+        if let Some(ammo) = world
+            .substrate
+            .entities
+            .get_mut(id)
+            .and_then(|entity| entity.aircraft_ammo.as_mut())
+            && ammo.current > 0
+        {
+            ammo.current -= 1;
+        }
+    }
+}
+
+/// Fire_At_Target's action and pending-shot writes precede the Infantry
+/// sequencer (`51BF59` before `51BF6A`) and any later object's fatal receiver.
+fn commit_fire_animation_updates(
+    world: &mut Simulation,
+    animation_switches: Vec<(u64, SequenceKind)>,
+    pending_infantry_updates: Vec<(u64, Option<PendingInfantryFire>)>,
+) {
+    for (attacker_id, sequence) in animation_switches {
+        if let Some(entity) = world.substrate.entities.get_mut(attacker_id) {
+            if entity.infantry_terminal.is_some() {
+                continue;
+            }
+            if let Some(anim) = entity.animation.as_mut() {
+                anim.switch_to(sequence);
+            }
+        }
+    }
+    for (attacker_id, pending) in pending_infantry_updates {
+        if let Some(entity) = world.substrate.entities.get_mut(attacker_id)
+            && let Some(attack) = entity.attack_target.as_mut()
+        {
+            attack.pending_infantry_fire = pending;
+        }
+    }
+}
+
+/// Unit/Infantry live Fire_At_Target slots. Unit calls Fire then Facing
+/// (`7365E1`, `7365E8`) before its second Ready/Commence; Infantry calls Fire
+/// (`51BF59`) after that checkpoint and fear, before its sequencer (`51BF6A`).
+/// Paid locomotion precedes both. FireAt admits its Bullet immediately, so
+/// the live Logic cursor reaches that Bullet after the remaining older objects.
+/// Native full-Unit/Logic execution: `fv_cell_attack` paid movement evidence.
+/// Native Infantry caller controls: `tools/spatial_oracle/infantry_ai_order.md`.
+///
+/// This also hosts component combat fixtures. It reads the current object and
+/// fog at this slot, never a frame-wide attacker or sensor snapshot.
+pub(crate) fn foot_fire_at_target(
+    world: &mut Simulation,
+    run: &mut ReceiverRun,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    id: u64,
+    emit: &mut CombatEmit,
+    under_attack_events: &mut Vec<UnderAttackEvent>,
+) {
+    let Some(entity) = world.substrate.entities.get(id) else {
+        return;
+    };
+    let unit = entity.category == EntityCategory::Unit;
+    let reaches_fire = if unit {
+        unit_reaches_fire_update(world, id)
+    } else {
+        entity.category == EntityCategory::Infantry
+            && attacker_reaches_fire(entity)
+            && !entity.ai_frozen()
+    };
+    if !reaches_fire {
+        return;
+    }
+    if entity.passenger_role.is_inside_transport() && !entity.passenger_role.in_open_transport() {
+        return;
+    }
+    let snapshot = (!combat_fire_gate::fire_blocked(entity))
+        .then(|| shot_target(entity, None))
+        .flatten()
+        .map(|(target, pending)| build_attacker_snapshot(entity, target, pending, None));
+    let binary_frame = world.session.binary_frame;
+    let remove_start = emit.remove_attack.len();
+    let ammo_start = emit.ammo_deduct.len();
+    let mut fire_error = None;
+    let mut fire_hull = None;
+    if let Some(snapshot) = snapshot {
+        // Fire_At_Target's turretless Facing error can write a hull
+        // destination. Idle Units need no allocated emit slot.
+        if unit {
+            emit.unit_facing.push(UnitFacingUpdate {
+                entity_id: id,
+                turret_destination: None,
+                hull_destination: None,
+                turret_destination_is_idle_return: false,
+            });
+        }
+        let boundary = FireCommitBoundary::capture(emit);
+        #[cfg(not(test))]
+        let use_fog = true;
+        #[cfg(test)]
+        let use_fog = world
+            .receiver_fixture
+            .as_ref()
+            .is_none_or(|fixture| fixture.fog_enabled);
+        let has_active_wave = world.active_wave_links.contains_key(&id);
+        fire_error = resolve_attacker_fire(
+            world,
+            rules,
+            overlay_registry,
+            &snapshot,
+            use_fog,
+            binary_frame,
+            has_active_wave,
+            emit,
+        );
+        boundary.commit(
+            world,
+            run,
+            rules,
+            overlay_registry,
+            emit,
+            under_attack_events,
+        );
+        if unit {
+            fire_hull = emit
+                .unit_facing
+                .pop()
+                .expect("the current Unit's fire-facing receipt")
+                .hull_destination;
+        }
+    }
+    commit_fire_animation_updates(
+        world,
+        std::mem::take(&mut emit.animation_switches),
+        std::mem::take(&mut emit.pending_infantry_updates),
+    );
+    deduct_fire_ammo(world, &emit.ammo_deduct[ammo_start..]);
+    emit.ammo_deduct.truncate(ammo_start);
+    // Native target assignment has returned before Facing_Update reads it.
+    for removed in emit.remove_attack.drain(remove_start..) {
+        if let Some(entity) = world.substrate.entities.get_mut(removed) {
+            represented_assign_target(entity, None);
+        }
+    }
+    if !unit {
+        return;
+    }
+    if unit_reaches_fire_update(world, id) {
+        world.unit_fire_update_tail(
+            id,
+            fire_error.map_or(
+                gattling::UnitFireOutcome::NoTarget,
+                gattling::UnitFireOutcome::Code,
+            ),
+            rules,
+        );
+    }
+    let Some(entity) = world.substrate.entities.get(id) else {
+        return;
+    };
+    let mut facing = UnitFacingUpdate::from_facing_update(
+        id,
+        crate::sim::movement::turret::facing_update(
+            entity,
+            &world.substrate.entities,
+            Some(rules),
+            &world.interner,
+            binary_frame,
+        ),
+    );
+    if fire_hull.is_some() {
+        facing.hull_destination = fire_hull;
+    }
+    crate::sim::world::unit_post::apply_unit_facing(
+        &mut world.substrate.entities,
+        std::slice::from_ref(&facing),
+        rules,
+        &world.interner,
+        binary_frame,
+    );
+    #[cfg(test)]
+    if world.receiver_fixture.is_some() {
+        emit.unit_facing.push(facing);
+    }
+}
+
 pub(crate) fn tick_combat(
     world: &mut Simulation,
     run: &mut ReceiverRun,
@@ -4712,6 +4834,14 @@ pub(crate) fn tick_combat(
             Some(e) => e,
             None => continue,
         };
+        // Units and Infantry already fired in their own live Logic slots.
+        // Component fixtures below invoke that same slot without a world pass.
+        if matches!(
+            entity.category,
+            EntityCategory::Unit | EntityCategory::Infantry
+        ) {
+            continue;
+        }
         // A closed transport's passengers left the logic walk; an
         // open-topped transport's riders stay in it and fire from inside
         // (`SetInOpenTransport @ 0x00710470`).
@@ -4786,84 +4916,57 @@ pub(crate) fn tick_combat(
             ..build_attacker_snapshot(entity, attack_target, pending_infantry_fire, garrison)
         });
     }
-    // Native combat resolves each object inline during the single live-object
-    // (reveal/insertion-order) AI walk, so firing/damage/kill-credit order is
-    // the live-object order, not stable-id. Sort the collected attacker
-    // snapshots by their position in the live order. stable_id is the
-    // deterministic tiebreaker for any attacker absent from the live order
-    // (objects outside the logic walk do not fire; an open-topped rider is in
-    // it) and makes an empty live_order reproduce the previous stable-id order
-    // exactly.
+    // The remaining class hosts retain their existing phase order. Foot firers
+    // have no production entry here: their complete slot ran in the live pass.
     let live_index: std::collections::HashMap<u64, usize> = live_order
         .iter()
         .enumerate()
         .map(|(i, &id)| (id, i))
         .collect();
-    snapshots.sort_by_key(|s| {
-        (
-            live_index.get(&s.stable_id).copied().unwrap_or(usize::MAX),
-            s.stable_id,
-        )
-    });
-
-    // UnitClass Facing_Update runs immediately after this object's Fire_At_Target,
-    // before any bullet created by the fire reaches its later LogicVector slot.
-    // Capture that read window for every Unit up front, so nothing a later
-    // shot commits below changes this frame's barrel destination.
-    for snap in &snapshots {
-        let Some(entity) = world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .filter(|entity| entity.category == EntityCategory::Unit)
-        else {
-            continue;
-        };
-        emit.unit_facing.push(UnitFacingUpdate::from_facing_update(
-            snap.stable_id,
-            crate::sim::movement::turret::facing_update(
-                entity,
-                &world.substrate.entities,
-                Some(rules),
-                &world.interner,
-                binary_frame,
-            ),
-        ));
+    enum FireVisit {
+        Attacker(AttackerSnapshot),
+        #[cfg(test)]
+        Foot(u64),
     }
-
-    // Phase 2: per-attacker fire decision + emission, in live-LOGIC snapshot
-    // order. Each attacker is resolved through `resolve_attacker_fire` (the
-    // reusable per-object fire body); emission order is identical to the prior
-    // inline loop, preserving both event order and inline Scenario-RNG draws.
-    // Fire is category-agnostic (Units fire through the same body here); Unit
-    // FACING destinations use the preseeded native read window above, with
-    // the attacker's own target-removal replacement below, then are applied post-batch by
-    // `unit_post::apply_unit_facing`.
-    //
-    // The firing update's tail (`UnitClass::AI @ 0x007365E1`, the Gattling
-    // charge or decay and `+0x148`) runs for every unit whose AI reaches it,
-    // in live order: after its fire for a unit with a snapshot, with no target
-    // for the rest.
-    let mut idle_fire_updates =
-        idle_unit_fire_updates(world, rules, &snapshots, live_order, &keys, fire_suppressed)
-            .into_iter()
-            .peekable();
-    for snap in &snapshots {
-        let order = (
-            live_index
-                .get(&snap.stable_id)
-                .copied()
-                .unwrap_or(usize::MAX),
-            snap.stable_id,
-        );
-        while let Some(&(idle_order, id)) = idle_fire_updates.peek()
-            && idle_order < order
-        {
-            idle_fire_updates.next();
-            if unit_reaches_fire_update(world, id) {
-                world.unit_fire_update_tail(id, gattling::UnitFireOutcome::NoTarget, rules);
+    let mut visits: Vec<_> = snapshots.into_iter().map(FireVisit::Attacker).collect();
+    #[cfg(test)]
+    if world.receiver_fixture.is_some() {
+        visits.extend(keys.iter().copied().filter_map(|id| {
+            (!fire_suppressed.contains(&id)
+                && world.substrate.entities.get(id).is_some_and(|entity| {
+                    matches!(
+                        entity.category,
+                        EntityCategory::Unit | EntityCategory::Infantry
+                    )
+                }))
+            .then_some(FireVisit::Foot(id))
+        }));
+    }
+    visits.sort_by_key(|visit| {
+        let id = match visit {
+            FireVisit::Attacker(snapshot) => snapshot.stable_id,
+            #[cfg(test)]
+            FireVisit::Foot(id) => *id,
+        };
+        (live_index.get(&id).copied().unwrap_or(usize::MAX), id)
+    });
+    for visit in visits {
+        let snap = match visit {
+            #[cfg(test)]
+            FireVisit::Foot(id) => {
+                foot_fire_at_target(
+                    world,
+                    run,
+                    rules,
+                    overlay_registry,
+                    id,
+                    &mut emit,
+                    &mut under_attack_events,
+                );
+                continue;
             }
-        }
+            FireVisit::Attacker(snapshot) => snapshot,
+        };
         let Some(live_attack) = world
             .substrate
             .entities
@@ -4871,23 +4974,12 @@ pub(crate) fn tick_combat(
             .filter(|entity| attacker_reaches_fire(entity))
             .and_then(|entity| shot_target(entity, snap.building_shot))
         else {
-            // A unit whose target went away earlier this frame reaches its
-            // firing update with none.
-            if unit_reaches_fire_update(world, snap.stable_id) {
-                world.unit_fire_update_tail(
-                    snap.stable_id,
-                    gattling::UnitFireOutcome::NoTarget,
-                    rules,
-                );
-            }
             continue;
         };
-        let mut live_snap = snap.clone();
+        let mut live_snap = snap;
         live_snap.target = live_attack.0;
         live_snap.pending_infantry_fire = live_attack.1;
 
-        let n_remove = emit.remove_attack.len();
-        let boundary = FireCommitBoundary::capture(&emit);
         if fire_requests.aircraft.contains(&live_snap.stable_id) {
             aircraft_release::visit(
                 world,
@@ -4901,14 +4993,14 @@ pub(crate) fn tick_combat(
                 &mut under_attack_events,
             );
         } else {
-            let fire_error = resolve_attacker_fire(
+            let boundary = FireCommitBoundary::capture(&emit);
+            resolve_attacker_fire(
                 world,
                 rules,
                 overlay_registry,
                 &live_snap,
-                fog,
+                fog.is_some(),
                 binary_frame,
-                tick_ms,
                 active_wave_owners.contains(&live_snap.stable_id),
                 &mut emit,
             );
@@ -4920,103 +5012,6 @@ pub(crate) fn tick_combat(
                 &mut emit,
                 &mut under_attack_events,
             );
-            // The shot precedes the tail in the same update. With no code
-            // (admit returned before GetFireError) the tail takes the
-            // no-target arm. For a dead target that is native: pointer expiry
-            // has cleared `+0x2B4`, so `0x00736DF0` takes its no-target arm.
-            if snap.category == EntityCategory::Unit
-                && unit_reaches_fire_update(world, snap.stable_id)
-            {
-                world.unit_fire_update_tail(
-                    snap.stable_id,
-                    fire_error.map_or(
-                        gattling::UnitFireOutcome::NoTarget,
-                        gattling::UnitFireOutcome::Code,
-                    ),
-                    rules,
-                );
-            }
-        }
-        // S3: only this Unit's own target removal may replace its seeded
-        // destination. Synchronous target expiry from VERA's immediate-delivery
-        // approximation is deliberately not visible to native Facing_Update.
-        let Some(e) = world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .filter(|e| e.category == EntityCategory::Unit && e.barrel_facing.is_some())
-        else {
-            continue;
-        };
-        let own_removed = emit.remove_attack[n_remove..].contains(&snap.stable_id);
-        // A removal leaves `Target == 0` before `UnitClass::Facing_Update @
-        // 0x00736990` runs (`0x007365E8`, after `Fire_At_Target`): arm A does
-        // not aim, and arm B's idle return (`0x00736BDD`) waits out the dwell
-        // since the last shot (`GuardAreaTargetingDelay + 5`, `0x00736B4B`)
-        // and turns to the animated hull or the move destination.
-        if own_removed {
-            let mut targetless = e.clone();
-            targetless.attack_target = None;
-            let replacement = UnitFacingUpdate::from_facing_update(
-                snap.stable_id,
-                crate::sim::movement::turret::facing_update(
-                    &targetless,
-                    &world.substrate.entities,
-                    Some(rules),
-                    &world.interner,
-                    binary_frame,
-                ),
-            );
-            let update = emit
-                .unit_facing
-                .iter_mut()
-                .find(|u| u.entity_id == snap.stable_id)
-                .expect("Unit attacker was seeded before fire");
-            *update = replacement;
-        }
-    }
-    // An idle unit killed or warped out earlier in the frame no longer reaches
-    // its update. RESIDUAL: one that an earlier object's inline commit handed a
-    // target (the receiver's retaliation override) still takes the no-target
-    // arm: VERA has no snapshot to fire it this frame. Natively its own turn
-    // would run GetFireError on that target; with VERA's immediate damage the
-    // two orders differ anyway (natively a bullet damages at its later slot).
-    for (_, id) in idle_fire_updates {
-        if unit_reaches_fire_update(world, id) {
-            world.unit_fire_update_tail(id, gattling::UnitFireOutcome::NoTarget, rules);
-        }
-    }
-    // S3 residual: every Unit not in the attacker snapshot set (target-less,
-    // or in-transport holders excluded at the snapshot build). This runs after
-    // all attack ReceiveDamage/death-helper calls, so its target read observes
-    // the same live state the next native object window would expose.
-    {
-        let mut computed: Vec<u64> = emit.unit_facing.iter().map(|u| u.entity_id).collect();
-        computed.sort_unstable();
-        for &id in &keys {
-            if fire_suppressed.contains(&id) {
-                continue;
-            }
-            if computed.binary_search(&id).is_ok() {
-                continue;
-            }
-            let Some(e) = world.substrate.entities.get(id) else {
-                continue;
-            };
-            // A warped Unit's AI returns before Facing_Update (`ai_frozen`).
-            if e.category != EntityCategory::Unit || e.ai_frozen() {
-                continue;
-            }
-            emit.unit_facing.push(UnitFacingUpdate::from_facing_update(
-                id,
-                crate::sim::movement::turret::facing_update(
-                    e,
-                    &world.substrate.entities,
-                    Some(rules),
-                    &world.interner,
-                    binary_frame,
-                ),
-            ));
         }
     }
     // Every projectile, missile, and live-order attack damage event emitted so
@@ -5048,33 +5043,9 @@ pub(crate) fn tick_combat(
 
     // Phase 3: the burst step and rearm were written in each shot's FireAt
     // emission.
-    for &(attacker_id, sequence) in &animation_switches {
-        if let Some(entity) = world.substrate.entities.get_mut(attacker_id) {
-            if entity.infantry_terminal.is_some() {
-                continue;
-            }
-            if let Some(ref mut anim) = entity.animation {
-                anim.switch_to(sequence);
-            }
-        }
-    }
-    for &(attacker_id, pending) in &pending_infantry_updates {
-        if let Some(entity) = world.substrate.entities.get_mut(attacker_id) {
-            if let Some(ref mut attack) = entity.attack_target {
-                attack.pending_infantry_fire = pending;
-            }
-        }
-    }
+    commit_fire_animation_updates(world, animation_switches, pending_infantry_updates);
     // Phase 3b: deduct ammo from aircraft that completed a burst this tick.
-    for &attacker_id in &ammo_deduct {
-        if let Some(entity) = world.substrate.entities.get_mut(attacker_id) {
-            if let Some(ref mut ammo) = entity.aircraft_ammo {
-                if ammo.current > 0 {
-                    ammo.current -= 1;
-                }
-            }
-        }
-    }
+    deduct_fire_ammo(world, &ammo_deduct);
 
     // Phase 3.5: fold radiation-emitting detonations into the field, then
     // collect the periodic radiation damage. The original applies this damage

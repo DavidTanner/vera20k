@@ -205,6 +205,9 @@ pub(super) enum HashFeature {
     /// Each folds, tagged, only off its constructor value, so a state without
     /// them hashes as earlier schemas, which fold none of them.
     AiBaseBuilding = 232,
+    /// A retained Cell TarCom/NavCom or archived target can read the live
+    /// fallback Cell coordinate before another lookup stamps it.
+    RetainedCellTarget = 233,
 }
 
 impl HashSchema {
@@ -252,6 +255,7 @@ impl HashSchema {
                     | HashFeature::FactoryPlants
                     | HashFeature::BuildingFacing
                     | HashFeature::AiBaseBuilding
+                    | HashFeature::RetainedCellTarget
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

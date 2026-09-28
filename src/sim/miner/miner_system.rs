@@ -1173,7 +1173,7 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
     }
     match refinery_staging_cell(sim, rules, bay) {
         Some(cell) => {
-            sim.set_unit_cell_destination(id, cell, rules);
+            sim.set_unit_cell_destination(id, cell, rules, true);
         }
         None => {
             sim.assign_null_destination(id, Some(rules));
@@ -1926,7 +1926,7 @@ pub(crate) fn issue_stock_miner_drive_move_with_overlay_registry(
     // Search_For_Tiberium's vt+0x480(cell, 1) (`0x004DD086`): the Unit setter,
     // whose Teleporter arm gives a Chrono Miner out of radio contact a Drive.
     if sim.unit_setter_receiver(entity_id, Some(rules)) {
-        return sim.set_unit_cell_destination(entity_id, target, rules);
+        return sim.set_unit_cell_destination(entity_id, target, rules, true);
     }
     let Some(info) = sim.resolve_move_info(entity_id, Some(rules)) else {
         return false;
@@ -1989,7 +1989,7 @@ pub(crate) fn issue_move_if_idle(
     if let Some(rules) = rules
         && sim.unit_setter_receiver(entity_id, Some(rules))
     {
-        sim.set_unit_cell_destination(entity_id, target, rules);
+        sim.set_unit_cell_destination(entity_id, target, rules, true);
         return;
     }
     let already = sim.substrate.entities.get(entity_id).is_some_and(|e| {

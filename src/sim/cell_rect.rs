@@ -823,7 +823,7 @@ fn occupancy_blocker_at(
     None
 }
 
-fn check_cell_passability(
+pub(crate) fn check_cell_passability(
     ctx: &CellRectPassabilityContext<'_>,
     raw: Option<&RawCellOccupationGrid>,
     x: i32,

@@ -67,7 +67,7 @@ fn original_fv_range_uses_live_dummy_ground_and_source_bridge_queries() {
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
     rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
-    let corpus: Corpus = serde_json::from_str(include_str!(
+    let mut corpus: Corpus = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/in_range_cell_boundary.json"
     ))
     .unwrap();
@@ -76,6 +76,13 @@ fn original_fv_range_uses_live_dummy_ground_and_source_bridge_queries() {
         "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
     );
     assert_eq!(corpus.rows.len(), 6);
+    let ties: Corpus = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/fv_cell_attack/range_ties.json"
+    ))
+    .unwrap();
+    assert_eq!(ties.native_sha256, corpus.native_sha256);
+    assert_eq!(ties.rows.len(), 12);
+    corpus.rows.extend(ties.rows);
     assert_eq!(
         rules.object("FV").unwrap().weapon_list[0].as_deref(),
         Some("HoverMissile")
@@ -177,6 +184,99 @@ fn original_fv_range_uses_live_dummy_ground_and_source_bridge_queries() {
                 )),
                 "{}: target geometry",
                 input.name,
+            );
+        }
+    }
+}
+
+/// Native6F77B0/6F7220 and Unit740FD0 on physical Anytown Cells. The
+/// values are projected from executed bytes in fv_cell_attack/range.json.gz;
+/// this bounded test supplies placement, then uses the production source/range
+/// pair with the real retail FV weapon reader.
+#[test]
+fn original_fv_cell_range_matches_bridge_states_and_boundaries() {
+    let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+        return;
+    };
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/fv_cell_attack/range_vectors.json"
+    ))
+    .unwrap();
+    let weapon = rules.weapon("HoverMissile").unwrap();
+    assert_eq!(
+        (weapon.range_leptons, weapon.minimum_range_leptons),
+        (1536, 256)
+    );
+    for row in corpus["rows"].as_array().unwrap() {
+        let name = row["name"].as_str().unwrap();
+        let mut terrain = flat_terrain(90, 58);
+        terrain.set_projectile_water_set_base(row["water_base"].as_i64().unwrap() as i32);
+        let mut allocated = Vec::new();
+        for cell in row["cells"].as_array().unwrap() {
+            let xy = (
+                cell["coord"][0].as_u64().unwrap() as u16,
+                cell["coord"][1].as_u64().unwrap() as u16,
+            );
+            allocated.push(xy);
+            let out = terrain.cell_mut(xy.0, xy.1).unwrap();
+            out.level = cell["level"].as_u64().unwrap() as u8;
+            out.slope_type = cell["slope"].as_u64().unwrap() as u8;
+            out.final_tile_index = cell["tile"].as_i64().unwrap() as i32;
+            out.bridge_facts.raw_flags = cell["flags"].as_u64().unwrap() as u32;
+        }
+        terrain.test_set_native_allocated_cells(&allocated);
+        let xyz = std::array::from_fn(|i| row["source_xyz"][i].as_i64().unwrap() as i32);
+        let actor = placed(100, xyz, true, false);
+        let target_xy = (
+            row["target"][0].as_u64().unwrap() as u16,
+            row["target"][1].as_u64().unwrap() as u16,
+        );
+        // The legacy render/placement deck bit must not replace Cell+50's
+        // WaterSet gate or Cell+140's structural flag in either query domain.
+        terrain
+            .cell_mut(target_xy.0, target_xy.1)
+            .unwrap()
+            .has_bridge_deck = true;
+        let target = TargetKind::Cell(target_xy.0, target_xy.1);
+        let entities = EntityStore::new();
+        let interner = test_interner();
+        for isolated in [true, false] {
+            let cells = if isolated {
+                NativeCellQuery::isolated(&terrain)
+            } else {
+                NativeCellQuery::canonical(&terrain)
+            };
+            let source = fire_source_coords_in_query(
+                &actor,
+                &target,
+                weapon,
+                &entities,
+                &cells,
+                (&rules, &interner),
+            )
+            .unwrap();
+            let geometry =
+                resolve_target_coords_3d(&target, &entities, &rules, &interner, &cells).unwrap();
+            assert_eq!(
+                serde_json::json!([geometry.0, geometry.1, geometry.2]),
+                row["target_geometry"],
+                "{name}: geometry"
+            );
+            assert_eq!(
+                compute_in_range_in_query(
+                    &actor,
+                    source,
+                    &target,
+                    weapon,
+                    &rules,
+                    &interner,
+                    &entities,
+                    &cells,
+                    &LineOfFireInputs::terrain_only()
+                ),
+                row["in_range"] == 1,
+                "{name}: isolated={isolated}",
             );
         }
     }

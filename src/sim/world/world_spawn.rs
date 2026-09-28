@@ -1914,7 +1914,7 @@ impl Simulation {
         // rally-line factories), only the relocation reaches an
         // UndeploysInto building: no retail rally-line type undeploys.
         if let Some(TargetKind::Cell(x, y)) = archive {
-            if !self.set_unit_cell_destination(new_sid, (x, y), rules) {
+            if !self.set_unit_cell_destination(new_sid, (x, y), rules, true) {
                 log::debug!("undeployed unit {new_sid} refused its archive ({x}, {y})");
             }
             if let Some(unit) = self.substrate.entities.get_mut(new_sid) {

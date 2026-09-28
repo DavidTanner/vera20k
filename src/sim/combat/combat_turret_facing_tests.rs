@@ -177,6 +177,10 @@ fn idle_turret_returns_to_body_facing() {
     // ROT=100 → rot_per_frame=25600. Diff from 0 (north turret) to body_facing_to_turret(64) =
     // 64*256 = 16384. Duration = 16384/25600 = 0 → snaps in 1 frame.
     sim.substrate.entities.insert(entity);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     use_test_interner(&mut sim);
     let rules = rules_with_mtnk_rot(100);
 

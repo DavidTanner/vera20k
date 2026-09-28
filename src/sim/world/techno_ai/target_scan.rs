@@ -168,10 +168,6 @@ pub(super) fn scan(
 ///   scan holds a target that differs from the one before it (`0x006FA6EE`).
 ///
 /// RESIDUALS:
-/// - The mission test reads [`crate::sim::game_entity::GameEntity::
-///   passive_acquire_mission`], VERA's bridge for objects whose committed
-///   mission (`+0xAC`) no handler maintains yet. An infantryman commits Guard
-///   when it enters the map, so the two agree on it.
 /// - The attack-move divert (`vt+0x4C4`: a saved mission `+0x5C4 == 0x1D`,
 ///   then `vt+0x4CC` instead of this block) belongs to attack-move, which VERA
 ///   drives from its own order path; such an object reaches this block.

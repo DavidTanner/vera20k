@@ -876,7 +876,7 @@ impl Simulation {
     /// The Slave Miner's class setter (`vt+0x480(cell, 1)`, the Unit setter
     /// `0x00741970`) then `Queue_Mission(Move, 0)`.
     fn send_slave_master(&mut self, master: u64, cell: (u16, u16), rules: &RuleSet) {
-        if !self.set_unit_cell_destination(master, cell, rules) {
+        if !self.set_unit_cell_destination(master, cell, rules, true) {
             log::debug!("slave master {master} has no Unit setter for {cell:?}");
         }
         self.queue_slave_mission(master, MissionType::Move);

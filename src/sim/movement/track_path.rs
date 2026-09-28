@@ -776,9 +776,10 @@ impl Simulation {
             .is_some_and(|actor| track_unit(actor) || teleporter_unit(self, actor, rules))
     }
 
-    /// Unit 0x741970(cell, 1) from a class caller: the radio MOVE_HERE (Foot
+    /// Unit 0x741970(cell, clear_queue) from a class caller: radio MOVE_HERE (Foot
     /// 0x004D91EB), Mission_Harvest's staging destination (0x0073EDB5) and
     /// Mission_Enter's Teleporter re-assign (0x004D941D).
+    /// These callers pass true; Foot Approach's queued-cell arm passes false.
     /// - 0x741A80..0x741A9C: an unchanged NavCom returns before any write
     ///   unless the Techno+0x1F8 override is up; the call then clears it. So
     ///   the refinery's repeated MOVE_HERE leaves a running drive alone
@@ -798,6 +799,7 @@ impl Simulation {
         id: u64,
         cell: (u16, u16),
         rules: &RuleSet,
+        clear_queue: bool,
     ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
@@ -822,7 +824,11 @@ impl Simulation {
                 .expect("same setter actor");
             actor.setter_force_reassign = false;
             super::movement_commands::clear_destination_path_head(actor);
-            actor.navigation.nav_queue.clear();
+            // Unit7422D9..7423CD: queued Approach passes false, skips the
+            // queue-clear dispatch, and consumes its first entry afterward.
+            if clear_queue {
+                actor.navigation.nav_queue.clear();
+            }
         }
         let skip_move_to = teleporter && self.unit_teleporter_arm(id, Some(cell), rules);
         if !self.begin_foot_destination(id, true) {

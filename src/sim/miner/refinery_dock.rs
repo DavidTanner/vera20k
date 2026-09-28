@@ -157,7 +157,7 @@ fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
     let _ = crate::sim::movement::locomotor_owner::try_restore_primary(entity);
     let queue = entity.navigation.nav_queue.clone();
     if let NavTargetRef::Cell { rx, ry } = queue[0] {
-        sim.set_unit_cell_destination(id, (rx, ry), rules);
+        sim.set_unit_cell_destination(id, (rx, ry), rules, true);
     }
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.navigation.nav_queue = queue[1..].to_vec();
@@ -188,7 +188,7 @@ fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64) {
     }
     match nav {
         Some(NavTargetRef::Cell { rx, ry }) => {
-            sim.set_unit_cell_destination(id, (rx, ry), rules);
+            sim.set_unit_cell_destination(id, (rx, ry), rules, true);
         }
         _ => {
             sim.set_unit_null_destination(id, Some(rules));

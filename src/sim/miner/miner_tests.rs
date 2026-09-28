@@ -2297,21 +2297,16 @@ fn scan_skips_tree_blocked_ore_cell() {
 /// the cell lists (`terrain_object_cells`) and its raw occupation, which the
 /// Unit Can_Enter_Cell of Is_Cell_Harvestable reads.
 fn plant_tree(sim: &mut Simulation, cell: (u16, u16)) {
-    use crate::sim::terrain_object::{
-        TerrainObjectState, mark_terrain_raw_occupation,
-    };
+    use crate::sim::terrain_object::{TerrainObjectState, mark_terrain_raw_occupation};
     let id = 900;
     let type_ref = sim.interner.intern("TREE01");
-    sim.production.terrain_objects.insert(
-        id,
-        {
-            let mut terrain = TerrainObjectState::for_test(id, type_ref, cell.0, cell.1);
-            terrain.health = 800;
-            terrain.max_health = 800;
-            terrain.occupation_bits = 4;
-            terrain
-        },
-    );
+    sim.production.terrain_objects.insert(id, {
+        let mut terrain = TerrainObjectState::for_test(id, type_ref, cell.0, cell.1);
+        terrain.health = 800;
+        terrain.max_health = 800;
+        terrain.occupation_bits = 4;
+        terrain
+    });
     sim.production.terrain_object_cells.insert(cell, id);
     mark_terrain_raw_occupation(&mut sim.substrate.raw_cell_occupation, cell, 4);
 }
@@ -2602,11 +2597,11 @@ fn stop_commits_guard_and_takes_a_harvesting_miner_off_the_loop() {
 }
 
 /// The mission write is the miner arm ONLY. Retail's Stop leaves every other
-/// object's committed mission untouched; VERA still commits mission 13 there
-/// (a recorded drift), but it must never write Guard.
+/// object's committed mission untouched. Its own Move handler may subsequently
+/// enter Guard; that is distinct from a mission write inside the event.
 #[test]
 fn stop_does_not_force_guard_on_a_non_miner() {
-    use crate::sim::command::{Command, CommandEnvelope};
+    use crate::sim::command::Command;
     use crate::sim::mission::{MissionId, MissionType};
 
     let rules = miner_rules();
@@ -2634,16 +2629,23 @@ fn stop_does_not_force_guard_on_a_non_miner() {
     sim.mission_assign_exact(7, MissionId::from_known(MissionType::Move), 0)
         .expect("tank exists");
 
-    let stop = CommandEnvelope::new(owner_id, 1, Command::Stop { entity_id: 7 });
     let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    let _ = sim.advance_tick(&[stop], Some(&rules), &heights, None, None, 33);
+    assert!(sim.apply_command_with_overlays(
+        "Americans",
+        &Command::Stop { entity_id: 7 },
+        Some(&rules),
+        None,
+        &heights,
+        None,
+    ));
 
     let tank = sim.substrate.entities.get(7).expect("tank present");
-    assert_ne!(
+    assert_eq!(
         tank.mission.current().known(),
-        Some(MissionType::Guard),
-        "the Guard force-assign is the ore-miner arm only"
+        Some(MissionType::Move),
+        "IDLE retains a non-miner's current mission until its own handler runs"
     );
+    assert_eq!(tank.mission.queued(), MissionId::NONE);
 }
 
 // ==========================================================================

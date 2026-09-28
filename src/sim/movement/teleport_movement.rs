@@ -655,6 +655,8 @@ mod tests {
             air_range_bonus: None,
             opportunity_fire: false,
             can_retaliate: true,
+            can_approach_target: true,
+            can_recalc_approach_target: true,
             can_passive_acquire: true,
             spray_attack: false,
             distributed_fire: false,

@@ -70,6 +70,10 @@ mod forced_track_object_turn_tests;
 #[path = "teleport_anim_object_turn_tests.rs"]
 mod teleport_anim_object_turn_tests;
 
+#[cfg(test)]
+#[path = "unit_fire_turn_tests.rs"]
+mod unit_fire_turn_tests;
+
 #[derive(Default)]
 pub(super) struct LiveObjectPassOutcome {
     pub movement: movement::MovementTickStats,
@@ -652,16 +656,6 @@ impl Simulation {
             }
             return Ok(outcome);
         }
-        // `InfantryClass::AI` ends with its sequencer (`0x0051BF6A`) and the
-        // locomotion actions of 0x00520F40 (`0x0051BF7B`), which read the
-        // fraction and state Process just left.
-        if let Some(rules) = rules
-            && infantry
-            && sim.infantry_action_turn(stable_id, rules)
-        {
-            // Its AirDeathFinish (or WetDie) ended in UnInit.
-            return Ok(outcome);
-        }
         let teleport_armed = sim
             .substrate
             .entities
@@ -887,7 +881,45 @@ impl Simulation {
         }
         // UnitClass::AI after FootClass::AI, before its second Ready/Commence.
         crate::sim::miner::miner_system::unit_ai_clear_harvesting(sim, stable_id);
+        // Unit7365E1 Fire_At_Target, then7365E8 Facing_Update, both before
+        // the second Ready/Commence7366EF..736703. FireAt appends its Bullet
+        // into this same live Logic walk, behind the pre-existing objects.
+        if !infantry
+            && let Some(rules) = rules
+            && let Some(receipt) =
+                sim.visit_foot_fire_slot(stable_id, rules, overlay_registry, path_grid)
+        {
+            outcome.destroyed_structure |= receipt.structure_destroyed;
+            outcome.bridge_state_changed |= receipt.bridge_state_changed;
+        }
         sim.object_ai_post_movement_promote_one(stable_id, rules);
+        if infantry && let Some(rules) = rules {
+            // InfantryAI51BF03 Commence -> 51BF0B Fear -> 51BF59 Fire ->
+            // 51BF6A sequencer -> 51BF7B movement actions. In particular a
+            // later Unit must not kill this firer before its own Fire slot.
+            if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
+                let player_controlled = sim
+                    .houses
+                    .get(&entity.owner())
+                    .is_some_and(|house| house.is_human);
+                crate::sim::infantry::tick_fear_for_entity(
+                    entity,
+                    player_controlled,
+                    rules,
+                    &sim.interner,
+                );
+            }
+            if let Some(receipt) =
+                sim.visit_foot_fire_slot(stable_id, rules, overlay_registry, path_grid)
+            {
+                outcome.destroyed_structure |= receipt.structure_destroyed;
+                outcome.bridge_state_changed |= receipt.bridge_state_changed;
+            }
+            if sim.infantry_action_turn(stable_id, rules) {
+                // AirDeathFinish or WetDie ended in UnInit.
+                return Ok(outcome);
+            }
+        }
         if let Some(rules) = rules {
             sim.aircraft_crash_smoke(stable_id, rules);
         }

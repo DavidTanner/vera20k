@@ -14,12 +14,13 @@ use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 /// legacy movement, combat, or target-selection systems.
 ///
 /// YR `MissionClass::AI` at `0x005B3060` gates the current handler on the
-/// dispatch timer and writes `(current frame, handler return)` afterward. The
-/// existing movement/combat phases remain the sole owners of their path and
-/// target side effects; this absorbs only proven handler-return cadence. Harvest
+/// dispatch timer and writes `(current frame, handler return)` afterward.
+/// Each represented handler calls the existing movement/combat owners for its
+/// side effects. Ordinary Unit Cell Attack calls Foot Approach before the
+/// mission cadence draw and the same object's movement/fire slots. Harvest
 /// has its own full handler and epilogue, so miners are excluded to avoid a
-/// second write. Target acquisition and approach-result producers are still
-/// absent; their native routes remain explicit no-ops rather than guessed AI.
+/// second write. Unrepresented acquisition and approach branches remain
+/// explicit residuals rather than guessed AI.
 pub(super) fn dispatch_supported_foot_mission_cadence(
     sim: &mut Simulation,
     id: u64,
@@ -347,35 +348,34 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
             }
         }
         (EntityCategory::Unit | EntityCategory::Infantry, Some(MissionType::Attack)) => {
+            // MissionAttack4D4E6A calls Approach before its Scenario cadence
+            // draw. The accepted destination is visible to this object's
+            // subsequent Drive Process, and is retained while it fires.
+            if sim.owns_unit_cell_approach(id, rules) {
+                sim.approach_unit_cell_target(id, rules, ctx.path_grid, ctx.overlay_registry)
+                    .expect("ordinary Cell approach requires valid live map/navigation state");
+            }
+            // Foot tests TarCom before calling Approach. Only a null target
+            // at entry takes the idle exit; an Approach that clears the target
+            // does not retroactively enter this branch. Destruction, detach or
+            // Stop also clear the target through their owners, leaving the
+            // next due Attack dispatch to queue an idle mission. Firing belongs
+            // to the concrete class's separate combat host. Both branches draw
+            // cadence jitter; the half-cadence band needs a live target.
+            let idle_queue = if input.has_attack_target {
+                None
+            } else {
+                // Foot4D4E72 -> Techno709A54 releases a held Temporal victim
+                // before the cadence draw at4D4EA6. Stop only clears TarCom;
+                // this due Attack dispatch owns the release.
+                sim.temporal_release_if_warping(id);
+                foot_enter_idle_mode_queue(rules, input)
+            };
             let cadence = jittered_mission_cadence(sim, rules, MissionType::Attack);
             let delay = if foot_dispatch_in_cadence_band(sim, rules, id) {
                 cadence / 2
             } else {
                 cadence
-            };
-            // The handler's ONLY exit. With no shoot-at target installed it
-            // runs the idle-mode selector, which picks a replacement mission
-            // and queues it; with one installed it takes the firing step
-            // instead, which the combat phase already owns.
-            //
-            // This is NOT an "is my target still reachable" or "is my target
-            // dead" test — the original has neither. A blocker that simply
-            // walks away and stays alive never releases its attacker, by any
-            // route: the attacker keeps Attack, keeps closing, and only stops
-            // when something outside the handler nulls its target. What does
-            // null it is the two detach sweeps (target destroyed, target
-            // detached alive) and a fresh player order.
-            //
-            // Without this arm an object parked on Attack never returns to a
-            // mission the passive-acquire gate admits, so it stops scanning for
-            // targets permanently. Both branches draw the cadence jitter, so
-            // this adds no RNG draw; the half-cadence band needs a live target
-            // and is already skipped here.
-            let idle_queue = if input.has_attack_target {
-                None
-            } else {
-                sim.temporal_release_if_warping(id);
-                foot_enter_idle_mode_queue(rules, input)
             };
             MissionHandlerEvaluation {
                 delay,
@@ -1023,8 +1023,9 @@ pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &
 ///   `Passengers=` and cargo, outside a team) is not taken; it gets Guard.
 ///   Trigger: an unarmed transport leaving the factory loaded. Effect: it
 ///   keeps its cargo aboard.
-/// - buildings and aircraft keep VERA's mission bridge
-///   (`GameEntity::passive_acquire_mission`) until their own leaves are ported.
+/// - buildings have their own Unlimbo/mission owner. Aircraft still use a
+///   separate legacy AircraftMission producer and omit the common passive
+///   scan; migrating that class's mission lifecycle is a separate mechanism.
 pub(crate) fn foot_unlimbo_idle_mode(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;

@@ -630,6 +630,12 @@ fn techno_ai_shell(
                 dispatch_supported_foot_mission_cadence(sim, id, rules, ctx);
             }
             passive_acquire_step(sim, id, rules, ctx);
+            if let Some(rules) = rules {
+                // Shared Techno targeting precedes Infantry51BF59 fire, as
+                // for Unit. Keep the legacy OrderIntent decision with its
+                // existing owner until retained AttackMove is ported.
+                sim.acquire_order_intent_target_one(id, rules, ctx.overlay_registry);
+            }
             bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
             if let Some(rules) = rules {
@@ -1570,6 +1576,12 @@ fn unit_techno_bracket(
     // Passive / opportunity target acquisition sits between mission dispatch
     // and the second IsAlive guard, before the object's own locomotion.
     passive_acquire_step(sim, id, rules, ctx);
+    if let Some(rules) = rules {
+        // 6FA681/6FA68F place retained AttackMove acquisition in this
+        // targeting slot. Its legacy OrderIntent decision has one owner;
+        // its unported retained state/cadence is documented there.
+        sim.acquire_order_intent_target_one(id, rules, ctx.overlay_registry);
+    }
     bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
     slave_manager_slot(sim, id, rules, ctx.overlay_registry);
     // Guard E (IsAlive, `0x006FA735`): the dispatched handler, or the bomb it
@@ -2729,17 +2741,58 @@ mod tests {
     }
 
     #[test]
-    fn a_stopped_unit_is_not_deafened_by_the_stop_mission() {
-        // Stop(13) is one of the twelve missions that strip a scanner target, so
-        // a literal read of the committed selector would make pressing S both
-        // silence the unit and take away what it had found.
+    fn queued_guard_does_not_open_passive_gate_before_commence() {
+        // The original FV collapse continuation reaches TechnoAI6FA697 with
+        // Attack still committed and Guard only queued. Its native scan is
+        // absent until UnitAI's later Commence has promoted that selector.
+        let rules = passive_rules();
+        let mut sim = Simulation::new();
+        insert_scannable(&mut sim, 1, "Americans", "MTNK", EntityCategory::Unit);
+        sim.session.binary_frame = 45;
+        sim.mission_assign_exact(1, MissionId::from_known(MissionType::Attack), 45)
+            .unwrap();
+        sim.mission_queue_exact(
+            1,
+            MissionId::from_known(MissionType::Guard),
+            0,
+            45,
+            &crate::sim::mission::authority::EntityReadyInputProvider,
+        )
+        .unwrap();
+        let before = sim.scenario_rng.logical_state();
+        let timer = sim.substrate.entities.get(1).unwrap().passive_scan_timer;
+        passive_acquire_step(&mut sim, 1, Some(&rules), ObjectAiCtx::default());
+        assert_eq!(sim.scenario_rng.logical_state(), before);
+        assert_eq!(
+            sim.substrate.entities.get(1).unwrap().passive_scan_timer,
+            timer
+        );
+
+        sim.mission_commence_exact(1, 45).unwrap();
+        sim.session.binary_frame = 46;
+        passive_acquire_step(&mut sim, 1, Some(&rules), ObjectAiCtx::default());
+        assert_ne!(sim.scenario_rng.logical_state(), before);
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .last_target_scan_frame,
+            46
+        );
+    }
+
+    #[test]
+    fn stop_remains_committed_until_the_mission_owner_replaces_it() {
+        // TechnoAI6FA697 reads +AC. An empty movement adapter cannot turn Stop
+        // into Guard before the command/mission owner actually commences it.
         let mut e = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
         e.mission
             .apply_test_fixture(fixture_with_current(&e.mission, MissionType::Stop));
         assert_eq!(
             e.passive_acquire_mission(),
-            MissionType::Guard,
-            "a finished Stop reads as Guard, not as the target-stripping Stop mission"
+            MissionType::Stop,
+            "the passive consumer may not infer a mission transition"
         );
         // While the order is still live, the committed selector wins.
         e.movement_target = Some(MovementTarget::default());
@@ -2918,6 +2971,8 @@ mod tests {
             true,
         );
         e.category = category;
+        e.mission
+            .apply_test_fixture(fixture_with_current(&e.mission, MissionType::Guard));
         e.passive_scan_timer.clear(); // due now
         sim.substrate.entities.insert(e);
     }

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "results": {
+    "hut_joined.json": {
+      "frozen_source_sha256": "7ade8a7af905c3343a924ec39bc7abf135de59ba495c0060670734fd970baf65",
+      "original_payload_sha256": "978dd539e84fad3cef4dd2fbe7af5a10956060e775e5aedbe294378986d325c0",
+      "published_payload_sha256": "4e7f6cf08beb0d0944f15f7a673143fb452aed2ae1afb7d3ca05f17176bf7b40"
+    },
+    "hut_vectors.json": {
+      "frozen_source_sha256": "7d972bcbc130ea4992ccecc0c25f13c417ad78fec9f0c1765368d9548da3868d",
+      "original_payload_sha256": "2d4acc608a1a9862d049b2b2a2e5ec3f34b32b744ae3bcba001ae5d411f2c55e",
+      "published_payload_sha256": "2d4acc608a1a9862d049b2b2a2e5ec3f34b32b744ae3bcba001ae5d411f2c55e"
+    }
+  }
+}

@@ -95,11 +95,11 @@ pub(super) fn navigation_coordinate(
     let current = current_coordinate(entity);
     match loco.active_kind() {
         LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk | LocomotorKind::Hover => {
-            if loco.active_kind() == LocomotorKind::Drive && entity.drive_locomotion.is_none()
-                || loco.active_kind() == LocomotorKind::Ship && entity.ship_locomotion.is_none()
-            {
-                return Err("Foot coordinate requires the active track locomotor payload".into());
-            }
+            // Installation and piggyback retain a fresh Drive/Ship payload
+            // lazily as None (locomotor_owner). That is the constructor's null
+            // Head_To, not a missing active locomotor. Foot4DBDF0 therefore
+            // reads current XYZ even before the first Process materializes it.
+            // Original null_head_current/both_null rows in the named corpus.
             Ok(head_or_current(stored_head(entity), current))
         }
         // Fly/Rocket/Teleport share +18/55ACA0: copy linked Object+9C.

@@ -11,6 +11,55 @@ use std::hash::{Hash, Hasher};
 use super::Simulation;
 use super::hash_schema::{HashFeature, HashSchema};
 
+#[cfg(test)]
+mod retained_cell_hash_tests {
+    use super::*;
+    use crate::map::resolved_terrain::ResolvedTerrainGrid;
+    use crate::sim::combat::{AttackTarget, TargetKind};
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::game_entity::GameEntity;
+
+    #[test]
+    fn retained_cell_targets_hash_live_dummy_coordinate_without_restamping_it() {
+        let mut sim = Simulation::new();
+        let mut terrain = ResolvedTerrainGrid::from_cells(0, 0, Vec::new());
+        terrain.bind_shared_cell_dummy(sim.shared_cell_dummy.clone());
+        sim.resolved_terrain = Some(terrain);
+        let dummy = sim.effective_shared_cell_dummy();
+        let mut entity = GameEntity::test_default(1, "FV", "Test", 10, 10);
+        // Every cell is deliberately unallocated. These different requested
+        // coordinates retain the same process object; hashing may not stamp it.
+        for retained_field in 0..7 {
+            entity.attack_target = None;
+            entity.suspended_attack_target = None;
+            entity.set_archive_target(None);
+            entity.navigation = Default::default();
+            match retained_field {
+                0 => {
+                    entity.attack_target = Some(AttackTarget {
+                        target: TargetKind::Cell(1, 2),
+                        pending_infantry_fire: None,
+                    })
+                }
+                1 => entity.suspended_attack_target = Some(TargetKind::Cell(3, 4)),
+                2 => entity.set_archive_target(Some(TargetKind::Cell(5, 6))),
+                3 => entity.navigation.nav_com = Some(NavTargetRef::cell(7, 8)),
+                4 => entity.navigation.nav_com_aux = Some(NavTargetRef::cell(9, 10)),
+                5 => entity.navigation.suspended_nav_com = Some(NavTargetRef::cell(11, 12)),
+                6 => entity.navigation.nav_queue.push(NavTargetRef::cell(13, 14)),
+                _ => unreachable!(),
+            }
+            sim.substrate.entities.insert(entity.clone());
+            dummy.stamp_coord(99, 98);
+            let before = sim.state_hash();
+            assert_eq!(dummy.snapshot().coord, (99, 98));
+            dummy.stamp_coord(97, 96);
+            assert_ne!(before, sim.state_hash(), "retained field {retained_field}");
+            assert_eq!(dummy.snapshot().coord, (97, 96));
+        }
+    }
+}
+
 fn hash_projectile_target(
     target: crate::sim::projectile::ProjectileTarget,
     hasher: &mut impl Hasher,
@@ -884,13 +933,46 @@ impl Simulation {
                 shared_dummy_overlay.hash(&mut hasher);
             }
             if bridge_keeps_dummy
+                || (schema.includes(HashFeature::RetainedCellTarget)
+                    && self.resolved_terrain.as_ref().is_some_and(|terrain| {
+                        use crate::map::cell_index::NativeCellIdentity;
+                        use crate::sim::combat::TargetKind;
+                        use crate::sim::components::NavTargetRef;
+                        let keeps_dummy = |target: TargetKind| {
+                            target.cell_identity(terrain) == Some(NativeCellIdentity::Dummy)
+                        };
+                        self.substrate.entities.values().any(|entity| {
+                            [
+                                entity.attack_target.as_ref().map(|attack| attack.target),
+                                entity.suspended_attack_target,
+                                entity.archive_target(),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            .any(keeps_dummy)
+                                || [
+                                    entity.navigation.nav_com,
+                                    entity.navigation.nav_com_aux,
+                                    entity.navigation.suspended_nav_com,
+                                ]
+                                .into_iter()
+                                .flatten()
+                                .chain(entity.navigation.nav_queue.iter().copied())
+                                .any(|target| match target {
+                                    NavTargetRef::Cell { rx, ry } => {
+                                        keeps_dummy(TargetKind::Cell(rx, ry))
+                                    }
+                                    _ => false,
+                                })
+                        })
+                    }))
                 || self.projectiles.iter().any(|(_, projectile)| {
                     projectile.target == crate::sim::projectile::ProjectileTarget::DummyCell
                 })
             {
-                // A retained Bullet pointer additionally makes coordinate
-                // deterministic future behavior. Preserve the complete v106
-                // field/tag order for historical provenance probes.
+                // Retained Cell pointers make the live coordinate affect
+                // future range/pursuit/projectile behavior. Preserve the
+                // complete v106 field/tag order for historical probes.
                 if schema.includes(HashFeature::SparkDummyLevelSlope) {
                     b"shared-cell-dummy-target-v3".hash(&mut hasher);
                     shared_dummy.coord.hash(&mut hasher);

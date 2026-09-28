@@ -146,13 +146,13 @@ fn ordinary_lethal_fire_commits_debris_animations_and_sparks_once() {
         .particle_systems()
         .iter()
         .next()
-        .expect("late target lookup constructs spark")
+        .expect("FireAt constructs its spark before the Bullet visit")
         .0;
-    assert_eq!(spark, ids[2] + 1);
+    assert_eq!(spark + 1, ids[0]);
     ids.push(spark);
     assert_eq!(
         sim.live_object_order_snapshot(),
-        [vec![attacker], ids.clone()].concat()
+        [vec![attacker, spark], ids[..3].to_vec()].concat()
     );
     assert_eq!(
         delivery_sounds(&sim),
@@ -165,11 +165,13 @@ fn ordinary_lethal_fire_commits_debris_animations_and_sparks_once() {
     // death sound stays on the main stream.
     assert_eq!(sim.scenario_rng.state(), 3954386809370758752);
     assert_eq!(sim.main_rng.state(), 6706932826526710953);
-    // Re-captured when the shot became a bullet: the body is unchanged but
-    // for its stable id, one later (the bullet took the one before it).
-    assert_eq!(debris_fingerprint(&sim, ids[0]), 17414601428498543321);
+    // FireAt now admits the spark in its own live slot, before the Bullet's
+    // fatal receiver allocates debris. Only this body's stable id shifts;
+    // normalizing that id reproduced the old F1AD17BB92AA72D9 fingerprint,
+    // and both complete RNG stream fingerprints above remain unchanged.
+    assert_eq!(debris_fingerprint(&sim, ids[0]), 1748609705070689488);
     let next_id = sim.allocate_stable_id();
-    assert_eq!(next_id, spark + 1);
+    assert_eq!(next_id, ids[2] + 1);
     sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 100);
     assert_eq!(delivered_ids(&sim), ids[..3]);
     assert_eq!(
@@ -212,10 +214,11 @@ fn ordinary_fatal_transport_finishes_cargo_lifecycle_before_consequence_admissio
         })
         .collect();
     assert_eq!(cleared, vec![passenger, carrier]);
-    // `passenger + 1` is the shot's bullet.
+    // `passenger + 1` is the shot's Bullet, then FireAt admits its spark
+    // before that Bullet's later live AI constructs the death consequences.
     assert_eq!(
         delivered_ids(&sim),
-        vec![passenger + 2, passenger + 3, passenger + 4]
+        vec![passenger + 3, passenger + 4, passenger + 5]
     );
     assert_eq!(
         delivery_sounds(&sim),

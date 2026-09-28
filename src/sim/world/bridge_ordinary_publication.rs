@@ -324,6 +324,10 @@ impl OrdinaryDamageHost for LiveOrdinary<'_, '_> {
 mod concrete_tests;
 
 #[cfg(test)]
+#[path = "bridge_fv_pursuit_tests.rs"]
+mod fv_pursuit_tests;
+
+#[cfg(test)]
 #[path = "bridge_wood_damage_tests.rs"]
 mod wood_tests;
 
