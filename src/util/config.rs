@@ -307,14 +307,15 @@ mod tests {
     #[test]
     fn invalid_override_is_reported_instead_of_silently_using_packaged_assets() {
         let fixture = ConfigFixture::new();
-        std::fs::write(fixture.0.join("launch/config.toml"), "[broken").unwrap();
+        let override_path = fixture.0.join("launch").join("config.toml");
+        std::fs::write(&override_path, "[broken").unwrap();
         std::fs::write(
             fixture.0.join("app/config.toml"),
             "[paths]\nra2_dir = '.'\n",
         )
         .unwrap();
         let message = format!("{:#}", fixture.load().unwrap_err());
-        assert!(message.contains(fixture.0.join("launch/config.toml").to_str().unwrap()));
+        assert!(message.contains(override_path.to_str().unwrap()));
         assert!(message.contains("Failed to parse config"));
     }
 
