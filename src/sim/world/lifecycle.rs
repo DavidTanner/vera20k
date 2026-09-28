@@ -907,10 +907,7 @@ impl Simulation {
             .get(stable_id)
             .is_some_and(|entity| entity.lifecycle.object_alive)
         {
-            self.update_house_tracking(
-                stable_id,
-                crate::sim::house_tracking::HouseTracking::added_to_game,
-            );
+            self.update_house_presence(stable_id, true);
         }
         // TechnoClass::Unlimbo 0x006F6E2A..0x006F6E4F: Enter_Idle_Mode(1, 1),
         // Ready_To_Commence and Commence, ahead of its second mode-one query
@@ -2688,10 +2685,7 @@ impl Simulation {
             self.fog.release_entity_sight(stable_id);
             self.remove_building_gap_before_limbo(stable_id);
             // 6F6BD1: Removed_From_Game, also only on the first Limbo.
-            self.update_house_tracking(
-                stable_id,
-                crate::sim::house_tracking::HouseTracking::removed_from_game,
-            );
+            self.update_house_presence(stable_id, false);
         }
         // BuildingClass owns this pass before the common TechnoClass Limbo can
         // clear committed type/cell facts or broadcast another expiry callback.

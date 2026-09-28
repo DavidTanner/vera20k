@@ -108,6 +108,19 @@ pub struct HouseCostFactors {
     pub factory_plant: [NativeF32Bits; 5],
 }
 
+impl HouseCostFactors {
+    /// `TechnoTypeClass::Cost_Of @ 0x00711F00` past its null-House arm:
+    /// `ftol(cost * plant * country)` for factor `slot`
+    /// (`0x00711F35..0x00711F41`).
+    pub(crate) fn adjust(&self, cost: i32, slot: usize) -> i32 {
+        use crate::util::native_x87::MaskedX87Chop53 as X87;
+        X87::ftol_i32_low_masked(X87::mul(
+            X87::mul(X87::load_i32(cost), X87::load_f32(self.factory_plant[slot])),
+            X87::load_f32(self.country[slot]),
+        ))
+    }
+}
+
 impl Default for CountryRules {
     fn default() -> Self {
         // Hand-written (NOT derived): a derived Default would zero `income_ppm`, which would
@@ -1140,6 +1153,13 @@ pub struct GeneralRules {
     /// Rules+E2C (data+E30), indexed Hard/Normal/Easy by Infantry52155C.
     /// Constructor666932..666961 leaves it empty; stock15,25,100 is authored.
     pub ai_auto_deploy_frame_delay: Vec<i32>,
+    /// `[AI] AIForcePredictionFudge=`, the signed DynamicVector at `Rules+0x9A8`
+    /// (items `+0x9AC`) indexed Hard/Normal/Easy by the House difficulty:
+    /// the percent by which the computer's estimate of its enemy's forces
+    /// may err (`sim::ai_base_defense`). ReadAI `0x006732D9..0x00673314`
+    /// copies the vector before the `0x00475D70` reader; the constructor
+    /// (`0x00666373..0x00666388`) leaves it empty. Retail: 5,25,80.
+    pub ai_force_prediction_fudge: Vec<i32>,
 
     // -- Cell scatter eligibility (CellClass::Scatter_Objects) --
     /// `PlayerScatter=` from `[CombatDamage]` — when set, an *unforced* cell
@@ -1722,6 +1742,7 @@ impl Default for GeneralRules {
             // BlockagePathDelay=60 frames (directly in frames, not minutes).
             blockage_path_delay_ticks: 60,
             ai_auto_deploy_frame_delay: Vec::new(),
+            ai_force_prediction_fudge: Vec::new(),
             // RulesClass constructor clears PlayerScatter and stores 3 into
             // [IQ] Scatter; stock rulesmd overrides the latter with 2.
             player_scatter: false,
@@ -2841,6 +2862,9 @@ impl GeneralRules {
                 general,
                 "AIAutoDeployFrameDelay",
             ),
+            ai_force_prediction_fudge: ai.map_or_else(Vec::new, |section| {
+                read_retained_difficulty_vector(section, "AIForcePredictionFudge")
+            }),
             // PlayerScatter belongs to the [CombatDamage] read, IQ Scatter to
             // the [IQ] read; neither is a [General] key.
             player_scatter: combat_damage
@@ -3088,6 +3112,14 @@ pub struct RuleSet {
     pub build_weapons_types: Vec<String>,
     /// Source-ordered resolved `[AI] BuildRadar=` BuildingType identities.
     pub build_radar_types: Vec<String>,
+    /// Source-ordered resolved `[AI] AlliedBaseDefenses=`,
+    /// `SovietBaseDefenses=` and `ThirdBaseDefenses=` BuildingType identities
+    /// (`Rules+0x954`, `+0x970`, `+0x98C`, read like the other BasePlan lists
+    /// at `0x00673058..0x006732D0`): the computer's base defense candidates by
+    /// side ([`Self::base_defense_types`]).
+    pub allied_base_defense_types: Vec<String>,
+    pub soviet_base_defense_types: Vec<String>,
+    pub third_base_defense_types: Vec<String>,
     /// Source-ordered resolved `[General] HarvesterUnit=` UnitType identities.
     pub harvester_unit_types: Vec<String>,
     /// Signed Hard/Normal/Easy vectors consumed directly by BasePlan Recalc.
@@ -3518,6 +3550,9 @@ impl RuleSet {
         let build_tech_source_tokens = parse_planning_list("AI", "BuildTech");
         let build_weapons_source_tokens = parse_planning_list("AI", "BuildWeapons");
         let build_radar_source_tokens = parse_planning_list("AI", "BuildRadar");
+        let allied_base_defense_source_tokens = parse_planning_list("AI", "AlliedBaseDefenses");
+        let soviet_base_defense_source_tokens = parse_planning_list("AI", "SovietBaseDefenses");
+        let third_base_defense_source_tokens = parse_planning_list("AI", "ThirdBaseDefenses");
         let harvester_unit_source_tokens = parse_planning_list("General", "HarvesterUnit");
         let parse_difficulty_vector = |key: &str| {
             ini.section("General")
@@ -3666,6 +3701,12 @@ impl RuleSet {
             resolve_registered(build_weapons_source_tokens, ObjectCategory::Building);
         let build_radar_types =
             resolve_registered(build_radar_source_tokens, ObjectCategory::Building);
+        let allied_base_defense_types =
+            resolve_registered(allied_base_defense_source_tokens, ObjectCategory::Building);
+        let soviet_base_defense_types =
+            resolve_registered(soviet_base_defense_source_tokens, ObjectCategory::Building);
+        let third_base_defense_types =
+            resolve_registered(third_base_defense_source_tokens, ObjectCategory::Building);
         let harvester_unit_types =
             resolve_registered(harvester_unit_source_tokens, ObjectCategory::Vehicle);
         for type_id in &build_const_types {
@@ -4007,6 +4048,9 @@ impl RuleSet {
             build_tech_types,
             build_weapons_types,
             build_radar_types,
+            allied_base_defense_types,
+            soviet_base_defense_types,
+            third_base_defense_types,
             harvester_unit_types,
             ai_slave_miner_number,
             ai_extra_refineries,
@@ -4116,6 +4160,17 @@ impl RuleSet {
             .map(|handle| self.object_by_handle(*handle))
     }
 
+    /// The computer's base defense candidates of a House's side
+    /// (`HouseTypeClass+0xBC`): Allied for side 0, Soviet for 1, Third for any
+    /// other (`0x00507BCA..0x00507BFA`).
+    pub(crate) fn base_defense_types(&self, side_index: u8) -> &[String] {
+        match side_index {
+            0 => &self.allied_base_defense_types,
+            1 => &self.soviet_base_defense_types,
+            _ => &self.third_base_defense_types,
+        }
+    }
+
     /// The BuildingType at native array index `index` (`BuildingTypes[index]`,
     /// the index `ObjectType::base_plan_type_index` and BasePlan nodes hold).
     /// `None` for a negative index, one past the array, or a registered name
@@ -4185,13 +4240,14 @@ impl RuleSet {
     /// TechnoType virtual `+0x84`, the cost a House pays for `object`.
     ///
     /// `TechnoTypeClass::Cost_Of @ 0x00711F00` (Infantry, Unit and Aircraft
-    /// types) returns the raw `+0xAC` cost for a null House; otherwise it
-    /// stores the country factor (`0x0050BDF0`) and the FactoryPlant factor
-    /// (`0x0050BEB0`) as floats and returns `ftol(cost * plant * country)`
-    /// (`0x00711F35..0x00711F41`). The BuildingType override `0x0045EDD0`
-    /// adjusts its actual cost (`+0xAC` = `0x0045ED50`) the same way, adds the
-    /// halved sum of both PadAircraft costs when it bundles them, and adds its
-    /// FreeUnit's cost, clamping only that arm at zero (`0x0045EE47..0x0045EE50`).
+    /// types) returns the type's virtual `+0xAC` cost ([`Self::type_cost`])
+    /// for a null House; otherwise it stores the country factor
+    /// (`0x0050BDF0`) and the FactoryPlant factor (`0x0050BEB0`) as floats
+    /// and returns `ftol(cost * plant * country)` (`0x00711F35..0x00711F41`).
+    /// The BuildingType override `0x0045EDD0` adjusts its actual cost
+    /// (virtual `+0xAC` = `0x0045ED50`) the same way, adds the halved sum of
+    /// both PadAircraft costs when it bundles them, and adds its FreeUnit's
+    /// cost, clamping only that arm at zero (`0x0045EE47..0x0045EE50`).
     /// Native comparison: `tools/spatial_oracle/cost_of`.
     pub fn cost_of(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
         let cost = self.adjusted_cost(object, house);
@@ -4215,21 +4271,10 @@ impl RuleSet {
         }
     }
 
-    /// `0x00711F00` over the type's `+0xAC` cost.
+    /// `0x00711F00` over the type's virtual `+0xAC` cost ([`Self::type_cost`]).
     fn adjusted_cost(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
-        use crate::util::native_x87::MaskedX87Chop53 as X87;
         let cost = self.type_cost(object);
-        let Some(house) = house else {
-            return cost;
-        };
-        let slot = object.factor_slot();
-        X87::ftol_i32_low_masked(X87::mul(
-            X87::mul(
-                X87::load_i32(cost),
-                X87::load_f32(house.factory_plant[slot]),
-            ),
-            X87::load_f32(house.country[slot]),
-        ))
+        house.map_or(cost, |house| house.adjust(cost, object.factor_slot()))
     }
 
     /// The two PadAircraft a BuildingType bundles into its price: with

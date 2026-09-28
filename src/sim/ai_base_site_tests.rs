@@ -224,10 +224,8 @@ impl SiteWorld for Replay<'_> {
     }
 }
 
-#[test]
-fn whole_searches_repeat_the_native_transcripts() {
-    let oracle = oracle();
-    let searches = rows(&oracle, "site");
+/// Replays each search row with `key`; the number of failed searches.
+fn replay_searches(searches: &[Value], key: impl Fn(&Value) -> Option<CoverageGrid>) -> usize {
     let mut failed = 0;
     for row in searches {
         let perimeter: Vec<(i16, i16)> = row["perimeter"]
@@ -236,6 +234,7 @@ fn whole_searches_repeat_the_native_transcripts() {
             .iter()
             .map(cell)
             .collect();
+        let grid = key(row);
         let search = SiteSearch {
             center: cell(&row["center"]),
             alternate: cell(&row["alternate"]),
@@ -246,6 +245,12 @@ fn whole_searches_repeat_the_native_transcripts() {
             height: int(&row["height"]) as i32,
             extra_border: row["protect"].as_bool().unwrap() || row["extra"].as_bool().unwrap(),
             game_mode_nonzero: int(&row["game_mode"]) != 0,
+            key: grid
+                .as_ref()
+                .map_or(SiteKey::Ordinary, |grid| SiteKey::Defense {
+                    grid,
+                    argument: int(&row["argument"]) as i32,
+                }),
         };
         let mut replay = Replay::new(row);
         let site = ordinary_site(&mut replay, &search);
@@ -262,8 +267,45 @@ fn whole_searches_repeat_the_native_transcripts() {
             failed += 1;
         }
     }
+    failed
+}
+
+#[test]
+fn whole_searches_repeat_the_native_transcripts() {
+    let oracle = oracle();
+    let searches = rows(&oracle, "site");
+    let failed = replay_searches(searches, |_| None);
     assert!(
         searches.len() >= 60 && failed >= 10,
+        "{} searches, {failed} failed",
+        searches.len()
+    );
+}
+
+/// The same searches with the base defense key: the coverage grid and the
+/// quadrant argument order the perimeter
+/// (`tools/ai_base_defense_oracle.py`).
+#[test]
+fn defense_key_searches_repeat_the_native_transcripts() {
+    let oracle: Value =
+        serde_json::from_str(include_str!("../../tools/ai_base_defense_oracle.json")).unwrap();
+    let searches = rows(&oracle, "site");
+    let failed = replay_searches(searches, |row| {
+        let bounds = row["rect"].as_array().unwrap();
+        let bounds = (
+            int(&bounds[0]) as i32,
+            int(&bounds[1]) as i32,
+            int(&bounds[2]) as i32,
+            int(&bounds[3]) as i32,
+        );
+        let mut grid = CoverageGrid::new(bounds);
+        for (slot, value) in row["grid"].as_array().unwrap().iter().enumerate() {
+            grid.cells_mut()[slot] = int(value) as i32;
+        }
+        Some(grid)
+    });
+    assert!(
+        searches.len() >= 30 && failed >= 1,
         "{} searches, {failed} failed",
         searches.len()
     );

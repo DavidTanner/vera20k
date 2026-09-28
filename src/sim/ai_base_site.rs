@@ -1,16 +1,18 @@
-//! Where a computer house puts a building its Construction Yard finished:
-//! `HouseClass::FindBaseBuildingSite @ 0x005060B0`, which the building exit
-//! (`sim::ai_base_building::exit_building`, `0x00444FE1` and `0x004450BD`)
-//! calls with the ordinary key `0x00505F80`. A `Naval=` type takes the naval
+//! Where a computer house puts a building: `HouseClass::FindBaseBuildingSite
+//! @ 0x005060B0`. The building exit (`sim::ai_base_building::exit_building`,
+//! `0x00444FE1` and `0x004450BD`) calls it with the ordinary key `0x00505F80`,
+//! the base defense choice (`sim::ai_base_defense`, `0x00507A20`) with the
+//! defense key `0x00505FD0` ([`SiteKey`]). A `Naval=` type takes the naval
 //! branch (`sim::naval_base_placement`); any other type walks the house's base
-//! perimeter (`HouseClass+0x5724`) nearest the plan centre (`+0x5750`) first.
+//! perimeter (`HouseClass+0x5724`) in key order.
 //!
 //! The ordinary branch (`0x0050623D..0x00506B0E`):
 //! - Without a plan centre the answer is the house's alternate base cell
 //!   (`+0x5494`), else its primary one (`+0x5490`).
-//! - Each perimeter cell is keyed `index + 1000 * max(|dx|, |dy|)` from the
-//!   plan centre and the cells are sorted by the retail qsort (`0x007C8B48`,
-//!   comparator `0x005108F0`: signed keys).
+//! - Each perimeter cell is keyed (`0x0050631F`) and the cells are sorted by
+//!   the retail qsort (`0x007C8B48`, comparator `0x005108F0`: signed keys).
+//!   The ordinary key is `index + 1000 * max(|dx|, |dy|)` from the plan
+//!   centre, so the nearest cells come first.
 //! - For each cell in that order next to any of the house's base reservations
 //!   (`CellClass+0xDC`), the steps towards those neighbours sum to a vector
 //!   into the base. The direction away from it (`DirStruct`, eight ways)
@@ -32,8 +34,9 @@
 //! reserved-near bounds and 68 whole searches on synthetic maps, whose every
 //! cell lookup, occupancy test and placement test [`ordinary_site`] repeats
 //! in order through [`SiteWorld`]; each failed search's second pass repeated
-//! its first. The map answers themselves are the owners' (`sim::cell_rect`,
-//! `sim::build_site`).
+//! its first. `tools/ai_base_defense_oracle.py` adds 34 whole searches with
+//! the defense key. The map answers themselves are the owners'
+//! (`sim::cell_rect`, `sim::build_site`).
 //!
 //! RESIDUAL: a `CloakGenerator=` type keys cells by their 3D distance from the
 //! house's base coordinate instead (`0x00506329..0x0050640D`). No retail
@@ -43,6 +46,7 @@
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::ai_base_defense::CoverageGrid;
 use crate::sim::base_plan::unpack_base_plan_cell;
 use crate::sim::cell_rect::{
     CellRect, CellRectOccupancyContext, check_occupancy_rect, get_cellclass_fallback,
@@ -91,6 +95,30 @@ pub(crate) trait SiteWorld {
     fn can_place(&mut self, site: (i16, i16)) -> bool;
 }
 
+/// How the ordinary branch keys a perimeter cell: the key function and
+/// argument `FindBaseBuildingSite` receives.
+#[derive(Clone, Copy)]
+pub(crate) enum SiteKey<'a> {
+    /// `0x00505F80`, the building exit's.
+    Ordinary,
+    /// `0x00505FD0` with its argument, the base defense choice's
+    /// ([`CoverageGrid::key`]); the grid is the one the choice leaves at
+    /// `HouseClass+0x16060` for the search.
+    Defense {
+        grid: &'a CoverageGrid,
+        argument: i32,
+    },
+}
+
+impl SiteKey<'_> {
+    fn key(self, index: i32, cell: (i16, i16), center: (i16, i16)) -> i32 {
+        match self {
+            Self::Ordinary => ordinary_key(index, cell, center),
+            Self::Defense { grid, argument } => grid.key(index, cell, center, argument),
+        }
+    }
+}
+
 /// The House and BuildingType inputs of one ordinary search.
 pub(crate) struct SiteSearch<'a> {
     /// `HouseClass+0x5750`, the plan centre.
@@ -109,15 +137,17 @@ pub(crate) struct SiteSearch<'a> {
     pub extra_border: bool,
     /// `GameMode` (`0x00A8B238`) is not a campaign.
     pub game_mode_nonzero: bool,
+    pub key: SiteKey<'a>,
 }
 
-/// `HouseClass::FindBaseBuildingSite @ 0x005060B0` with the ordinary key, for
-/// BuildingType `ty` of house `owner`: the site's top-left cell, or (0, 0).
+/// `HouseClass::FindBaseBuildingSite @ 0x005060B0` for BuildingType `ty` of
+/// house `owner` with `key`: the site's top-left cell, or (0, 0).
 pub(crate) fn find_base_building_site(
     sim: &Simulation,
     rules: &RuleSet,
     owner: InternedId,
     ty: &ObjectType,
+    key: SiteKey,
     path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) -> (i16, i16) {
@@ -150,6 +180,7 @@ pub(crate) fn find_base_building_site(
             height,
             extra_border: ty.protect_with_wall || ty.wants_extra_space,
             game_mode_nonzero: sim.session.game_mode_nonzero,
+            key,
         },
     )
 }
@@ -186,7 +217,7 @@ pub(crate) fn ordinary_site(world: &mut impl SiteWorld, search: &SiteSearch) -> 
         .perimeter
         .iter()
         .enumerate()
-        .map(|(index, &cell)| (ordinary_key(index as i32, cell, search.center), cell))
+        .map(|(index, &cell)| (search.key.key(index as i32, cell, search.center), cell))
         .collect();
     crate::util::retail_pointer_sort::sort_by(&mut cells, |a, b| a.0.cmp(&b.0));
 

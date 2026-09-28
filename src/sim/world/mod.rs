@@ -4336,8 +4336,8 @@ impl Simulation {
         }
     }
 
-    /// Apply one of `house_tracking`'s writers (Add/Remove_Tracking,
-    /// Added_To_Game/Removed_From_Game) for an object on its owner's house.
+    /// Apply `house_tracking`'s Add_Tracking or Remove_Tracking for an object
+    /// on its owner's house.
     pub(crate) fn update_house_tracking(
         &mut self,
         stable_id: u64,
@@ -4351,6 +4351,23 @@ impl Simulation {
         };
         if let Some(house) = self.houses.get_mut(&entity.owner()) {
             update(&mut house.tracking, entity);
+        }
+    }
+
+    /// `HouseClass::Added_To_Game @ 0x00502A80` (`adding`) or
+    /// `Removed_From_Game @ 0x005025F0` for an object on its owner's house,
+    /// priced with that house's current `Cost_Of` factors.
+    pub(crate) fn update_house_presence(&mut self, stable_id: u64, adding: bool) {
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
+            return;
+        };
+        if let Some(house) = self.houses.get_mut(&entity.owner()) {
+            let factors = house.cost_factors();
+            if adding {
+                house.tracking.added_to_game(entity, &factors);
+            } else {
+                house.tracking.removed_from_game(entity, &factors);
+            }
         }
     }
 
@@ -4527,10 +4544,7 @@ impl Simulation {
             .get(stable_id)
             .is_some_and(|entity| !entity.lifecycle.in_limbo);
         if on_map {
-            self.update_house_tracking(
-                stable_id,
-                crate::sim::house_tracking::HouseTracking::removed_from_game,
-            );
+            self.update_house_presence(stable_id, false);
         }
         self.update_house_tracking(
             stable_id,
@@ -4567,10 +4581,7 @@ impl Simulation {
         }
         // Techno701757..70178E: Added_To_Game on the new house (not in limbo).
         if on_map {
-            self.update_house_tracking(
-                stable_id,
-                crate::sim::house_tracking::HouseTracking::added_to_game,
-            );
+            self.update_house_presence(stable_id, true);
         }
         if build_const_eligible
             && let Some(house) = self.houses.get_mut(&new_owner)
@@ -5717,7 +5728,7 @@ impl Simulation {
         // house's tracking counts (`house_defeat.rs`), which construction and
         // the frame-end pending-delete drain move: a death reaches the gate on
         // the next frame. Each house's building choice follows its own gate.
-        self.house_rung(rules, overlay_registry, self.session.tick > 0);
+        self.house_rung(rules, path_grid, overlay_registry, self.session.tick > 0);
         #[cfg(test)]
         if self.session.tick > 0 {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);

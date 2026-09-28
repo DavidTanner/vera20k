@@ -270,7 +270,7 @@ fn refund_free_unit(sim: &mut Simulation, rules: &RuleSet, owner: &str, unit_typ
     let refund = match (
         rules.object(unit_type),
         sim.houses.get(&owner_id),
-        sim.house_cost_factors(owner_id, rules),
+        sim.house_cost_factors(owner_id),
     ) {
         (Some(object), Some(house), Some(factors)) => super::type_refund(
             rules,

@@ -3053,7 +3053,7 @@ pub(crate) fn record_the_kill(
     let victim_owner = victim.owner();
     let victim_house = houses
         .get(&victim_owner)
-        .map(|house| house.cost_factors(rules, interner));
+        .map(crate::sim::house_state::HouseState::cost_factors);
     let victim_cost = rules
         .object(interner.resolve(victim.type_ref()))
         .map_or(0, |object| rules.cost_of(object, victim_house.as_ref()));

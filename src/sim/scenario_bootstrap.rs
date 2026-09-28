@@ -1540,6 +1540,7 @@ pub(crate) fn populate_special_houses(
         // what this house is being built as.
         house.multiplay_passive =
             crate::sim::house_state::resolve_multiplay_passive(Some(rules), Some(country_name));
+        house.project_country_cost_mults(rules, &sim.interner);
         sim.houses.insert(name_id, house);
         sim.session.house_order.push(name_id);
     }
@@ -1587,6 +1588,7 @@ pub(crate) fn populate_launch_houses(
         }
         house.multiplay_passive =
             crate::sim::house_state::resolve_multiplay_passive(Some(rules), Some(country_name));
+        house.project_country_cost_mults(rules, &sim.interner);
         sim.houses.insert(name_id, house);
         sim.session.house_order.push(name_id);
         if !slot.is_human {
@@ -2572,6 +2574,9 @@ pub(crate) fn initialize_map_roster_houses(
         // with no `Country=` resolves through `[Countries]` entry zero.
         house_state.multiplay_passive =
             crate::sim::house_state::resolve_multiplay_passive(rules, house.country.as_deref());
+        if let Some(rules) = rules {
+            house_state.project_country_cost_mults(rules, &sim.interner);
+        }
         sim.houses.insert(name_id, house_state);
         sim.session.house_order.push(name_id);
     }

@@ -769,6 +769,7 @@ mod tests {
                 &rules,
                 owner,
                 ty,
+                crate::sim::ai_base_site::SiteKey::Ordinary,
                 Some(path),
                 None,
             )

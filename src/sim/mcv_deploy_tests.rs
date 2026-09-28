@@ -923,3 +923,62 @@ fn retail_dustbowl_the_computer_yard_places_its_planned_buildings() {
         frames - start
     );
 }
+
+/// The yard's `-1` nodes become base defenses (`sim::ai_base_defense`): the
+/// first defense it places is one of the Soviet list's and stands on the
+/// cell its node took from the site search.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_the_computer_yard_places_a_base_defense() {
+    let (mut scenario, owner, _mcv, _cell) = retail_dustbowl_computer_mcv();
+    let mut frames = 0;
+    while retail_yard_at(&scenario).is_none() && frames < 600 {
+        retail_frame(&mut scenario);
+        frames += 1;
+    }
+    assert!(retail_yard_at(&scenario).is_some(), "the yard stands");
+    let defense = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        let sim = scenario.sim();
+        let rules = &scenario.runtime.resources.rules;
+        let defenses = rules.base_defense_types(1);
+        sim.substrate
+            .entities
+            .values()
+            .filter(|e| {
+                !e.dying
+                    && !e.lifecycle.in_limbo
+                    && e.owner() == owner
+                    && e.category == crate::map::entities::EntityCategory::Structure
+            })
+            .map(|e| {
+                (
+                    sim.interner.resolve(e.type_ref()).to_string(),
+                    (e.position.rx, e.position.ry),
+                )
+            })
+            .find(|(name, _)| defenses.iter().any(|id| id.eq_ignore_ascii_case(name)))
+    };
+    let start = frames;
+    let mut placed = None;
+    while placed.is_none() && frames < start + 8000 {
+        retail_frame(&mut scenario);
+        frames += 1;
+        placed = defense(&scenario);
+    }
+    let (name, cell) =
+        placed.unwrap_or_else(|| panic!("no defense after {} frames", frames - start));
+    eprintln!("frame {frames}: placed {name} at {cell:?}");
+    let sim = scenario.sim();
+    let rules = &scenario.runtime.resources.rules;
+    let index = rules.building_type_index(&name).expect("a BuildingType");
+    let node_cell =
+        crate::sim::base_plan::pack_base_plan_cell(i32::from(cell.0), i32::from(cell.1));
+    assert!(
+        sim.houses[&owner]
+            .base_plan
+            .nodes
+            .iter()
+            .any(|node| node.type_or_control == index && node.packed_cell == node_cell),
+        "{name} at {cell:?} stands on a node of its type"
+    );
+}

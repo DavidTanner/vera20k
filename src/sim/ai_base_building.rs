@@ -7,7 +7,8 @@
 //! (`HouseClass::Update @ 0x004F9038..0x004F9265` → `AI_Choose_Building @
 //! 0x004FE3E0`) and the exit of a produced object steps the mode
 //! (`EconomyStateMachine @ 0x00509700`). The node lookup is `BaseClass`'s
-//! (`0x0042EB50` with `0x0042E780`, `0x0042E820` and `0x0050CAD0`). The yard
+//! (`0x0042EB50` with `0x0042E780`, `0x0042E820` and `0x0050CAD0`); a `-1`
+//! node becomes a base defense (`sim::ai_base_defense`). The yard
 //! (`production::factory_ai`) makes the choice (`Suggest_New_Object @
 //! 0x004FBD80`), places it (`BuildingClass::Exit_Object @ 0x00443C60`'s
 //! building case, with the site search in `sim::ai_base_site` and the site
@@ -17,7 +18,8 @@
 //!
 //! Evidence: instruction reading of the bodies named on each function; the
 //! draws and the mode table are executed by `tools/ai_base_building_oracle.py`
-//! (see the tests in `ai_base_building_tests.rs`).
+//! (see the tests in `ai_base_building_tests.rs`), whose chooser rows answer
+//! the walls and the defense choice with failure.
 //!
 //! RESIDUALS:
 //! - `HouseClass::AI_Building_Strategy @ 0x004FD500` is not scheduled
@@ -52,14 +54,17 @@
 //!   mode changes only at building exits, and the state-2 draw
 //!   (`0x00509863`) is missing at unit exits. The computer's unit production
 //!   (Factory_AI's unit factories and their exits) is a later chain.
-//! - A `-1` defense node (and a WallTower node without a cell) takes the
-//!   wall/defense draw (`RandomRanged(0,99)` at `0x004FE59E`) and then the
-//!   failure return of `ChooseNextProduction @ 0x00506EF0`: the node is
-//!   removed (twice for a WallTower node). The walls of `0x0050C340` and the
-//!   defense choice with its draws (`0x00508150`, `0x00507759`) are not
-//!   ported. Trigger: every skirmish plan, which Recalc seeds with defense
-//!   sentinels after its fourth node. Effect: the computer builds no base
-//!   defenses or walls.
+//! - A `-1` defense node (and a WallTower node without a cell) takes the wall
+//!   draw (`RandomRanged(0,99)` at `0x004FE59E`); below the difficulty's
+//!   `AIPickWallDefensePercent=` native first tries the walls of
+//!   `0x0050C340`, which are not ported: VERA takes their failure and goes on
+//!   to the defense choice (`sim::ai_base_defense`). Trigger: every skirmish
+//!   plan, which Recalc seeds with defense sentinels after its fourth node,
+//!   on a draw below the percent. Effect: the computer builds no walls.
+//!   Where native walls a `ProtectWithWall=` building instead (wall nodes
+//!   after it, the `-1` node removed, no further draw), VERA chooses a
+//!   defense and makes that choice's draws (three threat draws with an
+//!   enemy, one pick draw over several candidates).
 //! - A `-3` node is removed without `0x005082C0`'s perimeter scan; only a map
 //!   plan can hold one.
 //! - Dormant in retail data: the `PowersUpBuilding=` arms of `0x0042E820` and
@@ -87,7 +92,7 @@
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::ai_base_site::{find_base_building_site, reserved_near};
+use crate::sim::ai_base_site::{SiteKey, find_base_building_site, reserved_near};
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell, unpack_base_plan_cell};
 use crate::sim::build_site::{Flush, can_place_building_at, flush_for_placement};
 use crate::sim::components::BuildingUp;
@@ -232,6 +237,7 @@ pub(crate) fn update_building_choice(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
+    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) {
     let game_mode_nonzero = sim.session.game_mode_nonzero;
@@ -246,7 +252,7 @@ pub(crate) fn update_building_choice(
     }
     let runs_building_choice = !game_mode_nonzero || matches!(house.ai_production.mode, 0..=2);
     if runs_building_choice {
-        choose_building(sim, rules, owner, registry);
+        choose_building(sim, rules, owner, path_grid, registry);
     }
 }
 
@@ -255,6 +261,7 @@ fn choose_building(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
+    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) {
     let Some(house) = sim.houses.get(&owner) else {
@@ -279,7 +286,7 @@ fn choose_building(
         };
         index = next;
     }
-    let node = plan_node(sim, owner, index);
+    let mut node = plan_node(sim, owner, index);
     // `0x004FE4B0..0x004FE518`: remove a perimeter node (its `0x005082C0`
     // scan is a residual).
     if node.type_or_control == -3 {
@@ -295,17 +302,23 @@ fn choose_building(
             .is_some_and(|name| name.eq_ignore_ascii_case(&ty.id))
     });
     if node.type_or_control == -1 || (wall_tower.is_some() && node.packed_cell == 0) {
-        // `0x004FE59E`: the wall/defense draw, whatever follows.
+        // `0x004FE59E`: the wall draw. The walls (`0x0050C340`) are a
+        // residual whose failure leads here too.
         let _ = sim.scenario_rng.next_range_i32_inclusive(0, 99);
-        // Walls (`0x0050C340`) and ChooseNextProduction (`0x00506EF0`) are
-        // residuals: take the latter's failure return, which removes the node
-        // (`0x004FE696..0x004FE6D2`) and, for a WallTower node, first the
-        // node itself (`0x004FE640..0x004FE694`).
-        if wall_tower.is_some() {
+        if !crate::sim::ai_base_defense::choose_next_production(
+            sim, rules, owner, index, path_grid, registry,
+        ) {
+            // `0x004FE640..0x004FE6D2`: a WallTower node goes first, then
+            // the node at its index.
+            if wall_tower.is_some() {
+                remove_node(sim, owner, index);
+            }
             remove_node(sim, owner, index);
+            return;
         }
-        remove_node(sim, owner, index);
-        return;
+        // `0x004FE6E1`: the node now holds the defense (or the WallTower its
+        // cell) and takes the ordinary path.
+        node = plan_node(sim, owner, index);
     }
     if node.type_or_control == -2 {
         return;
@@ -510,7 +523,15 @@ fn building_site(
             return cell;
         }
     }
-    let site = find_base_building_site(sim, rules, owner, ty, path_grid, registry);
+    let site = find_base_building_site(
+        sim,
+        rules,
+        owner,
+        ty,
+        SiteKey::Ordinary,
+        path_grid,
+        registry,
+    );
     if let Some(index) = node
         && let Some(house) = sim.houses.get_mut(&owner)
     {

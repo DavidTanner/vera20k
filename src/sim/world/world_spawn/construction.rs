@@ -304,6 +304,8 @@ fn stamp_scoring_flags(
         insignificant: obj.is_some_and(|o| o.insignificant),
         unit_like_building,
         resource_gatherer: obj.is_some_and(|o| o.resource_gatherer),
+        force_value: obj
+            .and_then(|o| crate::sim::house_tracking::ForceValueFacts::of(ge.category, o)),
     };
 }
 

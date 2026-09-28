@@ -275,3 +275,99 @@ fn discarding_a_constructed_object_releases_its_tracking() {
     );
     assert_eq!(tracking.active_for_test(), (0, 0, 0));
 }
+
+const VALUE_RULES: &str = "\
+[Countries]
+0=Americans
+1=Russians
+[Americans]
+CostUnitsMult=0.5
+[InfantryTypes]
+0=GI
+1=JUMP
+[VehicleTypes]
+0=TANK
+1=TANKD
+2=HOVER
+3=CARRIER
+[AircraftTypes]
+0=PLANE
+[BuildingTypes]
+0=BLDG
+[GI]
+Strength=100
+Cost=200
+[JUMP]
+Strength=100
+Cost=600
+ConsideredAircraft=yes
+[TANK]
+Strength=300
+Cost=700
+[TANKD]
+Strength=300
+Cost=900
+DontScore=yes
+[HOVER]
+Strength=300
+Cost=1000
+ConsideredAircraft=yes
+[CARRIER]
+Strength=300
+Cost=2000
+Spawns=PLANE
+[PLANE]
+Strength=200
+Cost=1500
+[BLDG]
+Strength=500
+Cost=1000
+Foundation=2x2
+";
+
+fn force_values_of(sim: &Simulation, house: InternedId) -> (i32, i32, i32) {
+    let values = sim.houses[&house].tracking.force_values();
+    (values.infantry, values.vehicles, values.air)
+}
+
+/// The value arms of Added_To_Game and Removed_From_Game
+/// (`0x00502B90..0x00502CE1`, `0x005028D0..0x00502A15`): an object's Cost_Of
+/// for its house, with the country's `Cost*Mult=`, joins the infantry,
+/// vehicle or air total while it is on the map, DontScore types too and
+/// buildings never. `ConsideredAircraft=` moves an infantry or a unit to air,
+/// `Spawns=` a unit; ChangeOwner prices it for each house in turn.
+#[test]
+fn force_values_follow_the_objects_on_the_map() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(VALUE_RULES)).unwrap();
+    let mut sim = Simulation::with_seed(3);
+    let [americans, russians] = ["Americans", "Russians"].map(|name| {
+        let house = sim.interner.intern(name);
+        let mut state = HouseState::new(house, 0, None, false, 0, 10);
+        state.project_country_cost_mults(&rules, &sim.interner);
+        sim.houses.insert(house, state);
+        house
+    });
+    let ids: Vec<u64> = [
+        "GI", "JUMP", "TANK", "TANKD", "HOVER", "CARRIER", "PLANE", "BLDG",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(n, kind)| {
+        sim.spawn_object_at_height(kind, "Americans", 10 + 4 * n as u16, 10, 0, 0, &rules)
+            .unwrap_or_else(|| panic!("{kind} spawns"))
+    })
+    .collect();
+    // Units at half price: TANK 350 + TANKD 450; air JUMP 600 + HOVER 500 +
+    // CARRIER 1000 + PLANE 1500.
+    assert_eq!(force_values_of(&sim, americans), (200, 800, 3600));
+
+    sim.change_owner(ids[2], russians);
+    assert_eq!(force_values_of(&sim, americans), (200, 450, 3600));
+    assert_eq!(force_values_of(&sim, russians), (0, 700, 0));
+
+    for id in ids {
+        sim.uninit_with_rules(id, &rules);
+    }
+    assert_eq!(force_values_of(&sim, americans), (0, 0, 0));
+    assert_eq!(force_values_of(&sim, russians), (0, 0, 0));
+}

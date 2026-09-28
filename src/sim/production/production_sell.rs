@@ -516,7 +516,7 @@ pub(crate) fn sell_complete(
             rules,
             object,
             house,
-            &sim.house_cost_factors(owner, rules)?,
+            &sim.house_cost_factors(owner)?,
             sim.session.game_mode_nonzero,
             false,
         ))

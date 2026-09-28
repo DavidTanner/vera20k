@@ -27,6 +27,18 @@
 //! `0x00502606..0x00502610`). The computer reads it when it decides whether
 //! a lost refinery node may be rebuilt (`sim::ai_base_building`).
 //!
+//! Their Aircraft, Infantry and Unit arms first add, and subtract, the
+//! object's value, its type's `Cost_Of` (`vt+0x84`, `0x00711F00`) for this
+//! house at that moment, again with no DontScore test: infantry to `+0x160A8`
+//! unless `ConsideredAircraft=` (`+0xD96`), a unit to `+0x160AC` unless
+//! `ConsideredAircraft=` or `Spawns=` (`+0xD58`), everything else of the
+//! three to the air total `+0x160B0` (`0x00502B90..0x00502CE1`,
+//! `0x005028D0..0x00502A15`); buildings have no value arm. The price follows
+//! the house's FactoryPlants, so an object that leaves after they changed
+//! takes out a different amount than it put in, and the totals drift as
+//! natively. An enemy computer reads them as the house's forces
+//! (`sim::ai_base_defense`).
+//!
 //! The gate (`HouseClass::Update @ 0x004F8E86..0x004F8F82`) reads only these:
 //! a short game keeps a house alive while `+0x2F0 > 0` or its tracked
 //! `BaseUnit=` types sum above zero; a normal game while `+0x2F0` plus the
@@ -61,6 +73,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::map::entities::EntityCategory;
+use crate::rules::object_type::ObjectType;
+use crate::rules::ruleset::HouseCostFactors;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 
@@ -74,6 +88,70 @@ pub struct TrackingFacts {
     pub unit_like_building: bool,
     /// `TechnoType+0x5EC`, `ResourceGatherer=` (ReadINI `0x007143DF`).
     pub resource_gatherer: bool,
+    /// The value arm of the on-map writers; none for a building.
+    #[serde(default)]
+    pub force_value: Option<ForceValueFacts>,
+}
+
+/// The house total an object's value joins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ForceKind {
+    /// `HouseClass+0x160A8`.
+    Infantry,
+    /// `HouseClass+0x160AC`.
+    Vehicles,
+    /// `HouseClass+0x160B0`.
+    Air,
+}
+
+/// What the on-map writers price: the total and the type's `Cost_Of` inputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ForceValueFacts {
+    pub kind: ForceKind,
+    /// `TechnoType+0x610`, the `Cost=` that `Cost_Of` scales (read through
+    /// virtual `+0xAC`, `0x00711EB0`).
+    pub cost: i32,
+    /// [`ObjectType::factor_slot`].
+    pub factor_slot: u8,
+}
+
+impl ForceValueFacts {
+    /// The value arm an object of class `category` and type `ty` takes (see
+    /// the module doc).
+    pub(crate) fn of(category: EntityCategory, ty: &ObjectType) -> Option<Self> {
+        let kind = match category {
+            EntityCategory::Aircraft => ForceKind::Air,
+            EntityCategory::Infantry if ty.considered_aircraft => ForceKind::Air,
+            EntityCategory::Infantry => ForceKind::Infantry,
+            EntityCategory::Unit if ty.considered_aircraft || ty.spawns.is_some() => ForceKind::Air,
+            EntityCategory::Unit => ForceKind::Vehicles,
+            EntityCategory::Structure => return None,
+        };
+        Some(Self {
+            kind,
+            cost: ty.cost,
+            factor_slot: ty.factor_slot() as u8,
+        })
+    }
+}
+
+/// `HouseClass+0x160A8`, `+0x160AC` and `+0x160B0`, which the constructor
+/// zeroes (`0x004F5DB4..0x004F5DC0`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ForceValues {
+    pub infantry: i32,
+    pub vehicles: i32,
+    pub air: i32,
+}
+
+impl ForceValues {
+    fn total(&mut self, kind: ForceKind) -> &mut i32 {
+        match kind {
+            ForceKind::Infantry => &mut self.infantry,
+            ForceKind::Vehicles => &mut self.vehicles,
+            ForceKind::Air => &mut self.air,
+        }
+    }
 }
 
 /// The counters the defeat gate reads, and the on-map gatherer count (see
@@ -96,6 +174,9 @@ pub struct HouseTracking {
     /// `ResourceGatherer=`.
     #[serde(default)]
     resource_gatherers: i32,
+    /// The value totals of the house's forces on the map.
+    #[serde(default)]
+    force_values: ForceValues,
 }
 
 impl HouseTracking {
@@ -143,6 +224,11 @@ impl HouseTracking {
         self.resource_gatherers
     }
 
+    /// `HouseClass+0x160A8`, `+0x160AC` and `+0x160B0`.
+    pub(crate) const fn force_values(&self) -> ForceValues {
+        self.force_values
+    }
+
     /// `HouseClass+0x5550`'s count for one BuildingType (`0x0049FAE0`).
     pub(crate) fn active_building_count(&self, building: InternedId) -> i32 {
         self.active_building_types
@@ -151,10 +237,15 @@ impl HouseTracking {
             .unwrap_or(0)
     }
 
-    /// `HouseClass::Added_To_Game @ 0x00502A80`.
-    pub(crate) fn added_to_game(&mut self, entity: &GameEntity) {
+    /// `HouseClass::Added_To_Game @ 0x00502A80`, pricing with this house's
+    /// `factors`.
+    pub(crate) fn added_to_game(&mut self, entity: &GameEntity, factors: &HouseCostFactors) {
         if entity.tracking_facts.resource_gatherer {
             self.resource_gatherers = self.resource_gatherers.wrapping_add(1);
+        }
+        if let Some(value) = entity.tracking_facts.force_value {
+            let total = self.force_values.total(value.kind);
+            *total = total.wrapping_add(factors.adjust(value.cost, value.factor_slot.into()));
         }
         let dont_score = entity.dont_score;
         match entity.category {
@@ -177,10 +268,15 @@ impl HouseTracking {
         }
     }
 
-    /// `HouseClass::Removed_From_Game @ 0x005025F0`.
-    pub(crate) fn removed_from_game(&mut self, entity: &GameEntity) {
+    /// `HouseClass::Removed_From_Game @ 0x005025F0`, pricing with this
+    /// house's `factors`.
+    pub(crate) fn removed_from_game(&mut self, entity: &GameEntity, factors: &HouseCostFactors) {
         if entity.tracking_facts.resource_gatherer {
             self.resource_gatherers = self.resource_gatherers.wrapping_sub(1);
+        }
+        if let Some(value) = entity.tracking_facts.force_value {
+            let total = self.force_values.total(value.kind);
+            *total = total.wrapping_sub(factors.adjust(value.cost, value.factor_slot.into()));
         }
         if entity.dont_score {
             return;

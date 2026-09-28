@@ -662,7 +662,11 @@ def perimeter_of(cells):
 
 
 def site_row(label, *, center, perimeter, world, size=(2, 2), spacing=1, protect=False,
-             extra=False, game_mode=1, alternate=(0, 0), base=(0, 0)):
+             extra=False, game_mode=1, alternate=(0, 0), base=(0, 0), key=0x505F80,
+             argument=-1, rect=None, grid=None):
+    """One search with the ordinary key, or with another key function and its
+    argument; the defense key 0x505FD0 reads `grid` over `rect` through
+    House+0x16060."""
     emu = Emu()
     emu.write32(GAME_MODE, game_mode)
     emu.write32(RULES + 0x1460, spacing)
@@ -699,9 +703,16 @@ def site_row(label, *, center, perimeter, world, size=(2, 2), spacing=1, protect
     emu.hook(0x586780, occupancy, 8)
     emu.hook(STUB_CAN_PLACE, can_place, 8)
     emu.mark(0x506540, ['pass'])
+    if grid is not None:
+        for slot, part in enumerate(rect):
+            emu.write32(HOUSE + 0x5754 + 4 * slot, part)
+        cells_grid = FAKE + 0x500000
+        for slot, value in enumerate(grid):
+            emu.write32(cells_grid + 4 * slot, value)
+        emu.write32(HOUSE + 0x16060, cells_grid)
     out = SCENARIO + 0x100
     emu.write32(out, 0xDEADBEEF)
-    emu.invoke(0x5060B0, ecx=HOUSE, args=[out, ty, 0x505F80, 0xFFFFFFFF])
+    emu.invoke(0x5060B0, ecx=HOUSE, args=[out, ty, key, argument & 0xFFFFFFFF])
     answer = list(struct.unpack('<hh', emu.uc.mem_read(out, 4)))
     # Events as one-line strings: `cell x y reserved level`,
     # `clear x y w h house answer`, `place x y answer`.
@@ -719,10 +730,13 @@ def site_row(label, *, center, perimeter, world, size=(2, 2), spacing=1, protect
             raise OracleError(f'{label}: the second pass differs from the first')
         lines = lines[:second]
     passes = len(starts)
-    return dict(label=label, center=list(center), alternate=list(alternate), base=list(base),
-                perimeter=[list(cell) for cell in perimeter], width=width, height=height,
-                spacing=spacing, protect=protect, extra=extra, game_mode=game_mode,
-                house=HOUSE_INDEX, answer=answer, passes=passes, events=lines)
+    row = dict(label=label, center=list(center), alternate=list(alternate), base=list(base),
+               perimeter=[list(cell) for cell in perimeter], width=width, height=height,
+               spacing=spacing, protect=protect, extra=extra, game_mode=game_mode,
+               house=HOUSE_INDEX, answer=answer, passes=passes, events=lines)
+    if grid is not None:
+        row.update(argument=argument, rect=list(rect), grid=list(grid))
+    return row
 
 
 def site():

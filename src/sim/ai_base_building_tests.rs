@@ -180,7 +180,7 @@ fn the_building_choice_handles_nodes_as_native() {
             .collect();
         let expected = expect_draws(&mut sim, &draws, 0, 99);
 
-        choose_building(&mut sim, &rules, owner, None);
+        choose_building(&mut sim, &rules, owner, None, None);
 
         let label = row["label"].as_str().unwrap();
         let house = &sim.houses[&owner];

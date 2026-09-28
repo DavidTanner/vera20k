@@ -22,6 +22,7 @@
 
 // --- Core types: entity storage, components, commands, RNG, interning ---
 pub(crate) mod ai_base_building;
+pub(crate) mod ai_base_defense;
 pub(crate) mod ai_base_site;
 pub mod anim_class;
 #[cfg(test)]

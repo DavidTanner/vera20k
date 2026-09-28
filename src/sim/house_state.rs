@@ -13,7 +13,7 @@ use crate::map::playfield::local_to_packed_cell;
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::economy::Economy;
 use crate::sim::intern::InternedId;
-use crate::util::native_x87::{NativeF64Bits, X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
 
 /// Native per-house AI difficulty index stored by `HouseClass`.
 ///
@@ -61,6 +61,23 @@ struct HouseRofBias(NativeF64Bits);
 impl Default for HouseRofBias {
     fn default() -> Self {
         Self(NativeF64Bits::ONE)
+    }
+}
+
+/// The `Cost*Mult=` floats of the House's type (`HouseTypeClass+0x114..+0x124`,
+/// in [`crate::rules::object_type::ObjectType::factor_slot`] order), which
+/// `Cost_Of` multiplies in (`0x0050BDF0`). The type never changes, so the
+/// House keeps the rules' values from its creation
+/// ([`HouseState::project_country_cost_mults`]) and prices objects without a
+/// rules lookup, as the lifecycle's value totals must (`house_tracking`).
+/// `Simulation::cost_of` checks the copy against the rules in debug builds.
+/// The HouseType constructor stores 1.0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CountryCostMults(pub [NativeF32Bits; 5]);
+
+impl Default for CountryCostMults {
+    fn default() -> Self {
+        Self([NativeF32Bits::ONE; 5])
     }
 }
 
@@ -265,7 +282,8 @@ impl BaseReservationState {
         }
     }
 
-    #[cfg(test)]
+    /// `HouseClass+0x5754..+0x5760`: the left, top, width and height of the
+    /// reserved cells.
     pub(crate) fn bounds(&self) -> (i32, i32, i32, i32) {
         (self.min_x, self.min_y, self.width, self.height)
     }
@@ -344,6 +362,11 @@ pub struct HouseState {
     /// mutable `HouseClass` bytes — gamemd keeps this one on the house type.
     #[serde(default)]
     pub multiplay_passive: bool,
+    /// The HouseType's `Cost*Mult=`, projected from the rules at creation.
+    /// Like the flag above it is the type's, so it is left out of the state
+    /// hash.
+    #[serde(default)]
+    pub country_cost_mults: CountryCostMults,
     /// Whether this player has been eliminated.
     pub is_defeated: bool,
     /// Victory flag.
@@ -527,6 +550,17 @@ impl HouseState {
         self.country.unwrap_or(self.name)
     }
 
+    /// Take the `Cost*Mult=` of the House's type from `rules`
+    /// ([`CountryCostMults`]); the scenario's House creation calls it once.
+    pub(crate) fn project_country_cost_mults(
+        &mut self,
+        rules: &crate::rules::ruleset::RuleSet,
+        interner: &crate::sim::intern::StringInterner,
+    ) {
+        self.country_cost_mults =
+            CountryCostMults(rules.country_cost_mults(interner.resolve(self.house_type_id())));
+    }
+
     /// `HouseClass::SetDifficulty @ 0x004F6EC0`, for the fields VERA keeps:
     /// the difficulty index (`+0x184`), the ROF bias (`+0x1A8`) and the
     /// repair delay (`+0x1C0`). Outside a campaign the bias is the difficulty
@@ -680,6 +714,7 @@ impl HouseState {
             difficulty: HouseDifficulty::Normal,
             rof_bias: HouseRofBias::default(),
             multiplay_passive: false,
+            country_cost_mults: CountryCostMults::default(),
             is_defeated: false,
             has_won: false,
             has_lost: false,

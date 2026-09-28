@@ -205,9 +205,14 @@ pub(super) enum HashFeature {
     /// Each folds, tagged, only off its constructor value, so a state without
     /// them hashes as earlier schemas, which fold none of them.
     AiBaseBuilding = 232,
+    /// The computer's base defenses: each House's on-map force values
+    /// (`HouseClass+0x160A8`, `+0x160AC`, `+0x160B0`), folded, tagged, only
+    /// when one is not zero, so a state without them hashes as earlier
+    /// schemas, which fold none.
+    AiBaseDefense = 233,
     /// A retained Cell TarCom/NavCom or archived target can read the live
     /// fallback Cell coordinate before another lookup stamps it.
-    RetainedCellTarget = 233,
+    RetainedCellTarget = 234,
 }
 
 impl HashSchema {
@@ -255,6 +260,7 @@ impl HashSchema {
                     | HashFeature::FactoryPlants
                     | HashFeature::BuildingFacing
                     | HashFeature::AiBaseBuilding
+                    | HashFeature::AiBaseDefense
                     | HashFeature::RetainedCellTarget
             ),
             #[cfg(test)]

@@ -977,6 +977,15 @@ pub struct ObjectType {
     /// `0x0045E225` defaults it false; reader block
     /// `0x00460FFC..0x00461010` binds it.
     pub is_base_defense: bool,
+    /// BuildingType `AntiAirValue=`, `AntiArmorValue=` and
+    /// `AntiInfantryValue=` (`+0x1524`, `+0x1528`, `+0x152C`): signed ReadInt
+    /// with the field as default (`0x0045FED2`, `0x0045FEB8`, `0x0045FE9E`);
+    /// the constructor stores 0 (`0x0045DF79..0x0045DF87`). Other types never
+    /// read them. The computer weighs its base defense choice and its
+    /// defensive coverage by them (`sim::ai_base_defense`).
+    pub anti_air_value: i32,
+    pub anti_armor_value: i32,
+    pub anti_infantry_value: i32,
 
     /// Whether this unit can be crushed by vehicles with Crusher movement zones.
     /// Default: false for all types. Parsed from `Crushable=` in rules.ini.
@@ -2171,10 +2180,13 @@ impl ObjectType {
             initial_ammo: section.get_i32("InitialAmmo").unwrap_or(-1),
 
             // Spawn manager pool
+            // `0x00714E97..0x00714EB3` reads the name through
+            // `AircraftTypeClass::FindOrAllocate @ 0x0041CEF0`, which answers
+            // null for `none` and `<none>`.
             spawns: section
                 .get("Spawns")
                 .map(|s| s.trim().to_ascii_uppercase())
-                .filter(|s| !s.is_empty()),
+                .filter(|s| !crate::rules::ini_parser::is_native_none_type_name(s)),
             spawns_number: section.get_i32("SpawnsNumber").unwrap_or(0),
             spawn_regen_rate: section.get_i32("SpawnRegenRate").unwrap_or(0).max(0) as u32,
             spawn_reload_rate: section.get_i32("SpawnReloadRate").unwrap_or(0).max(0) as u32,
@@ -2333,6 +2345,9 @@ impl ObjectType {
             // BuildingTypeClass__ReadINI 0x00460FFC..0x00461010 writes
             // `IsBaseDefense=` to BuildingType+0x1706; constructor default false.
             is_base_defense: section.get_bool("IsBaseDefense").unwrap_or(false),
+            anti_air_value: building_int(section, category, "AntiAirValue"),
+            anti_armor_value: building_int(section, category, "AntiArmorValue"),
+            anti_infantry_value: building_int(section, category, "AntiInfantryValue"),
             factory: section.get("Factory").and_then(FactoryType::from_ini),
             weapons_factory: section.get_bool("WeaponsFactory").unwrap_or(false),
             cloning: section.get_bool("Cloning").unwrap_or(false),
@@ -2773,6 +2788,15 @@ fn sound_key(section: &IniSection, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+/// A signed key only `BuildingTypeClass::ReadINI` reads (constructor 0).
+fn building_int(section: &IniSection, category: ObjectCategory, key: &str) -> i32 {
+    if category == ObjectCategory::Building {
+        section.read_int(key, 0)
+    } else {
+        0
+    }
 }
 
 /// Parse ExitCoord=X,Y,Z from rules.ini. Values are in leptons (256 = 1 cell).
