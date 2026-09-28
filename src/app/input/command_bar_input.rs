@@ -99,14 +99,16 @@ pub(super) fn publish(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sidebar::command_bar::{CommandBarLayout, parse_button_list};
+    use crate::sidebar::command_bar::CommandBarLayout;
 
     #[test]
     fn command_bar_open_closed_and_pressed_use_the_real_gadget_driver() {
         let layout = |open| {
             CommandBarLayout::new([800, 600], 168, [28, 32], [52, 32], [28, 32], open).unwrap()
         };
-        let slots = parse_button_list("Team01,Team02,TypeSelect,Deploy,Guard,PlanningMode");
+        // Retail UIMD.INI [AdvancedCommandBar] ButtonList:
+        // Team01,Team02,TypeSelect,Deploy,Guard,PlanningMode.
+        let slots = vec![Some(0), Some(1), Some(3), Some(4), Some(6), Some(9)];
         let mut gadgets = InGameGadgets::new();
         sync_prepared(&mut gadgets, Some(&(layout(true), slots.clone())), false);
         let handles = gadgets.command_bar.unwrap();

@@ -886,7 +886,11 @@ SpreadPercentage=.06
 
     #[test]
     fn gsi_04_09_existing_growth_honors_threshold_clamp_and_tactical_only_dirty() {
-        for (growth_percentage, succeeds) in [(".000009", false), (".00001", true)] {
+        // ReadDouble scans a float: `.00001` widens to 9.99999974737875e-06,
+        // just under the 1e-05 gate; `.000011` clears it.
+        for (growth_percentage, succeeds) in
+            [(".000009", false), (".00001", false), (".000011", true)]
+        {
             let (overlay_registry, tiberium_types) =
                 native_tiberium_fixture_with_riparius_growth(growth_percentage);
             let tib01 = overlay_registry.id_for_name("TIB01").expect("TIB01");

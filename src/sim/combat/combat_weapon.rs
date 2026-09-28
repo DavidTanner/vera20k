@@ -81,10 +81,6 @@ pub(crate) struct SelectedWeapon<'a> {
     pub index: i32,
 }
 
-/// `DeployFireWeapon=` constructor default (`TechnoTypeClass` ctor @
-/// `0x0071113A`): slot 1.
-const DEFAULT_DEPLOY_FIRE_WEAPON_INDEX: i32 = 1;
-
 /// Elite veterancy threshold used by `VeterancyClass::IsElite` inside
 /// `GetWeapon`.
 const ELITE_VETERANCY: u16 = 200;
@@ -527,17 +523,12 @@ fn is_armed_from_facts(obj: &ObjectType, facts: AttackerFacts) -> bool {
     weapon_for_index(obj, facts.veterancy, index).is_some()
 }
 
-fn deploy_fire_weapon_index(obj: &ObjectType) -> i32 {
-    obj.deploy_fire_weapon
-        .unwrap_or(DEFAULT_DEPLOY_FIRE_WEAPON_INDEX)
-}
-
 /// Weapon ID the unit will fire while deployed (`DeployFireWeapon=` slot,
 /// default Secondary), without target-compatibility checks. Used by the
 /// deployed self-irradiator gate, which needs the weapon's RadLevel before
 /// any target exists.
 pub(crate) fn deploy_fire_weapon_id(obj: &ObjectType, veterancy: u16) -> Option<&str> {
-    weapon_for_index(obj, veterancy, deploy_fire_weapon_index(obj)).map(|(weapon_id, _)| weapon_id)
+    weapon_for_index(obj, veterancy, obj.deploy_fire_weapon).map(|(weapon_id, _)| weapon_id)
 }
 
 /// `TechnoClass::SelectNavalTargetingWeapon @ 0x006F3820` (vtable `+0x2E8`,
@@ -678,12 +669,12 @@ pub(crate) fn what_weapon_should_i_use(
     match attacker.kind {
         TechnoKind::Infantry if obj.deploy_fire => {
             if attacker.deploy_fire_active {
-                return deploy_fire_weapon_index(obj);
+                return obj.deploy_fire_weapon;
             }
             return attacker.open_transport_weapon.unwrap_or(0);
         }
         TechnoKind::Unit if attacker.deploy_fire_active && obj.deploy_fire => {
-            return deploy_fire_weapon_index(obj);
+            return obj.deploy_fire_weapon;
         }
         _ => {}
     }

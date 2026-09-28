@@ -6,8 +6,11 @@
 
 use crate::map::tube_facts::TubeFact;
 use crate::rules::ini_parser::{IniFile, IniSection};
+use crate::rules::ini_value::{crt_atoi, strtok};
 
 const MIN_TUBE_FIELDS: usize = 5;
+/// `MapClass::ReadTubesINI` 0x007283C0 ReadStrings each row into 0x200 bytes.
+const TUBE_ROW_CAPACITY: usize = 0x200;
 /// `MapClass::ReadTubesINI` 0x007283C0 runs its path loop at most 100 times
 /// (`while (iVar6 < 100)`), so at most 99 steps are ever counted into the
 /// TubeClass record's +0x1C0 length field.
@@ -34,12 +37,11 @@ impl RawTubeSection {
             return Self::default();
         };
         let records = section
-            .get_values()
-            .into_iter()
+            .keys()
             .enumerate()
-            .map(|(source_entry_ordinal, value)| RawTubeRecord {
+            .map(|(source_entry_ordinal, key)| RawTubeRecord {
                 source_entry_ordinal,
-                value: value.to_string(),
+                value: section.read_string(key, "", TUBE_ROW_CAPACITY),
             })
             .collect();
         Self { records }
@@ -156,8 +158,8 @@ pub fn parse_tubes(ini: &IniFile) -> Vec<TubeFact> {
 
 fn parse_tubes_section(section: &IniSection) -> Vec<TubeFact> {
     let mut tubes = Vec::new();
-    for value in section.get_values() {
-        match parse_allocated_tube_entry(value) {
+    for key in section.keys() {
+        match parse_allocated_tube_entry(&section.read_string(key, "", TUBE_ROW_CAPACITY)) {
             Ok(tube) => tubes.push(tube),
             Err(error) => log::warn!("dropping malformed [Tubes] convenience fact: {error}"),
         }
@@ -169,7 +171,7 @@ fn parse_tubes_section(section: &IniSection) -> Vec<TubeFact> {
 }
 
 fn parse_allocated_tube_entry(value: &str) -> Result<TubeFact, AllocatedTubeParseError> {
-    let fields: Vec<&str> = value.split(',').map(str::trim).collect();
+    let fields: Vec<&str> = strtok(value, &[',']).collect();
     if fields.len() < MIN_TUBE_FIELDS {
         return Err(AllocatedTubeParseError::MissingFixedFields {
             actual: fields.len(),
@@ -212,41 +214,6 @@ fn parse_allocated_tube_entry(value: &str) -> Result<TubeFact, AllocatedTubePars
     }
 
     Ok(TubeFact::explicit(entry, exit, direction, path_steps))
-}
-
-/// The supported, deterministic part of CRT `atoi`: leading ASCII whitespace,
-/// one optional sign, then the maximal decimal digit prefix. Missing digits
-/// return zero. Accumulation wraps in the same 32-bit domain used by TubeClass.
-fn crt_atoi(value: &str) -> i32 {
-    let bytes = value.as_bytes();
-    let mut index = 0;
-    while bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
-        index += 1;
-    }
-    let mut negative = false;
-    if let Some(sign) = bytes.get(index) {
-        if *sign == b'-' || *sign == b'+' {
-            negative = *sign == b'-';
-            index += 1;
-        }
-    }
-    let mut value = 0_i32;
-    let mut saw_digit = false;
-    while let Some(&digit) = bytes.get(index) {
-        if !digit.is_ascii_digit() {
-            break;
-        }
-        saw_digit = true;
-        value = value.wrapping_mul(10).wrapping_add(i32::from(digit - b'0'));
-        index += 1;
-    }
-    if !saw_digit {
-        0
-    } else if negative {
-        value.wrapping_neg()
-    } else {
-        value
-    }
 }
 
 #[cfg(test)]

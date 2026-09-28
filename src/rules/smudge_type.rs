@@ -37,8 +37,7 @@ impl SmudgeTypeRegistry {
 
         // Matches the canonical [XxxTypes] registry pattern used by ruleset:
         // entry values are consumed in declaration order regardless of key text.
-        for value in list_section.get_values() {
-            let source_name = value.trim();
+        for source_name in list_section.get_values() {
             let name_upper: String = source_name.to_uppercase();
             if name_upper.is_empty() {
                 continue;
@@ -49,20 +48,15 @@ impl SmudgeTypeRegistry {
             let Some(section) = ini.section(source_name) else {
                 continue;
             };
-            let crater: bool = section.get_bool("Crater").unwrap_or(false);
-            let burn: bool = section.get_bool("Burn").unwrap_or(false);
-            let width: u8 = section
-                .get_i32("Width")
-                .map(|v| v.clamp(1, 255) as u8)
-                .unwrap_or(1);
-            let height: u8 = section
-                .get_i32("Height")
-                .map(|v| v.clamp(1, 255) as u8)
-                .unwrap_or(1);
-            let image_name: Option<String> = section
-                .get("Image")
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string());
+            let crater: bool = section.read_bool("Crater", false);
+            let burn: bool = section.read_bool("Burn", false);
+            // ReadInt over the constructor's 1 (`0x006B5281`, `0x006B573F`,
+            // `0x006B5759`). RESIDUAL: native keeps the int unclamped; VERA
+            // clamps it into 1..=255. Retail sizes are 1 and 2.
+            let width: u8 = section.read_int("Width", 1).clamp(1, 255) as u8;
+            let height: u8 = section.read_int("Height", 1).clamp(1, 255) as u8;
+            // ObjectTypeClass `Image=`, ReadString 0x19 (`0x005F933B`).
+            let image_name: Option<String> = section.read_name("Image", 0x19).map(str::to_string);
 
             let id: u16 = types.len() as u16;
             by_name.insert(name_upper.clone(), id);

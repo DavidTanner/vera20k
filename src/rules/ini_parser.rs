@@ -1,4 +1,5 @@
-//! Physical INI representation and scalar readers for Westwood data.
+//! Physical INI representation for Westwood data: the `INIClass` analog.
+//! Values are read through the `read_*` readers in `rules::ini_value`.
 //!
 //! Active `gamemd.exe` treats raw section and key names as case-sensitive.
 //! A fresh load retains duplicate nonempty section bodies. Empty keys, values,
@@ -9,8 +10,10 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::sync::LazyLock;
 
 use crate::rules::error::RulesError;
+use crate::rules::ini_value::strtrim_ascii;
 
 const READ_LINE_PAYLOAD: usize = 511;
 
@@ -80,81 +83,30 @@ impl IniSection {
         self.projected_values.remove(key);
     }
 
-    /// Get an exact-case key.
+    /// The section every reader sees when the named section is absent: no
+    /// entries, so each `read_*` returns its default, as a native reader does
+    /// for a missing section.
+    pub fn empty() -> &'static IniSection {
+        static EMPTY: LazyLock<IniSection> = LazyLock::new(|| IniSection::new(String::new()));
+        &EMPTY
+    }
+
+    /// The raw stored value of an exact-case key. Values are read through the
+    /// `read_*` readers (`ini_value.rs`); outside them this only tests
+    /// whether a key is present.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.entries.get(key).map(String::as_str)
-    }
-
-    /// Integer reader with native `$FF`, `FFh`, and C `atoi` prefix behavior.
-    pub fn get_i32(&self, key: &str) -> Option<i32> {
-        if let Some(values) = self.projected_values.get(key) {
-            let mut resolved = None;
-            for value in values {
-                if let Some(parsed) = crate::rules::ini_value::parse_read_int_value(value) {
-                    resolved = Some(parsed);
-                }
-            }
-            resolved
-        } else {
-            crate::rules::ini_value::parse_read_int_value(self.get(key)?)
-        }
-    }
-
-    /// Native float read: parse as `f32`, then return that value.
-    pub fn get_f32(&self, key: &str) -> Option<f32> {
-        self.get(key)?;
-        Some(self.read_double(key, 0.0) as f32)
-    }
-
-    /// Native double read widens the parsed `f32`; it does not parse an f64
-    /// mantissa directly.
-    pub fn get_f64(&self, key: &str) -> Option<f64> {
-        self.get(key)?;
-        Some(self.read_double(key, 0.0))
-    }
-
-    /// Westwood numeric reads stop before comma-separated trailing text.
-    pub fn get_light_f32(&self, key: &str) -> Option<f32> {
-        let val = self.get(key)?;
-        let number = val.split_once(',').map_or(val, |(head, _)| head);
-        Some(crate::rules::ini_value::parse_leading_f32(number))
-    }
-
-    /// A percent sign anywhere in the value scales the parsed f32 by 0.01.
-    pub fn get_percent(&self, key: &str) -> Option<f32> {
-        self.get(key)?;
-        Some(self.read_double(key, 0.0) as f32)
-    }
-
-    /// Native boolean reads inspect only the first trimmed character.
-    ///
-    /// Retail provenance: current-field default — `WeaponTypeClass__ReadINI` @
-    /// `0x00772080`, calling `CCINIClass__ReadBool` @ `0x005295F0`.
-    pub fn get_bool(&self, key: &str) -> Option<bool> {
-        let mut resolved = None;
-        if let Some(values) = self.projected_values.get(key) {
-            for value in values {
-                if let Some(parsed) = parse_bool_value(value) {
-                    resolved = Some(parsed);
-                }
-            }
-            resolved
-        } else {
-            parse_bool_value(self.get(key)?)
-        }
     }
 
     pub(crate) fn projected_values(&self, key: &str) -> Option<&[String]> {
         self.projected_values.get(key).map(Vec::as_slice)
     }
 
-    pub fn get_list(&self, key: &str) -> Option<Vec<&str>> {
-        let val = self.get(key)?;
-        Some(val.split(',').map(trim_ascii_controls).collect())
-    }
-
-    /// Values of every entry in source order. Native registry loops use
-    /// GetEntryCount/GetEntryName-by-index and do not inspect the key spelling.
+    /// Values of every entry in source order: the walk over a registry
+    /// section `native_processing` rewrote with native stored IDs
+    /// (`[OverlayTypes]`, `[SmudgeTypes]`, `[Animations]`, `[Tiberiums]`).
+    /// A raw INI registry walk reads each entry through `read_name` with its
+    /// native capacity instead.
     pub fn get_values(&self) -> Vec<&str> {
         self.key_order
             .iter()
@@ -168,56 +120,6 @@ impl IniSection {
 
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.key_order.iter().map(String::as_str)
-    }
-
-    /// Value lookup that ignores key case. **VERA-internal — gamemd has no
-    /// equivalent, and no new caller should be added.**
-    ///
-    /// gamemd's `INIClass` is case-SENSITIVE on both section names and entry
-    /// names. It hashes the raw bytes on the store side
-    /// (`INIClass::LoadFromStraw @ 0x00525A60`, raw-pointer CRC call at
-    /// `0x005260D4`, whose only text transform is `strtrim @ 0x00727CF0` —
-    /// bytes `<= 0x20` off both ends) and on the lookup side
-    /// (`CCINIClass::ReadInt @ 0x005276D0`, CRC call at `0x00527727`), through
-    /// the standard reflected CRC-32 in `CRCEngine::AddData @ 0x004A1DE0`
-    /// (table at `0x0081F7B4`, poly `0xEDB88320`), and then compares 32-bit
-    /// integers only — `INIClass::FindEntry_BinarySearch @ 0x0052B4F0` and
-    /// `FindSection_BinarySearch @ 0x0052B620` never call `strcmp`. There is
-    /// no folding instruction anywhere on the path and no string fallback.
-    ///
-    /// An earlier version of this comment claimed the opposite and cited
-    /// `MaxDebris=` as the reason this helper exists. That was backwards: the
-    /// 17 stock `[VehicleTypes]` spelling `Maxdebris=3` are invisible to
-    /// gamemd and keep the constructor default of 0, so reading them was the
-    /// divergence. Those call sites are now case-exact.
-    ///
-    /// Across the whole stock INI corpus exactly 6 authored key spellings
-    /// disagree in case with gamemd's own literal: `Maxdebris` (17 sections),
-    /// `JumpJetAccel` (8), `JumpJetTurnRate` (8), `Vshift` (9), `Fshift` (3)
-    /// and `volume` (2) — 47 (section, key) pairs over 38 distinct sections.
-    /// 0 section names disagree. The survivors here are `sound_ini.rs`'s 18
-    /// call sites, reached by the three soundmd mis-spellings above: 14 of
-    /// those 47 pairs, over 13 distinct sound events, because
-    /// `[GrinderGrinding]` carries both `Fshift` and `Vshift`. They belong to
-    /// the audio lane; this helper is deleted once those are converted.
-    pub fn get_ignoring_case(&self, key: &str) -> Option<&str> {
-        self.key_ignore_ascii_case(key)
-            .and_then(|exact| self.entries.get(exact))
-            .map(String::as_str)
-    }
-
-    /// [`Self::get_i32`]'s case-insensitive sibling; see
-    /// [`Self::get_ignoring_case`] for when to use it.
-    pub fn get_i32_ignoring_case(&self, key: &str) -> Option<i32> {
-        let exact = self.key_ignore_ascii_case(key)?.to_string();
-        self.get_i32(&exact)
-    }
-
-    fn key_ignore_ascii_case(&self, key: &str) -> Option<&str> {
-        self.key_order
-            .iter()
-            .find(|candidate| candidate.eq_ignore_ascii_case(key))
-            .map(String::as_str)
     }
 }
 
@@ -290,7 +192,7 @@ impl IniFile {
     }
 
     fn parse_line(ini: &mut Self, current_section: &mut Option<usize>, raw_line: &str) {
-        let line = trim_ascii_controls(raw_line);
+        let line = strtrim_ascii(raw_line);
         if line.is_empty() {
             return;
         }
@@ -308,12 +210,12 @@ impl IniFile {
 
         // Semicolon truncation happens before the first-equals split. `#` has
         // no comment meaning in the active parser.
-        let payload = trim_ascii_controls(line.split_once(';').map_or(line, |(head, _)| head));
+        let payload = strtrim_ascii(line.split_once(';').map_or(line, |(head, _)| head));
         let Some((key, value)) = payload.split_once('=') else {
             return;
         };
-        let key = trim_ascii_controls(key);
-        let value = trim_ascii_controls(value);
+        let key = strtrim_ascii(key);
+        let value = strtrim_ascii(value);
         if key.is_empty() || value.is_empty() {
             return;
         }
@@ -327,6 +229,12 @@ impl IniFile {
         self.first_section
             .get(name)
             .and_then(|index| self.sections.get(*index))
+    }
+
+    /// [`Self::section`] for reading: an absent section is
+    /// [`IniSection::empty`], so every reader returns its default.
+    pub fn section_or_empty(&self, name: &str) -> &IniSection {
+        self.section(name).unwrap_or(IniSection::empty())
     }
 
     pub fn section_names(&self) -> Vec<&str> {
@@ -427,30 +335,16 @@ impl IniFile {
     }
 }
 
-pub(crate) fn trim_ascii_controls(value: &str) -> &str {
-    value.trim_matches(|character| u32::from(character) <= 0x20)
-}
-
-/// Whether a type-name reader resolves the input to native null.
+/// Whether a type factory answers null for this exact name.
 ///
-/// `UnitTypeClass__FindOrAllocate @ 0x007480D0`, reached for
+/// `UnitTypeClass__FindOrAllocate @ 0x007480D0` (reached for
 /// `UndeploysInto=` by `TechnoTypeClass__ReadINI @ 0x00712170` at
-/// `0x0071329D..0x007132E4`, rejects these names before lookup/allocation.
+/// `0x0071329D..0x007132E4`) and its sibling factories `_stricmp` the name
+/// against `<none>` (`0x00817474`) and `none` (`0x00817694`) before lookup
+/// or allocation. The name is compared as given: a list token keeps its
+/// spaces, so ` none` is an ordinary type name.
 pub(crate) fn is_native_none_type_name(value: &str) -> bool {
-    let value = trim_ascii_controls(value);
-    value.is_empty() || value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("<none>")
-}
-
-fn parse_bool_value(value: &str) -> Option<bool> {
-    match trim_ascii_controls(value)
-        .bytes()
-        .next()?
-        .to_ascii_uppercase()
-    {
-        b'1' | b'T' | b'Y' => Some(true),
-        b'0' | b'F' | b'N' => Some(false),
-        _ => None,
-    }
+    value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("<none>")
 }
 
 #[cfg(test)]

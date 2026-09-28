@@ -166,68 +166,31 @@ impl GameOptions {
     /// the global/default mirror.
     pub fn from_multiplayer_dialog_settings(ini: &IniFile) -> Self {
         let mut options = Self::default();
-        let Some(section) = ini.section("MultiplayerDialogSettings") else {
-            return options;
-        };
+        // `0x00671EF7`-`0x0067220E`: ReadInt/ReadBool over each current value.
+        let section = ini.section_or_empty("MultiplayerDialogSettings");
 
-        if let Some(value) = section.get_i32("Money") {
-            options.starting_credits = value;
-        }
-        if let Some(value) = section.get_i32("UnitCount") {
-            options.unit_count = value;
-        }
-        if let Some(value) = section.get_i32("TechLevel") {
-            options.tech_level = value;
-        }
-        if let Some(value) = section.get_i32("GameSpeed") {
-            options.game_speed = value;
-        }
-        if let Some(value) = section.get_i32("AIDifficulty") {
-            options.ai_difficulty = value;
-        }
-        if let Some(value) = section.get_i32("AIPlayers") {
-            options.ai_players = value;
-        }
+        options.starting_credits = section.read_int("Money", options.starting_credits);
+        options.unit_count = section.read_int("UnitCount", options.unit_count);
+        options.tech_level = section.read_int("TechLevel", options.tech_level);
+        options.game_speed = section.read_int("GameSpeed", options.game_speed);
+        options.ai_difficulty = section.read_int("AIDifficulty", options.ai_difficulty);
+        options.ai_players = section.read_int("AIPlayers", options.ai_players);
 
-        if let Some(value) = section.get_bool("BridgeDestruction") {
-            options.bridges_destroyable = value;
-        }
-        if let Some(value) = section.get_bool("Shroud") {
-            options.shroud = value;
-        }
-        if let Some(value) = section.get_bool("Bases") {
-            options.bases = value;
-        }
-        if let Some(value) = section.get_bool("TiberiumGrows") {
-            options.tiberium_grows = value;
-        }
-        if let Some(value) = section.get_bool("Crates") {
-            options.crates = value;
-        }
-        if let Some(value) = section.get_bool("HarvesterTruce") {
-            options.harvester_truce = value;
-        }
-        if let Some(value) = section.get_bool("MultiEngineer") {
-            options.multi_engineer = value;
-        }
-        if let Some(value) = section.get_bool("AllyChangeAllowed") {
-            options.ally_change_allowed = value;
-        }
-        if let Some(value) = section.get_bool("ShortGame") {
-            options.short_game = value;
-        }
-        if let Some(value) = section.get_bool("SuperWeaponsAllowed") {
-            options.super_weapons = value;
-        }
-        if let Some(value) = section.get_bool("BuildOffAlly") {
-            options.build_off_ally = value;
-        }
-        if let Some(value) = section.get_bool("FogOfWar") {
-            options.fog_of_war = value;
-        }
-        if let Some(value) = section.get_bool("MCVRedeploys") {
-            options.mcv_redeploy = value;
-        }
+        options.bridges_destroyable =
+            section.read_bool("BridgeDestruction", options.bridges_destroyable);
+        options.shroud = section.read_bool("Shroud", options.shroud);
+        options.bases = section.read_bool("Bases", options.bases);
+        options.tiberium_grows = section.read_bool("TiberiumGrows", options.tiberium_grows);
+        options.crates = section.read_bool("Crates", options.crates);
+        options.harvester_truce = section.read_bool("HarvesterTruce", options.harvester_truce);
+        options.multi_engineer = section.read_bool("MultiEngineer", options.multi_engineer);
+        options.ally_change_allowed =
+            section.read_bool("AllyChangeAllowed", options.ally_change_allowed);
+        options.short_game = section.read_bool("ShortGame", options.short_game);
+        options.super_weapons = section.read_bool("SuperWeaponsAllowed", options.super_weapons);
+        options.build_off_ally = section.read_bool("BuildOffAlly", options.build_off_ally);
+        options.fog_of_war = section.read_bool("FogOfWar", options.fog_of_war);
+        options.mcv_redeploy = section.read_bool("MCVRedeploys", options.mcv_redeploy);
 
         options
     }

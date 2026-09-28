@@ -11,7 +11,7 @@ use glam::IVec3;
 use serde::{Deserialize, Serialize};
 
 use crate::rules::ini_parser::IniSection;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_from_f32};
+use crate::util::fixed_math::{SimFixed, sim_from_f32};
 use crate::util::native_x87::NativeF64Bits;
 
 /// Interned identifier for a `ParticleType`. Resolved at INI parse time;
@@ -162,95 +162,62 @@ impl ParticleType {
     /// Parse a ParticleType plus its unresolved `NextParticle=` name string.
     pub fn from_ini_section_pending(name: &str, section: &IniSection) -> PendingParticleType {
         let behaves_like = section
-            .get("BehavesLike")
+            .read_name("BehavesLike", 0x20)
             .and_then(ParticleBehavesLike::parse)
             // Binary's string-table loop falls through to index 0 (Gas) when
             // the INI string doesn't match any entry.
             .unwrap_or(ParticleBehavesLike::Gas);
 
-        let end_state_ai = section.get_i32("EndStateAI").unwrap_or(0) as u8;
-        let final_damage_state = section
-            .get_i32("FinalDamageState")
-            .map(|n| n as u8)
-            .unwrap_or(end_state_ai);
+        let end_state_ai = section.read_int("EndStateAI", 0) as u8;
+        let final_damage_state =
+            section.read_int("FinalDamageState", i32::from(end_state_ai)) as u8;
 
         let next_particle_name = section
-            .get("NextParticle")
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("none"));
+            .read_name("NextParticle", 0x20)
+            .filter(|s| !s.eq_ignore_ascii_case("none"))
+            .map(str::to_owned);
 
         let partial = Self {
             name: name.to_string(),
             behaves_like,
-            image: section.get("Image").map(|s| s.to_string()),
+            image: section.read_name("Image", 0x19).map(str::to_owned),
 
-            max_dc: section
-                .get_i32("MaxDC")
-                .unwrap_or(0)
-                .clamp(0, u16::MAX as i32) as u16,
-            max_ec: section
-                .get_i32("MaxEC")
-                .unwrap_or(0)
-                .clamp(0, u16::MAX as i32) as u16,
-            damage: section.get_i32("Damage").unwrap_or(0),
-            warhead: section.get("Warhead").map(|s| s.to_string()),
-            start_frame: section
-                .get_i32("StartFrame")
-                .unwrap_or(0)
-                .clamp(0, u16::MAX as i32) as u16,
+            max_dc: section.read_int("MaxDC", 0).clamp(0, u16::MAX as i32) as u16,
+            max_ec: section.read_int("MaxEC", 0).clamp(0, u16::MAX as i32) as u16,
+            damage: section.read_int("Damage", 0),
+            warhead: section.read_name("Warhead", 0x80).map(str::to_owned),
+            start_frame: section.read_int("StartFrame", 0).clamp(0, u16::MAX as i32) as u16,
             num_loop_frames: section
-                .get_i32("NumLoopFrames")
-                .unwrap_or(0)
+                .read_int("NumLoopFrames", 0)
                 .clamp(0, u16::MAX as i32) as u16,
-            translucency: section.get_i32("Translucency").unwrap_or(0) as u8,
-            wind_effect: section.get_i32("WindEffect").unwrap_or(0) as u8,
-            velocity: section
-                .get_f32("Velocity")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
-            deacc: section
-                .get_f32("Deacc")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
-            radius: section.get_i32("Radius").unwrap_or(0),
-            delete_on_state_limit: section.get_bool("DeleteOnStateLimit").unwrap_or(false),
+            translucency: section.read_int("Translucency", 0) as u8,
+            wind_effect: section.read_int("WindEffect", 0) as u8,
+            // Float fields (`FSTP dword` at `0x006450E9`, `0x00645108`).
+            velocity: sim_from_f32(section.read_float("Velocity", 0.0)),
+            deacc: sim_from_f32(section.read_float("Deacc", 0.0)),
+            radius: section.read_int("Radius", 0),
+            delete_on_state_limit: section.read_bool("DeleteOnStateLimit", false),
             end_state_ai,
-            start_state_ai: section.get_i32("StartStateAI").unwrap_or(0) as u8,
-            state_ai_advance: section
-                .get_i32("StateAIAdvance")
-                .map(|n| n as u8)
-                .unwrap_or(4),
+            start_state_ai: section.read_int("StartStateAI", 0) as u8,
+            state_ai_advance: section.read_int("StateAIAdvance", 4) as u8,
             final_damage_state,
-            translucent_25_state: section
-                .get_i32("Translucent25State")
-                .map(|n| n as u8)
-                .unwrap_or(0xFF),
-            translucent_50_state: section
-                .get_i32("Translucent50State")
-                .map(|n| n as u8)
-                .unwrap_or(0xFF),
-            normalized: section.get_bool("Normalized").unwrap_or(false),
+            translucent_25_state: section.read_int("Translucent25State", 0xFF) as u8,
+            translucent_50_state: section.read_int("Translucent50State", 0xFF) as u8,
+            normalized: section.read_bool("Normalized", false),
             next_particle: None,
-            next_particle_offset: section
-                .get("NextParticleOffset")
-                .map(parse_coord_offset)
-                .unwrap_or(IVec3::ZERO),
+            next_particle_offset: IVec3::from_array(
+                section.read_coord_tokens("NextParticleOffset", [0; 3]),
+            ),
 
-            color_list: parse_color_list(section.get("ColorList")),
+            color_list: section.read_color_list("ColorList").unwrap_or_default(),
             color_speed: NativeF64Bits::from_bits(section.read_double("ColorSpeed", 0.0).to_bits()),
-            start_color_1: section
-                .get("StartColor1")
-                .map(parse_rgb_color)
-                .unwrap_or([0, 0, 0]),
-            start_color_2: section
-                .get("StartColor2")
-                .map(parse_rgb_color)
-                .unwrap_or([0, 0, 0]),
+            start_color_1: section.read_color_rgb("StartColor1", [0, 0, 0]),
+            start_color_2: section.read_color_rgb("StartColor2", [0, 0, 0]),
 
-            x_velocity: section.get_i32("XVelocity").unwrap_or(0),
-            y_velocity: section.get_i32("YVelocity").unwrap_or(0),
-            min_z_velocity: section.get_i32("MinZVelocity").unwrap_or(0),
-            z_velocity_range: section.get_i32("ZVelocityRange").unwrap_or(0),
+            x_velocity: section.read_int("XVelocity", 0),
+            y_velocity: section.read_int("YVelocity", 0),
+            min_z_velocity: section.read_int("MinZVelocity", 0),
+            z_velocity_range: section.read_int("ZVelocityRange", 0),
         };
 
         PendingParticleType {
@@ -260,63 +227,11 @@ impl ParticleType {
     }
 }
 
-/// Parse `ColorList=R,G,B,R,G,B,...` into a Vec of packed RGB triplets.
-///
-/// Stride is 3 bytes per entry, no padding; the binary's strtok loop
-/// reads triples and discards any trailing partial entry. Empty or missing
-/// values return an empty Vec.
-fn parse_color_list(value: Option<&str>) -> Vec<[u8; 3]> {
-    let Some(raw) = value else {
-        return Vec::new();
-    };
-    let mut nums = raw
-        .split(',')
-        .filter_map(|s| s.trim().parse::<i32>().ok())
-        .map(|n| n.clamp(0, 255) as u8);
-    let mut out = Vec::new();
-    while let (Some(r), Some(g), Some(b)) = (nums.next(), nums.next(), nums.next()) {
-        out.push([r, g, b]);
-    }
-    out
-}
-
-/// Parse an `R,G,B` color string into `[u8; 3]`. Components clamp to 0–255;
-/// returns `[0, 0, 0]` if fewer than 3 numbers parse.
-fn parse_rgb_color(raw: &str) -> [u8; 3] {
-    let parts: Vec<&str> = raw.split(',').map(|s| s.trim()).collect();
-    if parts.len() >= 3 {
-        let r = parts[0].parse::<u8>().unwrap_or(0);
-        let g = parts[1].parse::<u8>().unwrap_or(0);
-        let b = parts[2].parse::<u8>().unwrap_or(0);
-        [r, g, b]
-    } else {
-        [0, 0, 0]
-    }
-}
-
-/// Parse an `X,Y,Z` coordinate offset (CoordStruct) into an `IVec3`.
-/// Missing or unparseable components default to 0.
-fn parse_coord_offset(raw: &str) -> IVec3 {
-    let mut parts = raw.split(',').map(|s| s.trim());
-    let x = parts
-        .next()
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
-    let y = parts
-        .next()
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
-    let z = parts
-        .next()
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
-    IVec3::new(x, y, z)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
+    use crate::util::fixed_math::SIM_ZERO;
 
     #[test]
     fn behaves_like_string_to_enum() {
@@ -369,28 +284,6 @@ mod tests {
         let mut set = std::collections::HashSet::new();
         set.insert(a);
         assert!(set.contains(&b));
-    }
-
-    #[test]
-    fn color_list_packs_triplets() {
-        let v = parse_color_list(Some("255,255,255,200,200,80,200,10,10,0,0,0"));
-        assert_eq!(
-            v,
-            vec![[255, 255, 255], [200, 200, 80], [200, 10, 10], [0, 0, 0]]
-        );
-    }
-
-    #[test]
-    fn color_list_handles_partial_trailing() {
-        // 5 numbers — only one full triplet
-        let v = parse_color_list(Some("1,2,3,4,5"));
-        assert_eq!(v, vec![[1, 2, 3]]);
-    }
-
-    #[test]
-    fn color_list_empty_or_missing() {
-        assert_eq!(parse_color_list(None), Vec::<[u8; 3]>::new());
-        assert_eq!(parse_color_list(Some("")), Vec::<[u8; 3]>::new());
     }
 
     #[test]
@@ -466,7 +359,7 @@ mod tests {
         let ini = IniFile::from_str(
             "[Spark]\n\
              BehavesLike=Spark\n\
-             ColorList=255,255,255,200,200,80\n\
+             ColorList=(255,255,255),(200,200,80)\n\
              ColorSpeed=.13\n\
              StartColor1=255,128,0\n\
              StartColor2=128,64,32\n",
@@ -485,13 +378,5 @@ mod tests {
         let section = ini.section("Foo").unwrap();
         let pt = ParticleType::from_ini_section("Foo", section);
         assert_eq!(pt.behaves_like, ParticleBehavesLike::Gas);
-    }
-
-    #[test]
-    fn parse_coord_offset_handles_short_input() {
-        assert_eq!(parse_coord_offset("1,2,3"), IVec3::new(1, 2, 3));
-        assert_eq!(parse_coord_offset("1,2"), IVec3::new(1, 2, 0));
-        assert_eq!(parse_coord_offset(""), IVec3::ZERO);
-        assert_eq!(parse_coord_offset("garbage"), IVec3::ZERO);
     }
 }

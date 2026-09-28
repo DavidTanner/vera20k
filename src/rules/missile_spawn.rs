@@ -30,33 +30,18 @@
 
 use crate::rules::ini_parser::IniSection;
 
-/// Retail `[General]`/`[CombatDamage]` values, used when a key is absent.
-///
-/// These mirror stock `rulesmd.ini`, not the `RulesClass` constructor: the
-/// binary's own constructor defaults for these slots are **UNCHECKED**. Every
-/// retail INI ships all of them, so the fallback never fires in stock play.
-mod retail_defaults {
-    pub const V3_TYPE: &str = "V3ROCKET";
-    pub const V3_PAUSE_FRAMES: u32 = 0;
-    pub const V3_TILT_FRAMES: u32 = 60;
-    pub const V3_DAMAGE: i32 = 200;
-    pub const V3_ELITE_DAMAGE: i32 = 400;
-    pub const V3_WARHEAD: &str = "V3WH";
-    pub const V3_ELITE_WARHEAD: &str = "V3EWH";
-
-    pub const DMISL_TYPE: &str = "DMISL";
-    pub const DMISL_PAUSE_FRAMES: u32 = 20;
-    pub const DMISL_TILT_FRAMES: u32 = 60;
-    pub const DMISL_DAMAGE: i32 = 300;
-    pub const DMISL_ELITE_DAMAGE: i32 = 600;
-    pub const DMISL_WARHEAD: &str = "DMISLWH";
-    pub const DMISL_ELITE_WARHEAD: &str = "DMISLEWH";
-
-    pub const CMISL_TYPE: &str = "CMISL";
-    pub const CMISL_DAMAGE: i32 = 200;
-    pub const CMISL_ELITE_DAMAGE: i32 = 250;
-    pub const CMISL_WARHEAD: &str = "CMISLWH";
-    pub const CMISL_ELITE_WARHEAD: &str = "CMISLEWH";
+/// `RulesClass::Constructor @ 0x00665650` seeds, `0x006678D3`-`0x006679E5`
+/// (`EDI` = 10 from `0x006656D9`). The three type slots (`0x00667935`,
+/// `0x00667998`, `0x00667A04`) and six warhead slots (`0x00666B5E`-
+/// `0x00666B7C`) start null, held here as an empty name that matches no type.
+mod ctor {
+    pub const V3_PAUSE_FRAMES: i32 = 0;
+    pub const V3_TILT_FRAMES: i32 = 60;
+    pub const V3_DAMAGE: i32 = 1000;
+    pub const DMISL_PAUSE_FRAMES: i32 = 10;
+    pub const DMISL_TILT_FRAMES: i32 = 60;
+    pub const DMISL_DAMAGE: i32 = 1000;
+    pub const CMISL_DAMAGE: i32 = 500;
 }
 
 /// Which of the three hardcoded rocket families a spawn child belongs to.
@@ -78,12 +63,12 @@ pub struct MissileSpawnParams {
     /// Resolved child TechnoType section name (`V3ROCKET` / `DMISL` / `CMISL`).
     pub type_name: String,
     /// `*PauseFrames` — frames the missile rests on the launcher before tilting.
-    pub pause_frames: u32,
+    pub pause_frames: i32,
     /// `*TiltFrames` — frames the tilt-to-firing-position takes.
-    pub tilt_frames: u32,
-    /// `[CombatDamage] *Damage` — damage applied at impact (rookie/veteran).
+    pub tilt_frames: i32,
+    /// `[General] *Damage` — damage applied at impact (rookie/veteran).
     pub damage: i32,
-    /// `[CombatDamage] *EliteDamage` — damage applied when the launcher is elite.
+    /// `[General] *EliteDamage` — damage applied when the launcher is elite.
     pub elite_damage: i32,
     /// `[CombatDamage] *Warhead` — impact warhead (rookie/veteran).
     pub warhead: String,
@@ -127,109 +112,81 @@ pub struct MissileSpawnRules {
 
 impl Default for MissileSpawnRules {
     fn default() -> Self {
-        use retail_defaults as d;
+        let family = |pause_frames, tilt_frames, damage| MissileSpawnParams {
+            type_name: String::new(),
+            pause_frames,
+            tilt_frames,
+            damage,
+            elite_damage: damage,
+            warhead: String::new(),
+            elite_warhead: String::new(),
+        };
         Self {
-            v3: MissileSpawnParams {
-                type_name: d::V3_TYPE.to_string(),
-                pause_frames: d::V3_PAUSE_FRAMES,
-                tilt_frames: d::V3_TILT_FRAMES,
-                damage: d::V3_DAMAGE,
-                elite_damage: d::V3_ELITE_DAMAGE,
-                warhead: d::V3_WARHEAD.to_string(),
-                elite_warhead: d::V3_ELITE_WARHEAD.to_string(),
-            },
-            dmisl: MissileSpawnParams {
-                type_name: d::DMISL_TYPE.to_string(),
-                pause_frames: d::DMISL_PAUSE_FRAMES,
-                tilt_frames: d::DMISL_TILT_FRAMES,
-                damage: d::DMISL_DAMAGE,
-                elite_damage: d::DMISL_ELITE_DAMAGE,
-                warhead: d::DMISL_WARHEAD.to_string(),
-                elite_warhead: d::DMISL_ELITE_WARHEAD.to_string(),
-            },
-            cmisl: MissileSpawnParams {
-                type_name: d::CMISL_TYPE.to_string(),
-                // The manager's state-1 timer reads the DMisl pause/tilt slots
-                // for every non-V3 family, so CMisl's own `CMisl*Frames` keys
-                // are not consulted there. They are left out rather than
-                // parsed-and-ignored.
-                pause_frames: d::DMISL_PAUSE_FRAMES,
-                tilt_frames: d::DMISL_TILT_FRAMES,
-                damage: d::CMISL_DAMAGE,
-                elite_damage: d::CMISL_ELITE_DAMAGE,
-                warhead: d::CMISL_WARHEAD.to_string(),
-                elite_warhead: d::CMISL_ELITE_WARHEAD.to_string(),
-            },
+            v3: family(ctor::V3_PAUSE_FRAMES, ctor::V3_TILT_FRAMES, ctor::V3_DAMAGE),
+            dmisl: family(
+                ctor::DMISL_PAUSE_FRAMES,
+                ctor::DMISL_TILT_FRAMES,
+                ctor::DMISL_DAMAGE,
+            ),
+            // The manager's state-1 timer reads the DMisl pause/tilt slots for
+            // every non-V3 family, so CMisl's own `CMisl*Frames` keys are not
+            // consulted there. They are left out rather than
+            // parsed-and-ignored.
+            cmisl: family(
+                ctor::DMISL_PAUSE_FRAMES,
+                ctor::DMISL_TILT_FRAMES,
+                ctor::CMISL_DAMAGE,
+            ),
         }
     }
 }
 
 impl MissileSpawnRules {
-    /// Parse from `[General]` (type names + pause/tilt frames) and
-    /// `[CombatDamage]` (damage + warheads). Missing keys keep the retail
-    /// fallback.
-    pub fn from_ini_sections(
-        general: Option<&IniSection>,
-        combat_damage: Option<&IniSection>,
-    ) -> Self {
+    /// The `[General]` rocket reads (`0x00671212`-`0x006716C0`) and the
+    /// `[CombatDamage]` warhead reads (`0x0066C3A4`-`0x0066C4D5`), each over
+    /// the current slot. The type and warhead names are ReadString into 0x80
+    /// bytes ahead of the type lookup (`0x0067BD30`, `0x0066C3B1`), which an
+    /// absent key skips.
+    pub fn from_ini_sections(general: &IniSection, combat_damage: &IniSection) -> Self {
         let mut out = Self::default();
-
-        if let Some(g) = general {
-            if let Some(name) = read_name(g, "V3RocketType") {
-                out.v3.type_name = name;
-            }
-            if let Some(name) = read_name(g, "DMislType") {
-                out.dmisl.type_name = name;
-            }
-            if let Some(name) = read_name(g, "CMislType") {
-                out.cmisl.type_name = name;
-            }
-            if let Some(v) = g.get_i32("V3RocketPauseFrames") {
-                out.v3.pause_frames = v.max(0) as u32;
-            }
-            if let Some(v) = g.get_i32("V3RocketTiltFrames") {
-                out.v3.tilt_frames = v.max(0) as u32;
-            }
-            if let Some(v) = g.get_i32("DMislPauseFrames") {
-                out.dmisl.pause_frames = v.max(0) as u32;
-                // Every non-V3 family reads the DMisl slots in the manager's
-                // state-1 timer; keep CMisl's copy in lockstep so the timer is
-                // sourced from one place.
-                out.cmisl.pause_frames = v.max(0) as u32;
-            }
-            if let Some(v) = g.get_i32("DMislTiltFrames") {
-                out.dmisl.tilt_frames = v.max(0) as u32;
-                out.cmisl.tilt_frames = v.max(0) as u32;
+        let g = general;
+        for (key, slot) in [
+            ("V3RocketType", &mut out.v3.type_name),
+            ("DMislType", &mut out.dmisl.type_name),
+            ("CMislType", &mut out.cmisl.type_name),
+        ] {
+            if let Some(name) = g.read_name(key, 0x80) {
+                *slot = name.to_string();
             }
         }
+        out.v3.pause_frames = g.read_int("V3RocketPauseFrames", out.v3.pause_frames);
+        out.v3.tilt_frames = g.read_int("V3RocketTiltFrames", out.v3.tilt_frames);
+        out.v3.damage = g.read_int("V3RocketDamage", out.v3.damage);
+        out.v3.elite_damage = g.read_int("V3RocketEliteDamage", out.v3.elite_damage);
+        out.dmisl.pause_frames = g.read_int("DMislPauseFrames", out.dmisl.pause_frames);
+        out.dmisl.tilt_frames = g.read_int("DMislTiltFrames", out.dmisl.tilt_frames);
+        out.dmisl.damage = g.read_int("DMislDamage", out.dmisl.damage);
+        out.dmisl.elite_damage = g.read_int("DMislEliteDamage", out.dmisl.elite_damage);
+        out.cmisl.damage = g.read_int("CMislDamage", out.cmisl.damage);
+        out.cmisl.elite_damage = g.read_int("CMislEliteDamage", out.cmisl.elite_damage);
+        // Every non-V3 family reads the DMisl slots in the manager's state-1
+        // timer; keep CMisl's copy in lockstep so the timer is sourced from
+        // one place.
+        out.cmisl.pause_frames = out.dmisl.pause_frames;
+        out.cmisl.tilt_frames = out.dmisl.tilt_frames;
 
-        if let Some(c) = combat_damage {
-            read_damage(c, "V3RocketDamage", &mut out.v3.damage);
-            read_damage(c, "V3RocketEliteDamage", &mut out.v3.elite_damage);
-            read_damage(c, "DMislDamage", &mut out.dmisl.damage);
-            read_damage(c, "DMislEliteDamage", &mut out.dmisl.elite_damage);
-            read_damage(c, "CMislDamage", &mut out.cmisl.damage);
-            read_damage(c, "CMislEliteDamage", &mut out.cmisl.elite_damage);
-            read_into(c, "V3Warhead", &mut out.v3.warhead);
-            read_into(c, "V3EliteWarhead", &mut out.v3.elite_warhead);
-            read_into(c, "DMislWarhead", &mut out.dmisl.warhead);
-            read_into(c, "DMislEliteWarhead", &mut out.dmisl.elite_warhead);
-            read_into(c, "CMislWarhead", &mut out.cmisl.warhead);
-            read_into(c, "CMislEliteWarhead", &mut out.cmisl.elite_warhead);
+        for (key, slot) in [
+            ("V3Warhead", &mut out.v3.warhead),
+            ("DMislWarhead", &mut out.dmisl.warhead),
+            ("V3EliteWarhead", &mut out.v3.elite_warhead),
+            ("DMislEliteWarhead", &mut out.dmisl.elite_warhead),
+            ("CMislWarhead", &mut out.cmisl.warhead),
+            ("CMislEliteWarhead", &mut out.cmisl.elite_warhead),
+        ] {
+            if let Some(name) = combat_damage.read_name(key, 0x80) {
+                *slot = name.to_string();
+            }
         }
-
-        // The damage keys live in `[General]` in stock rulesmd.ini even though
-        // the warheads live in `[CombatDamage]`. Read them from `[General]`
-        // too so either placement resolves.
-        if let Some(g) = general {
-            read_damage(g, "V3RocketDamage", &mut out.v3.damage);
-            read_damage(g, "V3RocketEliteDamage", &mut out.v3.elite_damage);
-            read_damage(g, "DMislDamage", &mut out.dmisl.damage);
-            read_damage(g, "DMislEliteDamage", &mut out.dmisl.elite_damage);
-            read_damage(g, "CMislDamage", &mut out.cmisl.damage);
-            read_damage(g, "CMislEliteDamage", &mut out.cmisl.elite_damage);
-        }
-
         out
     }
 
@@ -264,28 +221,10 @@ impl MissileSpawnRules {
     /// manager's spawn type is the V3 rocket type; every other family reads
     /// the DMisl slots. `MissileSpawnRules` keeps CMisl's copy of those two
     /// fields equal to DMisl's, so this is a straight lookup.
+    /// A negative sum expires the native timer at once, as zero does.
     pub fn kamikaze_wait_frames(&self, family: MissileFamily) -> u32 {
         let p = self.params(family);
-        p.pause_frames.saturating_add(p.tilt_frames)
-    }
-}
-
-fn read_name(section: &IniSection, key: &str) -> Option<String> {
-    section
-        .get(key)
-        .map(|s| s.trim().to_ascii_uppercase())
-        .filter(|s| !s.is_empty())
-}
-
-fn read_into(section: &IniSection, key: &str, dest: &mut String) {
-    if let Some(v) = section.get(key).map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        *dest = v.to_string();
-    }
-}
-
-fn read_damage(section: &IniSection, key: &str, dest: &mut i32) {
-    if let Some(v) = section.get_i32(key) {
-        *dest = v.max(0);
+        p.pause_frames.saturating_add(p.tilt_frames).max(0) as u32
     }
 }
 
@@ -296,16 +235,18 @@ mod tests {
 
     fn parse(text: &str) -> MissileSpawnRules {
         let ini = IniFile::from_str(text);
-        MissileSpawnRules::from_ini_sections(ini.section("General"), ini.section("CombatDamage"))
+        MissileSpawnRules::from_ini_sections(
+            ini.section_or_empty("General"),
+            ini.section_or_empty("CombatDamage"),
+        )
     }
 
     #[test]
-    fn defaults_match_retail_families() {
+    fn unset_type_slots_match_no_family() {
         let rules = MissileSpawnRules::default();
-        assert_eq!(rules.family_of("V3ROCKET"), Some(MissileFamily::V3Rocket));
-        assert_eq!(rules.family_of("DMISL"), Some(MissileFamily::DMisl));
-        assert_eq!(rules.family_of("CMISL"), Some(MissileFamily::CMisl));
-        assert_eq!(rules.family_of("HORNET"), None);
+        assert_eq!(rules.family_of("V3ROCKET"), None);
+        assert_eq!(rules.v3.damage, 1000);
+        assert_eq!(rules.cmisl.elite_damage, 500);
     }
 
     #[test]

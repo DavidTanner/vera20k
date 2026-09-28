@@ -79,15 +79,23 @@ pub fn parse_basic_section(ini: &IniFile) -> BasicSection {
     };
 
     BasicSection {
-        name: section.get("Name").map(str::to_string),
-        author: section.get("Author").map(str::to_string),
-        intro: section.get("Intro").map(str::to_string),
-        briefing: section.get("Brief").map(str::to_string),
-        theme: section.get("Theme").map(str::to_string),
-        new_ini_format: section.get_i32("NewINIFormat"),
-        tiberium_growth_enabled: section.get_bool("TiberiumGrowthEnabled"),
-        free_radar: section.get_bool("FreeRadar"),
-        ignore_global_ai_triggers: section.get_bool("IgnoreGlobalAITriggers"),
+        // The scenario list's ReadString 0x40 (`0x00699858`).
+        name: section.read_name("Name", 0x40).map(str::to_string),
+        // No gamemd reader; VERA's scenario menu shows it.
+        author: section.read_name("Author", 0x80).map(str::to_string),
+        // ReadString 0x80 ahead of the movie and theme lookups (`0x0068A00C`,
+        // `0x0068A02A`, `0x0068A138`).
+        intro: section.read_name("Intro", 0x80).map(str::to_string),
+        briefing: section.read_name("Brief", 0x80).map(str::to_string),
+        theme: section.read_name("Theme", 0x80).map(str::to_string),
+        // ReadInt(0) at `0x0068A151`.
+        new_ini_format: section
+            .get("NewINIFormat")
+            .map(|_| section.read_int("NewINIFormat", 0)),
+        tiberium_growth_enabled: section.read_bool_value("TiberiumGrowthEnabled"),
+        free_radar: section.read_bool_value("FreeRadar"),
+        // ReadBool with the current Scenario+0x34B4 as default (`0x0068A284`).
+        ignore_global_ai_triggers: section.read_bool_value("IgnoreGlobalAITriggers"),
     }
 }
 
@@ -97,13 +105,14 @@ pub fn parse_special_flags_section(ini: &IniFile) -> SpecialFlagsSection {
         return SpecialFlagsSection::default();
     };
 
+    // ReadBool over each current flag (`0x006B8CEC`-`0x006B8E9D`).
     SpecialFlagsSection {
-        mcv_deploy: section.get_bool("MCVDeploy"),
-        initial_veteran: section.get_bool("InitialVeteran"),
-        tiberium_grows: section.get_bool("TiberiumGrows"),
-        tiberium_spreads: section.get_bool("TiberiumSpreads"),
-        destroyable_bridges: section.get_bool("DestroyableBridges"),
-        inert: section.get_bool("Inert"),
+        mcv_deploy: section.read_bool_value("MCVDeploy"),
+        initial_veteran: section.read_bool_value("InitialVeteran"),
+        tiberium_grows: section.read_bool_value("TiberiumGrows"),
+        tiberium_spreads: section.read_bool_value("TiberiumSpreads"),
+        destroyable_bridges: section.read_bool_value("DestroyableBridges"),
+        inert: section.read_bool_value("Inert"),
     }
 }
 

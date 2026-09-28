@@ -574,9 +574,8 @@ pub(crate) fn prepare_stock_offline_scenario_prefix_plan(
         StockOfflineStartCallbackFamily::Cooperative => {
             let human_start_spots = map_data
                 .ini
-                .section("Header")
-                .and_then(|header| header.get_i32("NumCoopHumanStartSpots"))
-                .unwrap_or(0)
+                .section_or_empty("Header")
+                .read_int("NumCoopHumanStartSpots", 0)
                 .max(0) as usize;
             native_assign_cooperative_starts_from_preassignment(
                 session,
@@ -1291,9 +1290,8 @@ fn apply_resolved_skirmish_launch_session(
             let assignment = if cooperative {
                 let human_start_spots = map_data
                     .ini
-                    .section("Header")
-                    .and_then(|header| header.get_i32("NumCoopHumanStartSpots"))
-                    .unwrap_or(0)
+                    .section_or_empty("Header")
+                    .read_int("NumCoopHumanStartSpots", 0)
                     .max(0) as usize;
                 sim.assign_native_cooperative_starts(session, &starts, human_start_spots)
             } else {
@@ -2569,7 +2567,7 @@ pub(crate) fn initialize_map_roster_houses(
         // MaxIQLevels to literal one before storing it as both the authored
         // IQ (+0x1D0) and CurrentIQ (+0x24C) (0x00500DBA..0x00500DC0).
         house_state.current_iq = rules.map_or_else(
-            || house.iq.unwrap_or(0),
+            || house.iq,
             |rules| house.scenario_current_iq(rules.general.max_iq_levels),
         );
         house_state.authored_iq = house_state.current_iq;
@@ -2717,7 +2715,6 @@ mod tests {
                 local_height: 40,
             },
             basic: Default::default(),
-            briefing: Default::default(),
             preview: Default::default(),
             cells: Vec::new(),
             iso_map_pack_lookups: Vec::new(),

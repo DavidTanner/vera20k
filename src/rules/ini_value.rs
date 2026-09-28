@@ -1,13 +1,49 @@
-//! Typed INI accessor service — the gamemd CCINIClass `ReadX` analog.
+//! The one INI reader API: gamemd's `CCINIClass` `ReadX` family.
 //!
-//! Sits on top of the raw `IniSection` store (the "INIClass" analog). Reproduces
-//! the gamemd parse CONTRACT bit-for-bit on the resolved value: $xx/xxh hex,
-//! C-atoi leniency, first-char bool, '%'-anywhere ×0.01 double (chopped at 53
-//! bits, as the game's x87 control word leaves it), strtrim ≤0x20.
+//! Every INI value VERA consumes goes through the `IniSection` readers below
+//! and the token parsers under them. `ini_parser.rs` is the raw store (the
+//! `INIClass` analog): loading, exact-case lookup and registry walks. Outside
+//! the readers, raw `get` only tests whether a key is present.
+//!
+//! Each reader reproduces one native reader's contract on the resolved value.
+//! Where gamemd reads some keys through a different parser, that parser is its
+//! own reader here, named for the native function it mirrors:
+//!
+//! | Reader | Native |
+//! |---|---|
+//! | `read_int` | `CCINIClass::ReadInt` 0x005276D0 |
+//! | `read_bool`, `read_bool_value` | `CCINIClass::ReadBool` 0x005295F0 |
+//! | `read_double` (`_bits`, `_to_float`, `_with`, `read_float`) | `CCINIClass::ReadDouble` 0x005283D0 |
+//! | `read_string`, `read_name`, `read_type_name` | `CCINIClass::ReadString` 0x00528A10 |
+//! | `read_list` | ReadString, then `strtok(",")` (every type, house, sound and ability list) |
+//! | `read_sound_list` | `CCINIClass::ReadSoundList` 0x00525430 (ReadString 0x80, `strtok`) |
+//! | `read_trimmed_list` | ReadString, then `CString::Tokenize(",")` 0x007B5F10 and space trims |
+//! | `read_string_with` | ReadString, then the caller's own parse of the buffer |
+//! | `read_int_fields` (`_complete`) | ReadString, then `sscanf("%d,%d,...")` over the current fields |
+//! | `read_int_list` | `DifficultyClass::ReadINI_IntVector` 0x00475D70 |
+//! | `read_coord3` | `CCINIClass::Read3Int` 0x00529CA0, `sscanf("%d,%d,%d")` |
+//! | `read_coord_tokens` | `0x00476420`: three `strtok(",")` + `atoi` |
+//! | `read_float_tokens` | `0x00476340`: three `strtok(",")` + `atof` |
+//! | `read_color_list` | `0x00476B20`: `strtok(",")` in `(r,g,b)` groups |
+//! | `read_minmax` | `CCINIClass::ReadMinMax` 0x00529880, `sscanf("%d,%d")` |
+//! | `read_rect` | `INIClass::ReadRect` 0x00527CC0, `sscanf("%d,%d,%d,%d")` |
+//! | `read_color_rgb` | `CCINIClass::ReadColorRGB` 0x00474B50 |
+//! | `read_speed`, `read_range`, `read_speed_type` | 0x00474810, 0x00474620, 0x00476FC0 |
+//! | `read_comma_hex_utf16` | `INIClass::ReadCommaHexUTF16` 0x00528F00 |
+//! | `read_packed_text` | packed-section reader 0x00526FB0 (IsoMapPack5, OverlayPack, PreviewPack) |
+//!
+//! Token parsers for text a reader has already copied: [`strtok`] (CRT
+//! 0x007C9CC2), [`crt_atoi`] (CRT 0x007C9B72), [`parse_leading_f64`] (CRT
+//! `atof`), [`scan_decimal_i32`] (one `sscanf` `%d`).
 //!
 //! INVARIANT: the raw loader omits empty keys and empty values. A stored
 //! nonempty key returns its parsed value (malformed numeric text may still
 //! parse as zero); `default` is returned when a key is absent or omitted.
+//!
+//! Native call sites and their buffer capacities come from the retail
+//! executable: `python -m tools.native_inspect calls <reader VA>` lists a
+//! reader's direct callers, and `disasm` before a call shows the pushed key,
+//! default and capacity.
 //!
 //! ## Dependency rules
 //! - rules/ only: depends on `crate::rules::ini_parser` and `crate::util::native_x87`.
@@ -15,7 +51,7 @@
 //! - Returns un-truncated f64 from `read_double`; the single f64->SimFixed
 //!   conversion stays in `util::fixed_math`. No float enters sim/.
 
-use crate::rules::ini_parser::IniSection;
+use crate::rules::ini_parser::{IniSection, is_native_none_type_name};
 use crate::rules::locomotor_type::SpeedType;
 use crate::util::native_x87::{MaskedX87Chop53, NativeF32Bits, NativeF64Bits};
 
@@ -23,8 +59,12 @@ use crate::util::native_x87::{MaskedX87Chop53, NativeF32Bits, NativeF64Bits};
 /// control) at BOTH ends — NOT Unicode whitespace.
 const STRTRIM_MAX: u8 = 0x20;
 
+/// The comma delimiter every native list reader passes to `strtok`
+/// (`DAT_00817F70`).
+const COMMA: &[char] = &[','];
+
 impl IniSection {
-    fn fold_rules_values<T: Copy>(
+    fn fold_rules_values<T>(
         &self,
         key: &str,
         default: T,
@@ -35,7 +75,10 @@ impl IniSection {
                 .iter()
                 .fold(default, |current, raw| apply(current, raw))
         } else {
-            self.get(key).map_or(default, |raw| apply(default, raw))
+            match self.get(key) {
+                Some(raw) => apply(default, raw),
+                None => default,
+            }
         }
     }
 
@@ -52,6 +95,15 @@ impl IniSection {
         self.fold_rules_values(key, default, parse_read_bool)
     }
 
+    /// [`Self::read_bool`] where the caller supplies the default later: `None`
+    /// wherever ReadBool would return its default argument (an absent key,
+    /// or a first character outside `1TY0FN`).
+    pub fn read_bool_value(&self, key: &str) -> Option<bool> {
+        self.fold_rules_values(key, None, |current, raw| {
+            read_bool_decision(raw).or(current)
+        })
+    }
+
     /// ReadDouble (P7, `0x005283D0`): sscanf "%f" (leading float,
     /// single-precision) widened to f64, then ×0.01 chopped at 53 bits iff the
     /// value string contains '%' ANYWHERE ([`parse_read_double`]). Returns the
@@ -60,8 +112,29 @@ impl IniSection {
     /// Present junk is absent from stock retail data; native exposes stale
     /// 32-bit ABI argument bits on failed `%f`, while Rust deterministically
     /// returns zero rather than importing that non-portable accident.
+    ///
+    /// A native double field VERA keeps as `f32` narrows the result at the
+    /// call site (`as f32`, round-to-nearest). A native float field reads
+    /// through [`Self::read_float`] / [`Self::read_double_to_float`], which
+    /// store with the chop control word; the two differ only for a percent
+    /// value that is not exact in `f32`.
     pub fn read_double(&self, key: &str, default: f64) -> f64 {
         self.fold_rules_values(key, default, |_current, raw| parse_read_double(raw))
+    }
+
+    /// ReadDouble on each rules pass, handing the scanned value and the
+    /// field's current value to `apply`: the shape of native readers that
+    /// test or scale the result before storing it (a zero that keeps the
+    /// field, a minutes-to-frames scale). Absent keeps `current`.
+    pub fn read_double_with<T>(
+        &self,
+        key: &str,
+        current: T,
+        mut apply: impl FnMut(T, f64) -> T,
+    ) -> T {
+        self.fold_rules_values(key, current, |current, raw| {
+            apply(current, parse_read_double(raw))
+        })
     }
 
     /// ReadDouble into a double field, keeping the stored bits.
@@ -82,20 +155,221 @@ impl IniSection {
         )))
     }
 
+    /// [`Self::read_double_to_float`] for a float field VERA holds as `f32`.
+    pub fn read_float(&self, key: &str, current: f32) -> f32 {
+        f32::from_bits(
+            self.read_double_to_float(key, NativeF32Bits::from_bits(current.to_bits()))
+                .bits(),
+        )
+    }
+
     /// ReadString (P5, P18): copy at most `capacity - 1` bytes, force the final
     /// NUL, then trim bytes ≤0x20 at both ends. Capacities are caller-specific
     /// in retail, so they are explicit here too.
     ///
     /// `CCINIClass__ReadString @ 0x00528A10` is `strncpy(dst, src, capacity)`
-    /// followed by `dst[capacity - 1] = 0`, so the cut is by BYTE, not by
-    /// character. Truncating by `char` would keep text native discards on any
-    /// value whose first `capacity - 1` characters span more bytes than that.
+    /// followed by `dst[capacity - 1] = 0`: the cut counts source bytes, which
+    /// are this store's characters ([`truncate_native_bytes`]).
+    /// A present value is copied even when it trims to nothing; each rules
+    /// pass passes the previous result as its default, so the last pass that
+    /// holds the key decides.
     pub fn read_string(&self, key: &str, default: &str, capacity: usize) -> String {
-        if capacity == 0 {
+        let Some(payload) = capacity.checked_sub(1) else {
             return String::new();
+        };
+        strtrim_ascii(truncate_native_bytes(
+            self.get(key).unwrap_or(default),
+            payload,
+        ))
+        .to_string()
+    }
+
+    /// ReadString's copy when it returns nonzero: `None` when no rules pass
+    /// holds a value that survives the cut and trim, where native callers keep
+    /// their current field (`if (ReadString(section, key, "", buffer,
+    /// capacity)) ...`), so a later pass whose copy is empty keeps the earlier
+    /// pass's value. Same cut and trim as [`Self::read_string`].
+    pub fn read_name(&self, key: &str, capacity: usize) -> Option<&str> {
+        let payload = capacity.checked_sub(1)?;
+        let copy = |raw: &str| !strtrim_ascii(truncate_native_bytes(raw, payload)).is_empty();
+        let raw = match self.projected_values(key) {
+            Some(values) => values
+                .iter()
+                .rev()
+                .map(String::as_str)
+                .find(|raw| copy(raw))?,
+            None => self.get(key).filter(|raw| copy(raw))?,
+        };
+        Some(strtrim_ascii(truncate_native_bytes(raw, payload)))
+    }
+
+    /// [`Self::read_name`] for a name a type factory resolves: `None` also for
+    /// `none` and `<none>`, which the factories answer null
+    /// ([`is_native_none_type_name`]).
+    pub fn read_type_name(&self, key: &str, capacity: usize) -> Option<&str> {
+        self.read_name(key, capacity)
+            .filter(|name| !is_native_none_type_name(name))
+    }
+
+    /// The list read every native type, house, sound and ability list shares:
+    /// ReadString(key, "", buffer, `capacity`), then [`strtok`] on `","`.
+    /// `None` when ReadString returns 0 (absent key), where the native
+    /// readers keep the caller's current list. A present value replaces it,
+    /// even with no tokens (`,,,`). Tokens keep their spaces; resolving each
+    /// one (type lookup, `atoi`, ability name) is the caller's.
+    ///
+    /// Native buffers: 0x80 for type, house, sound and ability lists
+    /// (`0x0067B550`, `0x004750D0`, `0x00525430`, `0x00477640`,
+    /// `Prerequisite_INI_Parser @ 0x004770E0`); 0x200 for the int vectors.
+    pub fn read_list(&self, key: &str, capacity: usize) -> Option<Vec<&str>> {
+        self.read_name(key, capacity)
+            .map(|value| strtok(value, COMMA).collect())
+    }
+
+    /// `CCINIClass::ReadSoundList @ 0x00525430`: [`Self::read_list`] at 0x80.
+    /// `None` for an absent key, which keeps the current list.
+    ///
+    /// RESIDUAL: native adds only the tokens `VocClass::FindPtrByName`
+    /// (`0x00751520`) resolves (`0x005254AD`); VERA binds sounds later and
+    /// keeps every token. Trigger: a token naming a sound `soundmd.ini` lacks,
+    /// spaces included. Effect: a longer list, so a pick drawn over it (death
+    /// sounds, Gattling and per-shot reports) can choose a different item.
+    /// Frequency: never on retail data.
+    pub fn read_sound_list(&self, key: &str) -> Option<Vec<&str>> {
+        self.read_list(key, 0x80)
+    }
+
+    /// [`Self::read_list`] through the `CString` tokenizer instead: the
+    /// ReadString copy goes through `Tokenize(",")` (`0x007B5F10`, the same
+    /// boundaries as [`strtok`]) and each token is trimmed of spaces only
+    /// (`0x007B51D0`/`0x007B5230` with `" "`). A token of spaces stays as an
+    /// empty token. Used by the game-mode roster rows and the map and PKT
+    /// `GameMode=` filter lists.
+    pub fn read_trimmed_list(&self, key: &str, capacity: usize) -> Option<Vec<&str>> {
+        self.read_list(key, capacity).map(|tokens| {
+            tokens
+                .into_iter()
+                .map(|token| token.trim_matches(' '))
+                .collect()
+        })
+    }
+
+    /// ReadString into `char[capacity]` on each rules pass, handing the
+    /// copied text and the field's current value to `apply`: the shape of
+    /// native readers that parse the ReadString buffer themselves and keep
+    /// the field on text they reject (enum names, catalog lookups). Absent
+    /// keeps `current`.
+    pub fn read_string_with<T>(
+        &self,
+        key: &str,
+        capacity: usize,
+        current: T,
+        mut apply: impl FnMut(T, &str) -> T,
+    ) -> T {
+        let Some(payload) = capacity.checked_sub(1) else {
+            return current;
+        };
+        self.fold_rules_values(key, current, |current, raw| {
+            match strtrim_ascii(truncate_native_bytes(raw, payload)) {
+                "" => current,
+                value => apply(current, value),
+            }
+        })
+    }
+
+    /// ReadString into `char[capacity]`, then one `sscanf("%d,%d,...")`
+    /// over `current`: each converted field replaces its slot and the scan
+    /// stops at the first it cannot convert (a comma must follow each number
+    /// at once). Absent keeps `current`.
+    pub fn read_int_fields<const N: usize>(
+        &self,
+        key: &str,
+        capacity: usize,
+        current: [i32; N],
+    ) -> [i32; N] {
+        self.read_string_with(key, capacity, current, |mut out, value| {
+            scan_int_fields(value, &mut out);
+            out
+        })
+    }
+
+    /// [`Self::read_int_fields`]' scan alone: `Some` only when all `N`
+    /// fields convert, where a caller rejects text the native scan would
+    /// leave partly unwritten.
+    pub fn read_int_fields_complete<const N: usize>(
+        &self,
+        key: &str,
+        capacity: usize,
+    ) -> Option<[i32; N]> {
+        let mut out = [0; N];
+        let value = self.read_name(key, capacity)?;
+        (scan_int_fields(value, &mut out) == N).then_some(out)
+    }
+
+    /// `DifficultyClass::ReadINI_IntVector @ 0x00475D70`: ReadString into a
+    /// 0x200 buffer, `strtok(",")`, [`crt_atoi`] per token. `None` for an
+    /// absent key, where the native reader copies the caller's vector.
+    pub fn read_int_list(&self, key: &str) -> Option<Vec<i32>> {
+        self.read_list(key, 0x200)
+            .map(|tokens| tokens.into_iter().map(crt_atoi).collect())
+    }
+
+    /// `0x00476340` (ParticleSystemType `SpawnDirection=`): ReadString into
+    /// 0x200 bytes, then three `strtok(",")` tokens through CRT `atof`
+    /// ([`parse_leading_f64`]) into a float vector. Absent keeps `default`;
+    /// a missing token reads as 0 where native passes NULL to `atof`.
+    pub fn read_float_tokens(&self, key: &str, default: [f32; 3]) -> [f32; 3] {
+        let Some(tokens) = self.read_list(key, 0x200) else {
+            return default;
+        };
+        std::array::from_fn(|index| {
+            tokens
+                .get(index)
+                .map_or(0.0, |token| parse_leading_f64(token) as f32)
+        })
+    }
+
+    /// `0x00476B20` (ParticleType `ColorList=`): ReadString into 0x200 bytes,
+    /// then `strtok(",")` in groups of three. The first token of a group
+    /// loses its first byte (the `(`), the third its last (the `)`), and each
+    /// goes through [`crt_atoi`] into a byte; a group missing a token adds
+    /// nothing. `None` for an absent key, which keeps the current list.
+    pub fn read_color_list(&self, key: &str) -> Option<Vec<[u8; 3]>> {
+        let tokens = self.read_list(key, 0x200)?;
+        let mut tokens = tokens.into_iter();
+        let mut colors = Vec::new();
+        while let Some(red) = tokens.next() {
+            let (Some(green), Some(blue)) = (tokens.next(), tokens.next()) else {
+                break;
+            };
+            let red = red
+                .char_indices()
+                .nth(1)
+                .map_or("", |(start, _)| &red[start..]);
+            let blue = blue
+                .char_indices()
+                .last()
+                .map_or("", |(end, _)| &blue[..end]);
+            colors.push([red, green, blue].map(|component| crt_atoi(component) as u8));
         }
-        let raw = self.get(key).unwrap_or(default);
-        strtrim_ascii(truncate_bytes(raw, capacity - 1)).to_string()
+        Some(colors)
+    }
+
+    /// TechnoTypeClass::ReadINI's text-coordinate read `0x00476420`
+    /// (`DamageSmokeOffset`, `DestroySmokeOffset`, `RefinerySmokeOffset*`,
+    /// `NaturalParticleLocation`; ParticleSystemType `NextParticleOffset`):
+    /// ReadString into 0x200 bytes, then three `strtok(",")` tokens through
+    /// [`crt_atoi`]. Unlike [`Self::read_coord3`], a space before a comma is
+    /// harmless, and stock `100, 100, 275` reads whole. Absent keeps
+    /// `default`.
+    ///
+    /// Fewer than three tokens pass NULL to `atoi`, which faults natively;
+    /// VERA reads each missing component as 0. Stock values are all triples.
+    pub fn read_coord_tokens(&self, key: &str, default: [i32; 3]) -> [i32; 3] {
+        let Some(tokens) = self.read_list(key, 0x200) else {
+            return default;
+        };
+        std::array::from_fn(|index| tokens.get(index).map_or(0, |token| crt_atoi(token)))
     }
 
     /// TechnoType7121D1..7121EB -> ReadSpeedType476FC0: exact key,
@@ -104,7 +378,7 @@ impl IniSection {
     /// field as default. Executed controls: rules_oracle/infantry_speed_type.
     pub fn read_speed_type(&self, key: &str, default: SpeedType) -> SpeedType {
         self.fold_rules_values(key, default, |current, raw| {
-            let value = strtrim_ascii(truncate_bytes(raw, 127));
+            let value = strtrim_ascii(truncate_native_bytes(raw, 127));
             if value.is_empty() {
                 current
             } else {
@@ -129,59 +403,39 @@ impl IniSection {
 
     /// [`Self::read_coord3`]'s scan alone: `None` wherever it keeps its default.
     pub fn read_coord3_value(&self, key: &str) -> Option<[i32; 3]> {
-        let raw = self.read_string(key, "", 64);
-        let mut bytes = raw.as_bytes();
-        let mut out = [0; 3];
-        for (index, value) in out.iter_mut().enumerate() {
-            *value = scan_decimal_i32(&mut bytes)?;
-            if index < 2 {
-                bytes = bytes.strip_prefix(b",")?;
-            }
-        }
-        Some(out)
+        self.read_int_fields_complete(key, 64)
     }
 
-    /// Read3Int (P8): comma "%d,%d,%d". All-defaults on ABSENT key. Each field
-    /// atoi-lenient; missing trailing fields keep the corresponding default.
-    #[cfg(test)]
-    pub fn read_3int(&self, key: &str, default: [i32; 3]) -> [i32; 3] {
-        self.fold_rules_values(key, default, |mut current, raw| {
-            for (index, token) in strtrim_ascii(raw).split(',').enumerate().take(3) {
-                current[index] = atoi_lenient(strtrim_ascii(token));
-            }
-            current
-        })
-    }
-
-    /// ReadMinMax (P8): comma "%d,%d". All-defaults on ABSENT key.
+    /// `CCINIClass::ReadMinMax @ 0x00529880`: the value cut to 63 bytes and
+    /// trimmed, then `sscanf("%d,%d")` (`0x0081C000`); the comma must follow
+    /// the first number at once. Absent keeps `default`.
+    ///
+    /// The scan's destinations are the reader's own section and key argument
+    /// slots, so an incomplete scan stores stale pointer bits natively; like
+    /// [`Self::read_coord3`], VERA keeps `default` for that malformed input.
+    /// Each rules pass supplies its prior pair.
     pub fn read_minmax(&self, key: &str, default: [i32; 2]) -> [i32; 2] {
-        self.fold_rules_values(key, default, |mut current, raw| {
-            for (index, token) in strtrim_ascii(raw).split(',').enumerate().take(2) {
-                current[index] = atoi_lenient(strtrim_ascii(token));
-            }
-            current
+        self.fold_rules_values(key, default, |current, raw| {
+            let mut out = [0; 2];
+            let complete = scan_int_fields(strtrim_ascii(truncate_native_bytes(raw, 63)), &mut out)
+                == out.len();
+            if complete { out } else { current }
         })
     }
 
-    /// ReadPoint/ReadSize (P9, COMMA): "%d,%d". All-defaults on ABSENT key.
-    #[cfg(test)]
-    pub fn read_point(&self, key: &str, default: (i32, i32)) -> (i32, i32) {
-        let [x, y] = self.read_minmax(key, [default.0, default.1]);
-        (x, y)
-    }
-
-    /// ReadRect (P9, COMMA): "%d,%d,%d,%d". gamemd seeds "0,0,0,0" so missing
-    /// fields keep the default component; all-defaults on ABSENT key.
-    #[cfg(test)]
-    pub fn read_rect(&self, key: &str, default: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
-        let current = [default.0, default.1, default.2, default.3];
-        let out = self.fold_rules_values(key, current, |mut current, raw| {
-            for (index, token) in strtrim_ascii(raw).split(',').enumerate().take(4) {
-                current[index] = atoi_lenient(strtrim_ascii(token));
-            }
-            current
-        });
-        (out[0], out[1], out[2], out[3])
+    /// `INIClass::ReadRect @ 0x00527CC0`: a missing key scans the reader's
+    /// literal `"0,0,0,0"` (`0x00825BC8`) whatever the caller's default. A
+    /// present value is cut to 63 bytes, trimmed, and scanned with
+    /// `sscanf("%d,%d,%d,%d")` over destinations preloaded from `default`, so
+    /// a valid prefix overlays the defaults field by field and text after the
+    /// fourth number is ignored.
+    pub fn read_rect(&self, key: &str, default: [i32; 4]) -> [i32; 4] {
+        let Some(value) = self.read_name(key, 64) else {
+            return [0; 4];
+        };
+        let mut out = default;
+        scan_int_fields(value, &mut out);
+        out
     }
 
     /// Original474B50: ReadString64 then one `%d,%d,%d` scan, byte narrowing.
@@ -193,22 +447,13 @@ impl IniSection {
     /// Full-reader controls: tools/projectile_oracle/line_trail.json.
     pub fn read_color_rgb(&self, key: &str, default: [u8; 3]) -> [u8; 3] {
         self.fold_rules_values(key, default, |current, raw| {
-            let raw = strtrim_ascii(raw);
-            let mut bytes = &raw.as_bytes()[..raw.len().min(63)];
-            let mut result = [0; 3];
-            for (index, component) in result.iter_mut().enumerate() {
-                let Some(value) = scan_decimal_i32(&mut bytes) else {
-                    return current;
-                };
-                *component = value as u8;
-                if index < 2 {
-                    if bytes.first() != Some(&b',') {
-                        return current;
-                    }
-                    bytes = &bytes[1..];
-                }
+            let mut out = [0; 3];
+            let value = strtrim_ascii(truncate_native_bytes(raw, 63));
+            if scan_int_fields(value, &mut out) == out.len() {
+                out.map(|component| component as u8)
+            } else {
+                current
             }
-            result
         })
     }
 
@@ -275,6 +520,30 @@ impl IniSection {
             }
         })
     }
+
+    /// `ReadINIBase64BinarySectionSourceOrder @ 0x00526FB0` (IsoMapPack5,
+    /// OverlayPack, OverlayDataPack, PreviewPack): every entry's value in
+    /// source order, each cut to 127 bytes and trimmed, joined for the Base64
+    /// decoder. Entry names are not parsed or sorted.
+    pub fn read_packed_text(&self) -> String {
+        self.keys()
+            .filter_map(|key| self.get(key))
+            .map(|value| strtrim_ascii(truncate_native_bytes(value, 0x7F)))
+            .collect()
+    }
+
+    /// `INIClass::ReadCommaHexUTF16 @ 0x00528F00` on this section's `key`; see
+    /// [`read_comma_hex_utf16`]. The failed-first-token scratch is this
+    /// section name's `CRCEngine` hash, as on the native fresh-file cache miss.
+    pub fn read_comma_hex_utf16(&self, key: &str, default: &[u16], max_units: usize) -> Vec<u16> {
+        let name: Vec<u8> = self.name.chars().map(|character| character as u8).collect();
+        read_comma_hex_utf16(
+            self.get(key),
+            default,
+            max_units,
+            crate::assets::mix_hash::crc_engine(&name),
+        )
+    }
 }
 
 fn parse_read_int(default: i32, raw: &str) -> i32 {
@@ -296,26 +565,17 @@ const COMMA_HEX_ENCODED_BYTES: usize = 0x4fff;
 /// conversion emits its low 16 bits. At most `max_units` units are written;
 /// the visible result ends at the first zero unit. A missing or trimmed-empty
 /// value yields `default` (itself capped at `max_units`).
-pub(crate) fn read_comma_hex_utf16(
+fn read_comma_hex_utf16(
     raw: Option<&str>,
     default: &[u16],
     max_units: usize,
     section_crc: u32,
 ) -> Vec<u16> {
-    let bytes = raw.unwrap_or_default().as_bytes();
-    let bytes = &bytes[..bytes.len().min(COMMA_HEX_ENCODED_BYTES)];
-    let bytes = &bytes[..bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len())];
+    let raw = raw.unwrap_or_default();
+    let raw = &raw[..raw.find('\0').unwrap_or(raw.len())];
     // strtrim at 0x0052909F removes bytes <= 0x20, unlike sscanf whitespace.
-    let start = bytes
-        .iter()
-        .position(|b| *b > STRTRIM_MAX)
-        .unwrap_or(bytes.len());
-    let end = bytes
-        .iter()
-        .rposition(|b| *b > STRTRIM_MAX)
-        .map_or(start, |i| i + 1);
-    let bytes = &bytes[start..end];
-    if bytes.is_empty() {
+    let value = strtrim_ascii(truncate_native_bytes(raw, COMMA_HEX_ENCODED_BYTES));
+    if value.is_empty() {
         return default
             .iter()
             .copied()
@@ -327,12 +587,8 @@ pub(crate) fn read_comma_hex_utf16(
     let mut units = Vec::new();
     // strtok skips empty comma-delimited tokens. A whitespace-only token is
     // still a token and a failed conversion repeats the preceding value.
-    for token in bytes
-        .split(|b| *b == b',')
-        .filter(|token| !token.is_empty())
-        .take(max_units)
-    {
-        if let Some(value) = scan_hex_u32(token) {
+    for token in strtok(value, COMMA).take(max_units) {
+        if let Some(value) = scan_hex_u32(token.as_bytes()) {
             scratch = value;
         }
         units.push(scratch as u16);
@@ -346,9 +602,7 @@ pub(crate) fn read_comma_hex_utf16(
 /// CRT `sscanf("%x")` for one comma token: optional whitespace and sign, an
 /// optional `0x` prefix only when digits follow, then hex digits.
 fn scan_hex_u32(token: &[u8]) -> Option<u32> {
-    let start = token
-        .iter()
-        .position(|b| !matches!(*b, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c))?;
+    let start = token.iter().position(|b| !is_crt_space(*b))?;
     let mut bytes = &token[start..];
     let negative = bytes.first() == Some(&b'-');
     if matches!(bytes.first(), Some(b'+' | b'-')) {
@@ -389,26 +643,37 @@ pub(crate) fn encode_comma_hex_utf16(units: &[u16]) -> String {
     out
 }
 
+/// ReadInt's parse of the stored value, untrimmed (`0x0052784A..0x005278C6`):
+/// a leading `$` scans `"$%x"`, a last byte `h`/`H` scans `"%xh"` (a failed
+/// `%x`, `None`, keeps the caller's default), anything else is [`crt_atoi`].
+/// Executed controls: tools/rules_oracle/ini_token_readers.
 pub(crate) fn parse_read_int_value(raw: &str) -> Option<i32> {
-    let value = strtrim_ascii(raw);
-    if let Some(rest) = value.strip_prefix('$') {
-        parse_leading_hex(rest)
-    } else if ends_with_h(value) {
-        parse_leading_hex(&value[..value.len() - 1])
+    let hex = if let Some(rest) = raw.strip_prefix('$') {
+        rest
+    } else if raw
+        .as_bytes()
+        .last()
+        .is_some_and(|b| b.eq_ignore_ascii_case(&b'h'))
+    {
+        raw
     } else {
-        Some(atoi_lenient(value))
-    }
+        return Some(crt_atoi(raw));
+    };
+    scan_hex_u32(hex.as_bytes()).map(|value| value as i32)
 }
 
-fn parse_read_bool(default: bool, raw: &str) -> bool {
-    match strtrim_ascii(raw)
-        .bytes()
-        .next()
-        .map(|byte| byte.to_ascii_uppercase())
-    {
-        Some(b'1') | Some(b'T') | Some(b'Y') => true,
-        Some(b'0') | Some(b'F') | Some(b'N') => false,
-        _ => default,
+/// ReadBool's parse of a present value; see [`IniSection::read_bool`].
+pub(crate) fn parse_read_bool(default: bool, raw: &str) -> bool {
+    read_bool_decision(raw).unwrap_or(default)
+}
+
+/// ReadBool's verdict on the stored value's untrimmed first byte
+/// (`0x0052976B`): `None` where it returns its default.
+fn read_bool_decision(raw: &str) -> Option<bool> {
+    match raw.bytes().next().map(|byte| byte.to_ascii_uppercase()) {
+        Some(b'1') | Some(b'T') | Some(b'Y') => Some(true),
+        Some(b'0') | Some(b'F') | Some(b'N') => Some(false),
+        _ => None,
     }
 }
 
@@ -438,107 +703,81 @@ pub(crate) fn scale_percent(value: f64) -> f64 {
     f64::from_bits(MaskedX87Chop53::store_f64_masked_chop(scaled).bits())
 }
 
-/// Byte-wise `strncpy` truncation. A cut that would land inside a multi-byte
-/// sequence backs up to the preceding boundary: native writes the partial bytes
-/// and the forced NUL, which is not representable as a Rust `str`, and no INI
-/// value in retail data is non-ASCII.
-pub(crate) fn truncate_bytes(value: &str, max_bytes: usize) -> &str {
-    if value.len() <= max_bytes {
-        return value;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    &value[..end]
+/// A `strncpy` cut to `max_bytes` source bytes. The store widens each source
+/// byte to one character (`util::native_string::widen_bytes`), so the cut
+/// counts characters, not UTF-8 bytes; test text outside that byte domain has
+/// no native identity and is cut the same way.
+pub(crate) fn truncate_native_bytes(value: &str, max_bytes: usize) -> &str {
+    value
+        .char_indices()
+        .nth(max_bytes)
+        .map_or(value, |(end, _)| &value[..end])
 }
 
-/// strtrim equivalent (P5): strip bytes <= 0x20 from BOTH ends. ASCII-only by
-/// design (RA2 INI is ASCII); does NOT use `str::trim` (Unicode whitespace).
+/// `strtrim` @ `0x00727CF0`, over chars (one per native byte): drop the
+/// leading chars <= 0x20, shift the text down, then clear trailing chars
+/// <= 0x20 until one is kept or the char at the old start offset has been
+/// cleared. A trailing run therefore reaches back no further than that
+/// offset: `"  x  "` -> `"x "`, `"  x "` -> `"x "`, `" ab "` -> `"ab"`.
+/// Executed controls: tools/rules_oracle/ini_token_readers.
 pub(crate) fn strtrim_ascii(s: &str) -> &str {
-    let b = s.as_bytes();
-    let mut start = 0usize;
-    while start < b.len() && b[start] <= STRTRIM_MAX {
-        start += 1;
+    let leading = s.bytes().take_while(|&b| b <= STRTRIM_MAX).count();
+    let text = &s[leading..];
+    let trimmed = text.trim_end_matches(|c: char| u32::from(c) <= u32::from(STRTRIM_MAX));
+    if leading == 0 {
+        return trimmed;
     }
-    let mut end = b.len();
-    while end > start && b[end - 1] <= STRTRIM_MAX {
-        end -= 1;
-    }
-    &s[start..end]
-}
-
-/// tolower(last char) == 'h' (P2). Case-insensitive via ASCII.
-fn ends_with_h(s: &str) -> bool {
-    s.as_bytes().last().map(|b| b.to_ascii_lowercase()) == Some(b'h')
-}
-
-/// Parse a leading run of hex digits (after `$` strip or before `h` strip).
-/// sscanf "$%x"/"%xh" accepts an optional sign and `0x` prefix, then stops at
-/// the first non-hex char. No conversion returns `None`, leaving the caller's
-/// initialized default untouched.
-pub(crate) fn parse_leading_hex(s: &str) -> Option<i32> {
-    let bytes = s.as_bytes();
-    let mut index = 0;
-    let negative = if bytes.first() == Some(&b'-') {
-        index += 1;
-        true
-    } else {
-        index += usize::from(bytes.first() == Some(&b'+'));
-        false
+    let chars = text.chars().count();
+    let kept = trimmed.chars().count();
+    let end = match leading.cmp(&chars) {
+        std::cmp::Ordering::Less => kept.max(leading),
+        // The cleared char is the shifted text's terminator: nothing is trimmed.
+        std::cmp::Ordering::Equal => chars,
+        // The old offset lies past the shifted text and is never cleared.
+        std::cmp::Ordering::Greater => kept,
     };
-    if bytes.get(index) == Some(&b'0')
-        && bytes
-            .get(index + 1)
-            .is_some_and(|byte| matches!(byte, b'x' | b'X'))
-        && bytes.get(index + 2).is_some_and(u8::is_ascii_hexdigit)
-    {
-        index += 2;
-    }
-
-    let mut acc: u32 = 0;
-    let mut any = false;
-    for &c in &bytes[index..] {
-        let d = match c {
-            b'0'..=b'9' => u32::from(c - b'0'),
-            b'a'..=b'f' => u32::from(c - b'a' + 10),
-            b'A'..=b'F' => u32::from(c - b'A' + 10),
-            _ => break,
-        };
-        any = true;
-        acc = acc.wrapping_mul(16).wrapping_add(d);
-    }
-    any.then_some(if negative {
-        0u32.wrapping_sub(acc) as i32
-    } else {
-        acc as i32
-    })
+    truncate_native_bytes(text, end)
 }
 
-/// C-atoi-equivalent leading-numeric parse (P3): optional leading sign, then
-/// leading decimal digits, stop at first non-digit. `5cells`->5, `abc`->0,
-/// ``->0, `  7 `->7 (already strtrimmed), `-50`->-50, `+9`->9. NB `0x1A`->0
-/// (atoi does NOT treat `0x` as hex; the `$`/`h` branches are separate).
-pub(crate) fn atoi_lenient(s: &str) -> i32 {
-    let b = s.as_bytes();
-    let mut i = 0usize;
-    let mut neg = false;
-    if i < b.len() && (b[i] == b'-' || b[i] == b'+') {
-        neg = b[i] == b'-';
-        i += 1;
+/// CRT `strtok` (`0x007C9CC2`) over one copied value: tokens are the maximal
+/// runs of non-delimiter characters, so leading, repeated and trailing
+/// delimiters produce no empty token, and no token is trimmed. Every native
+/// comma list passes `","`; the sound registry passes `" \t\n"`.
+pub(crate) fn strtok<'a>(value: &'a str, delimiters: &'a [char]) -> impl Iterator<Item = &'a str> {
+    value.split(delimiters).filter(|token| !token.is_empty())
+}
+
+/// The C-locale `isspace` set CRT `atoi` and `sscanf` skip (ctype `_SPACE`):
+/// tab, LF, VT, FF, CR and space.
+fn is_crt_space(byte: u8) -> bool {
+    matches!(byte, b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | b' ')
+}
+
+/// CRT `atoi` (`0x007C9B72`, reached through `0x007C9BFD`): skip C-locale
+/// `isspace` bytes, take one optional sign, then decimal digits, stopping at
+/// the first other byte; the running total wraps in 32 bits and a leading `-`
+/// negates it. `5cells`->5, `abc`->0, ``->0, ` 7`->7, `-50`->-50, `+9`->9,
+/// `0x1A`->0 (ReadInt's `$`/`h` hex branches are separate).
+pub(crate) fn crt_atoi(s: &str) -> i32 {
+    let bytes = s.as_bytes();
+    let mut index = bytes
+        .iter()
+        .position(|byte| !is_crt_space(*byte))
+        .unwrap_or(bytes.len());
+    let negative = bytes.get(index) == Some(&b'-');
+    if matches!(bytes.get(index), Some(b'-' | b'+')) {
+        index += 1;
     }
-    let mut acc: i64 = 0;
-    let mut any = false;
-    while i < b.len() && b[i].is_ascii_digit() {
-        any = true;
-        acc = acc.wrapping_mul(10).wrapping_add((b[i] - b'0') as i64);
-        i += 1;
+    let mut total = 0_i32;
+    while let Some(digit) = bytes.get(index).filter(|byte| byte.is_ascii_digit()) {
+        total = total.wrapping_mul(10).wrapping_add(i32::from(digit - b'0'));
+        index += 1;
     }
-    if !any {
-        return 0;
+    if negative {
+        total.wrapping_neg()
+    } else {
+        total
     }
-    let v = if neg { -acc } else { acc };
-    v as i32
 }
 
 /// One native CRT sscanf `%d` conversion, retaining the unconsumed input for
@@ -546,10 +785,7 @@ pub(crate) fn atoi_lenient(s: &str) -> i32 {
 /// Original7CA530 consumers: Building4615CA and Infantry523DB0; executable
 /// fixtures building_body_rules and infantry_sequence_rules preserve both.
 pub(crate) fn scan_decimal_i32(bytes: &mut &[u8]) -> Option<i32> {
-    while bytes
-        .first()
-        .is_some_and(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 11 | 12))
-    {
+    while bytes.first().is_some_and(|b| is_crt_space(*b)) {
         *bytes = &bytes[1..];
     }
     let negative = bytes.first() == Some(&b'-');
@@ -569,6 +805,27 @@ pub(crate) fn scan_decimal_i32(bytes: &mut &[u8]) -> Option<i32> {
     } else {
         value
     } as i32)
+}
+
+/// `sscanf(value, "%d,%d,...")` with one `%d` per slot of `out`: each comma is
+/// a literal that must follow the previous number at once. Scanned fields
+/// overwrite `out` in order until the first failure; returns how many did.
+fn scan_int_fields(value: &str, out: &mut [i32]) -> usize {
+    let mut bytes = value.as_bytes();
+    let last = out.len().saturating_sub(1);
+    for (index, slot) in out.iter_mut().enumerate() {
+        let Some(scanned) = scan_decimal_i32(&mut bytes) else {
+            return index;
+        };
+        *slot = scanned;
+        if index < last {
+            let Some(rest) = bytes.strip_prefix(b",") else {
+                return index + 1;
+            };
+            bytes = rest;
+        }
+    }
+    out.len()
 }
 
 /// sscanf "%f"-equivalent leading float (P7): optional sign, decimal mantissa,
@@ -633,7 +890,7 @@ fn leading_float_token(s: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{atoi_lenient, parse_leading_f32};
+    use super::{crt_atoi, parse_leading_f32, strtok, truncate_native_bytes};
     use crate::rules::ini_parser::IniFile;
 
     fn sec(body: &str) -> IniFile {
@@ -727,12 +984,117 @@ mod tests {
         assert_eq!(s.read_string("A", "D", 0), "");
     }
 
+    /// `strncpy` counts source bytes, and the store widens each byte to one
+    /// character: a `0xE9` byte is one of the 3 bytes a capacity of 4 keeps.
     #[test]
-    fn test_atoi_and_leading_f32_helpers() {
-        assert_eq!(atoi_lenient("5cells"), 5);
-        assert_eq!(atoi_lenient("-50"), -50);
-        assert_eq!(atoi_lenient("+9"), 9);
-        assert_eq!(atoi_lenient(""), 0);
+    fn read_string_cuts_widened_bytes_not_utf8_bytes() {
+        let ini = IniFile::from_bytes(b"[S]\nA=\xe9t\xe9s\n").unwrap();
+        let s = ini.section("S").unwrap();
+        assert_eq!(s.read_string("A", "", 4), "\u{e9}t\u{e9}");
+        assert_eq!(truncate_native_bytes("\u{e9}\u{e9}", 1), "\u{e9}");
+    }
+
+    /// ReadString returns 0 only for an absent key; `read_name` keeps that
+    /// distinction so callers retain their current field.
+    #[test]
+    fn read_name_is_present_value_after_cut_and_trim() {
+        let ini = sec("[S]\nA=  GAPOWR \nB=0123456789\n");
+        let s = ini.section("S").unwrap();
+        assert_eq!(s.read_name("A", 0x80), Some("GAPOWR"));
+        assert_eq!(s.read_name("B", 5), Some("0123"));
+        assert_eq!(s.read_name("MISSING", 0x80), None);
+        assert_eq!(s.read_name("A", 0), None);
+    }
+
+    /// `strtok(",")`: empty fields collapse, tokens keep their spaces, the
+    /// ReadString cut applies first, and a present comma-only value is an
+    /// empty replacement list rather than an absent one.
+    #[test]
+    fn read_list_is_readstring_then_strtok() {
+        let ini = sec("[S]\nL=,A, B ,,C,\nCommas=,,,\nLong=AB,CD,EF\n");
+        let s = ini.section("S").unwrap();
+        assert_eq!(s.read_list("L", 0x80), Some(vec!["A", " B ", "C"]));
+        assert_eq!(s.read_list("Commas", 0x80), Some(vec![]));
+        assert_eq!(s.read_list("Long", 5), Some(vec!["AB", "C"]));
+        assert_eq!(s.read_list("MISSING", 0x80), None);
+        assert_eq!(
+            strtok(" a\tb\n\nc ", &[' ', '\t', '\n']).collect::<Vec<_>>(),
+            ["a", "b", "c"]
+        );
+    }
+
+    /// `DifficultyClass::ReadINI_IntVector`: CRT `atoi` per token, so spaces
+    /// before a number and trailing text are both harmless.
+    #[test]
+    fn read_int_list_atois_each_strtok_token() {
+        let ini = sec("[S]\nV=8, 8,\t6x,,-2\n");
+        let s = ini.section("S").unwrap();
+        assert_eq!(s.read_int_list("V"), Some(vec![8, 8, 6, -2]));
+        assert_eq!(s.read_int_list("MISSING"), None);
+
+        let ini = sec("[S]\nWrap=1,,  -2junk,,+3,abc,4294967297,-2147483649\n");
+        let s = ini.section("S").unwrap();
+        assert_eq!(
+            s.read_int_list("Wrap"),
+            Some(vec![1, -2, 3, 0, 1, i32::MAX])
+        );
+
+        // Bytes beyond the char[512] payload cannot add another entry.
+        let ini = sec(&format!("[S]\nBig=1,{},7\n", "0".repeat(509)));
+        let s = ini.section("S").unwrap();
+        assert_eq!(s.read_int_list("Big"), Some(vec![1, 0]));
+    }
+
+    /// `0x00476B20`: stock `ColorList=(0,128,255),(255,255,255)` groups by
+    /// three tokens, dropping the first token's leading byte and the third's
+    /// trailing byte; an incomplete group adds nothing.
+    #[test]
+    fn read_color_list_groups_three_tokens() {
+        let ini =
+            sec("[S]\nStock=(0,128,255),(255,255,255)\nShort=(1,2,3),(4,5\nWrap=(300,-1,256)\n");
+        let s = ini.section("S").unwrap();
+        assert_eq!(
+            s.read_color_list("Stock"),
+            Some(vec![[0, 128, 255], [255, 255, 255]])
+        );
+        assert_eq!(s.read_color_list("Short"), Some(vec![[1, 2, 3]]));
+        assert_eq!(s.read_color_list("Wrap"), Some(vec![[44, 255, 0]]));
+        assert_eq!(s.read_color_list("MISSING"), None);
+    }
+
+    /// `0x00476340` reads three `atof` tokens.
+    #[test]
+    fn read_float_tokens_atofs_three_tokens() {
+        let ini = sec("[S]\nV=0.5, -1,2e1\nShort=3\n");
+        let s = ini.section("S").unwrap();
+        assert_eq!(s.read_float_tokens("V", [9.0; 3]), [0.5, -1.0, 20.0]);
+        assert_eq!(s.read_float_tokens("Short", [9.0; 3]), [3.0, 0.0, 0.0]);
+        assert_eq!(s.read_float_tokens("MISSING", [9.0; 3]), [9.0; 3]);
+    }
+
+    /// `0x00476420` tokenizes where `read_coord3` scans: stock
+    /// `DamageSmokeOffset=100, 100, 275` reads whole, and a space before a
+    /// comma does not stop it.
+    #[test]
+    fn read_coord_tokens_reads_three_atoi_tokens() {
+        let ini = sec("[S]\nA=100, 100, 275\nB=-92 ,208 ,312\nShort=5,6\n");
+        let s = ini.section("S").unwrap();
+        assert_eq!(s.read_coord_tokens("A", [1, 2, 3]), [100, 100, 275]);
+        assert_eq!(s.read_coord_tokens("B", [1, 2, 3]), [-92, 208, 312]);
+        assert_eq!(s.read_coord_tokens("Short", [1, 2, 3]), [5, 6, 0]);
+        assert_eq!(s.read_coord_tokens("MISSING", [1, 2, 3]), [1, 2, 3]);
+    }
+
+    #[test]
+    fn test_crt_atoi_and_leading_f32_helpers() {
+        assert_eq!(crt_atoi("5cells"), 5);
+        assert_eq!(crt_atoi("-50"), -50);
+        assert_eq!(crt_atoi("+9"), 9);
+        assert_eq!(crt_atoi(""), 0);
+        assert_eq!(crt_atoi(" \t\x0b\x0c\r\n7"), 7);
+        assert_eq!(crt_atoi("\x01 7"), 0, "only C isspace bytes are skipped");
+        assert_eq!(crt_atoi("- 7"), 0);
+        assert_eq!(crt_atoi("4294967297"), 1, "the total wraps in 32 bits");
         assert!((parse_leading_f32("12.5%") - 12.5).abs() < 1e-6);
         assert!((parse_leading_f32(".9") - 0.9).abs() < 1e-6);
         assert!((parse_leading_f32("1.25e2junk") - 125.0).abs() < 1e-6);
@@ -740,13 +1102,32 @@ mod tests {
         assert!((parse_leading_f32("1e") - 1.0).abs() < 1e-6);
     }
 
-    #[test] // P9 COMMA
-    fn test_read_point_comma() {
-        let ini = sec("[S]\nP=3,5\nR=1,2,3,4\n");
+    /// `ReadMinMax` scans `"%d,%d"`: the comma must follow the first number,
+    /// the second number may follow blanks, and an incomplete scan keeps the
+    /// default where native would store its stale argument slots.
+    #[test]
+    fn read_minmax_scans_two_decimal_fields() {
+        let ini = sec("[S]\nP=3,5\nQ=3, 5junk\nSpace=3 ,5\nOne=3\n");
         let s = ini.section("S").unwrap();
-        assert_eq!(s.read_point("P", (0, 0)), (3, 5));
-        assert_eq!(s.read_rect("R", (0, 0, 0, 0)), (1, 2, 3, 4));
-        assert_eq!(s.read_point("MISSING", (9, 9)), (9, 9)); // absent -> default
+        assert_eq!(s.read_minmax("P", [0, 0]), [3, 5]);
+        assert_eq!(s.read_minmax("Q", [0, 0]), [3, 5]);
+        assert_eq!(s.read_minmax("Space", [9, 9]), [9, 9]);
+        assert_eq!(s.read_minmax("One", [9, 9]), [9, 9]);
+        assert_eq!(s.read_minmax("MISSING", [9, 9]), [9, 9]);
+    }
+
+    /// `INIClass::ReadRect`: a missing key scans the literal `"0,0,0,0"`; a
+    /// present value overlays its valid prefix on the default.
+    #[test]
+    fn read_rect_overlays_the_scanned_prefix() {
+        let ini = sec("[S]\nR=1,2,3,4\nShort=2,3,40\nBad=2,invalid,40,41\nSpace=2 ,3,40,41\n");
+        let s = ini.section("S").unwrap();
+        let default = [1, 1, 50, 50];
+        assert_eq!(s.read_rect("R", default), [1, 2, 3, 4]);
+        assert_eq!(s.read_rect("Short", default), [2, 3, 40, 50]);
+        assert_eq!(s.read_rect("Bad", default), [2, 1, 50, 50]);
+        assert_eq!(s.read_rect("Space", default), [2, 1, 50, 50]);
+        assert_eq!(s.read_rect("MISSING", default), [0, 0, 0, 0]);
     }
 
     /// `0x00529CA0`: sscanf `"%d,%d,%d"` after the 63-byte cut and strtrim.
@@ -771,20 +1152,13 @@ mod tests {
         assert_eq!(section.read_coord3("Absent", default), default);
     }
 
-    #[test] // P8 partial keeps default component
-    fn test_read_3int_partial_keeps_default() {
-        let ini = sec("[S]\nA=10,20\n"); // only 2 of 3 fields
-        assert_eq!(
-            ini.section("S").unwrap().read_3int("A", [1, 2, 3]),
-            [10, 20, 3]
-        );
-    }
-
     #[test] // P21
     fn test_read_color_rgb() {
-        let ini = sec("[S]\nC=12,34,56\n");
+        let ini = sec("[S]\nC=12,34,56\nWide=300,-1,256\nShort=1,2\n");
         let s = ini.section("S").unwrap();
         assert_eq!(s.read_color_rgb("C", [0, 0, 0]), [12, 34, 56]);
+        assert_eq!(s.read_color_rgb("Wide", [0, 0, 0]), [44, 255, 0]);
+        assert_eq!(s.read_color_rgb("Short", [7, 8, 9]), [7, 8, 9]);
         assert_eq!(s.read_color_rgb("MISSING", [1, 2, 3]), [1, 2, 3]);
     }
 
@@ -811,170 +1185,20 @@ mod tests {
         assert_eq!(s.read_range("C", -1), 102, "0.4 cells is 102.4 leptons");
         assert_eq!(s.read_range("MISSING", 7), 7); // absent -> default (sentinel -1.0)
     }
-}
 
-/// S2 corpus equivalence harness — "the shadow assert". Read-only, NOT
-/// hash-relevant: builds an `IniFile` and compares accessor outputs; never
-/// touches `World`, `state_hash`, or `SNAPSHOT_VERSION`. It is a test, not a
-/// consumer flip.
-#[cfg(test)]
-mod corpus_tests {
-    use std::path::Path;
-
-    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
-    use crate::rules::ini_parser::IniFile;
-
-    const CONTRACT_RULES: &str =
-        include_str!("../../tests/fixtures/ini/accessor_rules_contract.ini");
-    const CONTRACT_ART: &str = include_str!("../../tests/fixtures/ini/accessor_art_contract.ini");
-
-    /// Smallest gamemd per-accessor ReadString cap; values over (cap-1) chars
-    /// would truncate in an enum/zone/action read.
-    const READSTRING_CAP: usize = 32;
-
-    /// Keys where the NEW accessor INTENTIONALLY diverges from the OLD one,
-    /// each with the gamemd-correct reason. Empty: corpus-confirmed (plan-review
-    /// C-R3) that stock has ZERO `$`/`h`/`0x`/exponent values, so over the stock
-    /// numeric domain the new `read_int`/`read_double` agree with the old
-    /// `get_i32`/`get_f32` everywhere they both return a value. Any divergence
-    /// surfaced by the test below must be classified against P1–P21 and added
-    /// here with a cited reason, OR proven a new accessor bug and fixed.
-    /// Format: (section, key, reason).
-    const DIVERGENCES: &[(&str, &str, &str)] = &[];
-
-    fn is_documented(section: &str, key: &str) -> bool {
-        DIVERGENCES
-            .iter()
-            .any(|(s, k, _)| s.eq_ignore_ascii_case(section) && k.eq_ignore_ascii_case(key))
-    }
-
+    /// The scratch seed is the section name's CRCEngine hash; these are the
+    /// two values the native reader was executed with.
     #[test]
-    fn test_ini_accessor_contract_corpus_parity() {
-        let mut ini = IniFile::from_str(CONTRACT_RULES);
-        ini.merge(&IniFile::from_str(CONTRACT_ART));
-        assert_ini_accessor_corpus_parity(ini);
-    }
-
-    #[test]
-    #[ignore = "requires RA2_DIR with installed retail RA2/YR assets"]
-    fn test_retail_ini_accessor_corpus_parity() {
-        let root =
-            std::env::var("RA2_DIR").expect("set RA2_DIR to the installed retail RA2/YR directory");
-        let assets = AssetManager::new(Path::new(&root), MediaArchiveMode::STOCK_DIGITAL)
-            .expect("load retail archive stack");
-        let rulesmd = assets
-            .get("rulesmd.ini")
-            .expect("rulesmd.ini in retail archive stack");
-        let artmd = assets
-            .get("artmd.ini")
-            .expect("artmd.ini in retail archive stack");
-        let mut ini = IniFile::from_bytes(&rulesmd).expect("parse retail rulesmd.ini");
-        ini.merge(&IniFile::from_bytes(&artmd).expect("parse retail artmd.ini"));
-        assert_ini_accessor_corpus_parity(ini);
-    }
-
-    fn assert_ini_accessor_corpus_parity(ini: IniFile) {
-        // Scans the MERGED view (rules then art on top). Production keeps them
-        // separate, but a per-key parse-EQUIVALENCE scan is unaffected: the
-        // old and new accessor see the same stored string for each key.
-        let mut undocumented: Vec<String> = Vec::new();
-        let mut zero_x: Vec<String> = Vec::new();
-        let mut present_empty_transform: Vec<String> = Vec::new();
-        let mut over_cap: Vec<String> = Vec::new();
-        let mut exponent: Vec<String> = Vec::new();
-
-        // Collect section names first to avoid borrowing `ini` while iterating.
-        let names: Vec<String> = ini.section_names().iter().map(|s| s.to_string()).collect();
-        for name in &names {
-            let section = match ini.section(name) {
-                Some(s) => s,
-                None => continue,
-            };
-            let keys: Vec<String> = section.keys().map(|k| k.to_string()).collect();
-            for key in &keys {
-                let raw = section.get(key).unwrap_or("");
-                let trimmed = raw.trim();
-
-                // 0x-prefix scan (OQ3): would atoi to 0 if read as an int.
-                if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
-                    zero_x.push(format!("[{name}] {key}={raw}"));
-                }
-                // Buffer-cap scan (smallest gamemd cap 32).
-                if trimmed.len() > READSTRING_CAP - 1 {
-                    over_cap.push(format!("[{name}] {key} len={}", trimmed.len()));
-                }
-                // Exponent-notation scan: confirm parse_leading_f32 needs no
-                // exponent branch over the stock domain.
-                if (raw.contains('e') || raw.contains('E')) && looks_numeric(trimmed) {
-                    exponent.push(format!("[{name}] {key}={raw}"));
-                }
-                // Int equivalence: old get_i32 (None on parse-fail / absent) vs
-                // new read_int. Only compare where the OLD returns Some — that is
-                // the set the consumers actually use today.
-                if let Some(old_i) = section.get_i32(key) {
-                    let new_i = section.read_int(key, i32::MIN);
-                    if old_i != new_i && !is_documented(name, key) {
-                        undocumented.push(format!(
-                            "[{name}] {key}: old_i32={old_i} new_int={new_i} raw={raw}"
-                        ));
-                    }
-                }
-                // Bool equivalence: old get_bool (whole-word, None otherwise) vs
-                // new read_bool (first-char). Compare only where old returns Some.
-                if let Some(old_b) = section.get_bool(key) {
-                    let new_b = section.read_bool(key, !old_b); // sentinel != old_b
-                    if old_b != new_b && !is_documented(name, key) {
-                        undocumented.push(format!(
-                            "[{name}] {key}: old_bool={old_b} new_bool={new_b} raw={raw}"
-                        ));
-                    }
-                }
-                // Present-empty transform scan (OQ4/C4): would resolve to 0 vs
-                // the call-site default in read_speed/read_range.
-                if trimmed.is_empty()
-                    && matches!(
-                        key.to_ascii_lowercase().as_str(),
-                        "speed" | "range" | "minimumrange"
-                    )
-                {
-                    present_empty_transform.push(format!("[{name}] {key}="));
-                }
-            }
-        }
-
-        // Fail ONLY on undocumented parse divergences. Each must be classified
-        // (gamemd-correct fix -> DIVERGENCES, or accessor bug -> fix the code).
-        assert!(
-            undocumented.is_empty(),
-            "UNDOCUMENTED parse divergences (each must be added to DIVERGENCES \
-             with a gamemd-correct reason or proven a real fix):\n{}",
-            undocumented.join("\n")
+    fn read_comma_hex_utf16_seeds_with_the_section_crc() {
+        let name_crc = |name: &str| crate::assets::mix_hash::crc_engine(name.as_bytes());
+        assert_eq!(name_crc("Network"), 0x70CA_A741);
+        assert_eq!(name_crc("RandomMap"), 0x1597_B573);
+        let ini = sec("[Network]\nNetID=zz,41,,42\n");
+        let s = ini.section("Network").unwrap();
+        assert_eq!(
+            s.read_comma_hex_utf16("NetID", &[], 8),
+            [0xA741, 0x41, 0x42]
         );
-
-        // Surface the remaining scans for the later flip slices. These are the
-        // precise input lists for the consumer-flip parity re-baseline.
-        if !zero_x.is_empty() {
-            eprintln!("0x-prefixed values:\n{}", zero_x.join("\n"));
-        }
-        if !present_empty_transform.is_empty() {
-            eprintln!(
-                "present-empty Speed/Range/MinimumRange:\n{}",
-                present_empty_transform.join("\n")
-            );
-        }
-        if !over_cap.is_empty() {
-            eprintln!(">31-char values (cap-32 scan):\n{}", over_cap.join("\n"));
-        }
-        if !exponent.is_empty() {
-            eprintln!("exponent-notation values:\n{}", exponent.join("\n"));
-        }
-    }
-
-    /// Cheap "is this a numeric value" test so the exponent scan does not flag
-    /// every string key that happens to contain an 'e'/'E' (image names etc.).
-    fn looks_numeric(s: &str) -> bool {
-        !s.is_empty()
-            && s.bytes()
-                .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'+' | b'e' | b'E' | b'%'))
+        assert_eq!(s.read_comma_hex_utf16("MISSING", &[1, 2, 0, 3], 8), [1, 2]);
     }
 }

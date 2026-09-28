@@ -288,7 +288,7 @@ impl TerrainRules {
 
 fn build_semantics(section_name: &'static str, section: &IniSection) -> LandTypeSemantics {
     let mut semantics = built_in_semantics(section_name);
-    semantics.buildable = section.get_bool("Buildable").unwrap_or(false);
+    semantics.buildable = section.read_bool("Buildable", false);
     semantics.speed_costs = parse_speed_costs(section);
     semantics
 }
@@ -500,7 +500,7 @@ fn parse_speed_costs(section: &IniSection) -> SpeedCostProfile {
 ///   Trigger: a fractional percentage. Player effect: none in stock play, where
 ///   every authored value is a multiple of five percent.
 fn parse_cost(section: &IniSection, key: &str) -> Option<u8> {
-    let multiplier = section.get_percent(key).unwrap_or(1.0).clamp(0.0, 1.0);
+    let multiplier = (section.read_double(key, 1.0) as f32).clamp(0.0, 1.0);
     Some((multiplier * 100.0) as u8)
 }
 

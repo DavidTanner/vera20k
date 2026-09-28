@@ -140,38 +140,54 @@ impl VoxelAnimType {
     /// `VoxelAnimTypeClass::ReadINI @ 0x0074B050`.
     pub fn from_ini_section(name: &str, section: &IniSection) -> Self {
         let mut out = Self::with_defaults(name);
-        out.normalized = section.get_bool("Normalized").unwrap_or(out.normalized);
-        out.translucent = section.get_bool("Translucent").unwrap_or(out.translucent);
-        out.is_tiberium = section.get_bool("IsTiberium").unwrap_or(out.is_tiberium);
-        out.is_meteor = section.get_bool("IsMeteor").unwrap_or(out.is_meteor);
-        out.voxel_index = section.get_i32("VoxelIndex").unwrap_or(out.voxel_index);
-        out.duration = section.get_i32("Duration").unwrap_or(out.duration);
+        out.normalized = section.read_bool("Normalized", out.normalized);
+        out.translucent = section.read_bool("Translucent", out.translucent);
+        out.is_tiberium = section.read_bool("IsTiberium", out.is_tiberium);
+        out.is_meteor = section.read_bool("IsMeteor", out.is_meteor);
+        out.voxel_index = section.read_int("VoxelIndex", out.voxel_index);
+        out.duration = section.read_int("Duration", out.duration);
 
-        out.elasticity = read_double_bits(section, "Elasticity", out.elasticity);
+        out.elasticity = section.read_double_bits("Elasticity", out.elasticity);
         out.min_angular_velocity =
             read_angular_velocity(section, "MinAngularVelocity", out.min_angular_velocity);
         out.max_angular_velocity =
             read_angular_velocity(section, "MaxAngularVelocity", out.max_angular_velocity);
-        out.min_z_vel = read_double_bits(section, "MinZVel", out.min_z_vel);
-        out.max_z_vel = read_double_bits(section, "MaxZVel", out.max_z_vel);
-        out.max_xy_vel = read_double_bits(section, "MaxXYVel", out.max_xy_vel);
+        out.min_z_vel = section.read_double_bits("MinZVel", out.min_z_vel);
+        out.max_z_vel = section.read_double_bits("MaxZVel", out.max_z_vel);
+        out.max_xy_vel = section.read_double_bits("MaxXYVel", out.max_xy_vel);
 
-        out.spawns = read_name(section, "Spawns");
-        out.spawn_count = section.get_i32("SpawnCount").unwrap_or(out.spawn_count);
-        out.start_sound = read_name(section, "StartSound");
-        out.stop_sound = read_name(section, "StopSound");
-        out.bounce_anim = read_name(section, "BounceAnim");
-        out.expire_anim = read_name(section, "ExpireAnim");
-        out.trailer_anim = read_name(section, "TrailerAnim");
-        out.damage = section.get_i32("Damage").unwrap_or(out.damage);
-        out.damage_radius = section.get_i32("DamageRadius").unwrap_or(out.damage_radius);
-        out.warhead = read_name(section, "Warhead");
-        out.attached_system = read_name(section, "AttachedSystem");
+        // ReadString 0x80 ahead of each type or sound lookup
+        // (`0x0074B207`-`0x0074B4C1`).
+        out.spawns = section.read_type_name("Spawns", 0x80).map(str::to_string);
+        out.spawn_count = section.read_int("SpawnCount", out.spawn_count);
+        out.start_sound = section
+            .read_type_name("StartSound", 0x80)
+            .map(str::to_string);
+        out.stop_sound = section
+            .read_type_name("StopSound", 0x80)
+            .map(str::to_string);
+        out.bounce_anim = section
+            .read_type_name("BounceAnim", 0x80)
+            .map(str::to_string);
+        out.expire_anim = section
+            .read_type_name("ExpireAnim", 0x80)
+            .map(str::to_string);
+        out.trailer_anim = section
+            .read_type_name("TrailerAnim", 0x80)
+            .map(str::to_string);
+        out.damage = section.read_int("Damage", out.damage);
+        out.damage_radius = section.read_int("DamageRadius", out.damage_radius);
+        out.warhead = section.read_type_name("Warhead", 0x80).map(str::to_string);
+        out.attached_system = section
+            .read_type_name("AttachedSystem", 0x80)
+            .map(str::to_string);
 
-        out.share_source = read_name(section, "ShareSource");
-        out.share_body_data = section.get_bool("ShareBodyData").unwrap_or(false);
-        out.share_turret_data = section.get_bool("ShareTurretData").unwrap_or(false);
-        out.share_barrel_data = section.get_bool("ShareBarrelData").unwrap_or(false);
+        out.share_source = section
+            .read_type_name("ShareSource", 0x80)
+            .map(str::to_string);
+        out.share_body_data = section.read_bool("ShareBodyData", false);
+        out.share_turret_data = section.read_bool("ShareTurretData", false);
+        out.share_barrel_data = section.read_bool("ShareBarrelData", false);
         out
     }
 
@@ -180,22 +196,6 @@ impl VoxelAnimType {
     pub fn shares_data(&self) -> bool {
         self.share_body_data || self.share_turret_data || self.share_barrel_data
     }
-}
-
-fn read_name(section: &IniSection, key: &str) -> Option<String> {
-    section
-        .get(key)
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("none"))
-        .map(str::to_string)
-}
-
-fn read_double_bits(section: &IniSection, key: &str, default: NativeF64Bits) -> NativeF64Bits {
-    NativeF64Bits::from_bits(
-        section
-            .read_double(key, f64::from_bits(default.bits()))
-            .to_bits(),
-    )
 }
 
 /// The two angular-velocity keys, including native's sentinel bug.

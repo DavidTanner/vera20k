@@ -2,8 +2,12 @@ use super::*;
 
 const TYPE5_BRIGHT: [u8; 4] = [0, 255, 255, 255];
 
+/// Stock `rulesmd.ini` `[General]` radar-event values.
 fn configured() -> RadarEventConfig {
-    RadarEventConfig::default()
+    RadarEventConfig::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+        "[General]\nRadarEventMinRadius=8\nRadarEventSpeed=1.2\n\
+         RadarEventRotationSpeed=.05\nRadarEventColorSpeed=.1\n",
+    ))
 }
 
 fn queue_ready() -> ClientRadarEvents {
@@ -50,7 +54,7 @@ fn type5_phase_boundaries_keep_live_dedup_after_draw_stops_then_expire() {
     let config = configured();
     assert!(queue.create_enemy_sensed(source((20, 20), (100, 60)), 0, (200, 120), &config));
     let event = &mut queue.events[0];
-    event.radius = config.min_radius;
+    event.radius = config.min_radius as f32;
     event.rotation_speed = 1.0;
     event.tick(0, &config);
     assert!(!event.expanding);
@@ -359,7 +363,7 @@ fn non_drawing_event_never_paints_and_dedupes_for_its_own_lifetime() {
         &config
     ));
     let event = &mut queue.events[0];
-    event.radius = config.min_radius;
+    event.radius = config.min_radius as f32;
     event.rotation_speed = 1.0;
     event.tick(0, &config);
     assert!(!event.expanding);
