@@ -1242,6 +1242,62 @@
       "length": 3,
       "output": "\u00e9 \u00e9",
       "raw": "   \u00e9 \u00e9  "
+    },
+    {
+      "capacity": 128,
+      "default": "",
+      "length": 0,
+      "output": "",
+      "raw": ""
+    },
+    {
+      "capacity": 128,
+      "default": "",
+      "length": 0,
+      "output": "",
+      "raw": " "
+    },
+    {
+      "capacity": 128,
+      "default": "",
+      "length": 0,
+      "output": "",
+      "raw": "   "
+    },
+    {
+      "capacity": 128,
+      "default": "",
+      "length": 0,
+      "output": "",
+      "raw": "\t"
+    },
+    {
+      "capacity": 128,
+      "default": "",
+      "length": 0,
+      "output": "",
+      "raw": "\u0001\u001f"
+    },
+    {
+      "capacity": 128,
+      "default": "",
+      "length": 0,
+      "output": "",
+      "raw": " \t "
+    },
+    {
+      "capacity": 128,
+      "default": "",
+      "length": 0,
+      "output": "",
+      "raw": null
+    },
+    {
+      "capacity": 128,
+      "default": "   ",
+      "length": 0,
+      "output": "",
+      "raw": null
     }
   ],
   "strtok": [

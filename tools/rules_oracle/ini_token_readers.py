@@ -50,6 +50,10 @@ CAPACITIES = [0x14, 0x18, 0x19, 0x20, 0x40, 0x80]
 TRIM_ROWS = [' x ', 'x  ', '  x', '  x ', '   x ', '   x   ', '  x     ', ' ab  ', '  ab ',
              '    ab  ', '    abcd    ', ' a b ', '\t\tx\t\t', '  \xe9 ', '  \xe9\xe9  ',
              '   \xe9 \xe9  ']
+# Values and defaults whose ReadString copy is empty (return value 0), the
+# gate of every `if (ReadString(...))` caller (capacity 0x80).
+EMPTY_ROWS = ['', ' ', '   ', '\t', '\x01\x1f', ' \t ']
+EMPTY_DEFAULTS = ['', '   ']
 READ_INT_ROWS = [
     None, '9', '-1', '$10', '$ff', '$FFFFFFFF', '$100000000', '$-1', '$', '$g', '$ 5',
     '10h', 'FFh', 'ffH', 'h', 'xh', '-10h', '0x10', ' 12 ', '12junk', '-2147483649',
@@ -155,9 +159,13 @@ def read_string_rows(reader):
             output, length = reader.read_string(None, default, capacity)
             rows.append(dict(raw=None, default=default, capacity=capacity, output=output,
                              length=length))
-    for raw in TRIM_ROWS:
+    for raw in TRIM_ROWS + EMPTY_ROWS:
         output, length = reader.read_string(raw, '', 0x80)
         rows.append(dict(raw=raw, default='', capacity=0x80, output=output, length=length))
+    for default in EMPTY_DEFAULTS:
+        output, length = reader.read_string(None, default, 0x80)
+        rows.append(dict(raw=None, default=default, capacity=0x80, output=output,
+                         length=length))
     return rows
 
 

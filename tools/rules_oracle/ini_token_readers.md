@@ -39,7 +39,9 @@ reading).
 - `strtok`: 13 strings, including the constructor-list fixture and Latin-1.
 - `read_string`: capacities 0x14, 0x18, 0x19, 0x20, 0x40 and 0x80 over short,
   exact, over-long, cut-before-space, padded, control and Latin-1 values, and
-  absent keys with four defaults; 16 more trim patterns at 0x80.
+  absent keys with four defaults; 16 more trim patterns at 0x80; and 8
+  values or defaults whose copy is empty. Each row records the copy and
+  ReadString's return value (its length).
 - `read_int`: 28 values under defaults 9 and -1.
 - `read_bool`: 17 values under both defaults.
 
@@ -47,7 +49,8 @@ reading).
 
 `rules::ini_value` owns every reader: `crt_atoi`, `strtok`, `strtrim_ascii`,
 `IniSection::read_string`/`read_name`, `read_int` and `read_bool`.
-`rules/ini_token_readers_tests.rs` replays every row through them.
+`rules/ini_token_readers_tests.rs` replays every row through them, and checks
+that `read_name` is `None` exactly where an empty-default copy returns 0.
 
 ## Not covered
 

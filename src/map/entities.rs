@@ -311,7 +311,12 @@ fn parse_common_fields(fields: &[&str], category: EntityCategory, key: &str) -> 
     };
 
     let facing: u8 = facing_field(fields[5]);
-    let veterancy: u16 = veterancy_field(fields.get(8).copied());
+    // `[Structures]` field 8 is the AI-rebuild flag; a building line has no
+    // veterancy column.
+    let veterancy: u16 = match category {
+        EntityCategory::Structure => 0,
+        _ => veterancy_field(fields.get(8).copied()),
+    };
 
     // `[Structures]` lines have no MISSION column — a building cannot be
     // map-authored onto a mission, and index 6 there is the trigger TAG.
@@ -510,6 +515,8 @@ mod tests {
             .map(|entity| entity.structure_ai_repairable)
             .collect();
         assert_eq!(repairable, [true, true, false, false]);
+        // Field 8 (AI rebuild, 1 on line 1) is no veterancy.
+        assert!(entities.iter().all(|entity| entity.veterancy == 0));
     }
 
     #[test]

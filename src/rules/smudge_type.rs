@@ -37,8 +37,7 @@ impl SmudgeTypeRegistry {
 
         // Matches the canonical [XxxTypes] registry pattern used by ruleset:
         // entry values are consumed in declaration order regardless of key text.
-        for value in list_section.get_values() {
-            let source_name = value.trim();
+        for source_name in list_section.get_values() {
             let name_upper: String = source_name.to_uppercase();
             if name_upper.is_empty() {
                 continue;

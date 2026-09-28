@@ -318,7 +318,6 @@ impl OverlayTypeRegistry {
                 section
                     .get_values()
                     .into_iter()
-                    .map(str::trim)
                     .filter(|name| !name.is_empty())
                     .map(str::to_ascii_uppercase)
                     .collect()

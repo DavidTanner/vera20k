@@ -2177,7 +2177,6 @@ impl GeneralRules {
         infantry_death_anims[5] = Some(
             ini.section("Animations")
                 .and_then(|section| section.get_values().get(1).copied())
-                .map(str::trim)
                 .filter(|name| !name.is_empty())
                 .unwrap_or("ELECTRO")
                 .to_string(),

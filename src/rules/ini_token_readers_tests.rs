@@ -31,6 +31,8 @@ struct ReadStringRow {
     default: String,
     capacity: usize,
     output: String,
+    /// ReadString's return value: the copied length.
+    length: usize,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -85,12 +87,28 @@ fn strtok_matches_original() {
 fn read_string_matches_original() {
     for row in native().read_string {
         let section = section(row.raw.as_deref());
-        assert_eq!(
-            section.read_string("Key", &row.default, row.capacity),
-            row.output,
-            "{row:?}"
-        );
+        let output = section.read_string("Key", &row.default, row.capacity);
+        assert_eq!(output, row.output, "{row:?}");
+        // Each Latin-1 value byte is one char.
+        assert_eq!(output.chars().count(), row.length, "{row:?}");
     }
+}
+
+/// `read_name` is `if (ReadString(key, "", ...))`: `None` exactly where the
+/// empty-default copy returns 0.
+#[test]
+fn read_name_follows_the_read_string_return_value() {
+    let mut empty_copies = 0;
+    for row in native().read_string {
+        if row.raw.is_none() && !row.default.is_empty() {
+            continue;
+        }
+        let section = section(row.raw.as_deref());
+        let expected = (row.length != 0).then_some(row.output.as_str());
+        assert_eq!(section.read_name("Key", row.capacity), expected, "{row:?}");
+        empty_copies += usize::from(row.length == 0);
+    }
+    assert_eq!(empty_copies, 7);
 }
 
 #[test]

@@ -125,14 +125,14 @@ pub struct ArtEntry {
     /// Weapon discharge delay in animation frames (from `FireUp=`, default 0).
     /// Distinct from the `FireUp` sequence action in infantry sequences.
     pub fire_up: u8,
-    /// Infantry primary prone discharge frame (`FireProne=`).
-    /// Defaults to `FireUp` when absent, matching the InfantryType read fallback.
+    /// Infantry primary prone discharge frame (`FireProne=`). Falls back to
+    /// `FireUp` where gamemd reads over 0 (residual at the read).
     pub fire_prone: u8,
-    /// Infantry secondary standing discharge frame (`SecondaryFire=`).
-    /// Defaults to `FireUp` when absent.
+    /// Infantry secondary standing discharge frame (`SecondaryFire=`). Falls
+    /// back to `FireUp` where gamemd reads over 0 (residual at the read).
     pub secondary_fire: u8,
-    /// Infantry secondary prone/deploy discharge frame (`SecondaryProne=`).
-    /// Defaults to `SecondaryFire` when absent.
+    /// Infantry secondary prone discharge frame (`SecondaryProne=`). Falls
+    /// back to `SecondaryFire` where gamemd reads over 0 (residual at the read).
     pub secondary_prone: u8,
     /// Animation `Report=` sound ID. Used as a fallback when `StartSound=`
     /// is absent.
@@ -1189,8 +1189,19 @@ impl ArtRegistry {
             let firing_frames: Option<u16> = present_frames("FiringFrames");
             let standing_frames: Option<u16> = present_frames("StandingFrames");
             let shp_facings: u8 = section.read_int("Facings", 8).clamp(1, 32) as u8;
-            // InfantryType art (`0x005246D6..0x0052472D`) reads each key over
-            // its constructor 0; VERA falls back to the earlier key instead.
+            // RESIDUAL: InfantryType art (`0x005246D6..0x0052472D`) reads each
+            // key over its constructor 0 (`0x005236D7..0x005236F3`). VERA falls
+            // back to the earlier key because its fire action
+            // (`sim::combat::infantry_fire_sequence`, `infantry_fire_frame`)
+            // compares frames where `InfantryClass::Fire_At_Target` checks the
+            // sequence's SecondaryProne/SecondaryFire frame counts
+            // (`0x0052088A..0x005208D4`, `0x0052096C..0x0052099A`) and the
+            // prone byte, which Deploy clears (`0x0051DAB6`). Trigger: a prone
+            // infantryman whose art sets a nonzero FireUp and no FireProne, the
+            // GI among them. Effect: he fires on the FireUp frame, not frame
+            // 0; secondary sequence and frame picks can differ too. Frequency:
+            // every such prone shot. Changing only these defaults would flip
+            // VERA's secondary sequence picks; the fire action is its own chain.
             let fire_up = section.read_int("FireUp", 0);
             let fire_prone = section.read_int("FireProne", fire_up);
             let secondary_fire = section.read_int("SecondaryFire", fire_up);
