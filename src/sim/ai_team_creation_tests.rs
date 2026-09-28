@@ -85,9 +85,9 @@ impl Draws {
 }
 
 /// An AI trigger `id` of `weight` whose bounds pin that weight, so the
-/// feedback of an evicted team (`TeamClass::~TeamClass`, which the oracle
-/// does not run) leaves it.
-fn ai_trigger(
+/// feedback of an evicted team (`TeamClass::~TeamClass`, which the selector
+/// rows do not run) leaves it.
+pub(crate) fn ai_trigger(
     id: InternedId,
     primary: InternedId,
     secondary: Option<InternedId>,

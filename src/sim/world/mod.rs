@@ -5667,8 +5667,8 @@ impl Simulation {
             #[cfg(test)]
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::AiGenerated);
             self.ai_players = ai_state;
-            // The stand-in queues units and orders attacks; it places and
-            // spawns nothing.
+            // The attack stand-in only orders attacks; it queues, places
+            // and spawns nothing.
             let ai_tail_path_grid = path_grid
                 .cloned()
                 .or_else(|| self.path_grid.as_deref().cloned());

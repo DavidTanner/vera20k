@@ -175,9 +175,12 @@ pub(crate) fn economy_state_machine(
             // from each list.
             let owns_any = |types: &[String]| {
                 types.iter().any(|name| {
-                    sim.interner
-                        .get(name)
-                        .is_some_and(|id| house.tracking.active_building_count(id) > 0)
+                    sim.interner.get(name).is_some_and(|id| {
+                        house
+                            .tracking
+                            .active_count(crate::map::entities::EntityCategory::Structure, id)
+                            > 0
+                    })
                 })
             };
             let (output, drain) = sim

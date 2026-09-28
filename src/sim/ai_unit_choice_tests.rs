@@ -34,18 +34,20 @@ fn the_choosers_match_the_original() {
                 (dword(&team["created"]), needed)
             })
             .collect();
-        let free: Vec<usize> = row["objects"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|object| flag(&object[1]))
-            .map(|object| index(&object[0]))
-            .collect();
+        let objects = row["objects"].as_array().unwrap();
+        let mut asked_recruitable = Vec::new();
         let mut asked_can_build = Vec::new();
         let candidates = tally(
             types.len(),
             tallied,
-            free,
+            objects
+                .iter()
+                .enumerate()
+                .map(|(slot, object)| (index(&object[0]), slot)),
+            |slot| {
+                asked_recruitable.push(slot);
+                flag(&objects[slot][1])
+            },
             dword(&row["money"]),
             |class_index| {
                 asked_can_build.push(class_index);
@@ -62,6 +64,14 @@ fn the_choosers_match_the_original() {
             .into_iter()
             .map(|asked| index(&asked[1]))
             .collect();
+        let native_recruitable: Vec<usize> = events(row, "recruitable")
+            .into_iter()
+            .map(|asked| index(&asked[1]))
+            .collect();
+        assert_eq!(
+            asked_recruitable, native_recruitable,
+            "{context}: IsRecruitable"
+        );
         assert_eq!(asked_can_build, native_can_build, "{context}: CanBuild");
         let fill = dword(&row["fill"][index(&row["difficulty"])]);
         let mut draws = Draws::new(row);

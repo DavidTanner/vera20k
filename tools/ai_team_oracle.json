@@ -3885,6 +3885,107 @@
     },
     {
       "answers": [
+        3,
+        0
+      ],
+      "choice": 1,
+      "difficulty": 1,
+      "events": [
+        [
+          "needed",
+          0
+        ],
+        [
+          "needed",
+          1
+        ],
+        [
+          "recruitable",
+          0
+        ],
+        [
+          "recruitable",
+          2
+        ],
+        [
+          "recruitable",
+          4
+        ],
+        [
+          "can_build",
+          1
+        ],
+        [
+          "draw",
+          536,
+          0,
+          2147483646,
+          3
+        ]
+      ],
+      "fill": [
+        50,
+        50,
+        50
+      ],
+      "kind": "unit",
+      "money": 1000,
+      "objects": [
+        [
+          0,
+          true
+        ],
+        [
+          0,
+          true
+        ],
+        [
+          2,
+          true
+        ],
+        [
+          2,
+          false
+        ],
+        [
+          1,
+          false
+        ]
+      ],
+      "teams": [
+        {
+          "created": 40,
+          "needed": [
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "created": 30,
+          "needed": [
+            2,
+            1
+          ]
+        }
+      ],
+      "types": [
+        [
+          1,
+          100
+        ],
+        [
+          1,
+          100
+        ],
+        [
+          1,
+          100
+        ]
+      ]
+    },
+    {
+      "answers": [
         1073741823,
         1
       ],
@@ -6289,6 +6390,107 @@
     },
     {
       "answers": [
+        3,
+        0
+      ],
+      "choice": 1,
+      "difficulty": 1,
+      "events": [
+        [
+          "needed",
+          0
+        ],
+        [
+          "needed",
+          1
+        ],
+        [
+          "recruitable",
+          0
+        ],
+        [
+          "recruitable",
+          2
+        ],
+        [
+          "recruitable",
+          4
+        ],
+        [
+          "can_build",
+          1
+        ],
+        [
+          "draw",
+          536,
+          0,
+          2147483646,
+          3
+        ]
+      ],
+      "fill": [
+        50,
+        50,
+        50
+      ],
+      "kind": "infantry",
+      "money": 1000,
+      "objects": [
+        [
+          0,
+          true
+        ],
+        [
+          0,
+          true
+        ],
+        [
+          2,
+          true
+        ],
+        [
+          2,
+          false
+        ],
+        [
+          1,
+          false
+        ]
+      ],
+      "teams": [
+        {
+          "created": 40,
+          "needed": [
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "created": 30,
+          "needed": [
+            2,
+            1
+          ]
+        }
+      ],
+      "types": [
+        [
+          1,
+          100
+        ],
+        [
+          1,
+          100
+        ],
+        [
+          1,
+          100
+        ]
+      ]
+    },
+    {
+      "answers": [
         1073741823,
         1
       ],
@@ -8693,6 +8895,107 @@
     },
     {
       "answers": [
+        3,
+        0
+      ],
+      "choice": 1,
+      "difficulty": 1,
+      "events": [
+        [
+          "needed",
+          0
+        ],
+        [
+          "needed",
+          1
+        ],
+        [
+          "recruitable",
+          0
+        ],
+        [
+          "recruitable",
+          2
+        ],
+        [
+          "recruitable",
+          4
+        ],
+        [
+          "can_build",
+          1
+        ],
+        [
+          "draw",
+          536,
+          0,
+          2147483646,
+          3
+        ]
+      ],
+      "fill": [
+        50,
+        50,
+        50
+      ],
+      "kind": "aircraft",
+      "money": 1000,
+      "objects": [
+        [
+          0,
+          true
+        ],
+        [
+          0,
+          true
+        ],
+        [
+          2,
+          true
+        ],
+        [
+          2,
+          false
+        ],
+        [
+          1,
+          false
+        ]
+      ],
+      "teams": [
+        {
+          "created": 40,
+          "needed": [
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "created": 30,
+          "needed": [
+            2,
+            1
+          ]
+        }
+      ],
+      "types": [
+        [
+          1,
+          100
+        ],
+        [
+          1,
+          100
+        ],
+        [
+          1,
+          100
+        ]
+      ]
+    },
+    {
+      "answers": [
         1073741823,
         1
       ],
@@ -8925,6 +9228,562 @@
           100
         ]
       ]
+    }
+  ],
+  "destructor": [
+    {
+      "results": [
+        {
+          "attempts": 4,
+          "successes": 2,
+          "weight": 4633641066610819072
+        }
+      ],
+      "succeeded": true,
+      "triggers": [
+        {
+          "attempts": 3,
+          "successes": 1,
+          "team_type": 0,
+          "weight": 4630826316843712512
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "attempts": 3,
+          "successes": 1,
+          "weight": 4630826316843712512
+        }
+      ],
+      "succeeded": true,
+      "triggers": [
+        {
+          "attempts": 3,
+          "successes": 1,
+          "team_type": 1,
+          "weight": 4630826316843712512
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "attempts": 1,
+          "successes": 1,
+          "weight": 4633641066610819072
+        },
+        {
+          "attempts": 2,
+          "successes": 2,
+          "weight": 4632233691727265792
+        },
+        {
+          "attempts": 7,
+          "successes": 6,
+          "weight": 4634626229029306368
+        },
+        {
+          "attempts": 10,
+          "successes": 1,
+          "weight": 4629137466983448576
+        }
+      ],
+      "succeeded": true,
+      "triggers": [
+        {
+          "attempts": 0,
+          "successes": 0,
+          "team_type": 0,
+          "weight": 4630826316843712512
+        },
+        {
+          "attempts": 2,
+          "successes": 2,
+          "team_type": 1,
+          "weight": 4632233691727265792
+        },
+        {
+          "attempts": 6,
+          "successes": 5,
+          "team_type": 0,
+          "weight": 4634274385308418048
+        },
+        {
+          "attempts": 9,
+          "successes": 0,
+          "team_type": 0,
+          "weight": 4621819117588971520
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "attempts": 1,
+          "successes": 1,
+          "weight": 4629137466983448576
+        },
+        {
+          "attempts": 4,
+          "successes": 4,
+          "weight": 4634626229029306368
+        },
+        {
+          "attempts": 4,
+          "successes": 4,
+          "weight": 4634626229029306368
+        }
+      ],
+      "succeeded": true,
+      "triggers": [
+        {
+          "attempts": 1,
+          "successes": 1,
+          "team_type": 2,
+          "weight": 4629137466983448576
+        },
+        {
+          "attempts": 3,
+          "successes": 3,
+          "team_type": 0,
+          "weight": 4634555860285128704
+        },
+        {
+          "attempts": 3,
+          "successes": 3,
+          "team_type": 0,
+          "weight": 4634555860285128704
+        }
+      ]
+    },
+    {
+      "results": [],
+      "succeeded": true,
+      "triggers": []
+    },
+    {
+      "results": [
+        {
+          "attempts": 4,
+          "successes": 1,
+          "weight": 4621819117588971520
+        }
+      ],
+      "succeeded": false,
+      "triggers": [
+        {
+          "attempts": 3,
+          "successes": 1,
+          "team_type": 0,
+          "weight": 4630826316843712512
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "attempts": 3,
+          "successes": 1,
+          "weight": 4630826316843712512
+        }
+      ],
+      "succeeded": false,
+      "triggers": [
+        {
+          "attempts": 3,
+          "successes": 1,
+          "team_type": 1,
+          "weight": 4630826316843712512
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "attempts": 1,
+          "successes": 0,
+          "weight": 4621819117588971520
+        },
+        {
+          "attempts": 2,
+          "successes": 2,
+          "weight": 4632233691727265792
+        },
+        {
+          "attempts": 7,
+          "successes": 5,
+          "weight": 4624633867356078080
+        },
+        {
+          "attempts": 10,
+          "successes": 0,
+          "weight": 4621819117588971520
+        }
+      ],
+      "succeeded": false,
+      "triggers": [
+        {
+          "attempts": 0,
+          "successes": 0,
+          "team_type": 0,
+          "weight": 4630826316843712512
+        },
+        {
+          "attempts": 2,
+          "successes": 2,
+          "team_type": 1,
+          "weight": 4632233691727265792
+        },
+        {
+          "attempts": 6,
+          "successes": 5,
+          "team_type": 0,
+          "weight": 4634274385308418048
+        },
+        {
+          "attempts": 9,
+          "successes": 0,
+          "team_type": 0,
+          "weight": 4621819117588971520
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "attempts": 1,
+          "successes": 1,
+          "weight": 4629137466983448576
+        },
+        {
+          "attempts": 4,
+          "successes": 3,
+          "weight": 4626041242239631360
+        },
+        {
+          "attempts": 4,
+          "successes": 3,
+          "weight": 4626041242239631360
+        }
+      ],
+      "succeeded": false,
+      "triggers": [
+        {
+          "attempts": 1,
+          "successes": 1,
+          "team_type": 2,
+          "weight": 4629137466983448576
+        },
+        {
+          "attempts": 3,
+          "successes": 3,
+          "team_type": 0,
+          "weight": 4634555860285128704
+        },
+        {
+          "attempts": 3,
+          "successes": 3,
+          "team_type": 0,
+          "weight": 4634555860285128704
+        }
+      ]
+    },
+    {
+      "results": [],
+      "succeeded": false,
+      "triggers": []
+    }
+  ],
+  "dissolve": [
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 5001,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "dissolve"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 5001,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 5000,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 5000,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 4999,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 4999,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 2000,
+      "delay": 5000,
+      "frame": 7000,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 2000,
+      "delay": 5000,
+      "frame": 7000,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 2000,
+      "delay": 5000,
+      "frame": 7001,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "dissolve"
+    },
+    {
+      "at_strength": false,
+      "created": 2000,
+      "delay": 5000,
+      "frame": 7001,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 0,
+      "frame": 0,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 0,
+      "frame": 0,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 0,
+      "frame": 1,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "dissolve"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 0,
+      "frame": 1,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 1,
+      "delay": 0,
+      "frame": 0,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 1,
+      "delay": 0,
+      "frame": 0,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": -1,
+      "frame": 10,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "dissolve"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": -1,
+      "frame": 10,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": -10,
+      "frame": -5,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "dissolve"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": -10,
+      "frame": -5,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 2147483632,
+      "delay": 5000,
+      "frame": -2147483632,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": 2147483632,
+      "delay": 5000,
+      "frame": -2147483632,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": -2147483632,
+      "delay": 5000,
+      "frame": 2147483632,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": -2147483632,
+      "delay": 5000,
+      "frame": 2147483632,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": -2147483648,
+      "delay": 5000,
+      "frame": 2147483647,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": false,
+      "created": -2147483648,
+      "delay": 5000,
+      "frame": 2147483647,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "keep"
+    },
+    {
+      "at_strength": true,
+      "created": 0,
+      "delay": 5000,
+      "frame": 10,
+      "game_mode": 1,
+      "members": false,
+      "outcome": "dissolve"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 9000,
+      "game_mode": 1,
+      "members": true,
+      "outcome": "members"
+    },
+    {
+      "at_strength": true,
+      "created": 0,
+      "delay": 5000,
+      "frame": 10,
+      "game_mode": 1,
+      "members": true,
+      "outcome": "members"
+    },
+    {
+      "at_strength": true,
+      "created": 0,
+      "delay": 5000,
+      "frame": 10,
+      "game_mode": 0,
+      "members": false,
+      "outcome": "dissolve"
+    },
+    {
+      "at_strength": false,
+      "created": 0,
+      "delay": 5000,
+      "frame": 9000,
+      "game_mode": 0,
+      "members": true,
+      "outcome": "members"
+    },
+    {
+      "at_strength": true,
+      "created": 0,
+      "delay": 5000,
+      "frame": 10,
+      "game_mode": 0,
+      "members": true,
+      "outcome": "members"
     }
   ],
   "eligibility": [
@@ -13337,6 +14196,4232 @@
       "output": 0,
       "second": null,
       "use_min_rule": false
+    }
+  ],
+  "feedback": [
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 1,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 4633711435354996736
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 4629278204471803904
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 2,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 3,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4633711435354996735
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4629278204471803903
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 0
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 0
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 8,
+        "successes": 4,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 4633992910331707392
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 4629770785681047552
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 0
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 6,
+        "successes": 6,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 4634309569680506879
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 4630192998146113535
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 0
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 4,
+        "successes": 8,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 0,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": -4,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 0
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 1001,
+        "successes": 334,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 4633641066610819072
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 4629137466983448576
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 4634626229029306368
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 4662219572839972864
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 0
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 4630826316843712512
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 8,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 0,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 1,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 4626181979727986688
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 4626153832230315624
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 4662164047502770176
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 2,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 2,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 2,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 3,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4626181979727986688
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4626153832230315624
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4662164047502770176
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 0
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 4626181979727986687
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 4626153832230315623
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 4662164047502770175
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 0
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 8,
+        "successes": 3,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 3,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 0
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 6,
+        "successes": 5,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 5,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4625759767262920704
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4625731619765249640
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4662162398235328512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 0
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 4,
+        "successes": 7,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 7,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": -1,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 0,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 4626322717216342016
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 4626294569718670952
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 4662164597258584064
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 0
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": -5,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": -4,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 4661980978816745471
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 0
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 1000,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 1001,
+        "successes": 333,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 333,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630826316843712512
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4621819117588971520
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 4625619029774565376
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634626229029306368
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 4625590882276894312
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4634619192154888602
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4662219572839972864,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 4662161848479514624
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4662219572839972864
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 0,
+      "minimum": 0,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 0
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 0
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4630826316843712512,
+      "minimum": 4630826316843712512,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 4630826316843712512
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630474473122824192
+    },
+    {
+      "attempts": 7,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4621819117588971520,
+      "minimum": 4634626229029306368,
+      "result": {
+        "attempts": 8,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4632937379169042432
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4631684815522680013
+      },
+      "succeeded": true,
+      "success_delta": 4617315517961601024,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4631755184266857676
+      },
+      "succeeded": true,
+      "success_delta": 4617315517961601024,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4631684815522680013
+      },
+      "succeeded": true,
+      "success_delta": 4617315517961601024,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 5,
+        "weight": 4631966290499390669
+      },
+      "succeeded": true,
+      "success_delta": 4617315517961601024,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4626491602202368410
+      },
+      "succeeded": false,
+      "success_delta": 4617315517961601024,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4626632339690723738
+      },
+      "succeeded": false,
+      "success_delta": 4617315517961601024,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4626069389737302426
+      },
+      "succeeded": false,
+      "success_delta": 4617315517961601024,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4607182418800017408,
+      "failure_delta": 13849694754071117824,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 4,
+        "weight": 4626632339690723738
+      },
+      "succeeded": false,
+      "success_delta": 4617315517961601024,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4630995201829738905
+      },
+      "succeeded": true,
+      "success_delta": 4591870180066957722,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4631065570573916568
+      },
+      "succeeded": true,
+      "success_delta": 4591870180066957722,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4630995201829738905
+      },
+      "succeeded": true,
+      "success_delta": 4591870180066957722,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 5,
+        "weight": 4631276676806449561
+      },
+      "succeeded": true,
+      "success_delta": 4591870180066957722,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4630903722462307942
+      },
+      "succeeded": false,
+      "success_delta": 4591870180066957722,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4630938906834396774
+      },
+      "succeeded": false,
+      "success_delta": 4591870180066957722,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4630798169346041446
+      },
+      "succeeded": false,
+      "success_delta": 4591870180066957722,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4602678819172646912,
+      "failure_delta": 13822447976325526323,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 4,
+        "weight": 4630938906834396774
+      },
+      "succeeded": false,
+      "success_delta": 4591870180066957722,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4633795877848009933
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4633866246592187596
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4633795877848009933
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 5,
+        "weight": 4634077352824720589
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4611686018427387904,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 4,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4631028040577021815
+      },
+      "succeeded": true,
+      "success_delta": 4599676419421066581,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4631098409321199478
+      },
+      "succeeded": true,
+      "success_delta": 4599676419421066581,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4631028040577021815
+      },
+      "succeeded": true,
+      "success_delta": 4599676419421066581,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 5,
+        "weight": 4631309515553732471
+      },
+      "succeeded": true,
+      "success_delta": 4599676419421066581,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4630863846842952890
+      },
+      "succeeded": false,
+      "success_delta": 4599676419421066581,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4630887303088666487
+      },
+      "succeeded": false,
+      "success_delta": 4599676419421066581,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4630793478105812100
+      },
+      "succeeded": false,
+      "success_delta": 4599676419421066581,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 4599676418820586631,
+      "failure_delta": 13827552055903212885,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 4,
+        "weight": 4630887303088666487
+      },
+      "succeeded": false,
+      "success_delta": 4599676419421066581,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4633795877848009933
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 3,
+        "weight": 4633866246592187596
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 1,
+        "weight": 4633795877848009933
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 5,
+        "weight": 4634077352824720589
+      },
+      "succeeded": true,
+      "success_delta": 4626322717216342016,
+      "successes": 4,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 1,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 1,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 3,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 4,
+        "successes": 2,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 2,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 0,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 0,
+      "weight": 4630981128080903373
+    },
+    {
+      "attempts": 4,
+      "coefficient": 13830554455654793216,
+      "failure_delta": 13855605728582041600,
+      "maximum": 4634626229029306368,
+      "minimum": 4621819117588971520,
+      "result": {
+        "attempts": 5,
+        "successes": 4,
+        "weight": 4621819117588971520
+      },
+      "succeeded": false,
+      "success_delta": 4626322717216342016,
+      "successes": 4,
+      "weight": 4630981128080903373
     }
   ],
   "harvester": [

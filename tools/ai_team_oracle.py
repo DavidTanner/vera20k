@@ -24,8 +24,9 @@ instruction reading; see src/sim/ai_team_creation.rs.
 from pathlib import Path
 import struct
 
-from unicorn.x86_const import (UC_X86_REG_EBP, UC_X86_REG_ECX, UC_X86_REG_EDX,
-                               UC_X86_REG_ESI, UC_X86_REG_ESP, UC_X86_REG_FPCW)
+from unicorn.x86_const import (UC_X86_REG_EBP, UC_X86_REG_ECX, UC_X86_REG_EDI,
+                               UC_X86_REG_EDX, UC_X86_REG_EIP, UC_X86_REG_ESI,
+                               UC_X86_REG_ESP, UC_X86_REG_FPCW)
 
 from tools.ai_base_building_oracle import Emu
 from tools.native_oracle import (NATIVE_FPCW, OracleError, finish_vectors, provenance,
@@ -145,6 +146,9 @@ class TeamEmu(Emu):
         self.index[ty] = index
         self.cost[ty] = cost
         return ty
+
+    def read64(self, address):
+        return struct.unpack('<Q', bytes(self.uc.mem_read(address, 8)))[0]
 
     def rules_vector(self, offset, values):
         """A Rules per-difficulty vector whose items sit at `offset`."""
@@ -283,6 +287,11 @@ def choosers():
         for fill in ((0, 0, 0), (100, 100, 100)):
             rows.append(chooser_row(kind, types=three, teams=teams, objects=objects,
                                     fill=fill, answers=[3, 0]))
+        # An object of a type whose need is met is not asked IsRecruitable
+        # (0x004FED3F).
+        objects = [(0, True), (0, True), (2, True), (2, False), (1, False)]
+        rows.append(chooser_row(kind, types=three, teams=teams, objects=objects,
+                                answers=[3, 0]))
         # The difficulty picks the fill percent.
         for difficulty in (0, 1, 2):
             rows.append(chooser_row(kind, types=three, teams=teams, difficulty=difficulty,
@@ -677,9 +686,167 @@ def team_block():
     return rows
 
 
+# ---------------------------------------------------------------- feedback
+
+REGISTER_SUCCESS, REGISTER_FAILURE = 0x41FD60, 0x41FE20
+RETAIL_DELTAS = (20.0, -50.0)
+
+
+def f64_bits(value):
+    return struct.unpack('<Q', f64(value))[0]
+
+
+def feedback_rules(emu, deltas, coefficient):
+    emu.uc.mem_write(RULES + 0xC0, f64(deltas[0]))
+    emu.uc.mem_write(RULES + 0xC8, f64(deltas[1]))
+    emu.uc.mem_write(RULES + 0xD0, f64(coefficient))
+
+
+def feedback_trigger(emu, address, weight, minimum, maximum, successes, attempts):
+    emu.uc.mem_write(address + 0xB8, f64(weight))
+    emu.uc.mem_write(address + 0xC0, f64(minimum))
+    emu.uc.mem_write(address + 0xC8, f64(maximum))
+    emu.write32(address + 0x104, successes)
+    emu.write32(address + 0x108, attempts)
+
+
+def feedback_state(emu, address):
+    return dict(weight=emu.read64(address + 0xB8), successes=emu.read_i32(address + 0x104),
+                attempts=emu.read_i32(address + 0x108))
+
+
+def feedback_row(*, succeeded, weight, minimum, maximum, successes, attempts,
+                 deltas=RETAIL_DELTAS, coefficient=1.0):
+    """RegisterSuccess or RegisterFailure on one AI trigger."""
+    emu = TeamEmu()
+    feedback_rules(emu, deltas, coefficient)
+    feedback_trigger(emu, TRIGGERS, weight, minimum, maximum, successes, attempts)
+    emu.invoke(REGISTER_SUCCESS if succeeded else REGISTER_FAILURE, ecx=TRIGGERS)
+    return dict(succeeded=succeeded, weight=f64_bits(weight), minimum=f64_bits(minimum),
+                maximum=f64_bits(maximum), successes=successes, attempts=attempts,
+                success_delta=f64_bits(deltas[0]), failure_delta=f64_bits(deltas[1]),
+                coefficient=f64_bits(coefficient), result=feedback_state(emu, TRIGGERS))
+
+
+def feedback():
+    rows = []
+    records = ((0, 0), (0, 1), (1, 1), (1, 2), (1, 3), (2, 3), (3, 7), (5, 5), (0, 4),
+               (7, 3), (1, -1), (0, -5), (333, 1000), (1, 7))
+    bounds = ((40.0, 10.0, 70.0), (10.0, 10.0, 70.0), (70.0, 10.0, 70.0),
+              (69.9, 10.0, 70.0), (5000.0, 10.0, 5000.0), (0.0, 0.0, 0.0),
+              (37.5, 40.0, 40.0), (55.0, 70.0, 10.0))
+    for succeeded in (True, False):
+        for successes, attempts in records:
+            for weight, minimum, maximum in bounds:
+                rows.append(feedback_row(succeeded=succeeded, weight=weight, minimum=minimum,
+                                         maximum=maximum, successes=successes,
+                                         attempts=attempts))
+    for deltas, coefficient in (((5.0, -20.0), 1.0), ((0.1, -0.3), 0.5), ((20.0, -50.0), 2.0),
+                                ((1.0 / 3.0, -2.0 / 3.0), 0.3333333),
+                                ((20.0, -50.0), -1.0)):
+        for succeeded in (True, False):
+            for successes, attempts in ((1, 3), (2, 3), (0, 4), (4, 4)):
+                rows.append(feedback_row(succeeded=succeeded, weight=41.1, minimum=10.0,
+                                         maximum=70.0, successes=successes,
+                                         attempts=attempts, deltas=deltas,
+                                         coefficient=coefficient))
+    return rows
+
+
+# ---------------------------------------------------------------- destructor loop
+
+DESTRUCTOR_LOOP, DESTRUCTOR_LOOP_END = 0x6E8E02, 0x6E8E40
+
+
+def destructor_row(*, succeeded, triggers):
+    """~TeamClass's AI trigger loop for a team of TeamType 0; `triggers` are
+    (first TeamType slot, weight, successes, attempts), bounds 10..70."""
+    emu = TeamEmu()
+    feedback_rules(emu, RETAIL_DELTAS, 1.0)
+    team = TEAMS
+    emu.write32(team + 0x24, TEAM_TYPES)
+    emu.uc.mem_write(team + 0x84, bytes([int(succeeded)]))
+    addresses = []
+    for slot, (team_type, weight, successes, attempts) in enumerate(triggers):
+        address = TRIGGERS + slot * 0x200
+        emu.write32(address + 0xDC, TEAM_TYPES + team_type * 0x100)
+        feedback_trigger(emu, address, weight, 10.0, 70.0, successes, attempts)
+        addresses.append(address)
+    emu.array(TRIGGER_ARRAY, addresses)
+    uc = emu.uc
+    uc.mem_write(BLOCK_STACK, b'\x00' * 0x1000)
+    uc.reg_write(UC_X86_REG_ESP, BLOCK_STACK + 0x800)
+    uc.reg_write(UC_X86_REG_ESI, team)
+    uc.reg_write(UC_X86_REG_EDI, 0)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, DESTRUCTOR_LOOP, DESTRUCTOR_LOOP_END)
+    return dict(succeeded=succeeded,
+                triggers=[dict(team_type=team_type, weight=f64_bits(weight),
+                               successes=successes, attempts=attempts)
+                          for team_type, weight, successes, attempts in triggers],
+                results=[feedback_state(emu, address) for address in addresses])
+
+
+def destructor():
+    rows = []
+    mixes = ([(0, 40.0, 1, 3)], [(1, 40.0, 1, 3)],
+             [(0, 40.0, 0, 0), (1, 50.0, 2, 2), (0, 65.0, 5, 6), (0, 10.0, 0, 9)],
+             [(2, 30.0, 1, 1), (0, 69.0, 3, 3), (0, 69.0, 3, 3)], [])
+    for succeeded in (True, False):
+        for triggers in mixes:
+            rows.append(destructor_row(succeeded=succeeded, triggers=triggers))
+    return rows
+
+
+# ---------------------------------------------------------------- dissolve
+
+DISSOLVE_CHECK = 0x6E929B
+DISSOLVE_ENDS = {0x6E9329: 'members', 0x6E9325: 'keep', 0x6E92D0: 'dissolve'}
+
+
+def dissolve_row(*, members=False, at_strength=False, game_mode=1, frame, created, delay=5000):
+    """TeamClass::AI's empty-team test, after the recruit loop."""
+    emu = TeamEmu()
+    emu.write32(GAME_MODE, game_mode)
+    emu.write32(FRAME, frame)
+    emu.write32(RULES + 0x1190, delay)
+    team = TEAMS
+    emu.write32(team + 0x54, OBJECTS if members else 0)
+    emu.uc.mem_write(team + 0x78, bytes([int(at_strength)]))
+    emu.write32(team + 0x50, created)
+    uc = emu.uc
+    uc.mem_write(BLOCK_STACK, b'\x00' * 0x1000)
+    uc.reg_write(UC_X86_REG_ESP, BLOCK_STACK + 0x800)
+    uc.reg_write(UC_X86_REG_ESI, team)
+    run_checked(uc, DISSOLVE_CHECK, tuple(DISSOLVE_ENDS))
+    return dict(members=members, at_strength=at_strength, game_mode=game_mode, frame=frame,
+                created=created, delay=delay,
+                outcome=DISSOLVE_ENDS[uc.reg_read(UC_X86_REG_EIP)])
+
+
+def dissolve():
+    rows = []
+    for frame, created, delay in ((5001, 0, 5000), (5000, 0, 5000), (4999, 0, 5000),
+                                  (7000, 2000, 5000), (7001, 2000, 5000), (0, 0, 0), (1, 0, 0),
+                                  (0, 1, 0), (10, 0, -1), (-5, 0, -10),
+                                  (-0x7FFFFFF0, 0x7FFFFFF0, 5000),
+                                  (0x7FFFFFF0, -0x7FFFFFF0, 5000),
+                                  (0x7FFFFFFF, -0x80000000, 5000)):
+        for game_mode in (1, 0):
+            rows.append(dissolve_row(game_mode=game_mode, frame=frame, created=created,
+                                     delay=delay))
+    for game_mode in (1, 0):
+        rows.append(dissolve_row(at_strength=True, game_mode=game_mode, frame=10, created=0))
+        rows.append(dissolve_row(members=True, game_mode=game_mode, frame=9000, created=0))
+        rows.append(dissolve_row(members=True, at_strength=True, game_mode=game_mode,
+                                 frame=10, created=0))
+    return rows
+
+
 def generate():
     return dict(choosers=choosers(), harvester=harvester(), selector=selector(),
-                eligibility=eligibility(), charge=charge(), team_block=team_block())
+                eligibility=eligibility(), charge=charge(), team_block=team_block(),
+                feedback=feedback(), destructor=destructor(), dissolve=dissolve())
 
 
 if __name__ == '__main__':
@@ -688,7 +855,8 @@ if __name__ == '__main__':
                'Unit chooser\'s harvester branch; the AI trigger team selector over team '
                'counts, weights, eligibility answers and draws; the AI trigger eligibility '
                'test without zone relation or TaskForce entries; the Iron Curtain readiness; '
-               'the house update\'s team block.'),
+               'the house update\'s team block; the AI trigger weight feedback, the team '
+               'destructor\'s trigger loop and the empty-team dissolve test.'),
         assumptions=['x87 control word 0x0E7F (PC53, chop), the harness default.',
                      'Fixture objects carry only the fields the entries read.'],
         substitutions=['Get_Needed_Types 0x6EF4D0, IsRecruitable 0x4DA230, CanBuild 0x4F7870, '
@@ -703,5 +871,8 @@ if __name__ == '__main__':
         entry_points={'choose_unit': 0x4FEA60, 'choose_infantry': 0x4FEEE0,
                       'choose_aircraft': 0x4FF210, 'selector': 0x6F0AB0,
                       'eligibility': 0x41E720, 'iron_curtain_ready': 0x41F0D0,
-                      'team_block': BLOCK_START},
+                      'team_block': BLOCK_START, 'register_success': REGISTER_SUCCESS,
+                      'register_failure': REGISTER_FAILURE,
+                      'destructor_trigger_loop': DESTRUCTOR_LOOP,
+                      'dissolve_check': DISSOLVE_CHECK},
     ))

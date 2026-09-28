@@ -440,6 +440,19 @@ impl TeamScriptState {
         self.id
     }
 
+    /// `TeamClass::AI`'s empty-team test after the recruit loop
+    /// (`0x006E929B..0x006E92D8`): with no members (`+0x54`), a team at
+    /// strength (`+0x78`) or, in a multiplayer game, one whose age
+    /// (`Frame - +0x50`, wrapping) is above `DissolveUnfilledTeamDelay=`
+    /// (signed) is destroyed.
+    fn dissolves(&self, rules: &TeamRules, current_frame: i32) -> bool {
+        self.members.is_empty()
+            && (self.reached_required_strength_78
+                || (rules.game_mode_nonzero
+                    && current_frame.wrapping_sub(self.created_frame)
+                        > rules.dissolve_unfilled_team_delay))
+    }
+
     pub fn owner(&self) -> InternedId {
         self.owner
     }
@@ -604,19 +617,8 @@ impl TeamScriptVm {
         current_frame: i32,
     ) -> Option<u64> {
         let team_type = *self.team_types.get(&team_type_id)?;
-        let max_teams = self.max_teams(team_type_id);
-        if max_teams >= 0 {
-            let existing = self
-                .teams
-                .values()
-                .filter(|team| {
-                    team.team_type_id == Some(team_type_id)
-                        && (!game_mode_nonzero || team.owner == owner)
-                })
-                .count() as i32;
-            if existing >= max_teams {
-                return None;
-            }
+        if self.at_max_teams(team_type_id, owner, !game_mode_nonzero) {
+            return None;
         }
         let id = self.next_team_id;
         self.next_team_id = self.next_team_id.wrapping_add(1);
@@ -686,12 +688,29 @@ impl TeamScriptVm {
         self.team_types.get(&id)
     }
 
-    /// The TeamType's `Max=` (`+0xB8`); -1, none, for a TeamType without
-    /// metadata.
-    pub(crate) fn max_teams(&self, team_type_id: InternedId) -> i32 {
-        self.team_type_ini
+    /// Whether the TeamType's `Max=` (`+0xB8`; -1, none, for a TeamType
+    /// without metadata), when not negative, is reached by `owner`'s teams of
+    /// the type (`0x005095D0`), or with `every_house` by every house's (the
+    /// campaign's `+0xDC`).
+    pub(crate) fn at_max_teams(
+        &self,
+        team_type_id: InternedId,
+        owner: InternedId,
+        every_house: bool,
+    ) -> bool {
+        let max_teams = self
+            .team_type_ini
             .get(&team_type_id)
-            .map_or(-1, |metadata| metadata.max_teams)
+            .map_or(-1, |metadata| metadata.max_teams);
+        max_teams >= 0
+            && self
+                .teams
+                .values()
+                .filter(|team| {
+                    team.team_type_id == Some(team_type_id) && (every_house || team.owner == owner)
+                })
+                .count() as i32
+                >= max_teams
     }
 
     /// The TeamType's `Reinforce=` (`+0xAB`).
@@ -1008,17 +1027,9 @@ impl TeamScriptVm {
                 }
             }
 
-            // `0x006E9311..0x006E9336`: with no members, a team at strength
-            // (`+0x78`) or, in a multiplayer game, one older than
-            // `DissolveUnfilledTeamDelay=` (signed, the frame difference
-            // wrapping) is destroyed. Recruitment, which runs first
-            // (`0x006E9285`), is not ported (module residual).
-            if team.members.is_empty()
-                && (team.reached_required_strength_78
-                    || (rules.game_mode_nonzero
-                        && rules.dissolve_unfilled_team_delay
-                            < current_frame.wrapping_sub(team.created_frame)))
-            {
+            // Recruitment, which runs first (`0x006E9270..0x006E9299`), is
+            // not ported (module residual).
+            if team.dissolves(rules, current_frame) {
                 deleted_teams.push(team.id);
                 continue;
             }
@@ -1317,6 +1328,9 @@ pub(crate) fn join_one_member_team_for_test(
         0,
     );
 }
+
+#[cfg(test)]
+mod oracle_tests;
 
 #[cfg(test)]
 mod tests {

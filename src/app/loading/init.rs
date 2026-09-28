@@ -2520,7 +2520,7 @@ pub(crate) fn load_map_from_initial(
     let bound_scenario_prefix =
         scenario_prefix_plan.bind_native_rules_receipt(native_rules_receipt);
     let team_ai_registry = crate::rules::team_ai_ini::TeamAiIniRegistry::load_retail(
-        &asset_manager,
+        asset_manager,
         &map_data.ini,
         true,
     )

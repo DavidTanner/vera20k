@@ -2,6 +2,7 @@
 //! `tools/spatial_oracle/house_tracking.json`, produced by running the
 //! original Add_Tracking and Remove_Tracking under Unicorn.
 
+use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::house_state::HouseState;
@@ -205,15 +206,15 @@ fn on_map_counts_follow_unlimbo_and_limbo() {
         (2, 1, 1),
         "the DontScore unit is added"
     );
-    assert_eq!(tracking.active_building_count(bldg), 1);
-    assert_eq!(tracking.active_building_count(bldgd), 0);
+    assert_eq!(tracking.active_count(EntityCategory::Structure, bldg), 1);
+    assert_eq!(tracking.active_count(EntityCategory::Structure, bldgd), 0);
 
     for id in ids {
         sim.uninit_with_rules(id, &rules);
     }
     let tracking = &sim.houses[&house].tracking;
     assert_eq!(tracking.active_for_test(), (1, 0, 0), "but not removed");
-    assert_eq!(tracking.active_building_count(bldg), 0);
+    assert_eq!(tracking.active_count(EntityCategory::Structure, bldg), 0);
 }
 
 /// TechnoClass::ChangeOwner moves the tracking (`0x007015DE`, `0x007015E6`)

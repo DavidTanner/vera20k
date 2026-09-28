@@ -289,13 +289,18 @@ impl HouseTracking {
     }
 
     /// Fold the counters schema v238 (`AiTeams`) added, tagged, once any is
-    /// set: the tracked counts of the building, infantry and aircraft types
-    /// and the on-map count of `ResourceDestination=` objects.
+    /// set: the tracked counts of the building, infantry and aircraft types,
+    /// the on-map counts of the unit, infantry and aircraft types (the AI
+    /// trigger conditions read them per type; the defeat counters fold only
+    /// their totals) and the on-map count of `ResourceDestination=` objects.
     pub(crate) fn hash_ai_team_counters(&self, hasher: &mut impl std::hash::Hasher) {
         use std::hash::Hash;
         if self.building_types.is_empty()
             && self.infantry_types.is_empty()
             && self.aircraft_types.is_empty()
+            && self.active_unit_types.is_empty()
+            && self.active_infantry_types.is_empty()
+            && self.active_aircraft_types.is_empty()
             && self.resource_destinations == 0
         {
             return;
@@ -304,6 +309,9 @@ impl HouseTracking {
         self.building_types.hash(hasher);
         self.infantry_types.hash(hasher);
         self.aircraft_types.hash(hasher);
+        self.active_unit_types.hash(hasher);
+        self.active_infantry_types.hash(hasher);
+        self.active_aircraft_types.hash(hasher);
         self.resource_destinations.hash(hasher);
     }
 
@@ -334,14 +342,6 @@ impl HouseTracking {
     /// `HouseClass+0x160A8`, `+0x160AC` and `+0x160B0`.
     pub(crate) const fn force_values(&self) -> ForceValues {
         self.force_values
-    }
-
-    /// `HouseClass+0x5550`'s count for one BuildingType (`0x0049FAE0`).
-    pub(crate) fn active_building_count(&self, building: InternedId) -> i32 {
-        self.active_building_types
-            .get(&building)
-            .copied()
-            .unwrap_or(0)
     }
 
     /// The on-map count of one type of `category` (`0x0049FAE0` on

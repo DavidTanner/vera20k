@@ -428,14 +428,9 @@ fn is_eligible(
         && team_types
             .clone()
             .all(|tt| factories_admit(sim, rules, tt, owner))
-        && team_types.clone().all(|tt| {
-            let max = vm.max_teams(tt.id);
-            let existing = vm
-                .teams_in_order()
-                .filter(|team| team.owner() == owner && team.team_type_id() == Some(tt.id))
-                .count() as i32;
-            max < 0 || existing < max
-        })
+        && team_types
+            .clone()
+            .all(|tt| !vm.at_max_teams(tt.id, owner, false))
 }
 
 /// The eligibility test's defense gate (`0x0041E740..0x0041E7AD`): with no

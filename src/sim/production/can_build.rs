@@ -27,6 +27,13 @@
 //! - A build limit below 1 counts what the house has produced of the type
 //!   (`+0x55A0`, `+0x55B4`, `+0x55C8`, `+0x55DC`), which is not kept: VERA
 //!   counts none. Dormant: retail sets no such limit.
+//! - A human house's prerequisite arm is not ported; the player's sidebar
+//!   decides with its own checks (`production_tech::build_option_for_owner`,
+//!   which also reads `BuildLimit=` differently: 0 as no limit, a negative
+//!   limit as its magnitude over the owned and queued objects). Trigger: a
+//!   future caller asking CanBuild for a human house, which gets No; a map
+//!   setting `BuildLimit=` to 0 or below, where the sidebar and the computer
+//!   disagree. Frequency: no caller; retail sets no such limit.
 //! - An infantry type with `VehicleThief=` also counts the house's units
 //!   that hold one of it (`UnitClass+0x338`); VERA has no hijacking, so the
 //!   count adds none.
@@ -134,7 +141,8 @@ pub(crate) fn can_build(
     if !house.is_controlled_by_human(sim.session.game_mode_nonzero) {
         return CanBuild::Yes;
     }
-    debug_assert!(false, "CanBuild's prerequisite arm is not ported");
+    // A human house's prerequisite arm (`0x004F7BF1..`, taken at
+    // `0x004F7B94`) is not ported (module residual): no caller asks for one.
     CanBuild::No
 }
 
@@ -176,18 +184,17 @@ fn build_limit(
     if !count_in_production || (obj.category == ObjectCategory::Infantry && owned != limit) {
         return CanBuild::AtLimit;
     }
-    let in_production = sim
-        .production
-        .factory_shadow
-        .iter_insertion_ordered()
-        .into_iter()
-        .any(|factory| {
-            factory.owner == owner
-                && factory
-                    .object
-                    .as_ref()
-                    .is_some_and(|object| object.type_id == type_id && object.entity_id.is_some())
-        });
+    let in_production =
+        sim.production
+            .factory_shadow
+            .iter_insertion_ordered()
+            .into_iter()
+            .any(|factory| {
+                factory.owner == owner
+                    && factory.object.as_ref().is_some_and(|object| {
+                        object.type_id == type_id && object.entity_id.is_some()
+                    })
+            });
     if in_production {
         CanBuild::Yes
     } else {

@@ -309,18 +309,21 @@ fn candidates(
             (team.created_frame(), needed)
         });
     let class = EntityCategory::from(category);
-    let free = sim
+    // IsRecruitable refuses other houses' objects, so only `owner`'s are
+    // tallied.
+    let objects = sim
         .substrate
         .entities
         .values()
-        .filter(|entity| entity.category == class && is_recruitable(sim, rules, entity, owner))
-        .filter_map(|entity| type_index(entity.type_ref()));
+        .filter(|entity| entity.category == class && entity.owner() == owner)
+        .filter_map(|entity| Some((type_index(entity.type_ref())?, entity)));
     let money = crate::sim::credit_income::available_money(sim, owner);
     let class_type = |index: usize| rules.type_array_at(category, index as i32);
     tally(
         type_count,
         teams,
-        free,
+        objects,
+        |entity| is_recruitable(sim, rules, entity, owner),
         money,
         |index| {
             class_type(index).map_or(CanBuild::No, |obj| {
@@ -334,15 +337,18 @@ fn candidates(
 /// The tally and the candidate pass (`0x004FEBDC..0x004FEE3D`) over a class
 /// of `type_count` types: each team, as its creation frame and the class
 /// indexes of the types it still needs (`Get_Needed_Types`, in order), adds
-/// to their need and lowers their earliest frame; each free object, as its
-/// class index, covers one outstanding need of its type; then each type in
+/// to their need and lowers their earliest frame; each object, as its class
+/// index, of a type still needed covers one need of it when `recruitable`
+/// (`IsRecruitable`, asked only then: `0x004FED39..0x004FED4B`); then each
+/// type in
 /// index order with need left is asked `can_build` (`HouseClass::CanBuild`
 /// with neither flag) and, unless it answers No, `cost_of` (`Cost_Of`): at
 /// most `money` (`Available_Money`, signed), it is a candidate.
-fn tally(
+fn tally<T>(
     type_count: usize,
     teams: impl IntoIterator<Item = (i32, Vec<usize>)>,
-    free: impl IntoIterator<Item = usize>,
+    objects: impl IntoIterator<Item = (usize, T)>,
+    mut recruitable: impl FnMut(T) -> bool,
     money: i32,
     mut can_build: impl FnMut(usize) -> CanBuild,
     mut cost_of: impl FnMut(usize) -> i32,
@@ -355,8 +361,8 @@ fn tally(
             earliest[index] = earliest[index].min(created);
         }
     }
-    for index in free {
-        if need[index] > 0 {
+    for (index, object) in objects {
+        if need[index] > 0 && recruitable(object) {
             need[index] -= 1;
         }
     }
