@@ -236,7 +236,9 @@ or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others'
 Don't poll: each check re-reads the whole session context. `cargo_run` already waits
 for other builds, so run no separate process checks. Wait for a long command or CI
 through one blocking call or the host's completion notice, not `sleep`/`until` loops
-or repeated status queries.
+or repeated status queries. When merging is authorized, enable auto-merge on the
+validated PR (`gh pr merge <number> --auto --merge`) and move on; GitHub merges it
+once every required check passes. Confirm it merged before publishing your next PR.
 
 ## Knowledge and guidance
 
