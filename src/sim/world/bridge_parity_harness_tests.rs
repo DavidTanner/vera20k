@@ -185,8 +185,8 @@ const BRIDGE_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 15224411605024426
 // fields folded back in their old place, this change reproduced every
 // facing-only pin (final 0x9FD9_D4EE_7F06_E1ED), RNG streams included. Old
 // values: the commit that moved them.
-const BRIDGE_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V238: u64 = 0x9321_E894_C79A_4D08;
-// Schema 238 adds only the barrel elevation fold: its projection
+const BRIDGE_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0x9321_E894_C79A_4D08;
+// Schema 239 adds only the barrel elevation fold: its projection
 // reproduces the prior pin.
 const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x5C4C_02D6_9EB0_C65D;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0xBBCF_8908_C5BD_8EF9;
@@ -826,9 +826,9 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(238)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V238,
-        "schema238 only adds the barrel elevation fold"
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(239)),
+        BRIDGE_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239,
+        "schema239 only adds the barrel elevation fold"
     );
     assert_eq!(
         final_hash, BRIDGE_HARNESS_FINAL_HASH,

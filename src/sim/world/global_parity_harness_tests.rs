@@ -327,8 +327,8 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x686B_8277_BDC6_
 // old place, this change reproduced every facing-only pin (final
 // 0x6158_8E4E_3576_4D36), RNG streams included. Old values: the commit that
 // moved them.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V238: u64 = 0xDE28_6F37_CDCF_80D4;
-// Schema 238 adds only the barrel elevation fold: its projection
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0xDE28_6F37_CDCF_80D4;
+// Schema 239 adds only the barrel elevation fold: its projection
 // reproduces the prior pin.
 const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC968_A7BC_01AA_C02C;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x07E8_4E75_EFCC_E5EF;
@@ -893,9 +893,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(238)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V238,
-        "schema238 only adds the barrel elevation fold"
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(239)),
+        GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239,
+        "schema239 only adds the barrel elevation fold"
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,

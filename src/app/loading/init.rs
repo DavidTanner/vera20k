@@ -1879,6 +1879,7 @@ impl MapLoadInitial {
             game_mode_nonzero: true,
             no_damage: false,
             free_radar: map_data.basic.free_radar.unwrap_or(false),
+            ignore_global_ai_triggers: map_data.basic.ignore_global_ai_triggers.unwrap_or(false),
             // Skirmish start forces `TiberiumGrows|TiberiumSpreads` (`OR 0xC0`
             // at `0x005E74CD`), copied into the scenario at `0x00687C23`.
             tiberium_grows_flag: true,
@@ -2518,24 +2519,12 @@ pub(crate) fn load_map_from_initial(
         .into_parts();
     let bound_scenario_prefix =
         scenario_prefix_plan.bind_native_rules_receipt(native_rules_receipt);
-    let fixed_team_ai_ini =
-        crate::app::loading::init_helpers::load_retail_team_ai_source(&asset_manager)
-            .ok_or_else(|| anyhow::anyhow!("failed to load active YR aimd.ini"))?;
-    let team_ai_registry = crate::rules::team_ai_ini::TeamAiIniRegistry::from_sources(
-        &fixed_team_ai_ini,
+    let team_ai_registry = crate::rules::team_ai_ini::TeamAiIniRegistry::load_retail(
+        asset_manager,
         &map_data.ini,
         true,
-    );
-    if !team_ai_registry.fixed_source_is_complete() {
-        anyhow::bail!(
-            "active YR aimd.ini failed structural validation: fixed_counts={:?}, diagnostics={:?}",
-            team_ai_registry.fixed_counts,
-            team_ai_registry.diagnostics
-        );
-    }
-    for diagnostic in &team_ai_registry.diagnostics {
-        log::warn!("Team AI INI diagnostic: {diagnostic:?}");
-    }
+    )
+    .map_err(anyhow::Error::msg)?;
     let mut rules = loaded_rules;
     rules.install_art_data(ArtRegistry::from_ini(&fixed_art_ini));
     // Preserve the load phase: marking dimensions precede scheduler binding.
@@ -2592,6 +2581,7 @@ pub(crate) fn load_map_from_initial(
         // replace active SpecialFlags from session staging.
         no_damage: false,
         free_radar: map_data.basic.free_radar.unwrap_or(false),
+        ignore_global_ai_triggers: map_data.basic.ignore_global_ai_triggers.unwrap_or(false),
         // Skirmish start forces `TiberiumGrows|TiberiumSpreads` (`OR 0xC0`
         // at `0x005E74CD`), copied into the scenario at `0x00687C23`.
         tiberium_grows_flag: true,
@@ -3056,18 +3046,10 @@ pub(crate) fn load_map_from_initial(
         // warhead handles combat compares during the bridge-damage path;
         // resolution must happen before any combat tick.
         sim.resolve_type_handles(ruleset);
-        let diagnostics = sim.install_team_ai_registry(&team_ai_registry, ruleset);
-        if diagnostics
-            .iter()
-            .any(crate::sim::team_script_vm::TeamAiInstallDiagnostic::is_fixed_source_refusal)
-        {
-            anyhow::bail!(
-                "active YR aimd.ini failed RuleSet resolution: diagnostics={diagnostics:?}"
-            );
-        }
-        for diagnostic in diagnostics {
-            log::warn!("Team AI install diagnostic: {diagnostic:?}");
-        }
+        sim.install_team_ai_registry(&team_ai_registry, ruleset)
+            .map_err(|refused| {
+                anyhow::anyhow!("active YR aimd.ini failed RuleSet resolution: {refused:?}")
+            })?;
     }
 
     let mut initial_local_owner: Option<String> = None;

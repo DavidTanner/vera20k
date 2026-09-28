@@ -383,6 +383,50 @@ pub struct GeneralRules {
     /// after a building of the house is attacked during which the computer
     /// replans a lost building only if it is armed, a wall or a power plant.
     pub ai_restrict_replace_time: i32,
+    /// `[General] TeamDelays=` (`Rules+0x1158`, items `+0x115C`; the
+    /// `0x00475D70` vector read at `0x0066FD8B`, constructor empty): the frames
+    /// between a computer house's team creation passes, by House difficulty
+    /// (`sim::ai_team_creation`). Retail: 2000,2500,3500.
+    pub team_delays: Vec<i32>,
+    /// `[General] TotalAITeamCap=` (`Rules+0x13C8`, items `+0x13CC`, read at
+    /// `0x0066FF30`): the teams a computer house may own before it stops
+    /// creating more. Retail: 30,30,30.
+    pub total_ai_team_cap: Vec<i32>,
+    /// `[General] MinimumAIDefensiveTeams=` (`Rules+0x1390`, items `+0x1394`,
+    /// read at `0x0066FEBD`). Retail: 1,1,1.
+    pub minimum_ai_defensive_teams: Vec<i32>,
+    /// `[General] MaximumAIDefensiveTeams=` (`Rules+0x13AC`, items `+0x13B0`,
+    /// read at `0x0066FEF6`). Retail: 2,2,2.
+    pub maximum_ai_defensive_teams: Vec<i32>,
+    /// `[General] UseMinDefenseRule=` (`Rules+0x17F3`, GetBool at
+    /// `0x0066FF60`, constructor 1): while a house owns fewer base-defense
+    /// teams than the minimum, only base-defense AI triggers qualify.
+    pub use_min_defense_rule: bool,
+    /// `[General] FillEarliestTeamProbability=` (`Rules+0x13F0`, items
+    /// `+0x13F4`, read at `0x0066FE83`): the percent chance a unit chooser
+    /// fills the earliest forming team's need. Retail: 100,100,100.
+    pub fill_earliest_team_probability: Vec<i32>,
+    /// `[General] DissolveUnfilledTeamDelay=` (`Rules+0x1190`, ReadInt at
+    /// `0x0066FF80`, constructor 5000): the frames an empty team lasts in a
+    /// multiplayer game (`TeamClass::AI @ 0x006E9140`).
+    pub dissolve_unfilled_team_delay: i32,
+    /// `[General] AITriggerSuccessWeightDelta=` (`Rules+0xC0`, ReadDouble at
+    /// `0x006718EC`, constructor 1.0; retail 20).
+    pub ai_trigger_success_weight_delta: NativeF64Bits,
+    /// `[General] AITriggerFailureWeightDelta=` (`Rules+0xC8`, ReadDouble at
+    /// `0x00671913`, constructor -1.0; retail -50).
+    pub ai_trigger_failure_weight_delta: NativeF64Bits,
+    /// `[General] AITriggerTrackRecordCoefficient=` (`Rules+0xD0`, ReadDouble
+    /// at `0x0067193A`, constructor 1.0; retail 1).
+    pub ai_trigger_track_record_coefficient: NativeF64Bits,
+    /// `[General] HarvestersPerRefinery=` (`Rules+0x1358`, items `+0x135C`,
+    /// read at `0x006705D3`): the harvesters a computer house wants for each
+    /// refinery. Retail: 2,2,1.
+    pub harvesters_per_refinery: Vec<i32>,
+    /// `[General] AIMinorSuperReadyPercent=` (`Rules+0xD70`, a float read
+    /// through ReadDouble at `0x0066FFC4`, constructor 0.8f): how charged an
+    /// Iron Curtain or Chronosphere must be for an AI trigger to count it.
+    pub ai_minor_super_ready_percent: NativeF32Bits,
     /// `[General] BaseDefenseDelay=` in minutes. A strict responder-budget
     /// overshoot arms the attacker cooldown for `ftol(value * 900)` frames.
     pub base_defense_delay_minutes: f64,
@@ -1192,6 +1236,10 @@ pub struct GeneralRules {
     /// transaction. Native accepts the constructor default `5` or the parsed
     /// dword verbatim, without clamping it to `MaxIQLevels`.
     pub iq_production: i32,
+    /// `[IQ] Harvester=` (`Rules+0x1458`, ReadInt at `0x00674394`, constructor
+    /// 3 at `0x006671F8`; retail 2): the house IQ from which a computer house
+    /// replaces its harvesters (`sim::ai_unit_choice`).
+    pub iq_harvester: i32,
     /// `[IQ] RepairSell` outer gate for BuildingClass repair/sell AI.
     pub iq_repair_sell: i32,
     /// `[IQ] SellBack` gate for the red-health low-credit sell decision.
@@ -1532,6 +1580,18 @@ impl Default for GeneralRules {
             placement_delay: 0.05,
             ai_alternate_production_credit_cutoff: 1000,
             ai_restrict_replace_time: 500,
+            team_delays: Vec::new(),
+            total_ai_team_cap: Vec::new(),
+            minimum_ai_defensive_teams: Vec::new(),
+            maximum_ai_defensive_teams: Vec::new(),
+            use_min_defense_rule: true,
+            fill_earliest_team_probability: Vec::new(),
+            dissolve_unfilled_team_delay: 5000,
+            ai_trigger_success_weight_delta: NativeF64Bits::ONE,
+            ai_trigger_failure_weight_delta: NativeF64Bits::from_bits((-1.0_f64).to_bits()),
+            ai_trigger_track_record_coefficient: NativeF64Bits::ONE,
+            harvesters_per_refinery: Vec::new(),
+            ai_minor_super_ready_percent: NativeF32Bits::from_bits(0x3f4c_cccd),
             base_defense_delay_minutes: 0.25,
             suspend_priority: 20,
             suspend_delay_minutes: 2.0,
@@ -1752,6 +1812,7 @@ impl Default for GeneralRules {
             iq_scatter: 3,
             max_iq_levels: 5,
             iq_production: 5,
+            iq_harvester: 3,
             iq_repair_sell: 3,
             iq_sell_back: 2,
             credit_reserve: 1000,
@@ -2067,6 +2128,10 @@ impl GeneralRules {
             .section("IQ")
             .and_then(|section| section.get_i32("Production"))
             .unwrap_or(defaults.iq_production);
+        // `0x00674379..0x00674399`, the same section gate and reader.
+        let iq_harvester = ini.section("IQ").map_or(defaults.iq_harvester, |section| {
+            section.read_int("Harvester", defaults.iq_harvester)
+        });
         // RulesProcess668F56 reaches ReadAudioVisual6691E0 independently of
         // ReadGeneral.66B34B/66B372 pass AudioVisual to5283D0 and store raw
         // doubles in Rules+1708/+1700; a missing General section cannot skip them.
@@ -2098,6 +2163,7 @@ impl GeneralRules {
         let Some(general) = ini.section("General") else {
             return Self {
                 iq_production,
+                iq_harvester,
                 display_cruise_height,
                 condition_yellow: condition_yellow_native,
                 condition_red: condition_red_native,
@@ -2277,6 +2343,46 @@ impl GeneralRules {
             ),
             ai_restrict_replace_time: general
                 .read_int("AIRestrictReplaceTime", defaults.ai_restrict_replace_time),
+            team_delays: read_retained_difficulty_vector(general, "TeamDelays"),
+            total_ai_team_cap: read_retained_difficulty_vector(general, "TotalAITeamCap"),
+            minimum_ai_defensive_teams: read_retained_difficulty_vector(
+                general,
+                "MinimumAIDefensiveTeams",
+            ),
+            maximum_ai_defensive_teams: read_retained_difficulty_vector(
+                general,
+                "MaximumAIDefensiveTeams",
+            ),
+            use_min_defense_rule: general
+                .read_bool("UseMinDefenseRule", defaults.use_min_defense_rule),
+            fill_earliest_team_probability: read_retained_difficulty_vector(
+                general,
+                "FillEarliestTeamProbability",
+            ),
+            dissolve_unfilled_team_delay: general.read_int(
+                "DissolveUnfilledTeamDelay",
+                defaults.dissolve_unfilled_team_delay,
+            ),
+            ai_trigger_success_weight_delta: general.read_double_bits(
+                "AITriggerSuccessWeightDelta",
+                defaults.ai_trigger_success_weight_delta,
+            ),
+            ai_trigger_failure_weight_delta: general.read_double_bits(
+                "AITriggerFailureWeightDelta",
+                defaults.ai_trigger_failure_weight_delta,
+            ),
+            ai_trigger_track_record_coefficient: general.read_double_bits(
+                "AITriggerTrackRecordCoefficient",
+                defaults.ai_trigger_track_record_coefficient,
+            ),
+            harvesters_per_refinery: read_retained_difficulty_vector(
+                general,
+                "HarvestersPerRefinery",
+            ),
+            ai_minor_super_ready_percent: general.read_double_to_float(
+                "AIMinorSuperReadyPercent",
+                defaults.ai_minor_super_ready_percent,
+            ),
             base_defense_delay_minutes: general
                 .read_double("BaseDefenseDelay", defaults.base_defense_delay_minutes),
             suspend_priority: general
@@ -2885,6 +2991,7 @@ impl GeneralRules {
                 .and_then(|s| s.get_i32("MaxIQLevels"))
                 .unwrap_or(defaults.max_iq_levels),
             iq_production,
+            iq_harvester,
             iq_repair_sell: iq
                 .and_then(|s| s.get_i32("RepairSell"))
                 .unwrap_or(defaults.iq_repair_sell),
@@ -3053,8 +3160,9 @@ pub struct RuleSet {
     /// this retains distinct types when malformed/custom rules list the same
     /// ID in more than one category.
     object_category_index: HashMap<(ObjectCategory, String), TypeHandle>,
-    /// Case-insensitive native BuildingType registry identity to its ordered index.
-    building_type_indices: HashMap<String, i32>,
+    /// Case-insensitive identity of each type in the four native TechnoType
+    /// registries to its ordered array index (`+0xDF8`).
+    type_array_indices: HashMap<(ObjectCategory, String), i32>,
     /// All weapons indexed by ID (e.g., "105mm" → WeaponType).
     weapons: HashMap<String, WeaponType>,
     /// All warheads indexed by ID (e.g., "AP" → WarheadType).
@@ -3510,7 +3618,7 @@ impl RuleSet {
         let mut object_index: HashMap<String, TypeHandle> = HashMap::new();
         let mut object_category_index: HashMap<(ObjectCategory, String), TypeHandle> =
             HashMap::new();
-        let mut building_type_indices: HashMap<String, i32> = HashMap::new();
+        let mut type_array_indices: HashMap<(ObjectCategory, String), i32> = HashMap::new();
         let mut infantry_ids: Vec<String> = Vec::new();
         let mut vehicle_ids: Vec<String> = Vec::new();
         let mut aircraft_ids: Vec<String> = Vec::new();
@@ -3608,16 +3716,14 @@ impl RuleSet {
             log::info!("Registry [{}]: {} entries", registry_name, ids.len());
 
             for (registry_index, id) in ids.iter().enumerate() {
-                if category == ObjectCategory::Building {
-                    building_type_indices
-                        .entry(id.to_ascii_uppercase())
-                        .or_insert(registry_index as i32);
-                }
+                type_array_indices
+                    .entry((category, id.to_ascii_uppercase()))
+                    .or_insert(registry_index as i32);
                 if let Some(section) = ini.section(id) {
                     let mut obj: ObjectType = ObjectType::from_ini_section(id, section, category);
                     if category == ObjectCategory::Building {
-                        obj.base_plan_type_index = building_type_indices
-                            .get(&id.to_ascii_uppercase())
+                        obj.base_plan_type_index = type_array_indices
+                            .get(&(category, id.to_ascii_uppercase()))
                             .copied()
                             .expect("BuildingType index was registered above");
                     }
@@ -4027,7 +4133,7 @@ impl RuleSet {
             object_list,
             object_index,
             object_category_index,
-            building_type_indices,
+            type_array_indices,
             weapons,
             warheads,
             projectiles,
@@ -4179,8 +4285,7 @@ impl RuleSet {
     /// `None` for a negative index, one past the array, or a registered name
     /// without a section.
     pub(crate) fn building_type_at(&self, index: i32) -> Option<&ObjectType> {
-        let id = self.building_ids.get(usize::try_from(index).ok()?)?;
-        self.object_in_category(ObjectCategory::Building, id)
+        self.type_array_at(ObjectCategory::Building, index)
     }
 
     /// Resolve one scenario BasePlan token through the native BuildingType
@@ -4188,8 +4293,40 @@ impl RuleSet {
     /// `BuildingTypeClass__FindIndexByName @ 0x0045E7B0` used by
     /// `FUN_0042EBE0`, and return its ordered index.
     pub(crate) fn building_type_index(&self, id: &str) -> Option<i32> {
-        self.building_type_indices
-            .get(&id.to_ascii_uppercase())
+        self.type_array_index(ObjectCategory::Building, id)
+    }
+
+    /// The ids of one native TechnoType array (`InfantryTypeClass::Array`
+    /// `0xA8E34C`, `UnitTypeClass::Array` `0xA83CE4`, `AircraftTypeClass::
+    /// Array` `0xA8B21C`, `BuildingTypeClass::Array` `0xA83C6C`), in index
+    /// order: the registry's first spelling of each identity.
+    pub(crate) fn type_array_ids(&self, category: ObjectCategory) -> &[String] {
+        match category {
+            ObjectCategory::Infantry => &self.infantry_ids,
+            ObjectCategory::Vehicle => &self.vehicle_ids,
+            ObjectCategory::Aircraft => &self.aircraft_ids,
+            ObjectCategory::Building => &self.building_ids,
+        }
+    }
+
+    /// The type at native array index `index` of `category`'s array; `None`
+    /// for a negative index, one past the array, or a registered name
+    /// without a section.
+    pub(crate) fn type_array_at(
+        &self,
+        category: ObjectCategory,
+        index: i32,
+    ) -> Option<&ObjectType> {
+        let id = self
+            .type_array_ids(category)
+            .get(usize::try_from(index).ok()?)?;
+        self.object_in_category(category, id)
+    }
+
+    /// The native array index (`+0xDF8`) of `id` in `category`'s array.
+    pub(crate) fn type_array_index(&self, category: ObjectCategory, id: &str) -> Option<i32> {
+        self.type_array_indices
+            .get(&(category, id.to_ascii_uppercase()))
             .copied()
     }
 

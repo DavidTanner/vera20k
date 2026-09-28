@@ -488,7 +488,6 @@ fn wall_build_time_inputs_carry_the_wall_coefficient() {
 fn naval_unit_rally_uses_water_pathing_after_spawn() {
     let mut sim = Simulation::new();
     let rules = naval_production_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let terrain = water_terrain(32, 32);
     let grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain.clone());
@@ -545,7 +544,7 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
             .test_arm_ready(americans_display, ProductionCategory::Ship)
     );
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, Some(&grid));
+    let spawned = tick_production(&mut sim, &rules, Some(&grid));
     assert!(spawned, "completed naval production should spawn the unit");
     assert_eq!(sim.scenario_rng.logical_state(), rng_before_delivery);
 
@@ -648,7 +647,6 @@ fn build_options_dedupe_house_specific_sidebar_clone() {
 fn tick_production_advances_each_owner_queue() {
     let mut sim = Simulation::new();
     let rules = basic_infantry_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
     spawn_structure(&mut sim, 2, "Soviet", "NAHAND", 20, 20);
@@ -685,7 +683,7 @@ fn tick_production_advances_each_owner_queue() {
             .test_arm_ready(soviet_id, ProductionCategory::Infantry)
     );
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, None);
+    let spawned = tick_production(&mut sim, &rules, None);
     assert!(spawned, "At least one queue completion should spawn");
     assert!(
         sim.production.factory_shadow.is_empty(),
@@ -720,7 +718,6 @@ fn tick_production_advances_each_owner_queue() {
 fn tick_production_advances_multiple_queue_categories_for_same_owner() {
     let mut sim = Simulation::new();
     let rules = basic_multi_queue_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 14, 10);
@@ -756,7 +753,7 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
             .test_arm_ready(americans_id, ProductionCategory::Vehicle)
     );
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, None);
+    let spawned = tick_production(&mut sim, &rules, None);
     assert!(spawned);
     assert!(
         sim.production.factory_shadow.is_empty(),
@@ -796,7 +793,6 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
 fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
     let mut sim = Simulation::new();
     let rules = super::lifecycle_tests::manager_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let terrain = water_terrain(32, 32);
     let grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain);
@@ -838,7 +834,7 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
     let owned_before = sim.owned_object_counts(americans_id).1;
     let rng_before = sim.scenario_rng.clone();
     let allocated_before = sim.substrate.next_stable_object_id;
-    let spawned = tick_production(&mut sim, &rules, &height_map, Some(&grid));
+    let spawned = tick_production(&mut sim, &rules, Some(&grid));
     assert!(
         !spawned,
         "blocked completed vehicle should not spawn or advance"
@@ -887,7 +883,7 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
     assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
     assert_eq!(sim.interner.resolve(held.type_ref), "MTNK");
     for _ in 0..3 {
-        assert!(!tick_production(&mut sim, &rules, &height_map, Some(&grid)));
+        assert!(!tick_production(&mut sim, &rules, Some(&grid)));
     }
     assert_eq!(
         super::lifecycle_tests::held_id(&sim, americans_id, ProductionCategory::Vehicle),
@@ -906,7 +902,6 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
 fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item() {
     let mut sim = Simulation::new();
     let rules = super::lifecycle_tests::manager_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut terrain = water_terrain(32, 32);
     let blocked_grid = PathGrid::from_resolved_terrain(&terrain);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
@@ -955,7 +950,7 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
     let owned_before = sim.owned_object_counts(americans_id).1;
     let rng_before = sim.scenario_rng.clone();
     let allocated_before = sim.substrate.next_stable_object_id;
-    let blocked = tick_production(&mut sim, &rules, &height_map, Some(&blocked_grid));
+    let blocked = tick_production(&mut sim, &rules, Some(&blocked_grid));
     assert!(!blocked, "first delivery attempt should remain pending");
 
     assert_eq!(
@@ -975,7 +970,7 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
     let clear_grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain);
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, Some(&clear_grid));
+    let spawned = tick_production(&mut sim, &rules, Some(&clear_grid));
     assert!(
         spawned,
         "later successful delivery should consume the pending completed vehicle"
@@ -1178,7 +1173,7 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
             .factory_shadow
             .test_arm_ready(americans_id, ProductionCategory::Building)
     );
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules, None));
     assert_eq!(sim.production.ready_by_owner[&americans_id].len(), 1);
 
     let before_credits = credits_for_owner(&sim, "Americans");

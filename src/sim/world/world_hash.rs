@@ -692,8 +692,11 @@ impl Simulation {
         // their camera/message outcomes stay app-owned and are not hashed.
         if schema.includes(HashFeature::MasterFrame) {
             self.trigger_runtime.hash_state(&mut hasher);
-            self.team_script_vm
-                .hash_state(self.session.binary_frame as i32, &mut hasher);
+            self.team_script_vm.hash_state(
+                self.session.binary_frame as i32,
+                schema.includes(HashFeature::AiTeams),
+                &mut hasher,
+            );
         }
         if schema.includes(HashFeature::PlayfieldAuthority) {
             self.hash_playfield_authority(&mut hasher);
@@ -1209,6 +1212,14 @@ impl Simulation {
             {
                 b"house-strategy-timer-v1".hash(hasher);
                 house.strategy_timer.hash(hasher);
+            }
+            if schema.includes(HashFeature::AiTeams) {
+                house.team_creation.hash_state(hasher);
+                if house.ai_unit_choices != Default::default() {
+                    b"house-ai-unit-choices-v1".hash(hasher);
+                    house.ai_unit_choices.hash(hasher);
+                }
+                house.tracking.hash_ai_team_counters(hasher);
             }
         }
     }
@@ -3554,12 +3565,18 @@ mod state_hash_field_tests {
                 let mut sim = Simulation::new();
                 let owner = sim.interner.intern("Computer1");
                 let mut house = HouseState::new(owner, 0, None, false, 0, 10);
+                let general = crate::rules::ruleset::GeneralRules {
+                    difficulty_rof: [0.8, 1.0, 1.2],
+                    difficulty_repair_delay: [0.02; 3],
+                    ..Default::default()
+                };
                 house.set_difficulty(
                     HouseDifficulty::Hard,
-                    &[0.8, 1.0, 1.2],
-                    &[0.02; 3],
+                    &general,
                     0.9,
                     game_mode_nonzero,
+                    0,
+                    0,
                 );
                 sim.houses.insert(owner, house);
                 sim.state_hash()

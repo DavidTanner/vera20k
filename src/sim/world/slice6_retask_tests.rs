@@ -168,8 +168,8 @@ const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0x8801_AD46_9E2A_9EC
 // the same step: with its four default fields folded back in their old place,
 // this change reproduced every facing-only pin (final 0x6CAD_D2FC_438A_0BC2),
 // RNG streams included. Old values: the commit that moved them.
-const SLICE6_BASELINE_HASH_PRE_BARREL_ELEVATION_V238: u64 = 0xD28A_0344_C7E9_5CB4;
-// Schema 238 adds only the barrel elevation fold: its projection
+const SLICE6_BASELINE_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0xD28A_0344_C7E9_5CB4;
+// Schema 239 adds only the barrel elevation fold: its projection
 // reproduces the prior pin.
 const SLICE6_BASELINE_HASH: u64 = 0x8CB9_BA0F_43C5_BB2A;
 const SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x8A48_34A5_69FE_54D2;
@@ -515,9 +515,9 @@ fn replay_hash_stable_through_slice6() {
         "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
-        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(238)),
-        SLICE6_BASELINE_HASH_PRE_BARREL_ELEVATION_V238,
-        "schema238 only adds the barrel elevation fold"
+        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(239)),
+        SLICE6_BASELINE_HASH_PRE_BARREL_ELEVATION_V239,
+        "schema239 only adds the barrel elevation fold"
     );
     assert_eq!(
         hash, SLICE6_BASELINE_HASH,

@@ -213,11 +213,20 @@ pub(super) enum HashFeature {
     /// constructor value, so a state without it hashes as earlier schemas,
     /// which fold none.
     AiStrategy = 234,
+    /// The computer's teams: each House's team timer (`HouseClass+0x5798`),
+    /// trigger-team ratio (`+0x565C`) and unit choices (`+0x5650`..`+0x5658`),
+    /// each folded, tagged, only off its constructor value, and its per-type
+    /// counts of buildings, infantry and aircraft and its
+    /// `ResourceDestination=` count, tagged once any is set; each live team's
+    /// creation frame and forming state; each AITrigger's weight record off
+    /// its INI starting weight. A state without them hashes as earlier
+    /// schemas, which fold none of them.
+    AiTeams = 238,
     /// Each Techno's barrel elevation FacingClass (`TechnoClass+0x370`),
     /// folded, tagged, only once an Unlimbo moved it off its constructor
     /// value, so a state without it hashes as earlier schemas, which fold
     /// none.
-    BarrelElevation = 238,
+    BarrelElevation = 239,
 }
 
 impl HashSchema {
@@ -266,6 +275,7 @@ impl HashSchema {
                     | HashFeature::AiBaseBuilding
                     | HashFeature::AiBaseDefense
                     | HashFeature::AiStrategy
+                    | HashFeature::AiTeams
                     | HashFeature::BarrelElevation
             ),
             #[cfg(test)]

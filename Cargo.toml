@@ -33,16 +33,8 @@ name = "extract-ini"
 path = "src/bin/extract-ini.rs"
 
 [[bin]]
-name = "inspect-maps"
-path = "src/bin/inspect-maps.rs"
-
-[[bin]]
 name = "bik-player"
 path = "src/bin/bik-player.rs"
-
-[[bin]]
-name = "bik-survey"
-path = "src/bin/bik-survey.rs"
 
 [[bin]]
 name = "extract-bridge-frames"
@@ -51,14 +43,6 @@ path = "src/bin/extract-bridge-frames.rs"
 [[bin]]
 name = "inspect-water-tiles"
 path = "src/bin/inspect-water-tiles.rs"
-
-[[bin]]
-name = "inspect-pcx-palette"
-path = "src/bin/inspect-pcx-palette.rs"
-
-[[bin]]
-name = "inspect-yro-render"
-path = "src/bin/inspect-yro-render.rs"
 
 [dependencies]
 # --- GPU rendering ---

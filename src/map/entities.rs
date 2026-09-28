@@ -30,6 +30,19 @@ pub enum EntityCategory {
     Aircraft,
 }
 
+impl From<crate::rules::object_type::ObjectCategory> for EntityCategory {
+    /// The class of object a type of each registry constructs.
+    fn from(category: crate::rules::object_type::ObjectCategory) -> Self {
+        use crate::rules::object_type::ObjectCategory;
+        match category {
+            ObjectCategory::Infantry => Self::Infantry,
+            ObjectCategory::Vehicle => Self::Unit,
+            ObjectCategory::Aircraft => Self::Aircraft,
+            ObjectCategory::Building => Self::Structure,
+        }
+    }
+}
+
 /// A single entity placement parsed from a map file.
 ///
 /// Contains the minimum data needed to spawn an ECS entity.

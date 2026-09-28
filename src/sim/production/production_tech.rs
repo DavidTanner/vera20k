@@ -208,9 +208,10 @@ fn has_any_override_building(sim: &Simulation, owner: &str, overrides: &[String]
     })
 }
 
-/// Interpret BuildLimit value. Returns None if no limit applies (0 = unlimited).
+/// Interpret BuildLimit value. Returns None if no limit applies (the
+/// constructor's `0x7FFFFFFF`, or 0).
 fn effective_build_limit(build_limit: i32) -> Option<u32> {
-    if build_limit == 0 {
+    if build_limit == 0 || build_limit == i32::MAX {
         return None;
     }
     Some(build_limit.unsigned_abs())

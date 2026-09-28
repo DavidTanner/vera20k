@@ -8196,7 +8196,7 @@ fn unlimbo_levels_then_aims_the_barrel_elevation() {
         }
         assert_ne!(
             sim.state_hash(),
-            sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(238)),
+            sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(239)),
             "{type_id}"
         );
     }
@@ -8216,6 +8216,6 @@ fn unlimbo_levels_then_aims_the_barrel_elevation() {
     );
     assert_eq!(
         sim.state_hash(),
-        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(238))
+        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(239))
     );
 }

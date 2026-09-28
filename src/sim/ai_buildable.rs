@@ -1,13 +1,39 @@
-//! Shared native AI-list BuildingType identity predicate.
+//! Shared native AI-list type identity predicates.
 //!
 //! Naval placement and BasePlan Recalc both call the same HouseClass helper;
-//! this module keeps that predicate separate from generic production gates.
+//! this module keeps that predicate separate from generic production gates,
+//! with the house country bit and the harvester lookup the computer's
+//! choosers share.
 
 use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::{CountryIdx, RuleSet};
 
 pub(crate) fn country_bit(index: CountryIdx) -> u32 {
     1u32.wrapping_shl(u32::from(index.0 & 31))
+}
+
+/// `1 << HouseTypeClass::FindIndexOfName(name)` for a house whose type (or
+/// `ParentCountry=`, `HouseTypeClass+0x98`, which retail leaves at the type's
+/// own name) is `country_name`: an unknown name answers -1, whose low five
+/// bits make bit 31.
+pub(crate) fn house_country_bit(rules: &RuleSet, country_name: &str) -> u32 {
+    rules
+        .trigger_house_type_index(country_name)
+        .map_or(1 << 31, country_bit)
+}
+
+/// The first `[General] HarvesterUnit=` type (`Rules+0xB3C`) whose `Owner=`
+/// (`OwnerFlags`, `TechnoType+0x6CC`) holds `country_bit`: the loops of
+/// BasePlan Recalc, `AI_Choose_Unit @ 0x004FEA60` and the house's chooser
+/// dispatch (`0x004F90F7..0x004F913F`).
+pub(crate) fn first_owner_compatible_harvester(
+    rules: &RuleSet,
+    country_bit: u32,
+) -> Option<&ObjectType> {
+    rules.harvester_unit_types.iter().find_map(|type_id| {
+        let candidate = rules.object_in_category(ObjectCategory::Vehicle, type_id)?;
+        owner_allows(candidate, country_bit, rules).then_some(candidate)
+    })
 }
 
 pub(crate) fn house_token_mask(tokens: &[String], rules: &RuleSet) -> u32 {

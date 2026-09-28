@@ -154,6 +154,11 @@ impl SuperWeaponInstance {
         self.charge_duration = timer.duration();
     }
 
+    /// The charge timer's remaining frames (`SuperClass+0x30`/`+0x38`).
+    pub(crate) fn charge_remaining(&self, current_frame: i32) -> i32 {
+        self.charge_timer().remaining(current_frame)
+    }
+
     /// Create a new inactive instance.
     pub fn new(type_id: InternedId, owner: InternedId) -> Self {
         Self {

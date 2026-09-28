@@ -406,6 +406,10 @@ pub struct ObjectType {
     pub build_time_multiplier: crate::util::native_x87::NativeF32Bits,
     /// Which houses/sides can build this (e.g., ["Americans", "Alliance"]).
     pub owner: Vec<String>,
+    /// `DoubleOwned=` (`TechnoType+0xC99`, ReadINI `0x0071228A..0x0071229E`,
+    /// constructor 0): outside a campaign `Get_Ownable @ 0x00711EC0` answers
+    /// every house instead of `Owner=`. Retail sets it on no type.
+    pub double_owned: bool,
     /// Specific countries that may build this object.
     pub required_houses: Vec<String>,
     /// Countries explicitly forbidden from building this (ForbiddenHouses= in rules.ini).
@@ -426,8 +430,10 @@ pub struct ObjectType {
     /// If non-empty AND the owner has ANY building from this list, the normal
     /// Prerequisite check is skipped entirely (OR logic).
     pub prerequisite_override: Vec<String>,
-    /// Maximum simultaneous copies allowed (BuildLimit= in rules.ini). Default 0 = unlimited.
-    /// Positive: hard cap. Negative: abs value cap with rebuild-after-death semantics.
+    /// `BuildLimit=` (`TechnoTypeClass+0x3B8`, ReadINI `0x00713157`): the
+    /// constructor's `0x7FFFFFFF` (`0x00710CF0`) when absent. `CanBuild`
+    /// caps a positive limit by the house's tracked count of the type and a
+    /// non-positive one by the count it has produced.
     pub build_limit: i32,
     /// Requires spy infiltration of an Allied Battle Lab to unlock.
     pub requires_stolen_allied_tech: bool,
@@ -2023,6 +2029,7 @@ impl ObjectType {
                 crate::util::native_x87::NativeF32Bits::ONE,
             ),
             owner,
+            double_owned: section.get_bool("DoubleOwned").unwrap_or(false),
             required_houses,
             forbidden_houses,
             // gamemd-derived: `TechnoTypeClass__Constructor @ 0x00710FF0`
@@ -2038,7 +2045,7 @@ impl ObjectType {
                 .unwrap_or(true),
             prerequisite,
             prerequisite_override,
-            build_limit: section.get_i32("BuildLimit").unwrap_or(0),
+            build_limit: section.get_i32("BuildLimit").unwrap_or(i32::MAX),
             requires_stolen_allied_tech: section
                 .get_bool("RequiresStolenAlliedTech")
                 .unwrap_or(false),

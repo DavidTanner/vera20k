@@ -34,13 +34,12 @@
 //! ordering read from the disassembly.
 //!
 //! RESIDUALS:
-//! - VERA runs the gate in its own house pass after the anger rung, followed
-//!   in each house by its strategy tick (`sim::house_strategy`) and building
-//!   choice, but before every house's `sim::ai` stand-in (ledger T2-28).
-//!   Trigger: every defeat. Effect: natively the houses before the defeated
-//!   one in HouseClass::Array ran their unit choice and teams before its
-//!   sweep, so they saw its objects alive; in VERA the stand-in sees them
-//!   dead.
+//! - VERA runs the gate in its own house pass after the anger rung, after
+//!   each house's team creation (`sim::ai_team_creation`) and before its
+//!   strategy tick (`sim::house_strategy`) and production choices, but
+//!   before every house's `sim::ai` stand-in (ledger T2-28). Trigger: every
+//!   defeat. Effect: the stand-in's attack waves, which have no native
+//!   counterpart, see the defeated house's objects dead.
 //! - Between the gate and the strategy tick, every eighth frame, native
 //!   springs event 8 ("any event") on each of the house's tags, last to
 //!   first (`0x004F8F87..0x004F8FBC`: the list at House+0x3C, its count at
@@ -92,11 +91,13 @@ impl Simulation {
     }
 
     /// The house rung's per-house steps in HouseClass::Array order: each
-    /// house's defeat gate (see the module doc), then its strategy tick
-    /// (`0x004F8FBE..0x004F9032`, `sim::house_strategy`) and building choice
-    /// (`0x004F9038..0x004F9265`, `sim::ai_base_building`); then the game-over
-    /// scan and the result timers. Without `defeat_pass` (VERA's first tick)
-    /// only the strategy ticks and building choices run.
+    /// house's team creation (`0x004F8A00..0x004F8B08`,
+    /// `sim::ai_team_creation`), its defeat gate (see the module doc), then
+    /// its strategy tick (`0x004F8FBE..0x004F9032`, `sim::house_strategy`) and
+    /// production choices (`0x004F9038..0x004F9265`, `sim::ai_base_building`);
+    /// then the game-over scan and the result timers. Without `defeat_pass`
+    /// (VERA's first tick) the defeat gates and the game-over scan are
+    /// skipped.
     pub(super) fn house_rung(
         &mut self,
         rules: Option<&RuleSet>,
@@ -130,6 +131,9 @@ impl Simulation {
             .and_then(|rules| rules.build_refinery_types.get(2))
             .and_then(|name| self.interner.get(name));
         for owner in self.session.house_order.clone() {
+            if let Some(rules) = rules {
+                crate::sim::ai_team_creation::update_team_creation(self, rules, owner);
+            }
             if defeat_gate && self.house_holds_nothing(owner, &base_units, build_refinery_2) {
                 if let Some(rules) = rules {
                     self.house_blowup_all(owner, rules, registry);
@@ -138,7 +142,7 @@ impl Simulation {
             }
             if let Some(rules) = rules {
                 crate::sim::house_strategy::update_strategy(self, rules, owner);
-                crate::sim::ai_base_building::update_building_choice(
+                crate::sim::ai_base_building::update_production_choices(
                     self, rules, owner, path_grid, registry,
                 );
             }
