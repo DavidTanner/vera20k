@@ -135,7 +135,7 @@ fn contribution(
                 // exit runs before the locomotor question and is answered
                 // per mover by the Drive selection lane.
                 ally: MovingAllyOccupant {
-                    facing: entity.facing,
+                    facing: entity.body_facing,
                     world: crate::sim::pathfinding::cell_entry::entity_world_leptons(entity),
                 },
                 raises_code_2: !((in_transit || infantry)

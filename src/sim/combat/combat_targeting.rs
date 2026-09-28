@@ -84,7 +84,6 @@ pub(crate) struct AttackerSnapshot {
     pub sub_x: SimFixed,
     pub sub_y: SimFixed,
     pub type_id: InternedId,
-    pub facing: u8,
     pub veterancy: u16,
     pub animation_sequence: Option<crate::sim::animation::SequenceKind>,
     pub animation_frame: Option<u16>,
@@ -93,10 +92,9 @@ pub(crate) struct AttackerSnapshot {
     pub has_movement: bool,
     pub pending_infantry_fire: Option<super::PendingInfantryFire>,
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
-    /// Retained body FacingClass (`+0x388`), including infantry fire-start
-    /// snaps and vehicle turns. Facing gates and emission read its full
-    /// 16-bit value rather than the byte mirrored for presentation.
-    pub hull_facing: Option<crate::sim::movement::FacingClass>,
+    /// Body FacingClass (`+0x388`), including infantry fire-start snaps and
+    /// vehicle turns. Facing gates and emission read its full 16-bit value.
+    pub hull_facing: crate::sim::movement::FacingClass,
     /// Weapon-selection override (the Gunner-IFV slot).
     pub weapon_override: Option<super::combat_weapon::WeaponOverride>,
     /// `TechnoClass+0x82` InOpenToppedTransport.

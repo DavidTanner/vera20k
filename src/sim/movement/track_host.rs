@@ -558,14 +558,12 @@ impl Simulation {
                 );
                 entity.lifecycle.cell_marked = marked;
             }
-            if let Some(facing) = paid_facing {
-                if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    entity.facing = facing;
-                    entity.facing_target = None;
-                    if let Some(body) = entity.body_facing.as_mut() {
-                        body.snap(u16::from(facing) << 8, self.session.binary_frame);
-                    }
-                }
+            if let Some(facing) = paid_facing
+                && let Some(entity) = self.substrate.entities.get_mut(id)
+            {
+                entity
+                    .body_facing
+                    .snap(u16::from(facing) << 8, self.session.binary_frame);
             }
             let Some((live, _, _)) = self.track_state(id, family) else {
                 return Ok(TrackPass::paid(moved));

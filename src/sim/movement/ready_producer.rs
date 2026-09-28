@@ -149,10 +149,7 @@ fn drive_family(
     binary_frame: u32,
     family: TrackFamily,
 ) -> LocomotorReadyState {
-    let turning_active = entity
-        .body_facing
-        .as_ref()
-        .is_some_and(|facing| facing.is_rotating(binary_frame));
+    let turning_active = entity.body_facing.is_rotating(binary_frame);
 
     let (slot_moving, head_to_nonnull) = super::track_head::motion_state(entity, family);
 

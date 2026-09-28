@@ -7775,7 +7775,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         let destination_ground = i32::from(destination_level) * 104;
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.position.exact_z_leptons = Some(origin_z);
-        entity.facing = 0;
+        entity.body_facing.snap(0x0000, 0);
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(600);
         loco.set_fly_target_height(600);

@@ -339,7 +339,7 @@ fn mission_attack_matches_the_original() {
         };
         let away = toward.wrapping_add(0x8000);
         let entity = sim.substrate.entities.get_mut(building).unwrap();
-        entity.barrel_facing.as_mut().unwrap().snap(away, FRAME);
+        entity.body_facing.snap(away, FRAME);
         let mut cloak = crate::sim::cloak_disguise::CloakRuntime::new(
             FRAME as i32,
             rules.general.cloaking_stages,
@@ -368,7 +368,7 @@ fn mission_attack_matches_the_original() {
             called(row, "fire_at"),
             "{name} FireAt"
         );
-        let desired = entity.barrel_facing.unwrap().destination();
+        let desired = entity.body_facing.destination();
         assert_eq!(
             desired,
             if called(row, "set_desired") {

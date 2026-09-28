@@ -505,7 +505,6 @@ fn finalize_tube_object(
                 entity.position.z = cell.level;
             }
             if let Some(drive) = entity.drive_locomotion.as_mut() {
-                drive.turn.first_movement_allowed = true;
                 drive.target_speed_fraction = SIM_ONE;
             }
             // Unit73604F writes the live Foot owner even if PerCell replaced
@@ -658,12 +657,7 @@ fn update_unit_final_facing(
         return;
     };
     let q32 = tube.direction.wrapping_shl(13).wrapping_sub(0x6001) & 0xffff_e000_u32 as i32;
-    let q16 = q32 as u16;
-    entity.facing = (q16 >> 8) as u8;
-    entity.facing_target = None;
-    if let Some(body) = entity.body_facing.as_mut() {
-        body.snap(q16, native_frame);
-    }
+    entity.body_facing.snap(q32 as u16, native_frame);
 }
 
 fn native_type_speed(raw_speed: i32) -> i32 {
@@ -1249,7 +1243,7 @@ mod tests {
         entities.insert(entity);
         update_unit_final_facing(&mut entities, 1, &terrain, 0);
         // Exit has no tube index in this fixture: facing is preserved.
-        assert_eq!(entities.get(1).unwrap().facing, 0);
+        assert_eq!(entities.get(1).unwrap().body_facing_current(0), 0);
     }
 
     /// A step that reaches its target moves the unit through

@@ -25,7 +25,6 @@ use crate::sim::cell_rect::{PlayfieldBounds, cell_is_in_playfield_height_aware};
 use crate::sim::components::FootPathQueue;
 use crate::sim::entity_store::{EntityStore, OtherEntities};
 use crate::sim::intern::{InternedId, StringInterner};
-use crate::sim::movement::FacingClass;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::{OccupancyGrid, RawCellOccupationGrid};
 use crate::sim::pathfinding::{PathGrid, SearchMarkerOverlay};
@@ -140,8 +139,8 @@ impl BridgeMarkerPeerLookup for BridgeMarkerPeers<'_> {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct BridgeMarkerMover {
     pub current_cell: (u16, u16),
-    pub facing: u8,
-    pub body_facing: Option<FacingClass>,
+    /// The body heading (`+0x388`) at the search's frame.
+    pub facing: u16,
     pub on_bridge: bool,
     pub type_ref: InternedId,
     pub speed: i32,
@@ -165,7 +164,6 @@ pub(super) struct BridgeMarkerContext<'a> {
     pub grid: &'a PathGrid,
     pub terrain: Option<&'a ResolvedTerrainGrid>,
     pub playfield_bounds: Option<PlayfieldBounds>,
-    pub native_frame: u32,
 }
 
 /// A marker context still missing its view of the other entities. The mover's
@@ -184,7 +182,6 @@ pub(super) struct DeferredBridgeMarker<'a> {
     pub grid: &'a PathGrid,
     pub terrain: Option<&'a ResolvedTerrainGrid>,
     pub playfield_bounds: Option<PlayfieldBounds>,
-    pub native_frame: u32,
 }
 
 impl<'a> DeferredBridgeMarker<'a> {
@@ -210,7 +207,6 @@ impl<'a> DeferredBridgeMarker<'a> {
             grid: self.grid,
             terrain: self.terrain,
             playfield_bounds: self.playfield_bounds,
-            native_frame: self.native_frame,
         }
     }
 }
@@ -221,8 +217,7 @@ impl BridgeMarkerContext<'_> {
         occupancy: &OccupancyGrid,
         entity_id: u64,
         current_cell: (u16, u16),
-        facing: u8,
-        body_facing: Option<FacingClass>,
+        facing: u16,
         on_bridge: bool,
         requested_urgency: u8,
     ) -> BridgeMarkerSearch {
@@ -243,13 +238,11 @@ impl BridgeMarkerContext<'_> {
             BridgeMarkerMover {
                 current_cell,
                 facing,
-                body_facing,
                 on_bridge,
                 type_ref: mover.type_ref,
                 speed: mover.speed,
             },
             requested_urgency,
-            self.native_frame,
         )
     }
 }
@@ -541,7 +534,6 @@ pub(super) fn build_bridge_passability_search(
     playfield_bounds: Option<PlayfieldBounds>,
     mover: BridgeMarkerMover,
     requested_urgency: u8,
-    native_frame: u32,
 ) -> BridgeMarkerSearch {
     if !enabled || requested_urgency == 0 {
         return BridgeMarkerSearch {
@@ -550,12 +542,7 @@ pub(super) fn build_bridge_passability_search(
         };
     }
 
-    let facing = mover
-        .body_facing
-        .map_or(u16::from(mover.facing) << 8, |facing| {
-            facing.current(native_frame)
-        });
-    let direction = crate::util::direction_tables::quantize::dir_from_facing16(facing);
+    let direction = crate::util::direction_tables::quantize::dir_from_facing16(mover.facing);
     let current = (mover.current_cell.0 as i16, mover.current_cell.1 as i16);
     let probe = signed_cell_add(current, DIRECTION_DELTAS[direction as usize]);
     let current_level = signed_ground_level(grid, current);
@@ -678,7 +665,6 @@ mod tests {
         BridgeMarkerMover {
             current_cell: (5, 5),
             facing: 0,
-            body_facing: None,
             on_bridge: false,
             type_ref,
             speed: 8,
@@ -715,7 +701,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             0,
-            0,
         );
         assert!(zero.overlay.is_empty());
         assert_eq!(zero.effective_urgency, 0);
@@ -730,7 +715,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             1,
-            0,
         );
         assert!(one.overlay.is_empty(), "raw phase is skipped on downgrade");
         assert_eq!(one.effective_urgency, 0);
@@ -768,7 +752,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             1,
-            0,
         );
         assert!(search.processed_peer_path);
         assert!(!search.overlay.contains((6, 4)), "duplicate visit cancels");
@@ -821,7 +804,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             1,
-            0,
         );
         assert!(search.overlay.contains((6, 4)), "accepted peer replayed");
         assert!(search.overlay.contains((5, 6)), "same-list suffix replayed");
@@ -948,7 +930,6 @@ mod tests {
             Some(test_playfield()),
             bridge_mover,
             2,
-            0,
         );
 
         assert!(search.processed_peer_path);
@@ -1035,7 +1016,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             1,
-            0,
         );
 
         assert_eq!(search.effective_urgency, 1);
@@ -1115,7 +1095,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             2,
-            0,
         );
         assert_eq!(search.effective_urgency, 2);
         assert!(
@@ -1172,7 +1151,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             1,
-            0,
         );
         assert!(strict_three.overlay.contains((7, 4)));
         assert!(!strict_three.overlay.contains((3, 4)));
@@ -1188,7 +1166,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             1,
-            0,
         );
         assert!(level_four.overlay.contains((3, 4)));
         assert!(!level_four.overlay.contains((7, 4)));
@@ -1206,7 +1183,6 @@ mod tests {
             Some(test_playfield()),
             bridge_mover,
             1,
-            0,
         );
         assert!(on_bridge.overlay.contains((3, 4)));
     }
@@ -1256,7 +1232,6 @@ mod tests {
             Some(test_playfield()),
             mover(mover_type),
             1,
-            0,
         );
         assert_eq!(urgency_one.effective_urgency, 0);
         assert!(!urgency_one.processed_peer_path);
@@ -1271,7 +1246,6 @@ mod tests {
             None,
             mover(mover_type),
             2,
-            0,
         );
         assert!(urgency_two.processed_peer_path);
         assert!(

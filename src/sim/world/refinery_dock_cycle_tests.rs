@@ -30,10 +30,7 @@ fn sample(s: &Scene, id: u64) -> Sample {
         contact: miner.radio_contacts.slot(0),
         tethered: miner.dock_entered_with.is_some(),
         unloading: state.unload_active,
-        facing: miner
-            .body_facing
-            .as_ref()
-            .map_or(0, |f| f.current(s.sim.session.binary_frame)),
+        facing: miner.body_facing_current(s.sim.session.binary_frame),
         ore: state
             .cargo
             .iter()

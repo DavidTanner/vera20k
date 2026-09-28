@@ -357,15 +357,9 @@ fn unit_prepare_to_dock(
     let Some(entity) = sim.substrate.entities.get_mut(unit) else {
         return RadioResponse::Roger;
     };
-    if !entity.turret_rotation_latch {
-        let current = entity
-            .body_facing
-            .as_ref()
-            .map_or(u16::from(entity.facing) << 8, |body| body.current(frame));
-        if current != DOCK_FACING {
-            crate::sim::movement::drive_do_turn(entity, DOCK_FACING, frame);
-            return RadioResponse::Roger;
-        }
+    if !entity.turret_rotation_latch && entity.body_facing_current(frame) != DOCK_FACING {
+        crate::sim::movement::drive_do_turn(entity, DOCK_FACING, frame);
+        return RadioResponse::Roger;
     }
     if crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false) {
         return RadioResponse::Roger;

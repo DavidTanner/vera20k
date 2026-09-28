@@ -23,7 +23,6 @@ use crate::sim::pathfinding::{
     MAX_PATH_SEGMENT_STEPS, PathGrid, SearchMarkerOverlay, truncate_layered_path,
 };
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::facing_from_delta_int as facing_from_delta;
 
 use super::{MovementConfig, MoverPathFacts, PathfindingContext};
 
@@ -734,7 +733,6 @@ fn build_flat_fallback_layers(
 pub(super) fn try_repath_after_block(
     target: &mut MovementTarget,
     path_runtime: &mut crate::sim::components::FootPathRuntime,
-    facing: &mut u8,
     current: (u16, u16),
     current_layer: MovementLayer,
     layered_pathing: bool,
@@ -852,7 +850,9 @@ pub(super) fn try_repath_after_block(
     target.move_dir_x = d_x;
     target.move_dir_y = d_y;
     target.move_dir_len = d_len;
-    *facing = facing_from_delta(dx, dy);
+    // No facing write: Drive's Process_Movement turns the body only through
+    // Do_Turn (locomotor `+0x4C` at `0x004B344C`) on a later fresh arm, never
+    // after FindPath; Walk snaps at its next head and Hover steers.
     true
 }
 
@@ -1150,13 +1150,11 @@ mod tests {
         let mut path_runtime = crate::sim::components::FootPathRuntime::default();
         path_runtime.path_blocked = true;
         path_runtime.start_blocked(0, 1);
-        let mut facing = 0;
         let mut rng = SimRng::new(0);
 
         assert!(try_repath_after_block(
             &mut target,
             &mut path_runtime,
-            &mut facing,
             (6, 6),
             MovementLayer::Ground,
             false,
@@ -1204,13 +1202,11 @@ mod tests {
             ..MovementTarget::default()
         };
         let mut path_runtime = crate::sim::components::FootPathRuntime::default();
-        let mut facing = 0;
         let mut rng = crate::sim::rng::SimRng::new(0);
 
         assert!(try_repath_after_block(
             &mut target,
             &mut path_runtime,
-            &mut facing,
             (0, 1),
             MovementLayer::Ground,
             false,

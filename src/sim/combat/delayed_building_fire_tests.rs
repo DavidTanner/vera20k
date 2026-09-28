@@ -89,9 +89,7 @@ fn gsi_05_10_tesla_arms_without_emission_and_fires_on_visit_28() {
     assert!(issue_attack_command(
         &mut sim.substrate.entities,
         tower,
-        target,
-        Some(&rules),
-        &sim.interner,
+        target
     ));
     let mut main_rng = SimRng::new(1);
 
@@ -168,9 +166,7 @@ fn gsi_05_10_expiry_reads_live_target_but_keeps_saved_weapon_slot() {
     assert!(issue_attack_command(
         &mut sim.substrate.entities,
         tower,
-        air,
-        Some(&rules),
-        &sim.interner,
+        air
     ));
     let mut main_rng = SimRng::new(2);
     let arm = combat_visit(&mut sim, &rules, &mut main_rng, 1);
@@ -217,9 +213,7 @@ fn gsi_05_10_expiry_error_clears_without_retarget_or_shot() {
     assert!(issue_attack_command(
         &mut sim.substrate.entities,
         tower,
-        target,
-        Some(&rules),
-        &sim.interner,
+        target
     ));
     let mut main_rng = SimRng::new(3);
     let _ = combat_visit(&mut sim, &rules, &mut main_rng, 1);
@@ -271,16 +265,12 @@ fn gsi_05_10_non_delayed_fires_at_once_and_a_lone_prism_arms_its_own_shot() {
     assert!(issue_attack_command(
         &mut sim.substrate.entities,
         ordinary,
-        ordinary_target,
-        Some(&rules),
-        &sim.interner,
+        ordinary_target
     ));
     assert!(issue_attack_command(
         &mut sim.substrate.entities,
         prism,
-        prism_target,
-        Some(&rules),
-        &sim.interner,
+        prism_target
     ));
     let result = combat_visit(&mut sim, &rules, &mut SimRng::new(4), 1);
 
@@ -319,9 +309,7 @@ fn gsi_05_10_delays_at_or_below_one_expire_on_the_arming_visit() {
         assert!(issue_attack_command(
             &mut sim.substrate.entities,
             tower,
-            target,
-            Some(&rules),
-            &sim.interner,
+            target
         ));
 
         let result = combat_visit(&mut sim, &rules, &mut SimRng::new(5), 1);

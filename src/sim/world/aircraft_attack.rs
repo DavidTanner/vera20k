@@ -196,7 +196,7 @@ impl Simulation {
             )
         };
         let entity = self.substrate.entities.get_mut(id).unwrap();
-        air_movement::ensure_fly_facings(entity);
+        air_movement::ensure_fly_secondary_facing(entity);
         entity
             .barrel_facing
             .as_mut()

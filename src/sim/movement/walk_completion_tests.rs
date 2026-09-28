@@ -50,8 +50,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.position.sub_x = SimFixed::from_num(184);
     actor.position.sub_y = SimFixed::from_num(64);
-    actor.body_facing = Some(body);
-    actor.facing = 0x3F;
+    actor.body_facing = body;
     actor.navigation.nav_com = Some(NavTargetRef::cell(6, 6));
     actor.navigation.path_replay = FootPathQueue {
         directions: vec![2, 4],
@@ -78,13 +77,12 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
     assert_eq!(actor.movement_target.as_ref().unwrap().next_index, 2);
     assert_eq!(actor.navigation.path_replay.remaining_directions(), &[4]);
     assert_eq!(actor.locomotor.as_ref().unwrap().step_head(), None);
-    assert_eq!(actor.body_facing, Some(body));
     assert_eq!(
-        actor.facing, 0x3F,
+        actor.body_facing, body,
         "completion must not anticipate the corner"
     );
 
-    // A refused head can keep the actor waiting; it must keep both headings.
+    // A refused head can keep the actor waiting; it must keep its heading.
     for blocked in [true, false] {
         if blocked {
             sim.substrate.raw_cell_occupation.mark_ground(6, 6, 0x20);
@@ -104,8 +102,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
         );
         assert_eq!(accepted, !blocked);
         let actor = sim.substrate.entities.get_mut(id).unwrap();
-        assert_eq!(actor.body_facing, Some(body));
-        assert_eq!(actor.facing, 0x3F);
+        assert_eq!(actor.body_facing, body);
         if accepted {
             let next = actor.locomotor.as_ref().unwrap().step_head().unwrap();
             let desired = crate::util::direction_tables::facing16_from_delta(
@@ -114,8 +111,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
             );
             assert!(walk_head::finish_fresh_head(actor, 101));
             assert_ne!(desired, body.current(101));
-            assert_eq!(actor.body_facing.unwrap().current(101), desired);
-            assert_eq!(actor.facing, (desired >> 8) as u8);
+            assert_eq!(actor.body_facing.current(101), desired);
         }
     }
 }

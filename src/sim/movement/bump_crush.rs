@@ -1152,10 +1152,7 @@ pub fn blocker_is_fraidycat(
 fn unit_scatter_state_allows(blocker: &GameEntity, binary_frame: u32) -> bool {
     use crate::rules::locomotor_type::LocomotorKind;
     if matches!(blocker.mission.effective().raw(), 0 | 6 | 16)
-        || blocker
-            .body_facing
-            .as_ref()
-            .is_some_and(|facing| facing.is_rotating(binary_frame))
+        || blocker.body_facing.is_rotating(binary_frame)
         || blocker.deploy_state.is_some()
     {
         return false;

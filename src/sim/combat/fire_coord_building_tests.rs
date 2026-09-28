@@ -95,12 +95,12 @@ fn building_aim_directions_match_the_original() {
         let frame = sim.session.binary_frame;
         let facing = input["facing"].as_u64().unwrap() as u16;
         let building = sim.substrate.entities.get_mut(1).unwrap();
-        building.barrel_facing = Some(FacingClass::new(facing, 10));
+        building.body_facing = FacingClass::new(facing, 10);
         building.attack_target = (!target.is_null()).then(|| AttackTarget::new(2));
 
         let building = sim.substrate.entities.get(1).unwrap();
         let obj = sim.object_type(building.type_ref(), &rules).unwrap();
-        let current = building.barrel_facing.unwrap().current(frame);
+        let current = building.body_facing.current(frame);
         let (flh, fire) = building_fire_facings(
             &sim,
             &rules,

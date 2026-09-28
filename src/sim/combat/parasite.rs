@@ -159,15 +159,6 @@ fn weapon_zero<'r>(
         .and_then(|(name, _)| rules.weapon(name))
 }
 
-/// Primary facing as the native 16-bit word (`FacingClass::Current`).
-fn facing_word(entity: &crate::sim::game_entity::GameEntity, frame: u32) -> u16 {
-    entity
-        .body_facing
-        .map_or(u16::from(entity.facing) << 8, |facing| {
-            facing.current(frame)
-        })
-}
-
 /// `((raw >> 12) + 1) >> 1 & 7`: the eight-way direction of a facing word.
 fn dir8(raw: u16) -> usize {
     (((u32::from(raw) >> 12) + 1) >> 1) as usize & 7
@@ -393,7 +384,7 @@ impl Simulation {
         victim_entity.paralysis_timer = CdTimer::started(frame as i32, paralyzes);
         let infantry = victim_entity.category == EntityCategory::Infantry;
         let location = ground_pose::position_world_coord(&victim_entity.position);
-        let raw = facing_word(victim_entity, frame);
+        let raw = victim_entity.body_facing_current(frame);
         let (amount, ignore_defenses) = if infantry {
             // 0x0062A0AF: an Infantry victim takes its own current Health,
             // ignoring defenses: one bite kills unless ReceiveDamage refuses.
@@ -481,7 +472,7 @@ impl Simulation {
         let Some(victim_entity) = self.substrate.entities.get(victim) else {
             return;
         };
-        let raw = facing_word(victim_entity, frame);
+        let raw = victim_entity.body_facing_current(frame);
         let released = if dir8(raw) <= 2 {
             raw.wrapping_add(0x3FFF)
         } else {
@@ -611,7 +602,7 @@ impl Simulation {
             .substrate
             .entities
             .get(victim)
-            .map_or(0, |v| facing_word(v, frame));
+            .map_or(0, |v| v.body_facing_current(frame));
         let coords = self.parasite_release_coords(owner, victim, rules);
         // 0x0062A2ED..0x0062A303: the 0xA8E7AC bracket around Unlimbo.
         let placed = coords.is_some_and(|coords| {
@@ -672,7 +663,7 @@ impl Simulation {
             return Some(coords);
         }
         let frame = self.session.binary_frame;
-        let raw = facing_word(victim_entity, frame);
+        let raw = victim_entity.body_facing_current(frame);
         let victim_cell = (
             victim_entity.position.rx as i16,
             victim_entity.position.ry as i16,
@@ -991,12 +982,8 @@ impl Simulation {
         };
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
             entity.sub_cell = sub_cell;
-            entity.facing = facing;
-            if let Some(body) = entity.body_facing.as_mut() {
-                body.snap(u16::from(facing) << 8, self.session.binary_frame);
-            }
         }
-        matches!(
+        let revealed = matches!(
             self.try_reveal_entity_with_context(
                 owner,
                 crate::sim::world::RevealRequest {
@@ -1013,7 +1000,13 @@ impl Simulation {
                 crate::sim::world::UninitContext::with_rules(rules),
             ),
             crate::sim::world::RevealOutcome::Revealed { .. }
-        )
+        );
+        // Unlimbo's body snap (`0x006F6DAA`) follows a successful Reveal.
+        let frame = self.session.binary_frame;
+        if revealed && let Some(entity) = self.substrate.entities.get_mut(owner) {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
+        }
+        revealed
     }
 
     /// `TechnoClass::Fire @ 0x006FF749..0x006FF872`, the LimboLaunch block,

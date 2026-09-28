@@ -28,7 +28,7 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
     entity.owner = sim.intern("Americans");
     entity.type_ref = sim.intern("MOVER");
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-    entity.facing = 0;
+    entity.body_facing.snap(0x0000, 0);
     entity.position.exact_z_leptons = Some(731);
     entity.movement_target = Some(MovementTarget {
         path: vec![(3, 3), (3, 2), (3, 1)],
@@ -675,14 +675,15 @@ fn terminal_centre_height_commits_before_next_process_turn_without_finalizer() {
     );
     assert!(super::track_head::committed_track_head(entity).is_none());
     // Native terminal4B22AF returns through4B1F5C/4B25F9 after the
-    // selector is retired. Fresh movement selection waits for the next Process.
-    assert_eq!(entity.facing_target, None);
+    // selector is retired. Fresh movement selection, and its Do_Turn toward
+    // (4,3), waits for the next Process.
+    assert_ne!(entity.body_facing.destination(), 0x4000);
     assert_eq!(entity.position.sub_y, SimFixed::from_num(128));
     // The last real table point is Y131 (height53); the final snap is Y128.
     assert_eq!(entity.position.exact_z_leptons, Some(52));
     tick(&mut sim, &terrain, &grid, 1);
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(entity.facing_target, Some(0x40));
+    assert_eq!(entity.body_facing.destination(), 0x4000);
     assert_eq!(entity.position.exact_z_leptons, Some(52));
     assert!(entity.movement_target.is_some());
 }
@@ -877,7 +878,7 @@ fn ordinary_drive_ship_command_keeps_subcell_origin_through_terminal_cleanup() {
     let grid = PathGrid::from_resolved_terrain(&terrain);
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         for (sub_x, sub_y, facing, destination) in [
-            (85, 153, 0, (3, 2)),
+            (85, 153, 0u8, (3, 2)),
             (0, 153, 64, (4, 3)),
             (85, 0, 128, (3, 4)),
         ] {
@@ -886,7 +887,7 @@ fn ordinary_drive_ship_command_keeps_subcell_origin_through_terminal_cleanup() {
             entity.movement_target = None;
             entity.position.sub_x = SimFixed::from_num(sub_x);
             entity.position.sub_y = SimFixed::from_num(sub_y);
-            entity.facing = facing;
+            entity.body_facing.snap(u16::from(facing) << 8, 0);
             insert(&mut sim, entity);
             assert!(crate::sim::movement::issue_move_command(
                 &mut sim.substrate.entities,

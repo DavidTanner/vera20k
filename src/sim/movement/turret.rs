@@ -55,33 +55,24 @@ pub fn facing_toward_lepton(
     facing_from_delta_int_u16(dx, dy)
 }
 
-/// Convert 8-bit body facing to 16-bit turret facing.
-/// Maps 0..255 → 0..65280 (shifts into the upper byte).
-#[inline]
+/// Convert an 8-bit facing to a 16-bit one (shifts into the upper byte).
+/// No production caller; test fixtures author 8-bit facings.
+#[cfg(test)]
 pub fn body_facing_to_turret(body: u8) -> u16 {
     (body as u16) << 8
 }
 
-/// NO-DIFF (GSI-08.14) — one facing is right, and pass 1's premise was wrong.
-/// `TechnoClass` carries exactly TWO `FacingClass` instances: the body at
-/// `+0x388` and the turret at `+0x3A0` (0x18 stride; `+0x3B8` is
-/// `CurrentBurstIndex`, not a third facing). There is no separate barrel
-/// facing, so `barrel_facing` here IS native's turret facing and the fire
-/// location reads that same value — the claimed coupling to the FLH slice
-/// (`GSI-08.04`) does not exist. `TurretROT=` likewise does not exist in
-/// gamemd; the only `TurretRot`-shaped string in the image is
-/// `TurretRotateSound`, so driving turret rotation from `ROT=` is correct.
-///
-/// The hull heading as a 16-bit facing — `FacingClass::Current` on the primary
-/// facing `+0x388`. VERA keeps the animated hull in `body_facing` only while a
-/// rotation is live and mirrors its top byte into `entity.facing`, so read the
-/// interpolator when it exists and the byte otherwise.
-pub(crate) fn hull_facing_16(entity: &GameEntity, binary_frame: u32) -> u16 {
-    match entity.body_facing {
-        Some(ref hull) => hull.current(binary_frame),
-        None => body_facing_to_turret(entity.facing),
-    }
-}
+// NO-DIFF (GSI-08.14) — one turret facing is right, and pass 1's premise was
+// wrong. `TechnoClass` carries three `FacingClass` instances (0x18 stride): one
+// at `+0x370` (Unlimbo's `Set_Current` at `0x006F6DC3`; a building's `Set`
+// at `0x0043BA5E` and `Set_Current` at `0x0044A08C`), which VERA does not
+// port, the body at `+0x388`
+// (`GameEntity::body_facing`) and the turret at `+0x3A0` (`+0x3B8` is
+// `CurrentBurstIndex`, not a fourth). `barrel_facing` here is native's turret
+// facing, and the fire location reads that same value — the claimed coupling to
+// the FLH slice (`GSI-08.04`) does not exist. `TurretROT=` likewise does not
+// exist in gamemd; the only `TurretRot`-shaped string in the image is
+// `TurretRotateSound`, so driving turret rotation from `ROT=` is correct.
 
 /// Lepton-precise facing from `entity` toward a resolved attack target, using
 /// the target's own coordinate slot. gamemd reaches the target through
@@ -235,7 +226,7 @@ pub(crate) fn facing_update(
         } else if obj
             .is_some_and(|o| o.speed_type == crate::rules::locomotor_type::SpeedType::Track)
             && entity.movement_target.is_none()
-            && hull_facing_16(entity, binary_frame) == tgt
+            && entity.body_facing_current(binary_frame) == tgt
         {
             out.hull_destination = Some(tgt);
         }
@@ -270,7 +261,7 @@ pub(crate) fn facing_update(
             if dwell_elapsed && !bunkered {
                 out.turret_destination = Some(match nav_destination_facing(entity, entities) {
                     Some(nav) => nav,
-                    None => hull_facing_16(entity, binary_frame),
+                    None => entity.body_facing_current(binary_frame),
                 });
                 // `Set` at `0x00736BDD`, which native reaches only AFTER the
                 // `+0x6AF` store — so the arc this starts leaves the latch
@@ -377,7 +368,7 @@ pub(crate) fn desired_turret_facing(
                 .and_then(|attack| {
                     facing_toward_target(entity, &attack.target, entities, rules, interner)
                 })
-                .unwrap_or_else(|| body_facing_to_turret(entity.facing)),
+                .unwrap_or_else(|| entity.body_facing_current(binary_frame)),
         ),
     }
 }

@@ -334,12 +334,7 @@ fn unit_z_adjust_in_runtime(
     let context = FootDepthContext {
         cell: coord,
         on_bridge: entity.on_bridge,
-        facing_u16: entity
-            .body_facing
-            .as_ref()
-            .map_or(u16::from(entity.facing) << 8, |f| {
-                f.current(view.session().binary_frame)
-            }),
+        facing_u16: entity.body_facing_current(view.session().binary_frame),
         world_z_leptons: world_z,
         // Drive 0x4B4870, Ship 0x6A3EA0, and the shared 0x55ABA0 inherited
         // by Walk/Hover/Fly/Jumpjet/Teleport all return zero at loco slot +0x38.

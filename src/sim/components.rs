@@ -568,21 +568,6 @@ pub struct ShipLocomotionRuntime {
     pub occupation_handoff: Option<DriveOccupationFootprint>,
 }
 
-/// Drive-owned 16-bit facing target and first-movement gate.
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-)]
-pub struct DriveTurnState {
-    #[serde(default)]
-    pub target_direction: Option<u8>,
-    #[serde(default)]
-    pub target_facing_16: Option<u16>,
-    #[serde(default)]
-    pub rate_timer: u16,
-    #[serde(default)]
-    pub first_movement_allowed: bool,
-}
-
 /// One active Drive/Ship locomotor's retained track selector, signed cursor,
 /// short-track choice and residual (+58/+5C/+60/+4C). Curve geometry and a
 /// temporary Process_Track call must not own serialized copies of this state.
@@ -632,8 +617,6 @@ pub struct DriveLocomotionRuntime {
     #[serde(default)]
     pub head_to: Option<DriveCoord>,
     #[serde(default)]
-    pub turn: DriveTurnState,
-    #[serde(default)]
     pub track: TrackProgress,
     /// Drive+65, seeded true at constructor4AF5BB. Native4B4BE0/4B4BF0
     /// disable/enable END while Foot Find_Path removes a Team membership.
@@ -672,7 +655,6 @@ impl Default for DriveLocomotionRuntime {
         Self {
             destination: None,
             head_to: None,
-            turn: DriveTurnState::default(),
             track: TrackProgress::default(),
             end_permitted: true,
             track_valid: false,
@@ -1056,7 +1038,6 @@ mod tests {
         let navigation = NavigationState::default();
         assert!(navigation.path_replay.directions.is_empty());
         assert_eq!(navigation.path_replay.cursor, 0);
-        assert_eq!(drive.turn.target_direction, None);
         assert_eq!(drive.track.turn_index, -1);
         assert_eq!(drive.track.cursor, -1);
         assert!(!drive.track_valid);
@@ -1087,7 +1068,6 @@ mod tests {
         let drive_a = DriveLocomotionRuntime::default();
         let mut drive_b = DriveLocomotionRuntime::default();
         drive_b.destination = Some(DriveCoord::cell(45, 40, 0));
-        drive_b.turn.target_facing_16 = Some(0x4000);
         drive_b.track.residual = 6;
 
         assert_ne!(hash_drive(&drive_a), hash_drive(&drive_b));

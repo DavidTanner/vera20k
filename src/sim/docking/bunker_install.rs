@@ -127,9 +127,7 @@ fn step_install(
         BunkerState::ClearWait => {
             if footprint_clear_of_others(sim, building_id, unit_id) {
                 if let Some(f) = facing_to_anchor(sim, building_id, unit_id) {
-                    if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
-                        u.facing_target = Some(f);
-                    }
+                    turn_unit(sim, unit_id, f);
                 }
                 set_state(sim, building_id, BunkerState::TurnToBuilding, Some(unit_id));
             } else {
@@ -143,18 +141,14 @@ fn step_install(
                     set_state(sim, building_id, BunkerState::TrackStep, Some(unit_id));
                 } else {
                     // Already on the install cell: skip the slide, turn South.
-                    if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
-                        u.facing_target = Some(SOUTH_FACING);
-                    }
+                    turn_unit(sim, unit_id, SOUTH_FACING);
                     set_state(sim, building_id, BunkerState::TurnSouth, Some(unit_id));
                 }
             }
         }
         BunkerState::TrackStep => {
             if !is_moving(sim, unit_id) {
-                if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
-                    u.facing_target = Some(SOUTH_FACING);
-                }
+                turn_unit(sim, unit_id, SOUTH_FACING);
                 set_state(sim, building_id, BunkerState::TurnSouth, Some(unit_id));
             }
         }
@@ -188,11 +182,20 @@ fn set_state(sim: &mut Simulation, building_id: u64, state: BunkerState, unit: O
     }
 }
 
+/// Turn the unit's body (`+0x388` `Set`) toward the 8-bit `facing`.
+fn turn_unit(sim: &mut Simulation, unit_id: u64, facing: u8) {
+    let frame = sim.session.binary_frame;
+    if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
+        u.body_facing.set(u16::from(facing) << 8, frame);
+    }
+}
+
 fn is_turning(sim: &Simulation, unit_id: u64) -> bool {
+    let frame = sim.session.binary_frame;
     sim.substrate
         .entities
         .get(unit_id)
-        .is_some_and(|u| u.facing_target.is_some())
+        .is_some_and(|u| u.body_facing.is_rotating(frame))
 }
 
 fn is_moving(sim: &Simulation, unit_id: u64) -> bool {
@@ -524,12 +527,23 @@ mod tests {
         tick_bunker_install(&mut sim, &rules, None);
         assert_eq!(rt(&sim, 2).state, BunkerState::TurnSouth);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().facing_target,
-            Some(SOUTH_FACING)
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .body_facing
+                .destination(),
+            u16::from(SOUTH_FACING) << 8
         );
 
-        // Simulate the South turn completing (movement clears facing_target).
-        sim.substrate.entities.get_mut(1).unwrap().facing_target = None;
+        // Let the South turn finish.
+        let frame = sim.session.binary_frame;
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .body_facing
+            .snap(u16::from(SOUTH_FACING) << 8, frame);
 
         // TurnSouth -> install.
         tick_bunker_install(&mut sim, &rules, None);

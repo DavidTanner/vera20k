@@ -454,7 +454,6 @@ impl Simulation {
                 }) && let Some(actor) = self.substrate.entities.get_mut(id)
                 {
                     crate::sim::animation::snap_completion_facing(
-                        &mut actor.facing,
                         &mut actor.body_facing,
                         facing,
                         self.session.binary_frame,

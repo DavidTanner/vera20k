@@ -202,11 +202,10 @@ fn scene(input: &Value) -> Scene {
         unit.position.z = if on_bridge { 4 } else { 0 };
         unit.position.exact_z_leptons = Some(floor + if on_bridge { 416 } else { 0 } + height);
         unit.on_bridge = on_bridge;
-        unit.facing = (facing >> 8) as u8;
         // The Unit's FacingClass (`+0x388`), settled on the row's facing.
         let mut body = crate::sim::movement::FacingClass::new(facing, 0);
         body.snap(facing, frame);
-        unit.body_facing = Some(body);
+        unit.body_facing = body;
         if input["gunner"] == true {
             unit.weapon_override = Some(WeaponOverride::IfvSlot(0));
         }
@@ -479,7 +478,7 @@ fn compare(row: &Value) {
         );
         let unlimbo = of("unlimbo").expect("an escapee Unlimboes");
         assert_eq!(
-            u64::from(entity.facing),
+            u64::from(entity.body_facing.destination() >> 8),
             unlimbo[3].as_u64().unwrap(),
             "{context}: Unlimbo facing"
         );

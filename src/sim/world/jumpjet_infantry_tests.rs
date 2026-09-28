@@ -513,7 +513,10 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
                 playing = Some(doing);
             }
             (Some(action), DO_READY) => {
-                fidgets.push((action, entity.facing));
+                fidgets.push((
+                    action,
+                    entity.body_facing_byte(sim.session.binary_frame - 1),
+                ));
                 playing = None;
             }
             _ => {}
@@ -855,7 +858,7 @@ fn rocketeer_crash_fixture(
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.health.current = 125;
         entity.position.exact_z_leptons = Some(height);
-        entity.body_facing = Some(crate::sim::movement::FacingClass::new(0x4000, 127));
+        entity.body_facing = crate::sim::movement::FacingClass::new(0x4000, 127);
         entity
             .foot_speed
             .set_speed_fraction_native_bits(input["fraction"].as_f64().unwrap_or(0.0).to_bits());

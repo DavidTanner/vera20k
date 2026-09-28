@@ -27,7 +27,6 @@ use crate::sim::find_nearby_cell::{
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{DockTeardown, MissionId, MissionType};
-use crate::sim::movement::FacingClass;
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::ready_producer::is_moving_now_for;
@@ -235,7 +234,8 @@ fn pick_exit_octant(
 ) -> Option<((u16, u16), usize)> {
     let owner = sim.interner.resolve(entity.owner());
     let base = (entity.position.rx, entity.position.ry);
-    let facing16 = u16::from(entity.facing) << 8;
+    // `0x00740B9F..BAD`: the body's `Current()` (`+0x388`), full 16 bits.
+    let facing16 = entity.body_facing_current(sim.session.binary_frame);
     let rear16 = facing16.wrapping_add(0x7FFF);
     let rear8 = i32::from((((u32::from(rear16) >> 7) + 1) >> 1) as u8 as i8);
 
@@ -263,60 +263,18 @@ fn pick_exit_octant(
 }
 
 /// `Do_Turn(octant << 13)` on the transport's hull (`0x0073D86C`, locomotor
-/// slot `+0x4C`): arm the body `FacingClass` toward the 8-bit facing
-/// `octant * 32` at the unit's `ROT=`.
+/// slot `+0x4C`): arm the body `FacingClass` toward `octant << 13`.
 fn start_hull_turn(entity: &mut GameEntity, octant: usize, now: u32) {
-    let target8 = ((octant as u32) << 5) as u8;
-    let rot = entity.locomotor.as_ref().map_or(0, |loco| loco.rot);
-    entity.facing_target = Some(target8);
-    let mut body = FacingClass::new(u16::from(entity.facing) << 8, rot);
-    body.set(u16::from(target8) << 8, now);
-    entity.body_facing = Some(body);
+    entity.body_facing.set((octant as u16) << 13, now);
 }
 
-/// State 1's `+0x6AF == 0` read (`0x0073D892`): the hull turn has finished.
+/// State 1's wait, VERA-side: the hull turn has finished. Native state 1
+/// instead tests the `+0x6AF` turret rotation latch (`0x0073D892`), which
+/// Facing_Update sets only from a `Turret=` unit's `+0x3A0`
+/// (`0x00736ADC..0x00736B16`), so a turretless transport moves on while its
+/// hull still turns. Not yet ported.
 fn hull_turn_finished(entity: &GameEntity, now: u32) -> bool {
-    entity
-        .body_facing
-        .as_ref()
-        .is_none_or(|body| !body.is_rotating(now))
-}
-
-/// Per-tick `PrimaryFacing.Current()` refresh for a transport turning in
-/// place for its unload. The movement tick only rotates objects that hold a
-/// movement target, so the idle hull turn armed by [`start_hull_turn`] is
-/// advanced here from the same frame-anchored `FacingClass` gamemd reads.
-/// VERA-internal representation of a native pure-function read.
-pub(crate) fn refresh_idle_hull_turn(sim: &mut Simulation, id: u64, rules: &RuleSet) {
-    if !sim
-        .substrate
-        .entities
-        .get(id)
-        .is_some_and(|e| is_vehicle_transport_type(sim, e, rules))
-    {
-        return;
-    }
-    let now = sim.session.binary_frame;
-    let Some(entity) = sim.substrate.entities.get_mut(id) else {
-        return;
-    };
-    if entity.mission.current() != MissionId::from_known(MissionType::Unload)
-        || entity.mission.handler_state() != STATE_TURNING
-        || entity.movement_target.is_some()
-    {
-        return;
-    }
-    let Some(body) = entity.body_facing.as_ref() else {
-        return;
-    };
-    entity.facing = (body.current(now) >> 8) as u8;
-}
-
-fn finish_hull_turn(entity: &mut GameEntity) {
-    if let Some(target) = entity.facing_target.take() {
-        entity.facing = target;
-    }
-    entity.body_facing = None;
+    !entity.body_facing.is_rotating(now)
 }
 
 /// `ObjectClass::IsCellOccupied` (vtable `+0x1AC`) for the ejected passenger at
@@ -524,7 +482,8 @@ fn eject_head_passenger(
         transport_id,
         DepartureRoute::Vehicle,
         |sim, pax_id| {
-            let (base, facing, transport_z, leave_sound) = {
+            let now = sim.session.binary_frame;
+            let (base, facing16, transport_z, leave_sound) = {
                 let transport = sim
                     .substrate
                     .entities
@@ -533,7 +492,8 @@ fn eject_head_passenger(
                 let obj = sim.object_type(transport.type_ref(), rules);
                 (
                     (transport.position.rx, transport.position.ry),
-                    transport.facing,
+                    // `0x0073D8E0..D8F4`: the hull's `Current()`, full 16 bits.
+                    transport.body_facing_current(now),
                     transport.position.z,
                     obj.and_then(|o| o.leave_transport_sound.clone()),
                 )
@@ -545,7 +505,6 @@ fn eject_head_passenger(
             };
             let passenger_is_infantry = passenger_snapshot.category == EntityCategory::Infantry;
 
-            let facing16 = u16::from(facing) << 8;
             let start =
                 ((((u32::from(facing16.wrapping_add(0x7FFF))) >> 12) + 1) >> 1) as usize & 7;
             let mut strict_pass = true;
@@ -630,7 +589,9 @@ fn eject_head_passenger(
 
             if let Some(passenger) = sim.substrate.entities.get_mut(pax_id) {
                 passenger.sub_cell = sub_cell;
-                passenger.facing = ((octant as u32) << 5) as u8;
+                // `TechnoClass::Unlimbo` snaps the body to the drop direction
+                // (`+0x388` Set_Current, `0x006F6DAA`).
+                passenger.body_facing.snap((octant as u16) << 13, now);
                 if let Some(loco) = passenger.locomotor.as_mut() {
                     loco.layer = MovementLayer::Ground;
                 }
@@ -745,7 +706,6 @@ pub(crate) fn unit_mission_unload(
         STATE_TURNING => {
             if hull_turn_finished(entity, now) {
                 if let Some(entity) = sim.substrate.entities.get_mut(id) {
-                    finish_hull_turn(entity);
                     entity.mission.set_handler_state(STATE_EJECT);
                 }
                 return 1;
@@ -1006,7 +966,7 @@ fn eject_from_aircraft(
                     break;
                 }
             }
-            let facing = ((AIRCRAFT_EXIT_SCAN[index] & 7) as u32 * 32) as u8;
+            let facing = ((AIRCRAFT_EXIT_SCAN[index] & 7) as u16) << 13;
 
             let sub_cell = if is_infantry {
                 let occupancy = sim.substrate.occupancy.get(cell.0, cell.1);
@@ -1025,9 +985,11 @@ fn eject_from_aircraft(
             } else {
                 None
             };
+            let now = sim.session.binary_frame;
             if let Some(passenger) = sim.substrate.entities.get_mut(pax_id) {
                 passenger.sub_cell = sub_cell;
-                passenger.facing = facing;
+                // `Unlimbo`'s body snap (`0x006F6DAA`).
+                passenger.body_facing.snap(facing, now);
                 if let Some(loco) = passenger.locomotor.as_mut() {
                     loco.layer = MovementLayer::Ground;
                 }

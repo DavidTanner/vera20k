@@ -408,20 +408,21 @@ pub struct GameEntity {
     pub structure_upgrade_link: Option<StructureUpgradeLink>,
     /// World position in isometric cell coordinates + cached screen position.
     pub position: Position,
-    /// Body facing direction (0–255, RA2 convention: 0=N, 64=E, 128=S, 192=W).
-    pub facing: u8,
-    /// Target body facing for gradual rotation (vehicles only).
-    /// When `Some`, the entity is rotating in place and should not advance position.
-    /// Infantry always turn instantly (RA2 behavior), so this stays `None` for them.
-    pub facing_target: Option<u8>,
-    /// Binary-frame hull FacingClass shared by movement and combat. Combat can
-    /// retain an arbitrary16-bit heading without a movement `facing_target`;
-    /// fresh Drive/Ship admission must use that full sample, not the `facing`
-    /// byte used for display. Movement's completed byte-target adapter still
-    /// retires this state; migrating all lifecycle writers to persistent native
-    /// Facing ownership remains required.
-    #[serde(default)]
-    pub body_facing: Option<crate::sim::movement::FacingClass>,
+    /// The body heading, `TechnoClass+0x388` (PrimaryFacing), and its only
+    /// copy: every class has one (the TechnoClass constructor builds it at
+    /// `0x006F2EEB`), a building included — its `+0x388` is what its turret
+    /// or its body aims. 16-bit DirStruct, 0 = north on screen, 0x4000 = east.
+    ///
+    /// Readers sample `current(frame)` (`FacingClass::Current @ 0x004C93D0`),
+    /// writers turn it (`Set @ 0x004C9220`) or snap it (`Set_Current @
+    /// 0x004C9300`). Its rate is written once, by the class constructor
+    /// ([`Self::set_body_facing_rot`]). The image's only other `+0x39C` write
+    /// is AircraftClass::AI's Carryall copy (`0x00415146..0x00415184`, the
+    /// carrier's `+0x3A0` over its cargo's `+0x388` and `+0x3A0`), gated on
+    /// AircraftType `+0xDFC` (`Carryall=`, read at `0x0041CCA2`). Retail sets
+    /// that key only on `[HIND]`, a VehicleType, so the copy is dormant and not
+    /// ported.
+    pub body_facing: crate::sim::movement::FacingClass,
     /// Persistent FootClass body-animation counter (`FootClass+0x538`).
     /// Unit SHP drawing takes the walk-frame remainder from this counter; it
     /// advances on absolute binary-frame cadence and never resets on a visual
@@ -706,8 +707,9 @@ pub struct GameEntity {
     /// so does an MCV deploy for a computer house (`0x007397F4`).
     #[serde(default)]
     pub ai_repairable: bool,
-    /// Independent turret/barrel facing — only on entities with Turret=yes in rules.ini.
-    /// Timer-based 16-bit interpolator mirroring gamemd's BarrelFacing primitive.
+    /// The turret heading, `TechnoClass+0x3A0` (SecondaryFacing): a
+    /// `Turret=yes` unit's and every aircraft's. A building aims its
+    /// [`Self::body_facing`] instead.
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
     /// Turret rotation latch — `UnitClass+0x6AF`, written only by
     /// `UnitClass::Facing_Update @ 0x00736990` (cleared at `0x00736AD5`, re-set
@@ -1310,13 +1312,37 @@ impl GameEntity {
         self.type_ref
     }
 
-    /// The body FacingClass's Current (Foot `+0x388`, the value
-    /// `FacingClass::Current @ 0x004C93D0` returns); an object without a
-    /// retained FacingClass rests at its facing byte.
+    /// The body heading at `frame`: `FacingClass::Current @ 0x004C93D0` on
+    /// `+0x388`.
     pub(crate) fn body_facing_current(&self, frame: u32) -> u16 {
+        self.body_facing.current(frame)
+    }
+
+    /// The body heading's high byte at `frame`, the 8-bit direction a reader
+    /// that drops the DirStruct's low byte sees.
+    pub(crate) fn body_facing_byte(&self, frame: u32) -> u8 {
+        (self.body_facing.current(frame) >> 8) as u8
+    }
+
+    /// The body heading at `frame` as a rounded DirType byte,
+    /// `((raw >> 7) + 1) >> 1`: the conversion gamemd applies when it passes
+    /// `Current()` on as a direction argument (an Unlimbo's, a Do_Turn
+    /// comparison's), wrapping 0xFF80.. to 0.
+    pub(crate) fn body_facing_dir(&self, frame: u32) -> u8 {
+        (((u32::from(self.body_facing.current(frame)) >> 7) + 1) >> 1) as u8
+    }
+
+    /// The class constructor's one rate write on `+0x388` (`Set_ROT @
+    /// 0x004C9680`): the constant 127 for infantry (`0x00517BC5`), `ROT=`
+    /// (`Type+0x71C`) for a unit (`0x00735579`), an aircraft (`0x00413FE7`)
+    /// and a building (`BuildingClass::Init` at `0x00442CA5`).
+    pub(crate) fn set_body_facing_rot(&mut self, type_rot: i32) {
         self.body_facing
-            .as_ref()
-            .map_or(u16::from(self.facing) << 8, |facing| facing.current(frame))
+            .set_rot(if self.category == EntityCategory::Infantry {
+                127
+            } else {
+                type_rot
+            });
     }
 
     pub(crate) fn set_owner_from_store(
@@ -1548,9 +1574,8 @@ impl GameEntity {
                 sub_x: init_sub_x,
                 sub_y: init_sub_y,
             },
-            facing,
-            facing_target: None,
-            body_facing: None,
+            // The Unlimbo direction; the class constructor supplies the rate.
+            body_facing: crate::sim::movement::FacingClass::new(u16::from(facing) << 8, 0),
             body_frame_counter: 0,
             owner,
             health,
@@ -1993,7 +2018,7 @@ mod tests {
         assert_eq!(e.position.rx, 30);
         assert_eq!(e.position.ry, 40);
         assert_eq!(e.position.z, 0);
-        assert_eq!(e.facing, 0);
+        assert_eq!(e.body_facing_current(0), 0);
         assert_eq!(e.health.current, 100);
         assert_eq!(e.category, EntityCategory::Unit);
         assert_eq!(e.veterancy, 0);
