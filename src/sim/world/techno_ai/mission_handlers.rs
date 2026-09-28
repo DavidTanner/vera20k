@@ -1529,9 +1529,9 @@ fn evaluate_foot_guard_cadence(
 ///   entries are not consulted — irrelevant here, the test is
 ///   entry-independent). No owned instance of any entry → fall through.
 ///   The `+0x242` latch is `HouseState::harvester_no_ore`, written
-///   native-true by the Harvest scan miss and never cleared; the Rust
-///   ownership count is `EntityStore::count_owned_of_type` (see its doc for
-///   the Unlimbo..Limbo vs insert..remove window).
+///   native-true by the Harvest scan miss and never cleared; the count is
+///   the house's tracked BuildingType count (`+0x5500`, `0x007408A2`,
+///   `HouseTracking::owns_any_building`).
 /// - (iii) **human house && `Teleporter=`** (`UnitType+0xCD4`): walk the 8
 ///   neighbour cells (`MapCoord_StepByDir_GetCell`); a building there whose
 ///   type has `+0x16BB` (`Refinery=`) and whose owner `+0x21C` is this house
@@ -1560,28 +1560,18 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
     if !unit_type.harvester {
         return false;
     }
-    let human = sim
+    if let Some(house) = sim
         .houses
         .get(&entity.owner())
-        .is_none_or(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
-    if !human {
+        .filter(|house| !house.is_controlled_by_human(sim.session.game_mode_nonzero))
+    {
         // Arm (ii), `0x00740880..0x0074092C`.
-        let owns_dock = unit_type.dock.iter().any(|dock_type| {
-            sim.interner.get(dock_type).is_some_and(|type_ref| {
-                sim.substrate
-                    .entities
-                    .count_owned_of_type(entity.owner(), type_ref)
-                    > 0
-            })
-        });
-        if !owns_dock {
-            return false;
-        }
-        let no_ore = sim
-            .houses
-            .get(&entity.owner())
-            .is_some_and(|house| house.harvester_no_ore);
-        return !(unit_type.harvester && no_ore);
+        return house.tracking.owns_any_building(
+            unit_type
+                .dock
+                .iter()
+                .filter_map(|name| sim.interner.get(name)),
+        ) && !house.harvester_no_ore;
     }
     if !unit_type.teleporter {
         return false;
@@ -2008,6 +1998,11 @@ mod harvester_guard_override_tests {
         );
         ge.lifecycle.in_limbo = false;
         sim.substrate.entities.insert(ge);
+        // The class constructor's `Add_Tracking`, which a direct insert skips.
+        sim.update_house_tracking(
+            REFINERY_ID,
+            crate::sim::house_tracking::HouseTracking::add_tracking,
+        );
         for y in REFINERY_NW.1..REFINERY_NW.1 + 3 {
             for x in REFINERY_NW.0..REFINERY_NW.0 + 4 {
                 sim.substrate.occupancy.add(

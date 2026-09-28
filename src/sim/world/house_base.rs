@@ -1,9 +1,8 @@
 //! The House's building lists and the cost factors its FactoryPlants set.
 //!
 //! House+68 (buildings) and House+140 (FactoryPlants) change membership at
-//! Unlimbo, pointer expiry and ChangeOwner, which differs from EntityStore's
-//! owner index; constructor/destructor tracking (`0x004FF700`/`0x004FF550`)
-//! registers the rule inputs separately.
+//! Unlimbo, pointer expiry and ChangeOwner; constructor/destructor tracking
+//! (`0x004FF700`/`0x004FF550`, `sim::house_tracking`) counts separately.
 use super::*;
 use crate::rules::ruleset::HouseCostFactors;
 use crate::util::native_x87::NativeF32Bits;
