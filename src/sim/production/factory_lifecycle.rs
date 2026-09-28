@@ -17,6 +17,7 @@ use super::production_tech::{
 use super::production_types::{BuildDisabledReason, ProductionCategory};
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::ai_unit_choice::UnitChoiceKind;
 use crate::sim::intern::InternedId;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
@@ -180,9 +181,10 @@ pub(super) fn start_active_production(
 }
 /// Finish `FactoryClass::AbandonProduction @ 0x004C9FF0` for an object the registry
 /// let go: refund it ([`refund_abandoned`]); a house no human controls then
-/// forgets its choice of that kind (`0x004CA082..0x004CA0DD`), of which VERA
-/// keeps the building choice (`sim::ai_base_building`); then the held limbo
-/// object is destroyed without rewinding RNG (`0x004CA0E0`).
+/// forgets its choice of that kind (`0x004CA082..0x004CA0DD`: the building
+/// choice of `sim::ai_base_building`, or a choice of `sim::ai_unit_choice`);
+/// then the held limbo object is destroyed without rewinding RNG
+/// (`0x004CA0E0`).
 pub(super) fn settle_abandoned(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -191,14 +193,17 @@ pub(super) fn settle_abandoned(
 ) {
     refund_abandoned(sim, rules, owner_id, abandoned.type_id, abandoned.balance);
     let game_mode_nonzero = sim.session.game_mode_nonzero;
-    let building = sim
+    let category = sim
         .object_type(abandoned.type_id, rules)
-        .is_some_and(|object| object.category == ObjectCategory::Building);
-    if building
+        .map(|object| object.category);
+    if let Some(category) = category
         && let Some(house) = sim.houses.get_mut(&owner_id)
         && !house.is_controlled_by_human(game_mode_nonzero)
     {
-        house.ai_production.clear_building_choice();
+        match UnitChoiceKind::of(category) {
+            Some(kind) => house.ai_unit_choices.clear(kind),
+            None => house.ai_production.clear_building_choice(),
+        }
     }
     if let Some(entity_id) = abandoned.entity_id {
         let discarded = sim.discard_constructed_limbo(entity_id);
@@ -689,12 +694,7 @@ pub(crate) fn validate_restored_factory_state(
                 "constructed identity disagrees with factory owner or type",
             ));
         }
-        let expected_category = match object.category {
-            ObjectCategory::Infantry => EntityCategory::Infantry,
-            ObjectCategory::Vehicle => EntityCategory::Unit,
-            ObjectCategory::Aircraft => EntityCategory::Aircraft,
-            ObjectCategory::Building => EntityCategory::Structure,
-        };
+        let expected_category = EntityCategory::from(object.category);
         if entity.category != expected_category {
             return Err(fail(
                 owner,

@@ -35,6 +35,10 @@ pub struct BasicSection {
     /// Native Scenario+34A4 (`0068A5E3..0068A61A`). Missing/invalid keys
     /// preserve the caller's prior value; a fresh scenario resets it to false.
     pub free_radar: Option<bool>,
+    /// Native Scenario+34B4 (`ScenarioClass::Read_INI_Basic
+    /// 0x0068A271..0x0068A289`, `Set_Defaults` false at `0x00683899`): the
+    /// AI triggers of `AIMD.INI` never qualify (`sim::ai_team_creation`).
+    pub ignore_global_ai_triggers: Option<bool>,
 }
 
 /// Parsed flags from a map's `[SpecialFlags]` section.
@@ -90,6 +94,8 @@ pub fn parse_basic_section(ini: &IniFile) -> BasicSection {
             .map(|_| section.read_int("NewINIFormat", 0)),
         tiberium_growth_enabled: section.read_bool_value("TiberiumGrowthEnabled"),
         free_radar: section.read_bool_value("FreeRadar"),
+        // ReadBool with the current Scenario+0x34B4 as default (`0x0068A284`).
+        ignore_global_ai_triggers: section.read_bool_value("IgnoreGlobalAITriggers"),
     }
 }
 

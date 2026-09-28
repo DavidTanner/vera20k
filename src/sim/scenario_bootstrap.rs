@@ -1575,10 +1575,11 @@ pub(crate) fn populate_launch_houses(
         // passed and keep the constructor's values.
         house.set_difficulty(
             slot.difficulty,
-            &rules.general.difficulty_rof,
-            &rules.general.difficulty_repair_delay,
+            &rules.general,
             rules.country_rof(country_name),
             sim.session.game_mode_nonzero,
+            sim.session.house_order.len() as i32,
+            sim.session.binary_frame as i32,
         );
         // ScenarioClass::Create_Houses leaves generated human CurrentIQ at
         // the constructor value zero and stamps generated computer slots with

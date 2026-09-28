@@ -7,7 +7,7 @@
 use super::{GeneratedTechnoInitError, object_uses_voxel};
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::{Animation, SequenceKind};
 use crate::sim::components::{BridgeOccupancy, HarvestOverlay, Health, VoxelAnimation};
@@ -50,12 +50,7 @@ impl Simulation {
             // Original copy slices: object_health corpus / constructors.
             current: obj.strength,
         };
-        let category = match obj.category {
-            ObjectCategory::Infantry => EntityCategory::Infantry,
-            ObjectCategory::Vehicle => EntityCategory::Unit,
-            ObjectCategory::Aircraft => EntityCategory::Aircraft,
-            ObjectCategory::Building => EntityCategory::Structure,
-        };
+        let category = EntityCategory::from(obj.category);
         let uses_voxel = object_uses_voxel(type_id, obj, rules);
         let sight_range = (obj.sight.max(0) as u16).min(MAX_SIGHT_RANGE);
         let stable_id = self.allocate_stable_id();
@@ -288,23 +283,7 @@ fn stamp_scoring_flags(
     rules: Option<&RuleSet>,
 ) {
     ge.dont_score = obj.is_some_and(|o| o.dont_score);
-    // Add_Tracking's building arm (`0x004FF761..0x004FF791`): vtable `+0x80`,
-    // or UndeploysInto (`+0x408`) with ResourceGatherer (`+0x5EC`).
-    let unit_like_building = ge.category == EntityCategory::Structure
-        && obj.is_some_and(|o| {
-            o.is_1x1_with_undeploy()
-                || o.undeploys_into
-                    .as_deref()
-                    .and_then(|undeploys| rules.and_then(|rules| rules.object(undeploys)))
-                    .is_some_and(|undeploys| undeploys.resource_gatherer)
-        });
-    ge.tracking_facts = crate::sim::house_tracking::TrackingFacts {
-        insignificant: obj.is_some_and(|o| o.insignificant),
-        unit_like_building,
-        resource_gatherer: obj.is_some_and(|o| o.resource_gatherer),
-        force_value: obj
-            .and_then(|o| crate::sim::house_tracking::ForceValueFacts::of(ge.category, o)),
-    };
+    ge.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(ge.category, obj, rules);
 }
 
 fn stamp_building_cell_profile(

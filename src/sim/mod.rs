@@ -160,6 +160,8 @@ pub mod trigger_runtime;
 // --- AI, replay, selection, debug ---
 pub mod ai;
 pub(crate) mod ai_buildable;
+pub(crate) mod ai_team_creation;
+pub(crate) mod ai_unit_choice;
 pub mod debug_event_log;
 pub(crate) mod naval_base_placement;
 pub mod replay;

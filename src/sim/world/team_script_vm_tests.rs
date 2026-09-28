@@ -111,7 +111,9 @@ fn production_install_boundary_resolves_aimd_without_creating_a_team() {
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
 
-    let diagnostics = sim.install_team_ai_registry(&registry, &rules);
+    let diagnostics = sim
+        .install_team_ai_registry(&registry, &rules)
+        .expect("clean fixed AIMD installs");
 
     assert!(diagnostics.is_empty());
     assert_eq!(sim.team_script_vm.registry_counts(), (1, 1, 1, 1));
@@ -141,7 +143,9 @@ fn production_install_refuses_fixed_resolution_loss_but_keeps_scenario_omissions
     let mut fixed_sim = Simulation::new();
     fixed_sim.intern_rule_type_ids(&rules);
     fixed_sim.resolve_type_handles(&rules);
-    let fixed_diagnostics = fixed_sim.install_team_ai_registry(&fixed_registry, &rules);
+    let fixed_diagnostics = fixed_sim
+        .install_team_ai_registry(&fixed_registry, &rules)
+        .expect_err("a fixed-origin resolution loss refuses the install");
 
     assert_eq!(
         fixed_diagnostics,
@@ -173,8 +177,9 @@ fn production_install_refuses_fixed_resolution_loss_but_keeps_scenario_omissions
     let mut scenario_sim = Simulation::new();
     scenario_sim.intern_rule_type_ids(&rules);
     scenario_sim.resolve_type_handles(&rules);
-    let scenario_diagnostics =
-        scenario_sim.install_team_ai_registry(&scenario_registry, &rules);
+    let scenario_diagnostics = scenario_sim
+        .install_team_ai_registry(&scenario_registry, &rules)
+        .expect("scenario-origin omissions still install");
 
     assert_eq!(
         scenario_diagnostics,
@@ -211,7 +216,9 @@ fn production_install_refuses_unknown_fixed_ai_trigger_object() {
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
 
-    let diagnostics = sim.install_team_ai_registry(&registry, &rules);
+    let diagnostics = sim
+        .install_team_ai_registry(&registry, &rules)
+        .expect_err("a fixed-origin resolution loss refuses the install");
 
     assert_eq!(
         diagnostics,
@@ -253,7 +260,9 @@ fn production_install_refuses_fixed_resolution_loss_masked_by_same_identity_map_
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
 
-    let diagnostics = sim.install_team_ai_registry(&registry, &rules);
+    let diagnostics = sim
+        .install_team_ai_registry(&registry, &rules)
+        .expect_err("a fixed-origin resolution loss refuses the install");
 
     assert_eq!(
         diagnostics,

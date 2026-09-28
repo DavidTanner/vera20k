@@ -174,6 +174,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         tech_level: -1,
         build_time_multiplier: crate::util::native_x87::NativeF32Bits::ONE,
         owner: vec![],
+        double_owned: false,
         required_houses: vec![],
         forbidden_houses: vec![],
         ai_base_planning_side: -1,

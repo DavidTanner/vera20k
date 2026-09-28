@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::assets::asset_manager::AssetManager;
 use crate::rules::ini_parser::{IniFile, IniSection, is_native_none_type_name};
 use crate::rules::ini_value::{crt_atoi, parse_leading_f64, scan_decimal_i32};
 use crate::util::native_x87::NativeF64Bits;
@@ -111,11 +112,17 @@ pub struct AiTriggerTypeIni {
     pub condition: i32,
     pub object_type: Option<String>,
     pub comparison_mask: [u8; 32],
+    /// Tokens 7, 8 and 9: the weight (`+0xB8`), its minimum (`+0xC0`) and
+    /// maximum (`+0xC8`), see [`ai_trigger_weight`].
     pub weights: [NativeF64Bits; 3],
-    pub storage_flag_d0: bool,
-    pub storage_i32_ac: i32,
+    /// Token 10 (`+0xD0`): the trigger may run in a multiplayer game.
+    pub multiplayer: bool,
+    /// Token 12 (`+0xAC`): 1, 2 or 3 limits it to side 0, 1 or 2.
+    pub side: i32,
     pub storage_flag_d1: bool,
     pub secondary_team_type: Option<String>,
+    /// Tokens 15, 16 and 17 (`+0xD2`, `+0xD3`, `+0xD4`): the easy, normal and
+    /// hard difficulties it runs at.
     pub difficulty_enabled: [bool; 3],
     pub enabled: bool,
     pub source: TeamAiDefinitionSource,
@@ -203,6 +210,31 @@ pub struct TeamAiIniRegistry {
 }
 
 impl TeamAiIniRegistry {
+    /// Load the definitions a scenario installs: the active-YR `AIMD.INI`
+    /// root, extended by the scenario INI.
+    ///
+    /// Retail provenance: `Load_Game_Rules @ 0x0052CD70` opens `AIMD.INI` as
+    /// its standalone root, never merged with the Rules layers; the scenario
+    /// passes of [`Self::from_sources`] then extend each registry.
+    pub(crate) fn load_retail(
+        assets: &AssetManager,
+        scenario: &IniFile,
+        game_mode_nonzero: bool,
+    ) -> Result<Self, String> {
+        let fixed = crate::rules::retail_sources::select_ini(assets, "aimd.ini")?.ini;
+        let registry = Self::from_sources(&fixed, scenario, game_mode_nonzero);
+        if !registry.fixed_source_is_complete() {
+            return Err(format!(
+                "active YR aimd.ini failed structural validation: fixed_counts={:?}, diagnostics={:?}",
+                registry.fixed_counts, registry.diagnostics
+            ));
+        }
+        for diagnostic in &registry.diagnostics {
+            log::warn!("Team AI INI diagnostic: {diagnostic:?}");
+        }
+        Ok(registry)
+    }
+
     /// Reproduce the active-YR per-registry fixed/map pass sequence.
     ///
     /// Retail provenance: `ScenarioClass::Full_Init @ 0x00686B20`, exact
@@ -507,8 +539,8 @@ impl TeamAiIniRegistry {
                     ai_trigger_weight(&tokens[9]),
                 ],
                 // `atoi(token) != 0` (`0x0041F929`..`0x0041FA56`).
-                storage_flag_d0: crt_atoi(&tokens[10]) != 0,
-                storage_i32_ac: crt_atoi(&tokens[12]),
+                multiplayer: crt_atoi(&tokens[10]) != 0,
+                side: crt_atoi(&tokens[12]),
                 storage_flag_d1: crt_atoi(&tokens[13]) != 0,
                 secondary_team_type: optional_reference(&tokens[14]),
                 difficulty_enabled: [
@@ -608,11 +640,15 @@ fn upsert_ordered<T>(
     }
 }
 
-/// An AITrigger weight: `atof`, `_ftol`, then `FILD qword` over the low
-/// dword with a zero high dword (`0x0041F893`..`0x0041F8AC`), so the weight
-/// is a whole number and a negative one reads as its unsigned 32-bit value.
+/// One AITrigger weight token as the raw reader stores it
+/// (`0x0041F892..0x0041F8AC` and the two after it): CRT `atof`, `Math::ftol`
+/// toward zero, the low dword zero-extended and loaded as a 64-bit integer, so
+/// a weight is a whole number in `0..2^32` (`-1` reads 4294967295).
 fn ai_trigger_weight(token: &str) -> NativeF64Bits {
-    NativeF64Bits::from_bits(f64::from(parse_leading_f64(token) as i32 as u32).to_bits())
+    use crate::util::native_x87::X87Chop53;
+    let parsed = NativeF64Bits::from_bits(parse_leading_f64(token).to_bits());
+    let whole = X87Chop53::load_f64(parsed).map_or(0, X87Chop53::ftol_i32_low_masked) as u32;
+    NativeF64Bits::from_bits(f64::from(whole).to_bits())
 }
 
 /// `sscanf("%d,%s")`: a decimal, a comma right after it, then one
@@ -824,8 +860,8 @@ mod tests {
                 NativeF64Bits::from_bits(40.0_f64.to_bits()),
             ]
         );
-        assert!(trigger.storage_flag_d0);
-        assert_eq!(trigger.storage_i32_ac, 1);
+        assert!(trigger.multiplayer);
+        assert_eq!(trigger.side, 1);
         assert!(!trigger.storage_flag_d1);
         assert_eq!(trigger.secondary_team_type, None);
         assert_eq!(trigger.difficulty_enabled, [true, true, true]);
@@ -1059,8 +1095,8 @@ mod tests {
                 NativeF64Bits::from_bits(70.0_f64.to_bits()),
             ]
         );
-        assert!(anti_nuke.storage_flag_d0);
-        assert_eq!(anti_nuke.storage_i32_ac, 1);
+        assert!(anti_nuke.multiplayer);
+        assert_eq!(anti_nuke.side, 1);
         assert!(!anti_nuke.storage_flag_d1);
         assert_eq!(anti_nuke.secondary_team_type.as_deref(), Some("0CB246CC-G"));
         assert_eq!(anti_nuke.difficulty_enabled, [false, true, true]);
