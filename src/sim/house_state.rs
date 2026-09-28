@@ -130,18 +130,6 @@ pub(crate) const fn strategy_timer_at_construction() -> CdTimer {
     CdTimer::started(0, 0)
 }
 
-/// [`HouseState::team_timer`]'s constructor value (`HouseClass::Constructor
-/// 0x004F5CCA..0x004F5CDB`): started at the construction frame, 0, for one
-/// frame. [`HouseState::set_difficulty`] restarts it.
-pub(crate) const fn team_timer_at_construction() -> CdTimer {
-    CdTimer::started(0, 1)
-}
-
-/// [`HouseState::ratio_ai_trigger_team`]'s constructor value (`0x004F5BDD`).
-pub(crate) const fn ratio_ai_trigger_team_at_construction() -> i32 {
-    100
-}
-
 /// [`HouseState::eva_funds_timer`]'s constructor value
 /// (`HouseClass::Constructor 0x004F5D2F`, the duration from `0x004F5CD0 MOV
 /// EAX,1`): started at the construction frame, 0, for one frame.
@@ -461,16 +449,11 @@ pub struct HouseState {
     /// (`0x004F5B9D..0x004F5BA8`). Persisted and hashed (schema v234).
     #[serde(default = "strategy_timer_at_construction")]
     pub(crate) strategy_timer: CdTimer,
-    /// `HouseClass+0x5798`/`+0x57A0`, the timer that runs team creation
-    /// (`sim::ai_team_creation`). Persisted and hashed (schema v238).
-    #[serde(default = "team_timer_at_construction")]
-    pub(crate) team_timer: CdTimer,
-    /// `HouseClass+0x565C`, the percent chance a team creation pass picks an
-    /// AI trigger: constructor 100, a map house's `RatioAITriggerTeam=`
-    /// (`HouseClass::Read_Scenario_INI 0x00500D0D..0x00500D25`). Persisted and
-    /// hashed (schema v238).
-    #[serde(default = "ratio_ai_trigger_team_at_construction")]
-    pub(crate) ratio_ai_trigger_team: i32,
+    /// The team timer and `RatioAITriggerTeam=` (`HouseClass+0x5798`/`+0x57A0`,
+    /// `+0x565C`), owned by `sim::ai_team_creation`. Persisted and hashed
+    /// (schema v238).
+    #[serde(default)]
+    pub(crate) team_creation: crate::sim::ai_team_creation::HouseTeamCreation,
     /// Native House bytes `+0x1EE`, `+0x1EF`, `+0x1F2`, and `+0x1F3`. All four
     /// persist, while Production, AutocreateAllowed, and AITriggersActive
     /// directly enter House CRC.
@@ -596,7 +579,7 @@ impl HouseState {
         let team_delay = self
             .difficulty_value(&general.team_delays)
             .wrapping_add(array_index.wrapping_mul(175));
-        self.team_timer = CdTimer::started(frame, team_delay);
+        self.team_creation.restart(frame, team_delay);
     }
 
     /// The house's ROF multiplier (`HouseClass+0x1A8`).
@@ -773,8 +756,7 @@ impl HouseState {
             },
             strategy_emergency: HouseStrategyEmergencyState::default(),
             strategy_timer: strategy_timer_at_construction(),
-            team_timer: team_timer_at_construction(),
-            ratio_ai_trigger_team: ratio_ai_trigger_team_at_construction(),
+            team_creation: Default::default(),
             ai_activation: HouseAiActivationLatches::default(),
             ai_production: Default::default(),
             ai_unit_choices: Default::default(),
@@ -1292,8 +1274,9 @@ mod difficulty_tests {
                 row["rof_bias"].as_str().unwrap(),
                 "{input}"
             );
+            let team_timer = house.team_creation.timer();
             assert_eq!(
-                [house.team_timer.start_frame(), house.team_timer.duration()],
+                [team_timer.start_frame(), team_timer.duration()],
                 [0, 1].map(|slot| row["team_timer"][slot].as_i64().unwrap() as i32),
                 "{input}"
             );

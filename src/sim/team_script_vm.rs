@@ -137,7 +137,7 @@ pub struct TeamTypeIniMetadata {
     /// `Reinforce=` (`+0xAB`, constructor 0): the unit choosers count this
     /// type's teams as needing members until they fill (`0x004FEC26`).
     #[serde(default)]
-    pub reinforce: bool,
+    reinforce: bool,
     pub raw_fields: Vec<(String, String)>,
     pub source: TeamAiDefinitionSource,
 }
@@ -289,15 +289,15 @@ impl AiTriggerTrackRecord {
 /// keys of the empty-team dissolve and the AI trigger feedback.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TeamRules {
-    pub(crate) game_mode_nonzero: bool,
+    game_mode_nonzero: bool,
     /// `[General] DissolveUnfilledTeamDelay=` (`Rules+0x1190`).
-    pub(crate) dissolve_unfilled_team_delay: i32,
+    dissolve_unfilled_team_delay: i32,
     /// `[General] AITriggerSuccessWeightDelta=` (`Rules+0xC0`).
-    pub(crate) success_weight_delta: NativeF64Bits,
+    success_weight_delta: NativeF64Bits,
     /// `[General] AITriggerFailureWeightDelta=` (`Rules+0xC8`).
-    pub(crate) failure_weight_delta: NativeF64Bits,
+    failure_weight_delta: NativeF64Bits,
     /// `[General] AITriggerTrackRecordCoefficient=` (`Rules+0xD0`).
-    pub(crate) track_record_coefficient: NativeF64Bits,
+    track_record_coefficient: NativeF64Bits,
 }
 
 impl TeamRules {

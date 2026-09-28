@@ -5823,20 +5823,31 @@ impl Simulation {
     /// Install fixed AIMD plus scenario AI definitions after RuleSet identities
     /// are interned and before the first gameplay tick. This is data ingress
     /// only: the installed VM contains no live TeamClass instances.
+    ///
+    /// A fixed-AIMD definition that fails RuleSet resolution refuses the whole
+    /// install (`Err`, nothing installed); scenario-origin omissions install
+    /// and come back as logged, nonfatal diagnostics.
     pub(crate) fn install_team_ai_registry(
         &mut self,
         registry: &crate::rules::team_ai_ini::TeamAiIniRegistry,
         rules: &RuleSet,
-    ) -> Vec<crate::sim::team_script_vm::TeamAiInstallDiagnostic> {
+    ) -> Result<
+        Vec<crate::sim::team_script_vm::TeamAiInstallDiagnostic>,
+        Vec<crate::sim::team_script_vm::TeamAiInstallDiagnostic>,
+    > {
         let (vm, diagnostics) =
             TeamScriptVm::from_ini_registry(registry, &mut self.interner, rules);
-        if !diagnostics
+        if diagnostics
             .iter()
             .any(crate::sim::team_script_vm::TeamAiInstallDiagnostic::is_fixed_source_refusal)
         {
-            self.team_script_vm = vm;
+            return Err(diagnostics);
         }
-        diagnostics
+        self.team_script_vm = vm;
+        for diagnostic in &diagnostics {
+            log::warn!("Team AI install diagnostic: {diagnostic:?}");
+        }
+        Ok(diagnostics)
     }
 
     /// `DriveLocomotionClass::Process` (0x004B0823 region; ships share the

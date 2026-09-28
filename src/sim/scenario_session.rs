@@ -262,7 +262,7 @@ pub struct ScenarioSession {
     pub free_radar: bool,
     /// Persistent native Scenario+34B4 (`[Basic] IgnoreGlobalAITriggers`).
     #[serde(default)]
-    pub ignore_global_ai_triggers: bool,
+    ignore_global_ai_triggers: bool,
     /// Persisted native `ScenarioClass` flags bit `0x40` (`TiberiumGrows`);
     /// see the descriptor field of the same name.
     #[serde(default)]
@@ -413,6 +413,12 @@ impl ScenarioSession {
         opts.game_speed.hash(hasher);
         opts.ai_difficulty.hash(hasher);
         opts.ai_players.hash(hasher);
+    }
+
+    /// Scenario+34B4 (`[Basic] IgnoreGlobalAITriggers=`): the computer's
+    /// team creation skips the global (`AIMD.INI`) AI triggers.
+    pub(crate) const fn ignore_global_ai_triggers(&self) -> bool {
+        self.ignore_global_ai_triggers
     }
 
     pub fn from_descriptor(desc: &ScenarioDescriptor) -> Self {

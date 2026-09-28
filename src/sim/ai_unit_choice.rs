@@ -28,7 +28,7 @@
 //! Evidence: instruction reading of the three bodies and their helpers;
 //! `tools/ai_team_oracle.py` executes the choosers with CanBuild, Cost_Of,
 //! Available_Money, IsRecruitable and the draws hooked (the
-//! `ai_team_creation_tests` goldens).
+//! `ai_unit_choice_tests` goldens).
 //!
 //! RESIDUALS:
 //! - Native tallies need in stack arrays of 100 entries: a class with more
@@ -205,32 +205,32 @@ fn harvester_choice(sim: &Simulation, rules: &RuleSet, owner: InternedId) -> Opt
 
 /// What the Unit chooser's harvester branch reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HarvesterFacts {
+struct HarvesterFacts {
     /// The first `[General] HarvesterUnit=` type the house's country owns:
     /// its vehicle index (`+0xDF8`) and TechLevel (`+0x634`).
-    pub(crate) harvester: Option<(i32, i32)>,
+    harvester: Option<(i32, i32)>,
     /// The first `[AI] BuildRefinery=` type buildable for the house
     /// (`HouseClass::FirstBuildableFromArray @ 0x005051E0`): the vehicle
     /// index of its `UndeploysInto=` (`+0x408`), if any.
-    pub(crate) refinery: Option<Option<i32>>,
+    refinery: Option<Option<i32>>,
     /// `+0x158`, its `ResourceGatherer=` objects.
-    pub(crate) gatherers: i32,
+    gatherers: i32,
     /// `+0x15C`, its `ResourceDestination=` objects.
-    pub(crate) destinations: i32,
+    destinations: i32,
     /// `[General] HarvestersPerRefinery=` of its difficulty.
-    pub(crate) harvesters_per_refinery: i32,
+    harvesters_per_refinery: i32,
     /// `[General] AISlaveMinerNumber=` of its difficulty.
-    pub(crate) slave_miners: i32,
+    slave_miners: i32,
     /// `+0x24C`.
-    pub(crate) current_iq: i32,
+    current_iq: i32,
     /// `[IQ] Harvester=` (`Rules+0x1458`).
-    pub(crate) iq_harvester: i32,
+    iq_harvester: i32,
     /// `+0x242`.
-    pub(crate) no_ore: bool,
+    no_ore: bool,
     /// A human controls the house.
-    pub(crate) human: bool,
+    human: bool,
     /// `+0x1D4`.
-    pub(crate) tech_level: i32,
+    tech_level: i32,
 }
 
 /// The harvester branch (`0x004FEA7D..0x004FEBD7`) on `facts`. With a
@@ -241,7 +241,7 @@ pub(crate) struct HarvesterFacts {
 /// gatherers are below the limit and the harvester's TechLevel is within the
 /// house's (unsigned). Without one: the refinery's `UndeploysInto=` while
 /// the gatherers are below `AISlaveMinerNumber`.
-pub(crate) fn harvester_decision(facts: &HarvesterFacts) -> Option<i32> {
+fn harvester_decision(facts: &HarvesterFacts) -> Option<i32> {
     let Some((harvester, harvester_tech)) = facts.harvester else {
         return (facts.gatherers < facts.slave_miners)
             .then_some(facts.refinery)
@@ -265,13 +265,13 @@ pub(crate) fn harvester_decision(facts: &HarvesterFacts) -> Option<i32> {
 
 /// A type the house's teams need and the house may buy now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Candidate {
+struct Candidate {
     /// The type's index in its class array.
-    pub(crate) index: i32,
+    index: i32,
     /// Its outstanding need.
-    pub(crate) need: i32,
+    need: i32,
     /// The creation frame (`TeamClass+0x50`) of the earliest team needing it.
-    pub(crate) earliest: i32,
+    earliest: i32,
 }
 
 /// The house's candidates of `kind`'s class ([`tally`] over its teams and
@@ -339,7 +339,7 @@ fn candidates(
 /// index order with need left is asked `can_build` (`HouseClass::CanBuild`
 /// with neither flag) and, unless it answers No, `cost_of` (`Cost_Of`): at
 /// most `money` (`Available_Money`, signed), it is a candidate.
-pub(crate) fn tally(
+fn tally(
     type_count: usize,
     teams: impl IntoIterator<Item = (i32, Vec<usize>)>,
     free: impl IntoIterator<Item = usize>,
@@ -415,7 +415,7 @@ fn mission_recruitable(rules: &RuleSet, mission: MissionId) -> bool {
 /// 0.01 > r * (1 / 0x7FFFFFFE)` (`FCOMPP`, `TEST AH,0x41`) takes the earliest
 /// team's type (none without candidates) with no second draw; otherwise a
 /// non-empty list takes `list[RandomRanged(0, len - 1)]`.
-pub(crate) fn pick(
+fn pick(
     candidates: &[Candidate],
     fill_earliest_percent: i32,
     mut draw: impl FnMut(i32, i32) -> i32,
@@ -446,3 +446,7 @@ pub(crate) fn pick(
     let slot = draw(0, most_needed.len() as i32 - 1);
     most_needed.get(usize::try_from(slot).ok()?).copied()
 }
+
+#[cfg(test)]
+#[path = "ai_unit_choice_tests.rs"]
+mod tests;

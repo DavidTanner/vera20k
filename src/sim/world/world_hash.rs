@@ -1214,16 +1214,7 @@ impl Simulation {
                 house.strategy_timer.hash(hasher);
             }
             if schema.includes(HashFeature::AiTeams) {
-                if house.team_timer != crate::sim::house_state::team_timer_at_construction() {
-                    b"house-team-timer-v1".hash(hasher);
-                    house.team_timer.hash(hasher);
-                }
-                if house.ratio_ai_trigger_team
-                    != crate::sim::house_state::ratio_ai_trigger_team_at_construction()
-                {
-                    b"house-ai-trigger-ratio-v1".hash(hasher);
-                    house.ratio_ai_trigger_team.hash(hasher);
-                }
+                house.team_creation.hash_state(hasher);
                 if house.ai_unit_choices != Default::default() {
                     b"house-ai-unit-choices-v1".hash(hasher);
                     house.ai_unit_choices.hash(hasher);

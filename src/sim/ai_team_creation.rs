@@ -56,6 +56,10 @@
 //!   the per-Super override (`SuperClass+0x24`, `0x006CC260`) is not kept.
 //!   Trigger: a map trigger that changes a super weapon's charge time.
 
+use std::hash::{Hash, Hasher};
+
+use serde::{Deserialize, Serialize};
+
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
@@ -67,6 +71,7 @@ use crate::sim::team_script_vm::{
     TeamAiTriggerDefinition, TeamAiTriggerOwner, TeamMemberTypeIdentity, TeamRules,
     TeamTypeDefinition,
 };
+use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 use crate::util::native_x87::{NativeF32Bits, X87Chop53, X87Ordering};
 
@@ -77,6 +82,55 @@ const PRIORITY_WEIGHT: i32 = 5000;
 /// `1.0f` (`[0x007E2AC8]`).
 const ONE_F32: NativeF32Bits = NativeF32Bits::from_bits(0x3F80_0000);
 
+/// A house's team creation state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HouseTeamCreation {
+    /// `HouseClass+0x5798`/`+0x57A0`: the constructor starts it at the
+    /// construction frame, 0, for one frame (`0x004F5CCA..0x004F5CDB`);
+    /// `HouseState::set_difficulty` restarts it.
+    timer: CdTimer,
+    /// `HouseClass+0x565C`, the percent chance a pass picks an AI trigger:
+    /// constructor 100 (`0x004F5BDD`); a map house's `RatioAITriggerTeam=` is
+    /// a module residual.
+    ratio: i32,
+}
+
+impl Default for HouseTeamCreation {
+    fn default() -> Self {
+        Self {
+            timer: CdTimer::started(0, 1),
+            ratio: 100,
+        }
+    }
+}
+
+impl HouseTeamCreation {
+    /// Restart the team timer at `frame` for `delay` frames.
+    pub(crate) fn restart(&mut self, frame: i32, delay: i32) {
+        self.timer.start(frame, delay);
+    }
+
+    /// Fold the timer and the ratio, each tagged and only off its
+    /// constructor value, so a house that never ran team creation hashes as
+    /// earlier schemas.
+    pub(crate) fn hash_state(&self, hasher: &mut impl Hasher) {
+        let constructed = Self::default();
+        if self.timer != constructed.timer {
+            b"house-team-timer-v1".hash(hasher);
+            self.timer.hash(hasher);
+        }
+        if self.ratio != constructed.ratio {
+            b"house-ai-trigger-ratio-v1".hash(hasher);
+            self.ratio.hash(hasher);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn timer(&self) -> CdTimer {
+        self.timer
+    }
+}
+
 /// The team block of `HouseClass::Update` for house `owner` (see the module
 /// doc).
 pub(crate) fn update_team_creation(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
@@ -85,7 +139,7 @@ pub(crate) fn update_team_creation(sim: &mut Simulation, rules: &RuleSet, owner:
     let Some(house) = sim.houses.get(&owner) else {
         return;
     };
-    if !house.team_timer.expired(frame)
+    if !house.team_creation.timer.expired(frame)
         || house.is_controlled_by_human(game_mode_nonzero)
         || house.multiplay_passive
     {
@@ -98,7 +152,7 @@ pub(crate) fn update_team_creation(sim: &mut Simulation, rules: &RuleSet, owner:
     }
     if let Some(house) = sim.houses.get_mut(&owner) {
         let delay = house.difficulty_value(&rules.general.team_delays);
-        house.team_timer.start(frame, delay);
+        house.team_creation.restart(frame, delay);
     }
 }
 
@@ -149,7 +203,7 @@ pub(crate) fn select_team_types_with(
         return Vec::new();
     };
     let enemy = house.enemy_house;
-    let ratio = house.ratio_ai_trigger_team;
+    let ratio = house.team_creation.ratio;
     let triggers_active = house.ai_activation.ai_triggers_active;
     let team_cap = house.difficulty_value(&rules.general.total_ai_team_cap);
     let max_defensive = house.difficulty_value(&rules.general.maximum_ai_defensive_teams);
@@ -325,7 +379,7 @@ fn is_eligible(
         return false;
     }
     let global = trigger.source == TeamAiDefinitionSource::FixedAimd;
-    if global && sim.session.ignore_global_ai_triggers {
+    if global && sim.session.ignore_global_ai_triggers() {
         return false;
     }
     if !trigger.enabled {
@@ -628,4 +682,4 @@ fn factories_admit(
 
 #[cfg(test)]
 #[path = "ai_team_creation_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -84,26 +84,67 @@ use serde::{Deserialize, Serialize};
 
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::ObjectType;
-use crate::rules::ruleset::HouseCostFactors;
+use crate::rules::ruleset::{HouseCostFactors, RuleSet};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 
-/// The type facts the counters test, fixed when the Techno is constructed.
+/// The type facts the counters test, fixed when the Techno is constructed
+/// ([`TrackingFacts::of`]).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TrackingFacts {
     /// `ObjectType+0x232` Insignificant.
-    pub insignificant: bool,
+    insignificant: bool,
     /// A building tracked with the units: a 1x1 undeployer, or one that
     /// undeploys into a `ResourceGatherer=` (a deployed Slave Miner).
-    pub unit_like_building: bool,
+    unit_like_building: bool,
     /// `TechnoType+0x5EC`, `ResourceGatherer=` (ReadINI `0x007143DF`).
-    pub resource_gatherer: bool,
+    resource_gatherer: bool,
     /// `TechnoType+0x5ED`, `ResourceDestination=` (ReadINI `0x007143FE`).
     #[serde(default)]
-    pub resource_destination: bool,
+    resource_destination: bool,
     /// The value arm of the on-map writers; none for a building.
     #[serde(default)]
-    pub force_value: Option<ForceValueFacts>,
+    force_value: Option<ForceValueFacts>,
+}
+
+impl TrackingFacts {
+    /// The facts of an object of class `category` and type `ty`. A building
+    /// is tracked with the units (Add_Tracking's building arm
+    /// `0x004FF761..0x004FF791`) when its vtable `+0x80` answers (a 1x1
+    /// undeployer) or it undeploys (`+0x408`) into a `ResourceGatherer=`
+    /// (`+0x5EC`).
+    pub(crate) fn of(
+        category: EntityCategory,
+        ty: Option<&ObjectType>,
+        rules: Option<&RuleSet>,
+    ) -> Self {
+        let Some(ty) = ty else {
+            return Self::default();
+        };
+        let unit_like_building = category == EntityCategory::Structure
+            && (ty.is_1x1_with_undeploy()
+                || ty
+                    .undeploys_into
+                    .as_deref()
+                    .and_then(|undeploys| rules.and_then(|rules| rules.object(undeploys)))
+                    .is_some_and(|undeploys| undeploys.resource_gatherer));
+        Self {
+            insignificant: ty.insignificant,
+            unit_like_building,
+            resource_gatherer: ty.resource_gatherer,
+            resource_destination: ty.resource_destination,
+            force_value: ForceValueFacts::of(category, ty),
+        }
+    }
+
+    /// An `Insignificant=` object's facts.
+    #[cfg(test)]
+    pub(crate) fn insignificant_for_test() -> Self {
+        Self {
+            insignificant: true,
+            ..Self::default()
+        }
+    }
 }
 
 /// The house total an object's value joins.
@@ -120,18 +161,18 @@ pub enum ForceKind {
 /// What the on-map writers price: the total and the type's `Cost_Of` inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ForceValueFacts {
-    pub kind: ForceKind,
+    kind: ForceKind,
     /// `TechnoType+0x610`, the `Cost=` that `Cost_Of` scales (read through
     /// virtual `+0xAC`, `0x00711EB0`).
-    pub cost: i32,
+    cost: i32,
     /// [`ObjectType::factor_slot`].
-    pub factor_slot: u8,
+    factor_slot: u8,
 }
 
 impl ForceValueFacts {
     /// The value arm an object of class `category` and type `ty` takes (see
     /// the module doc).
-    pub(crate) fn of(category: EntityCategory, ty: &ObjectType) -> Option<Self> {
+    fn of(category: EntityCategory, ty: &ObjectType) -> Option<Self> {
         let kind = match category {
             EntityCategory::Aircraft => ForceKind::Air,
             EntityCategory::Infantry if ty.considered_aircraft => ForceKind::Air,

@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::assets::asset_manager::AssetManager;
 use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::ini_value::{atoi_lenient, parse_leading_f64, parse_read_int_value};
 use crate::util::native_x87::NativeF64Bits;
@@ -224,6 +225,31 @@ pub struct TeamAiIniRegistry {
 }
 
 impl TeamAiIniRegistry {
+    /// Load the definitions a scenario installs: the active-YR `AIMD.INI`
+    /// root, extended by the scenario INI.
+    ///
+    /// Retail provenance: `Load_Game_Rules @ 0x0052CD70` opens `AIMD.INI` as
+    /// its standalone root, never merged with the Rules layers; the scenario
+    /// passes of [`Self::from_sources`] then extend each registry.
+    pub(crate) fn load_retail(
+        assets: &AssetManager,
+        scenario: &IniFile,
+        game_mode_nonzero: bool,
+    ) -> Result<Self, String> {
+        let fixed = crate::rules::retail_sources::select_ini(assets, "aimd.ini")?.ini;
+        let registry = Self::from_sources(&fixed, scenario, game_mode_nonzero);
+        if !registry.fixed_source_is_complete() {
+            return Err(format!(
+                "active YR aimd.ini failed structural validation: fixed_counts={:?}, diagnostics={:?}",
+                registry.fixed_counts, registry.diagnostics
+            ));
+        }
+        for diagnostic in &registry.diagnostics {
+            log::warn!("Team AI INI diagnostic: {diagnostic:?}");
+        }
+        Ok(registry)
+    }
+
     /// Reproduce the active-YR per-registry fixed/map pass sequence.
     ///
     /// Retail provenance: `ScenarioClass::Full_Init @ 0x00686B20`, exact

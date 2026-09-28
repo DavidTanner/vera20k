@@ -29,15 +29,14 @@ use crate::sim::scenario_bootstrap::ScenarioBootstrapRng;
 use crate::sim::scenario_session::ScenarioDescriptor;
 use crate::sim::world::Simulation;
 
-fn one_player_battle_launch(
-    selected_map_file: &str,
-) -> Result<crate::sim::scenario_bootstrap::MatchLaunchDescriptor, String> {
+/// A Battle session on `selected_map_file` with the local player alone.
+fn battle_session(selected_map_file: &str) -> crate::skirmish_launch::SkirmishLaunchSession {
     use crate::skirmish_launch::{
         LaunchCountry, LaunchStartPosition, LaunchTeam, PreFillHouseRoster, SkirmishLaunchMode,
         SkirmishLaunchOptions, SkirmishLaunchSession, SkirmishLocalSlot,
     };
 
-    crate::sim::scenario_bootstrap::MatchLaunchDescriptor::from_resolved(SkirmishLaunchSession {
+    SkirmishLaunchSession {
         mode: SkirmishLaunchMode {
             id: 1,
             ui_name_key: "GUI:Battle".to_string(),
@@ -61,7 +60,15 @@ fn one_player_battle_launch(
         opponents: Vec::new(),
         pre_fill_house_roster: PreFillHouseRoster::from_compact_skirmish(0),
         options: SkirmishLaunchOptions::default(),
-    })
+    }
+}
+
+fn one_player_battle_launch(
+    selected_map_file: &str,
+) -> Result<crate::sim::scenario_bootstrap::MatchLaunchDescriptor, String> {
+    crate::sim::scenario_bootstrap::MatchLaunchDescriptor::from_resolved(battle_session(
+        selected_map_file,
+    ))
     .map_err(|error| format!("resolve one-player Battle launch: {error}"))
 }
 
@@ -155,6 +162,8 @@ pub(crate) fn load_with_launch(
         .into_parts();
     let bound_scenario_prefix =
         scenario_prefix_plan.bind_native_rules_receipt(native_rules_receipt);
+    let team_ai_registry =
+        crate::rules::team_ai_ini::TeamAiIniRegistry::load_retail(&assets, &map.ini, true)?;
     let theater = theater::load_theater(&mut assets, &map.header.theater)
         .ok_or_else(|| format!("load theater {}", map.header.theater))?;
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
@@ -336,6 +345,8 @@ pub(crate) fn load_with_launch(
     // identities for unspawned types too, and snapshots carry this interner.
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
+    sim.install_team_ai_registry(&team_ai_registry, &rules)
+        .map_err(|refused| format!("active YR aimd.ini failed RuleSet resolution: {refused:?}"))?;
     let _launch_result = crate::sim::scenario_bootstrap::
         apply_pre_fill_scenario_prefix_launch_session_with_overlay_registry(
             &mut sim,
@@ -754,5 +765,107 @@ mod retail_construction_tests {
             "retail finalizer coverage must not be vacuous"
         );
         eprintln!("Anytown final bound ART owner: {terrain_anims} live terrain Anims");
+    }
+
+    /// A retail skirmish: the local house idles while three computer houses
+    /// build their bases, create teams from their AI triggers and build what
+    /// the teams need. Every 1500 frames it prints each computer house's
+    /// teams, choices and Foot objects; each house must have created a team.
+    #[test]
+    #[ignore = "requires RA2_DIR with installed retail RA2/YR assets"]
+    fn retail_skirmish_computer_houses_build_their_teams() {
+        use crate::map::entities::EntityCategory;
+        use crate::sim::intern::InternedId;
+        use crate::skirmish_launch::{
+            AiDifficulty, LaunchCountry, LaunchStartPosition, LaunchTeam, PreFillHouseRoster,
+            SkirmishAiSlot,
+        };
+
+        let ra2 = std::path::PathBuf::from(
+            std::env::var("RA2_DIR").expect("set RA2_DIR to the retail RA2/YR install directory"),
+        );
+        // A four-start map: fewer start waypoints than houses would seed the
+        // extra starts at random, which the lobby never allows.
+        let map = "XMP03T4.MAP";
+        let mut session = battle_session(map);
+        let opponents = [
+            (LaunchCountry::Russia, AiDifficulty::Hard),
+            (LaunchCountry::Yuri, AiDifficulty::Normal),
+            (LaunchCountry::France, AiDifficulty::Easy),
+        ];
+        for (slot, (country, difficulty)) in opponents.into_iter().enumerate() {
+            session.opponents.push(SkirmishAiSlot {
+                country,
+                country_random: false,
+                color_index: slot as u8 + 1,
+                color_random: false,
+                start_position: LaunchStartPosition::Auto,
+                team: LaunchTeam::None,
+                difficulty,
+            });
+        }
+        session.pre_fill_house_roster = PreFillHouseRoster::from_compact_skirmish(opponents.len());
+        let launch =
+            crate::sim::scenario_bootstrap::MatchLaunchDescriptor::from_resolved(session).unwrap();
+        let mut scenario = load_with_launch(&ra2, map, 0x00C0_FFEE, launch).unwrap();
+        let computers: Vec<InternedId> = scenario
+            .sim()
+            .houses
+            .iter()
+            .filter(|(_, house)| !house.is_controlled_by_human(true) && !house.multiplay_passive)
+            .map(|(&id, _)| id)
+            .collect();
+        assert_eq!(computers.len(), opponents.len());
+        let mut created = std::collections::BTreeMap::new();
+        for frame in 1..=6_000u32 {
+            scenario.tick();
+            let sim = scenario.sim();
+            created.extend(
+                sim.team_script_vm
+                    .teams_in_order()
+                    .map(|team| (team.id(), team.owner())),
+            );
+            if frame % 1500 != 0 {
+                continue;
+            }
+            for &owner in &computers {
+                let house = &sim.houses[&owner];
+                let (teams, members) = sim
+                    .team_script_vm
+                    .teams_in_order()
+                    .filter(|team| team.owner() == owner)
+                    .fold((0, 0), |(teams, members), team| {
+                        (teams + 1, members + team.members().len())
+                    });
+                let foot = sim
+                    .entities()
+                    .values()
+                    .filter(|entity| {
+                        entity.owner() == owner && entity.category != EntityCategory::Structure
+                    })
+                    .count();
+                let buildings = sim
+                    .entities()
+                    .values()
+                    .filter(|entity| {
+                        entity.owner() == owner && entity.category == EntityCategory::Structure
+                    })
+                    .count();
+                eprintln!(
+                    "frame {frame} {}: {buildings} buildings, {foot} foot, {teams} live teams \
+                     ({members} members), choices {:?}",
+                    sim.interner.resolve(owner),
+                    house.ai_unit_choices,
+                );
+            }
+            eprintln!("frame {frame}: {} teams created so far", created.len());
+        }
+        for owner in computers {
+            assert!(
+                created.values().any(|&creator| creator == owner),
+                "{} created no team",
+                scenario.sim().interner.resolve(owner)
+            );
+        }
     }
 }

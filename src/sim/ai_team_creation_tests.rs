@@ -1,52 +1,48 @@
 //! Replay of `tools/ai_team_oracle.json` against the computer's team
-//! creation (`sim::ai_team_creation`) and its unit choices
-//! (`sim::ai_unit_choice`).
+//! creation: the team block, the selector, the eligibility arithmetic and the
+//! Iron Curtain readiness. Its chooser rows replay in `ai_unit_choice`'s
+//! tests, which share these readers.
 //!
-//! Each row carries what the native run's stubs answered (CanBuild, Cost_Of
-//! and the money, IsRecruitable, the selector's eligibility test, the
-//! draws); the Rust owner must ask in the same order and reach the same
-//! result. The teams a chooser tallies are those the original asked for
-//! their needs (`Get_Needed_Types`); which teams qualify
-//! (`TeamScriptState::wants_members`) rests on instruction reading, as do
-//! the eligibility gates these rows leave open.
+//! Each row carries what the native run's stubs answered (the selector's
+//! eligibility test, the draws); the Rust owner must ask in the same order
+//! and reach the same result. The eligibility gates these rows leave open
+//! rest on instruction reading.
 
 use std::hash::{DefaultHasher, Hasher};
 
 use super::*;
 use crate::rules::ini_parser::IniFile;
-use crate::sim::ai_unit_choice::{self, HarvesterFacts};
 use crate::sim::house_state::{HouseDifficulty, HouseState};
-use crate::sim::production::CanBuild;
 use crate::sim::rng::SimRng;
 use crate::sim::team_script_vm::{TeamScriptDefinition, TeamTaskForceDefinition};
 use crate::sim::timer::CdTimer;
 use crate::util::native_x87::NativeF64Bits;
 use serde_json::Value;
 
-fn rows(section: &str) -> Vec<Value> {
+pub(crate) fn rows(section: &str) -> Vec<Value> {
     let oracle: Value =
         serde_json::from_str(include_str!("../../tools/ai_team_oracle.json")).unwrap();
     oracle[section].as_array().unwrap().clone()
 }
 
 /// A dword as the original held it; the stubs record arguments unsigned.
-fn dword(value: &Value) -> i32 {
+pub(crate) fn dword(value: &Value) -> i32 {
     value.as_i64().unwrap() as u32 as i32
 }
 
-fn dwords(value: &Value) -> Vec<i32> {
+pub(crate) fn dwords(value: &Value) -> Vec<i32> {
     value.as_array().unwrap().iter().map(dword).collect()
 }
 
-fn flag(value: &Value) -> bool {
+pub(crate) fn flag(value: &Value) -> bool {
     value.as_bool().unwrap()
 }
 
-fn index(value: &Value) -> usize {
+pub(crate) fn index(value: &Value) -> usize {
     usize::try_from(value.as_u64().unwrap()).unwrap()
 }
 
-fn events<'a>(row: &'a Value, kind: &str) -> Vec<&'a Value> {
+pub(crate) fn events<'a>(row: &'a Value, kind: &str) -> Vec<&'a Value> {
     row["events"]
         .as_array()
         .unwrap()
@@ -57,7 +53,7 @@ fn events<'a>(row: &'a Value, kind: &str) -> Vec<&'a Value> {
 
 /// The original's draws, `(low, high, answer)`, all on the Scenario RNG
 /// (`Scenario+0x218`).
-fn native_draws(row: &Value) -> Vec<(i32, i32, i32)> {
+pub(crate) fn native_draws(row: &Value) -> Vec<(i32, i32, i32)> {
     events(row, "draw")
         .into_iter()
         .map(|draw| {
@@ -68,120 +64,23 @@ fn native_draws(row: &Value) -> Vec<(i32, i32, i32)> {
 }
 
 /// `RandomRanged` answering a row's `answers` in order.
-struct Draws {
+pub(crate) struct Draws {
     answers: std::vec::IntoIter<i32>,
-    asked: Vec<(i32, i32, i32)>,
+    pub(crate) asked: Vec<(i32, i32, i32)>,
 }
 
 impl Draws {
-    fn new(row: &Value) -> Self {
+    pub(crate) fn new(row: &Value) -> Self {
         Self {
             answers: dwords(&row["answers"]).into_iter(),
             asked: Vec::new(),
         }
     }
 
-    fn draw(&mut self, low: i32, high: i32) -> i32 {
+    pub(crate) fn draw(&mut self, low: i32, high: i32) -> i32 {
         let value = self.answers.next().expect("an answer for every draw");
         self.asked.push((low, high, value));
         value
-    }
-}
-
-#[test]
-fn the_choosers_match_the_original() {
-    for (number, row) in rows("choosers").iter().enumerate() {
-        let context = format!("{} chooser row {number}", row["kind"]);
-        let teams = row["teams"].as_array().unwrap();
-        let types = row["types"].as_array().unwrap();
-        let tallied: Vec<(i32, Vec<usize>)> = events(row, "needed")
-            .into_iter()
-            .map(|asked| {
-                let team = &teams[index(&asked[1])];
-                // A needed type of another class (`["other", n]`) is not
-                // this chooser's.
-                let needed = team["needed"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .filter_map(Value::as_u64)
-                    .map(|class_index| class_index as usize)
-                    .collect();
-                (dword(&team["created"]), needed)
-            })
-            .collect();
-        let free: Vec<usize> = row["objects"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|object| flag(&object[1]))
-            .map(|object| index(&object[0]))
-            .collect();
-        let mut asked_can_build = Vec::new();
-        let candidates = ai_unit_choice::tally(
-            types.len(),
-            tallied,
-            free,
-            dword(&row["money"]),
-            |class_index| {
-                asked_can_build.push(class_index);
-                match dword(&types[class_index][0]) {
-                    0 => CanBuild::No,
-                    1 => CanBuild::Yes,
-                    -1 => CanBuild::AtLimit,
-                    other => panic!("CanBuild answers {other}"),
-                }
-            },
-            |class_index| dword(&types[class_index][1]),
-        );
-        let native_can_build: Vec<usize> = events(row, "can_build")
-            .into_iter()
-            .map(|asked| index(&asked[1]))
-            .collect();
-        assert_eq!(asked_can_build, native_can_build, "{context}: CanBuild");
-        let fill = dword(&row["fill"][index(&row["difficulty"])]);
-        let mut draws = Draws::new(row);
-        let choice = ai_unit_choice::pick(&candidates, fill, |low, high| draws.draw(low, high));
-        assert_eq!(draws.asked, native_draws(row), "{context}: draws");
-        assert_eq!(choice.unwrap_or(-1), dword(&row["choice"]), "{context}");
-    }
-}
-
-#[test]
-fn the_harvester_branch_matches_the_original() {
-    let mut sim = Simulation::new();
-    let name = sim.interner.intern("H0");
-    for (number, row) in rows("harvester").iter().enumerate() {
-        let mut house = HouseState::new(name, 0, None, flag(&row["human"]), 0, dword(&row["tech"]));
-        house.player_control = flag(&row["control"]);
-        // The fixture's harvester is vehicle 7; its refinery undeploys into
-        // vehicle 9.
-        let facts = HarvesterFacts {
-            harvester: (flag(&row["harvester"]) && flag(&row["owned"]))
-                .then(|| (7, dword(&row["harvester_tech"]))),
-            refinery: flag(&row["refinery"]).then(|| flag(&row["undeploys"]).then_some(9)),
-            gatherers: dword(&row["gatherers"]),
-            destinations: dword(&row["destinations"]),
-            harvesters_per_refinery: dword(&row["per_refinery"]),
-            slave_miners: dword(&row["slave_miners"]),
-            current_iq: dword(&row["iq"]),
-            iq_harvester: dword(&row["iq_harvester"]),
-            no_ore: flag(&row["no_ore"]),
-            human: house.is_controlled_by_human(dword(&row["game_mode"]) != 0),
-            tech_level: house.tech_level,
-        };
-        let decision = ai_unit_choice::harvester_decision(&facts);
-        assert_eq!(
-            decision.unwrap_or(-1),
-            dword(&row["choice"]),
-            "harvester row {number}"
-        );
-        // Past the branch, the team pass (no candidates here) draws once.
-        assert_eq!(
-            native_draws(row).len(),
-            usize::from(decision.is_none()),
-            "harvester row {number}: draws"
-        );
     }
 }
 
@@ -243,7 +142,7 @@ fn selector_fixture(row: &Value) -> SelectorFixture {
     sim.session.house_order = vec![owner, enemy];
     let house = sim.houses.get_mut(&owner).unwrap();
     house.difficulty = HouseDifficulty::from_native(dword(&row["difficulty"])).unwrap();
-    house.ratio_ai_trigger_team = dword(&row["ratio"]);
+    house.team_creation.ratio = dword(&row["ratio"]);
     house.ai_activation.ai_triggers_active = flag(&row["active"]);
     house.enemy_house = flag(&row["enemy"]).then_some(enemy);
     let script = sim.interner.intern("SCRIPT");
@@ -467,12 +366,13 @@ fn the_team_block_matches_the_original() {
         house.player_control = flag(&row["control"]);
         house.multiplay_passive = flag(&row["passive"]);
         house.difficulty = HouseDifficulty::from_native(dword(&row["difficulty"])).unwrap();
-        house.team_timer = CdTimer::from_raw(dword(&row["start"]), dword(&row["duration"]));
+        house.team_creation.timer =
+            CdTimer::from_raw(dword(&row["start"]), dword(&row["duration"]));
         sim.houses.insert(owner, house);
         sim.session.house_order = vec![owner];
         let before = rng_digest(&sim.scenario_rng);
         update_team_creation(&mut sim, &rules, owner);
-        let timer = sim.houses[&owner].team_timer;
+        let timer = sim.houses[&owner].team_creation.timer;
         assert_eq!(
             vec![timer.start_frame(), timer.duration()],
             dwords(&row["timer"]),
