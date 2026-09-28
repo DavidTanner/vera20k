@@ -565,3 +565,35 @@ fn barrel_image_keeps_its_first_drawn_pitch() {
     pitches.clear();
     assert_eq!(pitches.pitch(&key("MTNK", 32), None, -1), -1);
 }
+
+/// gamemd's voxel loader gives a vehicle type without `Turret=` no gun parts
+/// (`0x005F8277`, `0x005F8844`), though retail ships the Mirage Tank's (image
+/// RTNK) and the jeep's. The loader reruns on every INI pass, so the processed
+/// Hills/Battle rules decide.
+#[test]
+fn retail_turretless_vehicles_load_no_gun_parts() {
+    use crate::rules::object_type::ObjectCategory;
+    use crate::rules::retail_ini_fixture::{retail_assets, retail_battle_rules};
+    let Some(battle) = retail_battle_rules() else {
+        return;
+    };
+    let (_, assets) = retail_assets().expect("the battle rules came from RA2_DIR");
+    let rules = &battle.rules;
+    for (type_id, files, turret, barrel) in [
+        ("MGTK", &["RTNKTUR.VXL", "RTNKBARL.VXL"][..], false, false),
+        ("JEEP", &["JEEPTUR.VXL"][..], false, false),
+        ("HTNK", &["HTNKTUR.VXL", "HTNKBARL.VXL"][..], true, true),
+        ("HARV", &["HARVTUR.VXL"][..], true, false),
+    ] {
+        let object = rules.object(type_id).expect(type_id);
+        assert_eq!(object.category, ObjectCategory::Vehicle, "{type_id}");
+        assert_eq!(object.has_turret, turret, "{type_id}");
+        for file in files {
+            assert!(assets.get_ref(file).is_some(), "{file}");
+        }
+        let model =
+            UnitModel::load(&assets, type_id, Some(rules), Some(rules.art())).expect(type_id);
+        assert_eq!(model.turret.is_some(), turret, "{type_id}");
+        assert_eq!(model.barrel.is_some(), barrel, "{type_id}");
+    }
+}

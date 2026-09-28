@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::hva_file::HvaFile;
 use crate::rules::art_data::{self, ArtRegistry};
+use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::VxlLayer;
 
@@ -66,13 +67,48 @@ pub(crate) fn unit_atlas_variants(type_id: &str, rules: Option<&RuleSet>) -> Vec
     variants
 }
 
+/// The image a voxel model draws with: `type_id`'s rules `Image=`, then the
+/// art `Image=` override. A name that is not a rules type is its own image.
+pub(crate) fn voxel_image_id(
+    type_id: &str,
+    rules: Option<&RuleSet>,
+    art: Option<&ArtRegistry>,
+) -> String {
+    let rules_image: String = rules
+        .and_then(|r| r.object(type_id))
+        .map(|o| o.image.clone())
+        .unwrap_or_else(|| type_id.to_string());
+    art.map(|a| a.resolve_effective_image_id(type_id, &rules_image))
+        .unwrap_or_else(|| rules_image.to_uppercase())
+}
+
+/// Whether the voxel model `type_id` has `%sTUR` and `%sBARL` gun parts.
+///
+/// `TechnoTypeClass::ReadINI` runs the voxel loader `0x005F8110` for a voxel
+/// type after it reads `Turret=` (`0x0071609C`, behind the voxel flag
+/// `+0x236`). For a vehicle type whose `Turret=` is clear, the loader jumps
+/// past `%sTUR` (`0x005F8277..0x005F828D`) and past `%sBARL`
+/// (`0x005F8844..0x005F8856`). Every other type loads both when the files
+/// exist. A `TurretCount=` vehicle loads one pair per turret index, the plain
+/// names for index 0 (`0x005F7A90`, `0x005F7DB0`). The loader formats no
+/// `%sBARREL` name.
+///
+/// A name that is not a rules type has none. A `%sWO` model stands in for its
+/// type's body, and a building's gun parts are its type's, not its
+/// `TurretAnim=` model's.
+pub(crate) fn has_gun_parts(type_id: &str, rules: Option<&RuleSet>) -> bool {
+    rules
+        .and_then(|rules| rules.object(type_id))
+        .is_some_and(|object| object.category != ObjectCategory::Vehicle || object.has_turret)
+}
+
 /// The layer set to seed atlas keys for, given a type's turret flag.
 ///
 /// A turreted type gets separate Body/Turret layers, and a Barrel layer **only
 /// when a barrel voxel actually exists**. Most turreted units model the gun as
-/// part of the turret and ship no `…BARL.VXL`/`…BARREL.VXL` — the Soviet War
-/// Miner is one. Seeding a Barrel key for those produced a key that could never
-/// be satisfied: the Barrel branch of the renderer rebuilds the body and turret
+/// part of the turret and ship no `…BARL.VXL`: the Soviet War Miner is one.
+/// Seeding a Barrel key for those produced a key that could never be
+/// satisfied: the Barrel branch of the renderer rebuilds the body and turret
 /// sprites, finds no barrel, and returns `None`, so nothing is cached and the
 /// whole attempt repeats on the next frame, forever. A single such unit on
 /// screen logged ~135k render failures in four minutes of play and paid for two
@@ -94,26 +130,17 @@ pub(crate) fn seed_layers_for(
     }
 }
 
-/// Whether this type ships a separate barrel voxel under either suffix the
-/// renderer accepts. Resolves the image id exactly as the render path does, so
-/// the seeding decision and the lookup can never disagree.
+/// Whether this type ships a separate barrel voxel. Resolves the image id
+/// exactly as the render path does, so the seeding decision and the lookup can
+/// never disagree.
 fn has_barrel_voxel(
     asset_manager: &AssetManager,
     type_id: &str,
     rules: Option<&RuleSet>,
     art: Option<&ArtRegistry>,
 ) -> bool {
-    let rules_image: String = rules
-        .and_then(|r| r.object(type_id))
-        .map(|o| o.image.clone())
-        .unwrap_or_else(|| type_id.to_string());
-    let image: String = art
-        .map(|a| a.resolve_effective_image_id(type_id, &rules_image))
-        .unwrap_or_else(|| rules_image.to_uppercase());
-    asset_manager
-        .get_ref(&format!("{image}BARL.VXL"))
-        .or_else(|| asset_manager.get_ref(&format!("{image}BARREL.VXL")))
-        .is_some()
+    let image = voxel_image_id(type_id, rules, art);
+    has_gun_parts(type_id, rules) && asset_manager.get_ref(&format!("{image}BARL.VXL")).is_some()
 }
 
 /// Detect the HVA animation frame count for a given (type_id, layer) combo.
@@ -127,14 +154,7 @@ pub(crate) fn detect_hva_frame_count(
     rules: Option<&RuleSet>,
     art: Option<&ArtRegistry>,
 ) -> u32 {
-    let rules_image: String = rules
-        .and_then(|r| r.object(type_id))
-        .map(|o| o.image.clone())
-        .unwrap_or_else(|| type_id.to_string());
-    let image: String = art
-        .map(|a| a.resolve_effective_image_id(type_id, &rules_image))
-        .unwrap_or_else(|| rules_image.to_uppercase());
-
+    let image = voxel_image_id(type_id, rules, art);
     let hva_name: String = match layer {
         VxlLayer::Composite | VxlLayer::Body => art_data::voxel_asset_names(&image).1,
         VxlLayer::Turret => format!("{}TUR.HVA", image),
@@ -150,20 +170,6 @@ pub(crate) fn detect_hva_frame_count(
         .and_then(|data| HvaFile::from_bytes(data).ok())
         .map(|h| h.frame_count)
         .unwrap_or(1);
-
-    // Also try BARREL suffix if BARL had no HVA.
-    if layer == VxlLayer::Barrel && frame_count <= 1 {
-        let alt_name: String = format!("{}BARREL.HVA", image);
-        let alt_count: u32 = asset_manager
-            .get_ref(&alt_name)
-            .and_then(|data| HvaFile::from_bytes(data).ok())
-            .map(|h| h.frame_count)
-            .unwrap_or(1);
-        if alt_count > 1 {
-            return alt_count;
-        }
-    }
-
     frame_count.max(1)
 }
 

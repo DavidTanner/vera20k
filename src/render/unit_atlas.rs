@@ -621,6 +621,7 @@ impl CachedUnitSprite {
 pub(crate) use crate::sim::voxel_frame_catalog::{
     UnitAtlasVariant, detect_hva_frame_count, seed_layers_for, unit_atlas_variants,
 };
+use crate::sim::voxel_frame_catalog::{has_gun_parts, voxel_image_id};
 
 fn insert_unit_layer_keys(
     needed: &mut HashSet<UnitSpriteKey>,
@@ -956,7 +957,7 @@ pub fn build_unit_atlas(
     Some(atlas)
 }
 
-/// A turret or barrel part: `{image}TUR`, `{image}BARL` or `{image}BARREL`.
+/// A turret or barrel part: `{image}TUR` or `{image}BARL`.
 pub(crate) struct VoxelPart {
     vxl: VxlFile,
     hva: Option<HvaFile>,
@@ -1001,9 +1002,8 @@ pub(crate) struct UnitModel {
     type_id: String,
     body: VxlFile,
     body_hva: Option<HvaFile>,
+    /// The gun parts, present only where [`has_gun_parts`] holds.
     turret: Option<VoxelPart>,
-    /// BARL is the common spelling; a handful of models use BARREL.
-    barl: Option<VoxelPart>,
     barrel: Option<VoxelPart>,
     /// Ordinary ground Drive units cast the prepared native shadow.
     drive_shadow: bool,
@@ -1025,15 +1025,7 @@ impl UnitModel {
         rules: Option<&RuleSet>,
         art: Option<&ArtRegistry>,
     ) -> Option<Self> {
-        // Resolve image name: type_id → rules.ini Image= → art.ini Image= override.
-        let rules_image: String = rules
-            .and_then(|r| r.object(type_id))
-            .map(|o| o.image.clone())
-            .unwrap_or_else(|| type_id.to_string());
-        let image: String = art
-            .map(|a| a.resolve_effective_image_id(type_id, &rules_image))
-            .unwrap_or_else(|| rules_image.to_uppercase());
-
+        let image = voxel_image_id(type_id, rules, art);
         let (vxl_name, hva_name): (String, String) = art_data::voxel_asset_names(&image);
 
         let vxl_data = asset_manager.get_ref(&vxl_name)?;
@@ -1056,14 +1048,18 @@ impl UnitModel {
                         None
                     }
                 });
-        let part = |suffix: &str| VoxelPart::load(asset_manager, &format!("{image}{suffix}"));
+        let gun_parts = has_gun_parts(type_id, rules);
+        let part = |suffix: &str| {
+            gun_parts
+                .then(|| VoxelPart::load(asset_manager, &format!("{image}{suffix}")))
+                .flatten()
+        };
         Some(Self {
             type_id: type_id.to_string(),
             body,
             body_hva,
             turret: part("TUR"),
-            barl: part("BARL"),
-            barrel: part("BARREL"),
+            barrel: part("BARL"),
             drive_shadow: rules.and_then(|r| r.object(type_id)).is_some_and(|o| {
                 o.locomotor == crate::rules::locomotor_type::LocomotorKind::Drive
                     && !o.considered_aircraft
@@ -1124,7 +1120,7 @@ impl UnitModel {
                 &self.body,
                 self.body_hva.as_ref(),
                 self.turret.as_ref(),
-                self.barl.as_ref().or(self.barrel.as_ref()),
+                self.barrel.as_ref(),
                 &params,
                 vpl,
             ),
@@ -1134,7 +1130,6 @@ impl UnitModel {
             VxlLayer::Body | VxlLayer::Turret | VxlLayer::Barrel => {
                 let key_pose = (params.frame, params.facing, params.slope_type, slope_blend);
                 if pose.as_ref().is_none_or(|parts| parts.pose != key_pose) {
-                    let barrel = self.barl.as_ref().or(self.barrel.as_ref());
                     *pose = Some(PoseParts {
                         pose: key_pose,
                         body: vxl_raster::render_vxl(
@@ -1144,18 +1139,15 @@ impl UnitModel {
                             vpl,
                         ),
                         turret: self.turret.as_ref().map(|part| part.render(&params, vpl)),
-                        barrel: barrel.map(|part| part.render(&params, vpl)),
+                        barrel: self.barrel.as_ref().map(|part| part.render(&params, vpl)),
                     });
                 }
                 let parts = pose.as_ref().expect("the pose was just rendered");
-                let pitched_barrel = (key.barrel_pitch != 0)
-                    .then(|| {
-                        self.barl
-                            .as_ref()
-                            .or(self.barrel.as_ref())
-                            .map(|part| part.render(&part_params, vpl))
-                    })
-                    .flatten();
+                let pitched_barrel = self
+                    .barrel
+                    .as_ref()
+                    .filter(|_| key.barrel_pitch != 0)
+                    .map(|part| part.render(&part_params, vpl));
                 let barrel = pitched_barrel.as_ref().or(parts.barrel.as_ref());
                 let all_layers: Vec<&VxlSprite> = [Some(&parts.body)]
                     .into_iter()
@@ -1214,7 +1206,7 @@ impl UnitModel {
             &self.body,
             self.body_hva.as_ref(),
             self.turret.as_ref(),
-            self.barl.as_ref().or(self.barrel.as_ref()),
+            self.barrel.as_ref(),
             &params,
             vpl,
         );
@@ -1236,16 +1228,11 @@ impl UnitModel {
             VxlLayer::Shadow => None,
             VxlLayer::Body => body(),
             VxlLayer::Turret => part(&self.turret).ok().flatten(),
-            VxlLayer::Barrel => part(&self.barl)
-                .ok()?
-                .or_else(|| part(&self.barrel).ok().flatten()),
+            VxlLayer::Barrel => part(&self.barrel).ok().flatten(),
             VxlLayer::Composite => {
                 let mut bounds = Some(body()?);
                 let turret = part(&self.turret).ok()?;
-                let barrel = match part(&self.barl).ok()? {
-                    Some(bounds) => Some(bounds),
-                    None => part(&self.barrel).ok()?,
-                };
+                let barrel = part(&self.barrel).ok()?;
                 for part in [turret, barrel].into_iter().flatten() {
                     vxl_raster::union_native_voxel_draw_bounds(&mut bounds, part);
                 }
@@ -1279,9 +1266,10 @@ pub(crate) fn render_unit_sprite_with_slope_blend(
 /// composited sprite the game does. The bake path composites through the same
 /// `composite_parts`, so the two cannot drift apart.
 ///
-/// Pure CPU: no `GpuContext`, no atlas state, no wgpu. The turret and barrel are
-/// found by the conventional `TUR` / `BARL` / `BARREL` suffixes on the effective
-/// image id; a model without them composites to just its body.
+/// Pure CPU: no `GpuContext`, no atlas state, no wgpu. This works on an image,
+/// not a type: it composites whichever `{image}TUR` and `{image}BARL` files
+/// exist, as a type with [`has_gun_parts`] draws them. A vehicle type without
+/// `Turret=` draws its body alone.
 pub fn composite_unit_vxl_cpu(
     asset_manager: &AssetManager,
     body: &VxlFile,
@@ -1292,8 +1280,7 @@ pub fn composite_unit_vxl_cpu(
 ) -> VxlSprite {
     let part = |suffix: &str| VoxelPart::load(asset_manager, &format!("{image}{suffix}"));
     let turret = part("TUR");
-    // BARL is the common spelling; a handful of models use BARREL.
-    let barrel = part("BARL").or_else(|| part("BARREL"));
+    let barrel = part("BARL");
     composite_parts(
         body,
         body_hva,
