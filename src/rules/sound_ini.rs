@@ -34,7 +34,7 @@
 use std::collections::HashMap;
 
 use crate::rules::ini_parser::{IniFile, IniSection};
-use crate::rules::ini_value::{parse_read_double, strtrim_ascii, truncate_bytes};
+use crate::rules::ini_value::{crt_atoi, strtok};
 
 /// `Control=` flag words. gamemd-derived: the `(char*, u32)` table at
 /// `0x008160C0` walked by `AudioEventClass::ParseControlFlag @ 0x00406820`
@@ -119,6 +119,10 @@ pub const MAX_SAMPLES: usize = 0x20;
 /// list value.
 const MAX_ID_BYTES: usize = 0x1f;
 
+/// The `char[0x800]` buffer `VocClass::ReadINI` and `ReadSoundListINI` read
+/// every text key into (`0x007504A5..0x007508B5`, `0x00751187..0x00751214`).
+const TEXT_CAPACITY: usize = 0x800;
+
 /// `[Defaults]` values. gamemd-derived: `VocClass::ReadSoundListINI @
 /// 0x007510D0` — Volume -> `0x008464B4` (static 80.0f), MinVolume ->
 /// `0x008464B8` (static 20.0f), Priority -> `0x008464B0` (static 2),
@@ -157,26 +161,22 @@ impl SoundDefaults {
         let Some(section) = section else {
             return defaults;
         };
-        // `VocClass::ReadSoundListINI @ 0x007510D0` narrows both back to the
-        // float32 statics: `_DAT_008464b4 = (float)fVar8`,
-        // `_DAT_008464b8 = (float)fVar8`.
-        defaults.volume = read_double(section, "Volume", defaults.volume) as f32;
-        defaults.min_volume = read_double(section, "MinVolume", defaults.min_volume) as f32;
+        // `VocClass::ReadSoundListINI @ 0x007510D0` stores both into the
+        // float32 statics (`0x0075113E FSTP dword [0x008464B4]`,
+        // `0x00751161 FSTP dword [0x008464B8]`).
+        defaults.volume = section.read_float("Volume", defaults.volume);
+        defaults.min_volume = section.read_float("MinVolume", defaults.min_volume);
         defaults.priority = section
-            .get_ignoring_case("Priority")
+            .read_name("Priority", TEXT_CAPACITY)
             .map_or(defaults.priority, parse_sound_priority);
-        if let Some(control) = parse_control_list(section.get_ignoring_case("Control")) {
+        if let Some(control) = parse_control_list(section.read_name("Control", TEXT_CAPACITY)) {
             defaults.control = control;
         }
-        if let Some(type_flags) = parse_type_list(section.get_ignoring_case("Type")) {
+        if let Some(type_flags) = parse_type_list(section.read_name("Type", TEXT_CAPACITY)) {
             defaults.type_flags = type_flags;
         }
-        defaults.limit = section
-            .get_i32_ignoring_case("Limit")
-            .unwrap_or(defaults.limit);
-        defaults.range = section
-            .get_i32_ignoring_case("Range")
-            .unwrap_or(defaults.range);
+        defaults.limit = section.read_int("Limit", defaults.limit);
+        defaults.range = section.read_int("Range", defaults.range);
         defaults
     }
 
@@ -349,11 +349,14 @@ impl SoundRegistry {
             return Self { entries, defaults };
         };
 
-        // Values in source order, which is native's entry-index order. The INI
-        // parser has already dropped entries with an empty value, matching the
-        // `ReadString` length gate.
-        for raw_value in list.get_values() {
-            let value = cut_list_value(raw_value);
+        // Values in source order, which is native's entry-index order: each
+        // entry name through `ReadString` into `char[32]` (`0x007512CA`). The
+        // INI parser has already dropped entries with an empty value, matching
+        // the `ReadString` length gate.
+        for value in list
+            .keys()
+            .filter_map(|key| list.read_name(key, MAX_ID_BYTES + 1))
+        {
             let key = value.to_ascii_uppercase();
             // `0x007512F4..0x0075133D` compares the id against the names of the
             // events already created (`FUN_007C8D20`, case-insensitive) and,
@@ -388,15 +391,9 @@ impl SoundRegistry {
     /// previous signed ID (constructor -1); later rules passes do not erase
     /// an earlier valid selection. Names here represent that resolved ID.
     pub(crate) fn read_rules_reference(&self, section: &IniSection, key: &str) -> Option<String> {
-        let resolve = |value: &str| {
-            let name = strtrim_ascii(truncate_bytes(value, 127));
-            self.get(name).map(|entry| entry.id.clone())
-        };
-        if let Some(values) = section.projected_values(key) {
-            values.iter().filter_map(|value| resolve(value)).last()
-        } else {
-            section.get(key).and_then(resolve)
-        }
+        section.read_string_with(key, 0x80, None, |current, name| {
+            self.get(name).map(|entry| entry.id.clone()).or(current)
+        })
     }
 
     /// The `[Defaults]` values this registry was read with.
@@ -413,25 +410,6 @@ impl SoundRegistry {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
-}
-
-/// The sound id a `[SoundList]` value actually becomes.
-///
-/// gamemd-derived: the value never reaches `FindOrCreate` whole. It is read
-/// into a 32-byte buffer ([`MAX_ID_BYTES`] + the forced NUL) by
-/// `CCINIClass::ReadString @ 0x00528A10`, whose tail is `strncpy(dst, value,
-/// capacity); dst[capacity - 1] = 0; strtrim()` — so the cut happens **before**
-/// the trim and is by byte, not by character. Everything downstream (the dedupe
-/// scan at `0x007512F4`, `FindOrCreate`'s own `strncpy` at `0x00406460`, and the
-/// section lookup `ReadINI` does by the stored name at `0x00750462`) sees only
-/// the cut form.
-///
-/// Retail is unaffected: exactly one of the 820 `soundmd.ini` and 500
-/// `sound.ini` list values exceeds 31 bytes — the decorative
-/// `============ Mission Disk sounds ============` — and it has no section at
-/// either length.
-fn cut_list_value(value: &str) -> &str {
-    strtrim_ascii(truncate_bytes(value, MAX_ID_BYTES))
 }
 
 /// One `VocClass::ReadINI @ 0x00750440` pass for `name`: read the fourteen keys
@@ -458,42 +436,39 @@ fn read_entry(ini: &IniFile, name: &str, defaults: &SoundDefaults) -> SoundEntry
     // `Dummy.wav` is a real 1180-byte file in `audiomd.mix`, so registering the
     // silent entry is what keeps `[AudioVisual] Construction=`/`GateUp=`/
     // `GateDown=` from playing a buffer gamemd never starts.
-    let sounds: Vec<String> = split_tokens(section.get_ignoring_case("Sounds").unwrap_or(""))
-        .map(|s| s.trim_start_matches(['$', '#']).to_string())
-        .filter(|s| !s.is_empty())
-        .take(MAX_SAMPLES)
-        .collect();
+    let sounds: Vec<String> = strtok(
+        section.read_name("Sounds", TEXT_CAPACITY).unwrap_or(""),
+        TOKEN_DELIMITERS,
+    )
+    .map(|s| s.trim_start_matches(['$', '#']).to_string())
+    .filter(|s| !s.is_empty())
+    .take(MAX_SAMPLES)
+    .collect();
 
-    let volume_raw = read_double(section, "Volume", defaults.volume);
+    let volume_raw = section.read_double("Volume", f64::from(defaults.volume));
     let volume_linear = volume_linear(volume_raw);
     let volume: u8 = volume_raw.clamp(0.0, 100.0).round() as u8;
-    let vshift = section
-        .get_i32_ignoring_case("VShift")
-        .unwrap_or(0)
-        .clamp(0, 100);
-    let min_volume = min_volume_fraction(read_double(section, "MinVolume", defaults.min_volume));
+    let vshift = section.read_int("VShift", 0).clamp(0, 100);
+    let min_volume =
+        min_volume_fraction(section.read_double("MinVolume", f64::from(defaults.min_volume)));
     let priority: u8 = section
-        .get_ignoring_case("Priority")
+        .read_name("Priority", TEXT_CAPACITY)
         .map_or(SOUND_PRIORITY_DEFAULT, parse_sound_priority);
-    let attack_raw = section.get_i32_ignoring_case("Attack").unwrap_or(0);
-    let decay_raw = section.get_i32_ignoring_case("Decay").unwrap_or(0);
+    let attack_raw = section.read_int("Attack", 0);
+    let decay_raw = section.read_int("Decay", 0);
     let control =
-        parse_control_list(section.get_ignoring_case("Control")).unwrap_or(defaults.control);
+        parse_control_list(section.read_name("Control", TEXT_CAPACITY)).unwrap_or(defaults.control);
     // `AudioEventClass::SetControlFlags @ 0x00406570`: without the flag the
     // count is zeroed; with it a zero count becomes 1.
     let attack = normalise_envelope_count(attack_raw, control & control::ATTACK != 0);
     let decay = normalise_envelope_count(decay_raw, control & control::DECAY != 0);
     let type_flags =
-        parse_type_list(section.get_ignoring_case("Type")).unwrap_or(defaults.type_flags);
-    let limit = section
-        .get_i32_ignoring_case("Limit")
-        .unwrap_or(defaults.limit);
-    let loop_count = section.get_i32_ignoring_case("Loop").unwrap_or(0);
-    let range: i32 = section
-        .get_i32_ignoring_case("Range")
-        .unwrap_or(defaults.range);
-    let delay_ms = parse_int_pair(section.get_ignoring_case("Delay"));
-    let fshift = parse_int_pair(section.get_ignoring_case("FShift"));
+        parse_type_list(section.read_name("Type", TEXT_CAPACITY)).unwrap_or(defaults.type_flags);
+    let limit = section.read_int("Limit", defaults.limit);
+    let loop_count = section.read_int("Loop", 0);
+    let range: i32 = section.read_int("Range", defaults.range);
+    let delay_ms = parse_int_pair(section.read_name("Delay", TEXT_CAPACITY));
+    let fshift = parse_int_pair(section.read_name("FShift", TEXT_CAPACITY));
 
     SoundEntry {
         id: name.to_string(),
@@ -520,33 +495,6 @@ fn read_entry(ini: &IniFile, name: &str, defaults: &SoundDefaults) -> SoundEntry
 /// is why the whole chain has to stay at x87 precision — see
 /// [`volume_linear`].
 const ONE_PERCENT_F32_AS_F64: f64 = 0.01f32 as f64;
-
-/// `CCINIClass::ReadDouble @ 0x005283D0` — returns a **double**.
-///
-/// `sscanf("%f")` parses into a `float`, which is then widened to double and
-/// kept there (`0x0052855D FLD float [ESP+0x2C]; 0x00528569 FSTP double
-/// [ESP+0x38]`). When `strchr(text, '%')` hits, the double is multiplied by
-/// the *double* 0.01 at `0x007E3808` (`0x0052857E FMUL double`) and stored
-/// back as a double — there is no float narrowing on that path, so the result
-/// this function hands its caller carries 53 significant bits. An absent
-/// section or key keeps the caller's default (`0x00528525`, `0x00528588`),
-/// which reaches the native call as a `float32` static widened the same way
-/// (`0x007504EE FLD float [0x008464B4]; FSTP double [ESP]`).
-///
-/// The value parse itself is [`parse_read_double`], the crate's existing
-/// reproduction of that same `sscanf("%f")` grammar (sign, mantissa, exponent,
-/// `strtrim` at both ends, `%` anywhere scaling by the double 0.01). Only the
-/// case-insensitive key lookup is local: 11 stock sections spell the key
-/// `volume=`/`Vshift=` in lower case, and native's INI lookup is
-/// case-insensitive. Keeping a second parser here diverged from the shared one
-/// on exponents (`1e2` → 1.0 instead of 100.0), on a second `.`, and on
-/// Unicode-vs-byte trimming; no stock `Volume=`/`MinVolume=` value differs
-/// under either, but the duplicate was drift waiting to happen.
-fn read_double(section: &IniSection, key: &str, default: f32) -> f64 {
-    section
-        .get_ignoring_case(key)
-        .map_or(f64::from(default), parse_read_double)
-}
 
 /// `0x007504EE..0x00750548`: the `ReadDouble` result times the *float* 0.01
 /// at `0x007EAAE0`, clamped to `[0, 1]`, times the float 16384 at `0x007EF38C`,
@@ -616,17 +564,14 @@ fn normalise_envelope_count(raw: i32, flagged: bool) -> i32 {
     }
 }
 
-/// The native token split: `strtok` on `" \t\n"` (`0x00846570`).
-fn split_tokens(value: &str) -> impl Iterator<Item = &str> {
-    value
-        .split([' ', '\t', '\n'])
-        .filter(|token| !token.is_empty())
-}
+/// The `strtok` delimiter string every sound token list splits on
+/// (`0x00846570`, `" \t\n"`).
+const TOKEN_DELIMITERS: &[char] = &[' ', '\t', '\n'];
 
 /// `Control=` list: `None` when the key is absent or has no token (the
 /// caller keeps the `[Defaults]` flags, `0x007506C9..0x00750700`).
 fn parse_control_list(raw: Option<&str>) -> Option<u32> {
-    let mut tokens = split_tokens(raw?).peekable();
+    let mut tokens = strtok(raw?, TOKEN_DELIMITERS).peekable();
     tokens.peek()?;
     Some(tokens.fold(0, |flags, token| flags | parse_control_token(token)))
 }
@@ -635,7 +580,7 @@ fn parse_control_list(raw: Option<&str>) -> Option<u32> {
 /// (`0x00750759`), otherwise `None` so the caller keeps the `[Defaults]`
 /// flags.
 fn parse_type_list(raw: Option<&str>) -> Option<u32> {
-    let mut tokens = split_tokens(raw?).peekable();
+    let mut tokens = strtok(raw?, TOKEN_DELIMITERS).peekable();
     tokens.peek()?;
     let mut flags = sound_type::SCREEN;
     for token in tokens {
@@ -683,39 +628,13 @@ fn parse_int_pair(raw: Option<&str>) -> (i32, i32) {
     let Some(raw) = raw else {
         return (0, 0);
     };
-    let mut tokens = split_tokens(raw);
+    let mut tokens = strtok(raw, TOKEN_DELIMITERS);
     let Some(first) = tokens.next() else {
         return (0, 0);
     };
     let min = crt_atoi(first);
     let max = tokens.next().map_or(min, crt_atoi);
     (min, max)
-}
-
-/// C `atoi`: leading whitespace, optional sign, decimal digits; anything
-/// else stops the parse (an empty prefix yields 0).
-fn crt_atoi(value: &str) -> i32 {
-    let bytes = value.as_bytes();
-    let mut index = 0;
-    while bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
-        index += 1;
-    }
-    let mut negative = false;
-    match bytes.get(index) {
-        Some(b'-') => {
-            negative = true;
-            index += 1;
-        }
-        Some(b'+') => index += 1,
-        _ => {}
-    }
-    let mut magnitude: i64 = 0;
-    while let Some(digit) = bytes.get(index).filter(|b| b.is_ascii_digit()) {
-        magnitude = (magnitude * 10 + i64::from(digit - b'0')).min(i64::from(i32::MAX) + 1);
-        index += 1;
-    }
-    let signed = if negative { -magnitude } else { magnitude };
-    signed.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 /// `VoxClass` entry `Type=` (`VoxClass::ReadINI @ 0x00752DB0`, entry `+0x4C`).
@@ -851,26 +770,24 @@ impl EvaEntry {
         let Some(section) = section else {
             return entry;
         };
-        if let Some(volume) = section
-            .get("Volume")
-            .and_then(|value| value.trim().parse::<f64>().ok())
-        {
-            entry.volume = volume as f32;
-        }
-        if let Some(eva_type) = section.get("Type").and_then(EvaType::parse) {
+        // A float field (`0x00752DF9 FSTP dword [ESI+0x28]`).
+        entry.volume = section.read_float("Volume", entry.volume);
+        // The text keys read into `char[500]` (`0x00752E18..0x00752FC1`).
+        if let Some(eva_type) = section.read_name("Type", 0x1F4).and_then(EvaType::parse) {
             entry.eva_type = eva_type;
         }
-        if let Some(priority) = section.get("Priority").and_then(EvaPriority::parse) {
+        if let Some(priority) = section
+            .read_name("Priority", 0x1F4)
+            .and_then(EvaPriority::parse)
+        {
             entry.priority = priority;
         }
         // `strncpy(dst, value, 9)` then a forced NUL: at most 8 characters
         // survive, and an empty value leaves the column empty.
         let column = |key: &str| -> Option<String> {
-            let value = section.get(key)?.trim();
-            if value.is_empty() {
-                return None;
-            }
-            Some(value.chars().take(8).collect())
+            section
+                .read_name(key, 0x1F4)
+                .map(|value| value.chars().take(8).collect())
         };
         entry.allied = column("Allied");
         entry.russian = column("Russian");
@@ -906,8 +823,9 @@ impl EvaRegistry {
     pub fn from_ini(ini: &IniFile) -> Self {
         let mut entries: HashMap<String, EvaEntry> = HashMap::new();
         if let Some(list) = ini.section("DialogList") {
+            // Each entry name through `ReadString` into `char[200]` (`0x0075304D`).
             for key in list.keys() {
-                let Some(name) = list.get(key).map(str::trim).filter(|n| !n.is_empty()) else {
+                let Some(name) = list.read_name(key, 0xC8) else {
                     continue;
                 };
                 let id = name.to_ascii_uppercase();
@@ -1172,9 +1090,11 @@ mod tests {
         assert_eq!(parse_control_token("predelay"), 0x08);
     }
 
-    /// `Delay=`/`FShift=` one-or-two token rule and the `VShift=` clamp, using
-    /// the stock spellings including the lower-case `Fshift`/`Vshift` keys
-    /// (5 and 11 stock occurrences) that gamemd's case-insensitive INI reads.
+    /// `Delay=`/`FShift=` one-or-two token rule and the `VShift=` clamp. Key
+    /// lookup is exact-case (`ReadString` hashes the key bytes through
+    /// `CRCEngine::AddData` at `0x00528A7E`), so the stock lower-case
+    /// `Fshift`/`Vshift` spellings (3 and 9 `soundmd.ini` sections) are never
+    /// read.
     #[test]
     fn delay_fshift_vshift_follow_native_pairs_and_clamps() {
         let reg = registry(
@@ -1186,8 +1106,8 @@ mod tests {
         assert_eq!(a.vshift, 20);
         let b = reg.get("B").unwrap();
         assert_eq!(b.delay_ms, (400, 400));
-        assert_eq!(b.fshift, (-5, 5));
-        assert_eq!(b.vshift, 15);
+        assert_eq!(b.fshift, (0, 0));
+        assert_eq!(b.vshift, 0);
         let c = reg.get("C").unwrap();
         assert_eq!(c.vshift, 100);
         assert_eq!(c.fshift, (0, 0));
@@ -1227,7 +1147,8 @@ mod tests {
         assert_eq!(half.volume_linear, volume_linear(50.5));
         assert_eq!(half.volume_linear, 8273); // ftol(0.505 * 16384)
         assert_eq!(half.min_volume, 0.25);
-        assert_eq!(reg.get("Lower").unwrap().volume, 60);
+        // `volume=` is not `Volume=`: the entry keeps the static default.
+        assert_eq!(reg.get("Lower").unwrap().volume, 80);
         // `sscanf("%f")` accepts an exponent, and the shared
         // `ini_value::parse_read_double` reproduces it — the private copy this
         // reader used to carry did not, and read `1e2` as 1.
@@ -1376,8 +1297,10 @@ mod tests {
         assert!(reg.get(&"B".repeat(MAX_ID_BYTES - 1)).is_some());
 
         // A value at or under the ceiling is untouched.
-        assert_eq!(cut_list_value("KirovVoiceDie"), "KirovVoiceDie");
-        assert_eq!(cut_list_value(&cut), cut);
+        let ini = IniFile::from_str(&format!("[SoundList]\n1=KirovVoiceDie\n2={cut}\n"));
+        let reg = SoundRegistry::from_ini(&ini);
+        assert!(reg.get("KirovVoiceDie").is_some());
+        assert!(reg.get(&cut).is_some());
     }
 
     /// A twice-listed id: the dedupe scan at `0x007512F4` hands the existing

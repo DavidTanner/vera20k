@@ -816,7 +816,7 @@ mod tests {
             ifv_mode: 0,
             open_transport_weapon: -1,
             deploy_fire: false,
-            deploy_fire_weapon: None,
+            deploy_fire_weapon: 1,
             max_number_occupants: 0,
             occupier: false,
             assaulter: false,

@@ -771,10 +771,7 @@ fn retail_building_mission_inputs() {
         assert!(!(obj.weapons_factory && !obj.has_stupid_guard_mode), "{id}");
         assert!(!obj.tick_tank && !obj.artillary, "{id}");
         assert!(!(armed(obj) && obj.super_weapon.is_some()), "{id}");
-        let sam = rules_ini
-            .section(id)
-            .and_then(|section| section.get_bool("SAM"))
-            .unwrap_or(false);
+        let sam = rules_ini.section_or_empty(id).read_bool("SAM", false);
         assert!(!sam, "{id}");
     }
 }

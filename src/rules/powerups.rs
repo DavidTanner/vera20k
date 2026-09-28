@@ -29,7 +29,7 @@
 //! Part of `rules/` — INI parsing and rule data only.
 
 use crate::rules::ini_parser::IniFile;
-use crate::rules::ini_value::{parse_leading_f64, scale_percent, strtrim_ascii, truncate_bytes};
+use crate::rules::ini_value::{crt_atoi, parse_leading_f64, scale_percent, strtok, strtrim_ascii};
 use crate::util::native_x87::NativeF64Bits;
 
 /// Slots in the hardcoded name table at `0x007E523C`. The loop bound is
@@ -173,19 +173,14 @@ impl PowerupsAccumulator {
             // Native always parses, falling back to the literal `"0,NONE"`, so
             // an absent row still zeroes the weight and clears the animation
             // while leaving the flag and magnitude untouched.
-            // `CCINIClass__ReadString` is `strncpy` plus a forced terminator, so
-            // an over-long value is cut at 127 BYTES, not 127 characters.
-            let raw = truncate_bytes(
-                section.get(name).unwrap_or(DEFAULT_ROW),
-                READ_STRING_CAPACITY - 1,
-            );
+            let raw = section.read_string(name, DEFAULT_ROW, READ_STRING_CAPACITY);
             // `CRT__strtok` collapses runs of the delimiter and skips leading
             // ones, so an empty field is not a token at all: `20,,yes,2000`
             // yields three tokens, not four.
-            let mut tokens = raw.split(',').filter(|token| !token.is_empty());
+            let mut tokens = strtok(&raw, &[',']);
 
             if let Some(token) = tokens.next() {
-                self.0.weights[slot] = native_atoi(strtrim_ascii(token));
+                self.0.weights[slot] = crt_atoi(strtrim_ascii(token));
             }
             if let Some(token) = tokens.next() {
                 let token = strtrim_ascii(token);
@@ -222,37 +217,6 @@ impl PowerupsAccumulator {
 
     pub(crate) fn finish(self) -> PowerupTable {
         self.0
-    }
-}
-
-/// CRT `atoi`: leading sign and digits only, everything from the first
-/// non-digit onward ignored, no failure mode.
-fn native_atoi(token: &str) -> i32 {
-    let bytes = token.as_bytes();
-    let mut index = 0;
-    let negative = match bytes.first() {
-        Some(b'-') => {
-            index = 1;
-            true
-        }
-        Some(b'+') => {
-            index = 1;
-            false
-        }
-        _ => false,
-    };
-    let mut value: i32 = 0;
-    while let Some(digit) = bytes
-        .get(index)
-        .and_then(|byte| (*byte as char).to_digit(10))
-    {
-        value = value.wrapping_mul(10).wrapping_add(digit as i32);
-        index += 1;
-    }
-    if negative {
-        value.wrapping_neg()
-    } else {
-        value
     }
 }
 
@@ -560,16 +524,5 @@ mod tests {
             None,
             "an unregistered name still resolves to no animation"
         );
-    }
-
-    /// `atoi` stops at the first non-digit rather than failing.
-    #[test]
-    fn native_atoi_matches_crt_prefix_semantics() {
-        assert_eq!(native_atoi("20"), 20);
-        assert_eq!(native_atoi("-7"), -7);
-        assert_eq!(native_atoi("+3"), 3);
-        assert_eq!(native_atoi("12abc"), 12);
-        assert_eq!(native_atoi("abc"), 0);
-        assert_eq!(native_atoi(""), 0);
     }
 }

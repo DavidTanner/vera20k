@@ -31,17 +31,14 @@ pub const DEFAULT_SKIRMISH_PLAYER_CAPACITY: i32 = 8;
 pub fn skirmish_player_capacity(ini: &IniFile) -> i32 {
     let waypoint_count = ini.section("Waypoints").map_or(0, |section| {
         MULTIPLAYER_START_WAYPOINTS
-            .filter(|index| section.get_i32(&index.to_string()).unwrap_or(-1) != -1)
+            .filter(|index| section.read_int(&index.to_string(), -1) != -1)
             .count()
     });
     if waypoint_count != 0 {
         return i32::try_from(waypoint_count).expect("the native query examines only eight keys");
     }
 
-    let random_map_players = ini
-        .section("RandomMap")
-        .and_then(|section| section.get_i32("NumPlayers"))
-        .unwrap_or(0);
+    let random_map_players = ini.section_or_empty("RandomMap").read_int("NumPlayers", 0);
     if random_map_players == 0 {
         DEFAULT_SKIRMISH_PLAYER_CAPACITY
     } else {
@@ -78,7 +75,7 @@ pub fn parse_waypoints(ini: &IniFile) -> HashMap<u32, Waypoint> {
         // CCINIClass__ReadInt with each generated canonical decimal key and
         // default zero. Reuse the shared native integer reader for `$FF`/`FFh`,
         // leading atoi, and i32 wrapping.
-        let coords = section.get_i32(&key).unwrap_or(0);
+        let coords = section.read_int(&key, 0);
         // Zero is the reader's "no waypoint here" value, not the origin cell.
         if coords == 0 {
             continue;

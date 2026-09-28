@@ -3,7 +3,7 @@
 //! Field order mirrors the original record so the clamp table and the `.SED`
 //! key order stay auditable side by side.
 //!
-//! `IniFile` lookups here are section-scoped: `ini.section(name)?.get_i32(key)`.
+//! `IniFile` lookups here are section-scoped: `ini.section(name)?.read_int(key, current)`.
 //! There is no `IniFile::get(section, key)` and no `IniFile::parse`; construct
 //! with `IniFile::from_bytes` or `IniFile::from_str`.
 
@@ -109,14 +109,10 @@ impl RmgOptions {
         let Some(section) = ini.section(SECTION) else {
             return;
         };
-        if let Some(raw) = section.get("Description") {
-            self.description = read_description(Some(raw), &self.description);
-        }
-        let read = |key: &str, field: &mut i32| {
-            if let Some(value) = section.get_i32(key) {
-                *field = value;
-            }
-        };
+        // MapSeed Load `0x00597A30`: ReadCommaHexUTF16, then ReadInt over each
+        // field.
+        self.description = read_description(section, &self.description);
+        let read = |key: &str, field: &mut i32| *field = section.read_int(key, *field);
         read("Width", &mut self.width);
         read("Height", &mut self.height);
         read("NumPlayers", &mut self.num_players);
@@ -168,6 +164,11 @@ impl RmgOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sed_description(raw: &str) -> SeedDescription {
+        let ini = IniFile::from_str(&format!("[RandomMap]\nDescription={raw}\n"));
+        read_description(ini.section_or_empty(SECTION), &SeedDescription::default())
+    }
 
     #[test]
     fn theater_is_never_clamped() {
@@ -325,10 +326,7 @@ mod tests {
     #[test]
     fn description_decodes_the_native_form() {
         assert_eq!(
-            read_description(
-                Some("52,61,6e,64,6f,6d,20,4d,61,70,"),
-                &SeedDescription::default()
-            ),
+            sed_description("52,61,6e,64,6f,6d,20,4d,61,70,"),
             "Random Map"
         );
     }
@@ -365,10 +363,7 @@ mod tests {
 
     #[test]
     fn malformed_description_tokens_repeat_the_previous_conversion() {
-        assert_eq!(
-            read_description(Some("52,zz,61,"), &SeedDescription::default()),
-            "RRa"
-        );
+        assert_eq!(sed_description("52,zz,61,"), "RRa");
     }
 
     #[test]

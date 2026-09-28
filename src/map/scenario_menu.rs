@@ -2,9 +2,10 @@
 //! skirmish catalog. Map-owned (F06): every field derives from map-file
 //! parsing; app initialization only constructs entries.
 
-use crate::map::briefing::BriefingSection;
 use crate::map::preview::{PreviewSection, PreviewSourceBounds, PreviewStartPoint};
-use crate::map::waypoints::{Waypoint, multiplayer_start_waypoints, parse_waypoints, skirmish_player_capacity};
+use crate::map::waypoints::{
+    Waypoint, multiplayer_start_waypoints, parse_waypoints, skirmish_player_capacity,
+};
 use crate::rules::ini_parser::IniFile;
 
 /// Lightweight metadata used by the main-menu map selector.
@@ -16,8 +17,6 @@ pub struct MapMenuEntry {
     pub display_name: String,
     /// Optional author text from `[Basic]`.
     pub author: Option<String>,
-    /// Ordered mission briefing lines from `[Briefing]`.
-    pub briefing: BriefingSection,
     /// Lightweight preview metadata from `[Preview]` / `[PreviewPack]`.
     pub preview: PreviewSection,
     /// Multiplayer start waypoints 0..=7, sorted by waypoint index.
@@ -40,7 +39,6 @@ pub(crate) fn read_map_menu_entry_from_ini(ini: &IniFile, file_name: &str) -> Ma
         file_name: file_name.to_string(),
         display_name,
         author: basic.author,
-        briefing: crate::map::briefing::parse_briefing_section(&ini),
         preview: crate::map::preview::parse_preview_section(&ini),
         multiplayer_start_waypoints: multiplayer_start_waypoints(&parse_waypoints(ini)),
         player_capacity: skirmish_player_capacity(ini),
@@ -49,22 +47,23 @@ pub(crate) fn read_map_menu_entry_from_ini(ini: &IniFile, file_name: &str) -> Ma
 }
 fn preview_source_bounds_from_verified_source(ini: &IniFile) -> Option<PreviewSourceBounds> {
     let header = ini.section("Header")?;
-    let origin_x = header.get_i32("StartX")?;
-    let origin_y = header.get_i32("StartY")?;
-    let width = header.get_i32("Width")?;
-    let height = header.get_i32("Height")?;
-    let count = header.get_i32("NumberStartingPoints")?;
+    // `0x00689D8D`-`0x00689E05` ReadInt each field; VERA requires all five.
+    let field = |key: &str| header.get(key).map(|_| header.read_int(key, 0));
+    let origin_x = field("StartX")?;
+    let origin_y = field("StartY")?;
+    let width = field("Width")?;
+    let height = field("Height")?;
+    let count = field("NumberStartingPoints")?;
 
     if width <= 0 || height <= 0 || count <= 0 || count >= 9 {
         return None;
     }
 
+    // ReadMinMax over zeroed points (`0x00689D64`, `0x00689E62`).
     let start_points = (1..=count)
         .map(|idx| {
-            header
-                .get(&format!("Waypoint{idx}"))
-                .and_then(parse_preview_start_point)
-                .unwrap_or(PreviewStartPoint { x: 0, y: 0 })
+            let [x, y] = header.read_minmax(&format!("Waypoint{idx}"), [0, 0]);
+            PreviewStartPoint { x, y }
         })
         .collect();
 
@@ -75,11 +74,4 @@ fn preview_source_bounds_from_verified_source(ini: &IniFile) -> Option<PreviewSo
         height: height as u32,
         start_points,
     })
-}
-
-fn parse_preview_start_point(value: &str) -> Option<PreviewStartPoint> {
-    let mut parts = value.split(',').map(str::trim);
-    let x = parts.next()?.parse::<i32>().ok()?;
-    let y = parts.next()?.parse::<i32>().ok()?;
-    Some(PreviewStartPoint { x, y })
 }

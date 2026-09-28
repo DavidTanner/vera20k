@@ -82,29 +82,49 @@ pub struct CombatDamageDefaults {
 
 impl CombatDamageDefaults {
     /// Parse from a `[CombatDamage]` `IniSection`. Missing keys become `None`.
+    /// Every name is ReadString 0x80 (`0x0066C514`-`0x0066CCCA`).
     pub fn from_ini_section(section: &IniSection) -> Self {
         Self {
-            max_damage: section.get_i32("MaxDamage").unwrap_or(1000),
-            collapse_chance: section.get_i32("CollapseChance").unwrap_or(100),
+            max_damage: section.read_int("MaxDamage", 1000),
+            collapse_chance: section.read_int("CollapseChance", 100),
             ballistic_scatter: section.read_range("BallisticScatter", 0x100),
-            open_topped_warp_distance: section.get_i32("OpenToppedWarpDistance").unwrap_or(5),
-            death_weapon: read_name(section, "DeathWeapon"),
-            ivan_warhead: read_name(section, "IvanWarhead"),
-            ivan_damage: section.get_i32("IvanDamage").unwrap_or(100),
-            ivan_timed_delay: section.get_i32("IvanTimedDelay").unwrap_or(450),
-            ivan_icon_flicker_rate: section.get_i32("IvanIconFlickerRate").unwrap_or(8),
-            splash_list: crate::rules::object_type::parse_csv_string_list(
-                section.get("SplashList"),
-            ),
-            default_large_grey_smoke_system: read_name(section, "DefaultLargeGreySmokeSystem"),
-            default_small_grey_smoke_system: read_name(section, "DefaultSmallGreySmokeSystem"),
-            default_spark_system: read_name(section, "DefaultSparkSystem"),
-            default_large_red_smoke_system: read_name(section, "DefaultLargeRedSmokeSystem"),
-            default_small_red_smoke_system: read_name(section, "DefaultSmallRedSmokeSystem"),
-            default_debris_smoke_system: read_name(section, "DefaultDebrisSmokeSystem"),
-            default_fire_stream_system: read_name(section, "DefaultFireStreamSystem"),
-            default_test_particle_system: read_name(section, "DefaultTestParticleSystem"),
-            default_repair_particle_system: read_name(section, "DefaultRepairParticleSystem"),
+            open_topped_warp_distance: section.read_int("OpenToppedWarpDistance", 5),
+            death_weapon: section.read_name("DeathWeapon", 0x80).map(str::to_string),
+            ivan_warhead: section.read_name("IvanWarhead", 0x80).map(str::to_string),
+            ivan_damage: section.read_int("IvanDamage", 100),
+            ivan_timed_delay: section.read_int("IvanTimedDelay", 450),
+            ivan_icon_flicker_rate: section.read_int("IvanIconFlickerRate", 8),
+            splash_list: section
+                .read_list("SplashList", 0x80)
+                .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+                .unwrap_or_default(),
+            default_large_grey_smoke_system: section
+                .read_name("DefaultLargeGreySmokeSystem", 0x80)
+                .map(str::to_string),
+            default_small_grey_smoke_system: section
+                .read_name("DefaultSmallGreySmokeSystem", 0x80)
+                .map(str::to_string),
+            default_spark_system: section
+                .read_name("DefaultSparkSystem", 0x80)
+                .map(str::to_string),
+            default_large_red_smoke_system: section
+                .read_name("DefaultLargeRedSmokeSystem", 0x80)
+                .map(str::to_string),
+            default_small_red_smoke_system: section
+                .read_name("DefaultSmallRedSmokeSystem", 0x80)
+                .map(str::to_string),
+            default_debris_smoke_system: section
+                .read_name("DefaultDebrisSmokeSystem", 0x80)
+                .map(str::to_string),
+            default_fire_stream_system: section
+                .read_name("DefaultFireStreamSystem", 0x80)
+                .map(str::to_string),
+            default_test_particle_system: section
+                .read_name("DefaultTestParticleSystem", 0x80)
+                .map(str::to_string),
+            default_repair_particle_system: section
+                .read_name("DefaultRepairParticleSystem", 0x80)
+                .map(str::to_string),
         }
     }
 }
@@ -133,13 +153,6 @@ impl Default for CombatDamageDefaults {
             default_repair_particle_system: None,
         }
     }
-}
-
-fn read_name(section: &IniSection, key: &str) -> Option<String> {
-    section
-        .get(key)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
 }
 
 #[cfg(test)]

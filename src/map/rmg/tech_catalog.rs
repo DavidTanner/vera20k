@@ -20,15 +20,15 @@ const FOUNDATION: &str = "Foundation";
 /// Both are the active standalone YR sources (`rulesmd` and `artmd`):
 /// the stock YR list has six entries where base RA2 has four.
 pub fn resolve(rules: &IniFile, art: &IniFile) -> Vec<TechType> {
+    // The building TypeList read (`0x0067B550`): ReadString 0x80, `strtok`.
     let Some(names) = rules
         .section(AI_SECTION)
-        .and_then(|section| section.get_list(NEUTRAL_TECH_BUILDINGS))
+        .and_then(|section| section.read_list(NEUTRAL_TECH_BUILDINGS, 0x80))
     else {
         return Vec::new();
     };
     names
         .into_iter()
-        .filter(|name| !name.is_empty())
         .map(|name| TechType {
             name: name.to_string(),
             footprint: footprint_for(art, name),
@@ -43,9 +43,10 @@ pub fn resolve(rules: &IniFile, art: &IniFile) -> Vec<TechType> {
 /// An absent section, absent key, or unrecognised value resolves through the
 /// foundation table's default entry.
 fn footprint_for(art: &IniFile, name: &str) -> Vec<(i16, i16)> {
+    // The art Foundation read (`0x00474DA0`, 0x20 bytes).
     let value = art
         .section(name)
-        .and_then(|section| section.get(FOUNDATION))
+        .and_then(|section| section.read_name(FOUNDATION, 0x20))
         .unwrap_or_default();
     let (width, height) = foundation_dimensions(value);
     let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));

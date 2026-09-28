@@ -10,7 +10,7 @@ use std::io;
 use std::path::Path;
 
 use crate::app::frontend::startup_options::{RetailStartupOptions, ScreenSize};
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::util::ini_writer::set_ini_values;
 
 pub(crate) const RA2MD_INI_FILENAME: &str = "RA2MD.INI";
@@ -20,10 +20,6 @@ const VIDEO_SECTION: &str = "Video";
 const AUDIO_SECTION: &str = "Audio";
 const WONLINE_SECTION: &str = "WOnline";
 const NETWORK_SECTION: &str = "Network";
-/// `CRCEngine::operator()` @ `0x004A1DE0` over `"Network"`, executed natively
-/// under Unicorn: the scratch value `INIClass__ReadCommaHexUTF16` leaves for a
-/// failed first `%x` conversion on the fresh-file cache miss.
-const NETWORK_SECTION_CRC: u32 = 0x70CA_A741;
 /// Destination units `OptionsClass__ReadFromINI` passes for NetID (`push 0xC8`).
 const NET_ID_UNITS: usize = 0xC8;
 const SCREEN_SIZE_UNSET: i32 = -1;
@@ -321,10 +317,7 @@ impl RetailOptionsProfile {
                 audio.read_int("SoundLatency", i32::from(self.sound_latency)) as u16;
         }
 
-        self.movie_progress = decode_net_id(
-            ini.section(NETWORK_SECTION)
-                .and_then(|network| network.get("NetID")),
-        );
+        self.movie_progress = decode_net_id(ini.section_or_empty(NETWORK_SECTION));
         if let Some(wonline) = ini.section(WONLINE_SECTION) {
             self.wol_lobby_music = wonline.read_int("LobMusic", self.wol_lobby_music);
         }
@@ -521,9 +514,8 @@ fn wcstol_decimal(token: &[u16]) -> i32 {
 /// Decode `[Network] NetID` into movie progress. Both fields start at -1, the
 /// first two `wcstok(L" ")` tokens are read with `wcstol` minus one, and a
 /// value outside -1..=7 falls back to -1.
-fn decode_net_id(raw: Option<&str>) -> crate::ui::movies_credits_shell::MovieProgress {
-    let units =
-        crate::rules::ini_value::read_comma_hex_utf16(raw, &[], NET_ID_UNITS, NETWORK_SECTION_CRC);
+fn decode_net_id(network: &IniSection) -> crate::ui::movies_credits_shell::MovieProgress {
+    let units = network.read_comma_hex_utf16("NetID", &[], NET_ID_UNITS);
     let text = flip_net_id_units(&units);
     let mut tokens = text
         .split(|unit| *unit == u16::from(b' '))
@@ -559,11 +551,14 @@ mod tests {
 
     use super::*;
 
+    /// `CRCEngine::operator()` @ `0x004A1DE0` over `"Network"`, executed
+    /// natively under Unicorn: the scratch `INIClass__ReadCommaHexUTF16`
+    /// leaves for a failed first `%x` conversion on the fresh-file cache miss.
     #[test]
     fn network_section_crc_is_the_crc_engine_of_its_name() {
         assert_eq!(
             crate::assets::mix_hash::crc_engine(NETWORK_SECTION.as_bytes()),
-            NETWORK_SECTION_CRC
+            0x70CA_A741
         );
     }
 
@@ -1166,6 +1161,13 @@ IsScoreRepeat=no\r\nIsScoreShuffle=no\r\nSoundLatency=9\r\nInGameMusic=yes\r\n\
     fn net_id_decodes_movie_progress_like_read_from_ini() {
         use crate::ui::movies_credits_shell::MovieProgress;
         let progress = |soviet, allied| MovieProgress { soviet, allied };
+        let decode_net_id = |raw: Option<&str>| {
+            let mut network = IniSection::new(NETWORK_SECTION.to_string());
+            if let Some(raw) = raw {
+                network.set("NetID", raw);
+            }
+            decode_net_id(&network)
+        };
         // Retail default "0 0" and the obfuscated all-0xFFFF form.
         assert_eq!(decode_net_id(Some("ffcf,ffdf,ffcf,")), progress(-1, -1));
         assert_eq!(decode_net_id(Some("ffff,ffff,ffff,")), progress(-1, -1));
@@ -1185,7 +1187,9 @@ IsScoreRepeat=no\r\nIsScoreShuffle=no\r\nSoundLatency=9\r\nInGameMusic=yes\r\n\
         for soviet in -1..8 {
             for allied in -1..8 {
                 let value = MovieProgress { soviet, allied };
-                assert_eq!(decode_net_id(Some(&encode_net_id(value))), value);
+                let mut network = IniSection::new(NETWORK_SECTION.to_string());
+                network.set("NetID", &encode_net_id(value));
+                assert_eq!(decode_net_id(&network), value);
             }
         }
     }

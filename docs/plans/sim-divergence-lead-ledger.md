@@ -214,8 +214,8 @@ if the warhead `IsRocker` and force > 0.3, it sweeps a **7×7 cell box** and cal
 every techno. Impact-cell occupiers are rocked away from the *source* with a 10-lepton
 displacement; everything else away from the impact coord. (Note VERA's own constant comment
 at `rocking_system.rs:52-55` describes a 3×3 loop, which matches neither side.)
-**Disposition** LEAD · **TS-RISK** no (`Rocker=`, `DirectRocker=`, `RockerScale=` are stock
-YR keys; `RockerScale` is already parsed at `rules/projectile_type.rs:127`)
+**Disposition** LEAD · **TS-RISK** no (`Rocker=` and `DirectRocker=` are stock YR keys;
+gamemd.exe holds no `RockerScale` string)
 **Effect** tanks and ships never lurch when a shell, missile or Demo Truck goes off beside
 them. The static, unreactive look of a firefight is the symptom.
 **Frequency** constant — 18 stock warheads in `ini/rulesmd.ini` carry `Rocker=yes`.

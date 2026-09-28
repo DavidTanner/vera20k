@@ -3,7 +3,6 @@
 use super::combos::apply_combo_selection as apply_combo_selection_for_test;
 use super::*;
 use crate::app::loading::init::MapMenuEntry;
-use crate::map::briefing::BriefingSection;
 use crate::map::preview::PreviewSection;
 use crate::map::skirmish_scenarios::{
     SkirmishScenarioKind, SkirmishScenarioRecord, SkirmishScenarioSource,
@@ -31,7 +30,6 @@ fn test_map_entry_with_starts(name: &str, start_count: usize) -> MapMenuEntry {
         file_name: name.to_string(),
         display_name: name.to_string(),
         author: None,
-        briefing: BriefingSection::default(),
         preview: PreviewSection::default(),
         multiplayer_start_waypoints: (0..start_count)
             .map(|idx| Waypoint {
@@ -1297,12 +1295,9 @@ fn raw_pack_retains_sparse_ai_house_slots_before_compaction() {
     shell.opponents[1].row_type = SkirmishAiRowType::Normal;
     shell.opponents[4].row_type = SkirmishAiRowType::Hard;
     let maps = [test_map_entry("map.mmx")];
-    let packed = pack_launch_session_without_start_validation(
-        &shell,
-        &maps,
-        &stock_skirmish_modes(),
-    )
-    .expect("sparse raw AI slots pack before gameplay compaction");
+    let packed =
+        pack_launch_session_without_start_validation(&shell, &maps, &stock_skirmish_modes())
+            .expect("sparse raw AI slots pack before gameplay compaction");
 
     assert_eq!(packed.opponents.len(), 2);
     assert_eq!(

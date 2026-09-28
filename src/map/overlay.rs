@@ -54,9 +54,7 @@ impl OverlayIdentityPack {
     /// Return the decoded byte for one fixed-grid reader coordinate. `None`
     /// represents native's failed byte read and is not the `0xFF` sentinel.
     pub fn read_byte(&self, rx: u16, ry: u16) -> Option<u8> {
-        if usize::from(rx) >= OVERLAY_GRID_SIZE
-            || usize::from(ry) >= OVERLAY_GRID_SIZE
-        {
+        if usize::from(rx) >= OVERLAY_GRID_SIZE || usize::from(ry) >= OVERLAY_GRID_SIZE {
             return None;
         }
         self.bytes
@@ -120,9 +118,7 @@ impl OverlayDataPack {
     /// body produces `None`, matching the native failed-read path rather than
     /// fabricating a decoded zero byte.
     pub fn read_byte(&self, rx: u16, ry: u16) -> Option<u8> {
-        if usize::from(rx) >= OVERLAY_GRID_SIZE
-            || usize::from(ry) >= OVERLAY_GRID_SIZE
-        {
+        if usize::from(rx) >= OVERLAY_GRID_SIZE || usize::from(ry) >= OVERLAY_GRID_SIZE {
             return None;
         }
         self.bytes
@@ -240,16 +236,17 @@ pub fn parse_terrain_objects(ini: &IniFile) -> Vec<TerrainObject> {
 
     let mut objects: Vec<TerrainObject> = Vec::new();
 
+    // `TerrainClass__Read_Map_Section @ 0x0071CA70`: the cell is `atoi` of the
+    // entry name, the type a 0x80-byte ReadString. Rust skips a negative cell.
     for key in section.keys() {
-        let pos: u32 = match key.parse::<u32>() {
-            Ok(v) => v,
-            Err(_) => continue,
+        let Ok(pos) = u32::try_from(crate::rules::ini_value::crt_atoi(key)) else {
+            continue;
         };
 
-        let name: String = match section.get(key) {
-            Some(v) if !v.is_empty() => v.to_uppercase(),
-            _ => continue,
+        let Some(name) = section.read_name(key, 0x80) else {
+            continue;
         };
+        let name = name.to_uppercase();
 
         let ry: u16 = (pos / 1000) as u16;
         let rx: u16 = (pos % 1000) as u16;
@@ -267,12 +264,7 @@ pub fn parse_terrain_objects(ini: &IniFile) -> Vec<TerrainObject> {
 fn decode_pack_section(ini: &IniFile, section_name: &str) -> Option<Vec<u8>> {
     let section = ini.section(section_name)?;
 
-    let mut b64_data: String = String::new();
-    for key in section.keys() {
-        if let Some(val) = section.get(key) {
-            b64_data.push_str(val);
-        }
-    }
+    let b64_data = section.read_packed_text();
 
     if b64_data.is_empty() {
         return None;
@@ -446,7 +438,11 @@ mod tests {
         assert_eq!(data.read_byte(0, 0), Some(7));
         assert_eq!(data.read_byte(1, 0), Some(8));
         assert_eq!(data.read_byte(2, 0), None);
-        assert_eq!(data.byte_at(2, 0), 0, "legacy projection remains zero-fallback");
+        assert_eq!(
+            data.byte_at(2, 0),
+            0,
+            "legacy projection remains zero-fallback"
+        );
     }
 
     #[test]

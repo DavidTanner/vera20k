@@ -63,7 +63,7 @@ impl GattlingStages {
         let block = &mut stages.block;
         let mut read = |slot: usize, key: &str| {
             if let Some(cell) = block.get_mut(slot) {
-                *cell = section.get_i32(key).unwrap_or(*cell);
+                *cell = section.read_int(key, *cell);
             }
         };
         read(WEAPON_STAGES, "WeaponStages");
@@ -75,12 +75,10 @@ impl GattlingStages {
             for index in 1..=last {
                 let slot = index as usize;
                 if let Some(cell) = block.get_mut(slot) {
-                    *cell = section.get_i32(&format!("Stage{index}")).unwrap_or(*cell);
+                    *cell = section.read_int(&format!("Stage{index}"), *cell);
                 }
                 if let Some(cell) = block.get_mut(ELITE_BASE + slot) {
-                    *cell = section
-                        .get_i32(&format!("EliteStage{index}"))
-                        .unwrap_or(*cell);
+                    *cell = section.read_int(&format!("EliteStage{index}"), *cell);
                 }
             }
         }

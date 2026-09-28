@@ -57,7 +57,10 @@ impl TeamScriptVm {
         // of each native registry.
         for team_type in registry.team_type_read_sequence() {
             let id = interner.intern(&team_type.id);
-            let script_name = team_type.get("Script").unwrap_or("<none>");
+            let fields = team_type.section();
+            // TeamTypeClass::Read_INI: ReadString 0x80 for both references
+            // (`0x006F1496`, `0x006F14CF`).
+            let script_name = fields.read_name("Script", 0x80).unwrap_or("<none>");
             let script_resolution = find_or_allocate_definition(
                 script_name,
                 &mut vm.scripts,
@@ -82,7 +85,7 @@ impl TeamScriptVm {
                 }
             };
 
-            let task_force_name = team_type.get("TaskForce").unwrap_or("<none>");
+            let task_force_name = fields.read_name("TaskForce", 0x80).unwrap_or("<none>");
             let task_force_resolution = find_or_allocate_definition(
                 task_force_name,
                 &mut vm.task_forces,
@@ -112,10 +115,10 @@ impl TeamScriptVm {
                 id,
                 script_id,
                 task_force_id,
-                priority: team_type.read_int("Priority", 7),
-                is_base_defense: team_type.read_bool("IsBaseDefense", false),
-                suicide: team_type.read_bool("Suicide", false),
-                aggressive: team_type.read_bool("Aggressive", false),
+                priority: fields.read_int("Priority", 7),
+                is_base_defense: fields.read_bool("IsBaseDefense", false),
+                suicide: fields.read_bool("Suicide", false),
+                aggressive: fields.read_bool("Aggressive", false),
                 combined_movement_zone: MovementZone::Fly,
                 base_zone_relation_enforced: true,
                 transport_crossing_required: false,
@@ -123,9 +126,9 @@ impl TeamScriptVm {
             vm.team_type_ini.insert(
                 id,
                 TeamTypeIniMetadata {
-                    max_teams: team_type.read_int("Max", -1),
-                    autocreate: team_type.read_bool("Autocreate", false),
-                    are_team_members_recruitable: team_type
+                    max_teams: fields.read_int("Max", -1),
+                    autocreate: fields.read_bool("Autocreate", false),
+                    are_team_members_recruitable: fields
                         .read_bool("AreTeamMembersRecruitable", true),
                     raw_fields: team_type.fields.clone(),
                     source: team_type.source,

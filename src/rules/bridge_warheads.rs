@@ -47,20 +47,17 @@ impl BridgeWarheads {
     /// Parse from a `[CombatDamage]` `IniSection`. Missing keys use defaults.
     pub fn from_ini_section(section: &IniSection) -> Self {
         let default = Self::default();
+        // ReadString 0x80 ahead of each warhead lookup (`0x0066CA96`,
+        // `0x0066C327`, `0x0066C365`).
+        let name = |key: &str, default: String| {
+            section.read_name(key, 0x80).map_or(default, str::to_string)
+        };
         Self {
-            ion_cannon_name: read_name(section, "IonCannonWarhead")
-                .unwrap_or(default.ion_cannon_name),
-            c4_name: read_name(section, "C4Warhead").unwrap_or(default.c4_name),
-            crush_name: read_name(section, "CrushWarhead").unwrap_or(default.crush_name),
+            ion_cannon_name: name("IonCannonWarhead", default.ion_cannon_name),
+            c4_name: name("C4Warhead", default.c4_name),
+            crush_name: name("CrushWarhead", default.crush_name),
         }
     }
-}
-
-fn read_name(section: &IniSection, key: &str) -> Option<String> {
-    section
-        .get(key)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_from_f32};
+use crate::util::fixed_math::{SimFixed, sim_from_f32};
 
 /// A weapon definition parsed from a rules.ini section.
 ///
@@ -67,9 +67,9 @@ pub struct WeaponType {
     pub projectile: Option<String>,
     /// Warhead type ID (references a [WarheadName] section).
     pub warhead: Option<String>,
-    /// Firing sound ID (references a [SoundName] section in sound.ini).
-    /// Played each time this weapon fires.
-    pub report: Option<String>,
+    /// `Report=` firing sounds (references [SoundName] sections in
+    /// soundmd.ini). Played each time this weapon fires.
+    pub report: Vec<String>,
     /// Number of rapid shots per attack cycle (default 1).
     /// After the full burst, the ROF cooldown begins.
     pub burst: i32,
@@ -95,8 +95,9 @@ pub struct WeaponType {
     pub rad_level: i32,
 
     // ── String/reference fields ──────────────────────────────────────
-    /// Sound played when weapon fires downward (e.g., from a building).
-    pub down_report: Option<String>,
+    /// `DownReport=` sounds, played when the weapon fires downward (e.g.,
+    /// from a building).
+    pub down_report: Vec<String>,
     /// Animation played during assault (garrison clearing).
     pub assault_anim: Option<String>,
     /// Animation played by occupants when firing from a building.
@@ -208,163 +209,144 @@ pub struct WeaponType {
 }
 
 impl WeaponType {
-    /// `Report=` as `CCINIClass::ReadSoundList @ 0x00525430` reads it: the
-    /// value split on `,` (the `strtok` delimiter string at `0x00817F70`),
-    /// empty tokens dropped; the vector's count is `WeaponTypeClass+0xCC`.
-    ///
-    /// RESIDUAL: native keeps only the tokens `VocClass::FindPtrByName`
-    /// resolves and reads at most 127 bytes (`ReadString`, buffer `0x80`);
-    /// VERA keeps every token. Trigger: a `Report=` naming a sound
-    /// `soundmd.ini` lacks, or longer than 127 bytes. Effect: a longer list,
-    /// so the Gattling report's draw and the per-shot report's pick can choose
-    /// a different item. Frequency: never on retail data (every `Report=`
-    /// names one sound).
-    fn report_items(&self) -> impl Iterator<Item = &str> {
-        self.report
-            .as_deref()
-            .unwrap_or("")
-            .split(',')
-            .filter(|token| !token.is_empty())
-    }
-
     /// `Report.Count` (`WeaponTypeClass+0xCC`).
     pub fn report_count(&self) -> i32 {
-        self.report_items().count() as i32
+        self.report.len() as i32
     }
 
     /// `Report.Items[index]`.
     pub fn report_item(&self, index: usize) -> Option<&str> {
-        self.report_items().nth(index)
+        self.report.get(index).map(String::as_str)
     }
 
     /// Parse a WeaponType from a rules.ini section.
     pub fn from_ini_section(id: &str, section: &IniSection) -> Self {
         Self {
             id: id.to_string(),
-            damage: section.get_i32("Damage").unwrap_or(0),
-            range: section
-                .get_f32("Range")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
+            damage: section.read_int("Damage", 0),
+            range: sim_from_f32(section.read_double("Range", 0.0) as f32),
             // `WeaponTypeClass::Constructor` 0x00771C70 zeroes +0xB4 at
             // 0x00771CB6, so an absent (or literal `-1`) key leaves 0.
             range_leptons: section.read_range("Range", 0),
-            rof: section.get_i32("ROF").unwrap_or(0),
+            rof: section.read_int("ROF", 0),
             // Weapon771C70 initializes +A8 to zero; ReadINI7722FD calls
             // ReadSpeed474810. Ordered Rules processing applies the later
             // Weapon7729F0 postpass to the live retained value.
             speed: section.read_speed("Speed", 0),
-            projectile: section.get("Projectile").map(|s| s.to_string()),
-            warhead: section.get("Warhead").map(|s| s.to_string()),
-            report: section.get("Report").map(|s| s.to_string()),
-            burst: section.get_i32("Burst").unwrap_or(1),
+            // ReadString 0x80 ahead of each type lookup (`0x00772998`,
+            // `0x0077295F`).
+            projectile: section.read_name("Projectile", 0x80).map(str::to_string),
+            warhead: section.read_name("Warhead", 0x80).map(str::to_string),
+            report: sound_list(section, "Report"),
+            burst: section.read_int("Burst", 1),
             // Constructor 1 (`0x00771DBB`); ReadINI passes it as the default
             // (`0x00772182..0x00772196`).
-            reveal_on_fire: section.get_bool("RevealOnFire").unwrap_or(true),
+            reveal_on_fire: section.read_bool("RevealOnFire", true),
 
             // Int/fixed-point fields
-            ambient_damage: section.get_i32("AmbientDamage").unwrap_or(0),
-            minimum_range: section
-                .get_f32("MinimumRange")
-                .map(sim_from_f32)
-                .unwrap_or(SIM_ZERO),
+            ambient_damage: section.read_int("AmbientDamage", 0),
+            minimum_range: sim_from_f32(section.read_double("MinimumRange", 0.0) as f32),
             // +0xB8 is zeroed alongside +0xB4 at 0x00771CBF.
             minimum_range_leptons: section.read_range("MinimumRange", 0),
-            disguise_fake_blink_time: section.get_i32("DisguiseFakeBlinkTime").unwrap_or(0),
-            laser_duration: section.get_i32("LaserDuration").unwrap_or(0),
-            rad_level: section.get_i32("RadLevel").unwrap_or(0),
+            disguise_fake_blink_time: section.read_int("DisguiseFakeBlinkTime", 0),
+            laser_duration: section.read_int("LaserDuration", 0),
+            rad_level: section.read_int("RadLevel", 0),
 
             // String/reference fields
-            down_report: section.get("DownReport").map(|s| s.to_string()),
-            assault_anim: section.get("AssaultAnim").map(|s| s.to_string()),
-            occupant_anim: section.get("OccupantAnim").map(|s| s.to_string()),
-            open_topped_anim: section.get("OpenToppedAnim").map(|s| s.to_string()),
-            attached_particle_system: section.get("AttachedParticleSystem").map(|s| s.to_string()),
+            down_report: sound_list(section, "DownReport"),
+            // ReadString 0x80 at `0x0077257C`, `0x007725B5`, `0x007725EE`.
+            assault_anim: section.read_name("AssaultAnim", 0x80).map(str::to_string),
+            occupant_anim: section.read_name("OccupantAnim", 0x80).map(str::to_string),
+            open_topped_anim: section
+                .read_name("OpenToppedAnim", 0x80)
+                .map(str::to_string),
+            // A 0x14-byte buffer (`0x00772920`).
+            attached_particle_system: section
+                .read_name("AttachedParticleSystem", 0x14)
+                .map(str::to_string),
+            // `0x00772479`: ReadString 0x80, then `strtok(",")`, keeping each
+            // token `0x00428B80` resolves (`0x007724B8`). RESIDUAL: VERA keeps
+            // unresolved names too, which shifts the damage-indexed pick past
+            // one; every retail `Anim=` name resolves.
             anim: section
-                .get_list("Anim")
+                .read_list("Anim", 0x80)
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
+                .map(str::to_string)
                 .collect(),
 
-            // Color fields
-            laser_inner_color: section
-                .get("LaserInnerColor")
-                .map(parse_rgb_color)
-                .unwrap_or([0, 0, 0]),
-            laser_outer_color: section
-                .get("LaserOuterColor")
-                .map(parse_rgb_color)
-                .unwrap_or([0, 0, 0]),
-            laser_outer_spread: section
-                .get("LaserOuterSpread")
-                .map(parse_rgb_color)
-                .unwrap_or([0, 0, 0]),
+            // Color fields: ReadColorRGB over the constructor's zero
+            // (`0x00771D30`-`0x00771D60`), at `0x00772770`, `0x00772796` and
+            // `0x007727BC`.
+            laser_inner_color: section.read_color_rgb("LaserInnerColor", [0; 3]),
+            laser_outer_color: section.read_color_rgb("LaserOuterColor", [0; 3]),
+            laser_outer_spread: section.read_color_rgb("LaserOuterSpread", [0; 3]),
 
             // Bool fields
-            use_fire_particles: section.get_bool("UseFireParticles").unwrap_or(false),
-            use_spark_particles: section.get_bool("UseSparkParticles").unwrap_or(false),
-            omni_fire: section.get_bool("OmniFire").unwrap_or(false),
-            distributed_weapon_fire: section.get_bool("DistributedWeaponFire").unwrap_or(false),
-            is_railgun: section.get_bool("IsRailgun").unwrap_or(false),
-            lobber: section.get_bool("Lobber").unwrap_or(false),
-            bright: section.get_bool("Bright").unwrap_or(false),
-            is_sonic: section.get_bool("IsSonic").unwrap_or(false),
-            spawner: section.get_bool("Spawner").unwrap_or(false),
-            limbo_launch: section.get_bool("LimboLaunch").unwrap_or(false),
+            use_fire_particles: section.read_bool("UseFireParticles", false),
+            use_spark_particles: section.read_bool("UseSparkParticles", false),
+            omni_fire: section.read_bool("OmniFire", false),
+            distributed_weapon_fire: section.read_bool("DistributedWeaponFire", false),
+            is_railgun: section.read_bool("IsRailgun", false),
+            lobber: section.read_bool("Lobber", false),
+            bright: section.read_bool("Bright", false),
+            is_sonic: section.read_bool("IsSonic", false),
+            spawner: section.read_bool("Spawner", false),
+            limbo_launch: section.read_bool("LimboLaunch", false),
             // WeaponTypeClass constructor / ReadINI consumed by
             // TechnoClass::GetFireError @ 0x006FC0B0: omitted
             // DecloakToFire= is YES. Stock CruiseLauncher relies on the
             // constructor default; BoomerTorpedo explicitly opts out.
-            decloak_to_fire: section.get_bool("DecloakToFire").unwrap_or(true),
-            cell_rangefinding: section.get_bool("CellRangefinding").unwrap_or(false),
-            fire_once: section.get_bool("FireOnce").unwrap_or(false),
-            never_use: section.get_bool("NeverUse").unwrap_or(false),
-            terrain_fire: section.get_bool("TerrainFire").unwrap_or(false),
-            sabotage_cursor: section.get_bool("SabotageCursor").unwrap_or(false),
-            mig_attack_cursor: section.get_bool("MigAttackCursor").unwrap_or(false),
-            disguise_fire_only: section.get_bool("DisguiseFireOnly").unwrap_or(false),
-            infinite_mind_control: section.get_bool("InfiniteMindControl").unwrap_or(false),
-            fire_while_moving: section.get_bool("FireWhileMoving").unwrap_or(true),
-            drain_weapon: section.get_bool("DrainWeapon").unwrap_or(false),
-            fire_in_transport: section.get_bool("FireInTransport").unwrap_or(true),
-            suicide: section.get_bool("Suicide").unwrap_or(false),
-            turbo_boost: section.get_bool("TurboBoost").unwrap_or(false),
-            supress: section.get_bool("Supress").unwrap_or(false),
-            camera: section.get_bool("Camera").unwrap_or(false),
-            charges: section.get_bool("Charges").unwrap_or(false),
-            is_laser: section.get_bool("IsLaser").unwrap_or(false),
-            disk_laser: section.get_bool("DiskLaser").unwrap_or(false),
-            is_line: section.get_bool("IsLine").unwrap_or(false),
-            is_big_laser: section.get_bool("IsBigLaser").unwrap_or(false),
-            is_house_color: section.get_bool("IsHouseColor").unwrap_or(false),
-            ion_sensitive: section.get_bool("IonSensitive").unwrap_or(false),
-            area_fire: section.get_bool("AreaFire").unwrap_or(false),
-            is_electric_bolt: section.get_bool("IsElectricBolt").unwrap_or(false),
-            draw_bolt_as_laser: section.get_bool("DrawBoltAsLaser").unwrap_or(false),
-            is_alternate_color: section.get_bool("IsAlternateColor").unwrap_or(false),
-            is_rad_beam: section.get_bool("IsRadBeam").unwrap_or(false),
-            is_rad_eruption: section.get_bool("IsRadEruption").unwrap_or(false),
-            is_mag_beam: section.get_bool("IsMagBeam").unwrap_or(false),
+            decloak_to_fire: section.read_bool("DecloakToFire", true),
+            cell_rangefinding: section.read_bool("CellRangefinding", false),
+            fire_once: section.read_bool("FireOnce", false),
+            never_use: section.read_bool("NeverUse", false),
+            terrain_fire: section.read_bool("TerrainFire", false),
+            sabotage_cursor: section.read_bool("SabotageCursor", false),
+            mig_attack_cursor: section.read_bool("MigAttackCursor", false),
+            disguise_fire_only: section.read_bool("DisguiseFireOnly", false),
+            infinite_mind_control: section.read_bool("InfiniteMindControl", false),
+            fire_while_moving: section.read_bool("FireWhileMoving", true),
+            drain_weapon: section.read_bool("DrainWeapon", false),
+            fire_in_transport: section.read_bool("FireInTransport", true),
+            suicide: section.read_bool("Suicide", false),
+            turbo_boost: section.read_bool("TurboBoost", false),
+            supress: section.read_bool("Supress", false),
+            camera: section.read_bool("Camera", false),
+            charges: section.read_bool("Charges", false),
+            is_laser: section.read_bool("IsLaser", false),
+            disk_laser: section.read_bool("DiskLaser", false),
+            is_line: section.read_bool("IsLine", false),
+            is_big_laser: section.read_bool("IsBigLaser", false),
+            is_house_color: section.read_bool("IsHouseColor", false),
+            ion_sensitive: section.read_bool("IonSensitive", false),
+            area_fire: section.read_bool("AreaFire", false),
+            is_electric_bolt: section.read_bool("IsElectricBolt", false),
+            draw_bolt_as_laser: section.read_bool("DrawBoltAsLaser", false),
+            is_alternate_color: section.read_bool("IsAlternateColor", false),
+            is_rad_beam: section.read_bool("IsRadBeam", false),
+            is_rad_eruption: section.read_bool("IsRadEruption", false),
+            is_mag_beam: section.read_bool("IsMagBeam", false),
         }
     }
 }
 
-/// Parse an "R,G,B" color string into a `[u8; 3]` array.
+/// `Report=`/`DownReport=` as `CCINIClass::ReadSoundList @ 0x00525430`
+/// reads them (`0x00772394`, `0x0077241A`): ReadString 0x80, then
+/// `strtok(",")`. Absent leaves the constructor's empty list.
 ///
-/// Each component is clamped to 0–255. Returns `[0, 0, 0]` if parsing fails.
-/// Used for LaserInnerColor, LaserOuterColor, LaserOuterSpread.
-fn parse_rgb_color(raw: &str) -> [u8; 3] {
-    let parts: Vec<&str> = raw.split(',').map(|s| s.trim()).collect();
-    if parts.len() >= 3 {
-        let r = parts[0].parse::<u8>().unwrap_or(0);
-        let g = parts[1].parse::<u8>().unwrap_or(0);
-        let b = parts[2].parse::<u8>().unwrap_or(0);
-        [r, g, b]
-    } else {
-        [0, 0, 0]
-    }
+/// RESIDUAL: native keeps only the tokens `VocClass::FindPtrByName` resolves;
+/// VERA keeps every token. Trigger: a list naming a sound `soundmd.ini`
+/// lacks. Effect: a longer list, so the Gattling report's draw and the
+/// per-shot report's pick can choose a different item. Frequency: never on
+/// retail data (every `Report=` names one sound).
+fn sound_list(section: &IniSection, key: &str) -> Vec<String> {
+    section
+        .read_list(key, 0x80)
+        .unwrap_or_default()
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 #[cfg(test)]
@@ -384,6 +366,7 @@ mod tests {
 
     use super::*;
     use crate::rules::ini_parser::IniFile;
+    use crate::util::fixed_math::SIM_ZERO;
 
     #[test]
     fn test_parse_weapon() {
@@ -425,7 +408,7 @@ mod tests {
         assert!(!weapon.is_electric_bolt);
         assert!(weapon.anim.is_empty());
         assert_eq!(weapon.laser_inner_color, [0, 0, 0]);
-        assert_eq!(weapon.down_report, None);
+        assert!(weapon.down_report.is_empty());
         assert!(weapon.decloak_to_fire, "native omitted-key default is yes");
     }
 
@@ -479,14 +462,6 @@ mod tests {
         assert_eq!(weapon.laser_inner_color, [255, 0, 0]);
         assert_eq!(weapon.laser_outer_color, [128, 64, 32]);
         assert_eq!(weapon.laser_outer_spread, [200, 200, 200]);
-    }
-
-    #[test]
-    fn test_parse_rgb_color_helper() {
-        assert_eq!(parse_rgb_color("255,128,0"), [255, 128, 0]);
-        assert_eq!(parse_rgb_color("0, 0, 0"), [0, 0, 0]);
-        assert_eq!(parse_rgb_color("invalid"), [0, 0, 0]);
-        assert_eq!(parse_rgb_color(""), [0, 0, 0]);
     }
 
     #[test]

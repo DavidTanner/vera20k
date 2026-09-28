@@ -109,8 +109,7 @@ pub fn set_ini_value(content: &[u8], section: &str, key: &str, value: &str) -> V
 /// case-insensitive, while written key casing comes from `values`. Duplicate
 /// update keys are collapsed case-insensitively: the last supplied spelling and
 /// value win without changing the first occurrence's order. If the file itself
-/// repeats a key, its last occurrence is updated, matching the parser's
-/// later-value-wins lookup policy.
+/// repeats a key, its first occurrence is updated: the one `IniFile` reads.
 ///
 /// This is the preservation-safe path for native writers that update a whole
 /// settings snapshot in memory before performing one final file save.
@@ -161,7 +160,7 @@ pub fn set_ini_values(content: &[u8], section: &str, values: &[(&str, &str)]) ->
                 .iter()
                 .position(|update| update.0.eq_ignore_ascii_case(existing_key))
             {
-                key_lines[update_index] = Some(line_index);
+                key_lines[update_index].get_or_insert(line_index);
             }
             insert_after = Some(line_index);
         }
@@ -437,8 +436,8 @@ ShortGame=yes\r\n"
     }
 
     #[test]
-    fn batch_updates_last_duplicate_key_in_first_section() {
-        let input = b"[skirmish]\r\ngamemode=1\r\nGameMode=8\r\n\
+    fn batch_updates_first_duplicate_key_in_first_section() {
+        let input = b"[Skirmish]\r\nGameMode=1\r\nGameMode=8\r\n\
 [Skirmish]\r\nGameMode=9\r\n";
         let out = s(set_ini_values(
             input,
@@ -447,7 +446,7 @@ ShortGame=yes\r\n"
         ));
         assert_eq!(
             out,
-            "[skirmish]\r\ngamemode=1\r\nGameMode=2\r\nCredits=10000\r\n\
+            "[Skirmish]\r\nGameMode=2\r\nGameMode=8\r\nCredits=10000\r\n\
 [Skirmish]\r\nGameMode=9\r\n"
         );
     }

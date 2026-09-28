@@ -5,7 +5,7 @@
 //! tick logic by themselves.
 
 use crate::assets::asset_manager::AssetManager;
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
 
 /// The mode class an `MPModesMD.ini` section builds. The loader `0x005D7CE0`
 /// reads the sections in this order, each through its own factory
@@ -63,13 +63,23 @@ pub struct SkirmishGameMode {
 }
 
 impl SkirmishGameMode {
-    fn from_roster_row_native_defaults(class: MpModeClass, id: i32, value: &str) -> Option<Self> {
-        let fields: Vec<&str> = value.split(',').map(str::trim).collect();
+    /// `0x005D7590`: the row is ReadString into a CString (`0x00528C00`,
+    /// 0x3FE bytes), then `CString::Tokenize(",")` fields trimmed of spaces
+    /// ([`IniSection::read_trimmed_list`]).
+    fn from_roster_row_native_defaults(
+        class: MpModeClass,
+        id: i32,
+        section: &IniSection,
+        key: &str,
+    ) -> Option<Self> {
+        let fields = section.read_trimmed_list(key, 0x3FF)?;
         if fields.len() < 5 {
             return None;
         }
 
-        let random_maps_allowed = parse_bool(fields[4]).unwrap_or(false);
+        // Any fifth field but `false` allows random maps (`_stricmp` at
+        // `0x005D796C`).
+        let random_maps_allowed = !fields[4].eq_ignore_ascii_case("false");
         Some(Self {
             class,
             id,
@@ -84,24 +94,11 @@ impl SkirmishGameMode {
     }
 }
 
-fn parse_bool(value: &str) -> Option<bool> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "yes" | "true" | "1" => Some(true),
-        "no" | "false" | "0" => Some(false),
-        _ => None,
-    }
-}
-
 fn apply_common_override(mode: &mut SkirmishGameMode, ini: &IniFile) {
-    let Some(section) = ini.section("MultiplayerDialogSettings") else {
-        return;
-    };
-    if let Some(allies_allowed) = section.get_bool("AlliesAllowed") {
-        mode.allies_allowed = allies_allowed;
-    }
-    if let Some(must_ally) = section.get_bool("MustAlly") {
-        mode.must_ally = must_ally;
-    }
+    // ReadBool over each current value (`0x005D5CE5`, `0x005D5D00`).
+    let section = ini.section_or_empty("MultiplayerDialogSettings");
+    mode.allies_allowed = section.read_bool("AlliesAllowed", mode.allies_allowed);
+    mode.must_ally = section.read_bool("MustAlly", mode.must_ally);
     if !mode.allies_allowed {
         mode.must_ally = false;
     }
@@ -118,12 +115,9 @@ where
         };
         for key in section.keys() {
             // The id is the key's atoi (`CString` to int `0x007B6280`).
-            let id = crate::rules::ini_value::atoi_lenient(key);
-            let Some(value) = section.get(key) else {
-                continue;
-            };
+            let id = crate::rules::ini_value::crt_atoi(key);
             let Some(mut mode) =
-                SkirmishGameMode::from_roster_row_native_defaults(class, id, value)
+                SkirmishGameMode::from_roster_row_native_defaults(class, id, section, key)
             else {
                 continue;
             };

@@ -7,7 +7,9 @@ use crate::rules::ini_parser::{IniFile, IniSection};
 
 /// Native tiberium density byte range is 0..=11.
 pub const TIBERIUM_DENSITY_LEVELS: u8 = 12;
-const PERCENT_PPM: f64 = 1_000_000.0;
+/// `TiberiumClass::Constructor @ 0x007216C0` seeds both percentages with
+/// `0x3FB999999999999A` (0.1) at `0x007216DC`/`0x007216E7`.
+const CTOR_PERCENTAGE: f64 = 0.1;
 
 /// Index into the parsed `[Tiberiums]` list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,16 +30,12 @@ pub struct TiberiumType {
     pub value: i32,
     /// Growth timer reload value.
     pub growth: u32,
-    /// `GrowthPercentage=` scaled by 1,000,000 at parse time.
-    pub growth_percentage_ppm: i32,
     /// `GrowthPercentage=` as the native `TiberiumClass+0xB0` double (IEEE
-    /// bits of the correctly rounded decimal); the growth processor multiplies
-    /// the heap count by it in x87 arithmetic and compares it against 1e-05.
+    /// bits); the growth processor multiplies the heap count by it in x87
+    /// arithmetic and compares it against 1e-05.
     pub growth_percentage_bits: u64,
     /// Spread timer reload value.
     pub spread: u32,
-    /// `SpreadPercentage=` scaled by 1,000,000 at parse time.
-    pub spread_percentage_ppm: i32,
     /// `SpreadPercentage=` as the native `TiberiumClass+0xA0` double.
     pub spread_percentage_bits: u64,
     /// Number of valid overlay data density levels.
@@ -96,62 +94,35 @@ impl TiberiumTypeRegistry {
 }
 
 impl TiberiumType {
+    /// `TiberiumClass::ReadINI @ 0x00721A50`: every read passes the current
+    /// field, which starts at the constructor's value.
     fn from_ini_section(id: TiberiumTypeId, section_name: &str, section: &IniSection) -> Self {
-        let image = section
-            .get_i32("Image")
-            .and_then(|v| u8::try_from(v).ok())
-            .unwrap_or(1);
+        // `0x00721C49` ReadInt(-1) selects the overlay run: 2, 3 and 4 pick
+        // their own, every other value Riparius. RESIDUAL: -1 (and an absent
+        // key) keeps the constructor's null run natively; VERA reads it as
+        // Riparius. Every retail type authors 1-4.
+        let image = u8::try_from(section.read_int("Image", -1)).unwrap_or(1);
         Self {
             id,
             section: section_name.to_string(),
-            display_name: section.get("Name").map(str::to_string),
-            color: section.get("Color").map(str::to_string),
+            // AbstractTypeClass `Name=`, ReadString 0x31 (`0x00410AA0`).
+            display_name: section.read_name("Name", 0x31).map(str::to_string),
+            // `0x00721B35`: ReadString 0x20, then the color scheme lookup.
+            color: section.read_name("Color", 0x20).map(str::to_string),
             image,
-            value: section.get_i32("Value").unwrap_or(0),
-            growth: section
-                .get_i32("Growth")
-                .and_then(|v| u32::try_from(v).ok())
-                .unwrap_or(0),
-            growth_percentage_ppm: section
-                .get("GrowthPercentage")
-                .and_then(parse_percent_ppm)
-                .unwrap_or(0),
+            value: section.read_int("Value", 0),
+            growth: u32::try_from(section.read_int("Growth", 0)).unwrap_or(0),
+            // ReadDouble -> `FSTP qword [ESI+0xB0]` (`0x00721AF4`).
             growth_percentage_bits: section
-                .get("GrowthPercentage")
-                .and_then(parse_percent_bits)
-                .unwrap_or(0),
-            spread: section
-                .get_i32("Spread")
-                .and_then(|v| u32::try_from(v).ok())
-                .unwrap_or(0),
-            spread_percentage_ppm: section
-                .get("SpreadPercentage")
-                .and_then(parse_percent_ppm)
-                .unwrap_or(0),
+                .read_double("GrowthPercentage", CTOR_PERCENTAGE)
+                .to_bits(),
+            spread: u32::try_from(section.read_int("Spread", 0)).unwrap_or(0),
+            // ReadDouble -> `FSTP qword [ESI+0xA0]` (`0x00721AB9`).
             spread_percentage_bits: section
-                .get("SpreadPercentage")
-                .and_then(parse_percent_bits)
-                .unwrap_or(0),
+                .read_double("SpreadPercentage", CTOR_PERCENTAGE)
+                .to_bits(),
             max_density: TIBERIUM_DENSITY_LEVELS,
         }
-    }
-}
-
-/// The native percentage double as stored by `TiberiumClass::ReadINI`: a
-/// correctly rounded decimal parse (the native CRT `atof` rounding of longer
-/// decimals is UNCHECKED; retail values are short). An absent key keeps the
-/// constructor's zero.
-fn parse_percent_bits(raw: &str) -> Option<u64> {
-    raw.trim().parse::<f64>().ok().map(f64::to_bits)
-}
-
-fn parse_percent_ppm(raw: &str) -> Option<i32> {
-    let value = raw.trim().parse::<f64>().ok()?;
-    let scaled = (value * PERCENT_PPM).round();
-    if scaled < i32::MIN as f64 || scaled > i32::MAX as f64 {
-        None
-    } else {
-        Some(scaled as i32)
     }
 }
 
@@ -215,9 +186,11 @@ SpreadPercentage=.06
         assert_eq!(riparius.image, 1);
         assert_eq!(riparius.value, 25);
         assert_eq!(riparius.growth, 2200);
-        assert_eq!(riparius.growth_percentage_ppm, 60_000);
+        // ReadDouble scans a float: `.06` is `0.06f32` widened.
+        let widened = f64::from(0.06_f32).to_bits();
+        assert_eq!(riparius.growth_percentage_bits, widened);
         assert_eq!(riparius.spread, 2200);
-        assert_eq!(riparius.spread_percentage_ppm, 60_000);
+        assert_eq!(riparius.spread_percentage_bits, widened);
         assert_eq!(riparius.max_density, TIBERIUM_DENSITY_LEVELS);
 
         let cruentus = registry
@@ -226,9 +199,9 @@ SpreadPercentage=.06
         assert_eq!(cruentus.image, 2);
         assert_eq!(cruentus.value, 50);
         assert_eq!(cruentus.growth, 10000);
-        assert_eq!(cruentus.growth_percentage_ppm, 0);
+        assert_eq!(cruentus.growth_percentage_bits, 0.0_f64.to_bits());
         assert_eq!(cruentus.spread, 10000);
-        assert_eq!(cruentus.spread_percentage_ppm, 0);
+        assert_eq!(cruentus.spread_percentage_bits, 0.0_f64.to_bits());
     }
 
     #[test]

@@ -332,9 +332,10 @@ impl OverlayTypeRegistry {
             let bridge_deck = is_bridge_overlay_index(idx as u8);
             let track = upper_name.starts_with("TRACKS");
             if let Some(type_section) = ini.section(name) {
-                let tiberium = type_section.get_bool("Tiberium").unwrap_or(false);
+                let tiberium = type_section.read_bool("Tiberium", false);
+                // `0x005FE7AC`: ReadString 0x80 ahead of the land-name lookup.
                 let mut land = type_section
-                    .get("Land")
+                    .read_name("Land", 0x80)
                     .and_then(parse_land_type)
                     .unwrap_or(LandType::Clear);
                 if tiberium && land == LandType::Clear {
@@ -346,55 +347,53 @@ impl OverlayTypeRegistry {
                     land_semantics.is_some_and(|semantics| semantics.ground_blocked);
                 let land_wheel_speed_zero =
                     land_speed_costs.is_some_and(|speed_costs| speed_costs.wheel == Some(0));
-                // Strength from rules section (e.g., [GAWALL] Strength=300).
-                let strength = type_section
-                    .get("Strength")
-                    .and_then(|v| v.parse::<u16>().ok())
-                    .unwrap_or(1);
-                let radar_color = type_section.get("RadarColor").and_then(parse_radar_color);
-                // DamageLevels from art section (e.g., [GASAND] DamageLevels=2 in art.ini).
-                let damage_levels = art_ini
-                    .and_then(|art| art.section(name))
-                    .and_then(|s| s.get("DamageLevels"))
-                    .and_then(|v| v.parse::<u16>().ok())
-                    .unwrap_or(1);
+                // ReadInt over the constructor's 1 (`0x005FE7C6`, `0x005FE265`),
+                // e.g. [GAWALL] Strength=300.
+                let strength = u16::try_from(type_section.read_int("Strength", 1)).unwrap_or(1);
+                // ReadColorRGB (`0x005FE947`) for an authored key; an absent one
+                // leaves the overlay's art colour to the caller.
+                let radar_color = type_section
+                    .get("RadarColor")
+                    .map(|_| type_section.read_color_rgb("RadarColor", [0; 3]));
+                // `0x005FE8BE`: ReadInt from the art INI section the Image
+                // names, over the constructor's 1 (e.g. [GASAND]
+                // DamageLevels=2).
+                let image = type_section.read_name("Image", 0x19).unwrap_or(name);
+                let damage_levels = art_ini.map_or(1, |art| {
+                    u16::try_from(art.section_or_empty(image).read_int("DamageLevels", 1))
+                        .unwrap_or(1)
+                });
                 flags.push(OverlayTypeFlags {
                     tiberium,
-                    chain_reaction: type_section.get_bool("ChainReaction").unwrap_or(false),
-                    wall: type_section.get_bool("Wall").unwrap_or(false),
+                    chain_reaction: type_section.read_bool("ChainReaction", false),
+                    wall: type_section.read_bool("Wall", false),
+                    // ObjectType ReadString 0x80 (`0x005F93A8`).
                     crush_sound: type_section
-                        .get("CrushSound")
-                        .map(str::trim)
-                        .filter(|name| !name.is_empty())
+                        .read_name("CrushSound", 0x80)
                         .map(str::to_string),
-                    draw_flat: type_section.get_bool("DrawFlat").unwrap_or(true),
+                    draw_flat: type_section.read_bool("DrawFlat", true),
                     armor_is_wood: type_section
-                        .get("Armor")
+                        .read_name("Armor", 0x80)
                         .is_some_and(|armor| armor.eq_ignore_ascii_case("wood")),
-                    is_veins: type_section.get_bool("IsVeins").unwrap_or(false),
-                    is_veinhole_monster: type_section
-                        .get_bool("IsVeinholeMonster")
-                        .unwrap_or(false),
-                    is_gate: type_section.get_bool("Gate").unwrap_or(false),
-                    crushable: type_section.get_bool("Crushable").unwrap_or(false),
-                    crate_type: type_section.get_bool("Crate").unwrap_or(false),
-                    crate_trigger: type_section.get_bool("CrateTrigger").unwrap_or(false),
-                    overrides: type_section.get_bool("Overrides").unwrap_or(false),
+                    is_veins: type_section.read_bool("IsVeins", false),
+                    is_veinhole_monster: type_section.read_bool("IsVeinholeMonster", false),
+                    is_gate: type_section.read_bool("Gate", false),
+                    crushable: type_section.read_bool("Crushable", false),
+                    crate_type: type_section.read_bool("Crate", false),
+                    crate_trigger: type_section.read_bool("CrateTrigger", false),
+                    overrides: type_section.read_bool("Overrides", false),
+                    // ReadString 0x80 (`0x005FE88A`).
                     cell_anim: type_section
-                        .get("CellAnim")
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
+                        .read_name("CellAnim", 0x80)
                         .map(str::to_ascii_uppercase)
                         .filter(|value| registered_anim_types.contains(value)),
-                    is_rubble: type_section.get_bool("IsRubble").unwrap_or(false),
-                    is_a_rock: type_section.get_bool("IsARock").unwrap_or(false),
+                    is_rubble: type_section.read_bool("IsRubble", false),
+                    is_a_rock: type_section.read_bool("IsARock", false),
                     land_wheel_speed_zero,
                     bridge_deck,
                     track,
                     land,
-                    no_use_tile_land_type: type_section
-                        .get_bool("NoUseTileLandType")
-                        .unwrap_or(true),
+                    no_use_tile_land_type: type_section.read_bool("NoUseTileLandType", true),
                     land_speed_costs,
                     land_ground_blocked,
                     radar_color,
@@ -619,19 +618,6 @@ pub(crate) fn retained_overlay_land(flags: &OverlayTypeFlags, slope_type: u8) ->
         return None;
     }
     (uses_early_branch || flags.tiberium).then_some(flags.land)
-}
-
-/// Parse a `RadarColor=R,G,B` value. Anything malformed yields `None` so the
-/// caller falls back to the overlay's art rather than to a wrong colour.
-fn parse_radar_color(value: &str) -> Option<[u8; 3]> {
-    let mut channels = value.split(',').map(|part| part.trim().parse::<u8>());
-    let red = channels.next()?.ok()?;
-    let green = channels.next()?.ok()?;
-    let blue = channels.next()?.ok()?;
-    if channels.next().is_some() {
-        return None;
-    }
-    Some([red, green, blue])
 }
 
 #[cfg(test)]
@@ -1262,14 +1248,15 @@ Image=5
     }
 
     #[test]
-    fn radar_color_parses_only_a_well_formed_triple() {
-        assert_eq!(parse_radar_color("220,200,0"), Some([220, 200, 0]));
-        assert_eq!(parse_radar_color(" 220 , 200 , 0 "), Some([220, 200, 0]));
-        // Malformed values yield None so the caller falls back to the art
-        // rather than painting a confidently wrong colour.
-        assert_eq!(parse_radar_color("220,200"), None);
-        assert_eq!(parse_radar_color("220,200,0,5"), None);
-        assert_eq!(parse_radar_color("220,200,300"), None);
-        assert_eq!(parse_radar_color(""), None);
+    fn radar_color_reads_through_read_color_rgb() {
+        let ini = IniFile::from_str(
+            "[OverlayTypes]\n0=A\n1=B\n2=C\n\
+             [A]\nRadarColor=220,200,0\n[B]\nRadarColor=220 ,200,0\n[C]\nWall=yes\n",
+        );
+        let reg = OverlayTypeRegistry::from_ini(&ini, None);
+        assert_eq!(reg.flags(0).unwrap().radar_color, Some([220, 200, 0]));
+        // A scan that stops early keeps the constructor's black.
+        assert_eq!(reg.flags(1).unwrap().radar_color, Some([0, 0, 0]));
+        assert_eq!(reg.flags(2).unwrap().radar_color, None);
     }
 }

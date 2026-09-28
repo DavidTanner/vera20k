@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use crate::rules::ini_parser::IniFile;
-use crate::rules::ini_value::scan_decimal_i32;
+use crate::rules::ini_value::{crt_atoi, strtok};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TriggerDifficulty {
@@ -61,17 +61,11 @@ pub fn parse_triggers(ini: &IniFile) -> TriggerMap {
 }
 
 fn parse_record(id: String, value: &str) -> MapTrigger {
-    let fields: Vec<String> = value
-        .split(',')
-        .map(|part| part.trim().to_string())
-        .collect();
     // Original strtok skips empty tokens, but a whitespace-only token still
-    // consumes a slot. Keep diagnostic fields separate from semantic tokens.
-    let tokens: Vec<&str> = value.split(',').filter(|part| !part.is_empty()).collect();
-    let mut flags = tokens.iter().skip(3).map(|token| {
-        // Original atoi7C9BFD: decimal prefix, CRT whitespace, wrapping i32.
-        scan_decimal_i32(&mut token.as_bytes()).unwrap_or(0)
-    });
+    // consumes a slot.
+    let tokens: Vec<&str> = strtok(value, &[',']).collect();
+    // Original atoi7C9BFD: decimal prefix, CRT whitespace, wrapping i32.
+    let mut flags = tokens.iter().skip(3).map(|token| crt_atoi(token));
     // ReadINI7273B9..727475: token4 is DISABLED; difficulty tokens5..7
     // accept any nonzero atoi value. A missing token writes false, including
     // enabled+9F. Native executable comparisons: trigger_type_flags.json.
@@ -88,8 +82,8 @@ fn parse_record(id: String, value: &str) -> MapTrigger {
         name: parse_name(&tokens),
         enabled,
         difficulty,
-        repeating: parse_repeat_mode(&fields),
-        fields,
+        repeating: parse_repeat_mode(&tokens),
+        fields: tokens.iter().map(|token| token.to_string()).collect(),
     }
 }
 
@@ -112,7 +106,7 @@ fn parse_name(fields: &[&str]) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
-fn parse_repeat_mode(fields: &[String]) -> bool {
+fn parse_repeat_mode(fields: &[&str]) -> bool {
     fields
         .get(7)
         .map(|value| value.trim() == "2")
