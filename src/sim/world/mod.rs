@@ -68,6 +68,7 @@ pub(crate) use techno_ai::ObjectAiCtx;
 pub(crate) use techno_ai::foot_unlimbo_idle_mode;
 pub(crate) use techno_ai::harvester_enter_idle_mode_selector;
 pub(crate) use techno_ai::queue_foot_enter_idle_mode;
+pub(crate) use techno_ai::team_leader_greatest_threat;
 mod command_schedule;
 pub(crate) mod techno_ai_cloak;
 pub(crate) mod unit_post;
@@ -130,7 +131,6 @@ use crate::map::triggers::TriggerMap;
 use crate::rules::locomotor_type::SpeedType;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::animation;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::combat::combat_weapon::WeaponSlot;
@@ -280,7 +280,6 @@ pub(crate) enum HouseAiActivationOrderTestEvent {
     HouseAngerDecay(InternedId),
     HouseActivation(InternedId),
     DefeatProcessed,
-    AiGenerated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1114,8 +1113,6 @@ pub struct Simulation {
     /// teardown. Consumed by the authoritative frame tail before hashing.
     #[serde(skip)]
     pub(crate) bunker_wall_events: Vec<crate::sim::components::BunkerWallAnimEvent>,
-    /// Per-AI-owner state for computer-controlled players.
-    pub ai_players: Vec<AiPlayerState>,
     /// Resolved TeamClass/ScriptType runtime; scenario INI parsing remains a
     /// separate refused boundary until its record grammar is evidenced.
     pub(crate) team_script_vm: TeamScriptVm,
@@ -3001,7 +2998,6 @@ impl Simulation {
             pending_smudge_requests: Vec::new(),
             bale_events: Vec::new(),
             bunker_wall_events: Vec::new(),
-            ai_players: Vec::new(),
             team_script_vm: TeamScriptVm::default(),
             houses: BTreeMap::new(),
             terrain_costs: BTreeMap::new(),
@@ -5655,49 +5651,16 @@ impl Simulation {
         // defeat processing and strategic AI command generation. Native anger
         // decay is unconditional; only the activation substep needs RuleSet.
         self.update_houses_anger_and_activation(rules);
-        // --- Phase 8: Defeat detection, strategy and building choice (runs BEFORE AI) ---
-        // gamemd evaluates each house's defeat before its AI manage/produce step,
-        // so a defeated house issues no AI command this tick; tick_ai skips any
-        // house flagged defeated via its is_defeated gate. The gate reads the
-        // house's tracking counts (`house_defeat.rs`), which construction and
-        // the frame-end pending-delete drain move: a death reaches the gate on
-        // the next frame. Each house's strategy tick (`house_strategy.rs`) and
-        // building choice follow its own gate.
+        // --- Phase 8: Defeat detection, strategy and building choice ---
+        // gamemd evaluates each house's defeat before its AI manage/produce
+        // step. The gate reads the house's tracking counts (`house_defeat.rs`),
+        // which construction and the frame-end pending-delete drain move: a
+        // death reaches the gate on the next frame. Each house's strategy tick
+        // (`house_strategy.rs`) and building choice follow its own gate.
         self.house_rung(rules, path_grid, overlay_registry, self.session.tick > 0);
         #[cfg(test)]
         if self.session.tick > 0 {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
-        }
-
-        // --- Phase 8 (cont.): AI ---
-        // DEPENDS ON: all prior phases + the defeat status set just above (defeated
-        // houses are gated out inside tick_ai).
-        // PRODUCES: commands applied immediately in the same tick.
-        // Temporarily take ai_players out to avoid borrow conflict with &self.
-        if let Some(ai_rules) = rules
-            && !self.ai_players.is_empty()
-        {
-            let mut ai_state = std::mem::take(&mut self.ai_players);
-            let ai_commands = ai::tick_ai(self, &mut ai_state, ai_rules);
-            #[cfg(test)]
-            self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::AiGenerated);
-            self.ai_players = ai_state;
-            // The attack stand-in only orders attacks; it queues, places
-            // and spawns nothing.
-            let ai_tail_path_grid = path_grid
-                .cloned()
-                .or_else(|| self.path_grid.as_deref().cloned());
-            for cmd in &ai_commands {
-                let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
-                self.apply_command_with_overlays(
-                    &cmd_owner_str,
-                    &cmd.payload,
-                    rules,
-                    ai_tail_path_grid.as_ref(),
-                    height_map,
-                    overlay_registry,
-                );
-            }
         }
 
         // --- Phase 9: Building animations + cleanup ---

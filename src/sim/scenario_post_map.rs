@@ -194,7 +194,6 @@ mod tests {
     use crate::rules::house_colors::HouseColorIndex;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
-    use crate::sim::ai::AiPlayerState;
     use crate::sim::house_state::HouseState;
     use crate::sim::overlay_grid::OverlayGrid;
     use crate::skirmish_launch::{
@@ -697,7 +696,6 @@ mod tests {
             computer,
             HouseState::new(computer, 1, None, false, 5_000, 10),
         );
-        sim.ai_players.push(AiPlayerState::new(computer));
 
         let mut expected_rng = sim.scenario_rng.clone();
         let expected_crate_cell = (
@@ -956,7 +954,6 @@ mod tests {
         let owner = sim.interner.intern("HouseA");
         sim.houses
             .insert(owner, HouseState::new(owner, 0, None, false, 7_500, 10));
-        sim.ai_players.push(AiPlayerState::new(owner));
         let rng_before = sim.scenario_rng.state();
         let roster = HouseRoster {
             houses: vec![

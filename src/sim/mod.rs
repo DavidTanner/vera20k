@@ -158,7 +158,6 @@ pub mod team_script_vm;
 pub mod trigger_runtime;
 
 // --- AI, replay, selection, debug ---
-pub mod ai;
 pub(crate) mod ai_buildable;
 pub(crate) mod ai_team_creation;
 pub(crate) mod ai_unit_choice;

@@ -137,7 +137,7 @@ pub(super) fn squared_xy_distance(from: [i32; 2], to: [i32; 2]) -> i32 {
 impl TeamScriptState {
     /// The current action (`ScriptClass::Current @ 0x00691500`): -1 before
     /// the first.
-    pub(super) fn current_action(&self, vm: &super::TeamScriptVm) -> i32 {
+    pub(crate) fn current_action(&self, vm: &super::TeamScriptVm) -> i32 {
         script_action_at(vm.scripts.get(&self.script_id), self.cursor)
             .map_or(-1, |action| action.action_id)
     }
@@ -481,19 +481,7 @@ impl Simulation {
             if !entity.lifecycle.object_alive {
                 continue;
             }
-            let stray = self.team_stray(team_id, rules);
-            let initiated = self.team_member_initiated(team_id, member.id);
-            if member_is_live(entity) && !initiated {
-                if self.team_member_distance(entity, zone) > stray {
-                    if entity.navigation.nav_com.is_none() {
-                        self.team_member_queue_mission(member.id, MissionType::Move, rules);
-                        self.team_member_clear_target(member.id, rules);
-                        self.team_member_set_destination(member.id, zone, rules, registry);
-                    }
-                } else {
-                    self.team_set_member_initiated(team_id, member.id);
-                }
-            }
+            self.team_member_join_up(team_id, member.id, rules, registry);
             let Some(entity) = self.substrate.entities.get(member.id) else {
                 continue;
             };
@@ -619,6 +607,42 @@ impl Simulation {
             team.zone = None;
             team.reforming = true;
         }
+    }
+
+    /// The join-up step `Regroup`, `Coordinate_Move`, `Coordinate_Attack`
+    /// and action 11 inline for each member: a live member not yet joined
+    /// (`+0x689`) joins when within stray of the centre (`Distance @
+    /// 0x005F6360`); outside it, without a destination, it is sent to the
+    /// centre (Move, target cleared). True when it stayed outside stray.
+    pub(super) fn team_member_join_up(
+        &mut self,
+        team_id: u64,
+        member: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        use crate::sim::mission::MissionType;
+        let Some(entity) = self.substrate.entities.get(member) else {
+            return false;
+        };
+        if !member_is_live(entity) || self.team_member_initiated(team_id, member) {
+            return false;
+        }
+        let zone = self
+            .team_script_vm
+            .teams
+            .get(&team_id)
+            .and_then(|team| team.zone);
+        if self.team_member_distance(entity, zone) <= self.team_stray(team_id, rules) {
+            self.team_set_member_initiated(team_id, member);
+            return false;
+        }
+        if entity.navigation.nav_com.is_none() {
+            self.team_member_queue_mission(member, MissionType::Move, rules);
+            self.team_member_clear_target(member, rules);
+            self.team_member_set_destination(member, zone, rules, registry);
+        }
+        true
     }
 
     /// Whether `member` of team `team_id` has joined up (`+0x689`).

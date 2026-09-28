@@ -7,7 +7,7 @@
     1,
     33621247
   ],
-  "scope": "TeamClass::Recalc over TaskForce totals, member counts and strength bytes; Calc_Center off action 10 over synthetic members and move targets; Recruit over one class array with supplied Can_Add answers; ObjectClass::Distance to a Foot or a building of every foundation; the action 5 guard timer; action 54's point up to its FNPC call; FindOwnBuilding over one house's buildings.",
+  "scope": "TeamClass::Recalc over TaskForce totals, member counts and strength bytes; Calc_Center off action 10 over synthetic members and move targets; Recruit over one class array with supplied Can_Add answers; ObjectClass::Distance to a Foot or a building of every foundation; the action 5 guard timer; action 54's point up to its FNPC call; FindOwnBuilding over one house's buildings; action 53 up to its FNPC call or its early return; Quarry_To_Threat; Coordinate_Attack's frame test.",
   "assumptions": [
     "x87 control word 0x0E7F (PC53, chop), the harness default.",
     "Fixture objects carry only the fields the entries read.",
@@ -17,7 +17,7 @@
     "WhatAmI (vt+0x2C), GetTechnoType (vt+0x84), the GuardSlower weight (vt+0x4E0), Can_Enter_Cell (vt+0x1AC) and SetTarget (vt+0x3C8) answer from the case; objects' GetCoords is the original 0x5F65A0, a building's answers the case's coordinate.",
     "ScriptClass::Current 0x691500 answers action 0; MapClass::GetCellAt 0x565730 records its coordinate and answers one cell; the team destructor (vt+0x20) records its call.",
     "Can_Add 0x6EA610 answers from the case and Add_Member 0x6EA500 records its call; Get_Group 0x6F1870 answers the case's group; the TeamType waypoint 0x6F18A0 answers the empty cell; the first passenger 0x473450 answers none.",
-    "Base_Center 0x50DF30 answers the case's centres; RandomRanged 0x65C7E0 answers from the case and records its range.",
+    "Base_Center 0x50DF30 answers the case's centres ([0, 0] for none, z 0); RandomRanged 0x65C7E0 answers from the case and records its range.",
     "FindOwnBuilding's threat map read 0x56BCD0 answers 0."
   ],
   "entry_points": {
@@ -27,7 +27,10 @@
     "distance": "0x005F6360",
     "guard_case": "0x006E97CE",
     "regroup_at_base": "0x006EFA10",
-    "find_own_building": "0x006EEEA0"
+    "find_own_building": "0x006EEEA0",
+    "gather_at_enemy_base": "0x006EF700",
+    "quarry_to_threat": "0x00645BB0",
+    "attack_cadence": "0x006EB59A"
   },
-  "payload_sha256": "76afca5c95afdd290b04f1374c4140c8e75046237b6d6396a0d3253b33631982"
+  "payload_sha256": "b330e7733c2941f2bc093aab8cec7cb1b3c12d1a899128be2e314c9529ddf909"
 }

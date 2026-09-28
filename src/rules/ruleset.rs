@@ -676,6 +676,11 @@ pub struct GeneralRules {
     pub target_strength_coefficient_default: f64,
     /// `TargetDistanceCoefficientDefault=` (`RulesClass+0x1060`).
     pub target_distance_coefficient_default: f64,
+    /// `EnemyHouseThreatBonus=` (`RulesClass+0x1090`, ReadDouble at
+    /// `0x00671C7C`; constructor 0.0 at `0x00666CB7`, stock rulesmd 400):
+    /// added to the threat score of a candidate the scorer house's current
+    /// enemy owns (`TechnoClass::Calculate_Threat_Score @ 0x0070CF13`).
+    pub enemy_house_threat_bonus: f64,
     /// `ThreatPerOccupant=` (`RulesClass+0x0DF4`, `RulesClass::ReadGeneral @
     /// 0x00670128`; constructor default 5 at `0x006668DE`, stock rulesmd 10).
     /// A garrisoned building's `ThreatPosed` is `occupants * this` instead of
@@ -1704,6 +1709,7 @@ impl Default for GeneralRules {
             target_special_threat_coefficient_default: 200.0,
             target_strength_coefficient_default: -200.0,
             target_distance_coefficient_default: -10.0,
+            enemy_house_threat_bonus: 0.0,
             threat_per_occupant: 5,
             normal_targeting_delay: 27,
             dead_bodies: Vec::new(),
@@ -2262,6 +2268,8 @@ impl GeneralRules {
                 "TargetDistanceCoefficientDefault",
                 defaults.target_distance_coefficient_default,
             ),
+            enemy_house_threat_bonus: general
+                .read_double("EnemyHouseThreatBonus", defaults.enemy_house_threat_bonus),
             threat_per_occupant: general
                 .read_int("ThreatPerOccupant", defaults.threat_per_occupant),
             // Passive-scan cadence, in frames. Both keys are present in stock

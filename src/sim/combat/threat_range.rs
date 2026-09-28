@@ -145,8 +145,8 @@ const AREA_GUARD_MAX_SCAN_CELLS: i32 = 16;
 ///   1 and so the flat walk into the ring walk, and clears that byte at
 ///   `0x004D9955` when the scan returns nothing.
 ///
-/// Neither rewrite is modelled; both are recorded as residuals on
-/// [`super::greatest_threat::greatest_threat`].
+/// [`super::threat_mask`] models the class overrides; the `+0x688` coercion
+/// is a residual on [`super::greatest_threat::greatest_threat`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScanMission {
     /// Guard, Move, Harvest — the plain passive-acquire missions. All of them
@@ -201,6 +201,40 @@ pub enum ScanMission {
     /// object array. [`super::greatest_threat`] owns that branch; this variant
     /// only names which mask the caller pushed.
     Hunt,
+    /// Team script action 0, Attack quarry (`TeamClass @ 0x006ED090`): the
+    /// quarry's mask (`0x00645BB0`) and the TeamType's
+    /// `OnlyTargetHouseEnemy=` (`+0xF7`), pushed as `Greatest_Threat`'s arg3
+    /// (`0x006ED14C..0x006ED15E`). No quarry mask carries bit 0 or 1, so it
+    /// takes Hunt's flat walk, measured from the leader's own Coords.
+    TeamQuarry {
+        mask: u32,
+        only_target_house_enemy: bool,
+    },
+}
+
+impl ScanMission {
+    /// The literal the caller pushes as `Greatest_Threat`'s arg1: Guard `1`
+    /// (the passive block), Area Guard `2`, Hunt `0` (`0x004D5373`), a team
+    /// quarry its own mask.
+    pub(crate) const fn literal_mask(self) -> u32 {
+        match self {
+            Self::Guard => 1,
+            Self::AreaGuard => 2,
+            Self::Hunt => 0,
+            Self::TeamQuarry { mask, .. } => mask,
+        }
+    }
+
+    /// `Greatest_Threat`'s arg3, which only team action 0 sets.
+    pub(crate) const fn only_target_house_enemy(self) -> bool {
+        matches!(
+            self,
+            Self::TeamQuarry {
+                only_target_house_enemy: true,
+                ..
+            }
+        )
+    }
 }
 
 /// The distance filter the candidate acceptance test applies.
@@ -283,7 +317,7 @@ pub(crate) fn scan_range(
         // a radius, so this arm is not on the live path; it carries native's
         // literal `PUSH -0x1` (`0x006F9D70`) so that a caller which does ask
         // gets the same answer the flat walk hardcodes.
-        ScanMission::Hunt => ScanRange::NoCutoff,
+        ScanMission::Hunt | ScanMission::TeamQuarry { .. } => ScanRange::NoCutoff,
         ScanMission::AreaGuard => {
             let base =
                 guard_range.unwrap_or_else(|| max_weapon_range(rules, obj, veterancy, cargo_range));

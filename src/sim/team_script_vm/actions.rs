@@ -1,25 +1,42 @@
 //! The script step of `TeamClass::AI @ 0x006E9140` (`0x006E9364..
 //! 0x006E9455`), the actions it dispatches through the jump table at
 //! `0x006E9F74`, and the routines they share: `Coordinate_Move @
-//! 0x006EBAD0` and `Assign_Mission_Target @ 0x006E9050`.
+//! 0x006EBAD0`, `Coordinate_Attack @ 0x006EB490` and `Assign_Mission_Target
+//! @ 0x006E9050`.
 //!
 //! Native evidence: the instruction-level spec
 //! `vera20k-dev/research/chain5/chain5_actions_native.md` and the saved
 //! disassembly (`asm/teamai.asm`, `a11.asm`, `a54.asm`, `a58.asm`,
-//! `findown.asm`, `coordmove.asm`, `assignmt.asm`). Native execution:
-//! `tools/team_recruit_oracle.py`'s `guard`, `regroup` (with its draw) and
-//! `own_building` rows replay in `recruit_oracle_tests`.
+//! `findown.asm`, `coordmove.asm`, `assignmt.asm`); for actions 0 and 53
+//! and `Coordinate_Attack`, `vera20k-dev/research/chain6/
+//! attack_actions_leads.md` with `coordinate_attack.asm`,
+//! `gather_enemy_base.asm` and `asm/team_action_attack_quarry_6ED090.asm`.
+//! Native execution: `tools/team_recruit_oracle.py`'s `guard`, `regroup`
+//! (with its draw) and `own_building` rows replay in `recruit_oracle_tests`.
 //!
 //! RESIDUALS:
-//! - Actions other than 2, 5, 6, 11, 19, 24, 49, 54 and 58 are not ported.
-//!   A team that reaches one stays on it, as a native handler that has not
-//!   finished does, and records the first as its refusal; the rest of its
-//!   update runs. Trigger: every computer attack team (actions 0, 46, 47,
-//!   53, ...), the Bio Reactor team (62) and the transport teams (8, 14, 43).
-//!   Effect: the team idles where it formed; `sim::ai`'s attack wave sends
-//!   such teams' members out instead.
-//! - `+0x81` (restart the current action, `0x006E940F..0x006E942F`), which
-//!   only the attack actions' drive writes, is not kept.
+//! - Actions other than 0, 2, 5, 6, 11, 19, 24, 49, 53, 54 and 58 are not
+//!   ported. A team that reaches one stays on it, as a native handler that
+//!   has not finished does, and records the first as its refusal; the rest
+//!   of its update runs. Trigger: 83 of the 163 retail AIMD TeamTypes reach
+//!   one; the first they reach is 63 (17 TeamTypes), 14 (16), 46 (15), 47
+//!   (12), 61 (9), 55 (7), 9 (3), 57 (2), 21 or 62 (1 each). Effect: the
+//!   team idles on that action for good, keeping its members and its
+//!   TeamType's `Max=` slot, and nothing else sends those units out.
+//! - `Coordinate_Attack` keeps a cell target that only a terrain object
+//!   blocks: a team target holds no terrain object. Trigger: a cell target,
+//!   which no ported caller gives (`Greatest_Threat`'s wall fallback is not
+//!   ported). Effect: the members fire at the cell instead of the tree.
+//! - `Coordinate_Attack` orders an unloading unit to attack without asking
+//!   Unit vt+0x4E4 (`0x00736D50`), which keeps it unloading when its type is
+//!   `DeployToFire=` (no retail type) or a computer unit's `DeploysInto=`
+//!   building sets `+0x16C4` (identity unchecked; Infantry's `0x0041C060`
+//!   answers false). Trigger: a member deploying when its team attacks.
+//!   Effect: it stops deploying and attacks.
+//! - A non-aircraft member's ammunition (`+0x2FC`) is not tracked and reads
+//!   as its `Ammo=`: action 0 never finds such a team spent. Trigger: a
+//!   team of units with `Ammo=` above 0. Effect: the team keeps attacking
+//!   where native would move on once all are empty.
 //! - Action 58 in modes 0 and 1 reads the House threat map (`0x0056BCD0`),
 //!   whose producers (`AI_BuildThreatMap @ 0x0050940A`, `Adjust_Threat @
 //!   0x004FA31B`) are not ported: every cell reads 0, its constructor value,
@@ -34,20 +51,22 @@
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::TargetKind;
+use crate::sim::combat::ScanMission;
+use crate::sim::combat::fire_error::FireError;
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::movement::BlockingObject;
 use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::world::Simulation;
 
-use super::team_ai::{member_is_live, member_is_live_joined};
+use super::team_ai::member_is_live_joined;
 use super::{TeamScriptAction, TeamScriptRefusal, TeamTarget, script_action_at};
 
 /// Whether the dispatch ports `action_id`'s handler.
 pub(super) const fn action_is_ported(action_id: i32) -> bool {
-    matches!(action_id, 2 | 5 | 6 | 11 | 19 | 24 | 49 | 54 | 58)
+    matches!(action_id, 0 | 2 | 5 | 6 | 11 | 19 | 24 | 49 | 53 | 54 | 58)
 }
 
 /// A member's NavCom (`+0x5A4`) names `target`.
@@ -81,16 +100,10 @@ fn nav_target(nav: NavTargetRef) -> TeamTarget {
 
 /// A member's TarCom (`+0x2B4`) names `target`.
 fn tarcom_names(entity: &GameEntity, target: TeamTarget) -> bool {
-    match (
-        entity.attack_target.as_ref().map(|attack| attack.target),
-        target,
-    ) {
-        (Some(TargetKind::Entity(id)), TeamTarget::Object(object)) => id == object,
-        (Some(TargetKind::Cell(rx, ry)), TeamTarget::Cell { x, y }) => {
-            rx == x as u16 && ry == y as u16
-        }
-        _ => false,
-    }
+    entity
+        .attack_target
+        .as_ref()
+        .is_some_and(|attack| attack.target == target.target_kind())
 }
 
 /// The cell holding a member's Location (`vt+0x1BC`), as a team target.
@@ -157,6 +170,19 @@ impl Simulation {
         } else if team.focus.is_none() {
             team.focus = team.mission_target;
         }
+        // `0x006E940F..0x006E942F`: `Coordinate_Attack`'s restart.
+        if self
+            .team_script_vm
+            .teams
+            .get_mut(&team_id)
+            .is_some_and(|team| std::mem::take(&mut team.retarget))
+        {
+            first = true;
+            self.team_assign_mission_target(team_id, None, rules, registry);
+            if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
+                team.focus = None;
+            }
+        }
         let vm = &self.team_script_vm;
         let Some(team) = vm.teams.get(&team_id) else {
             return;
@@ -184,6 +210,7 @@ impl Simulation {
     ) {
         let current_frame = self.session.binary_frame as i32;
         match action.action_id {
+            0 => self.team_action_attack_quarry(team_id, action.argument, rules, registry),
             // `0x006E95AB`: returns; the team stays on the action.
             2 => {}
             // `0x006E97CE`: the guard timer starts on the first frame at
@@ -245,6 +272,7 @@ impl Simulation {
                     team.succeeded |= action.action_id == 49;
                 }
             }
+            53 => self.team_action_gather_at_enemy_base(team_id, first, rules, registry),
             54 => self.team_action_regroup_at_base(team_id, first, rules, registry),
             58 => self.team_action_move_to_own_building(
                 team_id,
@@ -300,16 +328,7 @@ impl Simulation {
             if !entity.lifecycle.object_alive {
                 continue;
             }
-            if member_is_live(entity) && !self.team_member_initiated(team_id, member) {
-                let stray = self.team_stray(team_id, rules);
-                if self.team_member_distance(entity, zone) <= stray {
-                    self.team_set_member_initiated(team_id, member);
-                } else if entity.navigation.nav_com.is_none() {
-                    self.team_member_queue_mission(member, MissionType::Move, rules);
-                    self.team_member_clear_target(member, rules);
-                    self.team_member_set_destination(member, zone, rules, registry);
-                }
-            }
+            self.team_member_join_up(team_id, member, rules, registry);
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
             };
@@ -416,24 +435,84 @@ impl Simulation {
             let seed = regroup_seed_cell(own, enemy, rules.general.ai_safe_distance, || {
                 self.scenario_rng.next_range_i32_inclusive(0, 255)
             });
-            let cell = speed_type
-                .and_then(|speed_type| {
-                    self.team_find_passable_cell(
-                        seed,
-                        speed_type,
-                        None,
-                        crate::rules::locomotor_type::MovementZone::Normal,
-                        (3, 3),
-                    )
-                })
-                .unwrap_or((0, 0));
-            let target = TeamTarget::Cell {
-                x: cell.0 as i16,
-                y: cell.1 as i16,
-            };
-            self.team_assign_mission_target(team_id, Some(target), rules, registry);
+            self.team_assign_gather_cell(team_id, seed, speed_type, rules, registry);
         }
         self.team_coordinate_move(team_id, rules, registry);
+    }
+
+    /// Script action 53 (`0x006EF700`), gather at the enemy base: on its
+    /// first frame the team's mission target becomes the passable 3x3 area
+    /// (FNPC) nearest the cell `AISafeDistance=` cells from the enemy's base
+    /// centre towards the team's own (the leader's location without a
+    /// base), or the off-map cell `(0, 0)` without one, which the action
+    /// does not check. Without members, or when the leader's house has no
+    /// enemy with a base, the action finishes at once instead. Each later
+    /// frame the team moves there.
+    fn team_action_gather_at_enemy_base(
+        &mut self,
+        team_id: u64,
+        first: bool,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        if !first {
+            self.team_coordinate_move(team_id, rules, registry);
+            return;
+        }
+        let gather = self.team_leader(team_id, rules).and_then(|leader| {
+            let entity = self.substrate.entities.get(leader)?;
+            let owner = entity.owner();
+            let enemy = crate::sim::house_state::house_state_for_owner_id(&self.houses, owner)?
+                .enemy_house?;
+            let seed = gather_seed_cell(
+                self.house_base_center_xy(owner),
+                self.house_base_center_xy(enemy),
+                crate::sim::movement::ground_pose::position_world_xy(&entity.position),
+                rules.general.ai_safe_distance,
+            )?;
+            let speed_type = self
+                .object_type(entity.type_ref(), rules)
+                .map(|object| object.speed_type);
+            Some((seed, speed_type))
+        });
+        let Some((seed, speed_type)) = gather else {
+            if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
+                team.advance_pending = true;
+            }
+            return;
+        };
+        self.team_assign_gather_cell(team_id, seed, speed_type, rules, registry);
+        self.team_coordinate_move(team_id, rules, registry);
+    }
+
+    /// Actions 53 and 54's mission target (`0x006EF947..0x006EF9AB`,
+    /// `0x006EFBEE..0x006EFC59`, the same FNPC arguments): the passable 3x3
+    /// area nearest `seed` for the leader's `speed_type`, or the cell
+    /// `(0, 0)` without one.
+    fn team_assign_gather_cell(
+        &mut self,
+        team_id: u64,
+        seed: (i32, i32),
+        speed_type: Option<crate::rules::locomotor_type::SpeedType>,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let cell = speed_type
+            .and_then(|speed_type| {
+                self.team_find_passable_cell(
+                    seed,
+                    speed_type,
+                    None,
+                    crate::rules::locomotor_type::MovementZone::Normal,
+                    (3, 3),
+                )
+            })
+            .unwrap_or((0, 0));
+        let target = TeamTarget::Cell {
+            x: cell.0 as i16,
+            y: cell.1 as i16,
+        };
+        self.team_assign_mission_target(team_id, Some(target), rules, registry);
     }
 
     /// Script action 58 (`0x006EE5C0`), move to own building: on its first
@@ -732,29 +811,11 @@ impl Simulation {
         let mut finished = true;
         let mut found = false;
         for member in members {
-            let Some(zone) = self
-                .team_script_vm
-                .teams
-                .get(&team_id)
-                .map(|team| team.zone)
-            else {
+            if !self.team_script_vm.teams.contains_key(&team_id) {
                 return;
-            };
-            let Some(entity) = self.substrate.entities.get(member) else {
-                continue;
-            };
-            if member_is_live(entity) && !self.team_member_initiated(team_id, member) {
-                let stray = self.team_stray(team_id, rules);
-                if self.team_member_distance(entity, zone) > stray {
-                    if entity.navigation.nav_com.is_none() {
-                        self.team_member_queue_mission(member, MissionType::Move, rules);
-                        self.team_member_clear_target(member, rules);
-                        self.team_member_set_destination(member, zone, rules, registry);
-                    }
-                    finished = false;
-                } else {
-                    self.team_set_member_initiated(team_id, member);
-                }
+            }
+            if self.team_member_join_up(team_id, member, rules, registry) {
+                finished = false;
             }
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
@@ -861,6 +922,204 @@ impl Simulation {
             team.advance_pending = true;
         }
     }
+
+    /// Script action 0 (`0x006ED090`, `first` unread), attack quarry: a team
+    /// with members and no mission target takes as one its leader's
+    /// `Greatest_Threat` (`vt+0x3C4`) for the quarry ([`quarry_mask`]) around
+    /// the leader's location, limited to its house's enemy when the TeamType
+    /// sets `OnlyTargetHouseEnemy=`. The action finishes when the team still
+    /// has no mission target, or when every member carries ammunition
+    /// (`Ammo=` above 0) and has none left; either way the team then attacks
+    /// ([`Self::team_coordinate_attack`]).
+    fn team_action_attack_quarry(
+        &mut self,
+        team_id: u64,
+        quarry: i32,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let vm = &self.team_script_vm;
+        let Some(team) = vm.teams.get(&team_id) else {
+            return;
+        };
+        if team.mission_target.is_none()
+            && let Some(leader) = self.team_leader(team_id, rules)
+        {
+            let only_target_house_enemy = team
+                .team_type_id
+                .and_then(|id| vm.team_type_ini.get(&id))
+                .is_some_and(|metadata| metadata.only_target_house_enemy);
+            let target = crate::sim::world::team_leader_greatest_threat(
+                self,
+                rules,
+                registry,
+                leader,
+                ScanMission::TeamQuarry {
+                    mask: quarry_mask(quarry),
+                    only_target_house_enemy,
+                },
+            );
+            self.team_assign_mission_target(
+                team_id,
+                target.map(TeamTarget::Object),
+                rules,
+                registry,
+            );
+        }
+        let Some(team) = self.team_script_vm.teams.get(&team_id) else {
+            return;
+        };
+        let finished = team.mission_target.is_none()
+            || team.members().all(|member| {
+                self.substrate.entities.get(member).is_some_and(|entity| {
+                    self.object_type(entity.type_ref(), rules)
+                        .is_some_and(|object| object.ammo > 0 && member_ammo(entity, object) <= 0)
+                })
+            });
+        if finished && let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
+            team.advance_pending = true;
+        }
+        self.team_coordinate_attack(team_id, rules, registry);
+    }
+
+    /// `Coordinate_Attack @ 0x006EB490`: the team attacks its move target,
+    /// which falls back to its mission target. A cell target, for a team
+    /// whose leader is not an aircraft, gives way to the object blocking the
+    /// cell (`Find_Blocking_Object`). On frames where `Frame % 8 == 4` the
+    /// leader asks GetFireError of the target with the weapon it would
+    /// select; ILLEGAL makes the step restart the action (`+0x81`). Without
+    /// a target or members the action finishes.
+    ///
+    /// Each live member not yet joined joins up as in `Regroup`. Each live
+    /// joined member (or aircraft) that is not attacking, entering,
+    /// capturing or sabotaging breaks radio contact and takes Attack with
+    /// no target and no destination; on action 15 an `Infiltrate=`
+    /// infantryman takes Capture at the target instead. A member left
+    /// without a target then takes the team's. The action finishes once no
+    /// member is still at it: a live joined member other than an aircraft
+    /// with a primary weapon and no ammunition, or, for a `Droppod=` team, a
+    /// member in limbo.
+    fn team_coordinate_attack(
+        &mut self,
+        team_id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let Some(team) = self.team_script_vm.teams.get_mut(&team_id) else {
+            return;
+        };
+        if team.focus.is_none() {
+            team.focus = team.mission_target;
+        }
+        let mut focus = team.focus;
+        let has_members = !team.members.is_empty();
+        let leader = self.team_leader(team_id, rules);
+        // `0x006EB51A..0x006EB593`; a terrain object is not a team target
+        // (module residual).
+        if let Some(TeamTarget::Cell { x, y }) = focus
+            && has_members
+            && leader
+                .and_then(|leader| self.substrate.entities.get(leader))
+                .is_some_and(|entity| entity.category != EntityCategory::Aircraft)
+            && let Some(BlockingObject::Entity(object)) =
+                self.find_blocking_object((x as u16, y as u16), rules)
+            && let Some(team) = self.team_script_vm.teams.get_mut(&team_id)
+        {
+            focus = Some(TeamTarget::Object(object));
+            team.focus = focus;
+        }
+        // `0x006EB59A..0x006EB5D2`. Without a target the action finishes
+        // below, and a restart after the step's advance changes nothing.
+        if attack_check_frame(self.session.binary_frame as i32)
+            && let (Some(leader), Some(target)) = (leader, focus)
+            && self.selected_weapon_fire_error(rules, leader, target.target_kind(), registry)
+                == FireError::Illegal
+            && let Some(team) = self.team_script_vm.teams.get_mut(&team_id)
+        {
+            team.retarget = true;
+        }
+        let vm = &self.team_script_vm;
+        let Some(team) = vm.teams.get(&team_id) else {
+            return;
+        };
+        let Some(target) = focus.filter(|_| has_members) else {
+            if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
+                team.advance_pending = true;
+            }
+            return;
+        };
+        let action = team.current_action(vm);
+        let droppod = team
+            .team_type_id
+            .and_then(|id| vm.team_type_ini.get(&id))
+            .is_some_and(|metadata| metadata.droppod);
+        let members: Vec<u64> = team.members().collect();
+        let mut busy = false;
+        for member in members {
+            if !self.team_script_vm.teams.contains_key(&team_id) {
+                return;
+            }
+            self.team_member_join_up(team_id, member, rules, registry);
+            let Some(entity) = self.substrate.entities.get(member) else {
+                continue;
+            };
+            if !member_is_live_joined(entity, self.team_member_initiated(team_id, member)) {
+                busy |= droppod && entity.lifecycle.in_limbo;
+                continue;
+            }
+            let infiltrates = || {
+                self.object_type(entity.type_ref(), rules)
+                    .is_some_and(|object| object.infiltrate)
+            };
+            let mission = entity.mission.effective().raw();
+            if action == 15 && entity.category == EntityCategory::Infantry && infiltrates() {
+                self.team_member_queue_mission(member, MissionType::Capture, rules);
+                self.team_member_assign_target(member, target, rules);
+            } else if ![
+                MissionType::Attack,
+                MissionType::Enter,
+                MissionType::Capture,
+                MissionType::Sabotage,
+            ]
+            .iter()
+            .any(|&kept| mission == kept as i32)
+            {
+                crate::sim::radio::transmit_to_contact(
+                    self,
+                    member,
+                    crate::sim::radio::RadioMessage::Break,
+                    Some(rules),
+                );
+                self.team_member_queue_mission(member, MissionType::Attack, rules);
+                self.team_member_clear_target(member, rules);
+                self.team_member_set_destination(member, None, rules, registry);
+            }
+            let Some(entity) = self.substrate.entities.get(member) else {
+                continue;
+            };
+            if entity.attack_target.is_none() {
+                self.team_member_assign_target(member, target, rules);
+            }
+            let Some(entity) = self.substrate.entities.get(member) else {
+                continue;
+            };
+            let spent_aircraft = entity.category == EntityCategory::Aircraft
+                && self
+                    .object_type(entity.type_ref(), rules)
+                    .is_some_and(|object| {
+                        crate::sim::combat::combat_weapon::primary_for_tier(
+                            object,
+                            entity.veterancy,
+                        )
+                        .is_some()
+                            && member_ammo(entity, object) <= 0
+                    });
+            busy |= !spent_aircraft;
+        }
+        if !busy && let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
+            team.advance_pending = true;
+        }
+    }
 }
 
 /// Action 5's guard time (`0x006E97DA..0x006E97E9`): `argument * 15`
@@ -869,11 +1128,10 @@ pub(super) const fn guard_frames(argument: i32) -> i32 {
     argument.wrapping_mul(15)
 }
 
-/// Action 54's seed cell (`0x006EFAA3..0x006EFBEF`): the point
-/// `safe_distance` cells (`<< 8` leptons) from the house's base centre `own`
-/// along the facing towards the enemy's base centre (`0x004CAE30`), or
-/// along a facing of `draw() << 8` (the low byte of `RandomRanged(0, 255)`)
-/// without an enemy, as a cell of its truncated quotients.
+/// Action 54's seed cell (`0x006EFAA3..0x006EFBEF`): the cell
+/// `safe_distance` cells from the house's base centre `own` towards the
+/// enemy's base centre, or along a facing of `draw() << 8` (the low byte of
+/// `RandomRanged(0, 255)`) without an enemy.
 pub(super) fn regroup_seed_cell(
     own: [i32; 2],
     enemy: Option<[i32; 2]>,
@@ -882,17 +1140,83 @@ pub(super) fn regroup_seed_cell(
 ) -> (i32, i32) {
     let facing = match enemy {
         None => (draw() as u16 & 0xFF) << 8,
-        Some(enemy) => crate::util::direction_tables::facing16_from_delta(
-            enemy[0].wrapping_sub(own[0]),
-            enemy[1].wrapping_sub(own[1]),
-        ),
+        Some(enemy) => facing_towards(own, enemy),
     };
+    safe_distance_cell(own, facing, safe_distance)
+}
+
+/// Action 53's seed cell (`0x006EF7B9..0x006EF93E`): `safe_distance` cells
+/// from the enemy's base centre `enemy` towards the house's own `own`, or
+/// towards the leader's location `leader` when the house has no base; none
+/// when the enemy has no base.
+pub(super) fn gather_seed_cell(
+    own: [i32; 2],
+    enemy: [i32; 2],
+    leader: [i32; 2],
+    safe_distance: i32,
+) -> Option<(i32, i32)> {
+    if enemy == [0, 0] {
+        return None;
+    }
+    let own = if own == [0, 0] { leader } else { own };
+    Some(safe_distance_cell(
+        enemy,
+        facing_towards(enemy, own),
+        safe_distance,
+    ))
+}
+
+/// `Coordinate_Attack`'s leader check runs when the signed `Frame % 8` is 4
+/// (`0x006EB59A..0x006EB5AE`).
+pub(super) const fn attack_check_frame(frame: i32) -> bool {
+    frame % 8 == 4
+}
+
+/// The facing from `from` to `to` (`0x004CAE30` on the XY delta).
+fn facing_towards(from: [i32; 2], to: [i32; 2]) -> u16 {
+    crate::util::direction_tables::facing16_from_delta(
+        to[0].wrapping_sub(from[0]),
+        to[1].wrapping_sub(from[1]),
+    )
+}
+
+/// Actions 53 and 54's seed (`0x006EF853..0x006EF93E`,
+/// `0x006EFAA3..0x006EFBEF`): the point `safe_distance` cells (`<< 8`
+/// leptons) from `from` along `facing`, as a cell of its truncated
+/// quotients.
+pub(super) fn safe_distance_cell(from: [i32; 2], facing: u16, safe_distance: i32) -> (i32, i32) {
     let point =
-        crate::util::native_trig::facing_step_world_xy(own, facing, safe_distance.wrapping_shl(8));
+        crate::util::native_trig::facing_step_world_xy(from, facing, safe_distance.wrapping_shl(8));
     (
         i32::from((point[0] / 256) as i16),
         i32::from((point[1] / 256) as i16),
     )
+}
+
+/// `Quarry_To_Threat @ 0x00645BB0` (table `0x00645BF8`): script action 0's
+/// quarry as a `Greatest_Threat` mask; 0 outside `2..=11`.
+pub(super) const fn quarry_mask(quarry: i32) -> u32 {
+    match quarry {
+        2 => 0x20,
+        3 => 0x40,
+        4 => 0x8,
+        5 => 0x10,
+        6 => 0x1000,
+        7 => 0x2000,
+        9 => 0x800,
+        10 => 0x8000,
+        11 => 0x10000,
+        _ => 0,
+    }
+}
+
+/// A member's ammunition (`+0x2FC`): an aircraft's count; other classes'
+/// is not tracked and reads as full (`Ammo=`, module residual).
+fn member_ammo(entity: &GameEntity, object: &crate::rules::object_type::ObjectType) -> i32 {
+    entity
+        .aircraft_ammo
+        .as_ref()
+        .map_or(object.ammo, |ammo| ammo.current)
 }
 
 /// `FindOwnBuilding @ 0x006EEEA0`'s pick among `buildings` (id, location)

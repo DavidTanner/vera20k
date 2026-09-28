@@ -383,6 +383,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         immune_to_poison: false,
         engineer: false,
         ivan: false,
+        infiltrate: false,
         deployer: false,
         capturable: false,
         needs_engineer: false,

@@ -360,3 +360,225 @@ fn production_install_refuses_fixed_resolution_loss_masked_by_same_identity_map_
         "map repair/relabeling cannot erase fixed-AIMD resolution obligations"
     );
 }
+
+/// A computer house `Computer`, whose current enemy is `Human`, with two
+/// `member`s at cells (10,10) and (12,10) on flat ground and a new team of
+/// TeamType `TT` (TaskForce 2 `member`) running `script`; `Human` owns the
+/// two `buildings`. The houses' base centres are (10,11) and (18,11).
+fn team_fixture(
+    rules: &str,
+    member: &str,
+    buildings: [(&str, u16, u16); 2],
+    script: &str,
+) -> (Simulation, RuleSet, u64, [u64; 2], [u64; 2]) {
+    let rules = RuleSet::from_ini(&IniFile::from_str(rules)).expect("minimal rules");
+    let comparison = zero_ai_trigger_comparison();
+    let aimd = IniFile::from_str(&format!(
+        "[TeamTypes]\n0=TT\n[TT]\nScript=S\nTaskForce=F\n\
+         [ScriptTypes]\n0=S\n[S]\n{script}\n\
+         [TaskForces]\n0=F\n[F]\n0=2,{member}\n\
+         [AITriggerTypes]\nA=Trigger,TT,<all>,2,4,<none>,{comparison},40,10,60,1,0,1,0,<none>,1,1,1\n"
+    ));
+    let registry = TeamAiIniRegistry::from_sources(&aimd, &IniFile::from_str(""), true);
+    let mut sim = Simulation::with_seed(0xA77AC);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    sim.install_team_ai_registry(&registry, &rules)
+        .expect("clean fixed AIMD installs");
+    let owner = sim.interner.intern("Computer");
+    let enemy = sim.interner.intern("Human");
+    let mut computer = HouseState::new(owner, 0, None, false, 0, 10);
+    computer.enemy_house = Some(enemy);
+    computer.base_center = Some((10, 11));
+    sim.houses.insert(owner, computer);
+    let mut human = HouseState::new(enemy, 1, None, true, 0, 10);
+    human.base_center = Some((18, 11));
+    sim.houses.insert(enemy, human);
+    sim.session.house_order = vec![owner, enemy];
+    let members = [(10, 10), (12, 10)].map(|(rx, ry)| {
+        sim.spawn_object_at_height(member, "Computer", rx, ry, 0, 0, &rules)
+            .expect("member spawns")
+    });
+    let buildings = buildings.map(|(building, rx, ry)| {
+        sim.spawn_object_at_height(building, "Human", rx, ry, 0, 0, &rules)
+            .expect("building spawns")
+    });
+    let team_type = sim.interner.get("TT").expect("TT interned");
+    let team = sim
+        .team_script_vm
+        .construct_team(team_type, owner, true, sim.session.binary_frame as i32)
+        .expect("no Max= limit");
+    (sim, rules, team, members, buildings)
+}
+
+/// [`team_fixture`] with armed E1 members; `Human` owns the power plants
+/// `PLANTA` (`Power=100`) at (18,8) and `PLANTB` (`Power=200`) at (18,13).
+fn attack_team_fixture(script: &str) -> (Simulation, RuleSet, u64, [u64; 2], [u64; 2]) {
+    team_fixture(
+        "[General]\nAISafeDistance=4\n\
+         [InfantryTypes]\n0=E1\n[E1]\nStrength=100\nPrimary=M60\nSpeed=4\n\
+         Locomotor={4A582744-9839-11D1-B709-00A024DDAFD1}\n\
+         [BuildingTypes]\n0=PLANTA\n1=PLANTB\n\
+         [PLANTA]\nStrength=750\nPower=100\nFoundation=2x2\n\
+         [PLANTB]\nStrength=750\nPower=200\nFoundation=2x2\n\
+         [M60]\nDamage=15\nROF=20\nRange=4\nWarhead=SA\n[SA]\nVerses=100%\n",
+        "E1",
+        [("PLANTA", 18, 8), ("PLANTB", 18, 13)],
+        script,
+    )
+}
+
+/// Script action 0 with quarry 9 (power plants, mask `0x800`): the leader's
+/// scan scores each plant by `Power=` × 1000, so the team goes for the
+/// bigger one, and `Coordinate_Attack` sets each joined member on it.
+#[test]
+fn a_computer_team_attacks_the_bigger_power_plant() {
+    let (mut sim, rules, team_id, members, [_, bigger]) = attack_team_fixture("0=0,9");
+    let heights = BTreeMap::new();
+    for _ in 0..40 {
+        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        if members.iter().all(|&member| {
+            sim.entities()
+                .get(member)
+                .and_then(|entity| entity.attack_target.as_ref())
+                .is_some()
+        }) {
+            break;
+        }
+    }
+    let team = sim.team_script_vm.team(team_id).expect("the team attacks");
+    assert!(team.formed());
+    for member in members {
+        let entity = sim.entities().get(member).expect("member");
+        assert_eq!(
+            entity.attack_target.as_ref().map(|attack| attack.target),
+            Some(crate::sim::combat::TargetKind::Entity(bigger)),
+            "member {member} attacks the 200-power plant"
+        );
+        let attack =
+            crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack);
+        assert!(
+            entity.mission.effective() == attack || entity.mission.queued() == attack,
+            "member {member} is on Attack"
+        );
+    }
+}
+
+/// Script action 53 then 49: on its first frame the team's mission target
+/// becomes the passable cell `AISafeDistance=` cells from the enemy's base
+/// centre towards its own; the team moves there and the script goes on.
+#[test]
+fn a_computer_team_gathers_outside_the_enemy_base() {
+    let (mut sim, rules, team_id, members, _) = attack_team_fixture("0=53,0\n1=49,0");
+    let heights = BTreeMap::new();
+    let mut destinations = Vec::new();
+    for _ in 0..600 {
+        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        for &member in &members {
+            if let Some(nav) = sim
+                .entities()
+                .get(member)
+                .and_then(|entity| entity.navigation.nav_com)
+                && !destinations.contains(&nav)
+            {
+                destinations.push(nav);
+            }
+        }
+        if sim.team_script_vm.team(team_id).is_none() {
+            break;
+        }
+    }
+    // 4 cells from the enemy's centre (18,11) towards the house's (10,11).
+    let seed = (14, 11);
+    assert!(
+        destinations.iter().any(|nav| matches!(
+            nav,
+            crate::sim::components::NavTargetRef::Cell { rx, ry }
+                if (i32::from(*rx) - seed.0).abs() <= 2 && (i32::from(*ry) - seed.1).abs() <= 2
+        )),
+        "a member was sent near {seed:?}: {destinations:?}"
+    );
+    assert!(
+        sim.team_script_vm.team(team_id).is_none(),
+        "the team arrived and its script ran to the end"
+    );
+}
+
+/// `Evaluate_Candidate`'s building gate (`0x006F85AB..0x006F8601`) holds
+/// only for a human scanner outside a team: a computer E1 on Guard takes
+/// the enemy's unarmed power plant, a human E1 beside the computer's own
+/// plant passes it over.
+#[test]
+fn only_a_human_scanner_passes_over_an_unarmed_building() {
+    let (mut sim, rules, _, _, [plant, _]) = attack_team_fixture("0=49,0");
+    let computer = sim
+        .spawn_object_at_height("E1", "Computer", 17, 7, 0, 0, &rules)
+        .expect("E1 spawns");
+    sim.spawn_object_at_height("PLANTA", "Computer", 6, 16, 0, 0, &rules)
+        .expect("plant spawns");
+    let human = sim
+        .spawn_object_at_height("E1", "Human", 5, 15, 0, 0, &rules)
+        .expect("E1 spawns");
+    let scan = |id| {
+        crate::sim::world::team_leader_greatest_threat(
+            &sim,
+            &rules,
+            None,
+            id,
+            crate::sim::combat::ScanMission::Guard,
+        )
+    };
+    assert_eq!(scan(computer), Some(plant));
+    assert_eq!(scan(human), None);
+}
+
+/// Retail "Yuri Engineers" (`08B95EFC-G`) in miniature: computer engineers
+/// armed as retail ones are (`DefuseKit`, `VirtualScanner`) run quarry 6
+/// (factories, mask `0x1000`, which the Infantry override widens with the
+/// engineer's `0x200`, `Capturable=`) and attack the enemy's barracks, not
+/// its power plant. Whether an engineer then captures it is not native
+/// behaviour this test claims: `DefuseKit` is ILLEGAL against a building
+/// without a bomb (`0x006FCAFA`), and `InfantryClass::Mission_Attack @
+/// 0x0051F3E0` turns only `Infiltrate=`, `Occupier=` and `Assaulter=`
+/// infantry into Capture.
+#[test]
+fn a_computer_engineer_team_attacks_the_enemy_factory() {
+    let (mut sim, rules, _, members, [barracks, _]) = team_fixture(
+        "[General]\nAISafeDistance=4\n\
+         [InfantryTypes]\n0=ENGI\n\
+         [ENGI]\nStrength=75\nPrimary=DefuseKit\nSecondary=VirtualScanner\nEngineer=yes\n\
+         Speed=4\nMovementZone=Infantry\nLocomotor={4A582744-9839-11D1-B709-00A024DDAFD1}\n\
+         [BuildingTypes]\n0=BARR\n1=PLANT\n\
+         [BARR]\nStrength=500\nCapturable=true\nFactory=InfantryType\nFoundation=2x2\n\
+         [PLANT]\nStrength=750\nPower=100\nCapturable=true\nFoundation=2x2\n\
+         [DefuseKit]\nDamage=1\nROF=20\nRange=1.5\nCellRangefinding=yes\n\
+         Projectile=InvisibleAll\nWarhead=BombDisarm\nFireOnce=yes\n\
+         [VirtualScanner]\nDamage=1\nRange=5\nNeverUse=yes\nProjectile=InvisibleAll\nWarhead=SA\n\
+         [InvisibleAll]\nInviso=yes\nAA=yes\nAG=yes\n[BombDisarm]\nBombDisarm=yes\n\
+         [SA]\nVerses=100%,80%,80%,50%,25%,25%,75%,50%,25%,100%,100%\n",
+        "ENGI",
+        [("BARR", 18, 8), ("PLANT", 18, 13)],
+        "0=0,6",
+    );
+    let heights = BTreeMap::new();
+    let mut targets = Vec::new();
+    for _ in 0..60 {
+        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        for &member in &members {
+            if let Some(attack) = sim
+                .entities()
+                .get(member)
+                .and_then(|entity| entity.attack_target.as_ref())
+                && !targets.contains(&attack.target)
+            {
+                targets.push(attack.target);
+            }
+        }
+    }
+    assert_eq!(
+        targets,
+        vec![crate::sim::combat::TargetKind::Entity(barracks)],
+        "the members attack the barracks"
+    );
+}

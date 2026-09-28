@@ -331,12 +331,19 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
         range: ScanRange::CanFireAt,
         coefficients: ThreatCoefficients::resolve(&rules, obj, true),
         zone_grid: None,
-        scanner_zone: None,
-        threat_reference: ThreatReference::NullCoord,
+        mask: 1,
+        standing: ScannerStanding::resolve(Some(&world), &snapshot),
+        attacks_allies: false,
+        scans_allies: false,
         fire_world: Some(&world),
     };
+    let walk = WalkArgs {
+        flags: 0x8042,
+        zone: None,
+        reference: ThreatReference::NullCoord,
+    };
     let rng_before = world.scenario_rng.native_state_hex();
-    assert_eq!(evaluate_candidate(&context, candidate), None);
+    assert_eq!(evaluate_candidate(&context, walk, candidate), None);
     let expected = &row["after"]["dummy_coord"];
     assert_eq!(
         dummy.snapshot().coord,

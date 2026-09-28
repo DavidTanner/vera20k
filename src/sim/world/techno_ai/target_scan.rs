@@ -515,12 +515,13 @@ pub(super) fn fire_error_with_overlay(
 }
 
 impl Simulation {
-    /// The legality question of `TechnoClass::What_Action_OnObject @
-    /// 0x006FFEC0`: GetFireError (vt+0x3C0, range asked, `0x00700542`) of the
-    /// slot SelectWeapon (vt+0x2E4, `0x0070022D`) picks for `target`. ILLEGAL
-    /// ends an unforced Attack action (`0x00700548`) unless the Infiltrate
-    /// arm (`0x007004A0..0x00700531`) overrides it.
-    pub(crate) fn click_fire_error(
+    /// GetFireError (vt+0x3C0, range asked) of the slot SelectWeapon
+    /// (vt+0x2E4) picks for `target`. `TechnoClass::What_Action_OnObject @
+    /// 0x006FFEC0` asks it (`0x0070022D`, `0x00700542`): ILLEGAL ends an
+    /// unforced Attack action (`0x00700548`) unless the Infiltrate arm
+    /// (`0x007004A0..0x00700531`) overrides it. `Coordinate_Attack` asks it
+    /// of the team leader (`0x006EB5B0..0x006EB5CD`).
+    pub(crate) fn selected_weapon_fire_error(
         &self,
         rules: &RuleSet,
         id: u64,
@@ -625,24 +626,13 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
     /// ArchiveTarget, `0x004D6EE6`); VERA scans around the object, which is
     /// the same cell while it stands on its post.
     fn greatest_threat(&mut self, mask: ScanMission) -> Option<TargetKind> {
-        let sim = &*self.sim;
-        crate::sim::combat::acquire_best_target_for_entity(
-            &sim.substrate.entities,
-            &sim.substrate.occupancy,
+        world_greatest_threat(
+            self.sim,
             self.rules,
-            &sim.interner,
+            self.ctx.overlay_registry,
             self.id,
-            Some(&sim.fog),
-            sim.resolved_terrain.as_ref(),
-            sim.playfield_bounds.is_some(),
             mask,
-            sim.zone_grid.as_ref(),
-            crate::sim::combat::line_of_fire::LineOfFireInputs {
-                overlay_grid: sim.overlay_grid.as_ref(),
-                overlay_registry: self.ctx.overlay_registry,
-                alliances: Some(&sim.fog.alliances),
-            },
-            Some(sim),
+            crate::sim::combat::acquire_best_target_for_entity,
         )
         .map(TargetKind::Entity)
     }
@@ -687,6 +677,71 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
             target.estimated_health.debit(amount);
         }
     }
+}
+
+/// The scan entries [`world_greatest_threat`] takes: the passive block's
+/// gated one or the direct `+0x3C4` call.
+type ScanEntry = fn(
+    &crate::sim::entity_store::EntityStore,
+    &crate::sim::occupancy::OccupancyGrid,
+    &RuleSet,
+    &crate::sim::intern::StringInterner,
+    u64,
+    Option<&crate::sim::vision::FogState>,
+    Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
+    bool,
+    ScanMission,
+    Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
+    crate::sim::combat::line_of_fire::LineOfFireInputs<'_>,
+    Option<&Simulation>,
+) -> Option<u64>;
+
+/// `id`'s `Greatest_Threat` against the live world, through `entry`.
+fn world_greatest_threat(
+    sim: &Simulation,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    id: u64,
+    mask: ScanMission,
+    entry: ScanEntry,
+) -> Option<u64> {
+    entry(
+        &sim.substrate.entities,
+        &sim.substrate.occupancy,
+        rules,
+        &sim.interner,
+        id,
+        Some(&sim.fog),
+        sim.resolved_terrain.as_ref(),
+        sim.playfield_bounds.is_some(),
+        mask,
+        sim.zone_grid.as_ref(),
+        crate::sim::combat::line_of_fire::LineOfFireInputs {
+            overlay_grid: sim.overlay_grid.as_ref(),
+            overlay_registry,
+            alliances: Some(&sim.fog.alliances),
+        },
+        Some(sim),
+    )
+}
+
+/// A team leader's `Greatest_Threat` for script action 0 (`0x006ED15E`):
+/// its `+0x3C4` override with the quarry's mask, directly.
+pub(crate) fn team_leader_greatest_threat(
+    sim: &Simulation,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    leader: u64,
+    mask: ScanMission,
+) -> Option<u64> {
+    world_greatest_threat(
+        sim,
+        rules,
+        overlay_registry,
+        leader,
+        mask,
+        crate::sim::combat::combat_targeting::greatest_threat_for_entity,
+    )
 }
 
 #[cfg(test)]
@@ -807,12 +862,7 @@ mod tests {
             self.call("assign_target", vec![pointer(target)]);
         }
         fn greatest_threat(&mut self, mask: ScanMission) -> Option<TargetKind> {
-            let mask = match mask {
-                ScanMission::Hunt => 0,
-                ScanMission::Guard => 1,
-                ScanMission::AreaGuard => 2,
-            };
-            self.call("greatest_threat", vec![mask]);
+            self.call("greatest_threat", vec![i64::from(mask.literal_mask())]);
             kind(self.input("pick"))
         }
         fn distributed_fire(&mut self) -> bool {

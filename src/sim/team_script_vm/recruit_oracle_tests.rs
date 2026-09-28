@@ -1,6 +1,8 @@
 //! `tools/team_recruit_oracle.py`'s native rows replayed: `Recalc`,
 //! `Calc_Center`'s arithmetic, `Recruit`'s search, `ObjectClass::Distance`,
-//! the action 5 guard timer, action 54's seed cell and `FindOwnBuilding`.
+//! the action 5 guard timer, action 54's seed cell, `FindOwnBuilding`,
+//! action 53's seed cell, `Quarry_To_Threat` and `Coordinate_Attack`'s frame
+//! test.
 //!
 //! Each row carries what the original's stubs answered (Can_Add, the weight
 //! and cell tests, the draw); the Rust owner must ask in the same order and
@@ -8,7 +10,10 @@
 
 use serde_json::Value;
 
-use super::actions::{guard_frames, own_building_pick, regroup_seed_cell};
+use super::actions::{
+    attack_check_frame, gather_seed_cell, guard_frames, own_building_pick, quarry_mask,
+    regroup_seed_cell,
+};
 use super::membership::{RecruitCandidate, entry_short, recruit_pick};
 use super::team_ai::{CenterSample, center_of, center_sample};
 use super::*;
@@ -360,6 +365,56 @@ fn find_own_building_matches_the_original() {
             own_building_pick(&buildings, xyz(&row["leader"]), mode),
             row["result"].as_u64(),
             "own building row {number}"
+        );
+    }
+}
+
+#[test]
+fn gather_seed_matches_the_original() {
+    for (number, row) in rows("gather").iter().enumerate() {
+        if !flag(&row["has_enemy"]) {
+            continue;
+        }
+        let leader = xyz(&row["leader"]);
+        let seed = gather_seed_cell(
+            xy(&row["own"]),
+            xy(&row["enemy"]),
+            [leader[0], leader[1]],
+            int(&row["safe_distance"]),
+        );
+        let expected = (!row["seed"].is_null()).then(|| {
+            let seed = xy(&row["seed"]);
+            (seed[0], seed[1])
+        });
+        assert_eq!(seed, expected, "gather row {number}: seed");
+        assert_eq!(
+            seed.is_none(),
+            flag(&row["finished"]),
+            "gather row {number}"
+        );
+    }
+}
+
+#[test]
+fn quarry_mask_matches_the_original() {
+    for row in rows("quarry") {
+        assert_eq!(
+            i64::from(quarry_mask(int(&row["quarry"]))),
+            row["mask"].as_i64().unwrap(),
+            "quarry {}",
+            row["quarry"]
+        );
+    }
+}
+
+#[test]
+fn attack_check_frame_matches_the_original() {
+    for row in rows("attack_cadence") {
+        assert_eq!(
+            attack_check_frame(int(&row["frame"])),
+            flag(&row["asks"]),
+            "frame {}",
+            row["frame"]
         );
     }
 }

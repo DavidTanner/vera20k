@@ -21,6 +21,7 @@ mod target_scan;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;
 pub(crate) use mission_handlers::harvester_enter_idle_mode_selector;
 pub(crate) use mission_handlers::queue_foot_enter_idle_mode;
+pub(crate) use target_scan::team_leader_greatest_threat;
 
 use mission_handlers::*;
 use target_scan::{can_acquire_target, passive_acquire_step};

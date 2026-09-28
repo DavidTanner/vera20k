@@ -160,6 +160,16 @@ pub struct TeamTypeIniMetadata {
     /// 0x00472586`), in place of the roll.
     #[serde(default)]
     mind_control_decision: i32,
+    /// `Droppod=` (`+0xB0`, ReadBool at `0x006F1215`, constructor 0 at
+    /// `0x006F0753`): a member still in limbo keeps `Coordinate_Attack`
+    /// busy (`0x006EB830..0x006EB847`).
+    #[serde(default)]
+    droppod: bool,
+    /// `OnlyTargetHouseEnemy=` (`+0xF7`, ReadBool at `0x006F13D4`,
+    /// constructor 0 at `0x006F07F7`): action 0's scan takes only the
+    /// house's current enemy's objects.
+    #[serde(default)]
+    only_target_house_enemy: bool,
     pub source: TeamAiDefinitionSource,
 }
 
@@ -180,6 +190,8 @@ impl Default for TeamTypeIniMetadata {
             guard_slower: false,
             transports_return_on_unload: false,
             mind_control_decision: 0,
+            droppod: false,
+            only_target_house_enemy: false,
             source: TeamAiDefinitionSource::FixedAimd,
         }
     }
@@ -432,6 +444,16 @@ pub enum TeamTarget {
     Object(u64),
 }
 
+impl TeamTarget {
+    /// The target as a member's TarCom (`+0x2B4`) holds it.
+    pub(crate) const fn target_kind(self) -> crate::sim::combat::TargetKind {
+        match self {
+            Self::Cell { x, y } => crate::sim::combat::TargetKind::Cell(x as u16, y as u16),
+            Self::Object(id) => crate::sim::combat::TargetKind::Entity(id),
+        }
+    }
+}
+
 /// Persistent `TeamClass` state (constructor `0x006E8A90`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamScriptState {
@@ -484,10 +506,16 @@ pub struct TeamScriptState {
     closest_member: Option<u64>,
     /// `+0x3C`, the mission target; only `Assign_Mission_Target` writes it.
     mission_target: Option<TeamTarget>,
-    /// `+0x40`, the target the members move to.
+    /// `+0x40`, the target: `Coordinate_Move` moves the members to it,
+    /// `Coordinate_Attack` has them attack it.
     focus: Option<TeamTarget>,
     /// `+0x58`, script action 5's guard timer.
     guard_timer: CdTimer,
+    /// `+0x81`: `Coordinate_Attack` found the leader unable to fire at the
+    /// target (`0x006EB5D2`); the next step runs the action afresh without
+    /// one (`0x006E940F..0x006E942F`).
+    #[serde(default)]
+    retarget: bool,
 }
 
 impl TeamScriptState {
@@ -890,19 +918,6 @@ impl TeamScriptVm {
             .get(&self.teams.get(&team_id)?.team_type_id?)
     }
 
-    /// Whether `entity_id`'s team has formed and stays on a script action
-    /// the dispatch does not port (`actions` residual), for `sim::ai`'s
-    /// attack-wave stand-in.
-    pub(crate) fn member_team_stalled(&self, entity_id: u64) -> bool {
-        self.member_team
-            .get(&entity_id)
-            .and_then(|team_id| self.teams.get(team_id))
-            .is_some_and(|team| {
-                let action = team.current_action(self);
-                team.formed && (0..=0x40).contains(&action) && !actions::action_is_ported(action)
-            })
-    }
-
     /// The team's TaskForce entries, none for a team without a TeamType.
     fn task_force_entries(&self, team: &TeamScriptState) -> &[TeamTaskForceEntry] {
         team.task_force_id
@@ -1032,6 +1047,7 @@ impl TeamScriptState {
             mission_target: None,
             focus: None,
             guard_timer: CdTimer::started(current_frame, 0),
+            retarget: false,
         }
     }
 
@@ -1109,6 +1125,14 @@ impl TeamScriptVm {
                 team.mission_target.hash(hasher);
                 team.focus.hash(hasher);
                 team.guard_timer.remaining(current_frame).hash(hasher);
+            }
+        }
+        if recruitment && self.teams.values().any(|team| team.retarget) {
+            b"team-retarget-v1".hash(hasher);
+            for (id, team) in &self.teams {
+                if team.retarget {
+                    id.hash(hasher);
+                }
             }
         }
         if recruitment && !self.rejoin_team.is_empty() {

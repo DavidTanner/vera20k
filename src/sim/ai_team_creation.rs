@@ -31,21 +31,12 @@
 //! (`TeamClass::~TeamClass @ 0x006E8DE0`, `TeamScriptVm::destroy_team`).
 //!
 //! RESIDUALS:
-//! - Recruitment (`TeamClass::AI`'s per-slot `0x006EAA90`) and team scripts
-//!   are the next chain: a team never forms, so it never runs its script,
-//!   and in a multiplayer game it dissolves once `DissolveUnfilledTeamDelay=`
-//!   frames have passed (`sim::team_script_vm`), which counts as its AI
-//!   triggers' failure. Trigger: every computer team. Effect: the computer
-//!   builds the units its teams need but never sends them as teams;
-//!   `sim::ai`'s stand-in still sends its attack waves.
 //! - A campaign (`GameMode == 0`) gates an AI trigger on the scenario's
 //!   difficulty (`Scenario+0x60C`), which VERA does not keep, and admits a
 //!   TaskForce type without a factory when the house owns one it can recruit
 //!   (`0x00509610`'s scan of `0x008B3DC4` with `0x006F1E20`). VERA skips the
 //!   difficulty gate and refuses such a trigger. Trigger: campaigns, which
 //!   VERA does not launch.
-//! - A team's `+0x7B` (regrouping) is written only by team scripts (next
-//!   chain), so the selector's cancel test sees forming teams only.
 //! - `RatioAITriggerTeam=` (`+0x565C`) keeps its constructor 100: a map
 //!   house's `HouseClass::Read_Scenario_INI` read (`0x00500D0D..0x00500D25`,
 //!   campaigns) and the trigger actions that write it (`0x006DF364`,

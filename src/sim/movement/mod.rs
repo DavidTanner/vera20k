@@ -72,7 +72,7 @@ mod foot_path;
 #[cfg(test)]
 pub(crate) use foot_path::FindPathResult;
 pub(crate) use foot_path::FootPathOutcome;
-pub(crate) use track_fresh::ProcessMovementArgs;
+pub(crate) use track_fresh::{BlockingObject, ProcessMovementArgs};
 mod foot_range_stop;
 pub(crate) use foot_range_stop::range_stop_admits;
 mod foot_speed;
