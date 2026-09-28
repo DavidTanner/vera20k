@@ -737,15 +737,14 @@ fn takeoff_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
     let (mut sim, rules) = fixture(&height_row);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     let rot = input["rot"].as_i64().unwrap_or(5) as i32;
-    for (slot, initial, destination) in [
-        (&mut entity.body_facing, 0x4000, 0xC000),
-        (&mut entity.barrel_facing, 0x6000, 0x2000),
-    ] {
+    let facing = |initial, destination| {
         let mut facing = crate::sim::movement::FacingClass::new(initial, rot);
         facing.snap(initial, 90);
         facing.set(destination, 90);
-        *slot = Some(facing);
-    }
+        facing
+    };
+    entity.body_facing = facing(0x4000, 0xC000);
+    entity.barrel_facing = Some(facing(0x6000, 0x2000));
     let loco = entity.locomotor.as_mut().unwrap();
     loco.rot = rot;
     loco.speed_fraction = SimFixed::lit("0.25");
@@ -785,7 +784,7 @@ fn assert_native_takeoff_result(sim: &Simulation, row: &serde_json::Value) {
         row["on_bridge"].as_bool().unwrap(),
         "{row}"
     );
-    for (facing, expected) in [entity.body_facing.unwrap(), entity.barrel_facing.unwrap()]
+    for (facing, expected) in [entity.body_facing, entity.barrel_facing.unwrap()]
         .into_iter()
         .zip(row["facings"].as_array().unwrap())
     {
@@ -1172,7 +1171,6 @@ fn fly_production_tick_uses_primary_current_and_continues_after_restore() {
     let row = serde_json::json!({"input":{"z":900}});
     let (mut sim, rules) = takeoff_fixture(&row);
     // Tick remains stationary so the native phase evidence applies at z900.
-    // A stale byte heading must not replace the retained timer-based turn.
     sim.substrate
         .entities
         .get_mut(1)
@@ -1181,8 +1179,7 @@ fn fly_production_tick_uses_primary_current_and_continues_after_restore() {
         .as_mut()
         .unwrap()
         .set_fly_target_height(900);
-    sim.substrate.entities.get_mut(1).unwrap().facing = 222;
-    let primary = sim.substrate.entities.get(1).unwrap().body_facing.unwrap();
+    let primary = sim.substrate.entities.get(1).unwrap().body_facing;
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let bytes = GameSnapshot::save(&sim, 0, 0, "Fly takeoff continuation", 0);
     let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
@@ -1195,15 +1192,13 @@ fn fly_production_tick_uses_primary_current_and_continues_after_restore() {
             instance.tick_air_movement_with_cell_lists_one(1, Some(&rules));
             let entity = instance.substrate.entities.get(1).unwrap();
             assert_eq!(
-                entity.body_facing.unwrap(),
-                primary,
+                entity.body_facing, primary,
                 "callback copies Primary destination to Secondary"
             );
             assert_eq!(
                 entity.barrel_facing.unwrap().destination(),
                 primary.destination()
             );
-            assert_eq!(entity.facing, (primary.current(frame) >> 8) as u8);
             assert!(
                 !entity
                     .locomotor
@@ -1285,8 +1280,7 @@ fn fly_paid_step_matches_native_math_and_production_type_speed() {
         entity.position.ry = (current[1] / 256) as u16;
         entity.position.sub_x = SimFixed::from_num(current[0] % 256);
         entity.position.sub_y = SimFixed::from_num(current[1] % 256);
-        entity.body_facing = Some(primary);
-        entity.facing = 222; // poison the byte cache
+        entity.body_facing = primary;
         entity.veterancy = 2; // Fly's getter bypasses Foot's FASTER path
         sim.add_entity_occupancy(1);
         assert!(issue_coordinate(

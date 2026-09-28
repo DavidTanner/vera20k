@@ -79,7 +79,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Schema171: live type acceleration preserves retasked track progression;
 // fresh turning defers admission.
 // See docs/research/TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md, PR415 attribution.
-const SLICE6_BASELINE_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x088D_D2CB_E558_B04C;
+const SLICE6_BASELINE_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x35D6_8C9D_840F_2F74;
 // Schema174 removes folds instead of adding them: OreGrowthState's node-era
 // scanner cursor, candidate lists and sample counters, and ProductionState's
 // fallback ore overlay id. The pre-174 projection folds the values those fields
@@ -93,19 +93,19 @@ const SLICE6_BASELINE_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x088D_D2CB_E5
 // E1 with ec27dc26's final state reproduces old current90DA2A8E0C06D5E3 and
 // pre174221E77F911A4FB24 exactly; tanks and RNG match on all16 frames. See
 // docs/research/COMBAT_WALK_REPLAY_ATTRIBUTION.md. Rust pins, not native goldens.
-const SLICE6_BASELINE_HASH_PRE_CRATE_SPEED_V181: u64 = 0x89B4_0F1C_9568_FFA5;
+const SLICE6_BASELINE_HASH_PRE_CRATE_SPEED_V181: u64 = 0x7B34_5825_40F4_B3BA;
 // v181 folds Foot+580, including default1.0. The pre-181 assertion below
 // proves this fixture's shift comes only from the added hash field.
-const SLICE6_BASELINE_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0xF2F4_BA44_25AB_B002;
+const SLICE6_BASELINE_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x952D_1DDE_1A61_B49D;
 // Snapshot182 adds ordered display vectors. The pre-182 projection below
 // must reproduce the previous whole-fixture hash, including all RNG/state.
-const SLICE6_BEFORE_INFANTRY_ROT_HASH: u64 = 10367437667977646885;
+const SLICE6_BEFORE_INFANTRY_ROT_HASH: u64 = 2557321976219781054;
 // Infantry ctor517BBD supplies PrimaryFacing ROT127. The comparison below
 // changes only that retained rate back to0 and reproduces every previous pin.
 // Schema186 removes each entity's always-None aircraft release-tail fold. The
 // pre186 assertion retains this fixture's preceding current hash, independently
 // of the existing constructor-rate projection and native paid-Walk witnesses.
-const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xD7C6_B3FA_0CBC_4644;
+const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0x8801_AD46_9E2A_9ECA;
 // Schema187: the pre187 projection below preserves the preceding full pin.
 // Schema189 folds retained Techno+3D4; Before(189) below reproduces v188.
 // v190 adds saved Foot neighbor history. Before(190) reproduces the full v189
@@ -153,11 +153,26 @@ const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xD7C6_B3FA_0CBC_464
 // composition only, as no rally is set here. Before(220) folds their empty
 // values and reproduces the prior current pin; every earlier projection,
 // per-tick replay and the RNG receipts are unchanged.
-const SLICE6_BASELINE_HASH: u64 = 0x498E_F189_907F_B2F2;
-const SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220: u64 = 0xE8CC_96D3_473B_D3FB;
-const SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xBC54_5E9B_173C_AEC2;
-const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x2A32_AF12_7767_94D1;
-const SLICE6_BASELINE_HASH_PRE_REARM_TIMER_V202: u64 = 0xE873_DCE2_1778_7464;
+// 2026-09-28 one body facing (snapshot 237, composition only; #580): each
+// object's hash folds its body FacingClass (`+0x388`) in place of the retired
+// 8-bit facing mirror, turn target and optional turn interpolator, and a
+// building's `+0x388` moves from the turret slot into it, in every projection.
+// No schema can rebuild the mirror or the target, so this one step re-pins
+// every projection in this test, the constructor-rate probe included. Ceremony:
+// on origin/main 99935d1d and on this change, a probe hash folding no facing,
+// and one folding only each object's body heading word at the hashed frame (the
+// old tree's interpolator, else its mirror), matched at all 16 ticks, RNG
+// streams included (the probe patch was not committed): every other fold and
+// every object's heading are unchanged, so the only change to these pins is the
+// fold. Drive's never-written turn target (`DriveTurnState`) left the fold in
+// the same step: with its four default fields folded back in their old place,
+// this change reproduced every facing-only pin (final 0x6CAD_D2FC_438A_0BC2),
+// RNG streams included. Old values: the commit that moved them.
+const SLICE6_BASELINE_HASH: u64 = 0xD28A_0344_C7E9_5CB4;
+const SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x8A48_34A5_69FE_54D2;
+const SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x2092_3652_93FA_213F;
+const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x3710_07AB_7B8C_0BF8;
+const SLICE6_BASELINE_HASH_PRE_REARM_TIMER_V202: u64 = 0x1F51_0E2E_EFE9_BF48;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -270,12 +285,7 @@ fn replay_hash_stable_through_slice6() {
                 tick + 1
             );
             assert_eq!(
-                u64::from(
-                    infantry
-                        .body_facing
-                        .unwrap()
-                        .current(sim.session.binary_frame)
-                ),
+                u64::from(infantry.body_facing.current(sim.session.binary_frame)),
                 row["facing"].as_u64().unwrap()
             );
             assert_eq!(infantry.foot_speed.cached_current_speed, 10);
@@ -427,15 +437,13 @@ fn replay_hash_stable_through_slice6() {
             entity.foot_speed,
         );
     }
-    let infantry_facing = sim.substrate.entities.get(3).unwrap().body_facing.unwrap();
+    let infantry_facing = sim.substrate.entities.get(3).unwrap().body_facing;
     assert_eq!(infantry_facing.rot_per_frame(), 0x7F00);
     sim.substrate
         .entities
         .get_mut(3)
         .unwrap()
         .body_facing
-        .as_mut()
-        .unwrap()
         .set_rot(0);
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(186)),
@@ -457,7 +465,7 @@ fn replay_hash_stable_through_slice6() {
         SLICE6_BASELINE_HASH_PRE_DISPLAY_LAYERS_V182,
         "excluding only display vectors must preserve the pre-182 fixture"
     );
-    sim.substrate.entities.get_mut(3).unwrap().body_facing = Some(infantry_facing);
+    sim.substrate.entities.get_mut(3).unwrap().body_facing = infantry_facing;
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(186)),
         SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186,
@@ -470,17 +478,17 @@ fn replay_hash_stable_through_slice6() {
     );
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(187)),
-        0xB071_E051_E20C_947B,
+        0x43BD_B315_707D_27CA,
         "schema187 only replaces zero remaining-shot fields with the retained index in this fixture"
     );
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        0x6FDD_EEBD_9E69_B3FB,
+        0x121F_3225_5B6F_8747,
         "v189 adds only the retained Techno+3D4 hash fold"
     );
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(190)),
-        17671192503384378705,
+        13190223968348790889,
         "v190 changes only the Foot neighbor-history hash composition in this fixture"
     );
     assert_eq!(

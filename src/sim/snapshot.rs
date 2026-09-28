@@ -692,7 +692,11 @@ use crate::sim::world::Simulation;
 // manager's timers, and the cloak stage and disguise block timers are
 // `CdTimer`s (the last two save their words in a new order).
 // 235 -> 236: a harvester's overlay no longer saves its unread frame count.
-const SNAPSHOT_VERSION: u32 = 236;
+// 236 -> 237: each Techno keeps its body heading once, as its `+0x388`
+// FacingClass (`GameEntity::body_facing`, no longer optional); the 8-bit
+// facing mirror and the turn target are gone, and a building's `+0x388` moves
+// from `barrel_facing` into it. Drive's unwritten turn target goes too.
+const SNAPSHOT_VERSION: u32 = 237;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3708,7 +3712,8 @@ mod tests {
         // 234 -> 235: house, spawn manager, cloak and disguise timers are
         // `CdTimer`s.
         // 235 -> 236: the harvest overlay drops its unread frame count.
-        assert_eq!(super::SNAPSHOT_VERSION, 236);
+        // 236 -> 237: one body FacingClass per Techno; no facing mirror or target.
+        assert_eq!(super::SNAPSHOT_VERSION, 237);
     }
 
     #[test]

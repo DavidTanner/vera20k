@@ -922,11 +922,7 @@ fn moving(e: &GameEntity) -> bool {
 
 fn head_on(mover: &GameEntity, blocker: &GameEntity, frame: u32) -> bool {
     use crate::util::direction_tables::{dir_from_facing16, facing16_from_delta};
-    let facing = |e: &GameEntity| {
-        e.body_facing
-            .as_ref()
-            .map_or(u16::from(e.facing) << 8, |f| f.current(frame))
-    };
+    let facing = |e: &GameEntity| e.body_facing_current(frame);
     let direction = dir_from_facing16(facing(mover));
     if direction != dir_from_facing16(facing(blocker).wrapping_add(0x7fff)) {
         return false;
@@ -1520,9 +1516,7 @@ fn classify_entry(
         } else if !infantry {
             //73F865..8C0: Foot NavCom, body turn, then active IsMoving.
             if b.navigation.nav_com.is_some()
-                || b.body_facing
-                    .as_ref()
-                    .is_some_and(|f| f.is_rotating(live.sim.session.binary_frame))
+                || b.body_facing.is_rotating(live.sim.session.binary_frame)
                 || moving(b)
             {
                 if head_on(e, b, live.sim.session.binary_frame) {

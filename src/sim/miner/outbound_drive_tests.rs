@@ -842,10 +842,7 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
     assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
     // Do_Turn 0x4B0EF0 sets the body FacingClass (0x4C9220).
     assert!(
-        entity
-            .body_facing
-            .as_ref()
-            .is_some_and(|body| body.is_rotating(sim.session.binary_frame)),
+        entity.body_facing.is_rotating(sim.session.binary_frame),
         "the hull is commanded onto the head path node's octant first"
     );
 

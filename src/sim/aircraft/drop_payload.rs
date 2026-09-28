@@ -112,7 +112,12 @@ pub fn try_drop(
                 let alt = a.locomotor.as_ref().map(|l| l.altitude).unwrap_or(SIM_ZERO);
                 let x_lep = a.position.rx as i32 * 256 + sim_to_i32(a.position.sub_x);
                 let y_lep = a.position.ry as i32 * 256 + sim_to_i32(a.position.sub_y);
-                (a.facing, alt, x_lep, y_lep)
+                (
+                    a.body_facing_byte(sim.session.binary_frame),
+                    alt,
+                    x_lep,
+                    y_lep,
+                )
             }
             None => return DropResult::NoCargo,
         };
@@ -357,7 +362,7 @@ mod tests {
         aircraft.owner = sim.interner.intern("Americans");
         aircraft.type_ref = sim.interner.intern("PDPLANE");
         aircraft.category = EntityCategory::Aircraft;
-        aircraft.facing = 128;
+        aircraft.body_facing.snap(0x8000, 0);
         let mut cargo = PassengerCargo::new(8, 0);
         cargo.board_forced(passenger_id, 1);
         aircraft.passenger_role = PassengerRole::Transport { cargo };

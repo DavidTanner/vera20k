@@ -163,9 +163,10 @@ pub struct LocomotorState {
     /// Pathfinder movement zone — determines crush capability and special routing.
     /// Cached from ObjectType at spawn to avoid per-tick RuleSet lookups.
     pub movement_zone: MovementZone,
-    /// Body rotation speed — ROT value from rules.ini (degrees/frame at 15fps).
-    /// Used for gradual hull turning before movement. 0 = instant turn.
-    /// Infantry always turn instantly regardless of this value (RA2 behavior).
+    /// `ROT=` (`Type+0x71C`), cached at spawn. The body turns at the rate its
+    /// class constructor wrote into `GameEntity::body_facing`, not this copy,
+    /// which only seeds a headless Fly mover's missing Secondary facing
+    /// (`ensure_fly_secondary_facing`) and rides the piggyback swap.
     pub rot: i32,
     /// Air movement progress in cells (0.0 → 1.0 per cell step).
     /// Air movement uses cell-based progress separately from the lepton

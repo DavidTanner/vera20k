@@ -748,9 +748,11 @@ fn a_moving_launcher_holds_its_missile() {
         .and_then(|m| m.slots[0].spawn)
         .expect("child");
 
+    let frame = sim.session.binary_frame;
     if let Some(entity) = sim.substrate.entities.get_mut(v3) {
         // Mid-turn: the native gate is ILocomotor::Is_Moving_Now.
-        entity.facing_target = Some(64);
+        entity.body_facing.set_rot(5);
+        entity.body_facing.set(0x4000, frame);
         if let Some(manager) = entity.spawn_manager.as_mut() {
             manager.set_target(Some(TargetKind::Entity(target)));
             manager.update_timer = CdTimer::default();
@@ -806,6 +808,7 @@ fn missile_impact_kills_through_the_shared_death_pipeline() {
             damage: 200,
             firer_id: v3,
         }),
+        sim.session.binary_frame,
     );
     let _ = sim.reveal(child_id);
 

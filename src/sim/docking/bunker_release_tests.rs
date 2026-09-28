@@ -114,7 +114,7 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
     assert_eq!(trace[4].building_link, None);
     let unit = sim.substrate.entities.get(1).unwrap();
     assert_eq!(position_world_coord(&unit.position), pose);
-    assert_eq!(unit.facing, 0);
+    assert_eq!(unit.body_facing.destination(), 0);
     let drive = unit.drive_locomotion.as_ref().unwrap();
     assert_eq!(
         (

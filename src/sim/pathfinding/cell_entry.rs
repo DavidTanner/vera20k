@@ -1260,7 +1260,8 @@ pub fn check_terrain_with_layers(
 /// The terrain and layer half of the native predicate runs before this, in
 /// [`evaluate_can_enter_cell`]. The arms of the native walk this phase does not
 /// produce — the wall/overlay codes and the head-on facing test — are recorded
-/// in the module header rather than approximated here.
+/// in the module header rather than approximated here. Headings are sampled
+/// at frame 0, which a settled fixture heading ignores.
 #[cfg(test)]
 pub fn classify_occupied_cell(
     target: (u16, u16),
@@ -1284,6 +1285,7 @@ pub fn classify_occupied_cell(
         mover_locomotor,
         mover_bypass_grid,
         occupancy,
+        0,
         entities,
         alliances,
         interner,
@@ -1301,6 +1303,7 @@ pub fn classify_occupied_cell_with_layers(
     mover_locomotor: LocomotorKind,
     mover_bypass_grid: bool,
     occupancy: &OccupancyGrid,
+    current_frame: u32,
     entities: &EntityStore,
     alliances: &HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
@@ -1315,6 +1318,7 @@ pub fn classify_occupied_cell_with_layers(
         mover_bypass_grid,
         None,
         occupancy,
+        current_frame,
         entities,
         alliances,
         interner,
@@ -1336,6 +1340,7 @@ pub fn classify_occupied_cell_with_layers_and_ignored(
     mover_bypass_grid: bool,
     ignored_blockers: Option<&BTreeSet<u64>>,
     occupancy: &OccupancyGrid,
+    current_frame: u32,
     entities: &EntityStore,
     alliances: &HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
@@ -1350,6 +1355,7 @@ pub fn classify_occupied_cell_with_layers_and_ignored(
         mover_bypass_grid,
         ignored_blockers,
         occupancy,
+        current_frame,
         entities,
         alliances,
         interner,
@@ -1373,6 +1379,7 @@ fn classify_occupied_cell_with_slave_query(
     mover_bypass_grid: bool,
     ignored_blockers: Option<&BTreeSet<u64>>,
     occupancy: &OccupancyGrid,
+    current_frame: u32,
     entities: &EntityStore,
     alliances: &HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
@@ -1449,6 +1456,7 @@ fn classify_occupied_cell_with_slave_query(
                 entities,
                 alliances,
                 interner,
+                current_frame,
             );
             // **VERA-internal generalisation, gamemd equivalent UNCHECKED.** A
             // running code of 7 aborts the walk here. Native has no such
@@ -1588,6 +1596,7 @@ pub(crate) fn classify_occupied_cell_with_occupation_and_slave_query(
         mover_bypass_grid,
         ignored_blockers,
         occupancy,
+        current_frame,
         entities,
         alliances,
         interner,
@@ -1708,9 +1717,8 @@ fn find_primary_blocker(
 /// The head-on exit of `UnitClass::Can_Enter_Cell`, `0x0073F8D4..FA26`.
 ///
 /// Taken for an allied occupant that is moving. Octants are the native
-/// `((facing16 >> 12) + 1 >> 1) & 7`; the byte facing is the high byte of that
-/// word, so `((facing8 >> 4) + 1 >> 1) & 7` is the same value. The occupant's
-/// facing is reversed by adding `0x7FFF` in the 16-bit word (`0x0073F914`)
+/// `((facing16 >> 12) + 1 >> 1) & 7` of each body's `+0x388` Current. The
+/// occupant's facing is reversed by adding `0x7FFF` in the 16-bit word (`0x0073F914`)
 /// before its octant is taken. When the mover's octant equals that reversed
 /// octant — the two are facing each other — the 3-D lepton distance
 /// `Sqrt_Approx(dx² + dz² + dy²)` (`0x0073F9DA..FA03`) goes through `ftol`
@@ -1719,11 +1727,11 @@ fn find_primary_blocker(
 /// (`Math::atan2(mover.y − occ.y, occ.x − mover.x)` centred and scaled at
 /// `0x0073F97B..F98A`) must land in the mover's own octant for the exit to
 /// fire (`0x0073FA24 CMP ECX,EBP / JZ 0x0073FCD0`, return 7).
-fn head_on_with_moving_ally(mover: &GameEntity, occupant: &GameEntity) -> bool {
+fn head_on_with_moving_ally(mover: &GameEntity, occupant: &GameEntity, frame: u32) -> bool {
     head_on_exit(
-        mover.facing,
+        mover.body_facing_current(frame),
         entity_world_leptons(mover),
-        occupant.facing,
+        occupant.body_facing_current(frame),
         entity_world_leptons(occupant),
     )
 }
@@ -1744,17 +1752,17 @@ pub(crate) fn entity_world_leptons(entity: &GameEntity) -> [i32; 3] {
 /// native trace. Shared with the Drive selection lane, which evaluates it
 /// against its owner snapshot of moving allies.
 pub(crate) fn head_on_exit(
-    mover_facing: u8,
+    mover_facing: u16,
     mover_world: [i32; 3],
-    occupant_facing: u8,
+    occupant_facing: u16,
     occupant_world: [i32; 3],
 ) -> bool {
     use crate::util::direction_tables::facing16_from_delta;
     use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
     let octant16 = |word: u32| ((word >> 12).wrapping_add(1) >> 1) & 7;
-    let mover_octant = octant16(u32::from(mover_facing) << 8);
-    let occupant_reversed = (u32::from(occupant_facing) << 8).wrapping_add(0x7FFF) & 0xFFFF;
+    let mover_octant = octant16(u32::from(mover_facing));
+    let occupant_reversed = u32::from(occupant_facing).wrapping_add(0x7FFF) & 0xFFFF;
     if mover_octant != octant16(occupant_reversed) {
         return false;
     }
@@ -1793,6 +1801,7 @@ fn classify_blocker(
     entities: &EntityStore,
     alliances: &HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
+    frame: u32,
 ) -> CellEntryResult {
     let Some(blocker) = entities.get(blocker_id) else {
         return CellEntryResult::Impassable;
@@ -1853,7 +1862,8 @@ fn classify_blocker(
         // The head-on exit precedes the locomotor question and exists only in
         // the Unit implementation (`0x0073F8D4`); Infantry `+0x1AC` has none.
         if mover.is_some_and(|mover| {
-            mover.category == EntityCategory::Unit && head_on_with_moving_ally(mover, blocker)
+            mover.category == EntityCategory::Unit
+                && head_on_with_moving_ally(mover, blocker, frame)
         }) {
             return CellEntryResult::Impassable;
         }
@@ -1909,41 +1919,56 @@ mod tests {
     /// three gates alone releases it.
     #[test]
     fn head_on_exit_requires_opposed_facings_range_and_bearing() {
-        // Mover faces east (64 → octant 2), occupant faces west (192 → reversed
-        // octant 2), occupant 256 leptons due east, same height.
+        // Mover faces east (0x4000 → octant 2), occupant faces west (0xC000 →
+        // reversed octant 2), occupant 256 leptons due east, same height.
         let mover = [10 * 256 + 128, 10 * 256 + 128, 0];
         let east_256 = [11 * 256 + 128, 10 * 256 + 128, 0];
-        assert!(head_on_exit(64, mover, 192, east_256));
+        assert!(head_on_exit(0x4000, mover, 0xC000, east_256));
         // Distance gate: 511 fires, 512 does not (`CMP EAX,0x1FF / JG`).
-        assert!(head_on_exit(64, mover, 192, [mover[0] + 511, mover[1], 0]));
-        assert!(!head_on_exit(64, mover, 192, [mover[0] + 512, mover[1], 0]));
+        assert!(head_on_exit(
+            0x4000,
+            mover,
+            0xC000,
+            [mover[0] + 511, mover[1], 0]
+        ));
+        assert!(!head_on_exit(
+            0x4000,
+            mover,
+            0xC000,
+            [mover[0] + 512, mover[1], 0]
+        ));
         // Height enters the 3-D distance.
         assert!(!head_on_exit(
-            64,
+            0x4000,
             mover,
-            192,
+            0xC000,
             [mover[0] + 500, mover[1], 120]
         ));
         // Occupant facing the same way (a column) is not head-on.
-        assert!(!head_on_exit(64, mover, 64, east_256));
+        assert!(!head_on_exit(0x4000, mover, 0x4000, east_256));
         // Occupant behind the mover, still facing it: bearing is west, not east.
         assert!(!head_on_exit(
-            64,
+            0x4000,
             mover,
-            192,
+            0xC000,
             [9 * 256 + 128, 10 * 256 + 128, 0]
         ));
         // Occupant off to the side (south-east) leaves the mover's octant.
         assert!(!head_on_exit(
-            64,
+            0x4000,
             mover,
-            192,
+            0xC000,
             [11 * 256 + 128, 11 * 256 + 128, 0]
         ));
-        // Octant rounding: facing 48..79 all read as octant 2.
-        assert!(head_on_exit(48, mover, 208, east_256));
-        assert!(head_on_exit(79, mover, 177, east_256));
-        assert!(!head_on_exit(80, mover, 192, east_256));
+        // Octant rounding: facing 0x3000..0x4FFF all read as octant 2.
+        assert!(head_on_exit(0x3000, mover, 0xD000, east_256));
+        assert!(head_on_exit(0x4F00, mover, 0xB100, east_256));
+        assert!(!head_on_exit(0x5000, mover, 0xC000, east_256));
+        // The occupant's reversal carries its low byte: 0xB080 + 0x7FFF =
+        // 0x307F reads octant 2, where its high byte alone (0xB000 + 0x7FFF =
+        // 0x2FFF) would read octant 1.
+        assert!(head_on_exit(0x4000, mover, 0xB080, east_256));
+        assert!(!head_on_exit(0x4000, mover, 0xB000, east_256));
     }
 
     fn crushable_wall_grid() -> ResolvedTerrainGrid {
@@ -2132,7 +2157,7 @@ mod tests {
     fn moving_ally(id: u64, rx: u16, ry: u16, facing: u8, in_transit: bool) -> GameEntity {
         let mut ally = GameEntity::test_default(id, "MTNK", "Americans", rx, ry);
         ally.category = EntityCategory::Unit;
-        ally.facing = facing;
+        ally.body_facing.snap(u16::from(facing) << 8, 0);
         ally.foot_occupation_enabled = !in_transit;
         ally.movement_target = Some(crate::sim::components::MovementTarget {
             path: vec![(rx, ry), (rx.wrapping_sub(1), ry)],
@@ -2161,12 +2186,12 @@ mod tests {
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
         assert_eq!(
-            classify_blocker(100, None, "Americans", &entities, &alliances, &interner),
+            classify_blocker(100, None, "Americans", &entities, &alliances, &interner, 0),
             CellEntryResult::Clear,
             "hover in transit: skipped"
         );
         assert_eq!(
-            classify_blocker(101, None, "Americans", &entities, &alliances, &interner),
+            classify_blocker(101, None, "Americans", &entities, &alliances, &interner, 0),
             CellEntryResult::TemporaryBlock { blocker_id: 101 },
             "hover with its enable set: code 2"
         );
@@ -2188,17 +2213,17 @@ mod tests {
         let interner = crate::sim::intern::test_interner();
 
         assert_eq!(
-            classify_blocker(100, None, "Americans", &entities, &alliances, &interner),
+            classify_blocker(100, None, "Americans", &entities, &alliances, &interner, 0),
             CellEntryResult::Clear,
             "in transit, no retained track: skipped"
         );
         assert_eq!(
-            classify_blocker(101, None, "Americans", &entities, &alliances, &interner),
+            classify_blocker(101, None, "Americans", &entities, &alliances, &interner, 0),
             CellEntryResult::TemporaryBlock { blocker_id: 101 },
             "standing moving ally still raises 2"
         );
         assert_eq!(
-            classify_blocker(102, None, "Americans", &entities, &alliances, &interner),
+            classify_blocker(102, None, "Americans", &entities, &alliances, &interner, 0),
             CellEntryResult::Clear,
             "moving infantry: Walk slot answers false"
         );
@@ -2213,10 +2238,10 @@ mod tests {
         entities.insert(moving_ally(100, 11, 10, 192, true));
         let mut tank = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
         tank.category = EntityCategory::Unit;
-        tank.facing = 64;
+        tank.body_facing.snap(0x4000, 0);
         let mut soldier = GameEntity::test_default(2, "E1", "Americans", 10, 10);
         soldier.category = EntityCategory::Infantry;
-        soldier.facing = 64;
+        soldier.body_facing.snap(0x4000, 0);
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
 
@@ -2227,7 +2252,8 @@ mod tests {
                 "Americans",
                 &entities,
                 &alliances,
-                &interner
+                &interner,
+                0
             ),
             CellEntryResult::Impassable
         );
@@ -2238,11 +2264,12 @@ mod tests {
                 "Americans",
                 &entities,
                 &alliances,
-                &interner
+                &interner,
+                0
             ),
             CellEntryResult::Clear
         );
-        tank.facing = 192;
+        tank.body_facing.snap(0xC000, 0);
         assert_eq!(
             classify_blocker(
                 100,
@@ -2250,7 +2277,8 @@ mod tests {
                 "Americans",
                 &entities,
                 &alliances,
-                &interner
+                &interner,
+                0
             ),
             CellEntryResult::Clear,
             "a tank facing away is not head-on"
@@ -2436,7 +2464,7 @@ mod tests {
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
 
-        let result = classify_blocker(100, None, "Americans", &entities, &alliances, &interner);
+        let result = classify_blocker(100, None, "Americans", &entities, &alliances, &interner, 0);
         assert_eq!(
             result,
             CellEntryResult::ScatterRequired {
@@ -2450,7 +2478,7 @@ mod tests {
             phase: BuildingGatePhase::Opening,
             ..Default::default()
         });
-        let result = classify_blocker(100, None, "Americans", &entities, &alliances, &interner);
+        let result = classify_blocker(100, None, "Americans", &entities, &alliances, &interner, 0);
         assert_eq!(
             result,
             CellEntryResult::ScatterRequired {
@@ -2472,7 +2500,7 @@ mod tests {
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
 
-        let result = classify_blocker(200, None, "Americans", &entities, &alliances, &interner);
+        let result = classify_blocker(200, None, "Americans", &entities, &alliances, &interner, 0);
         assert_eq!(result, CellEntryResult::Impassable);
         assert_eq!(result.yr_code(), 7);
     }
@@ -2489,7 +2517,7 @@ mod tests {
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
 
-        let result = classify_blocker(201, None, "Americans", &entities, &alliances, &interner);
+        let result = classify_blocker(201, None, "Americans", &entities, &alliances, &interner, 0);
         assert_eq!(
             result,
             CellEntryResult::FriendlyStationary { blocker_id: 201 }
@@ -2694,7 +2722,7 @@ mod tests {
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
 
-        let result = classify_blocker(100, None, "Americans", &entities, &alliances, &interner);
+        let result = classify_blocker(100, None, "Americans", &entities, &alliances, &interner, 0);
         assert_eq!(result, CellEntryResult::OccupiedEnemy { blocker_id: 100 });
         assert_eq!(result.yr_code(), 5);
     }
@@ -3164,6 +3192,7 @@ mod tests {
             LocomotorKind::Drive,
             false,
             &occ,
+            0,
             &entities,
             &alliances,
             &interner,

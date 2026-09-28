@@ -348,7 +348,6 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
             },
         );
         entity.bunker_link = BunkerLink::Approaching(2);
-        entity.facing_target = None;
         let before_owner = owner_state(entity, true);
         let mut building = GameEntity::test_default(2, "NATBNK", "Americans", 10, 10);
         building.owner = sim.intern("Americans");

@@ -9,7 +9,6 @@
 
 use std::collections::BTreeSet;
 
-use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::components::MovementTarget;
@@ -20,11 +19,11 @@ use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::pathfinding::{BlockerNeighborCounts, LayeredEntityBlockMap};
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
+use super::PathfindingContext;
 use super::movement_path::{
     find_move_path, merge_path_blocks, resolve_reachable_move_goal, resolve_requested_move_goal,
     supports_layered_bridge_pathing,
 };
-use super::{PathfindingContext, facing_from_delta};
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::components::OrderIntent;
 use crate::sim::game_entity::GameEntity;
@@ -264,7 +263,6 @@ pub fn issue_direct_move(
 
     let dx = target.0 as i32 - start.0 as i32;
     let dy = target.1 as i32 - start.1 as i32;
-    let new_facing = facing_from_delta(dx, dy);
     // Compute direction vector with EUCLIDEAN length so multi-cell deltas
     // (e.g. pad→exit_cell may be (-2, +1)) advance at the correct speed.
     // `cell_delta_to_lepton_dir` only handles unit deltas — for multi-cell
@@ -292,12 +290,6 @@ pub fn issue_direct_move(
         // Direct callers share Foot4D96C2's accepted destination tail.
         timing.accept(entity_mut);
         entity_mut.movement_target = Some(movement);
-        let has_rot = entity_mut.locomotor.as_ref().is_some_and(|l| l.rot > 0);
-        if entity_mut.category != EntityCategory::Infantry && has_rot {
-            entity_mut.facing_target = Some(new_facing);
-        } else {
-            entity_mut.facing = new_facing;
-        }
     }
     true
 }
@@ -693,15 +685,6 @@ pub(crate) fn issue_move_command_with_destination(
         path_desc,
     );
 
-    // Compute initial facing toward the first movement cell (path[1], since path[0] = start).
-    let mut new_facing: Option<u8> = None;
-    if path.len() >= 2 {
-        let next: (u16, u16) = path[1];
-        let dx: i32 = next.0 as i32 - start_rx as i32;
-        let dy: i32 = next.1 as i32 - start_ry as i32;
-        new_facing = Some(facing_from_delta(dx, dy));
-    }
-
     // A kept curve's head cell is a future node the body has not crossed into
     // yet: the queue cursor starts ON it so the coordinate crossing consumes
     // it, exactly as it would have consumed that node under the replaced path.
@@ -779,14 +762,6 @@ pub(crate) fn issue_move_command_with_destination(
             // tools/spatial_oracle/walk_first_path.json. MovementTarget keeps
             // the existing prepared physical path, without publishing it here.
             entity_mut.navigation.path_replay.clear_live_head();
-        }
-        if !keep_in_flight_curve && let Some(f) = new_facing {
-            let has_rot = entity_mut.locomotor.as_ref().is_some_and(|l| l.rot > 0);
-            if entity_mut.category != EntityCategory::Infantry && has_rot {
-                entity_mut.facing_target = Some(f);
-            } else {
-                entity_mut.facing = f;
-            }
         }
         // Unit's accepted setter reaches Foot4D96C2..9707 just as Walk's
         // does. Preserve +64C; this is not a Foot constructor.

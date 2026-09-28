@@ -1552,12 +1552,6 @@ fn unit_techno_bracket(
             dispatch_supported_foot_mission_cadence(sim, id, rules, ctx);
         }
     }
-    // A transport turning in place for its Unload reads its hull
-    // `PrimaryFacing.Current()` every frame; the movement tick only turns
-    // objects that hold a movement target, so the idle turn is advanced here.
-    if let Some(rules) = rules {
-        crate::sim::transport_unload::refresh_idle_hull_turn(sim, id, rules);
-    }
     // `UnitClass::AI @ 0x007361A9..0x007361E9`: a draining Floating Disc
     // re-checks the building under it every 16th frame and drops the link
     // when it has drifted off (after FootClass::AI in the native order).

@@ -213,10 +213,7 @@ pub(crate) fn mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> 
     }
     // B 0x0073DF56: the hull must sit in the 8-bit East window
     // (raw 0x3F80..=0x407F); otherwise turn (unless the turret is mid-swing).
-    let raw = entity
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(entity.facing) << 8, |body| body.current(now));
+    let raw = entity.body_facing_current(now);
     if (((u32::from(raw) >> 7) + 1) & 0x1FE) != 0x80 {
         if !entity.turret_rotation_latch
             && let Some(entity) = sim.substrate.entities.get_mut(id)

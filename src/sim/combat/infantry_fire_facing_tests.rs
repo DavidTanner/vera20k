@@ -7,8 +7,7 @@ use crate::sim::world::Simulation;
 fn pair() -> EntityStore {
     let mut store = EntityStore::new();
     let mut firer = make_infantry_entity(1, "E1", 5, 5, 125);
-    firer.facing = 0x81;
-    firer.body_facing = Some(FacingClass::new(0x8123, 5));
+    firer.body_facing = FacingClass::new(0x8123, 5);
     store.insert(firer);
     store.insert(make_infantry_entity(2, "E2", 8, 5, 125));
     store
@@ -34,13 +33,7 @@ fn infantry_orders_leave_facing_to_fire_start() {
         let mut store = pair();
         let interner = test_interner();
         match order {
-            0 => assert!(issue_attack_command(
-                &mut store,
-                1,
-                2,
-                Some(&rules),
-                &interner
-            )),
+            0 => assert!(issue_attack_command(&mut store, 1, 2)),
             _ => assert!(issue_attack_cell_command(
                 &mut store,
                 1,
@@ -51,8 +44,7 @@ fn infantry_orders_leave_facing_to_fire_start() {
             )),
         }
         let entity = store.get(1).unwrap();
-        assert_eq!(entity.facing, 0x81, "order {order}");
-        assert_eq!(entity.body_facing.unwrap().current(100), 0x8123);
+        assert_eq!(entity.body_facing.current(100), 0x8123, "order {order}");
     }
 }
 
@@ -96,8 +88,7 @@ fn infantry_fire_start_heading_matches_original_code_vectors() {
                 row["initial_start"].as_u64().unwrap() as u32,
             );
         }
-        firer.facing = (body.current(100) >> 8) as u8;
-        firer.body_facing = Some(body);
+        firer.body_facing = body;
         firer.infantry.as_mut().unwrap().is_prone = row["prone"] == 1;
         if row["deployed"] == true {
             firer.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
@@ -107,13 +98,7 @@ fn infantry_fire_start_heading_matches_original_code_vectors() {
         let result = visit(&mut store, &rules, 100);
         let firer = store.get(1).unwrap();
         let expected = row["facing"].as_u64().unwrap() as u16;
-        assert_eq!(
-            firer.body_facing.unwrap().current(100),
-            expected,
-            "{}",
-            row["name"]
-        );
-        assert_eq!(firer.facing, (expected >> 8) as u8);
+        assert_eq!(firer.body_facing.current(100), expected, "{}", row["name"]);
         assert!(
             firer
                 .attack_target
@@ -146,10 +131,7 @@ fn infantry_refused_or_reloading_does_not_snap() {
                 .fire_events()
                 .is_empty()
         );
-        assert_eq!(
-            store.get(1).unwrap().body_facing.unwrap().current(100),
-            0x8123
-        );
+        assert_eq!(store.get(1).unwrap().body_facing.current(100), 0x8123);
     }
 }
 
@@ -182,7 +164,7 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
             row["name"]
         );
         assert_eq!(
-            firer.body_facing.unwrap().current(100),
+            firer.body_facing.current(100),
             if refused { 0x8123 } else { 0x3FFF },
             "{}",
             row["name"]
@@ -257,7 +239,7 @@ fn rocketeer_pair() -> (EntityStore, RuleSet) {
     );
     let mut store = EntityStore::new();
     let mut firer = make_infantry_entity(1, "JJ", 5, 5, 125);
-    firer.body_facing = Some(FacingClass::new(0x4000, 127));
+    firer.body_facing = FacingClass::new(0x4000, 127);
     firer.position.exact_z_leptons = Some(500);
     let mut locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
         rules.object("JJ").unwrap(),
@@ -322,12 +304,12 @@ fn pending_sequence_keeps_start_facing_when_target_moves() {
     let mut store = pair();
     store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
     visit(&mut store, &rules, 100);
-    let facing = store.get(1).unwrap().body_facing.unwrap();
+    let facing = store.get(1).unwrap().body_facing;
     store.get_mut(2).unwrap().position.rx = 2;
     set_anim_frame(&mut store, 1, 2);
     let result = visit(&mut store, &rules, 101);
     assert_eq!(result.consequences.fire_events().len(), 1);
-    assert_eq!(store.get(1).unwrap().body_facing, Some(facing));
+    assert_eq!(store.get(1).unwrap().body_facing, facing);
     assert_eq!(
         result.consequences.fire_events()[0].facing,
         (facing.current(101) >> 8) as u8
@@ -372,9 +354,7 @@ fn production_pair(rules: &RuleSet) -> (Simulation, u64, u64) {
     assert!(issue_attack_command(
         &mut sim.substrate.entities,
         firer,
-        target,
-        Some(rules),
-        &sim.interner
+        target
     ));
     (sim, firer, target)
 }
@@ -404,10 +384,7 @@ fn production_zero_delay_shot_and_restore_use_new_heading() {
     sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
     let entity = sim.substrate.entities.get(firer).unwrap();
     assert!(sim.fog.is_cell_visible(entity.owner(), 8, 5));
-    let facing = entity
-        .body_facing
-        .expect("retained fire-facing owner")
-        .current(sim.session.binary_frame);
+    let facing = entity.body_facing.current(sim.session.binary_frame);
     assert_eq!(facing, 0x3FFF, "native eastward direction");
     let event = sim
         .fire_events
@@ -471,7 +448,7 @@ fn cell_and_building_fire_headings_match_original_coordinate_getters() {
         let result = visit(&mut store, &rules, 100);
         assert!(result.consequences.fire_events().is_empty());
         assert_eq!(
-            u64::from(store.get(1).unwrap().body_facing.unwrap().current(100)),
+            u64::from(store.get(1).unwrap().body_facing.current(100)),
             row["facing"].as_u64().unwrap(),
             "{}",
             row["name"]
@@ -495,9 +472,7 @@ fn production_pending_fire_restores_heading_and_reaches_emission() {
             .pending_infantry_fire
             .is_some()
     );
-    let body = entity
-        .body_facing
-        .expect("facing written at sequence start");
+    let body = entity.body_facing;
     assert!(sim.fire_events.is_empty());
     let mut restored = restore_production_pair(&sim, &rules);
     sim.scenario_rng = SimRng::new(0); // Native Scenario load reseed.
@@ -508,7 +483,7 @@ fn production_pending_fire_restores_heading_and_reaches_emission() {
         assert_eq!(sim.state_hash(), restored.state_hash());
         assert_eq!(
             restored.substrate.entities.get(firer).unwrap().body_facing,
-            Some(body)
+            body
         );
         if restored
             .fire_events
@@ -602,7 +577,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
         .unwrap()
         .step_head()
         .expect("accepted Walk step");
-    let body = entity.body_facing.expect("Walk's heading owner");
+    let body = entity.body_facing;
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
     if boosted {
         assert!(
@@ -626,8 +601,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
     let entity = sim.substrate.entities.get(firer).unwrap();
     assert_eq!(entity.locomotor.as_ref().unwrap().step_head(), Some(head));
     assert_eq!(
-        entity.body_facing,
-        Some(body),
+        entity.body_facing, body,
         "order keeps the paid-step heading"
     );
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
@@ -663,10 +637,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             }
             assert!(!fired, "a retained paid step cannot fire");
             assert_eq!(
-                entity
-                    .body_facing
-                    .unwrap()
-                    .current(sim.session.binary_frame),
+                entity.body_facing.current(sim.session.binary_frame),
                 step_heading,
                 "movement may correct toward its head; fire must not turn toward the enemy"
             );
@@ -686,8 +657,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             );
             assert!(entity.locomotor.as_ref().unwrap().step_head().is_none());
             assert_ne!(
-                entity.body_facing,
-                Some(body),
+                entity.body_facing, body,
                 "face target at accepted fire start"
             );
             assert_eq!(

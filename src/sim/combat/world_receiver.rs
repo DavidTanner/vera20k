@@ -2782,15 +2782,8 @@ fn admit_attacker_fire<'r>(
         let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) else {
             return None;
         };
-        let body = entity.body_facing.get_or_insert_with(|| {
-            // Infantry ctor517BBD..517BC5 seeds PrimaryFacing with127,
-            // independently of Type ROT (Unit/Aircraft use the type value).
-            crate::sim::movement::FacingClass::new(u16::from(entity.facing) << 8, 127)
-        });
-        body.snap(desired, binary_frame);
-        entity.facing = (body.current(binary_frame) >> 8) as u8;
+        entity.body_facing.snap(desired, binary_frame);
         firing_snapshot = snap.clone();
-        firing_snapshot.facing = entity.facing;
         firing_snapshot.hull_facing = entity.body_facing;
         &firing_snapshot
     } else {
@@ -3220,10 +3213,7 @@ fn fireat_launch_aim(
                 );
                 Some(lead_aim(
                     target_coord,
-                    crate::sim::movement::turret::hull_facing_16(
-                        target,
-                        world.session.binary_frame,
-                    ),
+                    target.body_facing_current(world.session.binary_frame),
                     distance,
                     weapon_launch_speed(
                         current.speed,
@@ -3606,7 +3596,6 @@ pub(super) fn emit_admitted_fire(
         let launch_geometry =
             fireat_launch_aim(world, rules, snap, weapon, launch_source.coord, impact);
         let origin = launch_source.coord;
-        let body_facing16 = crate::sim::movement::turret::body_facing_to_turret(snap.facing);
         let projectile_type = weapon
             .projectile
             .as_deref()
@@ -3717,8 +3706,8 @@ pub(super) fn emit_admitted_fire(
             .filter(|projectile| projectile.dropping || projectile.rot != 0)
             .map(|_| {
                 let source = world.substrate.entities.get(snap.stable_id);
-                let hull = source.map_or(body_facing16, |source| {
-                    crate::sim::movement::turret::hull_facing_16(source, binary_frame)
+                let hull = source.map_or(snap.hull_facing.current(binary_frame), |source| {
+                    source.body_facing_current(binary_frame)
                 });
                 match snap.category {
                     EntityCategory::Unit if obj.has_turret => source
@@ -3905,12 +3894,13 @@ pub(super) fn emit_admitted_fire(
         .entities
         .get(snap.stable_id)
         .is_some_and(|firer| firer.passenger_role.in_open_transport());
+    let facing = (snap.hull_facing.current(binary_frame) >> 8) as u8;
     out.fire_events.push(SimFireEvent {
         attacker_id: snap.stable_id,
         attacker_type_ref: snap.type_id,
         weapon_slot: selected.slot,
         weapon_id: world.interner.intern(selected.weapon_id),
-        facing: snap.facing,
+        facing,
         veterancy: snap.veterancy,
         origin_snapshot: FireOriginSnapshot {
             rx: snap.pos_rx,
@@ -3918,7 +3908,7 @@ pub(super) fn emit_admitted_fire(
             z: snap.pos_z,
             sub_x: snap.sub_x,
             sub_y: snap.sub_y,
-            facing: snap.facing,
+            facing,
         },
         target: snap.target,
         report_sound_id,

@@ -251,7 +251,7 @@ fn animation_boundary_fixture() -> (Simulation, RuleSet) {
         false,
     );
     entity.animation = Some(Animation::new(SequenceKind::Idle1));
-    entity.body_facing = Some(FacingClass::new(0, 4));
+    entity.body_facing = FacingClass::new(0, 4);
     sim.substrate.entities.insert(entity);
 
     let idle = SequenceDef {
@@ -365,7 +365,7 @@ fn master_frame_hash_observes_living_animation_completion_facing() {
         .expect("fixture frame must complete");
 
     let entity = sim.substrate.entities.get(1).expect("living infantry");
-    assert_eq!(entity.facing, 128);
+    assert_eq!(entity.body_facing.destination(), 0x8000);
     assert_eq!(
         entity.animation.as_ref().expect("animation").sequence,
         SequenceKind::Stand
@@ -395,7 +395,7 @@ fn app_and_headless_frames_hash_identically_for_animation_progress() {
     assert_eq!(app.tick.state_hash, headless.state_hash);
     assert_eq!(app_sim.state_hash(), headless_sim.state_hash());
     let app_entity = app_sim.substrate.entities.get(1).expect("app infantry");
-    assert_eq!(app_entity.facing, 128);
+    assert_eq!(app_entity.body_facing.destination(), 0x8000);
     assert_eq!(
         app_entity
             .animation
@@ -687,7 +687,7 @@ fn terminal_master_frame_does_not_advance_living_animation() {
     assert_eq!(animation.frame_index, 0);
     assert_eq!(animation.elapsed_frames, 0);
     assert!(!animation.finished);
-    assert_eq!(entity.facing, 0);
+    assert_eq!(entity.body_facing.destination(), 0);
 }
 
 #[test]
@@ -956,7 +956,8 @@ fn move_sound_test_sim() -> Simulation {
 
 fn trigger_move_sound_tail(sim: &mut Simulation, rules: &RuleSet) {
     let mut before = sim.movement_sound_probe(1).expect("test Foot exists");
-    before.facing = before.facing.wrapping_add(1);
+    before.facing =
+        crate::sim::movement::FacingClass::new(before.facing.destination().wrapping_add(0x100), 0);
     sim.tick_move_sound_after_process(1, Some(before), Some(rules));
 }
 
@@ -3337,16 +3338,12 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
     assert!(crate::sim::combat::issue_attack_command(
         &mut sim.substrate.entities,
         dolphin_id,
-        sonic_endpoint_id,
-        Some(&rules),
-        &sim.interner,
+        sonic_endpoint_id
     ));
     assert!(crate::sim::combat::issue_attack_command(
         &mut sim.substrate.entities,
         later_id,
-        later_target_id,
-        Some(&rules),
-        &sim.interner,
+        later_target_id
     ));
     sim.clear_lifecycle_test_events_for_test();
 
@@ -4151,7 +4148,7 @@ fn test_spawn_sets_position_and_facing() {
     for e in sim.substrate.entities.values() {
         assert_eq!(e.position.rx, 30);
         assert_eq!(e.position.ry, 40);
-        assert_eq!(e.facing, 64);
+        assert_eq!(e.body_facing.destination(), 0x4000);
         assert_eq!(sim.interner.resolve(e.type_ref), "HTNK");
         // The diamond-centre screen projection of this spawn is asserted on
         // the render side (`render::locomotor_visual` boundary tests, F14).
@@ -6550,7 +6547,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
             ),
         );
         entity.drive_locomotion = Some(Default::default());
-        entity.facing = 64;
+        entity.body_facing.snap(0x4000, 0);
     }
 
     let grid = PathGrid::new(16, 16);
@@ -6798,7 +6795,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
         entity.ship_locomotion = Some(ShipLocomotionRuntime::default());
-        entity.facing = 64;
+        entity.body_facing.snap(0x4000, 0);
     }
 
     let grid = PathGrid::new(16, 16);
@@ -8257,7 +8254,7 @@ fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     // (`UnitClass::GetFireError @ 0x00740FD0` step 17) compares its HULL
     // `+0x388`. Face it east at the building so the death/drain ordering under
     // test happens on the first tick instead of after a turn-to-fire.
-    atk.facing = 64;
+    atk.body_facing.snap(0x4000, 0);
     atk.health = Health { current: 300 };
     // Damaged, auto-repairing enemy building MTNK destroys this tick at Phase 5.
     let mut bld = GameEntity::test_default(2, "TARGB", "Russia", 7, 5);
@@ -9543,6 +9540,7 @@ fn stacking_cell_entry_verdict(sim: &Simulation, mover: u64, rx: u16, ry: u16) -
             .unwrap_or(crate::rules::locomotor_type::LocomotorKind::Drive),
         false,
         &sim.substrate.occupancy,
+        sim.session.binary_frame,
         &sim.substrate.entities,
         &sim.house_alliances,
         &sim.interner,

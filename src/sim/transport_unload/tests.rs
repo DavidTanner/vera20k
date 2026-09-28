@@ -299,7 +299,12 @@ impl Fixture {
     }
 
     fn facing(&self, id: u64) -> u8 {
-        self.sim.substrate.entities.get(id).expect("entity").facing
+        self.sim
+            .substrate
+            .entities
+            .get(id)
+            .expect("entity")
+            .body_facing_byte(self.sim.session.binary_frame)
     }
 
     fn cell(&self, id: u64) -> (u16, u16) {

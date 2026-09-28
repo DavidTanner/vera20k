@@ -56,7 +56,7 @@ fn unconditional_unit_scatter_refusals_match_native_and_leave_orders_and_rng_unt
         if flag("turn") {
             facing.set(0x4000, frame);
         }
-        actor.body_facing = Some(facing);
+        actor.body_facing = facing;
         let admitted = unit_scatter_state_allows(&actor, now);
         assert_eq!(admitted, row["admitted"].as_bool().unwrap(), "{input}");
         if !admitted {

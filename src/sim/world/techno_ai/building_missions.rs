@@ -826,56 +826,37 @@ fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: Ta
     let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
         return false;
     };
-    let (Some(barrel), true) = (
-        entity.barrel_facing,
-        obj.has_turret && obj.turret_anim_is_voxel,
-    ) else {
+    if !(obj.has_turret && obj.turret_anim_is_voxel) {
         return false;
-    };
+    }
     let Some(direction) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return false;
     };
-    let delta = i32::from(barrel.current(now).wrapping_sub(direction) as i16);
+    let delta = i32::from(entity.body_facing_current(now).wrapping_sub(direction) as i16);
     let rot_step = i32::from(((obj.turret_rot as u8 as u16) << 8) as i16).abs();
     if obj.turret_rot != 0 && delta.abs() > rot_step {
         return false;
     }
-    if let Some(barrel) = sim
-        .substrate
-        .entities
-        .get_mut(id)
-        .and_then(|entity| entity.barrel_facing.as_mut())
-    {
-        barrel.snap(direction, now);
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.body_facing.snap(direction, now);
     }
     true
 }
 
 /// `+0x388.Set_Desired(vt+0x4E8(Target))` (`0x0044B16F`, `0x0044B1A8`,
-/// `0x0044B1FF`; [`fire_coord::building_direction_to`]), at the type's `ROT=`:
-/// the turret of a `Turret=yes` type, the body of any other.
+/// `0x0044B1FF`; [`fire_coord::building_direction_to`]), at the `ROT=` rate
+/// `BuildingClass::Init` gave it: the turret of a `Turret=yes` type, the body
+/// of any other.
 fn aim_turret(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind) {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
-    let Some(rot) = rules
-        .object(sim.interner.resolve(entity.type_ref()))
-        .map(|obj| obj.turret_rot)
-    else {
-        return;
-    };
     let Some(desired) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return;
     };
-    if let Some(barrel) = sim
-        .substrate
-        .entities
-        .get_mut(id)
-        .and_then(|entity| entity.barrel_facing.as_mut())
-    {
-        barrel.set_rot(rot);
-        barrel.set(desired, now);
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.body_facing.set(desired, now);
     }
 }
 

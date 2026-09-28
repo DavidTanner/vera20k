@@ -50,14 +50,13 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         "index": input["burst_index"].as_i64().unwrap_or(0),
     }))
     .unwrap();
-    for (key, field) in [
-        ("primary", &mut entity.body_facing),
-        ("secondary", &mut entity.barrel_facing),
-    ] {
+    let facing = |key: &str| {
         let mut facing = FacingClass::new(0, 5);
         facing.snap(input[key].as_u64().unwrap_or(0) as u16, 100);
-        *field = Some(facing);
-    }
+        facing
+    };
+    entity.body_facing = facing("primary");
+    entity.barrel_facing = Some(facing("secondary"));
     (sim, rules)
 }
 
@@ -103,11 +102,11 @@ fn assert_flh(sim: &Simulation, rules: &RuleSet, row: &Value) {
 
 fn assert_facings(sim: &Simulation, row: &Value) {
     let entity = sim.substrate.entities.get(1).unwrap();
-    for (index, facing) in [entity.body_facing, entity.barrel_facing]
+    for (index, facing) in [entity.body_facing, entity.barrel_facing.unwrap()]
         .into_iter()
         .enumerate()
     {
-        let value = serde_json::to_value(facing.unwrap()).unwrap();
+        let value = serde_json::to_value(facing).unwrap();
         assert_eq!(
             json!({
                 "destination": value["current"], "previous": value["prev"],

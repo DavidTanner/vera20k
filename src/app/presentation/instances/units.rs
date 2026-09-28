@@ -457,10 +457,12 @@ pub(crate) fn build_unit_instances(
             .and_then(|rules| rules.object(type_str))
             .is_some_and(|object| object.tilt_crash_jumpjet);
         let body = body_draw(entity, band, sim.session.binary_frame, tilt_crash_jumpjet);
+        // Sampled at the turret's frame, so the two sprites cannot disagree.
+        let body_facing = entity.body_facing_byte(sim.session.binary_frame);
         if let BodyDraw::CrashPose(tilt) = body {
             let key = UnitSpriteKey {
                 type_id: type_str.to_string(),
-                facing: canonical_unit_facing(entity.facing),
+                facing: canonical_unit_facing(body_facing),
                 layer: VxlLayer::Composite,
                 frame: anim_frame,
                 slope_type: stable_slope_for_key(slope_state),
@@ -484,7 +486,7 @@ pub(crate) fn build_unit_instances(
                 art_reg,
                 entity,
                 type_str,
-                entity.facing,
+                body_facing,
                 turret_facing,
                 hc,
                 center_x,
@@ -506,7 +508,7 @@ pub(crate) fn build_unit_instances(
             // Non-turret unit: single composite sprite.
             let key: UnitSpriteKey = UnitSpriteKey {
                 type_id: type_str.to_string(),
-                facing: canonical_unit_facing(entity.facing),
+                facing: canonical_unit_facing(body_facing),
                 layer: VxlLayer::Composite,
                 frame: anim_frame,
                 slope_type: stable_slope_for_key(slope_state),
@@ -523,6 +525,7 @@ pub(crate) fn build_unit_instances(
                         atlas,
                         entity,
                         type_str,
+                        body_facing,
                         draw_state,
                         slope_state,
                         band,
@@ -535,6 +538,7 @@ pub(crate) fn build_unit_instances(
                         atlas,
                         entity,
                         type_str,
+                        body_facing,
                         center_x,
                         center_y,
                         depth,
@@ -572,6 +576,7 @@ pub(crate) fn build_unit_instances(
                         atlas,
                         entity,
                         type_str,
+                        body_facing,
                         center_x,
                         center_y,
                         depth,
@@ -601,7 +606,7 @@ pub(crate) fn build_unit_instances(
             && let Some((page, instance)) = emit_harvest_overlay(
                 state,
                 entity,
-                entity.facing,
+                body_facing,
                 ho,
                 center_x,
                 center_y,
@@ -914,6 +919,7 @@ fn prepare_unit_shadow(
     atlas: &crate::render::unit_atlas::UnitAtlas,
     entity: &crate::sim::game_entity::GameEntity,
     type_id: &str,
+    body_facing: u8,
     draw_state: DrawState,
     slope: UnitRenderSlopeState,
     band: EntityDrawBand,
@@ -924,7 +930,7 @@ fn prepare_unit_shadow(
     }
     let key = UnitSpriteKey {
         type_id: type_id.to_owned(),
-        facing: canonical_unit_facing(entity.facing),
+        facing: canonical_unit_facing(body_facing),
         layer: VxlLayer::Shadow,
         frame: 0,
         slope_type: 0,
@@ -975,6 +981,7 @@ fn emit_unit_shadow_sprite(
     atlas: &crate::render::unit_atlas::UnitAtlas,
     entity: &crate::sim::game_entity::GameEntity,
     type_id: &str,
+    body_facing: u8,
     center_x: f32,
     center_y: f32,
     depth: f32,
@@ -995,7 +1002,7 @@ fn emit_unit_shadow_sprite(
     }
     let key = UnitSpriteKey {
         type_id: type_id.to_string(),
-        facing: canonical_unit_facing(entity.facing),
+        facing: canonical_unit_facing(body_facing),
         layer: VxlLayer::Shadow,
         frame: 0,
         slope_type: stable_slope_for_key(slope_state),
@@ -1256,6 +1263,7 @@ fn emit_turret_unit_sprites(
             atlas,
             entity,
             type_id,
+            body_facing,
             draw_state,
             slope_state,
             band,
@@ -1275,6 +1283,7 @@ fn emit_turret_unit_sprites(
             atlas,
             entity,
             type_id,
+            body_facing,
             center_x,
             center_y,
             entity_depth,
@@ -1342,6 +1351,7 @@ fn emit_turret_unit_sprites(
             atlas,
             entity,
             type_id,
+            body_facing,
             center_x,
             center_y,
             entity_depth,
@@ -1537,7 +1547,7 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 0, 0);
         entity.category = EntityCategory::Aircraft;
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
-        crate::sim::movement::air_movement::ensure_fly_facings(&mut entity);
+        crate::sim::movement::air_movement::ensure_fly_secondary_facing(&mut entity);
         assert!(matches!(
             body_draw(&entity, EntityDrawBand::Top, 0, false),
             BodyDraw::Turret(_)

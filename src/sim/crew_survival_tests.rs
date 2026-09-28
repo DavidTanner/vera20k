@@ -1480,3 +1480,41 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
         assert!(left, "{kind}: GI {id} walked off the wreck");
     }
 }
+
+/// SpawnSurvivors' Unlimbo direction (`0x00442F3C..0x00442F63`, which the
+/// survivor spawn above reads through `body_facing_dir`): the building's
+/// `+0x388` Current() rounded to a DirType, wrapping 0xFF80.. to 0. Rows are
+/// the original instructions' outputs (`tools/spatial_oracle/survivor_facing.py`).
+#[test]
+fn survivor_direction_matches_the_original() {
+    let rows: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/survivor_facing.json"
+    ))
+    .unwrap();
+    let rows = rows.as_array().unwrap();
+    assert_eq!(rows.len(), 42);
+    for row in rows {
+        let input = &row["input"];
+        let number = |key: &str| input[key].as_i64().unwrap();
+        let initial = number("initial") as u16;
+        let mut facing = crate::sim::movement::FacingClass::new(initial, number("rot") as i32);
+        facing.snap(initial, number("start") as u32);
+        if let Some(target) = input["target"].as_u64() {
+            facing.set(target as u16, number("set_frame") as u32);
+        }
+        let mut building =
+            crate::sim::game_entity::GameEntity::test_default(1, "GAPILE", "Americans", 5, 5);
+        building.body_facing = facing;
+        let frame = number("sample_frame") as u32;
+        assert_eq!(
+            u64::from(building.body_facing_current(frame)),
+            row["current"].as_u64().unwrap(),
+            "{input}"
+        );
+        assert_eq!(
+            u64::from(building.body_facing_dir(frame)),
+            row["direction"].as_u64().unwrap(),
+            "{input}"
+        );
+    }
+}

@@ -243,7 +243,10 @@ pub(crate) fn build_shp_instances(
                     };
                     (frame, None)
                 }
-                _ => (resolve_infantry_shp_frame(state, type_str, entity), None),
+                _ => (
+                    resolve_infantry_shp_frame(state, type_str, entity, sim.session.binary_frame),
+                    None,
+                ),
             }
         };
         let key: ShpSpriteKey = ShpSpriteKey {
@@ -506,11 +509,7 @@ pub(crate) fn build_shp_instances(
                         if let Some((page, instance)) = emit_building_turret_vxl(
                             state,
                             turret_id,
-                            entity
-                                .barrel_facing
-                                .as_ref()
-                                .map(|f| f.current(sim.session.binary_frame))
-                                .unwrap_or(0u16),
+                            entity.body_facing_current(sim.session.binary_frame),
                             hc,
                             sx,
                             sy,
@@ -854,7 +853,9 @@ fn resolve_infantry_shp_frame(
     state: &AppState,
     type_id: &str,
     entity: &crate::sim::game_entity::GameEntity,
+    binary_frame: u32,
 ) -> u16 {
+    let facing = entity.body_facing_byte(binary_frame);
     // Pass raw facing (not canonical) to resolve_shp_frame so the
     // facing-to-index division works correctly for any facing count
     // (6, 8, 10, etc.). The absolute frame index encodes the direction.
@@ -872,7 +873,7 @@ fn resolve_infantry_shp_frame(
         && let Some(set) = sequence_set
         && let Some(frame) = animation::resolve_shp_vehicle_body_frame(
             set,
-            entity.facing,
+            facing,
             entity.body_frame_counter,
             crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(entity),
         )
@@ -881,13 +882,13 @@ fn resolve_infantry_shp_frame(
     }
     if let (Some(anim_state), Some(set)) = (entity.animation.as_ref(), sequence_set) {
         if let Some(def) = set.get(&anim_state.sequence) {
-            return animation::resolve_shp_frame(def, entity.facing, anim_state.frame_index);
+            return animation::resolve_shp_frame(def, facing, anim_state.frame_index);
         }
     }
     // Fallback when no sequence data was built for this type: the standing
     // block is frames 0..7, so the facing slot is the frame index. Uses the
     // same native facing table as the real path so the two cannot disagree.
-    animation::infantry_facing_slot(entity.facing)
+    animation::infantry_facing_slot(facing)
 }
 
 /// Completed `CanBeOccupied` body frame: native GetCurrentFrame 0x0043EF90.

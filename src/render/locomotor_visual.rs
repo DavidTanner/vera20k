@@ -685,7 +685,7 @@ mod tests {
             move_dir_len: SimFixed::from_num(256),
             ..Default::default()
         });
-        e.facing = 64;
+        e.body_facing.snap(0x4000, 0);
         entities.insert(e);
 
         let mut lifecycle_requests = Vec::new();

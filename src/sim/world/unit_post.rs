@@ -52,7 +52,8 @@ pub(crate) const L2_UNIT_POST_AUTHORITATIVE: bool = true;
 /// system writes Unit facings between the combat Phase-2 read window and this
 /// site, so the apply point within Phase 5 does not affect the resulting
 /// state. Idempotent — `set` is a no-op when the destination already matches.
-/// Signed ROT refreshed from rules each apply, same as the legacy sweep.
+/// The turret's signed ROT is refreshed from rules each apply, same as the
+/// legacy sweep; the hull keeps the rate its constructor wrote.
 ///
 /// Four writes land here, and their ORDER is native, not incidental:
 /// 1. the hull destination from `UnitClass::Fire_At_Target @ 0x00736DF0` case 2
@@ -78,13 +79,6 @@ pub(crate) const L2_UNIT_POST_AUTHORITATIVE: bool = true;
 /// the whole arc, including its first one or two frames — while an idle-return
 /// `Set` leaves the latch clear, so a unit that re-acquires a target during an
 /// idle swing-back is free to aim at it on the next frame.
-///
-/// It then mirrors the animated hull back into `entity.facing`, which is VERA's
-/// authoritative 8-bit heading. gamemd has no such byte — `+0x388` IS the
-/// heading — so the mirror is what keeps rendering, movement and the fire gate
-/// on the same value. Units the movement tick owns (`movement_target` set) are
-/// skipped: that path already mirrors, and clearing its interpolator here would
-/// fight it.
 pub(crate) fn apply_unit_facing(
     entities: &mut EntityStore,
     updates: &[crate::sim::combat::UnitFacingUpdate],
@@ -103,7 +97,7 @@ pub(crate) fn apply_unit_facing(
             .unwrap_or(5);
         let before = UnitFacing::of(entity);
         let mut after = before;
-        after.apply(update, rot, entity.movement_target.is_some(), binary_frame);
+        after.apply(update, rot, binary_frame);
         // Most units hold their aim, so their `Set`s repeat the destination
         // and write nothing: hand a unit out only when a field changes.
         if after != before {
@@ -119,10 +113,8 @@ pub(crate) fn apply_unit_facing(
 /// The fields the Facing slot writes, stepped on a copy.
 #[derive(Clone, Copy, PartialEq)]
 struct UnitFacing {
-    /// VERA's 8-bit heading, which mirrors the animated hull.
-    facing: u8,
     /// The hull, `+0x388`.
-    hull: Option<crate::sim::movement::FacingClass>,
+    hull: crate::sim::movement::FacingClass,
     /// The turret, `+0x3A0`.
     barrel: Option<crate::sim::movement::FacingClass>,
     /// The `+0x6AF` rotation latch.
@@ -132,7 +124,6 @@ struct UnitFacing {
 impl UnitFacing {
     fn of(entity: &GameEntity) -> Self {
         Self {
-            facing: entity.facing,
             hull: entity.body_facing,
             barrel: entity.barrel_facing,
             latch: entity.turret_rotation_latch,
@@ -140,31 +131,23 @@ impl UnitFacing {
     }
 
     fn store(self, entity: &mut GameEntity) {
-        entity.facing = self.facing;
         entity.body_facing = self.hull;
         entity.barrel_facing = self.barrel;
         entity.turret_rotation_latch = self.latch;
     }
 
-    /// Steps 1–4 in binary order, then the heading mirror, which the movement
-    /// tick owns while a path is live (`path_live`).
+    /// Steps 1–4 in binary order.
     fn apply(
         &mut self,
         update: &crate::sim::combat::UnitFacingUpdate,
         rot: i32,
-        path_live: bool,
         binary_frame: u32,
     ) {
         // 1. `Fire_At_Target` case 2's hull turn, which native completes before
         //    `Facing_Update` is entered at all (`0x007365E1`/`0x007365E8`).
         if let Some(desired) = update.hull_destination {
-            let facing = self.facing;
-            let hull = self.hull.get_or_insert_with(|| {
-                crate::sim::movement::FacingClass::new(u16::from(facing) << 8, rot)
-            });
-            hull.set_rot(rot);
-            hull.set(desired, binary_frame);
-            let raw_destination = hull.destination();
+            self.hull.set(desired, binary_frame);
+            let raw_destination = self.hull.destination();
             if let Some(ref mut barrel) = self.barrel {
                 barrel.set_rot(rot);
                 barrel.set(raw_destination, binary_frame);
@@ -195,10 +178,6 @@ impl UnitFacing {
         {
             barrel.set_rot(rot);
             barrel.set(desired, binary_frame);
-        }
-        // Mirror the animated hull into the 8-bit heading.
-        if !path_live && let Some(ref hull) = self.hull {
-            self.facing = (hull.current(binary_frame) >> 8) as u8;
         }
     }
 }

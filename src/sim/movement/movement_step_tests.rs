@@ -82,32 +82,24 @@ fn test_body_rotation_matches_native_frame_duration() {
     // Drive the in-place rotation frame by frame, returning the native-frame
     // count at which it completes (ReadyToMove with the exact target reached).
     fn frames_to_turn(from: u8, to: u8, rot: i32) -> u32 {
-        let mut facing = from;
-        let mut facing_target = Some(to);
-        let mut body_facing = None;
-        let mut position = Position {
-            rx: 5,
-            ry: 5,
-            z: 0,
-            exact_z_leptons: None,
-            sub_x: crate::util::lepton::CELL_CENTER_LEPTON,
-            sub_y: crate::util::lepton::CELL_CENTER_LEPTON,
-        };
+        let target = u16::from(to) << 8;
+        let mut body_facing = crate::sim::movement::FacingClass::new(u16::from(from) << 8, rot);
+        let mut desired = Some(target);
         let mut locomotor = None;
         for frame in 0..1000u32 {
             match handle_vehicle_rotation(
-                &mut facing,
-                &mut facing_target,
                 &mut body_facing,
-                &mut position,
+                desired.take(),
                 &mut locomotor,
-                rot,
                 frame,
                 0,
             ) {
                 RotationResult::ReadyToMove => {
-                    assert_eq!(facing, to, "rotation must land exactly on the target");
-                    assert!(body_facing.is_none(), "interpolator cleared on completion");
+                    assert_eq!(
+                        body_facing.current(frame),
+                        target,
+                        "rotation must land exactly on the target"
+                    );
                     return frame;
                 }
                 RotationResult::StillRotating { .. } => {}
@@ -293,23 +285,12 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
     // Actual combat hull ownership can retain all16 bits with no movement
     // facing target. The earlier rotation sample must not destroy the one-bit
     // mismatch proved by drive_fresh_turn.json (initial0x4001/direction2).
-    entity.facing = 0x40;
-    entity.facing_target = None;
-    entity.body_facing = Some(crate::sim::movement::FacingClass::new(0x4001, 5));
+    entity.body_facing = crate::sim::movement::FacingClass::new(0x4001, 5);
     assert!(matches!(
-        handle_vehicle_rotation(
-            &mut entity.facing,
-            &mut entity.facing_target,
-            &mut entity.body_facing,
-            &mut entity.position,
-            &mut entity.locomotor,
-            5,
-            2,
-            3,
-        ),
+        handle_vehicle_rotation(&mut entity.body_facing, None, &mut entity.locomotor, 2, 3),
         RotationResult::ReadyToMove
     ));
-    let live_facing = entity.body_facing.as_ref().unwrap().current(2);
+    let live_facing = entity.body_facing.current(2);
     assert_eq!(live_facing, 0x4001);
     let prepare = |facing,
                    entity: &mut GameEntity,
@@ -321,7 +302,6 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
             target,
             &entity.position,
             facing,
-            &mut entity.facing_target,
             &mut entity.drive_locomotion,
             &mut entity.ship_locomotion,
             &entity.locomotor,
@@ -334,9 +314,8 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
     };
     assert!(matches!(
         prepare(live_facing, entity, &mut target, &mut occupation),
-        Some(NativeTrackPreparation::TurnFirst(_))
+        Some(NativeTrackPreparation::TurnFirst(_, 64))
     ));
-    assert_eq!(entity.facing_target, Some(64));
     assert_eq!(entity.drive_locomotion.as_ref().unwrap().track.residual, 1);
     let Some(NativeTrackPreparation::Invoke(next)) =
         prepare(0x4000, entity, &mut target, &mut occupation)
