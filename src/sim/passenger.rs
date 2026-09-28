@@ -649,7 +649,7 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
             // No mutation can race the single-threaded transaction, but recover
             // the passenger rather than stranding a concealed object if an
             // invariant is broken.
-            let _ = sim.reveal(pax_id);
+            let _ = sim.reveal_entity_with_rules(pax_id, rules);
             return;
         }
 
@@ -1045,7 +1045,7 @@ fn process_unloading_transport(sim: &mut Simulation, rules: &RuleSet, transport_
                 .get(pax_id)
                 .map(|e| sim.interner.resolve(e.type_ref()).to_string())
                 .unwrap_or_default();
-            reveal_unloaded_passenger(sim, transport_id, pax_id, exit_rx, exit_ry, tz)?;
+            reveal_unloaded_passenger(sim, rules, transport_id, pax_id, exit_rx, exit_ry, tz)?;
 
             // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: a veteran passenger scatters at
             // its FASTER speed like any other ordered move.

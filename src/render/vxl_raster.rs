@@ -153,6 +153,60 @@ fn voxel_draw_rotation(slope: Mat4, facing: Mat4) -> Mat4 {
     voxel_rotation_product(voxel_camera_view(), voxel_rotation_product(slope, facing))
 }
 
+/// `Matrix_rotate_y_axis @ 0x005AF080`: post-multiplies a 3x4 matrix in
+/// place by a rotation about its Y axis. Each row's X and Z become
+/// `x*cos - z*sin` and `z*cos + x*sin`, evaluated in x87 precision and
+/// stored as floats; Y and the translation column are untouched. The sine
+/// and cosine are the table's (`0x004CACB0`, `0x004CAD00`).
+fn voxel_rotate_y(matrix: Mat4, sin: f32, cos: f32) -> Mat4 {
+    use crate::util::native_x87::{NativeF32Bits, X87Chop53 as Fpu};
+    let load = |value: f32| {
+        Fpu::load_f32(NativeF32Bits::from_bits(value.to_bits())).expect("voxel basis is finite")
+    };
+    let store =
+        |value| f32::from_bits(Fpu::store_f32(value).expect("rotation fits a float").bits());
+    let mut result = matrix;
+    for row in 0..3 {
+        let x = load(matrix.col(0)[row]);
+        let z = load(matrix.col(2)[row]);
+        result.col_mut(0)[row] = store(Fpu::sub(Fpu::mul(x, load(cos)), Fpu::mul(z, load(sin))));
+        result.col_mut(2)[row] = store(Fpu::add(Fpu::mul(z, load(cos)), Fpu::mul(x, load(sin))));
+    }
+    result
+}
+
+/// A barrel part's pitch. `UnitClass::DrawVoxelBody` converts the barrel
+/// elevation (`TechnoClass+0x370`) to a signed step `d32 - 8` and rotates
+/// the part matrix by `-(step * -π/16)` before the camera
+/// (`0x0073BB7E..0x0073BBAC`); negating the step instead forms the same
+/// float angle, the one the retail table answers for `-step`.
+fn voxel_barrel_pitch(matrix: Mat4, pitch: i8) -> Mat4 {
+    let (sin, cos) = crate::util::native_trig::native_sin_cos_by_step(-i32::from(pitch))
+        .expect("a five-bit pitch step fits the native trig table");
+    voxel_rotate_y(matrix, sin, cos)
+}
+
+/// The draw rotation of a pitched barrel: slope * facing, then the pitch,
+/// then the camera.
+fn voxel_pitched_draw_rotation(
+    slope_type: u8,
+    blend: Option<VxlSlopeBlend>,
+    step: u8,
+    pitch: i8,
+) -> Mat4 {
+    let slope = blend.map_or_else(
+        || compute_slope_rotation(if slope_type < 17 { slope_type } else { 0 }),
+        compute_slope_blend_rotation,
+    );
+    voxel_rotation_product(
+        voxel_camera_view(),
+        voxel_barrel_pitch(
+            voxel_rotation_product(slope, voxel_body_facing(step)),
+            pitch,
+        ),
+    )
+}
+
 thread_local! {
     // VERA-internal performance cache, not native state. Exact blend fields
     // own its key; each miss builds all 32 facings from the existing matrix.
@@ -302,8 +356,8 @@ pub enum BodyTilt {
 }
 
 /// The draw matrix of one body draw: a tilt arm when one is present, else the
-/// slope/facing products. `UnitClass 0x0073B71C` takes camera * the
-/// locomotor's matrix.
+/// slope/facing products, pitched for a barrel. `UnitClass 0x0073B71C` takes
+/// camera * the locomotor's matrix.
 fn voxel_params_draw_rotation(params: &VxlRenderParams, step: u8) -> Mat4 {
     match params.body_tilt {
         Some(BodyTilt::Fly(tilt)) => voxel_crash_rotation(step, tilt),
@@ -312,6 +366,12 @@ fn voxel_params_draw_rotation(params: &VxlRenderParams, step: u8) -> Mat4 {
             voxel_jumpjet_tilt_locomotor_matrix(step, angles, half_sizes),
         )
         .expect("finite tilt matrix"),
+        None if params.barrel_pitch != 0 => voxel_pitched_draw_rotation(
+            params.slope_type,
+            params.slope_blend,
+            step,
+            params.barrel_pitch,
+        ),
         None => voxel_draw_rotation_for_state(params.slope_type, params.slope_blend, step),
     }
 }
@@ -358,19 +418,37 @@ fn voxel_draw_rotation_for_state(slope_type: u8, blend: Option<VxlSlopeBlend>, s
     }][usize::from(step)]
 }
 
-/// Retained VERA offset approximation. Native UnitClass at 0x0073BA4C
-/// instead stores float(Type+0x720 * B1D008); integer division here is not
-/// established equivalent. Offset scalar and relative turret transform are
-/// separate outstanding parity work; this increment fixes the shared basis.
-const TURRET_OFFSET_DIVISOR: i32 = 8;
+/// The double at `0x00B1D008`: model units per lepton. Static initializers
+/// `0x00735180`, `0x007351B0` and `0x007351D0` form `1 / (sqrt(2 * 256^2) / 60)`,
+/// a cell's 60-pixel width over its lepton diagonal, but take the root with
+/// the table square root `0x004CAC40`, so the value is not the exact quotient.
+/// Executed in `tools/voxel_oracle/barrel_pitch.py`.
+const TURRET_OFFSET_UNITS_PER_LEPTON: u64 = 0x3FC5_3694_862E_9021;
+
+/// `TurretOffset=` (`Type+0x720`) in model units, as `UnitClass::DrawVoxelBody`
+/// forms it before translating the turret along the hull's X column: `FILD`
+/// the leptons, `FMUL` the double at `0x00B1D008`, store a float
+/// (`0x0073BA4C..0x0073BA60`).
+fn turret_offset_units(turret_offset_leptons: i32) -> f32 {
+    use crate::util::native_x87::{NativeF64Bits, X87Chop53 as Fpu};
+    let product = Fpu::mul(
+        Fpu::load_i32(turret_offset_leptons),
+        Fpu::load_f64(NativeF64Bits::from_bits(TURRET_OFFSET_UNITS_PER_LEPTON))
+            .expect("the offset scale is finite"),
+    );
+    f32::from_bits(
+        Fpu::store_f32(product)
+            .expect("a turret offset fits a float")
+            .bits(),
+    )
+}
 
 /// Screen displacement of a turret's pivot from the hull centre, in pixels.
 ///
 /// Native translates the body matrix along its own X column before rotating
-/// the turret, so the pivot inherits the hull's terrain tilt. This uses the
-/// shared body basis with the retained scalar approximation described above.
-/// The separately cached turret sprite still uses its own absolute facing;
-/// equivalence to native relative turret/body composition remains unchecked.
+/// the turret, so the pivot inherits the hull's terrain tilt. The separately
+/// cached turret sprite still uses its own absolute facing; equivalence to
+/// native relative turret/body composition remains unchecked.
 ///
 /// Returns pixels in the rasterizer's screen convention (+X right, +Y down), matching
 /// how `render_vxl` projects a voxel: `x * scale` and `-y * scale`.
@@ -404,11 +482,47 @@ pub fn turret_pivot_screen_offset_for_slope_state(
     if turret_offset_leptons == 0 {
         return (0.0, 0.0);
     }
-    let offset_units: f32 = (turret_offset_leptons / TURRET_OFFSET_DIVISOR) as f32;
     let chain =
         voxel_draw_rotation_for_state(slope_type, slope_blend, voxel_facing_step(body_facing));
-    let disp: Vec3 = chain.transform_vector3(Vec3::new(offset_units, 0.0, 0.0));
+    let offset = Vec3::new(turret_offset_units(turret_offset_leptons), 0.0, 0.0);
+    let disp: Vec3 = chain.transform_vector3(offset);
     (disp.x * scale, -disp.y * scale)
+}
+
+/// Screen displacement of a pitched barrel from its turret, in pixels.
+///
+/// `UnitClass::DrawVoxelBody` pitches the barrel in the turret's own frame
+/// about the point `-t`, where `t` is the turret matrix's translation column:
+/// the TurretOffset carried through the hull's slope and facing
+/// (`0x0073BAD8..0x0073BBC2`: translate by `-t`, rotate about Y, translate by
+/// `t`). So a barrel on an offset turret also moves by the turret rotation of
+/// `Ry * t - t`; without an offset it pitches in place.
+pub fn barrel_pivot_screen_offset(
+    turret_offset_leptons: i32,
+    body_facing: u8,
+    turret_facing: u8,
+    slope_type: u8,
+    slope_blend: Option<VxlSlopeBlend>,
+    barrel_pitch: i8,
+) -> (f32, f32) {
+    if turret_offset_leptons == 0 || barrel_pitch == 0 {
+        return (0.0, 0.0);
+    }
+    let slope = slope_blend.map_or_else(
+        || compute_slope_rotation(if slope_type < 17 { slope_type } else { 0 }),
+        compute_slope_blend_rotation,
+    );
+    let hull = voxel_rotation_product(slope, voxel_body_facing(voxel_facing_step(body_facing)));
+    let t = hull.transform_vector3(Vec3::new(
+        turret_offset_units(turret_offset_leptons),
+        0.0,
+        0.0,
+    ));
+    let pitched = voxel_barrel_pitch(Mat4::IDENTITY, barrel_pitch).transform_vector3(t);
+    let turret =
+        voxel_draw_rotation_for_state(slope_type, slope_blend, voxel_facing_step(turret_facing));
+    let disp = turret.transform_vector3(pitched - t);
+    (disp.x, -disp.y)
 }
 
 /// Margin in pixels added around the sprite to avoid clipping.
@@ -467,6 +581,10 @@ pub struct VxlRenderParams {
     /// (`TechnoClass+0x328`, `+0x32C`). When present the body draws through
     /// that arm instead of the slope matrices.
     pub body_tilt: Option<BodyTilt>,
+    /// A barrel part's pitch step, `d32 - 8` of the barrel elevation
+    /// (`TechnoClass+0x370`); 0 draws it level. Applies to the slope arm
+    /// only: no tilting body carries a barrel in retail data.
+    pub barrel_pitch: i8,
     /// Model-space-unit to pixel scale. Default: 1.0 — one unit is one pixel.
     ///
     /// The original applies no magnification anywhere between the section
@@ -502,6 +620,7 @@ impl Default for VxlRenderParams {
             slope_type: 0,
             slope_blend: None,
             body_tilt: None,
+            barrel_pitch: 0,
             scale: 1.0,
             ambient: 0.6,
             diffuse: 0.4,
@@ -1996,10 +2115,10 @@ mod tests {
 
     #[test]
     fn test_turret_pivot_rides_the_hull_tilt() {
-        // The original translates the body matrix along its own X column;
-        // this retained scalar approximation still makes the pivot a point on
-        // the tilted hull. A fixed screen-space nudge cannot reproduce that: on a ramp
-        // the pivot has to move with the hull it is bolted to.
+        // The original translates the body matrix along its own X column, so
+        // the pivot is a point on the tilted hull. A fixed screen-space nudge
+        // cannot reproduce that: on a ramp the pivot has to move with the hull
+        // it is bolted to.
         let flat = turret_pivot_screen_offset(50, 0, 0, 1.0);
         let ramp = turret_pivot_screen_offset(50, 0, 4, 1.0);
         assert!(
@@ -2009,32 +2128,145 @@ mod tests {
             ramp
         );
 
-        // Check the native body basis for the retained six-model-unit offset.
-        // This is a basis regression, not equivalence of the offset scalar.
+        // The offset rides the native body basis.
         let vectors: serde_json::Value =
             serde_json::from_str(include_str!("../../tools/voxel_oracle/lighting.json")).unwrap();
         let raw = &vectors["cases"][0]["draw_matrix_bits"];
-        let expected_x = f32::from_bits(raw[0].as_u64().unwrap() as u32) * 6.0;
-        let expected_y = -f32::from_bits(raw[4].as_u64().unwrap() as u32) * 6.0;
+        let units = turret_offset_units(50);
+        let expected_x = f32::from_bits(raw[0].as_u64().unwrap() as u32) * units;
+        let expected_y = -f32::from_bits(raw[4].as_u64().unwrap() as u32) * units;
         assert_eq!(flat, (expected_x, expected_y));
 
-        // Integer divide by 8, truncating toward zero — not a lepton-per-cell scale.
-        // 32..=39 all land on 4 model units, so they must agree exactly, while 40
-        // crosses into 5 and must not.
-        assert_eq!(
-            turret_pivot_screen_offset(32, 0, 0, 1.0),
-            turret_pivot_screen_offset(39, 0, 0, 1.0)
-        );
-        assert_ne!(
-            turret_pivot_screen_offset(39, 0, 0, 1.0),
-            turret_pivot_screen_offset(40, 0, 0, 1.0)
-        );
         // Negative offsets (stock artmd.ini ships -100 and -80) mirror the pivot.
         let back = turret_pivot_screen_offset(-40, 0, 0, 1.0);
         let fwd = turret_pivot_screen_offset(40, 0, 0, 1.0);
         assert!((back.0 + fwd.0).abs() < 1e-4 && (back.1 + fwd.1).abs() < 1e-4);
 
         assert_eq!(turret_pivot_screen_offset(0, 0, 0, 1.0), (0.0, 0.0));
+    }
+
+    fn barrel_vectors() -> serde_json::Value {
+        serde_json::from_str(include_str!("../../tools/voxel_oracle/barrel_pitch.json")).unwrap()
+    }
+
+    /// A native row-major 3x4 matrix, bottom row `0 0 0 1`.
+    fn native_matrix(bits: &serde_json::Value) -> Mat4 {
+        let mut matrix = Mat4::IDENTITY;
+        for row in 0..3 {
+            for col in 0..4 {
+                matrix.col_mut(col)[row] =
+                    f32::from_bits(bits[row * 4 + col].as_u64().unwrap() as u32);
+            }
+        }
+        matrix
+    }
+
+    #[test]
+    fn turret_offset_units_match_native_block() {
+        let vectors = barrel_vectors();
+        assert_eq!(
+            vectors["offset_scale_bits"].as_u64().unwrap(),
+            TURRET_OFFSET_UNITS_PER_LEPTON
+        );
+        for case in vectors["offset_cases"].as_array().unwrap() {
+            let leptons = case["turret_offset"].as_i64().unwrap() as i32;
+            assert_eq!(
+                turret_offset_units(leptons).to_bits(),
+                case["units_bits"].as_u64().unwrap() as u32,
+                "TurretOffset {leptons}"
+            );
+        }
+    }
+
+    #[test]
+    fn barrel_pitch_matches_native_rotate_y_block() {
+        for case in barrel_vectors()["pitch_cases"].as_array().unwrap() {
+            let raw = case["raw"].as_u64().unwrap() as u16;
+            let pitch = voxel_facing_step_u16(raw) as i8 - 8;
+            let input = native_matrix(&case["matrix_bits"]);
+            let native = native_matrix(&case["result_bits"]);
+            let pitched = voxel_barrel_pitch(input, pitch);
+            for row in 0..3 {
+                for col in 0..4 {
+                    assert_eq!(
+                        pitched.col(col)[row].to_bits(),
+                        native.col(col)[row].to_bits(),
+                        "elevation {raw:#06X} row {row} col {col}"
+                    );
+                }
+            }
+            if pitch == 0 {
+                // Level rotates by sin 0, cos 1: only zero signs change, so
+                // the draw skips it.
+                assert_eq!(native, input, "elevation {raw:#06X}");
+            }
+        }
+    }
+
+    #[test]
+    fn barrel_arm_matches_native_composition() {
+        // Native composes the turret as the hull times RotateZ of the
+        // turret-minus-body angle; VERA draws it at its absolute facing. Equal
+        // facings match up to zero signs and rounding of the offset; unequal
+        // ones carry the table's error in the composed angle (measured 1.5e-3
+        // and 0.05 px at worst).
+        for case in barrel_vectors()["arm_cases"].as_array().unwrap() {
+            let body_step = case["body_step"].as_u64().unwrap() as u8;
+            let turret_step = case["turret_step"].as_u64().unwrap() as u8;
+            let elevation = case["barrel"].as_u64().unwrap() as u16;
+            let leptons = case["turret_offset"].as_i64().unwrap() as i32;
+            let (body_facing, turret_facing) = (body_step << 3, turret_step << 3);
+            assert_eq!(voxel_facing_step(body_facing), body_step);
+            assert_eq!(voxel_facing_step(turret_facing), turret_step);
+            let pitch = voxel_facing_step_u16(elevation) as i8 - 8;
+            let body = native_matrix(&case["body_draw_bits"]);
+            let turret_pivot = turret_pivot_screen_offset(leptons, body_facing, 0, 1.0);
+            let barrel_pivot =
+                barrel_pivot_screen_offset(leptons, body_facing, turret_facing, 0, None, pitch);
+            let barrel_params = VxlRenderParams {
+                barrel_pitch: pitch,
+                ..Default::default()
+            };
+            let parts = [
+                (
+                    "turret_draw_bits",
+                    voxel_draw_rotation_for_state(0, None, turret_step),
+                    turret_pivot,
+                ),
+                (
+                    "barrel_draw_bits",
+                    voxel_params_draw_rotation(&barrel_params, turret_step),
+                    (
+                        turret_pivot.0 + barrel_pivot.0,
+                        turret_pivot.1 + barrel_pivot.1,
+                    ),
+                ),
+            ];
+            let composed = usize::from(body_step != turret_step);
+            for (part, rotation, (x, y)) in parts {
+                let native = native_matrix(&case[part]);
+                let case = format!(
+                    "{part} body {body_step} turret {turret_step} elevation {elevation:#06X} \
+                     offset {leptons}"
+                );
+                for row in 0..3 {
+                    for col in 0..3 {
+                        let error = (rotation.col(col)[row] - native.col(col)[row]).abs();
+                        assert!(
+                            error <= [0.0, 3e-3][composed],
+                            "{case}: row {row} col {col}"
+                        );
+                    }
+                }
+                let shift = native.col(3) - body.col(3);
+                assert!(
+                    (x - shift.x).abs().max((y + shift.y).abs()) <= [1e-4, 0.1][composed],
+                    "{case}: ({x}, {y}) vs native ({}, {})",
+                    shift.x,
+                    -shift.y
+                );
+            }
+        }
     }
 
     #[test]

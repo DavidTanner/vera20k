@@ -213,6 +213,11 @@ pub(super) enum HashFeature {
     /// constructor value, so a state without it hashes as earlier schemas,
     /// which fold none.
     AiStrategy = 234,
+    /// Each Techno's barrel elevation FacingClass (`TechnoClass+0x370`),
+    /// folded, tagged, only once an Unlimbo moved it off its constructor
+    /// value, so a state without it hashes as earlier schemas, which fold
+    /// none.
+    BarrelElevation = 238,
 }
 
 impl HashSchema {
@@ -261,6 +266,7 @@ impl HashSchema {
                     | HashFeature::AiBaseBuilding
                     | HashFeature::AiBaseDefense
                     | HashFeature::AiStrategy
+                    | HashFeature::BarrelElevation
             ),
             #[cfg(test)]
             Self::Before(version) => (_feature as u16) < version,

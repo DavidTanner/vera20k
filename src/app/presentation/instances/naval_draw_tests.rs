@@ -173,6 +173,7 @@ fn retail_aegis_raster_and_parent_waterline_match_original_ship_draw() {
             layer: VxlLayer::Composite,
             frame: 0,
             slope_type: 0,
+            barrel_pitch: 0,
         };
         let (sprite, native_draw_bounds) = model.render(&key, Some(&vpl), None, &mut None).unwrap();
         let rect: [i32; 6] =

@@ -8148,3 +8148,74 @@ fn display_registration_expires_with_a_resubmitted_uninit_owner() {
     assert_eq!(sim.substrate.display.layer_of(id), None);
     sim.sort_display_ground(None);
 }
+
+/// `TechnoClass::Unlimbo` snaps the barrel elevation level (`0x006F6DC3`) and
+/// turns it toward `0x4000 - (FireAngle= << 8)` (`0x006F6DF5`) at the
+/// constructor's rate 3. A Techno whose elevation never moved hashes as
+/// schemas before the fold.
+#[test]
+fn unlimbo_levels_then_aims_the_barrel_elevation() {
+    let rules =
+        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+            "[VehicleTypes]\n0=TANK\n1=RAISED\n\
+         [TANK]\nStrength=100\nSpeed=6\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
+         [RAISED]\nStrength=100\nSpeed=6\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
+         FireAngle=32\n",
+        ))
+        .expect("barrel elevation rules");
+    // FireAngle 8 turns 0x800 in two frames; 32 turns 0x2000 in ten, at
+    // 0x2000 / 10 a frame, so it starts two short of level.
+    for (type_id, samples) in [
+        ("TANK", [(40, 0x4000), (41, 0x3C00), (42, 0x3800)]),
+        ("RAISED", [(40, 0x3FFE), (45, 0x2FFF), (50, 0x2000)]),
+    ] {
+        let mut sim = Simulation::with_seed(7);
+        sim.session.binary_frame = 40;
+        sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
+            base: 0,
+            off_fc: -100,
+            off_100: -100,
+            off_104: 200,
+            off_108: 200,
+        });
+        install_common_raw_terrain(&mut sim, 10, 10, 0, None);
+        let cell = sim
+            .resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(4, 4)
+            .unwrap();
+        cell.speed_costs.track = Some(100);
+        cell.base_speed_costs = cell.speed_costs;
+        let id = sim
+            .spawn_object(type_id, "Americans", 4, 4, 0, &rules, &BTreeMap::new())
+            .expect("production spawn/unlimbo");
+        let elevation = *sim.substrate.entities.get(id).unwrap().barrel_elevation();
+        for (frame, heading) in samples {
+            assert_eq!(elevation.current(frame), heading, "{type_id} frame {frame}");
+        }
+        assert_ne!(
+            sim.state_hash(),
+            sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(238)),
+            "{type_id}"
+        );
+    }
+
+    let mut sim = Simulation::new();
+    insert_entity(&mut sim, 1, EntityCategory::Unit);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .barrel_elevation_is_constructed()
+    );
+    assert_eq!(
+        sim.state_hash(),
+        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(238))
+    );
+}

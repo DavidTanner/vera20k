@@ -696,7 +696,9 @@ use crate::sim::world::Simulation;
 // FacingClass (`GameEntity::body_facing`, no longer optional); the 8-bit
 // facing mirror and the turn target are gone, and a building's `+0x388` moves
 // from `barrel_facing` into it. Drive's unwritten turn target goes too.
-const SNAPSHOT_VERSION: u32 = 237;
+// 237 -> 238: each Techno keeps its barrel elevation, the `+0x370`
+// FacingClass that Unlimbo aims by `FireAngle=`.
+const SNAPSHOT_VERSION: u32 = 238;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3713,7 +3715,8 @@ mod tests {
         // `CdTimer`s.
         // 235 -> 236: the harvest overlay drops its unread frame count.
         // 236 -> 237: one body FacingClass per Techno; no facing mirror or target.
-        assert_eq!(super::SNAPSHOT_VERSION, 237);
+        // 237 -> 238: each Techno's barrel elevation FacingClass.
+        assert_eq!(super::SNAPSHOT_VERSION, 238);
     }
 
     #[test]

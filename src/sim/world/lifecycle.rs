@@ -756,6 +756,7 @@ impl Simulation {
 
     /// Compatibility convenience for already-admitted current-position callers.
     /// It still executes the complete result-bearing Reveal transaction.
+    #[cfg(test)]
     pub(crate) fn reveal(&mut self, stable_id: u64) -> RevealOutcome {
         if self.substrate.anims.contains_key(stable_id) {
             let registered = self.reveal_anim(stable_id, None);
@@ -801,6 +802,28 @@ impl Simulation {
             },
             UninitContext::with_rules(rules),
         )
+    }
+
+    /// `TechnoClass::Unlimbo`'s barrel elevation writes (`+0x370`,
+    /// `0x006F6DC3`, `0x006F6DF5`), aimed by the object's `FireAngle=`, behind
+    /// the alive gate that also guards its Added_To_Game (`0x006F6D04`).
+    /// [`Self::try_reveal_entity_with_context`] makes them when it has rules;
+    /// a caller that reveals without rules makes them after its Reveal.
+    pub(crate) fn unlimbo_barrel_elevation(&mut self, stable_id: u64, rules: &RuleSet) {
+        let Some(fire_angle) = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .filter(|entity| entity.lifecycle.object_alive)
+            .and_then(|entity| self.object_type(entity.type_ref(), rules))
+            .map(|object| object.fire_angle)
+        else {
+            return;
+        };
+        let frame = self.session.binary_frame;
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            entity.unlimbo_barrel_elevation(fire_angle, frame);
+        }
     }
 
     /// ObjectClass::Reveal: clear limbo for the attempt, commit coordinates,
@@ -908,6 +931,12 @@ impl Simulation {
             .is_some_and(|entity| entity.lifecycle.object_alive)
         {
             self.update_house_presence(stable_id, true);
+        }
+        // Its barrel elevation writes follow. The body snap before them
+        // (`0x006F6DAA`) takes the caller's direction, so each caller makes
+        // it once this Reveal succeeds.
+        if let Some(rules) = context.rules {
+            self.unlimbo_barrel_elevation(stable_id, rules);
         }
         // TechnoClass::Unlimbo 0x006F6E2A..0x006F6E4F: Enter_Idle_Mode(1, 1),
         // Ready_To_Commence and Commence, ahead of its second mode-one query

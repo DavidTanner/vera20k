@@ -63,11 +63,9 @@ pub fn body_facing_to_turret(body: u8) -> u16 {
 }
 
 // NO-DIFF (GSI-08.14) — one turret facing is right, and pass 1's premise was
-// wrong. `TechnoClass` carries three `FacingClass` instances (0x18 stride): one
-// at `+0x370` (Unlimbo's `Set_Current` at `0x006F6DC3`; a building's `Set`
-// at `0x0043BA5E` and `Set_Current` at `0x0044A08C`), which VERA does not
-// port, the body at `+0x388`
-// (`GameEntity::body_facing`) and the turret at `+0x3A0` (`+0x3B8` is
+// wrong. `TechnoClass` carries three `FacingClass` instances (0x18 stride): the
+// barrel elevation at `+0x370` (`GameEntity::barrel_elevation`), the body at
+// `+0x388` (`GameEntity::body_facing`) and the turret at `+0x3A0` (`+0x3B8` is
 // `CurrentBurstIndex`, not a fourth). `barrel_facing` here is native's turret
 // facing, and the fire location reads that same value — the claimed coupling to
 // the FLH slice (`GSI-08.04`) does not exist. `TurretROT=` likewise does not
