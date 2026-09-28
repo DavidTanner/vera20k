@@ -138,7 +138,6 @@ impl TeamScriptVm {
                     transports_return_on_unload: fields
                         .read_bool("TransportsReturnOnUnload", false),
                     mind_control_decision: fields.read_int("MindControlDecision", 0),
-                    raw_fields: team_type.fields.clone(),
                     source: team_type.source,
                 },
             );

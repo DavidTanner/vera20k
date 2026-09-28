@@ -115,8 +115,8 @@ pub struct TeamTypeDefinition {
     pub transport_crossing_required: bool,
 }
 
-/// The TeamType's other INI fields, beside the definition, and its lossless
-/// source.
+/// The TeamType's other INI fields, beside the definition, and where it was
+/// defined.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamTypeIniMetadata {
     /// `Max=` (`+0xB8`, constructor -1): a house's team limit of this type;
@@ -160,7 +160,6 @@ pub struct TeamTypeIniMetadata {
     /// 0x00472586`), in place of the roll.
     #[serde(default)]
     pub mind_control_decision: i32,
-    pub raw_fields: Vec<(String, String)>,
     pub source: TeamAiDefinitionSource,
 }
 
@@ -181,7 +180,6 @@ impl Default for TeamTypeIniMetadata {
             guard_slower: false,
             transports_return_on_unload: false,
             mind_control_decision: 0,
-            raw_fields: Vec::new(),
             source: TeamAiDefinitionSource::FixedAimd,
         }
     }

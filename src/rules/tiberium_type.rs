@@ -55,7 +55,7 @@ impl TiberiumTypeRegistry {
         };
 
         let mut types = Vec::new();
-        for name in section.get_values() {
+        for name in section.registry_ids() {
             let Some(type_section) = ini.section(name) else {
                 continue;
             };

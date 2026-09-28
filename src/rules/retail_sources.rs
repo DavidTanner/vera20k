@@ -168,10 +168,16 @@ mod tests {
             .expect("scenario from retained startup")
             .into_parts();
         assert_eq!(
-            projection.section("General").unwrap().get("BuildSpeed"),
+            projection
+                .section("General")
+                .unwrap()
+                .get_for_test("BuildSpeed"),
             Some(".7")
         );
-        assert_eq!(art.section("TECH").unwrap().get("Foundation"), Some("2x3"));
+        assert_eq!(
+            art.section("TECH").unwrap().get_for_test("Foundation"),
+            Some("2x3")
+        );
         assert_eq!(
             rules.production.build_speed.bits(),
             f64::from(0.7_f32).to_bits()
@@ -181,7 +187,7 @@ mod tests {
                 .selected_rules_root()
                 .section("General")
                 .unwrap()
-                .get("FlightLevel"),
+                .get_for_test("FlightLevel"),
             Some("1500")
         );
     }
@@ -201,11 +207,11 @@ mod tests {
             .expect("startup projection");
         let ini = processed.ini();
         assert_eq!(
-            ini.section("General").unwrap().get("BuildSpeed"),
+            ini.section("General").unwrap().get_for_test("BuildSpeed"),
             Some(".58")
         );
         assert_eq!(
-            ini.section("General").unwrap().get("FlightLevel"),
+            ini.section("General").unwrap().get_for_test("FlightLevel"),
             Some("1500")
         );
         let rules = RuleSet::from_processed_rules(&processed).expect("processed rules");

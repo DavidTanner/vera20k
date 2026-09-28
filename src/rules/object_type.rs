@@ -1832,7 +1832,11 @@ impl ObjectType {
         // The targeting coefficients (`0x0071556B..0x0071570C`) read with a
         // `[General]` default resolved where the value is used; `None` marks
         // an absent key.
-        let present_double = |key: &str| section.get(key).map(|_| section.read_double(key, 0.0));
+        let present_double = |key: &str| {
+            section
+                .is_present(key)
+                .then(|| section.read_double(key, 0.0))
+        };
         // Voice and move-sound keys are sound lists (`ReadSoundList @
         // 0x00525430`); VERA keeps the list's first sound.
         let first_sound = |key: &str| {
@@ -1845,8 +1849,8 @@ impl ObjectType {
         // absent key.
         let present_range = |key: &str| {
             section
-                .get(key)
-                .map(|_| SimFixed::from_bits(section.read_range(key, 0) << 8))
+                .is_present(key)
+                .then(|| SimFixed::from_bits(section.read_range(key, 0) << 8))
         };
         // The house lists (`0x004750D0`) and the two prerequisite lists
         // (`Prerequisite_INI_Parser @ 0x004770E0`) each read `char[128]`.
@@ -4734,7 +4738,7 @@ mod tests {
         for id in ["ZEP", "DISK"] {
             let section = ini.section(id).unwrap_or_else(|| panic!("[{id}] section"));
             assert!(
-                section.get("JumpJet").is_none(),
+                section.get_for_test("JumpJet").is_none(),
                 "[{id}] is only interesting because stock omits JumpJet="
             );
             let obj = ObjectType::from_ini_section(id, section, ObjectCategory::Vehicle);
@@ -4845,12 +4849,12 @@ mod tests {
             }
             jumpjet_sections += 1;
             for key in ["JumpjetTurnRate", "JumpjetAccel"] {
-                if section.get(key).is_some() {
+                if section.get_for_test(key).is_some() {
                     native_spelling += 1;
                 }
             }
             for key in ["JumpJetTurnRate", "JumpJetAccel"] {
-                if section.get(key).is_some() {
+                if section.get_for_test(key).is_some() {
                     ini_spelling += 1;
                 }
             }

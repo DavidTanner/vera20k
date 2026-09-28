@@ -17,7 +17,6 @@ use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::gpu::GpuContext;
 use crate::render::unit_atlas::{CrashTilt, UnitModel, UnitSpriteEntry, UnitSpriteKey};
 use crate::render::vxl_raster::VxlSprite;
-use crate::rules::art_data::ArtRegistry;
 use crate::rules::ruleset::RuleSet;
 
 const PAGE_SIZE: u32 = 1024;
@@ -60,7 +59,6 @@ impl VxlPoseFrameCache {
         &mut self,
         asset_manager: &AssetManager,
         rules: Option<&RuleSet>,
-        art: Option<&ArtRegistry>,
         key: &UnitSpriteKey,
         tilt: CrashTilt,
     ) -> Option<UnitSpriteEntry> {
@@ -78,7 +76,7 @@ impl VxlPoseFrameCache {
         let model = self
             .models
             .entry(key.type_id.clone())
-            .or_insert_with(|| UnitModel::load(asset_manager, &key.type_id, rules, art))
+            .or_insert_with(|| UnitModel::load(asset_manager, &key.type_id, rules))
             .as_ref()?;
         let (sprite, native_draw_bounds) = model.render_crash_pose(key, vpl, tilt);
         let (px, py) = self.try_place(&sprite)?;

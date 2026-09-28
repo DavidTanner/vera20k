@@ -2194,7 +2194,7 @@ impl GeneralRules {
         }
         infantry_death_anims[5] = Some(
             ini.section("Animations")
-                .and_then(|section| section.get_values().get(1).copied())
+                .and_then(|section| section.registry_ids().get(1).copied())
                 .filter(|name| !name.is_empty())
                 .unwrap_or("ELECTRO")
                 .to_string(),
@@ -3812,7 +3812,7 @@ impl RuleSet {
             anim_type_names: ini
                 .section("Animations")
                 .into_iter()
-                .flat_map(|section| section.get_values())
+                .flat_map(|section| section.registry_ids())
                 .map(|name| name.to_ascii_uppercase())
                 .filter(|name| !name.is_empty())
                 .collect(),
@@ -7855,7 +7855,11 @@ Projectile=Invisible
               [GACNST]\nFoundation=1x1\n[LATE]\nFoundation=1x1\n",
         );
         let ini = IniFile::from_bytes(&bytes).expect("byte-domain BuildConst rules");
-        let stored = ini.section("AI").unwrap().get("BuildConst").unwrap();
+        let stored = ini
+            .section("AI")
+            .unwrap()
+            .get_for_test("BuildConst")
+            .unwrap();
         assert_eq!(stored.chars().nth(126), Some(char::from(0xE9)));
         assert_eq!(stored.chars().nth(127), Some(','));
         let rules = RuleSet::from_ini(&ini).expect("byte-domain BuildConst RuleSet");

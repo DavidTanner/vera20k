@@ -48,7 +48,7 @@ pub(crate) fn read_map_menu_entry_from_ini(ini: &IniFile, file_name: &str) -> Ma
 fn preview_source_bounds_from_verified_source(ini: &IniFile) -> Option<PreviewSourceBounds> {
     let header = ini.section("Header")?;
     // `0x00689D8D`-`0x00689E05` ReadInt each field; VERA requires all five.
-    let field = |key: &str| header.get(key).map(|_| header.read_int(key, 0));
+    let field = |key: &str| header.is_present(key).then(|| header.read_int(key, 0));
     let origin_x = field("StartX")?;
     let origin_y = field("StartY")?;
     let width = field("Width")?;

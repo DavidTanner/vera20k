@@ -90,8 +90,8 @@ pub fn parse_basic_section(ini: &IniFile) -> BasicSection {
         theme: section.read_name("Theme", 0x80).map(str::to_string),
         // ReadInt(0) at `0x0068A151`.
         new_ini_format: section
-            .get("NewINIFormat")
-            .map(|_| section.read_int("NewINIFormat", 0)),
+            .is_present("NewINIFormat")
+            .then(|| section.read_int("NewINIFormat", 0)),
         tiberium_growth_enabled: section.read_bool_value("TiberiumGrowthEnabled"),
         free_radar: section.read_bool_value("FreeRadar"),
         // ReadBool with the current Scenario+0x34B4 as default (`0x0068A284`).

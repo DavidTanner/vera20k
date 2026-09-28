@@ -234,7 +234,7 @@ pub(super) enum HashFeature {
     /// and guard timer (`+0x58`), folded, tagged, only once one leaves its
     /// constructor value, so a state without them hashes as earlier schemas,
     /// which fold none.
-    AiTeamRecruitment = 240,
+    AiTeamRecruitment = 241,
 }
 
 impl HashSchema {

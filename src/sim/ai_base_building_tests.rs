@@ -369,7 +369,7 @@ fn retail_building_types_set_no_cloak_generator_or_upgrade() {
         assert!(!ty.cloak_generator, "{name}");
         assert!(
             ini.section(name)
-                .is_none_or(|section| section.get("PowersUpBuilding").is_none()),
+                .is_none_or(|section| section.get_for_test("PowersUpBuilding").is_none()),
             "{name}"
         );
     }

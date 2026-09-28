@@ -120,7 +120,7 @@ fn retail_prone_damage_reads_the_original_multipliers() {
     for warhead in rules.warheads_iter() {
         let Some(raw) = ini
             .section(&warhead.id)
-            .and_then(|section| section.get("ProneDamage"))
+            .and_then(|section| section.get_for_test("ProneDamage"))
         else {
             assert_eq!(warhead.prone_damage_f64, 1.0, "{} default", warhead.id);
             continue;

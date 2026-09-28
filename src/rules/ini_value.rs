@@ -2,8 +2,11 @@
 //!
 //! Every INI value VERA consumes goes through the `IniSection` readers below
 //! and the token parsers under them. `ini_parser.rs` is the raw store (the
-//! `INIClass` analog): loading, exact-case lookup and registry walks. Outside
-//! the readers, raw `get` only tests whether a key is present.
+//! `INIClass` analog): loading and exact-case lookup. This module is its child,
+//! so only these readers see raw value text; other code tests presence with
+//! `IniSection::is_present`. The store's two walks, `raw_entries` and
+//! `registry_ids`, are not readers, and `architecture_guards` pins their
+//! callers. Its unit tests run under `rules::ini_parser::ini_value::`.
 //!
 //! Each reader reproduces one native reader's contract on the resolved value.
 //! Where gamemd reads some keys through a different parser, that parser is its
@@ -51,7 +54,7 @@
 //! - Returns un-truncated f64 from `read_double`; the single f64->SimFixed
 //!   conversion stays in `util::fixed_math`. No float enters sim/.
 
-use crate::rules::ini_parser::{IniSection, is_native_none_type_name};
+use super::{IniSection, is_native_none_type_name};
 use crate::rules::locomotor_type::SpeedType;
 use crate::util::native_x87::{MaskedX87Chop53, NativeF32Bits, NativeF64Bits};
 

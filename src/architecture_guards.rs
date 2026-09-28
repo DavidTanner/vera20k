@@ -4,7 +4,8 @@
 //! empty. The scanner excludes tests.rs, *_tests.rs and #[cfg(test)] items;
 //! cfg(any(test, debug_assertions)) remains production because debug builds use it.
 //! A separate guard checks the entire sim tree, including tests, for upper-layer
-//! references. Other guards pin frame API callers and AppState owner boundaries.
+//! references. Other guards pin frame API and raw INI walk callers and
+//! AppState owner boundaries.
 //!
 //! The app pseudo-root matches crate::app paths and retired root app_* modules.
 //! The ui rule also forbids the retired skirmish_scenarios root. These checks
@@ -109,6 +110,87 @@ fn master_frame_adapters_have_pinned_production_callers() {
          Production advances only through SimRuntime::advance_frame (F09); \
          gate new fixture callers with #[cfg(test)]."
     );
+}
+
+/// Stored INI text leaves `IniSection` through the `ini_value` readers and
+/// two walks: `raw_entries` (copying or showing entries) and `registry_ids`
+/// (registries `native_processing` rewrote). Their production call sites are
+/// pinned by file and count; a new caller reads through a reader instead.
+#[test]
+fn raw_ini_walks_have_pinned_production_callers() {
+    let src_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let pinned: &[(&str, &[(&str, usize)])] = &[
+        (
+            "raw_entries",
+            &[
+                ("rules/ini_parser.rs", 1), // the definition
+                // `ini-get --reader raw` and the presence report.
+                ("asset_tools/verb_ini.rs", 1),
+                // `[Colors]` entries copied into the processed registry.
+                ("rules/native_processing.rs", 1),
+            ],
+        ),
+        (
+            "registry_ids",
+            &[
+                ("rules/ini_parser.rs", 1), // the definition
+                ("rules/overlay_types.rs", 2),
+                ("rules/ruleset.rs", 2),
+                ("rules/smudge_type.rs", 1),
+                ("rules/tiberium_type.rs", 1),
+            ],
+        ),
+    ];
+    let expected: BTreeSet<(String, &str, usize)> = pinned
+        .iter()
+        .flat_map(|&(symbol, files)| {
+            files
+                .iter()
+                .map(move |&(file, count)| (file.to_string(), symbol, count))
+        })
+        .collect();
+    let mut found = BTreeSet::new();
+    visit_rust_files(&src_root, &mut |path| {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if name == "tests.rs" || name.ends_with("_tests.rs") {
+            return;
+        }
+        let rel = path
+            .strip_prefix(&src_root)
+            .expect("scanned file under src")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let source =
+            fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let production = strip_test_items(&blank_comments_and_literals(&source));
+        for &(symbol, _) in pinned {
+            let count = count_identifier(&production, symbol);
+            if count > 0 {
+                found.insert((rel.clone(), symbol, count));
+            }
+        }
+    });
+    assert_eq!(
+        found, expected,
+        "raw INI walks called outside their pinned production sites, or a pin \
+         is stale. Read values through the `ini_value` readers; pin a new \
+         caller only to copy or show entries as stored."
+    );
+}
+
+/// Occurrences of `ident` as a whole identifier.
+fn count_identifier(text: &str, ident: &str) -> usize {
+    let bytes = text.as_bytes();
+    let is_ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    text.match_indices(ident)
+        .filter(|&(at, _)| {
+            (at == 0 || !is_ident(bytes[at - 1]))
+                && bytes.get(at + ident.len()).is_none_or(|&b| !is_ident(b))
+        })
+        .count()
 }
 
 fn scan_forbidden_edges(src_root: &Path) -> BTreeSet<(String, String)> {

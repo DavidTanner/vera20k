@@ -946,10 +946,7 @@ impl RulesPassProcessor {
         let Some(section) = pass.section("Colors") else {
             return;
         };
-        for key in section.keys() {
-            let Some(value) = section.get(key) else {
-                continue;
-            };
+        for (key, value) in section.raw_entries() {
             if self
                 .colors
                 .iter()
@@ -968,7 +965,7 @@ impl RulesPassProcessor {
         family: RulesTypeFamily,
         capacity: usize,
     ) {
-        if section.get(key).is_none() {
+        if !section.is_present(key) {
             return;
         }
         let incoming = section.read_string(key, "", capacity);
@@ -1247,7 +1244,7 @@ impl RulesPassProcessor {
             return;
         };
         for &key in KEYS {
-            if general.get(key).is_none() {
+            if !general.is_present(key) {
                 continue;
             }
             let resolved = general

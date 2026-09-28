@@ -15,7 +15,6 @@ use crate::render::unit_atlas::{
     UnitSpriteEntry, UnitSpriteKey, VxlLayer, render_unit_sprite_with_slope_blend,
 };
 use crate::render::vxl_raster::VxlSlopeBlend;
-use crate::rules::art_data::ArtRegistry;
 use crate::rules::ruleset::RuleSet;
 
 const PAGE_SIZE: u32 = 2048;
@@ -68,7 +67,6 @@ impl VxlSlopeTransitionCache {
         batch: &BatchRenderer,
         asset_manager: &AssetManager,
         rules: Option<&RuleSet>,
-        art: Option<&ArtRegistry>,
         key: TransitionUnitSpriteKey,
     ) -> Option<TransitionUnitSpriteEntry> {
         if let Some(entry) = self.entries.get(&key).copied() {
@@ -98,7 +96,6 @@ impl VxlSlopeTransitionCache {
             asset_manager,
             &render_key,
             rules,
-            art,
             vpl.as_ref(),
             Some(blend),
         )?;
