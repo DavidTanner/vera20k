@@ -29,7 +29,7 @@ use crate::assets::vxl_file::VxlFile;
 use crate::render::atlas_growth::{self, GrowthShelf, SPRITE_PADDING};
 use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::vxl_raster::{self, VxlRenderParams, VxlSlopeBlend, VxlSprite};
-use crate::rules::art_data::{self, ArtRegistry};
+use crate::rules::art_data;
 use crate::rules::ruleset::RuleSet;
 
 /// Edge of a growth page. One byte per texel makes it 64 MB, room for the
@@ -684,22 +684,15 @@ fn seed_unit_variant_keys(
     is_ground_vehicle: bool,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) {
-    let layers = seed_layers_for(
-        asset_manager,
-        &variant.type_id,
-        variant.has_turret,
-        rules,
-        art,
-    );
+    let layers = seed_layers_for(asset_manager, &variant.type_id, variant.has_turret, rules);
     let barrel_pitches = rules
         .and_then(|rules| rules.object(&variant.type_id))
         .map_or_else(|| vec![0], |object| unit_barrel_pitches(object.fire_angle));
     for &layer in layers {
         let frame_key = (variant.type_id.clone(), layer);
         let num_frames = *frame_counts.entry(frame_key).or_insert_with(|| {
-            detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules, art)
+            detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules)
         });
         insert_unit_layer_keys(
             needed,
@@ -727,7 +720,6 @@ fn needed_unit_keys(
     demand: &UnitAtlasDemand,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) -> (HashSet<UnitSpriteKey>, BTreeMap<(String, VxlLayer), u32>) {
     let mut needed: HashSet<UnitSpriteKey> = HashSet::new();
     let mut frame_counts: BTreeMap<(String, VxlLayer), u32> = BTreeMap::new();
@@ -741,7 +733,6 @@ fn needed_unit_keys(
                     is_ground_vehicle,
                     asset_manager,
                     rules,
-                    art,
                 );
             }
         }
@@ -784,7 +775,6 @@ pub fn build_unit_atlas(
     entities: &crate::sim::entity_store::EntityStore,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
     existing: Option<UnitAtlas>,
     interner: Option<&crate::sim::intern::StringInterner>,
 ) -> Option<UnitAtlas> {
@@ -802,7 +792,7 @@ pub fn build_unit_atlas(
         log::info!("No new voxel models — keeping the current unit atlas");
         return existing;
     }
-    let (needed, frame_counts) = needed_unit_keys(&missing, asset_manager, rules, art);
+    let (needed, frame_counts) = needed_unit_keys(&missing, asset_manager, rules);
     // A type seeded as an aircraft after its ground variant (or the reverse)
     // shares its flat keys with the resident ones.
     let mut new_keys: Vec<UnitSpriteKey> = needed
@@ -867,7 +857,7 @@ pub fn build_unit_atlas(
         let workers = std::thread::available_parallelism().map_or(1, |n| n.get());
         for type_keys in new_keys.chunk_by(|a, b| a.type_id == b.type_id) {
             let type_id = type_keys[0].type_id.as_str();
-            let Some(model) = UnitModel::load(asset_manager, type_id, rules, art) else {
+            let Some(model) = UnitModel::load(asset_manager, type_id, rules) else {
                 *failed.entry(type_id).or_default() += type_keys.len();
                 continue;
             };
@@ -994,10 +984,7 @@ impl VoxelPart {
 }
 
 /// A voxel model's files, parsed once and shared by every sprite drawn from
-/// it.
-///
-/// Uses ArtRegistry to resolve the correct VXL/HVA filenames.
-/// Falls back to direct {TYPE_ID}.VXL if art data is unavailable.
+/// it. They are named from [`voxel_image_id`].
 pub(crate) struct UnitModel {
     type_id: String,
     body: VxlFile,
@@ -1023,9 +1010,8 @@ impl UnitModel {
         asset_manager: &AssetManager,
         type_id: &str,
         rules: Option<&RuleSet>,
-        art: Option<&ArtRegistry>,
     ) -> Option<Self> {
-        let image = voxel_image_id(type_id, rules, art);
+        let image = voxel_image_id(type_id, rules);
         let (vxl_name, hva_name): (String, String) = art_data::voxel_asset_names(&image);
 
         let vxl_data = asset_manager.get_ref(&vxl_name)?;
@@ -1248,16 +1234,10 @@ pub(crate) fn render_unit_sprite_with_slope_blend(
     asset_manager: &AssetManager,
     key: &UnitSpriteKey,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
     vpl: Option<&VplFile>,
     slope_blend: Option<VxlSlopeBlend>,
 ) -> Option<(VxlSprite, Option<[i32; 4]>)> {
-    UnitModel::load(asset_manager, &key.type_id, rules, art)?.render(
-        key,
-        vpl,
-        slope_blend,
-        &mut None,
-    )
+    UnitModel::load(asset_manager, &key.type_id, rules)?.render(key, vpl, slope_blend, &mut None)
 }
 
 /// Body plus optional turret and barrel, depth-composited on the CPU.

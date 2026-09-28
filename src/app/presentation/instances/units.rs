@@ -728,13 +728,13 @@ fn emit_crash_pose_sprite(
     let Some(assets) = state.process_assets.manager() else {
         return;
     };
-    let Some(entry) = state.renderer.vxl_pose_frame_cache.borrow_mut().render(
-        assets,
-        state.rules(),
-        state.rules().map(|rules| rules.art()),
-        key,
-        tilt,
-    ) else {
+    let Some(entry) =
+        state
+            .renderer
+            .vxl_pose_frame_cache
+            .borrow_mut()
+            .render(assets, state.rules(), key, tilt)
+    else {
         return;
     };
     let depth_y = center_y + entry.offset_y + entry.pixel_size[1];
@@ -938,7 +938,6 @@ fn unit_entry_for_slope_state(
                     &state.renderer.batch_renderer,
                     asset_manager,
                     state.rules(),
-                    state.rules().map(|rules| rules.art()),
                     transition_key,
                 )
             {

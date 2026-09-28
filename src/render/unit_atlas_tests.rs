@@ -566,12 +566,16 @@ fn barrel_image_keeps_its_first_drawn_pitch() {
     assert_eq!(pitches.pitch(&key("MTNK", 32), None, -1), -1);
 }
 
-/// gamemd's voxel loader gives a vehicle type without `Turret=` no gun parts
-/// (`0x005F8277`, `0x005F8844`), though retail ships the Mirage Tank's (image
-/// RTNK) and the jeep's. The loader reruns on every INI pass, so the processed
-/// Hills/Battle rules decide.
+/// gamemd's voxel loader names a vehicle's models from its rules `Image=`
+/// and gives a vehicle without `Turret=` no gun parts (`0x005F8277`,
+/// `0x005F8844`). Retail ships the Mirage Tank's (image RTNK) and the jeep's
+/// anyway, and art `[BFRT]` points `Image=` at the Prism Tank, a key gamemd
+/// reads for buildings but not vehicles. The loader reruns on every INI pass,
+/// and a pass that skips a part keeps an earlier pass's. No retail layer after
+/// `rulesmd.ini` changes these types' `Turret=`, so the processed Hills/Battle
+/// rules decide.
 #[test]
-fn retail_turretless_vehicles_load_no_gun_parts() {
+fn retail_vehicles_load_their_native_voxel_models() {
     use crate::rules::object_type::ObjectCategory;
     use crate::rules::retail_ini_fixture::{retail_assets, retail_battle_rules};
     let Some(battle) = retail_battle_rules() else {
@@ -579,20 +583,39 @@ fn retail_turretless_vehicles_load_no_gun_parts() {
     };
     let (_, assets) = retail_assets().expect("the battle rules came from RA2_DIR");
     let rules = &battle.rules;
-    for (type_id, files, turret, barrel) in [
-        ("MGTK", &["RTNKTUR.VXL", "RTNKBARL.VXL"][..], false, false),
-        ("JEEP", &["JEEPTUR.VXL"][..], false, false),
-        ("HTNK", &["HTNKTUR.VXL", "HTNKBARL.VXL"][..], true, true),
-        ("HARV", &["HARVTUR.VXL"][..], true, false),
+    assert_eq!(
+        rules.art().resolve_effective_image_id("BFRT", "BFRT"),
+        "SREF"
+    );
+    assert!(assets.get_ref("BFRT.VXL").is_some());
+    // Each type's gun-part files, which the art redirect sent BFRT to.
+    for (type_id, image, files, turret, barrel) in [
+        (
+            "MGTK",
+            "RTNK",
+            &["RTNKTUR.VXL", "RTNKBARL.VXL"][..],
+            false,
+            false,
+        ),
+        ("JEEP", "JEEP", &["JEEPTUR.VXL"][..], false, false),
+        ("BFRT", "BFRT", &["SREFTUR.VXL"][..], false, false),
+        (
+            "HTNK",
+            "HTNK",
+            &["HTNKTUR.VXL", "HTNKBARL.VXL"][..],
+            true,
+            true,
+        ),
+        ("HARV", "HARV", &["HARVTUR.VXL"][..], true, false),
     ] {
         let object = rules.object(type_id).expect(type_id);
         assert_eq!(object.category, ObjectCategory::Vehicle, "{type_id}");
         assert_eq!(object.has_turret, turret, "{type_id}");
+        assert_eq!(voxel_image_id(type_id, Some(rules)), image, "{type_id}");
         for file in files {
             assert!(assets.get_ref(file).is_some(), "{file}");
         }
-        let model =
-            UnitModel::load(&assets, type_id, Some(rules), Some(rules.art())).expect(type_id);
+        let model = UnitModel::load(&assets, type_id, Some(rules)).expect(type_id);
         assert_eq!(model.turret.is_some(), turret, "{type_id}");
         assert_eq!(model.barrel.is_some(), barrel, "{type_id}");
     }

@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::hva_file::HvaFile;
-use crate::rules::art_data::{self, ArtRegistry};
+use crate::rules::art_data;
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::VxlLayer;
@@ -67,19 +67,19 @@ pub(crate) fn unit_atlas_variants(type_id: &str, rules: Option<&RuleSet>) -> Vec
     variants
 }
 
-/// The image a voxel model draws with: `type_id`'s rules `Image=`, then the
-/// art `Image=` override. A name that is not a rules type is its own image.
-pub(crate) fn voxel_image_id(
-    type_id: &str,
-    rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
-) -> String {
-    let rules_image: String = rules
-        .and_then(|r| r.object(type_id))
-        .map(|o| o.image.clone())
-        .unwrap_or_else(|| type_id.to_string());
-    art.map(|a| a.resolve_effective_image_id(type_id, &rules_image))
-        .unwrap_or_else(|| rules_image.to_uppercase())
+/// The image a voxel model's files are named from: `type_id`'s rules `Image=`,
+/// which defaults to the type's ID. The constructor copies the ID into `+0x1F8`
+/// (`0x005F724F..0x005F7276`), `ObjectTypeClass::ReadINI` reads `Image=` over
+/// it (`0x005F9335`), and the voxel loader `0x005F8110` formats every model
+/// name from that field. An art `Image=` does not redirect it: gamemd reads
+/// that art key for buildings (`0x0045F93A`), not for vehicles or aircraft. A
+/// name that is not a rules type is its own image.
+pub(crate) fn voxel_image_id(type_id: &str, rules: Option<&RuleSet>) -> String {
+    rules
+        .and_then(|rules| rules.object(type_id))
+        .map_or(type_id, |object| object.image.as_str())
+        .trim()
+        .to_uppercase()
 }
 
 /// Whether the voxel model `type_id` has `%sTUR` and `%sBARL` gun parts.
@@ -94,8 +94,9 @@ pub(crate) fn voxel_image_id(
 /// `%sBARREL` name.
 ///
 /// A name that is not a rules type has none. A `%sWO` model stands in for its
-/// type's body, and a building's gun parts are its type's, not its
-/// `TurretAnim=` model's.
+/// type's body. A building loads its `TurretAnim=` model's barrel through its
+/// own loader, which rewrites `TUR` to `BARL` in that name
+/// (`0x0045FC73..0x0045FC82`); VERA does not port that yet.
 pub(crate) fn has_gun_parts(type_id: &str, rules: Option<&RuleSet>) -> bool {
     rules
         .and_then(|rules| rules.object(type_id))
@@ -118,29 +119,23 @@ pub(crate) fn seed_layers_for(
     type_id: &str,
     has_turret: bool,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) -> &'static [VxlLayer] {
     if !has_turret {
         return &[VxlLayer::Composite];
     }
-    if has_barrel_voxel(asset_manager, type_id, rules, art) {
+    if has_barrel_voxel(asset_manager, type_id, rules) {
         &[VxlLayer::Body, VxlLayer::Turret, VxlLayer::Barrel]
     } else {
         &[VxlLayer::Body, VxlLayer::Turret]
     }
 }
 
-/// Whether this type ships a separate barrel voxel. Resolves the image id
-/// exactly as the render path does, so the seeding decision and the lookup can
-/// never disagree.
-fn has_barrel_voxel(
-    asset_manager: &AssetManager,
-    type_id: &str,
-    rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
-) -> bool {
-    let image = voxel_image_id(type_id, rules, art);
-    has_gun_parts(type_id, rules) && asset_manager.get_ref(&format!("{image}BARL.VXL")).is_some()
+/// Whether this turreted type ships a separate barrel voxel. Resolves the image
+/// id exactly as the render path does, so the seeding decision and the lookup
+/// can never disagree.
+fn has_barrel_voxel(asset_manager: &AssetManager, type_id: &str, rules: Option<&RuleSet>) -> bool {
+    let image = voxel_image_id(type_id, rules);
+    asset_manager.get_ref(&format!("{image}BARL.VXL")).is_some()
 }
 
 /// Detect the HVA animation frame count for a given (type_id, layer) combo.
@@ -152,9 +147,8 @@ pub(crate) fn detect_hva_frame_count(
     type_id: &str,
     layer: VxlLayer,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) -> u32 {
-    let image = voxel_image_id(type_id, rules, art);
+    let image = voxel_image_id(type_id, rules);
     let hva_name: String = match layer {
         VxlLayer::Composite | VxlLayer::Body => art_data::voxel_asset_names(&image).1,
         VxlLayer::Turret => format!("{}TUR.HVA", image),
@@ -182,7 +176,6 @@ pub(crate) fn build_voxel_frame_catalog(
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
 ) -> BTreeMap<(String, VxlLayer), u32> {
-    let art = rules.map(RuleSet::art);
     let mut frame_counts: BTreeMap<(String, VxlLayer), u32> = BTreeMap::new();
     for entity in entities.values() {
         if !entity.is_voxel {
@@ -190,17 +183,13 @@ pub(crate) fn build_voxel_frame_catalog(
         }
         let type_str = interner.resolve(entity.type_ref());
         for variant in unit_atlas_variants(type_str, rules) {
-            for &layer in seed_layers_for(
-                asset_manager,
-                &variant.type_id,
-                variant.has_turret,
-                rules,
-                art,
-            ) {
+            for &layer in
+                seed_layers_for(asset_manager, &variant.type_id, variant.has_turret, rules)
+            {
                 frame_counts
                     .entry((variant.type_id.clone(), layer))
                     .or_insert_with(|| {
-                        detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules, art)
+                        detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules)
                     });
             }
         }

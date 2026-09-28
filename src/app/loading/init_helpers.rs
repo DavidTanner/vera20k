@@ -543,7 +543,6 @@ pub(crate) fn build_entity_atlases(
             sim.entities(),
             asset_manager,
             rules,
-            art,
             None, // initial build — no existing cache
             Some(&sim.interner),
         )
