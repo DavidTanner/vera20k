@@ -801,10 +801,12 @@ pub fn anim_frame_source_alpha(
 fn parse_anim_runtime_config(section: &IniSection) -> AnimTypeRuntimeConfig {
     // `End=`/`LoopEnd=` stay unresolved until the image loads; `None` marks an
     // absent key.
-    let explicit_end = section.get("End").map(|_| section.read_int("End", 0));
+    let explicit_end = section
+        .is_present("End")
+        .then(|| section.read_int("End", 0));
     let explicit_loop_end = section
-        .get("LoopEnd")
-        .map(|_| section.read_int("LoopEnd", 0));
+        .is_present("LoopEnd")
+        .then(|| section.read_int("LoopEnd", 0));
     AnimTypeRuntimeConfig {
         art_body_read: true,
         image: section.read_string("Image", &section.name, 0x19),
@@ -875,7 +877,7 @@ fn parse_anim_runtime_config(section: &IniSection) -> AnimTypeRuntimeConfig {
             .map(str::to_ascii_uppercase),
         trailer_seperation: section.read_int("TrailerSeperation", 0),
         // ReadMinMax (`0x004280D4`); `None` marks an absent key.
-        random_loop_delay: section.get("RandomLoopDelay").map(|_| {
+        random_loop_delay: section.is_present("RandomLoopDelay").then(|| {
             let [low, high] = section.read_minmax("RandomLoopDelay", [0, 0]);
             (low.max(0) as u16, high.max(0) as u16)
         }),
@@ -1117,7 +1119,9 @@ impl ArtRegistry {
             // (e.g. GuardianGISequence::Deploy=300,15,0 -> deploy_frames=15).
             let sequence_frames = |key: &str| {
                 let seq_section = ini.section(sequence.as_deref()?)?;
-                seq_section.get(key)?;
+                if !seq_section.is_present(key) {
+                    return None;
+                }
                 let entry = crate::rules::infantry_sequence::read_sequence(
                     seq_section,
                     key,
@@ -1139,11 +1143,11 @@ impl ArtRegistry {
             let primary_fire_flh = Flh::from(section.read_coord3("PrimaryFireFLH", [0; 3]));
             let secondary_fire_flh = Flh::from(section.read_coord3("SecondaryFireFLH", [0; 3]));
             let elite_primary_fire_flh: Option<Flh> =
-                section.get("ElitePrimaryFireFLH").map(|_| {
+                section.is_present("ElitePrimaryFireFLH").then(|| {
                     Flh::from(section.read_coord3("ElitePrimaryFireFLH", primary_fire_flh.into()))
                 });
             let elite_secondary_fire_flh: Option<Flh> =
-                section.get("EliteSecondaryFireFLH").map(|_| {
+                section.is_present("EliteSecondaryFireFLH").then(|| {
                     Flh::from(
                         section.read_coord3("EliteSecondaryFireFLH", secondary_fire_flh.into()),
                     )
@@ -1165,7 +1169,7 @@ impl ArtRegistry {
             });
             // ReadMinMax (`0x00461305`, `0x00461332`); `None` marks an absent key.
             let present_pair = |key: &str| {
-                section.get(key).map(|_| {
+                section.is_present(key).then(|| {
                     let [x, y] = section.read_minmax(key, [0, 0]);
                     (x, y)
                 })
@@ -1182,8 +1186,8 @@ impl ArtRegistry {
             // SHP vehicle frame tags (only meaningful when Voxel=no for vehicles).
             let present_frames = |key: &str| {
                 section
-                    .get(key)
-                    .map(|_| section.read_int(key, 0).max(0) as u16)
+                    .is_present(key)
+                    .then(|| section.read_int(key, 0).max(0) as u16)
             };
             let walk_frames: Option<u16> = present_frames("WalkFrames");
             let firing_frames: Option<u16> = present_frames("FiringFrames");
@@ -1277,7 +1281,9 @@ impl ArtRegistry {
             let muzzle_flash_positions: Vec<(i32, i32)> = (0..10)
                 .map_while(|i| {
                     let key = format!("MuzzleFlash{i}");
-                    section.get(&key)?;
+                    if !section.is_present(&key) {
+                        return None;
+                    }
                     let [x, y] = section.read_minmax(&key, [0, 0]);
                     Some((x, y))
                 })

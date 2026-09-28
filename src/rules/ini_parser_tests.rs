@@ -187,36 +187,36 @@ fn overlong_physical_line_discards_everything_after_511_bytes() {
 }
 
 #[test]
-fn test_get_values_zero_indexed() {
+fn test_registry_ids_zero_indexed() {
     let ini: IniFile = IniFile::from_str("[Types]\n0=E1\n1=E2\n2=ENGINEER\n3=FLAKT\n");
     let section: &IniSection = ini.section("Types").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["E1", "E2", "ENGINEER", "FLAKT"]);
 }
 
 #[test]
-fn test_get_values_one_indexed() {
+fn test_registry_ids_one_indexed() {
     // Active retail RULESMD uses 1-indexed type registries in this family.
     let ini: IniFile = IniFile::from_str("[InfantryTypes]\n1=E1\n2=E2\n3=SHK\n");
     let section: &IniSection = ini.section("InfantryTypes").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["E1", "E2", "SHK"]);
 }
 
 #[test]
-fn test_get_values_with_numeric_gaps() {
+fn test_registry_ids_with_numeric_gaps() {
     let ini: IniFile =
         IniFile::from_str("[VehicleTypes]\n36=CMIN\n1=HTNK\n40=HARV\n2=MTNK\n5=SMIN\n");
     let section: &IniSection = ini.section("VehicleTypes").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["CMIN", "HTNK", "HARV", "MTNK", "SMIN"]);
 }
 
 #[test]
-fn test_get_values_reads_named_entries_too() {
+fn test_registry_ids_reads_named_entries_too() {
     let ini: IniFile = IniFile::from_str("[Empty]\nName=Test\n");
     let section: &IniSection = ini.section("Empty").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["Test"]);
 }
 

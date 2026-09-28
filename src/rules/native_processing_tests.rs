@@ -260,7 +260,7 @@ fn anim_art_read_receipt_distinguishes_live_sweep_from_late_allocation() {
             .ini()
             .section("Animations")
             .unwrap()
-            .get_values()
+            .registry_ids()
             .contains(&"LATE")
     );
     assert!(
@@ -368,11 +368,11 @@ fn map_overrides_union_type_registries_by_value() {
     let map = IniFile::from_str("[VehicleTypes]\n0=EVILTANK\n[Animations]\n0=EVILANIM\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(
-        rules.section("VehicleTypes").unwrap().get_values(),
+        rules.section("VehicleTypes").unwrap().registry_ids(),
         vec!["MTNK", "EVILTANK"]
     );
     assert_eq!(
-        rules.section("Animations").unwrap().get_values(),
+        rules.section("Animations").unwrap().registry_ids(),
         vec!["RING1", "EVILANIM"]
     );
 }
@@ -430,7 +430,11 @@ fn native_type_construction_trace_preserves_first_new_process_and_lazy_order() {
         3
     );
     assert_eq!(
-        processed.ini().section("Sides").unwrap().get("GDI"),
+        processed
+            .ini()
+            .section("Sides")
+            .unwrap()
+            .get_for_test("GDI"),
         Some("British"),
         "Side constructor identity is the key, while the compatibility value remains the membership list"
     );
@@ -470,7 +474,7 @@ fn native_type_registry_compares_full_input_but_stores_and_emits_24_bytes() {
             .ini()
             .section("VehicleTypes")
             .expect("rebuilt Unit registry")
-            .get_values(),
+            .registry_ids(),
         vec![prefix, prefix, prefix]
     );
 }
@@ -552,7 +556,7 @@ fn constructor_lists_collapse_empty_fields_without_trimming_individual_tokens() 
             .ini()
             .section("General")
             .expect("projected General section")
-            .get("PrerequisitePower"),
+            .get_for_test("PrerequisitePower"),
         Some("FIRST,FIRST"),
         "native strtok vectors retain repeated resolved pointers",
     );
@@ -943,7 +947,7 @@ fn fixed_art_drives_constructors_without_entering_rules_content_or_bodies() {
             .ini()
             .section("ROOT")
             .expect("Rules body")
-            .get("Next"),
+            .get_for_test("Next"),
         None,
         "standalone Art keys must not merge into the Rules body projection",
     );
@@ -980,7 +984,7 @@ fn an_animation_keeps_the_rules_body_of_a_warhead_of_the_same_name() {
     .process()
     .unwrap();
     let body = processed.ini().section("BOOM").expect("Rules body");
-    assert_eq!(body.get("CellSpread"), Some("2"));
+    assert_eq!(body.get_for_test("CellSpread"), Some("2"));
     let rules = RuleSet::from_processed_rules(&processed).unwrap();
     let warhead = rules.warhead("BOOM").unwrap();
     assert_eq!(warhead.cell_spread_f64, 2.0);
@@ -1430,7 +1434,7 @@ fn warhead_particle_system_and_voxel_children_obey_passed_family_timing() {
             .ini()
             .section("Particles")
             .expect("Particle registry")
-            .get_values(),
+            .registry_ids(),
         vec!["PART", "undefined", "WHOLD"]
     );
     assert!(actual.iter().all(|(_, id)| {
@@ -1521,7 +1525,7 @@ fn crate_rule_images_allocate_and_alias_by_overlay_identity() {
         .ini()
         .section("OverlayTypes")
         .expect("crate references allocate overlays");
-    assert_eq!(overlays.get_values(), vec!["AliasCrate", "NewWater"]);
+    assert_eq!(overlays.registry_ids(), vec!["AliasCrate", "NewWater"]);
 
     let registry =
         crate::rules::overlay_types::OverlayTypeRegistry::from_ini(processed.ini(), None);
@@ -1571,7 +1575,7 @@ fn crate_rule_image_readstring_capacity_owns_retention_and_allocation() {
             .ini()
             .section("OverlayTypes")
             .expect("truncated references allocate")
-            .get_values(),
+            .registry_ids(),
         vec![stored_a.as_str(), stored_b.as_str(), stored_b.as_str()],
         "late allocation stores 24-byte IDs while semantic crate strings keep 127 bytes"
     );
@@ -1601,7 +1605,7 @@ fn later_malformed_weapon_bool_preserves_current_field_default() {
     );
     let section = processed.ini().section("Gun").expect("allocated Gun body");
 
-    assert_eq!(section.get("RevealOnFire"), Some("maybe"));
+    assert_eq!(section.get_for_test("RevealOnFire"), Some("maybe"));
     assert!(WeaponType::from_ini_section("Gun", section).reveal_on_fire);
 }
 
@@ -1612,8 +1616,8 @@ fn later_allocated_type_does_not_read_earlier_orphan_body() {
         "[VehicleTypes]\n0=LATE\n",
     );
     let late = processed.ini().section("LATE").expect("allocated body");
-    assert_eq!(late.get("Strength"), None);
-    assert_eq!(late.get("Cost"), None);
+    assert_eq!(late.get_for_test("Strength"), None);
+    assert_eq!(late.get_for_test("Cost"), None);
 }
 
 #[test]
@@ -1623,8 +1627,8 @@ fn existing_type_keeps_prior_fields_and_applies_current_body() {
         "[EARLY]\nStrength=250\n",
     );
     let early = processed.ini().section("EARLY").expect("EARLY body");
-    assert_eq!(early.get("Strength"), Some("250"));
-    assert_eq!(early.get("Cost"), Some("700"));
+    assert_eq!(early.get_for_test("Strength"), Some("250"));
+    assert_eq!(early.get_for_test("Cost"), Some("700"));
 }
 
 #[test]
@@ -1635,12 +1639,12 @@ fn tiberium_pass_reuses_numeric_slot_and_ignores_replacement_identity() {
     );
 
     assert_eq!(
-        processed.ini().section("Tiberiums").unwrap().get_values(),
+        processed.ini().section("Tiberiums").unwrap().registry_ids(),
         vec!["Riparius"]
     );
     let riparius = processed.ini().section("Riparius").unwrap();
-    assert_eq!(riparius.get("Image"), Some("4"));
-    assert_eq!(riparius.get("Value"), Some("25"));
+    assert_eq!(riparius.get_for_test("Image"), Some("4"));
+    assert_eq!(riparius.get_for_test("Value"), Some("25"));
     assert!(processed.ini().section("Cruentus").is_some());
 }
 
@@ -1653,14 +1657,14 @@ fn tiberium_out_of_range_slot_appends_one_live_type() {
     .expect("Tiberium pass processes");
 
     assert_eq!(
-        processed.ini().section("Tiberiums").unwrap().get_values(),
+        processed.ini().section("Tiberiums").unwrap().registry_ids(),
         vec!["Riparius"]
     );
     assert_eq!(
         processed
             .ini()
             .section("Riparius")
-            .and_then(|section| section.get("Image")),
+            .and_then(|section| section.get_for_test("Image")),
         Some("1")
     );
 }
@@ -1675,7 +1679,7 @@ fn new_type_reads_its_same_pass_body() {
         processed
             .ini()
             .section("LATE")
-            .and_then(|section| section.get("Strength")),
+            .and_then(|section| section.get_for_test("Strength")),
         Some("250")
     );
 }
@@ -1691,7 +1695,7 @@ fn ordered_pass_registry_union_is_case_insensitive_by_value() {
             .ini()
             .section("VehicleTypes")
             .unwrap()
-            .get_values(),
+            .registry_ids(),
         vec!["MTNK", "HTNK"]
     );
 }
@@ -1709,7 +1713,7 @@ fn gsi_05_01_type_allocation_rejects_native_none_sentinels() {
             .ini()
             .section("VehicleTypes")
             .expect("rebuilt vehicle registry")
-            .get_values(),
+            .registry_ids(),
         vec!["NONE_TANK"]
     );
 
@@ -1735,8 +1739,8 @@ fn later_pass_missing_scalar_key_preserves_live_value() {
         "[General]\nBuildSpeed=.58\n",
     );
     let general = processed.ini().section("General").unwrap();
-    assert_eq!(general.get("BuildSpeed"), Some(".58"));
-    assert_eq!(general.get("FlightLevel"), Some("1500"));
+    assert_eq!(general.get_for_test("BuildSpeed"), Some(".58"));
+    assert_eq!(general.get_for_test("FlightLevel"), Some("1500"));
 }
 
 #[test]
@@ -1746,8 +1750,11 @@ fn later_general_section_without_damage_fire_types_preserves_live_list() {
         "[General]\nBuildSpeed=.58\n",
     );
     let general = processed.ini().section("General").unwrap();
-    assert_eq!(general.get("DamageFireTypes"), Some("FIRE01,FIRE02"));
-    assert_eq!(general.get("BuildSpeed"), Some(".58"));
+    assert_eq!(
+        general.get_for_test("DamageFireTypes"),
+        Some("FIRE01,FIRE02")
+    );
+    assert_eq!(general.get_for_test("BuildSpeed"), Some(".58"));
 }
 
 #[test]
@@ -1763,7 +1770,7 @@ fn general_prerequisite_groups_are_lookup_only() {
             .ini()
             .section("BuildingTypes")
             .unwrap()
-            .get_values()
+            .registry_ids()
             .is_empty()
     );
     assert_eq!(
@@ -1771,7 +1778,7 @@ fn general_prerequisite_groups_are_lookup_only() {
             .ini()
             .section("General")
             .unwrap()
-            .get("PrerequisitePower"),
+            .get_for_test("PrerequisitePower"),
         Some("")
     );
 }
@@ -1789,7 +1796,7 @@ fn general_prerequisite_groups_keep_only_registered_buildings() {
             .ini()
             .section("General")
             .unwrap()
-            .get("PrerequisitePower"),
+            .get_for_test("PrerequisitePower"),
         Some("GAPOWR")
     );
 }
@@ -1807,14 +1814,14 @@ fn prerequisite_proc_alternate_allocates_unit_before_same_pass_body_sweep() {
             .ini()
             .section("VehicleTypes")
             .unwrap()
-            .get_values(),
+            .registry_ids(),
         vec!["SMIN"]
     );
     assert_eq!(
         processed
             .ini()
             .section("SMIN")
-            .and_then(|section| section.get("Strength")),
+            .and_then(|section| section.get_for_test("Strength")),
         Some("2000")
     );
 }
@@ -1832,25 +1839,25 @@ fn barrel_particle_allocates_particle_system_before_same_pass_body_sweep() {
             .ini()
             .section("ParticleSystems")
             .unwrap()
-            .get_values(),
+            .registry_ids(),
         vec!["BarrelSys"]
     );
     assert_eq!(
-        processed.ini().section("Particles").unwrap().get_values(),
+        processed.ini().section("Particles").unwrap().registry_ids(),
         vec!["SmokePart"]
     );
     assert_eq!(
         processed
             .ini()
             .section("BarrelSys")
-            .and_then(|section| section.get("HoldsWhat")),
+            .and_then(|section| section.get_for_test("HoldsWhat")),
         Some("SmokePart")
     );
     assert_eq!(
         processed
             .ini()
             .section("SmokePart")
-            .and_then(|section| section.get("Damage")),
+            .and_then(|section| section.get_for_test("Damage")),
         None,
         "HoldsWhat allocates the particle after the particle body sweep"
     );
@@ -1869,7 +1876,7 @@ fn special_weapons_created_warhead_reads_same_pass_body() {
         processed
             .ini()
             .section("FreshMutate")
-            .and_then(|section| section.get("CellSpread")),
+            .and_then(|section| section.get_for_test("CellSpread")),
         Some("3")
     );
 }
@@ -1886,7 +1893,7 @@ fn special_weapons_created_projectile_waits_for_next_pass_body_sweep() {
         processed
             .ini()
             .section("FreshNuke")
-            .and_then(|section| section.get("Image")),
+            .and_then(|section| section.get_for_test("Image")),
         None
     );
 }
@@ -1910,18 +1917,26 @@ fn combat_damage_allocates_late_smudge_and_animation_references() {
     .expect("CombatDamage fixture processes");
 
     assert_eq!(
-        processed.ini().section("SmudgeTypes").unwrap().get_values(),
+        processed
+            .ini()
+            .section("SmudgeTypes")
+            .unwrap()
+            .registry_ids(),
         vec!["BurnA", "BurnB", "BurnC", "BurnD", "BurnE", "BurnF"]
     );
     assert_eq!(
-        processed.ini().section("Animations").unwrap().get_values(),
+        processed
+            .ini()
+            .section("Animations")
+            .unwrap()
+            .registry_ids(),
         vec!["SplashA", "SplashB", "DrainAnim", "MindAnim", "MindAnimR"]
     );
     assert_eq!(
         processed
             .ini()
             .section("BurnA")
-            .and_then(|section| section.get("Width")),
+            .and_then(|section| section.get_for_test("Width")),
         None,
         "late CombatDamage allocations wait for the next type-data pass"
     );
@@ -1942,14 +1957,14 @@ fn rules_hash_preserves_pass_boundaries() {
             .ini()
             .section("General")
             .unwrap()
-            .get("BuildSpeed"),
+            .get_for_test("BuildSpeed"),
         layered
             .process()
             .expect("layered Rules passes process")
             .ini()
             .section("General")
             .unwrap()
-            .get("BuildSpeed")
+            .get_for_test("BuildSpeed")
     );
     assert_ne!(single.content_hash(), layered.content_hash());
 }
@@ -1961,11 +1976,19 @@ fn projectiles_and_sides_keep_ordinary_compatibility_projection_overlay() {
         "[Projectiles]\n0=REPLACE\n[Sides]\nGDI=French\n",
     );
     assert_eq!(
-        processed.ini().section("Projectiles").unwrap().get("0"),
+        processed
+            .ini()
+            .section("Projectiles")
+            .unwrap()
+            .get_for_test("0"),
         Some("REPLACE")
     );
     assert_eq!(
-        processed.ini().section("Sides").unwrap().get("GDI"),
+        processed
+            .ini()
+            .section("Sides")
+            .unwrap()
+            .get_for_test("GDI"),
         Some("French")
     );
 }
@@ -1976,7 +1999,10 @@ fn existing_unlisted_numbered_section_receives_ordinary_overlay() {
     let rules = IniFile::from_str("[FutureTypes]\n0=KEEP\n");
     let map = IniFile::from_str("[FutureTypes]\n0=EVIL\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
-    assert_eq!(rules.section("FutureTypes").unwrap().get("0"), Some("EVIL"));
+    assert_eq!(
+        rules.section("FutureTypes").unwrap().get_for_test("0"),
+        Some("EVIL")
+    );
 }
 
 /// Registry processing uses every entry value, including entries whose keys
@@ -1990,11 +2016,11 @@ fn map_registry_pass_uses_every_entry_in_source_order() {
     );
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(
-        rules.section("Particles").unwrap().get_values(),
+        rules.section("Particles").unwrap().registry_ids(),
         vec!["FireStream", "EvilFire", "oops"]
     );
     assert_eq!(
-        rules.section("ParticleSystems").unwrap().get_values(),
+        rules.section("ParticleSystems").unwrap().registry_ids(),
         vec!["GasCloudSys", "EvilSys", "1"]
     );
 }
@@ -2012,12 +2038,15 @@ fn map_overrides_skip_empty_valued_keys() {
     let map = IniFile::from_str("[General]\nBuildSpeed=\n[CombatDamage]\nC4Delay=.06\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(
-        rules.section("General").unwrap().get("BuildSpeed"),
+        rules.section("General").unwrap().get_for_test("BuildSpeed"),
         Some(".7"),
         "empty map value must leave the merged value intact"
     );
     assert_eq!(
-        rules.section("CombatDamage").unwrap().get("C4Delay"),
+        rules
+            .section("CombatDamage")
+            .unwrap()
+            .get_for_test("C4Delay"),
         Some(".06")
     );
 }
@@ -2030,11 +2059,11 @@ fn map_colors_keep_existing_identity_and_allocate_new_name() {
     let map = IniFile::from_str("[Colors]\ngold=1,2,3\nNeonPink=12,200,255\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(
-        rules.section("Colors").unwrap().get("Gold"),
+        rules.section("Colors").unwrap().get_for_test("Gold"),
         Some("42,252,252")
     );
     assert_eq!(
-        rules.section("Colors").unwrap().get("NeonPink"),
+        rules.section("Colors").unwrap().get_for_test("NeonPink"),
         Some("12,200,255")
     );
 }

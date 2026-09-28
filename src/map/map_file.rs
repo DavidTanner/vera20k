@@ -837,8 +837,8 @@ LocalSize=2,4,96,92
         let ini = IniFile::from_str("[Map]\nTheater=TEMPERATE\nSize=\nLocalSize= \t \n");
         let map_section = ini.section("Map").expect("Map section");
 
-        assert!(map_section.get("Size").is_none());
-        assert!(map_section.get("LocalSize").is_none());
+        assert!(map_section.get_for_test("Size").is_none());
+        assert!(map_section.get_for_test("LocalSize").is_none());
 
         let header = parse_header(&ini).expect("omitted empty rectangles should remain loadable");
         assert_eq!(header.width, 0);

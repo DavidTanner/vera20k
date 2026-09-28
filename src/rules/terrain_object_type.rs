@@ -243,7 +243,7 @@ mod tests {
             .section("General")
             .unwrap()
             .read_int("TreeStrength", 0);
-        let raw = retail.section("TREE01").unwrap().get("Strength");
+        let raw = retail.section("TREE01").unwrap().get_for_test("Strength");
         let row = corpus["cases"]
             .as_array()
             .unwrap()

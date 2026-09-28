@@ -131,7 +131,6 @@ impl TeamScriptVm {
                     are_team_members_recruitable: fields
                         .read_bool("AreTeamMembersRecruitable", true),
                     reinforce: fields.read_bool("Reinforce", false),
-                    raw_fields: team_type.fields.clone(),
                     source: team_type.source,
                 },
             );

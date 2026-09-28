@@ -1,6 +1,15 @@
 //! Physical INI representation for Westwood data: the `INIClass` analog.
 //! Values are read through the `read_*` readers in `rules::ini_value`.
 //!
+//! Only the store and its readers see raw value text: `ini_value` is a child
+//! module, and a private item is visible to its module's descendants alone.
+//! Everyone else reads through a reader or tests presence with
+//! [`IniSection::is_present`]. Two walks hand out stored text:
+//! [`IniSection::raw_entries`], to copy or show entries, and
+//! [`IniSection::registry_ids`], for registries `native_processing` rewrote;
+//! `architecture_guards` pins their production callers. Tests inspect storage
+//! through the test-only `get_for_test`.
+//!
 //! Active `gamemd.exe` treats raw section and key names as case-sensitive.
 //! A fresh load retains duplicate nonempty section bodies. Empty keys, values,
 //! and physical section bodies are not inserted. Arbitrary duplicate-name
@@ -13,12 +22,16 @@ use std::hash::{Hash, Hasher};
 use std::sync::LazyLock;
 
 use crate::rules::error::RulesError;
-use crate::rules::ini_value::strtrim_ascii;
+
+#[path = "ini_value.rs"]
+pub mod ini_value;
+
+use self::ini_value::strtrim_ascii;
 
 const READ_LINE_PAYLOAD: usize = 511;
 
 /// One physical section occurrence in an INI file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IniSection {
     /// Exact section spelling from the file.
     pub name: String,
@@ -83,6 +96,15 @@ impl IniSection {
         self.projected_values.remove(key);
     }
 
+    /// [`Self::set`] each of a later layer's entries in its source order.
+    pub(crate) fn overlay(&mut self, patch: &IniSection) {
+        for key in patch.keys() {
+            if let Some(value) = patch.get(key) {
+                self.set(key, value);
+            }
+        }
+    }
+
     /// The section every reader sees when the named section is absent: no
     /// entries, so each `read_*` returns its default, as a native reader does
     /// for a missing section.
@@ -91,27 +113,47 @@ impl IniSection {
         &EMPTY
     }
 
-    /// The raw stored value of an exact-case key. Values are read through the
-    /// `read_*` readers (`ini_value.rs`); outside them this only tests
-    /// whether a key is present.
-    pub fn get(&self, key: &str) -> Option<&str> {
+    /// The raw stored text of an exact-case key, private to the store and its
+    /// readers.
+    fn get(&self, key: &str) -> Option<&str> {
         self.entries.get(key).map(String::as_str)
     }
 
-    pub(crate) fn projected_values(&self, key: &str) -> Option<&[String]> {
+    /// Test builds only: the raw stored text, for tests that inspect storage.
+    #[cfg(test)]
+    pub(crate) fn get_for_test(&self, key: &str) -> Option<&str> {
+        self.get(key)
+    }
+
+    /// Whether an exact-case key is stored, whatever its value.
+    pub fn is_present(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+
+    fn projected_values(&self, key: &str) -> Option<&[String]> {
         self.projected_values.get(key).map(Vec::as_slice)
     }
 
-    /// Values of every entry in source order: the walk over a registry
-    /// section `native_processing` rewrote with native stored IDs
-    /// (`[OverlayTypes]`, `[SmudgeTypes]`, `[Animations]`, `[Tiberiums]`).
-    /// A raw INI registry walk reads each entry through `read_name` with its
-    /// native capacity instead.
-    pub fn get_values(&self) -> Vec<&str> {
+    /// The type IDs of a registry section `native_processing` rewrote with
+    /// native stored IDs, such as `[OverlayTypes]` or `[Animations]`, in
+    /// source order. A raw INI registry walk reads each entry through
+    /// [`Self::read_name`] with its native capacity instead.
+    /// `architecture_guards` pins the production callers.
+    pub fn registry_ids(&self) -> Vec<&str> {
         self.key_order
             .iter()
             .filter_map(|key| self.entries.get(key).map(String::as_str))
             .collect()
+    }
+
+    /// Every entry's key and stored text in source order, for copying entries
+    /// between stores and for diagnostic display. Never interpret the text:
+    /// read values through the `ini_value` readers. `architecture_guards`
+    /// pins the production callers.
+    pub fn raw_entries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.key_order
+            .iter()
+            .filter_map(|key| Some((key.as_str(), self.entries.get(key)?.as_str())))
     }
 
     pub fn entry_count(&self) -> usize {
@@ -281,12 +323,7 @@ impl IniFile {
 
     fn overlay_section(&mut self, patch_section: &IniSection) -> usize {
         if let Some(index) = self.first_section.get(&patch_section.name).copied() {
-            let target = &mut self.sections[index];
-            for key in patch_section.keys() {
-                if let Some(value) = patch_section.get(key) {
-                    target.set(key, value);
-                }
-            }
+            self.sections[index].overlay(patch_section);
         } else {
             let index = self.sections.len();
             self.sections.push(patch_section.clone());

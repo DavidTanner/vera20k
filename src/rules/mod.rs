@@ -117,7 +117,8 @@ pub mod gattling_type;
 pub mod house_colors;
 pub mod infantry_sequence;
 pub mod ini_parser;
-pub mod ini_value;
+// The readers are a child of the raw store, so only they see raw value text.
+pub use ini_parser::ini_value;
 pub mod jumpjet_params;
 pub mod locomotor_type;
 pub mod mind_control_rules;

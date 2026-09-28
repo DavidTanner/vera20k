@@ -1008,8 +1008,8 @@ mod tests {
         let (_rules, ini, _fixed_art) = scenario_rules(rulesmd, langrule, &mode, &map);
 
         let general = ini.section("General").unwrap();
-        assert_eq!(general.get("BuildSpeed"), Some("1"));
-        assert_eq!(general.get("FlightLevel"), Some("900"));
+        assert_eq!(general.get_for_test("BuildSpeed"), Some("1"));
+        assert_eq!(general.get_for_test("FlightLevel"), Some("900"));
     }
 
     #[test]

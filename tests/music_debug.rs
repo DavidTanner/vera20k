@@ -44,15 +44,14 @@ fn debug_music_pipeline() {
                 // Check for Sound= keys (theme aliases).
                 let mut alias_count = 0;
                 for section_name in ini.section_names() {
-                    if let Some(section) = ini.section(section_name) {
-                        if let Some(sound) = section.get("Sound") {
-                            if !sound.is_empty() {
-                                if alias_count < 5 {
-                                    println!("  [{}] Sound={}", section_name, sound);
-                                }
-                                alias_count += 1;
-                            }
+                    // `read_name` is `None` for an empty value.
+                    if let Some(section) = ini.section(section_name)
+                        && let Some(sound) = section.read_name("Sound", 0x80)
+                    {
+                        if alias_count < 5 {
+                            println!("  [{}] Sound={}", section_name, sound);
                         }
+                        alias_count += 1;
                     }
                 }
                 println!("  Total Sound= aliases: {}", alias_count);
@@ -86,23 +85,21 @@ fn debug_music_pipeline() {
         let ini = IniFile::from_str(&text);
         println!("\n--- Resolving theme aliases ---");
         for section_name in ini.section_names().into_iter().take(10) {
-            if let Some(section) = ini.section(section_name) {
-                if let Some(sound) = section.get("Sound") {
-                    if !sound.is_empty() {
-                        // Try loading the resolved filename.
-                        for ext in [".wav", ".aud"] {
-                            let filename = format!("{}{}", sound, ext);
-                            if let Some(data) = assets.get(&filename) {
-                                println!(
-                                    "  [{}] Sound={} → {} ({} bytes) ✓",
-                                    section_name,
-                                    sound,
-                                    filename,
-                                    data.len()
-                                );
-                                break;
-                            }
-                        }
+            if let Some(section) = ini.section(section_name)
+                && let Some(sound) = section.read_name("Sound", 0x80)
+            {
+                // Try loading the resolved filename.
+                for ext in [".wav", ".aud"] {
+                    let filename = format!("{}{}", sound, ext);
+                    if let Some(data) = assets.get(&filename) {
+                        println!(
+                            "  [{}] Sound={} → {} ({} bytes) ✓",
+                            section_name,
+                            sound,
+                            filename,
+                            data.len()
+                        );
+                        break;
                     }
                 }
             }
