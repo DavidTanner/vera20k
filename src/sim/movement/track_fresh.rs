@@ -1139,9 +1139,6 @@ impl Simulation {
             return;
         };
         super::drive_do_turn(actor, desired, frame);
-        if let Some(body) = actor.body_facing.as_ref() {
-            actor.facing = (body.current(frame) >> 8) as u8;
-        }
     }
 
     /// The CloseEnough stop tests of the fresh arm's code-6 responses

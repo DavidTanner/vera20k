@@ -406,17 +406,13 @@ fn idle_action_ready(entity: &GameEntity, frame: u32) -> bool {
 /// Point an idle infantryman at one of the eight facings, with no turn animation.
 ///
 /// gamemd converts the `0..=7` draw to a facing byte of `index * 32` and pushes
-/// it through the facing object's snap setter — the same no-smoothing path spawn
-/// and deploy use, which is why an idle man appears to have simply turned rather
-/// than rotated. Infantry carry no `FacingClass` here, so the plain facing byte
-/// is the live carrier; the class is written too when a type happens to have one,
-/// because that is what the primary-facing read prefers.
+/// it through the body's snap setter (`+0x388` Set_Current, `0x0051CF34`/
+/// `0x0051D014`/`0x0051D092`) — the same no-smoothing path spawn and deploy
+/// use, which is why an idle man appears to have simply turned rather than
+/// rotated.
 fn set_idle_facing(entity: &mut GameEntity, facing_index: u8, frame: u32) {
     let facing_byte = facing_index.wrapping_mul(IDLE_FACING_STEP);
-    entity.facing = facing_byte;
-    if let Some(facing) = entity.body_facing.as_mut() {
-        facing.snap(u16::from(facing_byte) << 8, frame);
-    }
+    entity.body_facing.snap(u16::from(facing_byte) << 8, frame);
 }
 
 /// Run one idle turn for every eligible infantryman.
@@ -1041,13 +1037,13 @@ mod tests {
         let mut e = infantry(100);
         for index in 0..=7u8 {
             set_idle_facing(&mut e, index, 0);
-            assert_eq!(e.facing, index * IDLE_FACING_STEP);
+            assert_eq!(e.body_facing_byte(0), index * IDLE_FACING_STEP);
         }
         // N, E, S, W by RA2's facing convention — the whole point of the arm is
         // that idle men end up pointing in real directions, not arbitrary bytes.
         for (index, expected) in [(0u8, 0u8), (2, 64), (4, 128), (6, 192)] {
             set_idle_facing(&mut e, index, 0);
-            assert_eq!(e.facing, expected);
+            assert_eq!(e.body_facing_byte(0), expected);
         }
     }
 
@@ -1068,7 +1064,7 @@ mod tests {
 
         let mut e = infantry(100);
         e.animation = Some(Animation::new(SequenceKind::Stand));
-        e.facing = 200; // Not a multiple of 32, so any write is unambiguous.
+        e.body_facing.snap(0xC800, 0); // Not a multiple of 32, so any write is unambiguous.
         // Anchor the wait at frame 0 rather than the unarmed sentinel, so the
         // loop below can step to each expiry by plain addition.
         e.infantry.as_mut().unwrap().idle_action_timer =
@@ -1084,7 +1080,7 @@ mod tests {
             tick_idle_actions(
                 &mut store, &ORDER, &houses, &rules, &interner, &mut rng, frame,
             );
-            let facing = store.get(1).unwrap().facing;
+            let facing = store.get(1).unwrap().body_facing_byte(frame);
             if facing != 200 {
                 assert_eq!(facing % IDLE_FACING_STEP, 0, "facing {facing} is off-grid");
                 turned = true;

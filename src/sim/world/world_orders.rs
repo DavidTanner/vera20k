@@ -155,13 +155,8 @@ impl Simulation {
             ) else {
                 continue;
             };
-            let _ = combat::issue_attack_command(
-                &mut self.substrate.entities,
-                attacker_id,
-                target_sid,
-                Some(rules),
-                &self.interner,
-            );
+            let _ =
+                combat::issue_attack_command(&mut self.substrate.entities, attacker_id, target_sid);
         }
     }
 

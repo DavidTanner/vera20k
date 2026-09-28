@@ -99,10 +99,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         firer.position.sub_x = SimFixed::from_num(origin.x % 256);
         firer.position.sub_y = SimFixed::from_num(origin.y % 256);
         firer.position.exact_z_leptons = Some(origin.z);
-        firer.body_facing = Some(FacingClass::new(
-            input["body_heading"].as_u64().unwrap() as u16,
-            0,
-        ));
+        firer.body_facing = FacingClass::new(input["body_heading"].as_u64().unwrap() as u16, 0);
         firer.barrel_facing = Some(FacingClass::new(
             input["source_heading"].as_u64().unwrap() as u16,
             0,

@@ -193,9 +193,6 @@ impl FireSubject<'_> {
             .radio_contacts
             .slot(0)
             .and_then(|id| self.world.substrate.entities.get(id));
-        let current = |facing: Option<crate::sim::movement::FacingClass>, fallback: u8| {
-            facing.map_or(u16::from(fallback) << 8, |facing| facing.current(frame))
-        };
         let firer_facts = FirerFacts {
             enslaved: firer.slave.owner().is_some(),
             warped_out: firer.is_warped_out(),
@@ -256,14 +253,13 @@ impl FireSubject<'_> {
                     &self.world.interner,
                 ) as i32,
             }),
-            // A Building turns its turret with `+0x388`, which VERA keeps in
-            // `barrel_facing`; other classes' `+0x388` is the body.
-            primary_facing: if class == FirerClass::Building {
-                current(firer.barrel_facing, firer.facing)
-            } else {
-                current(firer.body_facing, firer.facing)
-            },
-            secondary_facing: current(firer.barrel_facing.or(firer.body_facing), firer.facing),
+            // `+0x388`: the body, which a Building also turns as its turret.
+            primary_facing: firer.body_facing_current(frame),
+            secondary_facing: firer
+                .barrel_facing
+                .map_or(firer.body_facing_current(frame), |facing| {
+                    facing.current(frame)
+                }),
             navcom: firer.navigation.nav_com.is_some(),
             moving_faster_than_tenth: firer.foot_speed.above_tenth(),
             deploying: unit_deploying(firer),

@@ -140,6 +140,7 @@ pub fn attach_rocket_state(
         target,
         RocketFlightParameters::legacy(speed),
         None,
+        0,
     )
 }
 
@@ -152,6 +153,7 @@ pub fn attach_rocket_state_with_payload(
     target: (u16, u16),
     speed: SimFixed,
     payload: Option<RocketPayload>,
+    frame: u32,
 ) -> bool {
     attach_rocket_state_full(
         entities,
@@ -160,6 +162,7 @@ pub fn attach_rocket_state_with_payload(
         target,
         RocketFlightParameters::legacy(speed),
         payload,
+        frame,
     )
 }
 
@@ -170,15 +173,17 @@ fn attach_rocket_state_full(
     target: (u16, u16),
     parameters: RocketFlightParameters,
     payload: Option<RocketPayload>,
+    frame: u32,
 ) -> bool {
     let Some(entity) = entities.get_mut(entity_id) else {
         return false;
     };
 
-    entity.facing = facing_from_delta(
+    let heading = facing_from_delta(
         i32::from(target.0) - i32::from(origin.0),
         i32::from(target.1) - i32::from(origin.1),
     );
+    entity.body_facing.snap(u16::from(heading) << 8, frame);
     let rocket_state = RocketState {
         phase: RocketPhase::Ignition,
         origin_rx: origin.0,

@@ -627,7 +627,7 @@ mod tests {
         assert!(!unit.lifecycle.in_limbo);
         assert!(unit.lifecycle.cell_marked);
         assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
-        assert_eq!(unit.facing, 0);
+        assert_eq!(unit.body_facing.destination(), 0);
         assert_eq!(
             unit.drive_locomotion.as_ref().unwrap().track.turn_index,
             0x47

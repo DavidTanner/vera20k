@@ -2822,13 +2822,8 @@ impl Simulation {
         }
         match target_id.filter(|&tid| self.substrate.entities.contains(tid)) {
             Some(tid) => {
-                let issued = combat::issue_attack_command(
-                    &mut self.substrate.entities,
-                    entity_id,
-                    tid,
-                    rules,
-                    &self.interner,
-                );
+                let issued =
+                    combat::issue_attack_command(&mut self.substrate.entities, entity_id, tid);
                 if issued {
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.order_intent = Some(OrderIntent::Guard {
@@ -2873,8 +2868,6 @@ impl Simulation {
                     &mut self.substrate.entities,
                     attacker_id,
                     target_id,
-                    rules,
-                    &self.interner,
                 ),
                 combat::TargetKind::Cell(rx, ry) => combat::issue_attack_cell_command(
                     &mut self.substrate.entities,
@@ -3950,12 +3943,14 @@ mod tests {
             BunkerLink::Approaching(2)
         );
 
-        // 2) Drive the install machine to Occupied. Clear facing_target each tick
-        // to simulate the body turn completing (no movement subsystem here).
+        // 2) Drive the install machine to Occupied, completing each body turn
+        // it issues (no movement subsystem here).
         for _ in 0..6 {
             tick_bunker_install(&mut sim, &rules, None);
+            let frame = sim.session.binary_frame;
             if let Some(u) = sim.substrate.entities.get_mut(1) {
-                u.facing_target = None;
+                let destination = u.body_facing.destination();
+                u.body_facing.snap(destination, frame);
             }
         }
         let rt = sim

@@ -306,20 +306,6 @@ pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> boo
     .is_ok()
 }
 
-/// Native rounds FacingClass::Current, including wrap at 0xff80.
-pub(crate) fn current_direction(entity: &GameEntity, frame: u32) -> u8 {
-    let raw = entity
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(entity.facing) << 8, |body| body.current(frame));
-    (((u32::from(raw) >> 7) + 1) >> 1) as u8
-}
-
-pub(crate) fn start_turn(entity: &mut GameEntity, target: u8, frame: u32) {
-    movement::drive_do_turn(entity, u16::from(target) << 8, frame);
-    entity.facing_target = Some(target);
-}
-
 pub(crate) fn queue_guard(sim: &mut Simulation, id: u64) {
     queue(sim, id, MissionType::Guard);
 }

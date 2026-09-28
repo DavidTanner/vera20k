@@ -800,14 +800,13 @@ pub(super) fn handle_deferred_occupancy(
                     snap_motion_to_cell_center(&mut entity.position);
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
                         &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
-                        &mut entity.facing,
                         body_facing,
                         &snap.locomotor,
                         &mut entity.drive_locomotion,
@@ -996,7 +995,7 @@ pub(super) fn handle_deferred_occupancy(
                     snap_motion_to_cell_center(&mut entity.position);
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     if scattered {
                         // Blocker is walking away. The original writes its
@@ -1019,7 +1018,6 @@ pub(super) fn handle_deferred_occupancy(
                             &mut entity.navigation.path_replay,
                             target,
                             &mut entity.navigation.path_runtime,
-                            &mut entity.facing,
                             body_facing,
                             &snap.locomotor,
                             &mut entity.drive_locomotion,
@@ -1193,14 +1191,13 @@ pub(super) fn handle_deferred_occupancy(
                     entity.attack_target = Some(AttackTarget::new(blocker_id));
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
                         &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
-                        &mut entity.facing,
                         body_facing,
                         &snap.locomotor,
                         &mut entity.drive_locomotion,
@@ -1304,14 +1301,13 @@ pub(super) fn handle_deferred_occupancy(
                     let effective_marker_context =
                         deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
                     let cur_pos = (entity.position.rx, entity.position.ry);
-                    let body_facing = entity.body_facing;
+                    let body_facing = entity.body_facing.current(mcfg.binary_frame);
                     if let Some(ref mut target) = entity.movement_target {
                         let mut aborted_for_stuck = false;
                         let evts = handle_blocked_tick(
                             &mut entity.navigation.path_replay,
                             target,
                             &mut entity.navigation.path_runtime,
-                            &mut entity.facing,
                             body_facing,
                             &snap.locomotor,
                             &mut entity.drive_locomotion,
@@ -1357,14 +1353,13 @@ pub(super) fn handle_deferred_occupancy(
                     snap_motion_to_cell_center(&mut entity.position);
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
                         &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
-                        &mut entity.facing,
                         body_facing,
                         &snap.locomotor,
                         &mut entity.drive_locomotion,
@@ -1469,7 +1464,6 @@ mod tests {
 
         let mut mover = GameEntity::test_default(1, "MOVER", "Americans", 5, 5);
         mover.category = EntityCategory::Unit;
-        mover.facing = 0;
         entities.insert(mover);
 
         let mut blocker = GameEntity::test_default(2, "PEER", "Americans", 5, 4);
@@ -1513,10 +1507,9 @@ mod tests {
             grid: &grid,
             terrain: None,
             playfield_bounds: Some(playfield),
-            native_frame: 0,
         };
 
-        let stale_search = stale_context.build(&occupancy, 1, (5, 5), 0, None, false, 1);
+        let stale_search = stale_context.build(&occupancy, 1, (5, 5), 0, false, 1);
         assert_eq!(
             stale_search.effective_urgency, 0,
             "the old one-direction path cannot satisfy the Unit peer gate"
@@ -1538,7 +1531,7 @@ mod tests {
             &interner,
         );
         let refreshed_context = bridge_marker_context_with_peers(stale_context, &refreshed_peers);
-        let refreshed_search = refreshed_context.build(&occupancy, 1, (5, 5), 0, None, false, 1);
+        let refreshed_search = refreshed_context.build(&occupancy, 1, (5, 5), 0, false, 1);
 
         assert_eq!(refreshed_search.effective_urgency, 1);
         assert!(refreshed_search.overlay.contains((4, 4)));

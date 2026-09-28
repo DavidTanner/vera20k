@@ -32,10 +32,7 @@ use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::world::EnterOrderCounter;
-use crate::util::fixed_math::{
-    SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, facing_from_delta_int as facing_from_delta,
-    fixed_distance,
-};
+use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, fixed_distance};
 use crate::util::lepton::CELL_CENTER_LEPTON;
 
 use super::{
@@ -130,10 +127,7 @@ pub(super) fn apply_cell_transition_remainder(
 pub(super) fn configure_motion_after_transition(
     target: &mut MovementTarget,
     locomotor: &Option<LocomotorState>,
-    facing: &mut u8,
-    facing_target: &mut Option<u8>,
     category: EntityCategory,
-    mover_rot: i32,
     position: &Position,
 ) {
     let current_cell = (position.rx, position.ry);
@@ -143,14 +137,6 @@ pub(super) fn configure_motion_after_transition(
         let next = target.path[target.next_index];
         let ndx = next.0 as i32 - current_cell.0 as i32;
         let ndy = next.1 as i32 - current_cell.1 as i32;
-
-        let new_face = facing_from_delta(ndx, ndy);
-        if category == EntityCategory::Infantry || super::FacingClass::rate_from_rot(mover_rot) <= 0
-        {
-            *facing = new_face;
-        } else {
-            *facing_target = Some(new_face);
-        }
 
         if category == EntityCategory::Infantry {
             // Infantry: direction from current sub-cell toward next cell's subcell position.
@@ -197,20 +183,15 @@ pub(super) fn configure_motion_after_transition(
 /// path-directed crossing loop cannot absorb a sideways cell exit; the drift
 /// this suppresses is bounded by the brake-decay tail (see the P2b plan doc).
 ///
-/// Hover never uses the stop-rotate-go path (`handle_vehicle_rotation`); any
-/// `facing_target` left by shared path plumbing is cleared here.
+/// Hover never uses the stop-rotate-go path (`handle_vehicle_rotation`).
 pub(super) fn hover_steer(
-    facing: &mut u8,
-    facing_target: &mut Option<u8>,
-    body_facing: &mut Option<super::facing_class::FacingClass>,
+    body_facing: &mut super::facing_class::FacingClass,
     position: &Position,
     target: &mut MovementTarget,
-    rot: i32,
     native_frame: u32,
 ) -> bool {
     use crate::util::lepton::CELL_CENTER_LEPTON;
 
-    *facing_target = None;
     let (wx, wy): (u16, u16) = if target.next_index < target.path.len() {
         target.path[target.next_index]
     } else {
@@ -221,17 +202,14 @@ pub(super) fn hover_steer(
     let dyl: SimFixed = SimFixed::from_num((wy as i32 - position.ry as i32) * 256)
         + (CELL_CENTER_LEPTON - position.sub_y);
     if dxl == SIM_ZERO && dyl == SIM_ZERO {
-        // Already exactly on the waypoint — nothing to steer toward.
-        *body_facing = None;
+        // Already exactly on the waypoint — nothing to steer toward. A turn
+        // already started keeps running on the frame clock.
         return false;
     }
 
     let desired16: u16 = super::hover::hover_desired_facing16(dxl, dyl);
-    let bf = body_facing
-        .get_or_insert_with(|| super::facing_class::FacingClass::new((*facing as u16) << 8, rot));
-    bf.set(desired16, native_frame);
-    let current16: u16 = bf.current(native_frame);
-    *facing = (current16 >> 8) as u8;
+    body_facing.set(desired16, native_frame);
+    let current16: u16 = body_facing.current(native_frame);
 
     let (mx, my) = super::hover::hover_move_dir(current16);
     target.move_dir_x = mx;
@@ -253,71 +231,45 @@ pub(super) enum RotationResult {
 
 /// Handle vehicle in-place rotation before movement begins.
 ///
-/// Vehicles rotate toward `facing_target` before advancing. When `ROT > 0` the
-/// hull turns through a native-frame `FacingClass` at the unit's rules ROT —
-/// gamemd's `DriveLocomotionClass::Do_Turn` on the body PrimaryFacing, whose
-/// turn duration is `abs(delta_8bit) / ROT` native frames (frame-count based,
-/// NOT millisecond based). `ROT = 0` means instant snap. Infantry are excluded
-/// by the caller (they always turn instantly without this function).
-///
-/// `facing` mirrors the interpolator's top byte. A retained hull from combat
-/// can have no movement-facing target: preserve its full sample for fresh
-/// admission. Completing a movement target still retires this adapter at the
-/// exact byte target; persistent Facing lifecycle remains a separate migration.
+/// A vehicle holds position while its hull turns: gamemd's Drive/Ship Process
+/// returns through its tail while `FacingClass::Is_Rotating` answers true on
+/// the body (`0x004B0788`), whoever started the turn. `desired` is a turn this
+/// visit issues first — the fresh arm's `Do_Turn` (`0x004B343B`), one
+/// `FacingClass::Set` at the body's constructor rate (duration
+/// `abs(delta) / rate` native frames; a non-positive rate is instant). Infantry
+/// are excluded by the caller.
 ///
 /// Takes individual fields to avoid borrow conflicts with `entity.movement_target`.
 pub(super) fn handle_vehicle_rotation(
-    facing: &mut u8,
-    facing_target: &mut Option<u8>,
-    body_facing: &mut Option<super::facing_class::FacingClass>,
-    _position: &mut Position,
+    body_facing: &mut super::facing_class::FacingClass,
+    desired: Option<u16>,
     locomotor: &mut Option<LocomotorState>,
-    rot: i32,
     native_frame: u32,
     sim_tick: u64,
 ) -> RotationResult {
-    let Some(target_facing) = *facing_target else {
-        // Unit Fire_At_Target/Face_Update can retain an arbitrary16-bit hull
-        // without a movement-facing target. Drive4B3408 samples that same
-        // PrimaryFacing: discarding it here incorrectly admits one-bit misses.
-        if let Some(body) = body_facing.as_ref() {
-            *facing = (body.current(native_frame) >> 8) as u8;
-        }
-        return RotationResult::ReadyToMove;
-    };
-    // Rules ROT drives the hull FacingClass. `set` is a no-op once already aimed
-    // at the target, so calling it each tick is safe and yields smooth retargets
-    // (it snapshots the live animated value into the rotation origin).
-    let bf = body_facing
-        .get_or_insert_with(|| super::facing_class::FacingClass::new((*facing as u16) << 8, rot));
-    bf.set((target_facing as u16) << 8, native_frame);
-    *facing = (bf.current(native_frame) >> 8) as u8;
-
-    if bf.is_rotating(native_frame) {
-        // Still rotating in place — advance facing but don't move.
-        let mut debug_events = Vec::new();
-        if let Some(loco) = locomotor {
-            let old_phase = loco.phase;
-            loco.phase = GroundMovePhase::Accelerating;
-            if old_phase != GroundMovePhase::Accelerating {
-                debug_events.push((
-                    sim_tick as u32,
-                    DebugEventKind::PhaseChange {
-                        from: format!("{:?}", old_phase),
-                        to: "Accelerating".into(),
-                        reason: "movement started".into(),
-                    },
-                ));
-            }
-        }
-        RotationResult::StillRotating { debug_events }
-    } else {
-        // Rotation complete — snap to the exact target and start moving.
-        *facing = target_facing;
-        *facing_target = None;
-        *body_facing = None;
-        RotationResult::ReadyToMove
+    if let Some(desired) = desired {
+        body_facing.set(desired, native_frame);
     }
+    if !body_facing.is_rotating(native_frame) {
+        return RotationResult::ReadyToMove;
+    }
+    // Still rotating in place — the hull turns but the mover does not advance.
+    let mut debug_events = Vec::new();
+    if let Some(loco) = locomotor {
+        let old_phase = loco.phase;
+        loco.phase = GroundMovePhase::Accelerating;
+        if old_phase != GroundMovePhase::Accelerating {
+            debug_events.push((
+                sim_tick as u32,
+                DebugEventKind::PhaseChange {
+                    from: format!("{:?}", old_phase),
+                    to: "Accelerating".into(),
+                    reason: "movement started".into(),
+                },
+            ));
+        }
+    }
+    RotationResult::StillRotating { debug_events }
 }
 
 /// Result of lepton position advancement.
@@ -553,14 +505,21 @@ pub(super) struct DriveCellAdmission<'a> {
 /// (`0x0073F8D4..FA26`), captured before the mover takes its mutable borrow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct MoverHeadOnContext {
-    pub facing: u8,
+    /// The visit's frame, at which both bodies' headings are sampled.
+    pub frame: u32,
+    /// The body heading (`+0x388`) at `frame`.
+    pub facing: u16,
     pub world: [i32; 3],
 }
 
 impl MoverHeadOnContext {
-    pub(super) fn from_entity(entity: &crate::sim::game_entity::GameEntity) -> Option<Self> {
+    pub(super) fn from_entity(
+        entity: &crate::sim::game_entity::GameEntity,
+        frame: u32,
+    ) -> Option<Self> {
         (entity.category == crate::map::entities::EntityCategory::Unit).then(|| Self {
-            facing: entity.facing,
+            frame,
+            facing: entity.body_facing_current(frame),
             world: crate::sim::pathfinding::cell_entry::entity_world_leptons(entity),
         })
     }
@@ -592,7 +551,7 @@ impl DriveCellAdmission<'_> {
             && crate::sim::pathfinding::cell_entry::head_on_exit(
                 mover.facing,
                 mover.world,
-                ally.facing,
+                ally.facing.current(mover.frame),
                 ally.world,
             )
         {
@@ -616,7 +575,6 @@ fn select_fresh_drive_track_at_current_cell(
     target: &mut MovementTarget,
     position: &Position,
     facing: u16,
-    facing_target: &mut Option<u8>,
     drive_locomotion: &mut Option<DriveLocomotionRuntime>,
     ship_locomotion: &mut Option<ShipLocomotionRuntime>,
     cell_occupation: &mut Option<&mut CellOccupationGrid>,
@@ -759,7 +717,6 @@ fn select_fresh_drive_track_at_current_cell(
     target.move_dir_x = d_x;
     target.move_dir_y = d_y;
     target.move_dir_len = d_len;
-    *facing_target = None;
 
     // The reserved head is the curve's endpoint: the head node for a straight
     // run, the node after it for a turning curve.
@@ -817,7 +774,9 @@ fn select_fresh_drive_track_at_current_cell(
 
 pub(super) enum NativeTrackPreparation {
     Invoke(super::track_process::TrackInvocation),
-    TurnFirst(super::track_process::TrackInvocation),
+    /// The body is off the path's leading octant: turn it to this 8-bit
+    /// direction first.
+    TurnFirst(super::track_process::TrackInvocation, u8),
     Idle(super::track_process::TrackInvocation),
     Blocked(super::track_process::TrackInvocation, DriveSelectionRefusal),
 }
@@ -831,7 +790,6 @@ pub(super) fn prepare_native_track(
     target: &mut MovementTarget,
     position: &Position,
     facing: u16,
-    facing_target: &mut Option<u8>,
     drive: &mut Option<DriveLocomotionRuntime>,
     ship: &mut Option<ShipLocomotionRuntime>,
     locomotor: &Option<LocomotorState>,
@@ -873,7 +831,6 @@ pub(super) fn prepare_native_track(
             target,
             position,
             facing,
-            facing_target,
             drive,
             ship,
             &mut Some(occupation),
@@ -884,8 +841,7 @@ pub(super) fn prepare_native_track(
         ) {
             FreshTrackOutcome::Installed => {}
             FreshTrackOutcome::TurnFirst(desired) => {
-                *facing_target = Some(desired);
-                return Some(NativeTrackPreparation::TurnFirst(invocation));
+                return Some(NativeTrackPreparation::TurnFirst(invocation, desired));
             }
             FreshTrackOutcome::BlockedByOccupation(refusal) => {
                 return Some(NativeTrackPreparation::Blocked(invocation, refusal));
@@ -1013,9 +969,7 @@ pub(super) fn process_cell_crossings(
     target: &mut MovementTarget,
     path_runtime: &mut crate::sim::components::FootPathRuntime,
     position: &mut Position,
-    facing: &mut u8,
-    facing_target: &mut Option<u8>,
-    body_facing: Option<super::FacingClass>,
+    body_facing: &super::FacingClass,
     locomotor: &mut Option<LocomotorState>,
     drive_locomotion: &mut Option<DriveLocomotionRuntime>,
     ship_locomotion: &mut Option<ShipLocomotionRuntime>,
@@ -1170,8 +1124,7 @@ pub(super) fn process_cell_crossings(
                     path_replay,
                     target,
                     path_runtime,
-                    facing,
-                    body_facing,
+                    body_facing.current(mcfg.binary_frame),
                     &snap.locomotor,
                     drive_locomotion,
                     ship_locomotion,
@@ -1360,8 +1313,7 @@ pub(super) fn process_cell_crossings(
                     path_replay,
                     target,
                     path_runtime,
-                    facing,
-                    body_facing,
+                    body_facing.current(mcfg.binary_frame),
                     &snap.locomotor,
                     drive_locomotion,
                     ship_locomotion,
@@ -1439,8 +1391,7 @@ pub(super) fn process_cell_crossings(
                             path_replay,
                             target,
                             path_runtime,
-                            facing,
-                            body_facing,
+                            body_facing.current(mcfg.binary_frame),
                             &snap.locomotor,
                             drive_locomotion,
                             ship_locomotion,
@@ -1629,15 +1580,7 @@ pub(super) fn process_cell_crossings(
             loco.set_step_head(None);
         }
 
-        configure_motion_after_transition(
-            target,
-            locomotor,
-            facing,
-            facing_target,
-            category,
-            snap.rot,
-            position,
-        );
+        configure_motion_after_transition(target, locomotor, category, position);
 
         // Pre-allocate subcell in the NEXT path cell for infantry direction targeting.
         // FindSubCellDest reserves a subcell in the destination cell before walking,

@@ -388,16 +388,14 @@ fn hash_retained_track_classes_before_167(
     entity: &crate::sim::game_entity::GameEntity,
     hasher: &mut impl Hasher,
 ) {
-    use crate::sim::components::{
-        DriveCoord, DriveOccupationFootprint, DriveTurnState, TrackProgress,
-    };
+    use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress};
     use crate::util::fixed_math::SimFixed;
 
     #[derive(Hash)]
     struct DriveSchema166<'a> {
         destination: &'a Option<DriveCoord>,
         head_to: &'a Option<DriveCoord>,
-        turn: &'a DriveTurnState,
+        turn: (Option<u8>, Option<u16>, u16, bool),
         track: &'a TrackProgress,
         pending_track_occupation: bool,
         end_permitted: &'a bool,
@@ -423,7 +421,7 @@ fn hash_retained_track_classes_before_167(
         .map(|drive| DriveSchema166 {
             destination: &drive.destination,
             head_to: &drive.head_to,
-            turn: &drive.turn,
+            turn: (None, None, 0, false),
             track: &drive.track,
             pending_track_occupation: false,
             end_permitted: &drive.end_permitted,
@@ -1721,15 +1719,8 @@ impl Simulation {
             }
             entity.position.sub_x.hash(hasher);
             entity.position.sub_y.hash(hasher);
-            entity.facing.hash(hasher);
-            entity.facing_target.hash(hasher);
-            // Body-rotation interpolator (present only while turning in place).
-            if let Some(ref bf) = entity.body_facing {
-                1u8.hash(hasher);
-                bf.hash(hasher);
-            } else {
-                0u8.hash(hasher);
-            }
+            // The body FacingClass (`+0x388`), each Techno's one heading.
+            entity.body_facing.hash(hasher);
             entity.body_frame_counter.hash(hasher);
             // Building+6E6 is retained transition state, independent of HP.
             if entity.building_damage_state_active {
@@ -2352,12 +2343,9 @@ impl Simulation {
             } else {
                 0u8.hash(hasher);
             }
-            // Barrel facing — Hash-derived, all primitive fields contribute.
-            // A building's (`+0x388`) enters with schema 230.
-            if let Some(barrel) = entity.barrel_facing.as_ref().filter(|_| {
-                schema.includes(HashFeature::BuildingFacing)
-                    || entity.category != crate::map::entities::EntityCategory::Structure
-            }) {
+            // Turret facing (`+0x3A0`) — Hash-derived, all primitive fields
+            // contribute.
+            if let Some(barrel) = entity.barrel_facing.as_ref() {
                 1u8.hash(hasher);
                 barrel.hash(hasher);
             } else {

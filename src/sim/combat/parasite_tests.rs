@@ -419,7 +419,14 @@ fn a_sonic_hit_ejects_the_drone_alive_beside_its_host_and_drops_the_shooter_targ
         .get_mut(drone)
         .unwrap()
         .set_archive_target(Some(TargetKind::Cell(3, 3)));
-    let host_facing = arena.sim.substrate.entities.get(tank).unwrap().facing;
+    let host_facing = arena
+        .sim
+        .substrate
+        .entities
+        .get(tank)
+        .unwrap()
+        .body_facing
+        .destination();
     arena.hit(&rules, tank, Some(dolphin), 4, "SonicWarhead");
 
     let frame = arena.frame();
@@ -427,7 +434,11 @@ fn a_sonic_hit_ejects_the_drone_alive_beside_its_host_and_drops_the_shooter_targ
     assert!(!released.lifecycle.in_limbo && released.lifecycle.object_alive);
     assert_eq!(released.health.current, 100);
     assert_eq!(host_facing, 0);
-    assert_eq!(released.facing, 64, "north host: released facing east");
+    assert_eq!(
+        released.body_facing.destination(),
+        0x4000,
+        "north host: released facing east"
+    );
     assert_eq!(released.paralysis_timer.remaining(frame as i32), 3 * 60);
     // ExitUnit 0x0062A771: Set_ArchiveTarget(NULL).
     assert_eq!(released.archive_target(), None);
@@ -555,7 +566,7 @@ fn a_host_lost_in_flight_returns_the_drone_to_its_launch_cell() {
     });
     let returned = arena.sim.substrate.entities.get(drone).unwrap();
     assert_eq!(arena.cell(drone), (10, 10));
-    assert_eq!(returned.facing, 0);
+    assert_eq!(returned.body_facing.destination(), 0);
     assert!(!returned.is_paralyzed(arena.frame()));
     assert!(returned.parasite.as_deref().unwrap().victim().is_none());
     // The refusal (0x0062AA96..0x0062AAC9) never calls Set_ArchiveTarget.

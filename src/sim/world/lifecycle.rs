@@ -2130,7 +2130,7 @@ impl Simulation {
             .entities
             .get_mut(id)
             .expect("admitted Fly callback");
-        air_movement::ensure_fly_facings(entity);
+        air_movement::ensure_fly_secondary_facing(entity);
         let state = entity
             .locomotor
             .as_mut()
@@ -2141,7 +2141,7 @@ impl Simulation {
         match state.complete_takeoff(height, landing_base) {
             TakeoffFacing::Unchanged => {}
             TakeoffFacing::SecondaryToPrimaryDestination => {
-                let desired = entity.body_facing.unwrap().destination();
+                let desired = entity.body_facing.destination();
                 entity
                     .barrel_facing
                     .as_mut()
@@ -2155,20 +2155,11 @@ impl Simulation {
                     destination.x.wrapping_sub(xy[0]),
                     destination.y.wrapping_sub(xy[1]),
                 );
-                entity
-                    .body_facing
-                    .as_mut()
-                    .unwrap()
-                    .set(desired, self.session.binary_frame);
+                entity.body_facing.set(desired, self.session.binary_frame);
                 entity.locomotor.as_mut().unwrap().speed_fraction =
                     crate::util::fixed_math::SIM_ONE;
             }
         }
-        entity.facing = (entity
-            .body_facing
-            .unwrap()
-            .current(self.session.binary_frame)
-            >> 8) as u8;
     }
 
     /// Object-kind classification for the LogicVector dispatch (F13). Probes

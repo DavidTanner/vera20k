@@ -328,7 +328,7 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 if node["turn"].as_bool().unwrap_or(false) {
                     let mut facing = crate::sim::movement::FacingClass::new(0, 5);
                     facing.set(0x4000, 100);
-                    blocker.body_facing = Some(facing);
+                    blocker.body_facing = facing;
                 }
                 if node["gate"].as_bool().unwrap_or(false) {
                     let opened = node["open"].as_bool().unwrap_or(false);

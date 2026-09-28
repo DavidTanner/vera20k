@@ -813,10 +813,17 @@ mod tests {
         if let (Some(attacker), Some(pos)) = (store.get_mut(1), target_pos) {
             // In real code: compute firing direction, apply cooldown, etc.
             assert_eq!(pos.rx, 30);
-            attacker.facing = 128; // face toward target
+            attacker.body_facing.snap(0x8000, 0); // face toward target
         }
 
-        assert_eq!(store.get(1).expect("should exist").facing, 128);
+        assert_eq!(
+            store
+                .get(1)
+                .expect("should exist")
+                .body_facing
+                .destination(),
+            0x8000
+        );
     }
 
     #[test]

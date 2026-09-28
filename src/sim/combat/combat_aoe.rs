@@ -3529,7 +3529,7 @@ mod tests {
             {
                 use crate::sim::components::{DriveCoord, FootPathQueue};
                 use crate::sim::timer::CdTimer;
-                victim.facing = 64;
+                victim.body_facing.snap(0x4000, 0);
                 victim.infantry.as_mut().unwrap().cell_entry_blocked = true;
                 victim.navigation.nav_com_aux =
                     Some(crate::sim::components::NavTargetRef::cell(1, 1));
@@ -3751,7 +3751,7 @@ mod tests {
                         "queue": victim.navigation.path_replay.directions.iter().map(|&v| if v == 255 { -1 } else { i32::from(v) }).collect::<Vec<_>>(),
                         "reference": victim.navigation.path_replay.reference_cell,
                         "queued_mission": victim.mission.queued().raw(),
-                        "facing": u32::from(victim.facing) * 256 * 65537,
+                        "facing": u32::from(victim.body_facing.destination()) * 65537,
                         "moving": u8::from(loco.walk_is_moving().unwrap()), "powered": u8::from(loco.powered),
                         "blocked": u8::from(path.path_blocked),
                         "movement_timer": [path.movement_timer.start_frame(), path.movement_timer.duration()],

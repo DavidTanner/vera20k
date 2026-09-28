@@ -176,11 +176,12 @@ pub struct LayeredEntityBlockMap {
     moving_allies: BTreeMap<(MovementLayer, (u16, u16)), MovingAllyOccupant>,
 }
 
-/// A moving allied occupant as the head-on exit sees it: its facing byte and
-/// its lepton coordinates at the time the owner snapshot was built.
+/// A moving allied occupant as the head-on exit sees it: its body facing
+/// (`+0x388`) and its lepton coordinates at the time the owner snapshot was
+/// built. The facing is kept as state and sampled at the asking frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MovingAllyOccupant {
-    pub facing: u8,
+    pub facing: crate::sim::movement::FacingClass,
     pub world: [i32; 3],
 }
 

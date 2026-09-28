@@ -313,10 +313,7 @@ fn compare_cmin(s: &Scene, state: &Value, context: &str) {
         location,
         "{context}: location"
     );
-    let desired = entity
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(entity.facing) << 8, |body| body.destination());
+    let desired = entity.body_facing.destination();
     assert_eq!(
         u64::from(desired),
         state["facing"]["desired"].as_u64().unwrap(),

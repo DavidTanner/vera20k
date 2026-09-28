@@ -34,15 +34,9 @@ pub(crate) fn drive_locomotor_is_moving(entity: &GameEntity) -> bool {
 /// `FacingClass::Set @ 0x004C9220` on the owner's PrimaryFacing (+0x388).
 /// Re-issuing the destination the facing already holds keeps its running
 /// timer (tools/mcv_deploy_oracle.json turns). The hull then animates from the
-/// frame-anchored `body_facing`; `unit_post::apply_unit_facing` mirrors it into
-/// the 8-bit heading while the unit holds no movement target.
+/// frame-anchored `body_facing`.
 pub(crate) fn drive_do_turn(entity: &mut GameEntity, desired: u16, frame: u32) {
-    let rot = entity.locomotor.as_ref().map_or(0, |loco| loco.rot);
-    let facing = entity.facing;
-    entity
-        .body_facing
-        .get_or_insert_with(|| super::FacingClass::new(u16::from(facing) << 8, rot))
-        .set(desired, frame);
+    entity.body_facing.set(desired, frame);
 }
 
 /// Compute the Drive-local target speed fraction from currently modeled runtime

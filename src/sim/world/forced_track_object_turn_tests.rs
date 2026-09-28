@@ -40,7 +40,7 @@ fn fixture(selector: i32) -> Simulation {
     entity.position.sub_x = SimFixed::from_num(x % 256);
     entity.position.sub_y = SimFixed::from_num(y % 256);
     entity.position.exact_z_leptons = Some(0);
-    entity.facing = facing;
+    entity.body_facing.snap(u16::from(facing) << 8, 0);
     entity.drive_accelerates = false;
     entity.is_voxel = false;
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));

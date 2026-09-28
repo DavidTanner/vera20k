@@ -30,7 +30,7 @@ fn entities(target_type: &str) -> EntityStore {
     // (`UnitClass::GetFireError @ 0x00740FD0` step 17) compares its HULL
     // `+0x388` against the target. Face it east at the target one cell away so
     // this fixture exercises the DecloakToFire arm rather than turn-to-fire.
-    bsub.facing = 64;
+    bsub.body_facing.snap(0x4000, 0);
     bsub.attack_target = Some(AttackTarget::new(2));
     let mut cloak = CloakRuntime::new(0, 9);
     cloak.establish_unlimbo_fully_cloaked();

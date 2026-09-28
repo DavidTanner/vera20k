@@ -436,7 +436,7 @@ impl Simulation {
                     object.slave_reload_rate,
                     self.interner.resolve(parent.owner()).to_string(),
                     (parent.position.rx, parent.position.ry),
-                    parent.facing,
+                    parent.body_facing_byte(self.session.binary_frame),
                     parent.position.z,
                 ))
             })
@@ -1330,10 +1330,12 @@ impl Simulation {
             .as_ref()
             .and_then(|terrain| terrain.cell(cell.0, cell.1))
             .map_or(0, |terrain_cell| terrain_cell.level);
+        let now = self.session.binary_frame;
         if let Some(entity) = self.substrate.entities.get_mut(slave) {
             entity.sub_cell = Some(spot);
             entity.on_bridge = false;
-            entity.facing = 0;
+            // Unlimbo's body snap to the facing-0 request (`0x006F6DAA`).
+            entity.body_facing.snap(0, now);
         }
         let outcome = self.try_reveal_entity_with_context(
             slave,

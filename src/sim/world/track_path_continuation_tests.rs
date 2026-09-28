@@ -255,7 +255,12 @@ fn far_native_rows_through_the_process_corridor() {
         }
         // The route leaves east; facing it lets head selection install the
         // track in the resumed visit instead of turning first.
-        sim.substrate.entities.get_mut(id).unwrap().facing = 0x40;
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .body_facing
+            .snap(0x4000, 0);
         order(&mut sim, &rules, id, (13, 10));
         sim.session.binary_frame = 101;
         let grid = sim.path_grid.clone();
@@ -364,7 +369,12 @@ fn deferred_order_with_a_retained_destination_reschedules_without_a_setter() {
 fn ordered_attack_null_destination_stops_a_moving_tank_after_its_track() {
     for adapter_dropped in [true, false] {
         let (mut sim, rules, registry, id) = unit(&json!({"family": "drive"}));
-        sim.substrate.entities.get_mut(id).unwrap().facing = 0x40;
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .body_facing
+            .snap(0x4000, 0);
         order(&mut sim, &rules, id, (20, 10));
         let grid = sim.path_grid.clone();
         let mut frame = 101;
@@ -534,7 +544,12 @@ fn track_end_selects_the_next_head_in_the_same_process() {
     use crate::sim::movement::track_head::committed_track_head;
     for family in ["drive", "ship"] {
         let (mut sim, rules, registry, id) = unit(&json!({"family": family}));
-        sim.substrate.entities.get_mut(id).unwrap().facing = 0x40;
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .body_facing
+            .snap(0x4000, 0);
         order(&mut sim, &rules, id, (16, 10));
         let mut heads = Vec::new();
         for frame in 101..600 {
@@ -566,7 +581,12 @@ fn track_end_selects_the_next_head_in_the_same_process() {
 fn reorder_requests_the_new_route_in_the_process_that_ends_the_head() {
     use crate::sim::movement::track_head::committed_track_head;
     let (mut sim, rules, registry, id) = unit(&json!({"family": "drive"}));
-    sim.substrate.entities.get_mut(id).unwrap().facing = 0x40;
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .body_facing
+        .snap(0x4000, 0);
     order(&mut sim, &rules, id, (20, 10));
     let mut frame = 101;
     let retained = loop {
@@ -790,7 +810,12 @@ fn drive_to_first_head(
     id: u64,
 ) -> (DriveCoord, u32) {
     use crate::sim::movement::track_head::committed_track_head;
-    sim.substrate.entities.get_mut(id).unwrap().facing = 0x40;
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .body_facing
+        .snap(0x4000, 0);
     order(sim, rules, id, (20, 10));
     for frame in 101..200 {
         visit(sim, rules, registry, id, frame);
@@ -932,7 +957,12 @@ fn track_end_frame_spends_one_speed_budget() {
     use crate::sim::movement::track_head::committed_track_head;
     for family in ["drive", "ship"] {
         let (mut sim, rules, registry, id) = unit(&json!({"family": family}));
-        sim.substrate.entities.get_mut(id).unwrap().facing = 0x40;
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .body_facing
+            .snap(0x4000, 0);
         order(&mut sim, &rules, id, (20, 10));
         let grid = sim.path_grid.clone();
         let progress = |sim: &Simulation| {
@@ -992,7 +1022,12 @@ fn track_end_frame_spends_one_speed_budget() {
 fn queued_waypoint_arrival_returns_before_the_continuation() {
     use crate::sim::movement::track_head::committed_track_head;
     let (mut sim, rules, registry, id) = unit(&json!({"family": "drive", "mission": 2}));
-    sim.substrate.entities.get_mut(id).unwrap().facing = 0x40;
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .body_facing
+        .snap(0x4000, 0);
     order(&mut sim, &rules, id, (12, 10));
     sim.substrate
         .entities

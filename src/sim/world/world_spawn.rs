@@ -1048,7 +1048,6 @@ impl Simulation {
         let infantry_sub_cell = is_infantry.then(|| self.allocate_infantry_sub_cell(rx, ry));
         let (sub_x, sub_y) = {
             let entity = self.substrate.entities.get_mut(stable_id)?;
-            entity.facing = facing;
             if let Some(sub_cell) = infantry_sub_cell {
                 entity.sub_cell = Some(sub_cell);
                 let offsets = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
@@ -1074,6 +1073,12 @@ impl Simulation {
         );
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             return None;
+        }
+        // `TechnoClass::Unlimbo` snaps the body to the requested direction
+        // once the Reveal succeeded (`+0x388` Set_Current, `0x006F6DAA`).
+        let frame = self.session.binary_frame;
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
         }
         self.allocate_building_light(stable_id, rules);
         self.initialize_cloak_after_unlimbo(stable_id, rules);
@@ -1479,7 +1484,8 @@ impl Simulation {
                     entity.veterancy_raw,
                     entity.attack_target.as_ref().map(|t| t.target),
                 ),
-                crate::sim::mcv_deploy::current_direction(entity, self.session.binary_frame),
+                // Native rounds FacingClass::Current, including wrap at 0xff80.
+                entity.body_facing_dir(self.session.binary_frame),
                 yard_obj.construction_yard,
                 rules
                     .object(type_str)
@@ -1559,7 +1565,7 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(stable_id)
                 && !crate::sim::movement::ready_producer::is_moving_now_for(entity, now)
             {
-                crate::sim::mcv_deploy::start_turn(entity, deploy_facing, now);
+                crate::sim::movement::drive_do_turn(entity, u16::from(deploy_facing) << 8, now);
             }
             crate::sim::radio::transmit_to_contact(
                 self,

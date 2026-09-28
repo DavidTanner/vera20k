@@ -139,18 +139,11 @@ impl Simulation {
             || (human && !rules.general.player_return_fire)
         {
             let frame = self.session.binary_frame;
-            let rotating = building
-                .barrel_facing
-                .is_some_and(|facing| facing.is_rotating(frame));
+            let rotating = building.body_facing.is_rotating(frame);
             if !rotating && self.building_operational_state(id, rules) == Some(true) {
                 let direction = ((self.scenario_rng.next_u32() & 0xFF) as u16) << 8;
-                if let Some(facing) = self
-                    .substrate
-                    .entities
-                    .get_mut(id)
-                    .and_then(|building| building.barrel_facing.as_mut())
-                {
-                    facing.set(direction, frame);
+                if let Some(building) = self.substrate.entities.get_mut(id) {
+                    building.body_facing.set(direction, frame);
                 }
             }
         } else {

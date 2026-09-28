@@ -142,7 +142,7 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     if let Some(turn_to) = input["turn_to"].as_i64() {
         facing.set(turn_to as u16, frame - int(input, "turn_age", 0) as u32);
     }
-    entity.body_facing = Some(facing);
+    entity.body_facing = facing;
     let loco = entity.locomotor.as_mut().unwrap();
     loco.set_fly_target_height(int(input, "target_height", 1500) as i32);
     loco.fly_current_speed = SimFixed::from_bits(int(input, "speed_bits", 65536) as i32);
@@ -694,7 +694,7 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.health.current = 300;
         entity.position.exact_z_leptons = Some(500);
-        entity.body_facing = Some(FacingClass::new(0x4000, 5));
+        entity.body_facing = FacingClass::new(0x4000, 5);
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(500);
         let runtime = loco.jumpjet_runtime_mut().unwrap();

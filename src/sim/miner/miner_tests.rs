@@ -3030,8 +3030,7 @@ fn dock_for_unload(sim: &mut Simulation, miner: u64, refinery: u64) {
     let entity = sim.substrate.entities.get_mut(miner).expect("miner");
     let mut hull = crate::sim::movement::FacingClass::new(DOCK_FACING, 5);
     hull.snap(DOCK_FACING, frame);
-    entity.body_facing = Some(hull);
-    entity.facing = (DOCK_FACING >> 8) as u8;
+    entity.body_facing = hull;
     entity.mission.set_handler_state(0);
     sim.mission_assign_exact(
         miner,

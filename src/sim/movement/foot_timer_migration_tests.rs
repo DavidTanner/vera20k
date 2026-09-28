@@ -321,7 +321,7 @@ fn paid_walk_progress_clears_only_blocked_latch_and_retains_timer_words() {
     sim.session.binary_frame = 107;
     sim.session.tick = 107;
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.facing = 64;
+    entity.body_facing.snap(0x4000, 0);
     entity
         .locomotor
         .as_mut()
