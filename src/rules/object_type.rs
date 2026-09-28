@@ -1967,7 +1967,7 @@ impl ObjectType {
             // constructor's 20 degrees.
             pitch_angle: sim_from_f32(
                 match section.read_double("PitchAngle", -1.0) {
-                    degrees if degrees == -1.0 => 20.0,
+                    -1.0 => 20.0,
                     degrees => degrees as f32,
                 } * (std::f32::consts::PI / 180.0),
             ),

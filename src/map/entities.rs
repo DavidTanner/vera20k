@@ -382,7 +382,7 @@ fn atoi_flag(token: Option<&str>) -> bool {
 
 /// A recruitment byte: `atoi != 0` when present, else the constructor's true.
 fn recruitment_flag(token: Option<&str>) -> bool {
-    token.map_or(true, |token| crt_atoi(token) != 0)
+    token.is_none_or(|token| crt_atoi(token) != 0)
 }
 
 #[cfg(test)]
