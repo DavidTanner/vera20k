@@ -97,6 +97,7 @@ fn shadow_first_fill_hits_and_atlas_growth_keep_payloads() {
             layer,
             frame: 0,
             slope_type: 0,
+            barrel_pitch: 0,
         },
         pixels,
         width,

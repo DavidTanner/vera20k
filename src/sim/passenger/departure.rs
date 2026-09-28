@@ -189,8 +189,11 @@ fn restore_departure(
 
 /// Reveal a cargo passenger at an exit cell. The passenger's `sub_cell` and
 /// `facing` must already be written by the caller; its role is cleared here.
+/// The Reveal runs without rules, so the barrel elevation Unlimbo writes
+/// follow it here.
 pub(crate) fn reveal_unloaded_passenger(
     sim: &mut Simulation,
+    rules: &RuleSet,
     transport_id: u64,
     passenger_id: u64,
     rx: u16,
@@ -230,7 +233,10 @@ pub(crate) fn reveal_unloaded_passenger(
         },
     );
     match outcome {
-        RevealOutcome::Revealed { .. } => Ok(()),
+        RevealOutcome::Revealed { .. } => {
+            sim.unlimbo_barrel_elevation(passenger_id, rules);
+            Ok(())
+        }
         other => Err(DepartureFailure::GroundReveal(other)),
     }
 }

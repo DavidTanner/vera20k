@@ -913,6 +913,7 @@ mod tests {
             stupid_hunt: false,
             vehicle_thief: false,
             undeploy_delay: -1,
+            fire_angle: 8,
         }
     }
 

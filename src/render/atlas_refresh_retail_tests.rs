@@ -429,6 +429,7 @@ fn retail_atlas_refresh_costs() {
                 layer: VxlLayer::Body,
                 frame: 0,
                 slope_type: 0,
+                barrel_pitch: 0,
             })
             .is_some(),
         "the refreshed unit atlas draws the new vehicle"

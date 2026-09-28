@@ -1182,6 +1182,18 @@ pub struct ObjectType {
     /// carries a `UnitTypeClass*` there.
     pub undeploy_delay: i32,
 
+    /// `FireAngle=` int — `TechnoTypeClass+0x3D0`, read by
+    /// `TechnoTypeClass::ReadINI` (key string `0x00843910`, `ReadInt @
+    /// 0x005276D0` with the field as default, store `0x00714B71`).
+    /// Constructor default 8 (`0x00710D12`).
+    ///
+    /// `TechnoClass::Unlimbo` aims the barrel elevation (`+0x370`) at
+    /// `0x4000 - (low byte << 8)` (`0x006F6DD9..0x006F6DF5`), so the default
+    /// raises a voxel unit's barrel one 11.25° step. Retail sets it on ships,
+    /// submarines, missiles and the tech outpost, none of which draws a unit
+    /// barrel.
+    pub fire_angle: i32,
+
     /// `DeployFireWeapon=` (`TechnoTypeClass+0x6A8`, read at `0x007147DD`): the
     /// weapon slot a deployed unit fires. Constructor default slot 1
     /// (`0x0071113A`).
@@ -2365,6 +2377,7 @@ impl ObjectType {
             // `TechnoTypeClass::Constructor @ 0x00711187` seeds -1, and
             // `ReadINI @ 0x00714BBA` only overwrites it when the key is present.
             undeploy_delay: section.read_int("UndeployDelay", -1),
+            fire_angle: section.read_int("FireAngle", 8),
             deploy_fire_weapon: section.read_int("DeployFireWeapon", 1),
             max_number_occupants: section.read_int("MaxNumberOccupants", 0).max(0) as u32,
             occupier: section.read_bool("Occupier", false),

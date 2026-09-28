@@ -774,6 +774,11 @@ fn place_garrison_passenger_at_cell(
     if !matches!(reveal, RevealOutcome::Revealed { .. }) {
         return false;
     }
+    // A Reveal with rules made Unlimbo's barrel elevation writes; one without
+    // leaves them here.
+    if context.rules().is_none() {
+        sim.unlimbo_barrel_elevation(passenger_id, rules);
+    }
 
     sellbuilding_direct_scatter_handoff(
         sim,
