@@ -3,6 +3,36 @@
 //! The data here is resolved at the scenario boundary rather than parsed from
 //! INI directly. `TeamClass::AI` is intentionally represented as raw action
 //! records: only native action bodies with closed evidence execute.
+//!
+//! The VM owns every live team, from its construction (`TeamTypeClass::
+//! Create_Team @ 0x006F09C0`, called by the computer's team creation in
+//! `sim::ai_team_creation`) to its destruction (`TeamClass::~TeamClass @
+//! 0x006E8DE0`), which feeds the team's outcome back into the weight of every
+//! AI trigger whose first TeamType it is. It also owns those AI triggers'
+//! running weights.
+//!
+//! RESIDUALS (TeamClass::AI, `0x006E9140`):
+//! - Recruitment is not ported: the per-slot recruit (`0x006EAA90`), which
+//!   sets `+0x79`/`+0x77` once the TaskForce is filled or forced, and the
+//!   forming step those bytes trigger (`0x006E91AD..0x006E91F5`: `+0x7F`,
+//!   `+0x78`, the members' `+0x689`, the script rewind). A team the computer
+//!   creates therefore never gets members and never forms; in a multiplayer
+//!   game it dissolves once `[General] DissolveUnfilledTeamDelay=` frames have
+//!   passed, as native does for a team it could not fill, and the dissolve
+//!   counts as its trigger's failure. Trigger: every team a computer house
+//!   creates. Effect: the units its choosers build for the team stay free (the
+//!   `sim::ai` attack-wave stand-in sends them out), and the team's script
+//!   never runs.
+//! - Only teams the test seams form run scripts, and only the actions listed
+//!   in `tick_effects`. A running script's end keeps the team (`completed`)
+//!   where native destroys it (`0x006E936B`), and the advance and the next
+//!   action run in two updates where native runs them in one
+//!   (`0x006E9364..0x006E9440`).
+//! - `FUN_006EAEE0` (every update of a forming team) clears `+0x34`/`+0x38`
+//!   for a team with no members; VERA keeps neither.
+//! - The empty-team dissolve's trigger event 0x17 loop (`+0x82`) and the
+//!   TeamType's Tag (`+0xD0`, created by the constructor `0x006E4DE0`) are not
+//!   ported; no retail TeamType names a Tag.
 
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -11,12 +41,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::object_type::ObjectCategory;
-use crate::rules::ruleset::CountryIdx;
+use crate::rules::ruleset::{CountryIdx, GeneralRules};
 use crate::rules::team_ai_ini::TeamAiDefinitionSource;
-use crate::sim::command::CommandEnvelope;
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
-use crate::util::native_x87::NativeF64Bits;
+use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
 
 mod registry_install;
 
@@ -94,13 +123,21 @@ pub struct TeamTypeDefinition {
     pub transport_crossing_required: bool,
 }
 
-/// Lossless load metadata beside the narrow TeamType fields already consumed
-/// by live Team behavior.
+/// The TeamType's other INI fields, beside the definition, and its lossless
+/// source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamTypeIniMetadata {
+    /// `Max=` (`+0xB8`, constructor -1): a house's team limit of this type;
+    /// negative is none.
     pub max_teams: i32,
+    /// `Autocreate=` (`+0xA9`). The computer's team creation also sets it on
+    /// every TeamType it picks (`0x006F0E51`); only recruitment reads it.
     pub autocreate: bool,
     pub are_team_members_recruitable: bool,
+    /// `Reinforce=` (`+0xAB`, constructor 0): the unit choosers count this
+    /// type's teams as needing members until they fill (`0x004FEC26`).
+    #[serde(default)]
+    pub reinforce: bool,
     pub raw_fields: Vec<(String, String)>,
     pub source: TeamAiDefinitionSource,
 }
@@ -111,6 +148,7 @@ impl Default for TeamTypeIniMetadata {
             max_teams: -1,
             autocreate: false,
             are_team_members_recruitable: true,
+            reinforce: false,
             raw_fields: Vec::new(),
             source: TeamAiDefinitionSource::FixedAimd,
         }
@@ -124,28 +162,154 @@ pub enum TeamAiTriggerOwner {
     Country(CountryIdx),
 }
 
-/// One resolved AITriggerType record. Selector semantics remain a later
-/// evidence-gated stage; this retains every field whose storage is proven by
-/// the active YR raw reader at `0x0041F580` plus the lossless 18-token source.
+/// One resolved AITriggerType record: every field the raw reader at
+/// `0x0041F580` stores, plus the lossless 18-token source. The computer's
+/// team creation (`sim::ai_team_creation`) reads it; its running weight is an
+/// [`AiTriggerTrackRecord`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamAiTriggerDefinition {
     pub id: InternedId,
     pub tokens: [String; 18],
     pub display_name: String,
+    /// `+0xA4`.
     pub enabled: bool,
+    /// `+0xDC`, the first TeamType.
     pub primary_team_type: Option<InternedId>,
+    /// `+0xA0`/`+0xA8`; `None` is mode 0, which never qualifies.
     pub owner: Option<TeamAiTriggerOwner>,
+    /// `+0xB0`, the house TechLevel it needs.
     pub threshold: i32,
+    /// `+0x98`.
     pub condition: i32,
+    /// `+0xD8`, the type the condition counts.
     pub object_type: Option<TeamMemberTypeIdentity>,
+    /// `+0xE4..`: the condition's amount (`+0xE4`) and comparator (`+0xE8`)
+    /// lead the 32 bytes.
     pub comparison_mask: [u8; 32],
+    /// The initial weight (`+0xB8`), its minimum (`+0xC0`) and maximum
+    /// (`+0xC8`).
     pub weights: [NativeF64Bits; 3],
-    pub storage_flag_d0: bool,
-    pub storage_i32_ac: i32,
+    /// `+0xD0`.
+    pub multiplayer: bool,
+    /// `+0xAC`.
+    pub side: i32,
     pub storage_flag_d1: bool,
+    /// `+0xE0`, the second TeamType.
     pub secondary_team_type: Option<InternedId>,
+    /// `+0xD2`, `+0xD3`, `+0xD4`.
     pub difficulty_enabled: [bool; 3],
     pub source: TeamAiDefinitionSource,
+}
+
+/// An AI trigger's running track record: its weight (`+0xB8`, which the
+/// raw reader writes and team destruction adjusts), and how many of its teams
+/// succeeded (`+0x104`) and ended (`+0x108`); both counts start at 0 in the
+/// constructor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct AiTriggerTrackRecord {
+    weight: NativeF64Bits,
+    successes: i32,
+    attempts: i32,
+}
+
+impl AiTriggerTrackRecord {
+    const fn new(weight: NativeF64Bits) -> Self {
+        Self {
+            weight,
+            successes: 0,
+            attempts: 0,
+        }
+    }
+
+    pub(crate) const fn weight(&self) -> NativeF64Bits {
+        self.weight
+    }
+
+    /// `AITriggerTypeClass::RegisterSuccess @ 0x0041FD60` (`succeeded`) or
+    /// `RegisterFailure @ 0x0041FE20`, both in PC53/chop:
+    /// - success: `w' = (SuccessWeightDelta + w) + max(0, n * (s/n - 0.5))`,
+    ///   then `s` and `n` grow by one;
+    /// - failure: `w' = (FailureWeightDelta + w) + min(0, n * ((s/n - 0.5) *
+    ///   TrackRecordCoefficient))`, then `n` grows by one;
+    ///
+    /// where `n` is the attempts and `s` the successes (the adjustment is 0
+    /// while `n <= 0`), and `w'` is stored as a double and clamped: below
+    /// `min` it becomes `min`, above `max` it becomes `max`
+    /// (`TEST AH,0x41`, so an unordered compare keeps it).
+    fn record(&mut self, succeeded: bool, bounds: [NativeF64Bits; 2], rules: &TeamRules) {
+        type X = X87Chop53;
+        let load = |bits: NativeF64Bits| {
+            X::load_f64(bits).expect("AI trigger weights and Rules deltas are finite")
+        };
+        let zero = X::load_i32(0);
+        let mut adjustment = zero;
+        if self.attempts > 0 {
+            let attempts = X::load_i32(self.attempts);
+            let ratio =
+                X::div(X::load_i32(self.successes), attempts).expect("attempts is positive");
+            let mut record = X::sub(ratio, load(NativeF64Bits::HALF));
+            if !succeeded {
+                record = X::mul(record, load(rules.track_record_coefficient));
+            }
+            let product = X::mul(attempts, record);
+            // `FCOM 0.0`: success keeps a product that is not below zero
+            // (`TEST AH,0x1`), failure one that is below or equal
+            // (`TEST AH,0x41`).
+            let keep = match X::compare(product, zero) {
+                X87Ordering::Less => !succeeded,
+                X87Ordering::Equal => true,
+                X87Ordering::Greater => succeeded,
+            };
+            if keep {
+                adjustment = product;
+            }
+        }
+        let delta = if succeeded {
+            rules.success_weight_delta
+        } else {
+            rules.failure_weight_delta
+        };
+        let weight = X::add(X::add(load(delta), load(self.weight)), adjustment);
+        self.weight = X::store_f64(weight).expect("an AI trigger weight stays finite");
+        let [minimum, maximum] = bounds;
+        if X::compare(load(self.weight), load(minimum)) == X87Ordering::Less {
+            self.weight = minimum;
+        }
+        if X::compare(load(self.weight), load(maximum)) == X87Ordering::Greater {
+            self.weight = maximum;
+        }
+        if succeeded {
+            self.successes = self.successes.wrapping_add(1);
+        }
+        self.attempts = self.attempts.wrapping_add(1);
+    }
+}
+
+/// What `TeamClass` reads beyond its own object: the game mode and the Rules
+/// keys of the empty-team dissolve and the AI trigger feedback.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TeamRules {
+    pub(crate) game_mode_nonzero: bool,
+    /// `[General] DissolveUnfilledTeamDelay=` (`Rules+0x1190`).
+    pub(crate) dissolve_unfilled_team_delay: i32,
+    /// `[General] AITriggerSuccessWeightDelta=` (`Rules+0xC0`).
+    pub(crate) success_weight_delta: NativeF64Bits,
+    /// `[General] AITriggerFailureWeightDelta=` (`Rules+0xC8`).
+    pub(crate) failure_weight_delta: NativeF64Bits,
+    /// `[General] AITriggerTrackRecordCoefficient=` (`Rules+0xD0`).
+    pub(crate) track_record_coefficient: NativeF64Bits,
+}
+
+impl TeamRules {
+    pub(crate) fn new(general: &GeneralRules, game_mode_nonzero: bool) -> Self {
+        Self {
+            game_mode_nonzero,
+            dissolve_unfilled_team_delay: general.dissolve_unfilled_team_delay,
+            success_weight_delta: general.ai_trigger_success_weight_delta,
+            failure_weight_delta: general.ai_trigger_failure_weight_delta,
+            track_record_coefficient: general.ai_trigger_track_record_coefficient,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,9 +419,20 @@ pub struct TeamScriptState {
     // category-distinct keys JSON-serializable as well as snapshot-safe.
     member_type_counts: Vec<(TeamMemberTypeIdentity, u32)>,
     target: Option<u64>,
+    /// `+0x84`: the team succeeded (script action 49). Its destruction then
+    /// counts as its AI triggers' success.
     succeeded: bool,
     completed: bool,
     refusal: Option<TeamScriptRefusal>,
+    /// `+0x50`, the construction frame: the unfilled-team dissolve clock and
+    /// the unit choosers' earliest team.
+    #[serde(default)]
+    created_frame: i32,
+    /// `+0x7F`: recruitment has formed the team, which then runs its script.
+    /// Clear from construction; only the test seams form a team (module
+    /// residual).
+    #[serde(default)]
+    formed: bool,
 }
 
 impl TeamScriptState {
@@ -328,6 +503,26 @@ impl TeamScriptState {
     pub fn refusal(&self) -> Option<TeamScriptRefusal> {
         self.refusal
     }
+
+    pub(crate) const fn created_frame(&self) -> i32 {
+        self.created_frame
+    }
+
+    /// The unit choosers' filter (`0x004FEC20..0x004FEC47`): a team still
+    /// wants members while its TeamType is `Reinforce=` and it is not full
+    /// (`+0x79`), or while it is neither forced (`+0x77`) nor at strength
+    /// (`+0x78`). Only recruitment writes `+0x79` and `+0x77` (module
+    /// residual), so both read clear.
+    pub(crate) const fn wants_members(&self, reinforce: bool) -> bool {
+        reinforce || !self.reached_required_strength_78
+    }
+
+    /// The selector's cancel test (`0x006F0E05..0x006F0E11`): the team is
+    /// still forming (`!+0x7F`) or regrouping (`+0x7B`, which only scripts
+    /// set).
+    pub(crate) const fn is_forming(&self) -> bool {
+        !self.formed
+    }
 }
 
 /// Owns resolved TeamType/TaskForce/ScriptType definitions and live TeamClass cursors.
@@ -350,6 +545,10 @@ pub struct TeamScriptVm {
     ai_trigger_order: Vec<InternedId>,
     teams: BTreeMap<u64, TeamScriptState>,
     next_team_id: u64,
+    /// Each AI trigger's running weight and track record, set at its
+    /// registration.
+    #[serde(default)]
+    ai_trigger_records: BTreeMap<InternedId, AiTriggerTrackRecord>,
 }
 
 impl TeamScriptVm {
@@ -379,10 +578,192 @@ impl TeamScriptVm {
         if !self.ai_triggers.contains_key(&definition.id) {
             self.ai_trigger_order.push(definition.id);
         }
+        // A re-read writes the weight (`0x0041F8AC`) and keeps the counts.
+        self.ai_trigger_records
+            .entry(definition.id)
+            .and_modify(|record| record.weight = definition.weights[0])
+            .or_insert_with(|| AiTriggerTrackRecord::new(definition.weights[0]));
         self.ai_triggers.insert(definition.id, definition);
     }
 
-    /// Install an already-admitted TeamClass member list.
+    /// `TeamTypeClass::Create_Team @ 0x006F09C0` with a house, as the
+    /// computer's team creation calls it (`0x004F8AAD`): refused while the
+    /// TeamType's `Max=` is not negative and already reached, in a
+    /// multiplayer game by `owner`'s teams of the type (`0x005095D0`), in a
+    /// campaign by every house's (`+0xDC`, signed). Otherwise a new team
+    /// (`TeamClass::TeamClass @ 0x006E8A90`) joins the end of the team list:
+    /// empty and forming (`+0x7F` clear; `+0x7A`, `+0x7D` and `+0x80` set,
+    /// the other bytes `+0x74..+0x84` clear), created at the current frame
+    /// (`+0x50`, and the timers `+0x58`/`+0x64` start there with no time),
+    /// its script (`0x006913C0`) before its first action.
+    pub(crate) fn construct_team(
+        &mut self,
+        team_type_id: InternedId,
+        owner: InternedId,
+        game_mode_nonzero: bool,
+        current_frame: i32,
+    ) -> Option<u64> {
+        let team_type = *self.team_types.get(&team_type_id)?;
+        let max_teams = self.max_teams(team_type_id);
+        if max_teams >= 0 {
+            let existing = self
+                .teams
+                .values()
+                .filter(|team| {
+                    team.team_type_id == Some(team_type_id)
+                        && (!game_mode_nonzero || team.owner == owner)
+                })
+                .count() as i32;
+            if existing >= max_teams {
+                return None;
+            }
+        }
+        let id = self.next_team_id;
+        self.next_team_id = self.next_team_id.wrapping_add(1);
+        self.teams.insert(
+            id,
+            TeamScriptState {
+                id,
+                owner,
+                team_type_id: Some(team_type_id),
+                task_force_id: Some(team_type.task_force_id),
+                script_id: team_type.script_id,
+                cursor: -1,
+                advance_pending: true,
+                delay_remaining_frames: 0,
+                wait_condition_complete: false,
+                reached_required_strength_78: false,
+                response_latch_7d: true,
+                response_latch_7e: false,
+                response_latch_83: false,
+                response_suspend: CdTimer::started(current_frame, 0),
+                members: Vec::new(),
+                member_type_counts: Vec::new(),
+                target: None,
+                succeeded: false,
+                completed: false,
+                refusal: None,
+                created_frame: current_frame,
+                formed: false,
+            },
+        );
+        Some(id)
+    }
+
+    /// `TeamClass::~TeamClass @ 0x006E8DE0` for team `team_id`: first every
+    /// AI trigger, in registry order, whose first TeamType is the team's
+    /// records the team's outcome (`+0x84`: success, else failure; see
+    /// [`AiTriggerTrackRecord::record`]); then the team leaves the list and
+    /// releases its members, which are returned in member order. The
+    /// members' own release (`TeamClass::Remove_Member`) is not ported.
+    pub(crate) fn destroy_team(&mut self, team_id: u64, rules: &TeamRules) -> Vec<u64> {
+        let Some(team) = self.teams.remove(&team_id) else {
+            return Vec::new();
+        };
+        if let Some(team_type_id) = team.team_type_id {
+            for trigger_id in &self.ai_trigger_order {
+                let Some(trigger) = self.ai_triggers.get(trigger_id) else {
+                    continue;
+                };
+                if trigger.primary_team_type != Some(team_type_id) {
+                    continue;
+                }
+                let bounds = [trigger.weights[1], trigger.weights[2]];
+                if let Some(record) = self.ai_trigger_records.get_mut(trigger_id) {
+                    record.record(team.succeeded, bounds, rules);
+                }
+            }
+        }
+        team.members
+    }
+
+    /// Live teams in TeamClass::Array order (their construction order).
+    pub(crate) fn teams_in_order(&self) -> impl Iterator<Item = &TeamScriptState> {
+        self.teams.values()
+    }
+
+    pub(crate) fn team_type_definition(&self, id: InternedId) -> Option<&TeamTypeDefinition> {
+        self.team_types.get(&id)
+    }
+
+    /// The TeamType's `Max=` (`+0xB8`); -1, none, for a TeamType without
+    /// metadata.
+    pub(crate) fn max_teams(&self, team_type_id: InternedId) -> i32 {
+        self.team_type_ini
+            .get(&team_type_id)
+            .map_or(-1, |metadata| metadata.max_teams)
+    }
+
+    /// The TeamType's `Reinforce=` (`+0xAB`).
+    pub(crate) fn reinforce(&self, team_type_id: InternedId) -> bool {
+        self.team_type_ini
+            .get(&team_type_id)
+            .is_some_and(|metadata| metadata.reinforce)
+    }
+
+    /// The team creation's write of `Autocreate=` (`+0xA9`, `0x006F0E51`) on
+    /// a TeamType it picked.
+    pub(crate) fn mark_autocreate(&mut self, team_type_id: InternedId) {
+        if let Some(metadata) = self.team_type_ini.get_mut(&team_type_id) {
+            metadata.autocreate = true;
+        }
+    }
+
+    /// `TeamClass::Get_Needed_Types @ 0x006EF4D0`: the team's TaskForce
+    /// entries in order, each type `count` times, less the first remaining
+    /// one of each member's type.
+    pub(crate) fn needed_types(&self, team: &TeamScriptState) -> Vec<TeamMemberTypeIdentity> {
+        let Some(task_force) = team
+            .task_force_id
+            .and_then(|task_force_id| self.task_forces.get(&task_force_id))
+        else {
+            return Vec::new();
+        };
+        let mut needed: Vec<TeamMemberTypeIdentity> = task_force
+            .entries
+            .iter()
+            .flat_map(|entry| {
+                std::iter::repeat_n(entry.member_type, usize::try_from(entry.count).unwrap_or(0))
+            })
+            .collect();
+        for &(member_type, members) in &team.member_type_counts {
+            for _ in 0..members {
+                let Some(position) = needed.iter().position(|&needed| needed == member_type) else {
+                    break;
+                };
+                needed.remove(position);
+            }
+        }
+        needed
+    }
+
+    /// The TaskForce of TeamType `team_type_id`, if it resolved.
+    pub(crate) fn task_force_of(
+        &self,
+        team_type_id: InternedId,
+    ) -> Option<&TeamTaskForceDefinition> {
+        let team_type = self.team_types.get(&team_type_id)?;
+        self.task_forces.get(&team_type.task_force_id)
+    }
+
+    /// The AI triggers in AITriggerTypeClass::Array order, with their running
+    /// weights.
+    pub(crate) fn ai_triggers_in_order(
+        &self,
+    ) -> impl Iterator<Item = (&TeamAiTriggerDefinition, AiTriggerTrackRecord)> {
+        self.ai_trigger_order.iter().filter_map(|id| {
+            let definition = self.ai_triggers.get(id)?;
+            let record = self
+                .ai_trigger_records
+                .get(id)
+                .copied()
+                .unwrap_or_else(|| AiTriggerTrackRecord::new(definition.weights[0]));
+            Some((definition, record))
+        })
+    }
+
+    /// Install an already-admitted TeamClass member list as a formed team
+    /// (recruitment, which forms a team, is not ported).
     ///
     /// This remains useful for scenario seams that do not yet instantiate
     /// TaskForce-backed members. New callers should use `create_team_from_type`.
@@ -408,7 +789,8 @@ impl TeamScriptVm {
     }
 
     /// Resolve the TeamType attachments and admit matching candidates in
-    /// TaskForce-entry order, preserving input order within each type.
+    /// TaskForce-entry order, preserving input order within each type, as a
+    /// formed team.
     #[cfg(test)]
     pub fn create_team_from_type(
         &mut self,
@@ -558,23 +940,23 @@ impl TeamScriptVm {
         true
     }
 
-    /// Execute one `TeamClass::AI` pass for every live team.
+    /// Execute one `TeamClass::AI` pass for every live team and return
+    /// native-backed non-command effects.
     ///
     /// `TeamClass::AI` stores completion in `+0x80`; the next update performs
-    /// the shared `ScriptClass::HasNextMission` cursor advance.
-    pub fn tick<F>(&mut self, current_frame: i32, owner_is_active: F) -> Vec<CommandEnvelope>
-    where
-        F: FnMut(InternedId) -> bool,
-    {
-        self.tick_effects(current_frame, owner_is_active);
-        Vec::new()
-    }
-
-    /// Execute one pass and return native-backed non-command effects.
+    /// the shared `ScriptClass::HasNextMission` cursor advance. The current
+    /// command rung has no panic command; callers that own member mission
+    /// application can consume these ordered effects directly.
     ///
-    /// The current command rung has no panic command; callers that own member
-    /// mission application can consume these ordered effects directly.
-    pub fn tick_effects<F>(&mut self, current_frame: i32, mut owner_is_active: F) -> TeamScriptTick
+    /// A team destroyed in the pass is destroyed after it, in team order: no
+    /// later team's update reads what the destructor writes (its triggers'
+    /// weights and its members).
+    pub(crate) fn tick_effects<F>(
+        &mut self,
+        current_frame: i32,
+        rules: &TeamRules,
+        mut owner_is_active: F,
+    ) -> TeamScriptTick
     where
         F: FnMut(InternedId) -> bool,
     {
@@ -624,6 +1006,25 @@ impl TeamScriptVm {
                     team.response_latch_7e = false;
                     team.response_latch_7d = false;
                 }
+            }
+
+            // `0x006E9311..0x006E9336`: with no members, a team at strength
+            // (`+0x78`) or, in a multiplayer game, one older than
+            // `DissolveUnfilledTeamDelay=` (signed, the frame difference
+            // wrapping) is destroyed. Recruitment, which runs first
+            // (`0x006E9285`), is not ported (module residual).
+            if team.members.is_empty()
+                && (team.reached_required_strength_78
+                    || (rules.game_mode_nonzero
+                        && rules.dissolve_unfilled_team_delay
+                            < current_frame.wrapping_sub(team.created_frame)))
+            {
+                deleted_teams.push(team.id);
+                continue;
+            }
+            // `0x006E933F`: a forming team runs no script.
+            if !team.formed {
+                continue;
             }
 
             if team.completed || team.refusal.is_some() || !owner_is_active(team.owner) {
@@ -716,13 +1117,17 @@ impl TeamScriptVm {
         }
 
         for team_id in deleted_teams {
-            self.teams.remove(&team_id);
+            self.destroy_team(team_id, rules);
         }
 
         result
     }
 
-    pub(crate) fn hash_state(&self, current_frame: i32, hasher: &mut impl Hasher) {
+    /// `ai_teams` (schema v237) adds each team's creation frame and forming
+    /// byte and, tagged, the AI triggers whose track record left its
+    /// registered state, so a state without teams or feedback hashes as
+    /// before.
+    pub(crate) fn hash_state(&self, current_frame: i32, ai_teams: bool, hasher: &mut impl Hasher) {
         // TeamClass::ComputeCRC observes live Team/Script state, not the VM's
         // source registry or allocator. Action-49's +0x84 success flag is not
         // included by the captured YR 1.001 CRC sequence.
@@ -748,6 +1153,25 @@ impl TeamScriptVm {
             team.members.hash(hasher);
             team.target.hash(hasher);
             team.member_type_counts.hash(hasher);
+            if ai_teams {
+                team.created_frame.hash(hasher);
+                team.formed.hash(hasher);
+            }
+        }
+        if ai_teams {
+            let changed: Vec<_> = self
+                .ai_trigger_order
+                .iter()
+                .filter_map(|id| {
+                    let record = self.ai_trigger_records.get(id)?;
+                    let initial = self.ai_triggers.get(id)?.weights[0];
+                    (*record != AiTriggerTrackRecord::new(initial)).then_some((id, record))
+                })
+                .collect();
+            if !changed.is_empty() {
+                b"ai-trigger-records-v1".hash(hasher);
+                changed.hash(hasher);
+            }
         }
     }
 
@@ -815,6 +1239,9 @@ impl TeamScriptVm {
                 succeeded: false,
                 completed: false,
                 refusal: None,
+                created_frame: current_frame,
+                // The seams stand in for a team recruitment has formed.
+                formed: true,
             },
         );
         id
@@ -900,6 +1327,10 @@ mod tests {
     use crate::rules::team_ai_ini::TeamAiIniRegistry;
     use crate::sim::intern::StringInterner;
 
+    fn test_rules() -> TeamRules {
+        TeamRules::new(&crate::rules::ruleset::GeneralRules::default(), false)
+    }
+
     fn action(action_id: i32, argument: i32) -> TeamScriptAction {
         TeamScriptAction {
             action_id,
@@ -909,7 +1340,7 @@ mod tests {
 
     fn state_hash_at(vm: &TeamScriptVm, current_frame: i32) -> u64 {
         let mut hasher = DefaultHasher::new();
-        vm.hash_state(current_frame, &mut hasher);
+        vm.hash_state(current_frame, true, &mut hasher);
         hasher.finish()
     }
 
@@ -929,11 +1360,11 @@ mod tests {
         });
         let team = vm.create_team(owner, script, vec![], None, 0);
 
-        vm.tick_effects(1, |_| true);
+        vm.tick_effects(1, &test_rules(), |_| true);
         assert_eq!(vm.team(team).expect("team").cursor(), 0);
         assert!(vm.team(team).expect("team").advance_pending());
 
-        vm.tick_effects(2, |_| true);
+        vm.tick_effects(2, &test_rules(), |_| true);
         assert_eq!(vm.team(team).expect("team").cursor(), 1);
         assert!(!vm.team(team).expect("team").advance_pending());
     }
@@ -950,13 +1381,13 @@ mod tests {
         });
         let team = vm.create_team(owner, script, vec![], None, 0);
 
-        vm.tick_effects(10, |_| true);
+        vm.tick_effects(10, &test_rules(), |_| true);
         assert_eq!(vm.team(team).expect("team").cursor(), 0);
         assert!(!vm.team(team).expect("team").advance_pending());
         assert!(vm.set_wait_condition_complete(team, true));
-        vm.tick_effects(11, |_| true);
+        vm.tick_effects(11, &test_rules(), |_| true);
         assert!(vm.team(team).expect("team").advance_pending());
-        vm.tick_effects(12, |_| true);
+        vm.tick_effects(12, &test_rules(), |_| true);
         assert_eq!(vm.team(team).expect("team").cursor(), 1);
     }
 
@@ -972,7 +1403,7 @@ mod tests {
         });
         let team = vm.create_team(owner, script, vec![9, 3, 7], None, 0);
 
-        let tick = vm.tick_effects(1, |_| true);
+        let tick = vm.tick_effects(1, &test_rules(), |_| true);
         assert_eq!(
             tick.effects,
             vec![
@@ -982,7 +1413,7 @@ mod tests {
             ]
         );
         assert!(vm.team(team).expect("team").advance_pending());
-        vm.tick_effects(2, |_| true);
+        vm.tick_effects(2, &test_rules(), |_| true);
         assert_eq!(vm.team(team).expect("team").cursor(), 1);
     }
 
@@ -997,7 +1428,7 @@ mod tests {
             actions: vec![action(49, 0)],
         });
         let team = vm.create_team(owner, script, vec![], None, 0);
-        vm.tick_effects(1, |_| true);
+        vm.tick_effects(1, &test_rules(), |_| true);
 
         let mut without_success = vm.clone();
         without_success
@@ -1028,7 +1459,7 @@ mod tests {
         let first = vm.create_team(owner, supported, vec![], None, 0);
         let second = vm.create_team(owner, out_of_range, vec![], None, 0);
 
-        vm.tick_effects(1, |_| true);
+        vm.tick_effects(1, &test_rules(), |_| true);
         assert_eq!(
             vm.team(first).expect("team").refusal(),
             Some(TeamScriptRefusal::UnsupportedAction { action_id: 0 })
@@ -1324,7 +1755,7 @@ mod tests {
         vm.suspend_teams_for_base_defense(owner, 1, 100, 3);
 
         for frame in [100, 101, 102] {
-            vm.tick_effects(frame, |_| {
+            vm.tick_effects(frame, &test_rules(), |_| {
                 panic!("native timer must precede later Team gates")
             });
             let state = vm.team(team).unwrap();
@@ -1337,7 +1768,7 @@ mod tests {
 
         let encoded = serde_json::to_string(&vm).unwrap();
         let mut restored: TeamScriptVm = serde_json::from_str(&encoded).unwrap();
-        restored.tick_effects(103, |_| true);
+        restored.tick_effects(103, &test_rules(), |_| true);
         let state = restored.team(team).unwrap();
         assert!(
             state.advance_pending(),
@@ -1399,7 +1830,7 @@ mod tests {
             99,
         );
 
-        vm.tick_effects(99, |_| true);
+        vm.tick_effects(99, &test_rules(), |_| true);
         let admitted = vm.team(team).unwrap();
         assert!(admitted.reached_required_strength_78);
         assert_eq!(
@@ -1411,7 +1842,7 @@ mod tests {
             vm.suspend_teams_for_base_defense(owner, 1, 100, 5),
             vec![10]
         );
-        vm.tick_effects(103, |_| panic!("first delay remains active"));
+        vm.tick_effects(103, &test_rules(), |_| panic!("first delay remains active"));
         assert!(
             vm.suspend_teams_for_base_defense(owner, 1, 103, 5)
                 .is_empty()
@@ -1431,8 +1862,10 @@ mod tests {
         let encoded = serde_json::to_string(&vm).unwrap();
         let mut restored: TeamScriptVm = serde_json::from_str(&encoded).unwrap();
         assert_eq!(state_hash_at(&vm, 103), state_hash_at(&restored, 103));
-        restored.tick_effects(107, |_| panic!("rearmed delay remains active"));
-        restored.tick_effects(108, |_| true);
+        restored.tick_effects(107, &test_rules(), |_| {
+            panic!("rearmed delay remains active")
+        });
+        restored.tick_effects(108, &test_rules(), |_| true);
 
         assert!(
             restored.team(team).is_none(),
@@ -1584,8 +2017,8 @@ mod tests {
                 NativeF64Bits::from_bits(40.0_f64.to_bits()),
             ]
         );
-        assert!(trigger.storage_flag_d0);
-        assert_eq!(trigger.storage_i32_ac, 1);
+        assert!(trigger.multiplayer);
+        assert_eq!(trigger.side, 1);
         assert!(!trigger.storage_flag_d1);
         assert_eq!(trigger.secondary_team_type, interner.get("TT2"));
         assert_eq!(trigger.difficulty_enabled, [true, false, true]);
@@ -2212,8 +2645,8 @@ mod tests {
                 NativeF64Bits::from_bits(70.0_f64.to_bits()),
             ]
         );
-        assert!(anti_nuke.storage_flag_d0);
-        assert_eq!(anti_nuke.storage_i32_ac, 1);
+        assert!(anti_nuke.multiplayer);
+        assert_eq!(anti_nuke.side, 1);
         assert!(!anti_nuke.storage_flag_d1);
         assert_eq!(anti_nuke.difficulty_enabled, [false, true, true]);
         assert!(vm.teams.is_empty());

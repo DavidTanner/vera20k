@@ -974,7 +974,7 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     );
 
     assert!(
-        tick_production(&mut sim, &rules, &height_map, Some(&path_grid)),
+        tick_production(&mut sim, &rules, Some(&path_grid)),
         "ready ground-unit production should deliver through the real completion entry"
     );
 

@@ -12,8 +12,9 @@ use crate::sim::world::Simulation;
 use super::PRODUCTION_STEPS;
 use super::factory_lifecycle;
 use super::production_spawn::{
-    ProductionDeliveryKind, find_helipad_for_aircraft, find_spawn_selection_for_owner_with_type,
-    mark_war_factory_spawn_contact, unlimbo_held_naval_unit,
+    ProductionDeliveryKind, ProductionSpawnSelection, find_helipad_for_aircraft,
+    find_spawn_selection_for_owner_with_type, mark_war_factory_spawn_contact,
+    unlimbo_held_naval_unit,
 };
 use super::production_tech::{owner_matches_build_identity, production_category_for_object};
 use super::production_types::*;
@@ -228,10 +229,9 @@ pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str
 pub fn tick_production(
     sim: &mut Simulation,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     path_grid: Option<&crate::sim::pathfinding::PathGrid>,
 ) -> bool {
-    tick_production_with_overlay_registry(sim, rules, height_map, path_grid, None)
+    tick_production_with_overlay_registry(sim, rules, path_grid, None)
 }
 
 /// Advance production timers and spawn completed items with optional native
@@ -239,17 +239,6 @@ pub fn tick_production(
 pub fn tick_production_with_overlay_registry(
     sim: &mut Simulation,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-) -> bool {
-    tick_production_impl(sim, rules, height_map, path_grid, overlay_registry)
-}
-
-fn tick_production_impl(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
@@ -286,22 +275,18 @@ fn tick_production_impl(
         // Aircraft use helipad spawn path; other units use exit cell path.
         let is_aircraft =
             produced_category == Some(crate::rules::object_type::ObjectCategory::Aircraft);
-        let spawn_cell: Option<(u16, u16)>;
-        let spawn_producer_id: Option<u64>;
-        let spawn_delivery: ProductionDeliveryKind;
-        let helipad_airfield: Option<u64>;
-
-        if is_aircraft {
-            if let Some((af_id, rx, ry)) = find_helipad_for_aircraft(sim, rules, &owner_str) {
-                spawn_cell = Some((rx, ry));
-                spawn_producer_id = Some(af_id);
-                spawn_delivery = ProductionDeliveryKind::Standard;
-                helipad_airfield = Some(af_id);
-            } else {
+        let (selection, airfield) = if is_aircraft {
+            let Some((airfield, rx, ry)) = find_helipad_for_aircraft(sim, rules, &owner_str) else {
                 // No free helipad — refund.
                 factory_lifecycle::refund_failed_delivery(sim, rules, owner_id, queue_category);
                 continue;
-            }
+            };
+            let selection = ProductionSpawnSelection {
+                producer_id: airfield,
+                cell: (rx, ry),
+                delivery: ProductionDeliveryKind::Standard,
+            };
+            (selection, Some(airfield))
         } else {
             let is_naval: bool = rules.object(&done_type_str).map_or(false, |o| o.naval);
             let spawn_selection = produced_category.and_then(|cat| {
@@ -315,21 +300,15 @@ fn tick_production_impl(
                     is_naval,
                 )
             });
-            spawn_cell = spawn_selection.map(|selection| selection.cell);
-            spawn_producer_id = spawn_selection.map(|selection| selection.producer_id);
-            spawn_delivery = spawn_selection
-                .map(|selection| selection.delivery)
-                .unwrap_or(ProductionDeliveryKind::Standard);
-            helipad_airfield = None;
-            if spawn_cell.is_none() {
+            let Some(selection) = spawn_selection else {
                 if is_vehicle {
                     continue;
                 }
                 factory_lifecycle::refund_failed_delivery(sim, rules, owner_id, queue_category);
                 continue;
-            }
-        }
-        let (rx, ry) = spawn_cell.unwrap();
+            };
+            (selection, None)
+        };
 
         let Some(stable_id) = factory_lifecycle::active_entity_id(sim, owner_id, queue_category)
         else {
@@ -340,210 +319,18 @@ fn tick_production_impl(
             continue;
         };
 
-        let spawned = match spawn_delivery {
-            ProductionDeliveryKind::NavalUnit => unlimbo_held_naval_unit(
-                sim,
-                rules,
-                &owner_str,
-                &done_type_str,
-                stable_id,
-                spawn_producer_id.expect("naval delivery has one selected producer"),
-                (rx, ry),
-                overlay_registry,
-                height_map,
-            ),
-            ProductionDeliveryKind::Standard => {
-                let z = height_map.get(&(rx, ry)).copied().unwrap_or(0);
-                sim.unlimbo_held_production_object_with_unit_context(
-                    stable_id,
-                    spawn_producer_id.unwrap_or(stable_id),
-                    rx,
-                    ry,
-                    64,
-                    z,
-                    crate::sim::world::PlacementEvidence::EvaluateMark,
-                    rules,
-                    overlay_registry,
-                )
-            }
-        };
-        if let Some(stable_id) = spawned {
-            if let Some(producer_id) = spawn_producer_id {
-                mark_war_factory_spawn_contact(sim, rules, producer_id, stable_id);
-            }
-            // Aircraft spawned on helipad: reserve dock slot then set
-            // DockedIdle carrying the assigned pad index.
-            if let Some(af_id) = helipad_airfield {
-                let max_slots = sim
-                    .substrate
-                    .entities
-                    .get(af_id)
-                    .and_then(|af| {
-                        let af_type = sim.interner.resolve(af.type_ref());
-                        let af_obj = rules.object(af_type)?;
-                        Some(af_obj.dock_contact_capacity())
-                    })
-                    .unwrap_or(1);
-                let assigned_pad = sim
-                    .reserve_airfield_pad(af_id, stable_id, max_slots)
-                    .unwrap_or(0); // Fresh spawn on a single-pad helipad always wins pad 0.
-                if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
-                    entity.aircraft_mission =
-                        Some(crate::sim::aircraft::AircraftMission::DockedIdle {
-                            airfield_id: af_id,
-                            pad_index: assigned_pad,
-                        });
-                }
-            }
-            // `HouseClass::Place_Production 0x004FB5C6..0x004FB644`: for a
-            // human-controlled house (`this == PlayerPtr` in MP, `+0x1EC ||
-            // +0x1ED` in campaign) `CreateRadarEvent(6, object cell)` gates
-            // `EVA_UnitReady` — type 6 dedupes within 2 cells, so two units
-            // leaving one factory in quick succession give one line. The app
-            // filters the owner to the local player and admits the event on
-            // that client's radar.
-            if sim
-                .houses
-                .get(&owner_id)
-                .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero))
-            {
-                sim.sound_events
-                    .push(crate::sim::world::SimSoundEvent::UnitComplete {
-                        owner: owner_id,
-                        radar: crate::sim::radar::RadarEventRequest::new(
-                            crate::sim::radar::RadarEventType::UnitReady,
-                            rx,
-                            ry,
-                        ),
-                    });
-            }
-            // A Slave Miner leaving its war factory starts its hunt instead of
-            // taking the rally point (`sim::slave_manager`).
-            let hunting = matches!(spawn_delivery, ProductionDeliveryKind::Standard)
-                && sim.slave_master_leaves_factory(stable_id, rules);
-            // Auto-move newly produced unit to rally point (if set).
-            // Skip for aircraft docked on helipad — they wait for orders.
-            if helipad_airfield.is_none() && !hunting {
-                // `ExitObject_Main @ 0x00443C60` reads the factory's own
-                // ArchiveTarget (`+0x218`, the rally point) for the object
-                // leaving it; the naval arm reads it after Unlimbo
-                // (`0x0044441A`).
-                //
-                // Residual (instruction reading; not ported): the non-naval
-                // arms also copy it into the leaving object's own archive
-                // (`0x0044498E`, `0x00444492`), which the Unit's exit arms
-                // consume: a human house's unit drives to it
-                // (`0x0073AAA1..0x0073AABB`), a computer house's
-                // WeaponsFactory unit instead takes the cell of HouseClass
-                // `0x00500200`, archives it and queues AreaGuard
-                // (`0x0073A9DE..0x0073AA9C`); `0x00500200` draws Scenario
-                // `RandomRanged(1, 4)` (`0x0050023B`) when the unit's vt+0x2D4,
-                // +0x2D8 and +0x2DC sum is nonzero. VERA gives the rally move
-                // here and writes no unit archive. Trigger: every produced
-                // unit. Effect: a computer house's units stay at the factory
-                // instead of spreading to posts; a unit's archive reads None
-                // where native holds the rally cell (a harvester may also
-                // take the Harvest exit arm, `0x0073AAE6`, unchecked); one
-                // Scenario draw per armed computer war-factory unit is
-                // missing. Frequency: every build. Downstream: the Scenario
-                // RNG stream after computer unit production.
-                let rally = spawn_producer_id
-                    .and_then(|producer_id| sim.substrate.entities.get(producer_id))
-                    .and_then(|producer| producer.rally_cell());
-                let naval_rally = matches!(spawn_delivery, ProductionDeliveryKind::NavalUnit)
-                    .then_some(rally)
-                    .flatten();
-                if let Some((tx, ty)) = naval_rally {
-                    if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
-                        // BuildingClass::ExitObject_Main @ 0x0044442B calls
-                        // virtual Assign_Destination(target, 1) before its
-                        // deferred Queue_Mission(Move, 0). NavCom is the owner
-                        // destination; immediate A* is only a Rust executor.
-                        crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
-                            entity,
-                            Some(crate::sim::components::NavTargetRef::cell(tx, ty)),
-                        );
-                    }
-                    let _ = sim.mission_queue_exact(
-                        stable_id,
-                        crate::sim::mission::MissionId::from_known(
-                            crate::sim::mission::MissionType::Move,
-                        ),
-                        0,
-                        sim.session.binary_frame,
-                        &crate::sim::mission::authority::EntityReadyInputProvider,
-                    );
-                }
-                if let (Some(grid), Some((tx, ty))) = (path_grid, rally) {
-                    let obj = rules.object(&done_type_str);
-                    let loco_mult = sim
-                        .substrate
-                        .entities
-                        .get(stable_id)
-                        .and_then(|e| e.locomotor.as_ref())
-                        .map(|l| l.speed_multiplier)
-                        .unwrap_or(crate::util::fixed_math::SIM_ONE);
-                    // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: the rally move
-                    // is an ordinary move order, so a unit that leaves the
-                    // factory already promoted (InitialVeteran, cloning) drives
-                    // to the rally point at its FASTER speed.
-                    let speed = match sim.substrate.entities.get(stable_id) {
-                        Some(e) => {
-                            crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-                                e,
-                                obj,
-                                obj.map_or(4, |o| o.speed),
-                                rules.general.veteran_speed,
-                            )
-                        }
-                        None => crate::util::fixed_math::ra2_speed_to_leptons_per_second(
-                            obj.map_or(4, |o| o.speed),
-                        ),
-                    };
-                    let speed =
-                        (speed * loco_mult).max(crate::util::fixed_math::SimFixed::lit("25"));
-                    let speed_type = sim
-                        .substrate
-                        .entities
-                        .get(stable_id)
-                        .and_then(|e| e.locomotor.as_ref())
-                        .map(|l| l.speed_type);
-                    let _ = sim.issue_ground_move(
-                        grid,
-                        crate::sim::world::GroundMove {
-                            entity_id: stable_id,
-                            target: (tx, ty),
-                            speed,
-                            queue: false,
-                            speed_type,
-                            owner_blocks: false,
-                            object_destination: None,
-                        },
-                        overlay_registry,
-                        Some(rules),
-                    );
-                    if naval_rally.is_some()
-                        && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
-                    {
-                        // A Ship's setter publishes the rally unchanged; the
-                        // command-time adapter of the remaining locomotors
-                        // (Hover) may redirect its endpoint. Restore the
-                        // producer rally so that A* never owns NavCom.
-                        crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
-                            entity,
-                            Some(crate::sim::components::NavTargetRef::cell(tx, ty)),
-                        );
-                    }
-                }
-                if matches!(spawn_delivery, ProductionDeliveryKind::NavalUnit)
-                    && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
-                {
-                    // Native +0x124/+0x1B4/+0x124 success tail writes the
-                    // selected CellClass centre after rally/mission assignment.
-                    entity.position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
-                    entity.position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
-                }
-            }
+        let delivered = deliver_produced_object(
+            sim,
+            rules,
+            owner_id,
+            &done_type_str,
+            stable_id,
+            selection,
+            airfield,
+            path_grid,
+            overlay_registry,
+        );
+        if delivered.is_some() {
             spawned_any = true;
             factory_lifecycle::release_delivered_mobile(sim, rules, owner_id, queue_category);
         } else {
@@ -558,6 +345,231 @@ fn tick_production_impl(
     // `queues_by_owner.retain` prune.
     sim.production.factory_shadow.prune_all_idle();
     spawned_any
+}
+
+/// Unlimbo house `owner_id`'s held produced object `stable_id` (of type
+/// `type_name`) at `selection`, docked at `airfield` for an aircraft, then
+/// its arrival: the war factory contact, the airfield pad, the player's
+/// "unit ready", the Slave Miner's hunt and the rally move. `Some` with the
+/// object when it was placed; otherwise it stays held in limbo.
+///
+/// The player's queue (above) and a computer's factory building
+/// (`production::factory_ai`) both deliver through it.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn deliver_produced_object(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner_id: InternedId,
+    type_name: &str,
+    stable_id: u64,
+    selection: ProductionSpawnSelection,
+    airfield: Option<u64>,
+    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> Option<u64> {
+    let (rx, ry) = selection.cell;
+    let spawned = match selection.delivery {
+        ProductionDeliveryKind::NavalUnit => unlimbo_held_naval_unit(
+            sim,
+            rules,
+            sim.interner.resolve(owner_id).to_string().as_str(),
+            type_name,
+            stable_id,
+            selection.producer_id,
+            (rx, ry),
+            overlay_registry,
+        ),
+        ProductionDeliveryKind::Standard => {
+            let z = sim
+                .resolved_terrain
+                .as_ref()
+                .and_then(|terrain| terrain.cell(rx, ry))
+                .map_or(0, |cell| cell.level);
+            sim.unlimbo_held_production_object_with_unit_context(
+                stable_id,
+                selection.producer_id,
+                rx,
+                ry,
+                64,
+                z,
+                crate::sim::world::PlacementEvidence::EvaluateMark,
+                rules,
+                overlay_registry,
+            )
+        }
+    }?;
+    mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+    // Aircraft spawned on helipad: reserve dock slot then set
+    // DockedIdle carrying the assigned pad index.
+    if let Some(af_id) = airfield {
+        let max_slots = sim
+            .substrate
+            .entities
+            .get(af_id)
+            .and_then(|af| {
+                let af_type = sim.interner.resolve(af.type_ref());
+                let af_obj = rules.object(af_type)?;
+                Some(af_obj.dock_contact_capacity())
+            })
+            .unwrap_or(1);
+        let assigned_pad = sim
+            .reserve_airfield_pad(af_id, spawned, max_slots)
+            .unwrap_or(0); // Fresh spawn on a single-pad helipad always wins pad 0.
+        if let Some(entity) = sim.substrate.entities.get_mut(spawned) {
+            entity.aircraft_mission = Some(crate::sim::aircraft::AircraftMission::DockedIdle {
+                airfield_id: af_id,
+                pad_index: assigned_pad,
+            });
+        }
+    }
+    // `HouseClass::Place_Production 0x004FB5C6..0x004FB644`: for a
+    // human-controlled house (`this == PlayerPtr` in MP, `+0x1EC ||
+    // +0x1ED` in campaign) `CreateRadarEvent(6, object cell)` gates
+    // `EVA_UnitReady` — type 6 dedupes within 2 cells, so two units
+    // leaving one factory in quick succession give one line. The app
+    // filters the owner to the local player and admits the event on
+    // that client's radar.
+    if sim
+        .houses
+        .get(&owner_id)
+        .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero))
+    {
+        sim.sound_events
+            .push(crate::sim::world::SimSoundEvent::UnitComplete {
+                owner: owner_id,
+                radar: crate::sim::radar::RadarEventRequest::new(
+                    crate::sim::radar::RadarEventType::UnitReady,
+                    rx,
+                    ry,
+                ),
+            });
+    }
+    let stable_id = spawned;
+    // A Slave Miner leaving its war factory starts its hunt instead of
+    // taking the rally point (`sim::slave_manager`).
+    let hunting = matches!(selection.delivery, ProductionDeliveryKind::Standard)
+        && sim.slave_master_leaves_factory(stable_id, rules);
+    // Auto-move newly produced unit to rally point (if set).
+    // Skip for aircraft docked on helipad — they wait for orders.
+    if airfield.is_none() && !hunting {
+        // `ExitObject_Main @ 0x00443C60` reads the factory's own
+        // ArchiveTarget (`+0x218`, the rally point) for the object
+        // leaving it; the naval arm reads it after Unlimbo
+        // (`0x0044441A`).
+        //
+        // Residual (instruction reading; not ported): the non-naval
+        // arms also copy it into the leaving object's own archive
+        // (`0x0044498E`, `0x00444492`), which the Unit's exit arms
+        // consume: a human house's unit drives to it
+        // (`0x0073AAA1..0x0073AABB`), a computer house's
+        // WeaponsFactory unit instead takes the cell of HouseClass
+        // `0x00500200`, archives it and queues AreaGuard
+        // (`0x0073A9DE..0x0073AA9C`); `0x00500200` draws Scenario
+        // `RandomRanged(1, 4)` (`0x0050023B`) when the unit's vt+0x2D4,
+        // +0x2D8 and +0x2DC sum is nonzero. VERA gives the rally move
+        // here and writes no unit archive. Trigger: every produced
+        // unit. Effect: a computer house's units stay at the factory
+        // instead of spreading to posts; a unit's archive reads None
+        // where native holds the rally cell (a harvester may also
+        // take the Harvest exit arm, `0x0073AAE6`, unchecked); one
+        // Scenario draw per armed computer war-factory unit is
+        // missing. Frequency: every build. Downstream: the Scenario
+        // RNG stream after computer unit production.
+        let rally = sim
+            .substrate
+            .entities
+            .get(selection.producer_id)
+            .and_then(|producer| producer.rally_cell());
+        let naval_rally = matches!(selection.delivery, ProductionDeliveryKind::NavalUnit)
+            .then_some(rally)
+            .flatten();
+        if let Some((tx, ty)) = naval_rally {
+            if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
+                // BuildingClass::ExitObject_Main @ 0x0044442B calls
+                // virtual Assign_Destination(target, 1) before its
+                // deferred Queue_Mission(Move, 0). NavCom is the owner
+                // destination; immediate A* is only a Rust executor.
+                crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
+                    entity,
+                    Some(crate::sim::components::NavTargetRef::cell(tx, ty)),
+                );
+            }
+            let _ = sim.mission_queue_exact(
+                stable_id,
+                crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Move),
+                0,
+                sim.session.binary_frame,
+                &crate::sim::mission::authority::EntityReadyInputProvider,
+            );
+        }
+        if let (Some(grid), Some((tx, ty))) = (path_grid, rally) {
+            let obj = rules.object(type_name);
+            let loco_mult = sim
+                .substrate
+                .entities
+                .get(stable_id)
+                .and_then(|e| e.locomotor.as_ref())
+                .map(|l| l.speed_multiplier)
+                .unwrap_or(crate::util::fixed_math::SIM_ONE);
+            // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: the rally move
+            // is an ordinary move order, so a unit that leaves the
+            // factory already promoted (InitialVeteran, cloning) drives
+            // to the rally point at its FASTER speed.
+            let speed = match sim.substrate.entities.get(stable_id) {
+                Some(e) => crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
+                    e,
+                    obj,
+                    obj.map_or(4, |o| o.speed),
+                    rules.general.veteran_speed,
+                ),
+                None => crate::util::fixed_math::ra2_speed_to_leptons_per_second(
+                    obj.map_or(4, |o| o.speed),
+                ),
+            };
+            let speed = (speed * loco_mult).max(crate::util::fixed_math::SimFixed::lit("25"));
+            let speed_type = sim
+                .substrate
+                .entities
+                .get(stable_id)
+                .and_then(|e| e.locomotor.as_ref())
+                .map(|l| l.speed_type);
+            let _ = sim.issue_ground_move(
+                grid,
+                crate::sim::world::GroundMove {
+                    entity_id: stable_id,
+                    target: (tx, ty),
+                    speed,
+                    queue: false,
+                    speed_type,
+                    owner_blocks: false,
+                    object_destination: None,
+                },
+                overlay_registry,
+                Some(rules),
+            );
+            if naval_rally.is_some()
+                && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
+            {
+                // A Ship's setter publishes the rally unchanged; the
+                // command-time adapter of the remaining locomotors
+                // (Hover) may redirect its endpoint. Restore the
+                // producer rally so that A* never owns NavCom.
+                crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
+                    entity,
+                    Some(crate::sim::components::NavTargetRef::cell(tx, ty)),
+                );
+            }
+        }
+        if matches!(selection.delivery, ProductionDeliveryKind::NavalUnit)
+            && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
+        {
+            // Native +0x124/+0x1B4/+0x124 success tail writes the
+            // selected CellClass centre after rally/mission assignment.
+            entity.position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
+            entity.position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
+        }
+    }
+    Some(stable_id)
 }
 
 /// Build a queue snapshot for one owner, including progress metadata for UI.

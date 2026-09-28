@@ -61,7 +61,7 @@
 
 use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::ai_buildable::{country_bit, owner_allows};
+use crate::sim::ai_buildable::owner_allows;
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell};
 use crate::sim::base_plan_generation::prerequisites_satisfied;
 use crate::sim::house_tracking::ForceValues;
@@ -349,21 +349,15 @@ impl<'r> DefenseChoice<'r> {
                 ))
             })
             .collect();
-        // `FindIndexOfName` answers -1 for an unknown name, and the shift
-        // takes its low five bits.
-        let country_bit = rules
-            .trigger_house_type_index(sim.interner.resolve(house.house_type_id()))
-            .map_or(1 << 31, country_bit);
+        let country_bit = crate::sim::ai_buildable::house_country_bit(
+            rules,
+            sim.interner.resolve(house.house_type_id()),
+        );
         let enemy = house
             .enemy_house
             .and_then(|enemy| sim.houses.get(&enemy))
             .map(|enemy| enemy.tracking.force_values());
-        let fudge = rules
-            .general
-            .ai_force_prediction_fudge
-            .get(house.difficulty.table_index())
-            .copied()
-            .unwrap_or(0);
+        let fudge = house.difficulty_value(&rules.general.ai_force_prediction_fudge);
         let (x, y) = house.base_plan_center;
         Some(Self {
             rules,

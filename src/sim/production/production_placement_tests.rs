@@ -641,7 +641,6 @@ fn stock_power_contract_rules() -> RuleSet {
 fn completed_building_moves_into_ready_placement_pool() {
     let mut sim = placement_sim();
     let rules = build_catalog_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
@@ -664,7 +663,7 @@ fn completed_building_moves_into_ready_placement_pool() {
             .test_arm_ready(americans, ProductionCategory::Building)
     );
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, None);
+    let spawned = tick_production(&mut sim, &rules, None);
     assert!(!spawned, "completed building should wait for placement");
     let held = sim
         .production
@@ -683,7 +682,7 @@ fn completed_building_moves_into_ready_placement_pool() {
     let held_id = held.object.unwrap().entity_id.unwrap();
     let rng = sim.scenario_rng.logical_state();
     for _ in 0..3 {
-        assert!(!tick_production(&mut sim, &rules, &height_map, None));
+        assert!(!tick_production(&mut sim, &rules, None));
     }
     // Record_Last_Built waits for the placement (`0x004FB4B7`).
     assert_eq!(sim.houses[&americans].stats.built, built_before);

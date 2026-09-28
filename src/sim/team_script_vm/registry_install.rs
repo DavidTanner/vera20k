@@ -127,6 +127,7 @@ impl TeamScriptVm {
                     autocreate: team_type.read_bool("Autocreate", false),
                     are_team_members_recruitable: team_type
                         .read_bool("AreTeamMembersRecruitable", true),
+                    reinforce: team_type.read_bool("Reinforce", false),
                     raw_fields: team_type.fields.clone(),
                     source: team_type.source,
                 },
@@ -231,8 +232,8 @@ impl TeamScriptVm {
                 object_type,
                 comparison_mask: trigger.comparison_mask,
                 weights: trigger.weights,
-                storage_flag_d0: trigger.storage_flag_d0,
-                storage_i32_ac: trigger.storage_i32_ac,
+                multiplayer: trigger.multiplayer,
+                side: trigger.side,
                 storage_flag_d1: trigger.storage_flag_d1,
                 secondary_team_type,
                 difficulty_enabled: trigger.difficulty_enabled,

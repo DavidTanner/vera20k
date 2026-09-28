@@ -130,6 +130,18 @@ pub(crate) const fn strategy_timer_at_construction() -> CdTimer {
     CdTimer::started(0, 0)
 }
 
+/// [`HouseState::team_timer`]'s constructor value (`HouseClass::Constructor
+/// 0x004F5CCA..0x004F5CDB`): started at the construction frame, 0, for one
+/// frame. [`HouseState::set_difficulty`] restarts it.
+pub(crate) const fn team_timer_at_construction() -> CdTimer {
+    CdTimer::started(0, 1)
+}
+
+/// [`HouseState::ratio_ai_trigger_team`]'s constructor value (`0x004F5BDD`).
+pub(crate) const fn ratio_ai_trigger_team_at_construction() -> i32 {
+    100
+}
+
 /// [`HouseState::eva_funds_timer`]'s constructor value
 /// (`HouseClass::Constructor 0x004F5D2F`, the duration from `0x004F5CD0 MOV
 /// EAX,1`): started at the construction frame, 0, for one frame.
@@ -449,6 +461,16 @@ pub struct HouseState {
     /// (`0x004F5B9D..0x004F5BA8`). Persisted and hashed (schema v234).
     #[serde(default = "strategy_timer_at_construction")]
     pub(crate) strategy_timer: CdTimer,
+    /// `HouseClass+0x5798`/`+0x57A0`, the timer that runs team creation
+    /// (`sim::ai_team_creation`). Persisted and hashed (schema v237).
+    #[serde(default = "team_timer_at_construction")]
+    pub(crate) team_timer: CdTimer,
+    /// `HouseClass+0x565C`, the percent chance a team creation pass picks an
+    /// AI trigger: constructor 100, a map house's `RatioAITriggerTeam=`
+    /// (`HouseClass::Read_Scenario_INI 0x00500D0D..0x00500D25`). Persisted and
+    /// hashed (schema v237).
+    #[serde(default = "ratio_ai_trigger_team_at_construction")]
+    pub(crate) ratio_ai_trigger_team: i32,
     /// Native House bytes `+0x1EE`, `+0x1EF`, `+0x1F2`, and `+0x1F3`. All four
     /// persist, while Production, AutocreateAllowed, and AITriggersActive
     /// directly enter House CRC.
@@ -459,6 +481,11 @@ pub struct HouseState {
     /// `sim::ai_base_building`. Persisted and hashed (schema v232).
     #[serde(default)]
     pub(crate) ai_production: crate::sim::ai_base_building::HouseAiProduction,
+    /// The computer's Unit, Infantry and Aircraft choices (`HouseClass+0x5650`,
+    /// `+0x5654`, `+0x5658`), owned by `sim::ai_unit_choice`. Persisted and
+    /// hashed (schema v237).
+    #[serde(default)]
+    pub(crate) ai_unit_choices: crate::sim::ai_unit_choice::HouseAiUnitChoices,
     /// Native `HouseClass+0x242`: "a harvester of this house found no ore".
     ///
     /// Exhaustive instruction census (`search_instructions` operand `+0x242]`,
@@ -535,24 +562,29 @@ impl HouseState {
     }
 
     /// `HouseClass::SetDifficulty @ 0x004F6EC0`, for the fields VERA keeps:
-    /// the difficulty index (`+0x184`), the ROF bias (`+0x1A8`) and the
-    /// repair delay (`+0x1C0`). Outside a campaign the bias is the difficulty
-    /// row's `ROF=` times the country's (`FLD; FMUL; FSTP qword`,
-    /// `0x004F6F6C..0x004F6F79`); in a campaign it is the row's value alone
-    /// (`0x004F7072..0x004F707B`). Both copy the row's `RepairDelay=`
-    /// unchanged (`0x004F6FA5`, `0x004F70AC`).
+    /// the difficulty index (`+0x184`), the ROF bias (`+0x1A8`), the repair
+    /// delay (`+0x1C0`) and the team timer. Outside a campaign the bias is
+    /// the difficulty row's `ROF=` times the country's (`FLD; FMUL; FSTP
+    /// qword`, `0x004F6F6C..0x004F6F79`); in a campaign it is the row's value
+    /// alone (`0x004F7072..0x004F707B`). Both copy the row's `RepairDelay=`
+    /// unchanged (`0x004F6FA5`, `0x004F70AC`). The team timer restarts at
+    /// `frame` for the difficulty's `TeamDelays=` plus 175 frames for each
+    /// house before this one (`array_index`, `+0x30`; wrapping,
+    /// `0x004F70F0..0x004F712D`).
     pub(crate) fn set_difficulty(
         &mut self,
         difficulty: HouseDifficulty,
-        difficulty_rof: &[f64; 3],
-        difficulty_repair_delay: &[f64; 3],
+        general: &crate::rules::ruleset::GeneralRules,
         country_rof: f64,
         game_mode_nonzero: bool,
+        array_index: i32,
+        frame: i32,
     ) {
         use crate::util::native_x87::MaskedX87Chop53 as X;
         self.difficulty = difficulty;
-        self.repair_delay = difficulty_repair_delay[difficulty.table_index()];
-        let row = NativeF64Bits::from_bits(difficulty_rof[difficulty.table_index()].to_bits());
+        self.repair_delay = general.difficulty_repair_delay[difficulty.table_index()];
+        let row =
+            NativeF64Bits::from_bits(general.difficulty_rof[difficulty.table_index()].to_bits());
         self.rof_bias = HouseRofBias(if game_mode_nonzero {
             X::store_f64_masked_chop(X::mul(
                 X::load_f64(row),
@@ -561,11 +593,25 @@ impl HouseState {
         } else {
             row
         });
+        let team_delay = self
+            .difficulty_value(&general.team_delays)
+            .wrapping_add(array_index.wrapping_mul(175));
+        self.team_timer = CdTimer::started(frame, team_delay);
     }
 
     /// The house's ROF multiplier (`HouseClass+0x1A8`).
     pub(crate) const fn rof_bias(&self) -> NativeF64Bits {
         self.rof_bias.0
+    }
+
+    /// The house's entry of a per-difficulty Rules vector, indexed by
+    /// `+0x184` (hardest first). Native reads past a short vector's end;
+    /// VERA reads 0 there (retail vectors hold three entries).
+    pub(crate) fn difficulty_value(&self, values: &[i32]) -> i32 {
+        values
+            .get(self.difficulty.table_index())
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Active offline EventClass house-scan eligibility.
@@ -727,8 +773,11 @@ impl HouseState {
             },
             strategy_emergency: HouseStrategyEmergencyState::default(),
             strategy_timer: strategy_timer_at_construction(),
+            team_timer: team_timer_at_construction(),
+            ratio_ai_trigger_team: ratio_ai_trigger_team_at_construction(),
             ai_activation: HouseAiActivationLatches::default(),
             ai_production: Default::default(),
+            ai_unit_choices: Default::default(),
             harvester_no_ore: false,
             eva_funds_timer: eva_funds_timer_at_construction(),
             eva_low_power_guard: false,
@@ -1201,8 +1250,8 @@ mod difficulty_tests {
 
     /// `tools/spatial_oracle/house_difficulty.py` runs the original
     /// `HouseClass::SetDifficulty @ 0x004F6EC0` over difficulty, GameMode,
-    /// country `ROF=` and row `ROF=` values; every row replays through
-    /// [`HouseState::set_difficulty`].
+    /// country `ROF=`, row `ROF=` values and house indexes; every row replays
+    /// through [`HouseState::set_difficulty`].
     #[test]
     fn set_difficulty_matches_the_original() {
         let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
@@ -1218,13 +1267,20 @@ mod difficulty_tests {
             let row_rof: [f64; 3] = std::array::from_fn(|index| bits(&input["row_rof"][index]));
             let difficulty =
                 HouseDifficulty::from_native(input["difficulty"].as_i64().unwrap() as i32).unwrap();
+            let general = crate::rules::ruleset::GeneralRules {
+                difficulty_rof: row_rof,
+                difficulty_repair_delay: [0.02; 3],
+                team_delays: vec![11, 22, 33],
+                ..Default::default()
+            };
             let mut house = HouseState::new(Default::default(), 0, None, false, 0, 10);
             house.set_difficulty(
                 difficulty,
-                &row_rof,
-                &[0.02; 3],
+                &general,
                 bits(&input["country_rof"]),
                 input["mode"].as_i64().unwrap() != 0,
+                input["array_index"].as_i64().unwrap() as i32,
+                100,
             );
             assert_eq!(
                 i64::from(house.difficulty as i32),
@@ -1234,6 +1290,11 @@ mod difficulty_tests {
             assert_eq!(
                 format!("{:016x}", house.rof_bias().bits()),
                 row["rof_bias"].as_str().unwrap(),
+                "{input}"
+            );
+            assert_eq!(
+                [house.team_timer.start_frame(), house.team_timer.duration()],
+                [0, 1].map(|slot| row["team_timer"][slot].as_i64().unwrap() as i32),
                 "{input}"
             );
         }

@@ -273,10 +273,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                 );
                 if label != "unpublished-complete" {
                     assert!(!crate::sim::production::tick_production(
-                        &mut saved,
-                        &rules,
-                        &Default::default(),
-                        None
+                        &mut saved, &rules, None
                     ));
                     assert!(
                         saved
@@ -458,10 +455,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     .test_arm_ready(owner, category)
             );
             assert!(!crate::sim::production::tick_production(
-                &mut saved,
-                &rules,
-                &Default::default(),
-                None
+                &mut saved, &rules, None
             ));
         }
         match label {

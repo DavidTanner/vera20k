@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use crate::rules::ini_parser::{IniFile, IniSection};
-use crate::rules::ini_value::{atoi_lenient, parse_read_double, parse_read_int_value};
+use crate::rules::ini_value::{atoi_lenient, parse_leading_f64, parse_read_int_value};
 use crate::util::native_x87::NativeF64Bits;
 
 const SCRIPT_ACTION_CAPACITY: usize = 50;
@@ -126,11 +126,17 @@ pub struct AiTriggerTypeIni {
     pub condition: i32,
     pub object_type: Option<String>,
     pub comparison_mask: [u8; 32],
+    /// Tokens 7, 8 and 9: the weight (`+0xB8`), its minimum (`+0xC0`) and
+    /// maximum (`+0xC8`), see [`ai_trigger_weight`].
     pub weights: [NativeF64Bits; 3],
-    pub storage_flag_d0: bool,
-    pub storage_i32_ac: i32,
+    /// Token 10 (`+0xD0`): the trigger may run in a multiplayer game.
+    pub multiplayer: bool,
+    /// Token 12 (`+0xAC`): 1, 2 or 3 limits it to side 0, 1 or 2.
+    pub side: i32,
     pub storage_flag_d1: bool,
     pub secondary_team_type: Option<String>,
+    /// Tokens 15, 16 and 17 (`+0xD2`, `+0xD3`, `+0xD4`): the easy, normal and
+    /// hard difficulties it runs at.
     pub difficulty_enabled: [bool; 3],
     pub enabled: bool,
     pub source: TeamAiDefinitionSource,
@@ -495,18 +501,18 @@ impl TeamAiIniRegistry {
                 object_type: optional_reference(&tokens[5]),
                 comparison_mask,
                 weights: [
-                    NativeF64Bits::from_bits(parse_read_double(&tokens[7]).to_bits()),
-                    NativeF64Bits::from_bits(parse_read_double(&tokens[8]).to_bits()),
-                    NativeF64Bits::from_bits(parse_read_double(&tokens[9]).to_bits()),
+                    ai_trigger_weight(&tokens[7]),
+                    ai_trigger_weight(&tokens[8]),
+                    ai_trigger_weight(&tokens[9]),
                 ],
-                storage_flag_d0: read_bool(&tokens[10], false),
-                storage_i32_ac: atoi_lenient(&tokens[12]),
-                storage_flag_d1: read_bool(&tokens[13], false),
+                multiplayer: atoi_lenient(&tokens[10]) != 0,
+                side: atoi_lenient(&tokens[12]),
+                storage_flag_d1: atoi_lenient(&tokens[13]) != 0,
                 secondary_team_type: optional_reference(&tokens[14]),
                 difficulty_enabled: [
-                    read_bool(&tokens[15], true),
-                    read_bool(&tokens[16], true),
-                    read_bool(&tokens[17], true),
+                    atoi_lenient(&tokens[15]) != 0,
+                    atoi_lenient(&tokens[16]) != 0,
+                    atoi_lenient(&tokens[17]) != 0,
                 ],
                 tokens,
                 enabled,
@@ -600,6 +606,17 @@ fn upsert_ordered<T>(
         index.insert(identity, entries.len());
         entries.push(definition);
     }
+}
+
+/// One AITrigger weight token as the raw reader stores it
+/// (`0x0041F892..0x0041F8AC` and the two after it): CRT `atof`, `Math::ftol`
+/// toward zero, the low dword zero-extended and loaded as a 64-bit integer, so
+/// a weight is a whole number in `0..2^32` (`-1` reads 4294967295).
+fn ai_trigger_weight(token: &str) -> NativeF64Bits {
+    use crate::util::native_x87::X87Chop53;
+    let parsed = NativeF64Bits::from_bits(parse_leading_f64(token).to_bits());
+    let whole = X87Chop53::load_f64(parsed).map_or(0, X87Chop53::ftol_i32_low_masked) as u32;
+    NativeF64Bits::from_bits(f64::from(whole).to_bits())
 }
 
 fn read_bool(raw: &str, default: bool) -> bool {
@@ -803,8 +820,8 @@ mod tests {
                 NativeF64Bits::from_bits(40.0_f64.to_bits()),
             ]
         );
-        assert!(trigger.storage_flag_d0);
-        assert_eq!(trigger.storage_i32_ac, 1);
+        assert!(trigger.multiplayer);
+        assert_eq!(trigger.side, 1);
         assert!(!trigger.storage_flag_d1);
         assert_eq!(trigger.secondary_team_type, None);
         assert_eq!(trigger.difficulty_enabled, [true, true, true]);
@@ -1014,8 +1031,8 @@ mod tests {
                 NativeF64Bits::from_bits(70.0_f64.to_bits()),
             ]
         );
-        assert!(anti_nuke.storage_flag_d0);
-        assert_eq!(anti_nuke.storage_i32_ac, 1);
+        assert!(anti_nuke.multiplayer);
+        assert_eq!(anti_nuke.side, 1);
         assert!(!anti_nuke.storage_flag_d1);
         assert_eq!(anti_nuke.secondary_team_type.as_deref(), Some("0CB246CC-G"));
         assert_eq!(anti_nuke.difficulty_enabled, [false, true, true]);

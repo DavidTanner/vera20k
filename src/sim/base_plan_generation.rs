@@ -6,7 +6,7 @@
 use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_buildable::{
-    candidate_allowed, country_bit, first_buildable_from_array, owner_allows,
+    candidate_allowed, country_bit, first_buildable_from_array, first_owner_compatible_harvester,
 };
 use crate::sim::base_plan::{BasePlanNode, BasePlanState};
 use crate::sim::house_state::HouseDifficulty;
@@ -253,13 +253,6 @@ fn recalc_candidate_allowed(
     candidate_allowed(candidate, country_bit, side_index, super_weapons, rules)
         && candidate.ai_build_this
         && candidate.tech_level <= tech_level
-}
-
-fn first_owner_compatible_harvester(rules: &RuleSet, country_bit: u32) -> Option<&ObjectType> {
-    rules.harvester_unit_types.iter().find_map(|type_id| {
-        let candidate = rules.object_in_category(ObjectCategory::Vehicle, type_id)?;
-        owner_allows(candidate, country_bit, rules).then_some(candidate)
-    })
 }
 
 fn move_eligible_seed<'a>(

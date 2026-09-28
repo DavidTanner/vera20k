@@ -2,6 +2,7 @@
 //!
 //! This is a first playable loop implementation. Split into sub-modules:
 //! - `production_types`: shared types, constants, state containers
+//! - `can_build`: the computer's CanBuild and FindFactory
 //! - `factory`: queue and per-step charging kernels
 //! - `factory_lifecycle`: held-object birth, completion, cancellation and release
 //! - `factory_ai`: a computer house's production at its own factory buildings
@@ -12,6 +13,7 @@
 //! - `production_sell`: building sale
 //! - `production_tech`: tech tree, build options, factory matching, spawn cells
 
+mod can_build;
 mod factory;
 mod factory_ai;
 mod factory_lifecycle;
@@ -70,6 +72,7 @@ pub use self::war_factory_exit::tick_war_factory_exit_contacts;
 
 // Re-exports for external consumers (files outside production/ that previously
 // imported private submodules directly).
+pub(crate) use self::can_build::{CanBuild, can_build, has_factory};
 pub(crate) use self::factory_ai::{detach_all as detach_building_factory, factory_ai};
 pub(crate) use self::wall_placement::stamp_wall_with_autofill;
 pub(in crate::sim) use self::factory_lifecycle::revalidate_and_step_factories;

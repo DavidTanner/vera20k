@@ -239,12 +239,7 @@ fn a_produced_slave_miner_hunts_instead_of_taking_the_rally_point() {
                 .test_arm_ready(owner, ProductionCategory::Vehicle)
         );
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
-        assert!(tick_production(
-            &mut sim,
-            &rules,
-            &BTreeMap::new(),
-            Some(&grid)
-        ));
+        assert!(tick_production(&mut sim, &rules, Some(&grid)));
         let entity = sim.substrate.entities.get(produced).unwrap();
         assert!(!entity.lifecycle.in_limbo, "{unit_type} delivered");
         assert_eq!(
@@ -285,12 +280,7 @@ fn a_produced_unit_takes_its_own_factorys_rally_point() {
             .test_arm_ready(owner, ProductionCategory::Infantry)
     );
     let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
-    assert!(tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&grid)
-    ));
+    assert!(tick_production(&mut sim, &rules, Some(&grid)));
     let entity = sim.substrate.entities.get(produced).unwrap();
     assert!(!entity.lifecycle.in_limbo, "E1 delivered");
     assert_eq!(
@@ -336,7 +326,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
             .factory_shadow
             .test_arm_ready(owner, ProductionCategory::Building)
     );
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules, None));
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
     let mut expected = sim.scenario_rng.clone();
     let credits = sim.houses[&owner].economy.credits;
@@ -485,7 +475,7 @@ fn terminal_infantry_delivery_failure_refunds_and_promotes() {
         .set_buildings_for_test(0);
     let before = sim.houses[&owner].economy.credits;
     let mut expected = sim.scenario_rng.clone();
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules, None));
     assert!(!sim.substrate.entities.contains(held));
     assert_eq!(sim.houses[&owner].economy.credits, before + 200);
     let successor = held_id(&sim, owner, ProductionCategory::Infantry);
@@ -588,7 +578,7 @@ fn missing_helipad_delivery_refunds_disposes_and_promotes_aircraft() {
     sim.substrate.entities.remove(5);
     let before = sim.houses[&owner].economy.credits;
     let mut expected = sim.scenario_rng.clone();
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules, None));
     assert!(!sim.substrate.entities.contains(parent));
     assert_eq!(sim.houses[&owner].economy.credits, before + 1000);
     let successor = held_id(&sim, owner, ProductionCategory::Aircraft);
@@ -620,7 +610,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
             .factory_shadow
             .test_arm_ready(owner, ProductionCategory::Building)
     );
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules, None));
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
     let tracked = sim.houses[&owner].tracking.buildings();
     let credits = sim.houses[&owner].economy.credits;

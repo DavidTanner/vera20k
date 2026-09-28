@@ -1159,7 +1159,6 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     assert!(super::production_queue::tick_production(
         &mut sim,
         &rules,
-        &BTreeMap::new(),
         Some(&grid),
     ));
     let destroyer = sim
@@ -1255,8 +1254,7 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    let spawned =
-        super::production_queue::tick_production(&mut sim, &rules, &BTreeMap::new(), Some(&grid));
+    let spawned = super::production_queue::tick_production(&mut sim, &rules, Some(&grid));
     assert!(
         !spawned,
         "nonzero Unit CanEnter result rejects the one attempt"
@@ -1362,7 +1360,6 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     assert!(!super::production_queue::tick_production(
         &mut sim,
         &rules,
-        &BTreeMap::new(),
         Some(&grid),
     ));
     assert_eq!(
@@ -1393,7 +1390,6 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     assert!(!super::production_queue::tick_production(
         &mut sim,
         &rules,
-        &BTreeMap::new(),
         Some(&grid),
     ));
     let retried_id = sim
@@ -1443,7 +1439,6 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     assert!(super::production_queue::tick_production(
         &mut sim,
         &rules,
-        &BTreeMap::new(),
         Some(&success_grid),
     ));
     let delivered = sim.substrate.entities.get(held_id).unwrap();
@@ -1480,7 +1475,6 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     assert!(super::production_queue::tick_production(
         &mut sim,
         &rules,
-        &BTreeMap::new(),
         Some(&success_grid),
     ));
     assert_eq!(
@@ -1534,7 +1528,6 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     assert!(super::production_queue::tick_production(
         &mut sim,
         &rules,
-        &BTreeMap::new(),
         Some(&grid)
     ));
     let produced = sim
@@ -1640,10 +1633,7 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
     );
 
     assert!(super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        None,
+        &mut sim, &rules, None,
     ));
     let produced = sim
         .substrate
@@ -1720,7 +1710,6 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
     assert!(super::production_queue::tick_production(
         &mut sim,
         &rules,
-        &BTreeMap::new(),
         Some(&grid),
     ));
     let produced = sim

@@ -1,4 +1,5 @@
-//! A house's object counts, as its multiplayer defeat gate reads them.
+//! A house's object counts, as its multiplayer defeat gate and the computer's
+//! AI triggers read them.
 //!
 //! Native owner: `HouseClass`. Two independent sets of counters, each with its
 //! own writers:
@@ -10,13 +11,19 @@
 //!   `Insignificant=` and `DontScore=` types are never tracked. A building
 //!   counts in `+0x2F0` unless it is a 1x1 undeployer (vtable `+0x80`,
 //!   `0x00465D40`) or undeploys into a `ResourceGatherer=` (then `+0x2E8`,
-//!   with the units); a Unit counts per type in `+0x5514`.
+//!   with the units). Every class also counts per type: buildings in
+//!   `+0x5500`, units in `+0x5514`, infantry in `+0x5528`, aircraft in
+//!   `+0x553C` (`0x004FF7AA`, `0x004FF880`, `0x004FF842`, `0x004FF7E8`). The
+//!   short game's defeat gate reads the units'; the computer's CanBuild reads
+//!   each class's for its build limit (`sim::production::production_tech`).
 //! - On the map (`HouseClass::Added_To_Game @ 0x00502A80` from
 //!   `TechnoClass::Unlimbo` `0x006F6D8F`, `Removed_From_Game @ 0x005025F0`
 //!   from `TechnoClass::Limbo` `0x006F6BD1`, both from ChangeOwner
-//!   `0x0070159D`/`0x0070178E`): per-type counters whose totals the normal
-//!   game reads (`+0x5564` units, `+0x5578` infantry, `+0x558C` aircraft) and
-//!   `+0x5550` per building type. `DontScore=` skips them, except that a
+//!   `0x0070159D`/`0x0070178E`): per-type counters (`+0x5564` units,
+//!   `+0x5578` infantry, `+0x558C` aircraft, `+0x5550` buildings). The
+//!   normal game's defeat gate reads the first three's totals and one building
+//!   type; the AI trigger conditions read one type of any
+//!   (`sim::ai_team_creation`). `DontScore=` skips them, except that a
 //!   Unit is added without the test (`0x00502CF9`) but removed with it, and
 //!   an infantry survivor flagged `+0x6D9` is not added (`0x00502C3C`) but is
 //!   removed.
@@ -24,8 +31,11 @@
 //! Added_To_Game and Removed_From_Game also count, before their per-class
 //! arms and with no DontScore test, the house's objects whose type is a
 //! `ResourceGatherer=` (`+0x158`, `0x00502A95..0x00502A9F` and
-//! `0x00502606..0x00502610`). The computer reads it when it decides whether
-//! a lost refinery node may be rebuilt (`sim::ai_base_building`).
+//! `0x00502606..0x00502610`) and those whose type is a
+//! `ResourceDestination=` (`+0x15C`, `0x00502AAF..0x00502AB9` and
+//! `0x00502620..0x0050262A`). The computer reads the first when it decides
+//! whether a lost refinery node may be rebuilt (`sim::ai_base_building`) and
+//! both when it chooses a harvester (`sim::ai_unit_choice`).
 //!
 //! Their Aircraft, Infantry and Unit arms first add, and subtract, the
 //! object's value, its type's `Cost_Of` (`vt+0x84`, `0x00711F00`) for this
@@ -88,6 +98,9 @@ pub struct TrackingFacts {
     pub unit_like_building: bool,
     /// `TechnoType+0x5EC`, `ResourceGatherer=` (ReadINI `0x007143DF`).
     pub resource_gatherer: bool,
+    /// `TechnoType+0x5ED`, `ResourceDestination=` (ReadINI `0x007143FE`).
+    #[serde(default)]
+    pub resource_destination: bool,
     /// The value arm of the on-map writers; none for a building.
     #[serde(default)]
     pub force_value: Option<ForceValueFacts>,
@@ -162,18 +175,32 @@ pub struct HouseTracking {
     buildings: i32,
     /// `HouseClass+0x5514`, the tracked count of each UnitType.
     unit_types: BTreeMap<InternedId, i32>,
-    /// `HouseClass+0x5564` total.
-    active_units: i32,
-    /// `HouseClass+0x5578` total.
-    active_infantry: i32,
-    /// `HouseClass+0x558C` total.
-    active_aircraft: i32,
+    /// `HouseClass+0x5500`, the tracked count of each BuildingType.
+    #[serde(default)]
+    building_types: BTreeMap<InternedId, i32>,
+    /// `HouseClass+0x5528`, the tracked count of each InfantryType.
+    #[serde(default)]
+    infantry_types: BTreeMap<InternedId, i32>,
+    /// `HouseClass+0x553C`, the tracked count of each AircraftType.
+    #[serde(default)]
+    aircraft_types: BTreeMap<InternedId, i32>,
+    /// `HouseClass+0x5564`, the on-map count of each UnitType; its total is
+    /// the sum.
+    active_unit_types: BTreeMap<InternedId, i32>,
+    /// `HouseClass+0x5578`, the on-map count of each InfantryType.
+    active_infantry_types: BTreeMap<InternedId, i32>,
+    /// `HouseClass+0x558C`, the on-map count of each AircraftType.
+    active_aircraft_types: BTreeMap<InternedId, i32>,
     /// `HouseClass+0x5550`, the on-map count of each BuildingType.
     active_building_types: BTreeMap<InternedId, i32>,
     /// `HouseClass+0x158`, the on-map objects whose type is a
     /// `ResourceGatherer=`.
     #[serde(default)]
     resource_gatherers: i32,
+    /// `HouseClass+0x15C`, the on-map objects whose type is a
+    /// `ResourceDestination=`.
+    #[serde(default)]
+    resource_destinations: i32,
     /// The value totals of the house's forces on the map.
     #[serde(default)]
     force_values: ForceValues,
@@ -195,16 +222,48 @@ impl HouseTracking {
         if facts.insignificant || entity.dont_score {
             return;
         }
-        match entity.category {
-            EntityCategory::Unit => {
-                let count = self.unit_types.entry(entity.type_ref()).or_default();
-                *count = count.wrapping_add(delta);
-            }
-            EntityCategory::Structure if !facts.unit_like_building => {
-                self.buildings = self.buildings.wrapping_add(delta);
-            }
-            _ => {}
+        if entity.category == EntityCategory::Structure && !facts.unit_like_building {
+            self.buildings = self.buildings.wrapping_add(delta);
         }
+        let counts = match entity.category {
+            EntityCategory::Unit => &mut self.unit_types,
+            EntityCategory::Structure => &mut self.building_types,
+            EntityCategory::Infantry => &mut self.infantry_types,
+            EntityCategory::Aircraft => &mut self.aircraft_types,
+        };
+        let count = counts.entry(entity.type_ref()).or_default();
+        *count = count.wrapping_add(delta);
+    }
+
+    /// The tracked count of one type of `category` (`0x0049FAE0` on
+    /// `+0x5500`, `+0x5514`, `+0x5528` or `+0x553C`).
+    pub(crate) fn owned_count(&self, category: EntityCategory, type_id: InternedId) -> i32 {
+        let counts = match category {
+            EntityCategory::Unit => &self.unit_types,
+            EntityCategory::Structure => &self.building_types,
+            EntityCategory::Infantry => &self.infantry_types,
+            EntityCategory::Aircraft => &self.aircraft_types,
+        };
+        counts.get(&type_id).copied().unwrap_or(0)
+    }
+
+    /// Fold the counters schema v237 (`AiTeams`) added, tagged, once any is
+    /// set: the tracked counts of the building, infantry and aircraft types
+    /// and the on-map count of `ResourceDestination=` objects.
+    pub(crate) fn hash_ai_team_counters(&self, hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+        if self.building_types.is_empty()
+            && self.infantry_types.is_empty()
+            && self.aircraft_types.is_empty()
+            && self.resource_destinations == 0
+        {
+            return;
+        }
+        b"house-type-counts-v1".hash(hasher);
+        self.building_types.hash(hasher);
+        self.infantry_types.hash(hasher);
+        self.aircraft_types.hash(hasher);
+        self.resource_destinations.hash(hasher);
     }
 
     /// Fold the defeat counters as the derived hash of this struct did before
@@ -213,15 +272,22 @@ impl HouseTracking {
         use std::hash::Hash;
         self.buildings.hash(hasher);
         self.unit_types.hash(hasher);
-        self.active_units.hash(hasher);
-        self.active_infantry.hash(hasher);
-        self.active_aircraft.hash(hasher);
+        // The totals, which the per-type counts replaced (schema v237 keeps
+        // their bytes).
+        self.active_units().hash(hasher);
+        self.active_infantry().hash(hasher);
+        self.active_aircraft().hash(hasher);
         self.active_building_types.hash(hasher);
     }
 
     /// `HouseClass+0x158`.
     pub(crate) const fn resource_gatherers(&self) -> i32 {
         self.resource_gatherers
+    }
+
+    /// `HouseClass+0x15C`.
+    pub(crate) const fn resource_destinations(&self) -> i32 {
+        self.resource_destinations
     }
 
     /// `HouseClass+0x160A8`, `+0x160AC` and `+0x160B0`.
@@ -237,35 +303,54 @@ impl HouseTracking {
             .unwrap_or(0)
     }
 
+    /// The on-map count of one type of `category` (`0x0049FAE0` on
+    /// `+0x5564`, `+0x5578`, `+0x558C` or `+0x5550`).
+    pub(crate) fn active_count(&self, category: EntityCategory, type_id: InternedId) -> i32 {
+        let counts = match category {
+            EntityCategory::Unit => &self.active_unit_types,
+            EntityCategory::Infantry => &self.active_infantry_types,
+            EntityCategory::Aircraft => &self.active_aircraft_types,
+            EntityCategory::Structure => &self.active_building_types,
+        };
+        counts.get(&type_id).copied().unwrap_or(0)
+    }
+
+    fn active_units(&self) -> i32 {
+        wrapping_total(&self.active_unit_types)
+    }
+
+    fn active_infantry(&self) -> i32 {
+        wrapping_total(&self.active_infantry_types)
+    }
+
+    fn active_aircraft(&self) -> i32 {
+        wrapping_total(&self.active_aircraft_types)
+    }
+
     /// `HouseClass::Added_To_Game @ 0x00502A80`, pricing with this house's
     /// `factors`.
     pub(crate) fn added_to_game(&mut self, entity: &GameEntity, factors: &HouseCostFactors) {
         if entity.tracking_facts.resource_gatherer {
             self.resource_gatherers = self.resource_gatherers.wrapping_add(1);
         }
+        if entity.tracking_facts.resource_destination {
+            self.resource_destinations = self.resource_destinations.wrapping_add(1);
+        }
         if let Some(value) = entity.tracking_facts.force_value {
             let total = self.force_values.total(value.kind);
             *total = total.wrapping_add(factors.adjust(value.cost, value.factor_slot.into()));
         }
         let dont_score = entity.dont_score;
-        match entity.category {
+        let counts = match entity.category {
             // The Unit case (increment at `0x00502CF9`) has no DontScore test.
-            EntityCategory::Unit => self.active_units = self.active_units.wrapping_add(1),
-            EntityCategory::Aircraft if !dont_score => {
-                self.active_aircraft = self.active_aircraft.wrapping_add(1);
-            }
-            EntityCategory::Structure if !dont_score => {
-                let count = self
-                    .active_building_types
-                    .entry(entity.type_ref())
-                    .or_default();
-                *count = count.wrapping_add(1);
-            }
-            EntityCategory::Infantry if !dont_score => {
-                self.active_infantry = self.active_infantry.wrapping_add(1);
-            }
-            _ => {}
-        }
+            EntityCategory::Unit => &mut self.active_unit_types,
+            EntityCategory::Aircraft if !dont_score => &mut self.active_aircraft_types,
+            EntityCategory::Structure if !dont_score => &mut self.active_building_types,
+            EntityCategory::Infantry if !dont_score => &mut self.active_infantry_types,
+            _ => return,
+        };
+        let count = counts.entry(entity.type_ref()).or_default();
+        *count = count.wrapping_add(1);
     }
 
     /// `HouseClass::Removed_From_Game @ 0x005025F0`, pricing with this
@@ -274,6 +359,9 @@ impl HouseTracking {
         if entity.tracking_facts.resource_gatherer {
             self.resource_gatherers = self.resource_gatherers.wrapping_sub(1);
         }
+        if entity.tracking_facts.resource_destination {
+            self.resource_destinations = self.resource_destinations.wrapping_sub(1);
+        }
         if let Some(value) = entity.tracking_facts.force_value {
             let total = self.force_values.total(value.kind);
             *total = total.wrapping_sub(factors.adjust(value.cost, value.factor_slot.into()));
@@ -281,22 +369,14 @@ impl HouseTracking {
         if entity.dont_score {
             return;
         }
-        match entity.category {
-            EntityCategory::Unit => self.active_units = self.active_units.wrapping_sub(1),
-            EntityCategory::Aircraft => {
-                self.active_aircraft = self.active_aircraft.wrapping_sub(1);
-            }
-            EntityCategory::Structure => {
-                let count = self
-                    .active_building_types
-                    .entry(entity.type_ref())
-                    .or_default();
-                *count = count.wrapping_sub(1);
-            }
-            EntityCategory::Infantry => {
-                self.active_infantry = self.active_infantry.wrapping_sub(1);
-            }
-        }
+        let counts = match entity.category {
+            EntityCategory::Unit => &mut self.active_unit_types,
+            EntityCategory::Aircraft => &mut self.active_aircraft_types,
+            EntityCategory::Structure => &mut self.active_building_types,
+            EntityCategory::Infantry => &mut self.active_infantry_types,
+        };
+        let count = counts.entry(entity.type_ref()).or_default();
+        *count = count.wrapping_sub(1);
     }
 
     /// The short game's test (`0x004F8EC6..0x004F8F1D`): alive while
@@ -326,12 +406,19 @@ impl HouseTracking {
                 .unwrap_or(0)
         });
         self.buildings
-            .wrapping_add(self.active_units)
-            .wrapping_add(self.active_infantry)
-            .wrapping_add(self.active_aircraft)
+            .wrapping_add(self.active_units())
+            .wrapping_add(self.active_infantry())
+            .wrapping_add(self.active_aircraft())
             .wrapping_add(refinery)
             != 0
     }
+}
+
+/// A CounterClass total: the wrapping sum of its per-type counts.
+fn wrapping_total(counts: &BTreeMap<InternedId, i32>) -> i32 {
+    counts
+        .values()
+        .fold(0, |total, &count| total.wrapping_add(count))
 }
 
 #[cfg(test)]
@@ -346,17 +433,18 @@ impl HouseTracking {
         self.unit_types.values().sum()
     }
 
-    /// Stand in for on-map units a fixture places without the lifecycle.
+    /// Stand in for on-map units a fixture places without the lifecycle,
+    /// counted under no type.
     pub(crate) fn set_active_units_for_test(&mut self, units: i32) {
-        self.active_units = units;
+        self.active_unit_types = BTreeMap::from([(InternedId::default(), units)]);
     }
 
     /// The on-map unit, infantry and aircraft totals.
     pub(crate) fn active_for_test(&self) -> (i32, i32, i32) {
         (
-            self.active_units,
-            self.active_infantry,
-            self.active_aircraft,
+            self.active_units(),
+            self.active_infantry(),
+            self.active_aircraft(),
         )
     }
 
@@ -370,11 +458,11 @@ impl HouseTracking {
     ) {
         self.buildings = buildings;
         self.unit_types = unit_types.iter().copied().collect();
-        (
-            self.active_units,
-            self.active_infantry,
-            self.active_aircraft,
-        ) = active;
+        // The fixture's totals, counted under no type.
+        let untyped = |total: i32| BTreeMap::from([(InternedId::default(), total)]);
+        self.active_unit_types = untyped(active.0);
+        self.active_infantry_types = untyped(active.1);
+        self.active_aircraft_types = untyped(active.2);
         self.active_building_types = active_building_types.iter().copied().collect();
     }
 }

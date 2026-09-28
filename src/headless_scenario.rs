@@ -182,6 +182,7 @@ pub(crate) fn load_with_launch(
         game_mode_nonzero: true,
         no_damage: false,
         free_radar: map.basic.free_radar.unwrap_or(false),
+        ignore_global_ai_triggers: map.basic.ignore_global_ai_triggers.unwrap_or(false),
         // Skirmish start forces `TiberiumGrows|TiberiumSpreads` (`OR 0xC0`
         // at `0x005E74CD`), copied into the scenario at `0x00687C23`.
         tiberium_grows_flag: true,

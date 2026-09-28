@@ -692,7 +692,11 @@ use crate::sim::world::Simulation;
 // manager's timers, and the cloak stage and disguise block timers are
 // `CdTimer`s (the last two save their words in a new order).
 // 235 -> 236: a harvester's overlay no longer saves its unread frame count.
-const SNAPSHOT_VERSION: u32 = 236;
+// 236 -> 237: the computer's teams (`sim::ai_team_creation`): each House's
+// team timer, trigger-team ratio, unit choices and per-type counts; each
+// team's creation frame and forming state; each AI trigger's track record
+// and its named multiplayer and side fields.
+const SNAPSHOT_VERSION: u32 = 237;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3708,7 +3712,8 @@ mod tests {
         // 234 -> 235: house, spawn manager, cloak and disguise timers are
         // `CdTimer`s.
         // 235 -> 236: the harvest overlay drops its unread frame count.
-        assert_eq!(super::SNAPSHOT_VERSION, 236);
+        // 236 -> 237: the computer's teams and their production.
+        assert_eq!(super::SNAPSHOT_VERSION, 237);
     }
 
     #[test]
@@ -4626,8 +4631,8 @@ mod tests {
                     crate::util::native_x87::NativeF64Bits::from_bits(2.5_f64.to_bits()),
                     crate::util::native_x87::NativeF64Bits::from_bits(3.5_f64.to_bits()),
                 ],
-                storage_flag_d0: true,
-                storage_i32_ac: -9,
+                multiplayer: true,
+                side: -9,
                 storage_flag_d1: false,
                 secondary_team_type: None,
                 difficulty_enabled: [true, false, true],
@@ -4745,8 +4750,8 @@ mod tests {
                 crate::util::native_x87::NativeF64Bits::from_bits(3.5_f64.to_bits()),
             ]
         );
-        assert!(restored_trigger.storage_flag_d0);
-        assert_eq!(restored_trigger.storage_i32_ac, -9);
+        assert!(restored_trigger.multiplayer);
+        assert_eq!(restored_trigger.side, -9);
         assert!(!restored_trigger.storage_flag_d1);
         assert_eq!(restored_trigger.secondary_team_type, None);
         assert_eq!(restored_trigger.difficulty_enabled, [true, false, true]);

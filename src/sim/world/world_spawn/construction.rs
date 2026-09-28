@@ -7,7 +7,7 @@
 use super::{GeneratedTechnoInitError, object_uses_voxel};
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::{Animation, SequenceKind};
 use crate::sim::components::{BridgeOccupancy, HarvestOverlay, Health, VoxelAnimation};
@@ -50,12 +50,7 @@ impl Simulation {
             // Original copy slices: object_health corpus / constructors.
             current: obj.strength,
         };
-        let category = match obj.category {
-            ObjectCategory::Infantry => EntityCategory::Infantry,
-            ObjectCategory::Vehicle => EntityCategory::Unit,
-            ObjectCategory::Aircraft => EntityCategory::Aircraft,
-            ObjectCategory::Building => EntityCategory::Structure,
-        };
+        let category = EntityCategory::from(obj.category);
         let uses_voxel = object_uses_voxel(type_id, obj, rules);
         let sight_range = (obj.sight.max(0) as u16).min(MAX_SIGHT_RANGE);
         let stable_id = self.allocate_stable_id();
@@ -303,6 +298,7 @@ fn stamp_scoring_flags(
         insignificant: obj.is_some_and(|o| o.insignificant),
         unit_like_building,
         resource_gatherer: obj.is_some_and(|o| o.resource_gatherer),
+        resource_destination: obj.is_some_and(|o| o.resource_destination),
         force_value: obj
             .and_then(|o| crate::sim::house_tracking::ForceValueFacts::of(ge.category, o)),
     };
