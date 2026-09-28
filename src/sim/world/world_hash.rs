@@ -695,6 +695,7 @@ impl Simulation {
             self.team_script_vm.hash_state(
                 self.session.binary_frame as i32,
                 schema.includes(HashFeature::AiTeams),
+                schema.includes(HashFeature::AiTeamRecruitment),
                 &mut hasher,
             );
         }

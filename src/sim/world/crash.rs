@@ -436,9 +436,6 @@ impl Simulation {
     /// head passenger leaves its Team, is removed from the cargo, has its own
     /// passengers killed (credited to itself, `0x00707CF5`), records its kill
     /// by `attacker` (vtable `+0xE0`) and is UnInit.
-    ///
-    /// RESIDUAL: the Team removal (`TeamClass::Remove_Member @ 0x006EA870`) is
-    /// not ported, as for every other VERA death (`object_destroy_callback`).
     pub(crate) fn kill_passengers(
         &mut self,
         transport: u64,
@@ -456,6 +453,9 @@ impl Simulation {
             else {
                 return;
             };
+            // `0x00707CE0`: `TeamClass::Remove_Member` (in limbo, so no idle
+            // order).
+            self.leave_team(passenger, false, Some(rules));
             if let Some(entity) = self.substrate.entities.get_mut(passenger)
                 && matches!(
                     entity.passenger_role,

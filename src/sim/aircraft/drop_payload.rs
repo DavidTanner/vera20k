@@ -308,6 +308,11 @@ pub fn try_drop(
                 rx: drop_rx,
                 ry: drop_ry,
             });
+            // `0x00415E74..0x00415E83`: the passenger leaves the carrier's team,
+            // if it is in that one.
+            if let Some((team, _)) = sim.team_script_vm.team_for_member(aircraft_id) {
+                sim.team_remove_member(team, passenger_id, false, Some(rules));
+            }
 
             Ok(())
         },

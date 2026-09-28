@@ -245,7 +245,7 @@ fn passive_acquire_gate(sim: &Simulation, id: u64, rules: &RuleSet, mission: Mis
     if mission == MissionType::Move
         && entity.attack_target.is_none()
         && is_foot
-        && !owner_is_human(sim, entity.owner())
+        && !sim.owner_is_human(entity.owner())
         && sim
             .team_script_vm
             .member_team_type(id)
@@ -371,18 +371,11 @@ pub(super) fn can_acquire_target(sim: &Simulation, id: u64, rules: &RuleSet) -> 
     }
     if entity.category == EntityCategory::Infantry
         && obj.engineer
-        && owner_is_human(sim, entity.owner())
+        && sim.owner_is_human(entity.owner())
     {
         return false;
     }
     combat_weapon::is_armed(entity, obj)
-}
-
-/// `HouseClass::IsControlledByHuman @ 0x0050B730`.
-fn owner_is_human(sim: &Simulation, owner: crate::sim::intern::InternedId) -> bool {
-    sim.houses
-        .get(&owner)
-        .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero))
 }
 
 fn fire_subject<'a>(

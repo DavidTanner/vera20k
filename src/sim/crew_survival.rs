@@ -430,7 +430,7 @@ impl Simulation {
         });
         let mission = if enemy_planter.is_some() {
             MissionType::Attack
-        } else if self.house_is_human(owner) {
+        } else if self.owner_is_human(owner) {
             MissionType::Move
         } else {
             MissionType::Hunt
@@ -584,7 +584,7 @@ impl Simulation {
         if infantry {
             self.scatter_crew(rules, registry, passenger);
         }
-        if !self.house_is_human(owner) {
+        if !self.owner_is_human(owner) {
             self.queue_crew_mission(passenger, MissionType::Hunt);
         }
     }
@@ -673,7 +673,7 @@ impl Simulation {
         let health = self.scenario_rng.next_range_i32_inclusive(5, strength / 2);
         self.set_crew_health(id, health);
         self.scatter_crew(rules, registry, id);
-        let mission = if self.house_is_human(owner) {
+        let mission = if self.owner_is_human(owner) {
             MissionType::Guard
         } else {
             MissionType::Hunt
@@ -873,10 +873,13 @@ impl Simulation {
         }
         // `0x00738143..0x0073816E`: a computer passenger joins the unit's Team
         // (`TeamClass::Add_Member @ 0x006EA500`), or Hunts without one.
-        if !self.house_is_human(passenger_owner)
-            && self.team_script_vm.team_for_member(unit_id).is_none()
-        {
-            self.queue_crew_mission(passenger, MissionType::Hunt);
+        if !self.owner_is_human(passenger_owner) {
+            match self.team_script_vm.team_for_member(unit_id) {
+                Some((team_id, _)) => {
+                    self.team_add_member(team_id, passenger, false, rules, registry);
+                }
+                None => self.queue_crew_mission(passenger, MissionType::Hunt),
+            }
         }
         // `0x00738174..0x00738180`: Select (vtable `+0x14C`).
         if dying.selected_by_player
@@ -1120,13 +1123,6 @@ impl Simulation {
                 MissionId::from_known(mission),
             );
         }
-    }
-
-    /// `HouseClass::IsControlledByHuman @ 0x0050B730`.
-    fn house_is_human(&self, owner: InternedId) -> bool {
-        self.houses
-            .get(&owner)
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero))
     }
 }
 

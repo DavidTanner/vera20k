@@ -187,7 +187,7 @@ fn selector_fixture(row: &Value) -> SelectorFixture {
         let created = dword(&team["created"]);
         let vm = &mut sim.team_script_vm;
         teams.push(if team.get("formed").is_some_and(flag) {
-            vm.create_team_from_type(team_owner, team_type, &[], None, created)
+            vm.create_team_from_type(team_owner, team_type, &[], created)
         } else {
             vm.construct_team(team_type, team_owner, true, created)
                 .unwrap()

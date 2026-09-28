@@ -356,12 +356,10 @@ impl Simulation {
             });
             if !can_fire {
                 //4B2E9F sets the +688 scan latch (not represented; see
-                //combat::greatest_threat's residual). The Team retarget
-                //0x6EC3A0 has no production reach (no TeamClass instance).
-                if self.team_script_vm.team_for_member(id).is_some() {
-                    return Err(
-                        "Drive/Ship tail Team retarget (0x6EC3A0) is not represented".into(),
-                    );
+                //combat::greatest_threat's residual); a team member's team
+                //then drops its targets (TeamClass::Scan_Limit 0x6EC3A0).
+                if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
+                    self.team_scan_limit(team_id, rules, registry);
                 }
                 if let Some(actor) = self.substrate.entities.get_mut(id) {
                     crate::sim::mission::concrete_effects::represented_assign_target(actor, None);

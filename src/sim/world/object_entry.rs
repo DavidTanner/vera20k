@@ -288,7 +288,6 @@ mod tests {
                 entity.owner(),
                 script_id,
                 vec![id],
-                None,
                 sim.session.binary_frame as i32,
             );
             assert!(

@@ -227,6 +227,14 @@ pub(super) enum HashFeature {
     /// value, so a state without it hashes as earlier schemas, which fold
     /// none.
     BarrelElevation = 239,
+    /// The computer's team recruitment: each live team's members with their
+    /// joined byte (`FootClass+0x689`), per-entry counts (`TeamClass+0x88`),
+    /// strength and regroup bytes (`+0x79`, `+0x7A`, `+0x7B`, `+0x82`),
+    /// centre, closest member, mission and move targets (`+0x34`..`+0x40`)
+    /// and guard timer (`+0x58`), folded, tagged, only once one leaves its
+    /// constructor value, so a state without them hashes as earlier schemas,
+    /// which fold none.
+    AiTeamRecruitment = 240,
 }
 
 impl HashSchema {
@@ -277,6 +285,7 @@ impl HashSchema {
                     | HashFeature::AiStrategy
                     | HashFeature::AiTeams
                     | HashFeature::BarrelElevation
+                    | HashFeature::AiTeamRecruitment
             ),
             #[cfg(test)]
             Self::Before(version) => (_feature as u16) < version,

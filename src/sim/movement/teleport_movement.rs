@@ -562,6 +562,7 @@ mod tests {
             dont_score: false,
             special_threat_value: 0.0,
             threat_posed: 0,
+            leadership_rating: 5,
             my_effectiveness_coefficient: None,
             target_effectiveness_coefficient: None,
             target_special_threat_coefficient: None,

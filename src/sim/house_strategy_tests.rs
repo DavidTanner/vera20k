@@ -369,7 +369,7 @@ fn all_to_hunt_matches_native() {
             slots.push((slot as i32, id));
         }
 
-        all_to_hunt(&mut sim, owner);
+        all_to_hunt(&mut sim, &rules(), owner);
 
         let hunting: Vec<i32> = slots
             .iter()

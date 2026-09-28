@@ -1,8 +1,9 @@
 //! Minimal AI opponent — produces deterministic commands via the same Command API as players.
 //!
-//! A stand-in for the computer's attacks, which its teams' recruitment and
-//! scripts will make (`sim::team_script_vm`, not ported): periodically, on
-//! an eighth frame, it sends idle units at the nearest enemy base. A
+//! A stand-in for the computer's attacks, which its teams' attack script
+//! actions will make (`sim::team_script_vm::actions`, not ported):
+//! periodically, on an eighth frame, it sends idle units at the nearest enemy
+//! base, sparing the members of teams whose script runs. A
 //! computer house's units come from its teams' needs (`sim::ai_team_creation`,
 //! `sim::ai_unit_choice`), its buildings from its Construction Yard
 //! (`sim::ai_base_building`), both made at its factory buildings
@@ -164,6 +165,14 @@ fn send_attack_wave(
         if rules
             .object(type_id)
             .is_some_and(|object| object.deploys_into.is_some())
+        {
+            continue;
+        }
+        // A team member follows its team, unless the team stays on a script
+        // action VERA does not port.
+        let teams = &sim.team_script_vm;
+        if teams.team_for_member(entity.stable_id()).is_some()
+            && !teams.member_team_stalled(entity.stable_id())
         {
             continue;
         }

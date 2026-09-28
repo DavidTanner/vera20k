@@ -312,6 +312,11 @@ pub struct ObjectType {
     /// enemy BUILDING that has no weapon or poses no threat. A `ThreatPosed=0`
     /// infantryman or vehicle is acquired like any other.
     pub threat_posed: i32,
+    /// `LeadershipRating=` (`TechnoTypeClass+0x5FC`, ReadInteger at
+    /// `0x0071433E`, constructor 5 at `0x0071101A`): a team's leader is its
+    /// qualifying member of the highest rating (`TeamClass::Fetch_A_Leader @
+    /// 0x006EC3D0`).
+    pub leadership_rating: i32,
     /// `MyEffectivenessCoefficient=` (`TechnoTypeClass+0x2C8`, read at
     /// `0x0071556B`). `None` means the key is absent, in which case native
     /// passes `[General] MyEffectivenessCoefficientDefault` (`RulesClass+0x1040`)
@@ -1959,6 +1964,7 @@ impl ObjectType {
             dont_score: section.read_bool("DontScore", false),
             special_threat_value: section.read_double("SpecialThreatValue", 0.0),
             threat_posed: section.read_int("ThreatPosed", 0),
+            leadership_rating: section.read_int("LeadershipRating", 5),
             my_effectiveness_coefficient: present_double("MyEffectivenessCoefficient"),
             target_effectiveness_coefficient: present_double("TargetEffectivenessCoefficient"),
             target_special_threat_coefficient: present_double("TargetSpecialThreatCoefficient"),

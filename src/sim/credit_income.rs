@@ -200,8 +200,9 @@ pub(crate) fn building_at_cell_in_store(entities: &EntityStore, rx: u16, ry: u16
 /// `target+0x1D0 = drainer` (`DrainingMe`), `drainer+0x1CC = target`
 /// (`DrainTarget`), flag the victim house's power recalc (`+0x5778`), free any
 /// mind-controlled captives, create the `DrainAnim` and drop the drainer from
-/// its team. Only the two pointers are modelled here; the power recalc
-/// (drained buildings output no power) and the anim are recorded residuals.
+/// its team. Only the two pointers are modelled here, the captives and the
+/// team by the caller; the power recalc (drained buildings output no power)
+/// and the anim are recorded residuals.
 ///
 /// Returns whether the link was made.
 pub(crate) fn install_drain_link(

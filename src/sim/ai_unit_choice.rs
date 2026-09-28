@@ -45,7 +45,6 @@ use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
-use crate::sim::mission::MissionId;
 use crate::sim::production::{CanBuild, can_build};
 use crate::sim::world::Simulation;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
@@ -301,7 +300,12 @@ fn candidates(
         })
         .map(|team| {
             let needed = vm
-                .needed_types(team)
+                .needed_types(team, |id| {
+                    sim.substrate
+                        .entities
+                        .get(id)
+                        .map(crate::sim::team_script_vm::member_type_identity)
+                })
                 .into_iter()
                 .filter(|member_type| member_type.category == category)
                 .filter_map(|member_type| type_index(member_type.id))
@@ -397,18 +401,8 @@ fn is_recruitable(
             .team_script_vm
             .team_for_member(entity.stable_id())
             .is_none()
-        && mission_recruitable(rules, entity.mission.effective())
+        && crate::sim::mission::control::mission_recruitable(rules, entity.mission.effective())
         && entity.base_defense_response.recruitable_a
-}
-
-fn mission_recruitable(rules: &RuleSet, mission: MissionId) -> bool {
-    if mission == MissionId::NONE {
-        return true;
-    }
-    mission
-        .known()
-        .and_then(|mission| rules.mission_control.entry(mission))
-        .is_some_and(|entry| entry.recruitable)
 }
 
 /// The choice among `candidates` (`0x004FED6E..0x004FEECB`), with `draw` as

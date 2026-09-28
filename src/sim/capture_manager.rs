@@ -52,16 +52,12 @@
 //!   and its permanent byte `+0x2C4` are not ported; `is_mind_controlled`
 //!   reads `+0x2C0` alone. Trigger: the Dominator superweapon. Effect: no
 //!   permanent capture. Frequency: per Dominator strike.
-//! - DecideUnitFate's Team arms: VERA has no Team membership, so a captive
-//!   leaves no team (`0x006EA870`), an "Add To Team" roll and the TeamType's
-//!   MindControlDecision override (`Type+0xC0`) never apply, and "Add To Team"
-//!   falls back to Hunt as native does for a teamless controller. The
-//!   "Put in Grinder"/"Put in Bio Reactor" arms (`0x004DFA70`/`0x004DFB70`)
-//!   walk the house's grinder and absorber lists, which VERA does not keep,
-//!   so they fall back to Hunt. Trigger: an AI-owned controller (or an AI
-//!   house getting a unit back). Effect: the unit hunts where native may send
-//!   it into a Grinder or Bio Reactor. Frequency: AI Yuri games with those
-//!   buildings; no skirmish AI yet.
+//! - DecideUnitFate's "Put in Grinder"/"Put in Bio Reactor" arms
+//!   (`0x004DFA70`/`0x004DFB70`) walk the house's grinder and absorber lists,
+//!   which VERA does not keep, so they fall back to Hunt. Trigger: an
+//!   AI-owned controller (or an AI house getting a unit back) rolling them.
+//!   Effect: the unit hunts where native may send it into a Grinder or Bio
+//!   Reactor. Frequency: AI Yuri games with those buildings.
 //! - The link line (`DrawLinks @ 0x00472160`, the node timer from
 //!   `MindControlAttackLineFrames=`), the overload flash counter (`+0x44`)
 //!   and the Mastermind's `PipScale=MindControl` pips (`0x0070A15C` ->
@@ -88,6 +84,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::map::entities::EntityCategory;
+use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::mind_control_rules::CaptureReason;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
@@ -373,6 +370,7 @@ impl Simulation {
         controller_id: u64,
         target_id: u64,
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> bool {
         if !self.can_capture(controller_id, target_id, rules) {
             return false;
@@ -419,7 +417,7 @@ impl Simulation {
             target.mind_control.controller = Some(controller_id);
         }
         self.reset_captured_orders(target_id, rules);
-        self.decide_unit_fate(controller_id, target_id, rules);
+        self.decide_unit_fate(controller_id, target_id, rules, registry);
         self.attach_capture_ring(target_id, rules);
         true
     }
@@ -439,6 +437,7 @@ impl Simulation {
         firer_id: u64,
         target: Option<u64>,
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) {
         let Some(firer) = self.substrate.entities.get(firer_id) else {
             return;
@@ -458,7 +457,7 @@ impl Simulation {
         else {
             return;
         };
-        if !self.capture_unit(firer_id, target_id, rules) {
+        if !self.capture_unit(firer_id, target_id, rules, registry) {
             return;
         }
         let Some(sound) = rules.mind_control.mind_control_sound.clone() else {
@@ -604,7 +603,9 @@ impl Simulation {
             }
             self.change_owner_with_rules(victim_id, original_owner, rules);
             // DecideUnitFate runs while `+0x2C0` still names the controller.
-            self.decide_unit_fate(controller_id, victim_id, rules);
+            // Back with its own house, the unit cannot join the controller's
+            // team, so its fate needs no map overlays.
+            self.decide_unit_fate(controller_id, victim_id, rules, None);
             if let Some(victim) = self.substrate.entities.get_mut(victim_id) {
                 victim.mind_control.controller = None;
             }
@@ -638,11 +639,26 @@ impl Simulation {
 
     /// `CaptureManagerClass::DecideUnitFate @ 0x004723B0`, called with the
     /// unit's house already changed (to the controller's on capture, back to
-    /// the original on release). Team, Grinder and Bio Reactor arms are module
-    /// residuals.
-    fn decide_unit_fate(&mut self, controller_id: u64, unit_id: u64, rules: &RuleSet) {
-        if !self.substrate.entities.contains(unit_id) {
+    /// the original on release). The unit first leaves its team
+    /// (`0x004723DF`). A controller in a team whose TeamType sets
+    /// `MindControlDecision=` decides by it instead of the roll, which is
+    /// still drawn (`0x00472586..0x004725A9`). "Add To Team" puts a unit that
+    /// did not change house on this call into the controller's team
+    /// (constrained `Add_Member @ 0x006EA4F0`), else it hunts. The Grinder
+    /// and Bio Reactor arms are module residuals.
+    fn decide_unit_fate(
+        &mut self,
+        controller_id: u64,
+        unit_id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let Some(unit) = self.substrate.entities.get(unit_id) else {
             return;
+        };
+        let unit_is_foot = unit.category != EntityCategory::Structure;
+        if unit_is_foot {
+            self.leave_team(unit_id, false, Some(rules));
         }
         // 0x004723E4..0x004723F3: a unit holding a Temporal target lets go.
         self.temporal_release_if_warping(unit_id);
@@ -676,6 +692,8 @@ impl Simulation {
         else {
             return;
         };
+        // 0x00472414..0x0047242C: whether this call changed the unit's house.
+        let changed_house = unit_owner != controller_owner;
         let reason = self.capture_reason(controller_owner, health, strength, rules);
         // 0x004724E3: `RandomRanged(1, 100)` on the Scenario stream.
         let roll = self.scenario_rng.next_range_i32_inclusive(1, 100);
@@ -683,9 +701,28 @@ impl Simulation {
         else {
             return;
         };
-        // 1 "Add To Team", 2 "Put in Grinder", 3 "Put in Bio Reactor" fall
-        // back to Hunt here (module residual); 5 "Do Nothing" keeps orders.
+        let mut choice = i32::from(choice);
+        let controller_team = self
+            .team_script_vm
+            .team_for_member(controller_id)
+            .map(|(team_id, _)| team_id);
+        if let Some(decision) = controller_team
+            .and_then(|team_id| self.team_script_vm.mind_control_decision(team_id))
+            .filter(|&decision| decision != 0)
+        {
+            choice = decision;
+        }
+        // 2 "Put in Grinder" and 3 "Put in Bio Reactor" fall back to Hunt
+        // here (module residual); 5 "Do Nothing" keeps orders.
         if choice == 5 {
+            return;
+        }
+        if choice == 1
+            && !changed_house
+            && unit_is_foot
+            && let Some(team_id) = controller_team
+            && self.team_add_member(team_id, unit_id, true, rules, registry)
+        {
             return;
         }
         let now = self.session.binary_frame;

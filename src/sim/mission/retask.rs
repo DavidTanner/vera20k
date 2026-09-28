@@ -139,7 +139,10 @@ impl Simulation {
     ///
     /// Six commands `command_uses_megamission` also counts — Guard, MinerReturn,
     /// EjectBunker, UnloadPassengers, HarvestCell, ToggleInfantryDeploy — write
-    /// their missions outside this funnel entirely and so still get no clear.
+    /// their missions outside this funnel entirely and so still get no clear,
+    /// and do not take a team member off its team (`0x004C7380`); only
+    /// computer units are team members, and only `sim::ai`'s AttackMove,
+    /// which passes here, orders them.
     /// Pre-existing, not narrowed by the split. Trigger: one of those issued to
     /// a unit already carrying an Override archive. Player effect: a later
     /// Restore hands back a destination or target the order should have
@@ -161,6 +164,11 @@ impl Simulation {
         // The radio break precedes the Queue (`0x004C72E8..0x004C7342` run
         // before `0x004C73B9`).
         crate::sim::miner::miner_dock::break_for_retask(self, id, rules);
+        // `0x004C735D..0x004C7380`: an order other than Unload takes a Foot
+        // off its team, without an idle order.
+        if mission != MissionType::Unload {
+            self.leave_team(id, true, rules);
+        }
         self.queue_mission_with_teardown(id, mission, teardown);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.suspended_attack_target = None;

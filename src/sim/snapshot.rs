@@ -702,7 +702,7 @@ use crate::sim::world::Simulation;
 // and its named multiplayer and side fields.
 // 238 -> 239: each Techno keeps its barrel elevation, the `+0x370`
 // FacingClass that Unlimbo aims by `FireAngle=`.
-const SNAPSHOT_VERSION: u32 = 239;
+const SNAPSHOT_VERSION: u32 = 240;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -4654,14 +4654,11 @@ mod tests {
                 entity_id: 1,
                 member_type: member_identity,
             }],
-            None,
             sim.session.binary_frame as i32,
         );
-        assert_eq!(
-            sim.team_script_vm
-                .suspend_teams_for_base_defense(owner, 1, -12, 1800),
-            vec![1]
-        );
+        let resources = crate::sim::runtime::SimResources::empty();
+        sim.suspend_teams_for_base_defense(owner, 1, 1800, &resources.rules);
+        assert!(sim.team_script_vm.team_for_member(1).is_none());
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
         let expected_hash = sim.state_hash();
 
@@ -4693,7 +4690,7 @@ mod tests {
             crate::sim::timer::CdTimer::started(-11, 225)
         );
         let team = restored.team_script_vm.team(team_id).unwrap();
-        assert!(team.members().is_empty());
+        assert_eq!(team.member_count(), 0);
         assert_eq!(restored.team_script_vm.registry_counts(), (1, 1, 1, 1));
         assert_eq!(restored.team_script_vm.team_type_order(), &[team_type_id]);
         let restored_team_type = restored
@@ -4769,7 +4766,7 @@ mod tests {
         );
         assert_eq!(
             team.response_suspension_state(),
-            (true, true, true, -12, 1800)
+            (true, true, true, 0, 1800)
         );
         assert_eq!(restored.state_hash(), expected_hash);
     }

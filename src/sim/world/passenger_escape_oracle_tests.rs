@@ -303,7 +303,7 @@ fn scene(input: &Value) -> Scene {
     if input["team"] == true {
         let script = sim.interner.intern("ESCAPE");
         sim.team_script_vm
-            .create_team(americans, script, vec![transport], None, 0);
+            .create_team(americans, script, vec![transport], 0);
     }
     // The oracle seeds the Scenario stream 31 and draws nothing before the
     // block.
