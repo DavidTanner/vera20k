@@ -30,6 +30,8 @@ pub struct TransitionUnitSpriteKey {
     pub to_slope: u8,
     pub phase_num: i32,
     pub phase_den: u8,
+    /// The barrel's pitch step, as [`UnitSpriteKey::barrel_pitch`].
+    pub barrel_pitch: i8,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -84,6 +86,7 @@ impl VxlSlopeTransitionCache {
             layer: key.layer,
             frame: key.frame,
             slope_type: key.to_slope,
+            barrel_pitch: key.barrel_pitch,
         };
         let blend = VxlSlopeBlend {
             from_slope: key.from_slope,
@@ -163,6 +166,7 @@ mod tests {
             to_slope,
             phase_num,
             phase_den: crate::sim::movement::slope_transition::SLOPE_TRANSITION_FRAMES,
+            barrel_pitch: 0,
         }
     }
 

@@ -8860,4 +8860,29 @@ Projectile=Invisible
             );
         }
     }
+
+    /// Retail `FireAngle=` through the production reader: ships, submarines,
+    /// missiles and the tech outpost set it (`CAOUTP` behind a trailing
+    /// comment); the Grizzly and Rhino keep the constructor's 8.
+    #[test]
+    fn retail_fire_angle() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let rules = RuleSet::from_ini(&ini).expect("retail rules parse");
+        for (object, fire_angle) in [
+            ("DEST", 32),
+            ("BSUB", 64),
+            ("V3ROCKET", 1),
+            ("CAOUTP", 0),
+            ("MTNK", 8),
+            ("HTNK", 8),
+        ] {
+            assert_eq!(
+                rules.object(object).unwrap().fire_angle,
+                fire_angle,
+                "{object}"
+            );
+        }
+    }
 }

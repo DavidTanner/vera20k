@@ -1732,6 +1732,14 @@ impl Simulation {
             entity.position.sub_y.hash(hasher);
             // The body FacingClass (`+0x388`), each Techno's one heading.
             entity.body_facing.hash(hasher);
+            // The barrel elevation (`+0x370`), tagged, once an Unlimbo moved
+            // it off its constructor value.
+            if schema.includes(HashFeature::BarrelElevation)
+                && !entity.barrel_elevation_is_constructed()
+            {
+                b"barrel-elevation-v1".hash(hasher);
+                entity.barrel_elevation().hash(hasher);
+            }
             entity.body_frame_counter.hash(hasher);
             // Building+6E6 is retained transition state, independent of HP.
             if entity.building_damage_state_active {

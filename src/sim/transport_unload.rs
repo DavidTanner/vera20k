@@ -597,7 +597,15 @@ fn eject_head_passenger(
                 }
             }
             let z = cell_level_or(sim, place_cell, transport_z);
-            reveal_unloaded_passenger(sim, transport_id, pax_id, place_cell.0, place_cell.1, z)?;
+            reveal_unloaded_passenger(
+                sim,
+                rules,
+                transport_id,
+                pax_id,
+                place_cell.0,
+                place_cell.1,
+                z,
+            )?;
 
             // OpenTopped: `TechnoClass::ClearInOpenTransport` (`0x007104A0`) drops the
             // passenger's in-transport firing membership; VERA's open-topped registry
@@ -994,7 +1002,7 @@ fn eject_from_aircraft(
                     loco.layer = MovementLayer::Ground;
                 }
             }
-            reveal_unloaded_passenger(sim, aircraft_id, pax_id, cell.0, cell.1, z)?;
+            reveal_unloaded_passenger(sim, rules, aircraft_id, pax_id, cell.0, cell.1, z)?;
             if let Some(passenger) = sim.substrate.entities.get_mut(pax_id) {
                 passenger.attack_target = None;
                 passenger.passively_acquired_target = false;

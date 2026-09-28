@@ -40,6 +40,12 @@ pub(crate) fn commit_prepared_load(
         .sinking_waterlines
         .borrow_mut()
         .restore(committed.sinking_waterlines);
+    state
+        .match_state
+        .match_presentation
+        .barrel_image_pitches
+        .borrow_mut()
+        .clear();
     crate::app::loading::transitions::sync_in_game_options_speed_from_sim(state);
     state.match_state.match_presentation.combat_lights.clear();
     state

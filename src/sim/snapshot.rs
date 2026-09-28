@@ -700,7 +700,9 @@ use crate::sim::world::Simulation;
 // team timer, trigger-team ratio, unit choices and per-type counts; each
 // team's creation frame and forming state; each AI trigger's track record
 // and its named multiplayer and side fields.
-const SNAPSHOT_VERSION: u32 = 238;
+// 238 -> 239: each Techno keeps its barrel elevation, the `+0x370`
+// FacingClass that Unlimbo aims by `FireAngle=`.
+const SNAPSHOT_VERSION: u32 = 239;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3718,7 +3720,8 @@ mod tests {
         // 235 -> 236: the harvest overlay drops its unread frame count.
         // 236 -> 237: one body FacingClass per Techno; no facing mirror or target.
         // 237 -> 238: the computer's teams and their production.
-        assert_eq!(super::SNAPSHOT_VERSION, 238);
+        // 238 -> 239: each Techno's barrel elevation FacingClass.
+        assert_eq!(super::SNAPSHOT_VERSION, 239);
     }
 
     #[test]

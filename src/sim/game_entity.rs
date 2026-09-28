@@ -98,6 +98,20 @@ fn default_foundation() -> String {
 /// freshly built object is already past the idle-turret dwell on frame 0.
 pub(crate) const NATIVE_LAST_FIRE_FRAME_INIT: i64 = -100;
 
+/// The barrel elevation's rate: the TechnoClass constructor passes 3
+/// (`PUSH 3` at `0x006F2EDE`) to `FacingClass(int) @ 0x004C91E0`.
+const BARREL_ELEVATION_ROT: i32 = 3;
+
+/// A level barrel: the draw pitches by `d32 - 8`, which is zero at `0x4000`.
+pub(crate) const BARREL_LEVEL: u16 = 0x4000;
+
+/// The elevation Unlimbo turns a barrel toward: level minus the low byte of
+/// `FireAngle=` shifted up a byte (`MOV CH, byte [Type+0x3D0]` at
+/// `0x006F6DD9`, `SUB` at `0x006F6DDF`), kept to a word.
+pub(crate) fn unlimbo_barrel_target(fire_angle: i32) -> u16 {
+    BARREL_LEVEL.wrapping_sub(u16::from(fire_angle as u8) << 8)
+}
+
 fn default_last_fire_frame() -> i64 {
     NATIVE_LAST_FIRE_FRAME_INIT
 }
@@ -423,6 +437,19 @@ pub struct GameEntity {
     /// that key only on `[HIND]`, a VehicleType, so the copy is dormant and not
     /// ported.
     pub body_facing: crate::sim::movement::FacingClass,
+    /// The barrel elevation, `TechnoClass+0x370`, the first of the three
+    /// FacingClasses (the body is `+0x388`, the turret `+0x3A0`,
+    /// [`Self::barrel_facing`]). The TechnoClass constructor builds it at 0
+    /// turning at rate 3 (`0x006F2EDE..0x006F2EE6`, `0x004C91E0`), and
+    /// [`Self::unlimbo_barrel_elevation`] levels and aims it. `UnitClass::DrawVoxelBody`
+    /// pitches the barrel voxel by it (`0x0073BB77..0x0073BBAC`); nothing in
+    /// a unit's simulation reads it.
+    ///
+    /// The building writers (the constructor's `Set`s at `0x0043BA5E` and
+    /// `0x0043BACB`, Sell's `Set_Current` at `0x0044A08C`, Mission_Missile's
+    /// `Set`s at `0x0044CEE2` and `0x0044CF7A`, an MCV deploy's `Set_Current`
+    /// at `0x00739827`) and their readers are not ported.
+    barrel_elevation: crate::sim::movement::FacingClass,
     /// Persistent FootClass body-animation counter (`FootClass+0x538`).
     /// Unit SHP drawing takes the walk-frame remainder from this counter; it
     /// advances on absolute binary-frame cadence and never resets on a visual
@@ -1332,6 +1359,28 @@ impl GameEntity {
         (((u32::from(self.body_facing.current(frame)) >> 7) + 1) >> 1) as u8
     }
 
+    /// The barrel elevation (`+0x370`); its readers sample `current(frame)`
+    /// (`FacingClass::Current @ 0x004C93D0`).
+    pub(crate) fn barrel_elevation(&self) -> &crate::sim::movement::FacingClass {
+        &self.barrel_elevation
+    }
+
+    /// Whether the barrel elevation still holds its constructor value, which
+    /// an object that never unlimboed keeps.
+    pub(crate) fn barrel_elevation_is_constructed(&self) -> bool {
+        self.barrel_elevation == crate::sim::movement::FacingClass::new(0, BARREL_ELEVATION_ROT)
+    }
+
+    /// `TechnoClass::Unlimbo`'s barrel writes, right after its body snap
+    /// (`0x006F6DAA`): the elevation snaps level (`Set_Current(0x4000)` at
+    /// `0x006F6DC3`), then turns toward the type's `FireAngle=` (`Set` at
+    /// `0x006F6DF5`, [`unlimbo_barrel_target`]).
+    pub(crate) fn unlimbo_barrel_elevation(&mut self, fire_angle: i32, frame: u32) {
+        self.barrel_elevation.snap(BARREL_LEVEL, frame);
+        self.barrel_elevation
+            .set(unlimbo_barrel_target(fire_angle), frame);
+    }
+
     /// The class constructor's one rate write on `+0x388` (`Set_ROT @
     /// 0x004C9680`): the constant 127 for infantry (`0x00517BC5`), `ROT=`
     /// (`Type+0x71C`) for a unit (`0x00735579`), an aircraft (`0x00413FE7`)
@@ -1576,6 +1625,7 @@ impl GameEntity {
             },
             // The Unlimbo direction; the class constructor supplies the rate.
             body_facing: crate::sim::movement::FacingClass::new(u16::from(facing) << 8, 0),
+            barrel_elevation: crate::sim::movement::FacingClass::new(0, BARREL_ELEVATION_ROT),
             body_frame_counter: 0,
             owner,
             health,
