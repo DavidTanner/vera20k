@@ -134,8 +134,12 @@ impl IniSection {
         self.projected_values.get(key).map(Vec::as_slice)
     }
 
-    /// Stored values in source order; readers walk registries through it.
-    fn values_in_order(&self) -> Vec<&str> {
+    /// The type IDs of a registry section `native_processing` rewrote with
+    /// native stored IDs, such as `[OverlayTypes]` or `[Animations]`, in
+    /// source order. A raw INI registry walk reads each entry through
+    /// [`Self::read_name`] with its native capacity instead.
+    /// `architecture_guards` pins the production callers.
+    pub fn registry_ids(&self) -> Vec<&str> {
         self.key_order
             .iter()
             .filter_map(|key| self.entries.get(key).map(String::as_str))

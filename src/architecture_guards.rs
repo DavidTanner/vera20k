@@ -133,7 +133,7 @@ fn raw_ini_walks_have_pinned_production_callers() {
         (
             "registry_ids",
             &[
-                ("rules/ini_value.rs", 1), // the definition
+                ("rules/ini_parser.rs", 1), // the definition
                 ("rules/overlay_types.rs", 2),
                 ("rules/ruleset.rs", 2),
                 ("rules/smudge_type.rs", 1),

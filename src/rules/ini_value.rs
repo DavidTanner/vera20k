@@ -67,14 +67,6 @@ const STRTRIM_MAX: u8 = 0x20;
 const COMMA: &[char] = &[','];
 
 impl IniSection {
-    /// The type IDs of a registry section `native_processing` rewrote with
-    /// native stored IDs, such as `[OverlayTypes]` or `[Animations]`, in
-    /// source order. A raw INI registry walk reads each entry through
-    /// [`Self::read_name`] with its native capacity instead.
-    pub fn registry_ids(&self) -> Vec<&str> {
-        self.values_in_order()
-    }
-
     fn fold_rules_values<T>(
         &self,
         key: &str,
