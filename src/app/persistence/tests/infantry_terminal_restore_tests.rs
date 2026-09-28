@@ -87,13 +87,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
             .factory_shadow
             .test_arm_ready(owner, ProductionCategory::Infantry)
     );
-    tick_production_with_overlay_registry(
-        &mut restored,
-        &rules,
-        &BTreeMap::new(),
-        None,
-        Some(&registry),
-    );
+    tick_production_with_overlay_registry(&mut restored, &rules, None, Some(&registry));
     let object = restored
         .substrate
         .entities

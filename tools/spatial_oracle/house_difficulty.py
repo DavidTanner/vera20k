@@ -1,16 +1,19 @@
-"""Original HouseClass::SetDifficulty 0x004F6EC0: the ROF bias it stores.
+"""Original HouseClass::SetDifficulty 0x004F6EC0: the ROF bias and team timer it
+stores.
 
-Executes the whole body per case and records House+0x184 (the difficulty index)
-and House+0x1A8 (the ROF bias, a double) afterwards. Outside a campaign
+Executes the whole body per case and records House+0x184 (the difficulty index),
+House+0x1A8 (the ROF bias, a double) and the team timer's start and duration
+(+0x5798, +0x57A0: the frame, and TeamDelays[difficulty] plus the house's
++0x30 index times 175, 0x004F70F0..0x004F712D) afterwards. Outside a campaign
 (GameMode [0x00A8B238] nonzero) the bias is the difficulty row's ROF times the
 HouseType's ROF (FLD; FMUL; FSTP qword, 0x004F6F6C..0x004F6F79); in a campaign
 it is the row's value (0x004F7072..0x004F707B).
 
 Supplied: the Rules object (the three difficulty rows at +0x1538, stride 0x50,
 ROF at row +0x20; the other row fields and the Rules scalars SetDifficulty reads
-are fixed), the HouseType (+0xC8..+0xF8 multipliers, ROF at +0xE8), the house's
-+0x30 index and +0x34 HouseType, the frame counter and GameMode. Nothing is
-stubbed.
+are fixed; TeamDelays at +0x115C holds 11, 22, 33), the HouseType
+(+0xC8..+0xF8 multipliers, ROF at +0xE8), the house's +0x30 index and +0x34
+HouseType, the frame counter (100) and GameMode. Nothing is stubbed.
 
 Rust consumer: src/sim/house_state.rs (HouseState::set_difficulty).
 """
@@ -52,7 +55,8 @@ def run(case):
     for index, bits in enumerate(case['row_rof']):
         rows[index][4] = int(bits, 16)
     writes = {0x8871E0: dword(RULES), 0xA8B238: dword(case['mode']), 0xA8ED84: dword(100),
-              HOUSE + 0x30: dword(0), HOUSE + 0x34: dword(HOUSE_TYPE), HOUSE + 0x184: dword(7),
+              HOUSE + 0x30: dword(case['array_index']), HOUSE + 0x34: dword(HOUSE_TYPE),
+              HOUSE + 0x184: dword(7),
               RULES + 0x1418: qword(ONE), RULES + 0x115C: dword(TABLE),
               TABLE: dword(11) + dword(22) + dword(33)}
     for index in range(7):
@@ -61,14 +65,26 @@ def run(case):
     for index, row in enumerate(rows):
         writes[RULES + 0x1538 + index * 0x50] = b''.join(qword(value) for value in row)
     result = call(SET_DIFFICULTY, ecx=HOUSE, stack_args=[case['difficulty']], writes=writes,
-                  dumps={'house': (HOUSE + 0x184, 0x2C)})
+                  dumps={'house': (HOUSE + 0x184, 0x2C), 'team_timer': (HOUSE + 0x5798, 0xC)})
     house = bytes.fromhex(result['dumps']['house'])
+    team_timer = bytes.fromhex(result['dumps']['team_timer'])
     return dict(input=case,
                 difficulty=struct.unpack_from('<i', house, 0)[0],
-                rof_bias=f"{struct.unpack_from('<Q', house, 0x1A8 - 0x184)[0]:016x}")
+                rof_bias=f"{struct.unpack_from('<Q', house, 0x1A8 - 0x184)[0]:016x}",
+                team_timer=[struct.unpack_from('<i', team_timer, 0)[0],
+                            struct.unpack_from('<i', team_timer, 8)[0]])
+
+
+# House array indexes, cycled over the cases; the last wraps the 175 product.
+ARRAY_INDEXES = (0, 1, 7, 0x01000001)
 
 
 def cases():
+    for number, case in enumerate(rof_cases()):
+        yield dict(case, array_index=ARRAY_INDEXES[number % len(ARRAY_INDEXES)])
+
+
+def rof_cases():
     retail = [f'{f32d(.8):016x}', f'{ONE:016x}', f'{f32d(1.2):016x}']
     odd = [f'{f32d(.7):016x}', f'{f32d(1.3):016x}', '0000000000000000',
            f'{f32d(-.5):016x}', '3fefffffffffffff']
@@ -91,13 +107,14 @@ def generate():
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
         scope=('SetDifficulty over difficulty 0..2, GameMode nonzero and zero, HouseType ROF '
-               '(1.0, 1.1f, 0.9f, the largest double below 1) and difficulty-row ROF values '
-               '(the retail rows, and odd values including zero and negative): the stored '
-               'difficulty index and ROF bias.'),
+               '(1.0, 1.1f, 0.9f, the largest double below 1), difficulty-row ROF values '
+               '(the retail rows, and odd values including zero and negative) and house '
+               'indexes 0, 1, 7 and 0x01000001: the stored difficulty index, ROF bias and '
+               'team timer start and duration.'),
         assumptions=['x87 control word 0x0E7F (PC53, chop), the harness default.',
                      "Row values are ReadDouble's widened singles, as rulesmd.ini yields.",
                      'The other row fields and Rules+0x1418/+0x115C are fixed fixture values; '
-                     'only +0x184 and +0x1A8 are recorded.'],
+                     'only +0x184, +0x1A8, +0x5798 and +0x57A0 are recorded.'],
         substitutions=[],
         entry_points={'set_difficulty': SET_DIFFICULTY},
     ))

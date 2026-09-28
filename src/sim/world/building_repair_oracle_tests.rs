@@ -632,13 +632,7 @@ fn retail_repair_keys_read_as_the_oracle_writes_them() {
     // SetDifficulty copies the house's row (HouseDifficulty order: 0 is a
     // Hard AI reading [Easy]).
     let mut house = HouseState::new(Default::default(), 0, None, false, 0, 10);
-    house.set_difficulty(
-        HouseDifficulty::Easy,
-        &rules.general.difficulty_rof,
-        &rules.general.difficulty_repair_delay,
-        1.0,
-        true,
-    );
+    house.set_difficulty(HouseDifficulty::Easy, &rules.general, 1.0, true, 0, 0);
     assert_eq!(house.repair_delay.to_bits(), constant(&corpus, "delay_05"));
 }
 

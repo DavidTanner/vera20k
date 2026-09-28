@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::rules::ini_parser::IniFile;
+use crate::sim::ai_buildable::country_bit;
 use crate::sim::house_state::{HouseDifficulty, HouseState};
 use serde_json::Value;
 

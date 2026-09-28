@@ -142,6 +142,52 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
     } else {
         &fallback_structures
     };
+    if produced_category == ObjectCategory::Vehicle {
+        // Native HouseClass::Place_Production chooses one producer, then calls
+        // ExitObject once. A failed cell choice or Unlimbo does not retry the
+        // next factory, so every Unit branch is bound to `bases.first()`.
+        let (producer_id, bx, by, structure_id) = bases.first()?;
+        return spawn_selection_at_producer(
+            sim,
+            rules,
+            (*producer_id, *bx, *by, structure_id),
+            produced_type_id,
+            produced_category,
+            path_grid,
+            require_water,
+        );
+    }
+    bases
+        .iter()
+        .find_map(|(producer_id, bx, by, structure_id)| {
+            spawn_selection_at_producer(
+                sim,
+                rules,
+                (*producer_id, *bx, *by, structure_id),
+                produced_type_id,
+                produced_category,
+                path_grid,
+                require_water,
+            )
+        })
+}
+
+/// The exit cell at one producer building, `(id, cell, type)`, for an object
+/// of `produced_category` (type `produced_type_id`): the naval, exact
+/// land and legacy Unit arms, the infantry arm and the adapter of the other
+/// classes. The player's queue picks the producer
+/// ([`find_spawn_selection_for_owner_with_type`]); a computer's factory
+/// building exits its own object (`production::factory_ai`).
+pub(super) fn spawn_selection_at_producer(
+    sim: &Simulation,
+    rules: &RuleSet,
+    producer: (u64, u16, u16, &str),
+    produced_type_id: Option<&str>,
+    produced_category: ObjectCategory,
+    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
+    require_water: bool,
+) -> Option<ProductionSpawnSelection> {
+    let (producer_id, bx, by, structure_id) = producer;
     let resolved_terrain = sim.resolved_terrain.as_ref();
     let overlay_grid = sim.overlay_grid.as_ref();
     let zone_grid = sim.zone_grid.as_ref();
@@ -151,66 +197,15 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
         .map(|(bounds, height)| (bounds.base, height));
     let movement_profile =
         spawn_movement_profile(rules, produced_type_id, produced_category, require_water);
-
-    if produced_category == ObjectCategory::Vehicle {
-        // Native HouseClass::Place_Production chooses one producer, then calls
-        // ExitObject once. A failed cell choice or Unlimbo does not retry the
-        // next factory, so every Unit branch below is bound to `bases.first()`.
-        let (producer_id, bx, by, structure_id) = bases.first()?;
-        if exact_naval_vehicle_exit_factory(rules, structure_id) {
-            let producer_rally = sim
-                .substrate
-                .entities
-                .get(*producer_id)
-                .and_then(|producer| producer.rally_cell());
-            let (cell, _) = find_naval_unit_delivery_cell(
-                *producer_id,
-                *bx,
-                *by,
-                structure_id,
-                producer_rally,
-                movement_profile,
-                rules,
-                path_grid,
-                &sim.substrate.occupancy,
-                &sim.substrate.entities,
-                resolved_terrain,
-                overlay_grid,
-                zone_grid,
-                sim.session.binary_frame,
-                sim.playfield_bounds,
-                map_size,
-            );
-            return Some(ProductionSpawnSelection {
-                producer_id: *producer_id,
-                cell,
-                delivery: ProductionDeliveryKind::NavalUnit,
-            });
-        }
-        if !require_water && exact_land_vehicle_exit_factory(rules, structure_id) {
-            return find_exact_exitcoord_spawn_cell(
-                *bx,
-                *by,
-                structure_id,
-                produced_category,
-                rules,
-                path_grid,
-                &sim.substrate.occupancy,
-                resolved_terrain,
-                require_water,
-            )
-            .map(|cell| ProductionSpawnSelection {
-                producer_id: *producer_id,
-                cell,
-                delivery: ProductionDeliveryKind::Standard,
-            });
-        }
-
-        // Unverified/modded produced-Unit branches retain the legacy adapter,
-        // but still cannot fail over to a second producer after selection.
-        return find_spawn_cell_near_structure(
-            *bx,
-            *by,
+    let standard = |cell| ProductionSpawnSelection {
+        producer_id,
+        cell,
+        delivery: ProductionDeliveryKind::Standard,
+    };
+    let near_structure = || {
+        find_spawn_cell_near_structure(
+            bx,
+            by,
             structure_id,
             produced_category,
             movement_profile,
@@ -222,53 +217,69 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
             overlay_grid,
             zone_grid,
             require_water,
+            // Frame-counter input for the authoritative FNPC fallback. The
+            // counter is committed late, so during this advance it holds
+            // current frame N, which is the value the fallback must alias.
             sim.session.binary_frame,
             sim.playfield_bounds,
             map_size,
         )
-        .map(|cell| ProductionSpawnSelection {
-            producer_id: *producer_id,
-            cell,
-            delivery: ProductionDeliveryKind::Standard,
-        });
-    }
-
-    for (producer_id, bx, by, structure_id) in bases {
-        let cell = match produced_category {
-            ObjectCategory::Infantry => {
-                find_infantry_spawn_cell_near_structure(rules, *bx, *by, structure_id)
+    };
+    match produced_category {
+        ObjectCategory::Vehicle => {
+            if exact_naval_vehicle_exit_factory(rules, structure_id) {
+                let producer_rally = sim
+                    .substrate
+                    .entities
+                    .get(producer_id)
+                    .and_then(|producer| producer.rally_cell());
+                let (cell, _) = find_naval_unit_delivery_cell(
+                    producer_id,
+                    bx,
+                    by,
+                    structure_id,
+                    producer_rally,
+                    movement_profile,
+                    rules,
+                    path_grid,
+                    &sim.substrate.occupancy,
+                    &sim.substrate.entities,
+                    resolved_terrain,
+                    overlay_grid,
+                    zone_grid,
+                    sim.session.binary_frame,
+                    sim.playfield_bounds,
+                    map_size,
+                );
+                return Some(ProductionSpawnSelection {
+                    producer_id,
+                    cell,
+                    delivery: ProductionDeliveryKind::NavalUnit,
+                });
             }
-            _ => find_spawn_cell_near_structure(
-                *bx,
-                *by,
-                structure_id,
-                produced_category,
-                movement_profile,
-                rules,
-                path_grid,
-                &sim.substrate.occupancy,
-                &sim.substrate.entities,
-                resolved_terrain,
-                overlay_grid,
-                zone_grid,
-                require_water,
-                // Frame-counter input for the authoritative FNPC fallback. The
-                // counter is committed late, so during this advance it holds
-                // current frame N, which is the value the fallback must alias.
-                sim.session.binary_frame,
-                sim.playfield_bounds,
-                map_size,
-            ),
-        };
-        if let Some(cell) = cell {
-            return Some(ProductionSpawnSelection {
-                producer_id: *producer_id,
-                cell,
-                delivery: ProductionDeliveryKind::Standard,
-            });
+            if !require_water && exact_land_vehicle_exit_factory(rules, structure_id) {
+                return find_exact_exitcoord_spawn_cell(
+                    bx,
+                    by,
+                    structure_id,
+                    produced_category,
+                    rules,
+                    path_grid,
+                    &sim.substrate.occupancy,
+                    resolved_terrain,
+                    require_water,
+                )
+                .map(standard);
+            }
+            // Unverified/modded produced-Unit branches retain the legacy
+            // adapter.
+            near_structure().map(standard)
         }
+        ObjectCategory::Infantry => {
+            find_infantry_spawn_cell_near_structure(rules, bx, by, structure_id).map(standard)
+        }
+        _ => near_structure().map(standard),
     }
-    None
 }
 
 /// Mark the produced unit as having the reciprocal RadioClass contact created
@@ -988,7 +999,6 @@ pub(super) fn unlimbo_held_naval_unit(
     producer_id: u64,
     cell: (u16, u16),
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    height_map: &std::collections::BTreeMap<(u16, u16), u8>,
 ) -> Option<u64> {
     let (entry, resolved_cell) = produced_unit_unlimbo_entry(
         sim,
@@ -1010,7 +1020,7 @@ pub(super) fn unlimbo_held_naval_unit(
                 .expect("exact-zero production admission retains its resolved CellClass");
             let z = match layer {
                 MovementLayer::Bridge => terrain_cell.bridge_deck_level,
-                MovementLayer::Ground => height_map.get(&resolved_cell).copied().unwrap_or(0),
+                MovementLayer::Ground => terrain_cell.level,
                 MovementLayer::Air | MovementLayer::Underground => {
                     unreachable!("production Unit admission selects only ground or bridge")
                 }
@@ -1024,7 +1034,11 @@ pub(super) fn unlimbo_held_naval_unit(
             }
             z
         }
-        None => height_map.get(&resolved_cell).copied().unwrap_or(0),
+        None => sim
+            .resolved_terrain
+            .as_ref()
+            .and_then(|terrain| terrain.cell(resolved_cell.0, resolved_cell.1))
+            .map_or(0, |cell| cell.level),
     };
     let placement = admitted_layer.map_or(
         crate::sim::world::PlacementEvidence::RejectedEarly,
@@ -1639,39 +1653,44 @@ pub fn find_helipad_for_aircraft(
     owner: &str,
 ) -> Option<(u64, u16, u16)> {
     let owner_id = sim.interner.get(owner)?;
+    sim.substrate
+        .entities
+        .values()
+        .filter(|entity| entity.owner() == owner_id)
+        .find_map(|entity| {
+            let (cx, cy) = free_helipad_cell(sim, rules, entity.stable_id())?;
+            Some((entity.stable_id(), cx, cy))
+        })
+}
 
-    for entity in sim.substrate.entities.values() {
-        if entity.category != crate::map::entities::EntityCategory::Structure {
-            continue;
-        }
-        if entity.health.current == 0 || entity.dying || entity.lifecycle.in_limbo {
-            continue;
-        }
-        if entity.owner() != owner_id {
-            continue;
-        }
-        let type_str = sim.interner.resolve(entity.type_ref());
-        let Some(obj) = rules.object(type_str) else {
-            continue;
-        };
-        if !obj.helipad && !obj.unit_reload {
-            continue;
-        }
-        let max_slots = obj.dock_contact_capacity();
-        if !sim
-            .production
-            .airfield_docks
-            .has_free_slot(entity.stable_id(), max_slots)
-        {
-            continue;
-        }
-        let (fw, fh) = crate::sim::production::foundation_dimensions(&obj.foundation);
-        let cx = entity.position.rx + fw / 2;
-        let cy = entity.position.ry + fh / 2;
-        return Some((entity.stable_id(), cx, cy));
+/// The foundation centre of `airfield`, a live `Helipad=` or `UnitReload=`
+/// building out of limbo, while it has a free dock slot.
+pub(super) fn free_helipad_cell(
+    sim: &Simulation,
+    rules: &RuleSet,
+    airfield: u64,
+) -> Option<(u16, u16)> {
+    let entity = sim.substrate.entities.get(airfield)?;
+    if entity.category != crate::map::entities::EntityCategory::Structure
+        || entity.health.current == 0
+        || entity.dying
+        || entity.lifecycle.in_limbo
+    {
+        return None;
     }
-
-    None
+    let obj = rules.object(sim.interner.resolve(entity.type_ref()))?;
+    if !obj.helipad && !obj.unit_reload {
+        return None;
+    }
+    if !sim
+        .production
+        .airfield_docks
+        .has_free_slot(airfield, obj.dock_contact_capacity())
+    {
+        return None;
+    }
+    let (fw, fh) = crate::sim::production::foundation_dimensions(&obj.foundation);
+    Some((entity.position.rx + fw / 2, entity.position.ry + fh / 2))
 }
 
 #[cfg(test)]
@@ -2797,7 +2816,6 @@ mod tests {
                 1,
                 (8, 8),
                 None,
-                &std::collections::BTreeMap::new(),
             ),
             Some(stable_id),
             "the production API exposes no caller-forced Mark outcome"
@@ -2847,7 +2865,6 @@ mod tests {
                 &rules,
             )
             .expect("held production Unit");
-        let height_map = std::collections::BTreeMap::from([(cell, 3)]);
         assert_eq!(
             unlimbo_held_naval_unit(
                 &mut sim,
@@ -2858,7 +2875,6 @@ mod tests {
                 1,
                 cell,
                 None,
-                &height_map,
             ),
             Some(stable_id)
         );
@@ -2977,7 +2993,6 @@ mod tests {
             1,
             (8, 8),
             None,
-            &std::collections::BTreeMap::new(),
         );
     }
 

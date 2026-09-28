@@ -3864,7 +3864,7 @@ fn gsi_05_16_a_captured_insignificant_garrison_does_not_keep_its_house_alive() {
     garrison.owner = civilian;
     garrison.type_ref = sim.interner.intern("CAGAS01");
     garrison.category = EntityCategory::Structure;
-    garrison.tracking_facts.insignificant = true;
+    garrison.tracking_facts = crate::sim::house_tracking::TrackingFacts::insignificant_for_test();
     sim.substrate.entities.insert(garrison);
     sim.update_house_tracking(1, crate::sim::house_tracking::HouseTracking::add_tracking);
 

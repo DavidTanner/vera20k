@@ -129,7 +129,7 @@ use crate::map::trigger_graph::TriggerGraph;
 use crate::map::triggers::TriggerMap;
 use crate::rules::locomotor_type::SpeedType;
 use crate::rules::object_type::ObjectType;
-use crate::rules::ruleset::RuleSet;
+use crate::rules::ruleset::{GeneralRules, RuleSet};
 use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::animation;
 use crate::sim::bridge_state::BridgeRuntimeState;
@@ -172,7 +172,7 @@ use crate::sim::projectile::{
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::rng::{SimRng, SimRngLogicalState, SimRngLogicalView};
 use crate::sim::scenario_session::ScenarioSession;
-use crate::sim::team_script_vm::{TeamScriptEffect, TeamScriptVm};
+use crate::sim::team_script_vm::{TeamRules, TeamScriptEffect, TeamScriptVm};
 use crate::sim::tiberium::TiberiumPlacementObjectContext;
 use crate::sim::trigger_runtime::{TriggerEffect, TriggerRuntime};
 use crate::sim::vision::{self, FogState};
@@ -5667,8 +5667,8 @@ impl Simulation {
             #[cfg(test)]
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::AiGenerated);
             self.ai_players = ai_state;
-            // The stand-in queues units and orders attacks; it places and
-            // spawns nothing.
+            // The attack stand-in only orders attacks; it queues, places
+            // and spawns nothing.
             let ai_tail_path_grid = path_grid
                 .cloned()
                 .or_else(|| self.path_grid.as_deref().cloned());
@@ -5780,11 +5780,20 @@ impl Simulation {
     fn run_team_script_pass(&mut self, rules: Option<&RuleSet>) {
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::TeamScript);
+        let game_mode_nonzero = self.session.game_mode_nonzero;
+        let team_rules = match rules {
+            Some(rules) => TeamRules::new(&rules.general, game_mode_nonzero),
+            None => TeamRules::new(&GeneralRules::default(), game_mode_nonzero),
+        };
         let mut team_script_vm = std::mem::take(&mut self.team_script_vm);
-        let team_tick = team_script_vm.tick_effects(self.session.binary_frame as i32, |owner| {
-            !crate::sim::house_state::house_state_for_owner_id(&self.houses, owner)
-                .is_some_and(|house| house.is_defeated)
-        });
+        let team_tick = team_script_vm.tick_effects(
+            self.session.binary_frame as i32,
+            &team_rules,
+            |owner| {
+                !crate::sim::house_state::house_state_for_owner_id(&self.houses, owner)
+                    .is_some_and(|house| house.is_defeated)
+            },
+        );
         self.team_script_vm = team_script_vm;
         for effect in team_tick.effects {
             match effect {
@@ -5814,20 +5823,31 @@ impl Simulation {
     /// Install fixed AIMD plus scenario AI definitions after RuleSet identities
     /// are interned and before the first gameplay tick. This is data ingress
     /// only: the installed VM contains no live TeamClass instances.
+    ///
+    /// A fixed-AIMD definition that fails RuleSet resolution refuses the whole
+    /// install (`Err`, nothing installed); scenario-origin omissions install
+    /// and come back as logged, nonfatal diagnostics.
     pub(crate) fn install_team_ai_registry(
         &mut self,
         registry: &crate::rules::team_ai_ini::TeamAiIniRegistry,
         rules: &RuleSet,
-    ) -> Vec<crate::sim::team_script_vm::TeamAiInstallDiagnostic> {
+    ) -> Result<
+        Vec<crate::sim::team_script_vm::TeamAiInstallDiagnostic>,
+        Vec<crate::sim::team_script_vm::TeamAiInstallDiagnostic>,
+    > {
         let (vm, diagnostics) =
             TeamScriptVm::from_ini_registry(registry, &mut self.interner, rules);
-        if !diagnostics
+        if diagnostics
             .iter()
             .any(crate::sim::team_script_vm::TeamAiInstallDiagnostic::is_fixed_source_refusal)
         {
-            self.team_script_vm = vm;
+            return Err(diagnostics);
         }
-        diagnostics
+        self.team_script_vm = vm;
+        for diagnostic in &diagnostics {
+            log::warn!("Team AI install diagnostic: {diagnostic:?}");
+        }
+        Ok(diagnostics)
     }
 
     /// `DriveLocomotionClass::Process` (0x004B0823 region; ships share the
@@ -6428,7 +6448,6 @@ impl Simulation {
             spawned_entities |= production::tick_production_with_overlay_registry(
                 self,
                 rules,
-                height_map,
                 phase_six_path_grid,
                 overlay_registry,
             );
