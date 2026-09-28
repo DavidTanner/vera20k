@@ -207,7 +207,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         None,
         Some(&sim.interner),
     )
@@ -353,7 +352,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         Some(units),
         Some(&sim.interner),
     )
@@ -396,7 +394,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         Some(units),
         Some(&sim.interner),
     )
@@ -485,7 +482,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         None,
         Some(&sim.interner),
     )

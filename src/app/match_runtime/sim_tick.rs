@@ -1237,7 +1237,6 @@ pub(crate) fn refresh_entity_atlases(state: &mut AppState) {
             sim.entities(),
             asset_manager,
             bound_rules,
-            bound_rules.map(|rules| rules.art()),
             existing,
             Some(&sim.interner),
         ) {
