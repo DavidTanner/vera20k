@@ -260,7 +260,7 @@ fn anim_art_read_receipt_distinguishes_live_sweep_from_late_allocation() {
             .ini()
             .section("Animations")
             .unwrap()
-            .get_values()
+            .registry_ids()
             .contains(&"LATE")
     );
     assert!(
@@ -368,11 +368,11 @@ fn map_overrides_union_type_registries_by_value() {
     let map = IniFile::from_str("[VehicleTypes]\n0=EVILTANK\n[Animations]\n0=EVILANIM\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(
-        rules.section("VehicleTypes").unwrap().get_values(),
+        rules.section("VehicleTypes").unwrap().registry_ids(),
         vec!["MTNK", "EVILTANK"]
     );
     assert_eq!(
-        rules.section("Animations").unwrap().get_values(),
+        rules.section("Animations").unwrap().registry_ids(),
         vec!["RING1", "EVILANIM"]
     );
 }
@@ -470,7 +470,7 @@ fn native_type_registry_compares_full_input_but_stores_and_emits_24_bytes() {
             .ini()
             .section("VehicleTypes")
             .expect("rebuilt Unit registry")
-            .get_values(),
+            .registry_ids(),
         vec![prefix, prefix, prefix]
     );
 }
@@ -1430,7 +1430,7 @@ fn warhead_particle_system_and_voxel_children_obey_passed_family_timing() {
             .ini()
             .section("Particles")
             .expect("Particle registry")
-            .get_values(),
+            .registry_ids(),
         vec!["PART", "undefined", "WHOLD"]
     );
     assert!(actual.iter().all(|(_, id)| {
@@ -1521,7 +1521,7 @@ fn crate_rule_images_allocate_and_alias_by_overlay_identity() {
         .ini()
         .section("OverlayTypes")
         .expect("crate references allocate overlays");
-    assert_eq!(overlays.get_values(), vec!["AliasCrate", "NewWater"]);
+    assert_eq!(overlays.registry_ids(), vec!["AliasCrate", "NewWater"]);
 
     let registry =
         crate::rules::overlay_types::OverlayTypeRegistry::from_ini(processed.ini(), None);
@@ -1571,7 +1571,7 @@ fn crate_rule_image_readstring_capacity_owns_retention_and_allocation() {
             .ini()
             .section("OverlayTypes")
             .expect("truncated references allocate")
-            .get_values(),
+            .registry_ids(),
         vec![stored_a.as_str(), stored_b.as_str(), stored_b.as_str()],
         "late allocation stores 24-byte IDs while semantic crate strings keep 127 bytes"
     );
@@ -1635,7 +1635,7 @@ fn tiberium_pass_reuses_numeric_slot_and_ignores_replacement_identity() {
     );
 
     assert_eq!(
-        processed.ini().section("Tiberiums").unwrap().get_values(),
+        processed.ini().section("Tiberiums").unwrap().registry_ids(),
         vec!["Riparius"]
     );
     let riparius = processed.ini().section("Riparius").unwrap();
@@ -1653,7 +1653,7 @@ fn tiberium_out_of_range_slot_appends_one_live_type() {
     .expect("Tiberium pass processes");
 
     assert_eq!(
-        processed.ini().section("Tiberiums").unwrap().get_values(),
+        processed.ini().section("Tiberiums").unwrap().registry_ids(),
         vec!["Riparius"]
     );
     assert_eq!(
@@ -1691,7 +1691,7 @@ fn ordered_pass_registry_union_is_case_insensitive_by_value() {
             .ini()
             .section("VehicleTypes")
             .unwrap()
-            .get_values(),
+            .registry_ids(),
         vec!["MTNK", "HTNK"]
     );
 }
@@ -1709,7 +1709,7 @@ fn gsi_05_01_type_allocation_rejects_native_none_sentinels() {
             .ini()
             .section("VehicleTypes")
             .expect("rebuilt vehicle registry")
-            .get_values(),
+            .registry_ids(),
         vec!["NONE_TANK"]
     );
 
@@ -1763,7 +1763,7 @@ fn general_prerequisite_groups_are_lookup_only() {
             .ini()
             .section("BuildingTypes")
             .unwrap()
-            .get_values()
+            .registry_ids()
             .is_empty()
     );
     assert_eq!(
@@ -1807,7 +1807,7 @@ fn prerequisite_proc_alternate_allocates_unit_before_same_pass_body_sweep() {
             .ini()
             .section("VehicleTypes")
             .unwrap()
-            .get_values(),
+            .registry_ids(),
         vec!["SMIN"]
     );
     assert_eq!(
@@ -1832,11 +1832,11 @@ fn barrel_particle_allocates_particle_system_before_same_pass_body_sweep() {
             .ini()
             .section("ParticleSystems")
             .unwrap()
-            .get_values(),
+            .registry_ids(),
         vec!["BarrelSys"]
     );
     assert_eq!(
-        processed.ini().section("Particles").unwrap().get_values(),
+        processed.ini().section("Particles").unwrap().registry_ids(),
         vec!["SmokePart"]
     );
     assert_eq!(
@@ -1910,11 +1910,19 @@ fn combat_damage_allocates_late_smudge_and_animation_references() {
     .expect("CombatDamage fixture processes");
 
     assert_eq!(
-        processed.ini().section("SmudgeTypes").unwrap().get_values(),
+        processed
+            .ini()
+            .section("SmudgeTypes")
+            .unwrap()
+            .registry_ids(),
         vec!["BurnA", "BurnB", "BurnC", "BurnD", "BurnE", "BurnF"]
     );
     assert_eq!(
-        processed.ini().section("Animations").unwrap().get_values(),
+        processed
+            .ini()
+            .section("Animations")
+            .unwrap()
+            .registry_ids(),
         vec!["SplashA", "SplashB", "DrainAnim", "MindAnim", "MindAnimR"]
     );
     assert_eq!(
@@ -1990,11 +1998,11 @@ fn map_registry_pass_uses_every_entry_in_source_order() {
     );
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(
-        rules.section("Particles").unwrap().get_values(),
+        rules.section("Particles").unwrap().registry_ids(),
         vec!["FireStream", "EvilFire", "oops"]
     );
     assert_eq!(
-        rules.section("ParticleSystems").unwrap().get_values(),
+        rules.section("ParticleSystems").unwrap().registry_ids(),
         vec!["GasCloudSys", "EvilSys", "1"]
     );
 }

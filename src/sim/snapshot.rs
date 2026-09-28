@@ -702,7 +702,9 @@ use crate::sim::world::Simulation;
 // and its named multiplayer and side fields.
 // 238 -> 239: each Techno keeps its barrel elevation, the `+0x370`
 // FacingClass that Unlimbo aims by `FireAngle=`.
-const SNAPSHOT_VERSION: u32 = 239;
+// 239 -> 240: a TeamType's metadata no longer saves an unread copy of its raw
+// INI fields.
+const SNAPSHOT_VERSION: u32 = 240;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3721,7 +3723,8 @@ mod tests {
         // 236 -> 237: one body FacingClass per Techno; no facing mirror or target.
         // 237 -> 238: the computer's teams and their production.
         // 238 -> 239: each Techno's barrel elevation FacingClass.
-        assert_eq!(super::SNAPSHOT_VERSION, 239);
+        // 239 -> 240: no raw INI field copy in TeamType metadata.
+        assert_eq!(super::SNAPSHOT_VERSION, 240);
     }
 
     #[test]

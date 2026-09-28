@@ -54,11 +54,12 @@ pub struct TaskForceIni {
 ///
 /// Typed consumers resolve only fields backed by their own native evidence;
 /// retaining the ordered raw payload prevents later AI-trigger/recruitment
-/// work from having to reconstruct the loader.
+/// work from having to reconstruct the loader. The payload stays private:
+/// consumers read it through [`Self::section`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamTypeIni {
     pub id: String,
-    pub fields: Vec<(String, String)>,
+    fields: Vec<(String, String)>,
     pub source: TeamAiDefinitionSource,
 }
 
@@ -73,10 +74,7 @@ impl TeamTypeIni {
     }
 
     fn overlay(&mut self, section: &IniSection, source: TeamAiDefinitionSource) {
-        for key in section.keys() {
-            let Some(value) = section.get(key) else {
-                continue;
-            };
+        for (key, value) in section.raw_entries() {
             if let Some((_, current)) = self
                 .fields
                 .iter_mut()

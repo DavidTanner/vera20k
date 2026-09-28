@@ -411,7 +411,7 @@ pub fn parse_infantry_sequence_registry(ini: &IniFile) -> InfantrySequenceRegist
         let mut entries: HashMap<String, InfantrySequenceEntry> = HashMap::new();
 
         for key in NATIVE_SEQUENCE_NAMES {
-            if section.get(key).is_none() {
+            if !section.is_present(key) {
                 continue;
             }
             let entry = read_sequence(section, key, InfantrySequenceEntry::default());

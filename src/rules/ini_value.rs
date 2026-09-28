@@ -2,8 +2,9 @@
 //!
 //! Every INI value VERA consumes goes through the `IniSection` readers below
 //! and the token parsers under them. `ini_parser.rs` is the raw store (the
-//! `INIClass` analog): loading, exact-case lookup and registry walks. Outside
-//! the readers, raw `get` only tests whether a key is present.
+//! `INIClass` analog): loading and exact-case lookup. This module is its child,
+//! so only these readers see raw value text; other code tests presence with
+//! `IniSection::is_present`.
 //!
 //! Each reader reproduces one native reader's contract on the resolved value.
 //! Where gamemd reads some keys through a different parser, that parser is its
@@ -31,6 +32,7 @@
 //! | `read_speed`, `read_range`, `read_speed_type` | 0x00474810, 0x00474620, 0x00476FC0 |
 //! | `read_comma_hex_utf16` | `INIClass::ReadCommaHexUTF16` 0x00528F00 |
 //! | `read_packed_text` | packed-section reader 0x00526FB0 (IsoMapPack5, OverlayPack, PreviewPack) |
+//! | `registry_ids` | the stored IDs of a registry `native_processing` rewrote |
 //!
 //! Token parsers for text a reader has already copied: [`strtok`] (CRT
 //! 0x007C9CC2), [`crt_atoi`] (CRT 0x007C9B72), [`parse_leading_f64`] (CRT
@@ -51,7 +53,7 @@
 //! - Returns un-truncated f64 from `read_double`; the single f64->SimFixed
 //!   conversion stays in `util::fixed_math`. No float enters sim/.
 
-use crate::rules::ini_parser::{IniSection, is_native_none_type_name};
+use super::{IniSection, is_native_none_type_name};
 use crate::rules::locomotor_type::SpeedType;
 use crate::util::native_x87::{MaskedX87Chop53, NativeF32Bits, NativeF64Bits};
 
@@ -64,6 +66,14 @@ const STRTRIM_MAX: u8 = 0x20;
 const COMMA: &[char] = &[','];
 
 impl IniSection {
+    /// The type IDs of a registry section `native_processing` rewrote with
+    /// native stored IDs, such as `[OverlayTypes]` or `[Animations]`, in
+    /// source order. A raw INI registry walk reads each entry through
+    /// [`Self::read_name`] with its native capacity instead.
+    pub fn registry_ids(&self) -> Vec<&str> {
+        self.values_in_order()
+    }
+
     fn fold_rules_values<T>(
         &self,
         key: &str,

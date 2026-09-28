@@ -290,7 +290,7 @@ impl OverlayTypeRegistry {
         };
 
         let names: Vec<String> = section
-            .get_values()
+            .registry_ids()
             .into_iter()
             .map(str::to_string)
             .collect();
@@ -316,7 +316,7 @@ impl OverlayTypeRegistry {
             .section("Animations")
             .map(|section| {
                 section
-                    .get_values()
+                    .registry_ids()
                     .into_iter()
                     .filter(|name| !name.is_empty())
                     .map(str::to_ascii_uppercase)
@@ -352,8 +352,8 @@ impl OverlayTypeRegistry {
                 // ReadColorRGB (`0x005FE947`) for an authored key; an absent one
                 // leaves the overlay's art colour to the caller.
                 let radar_color = type_section
-                    .get("RadarColor")
-                    .map(|_| type_section.read_color_rgb("RadarColor", [0; 3]));
+                    .is_present("RadarColor")
+                    .then(|| type_section.read_color_rgb("RadarColor", [0; 3]));
                 // `0x005FE8BE`: ReadInt from the art INI section the Image
                 // names, over the constructor's 1 (e.g. [GASAND]
                 // DamageLevels=2).

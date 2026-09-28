@@ -45,7 +45,7 @@ fn debug_music_pipeline() {
                 let mut alias_count = 0;
                 for section_name in ini.section_names() {
                     if let Some(section) = ini.section(section_name) {
-                        if let Some(sound) = section.get("Sound") {
+                        if let Some(sound) = section.read_name("Sound", 0x80) {
                             if !sound.is_empty() {
                                 if alias_count < 5 {
                                     println!("  [{}] Sound={}", section_name, sound);
@@ -87,7 +87,7 @@ fn debug_music_pipeline() {
         println!("\n--- Resolving theme aliases ---");
         for section_name in ini.section_names().into_iter().take(10) {
             if let Some(section) = ini.section(section_name) {
-                if let Some(sound) = section.get("Sound") {
+                if let Some(sound) = section.read_name("Sound", 0x80) {
                     if !sound.is_empty() {
                         // Try loading the resolved filename.
                         for ext in [".wav", ".aud"] {

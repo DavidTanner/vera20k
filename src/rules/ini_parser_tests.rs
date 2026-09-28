@@ -187,36 +187,36 @@ fn overlong_physical_line_discards_everything_after_511_bytes() {
 }
 
 #[test]
-fn test_get_values_zero_indexed() {
+fn test_registry_ids_zero_indexed() {
     let ini: IniFile = IniFile::from_str("[Types]\n0=E1\n1=E2\n2=ENGINEER\n3=FLAKT\n");
     let section: &IniSection = ini.section("Types").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["E1", "E2", "ENGINEER", "FLAKT"]);
 }
 
 #[test]
-fn test_get_values_one_indexed() {
+fn test_registry_ids_one_indexed() {
     // Active retail RULESMD uses 1-indexed type registries in this family.
     let ini: IniFile = IniFile::from_str("[InfantryTypes]\n1=E1\n2=E2\n3=SHK\n");
     let section: &IniSection = ini.section("InfantryTypes").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["E1", "E2", "SHK"]);
 }
 
 #[test]
-fn test_get_values_with_numeric_gaps() {
+fn test_registry_ids_with_numeric_gaps() {
     let ini: IniFile =
         IniFile::from_str("[VehicleTypes]\n36=CMIN\n1=HTNK\n40=HARV\n2=MTNK\n5=SMIN\n");
     let section: &IniSection = ini.section("VehicleTypes").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["CMIN", "HTNK", "HARV", "MTNK", "SMIN"]);
 }
 
 #[test]
-fn test_get_values_reads_named_entries_too() {
+fn test_registry_ids_reads_named_entries_too() {
     let ini: IniFile = IniFile::from_str("[Empty]\nName=Test\n");
     let section: &IniSection = ini.section("Empty").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["Test"]);
 }
 
@@ -245,4 +245,40 @@ fn content_hash_is_deterministic_and_value_sensitive() {
     // Comments and surrounding whitespace are stripped at parse → no effect.
     let c = IniFile::from_str("; header\n[General]\nBuildSpeed = .7   ; speed\nFlightLevel=1500\n");
     assert_eq!(a.content_hash(), c.content_hash());
+}
+
+/// Stored text leaves the store only through the readers, except where
+/// entries are copied between stores or shown raw. A new caller of the raw
+/// door belongs in a reader instead.
+#[test]
+fn raw_entries_callers_are_pinned() {
+    fn walk(dir: &std::path::Path, needle: &str, found: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, needle, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs")
+                && std::fs::read_to_string(&path).unwrap().contains(needle)
+            {
+                let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+                let relative = path.strip_prefix(root).unwrap();
+                found.push(relative.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut found = Vec::new();
+    walk(&root.join("src"), concat!(".raw_", "entries("), &mut found);
+    found.sort();
+    assert_eq!(
+        found,
+        [
+            // `ini-get --reader raw` and the presence report.
+            "src/asset_tools/verb_ini.rs",
+            // `[Colors]` entries copied into the processed registry.
+            "src/rules/native_processing.rs",
+            // TeamType fields overlaid pass over pass.
+            "src/rules/team_ai_ini.rs",
+        ]
+    );
 }

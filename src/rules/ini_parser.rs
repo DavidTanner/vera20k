@@ -1,6 +1,12 @@
 //! Physical INI representation for Westwood data: the `INIClass` analog.
 //! Values are read through the `read_*` readers in `rules::ini_value`.
 //!
+//! Only the store and its readers see raw value text: `ini_value` is a child
+//! module, and a private item is visible to its module's descendants alone.
+//! Everyone else reads through a reader, tests presence with
+//! [`IniSection::is_present`], or, to copy or display entries, uses
+//! [`IniSection::raw_entries`], whose callers a test pins.
+//!
 //! Active `gamemd.exe` treats raw section and key names as case-sensitive.
 //! A fresh load retains duplicate nonempty section bodies. Empty keys, values,
 //! and physical section bodies are not inserted. Arbitrary duplicate-name
@@ -13,7 +19,11 @@ use std::hash::{Hash, Hasher};
 use std::sync::LazyLock;
 
 use crate::rules::error::RulesError;
-use crate::rules::ini_value::strtrim_ascii;
+
+#[path = "ini_value.rs"]
+pub mod ini_value;
+
+use self::ini_value::strtrim_ascii;
 
 const READ_LINE_PAYLOAD: usize = 511;
 
@@ -91,27 +101,43 @@ impl IniSection {
         &EMPTY
     }
 
-    /// The raw stored value of an exact-case key. Values are read through the
-    /// `read_*` readers (`ini_value.rs`); outside them this only tests
-    /// whether a key is present.
-    pub fn get(&self, key: &str) -> Option<&str> {
+    /// The raw stored text of an exact-case key, private to the store and its
+    /// readers. Test builds open it to the crate so tests can inspect storage.
+    #[cfg(not(test))]
+    fn get(&self, key: &str) -> Option<&str> {
         self.entries.get(key).map(String::as_str)
     }
 
-    pub(crate) fn projected_values(&self, key: &str) -> Option<&[String]> {
+    #[cfg(test)]
+    pub(crate) fn get(&self, key: &str) -> Option<&str> {
+        self.entries.get(key).map(String::as_str)
+    }
+
+    /// Whether an exact-case key is stored, whatever its value.
+    pub fn is_present(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+
+    fn projected_values(&self, key: &str) -> Option<&[String]> {
         self.projected_values.get(key).map(Vec::as_slice)
     }
 
-    /// Values of every entry in source order: the walk over a registry
-    /// section `native_processing` rewrote with native stored IDs
-    /// (`[OverlayTypes]`, `[SmudgeTypes]`, `[Animations]`, `[Tiberiums]`).
-    /// A raw INI registry walk reads each entry through `read_name` with its
-    /// native capacity instead.
-    pub fn get_values(&self) -> Vec<&str> {
+    /// Stored values in source order; readers walk registries through it.
+    fn values_in_order(&self) -> Vec<&str> {
         self.key_order
             .iter()
             .filter_map(|key| self.entries.get(key).map(String::as_str))
             .collect()
+    }
+
+    /// Every entry's key and stored text in source order, for copying entries
+    /// between stores and for diagnostic display. Never interpret the text:
+    /// read values through the `ini_value` readers. The callers are pinned by
+    /// `raw_entries_callers_are_pinned`.
+    pub fn raw_entries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.key_order
+            .iter()
+            .filter_map(|key| Some((key.as_str(), self.entries.get(key)?.as_str())))
     }
 
     pub fn entry_count(&self) -> usize {

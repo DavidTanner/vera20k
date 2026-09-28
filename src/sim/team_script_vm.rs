@@ -123,8 +123,8 @@ pub struct TeamTypeDefinition {
     pub transport_crossing_required: bool,
 }
 
-/// The TeamType's other INI fields, beside the definition, and its lossless
-/// source.
+/// The TeamType's other INI fields, beside the definition, and where it was
+/// defined.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamTypeIniMetadata {
     /// `Max=` (`+0xB8`, constructor -1): a house's team limit of this type;
@@ -138,7 +138,6 @@ pub struct TeamTypeIniMetadata {
     /// type's teams as needing members until they fill (`0x004FEC26`).
     #[serde(default)]
     reinforce: bool,
-    pub raw_fields: Vec<(String, String)>,
     pub source: TeamAiDefinitionSource,
 }
 
@@ -149,7 +148,6 @@ impl Default for TeamTypeIniMetadata {
             autocreate: false,
             are_team_members_recruitable: true,
             reinforce: false,
-            raw_fields: Vec::new(),
             source: TeamAiDefinitionSource::FixedAimd,
         }
     }

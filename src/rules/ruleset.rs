@@ -2176,7 +2176,7 @@ impl GeneralRules {
         }
         infantry_death_anims[5] = Some(
             ini.section("Animations")
-                .and_then(|section| section.get_values().get(1).copied())
+                .and_then(|section| section.registry_ids().get(1).copied())
                 .filter(|name| !name.is_empty())
                 .unwrap_or("ELECTRO")
                 .to_string(),
@@ -3791,7 +3791,7 @@ impl RuleSet {
             anim_type_names: ini
                 .section("Animations")
                 .into_iter()
-                .flat_map(|section| section.get_values())
+                .flat_map(|section| section.registry_ids())
                 .map(|name| name.to_ascii_uppercase())
                 .filter(|name| !name.is_empty())
                 .collect(),
