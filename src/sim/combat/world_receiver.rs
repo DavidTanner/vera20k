@@ -2510,10 +2510,8 @@ fn admit_attacker_fire<'r>(
             WeaponSlot::Primary => 0,
             WeaponSlot::Secondary => 1,
         };
-        match combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, index) {
-            Some(selected) => (selected.index, Some(selected), false),
-            None => return None,
-        }
+        let selected = combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, index)?;
+        (selected.index, Some(selected), false)
     } else if let Some(ref gs) = snap.garrison {
         // An occupant without a weapon is refused by the visit's GetFireError
         // (T21, CANT), whose drop tail lets the target go.

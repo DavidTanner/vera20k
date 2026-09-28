@@ -523,27 +523,6 @@ pub fn armor_index(armor: &str) -> usize {
     ARMOR_NAMES.iter().position(|&a| a == lower).unwrap_or(0)
 }
 
-/// Combat-only target category used for projectile AA/AG legality and weapon
-/// selection.
-///
-/// `ConsideredAircraft=yes` infantry, such as Rocketeers/JumpJets, remain
-/// infantry entities for movement, selection, crush, and animation, but weapon
-/// selection must treat them as air targets.
-pub(crate) fn combat_target_category(
-    entity: &GameEntity,
-    rules: &RuleSet,
-    interner: &StringInterner,
-) -> EntityCategory {
-    if rules
-        .object(interner.resolve(entity.type_ref()))
-        .is_some_and(|obj| obj.considered_aircraft)
-    {
-        EntityCategory::Aircraft
-    } else {
-        entity.category
-    }
-}
-
 /// Return the active wall-overlay flags at a cell, if available.
 fn wall_overlay_flags_at<'a>(
     overlay_grid: Option<&OverlayGrid>,

@@ -1143,12 +1143,6 @@ fn considered_aircraft_infantry_is_air_only_while_high_flying() {
                 .object(sim.interner.resolve(target_entity.type_ref))
                 .is_some_and(|obj| obj.considered_aircraft)
         );
-        // `ConsideredAircraft` still drives the legacy category helper; the
-        // selector no longer consults it.
-        assert_eq!(
-            combat_target_category(target_entity, &rules, &sim.interner),
-            EntityCategory::Aircraft
-        );
 
         if altitude_leptons > 0 {
             sim.substrate
@@ -1218,10 +1212,6 @@ fn ordinary_infantry_remains_ground_for_projectile_legality() {
         .get(target)
         .expect("target should exist");
     assert_eq!(target_entity.category, EntityCategory::Infantry);
-    assert_eq!(
-        combat_target_category(target_entity, &rules, &sim.interner),
-        EntityCategory::Infantry
-    );
 
     issue_attack_command(
         &mut sim.substrate.entities,
