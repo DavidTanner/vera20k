@@ -1348,8 +1348,9 @@ impl Simulation {
 
     /// `CellClass::Find_Blocking_Object 0x47C5A0` with the zero point: the
     /// first Aircraft of the ground list, else `Find_Nearest_Object`
-    /// (0x47C3D0), else the first terrain object.
-    pub(super) fn find_blocking_object(
+    /// (0x47C3D0), else the first terrain object. Callers: the track
+    /// admission (`0x004B3BE9`) and `Coordinate_Attack` (`0x006EB56F`).
+    pub(crate) fn find_blocking_object(
         &self,
         cell: (u16, u16),
         rules: &RuleSet,
@@ -1379,7 +1380,7 @@ impl Simulation {
 }
 
 /// What `Find_Blocking_Object` returned.
-pub(super) enum BlockingObject {
+pub(crate) enum BlockingObject {
     Entity(u64),
     Terrain,
 }

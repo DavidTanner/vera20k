@@ -751,8 +751,6 @@ fn retail_dustbowl_computer_mcv() -> (
     house.current_iq = rules.general.max_iq_levels;
     sim.houses.insert(owner, house);
     sim.session.house_order.push(owner);
-    sim.ai_players
-        .push(crate::sim::ai::AiPlayerState::new(owner));
 
     let (width, height) = crate::rules::foundation::foundation_dimensions(
         &rules.object("NACNST").expect("retail NACNST").foundation,

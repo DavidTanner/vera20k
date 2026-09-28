@@ -1512,7 +1512,7 @@ fn ivan_cannot_bomb(
 
 /// `TechnoClass::What_Action_OnObject @ 0x00700548`: an unforced click on
 /// an object stays Attack only while the object's GetFireError for it
-/// ([`Simulation::click_fire_error`]) is not ILLEGAL. Otherwise the action
+/// ([`Simulation::selected_weapon_fire_error`]) is not ILLEGAL. Otherwise the action
 /// is None or Select (`0x0070056C`), and the object takes no order.
 ///
 /// RESIDUAL: the Infiltrate arm (`0x007004A0..0x00700531`) keeps Attack
@@ -1527,7 +1527,7 @@ fn click_attack_refused(
     actor_id: u64,
     target_id: u64,
 ) -> bool {
-    sim.click_fire_error(
+    sim.selected_weapon_fire_error(
         rules,
         actor_id,
         crate::sim::combat::TargetKind::Entity(target_id),

@@ -1067,6 +1067,11 @@ pub struct ObjectType {
     /// `Ivan=` (`InfantryTypeClass+0xEAE`, ReadINI `0x005244C3`, infantry
     /// only): the bomb cursor (`0x0051EB24..0x0051EB7E`), its only reader.
     pub ivan: bool,
+    /// `Infiltrate=` (`InfantryTypeClass+0xEBE`, ReadBool `0x005244A9`,
+    /// constructor clear `0x0052378F`, infantry only): an unarmed infiltrator
+    /// still scans for a target (`0x0051E296..0x0051E2BC`), and a team on
+    /// action 15 sends it in (`0x006EB71A..0x006EB759`).
+    pub infiltrate: bool,
 
     /// Whether this unit can self-deploy/undeploy via the Deploy command.
     /// Parsed from `Deployer=yes` in rules.ini. Triggers `Deploy`/`NoDeploy`
@@ -2352,6 +2357,8 @@ impl ObjectType {
             // Cursor / interaction capability flags
             engineer: section.read_bool("Engineer", false),
             ivan: category == ObjectCategory::Infantry && section.read_bool("Ivan", false),
+            infiltrate: category == ObjectCategory::Infantry
+                && section.read_bool("Infiltrate", false),
             deployer: section.read_bool("Deployer", false),
             capturable: section.read_bool("Capturable", false),
             needs_engineer: section.read_bool("NeedsEngineer", false),

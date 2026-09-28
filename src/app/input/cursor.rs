@@ -770,7 +770,7 @@ fn ivan_bomb_action(
 }
 
 /// Whether `actor`'s GetFireError for `target` is ILLEGAL, which ends its
-/// unforced Attack action ([`crate::sim::world::Simulation::click_fire_error`]).
+/// unforced Attack action ([`crate::sim::world::Simulation::selected_weapon_fire_error`]).
 fn click_refused(
     sim: &crate::sim::world::Simulation,
     rules: Option<&crate::rules::ruleset::RuleSet>,
@@ -779,7 +779,7 @@ fn click_refused(
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     rules.zip(actor).is_some_and(|(rules, actor)| {
-        sim.click_fire_error(
+        sim.selected_weapon_fire_error(
             rules,
             actor,
             crate::sim::combat::TargetKind::Entity(target),

@@ -939,12 +939,14 @@ fn an_engineer_defuses_a_bomb() {
     assert_eq!(entity(&sim, tank).health.current, 1000, "no damage");
 }
 
-/// `TechnoClass::CanAcquireTarget` (`0x0070924D`): a human player's Engineer
-/// never picks its own target, so a bomb on an enemy beside it stays until it
-/// is ordered; a computer player's Engineer defuses one on its own, as native
-/// lets it.
+/// Neither player's Engineer defuses a bomb it was not ordered to.
+/// `TechnoClass::CanAcquireTarget` (`0x0070924D`) keeps a human player's
+/// from picking its own target. A computer player's scans, but its
+/// Infantry override asks for capturable buildings (`0x0051E147`, mask
+/// `0x200`) and `Greatest_Threat`'s Engineer rewrite (`0x006F8EFB`) drops
+/// infantry and vehicles, so the scan never offers it a bombed tank.
 #[test]
-fn only_a_computer_engineer_defuses_unordered() {
+fn no_engineer_defuses_unordered() {
     let rules = rules();
     let (mut sim, grid) = arena(30, &rules);
     let russian_tank = spawn(&mut sim, &rules, "HTNK", "Russians", 12, 10);
@@ -955,10 +957,13 @@ fn only_a_computer_engineer_defuses_unordered() {
     sim.bomb_attach(russian_ivan, Some(american_tank), &rules);
     spawn(&mut sim, &rules, "ENGINEER", "Americans", 12, 11);
     spawn(&mut sim, &rules, "ENGINEER", "Russians", 22, 11);
-    run_until(&mut sim, &rules, &grid, 300, |sim| {
-        bomb(sim, american_tank).is_none()
-    })
-    .expect("the computer's Engineer defuses the bomb on its enemy");
+    for _ in 0..300 {
+        step(&mut sim, &rules, &grid);
+    }
+    assert!(
+        bomb(&sim, american_tank).is_some(),
+        "the computer's Engineer waits for an order"
+    );
     assert!(
         bomb(&sim, russian_tank).is_some(),
         "the player's Engineer waits for an order"

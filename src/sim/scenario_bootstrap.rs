@@ -16,7 +16,6 @@ use crate::map::waypoints::Waypoint;
 use crate::rng_continuation::MapGenRngContinuation;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::ai::AiPlayerState;
 #[cfg(test)]
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::find_nearby_cell::{
@@ -1090,7 +1089,6 @@ pub(crate) fn initialize_skirmish_launch_houses(
     assert!(
         sim.houses.is_empty()
             && sim.session.house_order.is_empty()
-            && sim.ai_players.is_empty()
             && sim.entities().is_empty()
             && sim.production.terrain_objects.is_empty(),
         "skirmish houses must be initialized before map objects"
@@ -1592,10 +1590,6 @@ pub(crate) fn populate_launch_houses(
         house.project_country_cost_mults(rules, &sim.interner);
         sim.houses.insert(name_id, house);
         sim.session.house_order.push(name_id);
-        if !slot.is_human {
-            sim.ai_players.push(AiPlayerState::new(name_id));
-            log::info!("AI player registered: {}", slot.owner_name);
-        }
     }
 }
 
@@ -1642,10 +1636,7 @@ pub(crate) fn native_ai_opening_grant(coefficient: i32, money: i32) -> i32 {
 /// (pure integer arithmetic on the native side: `CDQ/SAR/IDIV` budget thirds
 /// and integer cost subtraction, no x87 involvement).
 pub(crate) fn apply_skirmish_ai_opening_credits(sim: &mut Simulation, rules: &RuleSet) {
-    for ai in &sim.ai_players {
-        let Some(house) = sim.houses.get_mut(&ai.owner) else {
-            continue;
-        };
+    for house in sim.houses.values_mut() {
         if house.is_human || house.multiplay_passive {
             continue;
         }

@@ -707,7 +707,10 @@ use crate::sim::world::Simulation;
 // 240 -> 241: each team keeps its members, their TaskForce counts and its
 // recruitment, centre and script state, with each member's team
 // (`sim::team_script_vm`); a TeamType keeps the team keys they read.
-const SNAPSHOT_VERSION: u32 = 241;
+// 241 -> 242: each team keeps `Coordinate_Attack`'s restart flag (`+0x81`),
+// a TeamType its `Droppod=` and `OnlyTargetHouseEnemy=`; the `sim::ai`
+// stand-in's per-house attack-wave state is gone.
+const SNAPSHOT_VERSION: u32 = 242;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3728,7 +3731,9 @@ mod tests {
         // 238 -> 239: each Techno's barrel elevation FacingClass.
         // 239 -> 240: no raw INI field copy in TeamType metadata.
         // 240 -> 241: team members, recruitment and script state.
-        assert_eq!(super::SNAPSHOT_VERSION, 241);
+        // 241 -> 242: the team restart flag and two TeamType keys; no
+        // `sim::ai` state.
+        assert_eq!(super::SNAPSHOT_VERSION, 242);
     }
 
     #[test]

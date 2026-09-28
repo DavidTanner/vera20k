@@ -48,6 +48,7 @@ pub(crate) mod line_of_fire;
 pub(crate) mod parasite;
 pub(crate) mod rof;
 pub mod smudge_dispatch;
+mod threat_mask;
 pub(crate) mod threat_range;
 pub(crate) mod veterancy;
 pub(crate) mod world_receiver;

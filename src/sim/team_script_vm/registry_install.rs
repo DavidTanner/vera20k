@@ -138,6 +138,8 @@ impl TeamScriptVm {
                     transports_return_on_unload: fields
                         .read_bool("TransportsReturnOnUnload", false),
                     mind_control_decision: fields.read_int("MindControlDecision", 0),
+                    droppod: fields.read_bool("Droppod", false),
+                    only_target_house_enemy: fields.read_bool("OnlyTargetHouseEnemy", false),
                     source: team_type.source,
                 },
             );

@@ -129,11 +129,10 @@ pub(crate) struct AttackerSnapshot {
 /// mission dispatched them.
 ///
 /// What the literal is NOT is what `TechnoClass::Greatest_Threat` finally sees:
-/// a `FootClass` dispatch goes through the `+0x3C4` overrides first, which OR
-/// the attacker's projectile class bits in (`0x00743190`, `0x0051E39F`) and,
-/// while `FootClass+0x688` is set, coerce it to `(mask & ~2) | 1`
-/// (`0x004D9931`). Both are recorded as residuals on
-/// [`super::greatest_threat::greatest_threat`]; neither is modelled here.
+/// the scanner's `+0x3C4` override rewrites it first, which
+/// [`super::greatest_threat::greatest_threat`] applies ([`super::threat_mask`]);
+/// `FootClass+0x688`'s coercion to `(mask & ~2) | 1` (`0x004D9931`) remains
+/// its residual.
 ///
 /// `zone_grid` is `MapClass`'s per-movement-zone connectivity, which mask 0 uses
 /// to refuse candidates its own movement zone cannot reach.
@@ -171,7 +170,42 @@ pub(crate) fn acquire_best_target_for_entity(
     if !super::combat_weapon::is_armed(entity, obj) {
         return None;
     }
+    greatest_threat_for_entity(
+        entities,
+        occupancy,
+        rules,
+        interner,
+        attacker_id,
+        fog,
+        terrain,
+        require_playfield_membership,
+        mask,
+        zone_grid,
+        los,
+        fire_world,
+    )
+}
 
+/// `attacker_id`'s `Greatest_Threat` through its `+0x3C4` override, without
+/// the passive block's gates: team script action 0 calls the override
+/// directly (`0x006ED15E`).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn greatest_threat_for_entity(
+    entities: &EntityStore,
+    occupancy: &crate::sim::occupancy::OccupancyGrid,
+    rules: &RuleSet,
+    interner: &StringInterner,
+    attacker_id: u64,
+    fog: Option<&FogState>,
+    terrain: Option<&ResolvedTerrainGrid>,
+    require_playfield_membership: bool,
+    mask: ScanMission,
+    zone_grid: Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
+    los: super::line_of_fire::LineOfFireInputs<'_>,
+    fire_world: Option<&crate::sim::world::Simulation>,
+) -> Option<u64> {
+    let entity = entities.get(attacker_id)?;
+    let obj = rules.object(interner.resolve(entity.type_ref()))?;
     // Dummy target: no current target when acquiring fresh.
     let snapshot = AttackerSnapshot {
         scan_mission: mask,
@@ -271,6 +305,7 @@ pub(crate) fn calculate_ai_threat_score(
     interner: &StringInterner,
     terrain: Option<&ResolvedTerrainGrid>,
     alliances: Option<&HouseAllianceMap>,
+    scorer_enemy_house: Option<crate::sim::intern::InternedId>,
 ) -> Option<MaskedX87Value> {
     let scorer = entities.get(scorer_id)?;
     let scorer_type = rules.object(interner.resolve(scorer.type_ref()))?;
@@ -289,6 +324,7 @@ pub(crate) fn calculate_ai_threat_score(
         alliances,
         coefficients,
         super::greatest_threat::ThreatReference::NullCoord,
+        scorer_enemy_house,
     )
 }
 
@@ -490,6 +526,10 @@ pub(crate) fn should_retaliate(
     // `0x00708A5A..0x00708AA8`: a computer house keeps a current object
     // target (the `+0x14` Object flag, `0x00708A73`) whose raw float10 threat
     // score is strictly greater.
+    let victim_enemy = world
+        .houses
+        .get(&victim.owner())
+        .and_then(|house| house.enemy_house);
     if !human
         && let Some(super::TargetKind::Entity(current_id)) =
             victim.attack_target.as_ref().map(|target| target.target)
@@ -502,6 +542,7 @@ pub(crate) fn should_retaliate(
                 interner,
                 world.resolved_terrain.as_ref(),
                 Some(&world.house_alliances),
+                victim_enemy,
             ),
             calculate_ai_threat_score(
                 entities,
@@ -511,6 +552,7 @@ pub(crate) fn should_retaliate(
                 interner,
                 world.resolved_terrain.as_ref(),
                 Some(&world.house_alliances),
+                victim_enemy,
             ),
         )
         && retaliation_score_refuses(current_score, source_score)

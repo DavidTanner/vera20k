@@ -143,7 +143,11 @@ impl Simulation {
                 self.playfield_bounds.is_some(),
                 // VERA-internal entry with no single native counterpart, so it
                 // keeps the passive block's mask — `1`, or `2` for a player
-                // "guard this spot" order. gamemd equivalent UNCHECKED.
+                // "guard this spot" order. gamemd equivalent UNCHECKED. An
+                // aircraft finds nothing with either: it has no `+0x3C4` class
+                // override (`0x004D9920`), so its flags word is 0 and the class
+                // gate (`0x006F821A`) rejects every candidate, as it does for
+                // native aircraft Patrol's mask 2 (`0x00417481`).
                 scan_mask,
                 self.zone_grid.as_ref(),
                 combat::line_of_fire::LineOfFireInputs {

@@ -767,14 +767,9 @@ mod retail_construction_tests {
         eprintln!("Anytown final bound ART owner: {terrain_anims} live terrain Anims");
     }
 
-    /// A retail skirmish: the local house idles while three computer houses
-    /// build their bases, create teams from their AI triggers and build what
-    /// the teams need. Every 1500 frames it prints each computer house's
-    /// teams, choices and Foot objects; each house must have created a team.
-    #[test]
-    #[ignore = "requires RA2_DIR with installed retail RA2/YR assets"]
-    fn retail_skirmish_computer_houses_build_their_teams() {
-        use crate::map::entities::EntityCategory;
+    /// XMP03T4 with the local house idle and three computer houses: Russia
+    /// (Hard), Yuri (Normal) and France (Easy). Returns the computer houses.
+    fn retail_skirmish() -> (HeadlessScenario, Vec<crate::sim::intern::InternedId>) {
         use crate::sim::intern::InternedId;
         use crate::skirmish_launch::{
             AiDifficulty, LaunchCountry, LaunchStartPosition, LaunchTeam, PreFillHouseRoster,
@@ -807,7 +802,7 @@ mod retail_construction_tests {
         session.pre_fill_house_roster = PreFillHouseRoster::from_compact_skirmish(opponents.len());
         let launch =
             crate::sim::scenario_bootstrap::MatchLaunchDescriptor::from_resolved(session).unwrap();
-        let mut scenario = load_with_launch(&ra2, map, 0x00C0_FFEE, launch).unwrap();
+        let scenario = load_with_launch(&ra2, map, 0x00C0_FFEE, launch).unwrap();
         let computers: Vec<InternedId> = scenario
             .sim()
             .houses
@@ -816,6 +811,34 @@ mod retail_construction_tests {
             .map(|(&id, _)| id)
             .collect();
         assert_eq!(computers.len(), opponents.len());
+        (scenario, computers)
+    }
+
+    /// Whether `entity` aims at an object of another house.
+    fn aims_at_another_house(
+        sim: &Simulation,
+        entity: &crate::sim::game_entity::GameEntity,
+    ) -> bool {
+        match entity.attack_target.as_ref().map(|attack| attack.target) {
+            Some(crate::sim::combat::TargetKind::Entity(id)) => sim
+                .entities()
+                .get(id)
+                .is_some_and(|target| target.owner() != entity.owner()),
+            _ => false,
+        }
+    }
+
+    /// A retail skirmish: the local house idles while three computer houses
+    /// build their bases, create teams from their AI triggers and build what
+    /// the teams need. Every 1500 frames it prints each computer house's
+    /// teams (with the script action each is on), choices and Foot objects;
+    /// each house must have created a team.
+    #[test]
+    #[ignore = "requires RA2_DIR with installed retail RA2/YR assets"]
+    fn retail_skirmish_computer_houses_build_their_teams() {
+        use crate::map::entities::EntityCategory;
+
+        let (mut scenario, computers) = retail_skirmish();
         let mut created = std::collections::BTreeMap::new();
         for frame in 1..=6_000u32 {
             scenario.tick();
@@ -858,6 +881,17 @@ mod retail_construction_tests {
                     house.ai_unit_choices,
                 );
             }
+            for team in sim.team_script_vm.teams_in_order() {
+                eprintln!(
+                    "  team {} of {}: action {} at line {}, formed {}, {} members",
+                    team.id(),
+                    sim.interner.resolve(team.owner()),
+                    team.current_action(&sim.team_script_vm),
+                    team.cursor(),
+                    team.formed(),
+                    team.member_count(),
+                );
+            }
             eprintln!("frame {frame}: {} teams created so far", created.len());
         }
         for owner in computers {
@@ -867,5 +901,177 @@ mod retail_construction_tests {
                 scenario.sim().interner.resolve(owner)
             );
         }
+    }
+
+    /// Two retail Yuri TeamTypes whose members are spawned beside the Yuri
+    /// house's base once the bases stand: "Yuri Infantry - M1" (`05FFB46C-G`,
+    /// script `0,4 / 49 / 0,1`) and "Yuri Engineers" (`08B95EFC-G`,
+    /// `54 / 0,6 / 49 / 0,9 / 0,2`). Action 0's scan finds the first team
+    /// another house's infantry, which its members attack. For the second it
+    /// prints whether an engineer aimed at another house's building: in the
+    /// first run that team disbanded before frame 1000, not yet explained.
+    #[test]
+    #[ignore = "requires RA2_DIR with installed retail RA2/YR assets"]
+    fn retail_yuri_teams_attack() {
+        use crate::map::entities::EntityCategory;
+        use crate::sim::movement::locomotor::MovementLayer;
+
+        let (mut scenario, _) = retail_skirmish();
+        for _ in 0..1500 {
+            scenario.tick();
+        }
+        let runtime = &mut scenario.runtime;
+        let (sim, resources) = (&mut runtime.simulation, &runtime.resources);
+        let yuri_country = sim
+            .interner
+            .get("YuriCountry")
+            .expect("YuriCountry interned");
+        let yuri = sim
+            .houses
+            .iter()
+            .find(|(_, house)| house.country == Some(yuri_country))
+            .map(|(&id, _)| id)
+            .expect("a Yuri house");
+        let (bx, by) = sim.houses[&yuri]
+            .base_center
+            .expect("the Yuri base has a centre");
+        let owner = sim.interner.resolve(yuri).to_string();
+        let free: Vec<(u16, u16)> = (0..900)
+            .filter_map(|n| {
+                let rx = u16::try_from(i32::from(bx) + n % 30 - 15).ok()?;
+                let ry = u16::try_from(i32::from(by) + n / 30 - 15).ok()?;
+                let walkable = sim
+                    .path_grid()
+                    .is_some_and(|grid| grid.is_walkable_for_infantry(rx, ry));
+                let empty = sim
+                    .substrate
+                    .occupancy
+                    .get(rx, ry)
+                    .is_none_or(|cell| cell.is_empty_on(MovementLayer::Ground));
+                (walkable && empty).then_some((rx, ry))
+            })
+            .collect();
+        let mut free = free.into_iter();
+        let mut spawned = Vec::new();
+        for type_name in [
+            "INIT",
+            "INIT",
+            "INIT",
+            "INIT",
+            "INIT",
+            "YENGINEER",
+            "YENGINEER",
+            "YENGINEER",
+        ] {
+            let id = free
+                .by_ref()
+                .find_map(|(rx, ry)| {
+                    let z = resources.height_map.get(&(rx, ry)).copied().unwrap_or(0);
+                    sim.spawn_object_at_height(type_name, &owner, rx, ry, 0, z, &resources.rules)
+                })
+                .expect("a free cell near the Yuri base");
+            spawned.push(id);
+        }
+        let factory_scan = crate::sim::world::team_leader_greatest_threat(
+            sim,
+            &resources.rules,
+            None,
+            spawned[5],
+            crate::sim::combat::ScanMission::TeamQuarry {
+                mask: 0x1000,
+                only_target_house_enemy: false,
+            },
+        );
+        eprintln!(
+            "a Yuri engineer's quarry-6 scan: {:?}",
+            factory_scan.map(|id| sim
+                .interner
+                .resolve(sim.entities().get(id).unwrap().type_ref()))
+        );
+        let frame = sim.session.binary_frame as i32;
+        let teams: Vec<u64> = ["05FFB46C-G", "08B95EFC-G"]
+            .into_iter()
+            .map(|team_type| {
+                let id = sim
+                    .interner
+                    .get(team_type)
+                    .expect("retail TeamType interned");
+                sim.team_script_vm
+                    .construct_team(id, yuri, true, frame)
+                    .expect("under the TeamType's Max=")
+            })
+            .collect();
+        let initiate = sim.interner.get("INIT").expect("INIT interned");
+        let engineer = sim.interner.get("YENGINEER").expect("YENGINEER interned");
+        let aims_at_a_building = |sim: &Simulation, id: u64| {
+            let Some(entity) = sim.entities().get(id) else {
+                return false;
+            };
+            aims_at_another_house(sim, entity)
+                && matches!(
+                    entity.attack_target.as_ref().map(|attack| attack.target),
+                    Some(crate::sim::combat::TargetKind::Entity(target))
+                        if sim.entities().get(target).is_some_and(|target| {
+                            target.category == EntityCategory::Structure
+                        })
+                )
+        };
+        let (mut infantry_attacked, mut engineer_attacked) = (false, false);
+        for frame in 1..=3_000u32 {
+            scenario.tick();
+            let sim = scenario.sim();
+            infantry_attacked |= spawned.iter().any(|&id| {
+                sim.entities().get(id).is_some_and(|entity| {
+                    entity.type_ref() == initiate && aims_at_another_house(sim, entity)
+                })
+            });
+            engineer_attacked |= spawned.iter().any(|&id| {
+                sim.entities()
+                    .get(id)
+                    .is_some_and(|entity| entity.type_ref() == engineer)
+                    && aims_at_a_building(sim, id)
+            });
+            let report = if frame <= 1000 {
+                frame % 50 == 0
+            } else {
+                frame % 500 == 0
+            };
+            if report {
+                for &team_id in &teams {
+                    let Some(team) = sim.team_script_vm.team(team_id) else {
+                        eprintln!("frame {frame}: team {team_id} is gone");
+                        continue;
+                    };
+                    let members: Vec<String> = team
+                        .members()
+                        .filter_map(|id| sim.entities().get(id))
+                        .map(|entity| {
+                            format!(
+                                "{}@({},{}) m{} aims away {}",
+                                sim.interner.resolve(entity.type_ref()),
+                                entity.position.rx,
+                                entity.position.ry,
+                                entity.mission.effective().raw(),
+                                aims_at_another_house(sim, entity),
+                            )
+                        })
+                        .collect();
+                    eprintln!(
+                        "frame {frame}: team {team_id} action {} at line {}, formed {}: {members:?}",
+                        team.current_action(&sim.team_script_vm),
+                        team.cursor(),
+                        team.formed(),
+                    );
+                }
+            }
+            if infantry_attacked && engineer_attacked {
+                break;
+            }
+        }
+        eprintln!("an engineer aimed at another house's building: {engineer_attacked}");
+        assert!(
+            infantry_attacked,
+            "no Initiate aimed at another house's object"
+        );
     }
 }

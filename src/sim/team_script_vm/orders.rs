@@ -15,8 +15,13 @@
 //! - `Set_Destination` for an aircraft (`0x0041AA80`), a Walk unit, a
 //!   Hover or Jumpjet unit, or a Jumpjet infantryman: VERA has no class
 //!   setter for these receivers, so the order is not given. Trigger: such a
-//!   member in a team ordered to move. Effect: it stays where it is. No
-//!   retail base-guard TaskForce holds one.
+//!   member in a team ordered to move or to join up. Effect: it stays where
+//!   it is and never joins, so a team of them never finishes action 53 or
+//!   54 (`Coordinate_Move`) and passes action 0 without attacking.
+//!   Frequency: 24 retail AIMD TeamTypes hold ORCA, DISK, SHAD, JUMPJET,
+//!   ZEP, SCHP, BEAG or V3ROCKET members; all run action 0 and 16 also run
+//!   53 or 54. Downstream: a stuck team keeps its members and its `Max=`
+//!   slot.
 //! - `Enter_Idle_Mode` for an aircraft (`0x004176F0`) is not ported; see
 //!   [`Simulation::team_member_enter_idle_mode`].
 
@@ -67,6 +72,16 @@ impl Simulation {
     /// 0x006FCDB0`, Infantry's `0x0051B1F0`.
     pub(super) fn team_member_clear_target(&mut self, id: u64, rules: &RuleSet) {
         let _ = self.assign_target_represented(id, None, Some(rules));
+    }
+
+    /// `vt+0x3C8` `Assign_Target(target)`.
+    pub(super) fn team_member_assign_target(
+        &mut self,
+        id: u64,
+        target: TeamTarget,
+        rules: &RuleSet,
+    ) {
+        let _ = self.assign_target_represented(id, Some(target.target_kind()), Some(rules));
     }
 
     /// `Set_ArchiveTarget(NULL)` (`0x0070C610`), a plain store.

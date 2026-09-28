@@ -419,13 +419,9 @@ pub(crate) fn advance_emergency_state(
 }
 
 /// Exact `House+0x249` decision consumed by native
-/// `TechnoClass__Evaluate_Candidate @ 0x006F8765`.
-///
-/// VERA's current acquisition ranking is explicitly not that native evaluator,
-/// so this helper remains disconnected until the expanding-ring score path is
-/// implemented. Translating native score `1` into the current nearest-first
-/// tuple would be an approximation, not parity.
-#[cfg(test)]
+/// `TechnoClass__Evaluate_Candidate @ 0x006F875F..0x006F878B`: under the
+/// All-To-Hunt bias, a candidate the house's current enemy does not own
+/// scores 1 ([`crate::sim::combat::greatest_threat`]).
 pub(crate) fn all_to_hunt_score_override(
     attacker_house: &HouseState,
     candidate_owner: InternedId,

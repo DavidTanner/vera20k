@@ -1,4 +1,150 @@
 {
+  "attack_cadence": [
+    {
+      "asks": false,
+      "frame": 0
+    },
+    {
+      "asks": false,
+      "frame": 1
+    },
+    {
+      "asks": false,
+      "frame": 2
+    },
+    {
+      "asks": false,
+      "frame": 3
+    },
+    {
+      "asks": true,
+      "frame": 4
+    },
+    {
+      "asks": false,
+      "frame": 5
+    },
+    {
+      "asks": false,
+      "frame": 6
+    },
+    {
+      "asks": false,
+      "frame": 7
+    },
+    {
+      "asks": false,
+      "frame": 8
+    },
+    {
+      "asks": false,
+      "frame": 9
+    },
+    {
+      "asks": false,
+      "frame": 10
+    },
+    {
+      "asks": false,
+      "frame": 11
+    },
+    {
+      "asks": true,
+      "frame": 12
+    },
+    {
+      "asks": false,
+      "frame": 13
+    },
+    {
+      "asks": false,
+      "frame": 14
+    },
+    {
+      "asks": false,
+      "frame": 15
+    },
+    {
+      "asks": false,
+      "frame": 16
+    },
+    {
+      "asks": false,
+      "frame": 17
+    },
+    {
+      "asks": false,
+      "frame": 18
+    },
+    {
+      "asks": false,
+      "frame": 19
+    },
+    {
+      "asks": false,
+      "frame": -12
+    },
+    {
+      "asks": false,
+      "frame": -11
+    },
+    {
+      "asks": false,
+      "frame": -10
+    },
+    {
+      "asks": false,
+      "frame": -9
+    },
+    {
+      "asks": false,
+      "frame": -8
+    },
+    {
+      "asks": false,
+      "frame": -7
+    },
+    {
+      "asks": false,
+      "frame": -6
+    },
+    {
+      "asks": false,
+      "frame": -5
+    },
+    {
+      "asks": false,
+      "frame": -4
+    },
+    {
+      "asks": false,
+      "frame": -3
+    },
+    {
+      "asks": false,
+      "frame": -2
+    },
+    {
+      "asks": false,
+      "frame": -1
+    },
+    {
+      "asks": true,
+      "frame": 2147483644
+    },
+    {
+      "asks": false,
+      "frame": 2147483647
+    },
+    {
+      "asks": false,
+      "frame": -2147483648
+    },
+    {
+      "asks": false,
+      "frame": -2147483644
+    }
+  ],
   "center": [
     {
       "center": "cell",
@@ -12775,6 +12921,1586 @@
       ]
     }
   ],
+  "gather": [
+    {
+      "enemy": [
+        91633,
+        108593
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        71420,
+        157089
+      ],
+      "safe_distance": 0,
+      "seed": [
+        357,
+        424
+      ]
+    },
+    {
+      "enemy": [
+        65570,
+        191001
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        64078,
+        98403
+      ],
+      "safe_distance": 50,
+      "seed": [
+        255,
+        696
+      ]
+    },
+    {
+      "enemy": [
+        154709,
+        116364
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        48864,
+        26811
+      ],
+      "safe_distance": 50,
+      "seed": [
+        565,
+        422
+      ]
+    },
+    {
+      "enemy": [
+        84990,
+        15425
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        191689,
+        38171
+      ],
+      "safe_distance": 10,
+      "seed": [
+        341,
+        62
+      ]
+    },
+    {
+      "enemy": [
+        113445,
+        161022
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        188626,
+        161572
+      ],
+      "safe_distance": 100,
+      "seed": [
+        543,
+        628
+      ]
+    },
+    {
+      "enemy": [
+        81888,
+        105479
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        98601,
+        69257
+      ],
+      "safe_distance": 0,
+      "seed": [
+        319,
+        412
+      ]
+    },
+    {
+      "enemy": [
+        148749,
+        44739
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        4469,
+        12455
+      ],
+      "safe_distance": 50,
+      "seed": [
+        532,
+        164
+      ]
+    },
+    {
+      "enemy": [
+        62312,
+        119171
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        15082,
+        182513
+      ],
+      "safe_distance": 0,
+      "seed": [
+        243,
+        465
+      ]
+    },
+    {
+      "enemy": [
+        142141,
+        177483
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        137491,
+        18669
+      ],
+      "safe_distance": 50,
+      "seed": [
+        553,
+        643
+      ]
+    },
+    {
+      "enemy": [
+        30478,
+        119993
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        72042,
+        12138
+      ],
+      "safe_distance": 0,
+      "seed": [
+        119,
+        468
+      ]
+    },
+    {
+      "enemy": [
+        6541,
+        51944
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        189391,
+        73654
+      ],
+      "safe_distance": 30,
+      "seed": [
+        55,
+        205
+      ]
+    },
+    {
+      "enemy": [
+        178222,
+        188201
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        130126,
+        106049
+      ],
+      "safe_distance": 30,
+      "seed": [
+        680,
+        709
+      ]
+    },
+    {
+      "enemy": [
+        28246,
+        147232
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        120977,
+        175863
+      ],
+      "safe_distance": 0,
+      "seed": [
+        110,
+        575
+      ]
+    },
+    {
+      "enemy": [
+        32374,
+        20319
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        8340,
+        178540
+      ],
+      "safe_distance": 50,
+      "seed": [
+        118,
+        128
+      ]
+    },
+    {
+      "enemy": [
+        172353,
+        52579
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        77959,
+        174632
+      ],
+      "safe_distance": 0,
+      "seed": [
+        673,
+        205
+      ]
+    },
+    {
+      "enemy": [
+        102326,
+        42827
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        120517,
+        134875
+      ],
+      "safe_distance": 50,
+      "seed": [
+        409,
+        216
+      ]
+    },
+    {
+      "enemy": [
+        12273,
+        142989
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        188830,
+        117702
+      ],
+      "safe_distance": 30,
+      "seed": [
+        77,
+        554
+      ]
+    },
+    {
+      "enemy": [
+        120288,
+        178864
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        38569,
+        48698
+      ],
+      "safe_distance": 30,
+      "seed": [
+        453,
+        673
+      ]
+    },
+    {
+      "enemy": [
+        19500,
+        3148
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        138961,
+        153804
+      ],
+      "safe_distance": 1,
+      "seed": [
+        76,
+        13
+      ]
+    },
+    {
+      "enemy": [
+        24891,
+        56433
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        150294,
+        107722
+      ],
+      "safe_distance": 50,
+      "seed": [
+        143,
+        238
+      ]
+    },
+    {
+      "enemy": [
+        120004,
+        97194
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        81856,
+        58223
+      ],
+      "safe_distance": 100,
+      "seed": [
+        398,
+        308
+      ]
+    },
+    {
+      "enemy": [
+        136913,
+        19642
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        67966,
+        56808
+      ],
+      "safe_distance": 100,
+      "seed": [
+        446,
+        124
+      ]
+    },
+    {
+      "enemy": [
+        158592,
+        168279
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        105498,
+        102126
+      ],
+      "safe_distance": 1,
+      "seed": [
+        618,
+        656
+      ]
+    },
+    {
+      "enemy": [
+        71091,
+        44170
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        77190,
+        44670
+      ],
+      "safe_distance": 1,
+      "seed": [
+        278,
+        172
+      ]
+    },
+    {
+      "enemy": [
+        5956,
+        161506
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        148794,
+        60938
+      ],
+      "safe_distance": 1,
+      "seed": [
+        24,
+        630
+      ]
+    },
+    {
+      "enemy": [
+        109927,
+        128053
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        54742,
+        189594
+      ],
+      "safe_distance": 30,
+      "seed": [
+        409,
+        522
+      ]
+    },
+    {
+      "enemy": [
+        104220,
+        179017
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        168985,
+        118234
+      ],
+      "safe_distance": 1,
+      "seed": [
+        407,
+        698
+      ]
+    },
+    {
+      "enemy": [
+        69367,
+        44736
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        27971,
+        123537
+      ],
+      "safe_distance": 10,
+      "seed": [
+        266,
+        183
+      ]
+    },
+    {
+      "enemy": [
+        137813,
+        109223
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        82966,
+        10803
+      ],
+      "safe_distance": 100,
+      "seed": [
+        489,
+        339
+      ]
+    },
+    {
+      "enemy": [
+        106562,
+        126835
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        18108,
+        53837
+      ],
+      "safe_distance": 0,
+      "seed": [
+        416,
+        495
+      ]
+    },
+    {
+      "enemy": [
+        66586,
+        154676
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        27727,
+        114095
+      ],
+      "safe_distance": 1,
+      "seed": [
+        259,
+        603
+      ]
+    },
+    {
+      "enemy": [
+        124802,
+        49701
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        24075,
+        187554
+      ],
+      "safe_distance": 50,
+      "seed": [
+        458,
+        234
+      ]
+    },
+    {
+      "enemy": [
+        25361,
+        96466
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        21474,
+        160672
+      ],
+      "safe_distance": 0,
+      "seed": [
+        99,
+        376
+      ]
+    },
+    {
+      "enemy": [
+        178279,
+        60984
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        145553,
+        133638
+      ],
+      "safe_distance": 10,
+      "seed": [
+        692,
+        247
+      ]
+    },
+    {
+      "enemy": [
+        40524,
+        153710
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        27179,
+        25621
+      ],
+      "safe_distance": 1,
+      "seed": [
+        158,
+        599
+      ]
+    },
+    {
+      "enemy": [
+        193763,
+        139015
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        76111,
+        24118
+      ],
+      "safe_distance": 10,
+      "seed": [
+        749,
+        536
+      ]
+    },
+    {
+      "enemy": [
+        96082,
+        65271
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        82637,
+        132849
+      ],
+      "safe_distance": 10,
+      "seed": [
+        373,
+        264
+      ]
+    },
+    {
+      "enemy": [
+        23604,
+        51539
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        51277,
+        95949
+      ],
+      "safe_distance": 30,
+      "seed": [
+        108,
+        226
+      ]
+    },
+    {
+      "enemy": [
+        108262,
+        157366
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        47916,
+        127504
+      ],
+      "safe_distance": 0,
+      "seed": [
+        422,
+        614
+      ]
+    },
+    {
+      "enemy": [
+        86617,
+        158540
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        55743,
+        14961
+      ],
+      "safe_distance": 1,
+      "seed": [
+        338,
+        618
+      ]
+    },
+    {
+      "enemy": [
+        90078,
+        66499
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        139538,
+        111081
+      ],
+      "safe_distance": 1,
+      "seed": [
+        352,
+        260
+      ]
+    },
+    {
+      "enemy": [
+        147912,
+        1458
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        23109,
+        89178
+      ],
+      "safe_distance": 1,
+      "seed": [
+        576,
+        6
+      ]
+    },
+    {
+      "enemy": [
+        170351,
+        151240
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        108076,
+        108841
+      ],
+      "safe_distance": 50,
+      "seed": [
+        623,
+        563
+      ]
+    },
+    {
+      "enemy": [
+        17611,
+        71295
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        95441,
+        164099
+      ],
+      "safe_distance": 10,
+      "seed": [
+        75,
+        286
+      ]
+    },
+    {
+      "enemy": [
+        67758,
+        5039
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        195711,
+        66503
+      ],
+      "safe_distance": 1,
+      "seed": [
+        265,
+        20
+      ]
+    },
+    {
+      "enemy": [
+        57083,
+        53412
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        8245,
+        182721
+      ],
+      "safe_distance": 30,
+      "seed": [
+        212,
+        236
+      ]
+    },
+    {
+      "enemy": [
+        110839,
+        98217
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        42471,
+        18504
+      ],
+      "safe_distance": 10,
+      "seed": [
+        426,
+        376
+      ]
+    },
+    {
+      "enemy": [
+        119615,
+        113493
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        141167,
+        129674
+      ],
+      "safe_distance": 30,
+      "seed": [
+        491,
+        461
+      ]
+    },
+    {
+      "enemy": [
+        13222,
+        103265
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        20617,
+        162827
+      ],
+      "safe_distance": 1,
+      "seed": [
+        51,
+        404
+      ]
+    },
+    {
+      "enemy": [
+        10882,
+        180745
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        50983,
+        178698
+      ],
+      "safe_distance": 50,
+      "seed": [
+        92,
+        703
+      ]
+    },
+    {
+      "enemy": [
+        51597,
+        24663
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        56658,
+        91630
+      ],
+      "safe_distance": 10,
+      "seed": [
+        202,
+        106
+      ]
+    },
+    {
+      "enemy": [
+        192170,
+        173438
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        119863,
+        53981
+      ],
+      "safe_distance": 100,
+      "seed": [
+        698,
+        592
+      ]
+    },
+    {
+      "enemy": [
+        184796,
+        19782
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        162713,
+        14929
+      ],
+      "safe_distance": 10,
+      "seed": [
+        712,
+        75
+      ]
+    },
+    {
+      "enemy": [
+        60425,
+        21536
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        21271,
+        8409
+      ],
+      "safe_distance": 10,
+      "seed": [
+        226,
+        81
+      ]
+    },
+    {
+      "enemy": [
+        42136,
+        141468
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        138018,
+        38064
+      ],
+      "safe_distance": 100,
+      "seed": [
+        232,
+        479
+      ]
+    },
+    {
+      "enemy": [
+        149823,
+        110009
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        186949,
+        65637
+      ],
+      "safe_distance": 30,
+      "seed": [
+        604,
+        406
+      ]
+    },
+    {
+      "enemy": [
+        137022,
+        77717
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        144985,
+        82856
+      ],
+      "safe_distance": 50,
+      "seed": [
+        577,
+        330
+      ]
+    },
+    {
+      "enemy": [
+        165706,
+        163586
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        112773,
+        94341
+      ],
+      "safe_distance": 0,
+      "seed": [
+        647,
+        639
+      ]
+    },
+    {
+      "enemy": [
+        144206,
+        92017
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        3091,
+        94703
+      ],
+      "safe_distance": 0,
+      "seed": [
+        563,
+        359
+      ]
+    },
+    {
+      "enemy": [
+        165232,
+        109482
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        196179,
+        188109
+      ],
+      "safe_distance": 50,
+      "seed": [
+        663,
+        474
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        16512,
+        16512
+      ],
+      "safe_distance": 50,
+      "seed": [
+        114,
+        64
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        20608,
+        16512
+      ],
+      "safe_distance": 50,
+      "seed": [
+        114,
+        64
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        16512,
+        20608
+      ],
+      "safe_distance": 50,
+      "seed": [
+        64,
+        114
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        12416,
+        16512
+      ],
+      "safe_distance": 50,
+      "seed": [
+        14,
+        64
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        16512,
+        12416
+      ],
+      "safe_distance": 50,
+      "seed": [
+        64,
+        14
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        20608,
+        20608
+      ],
+      "safe_distance": 50,
+      "seed": [
+        100,
+        99
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        12416,
+        12416
+      ],
+      "safe_distance": 50,
+      "seed": [
+        28,
+        29
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        9029,
+        26505,
+        256
+      ],
+      "own": [
+        0,
+        0
+      ],
+      "safe_distance": 30,
+      "seed": [
+        46,
+        88
+      ]
+    },
+    {
+      "enemy": [
+        16512,
+        16512
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        16512,
+        16512,
+        0
+      ],
+      "own": [
+        0,
+        0
+      ],
+      "safe_distance": 30,
+      "seed": [
+        94,
+        64
+      ]
+    },
+    {
+      "enemy": [
+        196736,
+        128
+      ],
+      "finished": false,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        128,
+        128
+      ],
+      "safe_distance": -5,
+      "seed": [
+        773,
+        0
+      ]
+    },
+    {
+      "enemy": [
+        0,
+        0
+      ],
+      "finished": true,
+      "has_enemy": true,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        16512,
+        16512
+      ],
+      "safe_distance": 50,
+      "seed": null
+    },
+    {
+      "enemy": [
+        32896,
+        32896
+      ],
+      "finished": true,
+      "has_enemy": false,
+      "leader": [
+        12288,
+        12288,
+        0
+      ],
+      "own": [
+        16512,
+        16512
+      ],
+      "safe_distance": 50,
+      "seed": null
+    }
+  ],
   "guard": [
     {
       "argument": 0,
@@ -15092,6 +16818,80 @@
       ],
       "mode": 3,
       "result": 0
+    }
+  ],
+  "quarry": [
+    {
+      "mask": 0,
+      "quarry": -2
+    },
+    {
+      "mask": 0,
+      "quarry": -1
+    },
+    {
+      "mask": 0,
+      "quarry": 0
+    },
+    {
+      "mask": 0,
+      "quarry": 1
+    },
+    {
+      "mask": 32,
+      "quarry": 2
+    },
+    {
+      "mask": 64,
+      "quarry": 3
+    },
+    {
+      "mask": 8,
+      "quarry": 4
+    },
+    {
+      "mask": 16,
+      "quarry": 5
+    },
+    {
+      "mask": 4096,
+      "quarry": 6
+    },
+    {
+      "mask": 8192,
+      "quarry": 7
+    },
+    {
+      "mask": 0,
+      "quarry": 8
+    },
+    {
+      "mask": 2048,
+      "quarry": 9
+    },
+    {
+      "mask": 32768,
+      "quarry": 10
+    },
+    {
+      "mask": 65536,
+      "quarry": 11
+    },
+    {
+      "mask": 0,
+      "quarry": 12
+    },
+    {
+      "mask": 0,
+      "quarry": 13
+    },
+    {
+      "mask": 0,
+      "quarry": 2147483647
+    },
+    {
+      "mask": 0,
+      "quarry": -2147483648
     }
   ],
   "recalc": [

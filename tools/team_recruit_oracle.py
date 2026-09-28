@@ -20,6 +20,13 @@ Sections, each executed in a fresh emulator per case:
   base centre and the atan2 facing 0x4CAE30, or the RandomRanged(0, 255)
   facing; the sin/cos step 0x4CACB0/0x4CAD00 and the cell quotients).
 - own_building: FindOwnBuilding 0x6EEEA0.
+- gather: action 53 0x6EF700 with `first` up to its FNPC call 0x6EF98A, or
+  to its return when it finishes at once (the enemy's and own base centres,
+  the leader's location without a base, the same atan2/sin/cos step as
+  action 54 from the enemy's centre).
+- quarry: Quarry_To_Threat 0x645BB0 and its jump table 0x645BF8.
+- attack_cadence: Coordinate_Attack's signed Frame % 8 == 4 test
+  0x6EB59A..0x6EB5AE.
 
 Control flow the rows do not vary (Calc_Center's action-10 branch, the
 TeamType waypoint origin, the recruited unit's passengers, action 54's leader
@@ -142,7 +149,8 @@ class TeamEmu(Emu):
         return address
 
     def start(self, entry, end, *, ecx, args=()):
-        """Run `entry` (thiscall) from a fresh stack to `end`."""
+        """Run `entry` (thiscall) from a fresh stack to `end` (one address or
+        several); answer the address reached."""
         uc = self.uc
         sp = STACK_BASE + STACK_SIZE - 0x1000
         for value in reversed(args):
@@ -153,7 +161,7 @@ class TeamEmu(Emu):
         uc.reg_write(UC_X86_REG_ESP, sp)
         uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
         uc.reg_write(UC_X86_REG_ECX, ecx)
-        run_checked(uc, entry, end)
+        return run_checked(uc, entry, end)
 
 
 # ---------------------------------------------------------------- recalc
@@ -518,6 +526,94 @@ def regroup():
     return rows
 
 
+# ---------------------------------------------------------------- gather
+
+GATHER_AT_ENEMY_BASE = 0x6EF700
+GATHER_FNPC = 0x6EF98A
+
+
+def gather_row(*, own, enemy, safe_distance, leader=(0x3000, 0x3000, 0), has_enemy=True):
+    """`own`/`enemy`: a base centre's XY, [0, 0] for none."""
+    emu = TeamEmu()
+    house, enemy_house = HOUSES, HOUSES + HOUSE_SIZE
+    leader_address = emu.object(0, xyz=list(leader))
+    emu.write32(TEAM + 0x54, leader_address)
+    emu.write8(leader_address + 0x90, 1)
+    emu.write32(leader_address + 0x6C, 100)
+    emu.write8(leader_address + 0x689, 1)
+    emu.write32(leader_address + 0x21C, house)
+    emu.techno_type[leader_address] = emu.techno_type_at(0)
+    emu.write32(RULES + 0xD74, safe_distance)
+    emu.write32(HOUSE_ARRAY, ARRAYS)
+    emu.write32(ARRAYS + 4, enemy_house)
+    emu.write32(house + 0x5600, 1 if has_enemy else -1)
+    centers = {house: own, enemy_house: enemy}
+
+    def base_center(e):
+        out = e.arg(0)
+        for offset, value in zip((0, 4, 8), centers[e.uc.reg_read(UC_X86_REG_ECX)] + [0]):
+            e.write32(out + offset, value)
+        return out
+    emu.hook(BASE_CENTER, base_center, 4)
+    stop = emu.start(GATHER_AT_ENEMY_BASE, (GATHER_FNPC, RET_MAGIC), ecx=TEAM, args=(0, 1))
+    seed = None
+    if stop == GATHER_FNPC:
+        seed_pointer = emu.read32(emu.uc.reg_read(UC_X86_REG_ESP) + 4)
+        seed = list(struct.unpack('<hh', emu.uc.mem_read(seed_pointer, 4)))
+    return dict(own=own, enemy=enemy, leader=list(leader), has_enemy=has_enemy,
+                safe_distance=safe_distance, seed=seed, finished=bool(emu.read8(TEAM + 0x80)))
+
+
+def gather():
+    rng = random.Random(0x6EF700)
+    rows = []
+    for _ in range(60):
+        own = [rng.randrange(0x80, 0x30000), rng.randrange(0x80, 0x30000)]
+        enemy = [rng.randrange(0x80, 0x30000), rng.randrange(0x80, 0x30000)]
+        rows.append(gather_row(own=own, enemy=enemy,
+                               safe_distance=rng.choice((0, 1, 10, 30, 50, 100))))
+    for own in ([0x4080, 0x4080], [0x5080, 0x4080], [0x4080, 0x5080], [0x3080, 0x4080],
+                [0x4080, 0x3080], [0x5080, 0x5080], [0x3080, 0x3080]):
+        rows.append(gather_row(own=own, enemy=[0x4080, 0x4080], safe_distance=50))
+    for leader in ((0x2345, 0x6789, 0x100), (0x4080, 0x4080, 0)):
+        rows.append(gather_row(own=[0, 0], enemy=[0x4080, 0x4080], leader=leader,
+                               safe_distance=30))
+    rows.append(gather_row(own=[0x80, 0x80], enemy=[0x30080, 0x80], safe_distance=-5))
+    rows.append(gather_row(own=[0x4080, 0x4080], enemy=[0, 0], safe_distance=50))
+    rows.append(gather_row(own=[0x4080, 0x4080], enemy=[0x8080, 0x8080], safe_distance=50,
+                           has_enemy=False))
+    return rows
+
+
+# ---------------------------------------------------------------- quarry
+
+QUARRY_TO_THREAT = 0x645BB0
+
+
+def quarry():
+    return [dict(quarry=argument,
+                 mask=TeamEmu().invoke(QUARRY_TO_THREAT, ecx=argument & 0xFFFFFFFF))
+            for argument in list(range(-2, 14)) + [0x7FFFFFFF, -0x80000000]]
+
+
+# ---------------------------------------------------------------- attack_cadence
+
+CADENCE = 0x6EB59A
+CADENCE_ASKS, CADENCE_SKIPS = 0x6EB5B0, 0x6EB5D9
+
+
+def attack_cadence():
+    rows = []
+    for frame in (list(range(0, 20)) + list(range(-12, 0))
+                  + [0x7FFFFFFC, 0x7FFFFFFF, -0x80000000, -0x7FFFFFFC]):
+        emu = TeamEmu()
+        emu.write32(FRAME, frame)
+        emu.uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
+        stop = run_checked(emu.uc, CADENCE, (CADENCE_ASKS, CADENCE_SKIPS))
+        rows.append(dict(frame=frame, asks=stop == CADENCE_ASKS))
+    return rows
+
+
 # ---------------------------------------------------------------- own_building
 
 FIND_OWN_BUILDING = 0x6EEEA0
@@ -563,7 +659,8 @@ def own_building():
 
 def generate():
     return dict(recalc=recalc(), center=center(), recruit=recruit(), distance=distance(),
-                guard=guard(), regroup=regroup(), own_building=own_building())
+                guard=guard(), regroup=regroup(), own_building=own_building(),
+                gather=gather(), quarry=quarry(), attack_cadence=attack_cadence())
 
 
 if __name__ == '__main__':
@@ -572,7 +669,9 @@ if __name__ == '__main__':
                'Calc_Center off action 10 over synthetic members and move targets; Recruit '
                'over one class array with supplied Can_Add answers; ObjectClass::Distance to '
                'a Foot or a building of every foundation; the action 5 guard timer; action '
-               '54\'s point up to its FNPC call; FindOwnBuilding over one house\'s buildings.'),
+               '54\'s point up to its FNPC call; FindOwnBuilding over one house\'s buildings; '
+               'action 53 up to its FNPC call or its early return; Quarry_To_Threat; '
+               'Coordinate_Attack\'s frame test.'),
         assumptions=['x87 control word 0x0E7F (PC53, chop), the harness default.',
                      'Fixture objects carry only the fields the entries read.',
                      'ScenarioInit (0xA8E7AC), the empty coordinate 0xB0E968 and the empty '
@@ -588,11 +687,13 @@ if __name__ == '__main__':
                        'records its call; Get_Group 0x6F1870 answers the case\'s group; the '
                        'TeamType waypoint 0x6F18A0 answers the empty cell; the first '
                        'passenger 0x473450 answers none.',
-                       'Base_Center 0x50DF30 answers the case\'s centres; RandomRanged '
-                       '0x65C7E0 answers from the case and records its range.',
+                       'Base_Center 0x50DF30 answers the case\'s centres ([0, 0] for none, '
+                       'z 0); RandomRanged 0x65C7E0 answers from the case and records its '
+                       'range.',
                        'FindOwnBuilding\'s threat map read 0x56BCD0 answers 0.'],
         entry_points={'recalc': RECALC, 'calc_center': CALC_CENTER, 'recruit': RECRUIT,
                       'distance': DISTANCE, 'guard_case': GUARD_CASE,
                       'regroup_at_base': REGROUP_AT_BASE, 'find_own_building':
-                      FIND_OWN_BUILDING},
+                      FIND_OWN_BUILDING, 'gather_at_enemy_base': GATHER_AT_ENEMY_BASE,
+                      'quarry_to_threat': QUARRY_TO_THREAT, 'attack_cadence': CADENCE},
     ))
