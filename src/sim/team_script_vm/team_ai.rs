@@ -127,17 +127,6 @@ pub(super) fn center_of(
     (count != 0).then(|| ([sum[0] / count, sum[1] / count], closest))
 }
 
-/// `ObjectClass::Distance @ 0x005F6360` between two coordinates: the
-/// approximated 3D distance (`0x0041C380`'s sequence), less `(width +
-/// height) * 64`, not below 0, to a building of that foundation size.
-pub(super) fn member_distance(from: [i32; 3], to: [i32; 3], building: Option<(i32, i32)>) -> i32 {
-    let distance = crate::util::native_x87::distance_3d_leptons(from, to);
-    match building {
-        Some((width, height)) => distance.wrapping_sub((width + height) * 64).max(0),
-        None => distance,
-    }
-}
-
 /// `0x005F6500`/`0x005F6560`: the squared XY distance, wrapping.
 pub(super) fn squared_xy_distance(from: [i32; 2], to: [i32; 2]) -> i32 {
     let dx = from[0].wrapping_sub(to[0]);
@@ -704,8 +693,8 @@ impl Simulation {
         })
     }
 
-    /// `ObjectClass::Distance @ 0x005F6360` from `member` to `target`, 0
-    /// without one (see [`member_distance`]).
+    /// `ObjectClass::Distance @ 0x005F6360` from `member` to `target`
+    /// ([`crate::util::native_x87::object_distance`]), 0 without one.
     pub(super) fn team_member_distance(
         &self,
         member: &GameEntity,
@@ -731,6 +720,10 @@ impl Simulation {
                 }),
             TeamTarget::Cell { .. } => None,
         };
-        member_distance([from.x, from.y, from.z], [to.x, to.y, to.z], building)
+        crate::util::native_x87::object_distance(
+            [from.x, from.y, from.z],
+            [to.x, to.y, to.z],
+            building,
+        )
     }
 }

@@ -3,7 +3,17 @@
 //! A stand-in for the computer's attacks, which its teams' attack script
 //! actions will make (`sim::team_script_vm::actions`, not ported):
 //! periodically, on an eighth frame, it sends idle units at the nearest enemy
-//! base, sparing the members of teams whose script runs. A
+//! base, sparing the members of teams whose script runs.
+//!
+//! RESIDUAL: its AttackMove is a player order, which takes each member of a
+//! team stalled on an unported action off that team (`0x004C735D`). Once
+//! empty, the formed team is destroyed and its AI trigger records a failure
+//! (`Simulation::destroy_team`), and new teams may recruit the wave's units
+//! while their mission is recruitable. Trigger: every computer attack team,
+//! each wave (225 frames). Effect: attack teams dissolve as they set out
+//! instead of fighting as teams, and their triggers' weights fall as when
+//! such a team is wiped out, only sooner. The attack actions' port deletes
+//! this stand-in. A
 //! computer house's units come from its teams' needs (`sim::ai_team_creation`,
 //! `sim::ai_unit_choice`), its buildings from its Construction Yard
 //! (`sim::ai_base_building`), both made at its factory buildings

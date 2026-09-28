@@ -3037,7 +3037,7 @@ mod tests {
             !scans(&mut sim, 5),
             "outside a team CanAcquireTarget refuses"
         );
-        crate::sim::team_script_vm::join_one_member_team_for_test(&mut sim, 5, false, true);
+        crate::sim::team_script_vm::join_team_for_test(&mut sim, &[5], false, true);
         sim.substrate
             .entities
             .get_mut(5)
@@ -3053,7 +3053,7 @@ mod tests {
             americans,
             crate::sim::house_state::HouseState::new(americans, 0, None, true, 0, 10),
         );
-        crate::sim::team_script_vm::join_one_member_team_for_test(&mut sim, 6, false, true);
+        crate::sim::team_script_vm::join_team_for_test(&mut sim, &[6], false, true);
         assert!(!scans(&mut sim, 6));
     }
 

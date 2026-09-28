@@ -4250,6 +4250,7 @@ impl Simulation {
         );
         // The ObjectClass destructor's defensive Defuse (`0x005F3BA6`).
         self.bomb_defuse(stable_id);
+        self.team_script_vm.object_deleted(stable_id);
         self.release_house_base_tracking(stable_id);
         self.destroy_building_light(stable_id);
         self.clear_building_damage_fire_slots(stable_id, None);

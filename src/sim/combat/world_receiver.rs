@@ -3248,11 +3248,11 @@ fn fireat_launch_aim(
                     .and_then(|id| rules.weapon(id))?;
                 let target_type = rules.object(world.interner.resolve(target.type_ref()));
                 let target_coords = object_get_coords(world, rules, target_id)?;
-                // `ObjectClass::Distance_AdjForFoundation @ 0x005F6360`: 3-D,
-                // no foundation term for a UnitClass target.
-                let distance = crate::util::native_x87::distance_3d_leptons(
+                // `ObjectClass::Distance @ 0x005F6360` to a UnitClass target.
+                let distance = crate::util::native_x87::object_distance(
                     [firer_coords.x, firer_coords.y, firer_coords.z],
                     [target_coords.x, target_coords.y, target_coords.z],
+                    None,
                 );
                 Some(lead_aim(
                     target_coord,

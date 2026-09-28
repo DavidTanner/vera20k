@@ -612,6 +612,16 @@ pub struct TeamScriptVm {
     /// with them.
     #[serde(default)]
     member_team: BTreeMap<u64, u64>,
+    /// Each object's team to rejoin (`TechnoClass+0x434`): a
+    /// `RejoinTeamIfLimboed=` Foot's team as it LimboLaunches at an Infantry
+    /// target (`TechnoClass::Fire @ 0x006FF7A3..0x006FF7E9`), which its
+    /// parasite release re-adds it to (`0x0062A3AD..0x0062A3BC`,
+    /// `0x0062A74A..0x0062A759`). Like the field it outlives the rejoin, and a
+    /// jump outside a team keeps it; it goes with the team
+    /// (`TechnoClass::PointerExpired @ 0x00707BB2`) or the object's
+    /// destructor, not its Limbo or UnInit.
+    #[serde(default)]
+    rejoin_team: BTreeMap<u64, u64>,
 }
 
 impl TeamScriptVm {
@@ -848,6 +858,30 @@ impl TeamScriptVm {
         Some((team_id, is_base_defense))
     }
 
+    /// `TechnoClass::Fire @ 0x006FF7A3..0x006FF7E9`: `entity_id` remembers
+    /// its team to rejoin (`+0x434`); outside a team it keeps the one it has.
+    pub(crate) fn remember_team_to_rejoin(&mut self, entity_id: u64) {
+        if let Some(&team_id) = self.member_team.get(&entity_id) {
+            self.rejoin_team.insert(entity_id, team_id);
+        }
+    }
+
+    /// `entity_id`'s team to rejoin (`TechnoClass+0x434`), if any.
+    pub(crate) fn team_to_rejoin(&self, entity_id: u64) -> Option<u64> {
+        self.rejoin_team.get(&entity_id).copied()
+    }
+
+    /// `TechnoClass::PointerExpired @ 0x00707BB2..0x00707BBA` for every
+    /// object as team `team_id` goes: none keeps it to rejoin.
+    fn forget_team_to_rejoin(&mut self, team_id: u64) {
+        self.rejoin_team.retain(|_, team| *team != team_id);
+    }
+
+    /// The object's destructor: its team to rejoin goes with it.
+    pub(crate) fn object_deleted(&mut self, entity_id: u64) {
+        self.rejoin_team.remove(&entity_id);
+    }
+
     /// The TeamType of the team `entity_id` belongs to (Foot `+0x5D4` then
     /// TeamClass `+0x24`), if any.
     pub(crate) fn member_team_type(&self, entity_id: u64) -> Option<&TeamTypeDefinition> {
@@ -1021,9 +1055,9 @@ impl TeamScriptState {
 impl TeamScriptVm {
     /// `ai_teams` (schema v238) adds each team's creation frame and forming
     /// byte and, tagged, the AI triggers whose track record left its
-    /// registered state; `recruitment` (v240) adds, tagged, each team's
-    /// recruitment state once it leaves its constructor values. A state
-    /// without them hashes as before.
+    /// registered state; `recruitment` (v241) adds, tagged, each team's
+    /// recruitment state once it leaves its constructor values and the
+    /// objects' teams to rejoin. A state without them hashes as before.
     pub(crate) fn hash_state(
         &self,
         current_frame: i32,
@@ -1076,6 +1110,10 @@ impl TeamScriptVm {
                 team.focus.hash(hasher);
                 team.guard_timer.remaining(current_frame).hash(hasher);
             }
+        }
+        if recruitment && !self.rejoin_team.is_empty() {
+            b"team-rejoin-v1".hash(hasher);
+            self.rejoin_team.hash(hasher);
         }
         if ai_teams {
             let changed: Vec<_> = self
@@ -1227,20 +1265,18 @@ fn script_action_at(
     script?.actions.get(index).copied()
 }
 
-/// Puts `member` in a one-member team whose TeamType has `Suicide=suicide`
-/// and `Aggressive=aggressive`.
+/// Puts `members`, all of the first one's type, in a team of that many whose
+/// TeamType has `Suicide=suicide` and `Aggressive=aggressive`, and returns it.
 #[cfg(test)]
-pub(crate) fn join_one_member_team_for_test(
+pub(crate) fn join_team_for_test(
     sim: &mut crate::sim::world::Simulation,
-    member: u64,
+    members: &[u64],
     suicide: bool,
     aggressive: bool,
-) {
-    let owner = sim.substrate.entities.get(member).unwrap().owner();
-    let member_type = TeamMemberTypeIdentity {
-        category: ObjectCategory::Vehicle,
-        id: sim.substrate.entities.get(member).unwrap().type_ref(),
-    };
+) -> u64 {
+    let first = sim.substrate.entities.get(members[0]).unwrap();
+    let owner = first.owner();
+    let member_type = member_type_identity(first);
     let script_id = sim.interner.intern("TEST_SCRIPT");
     let task_force_id = sim.interner.intern("TEST_TASK_FORCE");
     let team_type_id = sim.interner.intern("TEST_TEAM");
@@ -1256,7 +1292,7 @@ pub(crate) fn join_one_member_team_for_test(
         group: -1,
         entries: vec![TeamTaskForceEntry {
             member_type,
-            count: 1,
+            count: i32::try_from(members.len()).unwrap(),
         }],
     });
     teams.register_team_type(TeamTypeDefinition {
@@ -1271,15 +1307,14 @@ pub(crate) fn join_one_member_team_for_test(
         base_zone_relation_enforced: true,
         transport_crossing_required: false,
     });
-    teams.create_team_from_type(
-        owner,
-        team_type_id,
-        &[TeamScriptMember {
-            entity_id: member,
+    let candidates: Vec<TeamScriptMember> = members
+        .iter()
+        .map(|&entity_id| TeamScriptMember {
+            entity_id,
             member_type,
-        }],
-        0,
-    );
+        })
+        .collect();
+    teams.create_team_from_type(owner, team_type_id, &candidates, 0)
 }
 
 #[cfg(test)]

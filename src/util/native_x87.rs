@@ -489,6 +489,25 @@ pub fn distance_3d_leptons(lhs: [i32; 3], rhs: [i32; 3]) -> i32 {
     X87Chop53::ftol_i64(root).expect("map-space distance fits a signed integer") as i32
 }
 
+/// `ObjectClass::Distance @ 0x005F6360` from an object at `from` to one at
+/// `to` (both their `vt+0x48` coordinates): `(dx²+dz²)+dy²` through
+/// `Sqrt_Approx` and ftol, as [`distance_3d_leptons`], less `(Width + Height)
+/// * 64` and not below 0 when the target is a building of that foundation
+/// (`0x0045ECA0(0)`, `0x0045EC90`). Native execution:
+/// `tools/team_recruit_oracle.py`'s `distance` rows, replayed in
+/// `sim::team_script_vm::recruit_oracle_tests`.
+pub fn object_distance(
+    from: [i32; 3],
+    to: [i32; 3],
+    building_foundation: Option<(i32, i32)>,
+) -> i32 {
+    let distance = distance_3d_leptons([from[0], from[2], from[1]], [to[0], to[2], to[1]]);
+    match building_foundation {
+        Some((width, height)) => distance.wrapping_sub((width + height) * 64).max(0),
+        None => distance,
+    }
+}
+
 fn chop_extended(sign: bool, exponent: i32, extended: u64) -> X87Value {
     let significand = extended >> 3;
     debug_assert!(significand == 0 || significand & SIGNIFICAND_TOP != 0);

@@ -1636,7 +1636,11 @@ impl ProjectileCollisionWorld<'_> {
                     offset_coords: coords,
                     in_air: false,
                     ground_layer: true,
-                    distance: coord_distance(location, coords),
+                    distance: crate::util::native_x87::object_distance(
+                        [location.x, location.y, location.z],
+                        [coords.x, coords.y, coords.z],
+                        None,
+                    ),
                     building_offset: false,
                 })
             }
@@ -1918,20 +1922,23 @@ impl ProjectileCollisionWorld<'_> {
         candidate: ProjectileCoord,
         target: &crate::sim::game_entity::GameEntity,
     ) -> i32 {
-        // ObjectClass 5F6360: virtual +48 positions, then RTTI-6 foundation
-        // radius subtraction (45ECA0(false), 45EC90), clamped at zero.
-        let mut distance = coord_distance(candidate, self.location(target));
-        if target.category == EntityCategory::Structure
-            && let Some(kind) = self
-                .rules
-                .and_then(|rules| rules.object(self.interner.resolve(target.type_ref())))
-        {
-            let (width, height) = crate::rules::foundation::foundation_dimensions(&kind.foundation);
-            distance = distance
-                .wrapping_sub((i32::from(width) + i32::from(height)) * 64)
-                .max(0);
-        }
-        distance
+        // ObjectClass::Distance 5F6360 between the virtual +48 positions,
+        // with a building target's foundation term.
+        let building = self
+            .rules
+            .filter(|_| target.category == EntityCategory::Structure)
+            .and_then(|rules| rules.object(self.interner.resolve(target.type_ref())))
+            .map(|kind| {
+                let (width, height) =
+                    crate::rules::foundation::foundation_dimensions(&kind.foundation);
+                (i32::from(width), i32::from(height))
+            });
+        let location = self.location(target);
+        crate::util::native_x87::object_distance(
+            [candidate.x, candidate.y, candidate.z],
+            [location.x, location.y, location.z],
+            building,
+        )
     }
 
     fn cell_location(cell: &CellRef<'_>) -> ProjectileCoord {

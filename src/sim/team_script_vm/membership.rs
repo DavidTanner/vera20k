@@ -43,6 +43,10 @@
 //!   building's occupant release with Hunt (`0x0045812B`), and script
 //!   actions 8 and 60-64 and the team change and merge (`0x006EF392`,
 //!   `0x006EF416`, `0x006E9E24..0x006E9F38`, `0x006E96FD`, `0x006ECFF8`).
+//! - The removal loops in `0x006ECB50` (`0x006ECB7C..0x006ECCBC`) and
+//!   `0x0070F890` (`0x0070F8C7`) are not ported: neither function has a call
+//!   or a pointer anywhere in the executable (`tools.native_inspect calls`
+//!   and `find-bytes`).
 //!   Trigger: a computer aircraft team's member runs out of ammo (the only
 //!   one of these a skirmish reaches today). Effect: the aircraft stays in
 //!   its team and counts against its TaskForce.
@@ -440,6 +444,7 @@ impl Simulation {
             .record_trigger_outcome(team_id, &team_rules);
         self.team_remove_all_members(team_id, rules);
         self.team_script_vm.teams.remove(&team_id);
+        self.team_script_vm.forget_team_to_rejoin(team_id);
     }
 
     /// `0x006EC250`, called by `TechnoClass::RespondToBaseAttack @

@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::actions::{guard_frames, own_building_pick, regroup_seed_cell};
 use super::membership::{RecruitCandidate, entry_short, recruit_pick};
-use super::team_ai::{CenterSample, center_of, center_sample, member_distance};
+use super::team_ai::{CenterSample, center_of, center_sample};
 use super::*;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
@@ -287,14 +287,18 @@ fn recruit_matches_the_original() {
 }
 
 #[test]
-fn member_distance_matches_the_original() {
+fn object_distance_matches_the_original() {
     for (number, row) in rows("distance").iter().enumerate() {
         let building = row["building"].as_u64().map(|id| {
             let foundation = crate::rules::foundation::FOUNDATION_TABLE[id as usize];
             (i32::from(foundation.width), i32::from(foundation.height))
         });
         assert_eq!(
-            member_distance(xyz(&row["member"]), xyz(&row["target"]), building),
+            crate::util::native_x87::object_distance(
+                xyz(&row["member"]),
+                xyz(&row["target"]),
+                building
+            ),
             int(&row["result"]),
             "distance row {number}"
         );
