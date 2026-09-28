@@ -772,6 +772,14 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
         super::find_nearby_passable_for(&fx.sim, &fx.rules, Some(&fx.grid), pax, exit, None)
             .expect("FNPC result")
     };
+    let spawn_elevation = fx
+        .sim
+        .substrate
+        .entities
+        .get(bggy)
+        .unwrap()
+        .barrel_elevation()
+        .timer_start_frame();
     assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
 
     let order = fx.run_until_revealed_with_missions(&[bggy], 200);
@@ -780,6 +788,16 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
     assert_eq!(fx.facing(bfrt), 0x20);
     assert_eq!(fx.cell(bggy), expected, "placed on the FNPC cell");
     assert_eq!(fx.facing(bggy), 0xC0, "octant 6 * 32");
+    // Its departure Unlimbo levels the barrel again and re-aims it.
+    let elevation = *fx
+        .sim
+        .substrate
+        .entities
+        .get(bggy)
+        .unwrap()
+        .barrel_elevation();
+    assert!(elevation.timer_start_frame() > spawn_elevation);
+    assert_eq!(elevation.destination(), 0x3800);
     let e = fx.sim.substrate.entities.get(bggy).expect("passenger");
     let dest = e
         .movement_target

@@ -327,19 +327,22 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x254E_B2B7_6684_
 // old place, this change reproduced every facing-only pin (final
 // 0x6158_8E4E_3576_4D36), RNG streams included. Old values: the commit that
 // moved them.
-// 2026-09-28 houses in the fixture (#824): the harvester's Dock check reads
-// its house's tracked BuildingType counts (`+0x5500`), so `seed_scenario` now
-// makes the two owners' houses, as computer houses in no house order, before
-// placing objects. Every projection folds the houses, so this one step re-pins
-// every projection in this test. Ceremony: on origin/main 58605c6e and on this
-// change, a probe printing every object's mission, queued mission, NavCom,
-// health, position and attack target and the RNG state matched at all 600
-// ticks (the probe patch was not committed), and `FINAL_STREAM_STATES` holds:
-// the only change is the houses' state in the hash. A human house would
+// 2026-09-28 houses in the fixture (#824): a harvester's Dock checks read its
+// house's tracked BuildingType counts (`+0x5500`), so `seed_scenario` now makes
+// the two owners' houses, as computer houses in no house order, before placing
+// objects. Every projection folds the houses, so this one step re-pins every
+// projection in this test, schema 239's too. Ceremony: on origin/main 58605c6e
+// and on this change, a probe printing every object's mission, queued mission,
+// NavCom, health, position and attack target and the RNG state matched at all
+// 600 ticks (the probe patch was not committed), and `FINAL_STREAM_STATES`
+// holds: the only change is the houses' state in the hash. A human house would
 // change behaviour (its AttackMove tank keeps moving when hit), and a `[Map]
 // Size=` would clip the threat scan to its diamond; neither is in this step.
 // Old values: the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x257F_70F5_6DC2_3391;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0x257F_70F5_6DC2_3391;
+// Schema 239 adds only the barrel elevation fold: its projection
+// reproduces the prior pin.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x501E_B454_CEF9_365B;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x3808_F3F1_9C24_1E33;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x259A_EA8C_76DA_2FB0;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0x3BC4_57DE_BF36_3E96;
@@ -914,6 +917,11 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
         GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
         "schema220 only drops the two empty rally copies from this fixture's hash"
+    );
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(239)),
+        GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239,
+        "schema239 only adds the barrel elevation fold"
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,

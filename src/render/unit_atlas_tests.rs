@@ -19,6 +19,7 @@ fn cached_native_sprite_lookup_timing() {
                         layer,
                         frame: 0,
                         slope_type,
+                        barrel_pitch: 0,
                     };
                     entries.insert(
                         key.clone(),
@@ -118,7 +119,7 @@ fn gsi_13_07_atlas_variants_share_base_unloading_and_no_spawn_alt_derivation() {
 #[test]
 fn gsi_13_07_no_spawn_alt_composite_seeds_32_facings_by_17_slopes() {
     let mut needed = HashSet::new();
-    insert_unit_layer_keys(&mut needed, "DREDWO", VxlLayer::Composite, 1, true);
+    insert_unit_layer_keys(&mut needed, "DREDWO", VxlLayer::Composite, 1, true, &[0]);
 
     assert_eq!(needed.len(), 32 * 17);
     assert!(needed.iter().all(|key| {
@@ -136,6 +137,7 @@ fn gsi_13_07_no_spawn_alt_composite_seeds_32_facings_by_17_slopes() {
                 layer: VxlLayer::Composite,
                 frame: 0,
                 slope_type,
+                barrel_pitch: 0,
             }));
         }
     }
@@ -149,6 +151,7 @@ fn test_unit_sprite_key_hash_equality() {
         layer: VxlLayer::Composite,
         frame: 0,
         slope_type: 0,
+        barrel_pitch: 0,
     };
     let key2 = UnitSpriteKey {
         type_id: "HTNK".into(),
@@ -156,6 +159,7 @@ fn test_unit_sprite_key_hash_equality() {
         layer: VxlLayer::Composite,
         frame: 0,
         slope_type: 0,
+        barrel_pitch: 0,
     };
     let key3 = UnitSpriteKey {
         type_id: "HTNK".into(),
@@ -163,6 +167,7 @@ fn test_unit_sprite_key_hash_equality() {
         layer: VxlLayer::Composite,
         frame: 0,
         slope_type: 0,
+        barrel_pitch: 0,
     };
     assert_eq!(key1, key2);
     assert_ne!(key1, key3);
@@ -181,6 +186,7 @@ fn every_unit_sprite_key_dimension_remains_distinct() {
         layer: VxlLayer::Body,
         frame: 2,
         slope_type: 3,
+        barrel_pitch: 0,
     };
     let mut variants = vec![base.clone()];
 
@@ -227,6 +233,7 @@ fn test_key_collection_deduplicates() {
             layer: VxlLayer::Composite,
             frame: 0,
             slope_type: 0,
+            barrel_pitch: 0,
         });
     }
     assert_eq!(needed.len(), 2);
@@ -470,6 +477,7 @@ fn incremental_repack_plan_retains_old_unloading_referent() {
             layer: VxlLayer::Composite,
             frame: 0,
             slope_type: 0,
+            barrel_pitch: 0,
         },
         pixels: vec![1; 24],
         width: 6,
@@ -516,4 +524,44 @@ fn page_plan_rejects_an_individually_oversized_sprite() {
             limit: 8,
         }
     );
+}
+
+#[test]
+fn unit_barrel_pitches_walk_the_unlimbo_turn() {
+    // The default FireAngle 8 turns 0x4000 to 0x3800: level, then one step up.
+    assert_eq!(unit_barrel_pitches(8), [0, -1]);
+    assert_eq!(unit_barrel_pitches(32), [0, -1, -2, -3, -4]);
+    assert_eq!(unit_barrel_pitches(0), [0]);
+    // Unlimbo reads the low byte: 256 stays level, 255 and -8 turn down.
+    assert_eq!(unit_barrel_pitches(256), [0]);
+    assert_eq!(unit_barrel_pitches(255), [0]);
+    assert_eq!(unit_barrel_pitches(-8), [0, 1]);
+    // Half a turn passes straight up (step -8) and on round to 16.
+    let half = unit_barrel_pitches(128);
+    assert_eq!(half.len(), 17);
+    assert_eq!((half[8], half[9], half[16]), (-8, 23, 16));
+}
+
+#[test]
+fn barrel_image_keeps_its_first_drawn_pitch() {
+    let key = |type_id: &str, facing| UnitSpriteKey {
+        type_id: type_id.into(),
+        facing,
+        layer: VxlLayer::Turret,
+        frame: 0,
+        slope_type: 0,
+        barrel_pitch: 0,
+    };
+    let mut pitches = BarrelImagePitches::default();
+    // The first unit drawn under a key fixes its image; later ones reuse it.
+    assert_eq!(pitches.pitch(&key("MTNK", 32), None, 0), 0);
+    assert_eq!(pitches.pitch(&key("MTNK", 32), None, -1), 0);
+    assert_eq!(pitches.pitch(&key("MTNK", 40), None, -1), -1);
+    assert_eq!(pitches.pitch(&key("MTNK", 40), None, 0), -1);
+    // A TurretOffset type keys the hull's facing too; each type has its own.
+    assert_eq!(pitches.pitch(&key("MTNK", 32), Some(0), -1), -1);
+    assert_eq!(pitches.pitch(&key("HTNK", 32), None, -1), -1);
+    // A new scenario starts empty.
+    pitches.clear();
+    assert_eq!(pitches.pitch(&key("MTNK", 32), None, -1), -1);
 }

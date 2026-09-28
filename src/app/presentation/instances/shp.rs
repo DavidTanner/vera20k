@@ -589,6 +589,7 @@ fn emit_building_turret_vxl(
         layer: VxlLayer::Composite,
         frame: 0,
         slope_type: 0, // building turrets don't tilt on slopes
+        barrel_pitch: 0,
     };
     let entry = unit_atlas.get(&key)?;
     // Position turret at building cell origin + pixel offset from INI.

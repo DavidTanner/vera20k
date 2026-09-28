@@ -94,6 +94,77 @@ pub struct UnitSpriteKey {
     /// clamps any value ≥ 17 to 0 before constructing this key. Different
     /// slopes produce distinct pre-rendered sprites with tilted models.
     pub slope_type: u8,
+    /// A barrel's pitch step, `d32 - 8` of the unit's barrel elevation
+    /// (`TechnoClass+0x370`); 0 for every other layer.
+    pub barrel_pitch: i8,
+}
+
+/// The pitch each unit type's barrel image was first drawn at.
+///
+/// `TechnoClass::DrawVoxel @ 0x00706640` keeps a unit's turret and barrel
+/// images per type (`TechnoType+0x258`, `+0x280`), stored on a miss and blitted
+/// on a hit, under the turret's key: its step, the hull's step when the type
+/// has a `TurretOffset=`, the locomotor's key and the turret frame
+/// (`0x0073B748..0x0073B79F`). The barrel elevation is not in it, and when both
+/// images are cached `UnitClass::DrawVoxelBody` skips the turret and barrel
+/// matrices (`0x0073BA12..0x0073BA47`). So a key's barrel keeps the elevation of
+/// the first unit drawn under it: level for a unit drawn while its elevation
+/// still rounds level (the first two frames after Unlimbo at the default
+/// `FireAngle=`).
+///
+/// Not modelled here:
+/// - Every cached body, turret, barrel and shadow image shares one 4,000,000
+///   byte pool (`0x00887460`, sized at `0x0040F270`). Running it out frees every
+///   type's caches (`0x005F99E0`, called at `0x00706AE0` and from the shadow
+///   draw at `0x00706E38`), and later draws cache the pitch of the moment. VERA
+///   keeps first-drawn pitches until the scenario ends; how often retail games
+///   run the pool out is not measured.
+/// - `DisableVoxelCache=` (`Type+0xDBE`, tested at `0x00706806`) bypasses the
+///   cache; retail sets it only on SHAD, PDPLANE and SPYP, none of which has a
+///   barrel.
+/// - The turret index native keys above the frame (`TurretCount=` types): no
+///   retail barrel belongs to one.
+#[derive(Default)]
+pub struct BarrelImagePitches {
+    by_type: HashMap<String, HashMap<BarrelImageKey, i8>>,
+}
+
+/// The parts of a turret key a unit's barrel image varies by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct BarrelImageKey {
+    turret_facing: u8,
+    /// The hull's facing, keyed only for a type with a `TurretOffset=`.
+    body_facing: Option<u8>,
+    slope_type: u8,
+    turret_frame: u32,
+}
+
+impl BarrelImagePitches {
+    /// The pitch the barrel image cached with `turret`'s image holds: the
+    /// first `drawn` pitch for that key.
+    pub fn pitch(&mut self, turret: &UnitSpriteKey, body_facing: Option<u8>, drawn: i8) -> i8 {
+        let key = BarrelImageKey {
+            turret_facing: turret.facing,
+            body_facing,
+            slope_type: turret.slope_type,
+            turret_frame: turret.frame,
+        };
+        if let Some(pitches) = self.by_type.get_mut(turret.type_id.as_str()) {
+            return *pitches.entry(key).or_insert(drawn);
+        }
+        self.by_type
+            .entry(turret.type_id.clone())
+            .or_default()
+            .insert(key, drawn);
+        drawn
+    }
+
+    /// Each scenario and loaded game starts empty, as a freshly started
+    /// gamemd does; whether gamemd's type caches outlive a scenario within one
+    /// process is not established.
+    pub fn clear(&mut self) {
+        self.by_type.clear();
+    }
 }
 
 /// UV and offset data for one sprite within the unit atlas.
@@ -557,23 +628,52 @@ fn insert_unit_layer_keys(
     layer: VxlLayer,
     num_frames: u32,
     is_ground_vehicle: bool,
+    barrel_pitches: &[i8],
 ) {
     let (step, buckets) = facing_config_for_layer(layer);
     let slope_range = if is_ground_vehicle { 0..=16 } else { 0..=0 };
+    let pitches: &[i8] = if layer == VxlLayer::Barrel {
+        barrel_pitches
+    } else {
+        &[0]
+    };
     for bucket in 0..buckets {
         let facing = (bucket * u16::from(step)) as u8;
         for frame in 0..num_frames {
             for slope_type in slope_range.clone() {
-                needed.insert(UnitSpriteKey {
-                    type_id: type_id.to_string(),
-                    facing,
-                    layer,
-                    frame,
-                    slope_type,
-                });
+                for &barrel_pitch in pitches {
+                    needed.insert(UnitSpriteKey {
+                        type_id: type_id.to_string(),
+                        facing,
+                        layer,
+                        frame,
+                        slope_type,
+                        barrel_pitch,
+                    });
+                }
             }
         }
     }
+}
+
+/// Every pitch step a unit's barrel is drawn at. Unlimbo is the only writer
+/// of a unit's barrel elevation: it snaps it level and turns it toward the
+/// `FireAngle=` target ([`crate::sim::game_entity::unlimbo_barrel_target`]),
+/// so the steps are those along that turn's short arc, `d32 - 8` of each
+/// heading.
+pub(crate) fn unit_barrel_pitches(fire_angle: i32) -> Vec<i8> {
+    use crate::sim::game_entity::{BARREL_LEVEL, unlimbo_barrel_target};
+    let arc = i32::from(unlimbo_barrel_target(fire_angle).wrapping_sub(BARREL_LEVEL) as i16);
+    let mut pitches = Vec::new();
+    // One step spans 0x800; sampling every 0x100 visits each one.
+    for turned in (0..=arc.abs()).step_by(0x100) {
+        let heading = BARREL_LEVEL.wrapping_add((turned * arc.signum()) as u16);
+        let pitch = vxl_raster::voxel_facing_step_u16(heading) as i8 - 8;
+        if !pitches.contains(&pitch) {
+            pitches.push(pitch);
+        }
+    }
+    pitches
 }
 
 fn seed_unit_variant_keys(
@@ -592,6 +692,9 @@ fn seed_unit_variant_keys(
         rules,
         art,
     );
+    let barrel_pitches = rules
+        .and_then(|rules| rules.object(&variant.type_id))
+        .map_or_else(|| vec![0], |object| unit_barrel_pitches(object.fire_angle));
     for &layer in layers {
         let frame_key = (variant.type_id.clone(), layer);
         let num_frames = *frame_counts.entry(frame_key).or_insert_with(|| {
@@ -603,13 +706,14 @@ fn seed_unit_variant_keys(
             layer,
             num_frames,
             is_ground_vehicle,
+            &barrel_pitches,
         );
     }
     // Ground vehicles and ships cast a voxel shadow (one frame, every facing
     // and slope). Aircraft use FlyLocomotion's own shadow matrix and point,
     // which are not modelled yet, so they get none (recorded residual).
     if is_ground_vehicle {
-        insert_unit_layer_keys(needed, &variant.type_id, VxlLayer::Shadow, 1, true);
+        insert_unit_layer_keys(needed, &variant.type_id, VxlLayer::Shadow, 1, true, &[0]);
     }
 }
 
@@ -653,6 +757,7 @@ fn needed_unit_keys(
                 layer: VxlLayer::Composite,
                 frame: 0,
                 slope_type: 0,
+                barrel_pitch: 0,
             });
         }
     }
@@ -710,13 +815,22 @@ pub fn build_unit_atlas(
     // By model, then pose: each model is parsed once, and each pose's body,
     // turret and barrel are rasterized once for its three part keys.
     new_keys.sort_unstable_by(|a, b| {
-        (&a.type_id, a.frame, a.facing, a.slope_type, a.layer).cmp(&(
-            &b.type_id,
-            b.frame,
-            b.facing,
-            b.slope_type,
-            b.layer,
-        ))
+        (
+            &a.type_id,
+            a.frame,
+            a.facing,
+            a.slope_type,
+            a.layer,
+            a.barrel_pitch,
+        )
+            .cmp(&(
+                &b.type_id,
+                b.frame,
+                b.facing,
+                b.slope_type,
+                b.layer,
+                b.barrel_pitch,
+            ))
     });
     log::info!(
         "Unit atlas: {} new sprites to render for {} new voxel models",
@@ -994,7 +1108,13 @@ impl UnitModel {
             ];
             return Some((sprite, Some(bounds)));
         }
-        let native_draw_bounds = self.native_draw_bounds(&params, key.layer);
+        // A barrel key draws its part at its pitch; the pose's other parts,
+        // and every other key, stay level.
+        let part_params = VxlRenderParams {
+            barrel_pitch: key.barrel_pitch,
+            ..params.clone()
+        };
+        let native_draw_bounds = self.native_draw_bounds(&part_params, key.layer);
 
         // House remap is no longer applied at bake time — the fragment shader
         // does it via per-instance DrawState::remap_row + house_ramp texture lookup.
@@ -1028,16 +1148,25 @@ impl UnitModel {
                     });
                 }
                 let parts = pose.as_ref().expect("the pose was just rendered");
+                let pitched_barrel = (key.barrel_pitch != 0)
+                    .then(|| {
+                        self.barl
+                            .as_ref()
+                            .or(self.barrel.as_ref())
+                            .map(|part| part.render(&part_params, vpl))
+                    })
+                    .flatten();
+                let barrel = pitched_barrel.as_ref().or(parts.barrel.as_ref());
                 let all_layers: Vec<&VxlSprite> = [Some(&parts.body)]
                     .into_iter()
-                    .chain([parts.turret.as_ref(), parts.barrel.as_ref()])
+                    .chain([parts.turret.as_ref(), barrel])
                     .flatten()
                     .collect();
 
                 let requested: &VxlSprite = match key.layer {
                     VxlLayer::Body => &parts.body,
                     VxlLayer::Turret => parts.turret.as_ref()?,
-                    VxlLayer::Barrel => parts.barrel.as_ref()?,
+                    VxlLayer::Barrel => barrel?,
                     _ => unreachable!(),
                 };
                 pad_layer_to_union_bounds(requested, &all_layers)
