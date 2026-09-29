@@ -19,7 +19,7 @@
 //! - Part of `sim/` — depends only on `util/fixed_math`, serde, std.
 //! - `sim/` NEVER depends on `render/`, `ui/`, `sidebar/`, `audio/`, `net/`.
 
-use crate::sim::movement::homing_movement::{atan2_bam, cos_bam, sin_bam};
+use crate::util::bam_trig::{atan2_bam, cos_bam, sin_bam};
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 
 /// BAM offset between this repo's facing convention (0 = north, 0x4000 = east)

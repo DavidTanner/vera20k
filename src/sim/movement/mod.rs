@@ -125,7 +125,6 @@ pub mod drive_track;
 pub mod facing_class;
 pub mod fly_height;
 pub mod group_destination;
-pub mod homing_movement;
 pub mod hover;
 pub mod jumpjet_flight;
 pub mod jumpjet_movement;

@@ -160,7 +160,7 @@ fn base_reservation_perimeter_rect(rect: CellRect) -> CellRect {
 /// `DAT_0089DDF0`/`DAT_0089DDF2` words read zero in the image, and the only
 /// writer in the program — the four-instruction routine at `0x00466270` — zeroes
 /// them, so the sentinel is the cell (0, 0) rather than a general off-map test.
-pub(crate) const NULL_TARGET_CELL_SENTINEL: (u16, u16) = (0, 0);
+const NULL_TARGET_CELL_SENTINEL: (u16, u16) = (0, 0);
 
 /// Cell selected after the represented ObjectClass virtual `GetCoords` result
 /// is truncated from world leptons. BuildingClass shifts its stored NW anchor
@@ -3295,7 +3295,6 @@ impl Simulation {
                 .pending_c4_detonation
                 .as_ref()
                 .is_some_and(|pending| pending.source_entity_id == Some(expired_id))
-            || listener.homing_state.is_some()
             || listener.spawn_manager.is_some()
             || listener.capture_manager.is_some()
             || listener.temporal.has_link()
@@ -3505,7 +3504,6 @@ impl Simulation {
                 listener_id,
                 hut_id,
                 facts.0,
-                false,
                 facts.1,
                 facts.2,
                 facts.3,
@@ -3527,13 +3525,10 @@ impl Simulation {
         &mut self,
         listener_id: u64,
         expired_id: u64,
-        // The expiring object's `ObjectClass::GetCoords` cell — the single
-        // derivation `BulletClass::PointerExpired @ 0x004684E0` uses for both
-        // the entity-hosted and store-hosted missile arms. It is also the cell
+        // The expiring object's `ObjectClass::GetCoords` cell, which
         // `TechnoClass::PointerExpired` hands to `SensorCountForHouse` when it
         // computes `allowClear` on the `Detach_All` control.
         expired_get_coords_cell: Option<(u16, u16)>,
-        expired_is_high_flying: bool,
         expired_object_alive: bool,
         expired_health: i32,
         expired_is_selling: bool,
@@ -3724,9 +3719,6 @@ impl Simulation {
             PassengerRole::Inside { transport_id, .. } => *transport_id == expired_id,
             PassengerRole::None => false,
         };
-        // `HomingState::expire_object_target` changes nothing for another
-        // target; a homing listener is rare enough to hand out regardless.
-        let homing = listener.homing_state.is_some();
         let clear_c4_source = listener
             .pending_c4_detonation
             .as_ref()
@@ -3742,7 +3734,6 @@ impl Simulation {
             || clear_airfield
             || clear_refinery
             || clear_passenger_role
-            || homing
             || clear_c4_source)
         {
             return;
@@ -3790,13 +3781,6 @@ impl Simulation {
         }
         if clear_passenger_role {
             listener.passenger_role = PassengerRole::None;
-        }
-        if let Some(homing) = listener.homing_state.as_mut() {
-            homing.expire_object_target(
-                expired_id,
-                expired_get_coords_cell,
-                expired_is_high_flying,
-            );
         }
         if clear_c4_source && let Some(pending) = listener.pending_c4_detonation.as_mut() {
             pending.source_entity_id = None;
@@ -3858,7 +3842,7 @@ impl Simulation {
     /// * `BulletClass::PointerExpired @ 0x004684E0` branches on the control only
     ///   for its trailing global-vector erase; the `+0x10C` target repair that
     ///   substitutes `Get_CellClass` at the expired object's last cell — the arm
-    ///   VERA models in `HomingState::expire_object_target` — is unguarded.
+    ///   `ProjectileStore::pointer_expired` receives — is unguarded.
     /// * `ObjectClass::PointerExpired @ 0x005F5230` itself gates only the
     ///   `+0x30` chain relink on a nonzero control; VERA models no `+0x30`
     ///   chain, so it is correct by omission.
@@ -3991,7 +3975,6 @@ impl Simulation {
                     listener_id,
                     expired_id,
                     expired_target_cell,
-                    expired_is_high_flying,
                     expired_object_alive,
                     expired_health,
                     expired_is_selling,

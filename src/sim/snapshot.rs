@@ -733,7 +733,9 @@ use crate::sim::world::Simulation;
 // 250 -> 251: Fly's target and current speed move from the shared locomotor
 // state into the Fly runtime; the unread air progress and wobble phase are
 // gone.
-const SNAPSHOT_VERSION: u32 = 251;
+// 251 -> 252: an entity no longer saves a homing state; nothing in production
+// ever created one.
+const SNAPSHOT_VERSION: u32 = 252;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1358,7 +1360,6 @@ fn restore_object_references(
 ) -> Result<(), SnapshotRestoreError> {
     use crate::sim::combat::TargetKind;
     use crate::sim::game_entity::BunkerLink;
-    use crate::sim::movement::homing_movement::HomingTarget;
     use crate::sim::passenger::PassengerRole;
     use crate::sim::projectile::ProjectileTarget;
 
@@ -1702,19 +1703,6 @@ fn restore_object_references(
                 entity_id,
                 field,
                 "EntityStore",
-                target_id,
-            )?;
-        }
-
-        if let Some(homing) = entity.homing_state.as_ref()
-            && let Some(HomingTarget::Object(target_id)) = homing.target
-        {
-            require_resolved_reference(
-                identities.contains_key(&target_id),
-                "EntityStore",
-                entity_id,
-                "homing_state.target",
-                "object namespace",
                 target_id,
             )?;
         }
@@ -3631,7 +3619,8 @@ mod tests {
         // 249 -> 250: no always-1.0 locomotor speed multiplier.
         // 250 -> 251: Fly speeds live in the Fly runtime; no air progress or
         // wobble phase.
-        assert_eq!(super::SNAPSHOT_VERSION, 251);
+        // 251 -> 252: no entity homing state.
+        assert_eq!(super::SNAPSHOT_VERSION, 252);
     }
 
     #[test]

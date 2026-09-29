@@ -940,12 +940,6 @@ pub struct GameEntity {
     pub spawn_owner_id: Option<u64>,
     /// Rocket/missile flight state machine (launch/ascend/terminal/detonate).
     pub rocket_state: Option<RocketState>,
-    /// Homing missile flight state. `Some` while this entity is an in-flight
-    /// homing projectile; `None` otherwise. Distinct from `rocket_state` —
-    /// ballistic-arc rockets keep using `rocket_state`; only `Ranged=yes`
-    /// projectiles attach a `HomingState`.
-    #[serde(default)]
-    pub homing_state: Option<crate::sim::movement::homing_movement::HomingState>,
     /// Parachute descent state. `Some` while a paradropped unit is descending
     /// under a parachute, `None` otherwise. Set by
     /// `parachute_descent::begin_parachute_descent`, cleared on landing.
@@ -1722,7 +1716,6 @@ impl GameEntity {
             spawn_manager: None,
             spawn_owner_id: None,
             rocket_state: None,
-            homing_state: None,
             parachute_state: None,
             invulnerability: None,
             mind_control: Default::default(),
