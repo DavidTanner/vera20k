@@ -996,7 +996,11 @@ mod tests {
     // ─── Fixtures for compute_in_range tests ────────────────────────────
 
     pub(super) fn flat_terrain(w: u16, h: u16) -> ResolvedTerrainGrid {
-        crate::map::resolved_terrain::test_grid(w, h, default_cell)
+        crate::map::resolved_terrain::test_grid(
+            w,
+            h,
+            crate::map::resolved_terrain::test_unclassified_cell,
+        )
     }
 
     #[test]
@@ -1128,15 +1132,6 @@ mod tests {
                 row["dummy_coord"],
                 "row {index}: final Dummy"
             );
-        }
-    }
-
-    fn default_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        ResolvedTerrainCell {
-            filled_clear: true,
-            terrain_class: Default::default(),
-            accepts_smudge: true,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -2011,7 +2006,9 @@ mod tests {
     /// 16x16 grid whose listed cells carry `CellClass+0x140` bit 0x100.
     fn terrain_with_bridge_cells(cells_on_bridge: &[(u16, u16)]) -> ResolvedTerrainGrid {
         let mut cells: Vec<ResolvedTerrainCell> = (0..16)
-            .flat_map(|ry| (0..16).map(move |rx| default_cell(rx, ry)))
+            .flat_map(|ry| {
+                (0..16).map(move |rx| crate::map::resolved_terrain::test_unclassified_cell(rx, ry))
+            })
             .collect();
         for &(rx, ry) in cells_on_bridge {
             let idx = ry as usize * 16 + rx as usize;
@@ -2113,7 +2110,9 @@ mod tests {
     #[test]
     fn inrange_bridge_gate_follows_flag_0x100_not_the_overlay_deck() {
         let mut cells: Vec<ResolvedTerrainCell> = (0..16)
-            .flat_map(|ry| (0..16).map(move |rx| default_cell(rx, ry)))
+            .flat_map(|ry| {
+                (0..16).map(move |rx| crate::map::resolved_terrain::test_unclassified_cell(rx, ry))
+            })
             .collect();
         let idx = 5 * 16 + 5;
         cells[idx].has_bridge_deck = true;

@@ -686,17 +686,12 @@ mod dispatch_tests {
     }
 
     fn test_default_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        // Reuse Task 7's defaults via copy-paste; intentionally not extracted to
-        // a shared helper to keep tasks self-contained.
         ResolvedTerrainCell {
-            filled_clear: true,
-            terrain_class: Default::default(),
             speed_costs: crate::rules::terrain_rules::SpeedCostProfile {
                 track: Some(100),
                 ..Default::default()
             },
-            accepts_smudge: true,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            ..crate::map::resolved_terrain::test_unclassified_cell(rx, ry)
         }
     }
 

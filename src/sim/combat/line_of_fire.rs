@@ -438,7 +438,7 @@ fn wall_is_connectable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+    use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
     use crate::sim::intern::StringInterner;
@@ -474,17 +474,12 @@ mod tests {
         OverlayTypeRegistry::from_ini(&IniFile::from_str(&rules_ini(extra)), None)
     }
 
-    fn cell_at(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        ResolvedTerrainCell {
-            filled_clear: true,
-            terrain_class: Default::default(),
-            accepts_smudge: true,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        }
-    }
-
     fn flat_terrain() -> ResolvedTerrainGrid {
-        crate::map::resolved_terrain::test_grid(GRID, GRID, cell_at)
+        crate::map::resolved_terrain::test_grid(
+            GRID,
+            GRID,
+            crate::map::resolved_terrain::test_unclassified_cell,
+        )
     }
 
     fn set_level(terrain: &mut ResolvedTerrainGrid, rx: u16, ry: u16, level: u8) {

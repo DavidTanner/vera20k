@@ -1972,6 +1972,18 @@ pub(crate) fn test_tiberium_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
     }
 }
 
+/// [`test_flat_cell`] that is `filled_clear`, has an Unknown terrain class
+/// (`TerrainClass`'s default) and accepts smudges.
+#[cfg(test)]
+pub(crate) fn test_unclassified_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
+    ResolvedTerrainCell {
+        filled_clear: true,
+        terrain_class: TerrainClass::default(),
+        accepts_smudge: true,
+        ..test_flat_cell(rx, ry)
+    }
+}
+
 /// [`test_smudge_cell`] as the map loader fills a clear cell: `filled_clear`
 /// and no tileset.
 #[cfg(test)]
