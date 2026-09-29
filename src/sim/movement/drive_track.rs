@@ -3606,25 +3606,12 @@ pub(crate) fn fresh_turn_index(from: u8, to: u8, is_ship: bool) -> usize {
 /// Highest RawTrack index in the set ShipLocomotion shares with Drive.
 const SHIP_MAX_SHARED_RAW_TRACK: u8 = 13;
 
-/// Cell delta of each direction octant in the sim cell grid
-/// (+X = east, +Y = south), indexed N=0, NE=1, E=2, SE=3, S=4, SW=5, W=6, NW=7.
-/// Mirrors `crate::util::fixed_math::dir_to_cell_delta` without the facing-byte
-/// round trip, so a path step maps to an octant exactly.
-const OCTANT_CELL_DELTA: [(i32, i32); FACING_DIRECTIONS] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
+/// Cell delta of each direction octant, `util::direction::DIRECTION_DELTAS`.
+const OCTANT_CELL_DELTA: [(i32, i32); FACING_DIRECTIONS] = crate::util::direction::DIRECTION_DELTAS;
 
 /// Direction octant of a one-cell path step. `None` for a null step.
 fn octant_from_cell_delta(dx: i32, dy: i32) -> Option<usize> {
-    let step = (dx.signum(), dy.signum());
-    OCTANT_CELL_DELTA.iter().position(|&delta| delta == step)
+    crate::util::direction::direction_from_delta(dx.signum(), dy.signum()).map(usize::from)
 }
 
 /// A curve chosen from the path window, with the head cell it reserves.
