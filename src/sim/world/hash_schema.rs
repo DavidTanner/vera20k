@@ -36,6 +36,8 @@
 //! in their place and the harness pins were re-baselined in that one step.
 //! Schema230's building-facing gate went with them: a building's `+0x388` is
 //! its body FacingClass, which every projection folds.
+//! No policy folds the piggyback stash's `ROT=` copy (dropped at snapshot
+//! 243); no pinned fixture holds a stashed locomotor, so no pin moved.
 //! No policy folds the retired ground move phase (dropped at snapshot 244):
 //! nothing retained records it, so every projection lost that fold at once
 //! and the harness pins were re-baselined in that one step.
@@ -48,6 +50,9 @@
 //! Snapshot 248 renumbers `LocomotorKind` to the eight installable classes
 //! and drops the dormant Tunnel and DropPod folds; no policy folds the old
 //! numbering, and the harness pins were re-baselined in that one step.
+//! Snapshot 249 drops the constant boarding-phase byte from the
+//! `PassengerRole::Boarding` fold; no pinned fixture holds a boarding
+//! passenger, so no pin moved.
 
 #[derive(Clone, Copy)]
 pub(super) enum HashSchema {

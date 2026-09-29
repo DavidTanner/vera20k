@@ -97,8 +97,8 @@ pub fn veterancy_level(raw: NativeF32Bits) -> i8 {
 ///
 /// A map or scenario can place an already-veteran or already-elite object;
 /// native seeds the float directly (`VeterancyStruct::SetVeteran @ 0x00750090`
-/// writes 1.0f, `SetElite @ 0x007500B0` writes 2.0f), so the projection and the
-/// accumulator agree from the first tick.
+/// writes 1.0f, `SetElite @ 0x007500B0` writes 2.0f), so the rank derived from
+/// the accumulator is right from the first tick.
 pub fn raw_for_rank(rank_u16: u16) -> NativeF32Bits {
     if rank_u16 >= RANK_ELITE_U16 {
         NativeF32Bits::from_bits(ELITE_THRESHOLD_BITS)
@@ -109,8 +109,8 @@ pub fn raw_for_rank(rank_u16: u16) -> NativeF32Bits {
     }
 }
 
-/// `VeterancyStruct::SetElite(1) @ 0x007500B0`: store 2.0f. The rank cache is deliberately left alone — native does not
-/// touch `+0x13C` here, so the next `AI_Update` sample announces the crossing
+/// `VeterancyStruct::SetElite(1) @ 0x007500B0`: store 2.0f. The rank cache is
+/// deliberately left alone — native does not touch `+0x13C` here, so the next `AI_Update` sample announces the crossing
 /// (or, for a never-sampled object, caches silently).
 pub fn set_elite(entity: &mut GameEntity) {
     entity.veterancy_raw = NativeF32Bits::from_bits(ELITE_THRESHOLD_BITS);

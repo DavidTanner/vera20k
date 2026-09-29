@@ -879,8 +879,9 @@ impl Simulation {
                 // alone.** This existing unwind policy uses the same END gate
                 // as FootAI4DAEC3 / SetDestination742587 (an active Drive's
                 // IsOKToEnd4AF970), after navigation is cleared but before
-                // teleport/layer cleanup. A live Drive head still refuses it. Keep that timing while centralizing the
-                // actual instance transfer/retirement in locomotor_owner.
+                // teleport/layer cleanup. A live Drive head still refuses it.
+                // Keep that timing while centralizing the actual instance
+                // transfer/retirement in locomotor_owner.
                 // Trigger: Stop on a piggybacked Chrono Miner, a few times per
                 // ordinary Allied match; a premature unwind can change the next
                 // command's locomotor. Native Stop parity remains open. The

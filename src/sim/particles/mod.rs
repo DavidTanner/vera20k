@@ -190,8 +190,6 @@ mod ivec3_serde {
     }
 }
 
-impl ParticleSystem {}
-
 /// Deterministic store for `ParticleSystem` instances.
 ///
 /// Mirrors `EntityStore`: BTreeMap-backed so storage iteration is deterministic.
