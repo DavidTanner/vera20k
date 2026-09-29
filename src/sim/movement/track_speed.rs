@@ -221,14 +221,7 @@ pub(super) fn advance(
         }
         _ => unreachable!(),
     }
-    entity.foot_speed.cached_current_speed = super::foot_speed::owner_current_speed_from_fraction(
-        speed,
-        entity.foot_speed.applied_fraction,
-    );
-    if let Some(target) = entity.movement_target.as_mut() {
-        target.current_speed = speed * entity.foot_speed.applied_fraction;
-    }
-    entity.foot_speed.cached_current_speed
+    super::foot_speed::owner_current_speed_from_fraction(speed, entity.foot_speed.applied_fraction)
 }
 
 #[cfg(test)]
@@ -304,10 +297,6 @@ mod tests {
                 mover.movement_target.as_ref().unwrap().speed,
                 SimFixed::from_num(150)
             );
-            assert_eq!(
-                mover.movement_target.as_ref().unwrap().current_speed,
-                SimFixed::from_num(165)
-            );
         }
     }
 
@@ -355,10 +344,6 @@ mod tests {
                 assert_eq!(
                     advance(&mut mover, rules.object("MTNK"), Some(&rules), None),
                     15
-                );
-                assert_eq!(
-                    mover.movement_target.as_ref().unwrap().current_speed,
-                    SimFixed::from_num(225)
                 );
             }
         }

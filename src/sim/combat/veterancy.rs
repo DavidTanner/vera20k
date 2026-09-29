@@ -230,10 +230,10 @@ pub fn locomotor_consults_current_speed(kind: Option<LocomotorKind>) -> bool {
 ///
 /// gamemd-derived: `ftol(typeSpeed * houseMult * [this+0x580])` produces the
 /// integer per-frame speed, then `HasWeaponAbility(0)` (`FASTER`) gates
-/// `ftol(speed * Rules.VeteranSpeed)`. Stage 3, the `[this+0x578]` locomotor
-/// fraction, is VERA's per-frame `MovementTarget::current_speed`, so this
-/// helper stops one stage short deliberately. The crate factor is live Foot
-/// state. The country/house factor remains an open getter dependency.
+/// `ftol(speed * Rules.VeteranSpeed)`. Stage 3 multiplies in the
+/// `[this+0x578]` fraction (`movement::owner_current_speed`), so this helper
+/// stops one stage short deliberately. The crate factor is live Foot state.
+/// The country/house factor remains an open getter dependency.
 ///
 /// Call this instead of `ra2_speed_to_leptons_per_second` wherever a type
 /// `Speed=` becomes an entity's movement speed — native reaches the FASTER

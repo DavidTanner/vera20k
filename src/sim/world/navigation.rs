@@ -3,7 +3,7 @@
 //! The cache borrows never move gameplay authority out of Simulation. Resident
 //! world rebuilds and synchronous receiver rebuilds share the same policy.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::map::entities::EntityCategory;
@@ -60,6 +60,26 @@ fn visit_structure_movement_cells(
             visit(cell);
         }
     }
+}
+
+/// The requested cells a marked structure blocks, from one structure scan.
+pub(super) fn structure_blocked_among(
+    entities: &EntityStore,
+    interner: &StringInterner,
+    rules: &RuleSet,
+    cells: &[(u16, u16)],
+) -> BTreeSet<(u16, u16)> {
+    let mut blocked = BTreeSet::new();
+    if cells.is_empty() {
+        return blocked;
+    }
+    let requested: BTreeSet<(u16, u16)> = cells.iter().copied().collect();
+    visit_structure_movement_cells(entities, interner, rules, |marked| {
+        if requested.contains(&marked) {
+            blocked.insert(marked);
+        }
+    });
+    blocked
 }
 
 pub(super) struct NavigationCaches<'a> {
@@ -138,20 +158,28 @@ impl NavigationCaches<'_> {
         rules: &RuleSet,
         coord: (u16, u16),
     ) -> Result<(), String> {
-        let cell = terrain
-            .cell(coord.0, coord.1)
-            .ok_or("Recalc cell is outside terrain")?;
-        if let Some(zones) = self.zones.as_mut() {
-            zones.refresh_base_cell_attributes_at(terrain, coord.0, coord.1);
-        }
-        self.publish_current_path_cell(terrain, bridges, entities, interner, rules, coord)?;
-        for (&speed_type, costs) in self.terrain_costs.iter_mut() {
-            if costs.width() != terrain.width()
-                || costs.height() != terrain.height()
-                || !costs.refresh_resolved_cell(cell, speed_type)
-            {
-                return Err("Recalc terrain cost cell could not be published".into());
-            }
+        self.publish_recalculated_cells(terrain, bridges, entities, interner, rules, &[coord])
+    }
+
+    /// Batch form of [`Self::publish_recalculated_cell`]: one structure scan
+    /// supplies every cell's presence, then each cell publishes in order.
+    pub(super) fn publish_recalculated_cells(
+        &mut self,
+        terrain: &ResolvedTerrainGrid,
+        bridges: Option<&BridgeRuntimeState>,
+        entities: &EntityStore,
+        interner: &StringInterner,
+        rules: &RuleSet,
+        cells: &[(u16, u16)],
+    ) -> Result<(), String> {
+        let blocked = structure_blocked_among(entities, interner, rules, cells);
+        for &coord in cells {
+            self.publish_recalculated_cell_with_presence(
+                terrain,
+                bridges,
+                coord,
+                blocked.contains(&coord),
+            )?;
         }
         Ok(())
     }

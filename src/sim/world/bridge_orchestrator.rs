@@ -441,7 +441,7 @@ fn finish_bridge_damage(
             destroyed_cells,
             set_bridge_direction,
             adjacent_bridges_dirty,
-            zones_dirty,
+            zone_query,
             radar_cells,
             ..
         } = outcome
@@ -450,7 +450,7 @@ fn finish_bridge_damage(
         };
         destroyed_set.extend(destroyed_cells.iter().copied());
         radar_dirty.extend(radar_cells.iter().copied());
-        any_zones_dirty |= *zones_dirty;
+        any_zones_dirty = true;
         // BlowUpBridge fallout is per write-cell: ground occupants die with
         // C4Warhead semantics, bridge-deck occupants DropIn, then that cell
         // emits debris, in the binary's per-cell order.
@@ -473,6 +473,8 @@ fn finish_bridge_damage(
                 );
             }
         }
+        // Its56C510 request is subsumed by the publication below.
+        let _ = invalidate_bridge_zones(sim, *zone_query);
     }
     if let Some(ramp) = extra.rim_cell {
         rim_collapsed |=
@@ -481,9 +483,10 @@ fn finish_bridge_damage(
     project_pending_low_bridge_overlay_writes(sim, overlay_registry);
     // TriggerEvent 31 broadcast (HIGH §11.3).
     notify_bridge_span_collapse(sim, &destroyed_set);
-    // Zone graph rebuild (HIGH §12.8), when a final-stage walker cell flagged
-    // the bridge endpoint records dirty.
-    refresh_bridge_zones_if_dirty(sim, rules, any_zones_dirty);
+    // Zone graph rebuild after any collapse or CABHUT fallback.
+    if any_zones_dirty {
+        publish_bridge_navigation(sim, rules);
+    }
 
     // BR-16: feed the minimap radar-dirty channel — the collapsed triple plus
     // every cascade-leaf cell touched (carried in each outcome's `radar_cells`),
@@ -1058,35 +1061,31 @@ pub(crate) fn reconcile_low_bridge_surface_after_cache_load(
     project_low_bridge_overlay_ops(sim, Some(overlay_registry), ops.unwrap_or_default());
 }
 
-/// Zone graph refresh. Per HIGH §12.8: walker emits `zones_dirty=true`
-/// only when a final-stage cell flips a `BridgeEndpointRecord.active`
-/// flag, mirroring the binary's `MapClass::InvalidateBridgeZones`
-/// @ `0x0056DAE0` → `MapClass::RebuildZoneConnectivity` @ `0x0056C510`
-/// chain. When set:
-///   1. Recompute every endpoint record's `active` flag from current
-///      cell damage state — first destroyed cell in a group flips its
-///      endpoint pair to `active = false`. Replaces the side-effect of
-///      the legacy single-shot `apply_damage`.
-///   2. Ask the world navigation owner to publish current terrain costs,
-///      structure blockers, bridge passability and zone connectivity together.
-pub(crate) fn refresh_bridge_zones_if_dirty(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    any_zones_dirty: bool,
-) {
-    if !any_zones_dirty {
-        return;
-    }
-    if let Some(bs) = sim.bridge_state.as_mut() {
-        bs.refresh_endpoint_active_flags();
-    }
-    // VERA-internal projection ownership, gamemd equivalent UNCHECKED.
-    // This publishes the canonical path as well as zones. Use the shared
-    // structure/terrain projection so unrelated foundations survive bridge
-    // changes before the next reader; endpoint refresh must stay first.
-    // Native zone-tail ordering: BRIDGE_COLLAPSE_FALLOUT_ORDERING_GHIDRA_REPORT.md
-    // in docs/research/bridges/05-damage-collapse-repair-cabhut/, section
-    // "Zone/path invalidation" (UpdateBridgeZonesHelper @ 0x0056C510).
+/// MapClass::InvalidateBridgeZones (`0x0056DAE0`) on the live record owner.
+/// Returns whether a record deactivated (the native RebuildZoneConnectivity
+/// `0x0056C510` request).
+pub(crate) fn invalidate_bridge_zones(sim: &mut Simulation, query: (i16, i16)) -> bool {
+    let (Some(bridges), Some(terrain)) = (sim.bridge_state.as_mut(), sim.resolved_terrain.as_ref())
+    else {
+        return false;
+    };
+    bridges.invalidate_bridge_zones(terrain, query)
+}
+
+/// Zone graph refresh after a collapse or CABHUT fallback. The endpoint
+/// records' active bytes are already current: collapses cleared theirs through
+/// [`invalidate_bridge_zones`], repairs set theirs through56DB70.
+///
+/// VERA-internal projection ownership, gamemd equivalent UNCHECKED. It stands
+/// in for the native per-cell Recalc, RemoveBridgeZoneEdges (`0x00584E50`) and
+/// RebuildZoneConnectivity (`0x0056C510`), and runs even when no record
+/// changed. It publishes the canonical path as well as zones through the
+/// shared structure/terrain projection, so unrelated foundations survive
+/// bridge changes before the next reader. Native zone-tail ordering:
+/// BRIDGE_COLLAPSE_FALLOUT_ORDERING_GHIDRA_REPORT.md in
+/// docs/research/bridges/05-damage-collapse-repair-cabhut/, section
+/// "Zone/path invalidation".
+pub(crate) fn publish_bridge_navigation(sim: &mut Simulation, rules: &RuleSet) {
     let _ = sim.rebuild_dynamic_navigation(rules);
 }
 

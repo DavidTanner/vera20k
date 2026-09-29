@@ -160,12 +160,10 @@ fn forced_object_turn_queries_live_speed_and_advances_shp_once() {
     let mut sim = fixture(0x43);
     tick(&mut sim, &rules(1), 0);
     let entity = sim.substrate.entities.get(1).unwrap();
-    let slow = entity.foot_speed.cached_current_speed;
     let before = entity.drive_locomotion.as_ref().unwrap().track.cursor;
     let before_body = entity.body_frame_counter;
     let outcome = tick(&mut sim, &rules(6), 1);
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(entity.foot_speed.cached_current_speed > slow);
     assert!(entity.drive_locomotion.as_ref().unwrap().track.cursor > before + 1);
     assert!(outcome.moved_steps > 1);
     assert_eq!(entity.body_frame_counter, before_body + 1);

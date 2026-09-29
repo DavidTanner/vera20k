@@ -373,8 +373,8 @@ pub(crate) fn desired_turret_facing(
 
 /// Per-binary-frame turret rotation for the class this sweep still owns —
 /// legacy Infantry. Unit turrets are driven per-object by the combat Phase-2
-/// read window plus `unit_post::apply_unit_facing` while
-/// `L2_UNIT_POST_AUTHORITATIVE` holds, and a building's by its Mission_Attack.
+/// read window plus `unit_post::apply_unit_facing`, and a building's by its
+/// Mission_Attack.
 ///
 /// Calls `FacingClass::set`, which is a no-op when the desired facing equals the
 /// current destination — so this function is idempotent. `None` from
@@ -398,10 +398,9 @@ pub fn tick_turret_rotation(
             Some(e) => e,
             None => continue,
         };
-        // Unit turrets are driven per-object by unit_post once authoritative.
-        if crate::sim::world::unit_post::L2_UNIT_POST_AUTHORITATIVE
-            && entity.category == crate::map::entities::EntityCategory::Unit
-        {
+        // Unit barrels are owned by the per-object path (combat Phase-2 read
+        // window + `unit_post::apply_unit_facing`).
+        if entity.category == crate::map::entities::EntityCategory::Unit {
             continue;
         }
         // A warped object's AI sets no facing; its barrel finishes the turn it

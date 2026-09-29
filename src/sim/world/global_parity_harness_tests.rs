@@ -369,7 +369,13 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // fingerprints and 319 raw draws at all 600 ticks. Absolute stream pins and duel
 // outcomes remain unchanged. This hash move is fixture/context coverage, not a
 // native skirmish golden. Receipts: tools/spatial_oracle/foot_bridge_layer.replay.json.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB3DF_7D94_07AF_305B;
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xBD7A_FF23_ABE9_1302;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -528,12 +534,7 @@ fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRe
         let (rx, ry) = (rx + HARNESS_COORD_SHIFT, ry + HARNESS_COORD_SHIFT);
         overlay_grid.place_overlay(rx, ry, tib01, 11);
         // RecalcAttributes: LandType 5 and its [Tiberium] speed row.
-        overlay_grid.recalculate_runtime_cell(
-            terrain,
-            overlays,
-            (rx, ry),
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        overlay_grid.recalculate_runtime_cell(terrain, overlays, (rx, ry));
     }
     overlay_grid.take_dirty_cells();
     sim.overlay_grid = Some(overlay_grid);

@@ -318,9 +318,8 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     assert!(sim.rebuild_dynamic_navigation(&rules));
     assert_only_marked_foundation(&sim);
     assert_retained_roles(&sim, parent_id, upgrade_id, held_id);
-    let before = sim.path_grid_snapshot().unwrap();
-    // A real dirty-overlay frame triggers the same canonical rebuild used by
-    // ordinary terrain mutation, independent of the held building's location.
+    // A real dirty-overlay frame publishes its Recalc cell through the
+    // navigation owner, independent of the held building's location.
     sim.overlay_grid
         .as_mut()
         .unwrap()
@@ -340,10 +339,6 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         (output.overlay_updates[0].rx, output.overlay_updates[0].ry),
         (12, 12)
     );
-    assert!(!std::sync::Arc::ptr_eq(
-        &before,
-        &sim.path_grid_snapshot().unwrap()
-    ));
     assert_only_marked_foundation(&sim);
     assert_retained_roles(&sim, parent_id, upgrade_id, held_id);
 

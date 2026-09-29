@@ -472,14 +472,6 @@ fn finalize_tube_object(
                 entity.position.exact_z_leptons = None;
             }
         } else {
-            let object = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-            let speed = super::foot_speed::adjusted_speed(
-                entity,
-                object,
-                rules.map_or(1.0, |r| r.general.veteran_speed),
-            );
-            let owner_current_speed =
-                super::foot_speed::owner_current_speed_from_fraction(speed, SIM_ONE);
             entity.position.rx = tube.exit.0;
             entity.position.ry = tube.exit.1;
             entity.position.sub_x = CELL_CENTER_LEPTON;
@@ -494,7 +486,6 @@ fn finalize_tube_object(
             // Unit73604F writes the live Foot owner even if PerCell replaced
             // Drive. Exact post-callback timing remains part of the Process host.
             entity.foot_speed.applied_fraction = SIM_ONE;
-            entity.foot_speed.cached_current_speed = owner_current_speed;
         }
         entity.low_bridge_tube_state = None;
     }
@@ -599,15 +590,11 @@ fn locomotor_is_moving(entity: &GameEntity) -> bool {
 
 fn stop_blocked_mover(entities: &mut EntityStore, entity_id: u64) {
     if let Some(entity) = entities.get_mut(entity_id) {
-        if let Some(target) = entity.movement_target.as_mut() {
-            target.current_speed = SIM_ZERO;
-        }
         if let Some(drive) = entity.drive_locomotion.as_mut() {
             drive.target_speed_fraction = SIM_ZERO;
         }
         // Unit735F6A / Infantry51B8FC apply zero on the live Foot owner.
         entity.foot_speed.applied_fraction = SIM_ZERO;
-        entity.foot_speed.cached_current_speed = 0;
     }
 }
 
@@ -904,10 +891,8 @@ mod tests {
             entity.lifecycle.cell_marked = false;
             entity.position.rx = 2;
             entity.foot_speed.applied_fraction = SimFixed::lit("0.625");
-            entity.foot_speed.cached_current_speed = 6;
             entity.movement_target = Some(MovementTarget {
                 speed: SimFixed::from_num(150),
-                current_speed: SimFixed::from_num(100),
                 ..Default::default()
             });
             let state = LowBridgeTubeMovementState {
@@ -959,17 +944,14 @@ mod tests {
                 owner.foot_speed.applied_fraction,
                 if blocked { SIM_ZERO } else { SIM_ONE }
             );
+            // GetCurrentSpeed follows the fraction; the rules-less getter
+            // reads the order's stamped 150 leptons/s.
             assert_eq!(
-                owner.foot_speed.cached_current_speed,
+                crate::sim::movement::owner_current_speed(owner, None, 1.0),
                 if blocked { 0 } else { 10 }
             );
             assert_eq!(owner.low_bridge_tube_state.is_some(), blocked);
-            if blocked {
-                assert_eq!(
-                    owner.movement_target.as_ref().unwrap().current_speed,
-                    SIM_ZERO
-                );
-            } else {
+            if !blocked {
                 assert!(owner.lifecycle.cell_marked);
                 assert_eq!(occupancy.count_on_layer(2, 0, MovementLayer::Ground), 1);
             }

@@ -190,7 +190,13 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // mission, NavCom, attack and movement targets, locomotor kind and layer and
 // all three RNG states matched at all 200 ticks (the probe patch was not
 // committed). Old values: the commit that moved them.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xCE12_E6CB_8870_62E5;
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x1C6A_DDB1_EE6E_5A25;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

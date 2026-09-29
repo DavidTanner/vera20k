@@ -5,57 +5,6 @@ use crate::sim::cell_rect::{
     IsClearToMoveResult, LiveCellPassabilityQuery, evaluate_live_cell_passability,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AircraftUpdateStep {
-    MissionFlagHousekeeping,
-    SecondaryLocomotor,
-    MovementSmoke,
-    FiringLocomotorProcess,
-    OccupyMissionResolve,
-    MindControlDisconnect,
-    BaseFootUpdate,
-    CrashWobble,
-    ContrailAnim,
-    OffMapLimbo,
-    OnMapPassengerSync,
-}
-
-/// Return the proved slot-23 update sequence without assigning semantics to its predicates.
-/// Named location: `AircraftClass::Update` (`yr_1001` 0x414bb0).
-#[cfg(test)]
-pub fn aircraft_update_steps(
-    alive_after_firing: bool,
-    firing_or_landing: bool,
-    alive_after_foot: bool,
-    off_map: bool,
-) -> Vec<AircraftUpdateStep> {
-    use AircraftUpdateStep::*;
-    let mut steps = vec![
-        MissionFlagHousekeeping,
-        SecondaryLocomotor,
-        MovementSmoke,
-        FiringLocomotorProcess,
-    ];
-    if !alive_after_firing {
-        return steps;
-    }
-    if firing_or_landing {
-        steps.push(OccupyMissionResolve);
-        return steps;
-    }
-    steps.extend([MindControlDisconnect, BaseFootUpdate]);
-    if !alive_after_foot {
-        return steps;
-    }
-    steps.extend([CrashWobble, ContrailAnim]);
-    if off_map {
-        steps.push(OffMapLimbo);
-    } else {
-        steps.push(OnMapPassengerSync);
-    }
-    steps
-}
-
 /// Convert the statically proved default paradrop edge source into launch facing.
 /// Named location: YR linked-aircraft paradrop launch dispatch.
 pub fn paradrop_edge_facing_word(default_edge: i32, alternate_type_state: bool) -> u16 {
@@ -97,24 +46,6 @@ pub fn aircraft_landing_cell_leaf_clear() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn firing_branch_skips_base_update() {
-        let steps = aircraft_update_steps(true, true, true, false);
-        assert_eq!(
-            steps.last(),
-            Some(&AircraftUpdateStep::OccupyMissionResolve)
-        );
-        assert!(!steps.contains(&AircraftUpdateStep::BaseFootUpdate));
-    }
-
-    #[test]
-    fn normal_branch_preserves_tail_order() {
-        let steps = aircraft_update_steps(true, false, true, false);
-        assert_eq!(steps[4], AircraftUpdateStep::MindControlDisconnect);
-        assert_eq!(steps[5], AircraftUpdateStep::BaseFootUpdate);
-        assert_eq!(steps.last(), Some(&AircraftUpdateStep::OnMapPassengerSync));
-    }
 
     #[test]
     fn paradrop_edge_normalization_and_facing_are_exact() {

@@ -242,7 +242,7 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
         };
         assert_eq!(retained, SIM_HALF, "{kind:?}");
         assert_eq!(entity.foot_speed.applied_fraction, SIM_HALF, "{kind:?}");
-        assert_eq!(entity.foot_speed.cached_current_speed, 7, "{kind:?}");
+        assert_eq!(sim.current_speed_for_test(1, &rules), 7, "{kind:?}");
         assert_eq!((progress.cursor, progress.residual), (1, 7), "{kind:?}");
         assert_eq!(head, Some(DriveCoord::cell(10, 9, 0)), "{kind:?}");
     }
@@ -423,7 +423,7 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
                 let ship = entity.ship_locomotion.as_ref().unwrap();
                 assert_eq!((ship.track.cursor, ship.track.residual), (0, 0));
             }
-            assert_eq!(entity.foot_speed.cached_current_speed, 0);
+            assert_eq!(sim.current_speed_for_test(1, &rules), 0);
             assert_eq!(
                 sim.substrate.raw_cell_occupation.ground_bits(10, 9) & 0x20,
                 0x20
@@ -467,15 +467,7 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
             .applied_fraction,
         SimFixed::from_num(0)
     );
-    assert_eq!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .foot_speed
-            .cached_current_speed,
-        0
-    );
+    assert_eq!(sim.current_speed_for_test(1, &rules), 0);
     let grid = crate::sim::pathfinding::PathGrid::new(32, 32);
     assert!(crate::sim::movement::issue_move_command(
         &mut sim.substrate.entities,

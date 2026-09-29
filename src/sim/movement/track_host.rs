@@ -1153,10 +1153,6 @@ impl Simulation {
         // writes Foot+578. The true-return NavQueue arm skips this setter.
         if !ended_drive && entity.navigation.nav_queue.is_empty() && queued_cell.is_none() {
             entity.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
-            entity.foot_speed.cached_current_speed = 0;
-            if let Some(target) = entity.movement_target.as_mut() {
-                target.current_speed = crate::util::fixed_math::SIM_ZERO;
-            }
         }
         let saved_base_return = ended_drive || queued_cell.is_some();
         let has_destination = entity.navigation.nav_com.is_some();

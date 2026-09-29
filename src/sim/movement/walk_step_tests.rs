@@ -70,7 +70,6 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         let heading = entity.body_facing.current(100);
         assert_eq!(u64::from(heading), row["facing"].as_u64().unwrap());
         assert_eq!(entity.foot_speed.applied_fraction, SIM_ONE);
-        assert_eq!(entity.foot_speed.cached_current_speed, speed);
         assert!(!entity.navigation.path_runtime.path_blocked);
     }
 }
