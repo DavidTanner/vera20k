@@ -911,10 +911,10 @@ impl OverlayGrid {
         self.cells.len()
     }
 
-    /// Recalculate one runtime mutation and retain its delivery obligations.
-    /// A later unchanged projection cannot erase an earlier change. The
-    /// next-reader receipt preserves first-seen order independently of the
-    /// presentation dirty list and the frame signal.
+    /// Recalculate one runtime mutation and queue its navigation receipt.
+    /// A later unchanged projection cannot erase an earlier change: the
+    /// receipt keeps first-seen order independently of the presentation
+    /// dirty list until `Simulation` publishes it.
     ///
     /// Zone comparison serves ordered wall cleanup: CellClass cleanup
     /// @ 0x00480630 runs Recalc @ 0x00480969, compares old/new zone at

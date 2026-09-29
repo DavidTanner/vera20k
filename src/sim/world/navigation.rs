@@ -62,6 +62,26 @@ fn visit_structure_movement_cells(
     }
 }
 
+/// The requested cells a marked structure blocks, from one structure scan.
+pub(super) fn structure_blocked_among(
+    entities: &EntityStore,
+    interner: &StringInterner,
+    rules: &RuleSet,
+    cells: &[(u16, u16)],
+) -> BTreeSet<(u16, u16)> {
+    let mut blocked = BTreeSet::new();
+    if cells.is_empty() {
+        return blocked;
+    }
+    let requested: BTreeSet<(u16, u16)> = cells.iter().copied().collect();
+    visit_structure_movement_cells(entities, interner, rules, |marked| {
+        if requested.contains(&marked) {
+            blocked.insert(marked);
+        }
+    });
+    blocked
+}
+
 pub(super) struct NavigationCaches<'a> {
     pub(super) terrain_costs: &'a mut BTreeMap<SpeedType, TerrainCostGrid>,
     pub(super) zones: &'a mut Option<ZoneGrid>,
@@ -152,16 +172,7 @@ impl NavigationCaches<'_> {
         rules: &RuleSet,
         cells: &[(u16, u16)],
     ) -> Result<(), String> {
-        if cells.is_empty() {
-            return Ok(());
-        }
-        let requested: BTreeSet<(u16, u16)> = cells.iter().copied().collect();
-        let mut blocked = BTreeSet::new();
-        visit_structure_movement_cells(entities, interner, rules, |marked| {
-            if requested.contains(&marked) {
-                blocked.insert(marked);
-            }
-        });
+        let blocked = structure_blocked_among(entities, interner, rules, cells);
         for &coord in cells {
             self.publish_recalculated_cell_with_presence(
                 terrain,

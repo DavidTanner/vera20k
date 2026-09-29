@@ -4924,24 +4924,44 @@ impl Simulation {
     /// (`0x00480A80`) run no zone helper, and the wall, sale and terrain owners
     /// run theirs themselves.
     fn publish_recalculated_cells(&mut self, rules: &RuleSet, cells: &[(u16, u16)]) {
-        let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return;
-        };
-        if let Err(error) = (navigation::NavigationCaches {
-            terrain_costs: &mut self.terrain_costs,
-            zones: &mut self.zone_grid,
-            path: &mut self.path_grid,
-            playfield_bounds: self.playfield_bounds,
-        })
-        .publish_recalculated_cells(
-            terrain,
-            self.bridge_state.as_ref(),
+        let blocked = navigation::structure_blocked_among(
             &self.substrate.entities,
             &self.interner,
             rules,
             cells,
-        ) {
-            log::error!("Recalc navigation publication failed: {error}");
+        );
+        self.publish_recalculated_cells_with_presence(rules, cells, &blocked);
+    }
+
+    /// [`Self::publish_recalculated_cells`] with structure presence already
+    /// scanned. A cache that cannot take one cell (mis-sized during a load
+    /// transition) is rebuilt whole rather than left stale.
+    fn publish_recalculated_cells_with_presence(
+        &mut self,
+        rules: &RuleSet,
+        cells: &[(u16, u16)],
+        blocked: &BTreeSet<(u16, u16)>,
+    ) {
+        let Some(terrain) = self.resolved_terrain.as_ref() else {
+            return;
+        };
+        let mut caches = navigation::NavigationCaches {
+            terrain_costs: &mut self.terrain_costs,
+            zones: &mut self.zone_grid,
+            path: &mut self.path_grid,
+            playfield_bounds: self.playfield_bounds,
+        };
+        let published = cells.iter().try_for_each(|&coord| {
+            caches.publish_recalculated_cell_with_presence(
+                terrain,
+                self.bridge_state.as_ref(),
+                coord,
+                blocked.contains(&coord),
+            )
+        });
+        if let Err(error) = published {
+            log::warn!("Recalc navigation publication fell back to a rebuild: {error}");
+            let _ = self.rebuild_dynamic_navigation(rules);
         }
     }
 
@@ -4980,7 +5000,7 @@ impl Simulation {
 
     /// Consume terrain/overlay receipts before the next path reader. Overlay
     /// receipts publish their Recalc only. A destroyed terrain object follows
-    /// `TerrainClass::Limbo` @ `0x0071C9F0`: Recalc (`0x0071CA2A`), then
+    /// `TerrainClass::Limbo` @ `0x0071C930`: Recalc (`0x0071CA2A`), then
     /// AssignOrphanedCellZone (`0x0071CA42`) and the local graph update
     /// (`0x0071CA51`) while `g_MapEditorMode` is zero. Deaths are published
     /// after the receiver batch, not inside each Limbo.
@@ -4994,9 +5014,21 @@ impl Simulation {
             .as_mut()
             .map(|grid| grid.take_synchronous_navigation_cells())
             .unwrap_or_default();
-        self.publish_recalculated_cells(rules, &overlay_cells);
+        let all_cells: Vec<_> = overlay_cells
+            .iter()
+            .chain(terrain_changed_cells)
+            .copied()
+            .collect();
+        let blocked = navigation::structure_blocked_among(
+            &self.substrate.entities,
+            &self.interner,
+            rules,
+            &all_cells,
+        );
+        self.publish_recalculated_cells_with_presence(rules, &overlay_cells, &blocked);
+        // Each Limbo's AssignOrphaned sees later deaths' cells unpublished.
         for &cell in terrain_changed_cells {
-            self.publish_recalculated_cells(rules, &[cell]);
+            self.publish_recalculated_cells_with_presence(rules, &[cell], &blocked);
             if let (Some(terrain), Some(path)) =
                 (self.resolved_terrain.as_ref(), self.path_grid.as_deref())
             {
