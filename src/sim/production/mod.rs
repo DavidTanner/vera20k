@@ -51,7 +51,7 @@ pub use self::production_queue::{
 pub(crate) use self::production_refinery::spawn_completed_refinery_free_units;
 pub(crate) use self::production_sell::{
     archive_less_sale, begin_selling, eject_destruction_garrison_with_context,
-    eject_red_hp_garrison, sell_complete, sell_stage_one, sell_stage_zero, type_refund,
+    sell_building_occupants, sell_complete, sell_stage_one, sell_stage_zero, type_refund,
     undeploy_target,
 };
 #[cfg(test)]

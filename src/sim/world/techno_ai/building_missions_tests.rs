@@ -754,6 +754,17 @@ fn retail_building_mission_inputs() {
             "AMRADR", "GAAIRC", "GADEPT", "NADEPT", "NAMISL", "NATBNK", "YADEPT"
         ])
     );
+    // A garrison's Unload (`0x0044D880`) ends in its Guard tail: no retail
+    // `CanBeOccupied=` type takes the absorber, factory or gap arm.
+    let garrisons: Vec<_> = buildings.iter().filter(|obj| obj.can_be_occupied).collect();
+    assert!(!garrisons.is_empty());
+    for obj in garrisons {
+        assert!(
+            !(obj.infantry_absorb || obj.unit_absorb || obj.weapons_factory || obj.gap_generator),
+            "{}",
+            obj.id
+        );
+    }
     for obj in &buildings {
         let id = obj.id.as_str();
         assert!(!(obj.weapons_factory && !obj.has_stupid_guard_mode), "{id}");

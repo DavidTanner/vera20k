@@ -936,12 +936,11 @@ pub(crate) fn eject_destruction_garrison_with_context(
     )
 }
 
-/// Eject garrison occupants from a red-HP `CanBeOccupied` building.
-///
-/// Native `CheckAutoSellOrCivilian` calls the same `SellBuilding` occupant
-/// helper when a garrisoned building is at red HP, but the building remains
-/// alive and ownership reconciliation continues afterward.
-pub(crate) fn eject_red_hp_garrison(
+/// `SellBuilding(0, 0)` on a living `CanBeOccupied` building: the red-health
+/// ejection in `CheckAutoSellOrCivilian` (`0x00458229`) and a building's
+/// Unload mission (`0x0044D89C`). The building stays alive; ownership
+/// reconciliation continues afterward.
+pub(crate) fn sell_building_occupants(
     sim: &mut Simulation,
     rules: &RuleSet,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,

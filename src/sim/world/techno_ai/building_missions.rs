@@ -209,12 +209,15 @@ pub(super) fn dispatch(
             mission_guard(sim, id, rules)
         }
         Some(MissionType::Attack) => mission_attack(sim, id, rules, ctx),
-        // BuildingClass's own Unload (`0x0044D880`), Construction
-        // (`0x00449A50`), Repair (`0x0044B780`), Missile (`0x0044C980`) and
-        // Open (`0x0044E440`) keep their existing owners.
+        Some(MissionType::Unload) => match mission_unload(sim, id, rules, ctx) {
+            Some(delay) => delay,
+            None => return,
+        },
+        // BuildingClass's own Construction (`0x00449A50`), Repair
+        // (`0x0044B780`), Missile (`0x0044C980`) and Open (`0x0044E440`) keep
+        // their existing owners.
         Some(
-            MissionType::Unload
-            | MissionType::Construction
+            MissionType::Construction
             | MissionType::Repair
             | MissionType::Missile
             | MissionType::Open,
@@ -226,6 +229,48 @@ pub(super) fn dispatch(
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission.write_dispatch_epilogue(now as i32, delay);
     }
+}
+
+/// `BuildingClass::Mission_Unload` (`0x0044D880`). A building with
+/// occupants (`vt+0x408`) first hands every one to `SellBuilding(0, 0)`
+/// (`0x0044D89C`). An absorber holding passengers (`InfantryAbsorb=` /
+/// `UnitAbsorb=`, Type `+0x16AE`/`+0x16AF`, Passengers `+0x114`), a
+/// `WeaponsFactory=` (`+0x16BD`) and a gap generator (`+0xCD1`) then take
+/// their own arms, which keep their existing owners (None). Every other
+/// building queues Guard (`vt+0x1E8(5, 0)` at `0x0044E379`) and returns 1.
+///
+/// Residual: the gap arm also needs Type `+0xCD3` nonzero; a `GapGenerator=`
+/// without it would queue Guard natively but returns None here. No retail
+/// gap generator takes an Unload order.
+fn mission_unload(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    ctx: ObjectAiCtx<'_>,
+) -> Option<i32> {
+    crate::sim::production::sell_building_occupants(sim, rules, ctx.overlay_registry, id);
+    let entity = sim.substrate.entities.get(id)?;
+    let object = sim.object_type(entity.type_ref(), rules)?;
+    let holds_passengers = entity
+        .passenger_role
+        .cargo()
+        .is_some_and(|cargo| !cargo.is_empty());
+    if ((object.infantry_absorb || object.unit_absorb) && holds_passengers)
+        || object.weapons_factory
+        || object.gap_generator
+    {
+        return None;
+    }
+    let now = sim.session.binary_frame;
+    let readiness = LiveReadyInputProvider { rules };
+    let _ = sim.mission_queue_exact(
+        id,
+        MissionId::from_known(MissionType::Guard),
+        0,
+        now,
+        &readiness,
+    );
+    Some(1)
 }
 
 /// `Queue_Mission(mission, false)` then Commence, as both handlers switch

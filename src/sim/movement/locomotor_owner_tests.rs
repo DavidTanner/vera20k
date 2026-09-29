@@ -351,7 +351,7 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         path_runtime.path_blocked = true;
         path_runtime.retries_left = u32::MAX;
         entity.navigation.path_runtime = path_runtime;
-        entity.order_intent = Some(crate::sim::components::OrderIntent::Unloading);
+        entity.dying = true;
         let before = owned_state(entity);
         let mut grid = PathGrid::test_all_blocked(16, 16);
         grid.set_blocked(8, 8, false);
