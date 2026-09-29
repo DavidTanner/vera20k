@@ -1390,7 +1390,7 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
     }
     let guard = keep_undefeated(sim, resources, loads[0].2);
     sim.resolve_type_handles(rules);
-    crate::sim::passenger::tick_passenger_system(sim, rules);
+    crate::sim::passenger::tick_passenger_system(sim, rules, None);
     for (kind, transport, _, gis) in &loads {
         assert_eq!(cargo_len(sim, *transport), gis.len(), "{kind} boarded");
     }

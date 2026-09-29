@@ -1350,7 +1350,7 @@ fn a_captive_boarding_an_absorber_is_freed_first() {
         target_transport_id: reactor,
     };
 
-    crate::sim::passenger::tick_passenger_system(&mut sim, &rules);
+    crate::sim::passenger::tick_passenger_system(&mut sim, &rules, None);
 
     let entity = sim.substrate.entities.get(gi).unwrap();
     assert!(!entity.mind_control.is_mind_controlled());

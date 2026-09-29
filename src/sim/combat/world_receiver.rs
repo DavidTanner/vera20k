@@ -702,7 +702,8 @@ pub(crate) fn commit_entities(
                     },
                     target_id,
                     fatal_category,
-                    crate::sim::world::UninitContext::with_rules(rules),
+                    crate::sim::world::UninitContext::with_rules(rules)
+                        .with_registry(overlay_registry),
                 );
             };
         }
@@ -767,7 +768,8 @@ pub(crate) fn commit_entities(
                     FatalLifecycleStage::MaintainDamageSmoke { state },
                     target_id,
                     category,
-                    crate::sim::world::UninitContext::with_rules(rules),
+                    crate::sim::world::UninitContext::with_rules(rules)
+                        .with_registry(overlay_registry),
                 );
             };
         }
@@ -944,7 +946,8 @@ pub(crate) fn commit_entities(
                         FatalLifecycleStage::BeforeDeathEffects,
                         target_id,
                         fatal_category,
-                        crate::sim::world::UninitContext::with_rules(rules),
+                        crate::sim::world::UninitContext::with_rules(rules)
+                            .with_registry(overlay_registry),
                     );
                 };
             }
@@ -968,7 +971,8 @@ pub(crate) fn commit_entities(
                             FatalLifecycleStage::AfterDeathEffects,
                             target_id,
                             fatal_category,
-                            crate::sim::world::UninitContext::with_rules(rules),
+                            crate::sim::world::UninitContext::with_rules(rules)
+                                .with_registry(overlay_registry),
                         );
                     };
                 }

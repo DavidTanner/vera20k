@@ -57,15 +57,14 @@
 //!   `0x004C6F5A..0x004C6F96`) is its own mechanism.
 
 use crate::map::entities::EntityCategory;
+use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::DestroyedGarrisonBuilding;
 use crate::sim::components::BuildingDown;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::movement;
-use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::movement::infantry_entry::{InfantryEntryArgs, InfantryEntryClass};
 use crate::sim::passenger::PassengerRole;
-use crate::sim::pathfinding::cell_entry::{TerrainCheckResult, check_terrain};
 use crate::sim::world::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
     UninitContext,
@@ -123,17 +122,6 @@ pub(crate) fn type_refund(
         value
     }
 }
-
-const SCATTER_DIRECTION_OFFSETS: [(i16, i16); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
 
 /// Who orders a sale; `BuildingClass::Sell_Back @ 0x00447110` reads its
 /// control argument.
@@ -435,7 +423,7 @@ fn sale_survivors(
     }
     let count = sim.building_survivor_count(rules, id, false);
     let passengers = sim.eject_absorbed_passengers(rules, registry, id, &cells, false);
-    let garrison = eject_garrison_occupants(sim, rules, id);
+    let garrison = eject_garrison_occupants(sim, rules, registry, id);
     let crew = sim.spawn_sale_crew(rules, registry, id, count, &cells);
     passengers > 0 || garrison > 0 || crew
 }
@@ -574,48 +562,17 @@ fn garrison_sellbuilding_exit_cells(rx: u16, ry: u16, width: u16, height: u16) -
     cells
 }
 
-/// Closest current Rust stand-in for native `Can_Enter_Cell(cell,-1,-1,0,1) == 0`.
-///
-/// `SellBuilding` probes only occupant slot 0 while choosing the single exit
-/// cell. Rust does not have the exact InfantryClass predicate bound here yet;
-/// this uses the shared Can_Enter_Cell phase-1 terrain/sub-cell check with the
-/// verified available inputs and leaves terrain-cost/layer details unchecked.
-/// `SellBuilding @ 0x00457DE0` asks Occupants[0] (the building-side list)
-/// whether it can enter each exit cell (vtable `+0x1AC`); it never reads the
-/// occupant's own Transporter link, which a killing hit's Destroy broadcast
-/// has already cleared (`0x007078C0..0x007078D5`: the transport has Health 0).
-fn garrison_first_occupant_can_enter_cell(
-    sim: &Simulation,
-    first_occupant_id: u64,
-    rx: u16,
-    ry: u16,
-) -> bool {
-    garrison_infantry_can_enter_cell(sim, first_occupant_id, rx, ry)
-}
-
-fn garrison_infantry_can_enter_cell(sim: &Simulation, infantry_id: u64, rx: u16, ry: u16) -> bool {
-    let Some(infantry) = sim.substrate.entities.get(infantry_id) else {
-        return false;
-    };
-    if !infantry.is_alive() {
-        return false;
-    }
-
-    matches!(
-        check_terrain(
-            (rx, ry),
-            MovementLayer::Ground,
-            infantry.category,
-            None,
-            None,
-            &sim.substrate.occupancy,
-        ),
-        TerrainCheckResult::Clear
-    )
-}
-
+/// `SellBuilding @ 0x00457DE0` picks one exit cell before its occupant loop:
+/// the first ring cell where Occupants[0]'s own `Can_Enter_Cell(cell, -1,
+/// -1, NULL, 1)` (vt+0x1AC, pushed at `0x00457E79..0x00457EB9` and its four
+/// ring twins) answers zero. Infantry `0x0051BF90` never reads the fifth
+/// argument. It asks the building-side list and never reads the occupant's
+/// own Transporter link, which a killing hit's Destroy broadcast has already
+/// cleared (`0x007078C0..0x007078D5`: the transport has Health 0).
 fn choose_garrison_exit_cell(
     sim: &Simulation,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     rx: u16,
     ry: u16,
     width: u16,
@@ -623,9 +580,21 @@ fn choose_garrison_exit_cell(
     passenger_ids: &[u64],
 ) -> Option<(u16, u16)> {
     let first_occupant_id = *passenger_ids.first()?;
+    let cells = NativeCellQuery::canonical(sim.resolved_terrain.as_ref()?);
     garrison_sellbuilding_exit_cells(rx, ry, width, height)
         .into_iter()
-        .find(|&(cx, cy)| garrison_first_occupant_can_enter_cell(sim, first_occupant_id, cx, cy))
+        .find(|&(cx, cy)| {
+            matches!(
+                sim.infantry_can_enter(
+                    first_occupant_id,
+                    cells.lookup((cx as i16, cy as i16)),
+                    InfantryEntryArgs::REPAIR,
+                    rules,
+                    registry,
+                ),
+                Ok(InfantryEntryClass::Clear)
+            )
+        })
 }
 
 fn garrison_inside_foundation_fallback(rx: u16, ry: u16, width: u16, height: u16) -> (u16, u16) {
@@ -647,9 +616,14 @@ fn uninit_garrison_passenger_without_exit(
     sim.uninit_with_context(passenger_id, context);
 }
 
+/// `SellBuilding @ 0x00457DE0` hands each ejected occupant to its own
+/// `Scatter(building->GetCoords(), 1, 1)` (vt+0x174 at `0x0045810A`, the
+/// coordinate from the building's vt+0x48 at `0x00458104`). The building
+/// GetCoords (`0x00447AC0`) is its foundation centre.
 fn sellbuilding_direct_scatter_handoff(
     sim: &mut Simulation,
     rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     passenger_id: u64,
     building_rx: u16,
     building_ry: u16,
@@ -659,7 +633,6 @@ fn sellbuilding_direct_scatter_handoff(
     let Some(pax) = sim.substrate.entities.get(passenger_id) else {
         return;
     };
-
     if pax.category != EntityCategory::Infantry
         || !pax.is_alive()
         || pax.dying
@@ -668,51 +641,13 @@ fn sellbuilding_direct_scatter_handoff(
     {
         return;
     }
-
-    let target_rx = building_rx.saturating_add(building_width / 2);
-    let target_ry = building_ry.saturating_add(building_height / 2);
-    let base_dir = garrison_scatter_direction_index(
-        i32::from(target_rx) - i32::from(pax.position.rx),
-        i32::from(target_ry) - i32::from(pax.position.ry),
+    let source = (
+        i32::from(building_rx) * 256 + i32::from(building_width) * 128,
+        i32::from(building_ry) * 256 + i32::from(building_height) * 128,
     );
-    let start_cell = (pax.position.rx, pax.position.ry);
-    let type_name = sim.interner.resolve(pax.type_ref()).to_string();
-    // A veteran garrison occupant ejected by the sale scatters at its FASTER
-    // speed.
-    let speed = crate::sim::movement::order_speed(pax, rules.object(&type_name), Some(rules));
-
-    let jitter = sim.scatter_rng().next_range_u32_inclusive(0, 4) as i32 - 2;
-    let start_dir = ((base_dir as i32 + jitter) & 7) as usize;
-    let mut dest = None;
-    for i in 0..8 {
-        let (dx, dy) = SCATTER_DIRECTION_OFFSETS[(start_dir + i) & 7];
-        let cx = i32::from(start_cell.0) + i32::from(dx);
-        let cy = i32::from(start_cell.1) + i32::from(dy);
-        if cx < 0 || cy < 0 {
-            continue;
-        }
-        let candidate = (cx as u16, cy as u16);
-        if garrison_infantry_can_enter_cell(sim, passenger_id, candidate.0, candidate.1) {
-            dest = Some(candidate);
-            break;
-        }
+    if let Err(cause) = sim.scatter_infantry_forced_from(passenger_id, source, rules, registry) {
+        log::debug!("ejected occupant {passenger_id} did not scatter: {cause}");
     }
-
-    if let Some(dest) = dest {
-        let timing =
-            movement::DestinationTiming::from_rules(sim.session.binary_frame, rules.into());
-        let _ = movement::issue_direct_move(
-            &mut sim.substrate.entities,
-            passenger_id,
-            dest,
-            speed,
-            timing,
-        );
-    }
-}
-
-fn garrison_scatter_direction_index(dx: i32, dy: i32) -> usize {
-    usize::from(movement::facing_from_delta(dx, dy) / 32) & 7
 }
 
 fn place_garrison_passenger_at_cell(
@@ -776,6 +711,7 @@ fn place_garrison_passenger_at_cell(
     sellbuilding_direct_scatter_handoff(
         sim,
         rules,
+        context.registry(),
         passenger_id,
         building_rx,
         building_ry,
@@ -803,14 +739,22 @@ fn eject_garrison_passengers_at_edges(
         return 0;
     }
 
-    let exit_cell = choose_garrison_exit_cell(sim, rx, ry, width, height, passenger_ids).or_else(
-        || match mode {
-            GarrisonEjectMode::PlayerSell => {
-                Some(garrison_inside_foundation_fallback(rx, ry, width, height))
-            }
-            GarrisonEjectMode::DestructionNoExitRemove => None,
-        },
-    );
+    let exit_cell = choose_garrison_exit_cell(
+        sim,
+        rules,
+        uninit_context.registry(),
+        rx,
+        ry,
+        width,
+        height,
+        passenger_ids,
+    )
+    .or_else(|| match mode {
+        GarrisonEjectMode::PlayerSell => {
+            Some(garrison_inside_foundation_fallback(rx, ry, width, height))
+        }
+        GarrisonEjectMode::DestructionNoExitRemove => None,
+    });
     let mut ejected: usize = 0;
 
     let Some((exit_rx, exit_ry)) = exit_cell else {
@@ -851,7 +795,12 @@ fn eject_garrison_passengers_at_edges(
 /// southeast inside-foundation cell.
 ///
 /// Returns the number of occupants successfully ejected.
-fn eject_garrison_occupants(sim: &mut Simulation, rules: &RuleSet, building_id: u64) -> usize {
+fn eject_garrison_occupants(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    building_id: u64,
+) -> usize {
     // Snapshot building data before mutation.
     let (rx, ry, z, width, height, passenger_ids) = {
         let entity = match sim.substrate.entities.get(building_id) {
@@ -888,7 +837,7 @@ fn eject_garrison_occupants(sim: &mut Simulation, rules: &RuleSet, building_id: 
         &passenger_ids,
         None,
         GarrisonEjectMode::PlayerSell,
-        UninitContext::default(),
+        UninitContext::default().with_registry(registry),
     );
 
     // Clear player-sell cargo only. Native SellBuilding is an ejection helper;
@@ -995,6 +944,7 @@ pub(crate) fn eject_destruction_garrison_with_context(
 pub(crate) fn eject_red_hp_garrison(
     sim: &mut Simulation,
     rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
 ) -> usize {
     let (rx, ry, z, width, height, owner, passenger_ids) = {
@@ -1036,7 +986,7 @@ pub(crate) fn eject_red_hp_garrison(
         &passenger_ids,
         Some(owner),
         GarrisonEjectMode::DestructionNoExitRemove,
-        UninitContext::default(),
+        UninitContext::default().with_registry(registry),
     );
 
     if let Some(building) = sim.substrate.entities.get_mut(building_id) {
@@ -1056,7 +1006,14 @@ mod tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::LocomotorState;
-    use crate::sim::occupancy::CellListInsertion;
+
+    /// A clear map with its playfield: `SellBuilding`'s exit probe and the
+    /// occupants' Scatter read the live cells.
+    fn garrison_map(rules: &RuleSet) -> Simulation {
+        let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, rules);
+        sim
+    }
 
     fn garrison_edge_rules() -> RuleSet {
         garrison_edge_rules_with_strength(400)
@@ -1079,6 +1036,7 @@ mod tests {
             "[InfantryTypes]\n\
              0=E1\n\
              [VehicleTypes]\n\
+             0=BLOCKER\n\
              [AircraftTypes]\n\
              [BuildingTypes]\n\
              0={type_id}\n\
@@ -1093,6 +1051,11 @@ mod tests {
              Owner=Americans,Neutral\n\
              Occupier=yes\n\
              Size=1\n\
+             [BLOCKER]\n\
+             Strength=100\n\
+             Armor=heavy\n\
+             Speed=4\n\
+             Owner=Neutral\n\
              [{type_id}]\n\
              Cost=400\n\
              Strength={strength}\n\
@@ -1137,36 +1100,14 @@ mod tests {
         insert_hidden_passenger_with_subcell(sim, stable_id, transport_id, owner, Some(2))
     }
 
-    fn insert_live_blocker(sim: &mut Simulation, stable_id: u64, rx: u16, ry: u16) {
-        let mut blocker = GameEntity::test_default(stable_id, "BLOCKER", "Neutral", rx, ry);
-        blocker.category = EntityCategory::Unit;
-        sim.substrate.entities.insert(blocker);
-        sim.substrate.occupancy.add(
-            rx,
-            ry,
-            stable_id,
-            MovementLayer::Ground,
-            None,
-            CellListInsertion::PrependNonBuilding,
-        );
+    fn insert_live_blocker(sim: &mut Simulation, rules: &RuleSet, rx: u16, ry: u16) {
+        sim.spawn_object("BLOCKER", "Neutral", rx, ry, 0, rules)
+            .expect("blocker vehicle spawns");
     }
 
-    fn insert_map_infantry(sim: &mut Simulation, stable_id: u64, rx: u16, ry: u16, sub_cell: u8) {
-        let mut infantry = GameEntity::test_default(stable_id, "E1", "Neutral", rx, ry);
-        infantry.category = EntityCategory::Infantry;
-        infantry.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
-            EntityCategory::Infantry,
-        );
-        infantry.sub_cell = Some(sub_cell);
-        sim.substrate.entities.insert(infantry);
-        sim.substrate.occupancy.add(
-            rx,
-            ry,
-            stable_id,
-            MovementLayer::Ground,
-            Some(sub_cell),
-            CellListInsertion::PrependNonBuilding,
-        );
+    fn insert_map_infantry(sim: &mut Simulation, rules: &RuleSet, rx: u16, ry: u16) {
+        sim.spawn_object("E1", "Neutral", rx, ry, 0, rules)
+            .expect("map infantry spawns");
     }
 
     fn give_walk_locomotor(sim: &mut Simulation, stable_id: u64) {
@@ -1177,12 +1118,19 @@ mod tests {
             .locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
     }
 
-    fn block_all_garrison_exit_cells(sim: &mut Simulation, rx: u16, ry: u16, w: u16, h: u16) {
-        for (idx, (block_rx, block_ry)) in garrison_sellbuilding_exit_cells(rx, ry, w, h)
-            .into_iter()
-            .enumerate()
-        {
-            insert_live_blocker(sim, 10_000 + idx as u64, block_rx, block_ry);
+    fn block_all_garrison_exit_cells(
+        sim: &mut Simulation,
+        rules: &RuleSet,
+        rx: u16,
+        ry: u16,
+        w: u16,
+        h: u16,
+    ) {
+        let mut cells = garrison_sellbuilding_exit_cells(rx, ry, w, h);
+        cells.sort_unstable();
+        cells.dedup();
+        for (block_rx, block_ry) in cells {
+            insert_live_blocker(sim, rules, block_rx, block_ry);
         }
     }
 
@@ -1281,39 +1229,41 @@ mod tests {
 
     #[test]
     fn garrison_exit_probe_uses_first_occupant_only() {
-        let mut sim = Simulation::new();
+        let rules = garrison_edge_rules();
+        let mut sim = garrison_map(&rules);
         insert_hidden_passenger(&mut sim, 12, 10, "Neutral");
 
         assert_eq!(
-            choose_garrison_exit_cell(&sim, 10, 10, 2, 2, &[11, 12]),
+            choose_garrison_exit_cell(&sim, &rules, None, 10, 10, 2, 2, &[11, 12]),
             None,
             "slot 0 drives the scan; a later valid passenger must not be probed"
         );
 
         insert_hidden_passenger(&mut sim, 11, 10, "Neutral");
         assert_eq!(
-            choose_garrison_exit_cell(&sim, 10, 10, 2, 2, &[11, 12]),
+            choose_garrison_exit_cell(&sim, &rules, None, 10, 10, 2, 2, &[11, 12]),
             Some((12, 12))
         );
     }
 
     #[test]
     fn garrison_exit_probe_uses_infantry_subcell_entry_predicate() {
-        let mut sim = Simulation::new();
+        let rules = garrison_edge_rules();
+        let mut sim = garrison_map(&rules);
         insert_hidden_passenger(&mut sim, 11, 10, "Neutral");
-        insert_map_infantry(&mut sim, 100, 12, 12, 2);
+        insert_map_infantry(&mut sim, &rules, 12, 12);
 
         assert_eq!(
-            choose_garrison_exit_cell(&sim, 10, 10, 2, 2, &[11]),
+            choose_garrison_exit_cell(&sim, &rules, None, 10, 10, 2, 2, &[11]),
             Some((12, 12)),
             "one exterior infantry leaves a free sub-cell, so slot-0 Can_Enter_Cell accepts"
         );
 
-        insert_map_infantry(&mut sim, 101, 12, 12, 3);
-        insert_map_infantry(&mut sim, 102, 12, 12, 4);
+        insert_map_infantry(&mut sim, &rules, 12, 12);
+        insert_map_infantry(&mut sim, &rules, 12, 12);
 
         assert_eq!(
-            choose_garrison_exit_cell(&sim, 10, 10, 2, 2, &[11]),
+            choose_garrison_exit_cell(&sim, &rules, None, 10, 10, 2, 2, &[11]),
             Some((12, 11)),
             "full exterior infantry sub-cells reject the selected cell and continue the scan"
         );
@@ -1322,7 +1272,7 @@ mod tests {
     #[test]
     fn a_garrisoned_battle_bunker_sale_ejects_refunds_and_removes_it() {
         let rules = battle_bunker_rules_with_strength(400);
-        let mut sim = Simulation::new();
+        let mut sim = garrison_map(&rules);
         let building_id = 10;
         let passenger_id = 11;
         insert_garrisoned_battle_bunker(&mut sim, building_id, passenger_id);
@@ -1374,14 +1324,17 @@ mod tests {
     #[test]
     fn sellbuilding_helper_ejects_without_owner_revert() {
         let rules = garrison_edge_rules();
-        let mut sim = Simulation::new();
+        let mut sim = garrison_map(&rules);
         let building_id = 20;
         let passenger_id = 21;
         insert_captured_player_owned_garrison(&mut sim, building_id, passenger_id);
 
         let americans = sim.interner.intern("Americans");
 
-        assert_eq!(eject_garrison_occupants(&mut sim, &rules, building_id), 1);
+        assert_eq!(
+            eject_garrison_occupants(&mut sim, &rules, None, building_id),
+            1
+        );
 
         let building = sim
             .substrate
@@ -1412,7 +1365,7 @@ mod tests {
     #[test]
     fn garrison_sellbuilding_reuses_single_exit_coord_for_all_lifo_occupants() {
         let rules = garrison_edge_rules();
-        let mut sim = Simulation::new();
+        let mut sim = garrison_map(&rules);
         let building_id = 10;
         let pax1 =
             insert_hidden_passenger_with_subcell(&mut sim, 11, building_id, "Neutral", Some(4));
@@ -1491,7 +1444,7 @@ mod tests {
     #[test]
     fn garrison_destruction_detaches_cargo_before_building_uninit() {
         let rules = garrison_edge_rules();
-        let mut sim = Simulation::new();
+        let mut sim = garrison_map(&rules);
         let building_id = 60;
         let passenger_id = 61;
         insert_captured_player_owned_garrison(&mut sim, building_id, passenger_id);
@@ -1532,11 +1485,11 @@ mod tests {
     #[test]
     fn garrison_player_sell_no_exit_uses_inside_foundation_fallback() {
         let rules = garrison_edge_rules();
-        let mut sim = Simulation::new();
+        let mut sim = garrison_map(&rules);
         let building_id = 30;
         let passenger_id = 31;
         insert_captured_player_owned_garrison(&mut sim, building_id, passenger_id);
-        block_all_garrison_exit_cells(&mut sim, 10, 10, 2, 2);
+        block_all_garrison_exit_cells(&mut sim, &rules, 10, 10, 2, 2);
         if let Some(cargo) = sim
             .substrate
             .entities
@@ -1547,7 +1500,10 @@ mod tests {
         }
         let rng_before = sim.scenario_rng.state();
 
-        assert_eq!(eject_garrison_occupants(&mut sim, &rules, building_id), 1);
+        assert_eq!(
+            eject_garrison_occupants(&mut sim, &rules, None, building_id),
+            1
+        );
 
         let passenger = sim
             .substrate
@@ -1572,7 +1528,7 @@ mod tests {
     #[test]
     fn garrison_direct_scatter_uses_random_ranged_0_4_and_sets_destination() {
         let rules = garrison_edge_rules();
-        let mut sim = Simulation::new();
+        let mut sim = garrison_map(&rules);
         let building_id = 50;
         let passenger_id = insert_hidden_passenger(&mut sim, 51, building_id, "Neutral");
         give_walk_locomotor(&mut sim, passenger_id);
@@ -1600,9 +1556,15 @@ mod tests {
         );
 
         let passenger = sim.substrate.entities.get(passenger_id).unwrap();
+        // Scatter(building GetCoords, 1, 1): the away-from-centre arm takes
+        // the class setter's cell NavCom.
         assert!(
-            passenger.movement_target.is_some(),
-            "successful direct Scatter should install a movement destination after RNG"
+            matches!(
+                passenger.navigation.nav_com,
+                Some(crate::sim::components::NavTargetRef::Cell { .. })
+            ),
+            "successful Scatter should set a cell NavCom after its RNG draw: {:?}",
+            passenger.navigation.nav_com
         );
         assert!(
             passenger.order_intent.is_none(),
@@ -1613,11 +1575,11 @@ mod tests {
     #[test]
     fn garrison_destruction_no_exit_removes_without_rng_or_scatter() {
         let rules = garrison_edge_rules();
-        let mut sim = Simulation::new();
+        let mut sim = garrison_map(&rules);
         let building_id = 40;
         let passenger_id = insert_hidden_passenger(&mut sim, 41, building_id, "Neutral");
         let owner = sim.interner.intern("Americans");
-        block_all_garrison_exit_cells(&mut sim, 10, 10, 2, 2);
+        block_all_garrison_exit_cells(&mut sim, &rules, 10, 10, 2, 2);
         let rng_before = sim.scenario_rng.state();
 
         let event = DestroyedGarrisonBuilding {

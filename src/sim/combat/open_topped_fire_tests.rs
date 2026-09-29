@@ -116,7 +116,7 @@ fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
         })
         .collect();
     sim.resolve_type_handles(rules);
-    crate::sim::passenger::tick_passenger_system(sim, rules);
+    crate::sim::passenger::tick_passenger_system(sim, rules, None);
     Fortress {
         scenario,
         bfrt,

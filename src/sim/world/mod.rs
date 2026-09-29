@@ -6254,7 +6254,8 @@ impl Simulation {
             // Retaliation is not a phase: every receiver issues its Mission
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
             let phase_six_path_grid = post_terrain_path_grid;
-            passenger_ownership_changed = passenger::tick_passenger_system(self, rules);
+            passenger_ownership_changed =
+                passenger::tick_passenger_system(self, rules, overlay_registry);
             self.tick_order_intents_post_combat_except(
                 phase_six_path_grid,
                 Some(rules),
