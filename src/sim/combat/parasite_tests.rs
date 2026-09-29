@@ -11,7 +11,6 @@ use crate::sim::combat::{
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
-use std::collections::BTreeMap;
 
 const RULES: &str = "\
 [General]\nRepairPercent=15%\nRepairStep=8\n\
@@ -143,14 +142,9 @@ impl Arena {
 
     fn step(&mut self, rules: &RuleSet) {
         let commands = self.sim.take_due_commands();
-        let _ = self.sim.advance_tick(
-            &commands,
-            Some(rules),
-            &BTreeMap::new(),
-            Some(&self.grid),
-            None,
-            33,
-        );
+        let _ = self
+            .sim
+            .advance_tick(&commands, Some(rules), Some(&self.grid), None, 33);
     }
 
     fn frame(&self) -> u32 {

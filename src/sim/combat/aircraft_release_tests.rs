@@ -242,7 +242,7 @@ fn aircraft_release_snapshot_retains_burst_pending_and_mission_delay() {
 fn aircraft_release_runs_through_advance_tick() {
     let (mut sim, rules) = fixture(&serde_json::json!({"burst":2,"fighter":true}));
     sim.set_logic_order_for_test(vec![1]);
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     assert_eq!(sim.fire_events.len(), 2);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(entity.aircraft_ammo.as_ref().unwrap().release_pending());

@@ -121,7 +121,6 @@ fn capture_probe(
         },
         Some(&resources.rules),
         grid.as_deref(),
-        &resources.height_map,
         Some(&resources.overlay_registry),
     ));
     drop(grid);
@@ -189,15 +188,7 @@ fn retail_hills_engineer_cliff_start_is_rejected() {
     let owner_name = runtime.simulation.interner.resolve(owner).to_owned();
     let engineer = runtime
         .simulation
-        .spawn_object(
-            "ENGINEER",
-            &owner_name,
-            69,
-            74,
-            0,
-            &runtime.resources.rules,
-            &runtime.resources.height_map,
-        )
+        .spawn_object("ENGINEER", &owner_name, 69, 74, 0, &runtime.resources.rules)
         .unwrap();
     let bytes = GameSnapshot::save_validated(
         &runtime.simulation,
@@ -327,7 +318,6 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
             start.1,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .unwrap();
     let command = CommandEnvelope::new(

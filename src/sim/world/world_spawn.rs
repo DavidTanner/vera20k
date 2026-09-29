@@ -263,26 +263,19 @@ impl Simulation {
 impl Simulation {
     /// Spawn entities from parsed map placements into EntityStore.
     #[cfg(test)]
-    pub fn spawn_from_map(
-        &mut self,
-        entities: &[MapEntity],
-        rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
-    ) -> u32 {
-        self.spawn_from_map_with_resolved(entities, rules, height_map, None)
+    pub fn spawn_from_map(&mut self, entities: &[MapEntity], rules: Option<&RuleSet>) -> u32 {
+        self.spawn_from_map_with_resolved(entities, rules, None)
     }
 
     pub fn spawn_from_map_with_resolved(
         &mut self,
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
     ) -> u32 {
         self.spawn_from_map_with_resolved_and_overlay_registry(
             entities,
             rules,
-            height_map,
             resolved_terrain,
             None,
         )
@@ -292,14 +285,12 @@ impl Simulation {
         &mut self,
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> u32 {
         self.spawn_from_map_with_constructor_inits(
             entities,
             rules,
-            height_map,
             resolved_terrain,
             overlay_registry,
             None,
@@ -314,14 +305,12 @@ impl Simulation {
         &mut self,
         entities: &[MapEntity],
         rules: &RuleSet,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         constructor_inits: &GeneratedTechnoInitTable,
     ) -> Result<u32, GeneratedTechnoInitError> {
         self.spawn_from_map_with_constructor_inits(
             entities,
             Some(rules),
-            height_map,
             resolved_terrain,
             None,
             Some(constructor_inits),
@@ -332,7 +321,6 @@ impl Simulation {
         &mut self,
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         constructor_inits: Option<&GeneratedTechnoInitTable>,
@@ -387,10 +375,10 @@ impl Simulation {
                 );
             }
             let z: u8 = bridge_spawn.unwrap_or_else(|| {
-                height_map
-                    .get(&(map_ent.cell_x, map_ent.cell_y))
-                    .copied()
-                    .unwrap_or(0)
+                resolved_terrain
+                    .or(self.resolved_terrain.as_ref())
+                    .and_then(|terrain| terrain.cell(map_ent.cell_x, map_ent.cell_y))
+                    .map_or(0, |cell| cell.level)
             });
 
             // Typed production admission has already resolved the class type.
@@ -696,9 +684,8 @@ impl Simulation {
         ry: u16,
         facing: u8,
         rules: &RuleSet,
-        height_map: &BTreeMap<(u16, u16), u8>,
     ) -> Option<u64> {
-        let z: u8 = height_map.get(&(rx, ry)).copied().unwrap_or(0);
+        let z: u8 = self.terrain_cell_level(rx, ry).unwrap_or(0);
         self.spawn_object_at_height(type_id, owner, rx, ry, facing, z, rules)
     }
 
@@ -714,10 +701,9 @@ impl Simulation {
         ry: u16,
         facing: u8,
         rules: &RuleSet,
-        height_map: &BTreeMap<(u16, u16), u8>,
         overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
     ) -> Option<u64> {
-        let z = height_map.get(&(rx, ry)).copied().unwrap_or(0);
+        let z = self.terrain_cell_level(rx, ry).unwrap_or(0);
         self.spawn_object_at_height_with_overlay_registry(
             type_id,
             owner,

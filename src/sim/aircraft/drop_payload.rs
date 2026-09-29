@@ -517,11 +517,10 @@ mod tests {
         let (canopy_id, owner, loops) = canopy(&sim).expect("the drop attached a canopy");
         assert_eq!((owner, loops), (Some(passenger_id), u8::MAX));
 
-        let height_map = std::collections::BTreeMap::new();
         let mut wound_down = false;
         let mut played_out = false;
         for _ in 0..60 {
-            sim.advance_tick(&[], Some(&rules), &height_map, None, None, 100);
+            sim.advance_tick(&[], Some(&rules), None, None, 100);
             let falling = sim
                 .substrate
                 .entities

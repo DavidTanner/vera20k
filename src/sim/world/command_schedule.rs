@@ -16,7 +16,6 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::{self, group_destination};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
-use std::collections::BTreeMap;
 
 impl Simulation {
     /// Queue one already-prepared command for future execution.
@@ -122,7 +121,6 @@ impl Simulation {
         cmd: &CommandEnvelope,
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (bool, bool, Option<InternedId>) {
         let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
@@ -131,7 +129,6 @@ impl Simulation {
             &cmd.payload,
             rules,
             path_grid,
-            height_map,
             overlay_registry,
         );
         let placed_building_owner = self.successful_non_wall_placement_owner(cmd, applied, rules);
@@ -556,7 +553,6 @@ impl Simulation {
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         execute_tick: u64,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (usize, bool, Vec<InternedId>) {
@@ -578,7 +574,6 @@ impl Simulation {
                     command,
                     rules,
                     tail_path_grid.as_ref(),
-                    height_map,
                     overlay_registry,
                 );
                 if matches!(command.payload, Command::SellWallAtCell { .. }) {
@@ -606,7 +601,6 @@ impl Simulation {
                     command,
                     rules,
                     tail_path_grid.as_ref(),
-                    height_map,
                     overlay_registry,
                 );
                 spawned_entities |= spawned;

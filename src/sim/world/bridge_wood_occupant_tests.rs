@@ -93,7 +93,6 @@ fn spawn(scene: &mut HeadlessScenario, point: (u16, u16)) -> u64 {
             point.1,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("retail MTNK on repaired Road")

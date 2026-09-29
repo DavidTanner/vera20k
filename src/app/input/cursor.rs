@@ -1333,7 +1333,6 @@ mod tests {
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
     use crate::sim::world::Simulation;
-    use std::collections::BTreeMap;
 
     fn cursor_contract_rules() -> RuleSet {
         let ini = IniFile::from_str(
@@ -1378,15 +1377,14 @@ mod tests {
         //    consistent state with what the runtime would see.
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         // 3. Spawn a SEAL and an enemy Power Plant via the same path the
         //    barracks uses on production completion.
         let seal_id = sim
-            .spawn_object("GHOST", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("GHOST", "Americans", 5, 5, 0, &rules)
             .expect("SEAL spawned");
         let bld_id = sim
-            .spawn_object("NAPOWR", "Soviets", 10, 10, 0, &rules, &height_map)
+            .spawn_object("NAPOWR", "Soviets", 10, 10, 0, &rules)
             .expect("Power Plant spawned");
 
         // 4. Mark the SEAL as selected (mirrors clicking it in-game).
@@ -1440,13 +1438,12 @@ mod tests {
 
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         let miner_id = sim
-            .spawn_object("CMIN", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("CMIN", "Americans", 5, 5, 0, &rules)
             .expect("Chrono Miner spawned");
         let refinery_id = sim
-            .spawn_object("GAREFN", "Americans", 10, 10, 0, &rules, &height_map)
+            .spawn_object("GAREFN", "Americans", 10, 10, 0, &rules)
             .expect("Refinery spawned");
 
         if let Some(e) = sim.entities_mut().get_mut(miner_id) {
@@ -1582,9 +1579,8 @@ mod tests {
         let rules = RuleSet::from_ini(&ini).expect("track tank rules");
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let tank = sim
-            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules, &heights)
+            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules)
             .expect("tank spawned");
         assert!(
             sim.entities()
@@ -1600,9 +1596,8 @@ mod tests {
         let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let tank = sim
-            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules)
             .expect("tank spawned");
         (sim, rules, tank)
     }
@@ -1614,7 +1609,7 @@ mod tests {
 
         let (mut sim, rules, actor_id) = sim_with_tank();
         let target_id = sim
-            .spawn_object("MTNK", "Soviets", 3, 2, 0, &rules, &BTreeMap::new())
+            .spawn_object("MTNK", "Soviets", 3, 2, 0, &rules)
             .expect("enemy target");
         // Both live objects deliberately miss this allocated map. Their exact
         // Z and marked state force source +54 and target +50/+54 to read the
@@ -1937,13 +1932,12 @@ mod tests {
         let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         let truck = sim
-            .spawn_object("TRUCKA", "Americans", 9, 10, 0, &rules, &height_map)
+            .spawn_object("TRUCKA", "Americans", 9, 10, 0, &rules)
             .expect("unarmed truck");
         let arty = sim
-            .spawn_object("SREF", "Americans", 2, 2, 0, &rules, &height_map)
+            .spawn_object("SREF", "Americans", 2, 2, 0, &rules)
             .expect("secondary-only unit");
 
         let best = select_best_for_action(
@@ -1967,13 +1961,12 @@ mod tests {
         let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         let near = sim
-            .spawn_object("MTNK", "Americans", 8, 10, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 8, 10, 0, &rules)
             .expect("near tank");
         let far = sim
-            .spawn_object("MTNK", "Americans", 12, 10, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 12, 10, 0, &rules)
             .expect("far tank");
         // Nudge the far tank's sub-cell offset toward the target so that both
         // sit two cell indices away but the far one is closer in leptons.
@@ -2071,13 +2064,12 @@ mod tests {
         let rules = bomb_cursor_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         for house in ["Americans", "Soviets"] {
             let id = sim.interner.intern(house);
             sim.session.house_order.push(id);
         }
         let mut spawn = |kind: &str, owner: &str, rx: u16| {
-            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules)
                 .expect("spawned")
         };
         let ivan = spawn("IVAN", "Americans", 5);

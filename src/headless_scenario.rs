@@ -339,8 +339,6 @@ pub(crate) fn load_with_launch(
     .map_err(|error| format!("finalize authored headless load: {error}"))?;
     let resolved_terrain = output.resolved_terrain;
     let overlay_grid = output.overlay_grid;
-    let height_map = resolved_terrain.build_height_map();
-    let bridge_height_map = resolved_terrain.build_bridge_height_map();
     // Match the ordinary app's pre-launch binding: production options need
     // identities for unspawned types too, and snapshots carry this interner.
     sim.intern_rule_type_ids(&rules);
@@ -353,7 +351,6 @@ pub(crate) fn load_with_launch(
             &map,
             &house_roster,
             &rules,
-            &height_map,
             &resolved_terrain,
             &launch,
             &overlay_registry,
@@ -383,8 +380,6 @@ pub(crate) fn load_with_launch(
         runtime: crate::sim::runtime::SimRuntime {
             simulation: sim,
             resources: crate::sim::runtime::SimResources {
-                height_map,
-                bridge_height_map,
                 overlay_registry,
                 terrain_template: None,
                 rules,
@@ -479,14 +474,12 @@ mod retail_construction_tests {
             (extent, extent),
             "Fill allocates the extent the descriptor announced"
         );
-        let height_map = resolved.build_height_map();
         crate::sim::runtime::populate_staged_scenario_with_generated_inits(
             &mut sim,
             map,
             &resolved,
             theater_name,
             rules,
-            &height_map,
             None,
             None,
             bridge_destroyability_mode,
@@ -966,7 +959,7 @@ mod retail_construction_tests {
             let id = free
                 .by_ref()
                 .find_map(|(rx, ry)| {
-                    let z = resources.height_map.get(&(rx, ry)).copied().unwrap_or(0);
+                    let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
                     sim.spawn_object_at_height(type_name, &owner, rx, ry, 0, z, &resources.rules)
                 })
                 .expect("a free cell near the Yuri base");

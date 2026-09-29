@@ -30,7 +30,6 @@ use crate::sim::movement::fresh_oracle_seam::{self, FreshCallRecord, SuppliedPat
 use crate::sim::movement::track_process::TrackFamily;
 use crate::sim::world::Simulation;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 /// The oracle's Unit type (MovementZone Normal, SpeedType Track, or Wheel
 /// for its SpeedType-2 rows) for both locomotors; O5 carries +22D Crushable
@@ -108,7 +107,6 @@ fn unit(
             general.wheeled_downhill,
         );
     let terrain = sim.resolved_terrain.as_mut().unwrap();
-    let mut heights = BTreeMap::new();
     for cell in input["cells"].as_array().into_iter().flatten() {
         let (x, y) = pair(cell);
         let level = cell[2].as_u64().unwrap() as u8;
@@ -116,7 +114,6 @@ fn unit(
         target.level = level;
         // Cell+140, the bridge bits the +68B comparison reads.
         target.bridge_facts.raw_flags = cell[3].as_u64().unwrap() as u32;
-        heights.insert((x as u16, y as u16), level);
     }
     for overlay in input["overlays"].as_array().into_iter().flatten() {
         let (x, y) = pair(overlay);
@@ -164,7 +161,7 @@ fn unit(
     let kind = kind.as_str();
     sim.session.binary_frame = 100;
     let id = sim
-        .spawn_object(kind, "Americans", 10, 10, 0, &rules, &heights)
+        .spawn_object(kind, "Americans", 10, 10, 0, &rules)
         .unwrap_or_else(|| panic!("spawn {kind}: {input}"));
     sim.mission_assign_exact(id, MissionId::from_known(MissionType::Move), 100)
         .unwrap();

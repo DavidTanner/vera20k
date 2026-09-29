@@ -1174,15 +1174,7 @@ fn keep_undefeated(
             if !open {
                 return None;
             }
-            sim.spawn_object(
-                "GAPOWR",
-                "Americans",
-                x,
-                y,
-                0,
-                &resources.rules,
-                &resources.height_map,
-            )
+            sim.spawn_object("GAPOWR", "Americans", x, y, 0, &resources.rules)
         })
         .expect("room for a power plant away from the scene")
 }
@@ -1239,24 +1231,9 @@ fn retail_dustbowl_crews_scatter_off_their_wrecks() {
                 if !open {
                     return None;
                 }
-                let mcv = sim.spawn_object(
-                    "AMCV",
-                    "Americans",
-                    x,
-                    y,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
-                let plant = sim.spawn_object(
-                    "GAPOWR",
-                    "Americans",
-                    x - 3,
-                    y,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                let mcv = sim.spawn_object("AMCV", "Americans", x, y, 0, &resources.rules)?;
+                let plant =
+                    sim.spawn_object("GAPOWR", "Americans", x - 3, y, 0, &resources.rules)?;
                 Some((mcv, plant))
             })
             .expect("an MCV cell with room for a power plant");
@@ -1384,9 +1361,7 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
             if !spaced || open() != Some(true) {
                 continue;
             }
-            if let Some(id) =
-                sim.spawn_object(kind, "Americans", x, y, 0, rules, &resources.height_map)
-            {
+            if let Some(id) = sim.spawn_object(kind, "Americans", x, y, 0, rules) {
                 placed = Some((id, (x, y)));
                 break;
             }
@@ -1402,7 +1377,6 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
                         if i < 3 { ty + 1 } else { ty - 1 },
                         0,
                         rules,
-                        &resources.height_map,
                     )
                     .expect("GI spawns");
                 sim.substrate.entities.get_mut(id).unwrap().passenger_role =

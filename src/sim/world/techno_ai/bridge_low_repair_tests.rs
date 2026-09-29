@@ -98,7 +98,6 @@ fn retail_shrapnel_engineer_repairs_authored_water_gap() {
             55,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .expect("ordinary Engineer placement on the hut's bank");
     let command = CommandEnvelope::new(
@@ -216,7 +215,6 @@ fn cross_repaired_road(scene: &mut HeadlessScenario) {
             55,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("ordinary FV on the north road");
@@ -343,7 +341,6 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
             55,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .unwrap();
     let ship = runtime
@@ -355,7 +352,6 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
             59,
             64,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("ordinary AEGIS placement in the untouched water lane");

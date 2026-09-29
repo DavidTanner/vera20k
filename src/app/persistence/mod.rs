@@ -1031,7 +1031,6 @@ mod tests {
         state.runtime.resources.rules = rules;
         state.runtime.resources.overlay_registry = registry;
         state.runtime.resources.terrain_template = Some(terrain);
-        state.runtime.resources.height_map.insert((3, 4), 7);
         state.runtime.resources.waypoints.insert(
             701,
             crate::map::waypoints::Waypoint {
@@ -1070,7 +1069,6 @@ mod tests {
         );
         let runtime = &mut state.runtime;
         let _occupied_overlays = prepared.commit_into(runtime);
-        assert_eq!(runtime.resources.height_map.get(&(3, 4)), Some(&7));
         assert_eq!(state.startup, startup_before);
         assert!(state.startup.admits_exact_step());
         assert_eq!(

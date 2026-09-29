@@ -455,7 +455,6 @@ mod tests {
         assert_eq!(rules.general.ambient_change_interval_frames, 1);
         let mut sim = Simulation::with_seed(0x420);
         let owner = sim.interner.intern("Americans");
-        let heights = std::collections::BTreeMap::new();
         let rng_before = sim.scenario_rng.state();
 
         let sw_test = sim.interner.intern("SWTEST");
@@ -466,7 +465,7 @@ mod tests {
             "a deferred request must not select Ion"
         );
 
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(
             sim.session.lighting.selected_profile,
             ScenarioLightingProfile::Ion,
@@ -478,7 +477,7 @@ mod tests {
             "the pre-ore ambient rung already ran before activation"
         );
 
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(sim.lightning_storm.is_some());
         assert_eq!(sim.session.lighting.current_ambient, 87);
         assert_eq!(
@@ -489,7 +488,7 @@ mod tests {
             1
         );
 
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(sim.lightning_storm.is_some());
         assert_eq!(
             sim.lightning_storm
@@ -503,7 +502,7 @@ mod tests {
             ScenarioLightingProfile::Ion
         );
 
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(
             sim.lightning_storm
                 .as_ref()
@@ -517,7 +516,7 @@ mod tests {
             "the explicit ending turn retains Ion lighting"
         );
 
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(sim.lightning_storm.is_none());
         assert_eq!(
             sim.session.lighting.selected_profile,
@@ -529,7 +528,7 @@ mod tests {
             "cleanup selects Normal after this frame's ambient rung"
         );
 
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(sim.session.lighting.current_ambient, 100);
         assert_eq!(sim.scenario_rng.state(), rng_before);
     }
@@ -728,10 +727,9 @@ mod tests {
         let mut sim = Simulation::with_seed(0x42);
         let lighting_before = sim.session.lighting;
         let rng_before = sim.scenario_rng.state();
-        let heights = std::collections::BTreeMap::new();
 
         for _ in 0..400 {
-            sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+            sim.advance_tick(&[], Some(&rules), None, None, 67);
         }
 
         assert_eq!(sim.session.lighting, lighting_before);

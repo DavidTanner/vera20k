@@ -3,8 +3,6 @@
 use crate::sim::movement::locomotion::LocomotorSlot;
 use crate::sim::movement::locomotion::piggyback::StashedLocomotor;
 
-use std::collections::BTreeMap;
-
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
 use crate::rules::art_data::ArtRegistry;
@@ -241,15 +239,7 @@ fn spawn_stock_miner(
     expected_kind: MinerKind,
 ) -> u64 {
     let id = sim
-        .spawn_object(
-            type_id,
-            "Americans",
-            START.0,
-            START.1,
-            0,
-            &oracle.rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object(type_id, "Americans", START.0, START.1, 0, &oracle.rules)
         .unwrap_or_else(|| panic!("spawn {type_id}"));
     let entity = sim.substrate.entities.get(id).expect("spawned miner");
     assert!(entity.lifecycle.object_alive);
@@ -326,15 +316,7 @@ fn spawn_stock_refinery(
         seed_human_house(sim, "Americans");
     }
     let id = sim
-        .spawn_object(
-            "GAREFN",
-            "Americans",
-            anchor.0,
-            anchor.1,
-            0,
-            &oracle.rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("GAREFN", "Americans", anchor.0, anchor.1, 0, &oracle.rules)
         .expect("spawn GAREFN");
     let entity = sim.substrate.entities.get(id).expect("spawned refinery");
     assert!(entity.lifecycle.object_alive);
@@ -381,7 +363,6 @@ fn advance(sim: &mut Simulation, oracle: &OutboundContractOracle, grid: &PathGri
     let _ = sim.advance_tick(
         &[],
         Some(&oracle.rules),
-        &BTreeMap::new(),
         Some(grid),
         Some(&oracle.overlays),
         67,
@@ -907,7 +888,6 @@ fn gsi_04_07_placement_miner_return_threads_live_wall_neighbor_authority() {
         let _ = sim.advance_tick(
             &[],
             Some(&oracle.rules),
-            &BTreeMap::new(),
             Some(&grid),
             Some(&overlay_registry),
             67,

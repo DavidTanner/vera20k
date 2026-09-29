@@ -756,15 +756,7 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
         let ore = map_cell(cell_x, cell_y).unwrap()["overlay"].is_i64();
         let (plant, mcv) = if !ore {
             let plant = sim
-                .spawn_object(
-                    "GAPOWR",
-                    "Americans",
-                    cell_x,
-                    cell_y,
-                    0,
-                    rules,
-                    &resources.height_map,
-                )
+                .spawn_object("GAPOWR", "Americans", cell_x, cell_y, 0, rules)
                 .expect("a power plant on the clean cells");
             (plant, None)
         } else {
@@ -784,24 +776,8 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
                     if !open {
                         return None;
                     }
-                    let mcv = sim.spawn_object(
-                        "AMCV",
-                        "Americans",
-                        x,
-                        y,
-                        0,
-                        rules,
-                        &resources.height_map,
-                    )?;
-                    let plant = sim.spawn_object(
-                        "GAPOWR",
-                        "Americans",
-                        x - 3,
-                        y,
-                        0,
-                        rules,
-                        &resources.height_map,
-                    )?;
+                    let mcv = sim.spawn_object("AMCV", "Americans", x, y, 0, rules)?;
+                    let plant = sim.spawn_object("GAPOWR", "Americans", x - 3, y, 0, rules)?;
                     Some((plant, mcv))
                 })
                 .expect("an MCV cell with room for a power plant");

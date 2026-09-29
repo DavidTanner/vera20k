@@ -2388,8 +2388,7 @@ mod tests {
 
     /// Helper: advance a sim by one tick with empty inputs.
     fn tick(sim: &mut Simulation) {
-        let height_map = BTreeMap::new();
-        sim.advance_tick(&[], None, &height_map, None, None, 67);
+        sim.advance_tick(&[], None, None, None, 67);
     }
 
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
@@ -2417,7 +2416,7 @@ mod tests {
         use crate::sim::snapshot::{GameSnapshot, SnapshotRestoreError};
         use crate::sim::terrain_object::TerrainObjectState;
         use crate::sim::world::Simulation;
-        use std::collections::{BTreeMap, BTreeSet};
+        use std::collections::BTreeSet;
 
         fn tiberium_fixture() -> (RuleSet, OverlayTypeRegistry, u8) {
             let ini = IniFile::from_str(
@@ -2830,14 +2829,7 @@ mod tests {
                 (timer_before.start_frame(), timer_before.duration()),
                 (91, 0)
             );
-            restored.advance_tick(
-                &[],
-                Some(&rules),
-                &BTreeMap::new(),
-                None,
-                Some(&registry),
-                67,
-            );
+            restored.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
 
             let class = &restored
                 .production
@@ -5176,27 +5168,13 @@ mod tests {
         assert_eq!(restored.projected_in_game_options_speed(), Some(4));
 
         let due = restored.take_due_commands();
-        let result = restored.advance_tick(
-            &due,
-            None,
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        let result = restored.advance_tick(&due, None, None, None, 67);
         assert_eq!(result.executed_commands, 1);
         assert_eq!(restored.session.game_options.game_speed, 4);
         assert!(restored.pending_commands_for_tests().is_empty());
         assert_eq!(result.state_hash, restored.state_hash());
 
-        let second = restored.advance_tick(
-            &[],
-            None,
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        let second = restored.advance_tick(&[], None, None, None, 67);
         assert_eq!(second.executed_commands, 0);
         assert_eq!(restored.session.game_options.game_speed, 4);
     }

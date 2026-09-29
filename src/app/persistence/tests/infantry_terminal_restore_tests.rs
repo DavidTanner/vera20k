@@ -59,7 +59,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
         object.infantry_terminal,
         Some(InfantryTerminal::RetireNextVisit)
     );
-    restored.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+    restored.advance_tick(&[], Some(&rules), None, None, 100);
     let object = restored
         .substrate
         .entities
@@ -105,7 +105,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
             .view(owner, ProductionCategory::Infantry)
             .is_none_or(|view| view.object.is_none())
     );
-    restored.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+    restored.advance_tick(&[], Some(&rules), None, None, 100);
     assert!(!restored.substrate.entities.contains(held));
     assert!(!restored.live_object_order_snapshot().contains(&held));
 }
@@ -161,7 +161,6 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
         .advance_app_frame(
             &[CommandEnvelope::new(owner, 1, Command::ExitMatch)],
             Some(&rules),
-            &BTreeMap::new(),
             Some(&registry),
             67,
             TickLane::Ordinary,
@@ -225,7 +224,6 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
         .advance_app_frame(
             &[],
             Some(&rules),
-            &BTreeMap::new(),
             Some(&registry),
             67,
             TickLane::Ordinary,
@@ -283,7 +281,7 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
                     .health
                     .current = 0;
                 saved.begin_infantry_death_sequence(victim, sequence);
-                saved.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+                saved.advance_tick(&[], Some(&rules), None, None, 100);
                 assert_eq!(
                     saved
                         .substrate
@@ -324,8 +322,8 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
             Some(terminal)
         );
         for visit in 1..=remaining_visits {
-            saved.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
-            restored.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+            saved.advance_tick(&[], Some(&rules), None, None, 100);
+            restored.advance_tick(&[], Some(&rules), None, None, 100);
             assert_eq!(
                 restored.substrate.entities.contains(victim),
                 visit < remaining_visits,

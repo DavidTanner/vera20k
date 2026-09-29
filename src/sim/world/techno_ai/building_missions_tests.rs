@@ -100,20 +100,9 @@ pub(super) fn fixture(
 ) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(16));
-    let heights = BTreeMap::new();
-    let building = sim
-        .spawn_object(kind, "Americans", 5, 5, 0, rules, &heights)
-        .unwrap();
+    let building = sim.spawn_object(kind, "Americans", 5, 5, 0, rules).unwrap();
     let target = sim
-        .spawn_object(
-            "SHED",
-            "Russians",
-            target_cell.0,
-            target_cell.1,
-            0,
-            rules,
-            &heights,
-        )
+        .spawn_object("SHED", "Russians", target_cell.0, target_cell.1, 0, rules)
         .unwrap();
     sim.session.binary_frame = FRAME;
     (sim, building, target)
@@ -579,12 +568,11 @@ fn building_dispatch_cadence_matches_the_original() {
         let rules = rules(".016", input["rof"].as_u64().unwrap() as u32);
         let mut sim = Simulation::new();
         sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(16));
-        let heights = BTreeMap::new();
         let building = sim
-            .spawn_object("DEF", "Americans", 5, 5, 0, &rules, &heights)
+            .spawn_object("DEF", "Americans", 5, 5, 0, &rules)
             .unwrap();
         let target = sim
-            .spawn_object("SHED", "Russians", 8, 5, 0, &rules, &heights)
+            .spawn_object("SHED", "Russians", 8, 5, 0, &rules)
             .unwrap();
         let owner = sim.interner.intern("Americans");
         let events: BTreeMap<u64, Event> = input["events"]
@@ -654,7 +642,7 @@ fn building_dispatch_cadence_matches_the_original() {
                 ));
             }
             sim.fire_events.clear();
-            sim.advance_tick(&commands, Some(&rules), &heights, None, None, 67);
+            sim.advance_tick(&commands, Some(&rules), None, None, 67);
             assert_eq!(u64::from(sim.session.binary_frame - start), k, "{name}");
 
             let at = format!("{name} frame {k}");
@@ -836,9 +824,9 @@ pub(super) fn retail_dustbowl_defence(
             if !open {
                 return None;
             }
-            let truck = sim.spawn_object(mcv, enemy, x + 5, y, 0, rules, &resources.height_map)?;
+            let truck = sim.spawn_object(mcv, enemy, x + 5, y, 0, rules)?;
             let defence = sim
-                .spawn_object(kind, owner, x, y, 0, rules, &resources.height_map)
+                .spawn_object(kind, owner, x, y, 0, rules)
                 .expect("the defence stands where the MCV does");
             Some((defence, truck, x, y))
         })
@@ -847,9 +835,7 @@ pub(super) fn retail_dustbowl_defence(
         (20..120_u16)
             .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
             .filter(|&(px, py)| px.abs_diff(x).max(py.abs_diff(y)) >= 24)
-            .find_map(|(px, py)| {
-                sim.spawn_object(plant, house, px, py, 0, rules, &resources.height_map)
-            })
+            .find_map(|(px, py)| sim.spawn_object(plant, house, px, py, 0, rules))
             .unwrap_or_else(|| panic!("room for {plant}"));
     }
     for (house, ally) in [
@@ -892,15 +878,7 @@ fn retail_spawn(
         resources,
     } = &mut scenario.runtime;
     let id = sim
-        .spawn_object(
-            kind,
-            owner,
-            cell.0,
-            cell.1,
-            0,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object(kind, owner, cell.0, cell.1, 0, &resources.rules)
         .expect("spawns");
     sim.resolve_type_handles(&resources.rules);
     id
@@ -1173,15 +1151,7 @@ fn retail_dustbowl_prism_towers_forward_their_charge() {
             .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
             .filter(|&(px, py)| px.abs_diff(x).max(py.abs_diff(y)) >= 30)
             .find_map(|(px, py)| {
-                sim.spawn_object(
-                    "GAPOWR",
-                    "Americans",
-                    px,
-                    py,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )
+                sim.spawn_object("GAPOWR", "Americans", px, py, 0, &resources.rules)
             })
             .expect("room for a second GAPOWR");
         sim.resolve_type_handles(&resources.rules);

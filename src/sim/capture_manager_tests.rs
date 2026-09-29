@@ -1108,14 +1108,7 @@ fn an_attack_order_captures_without_damage() {
     ));
     for _ in 0..90 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
         if sim
             .substrate
             .entities
@@ -1431,14 +1424,7 @@ fn an_iron_curtained_target_refuses_the_capture_at_fire_time() {
     let mut dropped = false;
     for _ in 0..120 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
         let targeting = sim
             .substrate
             .entities

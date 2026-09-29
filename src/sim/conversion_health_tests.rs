@@ -3,7 +3,6 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::estimated_health::EstimatedHealth;
 use crate::sim::world::Simulation;
-use std::collections::BTreeMap;
 
 #[test]
 fn original_conversion_health_corpus() {
@@ -128,7 +127,7 @@ fn building_conversion_reads_health_when_animation_finishes() {
         .get_mut(source)
         .unwrap()
         .finish_pack_up_for_test();
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 22);
+    sim.advance_tick(&[], Some(&rules), None, None, 22);
     assert!(sim.substrate.entities.get(source).is_none());
     let destination = sim
         .substrate
@@ -169,7 +168,7 @@ fn undeploy(sim: &mut Simulation, rules: &RuleSet, building: u64, into: &str) ->
         .get_mut(building)
         .unwrap()
         .finish_pack_up_for_test();
-    sim.advance_tick(&[], Some(rules), &BTreeMap::new(), None, None, 22);
+    sim.advance_tick(&[], Some(rules), None, None, 22);
     sim.substrate
         .entities
         .values()
@@ -243,7 +242,7 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
     assert_health(&sim, yard, 750_000);
     // The 31-frame Buildup at rate 1 completes by the 32nd frame.
     for _ in 0..32 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 22);
+        sim.advance_tick(&[], Some(&rules), None, None, 22);
     }
     assert!(
         sim.substrate
@@ -259,7 +258,7 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
         .get_mut(yard)
         .unwrap()
         .finish_pack_up_for_test();
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 22);
+    sim.advance_tick(&[], Some(&rules), None, None, 22);
     let mcv = sim
         .substrate
         .entities
@@ -332,7 +331,7 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
     assert_eq!(sim.scenario_rng.state(), before_rng);
     // Drive the actual simulation completion producer.
     for _ in 0..31 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     let destination = sim.entities().get(destination_id).unwrap();
     assert!(destination.building_up.is_none());

@@ -159,11 +159,10 @@ pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String)) -> S
     // allied Unit standing there (Unlimbo lists it and sets its vehicle
     // bit), or only the raw vehicle bit (`+0x124` 0x20), as a Drive holding
     // the cell as its next one.
-    let heights = std::collections::BTreeMap::new();
     for at in input["units"].as_array().into_iter().flatten() {
         let (x, y) = cell(at);
         s.sim
-            .spawn_object("MTNK", "Americans", x, y, 0, &s.rules, &heights)
+            .spawn_object("MTNK", "Americans", x, y, 0, &s.rules)
             .expect("standing unit");
     }
     for at in input["reserved"].as_array().into_iter().flatten() {

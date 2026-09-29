@@ -3,7 +3,6 @@ use crate::rules::ini_parser::IniFile;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::movement::FacingClass;
 use crate::sim::world::TickResult;
-use std::collections::BTreeMap;
 
 fn fixture(kind: &str, facing: u8, rot: u8, deploy_facing: u8) -> (Simulation, RuleSet, u64) {
     fixture_with_sound(kind, facing, rot, deploy_facing, None)
@@ -25,7 +24,7 @@ fn fixture_with_sound(
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     // No house AI/opponent defeat system in these command/locomotor fixtures.
     let id = sim
-        .spawn_object(kind, "Americans", 20, 22, facing, &rules, &BTreeMap::new())
+        .spawn_object(kind, "Americans", 20, 22, facing, &rules)
         .unwrap();
     (sim, rules, id)
 }
@@ -41,14 +40,7 @@ fn tick(sim: &mut Simulation, rules: &RuleSet, command: Option<Command>) -> Tick
         })
         .collect();
     let grid = sim.path_grid.clone();
-    sim.advance_tick(
-        &cmds,
-        Some(rules),
-        &BTreeMap::new(),
-        grid.as_deref(),
-        None,
-        22,
-    )
+    sim.advance_tick(&cmds, Some(rules), grid.as_deref(), None, 22)
 }
 fn yards(sim: &Simulation) -> usize {
     sim.substrate
@@ -319,7 +311,7 @@ fn placement_is_rechecked_on_turn_completion() {
     tick(&mut sim, &rules, None);
     // A structure arrives after the initial attempt has already accepted the turn.
     let blocker = sim
-        .spawn_object("YARD", "Americans", 19, 21, 0, &rules, &BTreeMap::new())
+        .spawn_object("YARD", "Americans", 19, 21, 0, &rules)
         .unwrap();
     for _ in 0..35 {
         tick(&mut sim, &rules, None);
@@ -432,7 +424,7 @@ fn retail_mcv_and_target_rules_deploy_with_one_command() {
             let mut sim = Simulation::new();
             crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
             let id = sim
-                .spawn_object(kind, "Americans", 20, 22, facing, &rules, &BTreeMap::new())
+                .spawn_object(kind, "Americans", 20, 22, facing, &rules)
                 .unwrap();
             tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
             let mut converted = false;
@@ -552,7 +544,7 @@ fn blocked_or_unconfigured_mcv_deploy_does_not_emit_deploy_sound() {
         tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
         tick(&mut sim, &rules, None);
         if blocked {
-            sim.spawn_object("YARD", "Americans", 19, 21, 0, &rules, &BTreeMap::new())
+            sim.spawn_object("YARD", "Americans", 19, 21, 0, &rules)
                 .unwrap();
         }
         for _ in 0..50 {
@@ -602,7 +594,7 @@ fn house_fixture(human: bool, land: &str) -> (Simulation, RuleSet, u64) {
     sim.houses.insert(owner, house);
     sim.session.house_order.push(owner);
     let id = sim
-        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &BTreeMap::new())
+        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
         .unwrap();
     (sim, rules, id)
 }
@@ -651,7 +643,7 @@ fn try_to_deploy_admits_a_clear_spot_where_the_unit_stands() {
 #[test]
 fn try_to_deploy_drives_to_the_first_clear_site_in_table_order() {
     let (mut sim, rules, id) = house_fixture(false, BUILDABLE);
-    sim.spawn_object("AMCV", "Americans", 20, 21, 0, &rules, &BTreeMap::new())
+    sim.spawn_object("AMCV", "Americans", 20, 21, 0, &rules)
         .unwrap();
     assert!(!try_to_deploy(&mut sim, id, &rules, None));
     let mcv = sim.substrate.entities.get(id).unwrap();
@@ -705,7 +697,7 @@ fn a_computer_house_without_a_yard_hunts_and_deploys_its_mcv() {
 #[test]
 fn a_computer_mcv_on_guard_unloads_when_its_house_has_a_yard() {
     let (mut sim, rules, id) = house_fixture(false, BUILDABLE);
-    sim.spawn_object("YARD", "Americans", 4, 4, 0, &rules, &BTreeMap::new())
+    sim.spawn_object("YARD", "Americans", 4, 4, 0, &rules)
         .unwrap();
     let owner = sim.interner.get("Americans").unwrap();
     assert_eq!(sim.houses[&owner].build_const_order.len(), 1);
@@ -789,7 +781,7 @@ fn retail_dustbowl_computer_mcv() -> (
             if !site || !alone {
                 return None;
             }
-            let id = sim.spawn_object("SMCV", "Russians", x, y, 0, rules, &resources.height_map)?;
+            let id = sim.spawn_object("SMCV", "Russians", x, y, 0, rules)?;
             Some((id, (x, y)))
         })
         .expect("flat, empty buildable ground for the yard");
@@ -1099,15 +1091,7 @@ fn retail_dustbowl_a_computer_without_its_yard_sells_off_and_hunts() {
             resources,
         } = &mut scenario.runtime;
         let tank = sim
-            .spawn_object(
-                "HTNK",
-                "Russians",
-                x + 4,
-                y + 4,
-                0,
-                &resources.rules,
-                &resources.height_map,
-            )
+            .spawn_object("HTNK", "Russians", x + 4, y + 4, 0, &resources.rules)
             .expect("a tank beside the MCV");
         sim.resolve_type_handles(&resources.rules);
         tank

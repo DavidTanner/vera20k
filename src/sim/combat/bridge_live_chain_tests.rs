@@ -470,7 +470,6 @@ fn retail_bridge_forcefire_chain(vehicle_name: &str, weapon_name: &str, projecti
             bank.1,
             0,
             &resources.rules,
-            &resources.height_map,
         ) {
             selected = Some((attacker, bank, target));
             break;

@@ -1184,16 +1184,8 @@ SpreadPercentage=.06
         assert_eq!(state.midpoint_frame, 11);
 
         let path_grid = PathGrid::test_all_passable(32, 32);
-        let height_map = BTreeMap::new();
         let advance = |sim: &mut Simulation| {
-            sim.advance_tick(
-                &[],
-                Some(&rules),
-                &height_map,
-                Some(&path_grid),
-                Some(&registry),
-                67,
-            )
+            sim.advance_tick(&[], Some(&rules), Some(&path_grid), Some(&registry), 67)
         };
 
         assert!(advance(&mut sim).frame_committed);
@@ -1677,7 +1669,6 @@ SpreadPercentage=.06
         assert_eq!(sim.production.terrain_occupation_bits[&(10, 5)], 4);
 
         let grid = PathGrid::test_all_passable(64, 64);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         sim.queue_command(CommandEnvelope::new(
             owner_id,
             sim.session.tick + 1,
@@ -1695,7 +1686,7 @@ SpreadPercentage=.06
         let mut last_health = 200;
         for _ in 0..600 {
             let pending = sim.take_due_commands();
-            sim.advance_tick(&pending, Some(&rules), &height_map, Some(&grid), None, 100);
+            sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
             shots += sim.fire_events.len();
             targeted |= sim
                 .substrate

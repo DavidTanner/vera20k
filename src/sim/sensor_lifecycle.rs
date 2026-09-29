@@ -588,14 +588,7 @@ mod tests {
         );
         sim.substrate.entities.get_mut(id).unwrap().building_up =
             Some(BuildingUp::completing_in_ticks(1, 0));
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(
             sim.substrate
                 .entities
@@ -636,14 +629,7 @@ mod tests {
         let soviet = sim.substrate.entities.get(id).unwrap().owner;
         sim.substrate.entities.get_mut(id).unwrap().building_up =
             Some(BuildingUp::completing_in_ticks(1, 0));
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(sim.fog.has_sensor_for_house(soviet, 54, 40));
         assert!(sim.fog.detects_disguise_for_house(soviet, 54, 40));
 
@@ -713,14 +699,7 @@ mod tests {
         let soviet = sim.substrate.entities.get(id).unwrap().owner;
         sim.substrate.entities.get_mut(id).unwrap().building_up =
             Some(BuildingUp::completing_in_ticks(1, 0));
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
 
         let americans = sim.interner.intern("Americans");
         sim.change_owner(id, americans);
@@ -862,7 +841,6 @@ mod tests {
             .flat_map(|ry| (0u16..64).map(move |rx| (rx, ry)))
             .find(|&(rx, ry)| !bounds.contains_height_aware_packed(rx.into(), ry.into(), 0, 0))
             .expect("mode-one outside cell");
-        let height = std::collections::BTreeMap::new();
         sim.spawn_from_map(
             &[
                 MapEntity {
@@ -903,7 +881,6 @@ mod tests {
                 },
             ],
             Some(&rules),
-            &height,
         );
         assert_eq!(
             sim.substrate

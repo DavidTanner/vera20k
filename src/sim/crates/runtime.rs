@@ -802,11 +802,8 @@ mod tests {
     /// regeneration rung, and the same tick with the Crates option off does not.
     #[test]
     fn advance_tick_reaches_crate_regeneration_only_while_crates_are_on() {
-        use std::collections::BTreeMap;
-
         let rules = crate_ruleset("");
         let registry = crate_registry();
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         let due_slot = CrateSlot {
             start_frame: -1,
@@ -820,7 +817,7 @@ mod tests {
         on.session.game_mode_nonzero = true;
         on.session.game_options.crates = true;
         *on.crate_authority.slot_mut(0) = due_slot;
-        on.advance_tick(&[], Some(&rules), &height_map, None, Some(&registry), 33);
+        on.advance_tick(&[], Some(&rules), None, Some(&registry), 33);
         let regenerated = on.crate_authority.slots()[0];
         assert_ne!(
             regenerated, due_slot,
@@ -849,7 +846,7 @@ mod tests {
         off.session.game_mode_nonzero = true;
         off.session.game_options.crates = false;
         *off.crate_authority.slot_mut(0) = due_slot;
-        off.advance_tick(&[], Some(&rules), &height_map, None, Some(&registry), 33);
+        off.advance_tick(&[], Some(&rules), None, Some(&registry), 33);
         assert_eq!(
             off.crate_authority.slots()[0],
             due_slot,

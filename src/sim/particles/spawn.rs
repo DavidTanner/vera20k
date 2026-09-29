@@ -967,7 +967,6 @@ mod gsi_05_13_electric_bolt_sparks {
     use crate::sim::game_entity::GameEntity;
     use crate::sim::pathfinding::PathGrid;
     use crate::sim::world::{RevealOutcome, Simulation};
-    use std::collections::BTreeMap;
 
     /// A Tesla-shaped fixture: one `IsElectricBolt=yes` weapon, the
     /// `[CombatDamage] DefaultSparkSystem` key it resolves through, and the
@@ -1027,7 +1026,6 @@ mod gsi_05_13_electric_bolt_sparks {
 
         let owner_id = sim.interner.intern("Americans");
         let grid = PathGrid::test_all_passable(64, 64);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         sim.queue_command(CommandEnvelope::new(
             owner_id,
@@ -1041,7 +1039,7 @@ mod gsi_05_13_electric_bolt_sparks {
         let mut spark_system_id = None;
         for _ in 0..200 {
             let pending = sim.take_due_commands();
-            sim.advance_tick(&pending, Some(&rules), &height_map, Some(&grid), None, 100);
+            sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
             if let Some((&id, _)) = sim.particle_systems().iter().next() {
                 spark_system_id = Some(id);
                 break;
@@ -1104,7 +1102,6 @@ mod gsi_05_13_electric_bolt_sparks {
 
         let owner_id = sim.interner.intern("Americans");
         let grid = PathGrid::test_all_passable(64, 64);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         sim.queue_command(CommandEnvelope::new(
             owner_id,
             sim.session.tick + 1,
@@ -1117,7 +1114,7 @@ mod gsi_05_13_electric_bolt_sparks {
         let mut fired = false;
         for _ in 0..200 {
             let pending = sim.take_due_commands();
-            sim.advance_tick(&pending, Some(&rules), &height_map, Some(&grid), None, 100);
+            sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
             if !sim.fire_events.is_empty() {
                 fired = true;
             }

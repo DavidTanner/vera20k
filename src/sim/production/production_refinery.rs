@@ -2,8 +2,6 @@
 //!
 //! Extracted from production_placement.rs for file-size limits.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::find_nearby_cell::{
@@ -43,7 +41,6 @@ pub(crate) fn spawn_completed_refinery_free_units(
     completed_building_ids: &[u64],
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let mut any_spawned = false;
@@ -84,7 +81,6 @@ pub(crate) fn spawn_completed_refinery_free_units(
             width,
             height,
             path_grid,
-            height_map,
             overlay_registry,
         );
     }
@@ -103,7 +99,6 @@ fn try_spawn_refinery_free_unit(
     width: u16,
     height: u16,
     path_grid: Option<&PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if !rules.is_refinery_type(building_type_id) {
@@ -126,10 +121,7 @@ fn try_spawn_refinery_free_unit(
     // the primary target; it is overwritten by whichever attempt commits, and the
     // object is not on the map until one does.
     let (initial_rx, initial_ry) = primary.unwrap_or(search_seed);
-    let initial_z = height_map
-        .get(&(initial_rx, initial_ry))
-        .copied()
-        .unwrap_or(0);
+    let initial_z = sim.terrain_cell_level(initial_rx, initial_ry).unwrap_or(0);
     let Some(free_unit_id) = sim.spawn_object_limbo_at_height(
         &free_unit_type,
         owner,
@@ -159,7 +151,6 @@ fn try_spawn_refinery_free_unit(
             FREE_UNIT_FACING_PRIMARY,
             rules,
             building_id,
-            height_map,
             overlay_registry,
         )
     {
@@ -197,7 +188,6 @@ fn try_spawn_refinery_free_unit(
             FREE_UNIT_FACING_FALLBACK,
             rules,
             building_id,
-            height_map,
             overlay_registry,
         ) {
             log::info!(
@@ -233,7 +223,6 @@ fn try_place_free_unit(
     facing: u8,
     rules: &RuleSet,
     producer_id: u64,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     // BuildingClass::OnConstructionComplete @ 0x00445F80 invokes the newly
@@ -250,7 +239,7 @@ fn try_place_free_unit(
         rx,
         ry,
         facing,
-        height_map.get(&(rx, ry)).copied().unwrap_or(0),
+        sim.terrain_cell_level(rx, ry).unwrap_or(0),
         PlacementEvidence::EvaluateMark,
         rules,
         overlay_registry,

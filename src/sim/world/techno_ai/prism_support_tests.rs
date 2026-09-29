@@ -170,7 +170,6 @@ impl Fixture {
             owner,
             crate::sim::house_state::HouseState::new(owner, 0, None, false, 0, 10),
         );
-        let heights = BTreeMap::new();
         let mut buildings = BTreeMap::new();
         let mut spawned = Vec::new();
         let towers = input["towers"].as_array().cloned().unwrap_or_default();
@@ -191,7 +190,7 @@ impl Fixture {
         for (index, (name, kind, offset)) in named.enumerate() {
             let rx = 2 + 2 * index as u16;
             let id = sim
-                .spawn_object(kind, "Americans", rx, 40, 0, &rules, &heights)
+                .spawn_object(kind, "Americans", rx, 40, 0, &rules)
                 .unwrap_or_else(|| panic!("{name} spawns"));
             place(&mut sim, id, offset);
             buildings.insert(name, id);
@@ -200,7 +199,7 @@ impl Fixture {
         // Unlimbo's House+68 appends, in spawn order.
         assert_eq!(sim.houses[&owner].base_projection.buildings(), spawned);
         let target = sim
-            .spawn_object("SHED", "Russians", 15, 12, 0, &rules, &heights)
+            .spawn_object("SHED", "Russians", 15, 12, 0, &rules)
             .unwrap();
         // No power state: every tower is operational until `unpower`.
         sim.power_states.clear();

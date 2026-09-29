@@ -421,7 +421,6 @@ mod tests {
     #[test]
     fn headless_and_app_frames_share_synchronous_bale_authority() {
         let rules = refinery_rules_and_art();
-        let height_map = std::collections::BTreeMap::new();
         let mut app_sim = refinery_sim_with_bale();
         let mut headless_sim = refinery_sim_with_bale();
         begin_refinery_unload_gate(&mut app_sim, &rules, 41);
@@ -431,15 +430,13 @@ mod tests {
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &height_map,
                 None,
                 67,
                 crate::sim::world::TickLane::Ordinary,
                 None,
             )
             .expect("fixture frame must complete");
-        let headless_tick =
-            headless_sim.advance_tick(&[], Some(&rules), &height_map, None, None, 67);
+        let headless_tick = headless_sim.advance_tick(&[], Some(&rules), None, None, 67);
 
         assert_eq!(app_output.tick.state_hash, headless_tick.state_hash);
         assert_eq!(app_output.tick.state_hash, app_sim.state_hash());
@@ -466,7 +463,6 @@ mod tests {
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &std::collections::BTreeMap::new(),
                 None,
                 67,
                 crate::sim::world::TickLane::Ordinary,

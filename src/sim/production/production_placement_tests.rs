@@ -101,13 +101,12 @@ fn ready_and_place(
     type_id: &str,
     rx: u16,
     ry: u16,
-    height_map: &BTreeMap<(u16, u16), u8>,
 ) -> u64 {
     ready_building(sim, rules, owner, type_id);
     let owner_id = sim.interner.intern(owner);
     let type_ref = sim.interner.get(type_id).expect("ready type interned");
     assert!(place_ready_building_without_overlays(
-        sim, rules, owner, type_id, rx, ry, height_map
+        sim, rules, owner, type_id, rx, ry
     ));
     sim.substrate
         .entities
@@ -157,8 +156,7 @@ fn gap_operational_actual_placement_waits_for_build_up_and_next_building_turn() 
     sim.fog.reveal_all_for_owner(owner);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let grid = PathGrid::new(64, 64);
-    let heights = BTreeMap::new();
-    let id = ready_and_place(&mut sim, &rules, "Americans", "GAGAP", 12, 10, &heights);
+    let id = ready_and_place(&mut sim, &rules, "Americans", "GAGAP", 12, 10);
     assert!(
         sim.substrate
             .entities
@@ -168,7 +166,7 @@ fn gap_operational_actual_placement_waits_for_build_up_and_next_building_turn() 
             .is_some()
     );
     sim.set_logic_order_for_test(vec![1, id]);
-    sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(
         !sim.substrate
             .entities
@@ -178,7 +176,7 @@ fn gap_operational_actual_placement_waits_for_build_up_and_next_building_turn() 
     );
     assert!(!sim.fog.is_cell_gap_covered(viewer, 12, 10));
     set_ticks_until_completion(&mut sim, id, 1);
-    sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(
         sim.substrate
             .entities
@@ -191,7 +189,7 @@ fn gap_operational_actual_placement_waits_for_build_up_and_next_building_turn() 
         !sim.fog.is_cell_gap_covered(viewer, 12, 10),
         "late completion is not a gap writer"
     );
-    sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(sim.fog.is_cell_gap_covered(viewer, 12, 10));
 }
 
@@ -283,19 +281,18 @@ fn complete_stock_allied_refinery(
     let mut sim = placement_sim();
     sim.session.binary_frame = start_frame;
     let rules = stock_refinery_completion_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut grid = PathGrid::new(64, 64);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 14, 20);
-    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20, &height_map);
+    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20);
     block_building_foundation(&mut grid, &rules, "GAREFN", 20, 20);
     for &(rx, ry) in extra_blockers {
-        sim.spawn_object("BLOCKER", "Russians", rx, ry, 0, &rules, &height_map)
+        sim.spawn_object("BLOCKER", "Russians", rx, ry, 0, &rules)
             .expect("fixture blocker should spawn");
     }
     install_refinery_test_terrain(&mut sim);
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(
         completion.spawned_entities,
         "frame {start_frame}: refinery completion should report the free unit"
@@ -329,15 +326,7 @@ fn resolved_clear_grid_with_override(
 fn spawn_standing_blocker(sim: &mut Simulation, rules: &RuleSet, cell: (u16, u16)) -> u64 {
     let terrain = sim.resolved_terrain.take();
     let id = sim
-        .spawn_object(
-            "BLOCKER",
-            "Russians",
-            cell.0,
-            cell.1,
-            0,
-            rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("BLOCKER", "Russians", cell.0, cell.1, 0, rules)
         .expect("fixture blocker spawns");
     sim.resolved_terrain = terrain;
     id
@@ -647,7 +636,6 @@ fn completed_building_moves_into_ready_placement_pool() {
 fn place_ready_building_spawns_and_consumes_ready_item() {
     let mut sim = placement_sim();
     let rules = build_catalog_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
 
     let americans = sim.interner.intern("Americans");
@@ -679,7 +667,6 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
         "GACNST",
         20,
         20,
-        &height_map
     ));
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
@@ -744,7 +731,6 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
     let mut sim = placement_sim();
     let mut rules = stock_power_contract_rules();
     rules.set_buildup_control_for_test("GAPOWR", [0, 26, 2]);
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
     let americans = sim.interner.intern("Americans");
     sim.houses.insert(
@@ -753,7 +739,7 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
     );
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
 
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
     let place = CommandEnvelope::new(
@@ -766,7 +752,7 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
         },
     );
     let placed_frame = sim.session.binary_frame;
-    let tick = sim.advance_tick(&[place], Some(&rules), &height_map, Some(&grid), None, 67);
+    let tick = sim.advance_tick(&[place], Some(&rules), Some(&grid), None, 67);
     assert_eq!(tick.executed_commands, 1);
     let placed = sim
         .substrate
@@ -779,7 +765,7 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
     let mut completed = None;
     for _ in 0..80 {
         let frame = sim.session.binary_frame;
-        sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         if sim
             .substrate
             .entities
@@ -813,7 +799,6 @@ fn a_placed_building_completes_its_buildup_after_the_command_frame() {
 fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
     let mut sim = placement_sim();
     let rules = stock_power_contract_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
@@ -822,7 +807,7 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
 
-    sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     let outage = sim
         .power_states
         .get(&americans)
@@ -852,7 +837,7 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
         },
     );
 
-    let tick = sim.advance_tick(&[place], Some(&rules), &height_map, Some(&grid), None, 67);
+    let tick = sim.advance_tick(&[place], Some(&rules), Some(&grid), None, 67);
     assert_eq!(tick.executed_commands, 1);
 
     let placed = sim
@@ -875,7 +860,7 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
     // House update ordering within the placement command frame remains
     // unverified. Advance to the next guaranteed assessment while buildup is
     // still active rather than certifying an unsupported one-frame claim.
-    sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(
         sim.substrate.entities.values().any(|entity| {
             entity.owner == americans && entity.type_ref == gapowr && entity.building_up.is_some()
@@ -906,11 +891,15 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
 fn place_ready_building_accepts_clear_mixed_height_footprint() {
     let mut sim = placement_sim();
     let rules = placement_radius_rules();
-    let mut height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
 
     for (cell, z) in [((12, 10), 0), ((13, 10), 1), ((12, 11), 2), ((13, 11), 3)] {
-        height_map.insert(cell, z);
+        sim.resolved_terrain
+            .as_mut()
+            .expect("placement fixture terrain")
+            .cell_mut(cell.0, cell.1)
+            .expect("footprint cell")
+            .level = z;
     }
 
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
@@ -934,7 +923,6 @@ fn place_ready_building_accepts_clear_mixed_height_footprint() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 
     assert!(sim.substrate.entities.values().any(|e| {
@@ -950,7 +938,6 @@ fn place_ready_building_accepts_clear_mixed_height_footprint() {
 fn place_ready_building_rejects_blocked_cell_inside_mixed_height_footprint() {
     let mut sim = placement_sim();
     let rules = placement_radius_rules();
-    let mut height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |cell| {
         if (cell.rx, cell.ry) == (13, 11) {
             cell.yr_cell_land_type = LandType::Rock.as_index();
@@ -959,7 +946,12 @@ fn place_ready_building_rejects_blocked_cell_inside_mixed_height_footprint() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
 
     for (cell, z) in [((12, 10), 0), ((13, 10), 1), ((12, 11), 2), ((13, 11), 3)] {
-        height_map.insert(cell, z);
+        sim.resolved_terrain
+            .as_mut()
+            .expect("placement fixture terrain")
+            .cell_mut(cell.0, cell.1)
+            .expect("footprint cell")
+            .level = z;
     }
 
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
@@ -971,7 +963,6 @@ fn place_ready_building_rejects_blocked_cell_inside_mixed_height_footprint() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
     assert_eq!(
         ready_buildings_for_owner(&sim, &rules, "Americans").len(),
@@ -984,16 +975,15 @@ fn place_ready_building_rejects_blocked_cell_inside_mixed_height_footprint() {
 fn stock_refinery_free_unit_spawns_on_building_up_completion_once() {
     let mut sim = placement_sim();
     let rules = stock_refinery_completion_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut grid = PathGrid::new(64, 64);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 14, 20);
-    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20, &height_map);
+    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20);
     block_building_foundation(&mut grid, &rules, "GAREFN", 20, 20);
     install_refinery_test_terrain(&mut sim);
     set_ticks_until_completion(&mut sim, refinery_id, 2);
 
     assert!(unit_ids(&sim, "Americans", "CMIN").is_empty());
-    let before_completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let before_completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(!before_completion.spawned_entities);
     assert!(
         sim.substrate
@@ -1003,7 +993,7 @@ fn stock_refinery_free_unit_spawns_on_building_up_completion_once() {
     );
     assert!(unit_ids(&sim, "Americans", "CMIN").is_empty());
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(completion.spawned_entities);
     assert!(
         sim.substrate
@@ -1013,7 +1003,7 @@ fn stock_refinery_free_unit_spawns_on_building_up_completion_once() {
     );
     assert_eq!(unit_ids(&sim, "Americans", "CMIN").len(), 1);
 
-    let later = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let later = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(!later.spawned_entities);
     assert_eq!(unit_ids(&sim, "Americans", "CMIN").len(), 1);
 }
@@ -1113,23 +1103,14 @@ fn refinery_whose_primary_cell_clears_its_footprint_keeps_the_primary_cell_and_f
     ))
     .expect("1x1 refinery rules should parse");
     let mut sim = placement_sim();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
-    let refinery_id = ready_and_place(
-        &mut sim,
-        &rules,
-        "Americans",
-        "MODPROC",
-        20,
-        20,
-        &height_map,
-    );
+    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "MODPROC", 20, 20);
     install_refinery_test_terrain(&mut sim);
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(completion.spawned_entities);
     let free_unit_ids = unit_ids(&sim, "Americans", "MODHARV");
     assert_eq!(free_unit_ids.len(), 1);
@@ -1159,10 +1140,9 @@ fn refinery_whose_primary_cell_clears_its_footprint_keeps_the_primary_cell_and_f
 fn occupied_primary_bay_uses_one_fallback_without_overlap() {
     let mut sim = placement_sim();
     let rules = stock_refinery_completion_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut grid = PathGrid::new(64, 64);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 14, 20);
-    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20, &height_map);
+    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20);
     block_building_foundation(&mut grid, &rules, "GAREFN", 20, 20);
     let blocker_id = spawn_standing_blocker(&mut sim, &rules, (22, 22));
     assert!(sim.substrate.occupancy.contains_entity(22, 22, refinery_id));
@@ -1170,7 +1150,7 @@ fn occupied_primary_bay_uses_one_fallback_without_overlap() {
     install_refinery_test_terrain(&mut sim);
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(completion.spawned_entities);
     let cmin_ids = unit_ids(&sim, "Americans", "CMIN");
     assert_eq!(
@@ -1265,10 +1245,9 @@ fn live_occupant_on_a_candidate_cell_drops_that_cell_from_the_fallback_pool() {
 fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
     let mut sim = placement_sim();
     let rules = stock_refinery_completion_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut grid = PathGrid::new(64, 64);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 14, 20);
-    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20, &height_map);
+    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20);
     spawn_standing_blocker(&mut sim, &rules, (22, 22));
     for ry in 0..64 {
         for rx in 0..64 {
@@ -1276,7 +1255,7 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
         }
     }
     *super::credits_entry_for_owner(&mut sim, "Americans") = 100;
-    sim.spawn_object("NAINDP", "Americans", 40, 40, 0, &rules, &height_map)
+    sim.spawn_object("NAINDP", "Americans", 40, 40, 0, &rules)
         .expect("the Industrial Plant unlimbos");
     let americans = sim.interner.get("Americans").expect("owner should exist");
     let owned_units_before = sim.owned_object_counts(americans).1;
@@ -1294,7 +1273,7 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
     }
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(
         !completion.spawned_entities,
         "a constructed-then-destroyed FreeUnit is not a successful spawn"
@@ -1314,7 +1293,7 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
         "the discarded FreeUnit must not stay counted"
     );
 
-    let later = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let later = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(!later.spawned_entities);
     assert_eq!(
         credits_for_owner(&sim, "Americans"),
@@ -1333,15 +1312,14 @@ fn stock_soviet_refinery_completion_spawns_harv() {
     let mut sim = placement_sim();
     sim.session.binary_frame = SELECTION_FRAME;
     let rules = stock_refinery_completion_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut grid = PathGrid::new(64, 64);
     spawn_structure(&mut sim, 1, "Russians", "NACNST", 14, 20);
-    let refinery_id = ready_and_place(&mut sim, &rules, "Russians", "NAREFN", 20, 20, &height_map);
+    let refinery_id = ready_and_place(&mut sim, &rules, "Russians", "NAREFN", 20, 20);
     block_building_foundation(&mut grid, &rules, "NAREFN", 20, 20);
     install_refinery_test_terrain(&mut sim);
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(completion.spawned_entities);
     let harvester_id = unit_ids(&sim, "Russians", "HARV")
         .into_iter()
@@ -1377,10 +1355,9 @@ fn stock_soviet_refinery_completion_spawns_harv() {
 fn non_refinery_completion_has_no_free_unit_or_credit_side_effect() {
     let mut sim = placement_sim();
     let rules = stock_refinery_completion_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
     let construction_yard_id = sim
-        .spawn_object("GACNST", "Americans", 20, 20, 0, &rules, &height_map)
+        .spawn_object("GACNST", "Americans", 20, 20, 0, &rules)
         .expect("construction yard should spawn");
     sim.substrate
         .entities
@@ -1389,7 +1366,7 @@ fn non_refinery_completion_has_no_free_unit_or_credit_side_effect() {
         .building_up = Some(BuildingUp::completing_in_ticks(1, 0));
     let credits_before = credits_for_owner(&sim, "Americans");
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(!completion.spawned_entities);
     assert!(unit_ids(&sim, "Americans", "CMIN").is_empty());
     assert!(unit_ids(&sim, "Americans", "HARV").is_empty());
@@ -1400,14 +1377,11 @@ fn non_refinery_completion_has_no_free_unit_or_credit_side_effect() {
 fn simultaneous_refinery_completions_preserve_stable_id_order() {
     let mut sim = placement_sim();
     let rules = stock_refinery_completion_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut grid = PathGrid::new(64, 64);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 14, 20);
     spawn_structure(&mut sim, 2, "Russians", "NACNST", 14, 35);
-    let allied_refinery =
-        ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20, &height_map);
-    let soviet_refinery =
-        ready_and_place(&mut sim, &rules, "Russians", "NAREFN", 20, 35, &height_map);
+    let allied_refinery = ready_and_place(&mut sim, &rules, "Americans", "GAREFN", 20, 20);
+    let soviet_refinery = ready_and_place(&mut sim, &rules, "Russians", "NAREFN", 20, 35);
     assert!(allied_refinery < soviet_refinery);
     block_building_foundation(&mut grid, &rules, "GAREFN", 20, 20);
     block_building_foundation(&mut grid, &rules, "NAREFN", 20, 35);
@@ -1415,7 +1389,7 @@ fn simultaneous_refinery_completions_preserve_stable_id_order() {
     set_ticks_until_completion(&mut sim, allied_refinery, 1);
     set_ticks_until_completion(&mut sim, soviet_refinery, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(completion.spawned_entities);
     let cmin = unit_ids(&sim, "Americans", "CMIN");
     let harv = unit_ids(&sim, "Russians", "HARV");
@@ -1450,24 +1424,15 @@ fn modded_refinery_completion_uses_free_unit_from_rules() {
     ))
     .expect("rules should parse");
     let mut sim = placement_sim();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
-    let refinery_id = ready_and_place(
-        &mut sim,
-        &rules,
-        "Americans",
-        "MODPROC",
-        20,
-        20,
-        &height_map,
-    );
+    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "MODPROC", 20, 20);
     assert!(unit_ids(&sim, "Americans", "MODHARV").is_empty());
     install_refinery_test_terrain(&mut sim);
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(completion.spawned_entities);
     assert_eq!(unit_ids(&sim, "Americans", "MODHARV").len(), 1);
 }
@@ -1494,22 +1459,13 @@ fn refinery_without_free_unit_spawns_nothing_on_completion() {
     ))
     .expect("rules should parse");
     let mut sim = placement_sim();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
-    let refinery_id = ready_and_place(
-        &mut sim,
-        &rules,
-        "Americans",
-        "MODPROC",
-        20,
-        20,
-        &height_map,
-    );
+    let refinery_id = ready_and_place(&mut sim, &rules, "Americans", "MODPROC", 20, 20);
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
-    let completion = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 67);
+    let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(!completion.spawned_entities);
     assert!(unit_ids(&sim, "Americans", "MODHARV").is_empty());
 }
@@ -1518,7 +1474,6 @@ fn refinery_without_free_unit_spawns_nothing_on_completion() {
 fn place_ready_building_rejects_blocked_or_overlapping_cells() {
     let mut sim = placement_sim();
     let rules = build_catalog_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut grid = PathGrid::new(64, 64);
     grid.set_blocked(31, 31, true);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 30, 30);
@@ -1537,7 +1492,6 @@ fn place_ready_building_rejects_blocked_or_overlapping_cells() {
         "GACNST",
         31,
         31,
-        &height_map
     ));
     assert!(!place_ready_building_without_overlays(
         &mut sim,
@@ -1546,7 +1500,6 @@ fn place_ready_building_rejects_blocked_or_overlapping_cells() {
         "GACNST",
         40,
         40,
-        &height_map
     ));
     assert_eq!(
         ready_buildings_for_owner(&sim, &rules, "Americans").len(),
@@ -1558,14 +1511,13 @@ fn place_ready_building_rejects_blocked_or_overlapping_cells() {
 #[test]
 fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
     let rules = ground_occupant_placement_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     for blocker_type in ["MTNK", "E1"] {
         let mut sim = placement_sim();
         spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
         let blocker_id = sim
-            .spawn_object(blocker_type, "Americans", 13, 11, 0, &rules, &height_map)
+            .spawn_object(blocker_type, "Americans", 13, 11, 0, &rules)
             .expect("real spawn/unlimbo should mark the mobile occupant");
         assert!(
             sim.substrate.occupancy.contains_entity(13, 11, blocker_id),
@@ -1614,14 +1566,7 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
                 ry: 10,
             },
         );
-        let tick = sim.advance_tick(
-            &[rejected],
-            Some(&rules),
-            &height_map,
-            Some(&grid),
-            None,
-            67,
-        );
+        let tick = sim.advance_tick(&[rejected], Some(&rules), Some(&grid), None, 67);
 
         assert_eq!(tick.executed_commands, 1);
         assert!(
@@ -1678,14 +1623,7 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
                 ry: 10,
             },
         );
-        let tick = sim.advance_tick(
-            &[accepted],
-            Some(&rules),
-            &height_map,
-            Some(&grid),
-            None,
-            67,
-        );
+        let tick = sim.advance_tick(&[accepted], Some(&rules), Some(&grid), None, 67);
         assert!(tick.spawned_entities);
         assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
         assert!(sim.substrate.entities.values().any(|entity| {
@@ -1701,7 +1639,6 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
 fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() {
     let mut sim = placement_sim();
     let rules = ground_occupant_placement_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
 
@@ -1730,14 +1667,7 @@ fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() 
             ry: 10,
         },
     );
-    let tick = sim.advance_tick(
-        &[rejected],
-        Some(&rules),
-        &height_map,
-        Some(&grid),
-        None,
-        67,
-    );
+    let tick = sim.advance_tick(&[rejected], Some(&rules), Some(&grid), None, 67);
 
     assert_eq!(tick.executed_commands, 1);
     assert!(!tick.spawned_entities);
@@ -1780,14 +1710,7 @@ fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() 
             ry: 10,
         },
     );
-    let tick = sim.advance_tick(
-        &[accepted],
-        Some(&rules),
-        &height_map,
-        Some(&grid),
-        None,
-        67,
-    );
+    let tick = sim.advance_tick(&[accepted], Some(&rules), Some(&grid), None, 67);
     assert!(tick.spawned_entities);
     assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
 }
@@ -1795,7 +1718,6 @@ fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() 
 #[test]
 fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     let mut clear_sim = placement_sim();
     spawn_structure(&mut clear_sim, 1, "Americans", "GACNST", 10, 10);
@@ -1824,7 +1746,6 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
             "GAWALL",
             12,
             10,
-            &height_map,
             Some(&registry)
         ),
         "the ordinary empty-cell wall commit must remain accepted"
@@ -1897,7 +1818,6 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
             "GAWALL",
             12,
             10,
-            &height_map,
             Some(&registry)
         ),
         "the occupied primary wall commit must be rejected"
@@ -1954,7 +1874,6 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
 #[test]
 fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let path_grid = PathGrid::new(64, 64);
     let mut sim = placement_sim();
     *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
@@ -1996,7 +1915,6 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
             },
         )],
         Some(&rules),
-        &height_map,
         Some(&path_grid),
         Some(&registry),
         67,
@@ -2046,7 +1964,6 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
 #[test]
 fn gsi_04_07_regular_wall_autofill_is_cardinal_ordered_bounded_and_consumes_once() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     sim.overlay_grid = Some(OverlayGrid::new(64, 64));
@@ -2127,7 +2044,6 @@ fn gsi_04_07_regular_wall_autofill_is_cardinal_ordered_bounded_and_consumes_once
         "GAWALL",
         origin.0,
         origin.1,
-        &height_map,
         Some(&registry)
     ));
     assert!(
@@ -2218,7 +2134,6 @@ fn gsi_04_07_regular_wall_autofill_is_cardinal_ordered_bounded_and_consumes_once
 #[test]
 fn gsi_04_07_regular_wall_autofill_rejects_out_of_range_and_foreign_endpoints() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let overlay_id = registry.id_for_name("GAWALL").expect("wall overlay");
 
     let mut out_of_range = placement_sim();
@@ -2276,7 +2191,6 @@ fn gsi_04_07_regular_wall_autofill_rejects_out_of_range_and_foreign_endpoints() 
         "GAWALL",
         18,
         18,
-        &height_map,
         Some(&registry)
     ));
     assert_eq!(
@@ -2294,7 +2208,6 @@ fn gsi_04_07_regular_wall_autofill_rejects_out_of_range_and_foreign_endpoints() 
 #[test]
 fn gsi_04_07_wall_placement_resolves_art_tooverlay_not_building_id() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     sim.overlay_grid = Some(OverlayGrid::new(64, 64));
@@ -2308,7 +2221,6 @@ fn gsi_04_07_wall_placement_resolves_art_tooverlay_not_building_id() {
         "WALLKIT",
         12,
         10,
-        &height_map,
         Some(&registry)
     ));
     let wall = sim
@@ -2323,7 +2235,6 @@ fn gsi_04_07_wall_placement_resolves_art_tooverlay_not_building_id() {
 #[test]
 fn gsi_04_07_wall_execution_recomputes_preview_gap_after_a_blocker_appears() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     sim.overlay_grid = Some(OverlayGrid::new(64, 64));
@@ -2360,7 +2271,6 @@ fn gsi_04_07_wall_execution_recomputes_preview_gap_after_a_blocker_appears() {
         "GAWALL",
         18,
         18,
-        &height_map,
         Some(&registry)
     ));
     assert_eq!(
@@ -2377,7 +2287,6 @@ fn gsi_04_07_wall_execution_recomputes_preview_gap_after_a_blocker_appears() {
 #[test]
 fn gsi_04_07_wall_placement_publishes_connectivity_neighbor_auto_destruction() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     sim.overlay_grid = Some(OverlayGrid::new(64, 64));
@@ -2411,7 +2320,6 @@ fn gsi_04_07_wall_placement_publishes_connectivity_neighbor_auto_destruction() {
         "GAWALL",
         12,
         10,
-        &height_map,
         Some(&registry)
     ));
     assert_eq!(
@@ -2468,7 +2376,6 @@ fn gsi_04_07_wall_placement_publishes_connectivity_neighbor_auto_destruction() {
 #[test]
 fn gsi_04_07_placement_command_places_only_its_own_houses_production() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let path_grid = PathGrid::new(64, 64);
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Russians", "GACNST", 10, 10);
@@ -2488,7 +2395,6 @@ fn gsi_04_07_placement_command_places_only_its_own_houses_production() {
             },
         )],
         Some(&rules),
-        &height_map,
         Some(&path_grid),
         Some(&registry),
         67,
@@ -2514,7 +2420,6 @@ fn gsi_04_07_placement_command_places_only_its_own_houses_production() {
 #[test]
 fn gsi_04_07_wall_replacement_requires_damaged_same_type_and_owner_and_stays_local() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
-    let height_map = BTreeMap::new();
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     sim.overlay_grid = Some(OverlayGrid::new(64, 64));
@@ -2567,7 +2472,6 @@ fn gsi_04_07_wall_replacement_requires_damaged_same_type_and_owner_and_stays_loc
         "GAWALL",
         12,
         10,
-        &height_map,
         Some(&registry)
     ));
 
@@ -2589,7 +2493,6 @@ fn gsi_04_07_wall_replacement_requires_damaged_same_type_and_owner_and_stays_loc
 #[test]
 fn place_ready_building_requires_base_normal_provider_within_adjacent_range() {
     let rules = placement_radius_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
@@ -2602,7 +2505,6 @@ fn place_ready_building_requires_base_normal_provider_within_adjacent_range() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 
     let mut far_sim = placement_sim();
@@ -2622,7 +2524,6 @@ fn place_ready_building_requires_base_normal_provider_within_adjacent_range() {
         "GAPOWR",
         20,
         10,
-        &height_map
     ));
 }
 
@@ -2630,7 +2531,6 @@ fn place_ready_building_requires_base_normal_provider_within_adjacent_range() {
 fn base_normal_false_structures_do_not_extend_build_area() {
     let mut sim = placement_sim();
     let rules = placement_radius_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GAGAP", 10, 10);
     let americans = sim.interner.intern("Americans");
@@ -2646,7 +2546,6 @@ fn base_normal_false_structures_do_not_extend_build_area() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 }
 
@@ -2654,7 +2553,6 @@ fn base_normal_false_structures_do_not_extend_build_area() {
 fn build_off_ally_enabled_accepts_allied_eligible_provider() {
     let mut sim = placement_sim();
     let rules = build_off_ally_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Alliance", "GACNST", 10, 10);
     mark_allied(&mut sim, "Americans", "Alliance");
@@ -2667,7 +2565,6 @@ fn build_off_ally_enabled_accepts_allied_eligible_provider() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 }
 
@@ -2675,7 +2572,6 @@ fn build_off_ally_enabled_accepts_allied_eligible_provider() {
 fn build_off_ally_disabled_rejects_allied_eligible_provider() {
     let mut sim = placement_sim();
     let rules = build_off_ally_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     sim.session.game_options.build_off_ally = false;
     spawn_structure(&mut sim, 1, "Alliance", "GACNST", 10, 10);
@@ -2689,7 +2585,6 @@ fn build_off_ally_disabled_rejects_allied_eligible_provider() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 }
 
@@ -2697,7 +2592,6 @@ fn build_off_ally_disabled_rejects_allied_eligible_provider() {
 fn build_off_ally_requires_eligibile_for_ally_building() {
     let mut sim = placement_sim();
     let rules = build_off_ally_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Alliance", "GAPOWR", 10, 10);
     mark_allied(&mut sim, "Americans", "Alliance");
@@ -2710,7 +2604,6 @@ fn build_off_ally_requires_eligibile_for_ally_building() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 }
 
@@ -2718,7 +2611,6 @@ fn build_off_ally_requires_eligibile_for_ally_building() {
 fn build_off_ally_off_keeps_own_base_provider() {
     let mut sim = placement_sim();
     let rules = build_off_ally_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     sim.session.game_options.build_off_ally = false;
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
@@ -2731,7 +2623,6 @@ fn build_off_ally_off_keeps_own_base_provider() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 }
 
@@ -2782,7 +2673,6 @@ fn placement_preview_reports_blocked_terrain() {
 fn place_ready_building_rejects_bridge_deck_cells() {
     let mut sim = placement_sim();
     let rules = placement_radius_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
@@ -2807,7 +2697,6 @@ fn place_ready_building_rejects_bridge_deck_cells() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 
     let preview =
@@ -2820,7 +2709,6 @@ fn place_ready_building_rejects_bridge_deck_cells() {
 fn place_ready_building_rejects_native_gap_restamp_cells() {
     let mut sim = placement_sim();
     let rules = placement_radius_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
@@ -2872,7 +2760,6 @@ fn place_ready_building_rejects_native_gap_restamp_cells() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 
     let preview =
@@ -2889,7 +2776,6 @@ fn place_ready_building_rejects_native_gap_restamp_cells() {
 fn place_ready_building_rejects_canonical_ramp_cells() {
     let mut sim = placement_sim();
     let rules = placement_radius_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
@@ -2913,7 +2799,6 @@ fn place_ready_building_rejects_canonical_ramp_cells() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 
     let preview =
@@ -2933,7 +2818,6 @@ fn place_ready_building_rejects_canonical_ramp_cells() {
 fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
     let mut sim = placement_sim();
     let rules = placement_radius_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
@@ -2971,7 +2855,6 @@ fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
         "GAPOWR",
         12,
         10,
-        &height_map
     ));
 }
 
@@ -2979,7 +2862,6 @@ fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
 fn gsi_04_04_water_bound_building_rejects_beach_zone() {
     let mut sim = placement_sim();
     let rules = naval_yard_placement_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     ready_building(&mut sim, &rules, "Americans", "GAYARD");
@@ -3001,7 +2883,6 @@ fn gsi_04_04_water_bound_building_rejects_beach_zone() {
         "GAYARD",
         20,
         20,
-        &height_map
     ));
 
     let preview =
@@ -3014,7 +2895,6 @@ fn gsi_04_04_water_bound_building_rejects_beach_zone() {
 fn gsi_04_04_water_bound_building_accepts_water_zone() {
     let mut sim = placement_sim();
     let rules = naval_yard_placement_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     ready_building(&mut sim, &rules, "Americans", "GAYARD");
@@ -3036,7 +2916,6 @@ fn gsi_04_04_water_bound_building_accepts_water_zone() {
         "GAYARD",
         20,
         20,
-        &height_map
     ));
 }
 
@@ -3541,9 +3420,8 @@ fn a_placed_slave_refinery_waits_out_its_build_up_in_the_deployed_state() {
     ))
     .expect("slave refinery rules");
     let mut sim = placement_sim();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 14, 20);
-    let refinery = ready_and_place(&mut sim, &rules, "Americans", "YAREFN", 16, 20, &height_map);
+    let refinery = ready_and_place(&mut sim, &rules, "Americans", "YAREFN", 16, 20);
     let entity = sim.substrate.entities.get(refinery).unwrap();
     assert!(entity.building_up.is_some(), "placed buildings build up");
     let manager = entity

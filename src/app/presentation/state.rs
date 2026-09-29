@@ -49,6 +49,12 @@ pub(crate) struct MatchPresentationState {
     pub(crate) sidebar_chrome: Option<SidebarChromeSet>,
     pub(crate) software_cursor: Option<crate::app::presentation::render::SoftwareCursor>,
     pub(crate) terrain_grid: Option<TerrainGrid>,
+    /// Load-time cell levels for click and hover resolution. A presentation
+    /// copy: the simulation reads its live terrain, and this is not refreshed
+    /// when a bridge body or cliff rewrites a level.
+    pub(crate) height_map: BTreeMap<(u16, u16), u8>,
+    /// Load-time high-bridge deck levels for the same click resolution.
+    pub(crate) bridge_height_map: BTreeMap<(u16, u16), u8>,
     /// Last mutable MapClass playfield authority installed into presentation.
     /// `None` is an explicit stale gate (new map / quickload); the inner
     /// optional bounds preserves fail-closed absence without inventing a rect.

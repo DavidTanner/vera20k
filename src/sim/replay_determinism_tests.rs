@@ -4,8 +4,6 @@
 //! (`Simulation::advance_tick`, `ReplayRunner::run_fixture`) are `#[cfg(test)]`
 //! since F09, so this coverage must live inside the lib test harness.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::{EntityCategory, MapEntity};
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::pathfinding::PathGrid;
@@ -34,8 +32,7 @@ fn make_test_sim() -> Simulation {
         structure_ai_sellable: false,
         structure_ai_repairable: false,
     };
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    sim.spawn_from_map(&[entity], None, &heights);
+    sim.spawn_from_map(&[entity], None);
     sim
 }
 
@@ -55,7 +52,6 @@ fn make_move_command() -> CommandEnvelope {
 fn run_with_frame_profile(total_ms: u32, frame_ms: u32) -> (u64, Vec<u64>, ReplayLog) {
     let mut sim = make_test_sim();
     let grid = PathGrid::new(32, 32);
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut pending = vec![make_move_command()];
     let mut acc_ms: u64 = 0;
     let mut hashes: Vec<u64> = Vec::new();
@@ -87,7 +83,7 @@ fn run_with_frame_profile(total_ms: u32, frame_ms: u32) -> (u64, Vec<u64>, Repla
                 }
             });
 
-            let result = sim.advance_tick(&due, None, &height_map, Some(&grid), None, TICK_MS);
+            let result = sim.advance_tick(&due, None, Some(&grid), None, TICK_MS);
             hashes.push(result.state_hash);
             replay.record_tick(result.tick, due, result.state_hash);
         }
@@ -147,8 +143,7 @@ fn replay_reapplies_header_seed() {
             structure_ai_sellable: false,
             structure_ai_repairable: false,
         };
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-        sim.spawn_from_map(&[entity], None, &heights);
+        sim.spawn_from_map(&[entity], None);
         sim
     }
 
@@ -166,7 +161,6 @@ fn replay_reapplies_header_seed() {
     };
     let mut sim = sim_with_unit(&desc);
     let grid = PathGrid::new(32, 32);
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut replay = ReplayLog::new(ReplayHeader {
         pixel_conversion_bounds: sim.session.pixel_conversion_bounds,
         version: 1,
@@ -190,7 +184,7 @@ fn replay_reapplies_header_seed() {
                 true
             }
         });
-        let r = sim.advance_tick(&due, None, &heights, Some(&grid), None, TICK_MS);
+        let r = sim.advance_tick(&due, None, Some(&grid), None, TICK_MS);
         replay.record_tick(r.tick, due, r.state_hash);
         live.push(r.state_hash);
     }
@@ -203,8 +197,7 @@ fn replay_reapplies_header_seed() {
         ..Default::default()
     };
     let mut playback = sim_with_unit(&descriptor_from_header(&replay.header));
-    let replayed =
-        ReplayRunner::run_fixture(&mut playback, &replay, None, &heights, Some(&grid), TICK_MS);
+    let replayed = ReplayRunner::run_fixture(&mut playback, &replay, None, Some(&grid), TICK_MS);
     assert_eq!(
         live, replayed,
         "playback from header.seed must match the recorded timeline"
@@ -214,8 +207,7 @@ fn replay_reapplies_header_seed() {
     let mut corrupted = replay.clone();
     corrupted.header.seed ^= 1;
     let mut wrong = sim_with_unit(&descriptor_from_header(&corrupted.header));
-    let diverged =
-        ReplayRunner::run_fixture(&mut wrong, &corrupted, None, &heights, Some(&grid), TICK_MS);
+    let diverged = ReplayRunner::run_fixture(&mut wrong, &corrupted, None, Some(&grid), TICK_MS);
     assert_ne!(
         live, diverged,
         "a corrupted header seed must not reproduce the timeline"
@@ -228,15 +220,8 @@ fn replay_playback_matches_live_hash_timeline() {
 
     let mut replay_sim = make_test_sim();
     let grid = PathGrid::new(32, 32);
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    let playback_timeline = ReplayRunner::run_fixture(
-        &mut replay_sim,
-        &replay,
-        None,
-        &height_map,
-        Some(&grid),
-        TICK_MS,
-    );
+    let playback_timeline =
+        ReplayRunner::run_fixture(&mut replay_sim, &replay, None, Some(&grid), TICK_MS);
 
     assert_eq!(
         live_timeline, playback_timeline,

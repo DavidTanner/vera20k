@@ -345,12 +345,8 @@ fn production_rules(fire_up: u32) -> RuleSet {
 fn production_pair(rules: &RuleSet) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(flat_level_zero_terrain(16, 16));
-    let firer = sim
-        .spawn_object("E1", "Americans", 5, 5, 0, rules, &BTreeMap::new())
-        .unwrap();
-    let target = sim
-        .spawn_object("E2", "Russians", 8, 5, 0, rules, &BTreeMap::new())
-        .unwrap();
+    let firer = sim.spawn_object("E1", "Americans", 5, 5, 0, rules).unwrap();
+    let target = sim.spawn_object("E2", "Russians", 8, 5, 0, rules).unwrap();
     assert!(issue_attack_command(
         &mut sim.substrate.entities,
         firer,
@@ -381,7 +377,7 @@ fn production_zero_delay_shot_and_restore_use_new_heading() {
     let source = &sim.substrate.entities.get(firer).unwrap().position;
     let source_x = i32::from(source.rx) * 256 + source.sub_x.to_num::<i32>();
     let source_y = i32::from(source.ry) * 256 + source.sub_y.to_num::<i32>();
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     let entity = sim.substrate.entities.get(firer).unwrap();
     assert!(sim.fog.is_cell_visible(entity.owner(), 8, 5));
     let facing = entity.body_facing.current(sim.session.binary_frame);
@@ -419,8 +415,8 @@ fn production_zero_delay_shot_and_restore_use_new_heading() {
     sim.scenario_rng = SimRng::new(0);
     assert_eq!(sim.state_hash(), restored.state_hash());
     for _ in 0..4 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
-        restored.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
+        restored.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(sim.state_hash(), restored.state_hash());
     }
 }
@@ -462,7 +458,7 @@ fn cell_and_building_fire_headings_match_original_coordinate_getters() {
 fn production_pending_fire_restores_heading_and_reaches_emission() {
     let rules = production_rules(2);
     let (mut sim, firer, target) = production_pair(&rules);
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     let entity = sim.substrate.entities.get(firer).unwrap();
     assert!(
         entity
@@ -478,8 +474,8 @@ fn production_pending_fire_restores_heading_and_reaches_emission() {
     sim.scenario_rng = SimRng::new(0); // Native Scenario load reseed.
     assert_eq!(sim.state_hash(), restored.state_hash());
     for _ in 0..24 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
-        restored.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
+        restored.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(sim.state_hash(), restored.state_hash());
         assert_eq!(
             restored.substrate.entities.get(firer).unwrap().body_facing,
@@ -529,20 +525,12 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             &command,
             Some(&rules),
             grid.as_deref(),
-            &BTreeMap::new(),
             None,
         ));
     };
     let frame = |sim: &mut Simulation| {
         let grid = sim.path_grid_snapshot();
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            grid.as_deref(),
-            None,
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), grid.as_deref(), None, 67);
     };
     // Walk south, then attack the enemy east of us. The turn is observable.
     command(

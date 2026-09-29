@@ -113,7 +113,6 @@ fn runtime_rules_and_live_cliff_edits_reach_depth_instead_of_the_load_template()
         .cell_mut(3, 3)
         .unwrap()
         .level = 9;
-    runtime.resources.height_map.insert((3, 3), 9);
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), -1);
 
     // This is an adapter sequence, not another exhaustive helper truth table:

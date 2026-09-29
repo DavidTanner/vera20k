@@ -1648,6 +1648,13 @@ fn dispatch_smudge_inline(
 }
 
 impl Simulation {
+    /// The live CellClass level of a cell in the terrain the simulation owns,
+    /// or `None` without terrain or off the map. Bridge-body and cliff writes
+    /// update it, so readers never see a load-time copy.
+    pub(crate) fn terrain_cell_level(&self, rx: u16, ry: u16) -> Option<u8> {
+        Some(self.resolved_terrain.as_ref()?.cell(rx, ry)?.level)
+    }
+
     /// Resolve the CellClass identity returned by MapClass::Get_CellClass and
     /// then dispatch its live GetTargetCoords virtual. Fixed-stride aliases
     /// therefore use the returned real CellClass's canonical coordinate, while
@@ -5589,7 +5596,6 @@ impl Simulation {
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         execute_tick: u64,
@@ -5634,21 +5640,14 @@ impl Simulation {
                 &completed_buildings,
                 rules,
                 path_grid,
-                height_map,
                 overlay_registry,
             );
         }
         // EventClass dispatch is a Main_Tick tail rung: the complete live
         // Logic walk observes frame N's pre-command state, so an accepted
         // command first changes that object's AI behavior on frame N+1.
-        let (executed, spawned, placed_owners) = self.apply_due_commands(
-            commands,
-            rules,
-            path_grid,
-            height_map,
-            execute_tick,
-            overlay_registry,
-        );
+        let (executed, spawned, placed_owners) =
+            self.apply_due_commands(commands, rules, path_grid, execute_tick, overlay_registry);
         *executed_commands += executed;
         *spawned_entities |= spawned;
         placed_building_owners.extend(placed_owners);
@@ -5814,7 +5813,6 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
@@ -5822,7 +5820,6 @@ impl Simulation {
         self.advance_master_frame(
             commands,
             rules,
-            height_map,
             path_grid,
             overlay_registry,
             tick_ms,
@@ -5843,7 +5840,6 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         lane: TickLane,
@@ -5853,7 +5849,6 @@ impl Simulation {
         let tick = self.advance_master_frame(
             commands,
             rules,
-            height_map,
             path_grid.as_deref(),
             overlay_registry,
             tick_ms,
@@ -5904,7 +5899,6 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
@@ -6378,7 +6372,6 @@ impl Simulation {
             },
             rules,
             late_path_grid,
-            height_map,
             overlay_registry,
             tick_ms,
             execute_tick,

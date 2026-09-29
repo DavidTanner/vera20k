@@ -249,7 +249,7 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
         );
         live.reconcile_active_vision_structures(&rules);
         live.session.binary_frame = 240;
-        live.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        live.advance_tick(&[], Some(&rules), None, None, 67);
         let shrouded = case["observations"].as_array().unwrap().last().unwrap()["shrouded"] == 1;
         assert_eq!(
             !live.fog.is_cell_revealed(viewer, 12, 12),

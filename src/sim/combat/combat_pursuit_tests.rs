@@ -616,41 +616,24 @@ fn walk_pursuit_scene() -> (Simulation, RuleSet, u64, u64) {
         crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(64, 64, cells),
     );
     assert!(sim.rebuild_dynamic_navigation(&rules));
-    let heights = std::collections::BTreeMap::new();
-    let actor = sim
-        .spawn_object("E1", "Local", 10, 10, 0, &rules, &heights)
-        .unwrap();
+    let actor = sim.spawn_object("E1", "Local", 10, 10, 0, &rules).unwrap();
     // Production visibility is recomputed by the frame host, not by spawn.
     // Establish the actor's sight before introducing an enemy or an order.
     walk_frame(&mut sim, &rules);
-    let victim = sim
-        .spawn_object("E1", "Enemy", 16, 10, 0, &rules, &heights)
-        .unwrap();
+    let victim = sim.spawn_object("E1", "Enemy", 16, 10, 0, &rules).unwrap();
     (sim, rules, actor, victim)
 }
 
 fn walk_frame(sim: &mut Simulation, rules: &RuleSet) {
     let grid = sim.path_grid_snapshot();
-    sim.advance_tick(
-        &[],
-        Some(rules),
-        &std::collections::BTreeMap::new(),
-        grid.as_deref(),
-        None,
-        67,
-    );
+    sim.advance_tick(&[], Some(rules), grid.as_deref(), None, 67);
 }
 
 fn walk_command(sim: &mut Simulation, rules: &RuleSet, command: crate::sim::command::Command) {
     let grid = sim.path_grid_snapshot();
-    assert!(sim.apply_command_with_overlays(
-        "Local",
-        &command,
-        Some(rules),
-        grid.as_deref(),
-        &std::collections::BTreeMap::new(),
-        None,
-    ));
+    assert!(
+        sim.apply_command_with_overlays("Local", &command, Some(rules), grid.as_deref(), None,)
+    );
 }
 
 fn wait_for_walk_head(
@@ -700,7 +683,6 @@ fn walk_destination_search_observes_route_opened_before_process() {
         },
         Some(&rules),
         Some(&closed_grid),
-        &std::collections::BTreeMap::new(),
         None,
     ));
     let e = sim.substrate.entities.get(actor).unwrap();

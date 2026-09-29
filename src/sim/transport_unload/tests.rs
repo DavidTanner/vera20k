@@ -131,7 +131,7 @@ impl Fixture {
 
     fn spawn(&mut self, type_id: &str, rx: u16, ry: u16, facing: u8) -> u64 {
         self.sim
-            .spawn_object(type_id, OWNER, rx, ry, facing, &self.rules, &self.heights)
+            .spawn_object(type_id, OWNER, rx, ry, facing, &self.rules)
             .unwrap_or_else(|| panic!("spawn {type_id}"))
     }
 
@@ -181,24 +181,14 @@ impl Fixture {
     }
 
     fn apply(&mut self, cmd: Command) -> bool {
-        self.sim.apply_command(
-            OWNER,
-            &cmd,
-            Some(&self.rules),
-            Some(&self.grid),
-            &self.heights,
-        )
+        self.sim
+            .apply_command(OWNER, &cmd, Some(&self.rules), Some(&self.grid))
     }
 
     fn tick(&mut self) {
-        let _ = self.sim.advance_tick(
-            &[],
-            Some(&self.rules),
-            &self.heights,
-            Some(&self.grid),
-            None,
-            66,
-        );
+        let _ = self
+            .sim
+            .advance_tick(&[], Some(&self.rules), Some(&self.grid), None, 66);
     }
 
     fn frame(&self) -> u32 {

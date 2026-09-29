@@ -176,7 +176,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &test_standard_launch_rules(),
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -441,10 +440,6 @@ mod tests {
                 ry: 45,
             },
         ]
-    }
-
-    fn test_height_map() -> BTreeMap<(u16, u16), u8> {
-        BTreeMap::new()
     }
 
     fn entity_position_for_owner(sim: &Simulation, owner: &str) -> Option<(u16, u16)> {
@@ -878,7 +873,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &test_standard_launch_rules(),
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
             &projection,
@@ -987,7 +981,6 @@ mod tests {
                 structure_ai_repairable: false,
             }],
             Some(&rules),
-            &BTreeMap::new(),
         );
 
         assert_eq!(spawned, 1);
@@ -1302,7 +1295,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1411,7 +1403,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
             &projection,
@@ -1570,7 +1561,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1617,7 +1607,6 @@ mod tests {
                 &map,
                 &roster,
                 &rules,
-                &test_height_map(),
                 &terrain,
                 &launch_descriptor(&session),
             );
@@ -1789,7 +1778,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1852,7 +1840,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1893,7 +1880,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1922,7 +1908,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1950,16 +1935,8 @@ mod tests {
             &rules,
             &launch_descriptor(&session),
         );
-        sim.spawn_object(
-            "AMCV",
-            "Neutral",
-            45,
-            45,
-            STARTING_MCV_FACING,
-            &rules,
-            &test_height_map(),
-        )
-        .expect("blocker");
+        sim.spawn_object("AMCV", "Neutral", 45, 45, STARTING_MCV_FACING, &rules)
+            .expect("blocker");
         let mut expected_rng = sim.scenario_rng.clone();
         // gamemd-derived: TechnoClass::TechnoClass @ 0x006F2B90 consumes and
         // stores one raw Scenario word at 0x006F3254 before placement.
@@ -1975,7 +1952,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2027,16 +2003,8 @@ mod tests {
             &rules,
             &descriptor,
         );
-        sim.spawn_object(
-            "AMCV",
-            "Neutral",
-            100,
-            75,
-            STARTING_MCV_FACING,
-            &rules,
-            &test_height_map(),
-        )
-        .expect("authored start blocker");
+        sim.spawn_object("AMCV", "Neutral", 100, 75, STARTING_MCV_FACING, &rules)
+            .expect("authored start blocker");
         let mut expected_rng = sim.scenario_rng.clone();
         // TechnoClass::TechnoClass @ 0x006F2B90 consumes its raw Scenario
         // word at 0x006F3254 before Try_Unlimbo chooses a fallback spoke.
@@ -2053,7 +2021,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &descriptor,
         );
@@ -2183,16 +2150,8 @@ mod tests {
             }
         }
 
-        let spawned = seed_starting_extra_units(
-            &mut sim,
-            slots,
-            &rules,
-            &test_height_map(),
-            &terrain,
-            bounds,
-            1,
-            false,
-        );
+        let spawned =
+            seed_starting_extra_units(&mut sim, slots, &rules, &terrain, bounds, 1, false);
 
         assert_eq!(spawned, 0);
         assert!(sim.entities().is_empty());
@@ -2218,7 +2177,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2278,7 +2236,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2313,7 +2270,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2372,7 +2328,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &test_standard_launch_rules(),
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );

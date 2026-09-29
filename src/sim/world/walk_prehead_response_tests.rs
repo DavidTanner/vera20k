@@ -20,7 +20,6 @@ use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 const CELL: u64 = 0x2000_0000;
 const OTHER: u64 = 0x2002_1000;
@@ -73,7 +72,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     house.player_control = true;
     sim.houses.insert(owner, house);
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 9, 10, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 9, 10, 0, &rules)
         .unwrap();
     let other = if input["obstacle"] == true || input.get("cloak").is_some() {
         Some(
@@ -88,7 +87,6 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
                 10,
                 0,
                 &rules,
-                &BTreeMap::new(),
             )
             .unwrap(),
         )

@@ -47,7 +47,6 @@ use crate::sim::world::{
 };
 use crate::util::fixed_math::SimFixed;
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 /// The passengers' type is the oracle's unarmed InfantryType (Strength 125,
 /// MovementZone Infantry, SpeedType Foot, Walk); the transport's flags are
@@ -171,7 +170,6 @@ fn scene(input: &Value) -> Scene {
     sim.session.game_mode_nonzero = true;
     sim.session.binary_frame = input["frame"].as_u64().unwrap_or(200) as u32;
     let frame = sim.session.binary_frame;
-    let heights = BTreeMap::new();
 
     // The transport: in limbo at its coordinate, as its Mark(UP) leaves it.
     let (x, y) = input.get("cell").map_or((15, 15), cell);
@@ -216,7 +214,7 @@ fn scene(input: &Value) -> Scene {
         }
     }
     let attacker = sim
-        .spawn_object("APC", "Foreign", 28, 28, 0, &rules, &heights)
+        .spawn_object("APC", "Foreign", 28, 28, 0, &rules)
         .expect("attacker");
 
     // The passengers board through the production Limbo, last first.
@@ -232,7 +230,7 @@ fn scene(input: &Value) -> Scene {
             "Americans"
         };
         let id = sim
-            .spawn_object("E1", owner, 18 + index as u16, 12, 0, &rules, &heights)
+            .spawn_object("E1", owner, 18 + index as u16, 12, 0, &rules)
             .expect("passenger");
         passengers.push(id);
     }
