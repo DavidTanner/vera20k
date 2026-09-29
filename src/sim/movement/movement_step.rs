@@ -855,10 +855,8 @@ pub(super) fn advance_lepton_position(
     target: &mut MovementTarget,
     position: &mut Position,
     locomotor: &mut Option<LocomotorState>,
-    category: EntityCategory,
     effective_speed: SimFixed,
     dt: SimFixed,
-    entity_id: u64,
 ) -> AdvanceResult {
     // Track and Walk coordinate execution have their own production owners.
     if shared_track_kind(locomotor).is_some() {
@@ -886,28 +884,7 @@ pub(super) fn advance_lepton_position(
             position.sub_y += target.move_dir_y * frac;
         }
     }
-    advance_infantry_wobble(locomotor, category, entity_id, dt);
     AdvanceResult::ReadyForCrossings
-}
-
-/// Preserve the existing presentation phase without coupling it to a numeric
-/// movement adapter. Walk and non-Walk infantry publish it once per paid step.
-pub(super) fn advance_infantry_wobble(
-    locomotor: &mut Option<LocomotorState>,
-    category: EntityCategory,
-    entity_id: u64,
-    dt: SimFixed,
-) {
-    if category == EntityCategory::Infantry
-        && let Some(loco) = locomotor
-    {
-        if loco.infantry_wobble_phase == 0.0 {
-            loco.infantry_wobble_phase = (entity_id.wrapping_mul(2654435761) & 0xFFFF) as f32
-                / 0xFFFF as f32
-                * std::f32::consts::TAU;
-        }
-        loco.infantry_wobble_phase += super::INFANTRY_WOBBLE_RATE * dt.to_num::<f32>();
-    }
 }
 
 /// Output from the cell boundary crossing loop.

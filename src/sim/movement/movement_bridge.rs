@@ -365,7 +365,6 @@ pub(super) fn apply_pending_bridge_render_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::movement::locomotion::LocomotorSlot;
     use crate::sim::pathfinding::PathCell;
 
     /// Construct a synthetic PathCell with the bridge fields we care about.
@@ -871,37 +870,14 @@ mod tests {
     // Render-state apply tests (apply_pending_bridge_render_state)
     // ------------------------------------------------------------------------
 
-    use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
+    use crate::rules::locomotor_type::LocomotorKind;
 
     /// Build a minimal `LocomotorState` for tests. Lists all fields explicitly
     /// with sensible defaults — LocomotorState has no `Default` impl.
     fn make_loco(layer: MovementLayer) -> Option<LocomotorState> {
-        Some(LocomotorState {
-            kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::new(LocomotorKind::Drive),
-            powered: true,
-            piggyback: None,
-            runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-                LocomotorKind::Drive,
-                0,
-            ),
-            layer,
-            speed_fraction: SIM_ONE,
-            fly_current_speed: SIM_ZERO,
-            altitude: SIM_ZERO,
-
-            balloon_hover: false,
-            hover_attack: false,
-            speed_type: SpeedType::Track,
-            movement_zone: MovementZone::Normal,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
-            subcell_dest: None,
-            hover_throttle: crate::util::fixed_math::SIM_ZERO,
-            hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-            hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-        })
+        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
+        loco.layer = layer;
+        Some(loco)
     }
 
     #[test]

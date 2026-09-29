@@ -797,9 +797,8 @@ mod tests {
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_interner;
     use crate::sim::movement::air_movement::{is_high_flying, is_low_flying};
-    use crate::sim::movement::locomotion::LocomotorSlot;
-    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-    use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
+    use crate::sim::movement::locomotor::LocomotorState;
+    use crate::util::fixed_math::{SIM_ZERO, SimFixed};
     use crate::util::lepton::{HIGH_FLIGHT_THRESHOLD_LEPTONS, LEPTONS_PER_LEVEL};
 
     fn ground_entity_at_level(level: u8) -> GameEntity {
@@ -814,31 +813,11 @@ mod tests {
         let mut e = GameEntity::test_default(2, "ORCA", "Test", 10, 10);
         e.category = EntityCategory::Aircraft;
         e.lifecycle.cell_marked = true;
-        e.locomotor = Some(LocomotorState {
-            kind: LocomotorKind::Fly,
-            slot: LocomotorSlot::new(LocomotorKind::Fly),
-            powered: true,
-            piggyback: None,
-            runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-                LocomotorKind::Fly,
-                0,
-            ),
-            layer: MovementLayer::Air,
-            speed_fraction: SIM_ONE,
-            fly_current_speed: SIM_ZERO,
-            altitude: SimFixed::from_num(altitude_lep as i32),
-
-            balloon_hover: false,
-            hover_attack: false,
-            speed_type: SpeedType::Winged,
-            movement_zone: MovementZone::Fly,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
-            subcell_dest: None,
-            hover_throttle: crate::util::fixed_math::SIM_ZERO,
-            hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-            hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-        });
+        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Fly);
+        loco.altitude = SimFixed::from_num(altitude_lep as i32);
+        loco.speed_type = SpeedType::Winged;
+        loco.movement_zone = MovementZone::Fly;
+        e.locomotor = Some(loco);
         e
     }
 

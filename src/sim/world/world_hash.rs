@@ -1821,8 +1821,6 @@ fn hash_locomotor_runtime(
     // authoritative fields are hashed in their payloads.
     0u8.hash(hasher);
     crate::util::fixed_math::SIM_ONE.to_bits().hash(hasher);
-    common.speed_fraction.to_bits().hash(hasher);
-    common.fly_current_speed.to_bits().hash(hasher);
     common.altitude.to_bits().hash(hasher);
     0i32.hash(hasher);
     0i32.hash(hasher);
@@ -1831,8 +1829,6 @@ fn hash_locomotor_runtime(
     common.hover_attack.hash(hasher);
     common.speed_type.hash(hasher);
     common.movement_zone.hash(hasher);
-    common.air_progress.to_bits().hash(hasher);
-    common.infantry_wobble_phase.to_bits().hash(hasher);
     common
         .subcell_dest
         .map(|(x, y)| (x.to_bits(), y.to_bits()))
@@ -1885,6 +1881,8 @@ fn hash_locomotor_payload(
             state.landing_effect_latched().hash(hasher);
             state.airport_bound().hash(hasher);
             state.fall_counter().hash(hasher);
+            state.target_speed.to_bits().hash(hasher);
+            state.current_speed.to_bits().hash(hasher);
         }
         LocomotorRuntimePayload::Jumpjet(state) => {
             10u8.hash(hasher);

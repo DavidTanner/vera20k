@@ -40,15 +40,11 @@ use super::super::teleport_movement::TeleportState;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocomotorCommonRuntime {
     pub powered: bool,
-    pub speed_fraction: SimFixed,
-    pub fly_current_speed: SimFixed,
     pub altitude: SimFixed,
     pub balloon_hover: bool,
     pub hover_attack: bool,
     pub speed_type: SpeedType,
     pub movement_zone: MovementZone,
-    pub air_progress: SimFixed,
-    pub infantry_wobble_phase: f32,
     pub subcell_dest: Option<(SimFixed, SimFixed)>,
     pub hover_throttle: SimFixed,
     pub hover_speed_request: SimFixed,
@@ -123,15 +119,11 @@ impl LocomotorRuntime {
             layer: state.layer,
             common: LocomotorCommonRuntime {
                 powered: state.powered,
-                speed_fraction: state.speed_fraction,
-                fly_current_speed: state.fly_current_speed,
                 altitude: state.altitude,
                 balloon_hover: state.balloon_hover,
                 hover_attack: state.hover_attack,
                 speed_type: state.speed_type,
                 movement_zone: state.movement_zone,
-                air_progress: state.air_progress,
-                infantry_wobble_phase: state.infantry_wobble_phase,
                 subcell_dest: state.subcell_dest,
                 hover_throttle: state.hover_throttle,
                 hover_speed_request: state.hover_speed_request,
@@ -150,8 +142,8 @@ impl LocomotorRuntime {
     /// default-initialised and the displaced locomotor keeps all of its state
     /// untouched in the stash. This clones the displaced runtime and resets only
     /// its `payload`, so the temporary inherits
-    /// `altitude`, the hover throttle/speed/bob fields, `subcell_dest`, the two
-    /// speed fractions, `fly_current_speed` **and `powered`** — and [`install_into`] copies `powered` back on restore, so a
+    /// `altitude`, the hover throttle/speed/bob fields, `subcell_dest` **and
+    /// `powered`** — and [`install_into`] copies `powered` back on restore, so a
     /// powered-off flag survives a swap in both directions, which native cannot
     /// do.
     ///
@@ -178,15 +170,11 @@ impl LocomotorRuntime {
         state.kind = self.kind;
         state.layer = self.layer;
         state.powered = self.common.powered;
-        state.speed_fraction = self.common.speed_fraction;
-        state.fly_current_speed = self.common.fly_current_speed;
         state.altitude = self.common.altitude;
         state.balloon_hover = self.common.balloon_hover;
         state.hover_attack = self.common.hover_attack;
         state.speed_type = self.common.speed_type;
         state.movement_zone = self.common.movement_zone;
-        state.air_progress = self.common.air_progress;
-        state.infantry_wobble_phase = self.common.infantry_wobble_phase;
         state.subcell_dest = self.common.subcell_dest;
         state.hover_throttle = self.common.hover_throttle;
         state.hover_speed_request = self.common.hover_speed_request;

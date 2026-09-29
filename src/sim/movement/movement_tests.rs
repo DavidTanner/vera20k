@@ -4187,34 +4187,9 @@ fn test_blocked_repath_uses_final_goal_not_segment_end() {
 /// because the layered A* branch in find_move_path is only entered when the
 /// mover has a Drive/Walk locomotor; `test_default` leaves locomotor=None.
 fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState {
-    use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-    use crate::util::fixed_math::SIM_ONE;
-    LocomotorState {
-        kind: LocomotorKind::Drive,
-        slot: LocomotorSlot::new(LocomotorKind::Drive),
-        powered: true,
-        piggyback: None,
-        runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-            LocomotorKind::Drive,
-            0,
-        ),
-        layer: MovementLayer::Ground,
-        speed_fraction: SIM_ONE,
-        fly_current_speed: SIM_ZERO,
-        altitude: SIM_ZERO,
-
-        balloon_hover: false,
-        hover_attack: false,
-        speed_type: SpeedType::Track,
-        movement_zone: MovementZone::Normal,
-        air_progress: SIM_ZERO,
-        infantry_wobble_phase: 0.0,
-        subcell_dest: None,
-        hover_throttle: crate::util::fixed_math::SIM_ZERO,
-        hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-        hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-    }
+    crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+        crate::rules::locomotor_type::LocomotorKind::Drive,
+    )
 }
 
 fn drive_speed_test_cell(
@@ -4858,31 +4833,9 @@ use crate::sim::pathfinding::{PathGrid, terrain_cost::TerrainCostGrid};
 use std::collections::BTreeMap;
 
 fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
-    LocomotorState {
-        kind: LocomotorKind::Drive,
-        slot: LocomotorSlot::new(LocomotorKind::Drive),
-        powered: true,
-        piggyback: None,
-        runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-            LocomotorKind::Drive,
-            0,
-        ),
-        layer,
-        speed_fraction: SIM_ONE,
-        fly_current_speed: SIM_ZERO,
-        altitude: SIM_ZERO,
-
-        balloon_hover: false,
-        hover_attack: false,
-        speed_type: SpeedType::Track,
-        movement_zone: MovementZone::Normal,
-        air_progress: SIM_ZERO,
-        infantry_wobble_phase: 0.0,
-        subcell_dest: None,
-        hover_throttle: crate::util::fixed_math::SIM_ZERO,
-        hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-        hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-    }
+    let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
+    loco.layer = layer;
+    loco
 }
 
 fn make_ship_loco(layer: MovementLayer) -> LocomotorState {

@@ -2181,8 +2181,13 @@ impl Simulation {
                     destination.y.wrapping_sub(xy[1]),
                 );
                 entity.body_facing.set(desired, self.session.binary_frame);
-                entity.locomotor.as_mut().unwrap().speed_fraction =
-                    crate::util::fixed_math::SIM_ONE;
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .fly_runtime_mut()
+                    .unwrap()
+                    .target_speed = crate::util::fixed_math::SIM_ONE;
             }
         }
     }
