@@ -1816,10 +1816,11 @@ fn hash_locomotor_runtime(
     (runtime.layer as u8).hash(hasher);
     let common = &runtime.common;
     common.powered.hash(hasher);
-    // Fixed separators retain the retired common-air slots for non-air replay
-    // stability. Fly/Jumpjet authoritative fields are hashed in their payloads.
+    // Fixed separators retain the retired common-air slots and the retired
+    // always-1.0 speed multiplier for replay stability. Fly/Jumpjet
+    // authoritative fields are hashed in their payloads.
     0u8.hash(hasher);
-    common.speed_multiplier.to_bits().hash(hasher);
+    crate::util::fixed_math::SIM_ONE.to_bits().hash(hasher);
     common.speed_fraction.to_bits().hash(hasher);
     common.fly_current_speed.to_bits().hash(hasher);
     common.altitude.to_bits().hash(hasher);

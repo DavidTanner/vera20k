@@ -847,8 +847,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Air,
-
-            speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,
             fly_current_speed: SIM_ZERO,
             altitude: SimFixed::from_num(altitude_lep as i32),

@@ -251,8 +251,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Ground,
-
-            speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,
             fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,

@@ -17,7 +17,6 @@ use crate::sim::mission::MissionType;
 use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::PathGrid;
-use crate::util::fixed_math::SimFixed;
 use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
 
 /// Result of one `apply_c4_damage_to_building` call.
@@ -221,39 +220,20 @@ impl Simulation {
         }
 
         for (stable_id, goal_rx, goal_ry) in resumes {
-            let (base_speed, loco_multiplier, is_air) = self
+            let (speed, is_air) = self
                 .substrate
                 .entities
                 .get(stable_id)
                 .map(|e| {
-                    // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: a resumed order
-                    // re-queries the getter like any other, so the FASTER stage
-                    // runs here too.
+                    // A resumed order re-queries the getter like any other.
                     let obj = rules.and_then(|r| self.object_type(e.type_ref(), r));
-                    let bs: SimFixed =
-                        crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-                            e,
-                            obj,
-                            obj.map_or(4, |o| o.speed),
-                            rules.map_or(1.0, |r| r.general.veteran_speed),
-                        );
-                    let lm: SimFixed = e
-                        .locomotor
-                        .as_ref()
-                        .map(|l| l.speed_multiplier)
-                        .unwrap_or(SimFixed::from_num(1));
                     let air: bool = e
                         .locomotor
                         .as_ref()
                         .is_some_and(|l| l.layer == MovementLayer::Air);
-                    (bs, lm, air)
+                    (crate::sim::movement::order_speed(e, obj, rules), air)
                 })
-                .unwrap_or((
-                    ra2_speed_to_leptons_per_second(4),
-                    SimFixed::from_num(1),
-                    false,
-                ));
-            let speed: SimFixed = (base_speed * loco_multiplier).max(SimFixed::lit("25"));
+                .unwrap_or((ra2_speed_to_leptons_per_second(4), false));
 
             if is_air {
                 let _ =
