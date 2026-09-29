@@ -16,15 +16,15 @@
 
 pub(crate) mod authored_load_host;
 mod bridge_hut_scatter;
+pub(crate) mod bridge_orchestrator;
 #[cfg(test)]
 pub(crate) mod bridge_test_evidence;
-pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
 mod cell_content;
-mod object_entry;
+mod crash;
 #[cfg(test)]
 mod entry_test_fixture;
-mod crash;
+mod object_entry;
 mod sinking;
 pub(crate) use sinking::SinkingState;
 pub mod edge_cell;
@@ -4521,7 +4521,10 @@ impl Simulation {
         // `FootClass::ChangeOwner @ 0x004DBF13..0x004DBF32`: a Foot given to
         // a human house leaves its team.
         if category != EntityCategory::Structure
-            && self.houses.get(&new_owner).is_some_and(|house| house.is_human)
+            && self
+                .houses
+                .get(&new_owner)
+                .is_some_and(|house| house.is_human)
         {
             self.leave_team(stable_id, false, rules);
         }
@@ -6047,11 +6050,6 @@ impl Simulation {
         destroyed_structure |= object_pass.destroyed_structure;
         bridge_state_changed |= object_pass.bridge_state_changed;
         let tube_turn_owned_ids = object_pass.tube_turn_owned_ids;
-        if let Some(rules) = rules {
-            self.for_each_multiplayer_feedback_anim(|sim, id| {
-                sim.visit_anim(id, rules, None);
-            });
-        }
         // Spawn-manager missiles that reached their target during the movement
         // pass are consumed here — the missile leaves the world at the moment
         // `RocketLocomotion::Process` would have called Detonate. The impact

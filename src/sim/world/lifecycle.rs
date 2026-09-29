@@ -4317,13 +4317,6 @@ impl Simulation {
         self.trace_lifecycle_for_test(LifecycleTestEvent::FinalizedCommon { stable_id });
     }
 
-    fn finalize_multiplayer_feedback_anim(&mut self, stable_id: u64) {
-        self.release_anim_owner_reference(stable_id);
-        self.substrate.multiplayer_feedback_anims.remove(stable_id);
-        #[cfg(test)]
-        self.trace_lifecycle_for_test(LifecycleTestEvent::FinalizedCommon { stable_id });
-    }
-
     /// The rules-less drain of test fixtures (see
     /// [`Self::process_pending_delete_with`]).
     #[cfg(test)]
@@ -4358,13 +4351,6 @@ impl Simulation {
                 .retain(|&queued| queued != stable_id);
             self.release_slave_links_at_destruction(stable_id, rules, registry);
             self.finalize_and_remove_common(stable_id);
-        }
-
-        while let Some(&stable_id) = self.substrate.multiplayer_feedback_pending_delete.first() {
-            self.substrate
-                .multiplayer_feedback_pending_delete
-                .retain(|&queued| queued != stable_id);
-            self.finalize_multiplayer_feedback_anim(stable_id);
         }
     }
 

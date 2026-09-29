@@ -25,14 +25,6 @@ use crate::sim::occupancy::{
 use crate::sim::particles::ParticleSystemStore;
 use crate::sim::voxel_anim::VoxelAnimStore;
 
-#[cfg(test)]
-const FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID: u64 = 1 << 63;
-
-#[cfg(test)]
-const fn first_multiplayer_feedback_anim_id() -> u64 {
-    FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID
-}
-
 /// Monotonic source for rebuilt CellClass-style object-list (enter) order. Each
 /// entity stores the last value assigned when it entered a cell list; this counter
 /// hands out the next one. The sole mutator is `next()` — callers cannot mis-increment
@@ -140,16 +132,6 @@ pub(crate) struct ObjectSubstrate {
     /// `AbstractClass::AssignUniqueID` and `ObjectClass::Unlimbo`.
     #[serde(default)]
     pub(crate) voxel_anims: VoxelAnimStore,
-    /// Multiplayer click-feedback animations use a separate, sync-exempt
-    /// registry and never enter the ordinary LogicVector.
-    #[serde(skip)]
-    pub(crate) multiplayer_feedback_anims: AnimStore,
-    // Reserved for the verified sync-exempt feedback spawn path, which is not wired yet.
-    #[cfg(test)]
-    #[serde(skip, default = "first_multiplayer_feedback_anim_id")]
-    pub(crate) next_multiplayer_feedback_anim_id: u64,
-    #[serde(skip)]
-    pub(crate) multiplayer_feedback_pending_delete: Vec<u64>,
     /// ParticleSystemClass registry. Systems share the global object-ID
     /// namespace and LogicVector; individual particles remain container-owned.
     #[serde(default)]
@@ -181,10 +163,6 @@ impl ObjectSubstrate {
             entities: EntityStore::new(),
             anims: AnimStore::default(),
             voxel_anims: VoxelAnimStore::default(),
-            multiplayer_feedback_anims: AnimStore::default(),
-            #[cfg(test)]
-            next_multiplayer_feedback_anim_id: FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID,
-            multiplayer_feedback_pending_delete: Vec::new(),
             particle_systems: ParticleSystemStore::default(),
             pending_delete: Vec::new(),
         }

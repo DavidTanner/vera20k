@@ -167,12 +167,6 @@ const LEVEL_HEIGHT_LEPTONS: i32 = crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTO
 const TRAILER_DRAW_FLAGS: u32 = 0x600;
 const BUILDING_RENDER_ORIGIN_LEPTONS: i32 = 128;
 const DAMAGE_FIRE_SLOT_COUNT: usize = 8;
-// Retained with the verified multiplayer-feedback spawn seam until command
-// feedback owns its production call site.
-#[cfg(test)]
-const MULTIPLAYER_FEEDBACK_Z_ADJUST: i32 = -5000;
-#[cfg(test)]
-const SYNC_EXEMPT_NATIVE_UNIQUE_ID: i32 = -2;
 
 /// Pure YR `AnimClass_UpdateBouncePhysics` directional-frame projection.
 #[cfg(test)]
@@ -660,33 +654,15 @@ fn apply_anim_raw_occupation(
 
 impl Simulation {
     pub fn anim(&self, id: AnimId) -> Option<&AnimObject> {
-        self.substrate
-            .anims
-            .get(id)
-            .or_else(|| self.substrate.multiplayer_feedback_anims.get(id))
+        self.substrate.anims.get(id)
     }
 
     pub fn anims(&self) -> impl Iterator<Item = (&AnimId, &AnimObject)> {
-        self.substrate
-            .anims
-            .iter()
-            .chain(self.substrate.multiplayer_feedback_anims.iter())
-    }
-
-    pub fn multiplayer_feedback_anims(&self) -> impl Iterator<Item = (&AnimId, &AnimObject)> {
-        self.substrate.multiplayer_feedback_anims.iter()
+        self.substrate.anims.iter()
     }
 
     fn anim_mut_by_id(&mut self, id: AnimId) -> Option<&mut AnimObject> {
-        if self.substrate.anims.contains_key(id) {
-            self.substrate.anims.get_mut(id)
-        } else {
-            self.substrate.multiplayer_feedback_anims.get_mut(id)
-        }
-    }
-
-    fn is_multiplayer_feedback_anim(&self, id: AnimId) -> bool {
-        self.substrate.multiplayer_feedback_anims.contains_key(id)
+        self.substrate.anims.get_mut(id)
     }
 
     fn apply_make_infantry_raw_occupation(
@@ -1065,88 +1041,6 @@ impl Simulation {
         removed
     }
 
-    // The move-feedback producer is not wired yet; keep the verified
-    // sync-exempt allocation path available for that activation slice.
-    #[cfg(test)]
-    pub(crate) fn spawn_multiplayer_feedback_anim_at_world(
-        &mut self,
-        rules: &RuleSet,
-        world_coord: AnimWorldCoord,
-    ) -> Result<AnimId, AnimSpawnError> {
-        let type_id = self.interner.intern(&rules.general.move_flash.name);
-        let type_name = self.interner.resolve(type_id).to_ascii_uppercase();
-        let config = rules
-            .art()
-            .anim_runtime_config(&type_name)
-            .cloned()
-            .ok_or(AnimSpawnError::MissingType(type_id))?;
-        let (effective_end, effective_loop_end) = effective_bounds(&type_name, &config)?;
-        let reverse = config.reverse;
-        let rate_reload = self.choose_anim_rate(&config);
-        let frame_timer =
-            CdTimer::started(self.session.binary_frame as i32, i32::from(rate_reload));
-        let stop_sound_id = config
-            .stop_sound
-            .as_deref()
-            .map(|sound| self.interner.intern(sound));
-        let stable_id = self.substrate.next_multiplayer_feedback_anim_id;
-        self.substrate.next_multiplayer_feedback_anim_id = stable_id.wrapping_add(1);
-        if self
-            .substrate
-            .multiplayer_feedback_anims
-            .contains_key(stable_id)
-        {
-            return Err(AnimSpawnError::DuplicateId(stable_id));
-        }
-
-        let object = AnimObject {
-            stable_id,
-            native_unique_id: SYNC_EXEMPT_NATIVE_UNIQUE_ID,
-            type_id,
-            world_coord,
-            draw_flags: TRAILER_DRAW_FLAGS,
-            z_adjust: MULTIPLAYER_FEEDBACK_Z_ADJUST,
-            remap_color: None,
-            effective_end,
-            effective_loop_end,
-            runtime: AnimRuntime {
-                current_frame: if reverse {
-                    effective_loop_end.wrapping_sub(1)
-                } else {
-                    0
-                },
-                frame_step: if reverse { -1 } else { 1 },
-                delay_remaining: 0,
-                rate_reload,
-                frame_timer,
-                loop_remaining: native_loop_remaining(config.loop_count, 1),
-                first_ai_guard: true,
-                constructor_reverse: false,
-                inactive: false,
-                paused: false,
-            },
-            draw_runtime: AnimDrawRuntime::default(),
-            use_cell_drawer: false,
-            terrain_attached: false,
-            in_logic_vector: false,
-            owner_entity: None,
-            building_slot: None,
-            damage_fire_slot: None,
-            start_sound_active: false,
-            stop_sound_id,
-            display: AnimDisplayState {
-                marked_on_map: false,
-                y_sort_adjust: config.y_sort_adjust,
-            },
-            bounce: None,
-        };
-        // The insert stays outside `debug_assert!`, which release builds drop.
-        let replaced = self.substrate.multiplayer_feedback_anims.insert(object);
-        debug_assert!(replaced.is_none());
-        self.anim_start(stable_id, &config, rules, None);
-        Ok(stable_id)
-    }
-
     /// `CellClass::Get_Tiberium_Value @ 0x00485020` of the cell under a world
     /// coordinate. Native resolves the raw Location through
     /// `MapClass::Get_CellClass_At_Coord @ 0x00565730` and reads the shared
@@ -1174,20 +1068,6 @@ impl Simulation {
             overlay_registry,
             &rules.tiberium_types,
         )
-    }
-
-    pub(crate) fn for_each_multiplayer_feedback_anim<F>(&mut self, mut body: F)
-    where
-        F: FnMut(&mut Simulation, AnimId),
-    {
-        let mut index = 0;
-        while index < self.substrate.multiplayer_feedback_anims.len() {
-            let Some(id) = self.substrate.multiplayer_feedback_anims.key_at(index) else {
-                break;
-            };
-            body(self, id);
-            index += 1;
-        }
     }
 
     pub(crate) fn visit_anim(
@@ -1402,15 +1282,7 @@ impl Simulation {
     }
 
     fn destroy_anim_with_context(&mut self, id: AnimId, rules: Option<&RuleSet>) {
-        let is_feedback = self.is_multiplayer_feedback_anim(id);
-        let already_queued = if is_feedback {
-            self.substrate
-                .multiplayer_feedback_pending_delete
-                .contains(&id)
-        } else {
-            self.substrate.pending_delete.contains(&id)
-        };
-        if already_queued {
+        if self.substrate.pending_delete.contains(&id) {
             return;
         }
         // `AnimClass::GetCoords @ 0x00422BE0` — the sound plays at the anim's
@@ -1446,15 +1318,11 @@ impl Simulation {
                 world,
             });
         }
-        if is_feedback {
-            self.substrate.multiplayer_feedback_pending_delete.push(id);
-        } else {
-            // Object::UnInit5F6616 broadcasts the Anim's expiry before Limbo;
-            // Building44EA1A..44EA4F then clears its matching damage-fire slot.
-            self.clear_damage_fire_anim_reference(id);
-            self.conceal_anim(id);
-            self.substrate.pending_delete.push(id);
-        }
+        // Object::UnInit5F6616 broadcasts the Anim's expiry before Limbo;
+        // Building44EA1A..44EA4F then clears its matching damage-fire slot.
+        self.clear_damage_fire_anim_reference(id);
+        self.conceal_anim(id);
+        self.substrate.pending_delete.push(id);
     }
 
     /// Building451A2C and ClearAnimSlot451E40 use scalar deletion: the old
@@ -1548,11 +1416,8 @@ impl Simulation {
     }
 
     /// Anim GetLayer424CB0: attached -> Ground; missing type -> Air; otherwise
-    /// the current type's layer. Feedback objects remain outside hashed Display.
+    /// the current type's layer.
     pub(crate) fn submit_anim_display(&mut self, id: AnimId, rules: Option<&RuleSet>) {
-        if self.is_multiplayer_feedback_anim(id) {
-            return;
-        }
         if let Some(layer) = self.anim_display_layer(id, rules) {
             self.submit_object_display(id, layer, rules);
         } else {
@@ -4236,55 +4101,6 @@ mod tests {
         assert_eq!(sim.interner.resolve(child.type_id), "CHILD");
         assert!(!child.runtime.first_ai_guard);
         assert_eq!(child.runtime.current_frame, 0);
-    }
-
-    #[test]
-    fn multiplayer_feedback_uses_sync_exempt_registry_without_global_id_or_logic_membership() {
-        let rules = runtime_rules("[RING]\nRate=900\nEnd=1\nLoopCount=1\n", &[("RING", 1)]);
-        let mut sim = Simulation::new();
-        let next_global_id = sim.substrate.next_stable_object_id;
-        let id = sim
-            .spawn_multiplayer_feedback_anim_at_world(
-                &rules,
-                AnimWorldCoord {
-                    x: 512,
-                    y: 768,
-                    z: 32,
-                },
-            )
-            .unwrap();
-
-        assert_eq!(sim.substrate.next_stable_object_id, next_global_id);
-        assert!(!sim.substrate.anims.contains_key(id));
-        assert!(sim.live_object_order_snapshot().is_empty());
-        let anim = sim.anim(id).unwrap();
-        assert_eq!(anim.native_unique_id, SYNC_EXEMPT_NATIVE_UNIQUE_ID);
-        assert_eq!(anim.z_adjust, MULTIPLAYER_FEEDBACK_Z_ADJUST);
-        assert!(!anim.in_logic_vector);
-        let hash_with_feedback = sim.state_hash();
-        let feedback = sim.substrate.multiplayer_feedback_anims.remove(id).unwrap();
-        assert_eq!(sim.state_hash(), hash_with_feedback);
-        assert!(
-            sim.substrate
-                .multiplayer_feedback_anims
-                .insert(feedback)
-                .is_none()
-        );
-
-        sim.for_each_multiplayer_feedback_anim(|sim, id| {
-            sim.visit_anim(id, &rules, None);
-        });
-        assert!(!sim.anim(id).unwrap().runtime.first_ai_guard);
-        sim.session.binary_frame = 1;
-        sim.for_each_multiplayer_feedback_anim(|sim, id| {
-            sim.visit_anim(id, &rules, None);
-        });
-        assert!(sim.anim(id).unwrap().runtime.inactive);
-        assert_eq!(sim.substrate.multiplayer_feedback_pending_delete, vec![id]);
-
-        sim.process_pending_delete();
-        assert!(sim.anim(id).is_none());
-        assert!(sim.substrate.multiplayer_feedback_pending_delete.is_empty());
     }
 
     #[test]
