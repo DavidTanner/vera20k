@@ -1099,9 +1099,9 @@ fn child_air_speed(
     sim.substrate
         .entities
         .get(child_id)
-        .map(|c| sim.interner.resolve(c.type_ref()).to_string())
-        .and_then(|name| rules.object(&name))
-        .map(|obj| crate::util::fixed_math::ra2_speed_to_leptons_per_second(obj.speed.max(1)))
+        .map(|c| {
+            crate::sim::movement::order_speed(c, sim.object_type(c.type_ref(), rules), Some(rules))
+        })
         .unwrap_or(crate::util::fixed_math::SimFixed::from_num(8))
 }
 

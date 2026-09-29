@@ -84,9 +84,6 @@ pub struct LocomotorState {
     pub runtime_payload: LocomotorRuntimePayload,
     /// Which spatial layer the unit currently occupies.
     pub layer: MovementLayer,
-    /// Speed multiplier applied on top of ObjectType.speed.
-    /// 1.0 for most units, 0.65 for Hover, etc.
-    pub speed_multiplier: SimFixed,
     /// Fly target speed (`+0x40`), which `fly_current_speed` ramps toward.
     /// Written by Fly Process's slowdown (`air_movement::
     /// write_fly_target_speed`), the takeoff callback and the landing; the
@@ -165,23 +162,16 @@ impl LocomotorState {
         let kind: LocomotorKind = obj.locomotor;
         let sim_one: SimFixed = SimFixed::from_num(1);
 
-        let (layer, speed_multiplier): (MovementLayer, SimFixed) = match kind {
-            // Ground family — all use Ground layer
-            LocomotorKind::Drive => (MovementLayer::Ground, sim_one),
-            LocomotorKind::Walk => (MovementLayer::Ground, sim_one),
-            // Hover cruises at full base Speed (throttle 1.0 at cruise), NOT the
-            // old made-up 0.65x. The accel/brake throttle ramp + continuous XY
-            // integrator land in later M2 phases (see sim/movement/hover.rs).
-            LocomotorKind::Hover => (MovementLayer::Ground, sim_one),
-            LocomotorKind::Ship => (MovementLayer::Ground, sim_one),
-
+        let layer: MovementLayer = match kind {
+            LocomotorKind::Drive
+            | LocomotorKind::Walk
+            | LocomotorKind::Hover
+            | LocomotorKind::Ship
+            | LocomotorKind::Teleport => MovementLayer::Ground,
             // Air family — use Air layer with altitude state
-            LocomotorKind::Fly => (MovementLayer::Air, sim_one),
-            LocomotorKind::Jumpjet => (MovementLayer::Air, sim_one),
-            LocomotorKind::Rocket => (MovementLayer::Air, sim_one),
-
-            // Special — stubbed as ground for now
-            LocomotorKind::Teleport => (MovementLayer::Ground, sim_one),
+            LocomotorKind::Fly | LocomotorKind::Jumpjet | LocomotorKind::Rocket => {
+                MovementLayer::Air
+            }
         };
 
         Self {
@@ -205,8 +195,6 @@ impl LocomotorState {
                 payload
             },
             layer,
-
-            speed_multiplier,
             speed_fraction: if kind == LocomotorKind::Fly {
                 SIM_ZERO
             } else {
@@ -235,12 +223,11 @@ impl LocomotorState {
 
     #[cfg(test)]
     pub(crate) fn for_test_kind_at_frame(kind: LocomotorKind, binary_frame: u32) -> Self {
-        let (layer, speed_multiplier) = match kind {
+        let layer = match kind {
             LocomotorKind::Fly | LocomotorKind::Jumpjet | LocomotorKind::Rocket => {
-                (MovementLayer::Air, SimFixed::from_num(1))
+                MovementLayer::Air
             }
-            LocomotorKind::Hover => (MovementLayer::Ground, SimFixed::from_num(1)),
-            _ => (MovementLayer::Ground, SimFixed::from_num(1)),
+            _ => MovementLayer::Ground,
         };
 
         Self {
@@ -250,8 +237,6 @@ impl LocomotorState {
             piggyback: None,
             runtime_payload: LocomotorRuntimePayload::for_kind(kind, binary_frame),
             layer,
-
-            speed_multiplier,
             speed_fraction: if kind == LocomotorKind::Fly {
                 SIM_ZERO
             } else {

@@ -5,7 +5,7 @@ use super::*;
 use crate::rules::jumpjet_params::JumpjetParams;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::rules::object_type::{ObjectCategory, ObjectType, PipScale};
-use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed, sim_from_f32};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_from_f32};
 
 #[test]
 fn walk_destination_and_cell_producer_match_original_startup_conversion() {
@@ -513,7 +513,6 @@ fn test_drive_locomotor() {
     assert_eq!(state.kind, LocomotorKind::Drive);
     assert_eq!(state.layer, MovementLayer::Ground);
     assert_eq!(state.air_phase(), AirMovePhase::Landed);
-    assert_eq!(state.speed_multiplier, SIM_ONE);
     assert!(state.is_ground_mover());
     assert!(!state.is_air_mover());
 }
@@ -525,7 +524,6 @@ fn test_hover_cruises_at_full_base_speed() {
     let obj = make_obj(LocomotorKind::Hover, ObjectCategory::Vehicle);
     let state = LocomotorState::from_object_type(&obj, 0);
     assert_eq!(state.kind, LocomotorKind::Hover);
-    assert_eq!(state.speed_multiplier, SIM_ONE);
     assert!(state.is_ground_mover());
 }
 
@@ -663,7 +661,6 @@ fn test_override_teleport_round_trip() {
     assert!(!state.is_overridden());
     assert_eq!(state.kind, LocomotorKind::Drive);
     assert_eq!(state.layer, MovementLayer::Ground);
-    assert_eq!(state.speed_multiplier, SIM_ONE);
 }
 
 #[test]

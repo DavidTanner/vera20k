@@ -500,29 +500,15 @@ pub(super) fn deliver_produced_object(
         }
         if let (Some(grid), Some((tx, ty))) = (path_grid, rally) {
             let obj = rules.object(type_name);
-            let loco_mult = sim
-                .substrate
-                .entities
-                .get(stable_id)
-                .and_then(|e| e.locomotor.as_ref())
-                .map(|l| l.speed_multiplier)
-                .unwrap_or(crate::util::fixed_math::SIM_ONE);
-            // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: the rally move
-            // is an ordinary move order, so a unit that leaves the
-            // factory already promoted (InitialVeteran, cloning) drives
-            // to the rally point at its FASTER speed.
+            // The rally move is an ordinary move order, so a unit that leaves
+            // the factory already promoted (InitialVeteran, cloning) drives to
+            // the rally point at its FASTER speed.
             let speed = match sim.substrate.entities.get(stable_id) {
-                Some(e) => crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-                    e,
-                    obj,
-                    obj.map_or(4, |o| o.speed),
-                    rules.general.veteran_speed,
-                ),
+                Some(e) => crate::sim::movement::order_speed(e, obj, Some(rules)),
                 None => crate::util::fixed_math::ra2_speed_to_leptons_per_second(
                     obj.map_or(4, |o| o.speed),
                 ),
             };
-            let speed = (speed * loco_mult).max(crate::util::fixed_math::SimFixed::lit("25"));
             let speed_type = sim
                 .substrate
                 .entities

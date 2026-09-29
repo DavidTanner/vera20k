@@ -4200,8 +4200,6 @@ fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState
             0,
         ),
         layer: MovementLayer::Ground,
-
-        speed_multiplier: SIM_ONE,
         speed_fraction: SIM_ONE,
         fly_current_speed: SIM_ZERO,
         altitude: SIM_ZERO,
@@ -4870,8 +4868,6 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
             0,
         ),
         layer,
-
-        speed_multiplier: SIM_ONE,
         speed_fraction: SIM_ONE,
         fly_current_speed: SIM_ZERO,
         altitude: SIM_ZERO,

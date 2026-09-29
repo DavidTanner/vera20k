@@ -1385,21 +1385,10 @@ pub(super) fn scatter_movement_speed(
 ) -> SimFixed {
     // Scatter installs a destination; the walking process still calls
     // InfantryClass::GetCurrentSpeed (0x00521D80), delegating to
-    // FootClass::GetCurrentSpeed (0x004DB1A0). Use the same resolver as ordinary
-    // Move orders, including FASTER and the locomotor multiplier. The former
-    // literal 1024 made a stock Speed=4 GI scatter at 6.8 times normal speed.
+    // FootClass::GetCurrentSpeed (0x004DB1A0), so it stamps an ordinary Move's
+    // speed.
     let obj = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-    let base_speed = crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-        entity,
-        obj,
-        obj.map_or(4, |o| o.speed),
-        rules.map_or(1.0, |r| r.general.veteran_speed),
-    );
-    let multiplier = entity
-        .locomotor
-        .as_ref()
-        .map_or(SimFixed::from_num(1), |loco| loco.speed_multiplier);
-    (base_speed * multiplier).max(SimFixed::from_num(25))
+    super::order_speed(entity, obj, rules)
 }
 
 /// One accepted nonfatal Infantry damage scatter, selected before the

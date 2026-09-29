@@ -461,8 +461,7 @@ pub enum Command {
         additive: bool,
     },
     /// Move one entity to a target cell.
-    /// Speed is resolved at dispatch time from rules.ini (ObjectType.speed)
-    /// multiplied by the entity's locomotor speed_multiplier.
+    /// Speed is resolved at dispatch time by `movement::order_speed`.
     Move {
         entity_id: u64,
         target_rx: u16,

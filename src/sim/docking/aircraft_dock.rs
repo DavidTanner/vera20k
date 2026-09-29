@@ -802,11 +802,12 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
             .substrate
             .entities
             .get(id)
-            .and_then(|e| {
-                let obj = sim.object_type(e.type_ref(), rules)?;
-                Some(crate::util::fixed_math::ra2_speed_to_leptons_per_second(
-                    obj.speed.max(1),
-                ))
+            .map(|e| {
+                crate::sim::movement::order_speed(
+                    e,
+                    sim.object_type(e.type_ref(), rules),
+                    Some(rules),
+                )
             })
             .unwrap_or(crate::util::fixed_math::SimFixed::from_num(8));
         sim.issue_air_cell_destination(id, (rx, ry), speed, Some(rules));

@@ -20,7 +20,7 @@ use crate::sim::passenger::PassengerRole;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::edge_cell::{Edge, find_paradrop_edge_cell};
 use crate::sim::world::{PlacementEvidence, SimSoundEvent, Simulation};
-use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
+use crate::util::fixed_math::SimFixed;
 
 /// The paradrop carrier. gamemd holds the literal (`0x00839708`, resolved at
 /// `0x0065DBAA`, `0x006CD2F9` and `0x006CD542`); no INI key names it.
@@ -206,9 +206,11 @@ fn spawn_pdplane(
     // strictly after successful Unlimbo.
     // No FASTER stage: the carrier flies, and the fly locomotor never calls the
     // `FootClass::GetCurrentSpeed` slot (`veterancy::locomotor_consults_current_speed`).
-    let speed = rules
-        .object(PDPLANE)
-        .map(|o| ra2_speed_to_leptons_per_second(o.speed.max(1)))
+    let speed = sim
+        .substrate
+        .entities
+        .get(pdplane_id)
+        .map(|plane| crate::sim::movement::order_speed(plane, rules.object(PDPLANE), Some(rules)))
         .unwrap_or(SimFixed::from_num(8));
     sim.issue_air_cell_destination(pdplane_id, (target_rx, target_ry), speed, Some(rules));
 

@@ -562,24 +562,11 @@ impl Simulation {
         let loco_layer = e.movement_layer_or_ground();
         let speed_type = loco.map(|l| l.speed_type).unwrap_or(SpeedType::Track);
         let hover_attack = loco.map(|l| l.hover_attack).unwrap_or(false);
-        let loco_multiplier = loco
-            .map(|l| l.speed_multiplier)
-            .unwrap_or(SimFixed::from_num(1));
 
         let obj = rules.and_then(|r| self.object_type(e.type_ref(), r));
-        // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: every ordered move asks the
-        // getter for the speed, so the `FASTER` multiply belongs here, between
-        // the truncated type speed and the locomotor fraction — not only on the
-        // deferred repath. This is the resolver behind Move, AttackMove, Enter,
-        // C4, capture and bunker-entry, so skipping it ran every promoted unit
-        // at rookie speed.
-        let base_speed = crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-            e,
-            obj,
-            obj.map_or(4, |o| o.speed),
-            rules.map_or(1.0, |r| r.general.veteran_speed),
-        );
-        let speed = (base_speed * loco_multiplier).max(SimFixed::lit("25"));
+        // The resolver behind Move, AttackMove, Enter, C4, capture and
+        // bunker-entry.
+        let speed = crate::sim::movement::order_speed(e, obj, rules);
 
         Some(MoveInfo {
             speed,

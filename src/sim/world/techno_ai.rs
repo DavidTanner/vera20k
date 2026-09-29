@@ -828,18 +828,7 @@ fn refresh_mover_speed_after_promotion(sim: &mut Simulation, id: u64, rules: &Ru
         return;
     }
     let obj = sim.object_type(entity.type_ref(), rules);
-    let loco_multiplier = entity
-        .locomotor
-        .as_ref()
-        .map(|loco| loco.speed_multiplier)
-        .unwrap_or(crate::util::fixed_math::SIM_ONE);
-    let base = crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-        entity,
-        obj,
-        obj.map_or(4, |o| o.speed),
-        rules.general.veteran_speed,
-    );
-    let speed = (base * loco_multiplier).max(crate::util::fixed_math::SimFixed::lit("25"));
+    let speed = crate::sim::movement::order_speed(entity, obj, Some(rules));
     if let Some(target) = sim
         .substrate
         .entities

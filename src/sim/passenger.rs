@@ -979,15 +979,9 @@ fn scatter_speed_for_passenger(
     pax_type_str: &str,
 ) -> crate::util::fixed_math::SimFixed {
     let obj = rules.object(pax_type_str);
-    let raw = obj.map_or(4, |o| o.speed);
     match sim.substrate.entities.get(pax_id) {
-        Some(pax) => crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-            pax,
-            obj,
-            raw,
-            rules.general.veteran_speed,
-        ),
-        None => ra2_speed_to_leptons_per_second(raw),
+        Some(pax) => crate::sim::movement::order_speed(pax, obj, Some(rules)),
+        None => ra2_speed_to_leptons_per_second(obj.map_or(4, |o| o.speed)),
     }
 }
 
