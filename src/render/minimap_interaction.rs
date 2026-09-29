@@ -93,8 +93,8 @@ fn tracker_object_signed_cell(
     // therefore center through `BuildingClass::GetCoords @ 0x00447AC0`.
     let (x, y) = super::radar_visibility::radar_object_get_coords_leptons(entity);
     Some((
-        crate::util::direction_tables::lepton_to_cell(x) as i16,
-        crate::util::direction_tables::lepton_to_cell(y) as i16,
+        crate::util::lepton::lepton_to_cell_packed(x),
+        crate::util::lepton::lepton_to_cell_packed(y),
     ))
 }
 

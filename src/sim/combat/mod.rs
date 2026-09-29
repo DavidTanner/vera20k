@@ -2411,8 +2411,8 @@ pub(crate) struct CombatEmit {
 pub(crate) fn projectile_impact_cell(
     impact: ProjectileCoord,
 ) -> (u16, u16, SimFixed, SimFixed, i32) {
-    let rx = impact.x.div_euclid(256).clamp(0, i32::from(u16::MAX)) as u16;
-    let ry = impact.y.div_euclid(256).clamp(0, i32::from(u16::MAX)) as u16;
+    let rx = crate::util::lepton::lepton_to_cell(impact.x).clamp(0, i32::from(u16::MAX)) as u16;
+    let ry = crate::util::lepton::lepton_to_cell(impact.y).clamp(0, i32::from(u16::MAX)) as u16;
     (
         rx,
         ry,

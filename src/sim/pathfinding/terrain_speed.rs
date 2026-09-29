@@ -244,8 +244,8 @@ fn combine_speed_stages(
 /// function replaced (a pure level-byte reading) and so cannot regress.
 fn ground_height_at_world(world: (i32, i32), terrain: &ResolvedTerrainGrid) -> i32 {
     let cell = (
-        crate::sim::cell_kernel::world_to_cell_trunc(world.0),
-        crate::sim::cell_kernel::world_to_cell_trunc(world.1),
+        crate::util::lepton::lepton_to_cell(world.0),
+        crate::util::lepton::lepton_to_cell(world.1),
     );
     let (level, slope) = match (u16::try_from(cell.0), u16::try_from(cell.1)) {
         (Ok(x), Ok(y)) => terrain

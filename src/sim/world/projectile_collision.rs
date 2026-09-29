@@ -1678,7 +1678,7 @@ impl ProjectileCollisionWorld<'_> {
         let mut impact = false;
         if !vertical {
             let floor = self.ground(candidate);
-            let deck = floor.wrapping_add(416);
+            let deck = floor.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
             let cell = self.cell(candidate);
             let structural = cell.bridge_flags_0x1180() & 0x100 != 0
                 || self.cell(projectile.position).bridge_flags_0x1180() & 0x100 != 0;
@@ -1789,7 +1789,7 @@ impl ProjectileCollisionWorld<'_> {
                 .z
                 .wrapping_sub(self.ground(projectile.position))
                 .wrapping_sub(if projectile.on_bridge {
-                    crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
                 } else {
                     0
                 })
@@ -1877,7 +1877,7 @@ impl ProjectileCollisionWorld<'_> {
             return true;
         }
         let height = candidate.z.wrapping_sub(self.ground(candidate));
-        if height <= -416 {
+        if height <= -crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS {
             return true;
         }
         if projectile.collision.flak_scatter
@@ -2078,7 +2078,11 @@ impl ProjectileCollisionWorld<'_> {
             && raw
                 .z
                 .wrapping_sub(self.ground(raw))
-                .wrapping_sub(if target.on_bridge { 416 } else { 0 })
+                .wrapping_sub(if target.on_bridge {
+                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+                } else {
+                    0
+                })
                 >= 208
     }
 }

@@ -231,7 +231,7 @@ pub(crate) fn cell_target_coord(
     if structural {
         coord.z = coord
             .z
-            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+            .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     coord
 }
@@ -266,7 +266,7 @@ pub(crate) fn dummy_cell_target_coord(dummy: &SharedCellDummy) -> ProjectileCoor
     if structural {
         coord.z = coord
             .z
-            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+            .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     coord
 }
@@ -2149,7 +2149,7 @@ fn bridge_surface_z(
         cell.bridge_flags_0x1180() & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL != 0
     };
     (structural(candidate) || structural(previous))
-        .then(|| floor.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32))
+        .then(|| floor.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS))
 }
 
 /// YR `BulletClass_GetAnimFrame` @ 0x00468000.
@@ -2466,7 +2466,7 @@ mod tests {
         assert_eq!(bridge.y, ground.y);
         assert_eq!(
             bridge.z - ground.z,
-            crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
         );
     }
 

@@ -8593,7 +8593,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
     use crate::sim::projectile::{
         ProjectileCoord, ProjectileTarget, dummy_cell_target_coord, projectile_random_shrapnel_cell,
     };
-    use crate::util::lepton::{BRIDGE_HEIGHT_DELTA_LEPTONS, ground_height_leptons};
+    use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, ground_height_leptons};
 
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[VehicleTypes]\n0=MTNK\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=3\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
@@ -8645,7 +8645,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
         let y = ry * 256 + 128;
         let z = ground_height_leptons(2, 0, x, y).expect("flat CellClass surface is supported")
             + if structural {
-                BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+                BRIDGE_DECK_HEIGHT_LEPTONS
             } else {
                 0
             };
@@ -8717,7 +8717,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
     let later_target = dummy_cell_target_coord(&later_dummy);
     assert_eq!(later_target.x, 9 * 256 + 128);
     assert_eq!(later_target.y, 10 * 256 + 128);
-    assert_eq!(later_target.z, 2 * 104 + BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+    assert_eq!(later_target.z, 2 * 104 + BRIDGE_DECK_HEIGHT_LEPTONS);
     assert_ne!(
         later_target,
         out.projectile_spawns[2].initial_target_position

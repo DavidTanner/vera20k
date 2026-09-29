@@ -261,7 +261,7 @@ impl Simulation {
             location.y.wrapping_sub(destination.y),
             location.z.wrapping_sub(destination.z),
         );
-        let cells = distance.wrapping_add((distance >> 31) & 0xFF) >> 8;
+        let cells = crate::util::lepton::lepton_to_cell(distance);
         if cells >= 24 {
             return;
         }
@@ -1274,7 +1274,9 @@ impl Simulation {
             let level = i32::from(cells.ground_fields(native).0 as i8);
             let location = ground_pose::position_world_coord(&actor.position);
             let here = cells.lookup_world(location.x, location.y);
-            actor.on_bridge || i32::from(cells.ground_fields(here).0 as i8) == level + 4
+            actor.on_bridge
+                || i32::from(cells.ground_fields(here).0 as i8)
+                    == level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS
         };
         if !crusher {
             return;

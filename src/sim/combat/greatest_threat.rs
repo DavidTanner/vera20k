@@ -456,9 +456,7 @@ pub(crate) fn calculate_threat_score(
     let distance_leptons = X87Chop53::ftol_i32_low_masked(distance_root);
     let distance = match reference {
         // `CDQ ; AND EDX,0xff ; ADD EAX,EDX ; SAR EAX,0x8` at `0x0070D094`.
-        ThreatReference::NullCoord => {
-            crate::util::direction_tables::lepton_to_cell(distance_leptons)
-        }
+        ThreatReference::NullCoord => crate::util::lepton::lepton_to_cell(distance_leptons),
         // `JMP 0x0070D0A0 @ 0x0070D021` — the shift is on the other branch.
         ThreatReference::ScannerCoords => distance_leptons,
     };

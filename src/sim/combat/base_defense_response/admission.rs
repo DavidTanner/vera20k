@@ -76,10 +76,6 @@ fn destination_coord(
     entity_coord(entity, terrain)
 }
 
-fn lepton_to_cell_component(value: i32) -> i32 {
-    value.wrapping_add((value >> 31) & 255) >> 8
-}
-
 pub(super) fn destination_cell(
     entity: &GameEntity,
     entities: &EntityStore,
@@ -87,15 +83,15 @@ pub(super) fn destination_cell(
 ) -> (i32, i32) {
     let coord = destination_coord(entity, entities, terrain);
     (
-        i32::from(lepton_to_cell_component(coord[0]) as i16),
-        i32::from(lepton_to_cell_component(coord[1]) as i16),
+        i32::from(crate::util::lepton::lepton_to_cell_packed(coord[0])),
+        i32::from(crate::util::lepton::lepton_to_cell_packed(coord[1])),
     )
 }
 
 fn ground_height_at_coord(terrain: &ResolvedTerrainGrid, coord: [i32; 3]) -> Option<i32> {
     let cell = (
-        lepton_to_cell_component(coord[0]),
-        lepton_to_cell_component(coord[1]),
+        crate::util::lepton::lepton_to_cell(coord[0]),
+        crate::util::lepton::lepton_to_cell(coord[1]),
     );
     if cell.0 < 0 || cell.1 < 0 {
         return None;
@@ -121,8 +117,8 @@ pub(super) fn should_be_on_bridge_for_response(
     let current_ground = ground_height_at_coord(terrain, current)?;
     let destination_ground = ground_height_at_coord(terrain, destination)?;
     let destination_cell = (
-        lepton_to_cell_component(destination[0]),
-        lepton_to_cell_component(destination[1]),
+        crate::util::lepton::lepton_to_cell(destination[0]),
+        crate::util::lepton::lepton_to_cell(destination[1]),
     );
     let destination_has_bridge = terrain
         .cellclass_bridge_flags_0x1180(destination_cell.0, destination_cell.1)

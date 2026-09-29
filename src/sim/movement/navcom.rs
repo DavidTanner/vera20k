@@ -121,7 +121,7 @@ fn adjusted_destination(
         if structural {
             coord.z = coord
                 .z
-                .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+                .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         }
     }
     Some(coord)

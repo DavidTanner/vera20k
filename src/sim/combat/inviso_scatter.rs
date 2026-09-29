@@ -157,8 +157,8 @@ pub(crate) fn random_direction_coord_for_byte(
     ))
     .expect("Inviso Y remains in the signed 32-bit map domain") as i32;
 
-    let x_cell = coord_to_cell_truncating(x);
-    let y_cell = coord_to_cell_truncating(y);
+    let x_cell = crate::util::lepton::lepton_to_cell(x);
+    let y_cell = crate::util::lepton::lepton_to_cell(y);
     if (x_cell as u32) >= MAP_CELL_LIMIT || (y_cell as u32) >= MAP_CELL_LIMIT {
         return (base_x, base_y);
     }
@@ -167,20 +167,14 @@ pub(crate) fn random_direction_coord_for_byte(
 }
 
 fn split_valid_coord(x: i32, y: i32) -> (u16, u16, SimFixed, SimFixed) {
-    let x_cell = coord_to_cell_truncating(x);
-    let y_cell = coord_to_cell_truncating(y);
+    let x_cell = crate::util::lepton::lepton_to_cell(x);
+    let y_cell = crate::util::lepton::lepton_to_cell(y);
     (
         x_cell as u16,
         y_cell as u16,
         SimFixed::from_num(x - x_cell * LEPTONS_PER_CELL),
         SimFixed::from_num(y - y_cell * LEPTONS_PER_CELL),
     )
-}
-
-/// The native helper implements signed division by 256 with `CDQ/AND/ADD/SAR`,
-/// so negative coordinates truncate toward zero rather than floor.
-pub(crate) fn coord_to_cell_truncating(coord: i32) -> i32 {
-    (coord + if coord.is_negative() { 0xff } else { 0 }) >> 8
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 //!
 //! Dependency rules: depends on rules/, map/, sim/. Never render/ui/audio/net.
 
-use crate::sim::combat::inviso_scatter::{coord_to_cell_truncating, random_direction_coord};
+use crate::sim::combat::inviso_scatter::random_direction_coord;
 use crate::sim::rng::SimRng;
 use crate::sim::smudge_grid::SimCoord;
 
@@ -341,8 +341,8 @@ pub(crate) fn try_dispatch_building_survivor_smudges(
         let base_x = (cell_rx as i32) * 256 + 128;
         let base_y = (cell_ry as i32) * 256 + 128;
         let (off_x, off_y) = random_direction_coord(rng, base_x, base_y, SURVIVOR_OFFSET_MAGNITUDE);
-        let snap_rx = coord_to_cell_truncating(off_x) as u16;
-        let snap_ry = coord_to_cell_truncating(off_y) as u16;
+        let snap_rx = crate::util::lepton::lepton_to_cell(off_x) as u16;
+        let snap_ry = crate::util::lepton::lepton_to_cell(off_y) as u16;
         let coord = SimCoord {
             x: (snap_rx as i32) * 256 + 128,
             y: (snap_ry as i32) * 256 + 128,

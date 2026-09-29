@@ -23,7 +23,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::warhead_type::WarheadType;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::StringInterner;
-use crate::sim::map::bridge_topology::{BRIDGE_DECK_HEIGHT_LEVELS, CellBridgeView, ListLayer};
+use crate::sim::map::bridge_topology::{CellBridgeView, ListLayer};
 use crate::sim::mission::authority::restore_entity_after_target_expiry;
 use crate::sim::mission::concrete_effects::represented_assign_target;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -41,6 +41,7 @@ use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
 #[cfg(test)]
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::fixed_math::SimFixed;
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 use crate::util::lepton::{CELL_CENTER_LEPTON, LEPTONS_PER_LEVEL, ground_height_leptons};
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 

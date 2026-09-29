@@ -10,7 +10,7 @@ use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::sim::components::{DriveCoord, Position};
 use crate::sim::pathfinding::PathGrid;
 use crate::util::lepton::{
-    BRIDGE_HEIGHT_DELTA_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons,
+    BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons,
 };
 
 /// Map578080 through the caller's query identity. Input queries isolate Dummy;
@@ -126,7 +126,7 @@ pub(crate) fn object_ground_z_leptons(
         .and_then(|cell| ground_height_leptons(cell.level, cell.slope_type, x, y).ok())
         .map(|ground| {
             ground.wrapping_add(if entity.on_bridge {
-                BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+                BRIDGE_DECK_HEIGHT_LEPTONS
             } else {
                 0
             })
@@ -249,7 +249,7 @@ pub(crate) fn ground_surface_z_at(
         }
     };
     Some(ground.wrapping_add(if on_bridge {
-        BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+        BRIDGE_DECK_HEIGHT_LEPTONS
     } else {
         0
     }))
