@@ -77,17 +77,7 @@ pub(super) struct RuntimeCanEnterCellEvaluation {
 pub(super) fn runtime_can_enter_direction(current_cell: (u16, u16), target_cell: (u16, u16)) -> i8 {
     let dx = (target_cell.0 as i32 - current_cell.0 as i32).signum();
     let dy = (target_cell.1 as i32 - current_cell.1 as i32).signum();
-    match (dx, dy) {
-        (0, -1) => 0,
-        (1, -1) => 1,
-        (1, 0) => 2,
-        (1, 1) => 3,
-        (0, 1) => 4,
-        (-1, 1) => 5,
-        (-1, 0) => 6,
-        (-1, -1) => 7,
-        _ => -1,
-    }
+    crate::util::direction::direction_from_delta(dx, dy).map_or(-1, |direction| direction as i8)
 }
 
 pub(super) fn runtime_current_effective_height(
