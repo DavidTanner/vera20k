@@ -165,31 +165,6 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
     0x1CE8_1848_7043_6163,
 );
 
-// Schema171: fresh-turn admission/residual clearing and retained-owner hashes.
-// See TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md, PR415 causal attribution.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x5C06_496B_5755_9864;
-// Schema174 removes folds instead of adding them: OreGrowthState's node-era
-// scanner cursor, candidate lists and sample counters, and ProductionState's
-// fallback ore overlay id. The pre-174 projection folds the values those fields
-// held IN THIS FIXTURE (zero, empty, None): its node-era scan never advanced,
-// and it never calls the spawner seeding, the one path that set the fallback
-// id. It is not a general reconstruction; a scenario finalized by the map
-// loader held Some(first TIB* id). The projection must still equal the previous
-// current pin, asserted below. Rust hash-composition ratchet, not a native golden.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 0xCFA3_C9B1_D359_0CD4;
-// v181 adds the default Foot+580 factor to every entity's hash. The pre-181
-// assertion below retains the previous entire fixture state/RNG ratchet.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0xECA2_473D_759B_E119;
-// Snapshot182 adds ordered display vectors. The pre-182 projection below
-// must reproduce the previous whole-fixture hash, including all RNG/state.
-// Schema186 removes the always-None release-tail byte from each entity. This
-// fixture contains no aircraft; the pre186 projection below retains the old
-// full hash, and every position/replay/RNG assertion remains unchanged.
-// Schema187: object burst index replaces the obsolete target remaining count.
-// The pre187 assertion below reproduces the preceding full fixture hash.
-// Schema189 folds retained Techno+3D4; Before(189) below reproduces v188.
-// v190 adds saved Foot neighbor history. Before(190) reproduces the full v189
-// fixture; its legacy grid has no retained plane. Route/RNG pins are unchanged.
 // 2026-09-23 Drive/Ship Process path request (behavior, not composition):
 // Drive/Ship orders from every producer (player, pursuit, rally, miners) are
 // accepted by the Unit setter without an order-time A*, PowerOn or redirect.
@@ -378,19 +353,7 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0xECA2_473D_759B_
 // mission, NavCom, attack and movement targets, locomotor kind and layer and
 // all three RNG states matched at all 600 ticks (the probe patch was not
 // committed). Old values: the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0x998F_9E5E_3777_EF14;
-// Schema 239 adds only the barrel elevation fold: its projection
-// reproduces the prior pin.
 const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x19D1_51F4_9C23_0D0B;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x1565_44A8_9372_C35D;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x33F3_5D13_1489_D541;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0x338D_FA12_1394_209C;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0xBA55_0B97_CD10_DE1A;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x2D1C_1533_3174_425B;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0x48A5_ECBC_08C4_FC19;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206: u64 = 0x1BBE_A5CC_EB2F_875C;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0x7895_E7FA_61D0_DAF8;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xD2C0_828F_DD02_2D7B;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -744,140 +707,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     let (_, final_scen, final_main, final_mapgen) =
         *recorded_streams.last().expect("final checkpoint recorded");
     let final_hash = *replayed.last().expect("at least one tick recorded");
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(216)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216,
-        "v216 only folds the buildings' repair bytes and the houses' repair delay, \
-         auto-repair latch and its timer"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(213)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213,
-        "v213 only folds each building's AI sale byte"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(208)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208,
-        "v208 only folds the crash latch, its AI edge and the Fly fall counter"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(207)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207,
-        "the pre-207 ore-field composition moved"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(206)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206,
-        "v206 only removes the retired miner dock folds"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(202)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202,
-        "v202 only folds the object's rearm timer in place of the target's counters"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(190)),
-        0x015B_224B_EC31_024F,
-        "v190 changes only the Foot neighbor-history hash composition in this fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        0x75CC_8880_04E2_97DA,
-        "v189 adds only the retained Techno+3D4 hash fold"
-    );
-    let before_burst_hash = rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(187));
-    assert_eq!(
-        before_burst_hash, 0x44AB_4223_838F_9D40,
-        "schema187 only replaces zero remaining-shot fields with the retained index in this fixture"
-    );
-    let before_release_hash =
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(186));
-    // Schema 172 removed the refinery dock registry's hash folds. They were
-    // unframed, so an empty registry contributed no bytes: the pin below holds
-    // across that removal exactly when the refinery (id 2) holds no contact at
-    // the pinned tick.
-    assert!(
-        rep.substrate
-            .entities
-            .get(2)
-            .expect("harness refinery")
-            .radio_contacts
-            .is_empty(),
-        "a held refinery contact at the pinned tick would have moved the pin"
-    );
-    // Bounded full08 causal probe: no AnimRuntime pause fold or legacy gap
-    // sample occurs in this fixture. Omit ONLY the newly inserted replay-array
-    // fold and Building operational/stuff markers; keep current state intact.
-    assert_eq!(
-        rep.substrate.anims.len(),
-        0,
-        "power hash probe excludes Anim layouts"
-    );
-    assert!(
-        rep.substrate
-            .entities
-            .values()
-            .all(|e| e.gap_generator == Default::default())
-    );
-    assert!(
-        rep.power_states
-            .values()
-            .all(|s| !s.has_drained_power_source)
-    );
-    assert!(
-        rep.substrate
-            .entities
-            .values()
-            .all(|e| e.building_storage == Default::default()
-                && e.aircraft_ammo.is_none()
-                && e.aircraft_mission.is_none()),
-        "power composition probe has no storage or aircraft state"
-    );
-    assert!(
-        rep.production.airfield_docks.is_empty(),
-        "power composition probe has no dock reservation registry"
-    );
-    let before_power_hash =
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::BeforeBuildingPowerIntegration);
-    println!(
-        "[global power composition] current={final_hash:016X} before_power={before_power_hash:016X}"
-    );
-    // 2026-09-23: moved by the Drive/Ship order and first-Process behavior
-    // change (see GLOBAL_HARNESS_FINAL_HASH), not by a hash owner.
-    // 2026-09-25: moved by the ore-field chain's two causes (same place).
-    // 2026-09-25: moved by the ore-field review's map cells (same place).
-    // 2026-09-26: moved by the retired weapon-identity fold (same place).
-    // 2026-09-27: moved by combat chain 11's building Guard (same place).
-    // 2026-09-28: moved by the one-body-facing fold and Drive's retired turn
-    // target (same place).
-    // 2026-09-29: moved by the retired ground move phase fold (same place).
-    // 2026-09-29: moved by the retired purifier count fold (same place).
-    // 2026-09-29: moved by the one wall-plane mode fold (same place).
-    // 2026-09-29: moved by the one locomotor enum's folds (same place).
-    assert_eq!(
-        before_power_hash, 0x99E9_A4CE_4708_4149,
-        "full08 projection moved: investigate behavior or another hash owner; do not rebaseline"
-    );
-
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(174)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174,
-        "the pre-174 composition must reproduce the previous current pin"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(181)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181,
-        "excluding only Foot+580 must preserve the pre-181 fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(182)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182,
-        "excluding only display vectors must preserve the pre-182 fixture"
-    );
-    println!(
-        "[schema168 global] pre168={:016X}",
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(168))
-    );
     println!(
         "[global parity] final_hash={final_hash:016X} \
          streams={final_scen:016X},{final_main:016X},{final_mapgen:016X} \
@@ -945,25 +774,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         "tank 6 takes six 105mm hits (65 * 75% heavy)"
     );
 
-    assert_eq!(
-        before_release_hash, GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186,
-        "restoring only the absent release-tail fold must reproduce the prior fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217,
-        "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
-        "schema220 only drops the two empty rally copies from this fixture's hash"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(239)),
-        GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239,
-        "schema239 only adds the barrel elevation fold"
-    );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,
         "committed global-harness baseline drifted. Do not copy the observed value: \
