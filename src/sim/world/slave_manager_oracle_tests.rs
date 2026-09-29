@@ -219,17 +219,8 @@ pub(super) fn row_scene_edited(input: &Value, edit: impl FnOnce(&mut String)) ->
     let rules = &scene.rules;
     let sim = &mut scene.sim;
     let frame = sim.session.binary_frame;
-    let heights = BTreeMap::new();
     let refinery = sim
-        .spawn_object(
-            "YAREFN",
-            "Americans",
-            YAREFN_NW.0,
-            YAREFN_NW.1,
-            0,
-            rules,
-            &heights,
-        )
+        .spawn_object("YAREFN", "Americans", YAREFN_NW.0, YAREFN_NW.1, 0, rules)
         .expect("slave refinery");
     let master = if unit_owner {
         // The oracle's Slave Miner holds the manager; its fixture refinery
@@ -241,16 +232,7 @@ pub(super) fn row_scene_edited(input: &Value, edit: impl FnOnce(&mut String)) ->
             .slave_manager = None;
         // Facing north, YAREFN's DeployFacing, so UnitClass::Deploy converts.
         let smin = sim
-            .spawn_object_with_overlay_registry(
-                "SMIN",
-                "Americans",
-                15,
-                15,
-                0,
-                rules,
-                &heights,
-                registry(),
-            )
+            .spawn_object_with_overlay_registry("SMIN", "Americans", 15, 15, 0, rules, registry())
             .unwrap_or_else(|| panic!("slave miner for {}", input["name"]));
         let entity = sim.substrate.entities.get_mut(smin).unwrap();
         entity.mcv_deploy_pending = input["deploy_pending"] == true;
@@ -263,7 +245,7 @@ pub(super) fn row_scene_edited(input: &Value, edit: impl FnOnce(&mut String)) ->
     };
     // A refused UnitClass::Deploy is a structure on the deploy footprint.
     if input["deploys"] == serde_json::json!([0]) {
-        sim.spawn_object("GAOREP", "Americans", 16, 16, 0, rules, &heights)
+        sim.spawn_object("GAOREP", "Americans", 16, 16, 0, rules)
             .expect("footprint blocker");
     }
     // VERA publishes neither the Construction mission nor a BState: a

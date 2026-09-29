@@ -72,9 +72,8 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
             terrain.cell_mut(x, y).unwrap().level = 6;
         }
     }
-    let heights = std::collections::BTreeMap::from([((10, 20), 6)]);
     let firer_id = world
-        .spawn_object("FV", "Americans", 10, 20, 0, &rules, &heights)
+        .spawn_object("FV", "Americans", 10, 20, 0, &rules)
         .unwrap();
     world.resolve_type_handles(&rules);
     let target_cell = &rows[0]["supplied"]["target_cell"];

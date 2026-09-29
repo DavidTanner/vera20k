@@ -60,17 +60,13 @@ fn make_test_entity(type_id: &str, category: EntityCategory) -> MapEntity {
     }
 }
 
-pub(crate) fn empty_heights() -> BTreeMap<(u16, u16), u8> {
-    BTreeMap::new()
-}
-
 #[test]
 fn gsi_04_05_map_recruitment_bytes_reach_persistent_techno_state() {
     let mut sim = Simulation::new();
     let mut placement = make_test_entity("MTNK", EntityCategory::Unit);
     placement.recruitable_a = false;
     placement.recruitable_b = true;
-    assert_eq!(sim.spawn_from_map(&[placement], None, &empty_heights()), 1);
+    assert_eq!(sim.spawn_from_map(&[placement], None), 1);
 
     let response = sim
         .substrate
@@ -100,28 +96,10 @@ fn game_speed_transition_applies_at_ingress_before_triggers_and_hash() {
     let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
 
     let result = sim
-        .advance_master_frame(
-            &[command],
-            None,
-            &empty_heights(),
-            None,
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_master_frame(&[command], None, None, None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
     let control_result = control
-        .advance_master_frame(
-            &[],
-            None,
-            &empty_heights(),
-            None,
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_master_frame(&[], None, None, None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
 
     assert!(result.frame_committed);
@@ -151,13 +129,11 @@ fn invalid_or_unknown_game_speed_transition_is_consumed_without_state_effect() {
             Command::SetGameSpeed { speed: 7 },
         )],
         None,
-        &empty_heights(),
         None,
         None,
         67,
     );
-    let invalid_control_result =
-        invalid_control.advance_tick(&[], None, &empty_heights(), None, None, 67);
+    let invalid_control_result = invalid_control.advance_tick(&[], None, None, None, 67);
     assert_eq!(invalid_result.executed_commands, 1);
     assert_eq!(invalid.session.game_options.game_speed, 1);
     assert_eq!(invalid_result.state_hash, invalid_control_result.state_hash);
@@ -174,13 +150,11 @@ fn invalid_or_unknown_game_speed_transition_is_consumed_without_state_effect() {
             Command::SetGameSpeed { speed: 4 },
         )],
         None,
-        &empty_heights(),
         None,
         None,
         67,
     );
-    let unknown_control_result =
-        unknown_control.advance_tick(&[], None, &empty_heights(), None, None, 67);
+    let unknown_control_result = unknown_control.advance_tick(&[], None, None, None, 67);
     assert_eq!(unknown_result.executed_commands, 1);
     assert_eq!(unknown.session.game_options.game_speed, 1);
     assert_eq!(unknown_result.state_hash, unknown_control_result.state_hash);
@@ -201,7 +175,7 @@ fn game_speed_ingress_uses_house_order_and_survives_same_frame_exit() {
         CommandEnvelope::new(local, 1, Command::ExitMatch),
     ];
 
-    let result = sim.advance_tick(&commands, None, &empty_heights(), None, None, 67);
+    let result = sim.advance_tick(&commands, None, None, None, 67);
 
     assert!(!result.frame_committed);
     assert_eq!(result.executed_commands, 3);
@@ -219,7 +193,6 @@ fn network_modal_does_not_execute_game_speed_ingress() {
         .advance_master_frame(
             &[command],
             None,
-            &empty_heights(),
             None,
             None,
             67,
@@ -346,16 +319,7 @@ fn master_frame_hash_observes_living_animation_completion_facing() {
     let (mut sim, rules) = animation_boundary_fixture();
 
     let result = sim
-        .advance_master_frame(
-            &[],
-            Some(&rules),
-            &empty_heights(),
-            None,
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_master_frame(&[], Some(&rules), None, None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
 
     let entity = sim.substrate.entities.get(1).expect("living infantry");
@@ -373,17 +337,9 @@ fn app_and_headless_frames_hash_identically_for_animation_progress() {
     let (mut headless_sim, _) = animation_boundary_fixture();
 
     let app = app_sim
-        .advance_app_frame(
-            &[],
-            Some(&rules),
-            &empty_heights(),
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
-    let headless = headless_sim.advance_tick(&[], Some(&rules), &empty_heights(), None, None, 67);
+    let headless = headless_sim.advance_tick(&[], Some(&rules), None, None, 67);
 
     assert!(app.tick.frame_committed && headless.frame_committed);
     assert_eq!(app.tick.state_hash, headless.state_hash);
@@ -435,18 +391,9 @@ fn app_and_headless_frames_hash_identically_for_particle_frame_timing() {
 
     for frame in 1..=4 {
         let app = app_sim
-            .advance_app_frame(
-                &[],
-                Some(&rules),
-                &empty_heights(),
-                None,
-                67,
-                TickLane::Ordinary,
-                None,
-            )
+            .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
             .expect("fixture frame must complete");
-        let headless =
-            headless_sim.advance_tick(&[], Some(&rules), &empty_heights(), None, None, 67);
+        let headless = headless_sim.advance_tick(&[], Some(&rules), None, None, 67);
 
         assert!(app.tick.frame_committed && headless.frame_committed);
         assert_eq!(app.tick.state_hash, headless.state_hash, "frame {frame}");
@@ -509,7 +456,7 @@ Rate=120
     rules.bind_anim_frame_count_for_test("WAKE1", 15);
     let mut sim = Simulation::new();
     let boat_id = sim
-        .spawn_object("BOAT", "Americans", 0, 0, 64, &rules, &empty_heights())
+        .spawn_object("BOAT", "Americans", 0, 0, 64, &rules)
         .expect("spawn boat");
     assert!(sim.interner.get("WAKE1").is_none());
     // The native gate reads CellClass+0xEC == 2 (Water); the fixture's water
@@ -618,7 +565,7 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
     );
     let mut sim = Simulation::new();
     let id = sim
-        .spawn_object("E1", "Americans", 4, 4, 0, &rules, &empty_heights())
+        .spawn_object("E1", "Americans", 4, 4, 0, &rules)
         .expect("spawn infantry");
     let entity = sim
         .substrate
@@ -633,7 +580,7 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
         finished: false,
     });
 
-    let first = sim.advance_tick(&[], Some(&rules), &empty_heights(), None, None, 67);
+    let first = sim.advance_tick(&[], Some(&rules), None, None, 67);
     let after_first = sim
         .substrate
         .entities
@@ -643,7 +590,7 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
     assert_eq!(after_first.frame_index, 1);
     assert!(!after_first.finished);
 
-    let second = sim.advance_tick(&[], Some(&rules), &empty_heights(), None, None, 67);
+    let second = sim.advance_tick(&[], Some(&rules), None, None, 67);
 
     assert!(first.frame_committed && second.frame_committed);
     assert!(
@@ -663,7 +610,6 @@ fn terminal_master_frame_does_not_advance_living_animation() {
         .advance_master_frame(
             &[exit],
             Some(&rules),
-            &empty_heights(),
             None,
             None,
             67,
@@ -699,15 +645,7 @@ fn app_frame_output_transfers_pre_tick_sound_exactly_once_without_hash_change() 
     });
 
     let first = sim
-        .advance_app_frame(
-            &[],
-            None,
-            &empty_heights(),
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
     assert!(matches!(
         first.sound_events.as_slice(),
@@ -716,15 +654,7 @@ fn app_frame_output_transfers_pre_tick_sound_exactly_once_without_hash_change() 
     assert_eq!(first.tick.state_hash, sim.state_hash());
 
     let second = sim
-        .advance_app_frame(
-            &[],
-            None,
-            &empty_heights(),
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
     assert!(second.sound_events.is_empty());
     assert_eq!(second.tick.state_hash, sim.state_hash());
@@ -744,15 +674,7 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
         .place_owned_wall(2, 2, 2, 0x23, owner);
 
     let deferred = sim
-        .advance_app_frame(
-            &[],
-            Some(&rules),
-            &empty_heights(),
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
     assert!(deferred.overlay_updates.is_empty());
     assert!(
@@ -766,7 +688,6 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
         .advance_app_frame(
             &[],
             Some(&rules),
-            &empty_heights(),
             Some(&overlays),
             67,
             TickLane::Ordinary,
@@ -788,7 +709,6 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
         .advance_app_frame(
             &[],
             Some(&rules),
-            &empty_heights(),
             Some(&overlays),
             67,
             TickLane::Ordinary,
@@ -827,7 +747,6 @@ fn terminal_app_frame_finalizes_overlay_updates_before_hash() {
         .advance_app_frame(
             &[exit],
             Some(&rules),
-            &empty_heights(),
             Some(&overlays),
             67,
             TickLane::Ordinary,
@@ -864,7 +783,6 @@ fn terminal_app_frame_finalizes_overlay_updates_before_hash() {
         .advance_app_frame(
             &[],
             Some(&rules),
-            &empty_heights(),
             Some(&overlays),
             67,
             TickLane::Ordinary,
@@ -1168,7 +1086,6 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
         &Command::SellWallAtCell { x: 4, y: 4 },
         Some(&rules),
         Some(&path),
-        &empty_heights(),
         Some(&overlays),
     ));
 
@@ -1386,7 +1303,6 @@ fn wall_sale_preserves_the_sold_anchor_retained_count_source() {
         &Command::SellWallAtCell { x: 2, y: 2 },
         Some(&rules),
         None,
-        &empty_heights(),
         Some(&overlays),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
@@ -1463,7 +1379,6 @@ fn wall_sale_cleanup_reaches_fixed_stride_alias_and_reverses_that_source_only() 
         &Command::SellWallAtCell { x: 0, y: 1 },
         Some(&rules),
         None,
-        &empty_heights(),
         Some(&overlays),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
@@ -1511,10 +1426,7 @@ fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
     let mut building = make_test_entity("GAREFN", EntityCategory::Structure);
     building.cell_x = 8;
     building.cell_y = 8;
-    assert_eq!(
-        sim.spawn_from_map(&[building], Some(&rules), &empty_heights()),
-        1
-    );
+    assert_eq!(sim.spawn_from_map(&[building], Some(&rules)), 1);
     let placed = sim.substrate.entities.values().next().unwrap();
     assert!(placed.lifecycle.cell_marked);
     assert!(
@@ -1580,7 +1492,6 @@ fn gsi_04_07_wall_sell_eligibility_gate_matrix_rejects_without_mutation() {
             &Command::SellWallAtCell { x: 1, y: 1 },
             Some(rules),
             None,
-            &empty_heights(),
             Some(&overlays),
         )
     };
@@ -1635,7 +1546,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&unsellable_rules),
         None,
-        &empty_heights(),
         Some(&overlays),
     ));
     assert_eq!(
@@ -1649,7 +1559,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
         None,
-        &empty_heights(),
         Some(&overlays),
     ));
     assert!(sim.sound_events.is_empty());
@@ -1664,7 +1573,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
         None,
-        &empty_heights(),
         Some(&overlays),
     ));
     sim.houses.get_mut(&wall_owner).unwrap().is_human = true;
@@ -1673,7 +1581,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
         None,
-        &empty_heights(),
         Some(&overlays),
     ));
     assert!(!sim.apply_command_with_overlays(
@@ -1681,7 +1588,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 0 },
         Some(&rules),
         None,
-        &empty_heights(),
         Some(&overlays),
     ));
 }
@@ -2450,7 +2356,7 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
             crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(&terrain);
         sim.resolved_terrain = Some(terrain);
 
-        sim.advance_tick(&[], Some(&rules), &empty_heights(), Some(&path), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&path), None, 67);
 
         {
             let entity = sim.substrate.entities.get(1).expect("Tube mover survives");
@@ -3133,17 +3039,15 @@ fn a_gi_on_guard_acquires_an_enemy_infantryman_and_fires_until_it_dies() {
     );
     install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
     sim.install_resolved_terrain_for_new_map(terrain);
-    let heights = empty_heights();
     let gi = sim
-        .spawn_object("E1", "Americans", 2, 1, 64, &rules, &heights)
+        .spawn_object("E1", "Americans", 2, 1, 64, &rules)
         .expect("GI");
     let enemy = sim
-        .spawn_object("E1", "Russians", 5, 1, 64, &rules, &heights)
+        .spawn_object("E1", "Russians", 5, 1, 64, &rules)
         .expect("enemy infantryman");
     sim.path_grid = Some(std::sync::Arc::new(PathGrid::test_all_passable(12, 3)));
     let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
     runtime.resources.rules = rules;
-    runtime.resources.height_map = heights;
 
     let mut gi_shots = 0;
     let mut enemy_health = Vec::new();
@@ -3223,21 +3127,20 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
     );
     install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
     sim.install_resolved_terrain_for_new_map(terrain);
-    let heights = empty_heights();
     let dolphin_id = sim
-        .spawn_object("DLPH", "Americans", 0, 0, 64, &rules, &heights)
+        .spawn_object("DLPH", "Americans", 0, 0, 64, &rules)
         .expect("Dolphin placed first in Logic order");
     let later_id = sim
-        .spawn_object("LATER", "Americans", 0, 2, 64, &rules, &heights)
+        .spawn_object("LATER", "Americans", 0, 2, 64, &rules)
         .expect("later shooter placed after Dolphin");
     let sonic_endpoint_id = sim
-        .spawn_object("TARGET", "Russians", 6, 0, 0, &rules, &heights)
+        .spawn_object("TARGET", "Russians", 6, 0, 0, &rules)
         .expect("Sonic endpoint");
     let wave_receiver_id = sim
-        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules, &heights)
+        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules)
         .expect("cell-list Wave receiver");
     let later_target_id = sim
-        .spawn_object("TARGET", "Russians", 2, 2, 0, &rules, &heights)
+        .spawn_object("TARGET", "Russians", 2, 2, 0, &rules)
         .expect("later shooter's target");
     assert!(crate::sim::combat::issue_attack_command(
         &mut sim.substrate.entities,
@@ -3255,7 +3158,6 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
     sim.path_grid = Some(std::sync::Arc::new(path));
     let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
     runtime.resources.rules = rules;
-    runtime.resources.height_map = heights;
     let output = runtime
         .advance_frame(&[], 67, TickLane::Ordinary)
         .expect("fixture frame must complete");
@@ -3368,12 +3270,11 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
     }
     install_rectangular_test_playfield(&mut sim, 8, 1);
     sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(8, 1, cells));
-    let heights = empty_heights();
     let dolphin_id = sim
-        .spawn_object("DLPH", "Americans", 0, 0, 64, &rules, &heights)
+        .spawn_object("DLPH", "Americans", 0, 0, 64, &rules)
         .expect("bridge Dolphin");
     let receiver_id = sim
-        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules, &heights)
+        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules)
         .expect("bridge receiver");
     for id in [dolphin_id, receiver_id] {
         sim.remove_entity_occupancy(id);
@@ -3397,7 +3298,6 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
     sim.path_grid = Some(std::sync::Arc::new(path));
     let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
     runtime.resources.rules = rules;
-    runtime.resources.height_map = heights;
     let output = runtime
         .advance_frame(&[], 67, TickLane::Ordinary)
         .expect("fixture frame must complete");
@@ -3511,9 +3411,8 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
 
     let mut sim = Simulation::new();
     let rules = gate_test_rules();
-    let heights = empty_heights();
     let gate_id = sim
-        .spawn_object("GAGATE_A", "Americans", 10, 10, 0, &rules, &heights)
+        .spawn_object("GAGATE_A", "Americans", 10, 10, 0, &rules)
         .expect("spawn gate");
     {
         let gate = sim
@@ -3528,7 +3427,7 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
     }
     assert_eq!(sim.session.binary_frame, 0, "fresh sim starts at frame 0");
 
-    let _ = sim.advance_tick(&[], Some(&rules), &heights, None, None, 1);
+    let _ = sim.advance_tick(&[], Some(&rules), None, None, 1);
 
     // Committed late: post-tick frame advanced to 1.
     assert_eq!(
@@ -3949,7 +3848,7 @@ fn one_way_alliance_does_not_end_the_game() {
 fn test_spawn_vehicle_has_voxel_marker() {
     let mut sim: Simulation = Simulation::new();
     let entities: Vec<MapEntity> = vec![make_test_entity("MTNK", EntityCategory::Unit)];
-    let count: u32 = sim.spawn_from_map(&entities, None, &empty_heights());
+    let count: u32 = sim.spawn_from_map(&entities, None);
 
     assert_eq!(count, 1);
     let voxel_count: usize = sim
@@ -3965,7 +3864,7 @@ fn test_spawn_vehicle_has_voxel_marker() {
 fn test_spawn_infantry_has_sprite_marker() {
     let mut sim: Simulation = Simulation::new();
     let entities: Vec<MapEntity> = vec![make_test_entity("E1", EntityCategory::Infantry)];
-    sim.spawn_from_map(&entities, None, &empty_heights());
+    sim.spawn_from_map(&entities, None);
 
     let sprite_count: usize = sim
         .substrate
@@ -3985,7 +3884,6 @@ fn gsi_13_10_art_voxel_no_selects_shp_unit_in_all_three_spawn_constructors() {
         sim.spawn_from_map(
             &[make_test_entity("DLPH", EntityCategory::Unit)],
             Some(&rules),
-            &empty_heights(),
         ),
         1
     );
@@ -4047,7 +3945,7 @@ fn gsi_13_10_effective_art_metadata_precedes_complete_category_fallback() {
 fn test_spawn_sets_position_and_facing() {
     let mut sim: Simulation = Simulation::new();
     let entities: Vec<MapEntity> = vec![make_test_entity("HTNK", EntityCategory::Unit)];
-    sim.spawn_from_map(&entities, None, &empty_heights());
+    sim.spawn_from_map(&entities, None);
 
     for e in sim.substrate.entities.values() {
         assert_eq!(e.position.rx, 30);
@@ -4062,7 +3960,6 @@ fn test_spawn_sets_position_and_facing() {
 #[test]
 fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
     let mut sim = Simulation::new();
-    let heights = empty_heights();
     let resolved = single_bridge_cell(5, 5, 3);
     let count = sim.spawn_from_map_with_resolved(
         &[MapEntity {
@@ -4084,7 +3981,6 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
             structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
-        &heights,
         Some(&resolved),
     );
 
@@ -4098,10 +3994,48 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
     assert_eq!(loco.layer, MovementLayer::Bridge);
 }
 
+/// Production spawns read the live CellClass level: a level rewritten after
+/// load (bridge body, cliff collapse) is what the next object stands on.
+#[test]
+fn spawn_object_reads_the_live_terrain_level() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n\n[VehicleTypes]\n\n[AircraftTypes]\n\n[BuildingTypes]\n\n\
+         [E1]\nStrength=125\nSpeed=4\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n",
+    ))
+    .expect("GI fixture");
+    let mut sim = Simulation::new();
+    let terrain = ResolvedTerrainGrid::from_cells(
+        6,
+        6,
+        (0..6u16)
+            .flat_map(|ry| {
+                (0..6u16).map(move |rx| crate::map::resolved_terrain::test_flat_cell(rx, ry))
+            })
+            .collect(),
+    );
+    install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
+    sim.install_resolved_terrain_for_new_map(terrain);
+    // The whole plateau is raised after load, as a level write would.
+    for ry in 0..6 {
+        for rx in 0..6 {
+            let cell = sim
+                .resolved_terrain
+                .as_mut()
+                .unwrap()
+                .cell_mut(rx, ry)
+                .unwrap();
+            cell.level = 4;
+        }
+    }
+    let id = sim
+        .spawn_object("E1", "Americans", 3, 3, 64, &rules)
+        .expect("GI spawns");
+    assert_eq!(sim.entities().get(id).unwrap().position.z, 4);
+}
+
 #[test]
 fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
     let mut sim = Simulation::new();
-    let heights = BTreeMap::from([((5, 5), 1)]);
     let resolved = ResolvedTerrainGrid::from_cells(
         6,
         6,
@@ -4109,6 +4043,7 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
             .flat_map(|ry| {
                 (0..6u16).map(
                     move |rx| crate::map::resolved_terrain::ResolvedTerrainCell {
+                        level: u8::from((rx, ry) == (5, 5)),
                         ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
                     },
                 )
@@ -4135,7 +4070,6 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
             structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
-        &heights,
         Some(&resolved),
     );
     let e = sim.substrate.entities.get(1).expect("spawned entity");
@@ -4352,7 +4286,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
             structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
-        &BTreeMap::from([((5, 5), 1)]),
         Some(&resolved),
     );
 
@@ -4406,7 +4339,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
             structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
-        &BTreeMap::new(),
         Some(&resolved),
     );
 
@@ -4466,7 +4398,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
             structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
-        &BTreeMap::new(),
         Some(&resolved),
     );
 
@@ -4518,7 +4449,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
             structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
-        &BTreeMap::new(),
         Some(&resolved),
     );
 
@@ -4573,7 +4503,6 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
             structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
-        &BTreeMap::new(),
         Some(&resolved),
     );
 
@@ -4653,7 +4582,6 @@ fn test_bridge_collapse_kills_ground_unit_under_destroyed_cell() {
             structure_ai_repairable: false,
         }],
         Some(&rules),
-        &BTreeMap::new(),
         Some(&resolved),
     );
     let id = sim
@@ -4884,10 +4812,7 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     let mut mover = make_test_entity("E1", EntityCategory::Infantry);
     mover.cell_x = 6;
     mover.cell_y = 0;
-    assert_eq!(
-        sim.spawn_from_map(&[building, mover], Some(&rules), &empty_heights()),
-        2
-    );
+    assert_eq!(sim.spawn_from_map(&[building, mover], Some(&rules)), 2);
     sim.resolve_type_handles(&rules);
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let before_path = sim.path_grid_snapshot().unwrap();
@@ -5148,7 +5073,7 @@ fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
         &resolved, true, 15,
     ));
     let boat_id = sim
-        .spawn_object("BOAT", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
+        .spawn_object("BOAT", "Americans", 0, 0, 64, &rules)
         .expect("spawn boat");
     let boat = sim
         .substrate
@@ -5168,14 +5093,7 @@ fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
     });
 
     let path_grid = PathGrid::new(2, 1);
-    let _ = sim.advance_tick(
-        &[],
-        Some(&rules),
-        &BTreeMap::new(),
-        Some(&path_grid),
-        None,
-        33,
-    );
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 33);
 
     let boat = sim
         .substrate
@@ -5208,7 +5126,7 @@ fn test_too_big_ship_can_move_under_bridge_route() {
         &resolved, true, 15,
     ));
     let ship_id = sim
-        .spawn_object("DRED", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
+        .spawn_object("DRED", "Americans", 0, 0, 64, &rules)
         .expect("spawn dreadnought");
     let ship = sim
         .substrate
@@ -5232,14 +5150,7 @@ fn test_too_big_ship_can_move_under_bridge_route() {
     // not scale locomotor movement.
     let path_grid = PathGrid::new(2, 1);
     for _ in 0..16 {
-        let _ = sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            1,
-        );
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 1);
         if sim
             .substrate
             .entities
@@ -5271,7 +5182,7 @@ fn test_ship_turn_path_completes_without_drive_track_stall() {
     install_rectangular_test_playfield(&mut sim, 3, 3);
     sim.resolved_terrain = Some(water_terrain(3, 3));
     let boat_id = sim
-        .spawn_object("BOAT", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
+        .spawn_object("BOAT", "Americans", 0, 0, 64, &rules)
         .expect("spawn boat");
     let boat = sim
         .substrate
@@ -5296,14 +5207,7 @@ fn test_ship_turn_path_completes_without_drive_track_stall() {
 
     let path_grid = PathGrid::new(3, 3);
     for _ in 0..10 {
-        let _ = sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            100,
-        );
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
     }
 
     let boat = sim
@@ -5340,7 +5244,7 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
     );
 
     let ship_id = sim
-        .spawn_object("DEST", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
+        .spawn_object("DEST", "Americans", 0, 0, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
         &sim,
@@ -5354,26 +5258,12 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
         },
     );
 
-    let _ = sim.advance_tick(
-        &[cmd],
-        Some(&rules),
-        &BTreeMap::new(),
-        Some(&path_grid),
-        None,
-        100,
-    );
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&path_grid), None, 100);
     // GSI-13.06: Ship Process_Drive_Track (0x6A05F0) spends the integer
     // GetCurrentSpeed budget in strict 7-unit points; DEST's default ramp can
     // reach the 0.3 brake floor while its final raw-track tail is still live.
     for _ in 0..100 {
-        let _ = sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            100,
-        );
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
         if sim
             .substrate
             .entities
@@ -5420,7 +5310,7 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
     );
 
     let ship_id = sim
-        .spawn_object("DEST", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
+        .spawn_object("DEST", "Americans", 0, 0, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
         &sim,
@@ -5434,23 +5324,9 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
         },
     );
 
-    let _ = sim.advance_tick(
-        &[cmd],
-        Some(&rules),
-        &BTreeMap::new(),
-        Some(&path_grid),
-        None,
-        100,
-    );
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&path_grid), None, 100);
     for _ in 0..100 {
-        let _ = sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            100,
-        );
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
         if sim
             .substrate
             .entities
@@ -5499,7 +5375,7 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
     );
 
     let ship_id = sim
-        .spawn_object("DEST", "Americans", 0, 1, 64, &rules, &BTreeMap::new())
+        .spawn_object("DEST", "Americans", 0, 1, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
         &sim,
@@ -5516,14 +5392,7 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
     // The Move dispatches at this frame's EventClass tail; Ship69F450
     // accepts without a route, and the next frame's first Process requests it.
     for commands in [vec![cmd], Vec::new()] {
-        let _ = sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            100,
-        );
+        let _ = sim.advance_tick(&commands, Some(&rules), Some(&path_grid), None, 100);
     }
     let initial_path = sim
         .substrate
@@ -5533,14 +5402,7 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
         .map(|mt| mt.path.clone())
         .expect("ship should have an initial path");
     for _ in 0..120 {
-        let _ = sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            100,
-        );
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
     }
 
     let ship = sim
@@ -5610,7 +5472,7 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
     let path_grid = (*sim.path_grid_snapshot().expect("navigation grid")).clone();
 
     let ship_id = sim
-        .spawn_object("DEST", "Americans", 1, 3, 64, &rules, &BTreeMap::new())
+        .spawn_object("DEST", "Americans", 1, 3, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
         &sim,
@@ -5627,14 +5489,7 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
     // without a route, and the next frame's first Process searches.
     crate::sim::movement::reset_path_search_used_zone_grid_marker();
     for commands in [vec![cmd], Vec::new()] {
-        let _ = sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            100,
-        );
+        let _ = sim.advance_tick(&commands, Some(&rules), Some(&path_grid), None, 100);
     }
     assert!(
         crate::sim::movement::path_search_used_zone_grid_marker(),
@@ -5664,14 +5519,7 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
     assert!(layers.iter().all(|&layer| layer == MovementLayer::Ground));
 
     for _ in 0..300 {
-        let _ = sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            Some(&path_grid),
-            None,
-            100,
-        );
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
         if sim
             .substrate
             .entities
@@ -5694,7 +5542,7 @@ fn test_spawn_multiple_entities() {
         make_test_entity("E1", EntityCategory::Infantry),
         make_test_entity("GAPOWR", EntityCategory::Structure),
     ];
-    let count: u32 = sim.spawn_from_map(&entities, None, &empty_heights());
+    let count: u32 = sim.spawn_from_map(&entities, None);
     assert_eq!(count, 4);
 
     let total: usize = sim.substrate.entities.values().count();
@@ -5704,7 +5552,7 @@ fn test_spawn_multiple_entities() {
 #[test]
 fn test_empty_entities_spawns_nothing() {
     let mut sim: Simulation = Simulation::new();
-    let count: u32 = sim.spawn_from_map(&[], None, &empty_heights());
+    let count: u32 = sim.spawn_from_map(&[], None);
     assert_eq!(count, 0);
     assert_eq!(sim.substrate.entities.values().count(), 0);
 }
@@ -5716,7 +5564,7 @@ fn test_stable_ids_are_assigned() {
         make_test_entity("MTNK", EntityCategory::Unit),
         make_test_entity("E1", EntityCategory::Infantry),
     ];
-    sim.spawn_from_map(&entities, None, &empty_heights());
+    sim.spawn_from_map(&entities, None);
 
     let mut ids: Vec<u64> = sim
         .substrate
@@ -5737,7 +5585,6 @@ fn test_select_command_applies_snapshot_selection() {
             make_test_entity("E1", EntityCategory::Infantry),
         ],
         None,
-        &empty_heights(),
     );
 
     let select = cmd_envelope(
@@ -5749,7 +5596,7 @@ fn test_select_command_applies_snapshot_selection() {
             additive: false,
         },
     );
-    let _ = sim.advance_tick(&[select], None, &empty_heights(), None, None, 33);
+    let _ = sim.advance_tick(&[select], None, None, None, 33);
 
     assert!(!sim.substrate.entities.get(1).is_some_and(|e| e.selected));
     assert!(sim.substrate.entities.get(2).is_some_and(|e| e.selected));
@@ -5764,7 +5611,6 @@ fn test_select_command_replaces_previous_selection() {
             make_test_entity("E1", EntityCategory::Infantry),
         ],
         None,
-        &empty_heights(),
     );
 
     let cmd1 = cmd_envelope(
@@ -5776,7 +5622,7 @@ fn test_select_command_replaces_previous_selection() {
             additive: false,
         },
     );
-    let _ = sim.advance_tick(&[cmd1], None, &empty_heights(), None, None, 33);
+    let _ = sim.advance_tick(&[cmd1], None, None, None, 33);
 
     let cmd2 = cmd_envelope(
         &sim,
@@ -5787,7 +5633,7 @@ fn test_select_command_replaces_previous_selection() {
             additive: true,
         },
     );
-    let _ = sim.advance_tick(&[cmd2], None, &empty_heights(), None, None, 33);
+    let _ = sim.advance_tick(&[cmd2], None, None, None, 33);
 
     assert!(!sim.substrate.entities.get(1).is_some_and(|e| e.selected));
     assert!(sim.substrate.entities.get(2).is_some_and(|e| e.selected));
@@ -5802,7 +5648,6 @@ fn test_select_command_deduplicates_without_reordering_payload() {
             make_test_entity("E1", EntityCategory::Infantry),
         ],
         None,
-        &empty_heights(),
     );
 
     let select = cmd_envelope(
@@ -5814,7 +5659,7 @@ fn test_select_command_deduplicates_without_reordering_payload() {
             additive: false,
         },
     );
-    let _ = sim.advance_tick(&[select], None, &empty_heights(), None, None, 33);
+    let _ = sim.advance_tick(&[select], None, None, None, 33);
 
     assert!(sim.substrate.entities.get(1).is_some_and(|e| e.selected));
     assert!(sim.substrate.entities.get(2).is_some_and(|e| e.selected));
@@ -5840,12 +5685,11 @@ fn selection_gate_test_rules() -> RuleSet {
 fn test_select_command_rejects_selectable_no_type() {
     let mut sim: Simulation = Simulation::new();
     let rules = selection_gate_test_rules();
-    let heights = empty_heights();
     let tank = sim
-        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules)
         .expect("spawn MTNK");
     let unselectable = sim
-        .spawn_object("NOSEL", "Americans", 21, 22, 0, &rules, &heights)
+        .spawn_object("NOSEL", "Americans", 21, 22, 0, &rules)
         .expect("spawn NOSEL");
 
     let select = cmd_envelope(
@@ -5857,7 +5701,7 @@ fn test_select_command_rejects_selectable_no_type() {
             additive: false,
         },
     );
-    let _ = sim.advance_tick(&[select], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[select], Some(&rules), None, None, 33);
 
     assert!(sim.substrate.entities.get(tank).is_some_and(|e| e.selected));
     assert!(
@@ -5884,12 +5728,11 @@ fn declare_selection_gate_houses(sim: &mut Simulation) {
 fn item83_final_select_allows_caller_admitted_nonlocal_entity() {
     let mut sim: Simulation = Simulation::new();
     let rules = selection_gate_test_rules();
-    let heights = empty_heights();
     let mine = sim
-        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules)
         .expect("spawn own MTNK");
     let theirs = sim
-        .spawn_object("MTNK", "Soviet", 24, 22, 0, &rules, &heights)
+        .spawn_object("MTNK", "Soviet", 24, 22, 0, &rules)
         .expect("spawn AI MTNK");
     declare_selection_gate_houses(&mut sim);
 
@@ -5903,7 +5746,7 @@ fn item83_final_select_allows_caller_admitted_nonlocal_entity() {
             additive: false,
         },
     );
-    let _ = sim.advance_tick(&[select], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[select], Some(&rules), None, None, 33);
 
     assert!(sim.substrate.entities.get(mine).is_some_and(|e| e.selected));
     assert!(
@@ -5918,7 +5761,6 @@ fn item83_final_select_allows_caller_admitted_nonlocal_entity() {
 fn test_select_command_rejects_limbo_object() {
     let mut sim: Simulation = Simulation::new();
     let rules = selection_gate_test_rules();
-    let heights = empty_heights();
     // Never revealed onto the map — the state a paradrop passenger sits in while
     // it rides inside the plane.
     let cargo = sim
@@ -5934,7 +5776,7 @@ fn test_select_command_rejects_limbo_object() {
             additive: false,
         },
     );
-    let _ = sim.advance_tick(&[select], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[select], Some(&rules), None, None, 33);
 
     assert!(
         !sim.substrate
@@ -5951,12 +5793,11 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
 
     let mut sim = Simulation::new();
     let rules = selection_gate_test_rules();
-    let heights = empty_heights();
     let tank = sim
-        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules)
         .expect("spawn MTNK");
     let wingman = sim
-        .spawn_object("MTNK", "Americans", 21, 22, 0, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 21, 22, 0, &rules)
         .expect("spawn second MTNK");
     assert!(sim.try_select_object(tank, Some(&rules)));
     sim.substrate.entities.get_mut(tank).unwrap().teleport_state = Some(TeleportState {
@@ -5978,7 +5819,6 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
         },
         Some(&rules),
         None,
-        &heights,
     ));
     assert!(sim.substrate.entities.get(tank).unwrap().selected);
     assert!(sim.substrate.entities.get(wingman).unwrap().selected);
@@ -5991,7 +5831,6 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
         },
         Some(&rules),
         None,
-        &heights,
     ));
     assert!(
         !sim.substrate.entities.get(tank).unwrap().selected,
@@ -6004,9 +5843,8 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
 fn test_try_select_object_rejects_an_already_selected_object() {
     let mut sim: Simulation = Simulation::new();
     let rules = selection_gate_test_rules();
-    let heights = empty_heights();
     let tank = sim
-        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 20, 22, 0, &rules)
         .expect("spawn MTNK");
 
     assert!(sim.try_select_object(tank, Some(&rules)));
@@ -6022,21 +5860,20 @@ fn test_deploy_mcv_replaces_vehicle_with_conyard() {
     let mut sim = Simulation::new();
     let rules = combat_test_rules();
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
-    let heights = empty_heights();
     let mcv = sim
-        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &heights)
+        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
         .expect("spawn MCV");
     if let Some(e) = sim.substrate.entities.get_mut(mcv) {
         e.selected = true;
     }
 
     let cmd = cmd_envelope(&sim, "Americans", 1, Command::DeployMcv { entity_id: mcv });
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), None, None, 33);
     assert!(
         sim.substrate.entities.get(mcv).is_some(),
         "command queues the mission"
     );
-    let result = sim.advance_tick(&[], Some(&rules), &heights, None, None, 33);
+    let result = sim.advance_tick(&[], Some(&rules), None, None, 33);
     assert!(
         result.spawned_entities,
         "mission conversion publishes its spawn"
@@ -6081,14 +5918,13 @@ fn drive_fraction_writer_rules(accelerates: bool) -> RuleSet {
 
 #[test]
 fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
-    let heights = empty_heights();
     let grid = PathGrid::new(16, 16);
 
     for accelerates in [false, true] {
         let rules = drive_fraction_writer_rules(accelerates);
         let mut sim = Simulation::new();
         let entity_id = sim
-            .spawn_object("DRIVE", "Americans", 2, 3, 64, &rules, &heights)
+            .spawn_object("DRIVE", "Americans", 2, 3, 64, &rules)
             .expect("spawn Drive vehicle");
         {
             let entity = sim
@@ -6118,7 +5954,6 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
             },
             Some(&rules),
             Some(&grid),
-            &heights,
         ));
 
         let movement_speed = {
@@ -6139,7 +5974,7 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
             movement.speed
         };
 
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
 
         let entity = sim
             .substrate
@@ -6183,7 +6018,6 @@ fn test_execute_tick_delay_blocks_early_execution() {
             structure_ai_repairable: false,
         }],
         None,
-        &empty_heights(),
     );
     let grid = PathGrid::new(32, 32);
     let delayed = cmd_envelope(
@@ -6199,14 +6033,7 @@ fn test_execute_tick_delay_blocks_early_execution() {
         },
     );
 
-    let _ = sim.advance_tick(
-        &[delayed.clone()],
-        None,
-        &empty_heights(),
-        Some(&grid),
-        None,
-        33,
-    );
+    let _ = sim.advance_tick(&[delayed.clone()], None, Some(&grid), None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6215,14 +6042,7 @@ fn test_execute_tick_delay_blocks_early_execution() {
             .is_none()
     );
 
-    let _ = sim.advance_tick(
-        &[delayed.clone()],
-        None,
-        &empty_heights(),
-        Some(&grid),
-        None,
-        33,
-    );
+    let _ = sim.advance_tick(&[delayed.clone()], None, Some(&grid), None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6231,7 +6051,7 @@ fn test_execute_tick_delay_blocks_early_execution() {
             .is_none()
     );
 
-    let _ = sim.advance_tick(&[delayed], None, &empty_heights(), Some(&grid), None, 33);
+    let _ = sim.advance_tick(&[delayed], None, Some(&grid), None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6264,7 +6084,6 @@ fn test_move_queue_command_appends_waypoint() {
             structure_ai_repairable: false,
         }],
         None,
-        &empty_heights(),
     );
     let grid = PathGrid::new(32, 32);
     let commands = vec![
@@ -6291,7 +6110,7 @@ fn test_move_queue_command_appends_waypoint() {
             },
         ),
     ];
-    let _ = sim.advance_tick(&commands, None, &empty_heights(), Some(&grid), None, 33);
+    let _ = sim.advance_tick(&commands, None, Some(&grid), None, 33);
 
     let ge = sim
         .substrate
@@ -6328,7 +6147,6 @@ fn test_stop_command_clears_move_and_attack_intent() {
             structure_ai_repairable: false,
         }],
         None,
-        &empty_heights(),
     );
 
     if let Some(e) = sim.substrate.entities.get_mut(1) {
@@ -6346,7 +6164,7 @@ fn test_stop_command_clears_move_and_attack_intent() {
     }
 
     let cmd = cmd_envelope(&sim, "Americans", 1, Command::Stop { entity_id: 1 });
-    let _ = sim.advance_tick(&[cmd], None, &empty_heights(), None, None, 33);
+    let _ = sim.advance_tick(&[cmd], None, None, None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6390,7 +6208,6 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
             structure_ai_repairable: false,
         }],
         None,
-        &empty_heights(),
     );
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
@@ -6482,7 +6299,6 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         &Command::Stop { entity_id: 1 },
         None,
         Some(&grid),
-        &empty_heights(),
     ));
     let stopped = sim.substrate.entities.get(1).unwrap();
     assert_eq!(stopped.navigation.nav_com, None);
@@ -6510,11 +6326,10 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
             .contains_entity(committed_head.rx, committed_head.ry, 1)
     );
 
-    let heights = empty_heights();
     let initial_point_index = stopped.drive_locomotion.as_ref().unwrap().track.cursor;
     let mut cursor_advanced = false;
     for _ in 0..32 {
-        let _ = sim.advance_tick(&[], None, &heights, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
         cursor_advanced = sim
             .substrate
             .entities
@@ -6556,7 +6371,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         {
             break;
         }
-        let _ = sim.advance_tick(&[], None, &heights, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
     }
 
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -6598,7 +6413,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
     );
 
     for _ in 0..32 {
-        let _ = sim.advance_tick(&[], None, &heights, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
     }
     let parked = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -6642,7 +6457,6 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
             structure_ai_repairable: false,
         }],
         None,
-        &empty_heights(),
     );
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
@@ -6700,7 +6514,6 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         &Command::Stop { entity_id: 1 },
         None,
         Some(&grid),
-        &empty_heights(),
     ));
 
     let stopped = sim.substrate.entities.get(1).unwrap();
@@ -6759,7 +6572,6 @@ fn test_move_command_rejects_non_owned_entity() {
             structure_ai_repairable: false,
         }],
         None,
-        &empty_heights(),
     );
     let grid = PathGrid::new(32, 32);
     sim.interner.intern("Russians"); // Ensure "Russians" is in sim's interner for cmd_envelope lookup.
@@ -6776,7 +6588,7 @@ fn test_move_command_rejects_non_owned_entity() {
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], None, &empty_heights(), Some(&grid), None, 33);
+    let _ = sim.advance_tick(&[cmd], None, Some(&grid), None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6789,9 +6601,8 @@ fn test_move_command_rejects_non_owned_entity() {
 fn test_move_command_chrono_miner_uses_ground_path() {
     let rules = teleport_command_test_rules();
     let mut sim: Simulation = Simulation::new();
-    let heights = empty_heights();
     let entity = sim
-        .spawn_object("CMIN", "Americans", 2, 2, 64, &rules, &heights)
+        .spawn_object("CMIN", "Americans", 2, 2, 64, &rules)
         .expect("spawn chrono miner");
     let grid = PathGrid::new(32, 32);
     let cmd = cmd_envelope(
@@ -6806,7 +6617,7 @@ fn test_move_command_chrono_miner_uses_ground_path() {
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 33);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6829,9 +6640,8 @@ fn test_move_command_chrono_miner_uses_ground_path() {
 fn test_move_command_non_harvester_teleporter_uses_teleport() {
     let rules = teleport_command_test_rules();
     let mut sim: Simulation = Simulation::new();
-    let heights = empty_heights();
     let entity = sim
-        .spawn_object("CHRONO", "Americans", 2, 2, 64, &rules, &heights)
+        .spawn_object("CHRONO", "Americans", 2, 2, 64, &rules)
         .expect("spawn teleporter");
     let grid = PathGrid::new(32, 32);
     let cmd = cmd_envelope(
@@ -6846,7 +6656,7 @@ fn test_move_command_non_harvester_teleporter_uses_teleport() {
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 33);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6868,9 +6678,8 @@ fn test_move_command_non_harvester_teleporter_uses_teleport() {
 fn test_attack_move_command_chrono_miner_uses_ground_path() {
     let rules = teleport_command_test_rules();
     let mut sim: Simulation = Simulation::new();
-    let heights = empty_heights();
     let entity = sim
-        .spawn_object("CMIN", "Americans", 2, 2, 64, &rules, &heights)
+        .spawn_object("CMIN", "Americans", 2, 2, 64, &rules)
         .expect("spawn chrono miner");
     let grid = PathGrid::new(32, 32);
     let cmd = cmd_envelope(
@@ -6885,7 +6694,7 @@ fn test_attack_move_command_chrono_miner_uses_ground_path() {
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 33);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 33);
     assert!(
         sim.substrate
             .entities
@@ -6958,7 +6767,6 @@ fn test_attack_command_rejects_friendly_target() {
             },
         ],
         None,
-        &empty_heights(),
     );
     let cmd = cmd_envelope(
         &sim,
@@ -6970,7 +6778,7 @@ fn test_attack_command_rejects_friendly_target() {
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], None, &empty_heights(), None, None, 33);
+    let _ = sim.advance_tick(&[cmd], None, None, None, 33);
     assert!(
         sim.substrate
             .entities
@@ -7026,7 +6834,6 @@ fn test_attack_move_auto_acquires_enemy() {
             },
         ],
         None,
-        &empty_heights(),
     );
     let grid = PathGrid::new(32, 32);
     let cmd = cmd_envelope(
@@ -7041,17 +6848,10 @@ fn test_attack_move_auto_acquires_enemy() {
         },
     );
 
-    let _ = sim.advance_tick(
-        &[cmd],
-        Some(&rules),
-        &empty_heights(),
-        Some(&grid),
-        None,
-        100,
-    );
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
     // Native EventClass dispatch is in Main_Tick's tail, after the object-AI
     // walk.  The command arms AttackMove here; acquisition begins next frame.
-    let _ = sim.advance_tick(&[], Some(&rules), &empty_heights(), Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     let attack = sim
         .substrate
         .entities
@@ -7118,7 +6918,6 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
             },
         ],
         None,
-        &empty_heights(),
     );
     if let Some(e) = sim.substrate.entities.get_mut(2) {
         e.health.current = 50;
@@ -7136,17 +6935,10 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
         },
     );
 
-    let _ = sim.advance_tick(
-        &[cmd],
-        Some(&rules),
-        &empty_heights(),
-        Some(&grid),
-        None,
-        100,
-    );
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
     // The tail-dispatched AttackMove cannot participate in the object-AI walk
     // that preceded it.  Its first acquisition/fire opportunity is frame two.
-    let _ = sim.advance_tick(&[], Some(&rules), &empty_heights(), Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     let victim = sim
         .substrate
         .entities
@@ -7228,7 +7020,6 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
             },
         ],
         None,
-        &empty_heights(),
     );
     sim.substrate.entities.get_mut(2).unwrap().health.current = 50;
     {
@@ -7249,7 +7040,7 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
     }
     let grid = PathGrid::new(32, 32);
     for _ in 0..8 {
-        let _ = sim.advance_tick(&[], Some(&rules), &empty_heights(), Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         if sim
             .substrate
             .entities
@@ -7324,7 +7115,6 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
             },
         ],
         None,
-        &empty_heights(),
     );
     {
         let gi = sim.substrate.entities.get_mut(1).unwrap();
@@ -7387,7 +7177,6 @@ fn test_guard_returns_to_anchor_when_displaced() {
             structure_ai_repairable: false,
         }],
         None,
-        &empty_heights(),
     );
     let guard_cmd = cmd_envelope(
         &sim,
@@ -7399,14 +7188,7 @@ fn test_guard_returns_to_anchor_when_displaced() {
         },
     );
     let grid = PathGrid::new(32, 32);
-    let _ = sim.advance_tick(
-        &[guard_cmd],
-        Some(&rules),
-        &empty_heights(),
-        Some(&grid),
-        None,
-        100,
-    );
+    let _ = sim.advance_tick(&[guard_cmd], Some(&rules), Some(&grid), None, 100);
 
     sim.remove_entity_occupancy(1);
     if let Some(e) = sim.substrate.entities.get_mut(1) {
@@ -7417,7 +7199,7 @@ fn test_guard_returns_to_anchor_when_displaced() {
     }
     sim.add_entity_occupancy(1);
 
-    let _ = sim.advance_tick(&[], Some(&rules), &empty_heights(), Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     let ge = sim
         .substrate
         .entities
@@ -7460,7 +7242,7 @@ fn test_fog_revealed_persists_after_unit_moves_away() {
 
     let grid = PathGrid::new(8, 8);
     let americans = sim.interner.get("Americans").expect("Americans interned");
-    let _ = sim.advance_tick(&[], None, &empty_heights(), Some(&grid), None, 33);
+    let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
     assert!(sim.fog.is_cell_visible(americans, 1, 1));
     assert!(sim.fog.is_cell_revealed(americans, 1, 1));
 
@@ -7470,7 +7252,7 @@ fn test_fog_revealed_persists_after_unit_moves_away() {
         e.position.rx = 6;
         e.position.ry = 1;
     }
-    let _ = sim.advance_tick(&[], None, &empty_heights(), Some(&grid), None, 33);
+    let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
     assert!(!sim.fog.is_cell_visible(americans, 1, 1));
     assert!(sim.fog.is_cell_revealed(americans, 1, 1));
     assert!(sim.fog.is_cell_visible(americans, 6, 1));
@@ -7485,19 +7267,18 @@ fn test_undeploy_conyard_spawns_mcv() {
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     // A yard converts back only in a multiplayer game (`Sell 0x00449D08`).
     sim.session.game_mode_nonzero = true;
-    let heights = empty_heights();
     insert_house_with_counts(&mut sim, "Americans", 0, 0);
 
     // First deploy an MCV to get a ConYard.
     let mcv = sim
-        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &heights)
+        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
         .expect("spawn MCV");
     if let Some(e) = sim.substrate.entities.get_mut(mcv) {
         e.selected = true;
     }
     let deploy_cmd = cmd_envelope(&sim, "Americans", 1, Command::DeployMcv { entity_id: mcv });
-    let _ = sim.advance_tick(&[deploy_cmd], Some(&rules), &heights, None, None, 33);
-    let _ = sim.advance_tick(&[], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[deploy_cmd], Some(&rules), None, None, 33);
+    let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
 
     // Find the ConYard that was spawned.
     let yard_id: u64 = sim
@@ -7523,7 +7304,7 @@ fn test_undeploy_conyard_spawns_mcv() {
         Command::UndeployBuilding { entity_id: yard_id },
     );
     let undeploy_frame = sim.session.binary_frame;
-    let _ = sim.advance_tick(&[undeploy_cmd], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[undeploy_cmd], Some(&rules), None, None, 33);
 
     // ConYard should still exist but have building_down set.
     assert!(
@@ -7546,7 +7327,7 @@ fn test_undeploy_conyard_spawns_mcv() {
     let mut converted = None;
     for _ in 0..40 {
         let frame = sim.session.binary_frame;
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, None, None, 33);
+        let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
         if sim.substrate.entities.get(yard_id).is_none() {
             converted = Some(frame);
             break;
@@ -7880,7 +7661,7 @@ fn animated_death_uninit_waits_for_ordinary_tail_drain() {
     assert!(sim.substrate.entities.get(5).is_some_and(|e| e.dying));
     assert!(sim.substrate.pending_delete.contains(&5));
 
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert!(sim.substrate.entities.get(5).is_none());
     assert!(sim.substrate.pending_delete.is_empty());
 }
@@ -7908,7 +7689,6 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     let mut sim = Simulation::new();
     sim.input_delay_ticks = 0;
     let grid = PathGrid::test_all_passable(64, 64);
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     // Two plants: selling one still leaves a structure, so power recomputes this
     // tick. (With a single plant the owner would drop off the recompute list and
@@ -7930,7 +7710,7 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     }
 
     // Tick 1: power registers both plants.
-    sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 100);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     assert_eq!(
         sim.power_states.get(&owner_id).map(|s| s.total_output),
         Some(200),
@@ -7944,7 +7724,7 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
         sim.session.tick + 1,
         Command::SellBuilding { entity_id: 1 },
     );
-    sim.advance_tick(&[sell], Some(&rules), &height_map, Some(&grid), None, 100);
+    sim.advance_tick(&[sell], Some(&rules), Some(&grid), None, 100);
     assert!(
         sim.substrate
             .entities
@@ -7958,7 +7738,7 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     // drains it the same tick.
     let mut frames = 0;
     while sim.substrate.entities.get(1).is_some() && frames < 60 {
-        sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 100);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         frames += 1;
     }
     assert_eq!(frames, 50, "sold plant freed at its completing visit");
@@ -8000,7 +7780,6 @@ fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     let mut sim = Simulation::new();
     sim.input_delay_ticks = 0;
     let grid = PathGrid::test_all_passable(64, 64);
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     let mut atk = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
     // The fixture `MTNK` authors no `Turret=`, so the native body gate
@@ -8026,7 +7805,7 @@ fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     sim.add_entity_occupancy(2);
     sim.substrate.entities.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
 
-    sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 100);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
 
     assert!(
         sim.substrate.entities.get(2).is_none(),
@@ -8125,7 +7904,6 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
         let Some((mut sim, rules, grid)) = stacking_world(24) else {
             return;
         };
-        let heights = empty_heights();
 
         let infantry_owner = if enemy_infantry {
             "Russians"
@@ -8133,10 +7911,10 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
             "Americans"
         };
         let blocker = sim
-            .spawn_object("E1", infantry_owner, 10, 10, 0, &rules, &heights)
+            .spawn_object("E1", infantry_owner, 10, 10, 0, &rules)
             .expect("infantry spawns");
         let tank = sim
-            .spawn_object("MTNK", "Americans", 6, 10, 64, &rules, &heights)
+            .spawn_object("MTNK", "Americans", 6, 10, 64, &rules)
             .expect("tank spawns");
 
         let cmd = cmd_envelope(
@@ -8150,7 +7928,7 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
                 queue: false,
             },
         );
-        let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
 
         // Make the victim's house human so a stray "Unit lost" would be
         // audible: a crush is `RecordKill` + `UnInit` (`0x007416A0`), never
@@ -8167,7 +7945,7 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
         let mut arrived_at: Option<u64> = None;
         let mut entered_blocker_cell: Option<u64> = None;
         for tick in 0..600u64 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
             let Some(e) = sim.substrate.entities.get(tank) else {
                 break;
             };
@@ -8242,16 +8020,15 @@ fn turning_mover_with_an_occupied_endpoint_still_makes_progress() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
-    let heights = empty_heights();
 
     // Mover at (10,10) ordered north-east: the curve's head node is (10,9) and
     // its endpoint two cells out is (11,9). Park a friendly on the endpoint and
     // leave the head node clear.
     let parked = sim
-        .spawn_object("MTNK", "Americans", 11, 9, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 11, 9, 64, &rules)
         .expect("parked tank spawns");
     let mover = sim
-        .spawn_object("MTNK", "Americans", 10, 10, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 10, 10, 64, &rules)
         .expect("mover spawns");
 
     let cmd = cmd_envelope(
@@ -8265,12 +8042,12 @@ fn turning_mover_with_an_occupied_endpoint_still_makes_progress() {
             queue: false,
         },
     );
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
 
     let mut series: Vec<(bool, (u16, u16))> = Vec::new();
     let mut arrived_at: Option<u64> = None;
     for tick in 0..600u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let Some(e) = sim.substrate.entities.get(mover) else {
             break;
         };
@@ -8333,13 +8110,12 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
-    let heights = empty_heights();
 
     const PARKED_AT: (u16, u16) = (12, 8);
     const DESTINATION: (u16, u16) = (18, 8);
 
     let mover = sim
-        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules)
         .expect("mover spawns");
 
     let cmd = cmd_envelope(
@@ -8353,10 +8129,10 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
             queue: false,
         },
     );
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
     // The Move dispatches at this frame's EventClass tail; the next frame's
     // first Process requests the route (Unit741970 accepts without one).
-    let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
 
     // The route A* actually returned, before anything is parked on it. The
     // fixture is only meaningful if the blocker cell is on it.
@@ -8373,22 +8149,14 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
     );
 
     let parked = sim
-        .spawn_object(
-            "MTNK",
-            "Americans",
-            PARKED_AT.0,
-            PARKED_AT.1,
-            64,
-            &rules,
-            &heights,
-        )
+        .spawn_object("MTNK", "Americans", PARKED_AT.0, PARKED_AT.1, 64, &rules)
         .expect("parked tank spawns");
 
     let mut series: Vec<(bool, (u16, u16))> = Vec::new();
     let mut blocker_left_at: Option<u64> = None;
     let mut arrived_at: Option<u64> = None;
     for tick in 0..400u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         if let Some(b) = sim.substrate.entities.get(parked)
             && (b.position.rx, b.position.ry) != PARKED_AT
             && blocker_left_at.is_none()
@@ -8787,13 +8555,12 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
-    let heights = empty_heights();
 
     let blocker = sim
-        .spawn_object("MTNK", "Americans", 12, 8, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 12, 8, 64, &rules)
         .expect("blocker spawns");
     let mover = sim
-        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules)
         .expect("mover spawns");
 
     let cmd = cmd_envelope(
@@ -8807,11 +8574,11 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
             queue: false,
         },
     );
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
 
     let mut shared_ticks: Vec<u64> = Vec::new();
     for tick in 0..400u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let cells = stacking_cells(&sim, &[blocker, mover]);
         if !stacking_duplicates(&cells).is_empty() {
             shared_ticks.push(tick);
@@ -8858,11 +8625,10 @@ fn drive_path_requests_inside_a_pass_bring_the_held_owner_sets_current() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
-    let heights = empty_heights();
-    sim.spawn_object("MTNK", "Americans", 12, 8, 64, &rules, &heights)
+    sim.spawn_object("MTNK", "Americans", 12, 8, 64, &rules)
         .expect("blocker spawns");
     let mover = sim
-        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules)
         .expect("mover spawns");
     let cmd = cmd_envelope(
         &sim,
@@ -8875,10 +8641,10 @@ fn drive_path_requests_inside_a_pass_bring_the_held_owner_sets_current() {
             queue: false,
         },
     );
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
     let builds = sim.movement_pass_cache.block_index_view_builds();
     for _ in 0..60 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     }
     assert_eq!(
         sim.movement_pass_cache.block_index_view_builds(),
@@ -8908,33 +8674,32 @@ fn idle_objects_are_handed_out_only_for_their_own_turn() {
     ))
     .expect("idle object rules parse");
     let (mut sim, rules, grid) = stacking_navigation_world(rules, 24);
-    let heights = empty_heights();
     let mut vehicles = Vec::new();
     let mut infantry = Vec::new();
     let mut buildings = Vec::new();
     for x in 4..12u16 {
         for y in [6u16, 12] {
             vehicles.push(
-                sim.spawn_object("MTNK", "Americans", x, y, 64, &rules, &heights)
+                sim.spawn_object("MTNK", "Americans", x, y, 64, &rules)
                     .expect("tank spawns"),
             );
             infantry.push(
-                sim.spawn_object("E1", "Americans", x, y + 3, 0, &rules, &heights)
+                sim.spawn_object("E1", "Americans", x, y + 3, 0, &rules)
                     .expect("infantry spawns"),
             );
         }
     }
     for x in [4u16, 7, 10] {
         buildings.push(
-            sim.spawn_object("GAPOWR", "Americans", x, 19, 0, &rules, &heights)
+            sim.spawn_object("GAPOWR", "Americans", x, 19, 0, &rules)
                 .expect("power plant spawns"),
         );
     }
     for _ in 0..3 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     }
     let _ = sim.substrate.entities.take_touched(TouchReader::BlockIndex);
-    let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     let Touched::Ids(ids) = sim.substrate.entities.take_touched(TouchReader::BlockIndex) else {
         panic!("an idle tick overflowed the touch log");
     };
@@ -8963,7 +8728,6 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
     let Some((mut sim, rules, grid)) = stacking_world(48) else {
         return;
     };
-    let heights = empty_heights();
 
     let start_cells = [
         (6u16, 6u16),
@@ -8978,7 +8742,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
     let ids: Vec<u64> = start_cells
         .iter()
         .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules, &heights)
+            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
                 .expect("tank spawns")
         })
         .collect();
@@ -9038,7 +8802,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
     );
 
     // Run the real path.
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     // (c) per-tick cell sharing during transit, with (d) sampled AT the
     // sharing tick — the grid must be read while the two movers are still
@@ -9047,7 +8811,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
     let mut shared_snapshots: Vec<String> = Vec::new();
     let mut watch = StackingWatch::default();
     for tick in 0..400u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         watch.sample(&sim, &ids, tick);
         let dups = stacking_duplicates(&stacking_cells(&sim, &ids));
         if !dups.is_empty() {
@@ -9137,7 +8901,6 @@ fn repro_group_move_short_range_traces_every_tick() {
     let Some((mut sim, rules, grid)) = stacking_world(48) else {
         return;
     };
-    let heights = empty_heights();
 
     let start_cells = [
         (10u16, 10u16),
@@ -9152,7 +8915,7 @@ fn repro_group_move_short_range_traces_every_tick() {
     let ids: Vec<u64> = start_cells
         .iter()
         .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules, &heights)
+            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
                 .expect("tank spawns")
         })
         .collect();
@@ -9191,13 +8954,13 @@ fn repro_group_move_short_range_traces_every_tick() {
         }
     }
 
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     let mut shared_by_tick: Vec<(u64, BTreeMap<(u16, u16), Vec<u64>>)> = Vec::new();
     let mut trace: Vec<String> = Vec::new();
     let mut watch = StackingWatch::default();
     for tick in 0..400u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         watch.sample(&sim, &ids, tick);
         let cells = stacking_cells(&sim, &ids);
         let dups = stacking_duplicates(&cells);
@@ -9315,13 +9078,12 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
-    let heights = empty_heights();
 
     let west = sim
-        .spawn_object("MTNK", "Americans", 5, 10, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 5, 10, 64, &rules)
         .expect("west tank spawns");
     let east = sim
-        .spawn_object("MTNK", "Americans", 15, 10, 192, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 15, 10, 192, &rules)
         .expect("east tank spawns");
 
     let commands = vec![
@@ -9365,7 +9127,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
         }
     }
 
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     let ids = [west, east];
     let mut shared_ticks: Vec<u64> = Vec::new();
@@ -9373,7 +9135,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     let mut closest_approach: Option<(i64, u64)> = None;
     let mut shared_cell_approach: Option<(u64, u64, i64, u64)> = None;
     for tick in 0..400u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         if let Some(gap) = stacking_gap(&sim, west, east)
             && closest_approach.is_none_or(|(best, _)| gap < best)
         {
@@ -9527,13 +9289,12 @@ fn repro_two_moving_vehicles_reservation_trace() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
-    let heights = empty_heights();
 
     let west = sim
-        .spawn_object("MTNK", "Americans", 5, 10, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 5, 10, 64, &rules)
         .expect("west tank spawns");
     let east = sim
-        .spawn_object("MTNK", "Americans", 15, 10, 192, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 15, 10, 192, &rules)
         .expect("east tank spawns");
 
     let commands = vec![
@@ -9560,7 +9321,7 @@ fn repro_two_moving_vehicles_reservation_trace() {
             },
         ),
     ];
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     println!("--- repro_two_moving_vehicles_reservation_trace ---");
     // The head-to mark is the only cell-exclusion mechanism a Drive curve
@@ -9568,7 +9329,7 @@ fn repro_two_moving_vehicles_reservation_trace() {
     // the reservation is not exclusive and both will commit into that cell.
     let mut double_reservation_ticks: Vec<(u64, (u16, u16))> = Vec::new();
     for tick in 0..80u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let heads: Vec<Option<(u16, u16)>> = [west, east]
             .iter()
             .map(|&id| {
@@ -9663,13 +9424,12 @@ fn head_on_pair_resolves_without_deadlock() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
-    let heights = empty_heights();
 
     let west = sim
-        .spawn_object("MTNK", "Americans", 5, 10, 64, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 5, 10, 64, &rules)
         .expect("west tank spawns");
     let east = sim
-        .spawn_object("MTNK", "Americans", 15, 10, 192, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 15, 10, 192, &rules)
         .expect("east tank spawns");
 
     let commands = vec![
@@ -9696,14 +9456,14 @@ fn head_on_pair_resolves_without_deadlock() {
             },
         ),
     ];
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     // Generous budget: 11 cells each at MTNK speed, plus whatever the block
     // dispatch costs in waits and repaths.
     let mut west_done_at: Option<u64> = None;
     let mut east_done_at: Option<u64> = None;
     for tick in 0..900u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let w = sim.substrate.entities.get(west).expect("west alive");
         let e = sim.substrate.entities.get(east).expect("east alive");
         if west_done_at.is_none() && (w.position.rx, w.position.ry) == (16, 10) {
@@ -9746,14 +9506,13 @@ fn column_of_vehicles_all_arrive_without_stacking() {
     let Some((mut sim, rules, grid)) = stacking_world(32) else {
         return;
     };
-    let heights = empty_heights();
 
     let starts = [(5u16, 10u16), (6, 10), (7, 10), (8, 10)];
     let goals = [(18u16, 10u16), (19, 10), (20, 10), (21, 10)];
     let ids: Vec<u64> = starts
         .iter()
         .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules, &heights)
+            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
                 .expect("tank spawns")
         })
         .collect();
@@ -9775,11 +9534,11 @@ fn column_of_vehicles_all_arrive_without_stacking() {
             )
         })
         .collect();
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     let mut watch = StackingWatch::default();
     for tick in 0..900u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         watch.sample(&sim, &ids, tick);
     }
 
@@ -9823,14 +9582,13 @@ fn diag_column_reservation_trace() {
     let Some((mut sim, rules, grid)) = stacking_world(32) else {
         return;
     };
-    let heights = empty_heights();
 
     let starts = [(5u16, 10u16), (6, 10), (7, 10), (8, 10)];
     let goals = [(18u16, 10u16), (19, 10), (20, 10), (21, 10)];
     let ids: Vec<u64> = starts
         .iter()
         .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules, &heights)
+            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
                 .expect("tank spawns")
         })
         .collect();
@@ -9851,10 +9609,10 @@ fn diag_column_reservation_trace() {
             )
         })
         .collect();
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     for tick in 0..70u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let dups = stacking_duplicates(&stacking_cells(&sim, &ids));
         let bits: Vec<String> = (4u16..=14)
             .map(|rx| {
@@ -9898,7 +9656,6 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
     let Some((mut sim, rules, grid)) = stacking_world(48) else {
         return;
     };
-    let heights = empty_heights();
 
     let start_cells = [
         (10u16, 10u16),
@@ -9913,7 +9670,7 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
     let ids: Vec<u64> = start_cells
         .iter()
         .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules, &heights)
+            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
                 .expect("tank spawns")
         })
         .collect();
@@ -9933,7 +9690,7 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
             )
         })
         .collect();
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     // Lepton world position of each mover, so the measurement is what the
     // renderer draws rather than the cell index.
@@ -9948,7 +9705,7 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
 
     let mut worst: Option<(u64, u64, u64, i64)> = None;
     for tick in 0..400u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {
                 let (Some(a), Some(b)) = (lepton_pos(&sim, ids[i]), lepton_pos(&sim, ids[j]))
@@ -9992,7 +9749,6 @@ fn diag_short_range_group_reservation_trace() {
     let Some((mut sim, rules, grid)) = stacking_world(48) else {
         return;
     };
-    let heights = empty_heights();
     let start_cells = [
         (10u16, 10u16),
         (11, 10),
@@ -10006,7 +9762,7 @@ fn diag_short_range_group_reservation_trace() {
     let ids: Vec<u64> = start_cells
         .iter()
         .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules, &heights)
+            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
                 .expect("tank spawns")
         })
         .collect();
@@ -10026,10 +9782,10 @@ fn diag_short_range_group_reservation_trace() {
             )
         })
         .collect();
-    let _ = sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 100);
+    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
 
     for tick in 0..110u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let dups = stacking_duplicates(&stacking_cells(&sim, &ids));
         if dups.is_empty() && !(60..=70).contains(&tick) && !(93..=99).contains(&tick) {
             continue;
@@ -10085,11 +9841,7 @@ fn rule_handles_accessor_panics_before_resolution() {
 fn current_rust_frame_call_order_is_preserved() {
     let rules = RuleSet::from_ini(&IniFile::from_str("")).expect("empty rules parse");
     let mut sim: Simulation = Simulation::new();
-    sim.spawn_from_map(
-        &[make_test_entity("MTNK", EntityCategory::Unit)],
-        None,
-        &empty_heights(),
-    );
+    sim.spawn_from_map(&[make_test_entity("MTNK", EntityCategory::Unit)], None);
     let select = cmd_envelope(
         &sim,
         "Americans",
@@ -10105,15 +9857,7 @@ fn current_rust_frame_call_order_is_preserved() {
     // leaves the queue intact, and an empty-command frame carries it forward.
     assert!(sim.take_due_commands().is_empty());
     let _ = sim
-        .advance_app_frame(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            16,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_app_frame(&[], Some(&rules), None, 16, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
 
     // Step to the due tick with the exact app-shaped call: drained commands
@@ -10123,15 +9867,7 @@ fn current_rust_frame_call_order_is_preserved() {
     let due = sim.take_due_commands();
     assert_eq!(due.len(), 1, "the queued command is due exactly once");
     let output = sim
-        .advance_app_frame(
-            &due,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            16,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_app_frame(&due, Some(&rules), None, 16, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
     assert_eq!(sim.session.tick, tick_before + 1);
@@ -10154,11 +9890,7 @@ fn current_rust_frame_call_order_is_preserved() {
 #[test]
 fn runtime_frame_call_order_matches_the_app_seam() {
     let mut sim: Simulation = Simulation::new();
-    sim.spawn_from_map(
-        &[make_test_entity("MTNK", EntityCategory::Unit)],
-        None,
-        &empty_heights(),
-    );
+    sim.spawn_from_map(&[make_test_entity("MTNK", EntityCategory::Unit)], None);
     let select = cmd_envelope(
         &sim,
         "Americans",
@@ -10203,10 +9935,9 @@ fn debug_toggle_updates_existing_and_future_entities() {
         "[BuildingTypes]\n0=GACNST\n[GACNST]\nStrength=400\n",
     ))
     .expect("debug toggle rules");
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mut sim = Simulation::new();
     let existing = sim
-        .spawn_object("GACNST", "Player", 5, 5, 0, &rules, &height_map)
+        .spawn_object("GACNST", "Player", 5, 5, 0, &rules)
         .expect("existing spawn");
     assert!(
         sim.entities()
@@ -10227,7 +9958,7 @@ fn debug_toggle_updates_existing_and_future_entities() {
         "enabling allocates a log on the existing entity"
     );
     let future = sim
-        .spawn_object("GACNST", "Player", 9, 9, 0, &rules, &height_map)
+        .spawn_object("GACNST", "Player", 9, 9, 0, &rules)
         .expect("future spawn");
     assert!(
         sim.entities()

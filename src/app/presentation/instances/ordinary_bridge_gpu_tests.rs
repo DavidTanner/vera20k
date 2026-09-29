@@ -242,7 +242,14 @@ impl Probe {
                 "rgb":[profile.red_percent,profile.green_percent,profile.blue_percent],
                 "ground":profile.ground_units,"level":profile.level_units}
         });
-        let level = scene.runtime.resources.height_map[&center];
+        let level = scene
+            .sim()
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(center.0, center.1)
+            .unwrap()
+            .level;
         assert_eq!(level, fixture.level());
         let point = crate::map::terrain::iso_to_screen(center.0, center.1, level);
         let camera = [
@@ -277,6 +284,7 @@ impl Probe {
     ) -> (Vec<SpriteInstance>, Vec<RenderZPolicy>) {
         let mut instances = Vec::new();
         let mut policies = Vec::new();
+        let heights = self.terrain.build_height_map();
         build_cell_overlay_instances(
             &CellOverlayInputs {
                 // Keep the initial map identities throughout; the production
@@ -288,7 +296,7 @@ impl Probe {
                 registry: Some(&scene.runtime.resources.overlay_registry),
                 tiberium_types: Some(&scene.runtime.resources.rules.tiberium_types),
                 terrain: Some(&self.terrain),
-                heights: &scene.runtime.resources.height_map,
+                heights: &heights,
                 lighting: self.lighting.grid(),
                 visibility,
                 camera,

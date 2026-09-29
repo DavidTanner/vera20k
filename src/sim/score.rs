@@ -375,14 +375,7 @@ mod tests {
     fn natural_terminal_frame_finalizes_score_before_returned_hash_once() {
         let mut sim = natural_terminal_sim(0x51C0_9ABC);
 
-        let first = sim.advance_tick(
-            &[],
-            None,
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        let first = sim.advance_tick(&[], None, None, None, 67);
 
         assert!(!first.frame_committed);
         assert!(first.terminal_score_finalized);
@@ -393,14 +386,7 @@ mod tests {
             .clone();
         let cursor_after_first = sim.clone_scenario_rng().state();
 
-        let second = sim.advance_tick(
-            &[],
-            None,
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        let second = sim.advance_tick(&[], None, None, None, 67);
         assert!(!second.frame_committed);
         assert!(!second.terminal_score_finalized);
         assert_eq!(second.state_hash, first.state_hash);
@@ -414,12 +400,10 @@ mod tests {
 
     #[test]
     fn quit_and_connection_alone_do_not_score_but_ready_outcome_wins_exit_race() {
-        let height_map = std::collections::BTreeMap::new();
-
         let mut quit_only = Simulation::with_seed(0x51C0_B001);
         quit_only.quit_requested = true;
         let quit_cursor = quit_only.clone_scenario_rng().state();
-        let quit_tick = quit_only.advance_tick(&[], None, &height_map, None, None, 67);
+        let quit_tick = quit_only.advance_tick(&[], None, None, None, 67);
         assert!(!quit_tick.frame_committed);
         assert!(!quit_tick.terminal_score_finalized);
         assert!(quit_only.terminal_score_snapshot().is_none());
@@ -428,7 +412,7 @@ mod tests {
         let mut connection_only = Simulation::with_seed(0x51C0_B002);
         connection_only.connection_lost = true;
         let connection_cursor = connection_only.clone_scenario_rng().state();
-        let connection_tick = connection_only.advance_tick(&[], None, &height_map, None, None, 67);
+        let connection_tick = connection_only.advance_tick(&[], None, None, None, 67);
         assert!(!connection_tick.frame_committed);
         assert!(!connection_tick.terminal_score_finalized);
         assert!(connection_only.terminal_score_snapshot().is_none());
@@ -444,7 +428,7 @@ mod tests {
             1,
             crate::sim::command::Command::ExitMatch,
         );
-        let raced_tick = raced.advance_tick(&[exit], None, &height_map, None, None, 67);
+        let raced_tick = raced.advance_tick(&[exit], None, None, None, 67);
         assert!(!raced_tick.frame_committed);
         assert_eq!(raced_tick.executed_commands, 1);
         assert!(raced_tick.terminal_score_finalized);
@@ -454,14 +438,7 @@ mod tests {
     #[test]
     fn terminal_score_snapshot_roundtrips_in_current_version() {
         let mut sim = natural_terminal_sim(0x51C0_DEF0);
-        let tick = sim.advance_tick(
-            &[],
-            None,
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        let tick = sim.advance_tick(&[], None, None, None, 67);
         assert!(tick.terminal_score_finalized);
         let expected = sim
             .terminal_score_snapshot()
@@ -481,14 +458,7 @@ mod tests {
 
         let seed = 0x51C0_AA55;
         let mut recorded = natural_terminal_sim(seed);
-        let tick = recorded.advance_tick(
-            &[],
-            None,
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        let tick = recorded.advance_tick(&[], None, None, None, 67);
         assert!(tick.terminal_score_finalized);
         let mut replay = ReplayLog::new(ReplayHeader {
             pixel_conversion_bounds: Default::default(),
@@ -501,14 +471,7 @@ mod tests {
         replay.record_tick(tick.tick, Vec::new(), tick.state_hash);
 
         let mut playback = natural_terminal_sim(seed);
-        let hashes = ReplayRunner::run_fixture(
-            &mut playback,
-            &replay,
-            None,
-            &std::collections::BTreeMap::new(),
-            None,
-            67,
-        );
+        let hashes = ReplayRunner::run_fixture(&mut playback, &replay, None, None, 67);
 
         assert_eq!(hashes, vec![tick.state_hash]);
         assert_eq!(

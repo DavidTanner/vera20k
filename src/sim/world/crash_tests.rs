@@ -389,7 +389,6 @@ fn crash_smoke_matches_native_rows() {
 #[test]
 fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
     use crate::sim::combat::combat_aoe::AreaDamageReceiver;
-    use std::collections::BTreeMap;
     let input = serde_json::json!({"health": 150, "crashing": 0});
     let (mut sim, rules) = fixture(&input);
     let soviets = sim.interner.intern("Soviets");
@@ -462,7 +461,7 @@ fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
         assert!(frames < 60, "the fall must reach the ground");
         let anims_before = sim.substrate.anims.len();
         sim.sound_events.clear();
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         smoke += sim.substrate.anims.len().saturating_sub(anims_before);
         crash_sound |= sim.sound_events.iter().any(|event| {
             matches!(
@@ -503,7 +502,6 @@ fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
 fn a_crash_saved_in_mid_fall_lands_like_the_original() {
     use crate::sim::combat::combat_aoe::AreaDamageReceiver;
     use crate::sim::snapshot::GameSnapshot;
-    use std::collections::BTreeMap;
     let (mut sim, rules) = fixture(&serde_json::json!({"health": 150, "crashing": 0}));
     let soviets = sim.interner.intern("Soviets");
     let warhead = sim.interner.intern("CrashWH");
@@ -519,7 +517,7 @@ fn a_crash_saved_in_mid_fall_lands_like_the_original() {
     assert!(sim.substrate.entities.get(1).unwrap().crashing);
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
     let tick = |sim: &mut Simulation| {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     };
     for _ in 0..10 {
         tick(&mut sim);
@@ -776,7 +774,6 @@ struct JumpjetFall {
 }
 
 fn fall_to_the_impact(sim: &mut Simulation, rules: &RuleSet) -> JumpjetFall {
-    use std::collections::BTreeMap;
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
     let boom = sim.interner.intern("BOOM");
     let mut fall = JumpjetFall {
@@ -794,7 +791,7 @@ fn fall_to_the_impact(sim: &mut Simulation, rules: &RuleSet) -> JumpjetFall {
             .iter()
             .filter(|(_, anim)| anim.type_id == boom)
             .count();
-        sim.advance_tick(&[], Some(rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
         if sim.sound_events.iter().any(|event| {
             matches!(
                 event,
@@ -1154,14 +1151,7 @@ fn a_jumpjet_wreck_scans_only_on_its_committed_guard() {
         let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
         let mut acquired = false;
         for _ in 0..40 {
-            sim.advance_tick(
-                &[],
-                Some(&rules),
-                &std::collections::BTreeMap::new(),
-                Some(&grid),
-                None,
-                67,
-            );
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let Some(wreck) = sim
                 .substrate
                 .entities
@@ -1267,38 +1257,12 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
                 ("GAPOWR", "Americans", x - 4),
                 ("NAPOWR", "Russians", x + 12),
             ] {
-                sim.spawn_object(
-                    plant,
-                    owner,
-                    px,
-                    y - 1,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object(plant, owner, px, y - 1, 0, &resources.rules)?;
             }
-            let harrier = sim.spawn_object(
-                "ORCA",
-                "Americans",
-                x,
-                y,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
+            let harrier = sim.spawn_object("ORCA", "Americans", x, y, 64, &resources.rules)?;
             let flak = [(x + 8, y - 1), (x + 8, y + 1), (x + 9, y)]
                 .into_iter()
-                .map(|(fx, fy)| {
-                    sim.spawn_object(
-                        "HTK",
-                        "Russians",
-                        fx,
-                        fy,
-                        192,
-                        &resources.rules,
-                        &resources.height_map,
-                    )
-                })
+                .map(|(fx, fy)| sim.spawn_object("HTK", "Russians", fx, fy, 192, &resources.rules))
                 .collect::<Option<Vec<_>>>()?;
             Some((harrier, flak))
         })
@@ -1549,44 +1513,12 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
                 ("GAPOWR", "Americans", x - 4),
                 ("NAPOWR", "Russians", x + 14),
             ] {
-                sim.spawn_object(
-                    plant,
-                    owner,
-                    px,
-                    y - 2,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object(plant, owner, px, y - 2, 0, &resources.rules)?;
             }
-            let nighthawk = sim.spawn_object(
-                "SHAD",
-                "Americans",
-                x,
-                y,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
-            let kirov = sim.spawn_object(
-                "ZEP",
-                "Americans",
-                x,
-                y + 2,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
+            let nighthawk = sim.spawn_object("SHAD", "Americans", x, y, 64, &resources.rules)?;
+            let kirov = sim.spawn_object("ZEP", "Americans", x, y + 2, 64, &resources.rules)?;
             for (fx, fy) in [(x + 8, y - 1), (x + 8, y + 1), (x + 9, y)] {
-                sim.spawn_object(
-                    "HTK",
-                    "Russians",
-                    fx,
-                    fy,
-                    192,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object("HTK", "Russians", fx, fy, 192, &resources.rules)?;
             }
             Some((nighthawk, kirov, (x + 12, y)))
         })

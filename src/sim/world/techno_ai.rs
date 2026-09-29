@@ -1838,10 +1838,9 @@ mod tests {
         // the empty live order.
         fn run() -> Vec<u64> {
             let mut sim = Simulation::new();
-            let heights = std::collections::BTreeMap::new();
             (0..5)
                 .map(|_| {
-                    sim.advance_tick(&[], None, &heights, None, None, 67);
+                    sim.advance_tick(&[], None, None, None, 67);
                     sim.state_hash()
                 })
                 .collect()
@@ -2053,7 +2052,6 @@ mod tests {
     /// enemy never shoots is the passive scanner.
     fn run_idle_pair(allied_type: &str, soviet_type: &str, ticks: u64) -> Simulation {
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0001);
         sim.spawn_from_map(
@@ -2062,10 +2060,9 @@ mod tests {
                 passive_map_entity("Soviet", soviet_type, 23, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         for _ in 0..ticks {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         sim
     }
@@ -2089,7 +2086,6 @@ mod tests {
              [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
         ))
         .expect("guard reload rules parse");
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0009);
         let tank = crate::map::entities::MapEntity {
@@ -2102,12 +2098,11 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 23, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         let mut waits = 0;
         let mut last_dispatch = None;
         for _ in 0..400 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let tank = sim.substrate.entities.get(1).expect("tank present");
             assert_eq!(tank.mission.current().known(), Some(MissionType::Guard));
             let timer = tank.mission.dispatch_timer();
@@ -2157,7 +2152,6 @@ mod tests {
              [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
         ))
         .expect("wreck rules parse");
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0009);
         let tank = crate::map::entities::MapEntity {
@@ -2170,7 +2164,6 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 23, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         let timer = {
             let wreck = sim.substrate.entities.get_mut(1).expect("tank present");
@@ -2180,7 +2173,7 @@ mod tests {
         };
         let mut acquired = false;
         for _ in 0..200 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let wreck = sim.substrate.entities.get(1).expect("the wreck stays");
             assert_eq!(wreck.health.current, 0, "a wreck does not heal");
             assert_eq!(
@@ -2219,7 +2212,6 @@ mod tests {
              [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
         ))
         .expect("disc rules parse");
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0009);
         let disc = crate::map::entities::MapEntity {
@@ -2232,7 +2224,6 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 23, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         {
             let wreck = sim.substrate.entities.get_mut(1).expect("disc present");
@@ -2242,7 +2233,7 @@ mod tests {
         let mut shots = 0;
         let mut rearm_start = None;
         for _ in 0..200 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let wreck = sim.substrate.entities.get(1).expect("the wreck stays");
             let start = wreck.rearm_timer.start_frame();
             if wreck.rearm_timer.duration() > 0 && rearm_start != Some(start) {
@@ -2279,7 +2270,6 @@ mod tests {
     #[test]
     fn techno_playfield_stored_membership_gates_same_frame_passive_targeting() {
         let rules = passive_rules();
-        let heights = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x3D5);
         sim.spawn_from_map(
@@ -2288,7 +2278,6 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 23, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         sim.playfield_bounds = Some(
             crate::map::playfield::PlayfieldBounds::from_normalized_local_size(64, 2, 2, 56, 52),
@@ -2297,7 +2286,7 @@ mod tests {
         sim.substrate.entities.get_mut(2).unwrap().in_playfield = false;
 
         for _ in 0..90 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         assert!(
             sim.substrate
@@ -2310,7 +2299,7 @@ mod tests {
 
         sim.substrate.entities.get_mut(2).unwrap().in_playfield = true;
         for _ in 0..90 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         assert!(
             sim.substrate
@@ -2336,7 +2325,6 @@ mod tests {
         // the "an enemy scouted past my base" case. The scout is unarmed, so it
         // never shoots and no retaliation can install a target another way.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0002);
         sim.spawn_from_map(
@@ -2345,7 +2333,6 @@ mod tests {
                 passive_map_entity("Soviet", "MTNK", 20, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         let allied = sim.interner.get("Americans").expect("Americans interned");
         let start = sim
@@ -2357,7 +2344,7 @@ mod tests {
 
         // Let the Soviet tank acquire the parked scout.
         for _ in 0..60 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         let soviet = sim.substrate.entities.get(2).expect("soviet tank present");
         assert!(
@@ -2382,7 +2369,7 @@ mod tests {
             } else {
                 Vec::new()
             };
-            let _ = sim.advance_tick(&due, Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&due, Some(&rules), Some(&grid), None, 67);
         }
         let scout = sim.substrate.entities.get(1).expect("scout present");
         assert!(
@@ -2457,7 +2444,6 @@ mod tests {
         // The reload is the object's own timer; a re-pick of the same target
         // must not touch it.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0003);
         // Spawn through the real path so vision is established; the only
@@ -2468,9 +2454,8 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 22, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         let rearm = crate::sim::timer::CdTimer::started(sim.session.binary_frame as i32, 40);
         {
             let e = sim.substrate.entities.get_mut(1).unwrap();
@@ -2495,7 +2480,6 @@ mod tests {
         // RANGE (`0x007098EC..0x0070990A`); a nearer enemy is no reason. The
         // tank keeps the farther victim, its reload untouched.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0006);
         sim.spawn_from_map(
@@ -2505,9 +2489,8 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 21, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         let rearm = crate::sim::timer::CdTimer::started(sim.session.binary_frame as i32, 40);
         {
             let e = sim.substrate.entities.get_mut(1).unwrap();
@@ -2537,7 +2520,6 @@ mod tests {
         // every tick: a target the tank was never ordered onto is always
         // scanner-owned, or pursuit would chase it.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0007);
         sim.spawn_from_map(
@@ -2547,10 +2529,9 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 23, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         for _ in 0..60 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         assert_eq!(
             sim.substrate
@@ -2570,7 +2551,7 @@ mod tests {
         // next cadence rescan, so an end-state assertion would miss it.
         sim.substrate.entities.get_mut(2).unwrap().health.current = 1;
         for tick in 0..80 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let tank = sim.substrate.entities.get(1).expect("tank present");
             assert!(
                 tank.attack_target.is_none() || tank.passively_acquired_target,
@@ -2598,7 +2579,6 @@ mod tests {
         // Structures carry gates units do not — the deploy animation and the
         // power check — so acquisition alone does not prove a defence shoots.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0008);
         sim.spawn_from_map(
@@ -2608,10 +2588,9 @@ mod tests {
                 passive_map_entity("Americans", "GAPOWR", 14, 26, EntityCategory::Structure),
             ],
             Some(&rules),
-            &heights,
         );
         for _ in 0..160 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         let scout = sim.substrate.entities.get(1).expect("scout present");
         assert!(
@@ -2638,7 +2617,6 @@ mod tests {
         // Guard, and the host promotes it — rather than by the derived-reading
         // bridge that used to carry it while the selector stayed stuck on Move.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0009);
         sim.spawn_from_map(
@@ -2647,7 +2625,6 @@ mod tests {
                 passive_map_entity("Soviet", "UNARM", 22, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         let allied = sim.interner.get("Americans").expect("Americans interned");
         // Drive to a cell three away from the parked enemy, then never touch it
@@ -2668,7 +2645,7 @@ mod tests {
             } else {
                 Vec::new()
             };
-            let _ = sim.advance_tick(&due, Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&due, Some(&rules), Some(&grid), None, 67);
         }
 
         let tank = sim.substrate.entities.get(1).expect("tank present");
@@ -2770,7 +2747,6 @@ mod tests {
         // Infantry reach the same block through the same foot leaf. A rifleman
         // standing next to an enemy must open fire on his own.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0004);
         sim.spawn_from_map(
@@ -2779,10 +2755,9 @@ mod tests {
                 passive_map_entity("Soviet", "GI", 20, 20, EntityCategory::Infantry),
             ],
             Some(&rules),
-            &heights,
         );
         for _ in 0..90 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         let rifleman = sim.substrate.entities.get(2).expect("infantry present");
         assert!(
@@ -2801,7 +2776,6 @@ mod tests {
         // derived Guard it would acquire; the neighbour is `UNARM` so nothing
         // can shoot back and drag the GI onto Attack by retaliation instead.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0011);
         let mut sticky = passive_map_entity("Soviet", "GI", 20, 20, EntityCategory::Infantry);
@@ -2812,7 +2786,6 @@ mod tests {
                 sticky,
             ],
             Some(&rules),
-            &heights,
         );
         let spawned = sim.substrate.entities.get(2).expect("infantry present");
         assert_eq!(
@@ -2826,7 +2799,7 @@ mod tests {
             "`holds_until_retasked` must let the authored selector beat the derived Guard"
         );
         for _ in 0..90 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         let sticky_unit = sim.substrate.entities.get(2).expect("infantry present");
         assert_eq!(
@@ -3093,10 +3066,9 @@ mod tests {
     #[test]
     fn a_produced_infantryman_enters_the_map_on_guard() {
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let mut sim = Simulation::new();
         let id = sim
-            .spawn_object("GI", "Americans", 10, 10, 0, &rules, &heights)
+            .spawn_object("GI", "Americans", 10, 10, 0, &rules)
             .expect("GI spawns");
         let entity = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
@@ -3111,10 +3083,9 @@ mod tests {
     #[test]
     fn a_produced_tank_enters_the_map_on_guard() {
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let mut sim = Simulation::new();
         let id = sim
-            .spawn_object("MTNK", "Americans", 10, 10, 0, &rules, &heights)
+            .spawn_object("MTNK", "Americans", 10, 10, 0, &rules)
             .expect("tank spawns");
         let entity = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
@@ -3209,7 +3180,6 @@ mod tests {
         // backs off from 2 cells to 8 — outside the weapon, still plainly in
         // sight. Only the scanner's own re-evaluation can release it there.
         let rules = passive_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0005);
         sim.spawn_from_map(
@@ -3221,11 +3191,10 @@ mod tests {
                 passive_map_entity("Americans", "GAPOWR", 14, 26, EntityCategory::Structure),
             ],
             Some(&rules),
-            &heights,
         );
         let soviet = sim.interner.get("Soviet").expect("Soviet interned");
         for _ in 0..60 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
         assert!(
             sim.substrate
@@ -3253,7 +3222,7 @@ mod tests {
             } else {
                 Vec::new()
             };
-            let _ = sim.advance_tick(&due, Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&due, Some(&rules), Some(&grid), None, 67);
         }
         let scout = sim.substrate.entities.get(1).expect("scout present");
         assert!(
@@ -4235,7 +4204,6 @@ mod tests {
     /// playfield membership are the production ones.
     fn hunt_pair(seed: u64, hunter_type: &str, gap: u16, mission: MissionType) -> Simulation {
         let rules = hunt_body_rules();
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let mut sim = Simulation::with_seed(seed);
         sim.spawn_from_map(
             &[
@@ -4243,7 +4211,6 @@ mod tests {
                 passive_map_entity("Soviet", "HUNTVEH", 20 + gap, 20, EntityCategory::Unit),
             ],
             Some(&rules),
-            &heights,
         );
         let hunter = sim
             .substrate
@@ -4272,14 +4239,13 @@ mod tests {
         // weapon reach that bounds a Guard-mission scan, comfortably inside
         // Sight=10 so the candidate is not shrouded.
         let mut sim = hunt_pair(0x40_0720, "HUNTVEH", 8, MissionType::Hunt);
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         // Record the state at the moment of acquisition: the hunter starts
         // closing as soon as it has a target, and the point of the test is how
         // far away it was when it found one.
         let mut acquired = None;
         for _ in 0..40 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let hunter = sim.substrate.entities.get(1).expect("hunter present");
             if hunter.attack_target.is_some() {
                 acquired = Some((
@@ -4309,10 +4275,9 @@ mod tests {
     fn gsi_07_20_guard_at_the_same_range_acquires_nothing() {
         let rules = hunt_body_rules();
         let mut sim = hunt_pair(0x40_0721, "HUNTVEH", 8, MissionType::Guard);
-        let heights: std::collections::BTreeMap<(u16, u16), u8> = std::collections::BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         for _ in 0..40 {
-            let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         }
 
         assert!(
@@ -6519,10 +6484,9 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
     fn unit_dispatch_preserves_advance_tick_phase_order() {
         fn run() -> Vec<u64> {
             let mut sim = Simulation::new();
-            let heights = std::collections::BTreeMap::new();
             (0..5)
                 .map(|_| {
-                    sim.advance_tick(&[], None, &heights, None, None, 67);
+                    sim.advance_tick(&[], None, None, None, 67);
                     sim.state_hash()
                 })
                 .collect()
@@ -6569,9 +6533,8 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         let mut sim = Simulation::new();
         insert_s2_scoped_move_unit(&mut sim, 1, 5, 5); // default target: arrives tick 1
         sim.set_logic_order_for_test(vec![1]);
-        let heights = std::collections::BTreeMap::new();
 
-        let _ = sim.advance_tick(&[], None, &heights, None, None, 67);
+        let _ = sim.advance_tick(&[], None, None, None, 67);
         let e = sim.substrate.entities.get(1).unwrap();
         assert!(e.movement_target.is_none(), "fixture must arrive on tick 1");
         assert_eq!(
@@ -6580,7 +6543,7 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
             "no verb ran — arrival must not project a mission"
         );
 
-        let _ = sim.advance_tick(&[], None, &heights, None, None, 67);
+        let _ = sim.advance_tick(&[], None, None, None, 67);
         let e = sim.substrate.entities.get(1).unwrap();
         assert_eq!(
             e.mission.current(),
@@ -6623,9 +6586,8 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         // never collected; never scoped
         sim.substrate.entities.get_mut(2).unwrap().movement_target = None;
         sim.set_logic_order_for_test(vec![1, 2]);
-        let heights = std::collections::BTreeMap::new();
 
-        let _ = sim.advance_tick(&[], None, &heights, None, None, 67);
+        let _ = sim.advance_tick(&[], None, None, None, 67);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().mission.ai_counter(),
             1
@@ -6634,7 +6596,7 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
             sim.substrate.entities.get(2).unwrap().mission.ai_counter(),
             1
         );
-        let _ = sim.advance_tick(&[], None, &heights, None, None, 67);
+        let _ = sim.advance_tick(&[], None, None, None, 67);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().mission.ai_counter(),
             2

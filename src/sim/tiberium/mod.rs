@@ -1275,15 +1275,7 @@ SpreadPercentage=.06
         assert!(!repeated.navigation_changed);
 
         let deferred = sim
-            .advance_app_frame(
-                &[],
-                Some(&rules),
-                &BTreeMap::new(),
-                None,
-                67,
-                TickLane::Ordinary,
-                None,
-            )
+            .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
             .expect("fixture frame must complete");
         assert!(deferred.overlay_updates.is_empty());
         assert!(Arc::ptr_eq(&before, &sim.path_grid_snapshot().unwrap()));
@@ -1301,7 +1293,6 @@ SpreadPercentage=.06
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &BTreeMap::new(),
                 Some(&overlay_registry),
                 67,
                 TickLane::Ordinary,
@@ -1329,7 +1320,6 @@ SpreadPercentage=.06
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &BTreeMap::new(),
                 Some(&overlay_registry),
                 67,
                 TickLane::Ordinary,

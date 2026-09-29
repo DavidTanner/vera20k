@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::team_ai_ini::{TeamAiDefinitionSource, TeamAiIniRegistry};
@@ -66,9 +64,8 @@ fn trigger_weight(sim: &Simulation) -> NativeF64Bits {
 #[test]
 fn a_computer_team_recruits_forms_and_succeeds_in_the_master_frame() {
     let (mut sim, rules, team_id, members) = recruiting_team_fixture();
-    let heights = BTreeMap::new();
 
-    sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     let trace = sim.take_master_frame_test_trace();
     assert_eq!(
         &trace[..4],
@@ -89,7 +86,7 @@ fn a_computer_team_recruits_forms_and_succeeds_in_the_master_frame() {
         if team.formed() && formed_with.is_none() {
             formed_with = Some(team.members().collect::<Vec<_>>());
         }
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     let mut recruited = formed_with.expect("the team formed");
     recruited.sort_unstable();
@@ -111,8 +108,7 @@ fn a_computer_team_recruits_forms_and_succeeds_in_the_master_frame() {
 #[test]
 fn a_recruiting_team_survives_save_load() {
     let (mut original, rules, team_id, _) = recruiting_team_fixture();
-    let heights = BTreeMap::new();
-    original.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+    original.advance_tick(&[], Some(&rules), None, None, 67);
     assert_eq!(
         original
             .team_script_vm
@@ -136,8 +132,8 @@ fn a_recruiting_team_survives_save_load() {
     assert_eq!(original.state_hash(), restored.state_hash());
 
     for _ in 0..40 {
-        let expected = original.advance_tick(&[], Some(&rules), &heights, None, None, 67);
-        let actual = restored.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        let expected = original.advance_tick(&[], Some(&rules), None, None, 67);
+        let actual = restored.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(expected.state_hash, actual.state_hash);
     }
     assert!(restored.team_script_vm.team(team_id).is_none());
@@ -435,9 +431,8 @@ fn attack_team_fixture(script: &str) -> (Simulation, RuleSet, u64, [u64; 2], [u6
 #[test]
 fn a_computer_team_attacks_the_bigger_power_plant() {
     let (mut sim, rules, team_id, members, [_, bigger]) = attack_team_fixture("0=0,9");
-    let heights = BTreeMap::new();
     for _ in 0..40 {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         if members.iter().all(|&member| {
             sim.entities()
                 .get(member)
@@ -471,10 +466,9 @@ fn a_computer_team_attacks_the_bigger_power_plant() {
 #[test]
 fn a_computer_team_gathers_outside_the_enemy_base() {
     let (mut sim, rules, team_id, members, _) = attack_team_fixture("0=53,0\n1=49,0");
-    let heights = BTreeMap::new();
     let mut destinations = Vec::new();
     for _ in 0..600 {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         for &member in &members {
             if let Some(nav) = sim
                 .entities()
@@ -561,10 +555,9 @@ fn a_computer_engineer_team_attacks_the_enemy_factory() {
         [("BARR", 18, 8), ("PLANT", 18, 13)],
         "0=0,6",
     );
-    let heights = BTreeMap::new();
     let mut targets = Vec::new();
     for _ in 0..60 {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         for &member in &members {
             if let Some(attack) = sim
                 .entities()

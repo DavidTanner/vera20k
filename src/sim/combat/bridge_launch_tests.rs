@@ -88,9 +88,8 @@ fn retail_grizzly_forcefire_freezes_the_native_cell_aim() {
         }
         terrain.cell_mut(10, 20).unwrap().bridge_facts.raw_flags =
             row["input"]["flags"].as_u64().unwrap() as u32;
-        let heights = std::collections::BTreeMap::from([((10, 16), 2)]);
         let grizzly = sim
-            .spawn_object("MTNK", "Americans", 10, 16, 128, &rules, &heights)
+            .spawn_object("MTNK", "Americans", 10, 16, 128, &rules)
             .expect("retail Grizzly");
         sim.resolve_type_handles(&rules);
         sim.queue_command(CommandEnvelope::new(
@@ -106,7 +105,7 @@ fn retail_grizzly_forcefire_freezes_the_native_cell_aim() {
         let mut launched = false;
         for _ in 0..200 {
             let commands = sim.take_due_commands();
-            sim.advance_tick(&commands, Some(&rules), &heights, Some(&grid), None, 67);
+            sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 67);
             if let Some((_, shell)) = sim.projectiles.iter().find(|(_, p)| p.source_id == grizzly) {
                 assert_eq!(
                     shell.launch_target, expected,

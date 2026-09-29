@@ -34,7 +34,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 const BRIDGE_HARNESS_SEED: u64 = 0x0B21_D6E5_C0DE;
 const BRIDGE_HARNESS_TICKS: u64 = 200;
@@ -338,25 +338,6 @@ fn bridge_resolved_terrain(
     ResolvedTerrainGrid::from_cells(GRID_W, GRID_H, cells)
 }
 
-/// Terrain heights matching the grid, so a spawned object starts at its cell's
-/// real level rather than 0.
-fn bridge_heights() -> BTreeMap<(u16, u16), u8> {
-    let mut heights = BTreeMap::new();
-    for y in 0..GRID_H {
-        for x in 0..GRID_W {
-            // Terrain only — the deck is not terrain, so the cells under the
-            // span carry the gorge floor here exactly like the rest of the gorge.
-            let level = if is_gorge_column(x) {
-                GORGE_LEVEL
-            } else {
-                APPROACH_LEVEL
-            };
-            heights.insert((x, y), level);
-        }
-    }
-    heights
-}
-
 fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> MapEntity {
     MapEntity {
         owner: owner.to_string(),
@@ -380,7 +361,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 
 /// Spawn order fixes stable ids: 1 = the crossing tank, 2 = a far-away Soviet
 /// rifleman that exists only so neither house is defeated at once.
-fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet, heights: &BTreeMap<(u16, u16), u8>) {
+fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet) {
     sim.resolved_terrain = Some(bridge_resolved_terrain(&bridge_grid(), rules));
     // Storage dimensions are independent of the isometric Map Size diamond.
     // This narrow synthetic playfield retains the original route and distant
@@ -432,7 +413,6 @@ fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet, heights: &BTreeMa
             unit("Soviet", "E1", 58, 58, EntityCategory::Infantry), // 2
         ],
         Some(rules),
-        heights,
     );
     assert!(
         sim.substrate.entities.get(TANK_ID).is_some(),
@@ -490,13 +470,12 @@ impl CrossingFrame {
 #[test]
 fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     let rules = bridge_rules();
-    let heights = bridge_heights();
     let grid = bridge_grid();
     let script = bridge_script();
 
     // ---- Record pass: drive the crossing through the live advance_tick path. ----
     let mut rec = Simulation::with_seed(BRIDGE_HARNESS_SEED);
-    seed_bridge_scenario(&mut rec, &rules, &heights);
+    seed_bridge_scenario(&mut rec, &rules);
     let mut log = ReplayLog::new(ReplayHeader {
         version: 1,
         pixel_conversion_bounds: rec.session.pixel_conversion_bounds,
@@ -513,7 +492,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         let result = rec.advance_tick(
             &due,
             Some(&rules),
-            &heights,
             Some(&grid),
             None,
             BRIDGE_HARNESS_TICK_MS,
@@ -684,12 +662,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
 
     // ---- Replay pass: fresh sim, real ReplayRunner, tick-for-tick equality. ----
     let mut rep = Simulation::with_seed(BRIDGE_HARNESS_SEED);
-    seed_bridge_scenario(&mut rep, &rules, &heights);
+    seed_bridge_scenario(&mut rep, &rules);
     let replayed = ReplayRunner::run_fixture_with_overlay_registry(
         &mut rep,
         &log,
         Some(&rules),
-        &heights,
         Some(&grid),
         None,
         BRIDGE_HARNESS_TICK_MS,

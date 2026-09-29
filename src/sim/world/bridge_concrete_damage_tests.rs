@@ -225,7 +225,6 @@ fn retail_concrete_collapse_rechecks_an_incoming_drive_head() {
             53,
             0,
             rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("native fixture Road resident");
@@ -323,7 +322,6 @@ fn force_fire_scene() -> (HeadlessScenario, u64, String) {
             50,
             128,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("ordinary bank placement");

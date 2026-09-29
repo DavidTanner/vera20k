@@ -711,7 +711,6 @@ fn diagnose_rejected_order(
         },
         Some(&resources.rules),
         Some(&grid),
-        &resources.height_map,
     );
     println!("direct apply_command(Move) -> {applied}");
     println!(
@@ -755,7 +754,6 @@ fn issue_ordinary_move(
         },
         Some(&resources.rules),
         Some(&grid),
-        &resources.height_map,
     )
 }
 
@@ -879,7 +877,6 @@ fn drive_across_high_bridge_with_order(
             candidate.1,
             0,
             &resources.rules,
-            &resources.height_map,
         ) {
             entity_id = Some(id);
             start_cell = candidate;
@@ -1613,7 +1610,6 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
             candidate.1,
             0,
             &resources.rules,
-            &resources.height_map,
         ) {
             entity_id = Some(id);
             start_cell = candidate;
@@ -2281,7 +2277,6 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
                 span.approach_a.1,
                 0,
                 &resources.rules,
-                &resources.height_map,
             )
             .expect("blocker placed on the near approach")
     };
@@ -2339,19 +2334,10 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
                 span.approach_a.1,
                 0,
                 &resources.rules,
-                &resources.height_map,
             )
             .or_else(|| {
                 let back = offset(span.approach_a, (-span.step.0, -span.step.1))?;
-                simulation.spawn_object(
-                    "MTNK",
-                    &owner_name,
-                    back.0,
-                    back.1,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )
+                simulation.spawn_object("MTNK", &owner_name, back.0, back.1, 0, &resources.rules)
             })
             .expect("crosser placed behind the span")
     };
@@ -2775,7 +2761,6 @@ fn tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it() {
                 gap.approach.1,
                 0,
                 &resources.rules,
-                &resources.height_map,
             )
             .unwrap_or_else(|| panic!("could not place an MTNK on {:?}", gap.approach))
     };
@@ -2996,7 +2981,6 @@ fn tank_cannot_cross_a_destroyed_shrapnel_low_bridge() {
                 span.approach_a.1,
                 0,
                 &resources.rules,
-                &resources.height_map,
             )
             .unwrap_or_else(|| panic!("could not place an MTNK on {:?}", span.approach_a))
     };
@@ -3756,7 +3740,6 @@ fn order_under_high_span(map_file: &str, unit_type: &str) -> Option<UnderSpanRun
             candidate.1,
             0,
             &resources.rules,
-            &resources.height_map,
         ) {
             entity_id = Some(id);
             start_cell = candidate;
@@ -4299,7 +4282,6 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
                 span.approach_a.1,
                 0,
                 &resources.rules,
-                &resources.height_map,
             )
             .expect("MTNK placed on the west approach")
     };
@@ -4337,15 +4319,7 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
             simulation,
             resources,
         } = &mut scenario.runtime;
-        simulation.spawn_object(
-            "MTNK",
-            &owner_name,
-            shared.0,
-            shared.1,
-            0,
-            &resources.rules,
-            &resources.height_map,
-        )
+        simulation.spawn_object("MTNK", &owner_name, shared.0, shared.1, 0, &resources.rules)
     };
     let Some(under_id) = under_id else {
         println!(
@@ -4520,15 +4494,9 @@ fn scale_benchmark_many_movers_on_hills() {
                 simulation,
                 resources,
             } = &mut scenario.runtime;
-            if let Some(id) = simulation.spawn_object(
-                "MTNK",
-                &owner_name,
-                rx,
-                ry,
-                0,
-                &resources.rules,
-                &resources.height_map,
-            ) {
+            if let Some(id) =
+                simulation.spawn_object("MTNK", &owner_name, rx, ry, 0, &resources.rules)
+            {
                 ids.push((id, rx, ry));
             }
         }

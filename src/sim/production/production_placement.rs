@@ -3,8 +3,6 @@
 //! Handles placement preview, build area checks, sell refunds with crew ejection,
 //! repair tick, and producer cycling.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -188,9 +186,8 @@ pub fn place_ready_building_without_overlays(
     type_id: &str,
     rx: u16,
     ry: u16,
-    height_map: &BTreeMap<(u16, u16), u8>,
 ) -> bool {
-    place_ready_building_with_overlays(sim, rules, owner, type_id, rx, ry, height_map, None)
+    place_ready_building_with_overlays(sim, rules, owner, type_id, rx, ry, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -201,7 +198,6 @@ pub fn place_ready_building_with_overlays(
     type_id: &str,
     rx: u16,
     ry: u16,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
     let Some(obj) = rules.object(type_id) else {
@@ -245,7 +241,7 @@ pub fn place_ready_building_with_overlays(
         .object(type_id)
         .map(|o| o.foundation.clone())
         .unwrap_or_else(|| "?".to_string());
-    let z: u8 = height_map.get(&(rx, ry)).copied().unwrap_or(0);
+    let z: u8 = sim.terrain_cell_level(rx, ry).unwrap_or(0);
     log::info!(
         "Placing building {} at ({},{}) z={} foundation={}",
         type_id,

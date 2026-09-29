@@ -30,7 +30,6 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
-use std::collections::BTreeMap;
 
 const HARNESS_SEED: u64 = 0xC0FFEE_1234;
 const HARNESS_TICKS: u64 = 600;
@@ -441,12 +440,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 /// Build the recorded scenario into `sim`. Spawn order fixes stable ids
 /// 1..=7 (war factory, refinery, harvester, Allied tank, Allied infantry,
 /// Soviet tank, Soviet infantry).
-fn seed_scenario(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    heights: &BTreeMap<(u16, u16), u8>,
-    overlays: &OverlayTypeRegistry,
-) {
+fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRegistry) {
     // Flat map cells and the playfield, as a map load installs them before
     // placing objects: Unlimbo's Unit `Can_Enter_Cell` reads both, and the
     // harvester's ore scan (`FootClass::Is_Cell_Harvestable @ 0x004DCE80`)
@@ -484,7 +478,6 @@ fn seed_scenario(
             unit("Soviet", "E1", 41, 9, EntityCategory::Infantry),        // 7
         ],
         Some(rules),
-        heights,
     );
     // Seed the native CellClass overlay authority near the harvester.
     let tib01 = overlays.id_for_name("TIB01").expect("harness TIB01");
@@ -561,13 +554,12 @@ fn due_commands(sim: &Simulation, script: &[(u64, Command)], tick: u64) -> Vec<C
 fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     let rules = harness_rules();
     let overlays = harness_overlays();
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
     let script = harness_script();
 
     // ---- Record pass: build a ReplayLog through the live advance_tick path. ----
     let mut rec = Simulation::with_seed(HARNESS_SEED);
-    seed_scenario(&mut rec, &rules, &heights, &overlays);
+    seed_scenario(&mut rec, &rules, &overlays);
     let mut log = ReplayLog::new(ReplayHeader {
         version: 1,
         pixel_conversion_bounds: rec.session.pixel_conversion_bounds,
@@ -593,7 +585,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         let result = rec.advance_tick(
             &due,
             Some(&rules),
-            &heights,
             Some(&grid),
             Some(&overlays),
             HARNESS_TICK_MS,
@@ -646,7 +637,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // convenience entry, chunked at the stream checkpoints so the per-stream
     // cursors can be pinned between chunks. ----
     let mut rep = Simulation::with_seed(HARNESS_SEED);
-    seed_scenario(&mut rep, &rules, &heights, &overlays);
+    seed_scenario(&mut rep, &rules, &overlays);
     let mut replayed: Vec<u64> = Vec::with_capacity(log.ticks.len());
     let mut replayed_streams: Vec<(u64, u64, u64, u64)> = Vec::new();
     let mut chunk_start = 0usize;
@@ -660,7 +651,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             &mut rep,
             &chunk,
             Some(&rules),
-            &heights,
             Some(&grid),
             Some(&overlays),
             HARNESS_TICK_MS,
@@ -682,7 +672,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             &mut rep,
             &tail,
             Some(&rules),
-            &heights,
             Some(&grid),
             Some(&overlays),
             HARNESS_TICK_MS,
@@ -807,12 +796,10 @@ const DENSE_ROWS: u16 = 10;
 fn dense_converging_setup() -> (
     Simulation,
     RuleSet,
-    BTreeMap<(u16, u16), u8>,
     PathGrid,
     Vec<(u64, crate::sim::intern::InternedId, Command)>,
 ) {
     let rules = harness_rules();
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     let mut sim = Simulation::with_seed(DENSE_SEED);
@@ -824,7 +811,7 @@ fn dense_converging_setup() -> (
     for i in 0..DENSE_ROWS {
         roster.push(unit("Soviet", "MTNK", 40, 5 + i, EntityCategory::Unit)); // ids 11..=20
     }
-    sim.spawn_from_map(&roster, Some(&rules), &heights);
+    sim.spawn_from_map(&roster, Some(&rules));
 
     // Both columns converge on x=25, same row — they close together and arrive/stall
     // in formation. Each Move is under its OWN owner (the thin generic harness rejected
@@ -856,7 +843,7 @@ fn dense_converging_setup() -> (
             },
         ));
     }
-    (sim, rules, heights, grid, script)
+    (sim, rules, grid, script)
 }
 
 /// S2 movement-neutrality tripwire: per-tick position fingerprint of the dense
@@ -961,12 +948,10 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         )))
         .unwrap();
         let mut sim = Simulation::with_seed(DENSE_SEED);
-        let heights = BTreeMap::new();
         let grid = PathGrid::new(64, 64);
         sim.spawn_from_map(
             &[unit("Americans", "MTNK", 40, 5, EntityCategory::Unit)],
             Some(&rules),
-            &heights,
         );
         let owner = sim.interner.get("Americans").unwrap();
         let native = rows
@@ -992,14 +977,7 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
             } else {
                 Vec::new()
             };
-            sim.advance_tick(
-                &due,
-                Some(&rules),
-                &heights,
-                Some(&grid),
-                None,
-                HARNESS_TICK_MS,
-            );
+            sim.advance_tick(&due, Some(&rules), Some(&grid), None, HARNESS_TICK_MS);
         }
         let entity = sim.substrate.entities.get(1).unwrap();
         let call = &native["calls"][0];
@@ -1037,14 +1015,7 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         restored.restore_after_snapshot_load().unwrap();
         for tick in 4..=35 {
             for world in [&mut sim, &mut restored] {
-                world.advance_tick(
-                    &[],
-                    Some(&rules),
-                    &heights,
-                    Some(&grid),
-                    None,
-                    HARNESS_TICK_MS,
-                );
+                world.advance_tick(&[], Some(&rules), Some(&grid), None, HARNESS_TICK_MS);
             }
             assert_eq!(
                 sim.state_hash(),
@@ -1065,7 +1036,7 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
 #[test]
 fn s2_dense_scenario_position_fingerprint_stable() {
     use std::hash::{Hash, Hasher};
-    let (mut sim, rules, heights, grid, script) = dense_converging_setup();
+    let (mut sim, rules, grid, script) = dense_converging_setup();
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for tick in 0..DENSE_TICKS {
         let due: Vec<CommandEnvelope> = script
@@ -1073,14 +1044,7 @@ fn s2_dense_scenario_position_fingerprint_stable() {
             .filter(|(t, _, _)| *t == tick + 1)
             .map(|(t, owner, c)| CommandEnvelope::new(*owner, *t, c.clone()))
             .collect();
-        let _ = sim.advance_tick(
-            &due,
-            Some(&rules),
-            &heights,
-            Some(&grid),
-            None,
-            HARNESS_TICK_MS,
-        );
+        let _ = sim.advance_tick(&due, Some(&rules), Some(&grid), None, HARNESS_TICK_MS);
         for (id, e) in sim.substrate.entities.iter_sorted() {
             (
                 id,

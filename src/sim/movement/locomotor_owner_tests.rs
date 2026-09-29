@@ -2,8 +2,6 @@
 //! `locomotor_owner`. These supplied states do not certify native command or
 //! warp behavior beyond the constructor/transfer/reuse boundaries cited there.
 
-use std::collections::BTreeMap;
-
 use super::*;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
@@ -279,7 +277,6 @@ fn stop_command_retires_only_the_drive_admitted_by_its_existing_gate() {
             &Command::Stop { entity_id: 1 },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         ));
 
         let entity = sim.substrate.entities.get(1).unwrap();

@@ -395,14 +395,7 @@ fn losing_the_last_building_blows_up_the_army_next_frame() {
         .unwrap();
     assert_eq!(sim.houses[&houses[0]].tracking.buildings(), 1);
     let step = |sim: &mut Simulation| {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     };
     step(&mut sim);
     assert!(!sim.houses[&houses[0]].is_defeated);

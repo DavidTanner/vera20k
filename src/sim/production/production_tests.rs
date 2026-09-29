@@ -1,8 +1,6 @@
 //! Production integration tests — end-to-end tests for build completion, unit spawning,
 //! harvester auto-creation, and sell/undeploy flows through the full production pipeline.
 
-use std::collections::BTreeMap;
-
 use super::production_spawn::{
     find_spawn_selection_for_owner, find_spawn_selection_for_owner_with_type,
     mark_war_factory_spawn_contact,
@@ -688,7 +686,6 @@ fn exit_coord_parsed_and_used_for_spawn() {
 fn war_factory_spawn_contact_is_marked_per_produced_mover() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
 
     let selection = find_spawn_selection_for_owner(
@@ -711,11 +708,10 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
             selection.cell.1,
             64,
             &rules,
-            &height_map,
         )
         .expect("produced tank should spawn");
     let unrelated = sim
-        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules)
         .expect("unrelated tank should spawn");
 
     assert!(mark_war_factory_spawn_contact(
@@ -764,7 +760,6 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
 fn war_factory_exit_contact_held_while_on_footprint() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
     // Spawn the produced tank ON the factory's occupancy cell. `spawn_structure`
     // registers the test structure at a single occupancy cell (its origin 20,20 —
@@ -772,7 +767,7 @@ fn war_factory_exit_contact_held_while_on_footprint() {
     // Structure occupant under it. (Real production occupies the full footprint via
     // entity_occupancy_cells; the test helper is the single-cell simplification.)
     let produced = sim
-        .spawn_object("MTNK", "Americans", 20, 20, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 20, 20, 64, &rules)
         .expect("produced tank should spawn");
     assert!(mark_war_factory_spawn_contact(
         &mut sim, &rules, 10, produced
@@ -797,11 +792,10 @@ fn war_factory_exit_contact_held_while_on_footprint() {
 fn war_factory_exit_contact_breaks_when_unit_clears_footprint() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
     // Spawn the produced tank on a clear cell well away from the foundation.
     let produced = sim
-        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules)
         .expect("produced tank should spawn");
     assert!(mark_war_factory_spawn_contact(
         &mut sim, &rules, 10, produced
@@ -832,10 +826,9 @@ fn war_factory_exit_break_ignores_non_weapons_factory_producer() {
     // in for any non-WeaponsFactory-land producer.
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAPILE", 20, 20);
     let mover = sim
-        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules)
         .expect("mover should spawn");
     // Manually emulate a non-WF dock-entered link (as the refinery bus would set).
     let m = sim.substrate.entities.get_mut(mover).unwrap();
@@ -1743,11 +1736,10 @@ fn custom_exit_coord_modded_factory() {
 fn harvester_moves_to_ore_and_back_with_path_grid() {
     let mut sim = Simulation::new();
     let rules = build_catalog_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     let harvester_sid = sim
-        .spawn_object("HARV", "Americans", 10, 10, 64, &rules, &height_map)
+        .spawn_object("HARV", "Americans", 10, 10, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "Americans", "GAREFN", 8, 10);
     // Whole-multiple of the ore base (120) so the cell drains cleanly. The
@@ -1765,7 +1757,7 @@ fn harvester_moves_to_ore_and_back_with_path_grid() {
     // Run enough ticks for a full harvest cycle: search → move to ore →
     // harvest bales → return to refinery → dock → unload.
     for _ in 0..3000 {
-        let _ = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
         let pos = sim
             .substrate
             .entities

@@ -2,7 +2,6 @@
 //! IFV keep-one rule, the hover water→land pre-move, Move cancellation and
 //! the landed-only aircraft gate.
 
-use std::collections::BTreeMap;
 
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
@@ -105,7 +104,6 @@ struct Fixture {
     sim: Simulation,
     rules: RuleSet,
     grid: PathGrid,
-    heights: BTreeMap<(u16, u16), u8>,
 }
 
 impl Fixture {
@@ -125,13 +123,12 @@ impl Fixture {
             sim,
             rules,
             grid: PathGrid::test_all_passable(MAP, MAP),
-            heights: BTreeMap::new(),
         }
     }
 
     fn spawn(&mut self, type_id: &str, rx: u16, ry: u16, facing: u8) -> u64 {
         self.sim
-            .spawn_object(type_id, OWNER, rx, ry, facing, &self.rules, &self.heights)
+            .spawn_object(type_id, OWNER, rx, ry, facing, &self.rules)
             .unwrap_or_else(|| panic!("spawn {type_id}"))
     }
 
@@ -181,24 +178,14 @@ impl Fixture {
     }
 
     fn apply(&mut self, cmd: Command) -> bool {
-        self.sim.apply_command(
-            OWNER,
-            &cmd,
-            Some(&self.rules),
-            Some(&self.grid),
-            &self.heights,
-        )
+        self.sim
+            .apply_command(OWNER, &cmd, Some(&self.rules), Some(&self.grid))
     }
 
     fn tick(&mut self) {
-        let _ = self.sim.advance_tick(
-            &[],
-            Some(&self.rules),
-            &self.heights,
-            Some(&self.grid),
-            None,
-            66,
-        );
+        let _ = self
+            .sim
+            .advance_tick(&[], Some(&self.rules), Some(&self.grid), None, 66);
     }
 
     fn frame(&self) -> u32 {

@@ -199,14 +199,7 @@ fn attack(sim: &mut Simulation, attacker: u64, target: u64) {
 fn step(sim: &mut Simulation, rules: &RuleSet, grid: &crate::sim::pathfinding::PathGrid) -> i32 {
     let frame = sim.session.binary_frame as i32;
     let commands = sim.take_due_commands();
-    sim.advance_tick(
-        &commands,
-        Some(rules),
-        &std::collections::BTreeMap::new(),
-        Some(grid),
-        None,
-        33,
-    );
+    sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
     frame
 }
 

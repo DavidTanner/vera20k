@@ -67,15 +67,7 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
         }
         if input["receiver_mode"] != "empty" {
             let id = world
-                .spawn_object(
-                    "FV",
-                    "Americans",
-                    10,
-                    20,
-                    0,
-                    &rules,
-                    &BTreeMap::from([((10, 20), 6)]),
-                )
+                .spawn_object("FV", "Americans", 10, 20, 0, &rules)
                 .unwrap();
             let target = world.substrate.entities.get_mut(id).unwrap();
             target.position.sub_x = SimFixed::from_num(128);
@@ -260,15 +252,7 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
             None
         } else {
             let id = world
-                .spawn_object(
-                    "FV",
-                    "Americans",
-                    10,
-                    20,
-                    0,
-                    &rules,
-                    &BTreeMap::from([((10, 20), 6)]),
-                )
+                .spawn_object("FV", "Americans", 10, 20, 0, &rules)
                 .unwrap();
             let entity = world.substrate.entities.get_mut(id).unwrap();
             entity.position.sub_x =

@@ -205,7 +205,7 @@ fn first_yard_distance_accepts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
 
     use crate::map::bridge_facts::{BRIDGE_FLAG_FORWARD_SIDE, BRIDGE_FLAG_STRUCTURAL};
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
@@ -669,7 +669,7 @@ mod tests {
             HouseState::new(owner, 0, Some(country), false, 10_000, 10),
         );
         let yard = sim
-            .spawn_object("GACNST", "AIHouse", 10, 10, 0, &rules, &BTreeMap::new())
+            .spawn_object("GACNST", "AIHouse", 10, 10, 0, &rules)
             .expect("parsed BuildConst Construction Yard reveals");
         assert_eq!(sim.houses[&owner].build_const_order, [yard]);
         assert!(sim.entities().get(yard).unwrap().build_const_eligible);

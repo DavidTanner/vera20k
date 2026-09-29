@@ -503,7 +503,7 @@ mod tests {
                         SimFixed::from_num(step["xyz"][1].as_i64().unwrap() - 2560);
                 }
                 "sort" => {
-                    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 50);
+                    sim.advance_tick(&[], None, None, None, 50);
                 }
                 op => panic!("unexpected {op}"),
             }

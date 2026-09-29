@@ -244,7 +244,6 @@ fn repair_ordinary_bridge(scene: &mut HeadlessScenario, hut_coord: (u16, u16), s
             start.1,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .expect("ordinary Engineer bank placement");
     let repair = CommandEnvelope::new(

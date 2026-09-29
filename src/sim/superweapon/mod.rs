@@ -8,9 +8,9 @@
 //! - Part of sim/ — depends on rules/, sim/power_system, sim/components.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+pub mod cell_grid;
 #[cfg(test)]
 mod cell_receiver_tests;
-pub mod cell_grid;
 pub mod force_shield;
 pub mod genetic_converter;
 pub mod invulnerability;
@@ -277,10 +277,7 @@ pub fn superweapon_views_for_owner(
         views.push(SuperWeaponView {
             type_id: inst.type_id,
             display_name: type_id_str.to_string(),
-            progress: inst.charge_progress(
-                sim.session.binary_frame,
-                sw_type.recharge_time_frames,
-            ),
+            progress: inst.charge_progress(sim.session.binary_frame, sw_type.recharge_time_frames),
             is_ready: inst.is_ready,
             is_online: !inst.is_suspended,
             sidebar_image: sw_type.sidebar_image.clone(),
@@ -517,7 +514,10 @@ mod frame_tests {
         let sw = sim.interner.intern("NukeSpecial");
         let mut instance = SuperWeaponInstance::new(sw, owner);
         instance.activate(10, sim.session.binary_frame);
-        sim.super_weapons.entry(owner).or_default().insert(sw, instance);
+        sim.super_weapons
+            .entry(owner)
+            .or_default()
+            .insert(sw, instance);
         sim.super_weapons_initialized = true;
         let ready = |sim: &Simulation| {
             sim.sound_events
@@ -565,7 +565,6 @@ mod frame_tests {
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
         let nuke = sim.interner.intern("NukeSpecial");
-        let no_heights = std::collections::BTreeMap::new();
         let weapon = |sim: &Simulation| {
             let inst = &sim.super_weapons[&owner][&nuke];
             (
@@ -577,7 +576,7 @@ mod frame_tests {
         };
 
         let first = sim
-            .spawn_object("NAMISL", "Americans", 10, 10, 0, &rules, &no_heights)
+            .spawn_object("NAMISL", "Americans", 10, 10, 0, &rules)
             .expect("first silo spawns");
         refresh_super_weapons_for_owner(&mut sim, &rules, owner);
         assert_eq!(weapon(&sim), (true, false, 0, 900));
@@ -591,7 +590,7 @@ mod frame_tests {
         );
 
         sim.session.binary_frame = 300;
-        sim.spawn_object("NAMISL", "Americans", 20, 20, 0, &rules, &no_heights)
+        sim.spawn_object("NAMISL", "Americans", 20, 20, 0, &rules)
             .expect("second silo spawns");
         refresh_super_weapons_for_owner(&mut sim, &rules, owner);
         assert_eq!(weapon(&sim), (true, false, 300, 900));

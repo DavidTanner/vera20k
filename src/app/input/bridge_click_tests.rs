@@ -261,7 +261,6 @@ fn spawn_retail_mover(
             start.1,
             0,
             &resources.rules,
-            &resources.height_map,
         )
         .expect("retail mover spawns at the authored approach");
     sim.resolve_type_handles(&resources.rules);
@@ -283,7 +282,12 @@ fn follow_clicked_goal(
         point,
         (-100.25, 1800.5),
         1.25,
-        &scenario.runtime.resources.height_map,
+        &scenario
+            .sim()
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .build_height_map(),
         bridges,
     );
     assert_eq!(goal, expected, "retail click {point:?}");
@@ -418,14 +422,7 @@ fn retail_hills_ground_click_keeps_gi_beneath_bridge() {
 fn advance_input_fixture(sim: &mut Simulation, rules: &crate::rules::ruleset::RuleSet) {
     let due = sim.take_due_commands();
     let grid = sim.path_grid_snapshot();
-    let result = sim.advance_tick(
-        &due,
-        Some(rules),
-        &BTreeMap::new(),
-        grid.as_deref(),
-        None,
-        67,
-    );
+    let result = sim.advance_tick(&due, Some(rules), grid.as_deref(), None, 67);
     assert!(
         result.frame_committed,
         "ordinary scheduled frame failed: {result:?}"

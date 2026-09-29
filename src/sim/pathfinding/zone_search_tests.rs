@@ -880,8 +880,6 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     // omitted counts instead select the distinct ordinary ground shortcut.
     let (path_grid, zone_grid, terrain) = caller_count_bridge_detour(MovementZone::Normal, false);
 
-    let mut height_map = BTreeMap::new();
-    height_map.insert((1, 0), 4);
     let mut sim = Simulation::new();
     // Explicit fixture Map Size=(6,4) beside the generous LocalSize bounds;
     // Foot's production precheck consumes both header dimensions.
@@ -893,9 +891,9 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
     let factory = sim
-        .spawn_object("GAWEAP", "Americans", 0, 0, 0, &rules, &height_map)
+        .spawn_object("GAWEAP", "Americans", 0, 0, 0, &rules)
         .expect("war factory should spawn");
-    sim.spawn_object("MTNK", "Russians", 0, 2, 0, &rules, &height_map)
+    sim.spawn_object("MTNK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
 
     let owner = sim.interner.intern("Americans");
@@ -990,9 +988,6 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
     // occupying the route.
     let (path_grid, zone_grid, terrain) = caller_count_bridge_detour(MovementZone::Normal, true);
 
-    let mut height_map = BTreeMap::new();
-    height_map.insert((1, 0), 4);
-    height_map.insert((5, 0), 4);
     let mut sim = Simulation::new();
     sim.playfield_bounds = Some(PlayfieldBounds {
         base: 6,
@@ -1002,12 +997,12 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
     let refinery_id = sim
-        .spawn_object("REFN", "Americans", 0, 0, 0, &rules, &height_map)
+        .spawn_object("REFN", "Americans", 0, 0, 0, &rules)
         .expect("refinery should spawn");
     let miner_id = sim
-        .spawn_object("HARV", "Americans", 5, 0, 0, &rules, &height_map)
+        .spawn_object("HARV", "Americans", 5, 0, 0, &rules)
         .expect("harvester should spawn");
-    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules, &height_map)
+    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
     assert!(sim.substrate.entities.get(refinery_id).is_some());
     assert!(sim.set_unit_cell_destination(miner_id, (1, 0), &rules));
@@ -1039,9 +1034,6 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
 
     let (path_grid, zone_grid, terrain) = caller_count_bridge_detour(MovementZone::Infantry, false);
 
-    let mut height_map = BTreeMap::new();
-    height_map.insert((1, 0), 4);
-    height_map.insert((5, 0), 4);
     let mut sim = Simulation::new();
     // Explicit fixture Map Size=(6,4), separate from the generous LocalSize
     // bounds. Foot's production precheck consumes both header dimensions.
@@ -1053,12 +1045,12 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
     let engineer_id = sim
-        .spawn_object("ENGINEER", "Americans", 1, 0, 0, &rules, &height_map)
+        .spawn_object("ENGINEER", "Americans", 1, 0, 0, &rules)
         .expect("engineer should spawn");
     let target_id = sim
-        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules, &height_map)
+        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules)
         .expect("capture target should spawn");
-    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules, &height_map)
+    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
 
     assert!(sim.apply_command(
@@ -1069,7 +1061,6 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
         },
         Some(&rules),
         Some(&path_grid),
-        &height_map,
     ));
 
     let engineer = sim.substrate.entities.get(engineer_id).unwrap();

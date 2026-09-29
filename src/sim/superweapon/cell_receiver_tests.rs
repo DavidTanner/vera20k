@@ -70,7 +70,6 @@ fn launch_command(sim: &mut Simulation, rules: &RuleSet, name: &str, rx: u16, ry
         },
         Some(rules),
         None,
-        &BTreeMap::new(),
         None
     ));
     assert!(
@@ -204,7 +203,7 @@ fn animated_mutation_victim_retires(explosion: bool) {
     let replacements = marked_brutes(&sim);
     assert_eq!(replacements.len(), 1);
     for _ in 0..120 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+        sim.advance_tick(&[], Some(&rules), None, None, 100);
     }
     assert!(
         sim.substrate.entities.get(victim).is_none(),
@@ -249,7 +248,7 @@ fn infantry_terminal_raw_mutation_retires_on_next_visit_with_or_without_animatio
             1,
             "whole replacement batch precedes retirement"
         );
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+        sim.advance_tick(&[], Some(&rules), None, None, 100);
         assert!(sim.substrate.entities.get(victim).is_none());
         assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
         assert!(!sim.live_object_order_snapshot().contains(&victim));
@@ -291,7 +290,7 @@ fn infantry_terminal_no_art_cleanup_follows_recursive_deaths() {
         assert!(entity.lifecycle.in_limbo && !entity.in_logic_vector);
         assert!(entity.infantry_terminal.is_none());
     }
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+    sim.advance_tick(&[], Some(&rules), None, None, 100);
     assert!(!sim.substrate.entities.contains(parent));
     assert!(!sim.substrate.entities.contains(child));
 }
@@ -342,7 +341,7 @@ fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
                 .iter()
                 .any(|event| matches!(event, crate::sim::world::SimSoundEvent::UnitLost { .. }))
         );
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+        sim.advance_tick(&[], Some(&rules), None, None, 100);
         assert!(!sim.substrate.entities.contains(victim));
         assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
         assert!(!sim.live_object_order_snapshot().contains(&victim));
@@ -416,7 +415,6 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &BTreeMap::new(),
                 None,
                 67,
                 crate::sim::world::TickLane::Ordinary,
@@ -450,7 +448,7 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
         let spark_id = *sim.particle_systems().iter().next().unwrap().0;
         assert!(sim.live_object_order_snapshot().contains(&spark_id));
         for visit in 1..=3 {
-            sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+            sim.advance_tick(&[], Some(&rules), None, None, 100);
             assert_eq!(
                 sim.substrate.entities.contains(infantry),
                 inf_death == 2 && visit < 3
@@ -485,7 +483,7 @@ fn infantry_terminal_receiver_sequences_finish_through_production_frames() {
         assert!(object.dying && object.infantry_terminal.is_some());
         assert_eq!(object.animation.as_ref().unwrap().sequence, sequence);
         for frame in 1..=3 {
-            sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+            sim.advance_tick(&[], Some(&rules), None, None, 100);
             assert_eq!(
                 sim.substrate.entities.contains(victim),
                 frame < 3,
@@ -531,7 +529,7 @@ fn infantry_terminal_invalid_death_art_cannot_retain_a_live_logic_member() {
             .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
             .unwrap();
         launch_command(&mut sim, &rules, "IC", 5, 5);
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+        sim.advance_tick(&[], Some(&rules), None, None, 100);
         assert!(
             sim.substrate.entities.get(victim).is_none(),
             "invalid definition case {invalid}"

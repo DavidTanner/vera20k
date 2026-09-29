@@ -379,7 +379,6 @@ mod tests {
     use crate::sim::combat::TargetKind;
     use crate::sim::command::{Command, CommandEnvelope};
     use crate::sim::house_state::HouseState;
-    use std::collections::BTreeMap;
 
     /// Retail shape: `GAPOWR` is `Drainable=yes` only; the refineries carry
     /// both `ResourceDestination=yes` and `Drainable=yes` (rulesmd.ini
@@ -429,16 +428,14 @@ mod tests {
     /// base unit → lose → sole survivor wins → frames stop after SavourDelay)
     /// never terminates the fixture match.
     fn base(sim: &mut Simulation, rules: &RuleSet, owner: &str, rx: u16, ry: u16) {
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-        sim.spawn_object("GAPOWR", owner, rx, ry, 0, rules, &heights)
+        sim.spawn_object("GAPOWR", owner, rx, ry, 0, rules)
             .expect("base building spawns");
     }
 
     fn run_ticks(sim: &mut Simulation, rules: &RuleSet, ticks: u32) {
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         for _ in 0..ticks {
-            let _ = sim.advance_tick(&[], Some(rules), &heights, Some(&grid), None, 67);
+            let _ = sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
         }
     }
 
@@ -482,9 +479,8 @@ mod tests {
         let soviets = house(&mut sim, "Soviet", true, 5_000);
         base(&mut sim, &rules, "Americans", 30, 30);
         base(&mut sim, &rules, "Soviet", 40, 40);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let oil = sim
-            .spawn_object("CAOILD", "Neutral", 10, 10, 0, &rules, &heights)
+            .spawn_object("CAOILD", "Neutral", 10, 10, 0, &rules)
             .expect("derrick spawns");
         let constructed = sim.substrate.entities.get(oil).unwrap().produce_cash_timer;
         assert_eq!(constructed.duration(), 0, "constructor timer is dead");
@@ -608,9 +604,8 @@ mod tests {
         let neutral = house(&mut sim, "Neutral", false, 0);
         sim.houses.get_mut(&neutral).unwrap().multiplay_passive = true;
         let americans = house(&mut sim, "Americans", true, 0);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let oil = sim
-            .spawn_object("CAOILDP", "Neutral", 10, 10, 0, &rules, &heights)
+            .spawn_object("CAOILDP", "Neutral", 10, 10, 0, &rules)
             .expect("powered derrick spawns");
         sim.change_owner_with_rules(oil, americans, &rules);
         assert_eq!(credits(&sim, americans), 1_000);
@@ -646,12 +641,11 @@ mod tests {
         let americans = house(&mut sim, "Americans", true, 75);
         base(&mut sim, &rules, "YuriCountry", 40, 40);
         base(&mut sim, &rules, "Americans", 44, 44);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let refinery = sim
-            .spawn_object("NAREFN", "Americans", 20, 20, 0, &rules, &heights)
+            .spawn_object("NAREFN", "Americans", 20, 20, 0, &rules)
             .expect("refinery spawns");
         let disk = sim
-            .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules, &heights)
+            .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules)
             .expect("disc spawns");
         assert_eq!(building_at_cell(&sim, 21, 21), Some(refinery));
         assert!(install_drain_link(
@@ -705,12 +699,11 @@ mod tests {
         let yuri = house(&mut sim, "YuriCountry", false, 500);
         let americans = house(&mut sim, "Americans", true, 75);
         base(&mut sim, &rules, "YuriCountry", 40, 40);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let plant = sim
-            .spawn_object("GAPOWR", "Americans", 20, 20, 0, &rules, &heights)
+            .spawn_object("GAPOWR", "Americans", 20, 20, 0, &rules)
             .expect("power plant spawns");
         let disk = sim
-            .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules, &heights)
+            .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules)
             .expect("disc spawns");
         assert!(install_drain_link(&mut sim.substrate.entities, disk, plant));
         run_ticks(&mut sim, &rules, 150);
@@ -741,12 +734,11 @@ mod tests {
         let americans = house(&mut sim, "Americans", true, 5_000);
         base(&mut sim, &rules, "YuriCountry", 40, 40);
         base(&mut sim, &rules, "Americans", 44, 44);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let refinery = sim
-            .spawn_object("NAREFN", "Americans", 20, 20, 0, &rules, &heights)
+            .spawn_object("NAREFN", "Americans", 20, 20, 0, &rules)
             .expect("refinery spawns");
         let disk = sim
-            .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules, &heights)
+            .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules)
             .expect("disc spawns");
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let order = cmd(
@@ -758,7 +750,7 @@ mod tests {
                 target_id: refinery,
             },
         );
-        let result = sim.advance_tick(&[order], Some(&rules), &heights, Some(&grid), None, 67);
+        let result = sim.advance_tick(&[order], Some(&rules), Some(&grid), None, 67);
         assert_eq!(result.executed_commands, 1, "the Attack order is admitted");
         let disc = sim.substrate.entities.get(disk).unwrap();
         // The MEGAMISSION arm queues Attack behind the Guard the disc took at
@@ -833,12 +825,11 @@ mod tests {
         let _yuri = house(&mut sim, "YuriCountry", false, 500);
         let _americans = house(&mut sim, "Americans", true, 500);
         base(&mut sim, &rules, "YuriCountry", 40, 40);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let plant = sim
-            .spawn_object("GAPOWR", "Americans", 20, 20, 0, &rules, &heights)
+            .spawn_object("GAPOWR", "Americans", 20, 20, 0, &rules)
             .expect("power plant spawns");
         let disk = sim
-            .spawn_object("DISK", "YuriCountry", 30, 30, 0, &rules, &heights)
+            .spawn_object("DISK", "YuriCountry", 30, 30, 0, &rules)
             .expect("disc spawns");
         assert!(!install_drain_link(
             &mut sim.substrate.entities,

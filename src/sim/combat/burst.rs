@@ -50,19 +50,17 @@ mod tests {
         use crate::sim::command::Command;
         use crate::sim::pathfinding::PathGrid;
         use crate::sim::world::Simulation;
-        use std::collections::BTreeMap;
 
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[VehicleTypes]\n0=TANK\n[TANK]\nStrength=200\nSpeed=6\nPrimary=Gun\n\
              [Gun]\nDamage=10\nROF=100\nRange=8\nBurst=2\n",
         ))
         .unwrap();
-        let heights = BTreeMap::new();
         let grid = PathGrid::new(32, 32);
         for order in 0..4 {
             let mut sim = Simulation::with_seed(0);
             let id = sim
-                .spawn_object("TANK", "Americans", 4, 4, 64, &rules, &heights)
+                .spawn_object("TANK", "Americans", 4, 4, 64, &rules)
                 .unwrap();
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             represented_assign_target(entity, Some(TargetKind::Cell(5, 4)));
@@ -88,7 +86,7 @@ mod tests {
                     target_id: None,
                 },
             };
-            assert!(sim.apply_command("Americans", &command, Some(&rules), Some(&grid), &heights));
+            assert!(sim.apply_command("Americans", &command, Some(&rules), Some(&grid)));
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             assert!(entity.attack_target.is_none(), "{command:?}");
             assert!(!entity.passively_acquired_target, "{command:?}");
@@ -105,7 +103,6 @@ mod tests {
         use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
         use crate::sim::command::Command;
         use crate::sim::world::Simulation;
-        use std::collections::BTreeMap;
 
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[VehicleTypes]\n0=TANK\n1=APC\n\
@@ -121,7 +118,6 @@ mod tests {
              [Gun]\nDamage=10\nROF=100\nRange=8\nBurst=2\n",
         ))
         .unwrap();
-        let heights = BTreeMap::new();
         for order in 0..5 {
             for had_target in [false, true] {
                 let mut sim = Simulation::with_seed(0);
@@ -137,7 +133,7 @@ mod tests {
                     _ => "BUNKER",
                 };
                 let id = sim
-                    .spawn_object(actor_type, "Americans", 4, 4, 64, &rules, &heights)
+                    .spawn_object(actor_type, "Americans", 4, 4, 64, &rules)
                     .unwrap();
                 let destination = sim
                     .spawn_object(
@@ -151,7 +147,6 @@ mod tests {
                         4,
                         64,
                         &rules,
-                        &heights,
                     )
                     .unwrap();
                 let actor = sim.substrate.entities.get_mut(id).unwrap();
@@ -184,13 +179,13 @@ mod tests {
                     },
                 };
                 // Rejected ownership cannot cancel a burst or passive provenance.
-                assert!(!sim.apply_command("Russians", &command, Some(&rules), None, &heights));
+                assert!(!sim.apply_command("Russians", &command, Some(&rules), None));
                 let actor = sim.substrate.entities.get(id).unwrap();
                 assert_eq!(actor.attack_target.is_some(), had_target, "{command:?}");
                 assert!(actor.passively_acquired_target, "{command:?}");
                 assert_eq!(actor.weapon_burst.index(), 1, "{command:?}");
 
-                assert!(sim.apply_command("Americans", &command, Some(&rules), None, &heights));
+                assert!(sim.apply_command("Americans", &command, Some(&rules), None));
                 let actor = sim.substrate.entities.get_mut(id).unwrap();
                 assert!(actor.attack_target.is_none(), "{command:?}");
                 assert!(!actor.passively_acquired_target, "{command:?}");

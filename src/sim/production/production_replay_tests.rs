@@ -43,11 +43,10 @@ const START_CREDITS: i32 = 50_000;
 
 #[test]
 fn income_spending_and_factory_refund_share_the_runtime_wallet() {
-    let (simulation, rules, height_map) = scenario();
+    let (simulation, rules) = scenario();
     let (owner, _, _, tank) = ids(&simulation);
     let mut resources = crate::sim::runtime::SimResources::empty();
     resources.rules = rules;
-    resources.height_map = height_map;
     let mut runtime = crate::sim::runtime::SimRuntime {
         simulation,
         resources,
@@ -108,7 +107,7 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
 /// these structures drains power, so the producer runs at full rate.
 ///
 /// Fully deterministic so the cross-sim replay invariant holds (see module docs).
-fn scenario() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
+fn scenario() -> (Simulation, RuleSet) {
     let mut sim = Simulation::new();
     let rules = build_catalog_rules();
     sim.intern_rule_type_ids(&rules);
@@ -135,7 +134,7 @@ fn scenario() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
             .tracking
             .set_buildings_for_test(4);
     }
-    (sim, rules, BTreeMap::new())
+    (sim, rules)
 }
 
 fn env(owner: InternedId, tick: u64, payload: Command) -> CommandEnvelope {
@@ -209,7 +208,6 @@ fn refund_free_stream(sim: &Simulation) -> Vec<CommandEnvelope> {
 fn record(
     sim: &mut Simulation,
     rules: &RuleSet,
-    heights: &BTreeMap<(u16, u16), u8>,
     pending: Vec<CommandEnvelope>,
     ticks: u64,
 ) -> (Vec<u64>, ReplayLog) {
@@ -227,7 +225,7 @@ fn record(
     sim.queue_commands(pending);
     for _ in 0..ticks {
         let due = sim.take_due_commands();
-        let r = sim.advance_tick(&due, Some(rules), heights, None, None, TICK_MS);
+        let r = sim.advance_tick(&due, Some(rules), None, None, TICK_MS);
         hashes.push(r.state_hash);
         log.record_tick(r.tick, due, r.state_hash);
     }
@@ -238,7 +236,7 @@ fn record(
 /// first steps, charging the wallet, one rate later (`FactoryClass::AI 0x004C9B20`).
 #[test]
 fn event_tail_enqueue_first_charges_one_rate_later() {
-    let (mut sim, rules, heights) = scenario();
+    let (mut sim, rules) = scenario();
     let (owner, _, infantry, _) = ids(&sim);
     let credits_before = sim.houses[&owner].economy.credits;
 
@@ -246,7 +244,6 @@ fn event_tail_enqueue_first_charges_one_rate_later() {
     sim.advance_tick(
         &[queue(owner, infantry, 1)],
         Some(&rules),
-        &heights,
         None,
         None,
         TICK_MS,
@@ -267,11 +264,11 @@ fn event_tail_enqueue_first_charges_one_rate_later() {
     assert_eq!(sim.houses[&owner].economy.credits, credits_before);
 
     for _ in 1..rate {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, TICK_MS);
+        sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
         assert_eq!(factory(&sim).0, 0);
     }
     assert_eq!(sim.houses[&owner].economy.credits, credits_before);
-    sim.advance_tick(&[], Some(&rules), &heights, None, None, TICK_MS);
+    sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
     assert_eq!(factory(&sim).0, 1);
     assert!(sim.houses[&owner].economy.credits < credits_before);
 }
@@ -283,7 +280,7 @@ fn event_tail_enqueue_first_charges_one_rate_later() {
 /// exact observed label set {Building, Paused, Done, Queued}.
 #[test]
 fn derived_view_state_stays_building_on_underfunded_stall() {
-    let (mut sim, rules, _heights) = scenario();
+    let (mut sim, rules) = scenario();
     let (am, _, e1, _) = ids(&sim);
     // Arm an E1 build directly, then simulate a mid-build underfunded stall.
     sim.production
@@ -327,22 +324,21 @@ fn factory_flip_replay_is_bit_identical_across_runs_and_playback() {
     const TICKS: u64 = 120;
 
     // Run 1 — live record.
-    let (mut s1, rules, heights) = scenario();
+    let (mut s1, rules) = scenario();
     let cmds = rich_command_stream(&s1);
-    let (timeline_live, log) = record(&mut s1, &rules, &heights, cmds.clone(), TICKS);
+    let (timeline_live, log) = record(&mut s1, &rules, cmds.clone(), TICKS);
 
     // Run 2 — live record again (pure repeatability).
-    let (mut s2, rules2, heights2) = scenario();
-    let (timeline_live2, _) = record(&mut s2, &rules2, &heights2, cmds, TICKS);
+    let (mut s2, rules2) = scenario();
+    let (timeline_live2, _) = record(&mut s2, &rules2, cmds, TICKS);
     assert_eq!(
         timeline_live, timeline_live2,
         "two live runs of the same command stream must produce an identical per-tick hash timeline"
     );
 
     // Run 3 — replay the recorded log through the shared ReplayRunner.
-    let (mut s3, rules3, heights3) = scenario();
-    let timeline_playback =
-        ReplayRunner::run_fixture(&mut s3, &log, Some(&rules3), &heights3, None, TICK_MS);
+    let (mut s3, rules3) = scenario();
+    let timeline_playback = ReplayRunner::run_fixture(&mut s3, &log, Some(&rules3), None, TICK_MS);
     assert_eq!(
         timeline_live, timeline_playback,
         "replay playback must reproduce the live hash timeline bit-for-bit"
@@ -363,7 +359,7 @@ fn factory_flip_replay_is_bit_identical_across_runs_and_playback() {
 fn economy_conservation_over_replay() {
     const TICKS: u64 = 600;
 
-    let (mut sim, rules, heights) = scenario();
+    let (mut sim, rules) = scenario();
     let (am, al, _, _) = ids(&sim);
     let pending = refund_free_stream(&sim);
 
@@ -376,7 +372,7 @@ fn economy_conservation_over_replay() {
     let mut any_spent = false;
     for _ in 0..TICKS {
         let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), &heights, None, None, TICK_MS);
+        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
 
         let total: i64 = [am, al]
             .iter()
@@ -430,7 +426,7 @@ fn economy_conservation_through_cancel_refund() {
     // MTNK balance when the cancel reaches the command tail.
     const CANCEL_TICK: u64 = 40;
 
-    let (mut sim, rules, heights) = scenario();
+    let (mut sim, rules) = scenario();
     let (am, al, e1, mtnk) = ids(&sim);
 
     // Americans: ONLY an MTNK (Cost 900 -> guaranteed mid-build at the cancel tick),
@@ -466,7 +462,7 @@ fn economy_conservation_through_cancel_refund() {
 
     for _ in 0..TICKS {
         let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), &heights, None, None, TICK_MS);
+        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
 
         // Every per-owner credit INCREASE is a refund (no deposits in this scenario).
         for &o in &[am, al] {
@@ -550,8 +546,7 @@ fn revalidate_abandons_build_with_no_factory_and_drops_queued() {
             .view(am, ProductionCategory::Vehicle)
             .is_some()
     );
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    sim.advance_tick(&[], Some(&rules), &heights, None, None, TICK_MS);
+    sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
     assert!(
         sim.production
             .factory_shadow
@@ -571,14 +566,14 @@ fn revalidate_abandons_build_with_no_factory_and_drops_queued() {
 /// sweep, so no extra charge lands the abandon tick.
 #[test]
 fn revalidate_abandons_active_on_factory_loss_partial_refund() {
-    let (mut sim, rules, heights) = scenario();
+    let (mut sim, rules) = scenario();
     let (am, _, _, mtnk) = ids(&sim);
     // Enqueue MTNK via the real command path (eligible — Americans owns GAWEAP), then charge
     // partway.
     sim.queue_command(queue(am, mtnk, 1));
     for _ in 0..40 {
         let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), &heights, None, None, TICK_MS);
+        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
     }
     // Mid-build before factory loss; read the spent portion = the expected refund.
     let spent = {
@@ -610,7 +605,7 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
     sim.substrate.entities.remove(3);
 
     let credits_before = sim.houses[&am].economy.credits;
-    sim.advance_tick(&[], Some(&rules), &heights, None, None, TICK_MS);
+    sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
     let refund = sim.houses[&am].economy.credits - credits_before;
     assert_eq!(
         refund, spent,
@@ -630,12 +625,12 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
 /// hash-neutral steady state).
 #[test]
 fn revalidate_keeps_buildable_build_untouched() {
-    let (mut sim, rules, heights) = scenario();
+    let (mut sim, rules) = scenario();
     let (am, _, _, mtnk) = ids(&sim);
     sim.queue_command(queue(am, mtnk, 1));
     for _ in 0..40 {
         let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), &heights, None, None, TICK_MS);
+        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
     }
     let view = sim
         .production
@@ -657,17 +652,16 @@ fn revalidate_keeps_buildable_build_untouched() {
 fn runtime_backed_replay_hashes_match_each_tick() {
     const TICKS: u64 = 120;
 
-    let (mut live, rules, heights) = scenario();
+    let (mut live, rules) = scenario();
     let cmds = rich_command_stream(&live);
-    let (timeline_live, log) = record(&mut live, &rules, &heights, cmds, TICKS);
+    let (timeline_live, log) = record(&mut live, &rules, cmds, TICKS);
 
-    let (fresh, runtime_rules, runtime_heights) = scenario();
+    let (fresh, runtime_rules) = scenario();
     let mut runtime = crate::sim::runtime::SimRuntime {
         simulation: fresh,
         resources: {
             let mut resources = crate::sim::runtime::SimResources::empty();
             resources.rules = runtime_rules;
-            resources.height_map = runtime_heights;
             resources
         },
     };
@@ -726,7 +720,6 @@ fn retail_builds_step_at_the_native_frames() {
             .tracking
             .set_buildings_for_test(5);
         let type_id = sim.interner.intern(unit);
-        let height_map = BTreeMap::new();
 
         let factory_state = |sim: &Simulation| {
             sim.production
@@ -750,7 +743,7 @@ fn retail_builds_step_at_the_native_frames() {
                 Vec::new()
             };
             let before = factory_state(&sim).map_or(0, |(progress, ..)| progress);
-            sim.advance_tick(&commands, Some(&rules), &height_map, None, None, TICK_MS);
+            sim.advance_tick(&commands, Some(&rules), None, None, TICK_MS);
             let Some((progress, rate, timer, object)) = factory_state(&sim) else {
                 // The last step completes the build and the unit leaves in the
                 // same frame, which retires the idle factory.

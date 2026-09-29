@@ -664,8 +664,8 @@ fn grounded_ramp_position_survives_snapshot_and_idle_continuation() {
         Some(52)
     );
     for _ in 0..3 {
-        sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 66);
-        restored.advance_tick(&[], None, &BTreeMap::new(), None, None, 66);
+        sim.advance_tick(&[], None, None, None, 66);
+        restored.advance_tick(&[], None, None, None, 66);
         assert_eq!(
             restored
                 .substrate
@@ -719,15 +719,7 @@ fn drive_ship_slope_production_spawn_unlimbo_snaps_without_manual_rocking_state(
         let _constructor_word = expected_rng.next_u32();
 
         let stable_id = sim
-            .spawn_object(
-                type_id,
-                "Americans",
-                cell.0,
-                cell.1,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object(type_id, "Americans", cell.0, cell.1, 0, &rules)
             .expect("production spawn/unlimbo");
         let entity = sim.substrate.entities.get(stable_id).unwrap();
         // Original-code ramp_{5,9,12}_sub_128_128 fixtures; this reaches the
@@ -791,15 +783,7 @@ fn zero_speed_foot_drive_ship_payloads_survive_all_world_spawn_paths() {
         ("ZAIRS", (6, 2), LocomotorKind::Ship, 11),
     ] {
         let stable_id = sim
-            .spawn_object(
-                type_id,
-                "Americans",
-                cell.0,
-                cell.1,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object(type_id, "Americans", cell.0, cell.1, 0, &rules)
             .expect("zero-speed Foot production spawn/reveal");
         let entity = sim.substrate.entities.get(stable_id).unwrap();
         assert_eq!(
@@ -833,10 +817,7 @@ fn zero_speed_foot_drive_ship_payloads_survive_all_world_spawn_paths() {
         structure_ai_sellable: false,
         structure_ai_repairable: false,
     };
-    assert_eq!(
-        sim.spawn_from_map(&[placement], Some(&rules), &BTreeMap::new()),
-        1
-    );
+    assert_eq!(sim.spawn_from_map(&[placement], Some(&rules)), 1);
     let map_entity = sim
         .substrate
         .entities
@@ -3451,7 +3432,7 @@ fn gsi_04_16_dustbowl_conyard_unlimbo_uses_local_size_edge() {
     sim.houses.insert(owner, house);
 
     let conyard = sim
-        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules, &BTreeMap::new())
+        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules)
         .expect("GACNST reveals");
     assert!(
         sim.substrate
@@ -3479,7 +3460,7 @@ fn gsi_04_16_committed_structure_owner_change_refreshes_new_house_edge() {
     new_house.base_center = Some((68, 114));
     sim.houses.insert(new_owner, new_house);
     let conyard = sim
-        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules, &BTreeMap::new())
+        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules)
         .expect("GACNST reveals");
 
     sim.change_owner(conyard, new_owner);
@@ -3504,7 +3485,7 @@ fn gsi_04_16_caoild_reveal_and_owner_change_preserve_waypoint_edges() {
     sim.houses.insert(new_owner, new_house);
 
     let oil = sim
-        .spawn_object("CAOILD", "Americans", 69, 115, 0, &rules, &BTreeMap::new())
+        .spawn_object("CAOILD", "Americans", 69, 115, 0, &rules)
         .expect("CAOILD reveals");
     assert!(
         !sim.substrate
@@ -3987,8 +3968,7 @@ fn lifecycle_authority_late_tail_commits_frame_before_drain() {
     sim.uninit(1);
     sim.lifecycle_test_events.clear();
 
-    let height_map = BTreeMap::new();
-    let _ = sim.advance_tick(&[], None, &height_map, None, None, 67);
+    let _ = sim.advance_tick(&[], None, None, None, 67);
     assert_eq!(
         sim.lifecycle_test_events,
         vec![
@@ -8137,7 +8117,7 @@ fn unlimbo_levels_then_aims_the_barrel_elevation() {
         cell.speed_costs.track = Some(100);
         cell.base_speed_costs = cell.speed_costs;
         let id = sim
-            .spawn_object(type_id, "Americans", 4, 4, 0, &rules, &BTreeMap::new())
+            .spawn_object(type_id, "Americans", 4, 4, 0, &rules)
             .expect("production spawn/unlimbo");
         let elevation = *sim.substrate.entities.get(id).unwrap().barrel_elevation();
         for (frame, heading) in samples {

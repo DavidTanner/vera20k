@@ -7,7 +7,6 @@ use super::refinery_dock_oracle_tests::{Scene, scene, scene_with};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::miner::{CargoBale, MinerState, ResourceType};
 use crate::sim::mission::{MissionId, MissionType};
-use std::collections::BTreeMap;
 
 /// One miner's observable state after a frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -57,17 +56,10 @@ fn credits(s: &Scene) -> i32 {
 
 /// Advance one production frame; returns the owner's credits after it.
 fn frame(s: &mut Scene) -> i32 {
-    let heights = BTreeMap::new();
     let overlay = crate::sim::tiberium::test_support::overlay_registry();
     let grid = s.sim.path_grid_snapshot();
-    s.sim.advance_tick(
-        &[],
-        Some(&s.rules),
-        &heights,
-        grid.as_deref(),
-        Some(overlay),
-        67,
-    );
+    s.sim
+        .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(overlay), 67);
     credits(s)
 }
 
@@ -75,15 +67,7 @@ fn frame(s: &mut Scene) -> i32 {
 fn spawn_returning_miner(s: &mut Scene, cell: (u16, u16)) -> u64 {
     let id = s
         .sim
-        .spawn_object(
-            "HARV",
-            "Americans",
-            cell.0,
-            cell.1,
-            0,
-            &s.rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("HARV", "Americans", cell.0, cell.1, 0, &s.rules)
         .expect("second miner");
     let now = s.sim.session.binary_frame;
     s.sim
@@ -276,7 +260,6 @@ fn a_refinery_order_mid_unload_redocks_and_pays() {
         },
         Some(&s.rules),
         None,
-        &BTreeMap::new(),
     ));
     let after_order = sample(&s, s.miner);
     assert!(!after_order.unloading && !after_order.tethered);
@@ -395,7 +378,6 @@ fn stop_on_the_pad_approach_parks_the_miner() {
         &crate::sim::command::Command::Stop { entity_id: s.miner },
         Some(&s.rules),
         None,
-        &BTreeMap::new(),
     ));
     for _ in 0..200 {
         frame(&mut s);

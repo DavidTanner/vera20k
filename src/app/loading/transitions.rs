@@ -130,6 +130,8 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     state.match_state.loaded_map_source = Some(result.scenario.map_source);
     state.match_state.loaded_map_hash = result.scenario.map_hash;
     state.match_state.match_presentation.terrain_grid = result.scenario.terrain_grid;
+    state.match_state.match_presentation.height_map = result.scenario.height_map;
+    state.match_state.match_presentation.bridge_height_map = result.scenario.bridge_height_map;
     state
         .match_state
         .match_presentation
@@ -150,8 +152,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
             .map(|(simulation, rules)| crate::sim::runtime::SimRuntime {
                 simulation,
                 resources: crate::sim::runtime::SimResources {
-                    height_map: result.scenario.height_map,
-                    bridge_height_map: result.scenario.bridge_height_map,
                     overlay_registry: result.scenario.overlay_registry,
                     terrain_template: result.scenario.resolved_terrain,
                     rules,

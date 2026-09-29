@@ -1979,7 +1979,6 @@ impl MapLoadInitial {
         );
         let house_roster =
             houses::parse_house_roster(&map_data.ini, &rules.color_schemes, Some(&rules));
-        let height_map = resolved_terrain.build_height_map();
         let bridge_destroyability_mode =
             crate::map::basic::BridgeDestroyabilityMode::SkirmishOrMultiplayer {
                 bridge_destruction: match_launch_descriptor
@@ -1998,7 +1997,6 @@ impl MapLoadInitial {
             &resolved_terrain,
             &map_data.header.theater,
             Some(&rules),
-            &height_map,
             Some(&overlay_registry),
             Some(&overlay_grid),
             bridge_destroyability_mode,
@@ -2077,7 +2075,6 @@ impl MapLoadInitial {
             &map_data,
             &house_roster,
             &rules,
-            &height_map,
             &resolved_terrain,
             &match_launch_descriptor,
             &overlay_registry,
@@ -2806,14 +2803,12 @@ pub(crate) fn load_map_from_initial(
                     cleared_terrain_overlay_cells.len(),
                 );
             }
-            let construction_height_map = resolved_terrain.build_height_map();
             crate::app::loading::init_helpers::populate_staged_app_scenario(
                 &mut staged_simulation,
                 &map_data,
                 resolved_terrain,
                 &map_data.header.theater,
                 Some(&rules),
-                &construction_height_map,
                 Some(&overlay_registry),
                 Some(&overlay_grid),
                 bridge_destroyability_mode,
@@ -3001,7 +2996,6 @@ pub(crate) fn load_map_from_initial(
             &map_data,
             &house_roster,
             ruleset,
-            &height_map,
             &resolved_terrain,
             &match_launch_descriptor,
             &overlay_registry,
@@ -3082,7 +3076,6 @@ pub(crate) fn load_map_from_initial(
                     ry,
                     64,
                     ruleset,
-                    &height_map,
                     &overlay_registry,
                 )
                 .is_some()

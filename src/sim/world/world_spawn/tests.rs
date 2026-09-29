@@ -134,10 +134,9 @@ fn signed_rot_reaches_spawn_combat_turn_and_snapshot_restore() {
         let mut restored = GameSnapshot::load(&saved).unwrap().sim;
         restored.restore_after_snapshot_load().unwrap();
         assert_eq!(restored.state_hash(), hash, "ROT={rot}");
-        let heights = BTreeMap::new();
         for _ in 0..3 {
-            sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
-            restored.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+            sim.advance_tick(&[], Some(&rules), None, None, 67);
+            restored.advance_tick(&[], Some(&rules), None, None, 67);
             assert_eq!(sim.state_hash(), restored.state_hash(), "ROT={rot}");
         }
     }
@@ -516,11 +515,10 @@ fn infantry_owner_discovery_leaves_building_power_radar_and_spysat_inputs_unchan
         sim.spawn_from_map(
             &[map_entity("OBS", EntityCategory::Structure, (6, 5))],
             Some(&rules),
-            &BTreeMap::new()
         ),
         1
     );
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 66);
+    sim.advance_tick(&[], Some(&rules), None, None, 66);
     let before = (
         sim.power_states[&owner].total_output,
         sim.power_states[&owner].total_drain,
@@ -528,7 +526,7 @@ fn infantry_owner_discovery_leaves_building_power_radar_and_spysat_inputs_unchan
         sim.houses[&owner].spy_sat_active,
     );
     let id = sim
-        .spawn_object("E1", "Americans", 7, 5, 0, &rules, &BTreeMap::new())
+        .spawn_object("E1", "Americans", 7, 5, 0, &rules)
         .unwrap();
     assert!(
         sim.substrate
@@ -538,7 +536,7 @@ fn infantry_owner_discovery_leaves_building_power_radar_and_spysat_inputs_unchan
             .discovery
             .discovered_by_current_house
     );
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 66);
+    sim.advance_tick(&[], Some(&rules), None, None, 66);
     let after = (
         sim.power_states[&owner].total_output,
         sim.power_states[&owner].total_drain,
@@ -564,7 +562,6 @@ fn building_light_allocates_only_after_authored_or_held_placement_succeeds() {
         authored.spawn_from_map(
             &[map_entity("GALITE", EntityCategory::Structure, (6, 5))],
             Some(&rules),
-            &BTreeMap::new()
         ),
         1
     );
@@ -674,13 +671,7 @@ fn assert_generated_projection_rejects_before_mutation(
     let raw_occupation_entries_before = sim.substrate.raw_cell_occupation.entry_count();
 
     assert_eq!(
-        sim.spawn_generated_from_map_with_resolved(
-            entities,
-            &rules,
-            &BTreeMap::new(),
-            None,
-            table,
-        ),
+        sim.spawn_generated_from_map_with_resolved(entities, &rules, None, table,),
         Err(expected_error)
     );
     assert_eq!(sim.scenario_rng.logical_state(), scenario_before);
@@ -785,7 +776,6 @@ fn techno_constructor_live_overlay_context_admits_ore_and_structural_bridge() {
                 map_entity("MTNK", EntityCategory::Unit, bridge_cell),
             ],
             Some(&rules),
-            &BTreeMap::new(),
             None,
             Some(&registry),
         ),
@@ -814,7 +804,6 @@ fn techno_constructor_live_overlay_context_admits_ore_and_structural_bridge() {
             ore_runtime.1,
             0,
             &rules,
-            &BTreeMap::new(),
             &registry,
         )
         .expect("non-wall overlay must not veto runtime Unit Unlimbo");
@@ -943,10 +932,7 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                     authored.sub_cell = 3;
                     authored.recruitable_a = false;
                     authored.recruitable_b = false;
-                    assert_eq!(
-                        sim.spawn_from_map(&[authored], Some(&rules), &BTreeMap::new()),
-                        1
-                    );
+                    assert_eq!(sim.spawn_from_map(&[authored], Some(&rules)), 1);
                     sim.substrate.entities.values().next().unwrap().stable_id
                 }
                 1 => sim
@@ -1113,14 +1099,14 @@ fn techno_constructor_runtime_fresh_paths_draw_once_after_type_resolution() {
 
     let before_invalid = sim.scenario_rng.logical_state();
     assert!(
-        sim.spawn_object("MISSING", "Americans", 1, 1, 0, &rules, &BTreeMap::new())
+        sim.spawn_object("MISSING", "Americans", 1, 1, 0, &rules)
             .is_none()
     );
     assert_eq!(sim.scenario_rng.logical_state(), before_invalid);
 
     let placed_word = (expected.next_u32() & 0xFFFF) as u16;
     let placed = sim
-        .spawn_object("MTNK", "Americans", 6, 5, 0, &rules, &BTreeMap::new())
+        .spawn_object("MTNK", "Americans", 6, 5, 0, &rules)
         .expect("placed runtime Techno");
     assert_eq!(
         sim.substrate
@@ -1133,7 +1119,7 @@ fn techno_constructor_runtime_fresh_paths_draw_once_after_type_resolution() {
 
     let _failed_word = (expected.next_u32() & 0xFFFF) as u16;
     assert!(
-        sim.spawn_object("BASE", "Americans", 1, 1, 0, &rules, &BTreeMap::new())
+        sim.spawn_object("BASE", "Americans", 1, 1, 0, &rules)
             .is_none()
     );
     assert!(sim.substrate.entities.get(2).is_none());
@@ -1360,7 +1346,6 @@ fn techno_constructor_unit_can_enter_rejection_discards_eager_pool_without_refun
                 map_entity("CARRIER", EntityCategory::Unit, (6, 5)),
             ],
             Some(&rules),
-            &BTreeMap::new(),
         ),
         1
     );
@@ -1411,10 +1396,7 @@ fn techno_constructor_fixed_map_uses_native_category_order_after_prior_mark_draw
         .map(|_| (expected.next_u32() & 0xFFFF) as u16)
         .collect();
 
-    assert_eq!(
-        sim.spawn_from_map(&entities, Some(&rules), &BTreeMap::new()),
-        4
-    );
+    assert_eq!(sim.spawn_from_map(&entities, Some(&rules)), 4);
     let actual_words: Vec<u16> = sim
         .substrate
         .entities
@@ -1444,14 +1426,8 @@ fn techno_constructor_generated_projection_installs_without_a_second_draw() {
     let native_before = sim.native_unique_ids.as_ref().unwrap().current_raw();
 
     assert_eq!(
-        sim.spawn_generated_from_map_with_resolved(
-            &[entity],
-            &rules,
-            &BTreeMap::new(),
-            None,
-            &table,
-        )
-        .unwrap(),
+        sim.spawn_generated_from_map_with_resolved(&[entity], &rules, None, &table,)
+            .unwrap(),
         1
     );
     assert_eq!(sim.scenario_rng.logical_state(), before);
@@ -1606,10 +1582,7 @@ fn techno_constructor_authored_upgrades_are_distinct_attached_live_entities_with
         (expected.next_u32() & 0xFFFF) as u16,
     ];
 
-    assert_eq!(
-        sim.spawn_from_map(&[base], Some(&rules), &BTreeMap::new()),
-        3
-    );
+    assert_eq!(sim.spawn_from_map(&[base], Some(&rules)), 3);
     let parent = sim.substrate.entities.get(1).unwrap();
     assert_eq!(parent.techno_ctor_random_word, words[0]);
     assert_eq!(
@@ -1788,10 +1761,7 @@ fn aircraft_spawn_initializes_both_facings_without_a_turret_flag() {
                 .unwrap();
             let mut placement = map_entity("AIR", EntityCategory::Aircraft, (6, 5));
             placement.facing = direction;
-            assert_eq!(
-                sim.spawn_from_map(&[placement], Some(&rules), &BTreeMap::new()),
-                1
-            );
+            assert_eq!(sim.spawn_from_map(&[placement], Some(&rules)), 1);
             let authored = sim.substrate.entities.values().next().unwrap();
             for entity in [&runtime, authored] {
                 for facing in [entity.body_facing, entity.barrel_facing.unwrap()] {
@@ -1840,10 +1810,7 @@ fn aircraft_ammo_initialization_matches_native_for_authored_and_runtime_objects(
             .unwrap()
             .unwrap();
         let placement = map_entity("AIR", EntityCategory::Aircraft, (6, 5));
-        assert_eq!(
-            sim.spawn_from_map(&[placement], Some(&rules), &BTreeMap::new()),
-            1
-        );
+        assert_eq!(sim.spawn_from_map(&[placement], Some(&rules)), 1);
         let authored = sim.substrate.entities.values().next().unwrap();
         for entity in [&runtime, authored] {
             let ammo = entity.aircraft_ammo.as_ref().unwrap();
@@ -1871,11 +1838,7 @@ fn map_admission_uses_class_health_and_rejects_unresolved_types() {
         let mut sim = Simulation::with_seed(9);
         let mut placement = map_entity(name, category, (6, 5));
         placement.health = input["authored"].as_i64().unwrap() as i32;
-        assert_eq!(
-            sim.spawn_from_map(&[placement], Some(&rules), &BTreeMap::new()),
-            1,
-            "{row}"
-        );
+        assert_eq!(sim.spawn_from_map(&[placement], Some(&rules)), 1, "{row}");
         let entity = sim.substrate.entities.values().next().unwrap();
         assert_eq!(
             entity.health.current,
@@ -1903,10 +1866,7 @@ fn map_admission_uses_class_health_and_rejects_unresolved_types() {
             category,
             (6, 5),
         );
-        assert_eq!(
-            sim.spawn_from_map(&[missing, wrong_class], Some(&rules), &BTreeMap::new()),
-            0
-        );
+        assert_eq!(sim.spawn_from_map(&[missing, wrong_class], Some(&rules)), 0);
         assert_eq!(sim.scenario_rng.logical_state(), before);
         assert!(sim.substrate.entities.is_empty());
     }
@@ -1960,10 +1920,10 @@ fn a_building_s_ai_sale_byte_follows_its_buildup_or_its_map_line() {
     let mut built = Simulation::with_seed(0x6DC);
     install_constructor_test_playfield(&mut built);
     let base = built
-        .spawn_object("BASE", "Americans", 9, 5, 0, &rules, &BTreeMap::new())
+        .spawn_object("BASE", "Americans", 9, 5, 0, &rules)
         .expect("BASE");
     let bare = built
-        .spawn_object("UP1", "Americans", 6, 5, 0, &rules, &BTreeMap::new())
+        .spawn_object("UP1", "Americans", 6, 5, 0, &rules)
         .expect("UP1");
     assert!(byte(&built, base), "a Buildup keeps the byte");
     assert!(!byte(&built, bare), "no Buildup clears it");
@@ -1974,7 +1934,7 @@ fn a_building_s_ai_sale_byte_follows_its_buildup_or_its_map_line() {
     sellable.structure_ai_sellable = true;
     let unsellable = map_entity("BASE", EntityCategory::Structure, (9, 5));
     assert_eq!(
-        authored.spawn_from_map(&[sellable, unsellable], Some(&rules), &BTreeMap::new()),
+        authored.spawn_from_map(&[sellable, unsellable], Some(&rules)),
         2
     );
     let bytes: Vec<bool> = authored
@@ -2020,10 +1980,7 @@ fn a_building_s_ai_repair_byte_follows_its_map_line_or_its_computer_owner() {
         let mut line = map_entity("UP1", EntityCategory::Structure, (6, 5));
         line.owner = owner.to_string();
         line.structure_ai_repairable = field;
-        assert_eq!(
-            sim.spawn_from_map(&[line], Some(&rules), &BTreeMap::new()),
-            1
-        );
+        assert_eq!(sim.spawn_from_map(&[line], Some(&rules)), 1);
         let building = sim.substrate.entities.values().next().unwrap();
         assert_eq!(
             building.ai_repairable, expected,

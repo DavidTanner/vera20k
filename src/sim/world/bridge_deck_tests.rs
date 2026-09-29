@@ -12,7 +12,6 @@ use crate::sim::{
 fn structural_fallout_retires_effect_only_ground_victim() {
     use crate::sim::house_state::HouseState;
     use crate::sim::world::{LifecycleTestEvent, SimSoundEvent};
-    use std::collections::BTreeMap;
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n\
          [E1]\nStrength=100\nSpeed=4\n[CombatDamage]\nC4Warhead=KILL\n\
@@ -54,7 +53,7 @@ fn structural_fallout_retires_effect_only_ground_victim() {
             .count(),
         1
     );
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 100);
+    sim.advance_tick(&[], Some(&rules), None, None, 100);
     assert!(!sim.substrate.entities.contains(victim));
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, victim));
     assert!(!sim.live_object_order_snapshot().contains(&victim));

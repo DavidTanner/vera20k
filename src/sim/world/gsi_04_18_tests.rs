@@ -302,7 +302,7 @@ fn shroud_current_sight_world_collector_and_native_frame_restore() {
         .unwrap()
         .lifecycle
         .in_limbo = true;
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert!(
         sim.fog.is_cell_revealed(owner, 12, 12),
         "current-pass departure waits for the next boundary"
@@ -318,9 +318,9 @@ fn shroud_current_sight_world_collector_and_native_frame_restore() {
     assert_eq!(restored.state_hash(), hash);
     restored.restore_after_snapshot_load().unwrap();
     restored.session.binary_frame = 239;
-    restored.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    restored.advance_tick(&[], None, None, None, 67);
     assert!(restored.fog.is_cell_revealed(owner, 12, 12));
-    restored.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    restored.advance_tick(&[], None, None, None, 67);
     assert!(
         !restored.fog.is_cell_revealed(owner, 12, 12),
         "frame240 consumes persisted pending conceal before object work"
@@ -396,9 +396,9 @@ fn shroud_current_sight_psychic_under_existing_gap_waits_for_native_boundary() {
     assert!(sim.fog.is_cell_revealed(owner, 12, 12));
     assert!(!sim.fog.is_cell_gap_covered(owner, 12, 12));
     sim.session.binary_frame = 119;
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert!(sim.fog.is_cell_revealed(owner, 12, 12));
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert!(!sim.fog.is_cell_revealed(owner, 12, 12));
 }
 

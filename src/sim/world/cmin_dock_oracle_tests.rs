@@ -165,15 +165,7 @@ pub(super) fn dress_cmin(s: &mut Scene, input: &Value) {
         // A second Unit listed first in the pad cell (Get_Unit finds it).
         let tank = s
             .sim
-            .spawn_object(
-                "MTNK",
-                "Americans",
-                20,
-                4,
-                0,
-                &s.rules,
-                &std::collections::BTreeMap::new(),
-            )
+            .spawn_object("MTNK", "Americans", 20, 4, 0, &s.rules)
             .expect("pad unit");
         place(s, tank, (9, 10));
     }

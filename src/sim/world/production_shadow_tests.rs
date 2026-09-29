@@ -15,7 +15,6 @@ use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::production::{PRODUCTION_STEPS, ProductionCategory, StepOutcome};
 use crate::sim::timer::CdTimer;
-use std::collections::BTreeMap;
 
 fn empty_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str("")).expect("empty rules parse")
@@ -257,10 +256,9 @@ fn snapshot_roundtrip_factory_registry() {
 fn production_shadow_preserves_advance_tick_phase_order() {
     fn run() -> Vec<u64> {
         let mut sim = Simulation::new();
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         (0..5)
             .map(|_| {
-                sim.advance_tick(&[], None, &heights, None, None, 67);
+                sim.advance_tick(&[], None, None, None, 67);
                 sim.state_hash()
             })
             .collect()
@@ -469,10 +467,9 @@ fn factory_step_matches_legacy_shadow_holds() {
         .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
     let ty = sim.interner.intern("GRIZZLY");
     arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     for _ in 0..5 {
         // If the inversion assert diverges, advance_tick panics in a debug build.
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
 }
 
@@ -501,13 +498,12 @@ fn single_wallet_charged_once_no_double_debit() {
         "GRIZZLY needs a positive cost for this guard"
     );
     let start = sim.houses[&owner].economy.credits;
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     // A war factory exists but no path_grid is supplied, so the completed vehicle has no exit
     // cell and is held (delivery never fires) — the build charges to completion exactly once
     // and never re-seeds. Upper-bound the cadence (<= 255 frames/step * 54 steps) and break
     // once the cost is fully drained.
     for _ in 0..(PRODUCTION_STEPS as usize * 256) {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         if sim.houses[&owner].economy.spent_credits >= full_cost {
             break;
         }
@@ -535,9 +531,8 @@ fn stall_on_no_funds_holds() {
     let ty = sim.interner.intern("GRIZZLY");
     arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
     spawn_war_factory(&mut sim, owner); // P6: factory present so the build STALLS (not abandoned)
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     for _ in 0..200 {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     assert_eq!(
         sim.houses[&owner].economy.credits, 0,
@@ -566,10 +561,9 @@ fn cancel_one_partial_refund_to_house_credits() {
         .object_type(ty, &rules)
         .map(|o| o.cost.max(0))
         .unwrap_or(0);
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     // Charge partway (not to completion).
     for _ in 0..200 {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     let spent = sim.houses[&owner].economy.spent_credits;
     assert!(
@@ -625,7 +619,6 @@ fn factory_flip_determinism_over_scripted_commands() {
         arm(&mut sim, &rules, b, ProductionCategory::Vehicle, griz, 3);
         sim.production.next_enqueue_order = 4;
 
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         (0..160)
             .map(|i| {
                 if i == 10 {
@@ -638,7 +631,7 @@ fn factory_flip_determinism_over_scripted_commands() {
                         false,
                     );
                 }
-                sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+                sim.advance_tick(&[], Some(&rules), None, None, 67);
                 sim.state_hash()
             })
             .collect()

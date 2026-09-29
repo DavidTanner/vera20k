@@ -487,13 +487,7 @@ fn configured_teleporter_commands_keep_physical_z_through_save_relocate_and_rest
                     }
                 };
                 assert!(
-                    sim.apply_command(
-                        "Americans",
-                        &command,
-                        Some(&rules),
-                        None,
-                        &Default::default()
-                    ),
+                    sim.apply_command("Americans", &command, Some(&rules), None,),
                     "{kind:?} attack_move={attack_move} exact={exact:?}"
                 );
                 assert_eq!(

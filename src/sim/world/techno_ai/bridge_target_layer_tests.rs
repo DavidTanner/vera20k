@@ -370,7 +370,6 @@ fn move_retail_fv(
             start.1,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .expect("ordinary FV placement on bank/road");
     // Keep the isolated movement preparation from acquiring hostiles. The

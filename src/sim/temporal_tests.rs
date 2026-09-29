@@ -956,14 +956,7 @@ fn a_chrono_legionnaire_erases_a_tank() {
     let mut erased_after = None;
     for frame in 0..700 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
         if started.is_none() && head_of(&sim, tank) == Some(cleg) {
             started = Some(frame);
             assert_eq!(entity(&sim, tank).health.current, 400, "no damage");
@@ -1021,14 +1014,7 @@ fn only_temporal_fire_reaches_a_warped_target() {
     ));
     for _ in 0..40 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
     }
     assert_eq!(head_of(&sim, tank), Some(cleg), "still warped");
     assert_eq!(entity(&sim, tank).health.current, 400);
@@ -1060,14 +1046,7 @@ fn moving_releases_the_target() {
         },
     ));
     let step = |sim: &mut Simulation, commands: &[CommandEnvelope]| {
-        sim.advance_tick(
-            commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(commands, Some(&rules), Some(&grid), None, 33);
     };
     for _ in 0..200 {
         let commands = sim.take_due_commands();
@@ -1272,14 +1251,7 @@ fn stop_frees_the_legionnaires_victim() {
     let owner = sim.interner.intern("Russians");
     let step = |sim: &mut Simulation| {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
     };
     sim.queue_command(CommandEnvelope::new(
         owner,
@@ -1320,14 +1292,7 @@ fn a_released_mover_does_not_resume_its_order() {
     let owner = sim.interner.intern("Americans");
     let step = |sim: &mut Simulation| {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
     };
     sim.queue_command(CommandEnvelope::new(
         owner,

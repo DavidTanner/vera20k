@@ -390,21 +390,12 @@ fn production_state_feeds_the_choice_as_native() {
             (y - SHIFT) as u16,
             0,
             &rules,
-            &Default::default(),
         )
         .unwrap_or_else(|| panic!("{name} spawns"));
     }
     for (index, kind) in ["INF", "VEH", "FLYER"].into_iter().enumerate() {
-        sim.spawn_object(
-            kind,
-            "C0",
-            14 + 2 * index as u16,
-            14,
-            0,
-            &rules,
-            &Default::default(),
-        )
-        .unwrap_or_else(|| panic!("{kind} spawns"));
+        sim.spawn_object(kind, "C0", 14 + 2 * index as u16, 14, 0, &rules)
+            .unwrap_or_else(|| panic!("{kind} spawns"));
     }
 
     let choice = DefenseChoice::of_house(&sim, &rules, owner, int(&row["index"]) as usize)

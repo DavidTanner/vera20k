@@ -1325,11 +1325,7 @@ impl Simulation {
             return false;
         };
         let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(Some(spot));
-        let z = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(cell.0, cell.1))
-            .map_or(0, |terrain_cell| terrain_cell.level);
+        let z = self.terrain_cell_level(cell.0, cell.1).unwrap_or(0);
         let now = self.session.binary_frame;
         if let Some(entity) = self.substrate.entities.get_mut(slave) {
             entity.sub_cell = Some(spot);

@@ -3,7 +3,6 @@ use crate::rules::ini_parser::IniFile;
 use crate::sim::native_identity::NativeUniqueIdCursor;
 use crate::sim::overlay_grid::OverlayGrid;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 fn fixture() -> (
     Simulation,
@@ -205,7 +204,7 @@ fn live_bridge_constructor_matches_original_and_drains_at_admitted_tick() {
         assert_eq!(sim.native_unique_ids.as_ref().unwrap().current_raw(), 1001);
         // This is the production frame admission/drain, not a direct test-only
         // destruction call. Original corpus separately executes725C70's body.
-        sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], None, None, None, 67);
         assert_eq!(
             json!(sim.load_objects.registry_counts()),
             original["after_drain"]["registry_counts"]
@@ -499,14 +498,14 @@ fn live_bridge_constructor_queue_respects_terminal_admission_and_other_objects()
     let retained_cells = cells(&sim);
     let retained_dummy = dummy(&sim);
     sim.quit_requested = true;
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert_eq!(sim.load_objects.queue_count(), 2);
     assert_eq!(sim.load_objects.registry_counts(), [2; 5]);
     assert!(sim.substrate.entities.get(100).is_some());
     assert!(sim.substrate.pending_delete.contains(&100));
     assert!(sim.substrate.pending_delete.contains(&101));
     sim.quit_requested = false;
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert_eq!(sim.load_objects.queue_count(), 0);
     assert_eq!(sim.load_objects.registry_counts(), [0; 5]);
     assert!(sim.substrate.entities.get(100).is_none());

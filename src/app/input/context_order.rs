@@ -588,7 +588,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             &owner,
             state.match_state.sandbox_full_visibility,
             Some(&resources.rules),
-            &resources.height_map,
+            &state.match_state.match_presentation.height_map,
             crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
         );
 
@@ -1109,7 +1109,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     world_y,
                     state.match_state.sandbox_full_visibility,
                     Some(&resources.rules),
-                    &resources.height_map,
+                    &state.match_state.match_presentation.height_map,
                     crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                 )
             } else {
@@ -1120,7 +1120,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     &owner,
                     state.match_state.sandbox_full_visibility,
                     Some(&resources.rules),
-                    &resources.height_map,
+                    &state.match_state.match_presentation.height_map,
                     crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                 )
             };
@@ -1584,14 +1584,12 @@ mod tests {
             .unwrap();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map = std::collections::BTreeMap::new();
         for house in ["Americans", "Soviets"] {
             let id = sim.interner.intern(house);
             sim.session.house_order.push(id);
         }
         let mut spawn = |kind: &str, owner: &str, rx: u16| {
-            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
-                .unwrap()
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules).unwrap()
         };
         let tank = spawn("HTNK", "Americans", 3);
         let gi = spawn("GI", "Americans", 4);
@@ -1941,20 +1939,18 @@ mod tests {
         let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let tank = sim
-            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules)
             .expect("tank");
         let war_miner = sim
-            .spawn_object("HARV", "Americans", 6, 5, 0, &rules, &height_map)
+            .spawn_object("HARV", "Americans", 6, 5, 0, &rules)
             .expect("armed miner");
         let chrono_miner = sim
-            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules, &height_map)
+            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules)
             .expect("unarmed miner");
         let arty = sim
-            .spawn_object("SECONLY", "Americans", 7, 5, 0, &rules, &height_map)
+            .spawn_object("SECONLY", "Americans", 7, 5, 0, &rules)
             .expect("secondary-only unit");
 
         assert!(entity_can_attack_move(&sim, Some(&rules), tank));
@@ -1981,14 +1977,12 @@ mod tests {
         let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let prism = sim
-            .spawn_object("SREF", "Americans", 7, 6, 0, &rules, &height_map)
+            .spawn_object("SREF", "Americans", 7, 6, 0, &rules)
             .expect("TurretCount type");
         let tank = sim
-            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules)
             .expect("tank");
 
         assert!(entity_can_attack_move(&sim, Some(&rules), prism));
@@ -2009,11 +2003,9 @@ mod tests {
         let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let nighthawk = sim
-            .spawn_object("SHAD", "Americans", 5, 6, 0, &rules, &height_map)
+            .spawn_object("SHAD", "Americans", 5, 6, 0, &rules)
             .expect("helicopter carrying PreventAttackMove=yes");
         assert!(!entity_can_attack_move(&sim, Some(&rules), nighthawk));
     }
@@ -2041,17 +2033,15 @@ mod tests {
         let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let tank = sim
-            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules)
             .expect("tank");
         let war_miner = sim
-            .spawn_object("HARV", "Americans", 6, 5, 0, &rules, &height_map)
+            .spawn_object("HARV", "Americans", 6, 5, 0, &rules)
             .expect("armed miner");
         let chrono_miner = sim
-            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules, &height_map)
+            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules)
             .expect("unarmed miner");
         let factory = insert_typed(&mut sim, 900, "GAWEAP", EntityCategory::Structure);
 
@@ -2137,15 +2127,13 @@ mod tests {
             .unwrap();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map = std::collections::BTreeMap::new();
         for house in ["Americans", "Soviets"] {
             let id = sim.interner.intern(house);
             sim.session.house_order.push(id);
         }
         let americans = sim.interner.get("Americans").unwrap();
         let mut spawn = |kind: &str, owner: &str, rx: u16| {
-            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
-                .unwrap()
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules).unwrap()
         };
         let gi = spawn("E1", "Americans", 5);
         let other_gi = spawn("E1", "Americans", 7);
@@ -2189,15 +2177,13 @@ mod tests {
             .unwrap();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map = std::collections::BTreeMap::new();
         for house in ["Americans", "Soviets"] {
             let id = sim.interner.intern(house);
             sim.session.house_order.push(id);
         }
         let americans = sim.interner.get("Americans").unwrap();
         let mut spawn = |kind: &str, owner: &str, rx: u16| {
-            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
-                .unwrap()
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules).unwrap()
         };
         let ivan = spawn("IVAN", "Americans", 5);
         let engineer = spawn("ENGINEER", "Americans", 7);

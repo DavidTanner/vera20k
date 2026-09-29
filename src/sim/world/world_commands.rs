@@ -6,7 +6,7 @@
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::ground_move::GroundMove;
 use super::{SimSoundEvent, Simulation, SimulationWallRuntimeHost};
@@ -600,9 +600,8 @@ impl Simulation {
         cmd: &Command,
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        height_map: &BTreeMap<(u16, u16), u8>,
     ) -> bool {
-        self.apply_command_with_overlays(command_owner, cmd, rules, path_grid, height_map, None)
+        self.apply_command_with_overlays(command_owner, cmd, rules, path_grid, None)
     }
 
     pub(crate) fn apply_command_with_overlays(
@@ -611,7 +610,6 @@ impl Simulation {
         cmd: &Command,
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         match cmd {
@@ -1318,7 +1316,6 @@ impl Simulation {
                     &type_s,
                     *rx,
                     *ry,
-                    height_map,
                     overlay_registry,
                 );
                 if !placed {
@@ -3092,7 +3089,6 @@ mod tests {
             },
             Some(&rules),
             Some(&grid),
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3124,7 +3120,6 @@ mod tests {
             },
             Some(&rules),
             Some(&grid),
-            &BTreeMap::new(),
         ));
         assert!(
             sim.substrate
@@ -3161,7 +3156,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         ));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert!(
@@ -3192,7 +3186,6 @@ mod tests {
             },
             Some(&rules),
             Some(&grid),
-            &BTreeMap::new(),
         ));
         assert!(
             sim.substrate
@@ -3211,7 +3204,6 @@ mod tests {
             },
             Some(&rules),
             Some(&grid),
-            &BTreeMap::new(),
         ));
         assert!(
             sim.substrate
@@ -3250,7 +3242,6 @@ mod tests {
             },
             Some(&rules),
             Some(&grid),
-            &BTreeMap::new(),
         ));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert!(actor.movement_target.is_none());
@@ -3283,7 +3274,6 @@ mod tests {
                 },
                 Some(&rules),
                 Some(&grid),
-                &BTreeMap::new(),
             ));
             assert!(
                 sim.substrate
@@ -3324,7 +3314,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         ));
         let attacker = sim.substrate.entities.get(1).unwrap();
         assert!(attacker.attack_target.is_none());
@@ -3504,7 +3493,7 @@ mod tests {
             producer_ids: vec![3, 2, 2, 4, 5],
         };
 
-        assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
+        assert!(sim.apply_command("Americans", &command, Some(&rules), None));
         let rally = |id| sim.substrate.entities.get(id).unwrap().rally_cell();
         assert_eq!(rally(2), Some((40, 41)));
         assert_eq!(rally(3), Some((40, 41)));
@@ -3549,7 +3538,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3585,7 +3573,6 @@ mod tests {
             },
             None,
             None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3620,7 +3607,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied);
@@ -3720,7 +3706,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3759,7 +3744,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied);
@@ -3795,7 +3779,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied, "cannot bunker into an enemy building");
@@ -3833,7 +3816,6 @@ mod tests {
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3870,7 +3852,6 @@ mod tests {
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied, "ejecting an empty bunker does nothing");
@@ -3910,7 +3891,6 @@ mod tests {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         ));
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().bunker_link,
@@ -3959,7 +3939,6 @@ mod tests {
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         ));
         assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
         let unit = sim.substrate.entities.get(1).unwrap();

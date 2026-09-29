@@ -2,8 +2,6 @@
 //! own; the arms it exercises are the ones placement, Deploy and TryToDeploy
 //! reach in a skirmish.
 
-use std::collections::BTreeMap;
-
 use super::*;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
@@ -87,7 +85,7 @@ impl Arena {
 
     fn spawn(&mut self, ty: &str, owner: &str, cell: (u16, u16)) {
         self.sim
-            .spawn_object(ty, owner, cell.0, cell.1, 0, &self.rules, &BTreeMap::new())
+            .spawn_object(ty, owner, cell.0, cell.1, 0, &self.rules)
             .expect("fixture object spawns");
     }
 

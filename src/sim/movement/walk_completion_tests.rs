@@ -20,7 +20,6 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
     use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::sim::components::MovementTarget;
     use crate::sim::movement::{FacingClass, ground_pose, locomotor::MovementLayer, walk_head};
-    use std::collections::BTreeMap;
 
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\nSpeed=4\n\
@@ -39,7 +38,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
             .collect(),
     ));
     let id = sim
-        .spawn_object("E1", "Americans", 6, 5, 0, &rules, &BTreeMap::new())
+        .spawn_object("E1", "Americans", 6, 5, 0, &rules)
         .unwrap();
     let head = DriveCoord {
         x: 6 * 256 + 192,

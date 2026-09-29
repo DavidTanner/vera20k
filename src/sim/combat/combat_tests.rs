@@ -699,12 +699,11 @@ fn gsi_04_05_building_self_damage_return_zero_stops_receiver_commit() {
 fn gsi_04_05_building_attack_frame_remains_live_after_world_receiver_dispatch() {
     let rules = gsi_04_05_attack_frame_rules();
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let source_id = sim
-        .spawn_object("SOURCE", "Enemy", 4, 4, 0, &rules, &heights)
+        .spawn_object("SOURCE", "Enemy", 4, 4, 0, &rules)
         .expect("source spawns");
     let target_id = sim
-        .spawn_object("NORMAL", "Victim", 6, 4, 0, &rules, &heights)
+        .spawn_object("NORMAL", "Victim", 6, 4, 0, &rules)
         .expect("Building target spawns");
     let source_owner = sim.substrate.entities.get(source_id).unwrap().owner;
     let victim_owner = sim.substrate.entities.get(target_id).unwrap().owner;
@@ -1123,12 +1122,11 @@ fn considered_aircraft_infantry_is_air_only_while_high_flying() {
     fn fire_at_rocketeer(altitude_leptons: i64) -> (String, WeaponSlot) {
         let rules = considered_aircraft_weapon_rules();
         let mut sim = crate::sim::world::Simulation::new();
-        let heights = BTreeMap::new();
         let attacker = sim
-            .spawn_object("IFV", "Americans", 5, 5, 0, &rules, &heights)
+            .spawn_object("IFV", "Americans", 5, 5, 0, &rules)
             .expect("IFV should spawn");
         let target = sim
-            .spawn_object("ROCK", "Soviet", 8, 5, 0, &rules, &heights)
+            .spawn_object("ROCK", "Soviet", 8, 5, 0, &rules)
             .expect("Rocketeer should spawn");
 
         let target_entity = sim
@@ -1191,12 +1189,11 @@ fn considered_aircraft_infantry_is_air_only_while_high_flying() {
 fn ordinary_infantry_remains_ground_for_projectile_legality() {
     let rules = considered_aircraft_weapon_rules();
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let attacker = sim
-        .spawn_object("IFV", "Americans", 5, 5, 0, &rules, &heights)
+        .spawn_object("IFV", "Americans", 5, 5, 0, &rules)
         .expect("IFV should spawn");
     let target = sim
-        .spawn_object("E1", "Soviet", 8, 5, 0, &rules, &heights)
+        .spawn_object("E1", "Soviet", 8, 5, 0, &rules)
         .expect("ordinary infantry should spawn");
 
     let target_entity = sim
@@ -2705,9 +2702,8 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
     ))
     .expect("invulnerability impact fixture");
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let source_id = sim
-        .spawn_object("SOURCE", "SourceHouse", 6, 5, 0, &rules, &heights)
+        .spawn_object("SOURCE", "SourceHouse", 6, 5, 0, &rules)
         .expect("source spawns");
     let source_owner = sim.substrate.entities.get(source_id).unwrap().owner;
     let protected = [
@@ -2717,7 +2713,7 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
     ]
     .map(|(rx, kind, warping)| {
         let id = sim
-            .spawn_object("VICTIM", "VictimHouse", rx, 5, 0, &rules, &heights)
+            .spawn_object("VICTIM", "VictimHouse", rx, 5, 0, &rules)
             .expect("protected victim spawns");
         let victim = sim.substrate.entities.get_mut(id).unwrap();
         victim.invulnerability = Some(InvulnerabilityState {
@@ -2735,10 +2731,10 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
         id
     });
     let healing_id = sim
-        .spawn_object("VICTIM", "VictimHouse", 11, 5, 0, &rules, &heights)
+        .spawn_object("VICTIM", "VictimHouse", 11, 5, 0, &rules)
         .expect("healing control spawns");
     let ignored_id = sim
-        .spawn_object("VICTIM", "VictimHouse", 12, 5, 0, &rules, &heights)
+        .spawn_object("VICTIM", "VictimHouse", 12, 5, 0, &rules)
         .expect("ignore-defenses control spawns");
     for id in [healing_id, ignored_id] {
         sim.substrate.entities.get_mut(id).unwrap().invulnerability = Some(InvulnerabilityState {
@@ -2857,12 +2853,11 @@ fn gsi_04_07_damage_receiver_smoke_creation_precedes_retaliation() {
     ))
     .expect("damage-Smoke receiver fixture");
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let source_id = sim
-        .spawn_object("SOURCE", "SourceHouse", 6, 5, 0, &rules, &heights)
+        .spawn_object("SOURCE", "SourceHouse", 6, 5, 0, &rules)
         .expect("source spawns");
     let victim_id = sim
-        .spawn_object("MTNK", "VictimHouse", 8, 5, 0, &rules, &heights)
+        .spawn_object("MTNK", "VictimHouse", 8, 5, 0, &rules)
         .expect("Grizzly spawns");
     let source_owner = sim.substrate.entities.get(source_id).unwrap().owner;
     let victim_owner = sim.substrate.entities.get(victim_id).unwrap().owner;
@@ -3785,15 +3780,14 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
     let registry = OverlayTypeRegistry::from_ini(&ini, None);
     let mut sim = crate::sim::world::Simulation::new();
     sim.resolve_type_handles(&rules);
-    let heights = BTreeMap::new();
     let center = sim
-        .spawn_object("CAMISC02", "Neutral", 8, 5, 0, &rules, &heights)
+        .spawn_object("CAMISC02", "Neutral", 8, 5, 0, &rules)
         .expect("center barrel");
     let middle = sim
-        .spawn_object("CAMISC02", "Neutral", 10, 5, 0, &rules, &heights)
+        .spawn_object("CAMISC02", "Neutral", 10, 5, 0, &rules)
         .expect("middle barrel");
     let edge = sim
-        .spawn_object("CAMISC02", "Neutral", 12, 5, 0, &rules, &heights)
+        .spawn_object("CAMISC02", "Neutral", 12, 5, 0, &rules)
         .expect("edge barrel");
     sim.substrate
         .entities
@@ -3907,12 +3901,11 @@ fn gsi_04_07_damage_postmortem_exact_zero_callbacks_precede_restore() {
     );
     let rules = RuleSet::from_ini(&ini).expect("PostMortem callback rules");
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let source_id = sim
-        .spawn_object("SOURCE", "SourceHouse", 6, 5, 0, &rules, &heights)
+        .spawn_object("SOURCE", "SourceHouse", 6, 5, 0, &rules)
         .expect("source spawns");
     let target_id = sim
-        .spawn_object("BARREL", "VictimHouse", 8, 5, 0, &rules, &heights)
+        .spawn_object("BARREL", "VictimHouse", 8, 5, 0, &rules)
         .expect("eligible target spawns");
     let source_owner = sim.substrate.entities.get(source_id).unwrap().owner;
     let victim_owner = sim.substrate.entities.get(target_id).unwrap().owner;
@@ -4113,18 +4106,17 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
     let rules = RuleSet::from_ini(&ini).expect("fresh PostMortem attribution rules");
     let mut sim = crate::sim::world::Simulation::new();
     sim.resolve_type_handles(&rules);
-    let heights = BTreeMap::new();
     let source_a = sim
-        .spawn_object("SOURCEA", "HouseA", 4, 5, 0, &rules, &heights)
+        .spawn_object("SOURCEA", "HouseA", 4, 5, 0, &rules)
         .expect("initial source spawns");
     let source_b = sim
-        .spawn_object("SOURCEB", "HouseB", 5, 5, 0, &rules, &heights)
+        .spawn_object("SOURCEB", "HouseB", 5, 5, 0, &rules)
         .expect("later source spawns");
     let expiry_target = sim
-        .spawn_object("BARREL", "VictimHouse", 8, 5, 0, &rules, &heights)
+        .spawn_object("BARREL", "VictimHouse", 8, 5, 0, &rules)
         .expect("expiry target spawns");
     let later_target = sim
-        .spawn_object("BARREL", "VictimHouse", 10, 5, 0, &rules, &heights)
+        .spawn_object("BARREL", "VictimHouse", 10, 5, 0, &rules)
         .expect("later ordinary target spawns");
     let owner_a = sim.substrate.entities.get(source_a).unwrap().owner;
     let owner_b = sim.substrate.entities.get(source_b).unwrap().owner;
@@ -7613,12 +7605,11 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
         );
     }
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let inf = sim
-        .spawn_object("E2", "Americans", 5, 5, 0, &rules, &heights)
+        .spawn_object("E2", "Americans", 5, 5, 0, &rules)
         .expect("infantry spawns");
     let tank = sim
-        .spawn_object("MTNK", "Americans", 6, 5, 0, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 6, 5, 0, &rules)
         .expect("tank spawns");
     sim.radiation.apply_detonation(
         crate::sim::radiation::RadDetonation {
@@ -7690,9 +7681,8 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
 fn gsi_04_07_damage_periodic_radiation_enters_direct_receiver_once() {
     let rules = radiation_rules();
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let tank = sim
-        .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &heights)
+        .spawn_object("MTNK", "Americans", 5, 5, 0, &rules)
         .expect("veteran heavy target spawns");
     sim.substrate
         .entities
@@ -7761,21 +7751,20 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
         scenario_houses.houses[0].scenario_current_iq(rules.general.max_iq_levels);
     ai_house.authored_iq = ai_house.current_iq;
     sim.houses.insert(ai_owner, ai_house);
-    let heights = BTreeMap::new();
     let hostile_target = sim
-        .spawn_object("GAPOWR", "AI", 5, 5, 0, &rules, &heights)
+        .spawn_object("GAPOWR", "AI", 5, 5, 0, &rules)
         .expect("hostile target");
     let allied_target = sim
-        .spawn_object("GAPOWR", "AI", 7, 5, 0, &rules, &heights)
+        .spawn_object("GAPOWR", "AI", 7, 5, 0, &rules)
         .expect("allied target");
     let null_target = sim
-        .spawn_object("GAPOWR", "AI", 9, 5, 0, &rules, &heights)
+        .spawn_object("GAPOWR", "AI", 9, 5, 0, &rules)
         .expect("null-source target");
     let hostile_source = sim
-        .spawn_object("MTNK", "ENEMY", 5, 6, 0, &rules, &heights)
+        .spawn_object("MTNK", "ENEMY", 5, 6, 0, &rules)
         .expect("hostile source");
     let allied_source = sim
-        .spawn_object("MTNK", "ALLY", 7, 6, 0, &rules, &heights)
+        .spawn_object("MTNK", "ALLY", 7, 6, 0, &rules)
         .expect("allied source");
     for target_id in [hostile_target, allied_target, null_target] {
         sim.substrate
@@ -7930,12 +7919,11 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
 fn buildings_take_no_rad_damage() {
     let rules = radiation_rules();
     let mut sim = crate::sim::world::Simulation::new();
-    let heights = BTreeMap::new();
     let building = sim
-        .spawn_object("GAPOWR", "Americans", 5, 5, 0, &rules, &heights)
+        .spawn_object("GAPOWR", "Americans", 5, 5, 0, &rules)
         .expect("building spawns");
     let deso = sim
-        .spawn_object("DESO", "Americans", 6, 5, 0, &rules, &heights)
+        .spawn_object("DESO", "Americans", 6, 5, 0, &rules)
         .expect("desolator spawns");
     sim.radiation.apply_detonation(
         crate::sim::radiation::RadDetonation {
@@ -7983,9 +7971,8 @@ fn deployed_desolator_self_irradiates_and_refires_below_third() {
                 .collect(),
         ),
     );
-    let heights = BTreeMap::new();
     let deso = sim
-        .spawn_object("DESO", "Americans", 10, 10, 0, &rules, &heights)
+        .spawn_object("DESO", "Americans", 10, 10, 0, &rules)
         .expect("desolator spawns");
     sim.substrate.entities.get_mut(deso).unwrap().deploy_state =
         Some(crate::sim::deploy::DeployPhase::Deployed);
@@ -8697,7 +8684,7 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
         let mut sim = crate::sim::world::Simulation::new();
         sim.resolve_type_handles(&rules);
         let victim_id = sim
-            .spawn_object("VICTIM", "VictimHouse", 5, 5, 0, &rules, &BTreeMap::new())
+            .spawn_object("VICTIM", "VictimHouse", 5, 5, 0, &rules)
             .expect("protected Techno spawns");
         sim.substrate
             .entities
@@ -8785,7 +8772,7 @@ fn gsi_04_10_entity_fatal_hook_and_later_terrain_share_raw_occupation() {
     let mut sim = crate::sim::world::Simulation::new();
     sim.resolve_type_handles(&rules);
     let entity_id = sim
-        .spawn_object("VICTIM", "VictimHouse", 4, 5, 0, &rules, &BTreeMap::new())
+        .spawn_object("VICTIM", "VictimHouse", 4, 5, 0, &rules)
         .expect("fatal vehicle spawns");
     let terrain_id = 701;
     let terrain_ref = sim.interner.intern("TREE01");
