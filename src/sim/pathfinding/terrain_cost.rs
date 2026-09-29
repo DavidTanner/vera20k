@@ -72,6 +72,28 @@ pub(crate) fn build_canonical_terrain_cost_grids(
         .collect()
 }
 
+/// Publish one recalculated terrain cell into the canonical cost grids. A
+/// missing, partial or mis-sized set (loading) is rebuilt whole instead.
+pub(crate) fn refresh_canonical_terrain_costs_at(
+    grids: &mut BTreeMap<SpeedType, TerrainCostGrid>,
+    terrain: &ResolvedTerrainGrid,
+    (rx, ry): (u16, u16),
+) {
+    let installed = grids.len() == SpeedType::ALL_WITH_COSTS.len()
+        && grids
+            .values()
+            .all(|costs| costs.width() == terrain.width() && costs.height() == terrain.height());
+    let refreshed = installed
+        && terrain.cell(rx, ry).is_some_and(|cell| {
+            grids
+                .iter_mut()
+                .all(|(&speed_type, costs)| costs.refresh_resolved_cell(cell, speed_type))
+        });
+    if !refreshed {
+        *grids = build_canonical_terrain_cost_grids(terrain);
+    }
+}
+
 /// One cell's `(planner_row, ground_row)`: the first carries the elevated-deck
 /// override, the second is the land row of the terrain itself. They differ only
 /// on an elevated deck cell.

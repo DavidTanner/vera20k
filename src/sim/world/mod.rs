@@ -1471,21 +1471,34 @@ pub(crate) fn repair_wall_damage_navigation_authorities(
     navigation_changed: bool,
     repair: WallZoneRepairKind,
 ) {
-    let resolved_path_grid = PathGrid::from_resolved_terrain_with_bridges(terrain, bridge_state);
-    let mut tail_path_grid = path_grid
-        .as_deref()
-        .filter(|grid| {
-            grid.width() == resolved_path_grid.width()
-                && grid.height() == resolved_path_grid.height()
-        })
-        .cloned()
-        .unwrap_or_else(|| resolved_path_grid.clone());
-    if navigation_changed {
-        let replaced = tail_path_grid.replace_cell_from(&resolved_path_grid, cell.0, cell.1);
-        debug_assert!(replaced, "wall Recalc cell must be inside the map");
+    // Only the wall cell changed: publish it into the installed views. A
+    // missing or mis-sized view (loading) is built whole from terrain.
+    let installed = path_grid
+        .as_mut()
+        .filter(|grid| grid.width() == terrain.width() && grid.height() == terrain.height());
+    match installed {
+        Some(grid) if navigation_changed => {
+            let refreshed = terrain.cell(cell.0, cell.1).is_some_and(|resolved| {
+                Arc::make_mut(grid).refresh_resolved_cell(resolved, bridge_state, false)
+            });
+            debug_assert!(refreshed, "wall Recalc cell must be inside the map");
+        }
+        Some(_) => {}
+        None => {
+            *path_grid = Some(Arc::new(PathGrid::from_resolved_terrain_with_bridges(
+                terrain,
+                bridge_state,
+            )));
+        }
     }
-
-    *terrain_costs = build_canonical_terrain_cost_grids(terrain);
+    crate::sim::pathfinding::terrain_cost::refresh_canonical_terrain_costs_at(
+        terrain_costs,
+        terrain,
+        cell,
+    );
+    let tail_path_grid = path_grid
+        .as_deref()
+        .expect("wall repair installed a path grid");
     let bridge_records = bridge_state
         .map(BridgeRuntimeState::endpoint_records)
         .unwrap_or(&[]);
@@ -1509,14 +1522,14 @@ pub(crate) fn repair_wall_damage_navigation_authorities(
             zone_grid,
             PackedZoneCoord::new(cell.0 as i16, cell.1 as i16),
             repair,
-            &tail_path_grid,
+            tail_path_grid,
             playfield_bounds,
             terrain,
             bridge_records,
         );
     } else {
         *zone_grid = Some(ZoneGrid::build_with_native_map_context(
-            &tail_path_grid,
+            tail_path_grid,
             terrain,
             bridge_state
                 .map(BridgeRuntimeState::endpoint_records)
@@ -1525,7 +1538,6 @@ pub(crate) fn repair_wall_damage_navigation_authorities(
             playfield_bounds,
         ));
     }
-    *path_grid = Some(Arc::new(tail_path_grid));
 }
 
 /// Borrow-split wall observer used by runtime placement and sale, where the
@@ -4945,30 +4957,28 @@ impl Simulation {
 
     /// Refresh navigation authority after inline overlay mutation or terrain
     /// object destruction. The incoming grid carries dynamic structure and
-    /// wall blockers, so only synchronously changed cells are replaced from the
-    /// current resolved-terrain/bridge projection.
+    /// wall blockers, so only synchronously changed cells are republished from
+    /// the current resolved-terrain/bridge projection.
     fn refresh_navigation_after_terrain_changes(
         &mut self,
         input_path_grid: Option<&PathGrid>,
         changed_cells: &[(u16, u16)],
     ) -> Option<PathGrid> {
-        let (resolved_path_grid, terrain_costs) = {
-            let terrain = self.resolved_terrain.as_ref()?;
-            (
-                PathGrid::from_resolved_terrain_with_bridges(terrain, self.bridge_state.as_ref()),
-                build_canonical_terrain_cost_grids(terrain),
-            )
-        };
-
-        self.terrain_costs = terrain_costs;
+        let terrain = self.resolved_terrain.as_ref()?;
+        for &cell in changed_cells {
+            crate::sim::pathfinding::terrain_cost::refresh_canonical_terrain_costs_at(
+                &mut self.terrain_costs,
+                terrain,
+                cell,
+            );
+        }
         let mut tail_path_grid = input_path_grid
-            .filter(|grid| {
-                grid.width() == resolved_path_grid.width()
-                    && grid.height() == resolved_path_grid.height()
-            })
+            .filter(|grid| grid.width() == terrain.width() && grid.height() == terrain.height())
             .cloned()?;
         for &(rx, ry) in changed_cells {
-            let replaced = tail_path_grid.replace_cell_from(&resolved_path_grid, rx, ry);
+            let replaced = terrain.cell(rx, ry).is_some_and(|cell| {
+                tail_path_grid.refresh_resolved_cell(cell, self.bridge_state.as_ref(), false)
+            });
             debug_assert!(replaced, "changed terrain cell must be inside the map");
         }
         self.rebuild_zone_grid_full(&tail_path_grid);
