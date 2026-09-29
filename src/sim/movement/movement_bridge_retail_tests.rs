@@ -25,7 +25,6 @@
 
 use std::path::PathBuf;
 
-use super::movement_occupancy::BRIDGE_DECK_LEVEL_DELTA;
 use crate::headless_scenario::{self, SIM_TICK_MS};
 use crate::map::resolved_terrain::{BridgeDirection, ResolvedTerrainGrid};
 use crate::rules::locomotor_type::MovementZone;
@@ -201,7 +200,7 @@ impl TickRow {
     fn expected_z(&self) -> i16 {
         i16::from(self.terrain_level as i8)
             + if self.on_bridge {
-                BRIDGE_DECK_LEVEL_DELTA
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
             } else {
                 0
             }
@@ -1101,7 +1100,8 @@ fn drive_across_high_bridge_with_order(
         );
         assert_eq!(
             i16::from(row.z as i8),
-            i16::from(row.terrain_level as i8) + BRIDGE_DECK_LEVEL_DELTA,
+            i16::from(row.terrain_level as i8)
+                + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
             "tank is not at deck height on {:?}: {row:?}",
             row.cell
         );
@@ -1156,7 +1156,8 @@ fn drive_across_high_bridge_with_order(
         );
         assert_eq!(
             i16::from(row.z as i8),
-            i16::from(row.terrain_level as i8) + BRIDGE_DECK_LEVEL_DELTA,
+            i16::from(row.terrain_level as i8)
+                + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
             "the mover is not at deck height on bridgehead cell {:?}: {row:?}",
             row.cell
         );
@@ -2311,7 +2312,8 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
     );
     assert_eq!(
         i16::from(blocker_last.z as i8),
-        i16::from(blocker_last.terrain_level as i8) + BRIDGE_DECK_LEVEL_DELTA,
+        i16::from(blocker_last.terrain_level as i8)
+            + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
         "a track TERMINATING on a deck cell left the mover off deck height: {blocker_last:?}"
     );
     // Settle it: let the parked mover idle a while and confirm it stays put and
@@ -2590,7 +2592,7 @@ struct CollapseGap {
     approach: (u16, u16),
     /// Stamped stub cells on the near side, in travel order.
     near_stubs: Vec<(u16, u16)>,
-    /// The hole: unstamped cells whose ground sits `BRIDGE_DECK_LEVEL_DELTA`
+    /// The hole: unstamped cells whose ground sits `crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16`
     /// below the stubs' deck.
     gap: Vec<(u16, u16)>,
     /// The first stamped cell on the far side of the hole.
@@ -2619,7 +2621,9 @@ fn find_collapse_gap(grid: &PathGrid) -> Option<CollapseGap> {
             }
             let deck_level = first.bridge_deck_level;
             let ground = first.ground_level;
-            if i16::from(deck_level) != i16::from(ground) + BRIDGE_DECK_LEVEL_DELTA {
+            if i16::from(deck_level)
+                != i16::from(ground) + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
+            {
                 continue;
             }
             for step in STEPS {
@@ -2842,7 +2846,8 @@ fn tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it() {
         );
         assert_ne!(
             i16::from(row.z as i8),
-            i16::from(row.terrain_level as i8) + BRIDGE_DECK_LEVEL_DELTA,
+            i16::from(row.terrain_level as i8)
+                + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
             "the mover sat at deck height inside the collapse gap at {:?}: {row:?}",
             row.cell
         );
@@ -3580,7 +3585,8 @@ fn assert_under_span_invariant(frames: &[&TickRow]) {
         );
         assert_ne!(
             i16::from(row.z as i8),
-            i16::from(row.terrain_level as i8) + BRIDGE_DECK_LEVEL_DELTA,
+            i16::from(row.terrain_level as i8)
+                + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
             "under-span frame on {:?} sits at deck height: {row:?}",
             row.cell
         );
@@ -4255,7 +4261,7 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
         "shared cell {shared:?} (terrain level {}, deck level {}); deck mover enters from {:?}, \
          under mover leaves to {exit:?}",
         cut.deck_terrain_level,
-        cut.deck_terrain_level + BRIDGE_DECK_LEVEL_DELTA as u8,
+        cut.deck_terrain_level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as u8,
         span.approach_a,
     );
 
@@ -4304,7 +4310,8 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
     assert!(deck_last.on_bridge, "the deck mover is not on the deck");
     assert_eq!(
         i16::from(deck_last.z as i8),
-        i16::from(deck_last.terrain_level as i8) + BRIDGE_DECK_LEVEL_DELTA,
+        i16::from(deck_last.terrain_level as i8)
+            + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
         "the deck mover is not at deck height: {deck_last:?}"
     );
 

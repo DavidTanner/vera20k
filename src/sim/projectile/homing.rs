@@ -321,7 +321,7 @@ pub(super) fn step(
             let floor = super::projectile_ground_z(terrain, shared_cell_dummy, coord);
             floor.wrapping_add(
                 if super::structural_bridge_at(terrain, shared_cell_dummy, coord) {
-                    416
+                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
                 } else {
                     0
                 },
@@ -342,7 +342,11 @@ pub(super) fn step(
             shared_cell_dummy,
             previous_position,
         ))
-        .wrapping_sub(if projectile.on_bridge { 416 } else { 0 });
+        .wrapping_sub(if projectile.on_bridge {
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+        } else {
+            0
+        });
     let (admit, snap) = super::homing_impact_admission(
         tracked.reached_distance,
         projectile.velocity,
@@ -375,8 +379,8 @@ pub(super) fn step(
         && (candidate_structural
             || super::structural_bridge_at(terrain, shared_cell_dummy, previous_position))
     {
-        let deck =
-            super::projectile_ground_z(terrain, shared_cell_dummy, candidate).wrapping_add(416);
+        let deck = super::projectile_ground_z(terrain, shared_cell_dummy, candidate)
+            .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         if (previous_position.z < deck && candidate.z > deck)
             || (previous_position.z > deck && candidate.z < deck)
         {

@@ -51,8 +51,11 @@ pub(super) fn entity_layer(
             let cell = terrain.native_cell_identity(((raw.x / 256) as i16, (raw.y / 256) as i16));
             terrain.native_cell_flags(cell)
         });
-        if flags & 0x100 != 0 && height >= 416 && entity.object_is_falling_down == 0 {
-            adjusted_height = height.wrapping_sub(416);
+        if flags & 0x100 != 0
+            && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+            && entity.object_is_falling_down == 0
+        {
+            adjusted_height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         }
     }
     // Object5F6B90 (+54 via4DE620): marked and GetHeight>=two levels.

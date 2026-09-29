@@ -4861,7 +4861,7 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
     let center_y = 7 * 256 + 128;
     let bridge_z = crate::util::lepton::ground_height_leptons(2, 1, center_x, center_y)
         .unwrap()
-        .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     let center = ProjectileCoord::new(center_x, center_y, bridge_z);
     let mut spawn = gsi_05_04_guided_projectile(
         crate::sim::combat::RAD_NO_ATTACKER,

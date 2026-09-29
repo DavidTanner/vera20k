@@ -493,7 +493,7 @@ impl Simulation {
         self.set_object_height(
             id,
             if high_bridge {
-                crate::sim::movement::jumpjet_flight::BRIDGE_DECK_LEPTONS
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
             } else {
                 0
             },

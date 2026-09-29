@@ -80,11 +80,13 @@ impl Simulation {
             ground_pose::ground_surface_z_at(xy, false, self.resolved_terrain.as_ref(), None)
                 .unwrap_or(0);
         let entity = self.substrate.entities.get_mut(id).unwrap();
-        entity.position.exact_z_leptons = Some(
-            ground
-                .wrapping_add(height)
-                .wrapping_add(if entity.on_bridge { 416 } else { 0 }),
-        );
+        entity.position.exact_z_leptons = Some(ground.wrapping_add(height).wrapping_add(
+            if entity.on_bridge {
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+            } else {
+                0
+            },
+        ));
         if let Some(loco) = entity.locomotor.as_mut() {
             loco.altitude = SimFixed::from_num(height.clamp(-32768, 32767));
         }
@@ -115,8 +117,8 @@ impl Simulation {
             terrain.native_cell_flags(cell) & 0x100 != 0
         });
         // Unlike takeoff,4CE8AF does not test the owner's OnBridge flag.
-        if bridge && height >= 416 {
-            height = height.wrapping_sub(416);
+        if bridge && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS {
+            height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         }
         let object = rules.and_then(|r| r.object(self.interner.resolve(entity.type_ref())));
         let dropship = object.is_some_and(|o| o.is_dropship);
@@ -249,7 +251,7 @@ impl Simulation {
                 None,
             )
             .unwrap_or(0);
-            if coord.z >= ground.wrapping_add(416) {
+            if coord.z >= ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS) {
                 self.substrate.entities.get_mut(id).unwrap().on_bridge = true;
             }
         }
@@ -588,7 +590,9 @@ impl Simulation {
             if let Some(terrain) = self.resolved_terrain.as_ref() {
                 let identity = terrain.native_cell_identity((cell.0 as i16, cell.1 as i16));
                 if terrain.native_cell_flags(identity) & 0x100 != 0 {
-                    coord.z = coord.z.wrapping_add(416);
+                    coord.z = coord
+                        .z
+                        .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 }
             }
             self.move_air_coordinate(id, coord, SIM_ZERO, None, Some(rules));

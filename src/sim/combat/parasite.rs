@@ -74,9 +74,6 @@ pub(crate) const LAUNCH_LOCK_FRAMES: u32 = 0x14;
 /// arm the suppression timer with 50 frames before ExitUnit.
 pub(crate) const FORCED_RELEASE_SUPPRESSION_FRAMES: i32 = 50;
 
-/// Bridge deck height `DAT_00AC497C`, added to release coordinates on a deck.
-const BRIDGE_HEIGHT_LEPTONS: i32 = 4 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
-
 /// Retained ParasiteClass instance fields. The owner (`+0x24`) is the entity
 /// storing this value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -674,7 +671,9 @@ impl Simulation {
                 coords = cell_centre(cell);
                 coords.z = self.cell_ground_z(cell);
                 if victim_on_bridge {
-                    coords.z = coords.z.wrapping_add(BRIDGE_HEIGHT_LEPTONS);
+                    coords.z = coords
+                        .z
+                        .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 }
             }
             self.substrate.entities.get_mut(owner)?.on_bridge = victim_on_bridge;
@@ -726,14 +725,18 @@ impl Simulation {
         let bridge = self.cell_has_bridge(adjacent);
         let on_bridge = if victim_on_bridge {
             if bridge {
-                coords.z = coords.z.wrapping_add(BRIDGE_HEIGHT_LEPTONS);
+                coords.z = coords
+                    .z
+                    .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
             }
             bridge
         } else if bridge {
             // 0x0062AE63: only a deck below the victim's own height counts.
             let victim_z = self.cell_ground_z(victim_cell);
             if victim_z > coords.z {
-                coords.z = coords.z.wrapping_add(BRIDGE_HEIGHT_LEPTONS);
+                coords.z = coords
+                    .z
+                    .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 true
             } else {
                 false

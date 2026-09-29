@@ -49,7 +49,11 @@ pub(crate) fn selected_head(
     DriveCoord {
         x: (input.x & !255).wrapping_add(x),
         y: (input.y & !255).wrapping_add(y),
-        z: input_ground_z.wrapping_add(if bridge { 416 } else { 0 }),
+        z: input_ground_z.wrapping_add(if bridge {
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+        } else {
+            0
+        }),
     }
 }
 
@@ -80,7 +84,8 @@ pub(crate) fn raw_at(
         },
         |(t, c)| t.native_cell_flags(c) & 0x100 != 0,
     );
-    let deck = coord.z >= ground.wrapping_add(416) && (!put || structural);
+    let deck = coord.z >= ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS)
+        && (!put || structural);
     let mask = infantry_raw_occupation_mask(
         SimFixed::from_num(coord.x % 256),
         SimFixed::from_num(coord.y % 256),
@@ -886,7 +891,11 @@ pub(super) fn prepare_step_head_at(
             DriveCoord {
                 x: input.x,
                 y: input.y,
-                z: ground.wrapping_add(if bridge { 416 } else { 0 }),
+                z: ground.wrapping_add(if bridge {
+                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+                } else {
+                    0
+                }),
             },
             None,
         )

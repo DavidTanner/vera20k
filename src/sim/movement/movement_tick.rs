@@ -42,7 +42,7 @@ use crate::util::fixed_math::{
 use super::block_index::{HeldBlockSets, LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
 use super::locomotor::MovementLayer;
-use super::movement_bridge::{BRIDGE_Z_OFFSET, apply_pending_bridge_render_state};
+use super::movement_bridge::apply_pending_bridge_render_state;
 use super::movement_occupancy::{
     DeferredBuildingEntrySkips, DeferredCellCheck, MoverBuildingEntryFacts,
     handle_deferred_occupancy,
@@ -1724,7 +1724,8 @@ fn advance_ordinary_mover(
                         path_grid.and_then(|pg| pg.cell(entity.position.rx, entity.position.ry))
                     {
                         if cell.bridge_deck_level_if_any().is_some() {
-                            dist += BRIDGE_Z_OFFSET;
+                            dist +=
+                                SimFixed::from_num(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                         }
                     }
                 }

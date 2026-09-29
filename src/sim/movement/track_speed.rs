@@ -172,7 +172,7 @@ pub(super) fn advance(
             .and_then(|g| g.cell(entity.position.rx, entity.position.ry))
             .is_some_and(|cell| cell.bridge_deck_level_if_any().is_some())
     {
-        distance += super::movement_bridge::BRIDGE_Z_OFFSET;
+        distance += SimFixed::from_num(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     let accel = object
         .map(|o| o.accel_factor)

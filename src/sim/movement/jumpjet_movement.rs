@@ -14,7 +14,7 @@
 //! - Part of sim/ — depends on sim/locomotor, sim/movement.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
-use super::jumpjet_flight::{BRIDGE_DECK_LEPTONS, FlightOwnerKind, STATE_ASCEND, STATE_DESCEND};
+use super::jumpjet_flight::{FlightOwnerKind, STATE_ASCEND, STATE_DESCEND};
 use crate::sim::components::DriveCoord;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -134,7 +134,7 @@ fn unit_destination(centre: DriveCoord, host: &impl JumpjetOrderHost) -> DriveCo
     let [x, y] = host.cell_coords([centre.x, centre.y]);
     let mut z = host.floor_height([x, y]);
     if host.cell_high_bridge([x, y]) {
-        z = z.wrapping_add(BRIDGE_DECK_LEPTONS);
+        z = z.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     DriveCoord { x, y, z }
 }
@@ -253,7 +253,7 @@ impl JumpjetRuntime {
         let [x, y] = cell_centre(cell);
         let mut z = host.floor_height([x, y]);
         if host.cell_high_bridge([x, y]) {
-            z = z.wrapping_add(BRIDGE_DECK_LEPTONS);
+            z = z.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         }
         StopOutcome::Retargeted(self.move_to(DriveCoord { x, y, z }, host))
     }
@@ -344,7 +344,9 @@ pub(crate) fn infantry_destination_coordinate(
     let selected_cell =
         terrain.native_cell_identity(((adjusted.x / 256) as i16, (adjusted.y / 256) as i16));
     if terrain.native_cell_flags(selected_cell) & 0x100 != 0 {
-        adjusted.z = adjusted.z.wrapping_add(416);
+        adjusted.z = adjusted
+            .z
+            .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     Some(adjusted)
 }
