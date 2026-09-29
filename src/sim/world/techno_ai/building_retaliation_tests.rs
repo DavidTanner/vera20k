@@ -2,8 +2,6 @@
 //! replayed through [`Simulation::building_hit_response`], and sourced hits
 //! through the production receiver (`combat::world_receiver::commit_entities`).
 
-use std::collections::BTreeMap;
-
 use serde_json::Value;
 
 use crate::map::entities::EntityCategory;
@@ -129,17 +127,8 @@ fn fixture(rules: &RuleSet, input: &Value) -> (Simulation, u64, Option<u64>) {
             .or_default()
             .insert("RUSSIANS".into());
     }
-    let heights = BTreeMap::new();
     let building = sim
-        .spawn_object(
-            "DEF",
-            "Americans",
-            BUILDING.0,
-            BUILDING.1,
-            0,
-            rules,
-            &heights,
-        )
+        .spawn_object("DEF", "Americans", BUILDING.0, BUILDING.1, 0, rules)
         .unwrap();
     let cell = if input["in_range"].as_bool().unwrap_or(true) {
         IN_RANGE
@@ -348,20 +337,11 @@ fn production_fixture(
         sim.houses
             .insert(id, HouseState::new(id, 0, Some(id), human, 5000, 10));
     }
-    let heights = BTreeMap::new();
     let building = sim
-        .spawn_object(
-            kind,
-            "Americans",
-            BUILDING.0,
-            BUILDING.1,
-            0,
-            rules,
-            &heights,
-        )
+        .spawn_object(kind, "Americans", BUILDING.0, BUILDING.1, 0, rules)
         .unwrap();
     let source = sim
-        .spawn_object("GUN", "Russians", cell.0, cell.1, 0, rules, &heights)
+        .spawn_object("GUN", "Russians", cell.0, cell.1, 0, rules)
         .unwrap();
     sim.session.binary_frame = FRAME;
     sim.scenario_rng = SimRng::new(1);

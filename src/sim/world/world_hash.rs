@@ -3851,15 +3851,13 @@ mod bridge_overlay_hash_tests {
 #[cfg(test)]
 mod native_frame_tests {
     use super::Simulation;
-    use std::collections::BTreeMap;
 
     #[test]
     fn one_advance_is_one_native_frame_for_any_host_duration() {
         let mut sim = Simulation::new();
-        let height_map = BTreeMap::new();
         let host_durations = [0, 1, 22, 67, 1_000, u32::MAX];
         for (index, tick_ms) in host_durations.into_iter().enumerate() {
-            sim.advance_tick(&[], None, &height_map, None, None, tick_ms);
+            sim.advance_tick(&[], None, None, None, tick_ms);
             assert_eq!(sim.session.binary_frame, index as u32 + 1);
         }
     }
@@ -3867,10 +3865,9 @@ mod native_frame_tests {
     #[test]
     fn native_frame_wraps_after_u32_max() {
         let mut sim = Simulation::new();
-        let height_map = BTreeMap::new();
         sim.session.binary_frame = u32::MAX;
 
-        sim.advance_tick(&[], None, &height_map, None, None, 22);
+        sim.advance_tick(&[], None, None, None, 22);
 
         assert_eq!(sim.session.binary_frame, 0);
     }
@@ -3879,8 +3876,7 @@ mod native_frame_tests {
     fn native_frame_changes_state_hash() {
         let mut sim_a = Simulation::new();
         let sim_b = Simulation::new();
-        let height_map = BTreeMap::new();
-        sim_a.advance_tick(&[], None, &height_map, None, None, 22);
+        sim_a.advance_tick(&[], None, None, None, 22);
         assert_ne!(sim_a.state_hash(), sim_b.state_hash());
     }
 
@@ -4358,10 +4354,4 @@ mod aircraft_dock_hash_tests {
 }
 
 #[cfg(test)]
-mod prism_support_hash_tests {
-    use super::Simulation;
-    use crate::map::entities::EntityCategory;
-    use crate::sim::components::Health;
-    use crate::sim::game_entity::GameEntity;
-    use crate::sim::house_state::HouseState;
-}
+mod prism_support_hash_tests {}

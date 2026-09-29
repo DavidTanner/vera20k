@@ -10,7 +10,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::mission::MissionId;
 use crate::sim::world::Simulation;
-use std::collections::BTreeMap;
 
 fn human_house(sim: &mut Simulation) {
     let owner = sim.interner.intern("Americans");
@@ -21,15 +20,7 @@ fn human_house(sim: &mut Simulation) {
 
 fn engineer_at(sim: &mut Simulation, rules: &RuleSet, cell: (u16, u16)) -> u64 {
     let id = sim
-        .spawn_object(
-            "ENGINEER",
-            "Americans",
-            cell.0,
-            cell.1,
-            0,
-            rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("ENGINEER", "Americans", cell.0, cell.1, 0, rules)
         .unwrap();
     sim.mission_assign_exact(
         id,
@@ -72,7 +63,6 @@ pub(super) fn enclose(sim: &mut Simulation, rules: &RuleSet, centre: (u16, u16))
                 (i32::from(centre.1) + dy) as u16,
                 0,
                 rules,
-                &BTreeMap::new(),
             )
             .unwrap();
         }
@@ -97,14 +87,7 @@ fn far_failure_stops_walk_clears_target_and_queues_guard_for_a_human_house() {
     let guard = MissionId::from_known(MissionType::Guard);
     let mut frames = 0;
     for _ in 0..30 {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         frames += 1;
         let mission = sim.substrate.entities.get(id).unwrap().mission;
         if mission.queued() == guard || mission.current() == guard {
@@ -144,19 +127,12 @@ fn far_failure_stops_walk_clears_target_and_queues_guard_for_a_human_house() {
 fn building_target_redirects_to_a_nearby_cell_and_the_walk_completes_there() {
     let (mut sim, rules, registry) = fixture();
     human_house(&mut sim);
-    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules, &BTreeMap::new())
+    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules)
         .unwrap();
     let id = engineer_at(&mut sim, &rules, (10, 10));
     order_walk(&mut sim, &rules, id, (13, 10));
     for _ in 0..400 {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         let e = sim.substrate.entities.get(id).unwrap();
         if e.movement_target.is_none() && e.locomotor.as_ref().unwrap().walk_destination().is_none()
         {
@@ -190,7 +166,7 @@ fn obstructed_target_beyond_close_enough_redirects_only_when_the_nearby_cell_is_
     // actor's House); FNPC's raw-occupation admission then skips the seed
     // itself. The supplied answer stands in for that occupant, and a Building
     // keeps FNPC off the seed cell the same way.
-    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules, &BTreeMap::new())
+    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules)
         .unwrap();
     // 0x4D3A9B: 768 leptons > CloseEnough 576 enters the code-6 arm. FNPC from
     // the target picks the passable cell nearest the actor, which lies 256
@@ -352,38 +328,17 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     // The same production tick host that handles normal orders must consume
     // the damage-created request. The native corpus proves the first FindPath
     // boundary; this regression continues through our real search/head/step.
-    sim.advance_tick(
-        &[],
-        Some(&rules),
-        &BTreeMap::new(),
-        None,
-        Some(&registry),
-        67,
-    );
+    sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
     let e = sim.substrate.entities.get(victim).unwrap();
     assert_eq!(position_world_coord(&e.position), before);
     assert!(e.locomotor.as_ref().unwrap().step_head().is_some());
-    sim.advance_tick(
-        &[],
-        Some(&rules),
-        &BTreeMap::new(),
-        None,
-        Some(&registry),
-        67,
-    );
+    sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
     assert_ne!(
         position_world_coord(&sim.substrate.entities.get(victim).unwrap().position),
         before
     );
     for _ in 0..200 {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         if sim
             .substrate
             .entities

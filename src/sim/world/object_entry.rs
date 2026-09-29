@@ -243,15 +243,7 @@ mod tests {
         ] {
             let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
             let id = sim
-                .spawn_object(
-                    "HORNET",
-                    "Americans",
-                    17,
-                    15,
-                    0,
-                    &rules,
-                    &std::collections::BTreeMap::new(),
-                )
+                .spawn_object("HORNET", "Americans", 17, 15, 0, &rules)
                 .unwrap();
             let mut entity = sim.substrate.entities.get(id).unwrap().clone();
             let mut object = rules.object("HORNET").unwrap().clone();
@@ -690,26 +682,10 @@ mod tests {
     fn infantry_target_lookup_obeys_gates_and_retains_cell_identity() {
         let (mut sim, rules, registry) = crate::sim::world::entry_test_fixture::fixture();
         let hut = sim
-            .spawn_object(
-                "CABHUT",
-                "Americans",
-                16,
-                15,
-                0,
-                &rules,
-                &Default::default(),
-            )
+            .spawn_object("CABHUT", "Americans", 16, 15, 0, &rules)
             .unwrap();
         let infantry = sim
-            .spawn_object(
-                "ENGINEER",
-                "Americans",
-                15,
-                15,
-                0,
-                &rules,
-                &Default::default(),
-            )
+            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
             .unwrap();
         // Supplied query coordinates isolate the effectful51C3B1 boundary.
         sim.substrate.entities.get_mut(hut).unwrap().position.rx = 60;
@@ -819,26 +795,10 @@ mod tests {
     fn slave_deposit_skip_keeps_later_building_refusal_and_raw_history() {
         let (mut sim, rules, registry) = crate::sim::world::entry_test_fixture::fixture();
         let hut = sim
-            .spawn_object(
-                "CABHUT",
-                "Americans",
-                16,
-                15,
-                0,
-                &rules,
-                &Default::default(),
-            )
+            .spawn_object("CABHUT", "Americans", 16, 15, 0, &rules)
             .unwrap();
         let slave = sim
-            .spawn_object(
-                "ENGINEER",
-                "Americans",
-                15,
-                15,
-                0,
-                &rules,
-                &Default::default(),
-            )
+            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
             .unwrap();
         sim.substrate.entities.get_mut(slave).unwrap().slave =
             crate::sim::slave_manager::SlaveLink::for_test(Some(hut), Vec::new());

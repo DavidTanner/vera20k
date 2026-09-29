@@ -122,10 +122,7 @@ fn cell_in_map(sim: &Simulation, path_grid: Option<&PathGrid>, cell: (u16, u16))
 
 /// Terrain level of a cell for the reveal Z, or the transport's own Z.
 fn cell_level_or(sim: &Simulation, cell: (u16, u16), fallback: u8) -> u8 {
-    sim.resolved_terrain
-        .as_ref()
-        .and_then(|terrain| terrain.cell(cell.0, cell.1))
-        .map_or(fallback, |c| c.level)
+    sim.terrain_cell_level(cell.0, cell.1).unwrap_or(fallback)
 }
 
 /// The FNPC `allow_bridge_cells == 0` reject and the placement skip at

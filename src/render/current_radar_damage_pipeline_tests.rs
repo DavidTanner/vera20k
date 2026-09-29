@@ -1,7 +1,5 @@
 use super::*;
 
-use std::collections::BTreeMap;
-
 use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF, BridgeheadAnchorClass};
 use crate::map::entities::EntityCategory;
 use crate::map::playfield::PlayfieldBounds;
@@ -341,7 +339,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
         },
         Some(&rules),
         None,
-        &BTreeMap::new(),
     ));
     let mut radar = projection(&sim, &grid);
     let mut last_generation = 0;
@@ -488,7 +485,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
         },
         Some(&runtime.resources.rules),
         grid.as_deref(),
-        &BTreeMap::new(),
     ));
     drop(grid);
     for _ in 0..100 {

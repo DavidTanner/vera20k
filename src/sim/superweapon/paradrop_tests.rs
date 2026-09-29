@@ -8,8 +8,6 @@
 
 #![cfg(test)]
 
-use std::collections::BTreeMap;
-
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::AircraftMission;
@@ -198,9 +196,8 @@ fn build_sim(rules: &RuleSet) -> (Simulation, PathGrid) {
 }
 
 fn tick_n(sim: &mut Simulation, rules: &RuleSet, path_grid: &PathGrid, n: u32) {
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     for _ in 0..n {
-        sim.advance_tick(&[], Some(rules), &height_map, Some(path_grid), None, 22);
+        sim.advance_tick(&[], Some(rules), Some(path_grid), None, 22);
     }
 }
 

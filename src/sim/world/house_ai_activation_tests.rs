@@ -1,7 +1,5 @@
 //! Focused House-tail integration tests for anger decay and AI activation.
 
-use std::collections::BTreeMap;
-
 use super::{HouseAiActivationOrderTestEvent, Simulation, TickLane};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
@@ -29,7 +27,7 @@ fn insert_house(
 
 fn advance(sim: &mut Simulation, rules: Option<&RuleSet>, lane: TickLane) {
     let result = sim
-        .advance_master_frame(&[], rules, &BTreeMap::new(), None, None, 67, lane, None)
+        .advance_master_frame(&[], rules, None, None, 67, lane, None)
         .expect("fixture frame must complete");
     assert!(result.frame_committed);
 }

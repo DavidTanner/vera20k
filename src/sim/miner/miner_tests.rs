@@ -5,8 +5,6 @@
 //! payout math, dock queuing, Chrono teleport rules, incremental unloading,
 //! local continuation, pip display, and refinery rebinding.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -851,7 +849,7 @@ fn harvester_uses_dock_list_for_refinery_selection() {
     let mut sim = Simulation::new();
     let rules = dock_rules();
     let miner_id = sim
-        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules, &BTreeMap::new())
+        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "OTHERPROC", 28, 28);
     spawn_structure(&mut sim, 3, "MODPROC", 10, 10);
@@ -889,7 +887,7 @@ fn a_warped_refinery_is_passed_over() {
     let mut sim = Simulation::new();
     let rules = dock_rules();
     let miner_id = sim
-        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules, &BTreeMap::new())
+        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "MODPROC", 26, 26);
     spawn_structure(&mut sim, 3, "MODPROC", 10, 10);
@@ -926,7 +924,7 @@ fn harvester_queues_guard_when_no_dock_compatible_refinery_exists() {
     let mut sim = Simulation::new();
     let rules = dock_rules();
     let miner_id = sim
-        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules, &BTreeMap::new())
+        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "OTHERPROC", 10, 10);
 
@@ -2190,7 +2188,6 @@ fn harvest_order_mid_unload_drops_the_unload_latch_and_image() {
         },
         Some(&rules),
         None,
-        &BTreeMap::new(),
     ));
 
     let entity = sim.substrate.entities.get(miner_id).unwrap();
@@ -2232,7 +2229,6 @@ fn stop_breaks_an_untethered_refinery_contact_and_is_ignored_once_entered() {
             },
             Some(&rules),
             None,
-            &BTreeMap::new(),
         ));
 
         assert_eq!(
@@ -2527,8 +2523,7 @@ fn stop_commits_guard_and_takes_a_harvesting_miner_off_the_loop() {
             entity_id: miner_id,
         },
     );
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    let _ = sim.advance_tick(&[stop], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[stop], Some(&rules), None, None, 33);
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(
@@ -2543,7 +2538,7 @@ fn stop_commits_guard_and_takes_a_harvesting_miner_off_the_loop() {
     // stops advancing.
     let after_stop = miner.miner_state();
     for tick in 2..40u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, None, None, tick as u32);
+        let _ = sim.advance_tick(&[], Some(&rules), None, None, tick as u32);
     }
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(
@@ -2589,8 +2584,7 @@ fn stop_does_not_force_guard_on_a_non_miner() {
         .expect("tank exists");
 
     let stop = CommandEnvelope::new(owner_id, 1, Command::Stop { entity_id: 7 });
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    let _ = sim.advance_tick(&[stop], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[stop], Some(&rules), None, None, 33);
 
     let tank = sim.substrate.entities.get(7).expect("tank present");
     assert_ne!(

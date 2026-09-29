@@ -2,8 +2,6 @@
 //! shot, ProcessDelayedFire counts it down in the building's visit and the
 //! combat phase serves its FireAt.
 
-use std::collections::BTreeMap;
-
 use super::*;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
@@ -52,7 +50,7 @@ fn spawn(
     rx: u16,
     ry: u16,
 ) -> u64 {
-    sim.spawn_object(type_id, owner, rx, ry, 0, rules, &BTreeMap::new())
+    sim.spawn_object(type_id, owner, rx, ry, 0, rules)
         .unwrap_or_else(|| panic!("spawn {type_id}"))
 }
 

@@ -2403,7 +2403,6 @@ mod harvest_scan_dispatch_tests {
             },
             Some(&rules),
             Some(&grid),
-            &std::collections::BTreeMap::new(),
         );
         assert!(applied);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");

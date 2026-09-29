@@ -1937,7 +1937,6 @@ mod modal_pump_tests {
     #[test]
     fn pumped_world_tick_freezes_offline_and_advances_on_network() {
         use crate::sim::world::Simulation;
-        use std::collections::BTreeMap;
 
         // C2 acceptance with a real headless World: drive `advance_tick` exactly
         // when the pump decision is true, and assert `session.tick` motion.
@@ -1946,12 +1945,11 @@ mod modal_pump_tests {
         let pumped_world_delta = |mode: SessionMode| -> u64 {
             let mut sim = Simulation::new();
             let start = sim.session.tick;
-            let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
             for _ in 0..FRAMES {
                 if modal_pump_should_advance_sim(mode, false, false) {
                     // `tick_ms` does not affect the asserted tick delta; a literal
                     // matches the sim-test style and avoids the const dependency.
-                    sim.advance_tick(&[], None, &height_map, None, None, 33);
+                    sim.advance_tick(&[], None, None, None, 33);
                 }
             }
             sim.session.tick - start

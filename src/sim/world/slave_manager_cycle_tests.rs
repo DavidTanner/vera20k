@@ -16,7 +16,6 @@ use crate::sim::mission::MissionType;
 use crate::sim::ore_growth::OreGrowthConfig;
 use crate::sim::slave_manager::{ManagerState, SlaveState};
 use crate::sim::world::SimSoundEvent;
-use std::collections::BTreeMap;
 
 fn frame(s: &mut SlaveScene) {
     let grid = s.scene.sim.path_grid_snapshot();
@@ -24,7 +23,6 @@ fn frame(s: &mut SlaveScene) {
     s.scene.sim.advance_tick(
         &commands,
         Some(&s.scene.rules),
-        &BTreeMap::new(),
         grid.as_deref(),
         Some(registry()),
         67,
@@ -491,15 +489,7 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
     let killer = s
         .scene
         .sim
-        .spawn_object(
-            "MTNK",
-            "Russians",
-            10,
-            20,
-            0,
-            &s.scene.rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("MTNK", "Russians", 10, 20, 0, &s.scene.rules)
         .expect("killer");
     s.scene.sim.sound_events.clear();
     let master = s.master;

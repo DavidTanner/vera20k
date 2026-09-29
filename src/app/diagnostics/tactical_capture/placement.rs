@@ -211,7 +211,7 @@ pub(crate) fn first_valid_placement(
 mod placement_tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
 
     fn placement_rules() -> RuleSet {
         let ini = IniFile::from_str(
@@ -245,15 +245,7 @@ Buildable=yes
         crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let grid = PathGrid::new(width, height);
         let yard_id = sim
-            .spawn_object(
-                "GACNST",
-                "Russians",
-                yard_cell.0,
-                yard_cell.1,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object("GACNST", "Russians", yard_cell.0, yard_cell.1, 0, &rules)
             .expect("yard");
         let owner_id = sim.interner.intern("Russians");
         let target_id = sim.interner.intern("NAPOWR");

@@ -530,7 +530,6 @@ mod tests {
     fn mp_sibling_rng_state_matches_after_seed_sync() {
         use crate::map::entities::{EntityCategory, MapEntity};
         use crate::sim::command::{Command, CommandEnvelope};
-        use std::collections::BTreeMap;
 
         fn build(seed: u32) -> Simulation {
             let mut sim = Simulation::from_descriptor(&ScenarioDescriptor {
@@ -558,11 +557,10 @@ mod tests {
                 structure_ai_sellable: false,
                 structure_ai_repairable: false,
             };
-            sim.spawn_from_map(&[entity], None, &BTreeMap::new());
+            sim.spawn_from_map(&[entity], None);
             sim
         }
         fn run_300(sim: &mut Simulation) -> Vec<u64> {
-            let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
             let owner = sim.interner.get("Americans").expect("owner interned");
             (0..300u64)
                 .map(|t| {
@@ -580,8 +578,7 @@ mod tests {
                     } else {
                         Vec::new()
                     };
-                    sim.advance_tick(&cmds, None, &heights, None, None, 67)
-                        .state_hash
+                    sim.advance_tick(&cmds, None, None, None, 67).state_hash
                 })
                 .collect()
         }

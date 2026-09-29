@@ -8,7 +8,6 @@
 use super::{DEFAULT_SIM_SEED, Simulation};
 use crate::sim::rng::SimRng;
 use crate::sim::snapshot::GameSnapshot;
-use std::collections::BTreeMap;
 
 const RNG_INDEX_B_START: i32 = 0x67;
 const NATIVE_MAPGEN_SEED0_HEX: &str =
@@ -40,8 +39,7 @@ fn decode_hex_fixture(text: &str) -> Vec<u8> {
 
 /// Helper: advance a sim by one tick with empty inputs.
 fn tick(sim: &mut Simulation) {
-    let height_map = BTreeMap::new();
-    sim.advance_tick(&[], None, &height_map, None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
 }
 
 // --- Test 1: seed-equality invariant (design §4) ---

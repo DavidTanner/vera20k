@@ -1,8 +1,6 @@
 //! Production queue tests — verifies build queue ordering, credit deduction, prerequisite
 //! checks, multi-factory speed bonus, and queue pause/resume behavior.
 
-use std::collections::BTreeMap;
-
 use super::{
     BuildQueueState, ProductionCategory, build_options_for_owner, cancel_by_type_for_owner,
     credits_for_owner, enqueue_by_type, queue_view_for_owner, suspend_production, tick_production,
@@ -319,7 +317,6 @@ fn deployed_mcv_unlocks_building_options_for_named_skirmish_owner() {
     let rules = RuleSet::from_ini(&ini).expect("rules should parse");
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     let owner_id = sim.interner.intern("Commander");
     let country_id = sim.interner.intern("Americans");
@@ -335,12 +332,12 @@ fn deployed_mcv_unlocks_building_options_for_named_skirmish_owner() {
         ),
     );
     let mcv = sim
-        .spawn_object("AMCV", "Commander", 20, 22, 64, &rules, &height_map)
+        .spawn_object("AMCV", "Commander", 20, 22, 64, &rules)
         .expect("MCV should spawn");
     assert!(sim.deploy_mcv(mcv, &rules, None));
 
     for _ in 0..30 {
-        sim.advance_tick(&[], Some(&rules), &height_map, None, None, 33);
+        sim.advance_tick(&[], Some(&rules), None, None, 33);
     }
 
     let options = build_options_for_owner(&sim, &rules, "Commander");
@@ -1078,7 +1075,6 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
 fn paused_category_projection_and_factory_charge_remain_independent() {
     let mut sim = Simulation::new();
     let rules = basic_multi_queue_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 14, 10);
@@ -1113,7 +1109,7 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
         .tracking
         .set_buildings_for_test(2);
     for _ in 0..40 {
-        sim.advance_tick(&[], Some(&rules), &height_map, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
 
     // Project the registry to the sidebar view for state assertions (the per-item

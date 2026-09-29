@@ -24,7 +24,6 @@ use crate::sim::mission::MissionId;
 use crate::sim::movement::{FindPathResult, FootPathOutcome};
 use crate::sim::world::Simulation;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 const UNITS: &str = "[VehicleTypes]\n0=DRV\n1=SHP\n\
     [DRV]\nStrength=300\nSpeed=6\nSpeedType=Track\nMovementZone=Normal\n\
@@ -70,7 +69,7 @@ fn unit(
     };
     sim.session.binary_frame = 100;
     let id = sim
-        .spawn_object(kind, "Americans", 10, 10, 0, &rules, &BTreeMap::new())
+        .spawn_object(kind, "Americans", 10, 10, 0, &rules)
         .unwrap();
     let mission = input["mission"]
         .as_i64()
@@ -433,10 +432,10 @@ fn depot_repair_order_reaches_the_pad_through_find_path() {
     house.player_control = true;
     sim.houses.insert(owner, house);
     let depot = sim
-        .spawn_object("DEPOT", "Americans", 16, 9, 0, &rules, &BTreeMap::new())
+        .spawn_object("DEPOT", "Americans", 16, 9, 0, &rules)
         .unwrap();
     let tank = sim
-        .spawn_object("DRV", "Americans", 10, 10, 0, &rules, &BTreeMap::new())
+        .spawn_object("DRV", "Americans", 10, 10, 0, &rules)
         .unwrap();
     sim.substrate.entities.get_mut(tank).unwrap().health.current = 150;
     let grid = sim.path_grid.clone();
@@ -448,18 +447,10 @@ fn depot_repair_order_reaches_the_pad_through_find_path() {
         },
         Some(&rules),
         grid.as_deref(),
-        &BTreeMap::new(),
     ));
     let mut docked = false;
     for _ in 0..400 {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         let e = sim.substrate.entities.get(tank).unwrap();
         let phase = e.dock_state.as_ref().map(|state| state.phase);
         if matches!(
@@ -724,7 +715,6 @@ fn after_active_rows_gate_the_same_call_continuation() {
                     20,
                     0,
                     &rules,
-                    &BTreeMap::new(),
                 )
                 .unwrap();
             if infantry {
@@ -856,7 +846,7 @@ fn retaliation_mid_track_stops_the_tank_at_its_track_end() {
     let (mut sim, rules, registry, id) = unit(&json!({"family": "drive"}));
     let (head, frame) = drive_to_first_head(&mut sim, &rules, &registry, id);
     let attacker = sim
-        .spawn_object("DRV", "Russians", 20, 20, 0, &rules, &BTreeMap::new())
+        .spawn_object("DRV", "Russians", 20, 20, 0, &rules)
         .unwrap();
     assert!(sim.override_mission_on_damage_response(id, attacker, &rules));
     let e = sim.substrate.entities.get(id).unwrap();
@@ -919,7 +909,7 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     let (mut sim, rules, registry, id) = unit(&json!({"family": "drive"}));
     let (head, frame) = drive_to_first_head(&mut sim, &rules, &registry, id);
     let attacker = sim
-        .spawn_object("DRV", "Russians", 20, 20, 0, &rules, &BTreeMap::new())
+        .spawn_object("DRV", "Russians", 20, 20, 0, &rules)
         .unwrap();
     assert!(sim.override_mission_on_damage_response(id, attacker, &rules));
     sim.session.binary_frame = frame;

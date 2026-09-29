@@ -149,16 +149,8 @@ fn the_building_choice_handles_nodes_as_native() {
             let node = &row["nodes"][int(&building[0]) as usize];
             let ty = rules.building_type_at(int(&node[0]) as i32).unwrap();
             let (x, y) = (int(&building[1]) / 256, int(&building[2]) / 256);
-            sim.spawn_object(
-                &ty.id,
-                "AIHouse",
-                x as u16,
-                y as u16,
-                0,
-                &rules,
-                &Default::default(),
-            )
-            .unwrap();
+            sim.spawn_object(&ty.id, "AIHouse", x as u16, y as u16, 0, &rules)
+                .unwrap();
         }
         let house = sim.houses.get_mut(&owner).unwrap();
         house.ai_production.set_for_test(
@@ -422,7 +414,7 @@ fn exit_fixture() -> (Simulation, RuleSet, InternedId, PathGrid, u64, u64) {
     );
     sim.session.house_order.push(owner);
     let yard = sim
-        .spawn_object("YARD", "AIHouse", 12, 12, 0, &rules, &Default::default())
+        .spawn_object("YARD", "AIHouse", 12, 12, 0, &rules)
         .unwrap();
     let plain = rules.building_type_index("PLAIN").unwrap();
     let house = sim.houses.get_mut(&owner).unwrap();
@@ -482,7 +474,7 @@ fn a_computer_yard_places_its_building_on_the_node_cell() {
 fn a_unit_of_the_house_on_the_site_makes_the_yard_try_later() {
     let (mut sim, rules, owner, path, yard, product) = exit_fixture();
     let tank = sim
-        .spawn_object("TANK", "AIHouse", 17, 17, 0, &rules, &Default::default())
+        .spawn_object("TANK", "AIHouse", 17, 17, 0, &rules)
         .unwrap();
 
     for count in 1..=2 {
@@ -513,7 +505,7 @@ fn an_enemy_on_the_site_fails_the_exit_and_the_node_forgets_its_cell() {
     sim.houses
         .insert(enemy, HouseState::new(enemy, 1, None, false, 10_000, 10));
     sim.session.house_order.push(enemy);
-    sim.spawn_object("TANK", "Enemy", 16, 16, 0, &rules, &Default::default())
+    sim.spawn_object("TANK", "Enemy", 16, 16, 0, &rules)
         .unwrap();
 
     let exit = exit_building(&mut sim, &rules, yard, product, Some(&path), None);

@@ -51,8 +51,14 @@ impl AppState {
     fn render_dimensions(&self) -> (u32, u32) {
         platform::render_dimensions(
             &self.frontend.screen,
-            (self.renderer.gpu.config.width, self.renderer.gpu.config.height),
-            self.renderer.upscale_pass.as_ref().map(|up| (up.src_width(), up.src_height())),
+            (
+                self.renderer.gpu.config.width,
+                self.renderer.gpu.config.height,
+            ),
+            self.renderer
+                .upscale_pass
+                .as_ref()
+                .map(|up| (up.src_width(), up.src_height())),
         )
     }
 
@@ -80,7 +86,11 @@ impl AppState {
     pub(crate) fn use_software_cursor(&self) -> bool {
         !(self.frontend.screen == crate::ui::game_screen::GameScreen::MainMenu
             && self.frontend.main_menu_shell_error.is_some())
-            && self.match_state.match_presentation.software_cursor.is_some()
+            && self
+                .match_state
+                .match_presentation
+                .software_cursor
+                .is_some()
             && (!self.match_state.paused()
                 || crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(self))
             && !self.match_state.match_presentation.show_save_load_panel
@@ -92,7 +102,9 @@ impl AppState {
     pub(crate) fn capture_egui_observation(
         &self,
     ) -> crate::render::egui_integration::EguiCaptureObservation<'_> {
-        self.renderer.egui.capture_observation(&self.platform.window)
+        self.renderer
+            .egui
+            .capture_observation(&self.platform.window)
     }
 
     /// Whether any main-menu modal dialog (exit confirm, options, keyboard)
@@ -106,7 +118,9 @@ impl AppState {
     /// Return the building-placement section name if the targeting mode
     /// is set to `BuildingPlacement`, else `None`.
     pub(crate) fn armed_building_type(&self) -> Option<&str> {
-        self.match_state.input.targeting_mode
+        self.match_state
+            .input
+            .targeting_mode
             .as_ref()
             .and_then(crate::app::types::TargetingMode::as_building_placement)
     }
@@ -114,7 +128,9 @@ impl AppState {
     /// Return the SW section name if the targeting mode is set to
     /// `SuperWeapon`, else `None`.
     pub(crate) fn armed_super_weapon_type(&self) -> Option<&str> {
-        self.match_state.input.targeting_mode
+        self.match_state
+            .input
+            .targeting_mode
             .as_ref()
             .and_then(crate::app::types::TargetingMode::as_super_weapon)
     }
@@ -129,23 +145,15 @@ impl AppState {
         self.match_state.sim_runtime.as_ref().map(|rt| rt.view())
     }
 
-    /// Fixed per-cell terrain heights for the active match, or the empty map
-    /// when no runtime exists — matching the pre-F07 always-present field.
+    /// Load-time cell levels the input and presentation click resolution
+    /// reads (see `MatchPresentationState::height_map`).
     pub(crate) fn height_map(&self) -> &BTreeMap<(u16, u16), u8> {
-        static EMPTY: std::sync::OnceLock<BTreeMap<(u16, u16), u8>> = std::sync::OnceLock::new();
-        self.match_state.sim_runtime
-            .as_ref()
-            .map(|rt| &rt.resources.height_map)
-            .unwrap_or_else(|| EMPTY.get_or_init(BTreeMap::new))
+        &self.match_state.match_presentation.height_map
     }
 
-    /// Bridge-deck heights for the active match (see `height_map`).
+    /// Load-time high-bridge deck levels for the same click resolution.
     pub(crate) fn bridge_height_map(&self) -> &BTreeMap<(u16, u16), u8> {
-        static EMPTY: std::sync::OnceLock<BTreeMap<(u16, u16), u8>> = std::sync::OnceLock::new();
-        self.match_state.sim_runtime
-            .as_ref()
-            .map(|rt| &rt.resources.bridge_height_map)
-            .unwrap_or_else(|| EMPTY.get_or_init(BTreeMap::new))
+        &self.match_state.match_presentation.bridge_height_map
     }
 }
 
@@ -153,7 +161,8 @@ impl AppState {
     /// The overlay registry: runtime-bound during a match, shell-retained
     /// (last loaded) otherwise — exactly the old field's lifecycle.
     pub(crate) fn overlay_registry(&self) -> Option<&OverlayTypeRegistry> {
-        self.match_state.sim_runtime
+        self.match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.resources.overlay_registry)
             .or(self.frontend.shell_preview_overlay_registry.as_ref())
@@ -164,7 +173,8 @@ impl AppState {
     /// The active rules: runtime-bound during a match, startup-shell rules
     /// otherwise. Matches the old field's Option shape at every consumer.
     pub(crate) fn rules(&self) -> Option<&crate::rules::ruleset::RuleSet> {
-        self.match_state.sim_runtime
+        self.match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.resources.rules)
             .or(self.frontend.frontend_rules.as_ref())
@@ -175,7 +185,8 @@ impl AppState {
     /// The immutable base resolved-terrain template for the active match
     /// (static rendering + restore); never the live sim grid.
     pub(crate) fn terrain_template(&self) -> Option<&ResolvedTerrainGrid> {
-        self.match_state.sim_runtime
+        self.match_state
+            .sim_runtime
             .as_ref()
             .and_then(|rt| rt.resources.terrain_template.as_ref())
     }

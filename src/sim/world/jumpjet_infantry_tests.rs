@@ -85,25 +85,9 @@ fn retail_dustbowl_rocketeer() -> (crate::headless_scenario::HeadlessScenario, u
                 ("GAPOWR", "Americans", x - 4),
                 ("NAPOWR", "Russians", x + 15),
             ] {
-                sim.spawn_object(
-                    plant,
-                    owner,
-                    px,
-                    y - 1,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object(plant, owner, px, y - 1, 0, &resources.rules)?;
             }
-            let rocketeer = sim.spawn_object(
-                "JUMPJET",
-                "Americans",
-                x,
-                y,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
+            let rocketeer = sim.spawn_object("JUMPJET", "Americans", x, y, 64, &resources.rules)?;
             Some((rocketeer, x, y))
         })
         .expect("open level ground for the flight");
@@ -203,15 +187,7 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
         resources,
     } = &mut scenario.runtime;
     let conscript = sim
-        .spawn_object(
-            "E2",
-            "Russians",
-            x + 16,
-            y,
-            192,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object("E2", "Russians", x + 16, y, 192, &resources.rules)
         .expect("conscript");
     sim.resolve_type_handles(&resources.rules);
     let attack = CommandEnvelope::new(
@@ -347,15 +323,7 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
     // A conscript three cells beyond the hold, the only enemy within its
     // 20mm's range.
     let conscript = sim
-        .spawn_object(
-            "E2",
-            "Russians",
-            x + 11,
-            y,
-            192,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object("E2", "Russians", x + 11, y, 192, &resources.rules)
         .expect("conscript");
     sim.resolve_type_handles(&resources.rules);
     let mut shots = Vec::new();
@@ -412,7 +380,6 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
 fn a_parked_rocketeer_scans_and_fires_on_move() {
     use crate::sim::command::{Command, CommandEnvelope};
     use crate::sim::mission::MissionType;
-    use std::collections::BTreeMap;
     let row = serde_json::json!({"doing": DO_HOVER, "fraction": 0.0, "armed": true,
         "owner": {"phase": 2, "moving": false}});
     let (mut sim, rules, shooter) = rocketeer_crash_fixture(&row);
@@ -434,7 +401,6 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
         sim.advance_tick(
             &std::mem::take(&mut orders),
             Some(&rules),
-            &BTreeMap::new(),
             Some(&grid),
             None,
             67,
@@ -470,7 +436,7 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
     let mut acquired = false;
     let mut fired = false;
     for _ in 0..120 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         let Some(entity) = sim.substrate.entities.get(1) else {
             break;
         };
@@ -495,7 +461,6 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
 #[test]
 fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     use crate::sim::movement::infantry_action::{DO_IDLE1, DO_IDLE2, DO_READY};
-    use std::collections::BTreeMap;
     let row = serde_json::json!({"doing": DO_READY, "fraction": 0.0, "height": 0,
         "owner": {"phase": 0, "moving": false}});
     let (mut sim, rules, _) = rocketeer_crash_fixture(&row);
@@ -503,7 +468,7 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     let mut fidgets = Vec::new();
     let mut playing: Option<i32> = None;
     for _ in 0..3000 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         let entity = sim.substrate.entities.get(1).unwrap();
         let doing = entity.mission_leaf.as_infantry().unwrap().doing();
         match (playing, doing) {
@@ -582,15 +547,7 @@ fn retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body() {
         resources,
     } = &mut scenario.runtime;
     let flak = sim
-        .spawn_object(
-            "HTK",
-            "Russians",
-            x + 14,
-            y + 1,
-            192,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object("HTK", "Russians", x + 14, y + 1, 192, &resources.rules)
         .expect("Flak Track");
     sim.resolve_type_handles(&resources.rules);
     let russians = sim.interner.intern("Russians");
@@ -956,7 +913,6 @@ fn scenario_draws(before: i32, after: i32) -> i32 {
 /// calls FootClass::AI at any Health, `0x0051BC9D`) but the oracle does not.
 #[test]
 fn a_shot_down_rocketeer_falls_like_the_native_crash() {
-    use std::collections::BTreeMap;
     let corpus: serde_json::Value = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/jumpjet_infantry_crash.json"
     ))
@@ -1028,7 +984,7 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
                 native_before = index_after(&output["kills"][1]);
             }
             let before = sim.scenario_rng.logical_view().index_a;
-            sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let native_after = expected["scenario_rng"][0].as_i64().unwrap() as i32;
             let draws = (
                 scenario_draws(before, sim.scenario_rng.logical_view().index_a),

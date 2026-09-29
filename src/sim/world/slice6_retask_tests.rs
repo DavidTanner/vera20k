@@ -20,7 +20,6 @@ use crate::sim::components::OrderIntent;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
-use std::collections::BTreeMap;
 
 fn slice6_rules() -> RuleSet {
     // Two attack-capable vehicles + an infantry; ranges short enough that no
@@ -162,7 +161,6 @@ const SLICE6_BASELINE_HASH: u64 = 0xF9E4_49DA_5683_0027;
 #[test]
 fn replay_hash_stable_through_slice6() {
     let rules = slice6_rules();
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
     let mut sim = Simulation::new();
     // id 1: Americans MTNK (the unit we retask). id 2: enemy MTNK (Soviet, hostile
@@ -174,7 +172,6 @@ fn replay_hash_stable_through_slice6() {
             unit("Americans", "E1", 5, 5, EntityCategory::Infantry),
         ],
         Some(&rules),
-        &heights,
     );
 
     // (execute_tick, command) — apply_due_commands fires each when self.session.tick+1 == tick.
@@ -251,7 +248,7 @@ fn replay_hash_stable_through_slice6() {
             .filter(|(t, _)| *t == tick + 1)
             .map(|(t, c)| cmd_envelope(&sim, "Americans", *t, c.clone()))
             .collect();
-        let result = sim.advance_tick(&due, Some(&rules), &heights, Some(&grid), None, 67);
+        let result = sim.advance_tick(&due, Some(&rules), Some(&grid), None, 67);
         assert!(result.frame_committed, "retask frame {tick} must commit");
         assert_eq!(
             result.executed_commands,
@@ -320,13 +317,11 @@ fn replay_hash_stable_through_slice6() {
             unit("Americans", "E1", 5, 5, EntityCategory::Infantry),
         ],
         Some(&rules),
-        &heights,
     );
     let replayed = ReplayRunner::run_fixture_with_overlay_registry(
         &mut replay,
         &log,
         Some(&rules),
-        &heights,
         Some(&grid),
         None,
         67,
@@ -438,13 +433,11 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
     // substrate's `current` becomes Move (checked BEFORE any tick-tail shadow
     // refresh) AND the legacy conflicting fields are cleared.
     let rules = slice6_rules();
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
     let mut sim = Simulation::new();
     sim.spawn_from_map(
         &[unit("Americans", "MTNK", 3, 3, EntityCategory::Unit)],
         Some(&rules),
-        &heights,
     );
     // Seed a conflicting prior order the Move must tear down.
     {
@@ -466,7 +459,6 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
         },
         Some(&rules),
         Some(&grid),
-        &heights,
     );
     assert!(issued, "move command should issue");
 

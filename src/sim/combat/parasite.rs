@@ -965,11 +965,7 @@ impl Simulation {
         // which the reveal adapter reads as `level + 4` with the owner's
         // OnBridge; cell-centre coordinates (ExitUnit, AttachTo refusal) are
         // ground, `CellClass::GetCoords @ 0x00486840`.
-        let ground_level = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(rx, ry))
-            .map_or(0, |cell| cell.level);
+        let ground_level = self.terrain_cell_level(rx, ry).unwrap_or(0);
         let coord_level =
             u8::try_from(coord.z.max(0) / crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
                 .unwrap_or(u8::MAX);

@@ -2181,7 +2181,6 @@ pub(crate) mod tests {
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &std::collections::BTreeMap::new(),
                 Some(&registry),
                 67,
                 TickLane::Ordinary,
@@ -2206,7 +2205,6 @@ pub(crate) mod tests {
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &std::collections::BTreeMap::new(),
                 Some(&registry),
                 67,
                 TickLane::Ordinary,

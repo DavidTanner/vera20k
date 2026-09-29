@@ -36,7 +36,6 @@ use crate::sim::pathfinding::{PathGrid, zone_map::ZoneGrid};
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
 use crate::sim::world::Simulation;
 use serde_json::Value;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub(super) const RULES: &str = "[VehicleTypes]\n0=HARV\n1=MTNK\n\
@@ -241,37 +240,20 @@ pub(super) fn scene_with(input: &Value, rules: RuleSet, ini: &IniFile) -> Scene 
     sim.houses.insert(owner, house);
     sim.session.game_mode_nonzero = input["game_mode"].as_u64().unwrap_or(1) != 0;
     sim.session.binary_frame = input["frame"].as_u64().unwrap_or(200) as u32;
-    let heights = BTreeMap::new();
     let dock_type = if input["dock_unload"] == false {
         "GAREFX"
     } else {
         "GAREFN"
     };
     let refinery = sim
-        .spawn_object(dock_type, "Americans", NW.0, NW.1, 0, &rules, &heights)
+        .spawn_object(dock_type, "Americans", NW.0, NW.1, 0, &rules)
         .expect("refinery");
     let other = sim
-        .spawn_object(
-            "GAREFN",
-            "Americans",
-            OTHER_NW.0,
-            OTHER_NW.1,
-            0,
-            &rules,
-            &heights,
-        )
+        .spawn_object("GAREFN", "Americans", OTHER_NW.0, OTHER_NW.1, 0, &rules)
         .expect("other refinery");
     for index in 0..input["purifiers"].as_u64().unwrap_or(0) {
-        sim.spawn_object(
-            "GAOREP",
-            "Americans",
-            22 + 3 * index as u16,
-            3,
-            0,
-            &rules,
-            &heights,
-        )
-        .expect("purifier");
+        sim.spawn_object("GAOREP", "Americans", 22 + 3 * index as u16, 3, 0, &rules)
+            .expect("purifier");
     }
     // Spawned on a free cell, then moved into the row's cell list: the pad is
     // a refinery foundation cell, which Unlimbo refuses, and a row's supplied
@@ -283,15 +265,7 @@ pub(super) fn scene_with(input: &Value, rules: RuleSet, ini: &IniFile) -> Scene 
     let relocate = input["unlimbo_at_cell"] != true;
     let (spawn_x, spawn_y) = if relocate { (16, 16) } else { (x, y) };
     let miner = sim
-        .spawn_object(
-            miner_type,
-            "Americans",
-            spawn_x,
-            spawn_y,
-            0,
-            &rules,
-            &heights,
-        )
+        .spawn_object(miner_type, "Americans", spawn_x, spawn_y, 0, &rules)
         .expect("miner");
     if relocate {
         let entity = sim.substrate.entities.get_mut(miner).unwrap();

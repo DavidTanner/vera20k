@@ -28,15 +28,9 @@ fn spawn(
 ) -> Option<u64> {
     let runtime = &mut scene.runtime;
     let owner_name = runtime.simulation.resolve(owner).to_owned();
-    runtime.simulation.spawn_object(
-        name,
-        &owner_name,
-        xy.0,
-        xy.1,
-        0,
-        &runtime.resources.rules,
-        &runtime.resources.height_map,
-    )
+    runtime
+        .simulation
+        .spawn_object(name, &owner_name, xy.0, xy.1, 0, &runtime.resources.rules)
 }
 fn move_fv(
     scene: &mut HeadlessScenario,

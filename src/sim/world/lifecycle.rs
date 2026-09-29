@@ -1803,10 +1803,8 @@ impl Simulation {
         let sub_cell = entity.sub_cell;
         let insertion = CellListInsertion::from_category(entity.category);
         let ground_level = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(current_cell.0, current_cell.1))
-            .map_or(0, |cell| cell.level);
+            .terrain_cell_level(current_cell.0, current_cell.1)
+            .unwrap_or(0);
         for &(rx, ry) in &cells {
             self.substrate
                 .occupancy
@@ -4362,7 +4360,6 @@ impl Simulation {
 
 #[cfg(test)]
 mod base_plan_lifecycle_tests {
-    use std::collections::BTreeMap;
 
     use crate::map::entities::EntityCategory;
     use crate::rules::ini_parser::IniFile;
@@ -4401,7 +4398,7 @@ mod base_plan_lifecycle_tests {
         assert!(!sim.houses[&ai].base_plan.nodes[0].filled);
 
         let building = sim
-            .spawn_object("GACNST", "Computer1", 10, 11, 0, &rules, &BTreeMap::new())
+            .spawn_object("GACNST", "Computer1", 10, 11, 0, &rules)
             .expect("scenario building");
         assert!(sim.houses[&ai].base_plan.nodes[0].filled);
         assert_eq!(sim.houses[&ai].base_plan.nodes[0].retry_count, 0);
@@ -4421,7 +4418,7 @@ mod base_plan_lifecycle_tests {
         });
         sim.houses.insert(human, human_house);
         sim.session.house_order.push(human);
-        sim.spawn_object("GAPOWR", "Human1", 20, 21, 0, &rules, &BTreeMap::new())
+        sim.spawn_object("GAPOWR", "Human1", 20, 21, 0, &rules)
             .expect("human building");
         assert!(!sim.houses[&human].base_plan.nodes[0].filled);
         assert_eq!(sim.houses[&human].base_plan.nodes[0].retry_count, 7);
@@ -4447,7 +4444,7 @@ mod base_plan_lifecycle_tests {
         let owner = sim.interner.get("Computer1").unwrap();
 
         let building = sim
-            .spawn_object("GACNST", "Computer1", 10, 11, 0, &rules, &BTreeMap::new())
+            .spawn_object("GACNST", "Computer1", 10, 11, 0, &rules)
             .expect("combined BuildConst/BasePlan Building");
 
         assert_eq!(sim.houses[&owner].build_const_order, [building]);
@@ -4561,15 +4558,7 @@ mod base_plan_lifecycle_tests {
         let nonzero_owner =
             player_control_only_house(&mut nonzero, "SkirmishSlot", pack_base_plan_cell(40, 41));
         nonzero
-            .spawn_object(
-                "GAPOWR",
-                "SkirmishSlot",
-                40,
-                41,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object("GAPOWR", "SkirmishSlot", 40, 41, 0, &rules)
             .expect("nonzero-mode Building");
         assert!(nonzero.houses[&nonzero_owner].base_plan.nodes[0].filled);
         assert_eq!(
@@ -4581,15 +4570,7 @@ mod base_plan_lifecycle_tests {
         let campaign_owner =
             player_control_only_house(&mut campaign, "CampaignPlayer", pack_base_plan_cell(50, 51));
         campaign
-            .spawn_object(
-                "GAPOWR",
-                "CampaignPlayer",
-                50,
-                51,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object("GAPOWR", "CampaignPlayer", 50, 51, 0, &rules)
             .expect("campaign Building");
         assert!(!campaign.houses[&campaign_owner].base_plan.nodes[0].filled);
         assert_eq!(
@@ -4651,21 +4632,13 @@ mod base_plan_lifecycle_tests {
         sim.session.house_order.push(owner);
 
         let none = sim
-            .spawn_object("NONEYARD", "Computer1", 10, 11, 0, &rules, &BTreeMap::new())
+            .spawn_object("NONEYARD", "Computer1", 10, 11, 0, &rules)
             .expect("none-sentinel Building");
         let angle = sim
-            .spawn_object(
-                "ANGLEYARD",
-                "Computer1",
-                12,
-                13,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object("ANGLEYARD", "Computer1", 12, 13, 0, &rules)
             .expect("angle-sentinel Building");
         let real = sim
-            .spawn_object("REALYARD", "Computer1", 14, 15, 0, &rules, &BTreeMap::new())
+            .spawn_object("REALYARD", "Computer1", 14, 15, 0, &rules)
             .expect("resolved-undeploy Building");
 
         assert!(
@@ -4704,7 +4677,7 @@ mod base_plan_lifecycle_tests {
         sim.houses
             .insert(owner, HouseState::new(owner, 0, None, false, 0, 10));
         let building = sim
-            .spawn_object("GAPOWR", "Computer1", 30, 31, 0, &rules, &BTreeMap::new())
+            .spawn_object("GAPOWR", "Computer1", 30, 31, 0, &rules)
             .expect("defense building");
         let cell = pack_base_plan_cell(30, 31);
         sim.houses.get_mut(&owner).unwrap().base_plan.nodes = vec![

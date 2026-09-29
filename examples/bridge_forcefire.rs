@@ -89,15 +89,7 @@ fn main() {
     );
     let attacker = runtime
         .simulation
-        .spawn_object(
-            &vehicle,
-            &owner_name,
-            64,
-            72,
-            0,
-            &runtime.resources.rules,
-            &runtime.resources.height_map,
-        )
+        .spawn_object(&vehicle, &owner_name, 64, 72, 0, &runtime.resources.rules)
         .expect("spawn selected vehicle on the retail bank");
     runtime
         .simulation

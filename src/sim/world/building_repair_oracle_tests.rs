@@ -703,7 +703,6 @@ fn the_repair_step_keeps_signed_adds_and_the_live_strength() {
 /// building; the same visit of a building not repairing plays no click.
 #[test]
 fn a_sale_s_first_visit_stops_the_repair() {
-    let heights = std::collections::BTreeMap::new();
     let overlay = crate::sim::tiberium::test_support::overlay_registry();
     for repairing in [true, false] {
         let mut s = super::refinery_dock_oracle_tests::scene(&json!({
@@ -735,14 +734,8 @@ fn a_sale_s_first_visit_stops_the_repair() {
         for _ in 0..2 {
             s.sim.sound_events.clear();
             let grid = s.sim.path_grid_snapshot();
-            s.sim.advance_tick(
-                &[],
-                Some(&s.rules),
-                &heights,
-                grid.as_deref(),
-                Some(overlay),
-                67,
-            );
+            s.sim
+                .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(overlay), 67);
             let entity = s.sim.substrate.entities.get(building).unwrap();
             let clicks = s
                 .sim

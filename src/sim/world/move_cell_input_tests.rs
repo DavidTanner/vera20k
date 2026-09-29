@@ -7,7 +7,6 @@ use crate::rules::terrain_rules::TerrainClass;
 use crate::sim::bridge_state::{BridgeEndpointRecord, BridgeRecordKind};
 use crate::sim::pathfinding::PathGrid;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 fn terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
     ResolvedTerrainCell {
         zone_type: zone_class::GROUND,
@@ -298,17 +297,9 @@ impl Simulation {
                 Some((8, 8)),
             ));
         }
-        let heights = sim
-            .resolved_terrain
-            .as_ref()
-            .unwrap()
-            .cells()
-            .iter()
-            .map(|c| ((c.rx, c.ry), c.level))
-            .collect::<BTreeMap<_, _>>();
         let start = if bridge { (7, 6) } else { (5, 5) };
         let actor = sim
-            .spawn_object("E1", "Local", start.0, start.1, 0, &rules, &heights)
+            .spawn_object("E1", "Local", start.0, start.1, 0, &rules)
             .unwrap();
         // Keep two live Long Game contenders while the real frame host runs.
         let enemy = sim.interner.intern("Enemy");
@@ -317,8 +308,7 @@ impl Simulation {
             crate::sim::house_state::HouseState::new(enemy, 1, None, false, 0, 10),
         );
         sim.session.house_order.push(enemy);
-        sim.spawn_object("E1", "Enemy", 12, 11, 0, &rules, &heights)
-            .unwrap();
+        sim.spawn_object("E1", "Enemy", 12, 11, 0, &rules).unwrap();
         sim.resolve_type_handles(&rules);
         sim.fog.width = 16;
         sim.fog.height = 16;

@@ -93,9 +93,16 @@ fn parse_args() -> Result<Args, String> {
     Ok(args)
 }
 
-/// Every map cell, taken from the bound terrain height table.
+/// Every map cell of the live terrain, in (rx, ry) order.
 fn map_cells(runtime: &SimRuntime) -> Vec<(u16, u16)> {
-    runtime.resources.height_map.keys().copied().collect()
+    let mut cells: Vec<(u16, u16)> = runtime
+        .simulation
+        .resolved_terrain
+        .iter()
+        .flat_map(|terrain| terrain.iter().map(|cell| (cell.rx, cell.ry)))
+        .collect();
+    cells.sort_unstable();
+    cells
 }
 
 /// Home cells on a ring around the map centre, in screen-aligned (rx - ry,
@@ -168,15 +175,7 @@ fn spawn_armies(
                 simulation,
                 resources,
             } = &mut *runtime;
-            if let Some(id) = simulation.spawn_object(
-                type_id,
-                owner,
-                rx,
-                ry,
-                0,
-                &resources.rules,
-                &resources.height_map,
-            ) {
+            if let Some(id) = simulation.spawn_object(type_id, owner, rx, ry, 0, &resources.rules) {
                 spawned.push(Spawned {
                     id,
                     house,

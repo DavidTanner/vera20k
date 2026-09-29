@@ -1,6 +1,6 @@
 //! Production navigation reconstruction must respect Mark-owned cell presence.
 
-use super::{empty_heights, gsi_04_10_clear_terrain, make_test_entity};
+use super::{gsi_04_10_clear_terrain, make_test_entity};
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
@@ -9,7 +9,6 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::production::{ProductionCategory, enqueue_by_type};
 use crate::sim::snapshot::GameSnapshot;
 use crate::sim::world::{Simulation, TickLane};
-use std::collections::BTreeMap;
 
 #[test]
 fn native_bridge_record_geometry_changes_rebuild_and_restore_navigation() {
@@ -284,10 +283,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     yard.cell_x = 6;
     yard.cell_y = 6;
     yard.structure_upgrades = [Some("UPGRADE".to_owned()), None, None];
-    assert_eq!(
-        sim.spawn_from_map(&[yard], Some(&rules), &empty_heights()),
-        2
-    );
+    assert_eq!(sim.spawn_from_map(&[yard], Some(&rules)), 2);
     sim.resolve_type_handles(&rules);
     let parent_id = sim
         .substrate
@@ -333,7 +329,6 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .advance_app_frame(
             &[],
             Some(&rules),
-            &BTreeMap::new(),
             Some(&overlays),
             67,
             TickLane::Ordinary,

@@ -649,11 +649,7 @@ fn place_building(
         let _ = sim.discard_constructed_limbo(product);
         return true;
     }
-    let z = sim
-        .resolved_terrain
-        .as_ref()
-        .and_then(|terrain| terrain.cell(rx, ry))
-        .map_or(0, |cell| cell.level);
+    let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
     if sim
         .unlimbo_held_production_object(
             product,

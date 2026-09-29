@@ -365,7 +365,7 @@ mod tests {
         assert_eq!(costs(&sim), (900, 450));
         assert!(!plant_fold(&sim));
         let plant = sim
-            .spawn_object("NAINDP", "Russians", 5, 5, 0, &rules, &BTreeMap::new())
+            .spawn_object("NAINDP", "Russians", 5, 5, 0, &rules)
             .unwrap();
         // ftol(900 * 0.75 * 0.5) = ftol(337.5)
         assert_eq!(costs(&sim), (900, 337));

@@ -818,7 +818,6 @@ mod tests {
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
-    use std::collections::BTreeMap;
 
     #[test]
     fn dock_cell_for_3x3_foundation() {
@@ -1195,7 +1194,6 @@ mod tests {
     }
 
     fn order_repair(sim: &mut Simulation, rules: &RuleSet, grid: &PathGrid, tank: u64) -> bool {
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         sim.apply_command(
             "Americans",
             &Command::RepairAtDepot {
@@ -1204,7 +1202,6 @@ mod tests {
             },
             Some(rules),
             Some(grid),
-            &height_map,
         )
     }
 

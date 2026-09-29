@@ -44,7 +44,6 @@ use crate::sim::production;
 use crate::sim::rng::SimRng;
 use crate::sim::world::SimSoundEvent;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 /// Rows whose inputs a live sale cannot reach or VERA cannot express.
 const SKIPPED: &[&str] = &[
@@ -425,7 +424,6 @@ fn sale_refund_matches_the_original() {
 /// and `production::sell_back`'s tests only.
 #[test]
 fn sales_through_the_frame_visit_on_the_original_frames() {
-    let heights = BTreeMap::new();
     let overlay = crate::sim::tiberium::test_support::overlay_registry();
     let mut compared = 0;
     for row in corpus()["route"].as_array().unwrap() {
@@ -470,14 +468,8 @@ fn sales_through_the_frame_visit_on_the_original_frames() {
                 ));
             }
             let grid = s.sim.path_grid_snapshot();
-            s.sim.advance_tick(
-                &[],
-                Some(&s.rules),
-                &heights,
-                grid.as_deref(),
-                Some(overlay),
-                67,
-            );
+            s.sim
+                .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(overlay), 67);
             if frame["converts"] == true {
                 assert!(
                     s.sim.substrate.entities.get(building).is_none(),

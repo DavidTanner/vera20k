@@ -388,7 +388,6 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
-use std::collections::BTreeMap;
 
 const GRID_W: u16 = 10;
 const GRID_H: u16 = 10;
@@ -431,7 +430,7 @@ fn make_test_simulation_with_one_vehicle() -> (Simulation, RuleSet, PathGrid) {
     let path_grid = PathGrid::new(GRID_W, GRID_H);
 
     let id = sim
-        .spawn_object("MTNK", "Americans", 5, 5, 64, &rules, &BTreeMap::new())
+        .spawn_object("MTNK", "Americans", 5, 5, 64, &rules)
         .expect("spawn MTNK");
     // Production-side spawn doesn't initialize `rocking` yet (sim-side only
     // path lands with combat in Task 19); flip it on here so the rocking
@@ -445,14 +444,7 @@ fn make_test_simulation_with_one_vehicle() -> (Simulation, RuleSet, PathGrid) {
 }
 
 fn advance(sim: &mut Simulation, rules: &RuleSet, path_grid: &PathGrid) {
-    let _ = sim.advance_tick(
-        &[],
-        Some(rules),
-        &BTreeMap::new(),
-        Some(path_grid),
-        None,
-        TICK_MS,
-    );
+    let _ = sim.advance_tick(&[], Some(rules), Some(path_grid), None, TICK_MS);
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //!
 //! Split from `loading::init` for file-size limits.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 use crate::assets::asset_manager::AssetManager;
@@ -416,7 +416,6 @@ pub(crate) fn populate_staged_app_scenario<F>(
     resolved_terrain: &ResolvedTerrainGrid,
     theater_name: &str,
     rules: Option<&RuleSet>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
     bridge_destroyability_mode: BridgeDestroyabilityMode,
@@ -433,7 +432,6 @@ where
         resolved_terrain,
         theater_name,
         rules,
-        height_map,
         overlay_registry,
         overlay_grid,
         bridge_destroyability_mode,

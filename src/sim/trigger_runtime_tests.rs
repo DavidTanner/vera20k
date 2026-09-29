@@ -15,7 +15,6 @@ use crate::sim::projectile::{
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
 use crate::sim::snapshot::GameSnapshot;
 use crate::sim::world::{MasterFrameTestRung, Simulation, TickLane, TriggerInputs};
-use std::collections::BTreeMap;
 
 /// Drive the production dispatch owner at a chosen native frame without
 /// advancing unrelated simulation phases in focused action tests.
@@ -173,7 +172,6 @@ fn parsed_event_records_match_native_list_and_production_predicates() {
                 .advance_master_frame(
                     &[],
                     None,
-                    &BTreeMap::new(),
                     None,
                     None,
                     67,
@@ -254,7 +252,6 @@ fn parsed_variable_actions_match_native_reader_dispatch_and_restore() {
                 .advance_master_frame(
                     &[],
                     None,
-                    &BTreeMap::new(),
                     None,
                     None,
                     67,
@@ -328,7 +325,6 @@ fn parsed_map_trigger_flags_gate_production_frames_and_survive_restore() {
             .advance_master_frame(
                 &[],
                 None,
-                &BTreeMap::new(),
                 None,
                 None,
                 67,
@@ -474,7 +470,6 @@ fn trigger_action_40_normalizes_and_refreshes_authority_same_frame() {
         .advance_master_frame(
             &[],
             None,
-            &BTreeMap::new(),
             None,
             None,
             67,
@@ -840,7 +835,6 @@ fn master_frame_polls_triggers_before_logic_houses_commit_and_delete() {
         .advance_master_frame(
             &[],
             None,
-            &BTreeMap::new(),
             None,
             None,
             67,
@@ -921,7 +915,6 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
         &events,
         &actions,
     );
-    let height_map = BTreeMap::new();
     let waypoints = HashMap::new();
     let trigger_inputs = TriggerInputs {
         graph: &graph,
@@ -938,7 +931,6 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
         .advance_master_frame(
             &[],
             None,
-            &height_map,
             None,
             None,
             67,
@@ -1000,7 +992,6 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
         .advance_master_frame(
             &[],
             None,
-            &height_map,
             None,
             None,
             67,
@@ -1021,7 +1012,6 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
         .advance_master_frame(
             &[],
             None,
-            &height_map,
             None,
             None,
             67,
@@ -1045,7 +1035,6 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             &mut replayed,
             &replay_log,
             None,
-            &height_map,
             None,
             None,
             67,

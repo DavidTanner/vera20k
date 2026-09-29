@@ -13,7 +13,6 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::{C4PlantState, Health, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::timer::CdTimer;
-use std::collections::BTreeMap;
 
 fn c4_test_rules() -> RuleSet {
     let ini: IniFile = IniFile::from_str(
@@ -59,20 +58,20 @@ fn c4_damage_state_rules() -> RuleSet {
     rules
 }
 
-fn build_sim_with_c4_rules() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
+fn build_sim_with_c4_rules() -> (Simulation, RuleSet) {
     let mut sim = Simulation::new();
     let rules = c4_test_rules();
     // Required: tick_c4_plants calls rules.c4_warhead_id() which panics
     // unless this resolver has run.
     sim.resolve_type_handles(&rules);
-    (sim, rules, BTreeMap::new())
+    (sim, rules)
 }
 
-fn build_sim_with_c4_damage_state_rules() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
+fn build_sim_with_c4_damage_state_rules() -> (Simulation, RuleSet) {
     let mut sim = Simulation::new();
     let rules = c4_damage_state_rules();
     sim.resolve_type_handles(&rules);
-    (sim, rules, BTreeMap::new())
+    (sim, rules)
 }
 
 fn spawn_infantry(sim: &mut Simulation, type_str: &str, owner: &str, rx: u16, ry: u16) -> u64 {
@@ -125,9 +124,9 @@ fn spawn_building(sim: &mut Simulation, type_str: &str, owner: &str, rx: u16, ry
 
 /// Advance one tick, draining any pending commands first (mirrors the
 /// production app sim-tick loop).
-fn step(sim: &mut Simulation, rules: &RuleSet, heights: &BTreeMap<(u16, u16), u8>) {
+fn step(sim: &mut Simulation, rules: &RuleSet) {
     let due = sim.take_due_commands();
-    sim.advance_tick(&due, Some(rules), heights, None, None, 67);
+    sim.advance_tick(&due, Some(rules), None, None, 67);
 }
 
 // ---------- Test 1: happy path ----------
@@ -146,7 +145,7 @@ fn plant_c4(sim: &mut Simulation, rules: &RuleSet, target: u64, seal: u64) {
 
 #[test]
 fn c4_plant_happy_path_kills_building_and_seal_survives() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     // Spawn SEAL adjacent (Chebyshev-1) to the building so the plant claims
     // on the first tick — skips the pathfinding walk-up which is tested
     // elsewhere. tick_c4_plants Phase 1's adjacency check is what we're
@@ -165,13 +164,13 @@ fn c4_plant_happy_path_kills_building_and_seal_survives() {
     ));
 
     // First advance: the EventClass tail sets c4_plant after the object walk.
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     assert!(
         sim.substrate.entities.get(seal).unwrap().c4_plant.is_some(),
         "the command tail must arm the plant intent"
     );
     // The next object walk sees adjacency and claims the plant.
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     let pending = sim
         .substrate
         .entities
@@ -187,7 +186,7 @@ fn c4_plant_happy_path_kills_building_and_seal_survives() {
     // `delay + 1` more advances are enough.
     let delay = rules.c4_delay_ticks as u64;
     for _ in 0..(delay + 1) {
-        step(&mut sim, &rules, &heights);
+        step(&mut sim, &rules);
     }
 
     assert!(
@@ -210,14 +209,14 @@ fn c4_plant_happy_path_kills_building_and_seal_survives() {
 
 #[test]
 fn c4_expiry_ignore_defenses_bypasses_verses_and_kills_building() {
-    let (mut sim, rules, heights) = build_sim_with_c4_damage_state_rules();
+    let (mut sim, rules) = build_sim_with_c4_damage_state_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
     plant_c4(&mut sim, &rules, bld, seal);
 
     let delay = rules.c4_delay_ticks as u64;
     for _ in 0..(delay + 2) {
-        step(&mut sim, &rules, &heights);
+        step(&mut sim, &rules);
         if sim.substrate.entities.get(bld).is_none() {
             break;
         }
@@ -234,7 +233,7 @@ fn c4_expiry_ignore_defenses_bypasses_verses_and_kills_building() {
 
 #[test]
 fn c4_does_not_claim_from_add_occupy_only_cell() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 9, 10);
     let refinery = spawn_building(&mut sim, "GAREFN", "Soviets", 10, 10);
 
@@ -242,7 +241,7 @@ fn c4_does_not_claim_from_add_occupy_only_cell() {
         target_building_id: refinery,
     });
 
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
 
     assert!(
         sim.substrate
@@ -268,7 +267,7 @@ fn c4_does_not_claim_from_add_occupy_only_cell() {
 
 #[test]
 fn c4_claims_from_remove_occupy_foundation_cell() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 13, 11);
     let refinery = spawn_building(&mut sim, "GAREFN", "Soviets", 10, 10);
 
@@ -276,7 +275,7 @@ fn c4_claims_from_remove_occupy_foundation_cell() {
         target_building_id: refinery,
     });
 
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
 
     let pending = sim
         .substrate
@@ -301,7 +300,7 @@ fn c4_claims_from_remove_occupy_foundation_cell() {
 
 #[test]
 fn c4_attacker_death_does_not_abort_detonation() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -311,7 +310,7 @@ fn c4_attacker_death_does_not_abort_detonation() {
     // Mid-plant: kill the SEAL outright.
     sim.substrate.entities.get_mut(seal).unwrap().health.current = 0;
     sim.substrate.entities.get_mut(seal).unwrap().dying = true;
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     assert!(
         sim.substrate.entities.get(seal).is_none()
             || sim.substrate.entities.get(seal).unwrap().dying,
@@ -322,7 +321,7 @@ fn c4_attacker_death_does_not_abort_detonation() {
     // is never cleared in the C4 path, so detonation fires regardless.
     let delay = rules.c4_delay_ticks as u64;
     for _ in 0..(delay + 2) {
-        step(&mut sim, &rules, &heights);
+        step(&mut sim, &rules);
     }
     assert!(
         sim.substrate
@@ -338,7 +337,7 @@ fn c4_attacker_death_does_not_abort_detonation() {
 #[test]
 fn c4_iron_curtain_application_cancels_pending_detonation() {
     use crate::sim::superweapon::invulnerability::{InvulnKind, apply_invulnerability};
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -365,7 +364,7 @@ fn c4_iron_curtain_application_cancels_pending_detonation() {
     // permanent; there is no expired-latch retry after Iron Curtain wears off.
     let delay = rules.c4_delay_ticks as u64;
     for _ in 0..(delay + 42) {
-        step(&mut sim, &rules, &heights);
+        step(&mut sim, &rules);
     }
     let building = sim
         .substrate
@@ -380,7 +379,7 @@ fn c4_iron_curtain_application_cancels_pending_detonation() {
 
 #[test]
 fn second_c4_attacker_does_not_overwrite_plant() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     // Both adjacent to the building. seal_a gets the lower stable_id (sorted
     // iteration order in tick_c4_plants makes them deterministic).
     let seal_a = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
@@ -395,7 +394,7 @@ fn second_c4_attacker_does_not_overwrite_plant() {
     });
 
     // First tick: A claims (lower stable_id, sorted order). B sees the claim and hovers.
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     let pending = sim
         .substrate
         .entities
@@ -410,7 +409,7 @@ fn second_c4_attacker_does_not_overwrite_plant() {
     );
 
     // Another tick: pending must NOT have been overwritten by B.
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     let pending_after = sim
         .substrate
         .entities
@@ -434,7 +433,7 @@ fn second_c4_attacker_does_not_overwrite_plant() {
 
 #[test]
 fn target_death_clears_c4_plant_on_attacker() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 5, 5);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -446,7 +445,7 @@ fn target_death_clears_c4_plant_on_attacker() {
     sim.substrate.entities.get_mut(bld).unwrap().health.current = 0;
     sim.substrate.entities.get_mut(bld).unwrap().dying = true;
 
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
 
     assert!(
         sim.substrate.entities.get(seal).unwrap().c4_plant.is_none(),
@@ -458,7 +457,7 @@ fn target_death_clears_c4_plant_on_attacker() {
 
 #[test]
 fn stop_cancels_walkup_but_not_already_claimed_plant() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 5, 5);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -473,7 +472,7 @@ fn stop_cancels_walkup_but_not_already_claimed_plant() {
         sim.session.tick + 1,
         Command::Stop { entity_id: seal },
     ));
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     assert!(
         sim.substrate.entities.get(seal).unwrap().c4_plant.is_none(),
         "Stop must clear c4_plant during walk-up"
@@ -503,7 +502,7 @@ fn stop_cancels_walkup_but_not_already_claimed_plant() {
         sim.session.tick + 1,
         Command::Stop { entity_id: seal },
     ));
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     assert!(
         sim.substrate
             .entities
@@ -517,7 +516,7 @@ fn stop_cancels_walkup_but_not_already_claimed_plant() {
     // And the building still detonates on schedule.
     let delay = rules.c4_delay_ticks as u64;
     for _ in 0..(delay + 2) {
-        step(&mut sim, &rules, &heights);
+        step(&mut sim, &rules);
     }
     assert!(
         sim.substrate
@@ -532,7 +531,7 @@ fn stop_cancels_walkup_but_not_already_claimed_plant() {
 
 #[test]
 fn cannot_c4_building_rejects_plant_command() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 5, 5);
     let oil = spawn_building(&mut sim, "CAMISC01", "Soviets", 10, 10);
 
@@ -545,7 +544,7 @@ fn cannot_c4_building_rejects_plant_command() {
             target_building_id: oil,
         },
     ));
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     assert!(
         sim.substrate.entities.get(seal).unwrap().c4_plant.is_none(),
         "PlantC4 must be silently rejected for CanC4=no buildings"
@@ -565,7 +564,7 @@ fn cannot_c4_building_rejects_plant_command() {
 
 #[test]
 fn non_c4_unit_rejects_plant_command() {
-    let (mut sim, rules, heights) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let gi = spawn_infantry(&mut sim, "E1", "Americans", 5, 5);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -578,7 +577,7 @@ fn non_c4_unit_rejects_plant_command() {
             target_building_id: bld,
         },
     ));
-    step(&mut sim, &rules, &heights);
+    step(&mut sim, &rules);
     assert!(
         sim.substrate.entities.get(gi).unwrap().c4_plant.is_none(),
         "PlantC4 must be silently rejected for non-C4 attackers"
@@ -599,7 +598,7 @@ fn non_c4_unit_rejects_plant_command() {
 #[test]
 fn c4_lifecycle_is_deterministic() {
     fn run() -> Vec<u64> {
-        let (mut sim, rules, heights) = build_sim_with_c4_rules();
+        let (mut sim, rules) = build_sim_with_c4_rules();
         let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
         let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
         let owner = sim.interner.intern("Americans");
@@ -613,7 +612,7 @@ fn c4_lifecycle_is_deterministic() {
         ));
         let mut hashes = Vec::new();
         for _ in 0..100 {
-            step(&mut sim, &rules, &heights);
+            step(&mut sim, &rules);
             hashes.push(sim.state_hash());
         }
         hashes
