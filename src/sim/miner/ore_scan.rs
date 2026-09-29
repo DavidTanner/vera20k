@@ -236,12 +236,9 @@ pub(crate) struct HarvestReach {
 pub(crate) fn harvest_reach(sim: &Simulation, rules: &RuleSet, id: u64) -> Option<HarvestReach> {
     let entity = sim.substrate.entities.get(id)?;
     // `CDQ; AND EDX,0xFF; ADD; SAR 8` (`0x004DCF3E..0x004DCF5D`).
-    let cell = |leptons: i32| leptons.wrapping_add((leptons >> 31) & 0xFF) >> 8;
+    let cell = crate::util::lepton::lepton_to_cell_packed;
     let navigation = sim.foot_navigation_coordinate(id).ok()?;
-    let source = (
-        i32::from(cell(navigation.x) as i16),
-        i32::from(cell(navigation.y) as i16),
-    );
+    let source = (i32::from(cell(navigation.x)), i32::from(cell(navigation.y)));
     let cells = NativeCellQuery::canonical(sim.resolved_terrain.as_ref()?);
     // Original4DCF6F queries the source layer for each admitted probe. These
     // ground lookups can stamp shared Dummy; caching OnBridge per scan loses

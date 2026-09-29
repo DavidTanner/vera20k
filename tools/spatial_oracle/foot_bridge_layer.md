@@ -225,6 +225,11 @@ around the live frame used existing `rng::trace_draws` and serialized GameEntiti
 It was removed after comparison. The receipts record both source hashes, fixture
 inputs, per-tick hashes of the complete serialized entities, all three RNG stream
 fingerprints, and raw draw values with their starting indices.
+The captured ore/zone source files are preserved in commit `480dc6a1`; incoming
+main's shared lepton conversions were integrated afterward. The comparison is
+historical fixture provenance. The final integrated candidate reruns the baseline
+and original query corpus rather than treating these earlier receipts as a new
+native comparison.
 
 Across all 600 ticks the two Rust executions matched every world hash, serialized
 entity and RNG fingerprint, plus all 319 raw draws. The unchanged absolute RNG

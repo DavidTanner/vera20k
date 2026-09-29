@@ -67,11 +67,6 @@ pub(crate) const fn map_owned_radius_cap(size_width: i32, size_height: i32) -> u
 /// (`bridgeRise == 0`) that reads "at most one level from the seed"; for a bridge
 /// candidate it does not — see [`candidate_height_ok`].
 const MAX_SEED_LEVEL_DELTA_EXCLUSIVE: i16 = 2;
-/// Levels a bridge deck sits above the ground cell that carries it. When the
-/// candidate carries a bridge the height gate subtracts this from the SEED level —
-/// not from the candidate's — so it does NOT normalize a deck to ground; the
-/// arithmetic and what it actually admits are spelled out in [`candidate_height_ok`].
-const BRIDGE_LEVEL_RISE: i16 = 4;
 
 /// Candidate-cell origin plus centre (`0x80`) plus native's `0x600`-lepton
 /// south-east projection reach.
@@ -344,7 +339,7 @@ where
             candidate_is_bridge_cell(q, seed.0, seed.1)
         }
     {
-        level = level.wrapping_add(BRIDGE_LEVEL_RISE);
+        level = level.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16);
     }
     let seed_level = q.check_height.then_some(level);
 
@@ -463,7 +458,11 @@ pub(crate) fn project_world_coordinate_with_lookup<F>(x: i32, y: i32, lookup: F)
 where
     F: FnMut(i32, i32) -> CellClassProjectionView,
 {
-    project_candidate_with_lookup(native_lepton_to_cell(x), native_lepton_to_cell(y), lookup)
+    project_candidate_with_lookup(
+        i32::from(crate::util::lepton::lepton_to_cell_packed(x)),
+        i32::from(crate::util::lepton::lepton_to_cell_packed(y)),
+        lookup,
+    )
 }
 
 /// Instruction-faithful projection kernel after world-to-cell conversion.
@@ -492,20 +491,24 @@ where
         probe_world_x = probe_world_x.wrapping_sub(PROJECTION_STEP_LEPTONS);
         probe_world_y = probe_world_y.wrapping_sub(PROJECTION_STEP_LEPTONS);
         let probe = (
-            native_lepton_to_cell(probe_world_x),
-            native_lepton_to_cell(probe_world_y),
+            i32::from(crate::util::lepton::lepton_to_cell_packed(probe_world_x)),
+            i32::from(crate::util::lepton::lepton_to_cell_packed(probe_world_y)),
         );
         let probe_view = lookup(probe.0, probe.1);
         let mut level_delta = probe_view.signed_level.wrapping_sub(candidate_level);
         if candidate_is_forward_side
             && probe_view.raw_flags_0x1180 & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL != 0
         {
-            level_delta = level_delta.wrapping_add(i32::from(BRIDGE_LEVEL_RISE));
+            level_delta = level_delta.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS);
         }
 
         let projection_shift = level_delta.wrapping_mul(PROJECTION_LEVEL_LEPTONS);
-        let projected_x = native_lepton_to_cell(probe_world_x.wrapping_sub(projection_shift));
-        let projected_y = native_lepton_to_cell(probe_world_y.wrapping_sub(projection_shift));
+        let projected_x = i32::from(crate::util::lepton::lepton_to_cell_packed(
+            probe_world_x.wrapping_sub(projection_shift),
+        ));
+        let projected_y = i32::from(crate::util::lepton::lepton_to_cell_packed(
+            probe_world_y.wrapping_sub(projection_shift),
+        ));
 
         if projected_x <= cx && projected_y <= cy {
             return probe;
@@ -514,12 +517,6 @@ where
             return (cx, cy);
         }
     }
-}
-
-/// Native signed divide-by-256 conversion followed by packed-short truncation.
-fn native_lepton_to_cell(leptons: i32) -> i32 {
-    let adjusted = leptons.wrapping_add((leptons >> 31) & 0xff);
-    (adjusted >> 8) as i16 as i32
 }
 
 /// Run the per-candidate predicates in engine order: the independent height-aware
@@ -609,7 +606,7 @@ fn candidate_passes(
 }
 
 /// The caller's height gate: `abs(seedLevel - bridgeRise - candidateLevel) < 2`,
-/// where `bridgeRise` is [`BRIDGE_LEVEL_RISE`] when the candidate carries a bridge
+/// where `bridgeRise` is [`crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16`] when the candidate carries a bridge
 /// and 0 otherwise.
 ///
 /// For an ordinary candidate that is "stay within one level of the seed". For a
@@ -629,7 +626,7 @@ fn candidate_passes(
 /// bridge-aware and that seed is structural; collection retains that value.
 fn candidate_height_ok(q: &NearbyQuery<'_>, seed_level: i16, cx: i32, cy: i32) -> bool {
     let bridge_rise = if candidate_is_bridge_cell(q, cx, cy) {
-        BRIDGE_LEVEL_RISE
+        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
     } else {
         0
     };

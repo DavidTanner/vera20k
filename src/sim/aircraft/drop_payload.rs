@@ -176,8 +176,10 @@ pub fn try_drop(
             let (dx, dy) = v_offset(facing, payload_count_post);
             let drop_x_lep = aircraft_x_lep + dx;
             let drop_y_lep = aircraft_y_lep + dy;
-            let drop_rx = drop_x_lep.div_euclid(256).clamp(0, u16::MAX as i32) as u16;
-            let drop_ry = drop_y_lep.div_euclid(256).clamp(0, u16::MAX as i32) as u16;
+            let drop_rx =
+                crate::util::lepton::lepton_to_cell(drop_x_lep).clamp(0, u16::MAX as i32) as u16;
+            let drop_ry =
+                crate::util::lepton::lepton_to_cell(drop_y_lep).clamp(0, u16::MAX as i32) as u16;
             let drop_sub_x = SimFixed::from_num(drop_x_lep.rem_euclid(256));
             let drop_sub_y = SimFixed::from_num(drop_y_lep.rem_euclid(256));
 

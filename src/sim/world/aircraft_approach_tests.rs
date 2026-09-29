@@ -23,12 +23,12 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         elite[2],
         input["turret_offset"].as_i64().unwrap_or(0),
     ))));
-    sim.substrate
-        .entities
-        .get_mut(2)
-        .unwrap()
-        .lifecycle
-        .object_alive = input["target_marked"].as_bool().unwrap_or(true);
+    // The oracle's target mark is Object+0x74, which IsHighFlying reads.
+    let marked = input["target_marked"].as_bool().unwrap_or(true);
+    let order = sim.substrate.next_occupancy_enter_order.next();
+    let target = sim.substrate.entities.get_mut(2).unwrap();
+    target.lifecycle.cell_marked = marked;
+    target.occupancy_enter_order = order;
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     let state = input["state"].as_u64().unwrap_or(3) as u8;
     entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: state });

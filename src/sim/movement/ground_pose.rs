@@ -10,7 +10,7 @@ use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::sim::components::{DriveCoord, Position};
 use crate::sim::pathfinding::PathGrid;
 use crate::util::lepton::{
-    BRIDGE_HEIGHT_DELTA_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons,
+    BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons,
 };
 
 /// Map578080 through the caller's query identity. Input queries isolate Dummy;
@@ -128,7 +128,7 @@ pub(crate) fn object_ground_z_leptons(
         .and_then(|cell| ground_height_leptons(cell.level, cell.slope_type, x, y).ok())
         .map(|ground| {
             ground.wrapping_add(if entity.on_bridge {
-                BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+                BRIDGE_DECK_HEIGHT_LEPTONS
             } else {
                 0
             })
@@ -205,6 +205,22 @@ pub(crate) fn object_center_coord_with_foundation(
     coord
 }
 
+/// Object virtual+48 (GetCoords) in full: [`object_center_coord`]'s XY (the
+/// raw Location when the type is unknown) at the object's world Z
+/// ([`object_world_z_leptons`]).
+pub(crate) fn object_get_coords(
+    entity: &crate::sim::game_entity::GameEntity,
+    object_type: Option<&crate::rules::object_type::ObjectType>,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> DriveCoord {
+    let mut coord = object_type.map_or_else(
+        || position_world_coord(&entity.position),
+        |object_type| object_center_coord(entity, object_type),
+    );
+    coord.z = object_world_z_leptons(entity, terrain);
+    coord
+}
+
 /// Sample the live surface at full world XY. A PathGrid supplies the same
 /// level/ramp fields only for callers without resolved terrain. Missing
 /// headless terrain leaves the caller's existing coordinate authoritative.
@@ -235,7 +251,7 @@ pub(crate) fn ground_surface_z_at(
         }
     };
     Some(ground.wrapping_add(if on_bridge {
-        BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+        BRIDGE_DECK_HEIGHT_LEPTONS
     } else {
         0
     }))

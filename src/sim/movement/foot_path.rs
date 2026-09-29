@@ -112,14 +112,11 @@ fn query_foot_zone(
         .ok_or_else(|| "Foot precheck requires native zone topology".into())
 }
 
-/// `ObjectClass::Get_Cell_Packed` 0x0041BEA0 and the inlined copies at
-/// 0x4D404A..0x4D409E: signed leptons to a cell with truncation toward zero.
-pub(super) fn lepton_to_cell(leptons: i32) -> i16 {
-    (leptons.wrapping_add((leptons >> 31) & 0xff) >> 8) as i16
-}
-
 pub(super) fn coord_cell(coord: DriveCoord) -> (i16, i16) {
-    (lepton_to_cell(coord.x), lepton_to_cell(coord.y))
+    (
+        crate::util::lepton::lepton_to_cell_packed(coord.x),
+        crate::util::lepton::lepton_to_cell_packed(coord.y),
+    )
 }
 
 /// `max(|dx|, |dy|)` over packed cell words, the shape at 0x4D3B7D..0x4D3BBD
@@ -1047,11 +1044,11 @@ mod tests {
 
     #[test]
     fn signed_lepton_cell_conversion_truncates_toward_zero() {
-        assert_eq!(lepton_to_cell(2624), 10);
-        assert_eq!(lepton_to_cell(255), 0);
-        assert_eq!(lepton_to_cell(-1), 0);
-        assert_eq!(lepton_to_cell(-256), -1);
-        assert_eq!(lepton_to_cell(-257), -1);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(2624), 10);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(255), 0);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(-1), 0);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(-256), -1);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(-257), -1);
     }
 
     #[test]

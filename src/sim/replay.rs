@@ -878,6 +878,7 @@ impl ReplayRunner {
                 );
             }
         }
+        sim.install_fixture_path_grid(path_grid);
         let mut hashes: Vec<u64> = Vec::with_capacity(replay.ticks.len());
         for entry in &replay.ticks {
             let due_commands = sim.take_due_replay_commands(entry.commands.iter().cloned());
@@ -885,7 +886,6 @@ impl ReplayRunner {
                 .advance_master_frame(
                     &due_commands,
                     rules,
-                    path_grid,
                     overlay_registry,
                     tick_ms,
                     TickLane::Ordinary,

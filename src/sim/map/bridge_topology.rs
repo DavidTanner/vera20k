@@ -31,40 +31,7 @@ use crate::map::bridge_facts::BridgeFlags;
 use crate::map::resolved_terrain::ResolvedTerrainCell;
 #[cfg(test)]
 use crate::map::resolved_terrain::YR_CELL_LAND_TUNNEL;
-use crate::util::lepton::LEPTONS_PER_LEVEL;
-
-/// Level-unit seed an anchor cell adds to its *effective height* (`GetEffectiveHeight`
-/// = `Level + ((flags>>7)&1) * 4`). This is the discrete terrain-Level index seed
-/// (1 ElevationIncrement) used for pathfinding/layer/occupancy decisions in the
-/// `Can_Enter_Cell`/traversal family — it is NOT the coordinate-Z/AoE deck offset.
-/// Verified value `4` (Level units). Keep this strictly separate from the lepton
-/// deck offset below: the binary computes the two from different sources and never
-/// mixes them in one comparison.
-///
-/// (Source: `GATE_BRIDGE_DECK_HEIGHT_RESOLUTION_GHIDRA_REPORT.md` §5 — the `+4`
-/// Level-unit pathfinding seed, distinct from the coordinate-Z deck.)
-pub const BRIDGE_EFFECTIVE_HEIGHT_ANCHOR_SEED_LEVELS: i32 = 4;
-
-/// Verified coordinate-Z / AoE / occupancy deck offset a unit's Z gains when it is
-/// on a HIGH structural bridge: `unit.Z = GetGroundHeight(coord) + DECK_OFFSET`.
-///
-/// The binary deck offset is the runtime global
-/// `ftol_chop(per_level_bridge_height × 4 + 0.5)` **in LEPTONS**. With the
-/// verified per-level step of 104 leptons this is `4 × 104 = 416` leptons,
-/// exactly **4 levels**.
-///
-/// This is the deck height that the coordinate-Z snap, the AoE object-layer
-/// selector, and the occupancy bit-layer threshold all share — distinct from the
-/// Level-unit anchor seed above. The values are numerically equal in their
-/// respective domains but come from separate native state and must stay named.
-///
-/// Active body: `0x005F37C0..0x005F3890` stores `DAT_00AC13BC`; the OnBridge
-/// coordinate path at `0x005F5FA0` adds that value to CellClass ground height.
-pub const BRIDGE_DECK_HEIGHT_LEPTONS: i32 = 4 * LEPTONS_PER_LEVEL as i32;
-/// The same verified deck offset expressed in Level units (`416 leptons / 104 =
-/// 4 levels`). Use this where the operand is already pre-divided to Level units
-/// (the current Rust AoE/occupancy selectors operate on `cell.level`).
-pub const BRIDGE_DECK_HEIGHT_LEVELS: i32 = BRIDGE_DECK_HEIGHT_LEPTONS / LEPTONS_PER_LEVEL as i32;
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 
 /// Width of a tileset window: a concrete- or wood-bridge tileset occupies the
 /// first 16 tiles `[base, base + 0x10)` of its theater set. Gated on base != -1.
@@ -156,17 +123,14 @@ impl CellBridgeView {
     /// Signed level plus the Level-unit anchor seed for anchor cells.
     ///
     /// This is the `(i8)level + ((flags >> 7) & 1) * 4` form (`GetEffectiveHeight`):
-    /// the level read is signed and an anchor adds exactly the `+4` Level-unit
-    /// pathfinding seed. It is intentionally NOT the layer-driven
-    /// `effective_cell_z_for_layer` form (which keys off the mover's current layer
-    /// instead of the anchor flag), and it is NOT the coordinate-Z deck offset
-    /// (`BRIDGE_DECK_HEIGHT_LEPTONS` / `_LEVELS` = 4 levels). They are separate
-    /// native quantities despite sharing the numeric value four.
+    /// the level read is signed and an anchor adds the `+4` deck levels. It is
+    /// intentionally NOT the layer-driven `effective_cell_z_for_layer` form
+    /// (which keys off the mover's current layer instead of the anchor flag).
     #[inline]
     pub fn effective_height(&self) -> i32 {
         self.level as i32
             + if self.is_anchor() {
-                BRIDGE_EFFECTIVE_HEIGHT_ANCHOR_SEED_LEVELS
+                BRIDGE_DECK_HEIGHT_LEVELS
             } else {
                 0
             }
@@ -449,21 +413,6 @@ mod tests {
         assert!(!with(Some(-1), YR_CELL_LAND_TUNNEL).is_low_bridge_cell(tube_count));
         // no tube + land 10 -> false
         assert!(!with(None, YR_CELL_LAND_TUNNEL).is_low_bridge_cell(tube_count));
-    }
-
-    #[test]
-    fn gsi_04_03b_deck_height_consts_resolve_to_verified_values() {
-        // The coordinate-Z/AoE/occupancy deck offset is 4 × per_level.
-        // The anchor effective-height seed is a separately sourced Level-unit +4.
-        assert_eq!(
-            BRIDGE_DECK_HEIGHT_LEPTONS, 416,
-            "deck offset = 4 × 104 leptons"
-        );
-        assert_eq!(BRIDGE_DECK_HEIGHT_LEVELS, 4, "416 leptons / 104 = 4 levels");
-        assert_eq!(
-            BRIDGE_EFFECTIVE_HEIGHT_ANCHOR_SEED_LEVELS, 4,
-            "GetEffectiveHeight anchor seed is separately sourced"
-        );
     }
 
     #[test]

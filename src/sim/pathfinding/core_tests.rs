@@ -1339,9 +1339,7 @@ fn infantry_under_span_cell(rx: u16, foot_cost: u8, transition: bool) -> Resolve
 
 #[test]
 fn infantry_under_span_admission_reads_ground_speed_with_deck_cost_grid() {
-    use crate::sim::pathfinding::cell_entry::{
-        CanEnterCellContext, TerrainEntryMode, evaluate_can_enter_cell,
-    };
+    use crate::sim::pathfinding::cell_entry::{CanEnterCellContext, evaluate_can_enter_cell};
 
     for transition in [false, true] {
         for foot_cost in [0, 100] {
@@ -1353,31 +1351,25 @@ fn infantry_under_span_admission_reads_ground_speed_with_deck_cost_grid() {
             let grid = PathGrid::from_cells(vec![bridge_test_cell(2, true, transition, 0)], 1, 1);
             let costs = TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Foot);
             assert_eq!(costs.cost_at(0, 0), 100, "coarse grid describes the deck");
-            for mode in [
-                TerrainEntryMode::AStarNeighbor,
-                TerrainEntryMode::RuntimeTransition,
-            ] {
-                for speed_type in [None, Some(SpeedType::Foot)] {
-                    assert_eq!(
-                        evaluate_can_enter_cell(CanEnterCellContext {
-                            wall: None,
-                            target: (0, 0),
-                            terrain_layer: MovementLayer::Ground,
-                            movement_zone: Some(MovementZone::Infantry),
-                            speed_type,
-                            path_grid: Some(&grid),
-                            resolved_terrain: Some(&terrain),
-                            terrain_costs: Some(&costs),
-                            bypass_grid: false,
-                            mode,
-                            is_infantry: true,
-                            mover_is_crusher: false,
-                        })
-                        .is_clear(),
-                        foot_cost != 0,
-                        "transition={transition}, mode={mode:?}, speed={speed_type:?}"
-                    );
-                }
+            for speed_type in [None, Some(SpeedType::Foot)] {
+                assert_eq!(
+                    evaluate_can_enter_cell(CanEnterCellContext {
+                        wall: None,
+                        target: (0, 0),
+                        terrain_layer: MovementLayer::Ground,
+                        movement_zone: Some(MovementZone::Infantry),
+                        speed_type,
+                        path_grid: Some(&grid),
+                        resolved_terrain: Some(&terrain),
+                        terrain_costs: Some(&costs),
+                        bypass_grid: false,
+                        is_infantry: true,
+                        mover_is_crusher: false,
+                    })
+                    .is_clear(),
+                    foot_cost != 0,
+                    "transition={transition}, speed={speed_type:?}"
+                );
             }
         }
     }
@@ -1391,9 +1383,7 @@ fn infantry_under_span_admission_reads_ground_speed_with_deck_cost_grid() {
 /// admitted, Track over water is refused, and an amphibious hover mover swims.
 #[test]
 fn unit_under_span_admission_reads_ground_row_beneath_deck() {
-    use crate::sim::pathfinding::cell_entry::{
-        CanEnterCellContext, TerrainEntryMode, evaluate_can_enter_cell,
-    };
+    use crate::sim::pathfinding::cell_entry::{CanEnterCellContext, evaluate_can_enter_cell};
 
     let cases: [(MovementZone, SpeedType, SpeedCostProfile, bool); 4] = [
         (
@@ -1444,30 +1434,24 @@ fn unit_under_span_admission_reads_ground_row_beneath_deck() {
             let grid = PathGrid::from_cells(vec![bridge_test_cell(2, true, transition, 0)], 1, 1);
             let costs = TerrainCostGrid::from_resolved_terrain(&terrain, planner_speed);
             assert_eq!(costs.cost_at(0, 0), 100, "coarse grid describes the deck");
-            for mode in [
-                TerrainEntryMode::AStarNeighbor,
-                TerrainEntryMode::RuntimeTransition,
-            ] {
-                assert_eq!(
-                    evaluate_can_enter_cell(CanEnterCellContext {
-                        wall: None,
-                        target: (0, 0),
-                        terrain_layer: MovementLayer::Ground,
-                        movement_zone: Some(zone),
-                        speed_type: None,
-                        path_grid: Some(&grid),
-                        resolved_terrain: Some(&terrain),
-                        terrain_costs: Some(&costs),
-                        bypass_grid: false,
-                        mode,
-                        is_infantry: false,
-                        mover_is_crusher: false,
-                    })
-                    .is_clear(),
-                    expected,
-                    "zone={zone:?}, transition={transition}, mode={mode:?}"
-                );
-            }
+            assert_eq!(
+                evaluate_can_enter_cell(CanEnterCellContext {
+                    wall: None,
+                    target: (0, 0),
+                    terrain_layer: MovementLayer::Ground,
+                    movement_zone: Some(zone),
+                    speed_type: None,
+                    path_grid: Some(&grid),
+                    resolved_terrain: Some(&terrain),
+                    terrain_costs: Some(&costs),
+                    bypass_grid: false,
+                    is_infantry: false,
+                    mover_is_crusher: false,
+                })
+                .is_clear(),
+                expected,
+                "zone={zone:?}, transition={transition}"
+            );
             // The deck itself stays open to the same mover regardless of the
             // row beneath it.
             assert!(
@@ -1481,7 +1465,6 @@ fn unit_under_span_admission_reads_ground_row_beneath_deck() {
                     resolved_terrain: Some(&terrain),
                     terrain_costs: Some(&costs),
                     bypass_grid: false,
-                    mode: TerrainEntryMode::AStarNeighbor,
                     is_infantry: false,
                     mover_is_crusher: false,
                 })
@@ -1494,9 +1477,7 @@ fn unit_under_span_admission_reads_ground_row_beneath_deck() {
 
 #[test]
 fn infantry_under_span_admission_preserves_wall_and_grid_blocks() {
-    use crate::sim::pathfinding::cell_entry::{
-        CanEnterCellContext, TerrainEntryMode, evaluate_can_enter_cell,
-    };
+    use crate::sim::pathfinding::cell_entry::{CanEnterCellContext, evaluate_can_enter_cell};
 
     for wall in [false, true] {
         let mut cell = infantry_under_span_cell(0, 100, false);
@@ -1509,63 +1490,49 @@ fn infantry_under_span_admission_preserves_wall_and_grid_blocks() {
             grid.set_blocked(0, 0, true);
         }
         let costs = TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Foot);
-        for mode in [
-            TerrainEntryMode::AStarNeighbor,
-            TerrainEntryMode::RuntimeTransition,
-        ] {
-            assert!(
-                !evaluate_can_enter_cell(CanEnterCellContext {
-                    wall: None,
-                    target: (0, 0),
-                    terrain_layer: MovementLayer::Ground,
-                    movement_zone: Some(MovementZone::Infantry),
-                    speed_type: Some(SpeedType::Foot),
-                    path_grid: Some(&grid),
-                    resolved_terrain: Some(&terrain),
-                    terrain_costs: Some(&costs),
-                    bypass_grid: false,
-                    mode,
-                    is_infantry: true,
-                    mover_is_crusher: false,
-                })
-                .is_clear(),
-                "wall={wall}, mode={mode:?}"
-            );
-        }
+        assert!(
+            !evaluate_can_enter_cell(CanEnterCellContext {
+                wall: None,
+                target: (0, 0),
+                terrain_layer: MovementLayer::Ground,
+                movement_zone: Some(MovementZone::Infantry),
+                speed_type: Some(SpeedType::Foot),
+                path_grid: Some(&grid),
+                resolved_terrain: Some(&terrain),
+                terrain_costs: Some(&costs),
+                bypass_grid: false,
+                is_infantry: true,
+                mover_is_crusher: false,
+            })
+            .is_clear(),
+            "wall={wall}"
+        );
     }
 }
 
 #[test]
 fn infantry_under_span_admission_preserves_missing_target_rejection() {
-    use crate::sim::pathfinding::cell_entry::{
-        CanEnterCellContext, TerrainEntryMode, evaluate_can_enter_cell,
-    };
+    use crate::sim::pathfinding::cell_entry::{CanEnterCellContext, evaluate_can_enter_cell};
 
     let grid = PathGrid::new(1, 1);
     for path_grid in [None, Some(&grid)] {
-        for mode in [
-            TerrainEntryMode::AStarNeighbor,
-            TerrainEntryMode::RuntimeTransition,
-        ] {
-            assert!(
-                !evaluate_can_enter_cell(CanEnterCellContext {
-                    wall: None,
-                    target: (1, 0),
-                    terrain_layer: MovementLayer::Ground,
-                    movement_zone: Some(MovementZone::Infantry),
-                    speed_type: Some(SpeedType::Foot),
-                    path_grid,
-                    resolved_terrain: None,
-                    terrain_costs: None,
-                    bypass_grid: true,
-                    mode,
-                    is_infantry: true,
-                    mover_is_crusher: false,
-                })
-                .is_clear(),
-                "bypassing grid blockers must not admit an absent target"
-            );
-        }
+        assert!(
+            !evaluate_can_enter_cell(CanEnterCellContext {
+                wall: None,
+                target: (1, 0),
+                terrain_layer: MovementLayer::Ground,
+                movement_zone: Some(MovementZone::Infantry),
+                speed_type: Some(SpeedType::Foot),
+                path_grid,
+                resolved_terrain: None,
+                terrain_costs: None,
+                bypass_grid: true,
+                is_infantry: true,
+                mover_is_crusher: false,
+            })
+            .is_clear(),
+            "bypassing grid blockers must not admit an absent target"
+        );
     }
 }
 
@@ -2722,7 +2689,7 @@ fn runtime_and_search_share_known_water_cell_admission() {
 
     // Ground movement uses RuntimeTransition at the cell boundary; A* uses
     // AStarNeighbor. Both must enter through the same known-input predicate.
-    let runtime_admission = is_cell_passable_for_mover_with_speed(
+    assert!(!is_cell_passable_for_mover_with_speed(
         &grid,
         0,
         1,
@@ -2731,21 +2698,7 @@ fn runtime_and_search_share_known_water_cell_admission() {
         Some(&terrain),
         Some(&costs),
         false,
-        TerrainEntryMode::RuntimeTransition,
-    );
-    let search_admission = is_cell_passable_for_mover_with_speed(
-        &grid,
-        0,
-        1,
-        Some(MovementZone::Normal),
-        Some(SpeedType::Track),
-        Some(&terrain),
-        Some(&costs),
-        false,
-        TerrainEntryMode::AStarNeighbor,
-    );
-    assert!(!runtime_admission);
-    assert_eq!(search_admission, runtime_admission);
+    ));
 
     let path = astar_search(
         &grid,

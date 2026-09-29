@@ -7079,7 +7079,7 @@ mod tests {
         );
         assert_eq!(
             crate::sim::projectile::cell_target_coord(Some(rebuilt_terrain), 1, 1).z,
-            expected_ground_z + crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32,
+            expected_ground_z + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS,
             "before direct value restore the pristine raw 0x100 selects the +416 target surface"
         );
         let pristine_candidate_authority = rebuilt_terrain.capture_real_cell_bridge_flags_0x1180();

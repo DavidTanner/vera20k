@@ -4861,7 +4861,7 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
     let center_y = 7 * 256 + 128;
     let bridge_z = crate::util::lepton::ground_height_leptons(2, 1, center_x, center_y)
         .unwrap()
-        .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     let center = ProjectileCoord::new(center_x, center_y, bridge_z);
     let mut spawn = gsi_05_04_guided_projectile(
         crate::sim::combat::RAD_NO_ATTACKER,
@@ -7913,21 +7913,20 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     // A real changed query re-submits even if cached membership is absent.
     sim.substrate.display.remove(id);
     let before = sim.entity_display_layer(id, None).unwrap();
+    // GetHeight reads the coordinate Z Jumpjet flight writes.
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
-        .locomotor
-        .as_mut()
-        .unwrap()
-        .altitude = SimFixed::from_num(600);
+        .position
+        .exact_z_leptons = Some(600);
     sim.complete_jumpjet_display_process(id, before, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
     // The native tail's alive gate prevents another submission after death.
     let before = sim.entity_display_layer(id, None).unwrap();
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     entity.lifecycle.object_alive = false;
-    entity.locomotor.as_mut().unwrap().altitude = SimFixed::ZERO;
+    entity.position.exact_z_leptons = Some(0);
     sim.complete_jumpjet_display_process(id, before, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 }

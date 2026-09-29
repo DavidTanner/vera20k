@@ -1,6 +1,7 @@
 {
   "evidence_level": "Rust regression and fixture baseline provenance; not a native skirmish golden",
   "parent_commit": "b34f76e72c2afe614bf9e65fe42ecf07d166d4e0",
+  "captured_query_source_commit": "480dc6a1",
   "controls": {
     "parent": "Parent ore_scan.rs and zone_map.rs; remaining candidate code including the independently native-proved Foot constructor prerequisite unchanged",
     "candidate": "Shared Foot/Object/Map ore-query migration"

@@ -655,8 +655,8 @@ fn resolve_produced_unit_cell_coords(
         ground_z,
     );
     Some((
-        crate::sim::cell_kernel::world_to_cell_trunc(coords.x) as i16 as u16,
-        crate::sim::cell_kernel::world_to_cell_trunc(coords.y) as i16 as u16,
+        crate::util::lepton::lepton_to_cell_packed(coords.x) as u16,
+        crate::util::lepton::lepton_to_cell_packed(coords.y) as u16,
     ))
 }
 
@@ -1574,7 +1574,7 @@ fn preferred_exit_offsets(rules: &RuleSet, structure_id: &str) -> Vec<(i16, i16)
 /// Convert a lepton value to the NEAREST cell offset (256 leptons = 1 cell).
 ///
 /// Deliberately round-half-away, NOT the truncating
-/// `util::direction_tables::lepton_to_cell` — e.g. 200 leptons is cell 1 here
+/// `util::lepton::lepton_to_cell` — e.g. 200 leptons is cell 1 here
 /// and cell 0 there. Renamed so the two can never be conflated.
 fn lepton_to_cell_round_nearest(leptons: i32) -> i16 {
     // Round toward the nearest cell center. +128 for positive, -128 for negative.

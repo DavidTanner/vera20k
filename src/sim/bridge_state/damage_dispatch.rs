@@ -45,7 +45,7 @@ fn in_height_window(fields: CellFields, impact_z_leptons: i32) -> bool {
     }
     let ground_level = i32::from(fields.level as i8);
     let level_height = crate::util::lepton::LEPTONS_PER_LEVEL as i32;
-    let deck_height = crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32;
+    let deck_height = crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
     impact_z_leptons > (ground_level - 2) * level_height + deck_height
         && impact_z_leptons <= (ground_level + 1) * level_height + deck_height
 }

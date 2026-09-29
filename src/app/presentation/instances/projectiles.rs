@@ -44,14 +44,15 @@ fn geometry(
         point: [x, y],
         z_adjust: (-30i32).wrapping_sub(adjust_for_z_standard(coord.z)),
     };
-    let mut height = coord
-        .z
-        .wrapping_sub(ground_z)
-        .wrapping_sub(if on_bridge { 416 } else { 0 });
+    let mut height = coord.z.wrapping_sub(ground_z).wrapping_sub(if on_bridge {
+        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+    } else {
+        0
+    });
     let mut surface_z = ground_z;
-    if !on_bridge && structural && height >= 416 {
-        height = height.wrapping_sub(416);
-        surface_z = surface_z.wrapping_add(416);
+    if !on_bridge && structural && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS {
+        height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
+        surface_z = surface_z.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     let shadow = (shadow && height > 0).then(|| BulletPieceGeometry {
         point: [x, y + adjust_for_z_standard(height) as f32],

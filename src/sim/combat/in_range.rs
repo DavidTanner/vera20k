@@ -41,7 +41,7 @@ use crate::sim::movement::air_movement::{is_high_flying_in_query, is_low_flying_
 use crate::sim::production::foundation_dimensions;
 use crate::util::fixed_math::{SimFixed, isqrt_i64};
 use crate::util::lepton::{
-    BRIDGE_HEIGHT_DELTA_LEPTONS, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS, ground_height_leptons,
+    BRIDGE_DECK_HEIGHT_LEPTONS, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS, ground_height_leptons,
 };
 
 fn terrain_ground_z_at(
@@ -588,7 +588,7 @@ fn native_ground_target_z(x: i32, y: i32, cells: &NativeCellQuery<'_>) -> Option
     Some(
         i64::from(ground)
             + if cells.flags(cell) & 0x100 != 0 {
-                BRIDGE_HEIGHT_DELTA_LEPTONS
+                i64::from(BRIDGE_DECK_HEIGHT_LEPTONS)
             } else {
                 0
             },
@@ -616,7 +616,7 @@ fn native_source_under_bridge(
     ) else {
         return false;
     };
-    let top = i64::from(ground) + BRIDGE_HEIGHT_DELTA_LEPTONS;
+    let top = i64::from(ground) + i64::from(BRIDGE_DECK_HEIGHT_LEPTONS);
     src.2 < top && target_z >= top
 }
 
@@ -728,7 +728,7 @@ fn fire_source_for_target(
         y = cell_y;
         z = cell_z
             + if attacker.on_bridge {
-                BRIDGE_HEIGHT_DELTA_LEPTONS
+                i64::from(BRIDGE_DECK_HEIGHT_LEPTONS)
             } else {
                 0
             };
@@ -752,7 +752,7 @@ fn ground_z_with_bridge_offset(rx: u16, ry: u16, terrain: &ResolvedTerrainGrid) 
     let world_y = i32::from(ry).wrapping_mul(256).wrapping_add(128);
     let mut z = terrain_ground_z_at(terrain, rx, ry, world_x, world_y)?;
     if cell.has_bridge_deck {
-        z += BRIDGE_HEIGHT_DELTA_LEPTONS;
+        z += i64::from(BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     Some(z)
 }
@@ -902,7 +902,7 @@ mod tests {
         entity.on_bridge = true;
         assert_eq!(
             crate::sim::movement::ground_pose::object_world_z_leptons(&entity, Some(&terrain)),
-            crate::sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
         );
     }
 
@@ -1466,7 +1466,7 @@ mod tests {
         )
         .expect("supported structural terrain")
         .2;
-        assert_eq!(structural_z, BRIDGE_HEIGHT_DELTA_LEPTONS);
+        assert_eq!(structural_z, i64::from(BRIDGE_DECK_HEIGHT_LEPTONS));
     }
 
     #[test]
@@ -1477,7 +1477,7 @@ mod tests {
         terrain.cells[0].has_bridge_deck = true;
         assert_eq!(
             ground_z_with_bridge_offset(0, 0, &terrain),
-            Some(52 + BRIDGE_HEIGHT_DELTA_LEPTONS)
+            Some(52 + i64::from(BRIDGE_DECK_HEIGHT_LEPTONS))
         );
     }
 
@@ -1853,7 +1853,7 @@ mod tests {
                 (&rules, &test_interner()),
             )
             .map(|(_, _, z)| z),
-            Some(BRIDGE_HEIGHT_DELTA_LEPTONS)
+            Some(i64::from(BRIDGE_DECK_HEIGHT_LEPTONS))
         );
     }
 
@@ -2068,7 +2068,7 @@ mod tests {
         let on_deck = (
             5i64 * 256 + 128,
             5i64 * 256 + 128,
-            BRIDGE_HEIGHT_DELTA_LEPTONS,
+            i64::from(BRIDGE_DECK_HEIGHT_LEPTONS),
         );
         assert!(
             in_range_at(
@@ -2412,7 +2412,7 @@ mod tests {
         let mut entities = EntityStore::new();
         let mut target = ground_target(6, 5, 0, "TGT");
         target.on_bridge = true;
-        target.position.exact_z_leptons = Some(BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        target.position.exact_z_leptons = Some(BRIDGE_DECK_HEIGHT_LEPTONS);
         entities.insert(target);
         // Marked Object+50 snaps to the live target-cell surface. Both source
         // and target must have a structural span for this exact-deck test;
@@ -2426,7 +2426,7 @@ mod tests {
             &NativeCellQuery::canonical(&terrain),
         )
         .unwrap();
-        assert_eq!(target_point.2, BRIDGE_HEIGHT_DELTA_LEPTONS);
+        assert_eq!(target_point.2, i64::from(BRIDGE_DECK_HEIGHT_LEPTONS));
 
         let under = (5i64 * 256 + 128, 5i64 * 256 + 128, 0i64);
         assert!(

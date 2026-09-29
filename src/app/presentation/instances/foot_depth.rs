@@ -240,7 +240,7 @@ fn shp_z_adjust_in_runtime(
         return height_only as f32;
     };
     let surface = ground.wrapping_add(if entity.on_bridge {
-        crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
     } else {
         0
     });

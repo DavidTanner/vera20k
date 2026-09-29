@@ -240,8 +240,7 @@ mod admission;
 
 use super::combat_weapon::is_armed;
 use admission::{
-    candidate_admitted, current_target_disposition, destination_cell, entity_coord,
-    primary_range_leptons,
+    candidate_admitted, current_target_disposition, destination_cell, primary_range_leptons,
 };
 
 /// Execute one complete native response transaction after the receiver owner
@@ -332,7 +331,12 @@ pub(crate) fn respond_to_base_attack(
     else {
         return;
     };
-    let attacker_coord = entity_coord(attacker, sim.resolved_terrain.as_ref());
+    let attacker_coord = ground_pose::object_get_coords(
+        attacker,
+        Some(attacker_object),
+        sim.resolved_terrain.as_ref(),
+    );
+    let attacker_coord = [attacker_coord.x, attacker_coord.y, attacker_coord.z];
     let victim_is_self_anchor = victim.archive_target() == Some(TargetKind::Entity(victim_id));
     let candidate_ids = entities.keys_sorted();
     for class in [ResponderClass::Infantry, ResponderClass::Unit] {
@@ -427,10 +431,12 @@ pub(crate) fn respond_to_base_attack(
                 continue;
             }
 
+            let current_coord =
+                ground_pose::object_get_coords(candidate, Some(candidate_object), Some(terrain));
             let raw_score = evaluate_target_threat(ThreatFacts {
                 cost: candidate_object.cost,
                 speed_leptons_per_frame: candidate_object.speed,
-                current_coord: entity_coord(candidate, Some(terrain)),
+                current_coord: [current_coord.x, current_coord.y, current_coord.z],
                 attacker_coord,
                 primary_range_leptons: primary_range_leptons(
                     candidate,

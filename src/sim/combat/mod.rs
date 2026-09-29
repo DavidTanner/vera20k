@@ -786,32 +786,21 @@ fn target_coords(
     rules: Option<&RuleSet>,
     interner: &StringInterner,
 ) -> (u16, u16, SimFixed, SimFixed) {
-    let mut rx = entity.position.rx;
-    let mut ry = entity.position.ry;
-    let mut sub_x = entity.position.sub_x;
-    let mut sub_y = entity.position.sub_y;
-
-    if entity.category == EntityCategory::Structure {
-        if let Some(obj) = rules.and_then(|r| r.object(interner.resolve(entity.type_ref()))) {
-            let (fw, fh) = foundation_dimensions(&obj.foundation);
-            // Shift from NW corner cell center to foundation geometric center.
-            // (fw-1)*128 leptons in X, (fh-1)*128 leptons in Y.
-            // sub_x/sub_y may exceed 256 — lepton_distance_sq_raw handles
-            // this correctly since it computes cell*256+sub as a flat value.
-            //447AC0 subtracts1 as a signed integer, including the native0x0
-            //foundation: its GetCoords lies128 leptons before the raw anchor.
-            let offset_x = (i32::from(fw) - 1) * 128;
-            let offset_y = (i32::from(fh) - 1) * 128;
-            let full_x: i32 = rx as i32 * 256 + sub_x.to_num::<i32>() + offset_x;
-            let full_y: i32 = ry as i32 * 256 + sub_y.to_num::<i32>() + offset_y;
-            rx = (full_x / 256) as u16;
-            ry = (full_y / 256) as u16;
-            sub_x = SimFixed::from_num(full_x % 256);
-            sub_y = SimFixed::from_num(full_y % 256);
-        }
-    }
-
-    (rx, ry, sub_x, sub_y)
+    let object = (entity.category == EntityCategory::Structure)
+        .then(|| rules.and_then(|r| r.object(interner.resolve(entity.type_ref()))))
+        .flatten();
+    let coord = match object {
+        Some(object) => crate::sim::movement::ground_pose::object_center_coord(entity, object),
+        None => crate::sim::movement::ground_pose::position_world_coord(&entity.position),
+    };
+    // A foundation centre may carry sub-cell leptons past 256; callers that
+    // flatten `cell*256+sub` see the same point.
+    (
+        (coord.x / 256) as u16,
+        (coord.y / 256) as u16,
+        SimFixed::from_num(coord.x % 256),
+        SimFixed::from_num(coord.y % 256),
+    )
 }
 
 /// Compute lepton-precise coordinates for a cell target (force-fire on terrain).
@@ -2422,8 +2411,8 @@ pub(crate) struct CombatEmit {
 pub(crate) fn projectile_impact_cell(
     impact: ProjectileCoord,
 ) -> (u16, u16, SimFixed, SimFixed, i32) {
-    let rx = impact.x.div_euclid(256).clamp(0, i32::from(u16::MAX)) as u16;
-    let ry = impact.y.div_euclid(256).clamp(0, i32::from(u16::MAX)) as u16;
+    let rx = crate::util::lepton::lepton_to_cell(impact.x).clamp(0, i32::from(u16::MAX)) as u16;
+    let ry = crate::util::lepton::lepton_to_cell(impact.y).clamp(0, i32::from(u16::MAX)) as u16;
     (
         rx,
         ry,
@@ -2477,12 +2466,14 @@ fn emit_projectile_shrapnel(
     };
 
     let target_position = match detonation.target {
+        // `0x0046A370`: the Target's GetCoords (vt+0x48).
         ProjectileTarget::Entity(id) => entities.get(id).map(|entity| {
-            ProjectileCoord::new(
-                i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
-                i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
-                i32::from(entity.position.z) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
-            )
+            let coord = crate::sim::movement::ground_pose::object_get_coords(
+                entity,
+                rules.object(interner.resolve(entity.type_ref())),
+                terrain,
+            );
+            ProjectileCoord::new(coord.x, coord.y, coord.z)
         }),
         ProjectileTarget::Cell { rx, ry } => {
             Some(crate::sim::projectile::cell_target_coord(terrain, rx, ry))
@@ -2618,13 +2609,12 @@ fn emit_projectile_shrapnel(
                     };
                     // `0x0046A614`: the object's GetCoords (vt+0x48), a
                     // building's foundation center (`0x00447AC0`).
-                    let (rx, ry, sub_x, sub_y) = target_coords(entity, Some(rules), interner);
-                    ProjectileCoord::new(
-                        i32::from(rx) * 256 + sub_x.to_num::<i32>(),
-                        i32::from(ry) * 256 + sub_y.to_num::<i32>(),
-                        i32::from(entity.position.z)
-                            * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
-                    )
+                    let coord = crate::sim::movement::ground_pose::object_get_coords(
+                        entity,
+                        rules.object(interner.resolve(entity.type_ref())),
+                        terrain,
+                    );
+                    ProjectileCoord::new(coord.x, coord.y, coord.z)
                 }
                 ProjectileTarget::Cell { rx, ry } => {
                     crate::sim::projectile::cell_target_coord(terrain, rx, ry)

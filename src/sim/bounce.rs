@@ -324,10 +324,6 @@ impl BounceState {
 /// integration remain separate residuals below.
 const FLAT_RAMP: u8 = 0;
 
-/// Original initializer439610 computes four times the initialized integer
-/// Bounce height104, stores416 at89C76C. Both439B00 and439A10 consume it.
-const DECK_PLANE_OFFSET_LEPTONS: i32 = 416;
-
 /// The drop applied when the body rises back through the deck plane
 /// (`0x00439D5D`, `local_118 + -0x14`).
 const DECK_RISE_DROP_LEPTONS: i32 = 20;
@@ -510,8 +506,10 @@ impl BounceState {
             X87Chop53::load_f32(self.position[2])?,
             X87Chop53::load_i32(ground),
         ))? as i32;
-        if terrain.is_bridge_cell(coord) && height_above >= DECK_PLANE_OFFSET_LEPTONS {
-            height_above -= DECK_PLANE_OFFSET_LEPTONS;
+        if terrain.is_bridge_cell(coord)
+            && height_above >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+        {
+            height_above -= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
         }
         let vx = X87Chop53::ftol_i64(X87Chop53::load_f32(self.velocity[0])?)? as i32;
         let vy = X87Chop53::ftol_i64(X87Chop53::load_f32(self.velocity[1])?)? as i32;
@@ -582,7 +580,7 @@ impl BounceState {
         let new_coord = ftol_coord(self.position)?;
 
         let ground = terrain.ground_height_leptons(new_coord);
-        let deck = ground.wrapping_add(DECK_PLANE_OFFSET_LEPTONS);
+        let deck = ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         let new_cell = terrain.select_cell(new_coord);
 
         let mut fell_through_deck = false;

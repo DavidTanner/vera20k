@@ -29,78 +29,8 @@ use crate::util::fixed_math::SimFixed;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::intern::InternedId;
 
-use crate::sim::production::foundation_dimensions;
-use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
+use crate::sim::movement::ground_pose::{object_get_coords, object_world_z_leptons};
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
-
-/// Object-coordinate Z of one object in leptons: the terrain ground height for
-/// its cell (level plus slope), the bridge deck offset when it stands on a
-/// bridge, and any locomotor altitude.
-///
-/// A missing resolved-terrain grid, a cell outside it, or an unsupported slope
-/// is a Rust-side resource gap rather than a game rule, so this degrades that
-/// one object to its stored level height instead of refusing to answer — the
-/// caller must still be able to reach a distance decision.
-fn object_coordinate_z(
-    sim: &Simulation,
-    entity: &crate::sim::game_entity::GameEntity,
-    x_leptons: i64,
-    y_leptons: i64,
-) -> i64 {
-    let ground = sim
-        .resolved_terrain
-        .as_ref()
-        .and_then(|terrain| terrain.cell(entity.position.rx, entity.position.ry))
-        .and_then(|cell| {
-            ground_height_leptons(
-                cell.level,
-                cell.slope_type,
-                x_leptons as i32,
-                y_leptons as i32,
-            )
-            .ok()
-        })
-        .map_or_else(
-            || i64::from(entity.position.z) * LEPTONS_PER_LEVEL,
-            i64::from,
-        );
-    ground
-        + if entity.on_bridge {
-            i64::from(crate::sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS)
-        } else {
-            0
-        }
-        + entity
-            .locomotor
-            .as_ref()
-            .map(|locomotor| locomotor.altitude.to_num::<i64>())
-            .unwrap_or(0)
-}
-
-/// `BuildingClass::GetCoords @ 0x00447AC0` (object vtable +0x48) X/Y, read
-/// from the disassembly 2026-09-05: `out.x = [this+0x9C] + (W-1)*128`,
-/// `out.y = [this+0xA0] + (H-1)*128`, `out.z = [this+0xA4]` unchanged, with
-/// `W = BuildingTypeClass::GetFoundationWidth @ 0x0045EC90` and
-/// `H = GetFoundationHeight(0) @ 0x0045ECA0`. `+0x9C` is the NW foundation
-/// cell's coordinate, so the result is the footprint centre: offset 0 for a
-/// 1x1, (384, 256) leptons for a 4x3 refinery. Both the `FUN_004DEE80`
-/// candidate ranking and the Mission_Harvest state-2 too-far test consume
-/// this point, so they share this one formula. Z is not touched here: the
-/// building's stored coordinate Z belongs to its NW cell, which is what
-/// `object_coordinate_z` resolves for the entity.
-fn building_get_coords_xy(
-    entity: &crate::sim::game_entity::GameEntity,
-    foundation_w: u16,
-    foundation_h: u16,
-) -> (i64, i64) {
-    let x = i64::from(entity.position.rx) * 256
-        + entity.position.sub_x.to_num::<i64>()
-        + (i64::from(foundation_w.max(1)) - 1) * 128;
-    let y = i64::from(entity.position.ry) * 256
-        + entity.position.sub_y.to_num::<i64>()
-        + (i64::from(foundation_h.max(1)) - 1) * 128;
-    (x, y)
-}
 
 /// Native too-far test: `ftol(Sqrt_Approx(d²)) > threshold_cells * 256` is far;
 /// `<=` (`JLE @ 0x0073EC19` / `JG @ 0x0073EE4B`) keeps the close radio path.
@@ -142,21 +72,19 @@ fn return_exceeds_too_far_threshold(
 
     let miner_x = i64::from(miner.position.rx) * 256 + miner.position.sub_x.to_num::<i64>();
     let miner_y = i64::from(miner.position.ry) * 256 + miner.position.sub_y.to_num::<i64>();
-    let refinery_nw_x =
-        i64::from(refinery.position.rx) * 256 + refinery.position.sub_x.to_num::<i64>();
-    let refinery_nw_y =
-        i64::from(refinery.position.ry) * 256 + refinery.position.sub_y.to_num::<i64>();
-    // Same by-name lookup as `find_docking_bay`; a type the sim's interner
-    // never produced (foreign-interner fixtures) degrades to a 1x1 footprint.
-    let (w, h) = sim
+    // Both GetCoords (vt+0x48): the refinery's foundation centre
+    // (`0x00447AC0`) at its NW cell's Z. Same by-name lookup as
+    // `find_docking_bay`; a type the sim's interner never produced
+    // (foreign-interner fixtures) stays at its raw Location.
+    let terrain = sim.resolved_terrain.as_ref();
+    let refinery_type = sim
         .interner
         .try_resolve(refinery.type_ref())
-        .and_then(|name| rules.object_case_insensitive(name))
-        .map(|obj| foundation_dimensions(&obj.foundation))
-        .unwrap_or((1, 1));
-    let (refinery_x, refinery_y) = building_get_coords_xy(refinery, w, h);
-    let miner_z = object_coordinate_z(sim, miner, miner_x, miner_y);
-    let refinery_z = object_coordinate_z(sim, refinery, refinery_nw_x, refinery_nw_y);
+        .and_then(|name| rules.object_case_insensitive(name));
+    let refinery_coord = object_get_coords(refinery, refinery_type, terrain);
+    let (refinery_x, refinery_y) = (i64::from(refinery_coord.x), i64::from(refinery_coord.y));
+    let miner_z = i64::from(object_world_z_leptons(miner, terrain));
+    let refinery_z = i64::from(refinery_coord.z);
 
     let dx = X87Chop53::load_i32(i32::try_from(miner_x - refinery_x).ok()?);
     let dy = X87Chop53::load_i32(i32::try_from(miner_y - refinery_y).ok()?);
@@ -343,7 +271,7 @@ mod gsi_04_03b_tests {
         assert_eq!(
             return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 1),
             Some(true),
-            "the fallback Z is position.z * LEPTONS_PER_LEVEL, not a dropped term"
+            "the fallback Z is the stored level, not a dropped term"
         );
     }
 
@@ -1336,11 +1264,12 @@ fn building_nearby_passable_cell(
     grid: &PathGrid,
 ) -> Option<(u16, u16)> {
     let building = sim.substrate.entities.get(building_sid)?;
-    let (w, h) = sim
-        .object_type(building.type_ref(), rules)
-        .map(|obj| foundation_dimensions(&obj.foundation))
-        .unwrap_or((1, 1));
-    let (x, y) = building_get_coords_xy(building, w, h);
+    let coord = object_get_coords(
+        building,
+        sim.object_type(building.type_ref(), rules),
+        sim.resolved_terrain.as_ref(),
+    );
+    let (x, y) = (i64::from(coord.x), i64::from(coord.y));
     super::exit_cell_search::find_nearby_passable_cell_with_index(
         (x >> 8) as i32,
         (y >> 8) as i32,
@@ -1512,7 +1441,6 @@ fn find_docking_bay(
             if !wide && !miner_dock::would_admit(sim, sid, snap.entity_id, capacity) {
                 continue;
             }
-            let (w, h) = foundation_dimensions(&obj.foundation);
             let dock = refinery_dock_cell(entity.position.rx, entity.position.ry);
             if !refinery_zone_reachable(sim, miner, unit_mz, (snap.rx, snap.ry), dock) {
                 continue;
@@ -1531,7 +1459,8 @@ fn find_docking_bay(
             }
             // `BuildingClass::GetCoords @ 0x00447AC0`: foundation centre, the
             // same point the state-2 too-far test measures to.
-            let (centre_x, centre_y) = building_get_coords_xy(entity, w, h);
+            let centre = object_get_coords(entity, Some(obj), sim.resolved_terrain.as_ref());
+            let (centre_x, centre_y) = (i64::from(centre.x), i64::from(centre.y));
             let dx = miner_x - centre_x;
             let dy = miner_y - centre_y;
             let dist_sq = dx * dx + dy * dy;

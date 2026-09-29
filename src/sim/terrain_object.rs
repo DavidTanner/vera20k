@@ -503,7 +503,7 @@ mod tests {
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::pathfinding::PathGrid;
     use crate::sim::pathfinding::cell_entry::{
-        CanEnterCellContext, CanEnterCellResult, TerrainEntryMode, evaluate_can_enter_cell,
+        CanEnterCellContext, CanEnterCellResult, evaluate_can_enter_cell,
     };
     use crate::sim::terrain_spawn::seed_terrain_spawners;
     use crate::sim::world::Simulation;
@@ -728,7 +728,6 @@ mod tests {
                     resolved_terrain: Some(&resolved),
                     terrain_costs: None,
                     bypass_grid: false,
-                    mode: TerrainEntryMode::RuntimeTransition,
                     is_infantry: false,
                     mover_is_crusher: false,
                 }),

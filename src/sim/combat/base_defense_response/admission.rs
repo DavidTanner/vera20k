@@ -14,23 +14,6 @@ use super::super::combat_weapon::is_armed;
 use super::super::fire_error::FireError;
 use super::super::fire_error_world::FireSubject;
 use super::ExistingTargetDisposition;
-use crate::sim::movement::ground_pose::object_world_z_leptons;
-
-pub(super) fn entity_coord(entity: &GameEntity, terrain: Option<&ResolvedTerrainGrid>) -> [i32; 3] {
-    [
-        i32::from(entity.position.rx as i16)
-            .wrapping_mul(256)
-            .wrapping_add(entity.position.sub_x.to_num::<i32>()),
-        i32::from(entity.position.ry as i16)
-            .wrapping_mul(256)
-            .wrapping_add(entity.position.sub_y.to_num::<i32>()),
-        object_world_z_leptons(entity, terrain),
-    ]
-}
-
-fn lepton_to_cell_component(value: i32) -> i32 {
-    value.wrapping_add((value >> 31) & 255) >> 8
-}
 
 /// Native70829C/7082DB and7084F4/708533 query virtual+4C with a null
 /// requester. The shared coordinate owner supplies the retained locomotor head
@@ -52,8 +35,8 @@ pub(super) fn destination_cell(
         Some((rules, interner)),
     )?;
     Ok((
-        i32::from(lepton_to_cell_component(coord.x) as i16),
-        i32::from(lepton_to_cell_component(coord.y) as i16),
+        i32::from(crate::util::lepton::lepton_to_cell_packed(coord.x)),
+        i32::from(crate::util::lepton::lepton_to_cell_packed(coord.y)),
     ))
 }
 
