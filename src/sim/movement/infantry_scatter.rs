@@ -122,8 +122,11 @@ impl Simulation {
 
 impl Simulation {
     /// The Infantry class setter `vt+0x480(cell, 1)` (`0x0051AA40`) for a
-    /// Walk infantryman: Infantry51AA40 -> Foot4D94B0 -> Walk75ACB0. Reached
-    /// from Scatter (`0x0051D6E0`) and from the slave manager's sends. The
+    /// Walk or Teleport infantryman: Infantry51AA40 -> Foot4D94B0 -> the
+    /// active locomotor's Move_To (Walk75ACB0 or Teleport `0x00718100`; the
+    /// setter never reads `Teleporter=`). Reached from Scatter (`0x0051D6E0`),
+    /// the slave manager's sends, team scripts and a Teleport infantryman's
+    /// Move and AttackMove orders. The
     /// human same-destination/prone DoAction7 arm (`0x0051ABD7..`) needs the
     /// requested cell to already be the NavCom: the damage caller requires
     /// Fraidycat, and the slave sends replace a missing or different NavCom.
@@ -131,7 +134,7 @@ impl Simulation {
     /// the ordinary object turn.
     /// Native comparisons: infantry_scatter_destination.{py,json,meta.json}.
     ///
-    /// Returns false for the still-unmigrated non-Walk/JumpJet class setters.
+    /// Returns false for the still-unmigrated Jumpjet and other class setters.
     /// DirectRocker reciprocal links, lifted-unit release, retained fire particles
     /// and the Unit-produced +6AC latch still lack their production owners here.
     pub(crate) fn assign_infantry_walk_cell_destination(
@@ -151,11 +154,16 @@ impl Simulation {
         let object = self
             .object_type(actor.type_ref(), rules)
             .ok_or("scatter destination requires type")?;
+        let teleport = actor
+            .locomotor
+            .as_ref()
+            .is_some_and(|l| l.kind == LocomotorKind::Teleport);
         if object.jumpjet
-            || !actor
-                .locomotor
-                .as_ref()
-                .is_some_and(|l| l.kind == LocomotorKind::Walk)
+            || !(teleport
+                || actor
+                    .locomotor
+                    .as_ref()
+                    .is_some_and(|l| l.kind == LocomotorKind::Walk))
         {
             return Ok(false);
         }
@@ -188,6 +196,22 @@ impl Simulation {
         );
         if !self.begin_foot_destination(id, true) {
             return Ok(true);
+        }
+        if teleport {
+            // Foot tail: NavCom, then Teleport Move_To, then the accepted
+            // timers whatever it answered (`0x004D96C2..0x004D9707`).
+            let frame = self.session.binary_frame;
+            let actor = self.substrate.entities.get_mut(id).unwrap();
+            super::navcom::publish_nav_com(actor, requested);
+            let accepted = super::teleport_movement::teleport_move_to(
+                actor,
+                scatter.destination,
+                &rules.general,
+                false,
+                frame,
+            );
+            super::DestinationTiming::from_rules(frame, Some(rules)).accept(actor);
+            return Ok(accepted);
         }
         super::prepare_walk_cell_destination(
             &mut self.substrate.entities,

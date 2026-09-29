@@ -1847,13 +1847,16 @@ fn hash_locomotor_payload(
             1u8.hash(hasher);
             state.hash(hasher);
         }
-        LocomotorRuntimePayload::Teleport(state) => {
+        // Teleport and Rocket state is the entity's (folded with it); the
+        // retired payload copy folds as absent, so these tags hash as before
+        // for an owner with no state.
+        LocomotorRuntimePayload::Teleport => {
             2u8.hash(hasher);
-            hash_teleport_state(state.as_ref(), hasher);
+            hash_teleport_state(None, hasher);
         }
-        LocomotorRuntimePayload::Rocket(state) => {
+        LocomotorRuntimePayload::Rocket => {
             4u8.hash(hasher);
-            hash_rocket_state(state.as_ref(), hasher);
+            hash_rocket_state(None, hasher);
         }
         LocomotorRuntimePayload::Hover(head) => {
             6u8.hash(hasher);

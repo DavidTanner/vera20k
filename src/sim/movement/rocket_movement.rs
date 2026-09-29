@@ -10,7 +10,6 @@ use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::facing_from_delta;
-use crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload;
 use crate::util::fixed_math::{
     SIM_ONE, SIM_ZERO, SimFixed, int_distance_to_sim, native_movement_frame_fraction, sim_to_f32,
 };
@@ -199,10 +198,7 @@ fn attach_rocket_state_full(
         pitch: std::f32::consts::FRAC_PI_2, // Nose up during launch.
         payload,
     };
-    entity.rocket_state = Some(rocket_state.clone());
-    if let Some(locomotor) = entity.locomotor.as_mut() {
-        locomotor.runtime_payload = LocomotorRuntimePayload::Rocket(Some(rocket_state));
-    }
+    entity.rocket_state = Some(rocket_state);
     entity.push_debug_event(
         0,
         DebugEventKind::SpecialMovementStart {
@@ -329,11 +325,6 @@ pub fn tick_rocket_movement(
             let phase_change = (rocket.phase != before).then(|| format!("{:?}", rocket.phase));
             (outcome, phase_change)
         };
-        if let (Some(rocket), Some(locomotor)) =
-            (entity.rocket_state.as_ref(), entity.locomotor.as_mut())
-        {
-            locomotor.runtime_payload = LocomotorRuntimePayload::Rocket(Some(rocket.clone()));
-        }
         if let Some(phase) = phase_change {
             entity.push_debug_event(
                 sim_tick as u32,
