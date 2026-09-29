@@ -230,7 +230,7 @@ fn production_drive_reaim_reads_retained_target_head() {
 #[test]
 fn missing_foot_receiver_is_an_error_and_tube_does_not_hide_missing_descriptor() {
     let mut e = entity(1, LocomotorKind::Drive, NULL_COORD, NULL_COORD);
-    e.drive_locomotion = None;
+    e.locomotor = None;
     assert!(navigation_coordinate(&e, None).is_err());
     e.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
         tube_id: TubeId(0),

@@ -83,11 +83,11 @@ pub(super) fn navigation_coordinate(
     let current = current_coordinate(entity);
     match loco.active_kind() {
         LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk | LocomotorKind::Hover => {
-            if loco.active_kind() == LocomotorKind::Drive && entity.drive_locomotion.is_none()
-                || loco.active_kind() == LocomotorKind::Ship && entity.ship_locomotion.is_none()
-            {
-                return Err("Foot coordinate requires the active track locomotor payload".into());
-            }
+            // The owner installs constructor-default Drive/Ship storage
+            // lazily as None. This is a null retained head, not a missing
+            // active locomotor. Original constructors 4AF540/69EC50 and
+            // null_head_current/both_null receipts pin the current fallback;
+            // see tools/spatial_oracle/foot_bridge_layer.{json,md}.
             Ok(head_or_current(stored_head(entity), current))
         }
         // Fly/Rocket/Teleport share +18/55ACA0: copy linked Object+9C.

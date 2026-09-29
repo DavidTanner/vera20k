@@ -560,40 +560,6 @@ impl ZoneGrid {
         Some(source_zone == target_zone)
     }
 
-    /// Exact `MapClass::Can_Reach_Zone @ 0x0056D100` surface as the
-    /// base-defence response consumes it.
-    ///
-    /// `None` is native MovementZone `-1`. The response passes the candidate
-    /// destination as source A, the protected victim destination as B, the
-    /// candidate's `ShouldBeOnBridge` for A, false for B, and disables the
-    /// second asymmetric B-fringe shortcut. Both raw invalid labels compare
-    /// equal exactly as native; no adjacency/super-zone widening is consulted.
-    pub(crate) fn can_reach_base_defense_response(
-        &self,
-        movement_zone: Option<MovementZone>,
-        source: (i32, i32),
-        destination: (i32, i32),
-        source_should_be_on_bridge: bool,
-        source_in_tactical_playfield: bool,
-        map_size_width: i32,
-        map_size_height: i32,
-    ) -> bool {
-        let Some(movement_zone) = movement_zone else {
-            return true;
-        };
-
-        if !source_in_tactical_playfield
-            && cell_is_in_native_map_diamond(source, map_size_width, map_size_height)
-        {
-            return true;
-        }
-
-        let source_zone =
-            self.get_zone_id_native(source, movement_zone, source_should_be_on_bridge);
-        let destination_zone = self.get_zone_id_native(destination, movement_zone, false);
-        source_zone.is_some() && source_zone == destination_zone
-    }
-
     /// `MapClass::GetZoneID @ 0x0056D230` with its third argument, the
     /// bridge-resolution flag, honoured.
     ///
@@ -607,8 +573,6 @@ impl ZoneGrid {
     /// Legacy cached16-bit consumers pass the source/destination bridge flag.
     /// Missing-record DWORD and live inactive-walk parity remain unresolved
     /// here;42C900 uses get_path_zone_id_native with current terrain instead:
-    /// - `Can_Reach_Zone @ 0x0056D100` (base-defence response), the candidate's
-    ///   `ShouldBeOnBridge` for source A and `false` for B;
     /// - `TechnoClass::Greatest_Threat @ 0x006F8EBF`, a literal `1` for the
     ///   scanner's own cell, and `TechnoClass::Evaluate_Candidate @
     ///   0x006F7E95`, the candidate's `Object+0x8C` on-bridge byte.
@@ -786,9 +750,9 @@ impl ZoneGrid {
     /// O(1) reachability check: can a unit with this movement zone reach `to`
     /// from `from`?
     ///
-    /// `MapClass::Can_Reach_Zone` @ `0x0056D100` is a **pure equality compare**
-    /// of the two `GetZoneID` results — it consults no adjacency graph and no
-    /// connected-components structure — and so is this.
+    /// This derived-cache predicate compares layer labels for the existing
+    /// graph clients. It does not implement the ordered raw-zone and mutable
+    /// Dummy protocol of Map56D100; live native callers use can_reach_native.
     ///
     /// Not modelled, recorded: the native opens with `if (speed_type == -1)
     /// return true`, a sentinel arm no caller can reach through

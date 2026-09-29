@@ -5,17 +5,21 @@
 //! Its admission asks each candidate's GetFireError through the one owner
 //! ([`super::fire_error_world::FireSubject`]), so the scan reads the whole
 //! world while the transaction's mutations come before and after it.
+//! Coordinate/layer/zone source: tools/spatial_oracle/foot_bridge_layer.{json,md},
+//! original70829C..70833C and7084F4..708594. Shared movement owners implement
+//! Foot4DBDF0/4DDC40 and Map56D100; the response never selects NavCom instead.
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::is_allied_with;
-use crate::rules::locomotor_type::MovementZone;
+use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::cell_rect::cell_is_in_playfield_height_aware;
 use crate::sim::mission::authority::queue_entity_mission_deferred;
 use crate::sim::mission::concrete_effects::{
     assign_target_commits, represented_assign_target_admitted,
 };
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::movement::ground_pose;
+use crate::sim::pathfinding::zone_map::ZoneQueryCell;
 use crate::sim::world::Simulation;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, distance_3d_leptons};
 
@@ -39,6 +43,10 @@ pub(crate) enum ExistingTargetDisposition {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ThreatFacts {
+    // Required response scoring/dispatch residual (#759): production still
+    // supplies Cost here, in the budget and assigned sum. Original4D97A0,
+    // 7080BA and708734 use vt+2C0/708B40 ThreatPosed. The bridge-query corpus
+    // ends before scoring and does not establish this wider mechanism.
     pub(crate) cost: i32,
     pub(crate) speed_leptons_per_frame: i32,
     pub(crate) current_coord: [i32; 3],
@@ -232,8 +240,7 @@ mod admission;
 
 use super::combat_weapon::is_armed;
 use admission::{
-    candidate_admitted, current_target_disposition, destination_cell, entity_coord,
-    primary_range_leptons, should_be_on_bridge_for_response,
+    candidate_admitted, current_target_disposition, destination_cell, primary_range_leptons,
 };
 
 /// Execute one complete native response transaction after the receiver owner
@@ -296,7 +303,12 @@ pub(crate) fn respond_to_base_attack(
     // Rust's map caches are derived rather than native globals. A live positive
     // scan cannot be exact without both authorities; fail atomically before the
     // native Team suspension point instead of partially mutating the response.
-    if budget > 0 && (world.zone_grid.is_none() || world.resolved_terrain.is_none()) {
+    if budget > 0
+        && (world.zone_grid.is_none()
+            || world.resolved_terrain.is_none()
+            || world.playfield_bounds.is_none()
+            || world.playfield_size_height.is_none())
+    {
         return;
     }
 
@@ -311,14 +323,20 @@ pub(crate) fn respond_to_base_attack(
         return;
     }
 
-    // The scan only reads; every mutation comes after it.
+    // Admission retains native lazy map-query effects on shared Dummy. Entity
+    // and mission mutations follow the scan.
     let sim: &Simulation = world;
     let entities = &sim.substrate.entities;
     let (Some(victim), Some(attacker)) = (entities.get(victim_id), entities.get(attacker_id))
     else {
         return;
     };
-    let attacker_coord = entity_coord(attacker, sim.resolved_terrain.as_ref());
+    let attacker_coord = ground_pose::object_get_coords(
+        attacker,
+        Some(attacker_object),
+        sim.resolved_terrain.as_ref(),
+    );
+    let attacker_coord = [attacker_coord.x, attacker_coord.y, attacker_coord.z];
     let victim_is_self_anchor = victim.archive_target() == Some(TargetKind::Entity(victim_id));
     let candidate_ids = entities.keys_sorted();
     for class in [ResponderClass::Infantry, ResponderClass::Unit] {
@@ -348,38 +366,77 @@ pub(crate) fn respond_to_base_attack(
                 .resolved_terrain
                 .as_ref()
                 .expect("positive scan validated terrain");
-            let destination = destination_cell(candidate, entities, Some(terrain));
-            let victim_destination = destination_cell(victim, entities, Some(terrain));
-            let Some(source_should_be_on_bridge) =
-                should_be_on_bridge_for_response(candidate, entities, terrain)
+            // Original70829C/7082DB (Infantry) and7084F4/708533 (Unit)
+            // resolve the victim before the candidate. Source-layer queries
+            // use the same Foot/ground owners as movement, never NavCom.
+            let Ok(victim_destination) =
+                destination_cell(victim, entities, Some(terrain), rules, &sim.interner)
             else {
                 continue;
             };
-            let source_in_playfield =
-                cell_is_in_playfield_height_aware(destination, sim.playfield_bounds, Some(terrain));
-            let movement_zone = (candidate_object.movement_zone != MovementZone::Invalid)
-                .then_some(candidate_object.movement_zone);
+            let Ok(destination) =
+                destination_cell(candidate, entities, Some(terrain), rules, &sim.interner)
+            else {
+                continue;
+            };
+            let cells = NativeCellQuery::canonical(terrain);
+            let current = ground_pose::position_world_coord(&candidate.position);
+            let in_tube = candidate.low_bridge_tube_state.is_some();
+            // Foot4DDC40 short-circuits before virtual+4C in a Tube.
+            let navigation = if in_tube {
+                current
+            } else {
+                match sim.foot_navigation_coordinate(candidate_id) {
+                    Ok(coord) => coord,
+                    Err(_) => continue,
+                }
+            };
+            let Ok(source_should_be_on_bridge) = ground_pose::navigation_should_be_on_bridge(
+                &cells,
+                navigation,
+                current,
+                candidate.on_bridge,
+                in_tube,
+            ) else {
+                continue;
+            };
+            let bounds = sim
+                .playfield_bounds
+                .expect("positive scan validated bounds");
+            let size = (
+                bounds.base,
+                sim.playfield_size_height
+                    .expect("positive scan validated Size"),
+            );
             if !sim
                 .zone_grid
                 .as_ref()
                 .expect("positive scan validated zone grid")
-                .can_reach_base_defense_response(
-                    movement_zone,
-                    destination,
-                    victim_destination,
+                .can_reach_native(
+                    &cells,
+                    ZoneQueryCell::Copied((destination.0 as i16, destination.1 as i16)),
+                    ZoneQueryCell::Copied((
+                        victim_destination.0 as i16,
+                        victim_destination.1 as i16,
+                    )),
+                    candidate_object.movement_zone,
                     source_should_be_on_bridge,
-                    source_in_playfield,
-                    i32::from(sim.session.map_width),
-                    i32::from(sim.session.map_height),
+                    false,
+                    false,
+                    bounds,
+                    size,
                 )
+                .unwrap_or(false)
             {
                 continue;
             }
 
+            let current_coord =
+                ground_pose::object_get_coords(candidate, Some(candidate_object), Some(terrain));
             let raw_score = evaluate_target_threat(ThreatFacts {
                 cost: candidate_object.cost,
                 speed_leptons_per_frame: candidate_object.speed,
-                current_coord: entity_coord(candidate, Some(terrain)),
+                current_coord: [current_coord.x, current_coord.y, current_coord.z],
                 attacker_coord,
                 primary_range_leptons: primary_range_leptons(
                     candidate,
@@ -402,6 +459,15 @@ pub(crate) fn respond_to_base_attack(
                 mission_is_harvest: candidate.mission.current().known()
                     == Some(MissionType::Harvest),
             });
+            if raw_score == 0 {
+                continue;
+            }
+            // Original7085A4/7085A9 evaluate threat first;7085AD then
+            // refuses a Unit for a slave victim. Earlier rejection would
+            // lose this candidate's shared-Dummy coordinate/layer/zone writes.
+            if class == ResponderClass::Unit && victim.slave.owner().is_some() {
+                continue;
+            }
             selection.consider(candidate_id, raw_score, class, victim_is_self_anchor);
         }
     }

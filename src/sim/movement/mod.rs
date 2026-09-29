@@ -648,6 +648,8 @@ fn walking_to_subcell_dest(
 }
 
 #[cfg(test)]
+pub(crate) mod bridge_layer_oracle_tests;
+#[cfg(test)]
 mod ground_pose_tests;
 #[cfg(test)]
 mod movement_bridge_retail_tests;

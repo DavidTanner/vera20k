@@ -34,6 +34,9 @@ use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
 const HARNESS_SEED: u64 = 0xC0FFEE_1234;
 const HARNESS_TICKS: u64 = 600;
 const HARNESS_TICK_MS: u32 = 67;
+const HARNESS_MAP_SIZE: u16 = 64;
+const HARNESS_CELL_SIDE: u16 = 2 * HARNESS_MAP_SIZE + 1;
+const HARNESS_COORD_SHIFT: u16 = HARNESS_MAP_SIZE / 2;
 /// AT-8: ticks at which the per-stream RNG cursors are compared record-vs-replay
 /// (after the tick at this index executes).
 const STREAM_CHECKPOINT_TICKS: &[u64] = &[149, 299, 449, 599];
@@ -357,7 +360,16 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // frame (0x00451218), which the building leaf hash folds. With only that write
 // disabled the old pin reproduces exactly; the three RNG stream pins, per-tick
 // replay equality and every object's final mission are unchanged.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC24F_65FF_6A05_6EBB;
+// 2026-09-29 bridge query owner migration: the ore probe requires native Size
+// and zone authority, so this fixture now uses Size64x64, Local2,2,60,56, an
+// empty bridge-map receipt and a common +32,+32 coordinate translation. Its
+// former width-zero/absent-zone setup exercised a legacy movement lane. Under
+// this same completed fixture, parent ore/zone query code and the new shared
+// queries produced identical world hashes, serialized objects, all three RNG
+// fingerprints and 319 raw draws at all 600 ticks. Absolute stream pins and duel
+// outcomes remain unchanged. This hash move is fixture/context coverage, not a
+// native skirmish golden. Receipts: tools/spatial_oracle/foot_bridge_layer.replay.json.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB3DF_7D94_07AF_305B;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -450,14 +462,28 @@ fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRe
     // placing objects: Unlimbo's Unit `Can_Enter_Cell` reads both, and the
     // harvester's ore scan (`FootClass::Is_Cell_Harvestable @ 0x004DCE80`)
     // admits only playfield cells of LandType 5.
-    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_flat_ground_grid(64));
-    sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
-        base: 0,
-        off_fc: -64,
-        off_100: -1,
-        off_104: 128,
-        off_108: 65,
+    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_flat_ground_grid(
+        HARNESS_CELL_SIDE,
+    ));
+    sim.install_playfield_from_map_header(&crate::map::map_file::MapHeader {
+        theater: "TEMPERATE".into(),
+        fill: "Clear".into(),
+        level: 0,
+        width: u32::from(HARNESS_MAP_SIZE),
+        height: u32::from(HARNESS_MAP_SIZE),
+        local_left: 2,
+        local_top: 2,
+        local_width: 60,
+        local_height: 56,
     });
+    sim.bridge_state = Some(
+        crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
+            sim.resolved_terrain.as_ref().unwrap(),
+            true,
+            rules.bridge_rules.strength,
+            (i32::from(HARNESS_MAP_SIZE), i32::from(HARNESS_MAP_SIZE)),
+        ),
+    );
     // The owners' houses exist before a map load places objects, so each
     // object's constructor `Add_Tracking` counts it: the harvester's Dock
     // checks read the house's tracked BuildingType counts (`+0x5500`). They
@@ -472,23 +498,34 @@ fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRe
             crate::sim::house_state::HouseState::new(id, side, None, false, 0, 10)
         });
     }
-    sim.spawn_from_map(
-        &[
-            unit("Americans", "GAWEAP", 3, 3, EntityCategory::Structure), // 1
-            unit("Americans", "GAREFN", 3, 10, EntityCategory::Structure), // 2
-            unit("Americans", "HARV", 8, 12, EntityCategory::Unit),       // 3
-            unit("Americans", "MTNK", 10, 8, EntityCategory::Unit),       // 4
-            unit("Americans", "E1", 11, 9, EntityCategory::Infantry),     // 5
-            unit("Soviet", "MTNK", 40, 8, EntityCategory::Unit),          // 6
-            unit("Soviet", "E1", 41, 9, EntityCategory::Infantry),        // 7
-        ],
-        Some(rules),
-    );
+    let mut authored = [
+        unit("Americans", "GAWEAP", 3, 3, EntityCategory::Structure), // 1
+        unit("Americans", "GAREFN", 3, 10, EntityCategory::Structure), // 2
+        unit("Americans", "HARV", 8, 12, EntityCategory::Unit),       // 3
+        unit("Americans", "MTNK", 10, 8, EntityCategory::Unit),       // 4
+        unit("Americans", "E1", 11, 9, EntityCategory::Infantry),     // 5
+        unit("Soviet", "MTNK", 40, 8, EntityCategory::Unit),          // 6
+        unit("Soviet", "E1", 41, 9, EntityCategory::Infantry),        // 7
+    ];
+    // Preserve relative scene geometry inside a valid native Size diamond.
+    // The former width-zero rectangle cannot contain both (3,3) and (41,9).
+    for entity in &mut authored {
+        entity.cell_x += HARNESS_COORD_SHIFT;
+        entity.cell_y += HARNESS_COORD_SHIFT;
+        assert!(sim.map_cell_in_bounds((entity.cell_x as i16, entity.cell_y as i16)));
+        assert!(
+            sim.playfield_bounds
+                .unwrap()
+                .contains_geometry_packed(i32::from(entity.cell_x), i32::from(entity.cell_y),)
+        );
+    }
+    sim.spawn_from_map(&authored, Some(rules));
     // Seed the native CellClass overlay authority near the harvester.
     let tib01 = overlays.id_for_name("TIB01").expect("harness TIB01");
-    let mut overlay_grid = OverlayGrid::new(64, 64);
+    let mut overlay_grid = OverlayGrid::new(HARNESS_CELL_SIDE, HARNESS_CELL_SIDE);
     let terrain = sim.resolved_terrain.as_mut().expect("installed above");
     for (rx, ry) in [(12, 13), (13, 13), (12, 14), (13, 14)] {
+        let (rx, ry) = (rx + HARNESS_COORD_SHIFT, ry + HARNESS_COORD_SHIFT);
         overlay_grid.place_overlay(rx, ry, tib01, 11);
         // RecalcAttributes: LandType 5 and its [Tiberium] speed row.
         overlay_grid.recalculate_runtime_cell(
@@ -500,6 +537,20 @@ fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRe
     }
     overlay_grid.take_dirty_cells();
     sim.overlay_grid = Some(overlay_grid);
+    // Live Foot reachability consumes the same map authorities as a map load.
+    // The old ore-query copy silently skipped zones in this direct-spawn scene.
+    // This harness passes its PathGrid into each frame; retain that owner
+    // rather than installing a second grid while completing the zone fixture.
+    let path = PathGrid::new(HARNESS_CELL_SIDE, HARNESS_CELL_SIDE);
+    sim.zone_grid = Some(
+        crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_map_context(
+            &path,
+            sim.resolved_terrain.as_ref().unwrap(),
+            &[],
+            sim.map_size_diamond(),
+            sim.playfield_bounds,
+        ),
+    );
 }
 
 /// Scripted commands keyed by `execute_tick` (fires when tick+1 == execute_tick).
@@ -509,8 +560,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             2,
             Command::Move {
                 entity_id: 4,
-                target_rx: 24,
-                target_ry: 8,
+                target_rx: 24 + HARNESS_COORD_SHIFT,
+                target_ry: 8 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -518,8 +569,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             40,
             Command::AttackMove {
                 entity_id: 4,
-                target_rx: 38,
-                target_ry: 8,
+                target_rx: 38 + HARNESS_COORD_SHIFT,
+                target_ry: 8 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -527,8 +578,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             120,
             Command::Move {
                 entity_id: 6,
-                target_rx: 28,
-                target_ry: 10,
+                target_rx: 28 + HARNESS_COORD_SHIFT,
+                target_ry: 10 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -537,8 +588,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             320,
             Command::Move {
                 entity_id: 4,
-                target_rx: 8,
-                target_ry: 8,
+                target_rx: 8 + HARNESS_COORD_SHIFT,
+                target_ry: 8 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -559,7 +610,7 @@ fn due_commands(sim: &Simulation, script: &[(u64, Command)], tick: u64) -> Vec<C
 fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     let rules = harness_rules();
     let overlays = harness_overlays();
-    let grid = PathGrid::new(64, 64);
+    let grid = PathGrid::new(HARNESS_CELL_SIDE, HARNESS_CELL_SIDE);
     let script = harness_script();
 
     // ---- Record pass: build a ReplayLog through the live advance_tick path. ----
@@ -578,7 +629,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // field and cuts. (The full dock handshake is the dedicated miner-dock
     // suites' coverage.) This guards that miner-component creation + the
     // acquisition path stay wired and contribute to the hash.
-    let mut miner_engaged = false;
+    let mut miner_acquired_field = false;
+    let mut miner_moved = false;
+    let mut miner_cut_ore = false;
     // AT-8 stream pins: per-stream cursor fingerprints captured at checkpoint
     // ticks during record, re-asserted in replay. Total-hash equality can mask
     // a draw routed to the wrong stream when a compensating error exists;
@@ -599,10 +652,20 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             first_uncommitted_frame.get_or_insert(tick);
         }
 
-        if rec.substrate.entities.get(3).is_some_and(|h| {
-            h.miner.as_ref().is_some_and(|m| m.harvesting) || h.navigation.nav_com.is_some()
-        }) {
-            miner_engaged = true;
+        if let Some(harvester) = rec.substrate.entities.get(3) {
+            if let Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) =
+                harvester.navigation.nav_com
+            {
+                miner_acquired_field |= (12 + HARNESS_COORD_SHIFT..=13 + HARNESS_COORD_SHIFT)
+                    .contains(&rx)
+                    && (13 + HARNESS_COORD_SHIFT..=14 + HARNESS_COORD_SHIFT).contains(&ry);
+            }
+            miner_moved |= (harvester.position.rx, harvester.position.ry)
+                != (8 + HARNESS_COORD_SHIFT, 12 + HARNESS_COORD_SHIFT);
+            miner_cut_ore |= harvester
+                .miner
+                .as_ref()
+                .is_some_and(|miner| !miner.cargo.is_empty());
         }
         log.record_tick(tick, due, result.state_hash);
         if STREAM_CHECKPOINT_TICKS.contains(&tick) {
@@ -632,9 +695,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         "the block index read every entity {world_reads} times; look for a new all-entity mutable walk"
     );
     assert!(
-        miner_engaged,
-        "the miner system must engage the harvester (head for or cut ore) — \
-         else miner-component creation or Mission_Harvest state 0 regressed"
+        miner_acquired_field && miner_moved && miner_cut_ore,
+        "the miner must acquire its field, move and cut ore: \
+         acquired={miner_acquired_field}, moved={miner_moved}, cut={miner_cut_ore}"
     );
 
     // ---- Replay pass: fresh sim, real ReplayRunner, assert tick-by-tick.
