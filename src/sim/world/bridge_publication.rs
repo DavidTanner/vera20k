@@ -345,7 +345,9 @@ impl BridgePublicationHost for LivePublication<'_> {
     fn rim(&mut self, coord: CellCoord) {
         rim_publication::update(self, coord);
     }
-    fn zones(&mut self, _anchor: Cell) {
-        refresh_bridge_zones_if_dirty(self.sim, self.rules, true);
+    fn zones(&mut self, anchor: Cell) {
+        let query = self.coord(anchor);
+        let _ = invalidate_bridge_zones(self.sim, query);
+        publish_bridge_navigation(self.sim, self.rules);
     }
 }

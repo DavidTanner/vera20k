@@ -49,7 +49,7 @@ mod zone_activation;
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use damaged_variant::extend_unique_cells;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
 /// Sentinel `overlay_byte` value meaning "no bridge overlay" (the original
 /// engine's -1 / 0xFF). A cell carrying this byte has no own overlay sprite.
@@ -378,11 +378,11 @@ pub enum StateOutcome {
         /// re-evaluation. Orchestrator (Phase F Task 27) runs the actual
         /// rim helper.
         adjacent_bridges_dirty: Vec<(u16, u16)>,
-        /// Whether the zone graph needs rebuild
-        /// (`MapClass::InvalidateBridgeZones` @ `0x0056DAE0` →
-        /// `MapClass::RebuildZoneConnectivity` @ `0x0056C510`). Orchestrator
-        /// dispatches.
-        zones_dirty: bool,
+        /// The cell both machines pass to `MapClass::InvalidateBridgeZones`
+        /// (`0x0056DAE0`) after the rim update: the anchor for a body collapse
+        /// (High `0x005778CE`, Low `0x005721D1`), the blow-up row center for a
+        /// bridgehead collapse. Orchestrator dispatches.
+        zone_query: (i16, i16),
         /// Cells whose visible terrain changed and must be marked dirty on the
         /// minimap. On a collapse this is the collapsed triple PLUS every
         /// cascade-leaf cell touched — including intermediate `Damaged`
@@ -1177,7 +1177,7 @@ impl BridgeRuntimeState {
                     set_bridge_direction: sbd,
                     setter_transcript,
                     adjacent_bridges_dirty: adj,
-                    zones_dirty: true,
+                    zone_query: (anchor_pos.0 as i16, anchor_pos.1 as i16),
                     damaged_variant_cells,
                 }
             }
@@ -1209,7 +1209,7 @@ impl BridgeRuntimeState {
                     set_bridge_direction: sbd,
                     setter_transcript,
                     adjacent_bridges_dirty: adj,
-                    zones_dirty: true,
+                    zone_query: (anchor_pos.0 as i16, anchor_pos.1 as i16),
                     radar_cells: destroyed,
                     damaged_variant_cells: ramp.damaged_variant_cells,
                 }
@@ -1241,7 +1241,7 @@ impl BridgeRuntimeState {
                     set_bridge_direction: sbd,
                     setter_transcript,
                     adjacent_bridges_dirty: adj,
-                    zones_dirty: true,
+                    zone_query: (anchor_pos.0 as i16, anchor_pos.1 as i16),
                     radar_cells: destroyed,
                     damaged_variant_cells: ramp.damaged_variant_cells,
                 }
@@ -1342,6 +1342,12 @@ impl BridgeRuntimeState {
                 anchor_cell.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
             }
 
+            let center = crate::sim::bridge_specs::bridgehead_row_center(
+                anchor_pos,
+                axis,
+                sub_tile(anchor_pos),
+            );
+            let zone_query = (center.0 as i16, center.1 as i16);
             let mut destroyed = Vec::new();
             let mut actions = Vec::new();
             for (slot, pos) in crate::sim::bridge_specs::bridgehead_blow_up_row(
@@ -1423,7 +1429,7 @@ impl BridgeRuntimeState {
                 },
                 setter_transcript,
                 adjacent_bridges_dirty: adj,
-                zones_dirty: true,
+                zone_query,
                 damaged_variant_cells,
             };
         }
@@ -1475,52 +1481,6 @@ impl BridgeRuntimeState {
 
     pub(crate) fn native_zone_source_size(&self) -> Option<(i32, i32)> {
         self.native_zone_source_size
-    }
-
-    /// Recompute `endpoint_records[*].active` flags from current cell render
-    /// state, BIDIRECTIONALLY. A record is active iff its bridge group is
-    /// intact — i.e. no cell in the group is severed. When any cell of a group
-    /// is destroyed, its record deactivates so the zone graph (`zone_build`)
-    /// stops treating the endpoint pair as connected; when an engineer repair
-    /// restores every cell, the same test re-activates the record so the
-    /// long-range A* zone edge (gated on `record.active` in
-    /// `zone_build::bridge_record_matches`) is restored.
-    ///
-    /// "Severed" is keyed on `effective_render_state(cell).is_none()`, NOT on
-    /// `damage_state`. Decision A: the overlay byte is authoritative. The
-    /// repair path restores the overlay byte to a healthy band but
-    /// intentionally leaves `damage_state` stale at `Destroyed` (the original
-    /// engine leaves the body damage byte stale after repair), so keying on
-    /// `damage_state` would never re-activate a repaired record. The healthy
-    /// overlay-band arms of `effective_render_state` take precedence over its
-    /// `damage_state` fallback, so a repaired cell (healthy overlay, stale
-    /// `Destroyed`) reports `Some` and re-activates, while a collapsed cell
-    /// (destroyed-overlay byte, or `0xFF` + `Destroyed`) reports `None`.
-    ///
-    /// Granularity is whole-group (the group is the 4-cardinal BFS blob from
-    /// construction). Per-record geometric tolerance is the separate deferred
-    /// BR-40 work — do not narrow this here.
-    pub fn refresh_endpoint_active_flags(&mut self) {
-        let mut severed_groups: BTreeSet<u16> = BTreeSet::new();
-        for cell_opt in &self.cells {
-            if let Some(cell) = cell_opt {
-                if Self::effective_render_state(cell).is_none() {
-                    if let Some(gid) = cell.bridge_group_id {
-                        severed_groups.insert(gid);
-                    }
-                }
-            }
-        }
-        for record in &mut self.endpoint_records {
-            // Recompute in BOTH directions: active iff no cell of the group is
-            // severed. Repair restores the overlay byte (-> `Some`), removing
-            // the group from `severed_groups` and flipping the record active.
-            // A map-load record spanning no structural runtime group uses the
-            // Rust-only zero sentinel and retains its load-time inactive state.
-            if record.group_id != 0 {
-                record.active = !severed_groups.contains(&record.group_id);
-            }
-        }
     }
 
     pub fn iter_cells(&self) -> impl Iterator<Item = ((u16, u16), &BridgeRuntimeCell)> {
