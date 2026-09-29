@@ -281,13 +281,14 @@ pub(crate) fn fly_landing_arrival(entity: &crate::sim::game_entity::GameEntity) 
 /// Per-tick stats for air movement diagnostics.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AirMovementTickStats {
-    /// Number of air entities processed.
-    pub air_movers: u32,
     /// Number that completed their move this tick.
     pub arrivals: u32,
     /// A dead Fly's fall reached the ground this visit: Process ends in the
     /// impact (`Simulation::fly_crash_impact`), which its caller commits.
     pub impact: bool,
+    /// A Jumpjet touched down (`0x0054C8F0`): its caller runs
+    /// `Per_Cell_Process(2)` next.
+    pub touched_down: bool,
 }
 
 /// Advance live Fly entities one tick.
@@ -338,8 +339,6 @@ pub fn tick_air_movement(
     let mut finished: Vec<u64> = Vec::new();
 
     for &entity_id in &air_entity_ids {
-        stats.air_movers = stats.air_movers.saturating_add(1);
-
         let Some(entity) = entities.get_mut(entity_id) else {
             continue;
         };
@@ -901,13 +900,9 @@ mod tests {
         let mut live_entities = build_entities();
         let mut stable_entities = build_entities();
 
-        let live_stats = tick_air_movement(&mut live_entities, &[2], 0, 0, None, None);
-        let stable_stats = tick_air_movement(&mut stable_entities, &[], 0, 0, None, None);
+        tick_air_movement(&mut live_entities, &[2], 0, 0, None, None);
+        tick_air_movement(&mut stable_entities, &[], 0, 0, None, None);
 
-        assert_eq!(
-            live_stats.air_movers, 1,
-            "nonempty live order limits air movement to live-vector members"
-        );
         assert_eq!(
             live_entities
                 .get(1)
@@ -930,20 +925,18 @@ mod tests {
                 > SIM_ZERO,
             "live-order member must tick"
         );
-        assert_eq!(
-            stable_stats.air_movers, 2,
-            "empty live order preserves direct-test stable-id fallback"
-        );
         assert!(
-            stable_entities
-                .get(1)
-                .unwrap()
-                .locomotor
-                .as_ref()
-                .unwrap()
-                .altitude
-                > SIM_ZERO,
-            "stable-id fallback still ticks directly inserted air movers"
+            [1, 2].iter().all(|&id| {
+                stable_entities
+                    .get(id)
+                    .unwrap()
+                    .locomotor
+                    .as_ref()
+                    .unwrap()
+                    .altitude
+                    > SIM_ZERO
+            }),
+            "empty live order: the stable-id fallback ticks every air mover"
         );
     }
 

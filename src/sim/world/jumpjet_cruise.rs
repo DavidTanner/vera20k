@@ -676,10 +676,11 @@ impl Simulation {
         }
 
         // Jumpjet54C8F0 calls PerCell(2) only at accepted touchdown, before
-        // clearing the destination. Cruise coordinate changes do not do this.
-        if effects.touched_down {
-            self.foot_neighbors_at_per_cell(stable_id);
-        }
+        // clearing the destination; cruise coordinate changes do not. The
+        // object turn runs it from `touched_down`, after this commit.
+        // RESIDUAL: so it follows the destination clear, the crash reset and
+        // the Fly cell-list re-add rather than preceding them. No ported
+        // per-cell step reads those.
         let entity = self.substrate.entities.get_mut(stable_id)?;
         let mut moving = effects.moving;
         // `Set_Destination` after a scatter re-aims the owner at the neighbour.
@@ -754,9 +755,9 @@ impl Simulation {
             log::debug!("infantry {stable_id} AirDeathStart: {cause}");
         }
         Some(AirMovementTickStats {
-            air_movers: 1,
             arrivals: u32::from(arrived),
             impact: effects.impact,
+            touched_down: effects.touched_down,
         })
     }
 
