@@ -176,6 +176,8 @@ fn spawn_miner(sim: &mut Simulation, sid: u64, kind: MinerKind, rx: u16, ry: u16
             off_104: 128,
             off_108: 65,
         });
+    sim.playfield_size_height.get_or_insert(64);
+    ensure_scan_map_context(sim);
     // Update the shared object allocator if needed so test IDs do not collide.
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
@@ -332,12 +334,33 @@ fn occupy_structure_cells(
 fn place_ore(sim: &mut Simulation, rx: u16, ry: u16, amount: u16) {
     sim.resolved_terrain
         .get_or_insert_with(|| crate::map::resolved_terrain::test_flat_ground_grid(64));
+    ensure_scan_map_context(sim);
     crate::sim::tiberium::test_support::place_tiberium_on_map(
         sim,
         (rx, ry),
         ResourceType::Ore,
         amount.div_ceil(120).clamp(1, 11) as u8,
     );
+}
+
+fn ensure_scan_map_context(sim: &mut Simulation) {
+    if sim.zone_grid.is_none()
+        && let Some(terrain) = sim.resolved_terrain.as_ref()
+    {
+        // The production ore probe now uses the native zone owner. Supply
+        // this direct-insert fixture's map cache instead of relying on the
+        // removed no-zone shortcut in the scan.
+        let path = PathGrid::from_resolved_terrain(terrain);
+        sim.zone_grid = Some(
+            crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_map_context(
+                &path,
+                terrain,
+                &[],
+                sim.map_size_diamond(),
+                sim.playfield_bounds,
+            ),
+        );
+    }
 }
 
 /// Tick the miner system `n` times.

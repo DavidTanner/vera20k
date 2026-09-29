@@ -50,6 +50,8 @@ pub(crate) fn query_object_cell_height(
 /// Foot+BC4DDC40(false) -> Object5F6A70. The navigation coordinate can be a
 /// paid head; source bridge selection is independent of the cached path layer.
 /// Both ground samples precede the conditional structural-cell lookup.
+/// Original-byte layer and consumer-seam receipts, including312/313 and
+/// Tube/Dummy ordering: tools/spatial_oracle/foot_bridge_layer.{json,md}.
 pub(crate) fn navigation_should_be_on_bridge(
     cells: &NativeCellQuery<'_>,
     navigation: DriveCoord,

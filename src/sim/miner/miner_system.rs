@@ -2072,12 +2072,26 @@ mod harvest_scan_dispatch_tests {
                 off_104: 128,
                 off_108: 65,
             });
+        sim.playfield_size_height.get_or_insert(64);
     }
 
     /// Six bales on a flat map (the scan reads the ore cell's LandType).
     fn seed_ore(sim: &mut Simulation, cell: (u16, u16)) {
         sim.resolved_terrain
             .get_or_insert_with(|| crate::map::resolved_terrain::test_flat_ground_grid(64));
+        if sim.zone_grid.is_none() {
+            let terrain = sim.resolved_terrain.as_ref().unwrap();
+            let path = PathGrid::from_resolved_terrain(terrain);
+            sim.zone_grid = Some(
+                crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_map_context(
+                    &path,
+                    terrain,
+                    &[],
+                    sim.map_size_diamond(),
+                    sim.playfield_bounds,
+                ),
+            );
+        }
         crate::sim::tiberium::test_support::place_tiberium_on_map(sim, cell, ResourceType::Ore, 6);
     }
 
