@@ -36,10 +36,8 @@ fn exhausted_foot_queue_cannot_bypass_drive_or_ship_track_admission() {
                 &mut target,
                 &mut position,
                 &mut Some(LocomotorState::for_test_kind(kind)),
-                EntityCategory::Unit,
                 SimFixed::from_num(255),
                 SimFixed::from_num(1) / SimFixed::from_num(15),
-                1,
             );
             assert!(
                 matches!(result, AdvanceResult::DriveTrackActive),

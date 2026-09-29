@@ -143,8 +143,9 @@ impl Simulation {
             || entity
                 .locomotor
                 .as_ref()
+                .and_then(crate::sim::movement::locomotor::LocomotorState::fly_runtime)
                 .expect("Fly approach")
-                .fly_current_speed
+                .current_speed
                 == SIM_ZERO
         {
             // Fly IsMovingNow4CCAC0 reads actual speed+48, not request+34.

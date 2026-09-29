@@ -42,7 +42,8 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         )
     });
     let loco = entity.locomotor.as_mut().unwrap();
-    loco.fly_current_speed = SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0));
+    loco.fly_runtime_mut().unwrap().current_speed =
+        SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0));
     let mut fly = serde_json::to_value(loco.fly_runtime().unwrap()).unwrap();
     fly["moving"] = json!(input["moving"].as_bool().unwrap_or(true));
     *loco.fly_runtime_mut().unwrap() = serde_json::from_value(fly).unwrap();

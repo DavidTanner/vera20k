@@ -1665,15 +1665,13 @@ fn apply_runtime_bridge_flag_transcript_from_outcome(sim: &mut Simulation, outco
 mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-    use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
+    use crate::rules::locomotor_type::LocomotorKind;
     use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::components::{BridgeOccupancy, Health};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_intern;
-    use crate::sim::movement::locomotion::LocomotorSlot;
     use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::sim::occupancy::CellListInsertion;
-    use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
     pub(super) fn seed_bridge_cell(
         overlay_byte: u8,
@@ -1932,31 +1930,9 @@ mod tests {
 
     /// Build a Drive locomotor on the Bridge layer (mimics `high=true` spawn).
     fn drive_loco_on_bridge() -> LocomotorState {
-        LocomotorState {
-            kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::new(LocomotorKind::Drive),
-            powered: true,
-            piggyback: None,
-            runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-                LocomotorKind::Drive,
-                0,
-            ),
-            layer: MovementLayer::Bridge,
-            speed_fraction: SimFixed::from_num(1),
-            fly_current_speed: SIM_ZERO,
-            altitude: SIM_ZERO,
-
-            balloon_hover: false,
-            hover_attack: false,
-            speed_type: SpeedType::Track,
-            movement_zone: MovementZone::Normal,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
-            subcell_dest: None,
-            hover_throttle: crate::util::fixed_math::SIM_ZERO,
-            hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-            hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-        }
+        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
+        loco.layer = MovementLayer::Bridge;
+        loco
     }
 
     /// Insert a vehicle on the bridge deck at (5,5) with deck_level=3.

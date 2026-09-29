@@ -232,40 +232,16 @@ pub(crate) fn tick_parachute_descent_in_order(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
+    use crate::rules::locomotor_type::{LocomotorKind, SpeedType};
     use crate::sim::animation::{Animation, SequenceKind};
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
-    use crate::sim::movement::locomotion::LocomotorSlot;
     use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-    use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 
     fn make_walk_loco() -> LocomotorState {
-        LocomotorState {
-            kind: LocomotorKind::Walk,
-            slot: LocomotorSlot::new(LocomotorKind::Walk),
-            powered: true,
-            piggyback: None,
-            runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-                LocomotorKind::Walk,
-                0,
-            ),
-            layer: MovementLayer::Ground,
-            speed_fraction: SIM_ONE,
-            fly_current_speed: SIM_ZERO,
-            altitude: SIM_ZERO,
-
-            balloon_hover: false,
-            hover_attack: false,
-            speed_type: SpeedType::Foot,
-            movement_zone: MovementZone::Normal,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
-            subcell_dest: None,
-            hover_throttle: crate::util::fixed_math::SIM_ZERO,
-            hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-            hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-        }
+        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
+        loco.speed_type = SpeedType::Foot;
+        loco
     }
 
     fn drop_altitude_1200() -> SimFixed {

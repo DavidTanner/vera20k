@@ -198,10 +198,6 @@ const PATH_STUCK_INIT: u32 = 10;
 /// **VERA-internal, gamemd equivalent UNCHECKED** — "abs(current_z / HeightStep
 /// - cell.height) >= 3 levels" carries no address and no verified owner.
 const CLIFF_HEIGHT_THRESHOLD: u16 = 3;
-/// Infantry wobble phase increment per second (radians/sec).
-/// One full cycle (2π) per ~2.5 seconds ≈ 2.5 rad/s. Matches slow
-/// infantry walk cadence in the original game.
-const INFANTRY_WOBBLE_RATE: f32 = 2.5;
 /// Minimum speed as a fraction of max speed during normal braking.
 /// Original engine: 0.3 (30% of max speed).
 const MIN_BRAKE_FRACTION: SimFixed = SimFixed::lit("0.3");

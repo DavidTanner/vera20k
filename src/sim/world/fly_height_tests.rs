@@ -740,7 +740,6 @@ fn takeoff_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
     entity.body_facing = facing(0x4000, 0xC000);
     entity.barrel_facing = Some(facing(0x6000, 0x2000));
     let loco = entity.locomotor.as_mut().unwrap();
-    loco.speed_fraction = SimFixed::lit("0.25");
     *loco.fly_runtime_mut().unwrap() = serde_json::from_value(serde_json::json!({
         "target_height": input["target"].as_i64().unwrap_or(1500),
         "taking_off": input["taking_off"].as_bool().unwrap_or(true),
@@ -748,6 +747,7 @@ fn takeoff_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         "destination": input.get("destination").cloned().unwrap_or(serde_json::json!([3456,2688,0])),
         "cruise_mode": input["mode"].as_bool().unwrap_or(false),
     })).unwrap();
+    loco.fly_runtime_mut().unwrap().target_speed = SimFixed::lit("0.25");
     sim.session.binary_frame = 100;
     (sim, rules)
 }
@@ -762,7 +762,7 @@ fn assert_native_takeoff_result(sim: &Simulation, row: &serde_json::Value) {
         "{row}"
     );
     assert_eq!(
-        loco.speed_fraction,
+        loco.fly_runtime().unwrap().target_speed,
         SimFixed::from_num(row["speed"].as_f64().unwrap()),
         "{row}"
     );
@@ -1274,7 +1274,13 @@ fn fly_paid_step_matches_native_math_and_production_type_speed() {
         ));
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.movement_target.as_mut().unwrap().speed = SimFixed::from_num(3000);
-        entity.locomotor.as_mut().unwrap().fly_current_speed = fraction;
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .fly_runtime_mut()
+            .unwrap()
+            .current_speed = fraction;
         sim.session.binary_frame = frame;
         let mut restored = if input["name"] == "turn_5_100" {
             sim.scenario_rng = crate::sim::rng::SimRng::new(0);

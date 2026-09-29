@@ -525,23 +525,15 @@ mod tests {
     }
 
     #[test]
-    fn gsi_13_02_grounded_infantry_anchor_is_independent_of_wobble_phase() {
+    fn gsi_13_02_grounded_infantry_anchor_is_its_ground_position() {
         let mut entity = GameEntity::test_default(1, "E1", "Americans", 5, 5);
         entity.category = EntityCategory::Infantry;
-        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
-        loco.infantry_wobble_phase = 0.0;
-        entity.locomotor = Some(loco);
-        let resting = screen_position(&entity);
-
-        if let Some(loco) = entity.locomotor.as_mut() {
-            loco.infantry_wobble_phase = std::f32::consts::PI;
-        }
+        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
+        // ObjectClass::GetCoords returns exact XYZ.
         assert_eq!(
             screen_position(&entity),
-            resting,
-            "ObjectClass::GetCoords returns exact XYZ; phase cannot move the anchor",
+            ground_screen_position(&entity.position)
         );
-        assert_eq!(resting, ground_screen_position(&entity.position));
     }
 
     /// The slice's exit criterion, and the thing that keeps it from growing
@@ -631,9 +623,7 @@ mod tests {
     fn a_vehicle_never_bobs() {
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
         entity.category = EntityCategory::Unit;
-        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
-        loco.infantry_wobble_phase = std::f32::consts::PI;
-        entity.locomotor = Some(loco);
+        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         assert_eq!(height_lift_px(&entity), 0.0);
     }
     // -- F14 boundary tests: sim-side callers moved here so `sim/` never
