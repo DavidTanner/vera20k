@@ -102,8 +102,8 @@ pub(crate) use lifecycle_tests::common_raw_terrain_cell as common_raw_test_terra
 mod team_script_vm_tests;
 
 pub(crate) use lifecycle::{
-    ConcealOutcome, LifecycleOutput, PlacementEvidence, RevealOutcome,
-    RevealPosition, RevealRequest, UninitContext,
+    ConcealOutcome, LifecycleOutput, PlacementEvidence, RevealOutcome, RevealPosition,
+    RevealRequest, UninitContext,
 };
 #[cfg(test)]
 pub(crate) use lifecycle::{LifecycleTestEvent, RevealFailure};
@@ -5581,7 +5581,7 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
+        path_grid: Option<Arc<PathGrid>>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         execute_tick: u64,
@@ -5605,7 +5605,12 @@ impl Simulation {
         // which construction and the frame-end pending-delete drain move: a
         // death reaches the gate on the next frame. Each house's strategy tick
         // (`house_strategy.rs`) and building choice follow its own gate.
-        self.house_rung(rules, path_grid, overlay_registry, self.session.tick > 0);
+        self.house_rung(
+            rules,
+            path_grid.as_deref(),
+            overlay_registry,
+            self.session.tick > 0,
+        );
         #[cfg(test)]
         if self.session.tick > 0 {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
@@ -5625,7 +5630,7 @@ impl Simulation {
                 self,
                 &completed_buildings,
                 rules,
-                path_grid,
+                path_grid.as_deref(),
                 overlay_registry,
             );
         }
@@ -5790,6 +5795,18 @@ impl Simulation {
         }
     }
 
+    /// A frame reads only the canonical `path_grid`. A fixture that builds its
+    /// grid beside the simulation seeds it here once; after that the installed
+    /// grid (and any republish of it) wins over the fixture's copy.
+    #[cfg(test)]
+    pub(crate) fn install_fixture_path_grid(&mut self, path_grid: Option<&PathGrid>) {
+        if self.path_grid.is_none()
+            && let Some(grid) = path_grid
+        {
+            self.path_grid = Some(Arc::new(grid.clone()));
+        }
+    }
+
     /// Fixture-only frame adapter (F09): unit tests drive one Main_Tick-shaped
     /// frame with explicitly supplied rules/heights/navigation. Production and
     /// tooling advance exclusively through `SimRuntime::advance_frame`, whose
@@ -5803,10 +5820,10 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
     ) -> TickResult {
+        self.install_fixture_path_grid(path_grid);
         self.advance_master_frame(
             commands,
             rules,
-            path_grid,
             overlay_registry,
             tick_ms,
             TickLane::Ordinary,
@@ -5831,11 +5848,9 @@ impl Simulation {
         lane: TickLane,
         trigger_inputs: Option<TriggerInputs<'_>>,
     ) -> Result<SimFrameOutput, FrameAdvanceError> {
-        let path_grid = self.path_grid_snapshot();
         let tick = self.advance_master_frame(
             commands,
             rules,
-            path_grid.as_deref(),
             overlay_registry,
             tick_ms,
             lane,
@@ -5885,7 +5900,6 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         lane: TickLane,
@@ -5904,6 +5918,10 @@ impl Simulation {
         let mut spawned_entities = false;
         let mut destroyed_structure = false;
         let mut placed_building_owners = Vec::new();
+        // Frame-start view of the canonical grid; the phases below switch to a
+        // fresh snapshot where a republish must become visible mid-frame.
+        let frame_path_grid = self.path_grid_snapshot();
+        let path_grid = frame_path_grid.as_deref();
         let mut tail_path_grid: Option<Arc<PathGrid>> = None;
         // No command-boundary drain: command-applied deaths (sell, MCV/slave
         // deploy-undeploy, engineer capture) now stay in the Dying window like
@@ -6350,7 +6368,7 @@ impl Simulation {
         // behavior-preserving.) Native-spine note: gamemd runs HouseClass updates
         // (incl. defeat) in the tail and commits the frame counter late; AI
         // placement is project-deferred and kept in its current slot.
-        let late_path_grid = tail_path_grid.as_deref().or(path_grid);
+        let late_path_grid = tail_path_grid.clone().or_else(|| frame_path_grid.clone());
         let frame_committed = self.run_late_region(
             if lane == TickLane::Ordinary {
                 commands

@@ -27,7 +27,7 @@ fn insert_house(
 
 fn advance(sim: &mut Simulation, rules: Option<&RuleSet>, lane: TickLane) {
     let result = sim
-        .advance_master_frame(&[], rules, None, None, 67, lane, None)
+        .advance_master_frame(&[], rules, None, 67, lane, None)
         .expect("fixture frame must complete");
     assert!(result.frame_committed);
 }
