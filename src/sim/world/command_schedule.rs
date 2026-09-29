@@ -425,10 +425,7 @@ impl Simulation {
                         continue;
                     }
                     let Some(coord_z) = self.resolved_terrain.as_ref().map(|terrain| {
-                        crate::sim::movement::ground_pose::object_world_z_leptons(
-                            entity,
-                            Some(terrain),
-                        )
+                        crate::sim::combat::in_range::range_object_z_leptons(entity, Some(terrain))
                     }) else {
                         continue;
                     };

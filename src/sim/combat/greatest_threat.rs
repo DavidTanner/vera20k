@@ -262,7 +262,7 @@ fn threat_coord(entity: &GameEntity, terrain: Option<&ResolvedTerrainGrid>) -> (
     let y = i32::from(entity.position.ry)
         .wrapping_mul(LEPTONS_PER_CELL)
         .wrapping_add(entity.position.sub_y.to_num::<i32>());
-    let z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain);
+    let z = crate::sim::combat::in_range::range_object_z_leptons(entity, terrain);
     (x, y, z)
 }
 

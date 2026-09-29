@@ -199,7 +199,7 @@ impl FireSubject<'_> {
             warping_in: firer.is_warping_in(),
             on_bridge: firer.on_bridge,
             z: self.terrain().map_or(0, |terrain| {
-                crate::sim::movement::ground_pose::object_world_z_leptons(firer, Some(terrain))
+                crate::sim::combat::in_range::range_object_z_leptons(firer, Some(terrain))
             }),
             berserk: firer.berserk.active,
             falling: firer.object_is_falling_down != 0,
@@ -336,7 +336,7 @@ impl FireSubject<'_> {
                         sinking: entity.sinking.is_active(),
                         on_bridge: entity.on_bridge,
                         z: self.terrain().map_or(0, |terrain| {
-                            crate::sim::movement::ground_pose::object_world_z_leptons(
+                            crate::sim::combat::in_range::range_object_z_leptons(
                                 entity,
                                 Some(terrain),
                             )

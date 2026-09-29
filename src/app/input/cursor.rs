@@ -943,7 +943,7 @@ fn entity_world_leptons(
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> (i64, i64, i64) {
     let z = terrain.map_or(0, |t| {
-        i64::from(crate::sim::movement::ground_pose::object_world_z_leptons(
+        i64::from(crate::sim::combat::in_range::range_object_z_leptons(
             entity,
             Some(t),
         ))

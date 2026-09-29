@@ -108,11 +108,20 @@ pub(crate) fn object_world_z_leptons(
     entity: &crate::sim::game_entity::GameEntity,
     terrain: Option<&ResolvedTerrainGrid>,
 ) -> i32 {
-    if let Some(exact_z_leptons) = entity.position.exact_z_leptons {
-        return exact_z_leptons;
-    }
+    entity.position.exact_z_leptons.unwrap_or_else(|| {
+        object_ground_z_leptons(entity, terrain).wrapping_add(object_altitude_leptons(entity))
+    })
+}
+
+/// The ground an object without an exact coordinate stands on: the live
+/// sloped ground at its XY plus the OnBridge deck, or without terrain its
+/// stored signed level (which already includes a deck).
+pub(crate) fn object_ground_z_leptons(
+    entity: &crate::sim::game_entity::GameEntity,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> i32 {
     let [x, y] = position_world_xy(&entity.position);
-    let ground = terrain
+    terrain
         .and_then(|terrain| terrain.cell(entity.position.rx, entity.position.ry))
         .and_then(|cell| ground_height_leptons(cell.level, cell.slope_type, x, y).ok())
         .map(|ground| {
@@ -122,10 +131,7 @@ pub(crate) fn object_world_z_leptons(
                 0
             })
         })
-        // The stored level already includes a bridge deck, so the mapless
-        // fallback does not add OnBridge a second time.
-        .unwrap_or_else(|| i32::from(entity.position.z as i8) * GROUND_LEVEL_HEIGHT_LEPTONS);
-    ground.wrapping_add(object_altitude_leptons(entity))
+        .unwrap_or_else(|| i32::from(entity.position.z as i8) * GROUND_LEVEL_HEIGHT_LEPTONS)
 }
 
 /// Height above the ground of an object without an exact coordinate: a
