@@ -723,6 +723,23 @@ pub fn bridgehead_walk_to_anchor(
     None
 }
 
+/// Middle cell of [`bridgehead_blow_up_row`], unclipped. Both machines also
+/// pass it to InvalidateBridgeZones (`0x0056DAE0`): High `0x00577071` /
+/// `0x00577587`, Low `0x00571982` / `0x00571E9B`.
+pub fn bridgehead_row_center(anchor_pos: (u16, u16), axis: Axis, anchor_sub_tile: u8) -> (i32, i32) {
+    let (anchor_x, anchor_y) = (anchor_pos.0 as i32, anchor_pos.1 as i32);
+    match axis {
+        Axis::NS => {
+            let x_offset = if anchor_sub_tile & 1 == 0 { 0 } else { -1 };
+            (anchor_x + x_offset, anchor_y)
+        }
+        Axis::EW => {
+            let y_offset = if anchor_sub_tile < 5 { 0 } else { -1 };
+            (anchor_x, anchor_y + y_offset)
+        }
+    }
+}
+
 /// Three cells receiving `BlowUpBridge` on bridgehead final-step collapse.
 /// Geometry verified live `[GHIDRA 0x576BA0]` step-3 branch.
 ///
@@ -744,17 +761,7 @@ pub fn bridgehead_blow_up_row(
     map_width: u16,
     map_height: u16,
 ) -> [Option<(u16, u16)>; 3] {
-    let (anchor_x, anchor_y) = (anchor_pos.0 as i32, anchor_pos.1 as i32);
-    let (col_x, row_y) = match axis {
-        Axis::NS => {
-            let x_offset = if anchor_sub_tile & 1 == 0 { 0 } else { -1 };
-            (anchor_x + x_offset, anchor_y)
-        }
-        Axis::EW => {
-            let y_offset = if anchor_sub_tile < 5 { 0 } else { -1 };
-            (anchor_x, anchor_y + y_offset)
-        }
-    };
+    let (col_x, row_y) = bridgehead_row_center(anchor_pos, axis, anchor_sub_tile);
     let mut out: [Option<(u16, u16)>; 3] = [None; 3];
     for (i, delta) in [-1i32, 0, 1].iter().enumerate() {
         let (cx, cy) = match axis {

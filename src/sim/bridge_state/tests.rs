@@ -367,8 +367,6 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
     let mut broken = BridgeRuntimeState::from_resolved_terrain(&make(false), true, 300);
     assert!(!broken.endpoint_records()[0].active);
     assert_eq!(broken.endpoint_records()[0].group_id, 0);
-    broken.refresh_endpoint_active_flags();
-    assert!(!broken.endpoint_records()[0].active);
 
     let mixed_gap = high_record_fixture(5, 1, Some(100), None, |cell| {
         if cell.rx == 0 || cell.rx == 3 {
@@ -383,8 +381,6 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
     assert!(!mixed.endpoint_records()[0].active);
     assert_eq!(mixed.endpoint_records()[0].group_id, 0);
     assert!(mixed.cell(2, 0).unwrap().bridge_group_id.is_some());
-    mixed.refresh_endpoint_active_flags();
-    assert!(!mixed.endpoint_records()[0].active);
 }
 
 #[test]
@@ -435,105 +431,32 @@ fn low_bridge_tube_record_requires_opposite_neighbors() {
 }
 
 #[test]
-fn bridge_destruction_deactivates_endpoints() {
-    // Endpoint deactivation is now driven by the orchestrator's
-    // `refresh_bridge_zones_if_dirty`, which calls
-    // `refresh_endpoint_active_flags` whenever a walker / state-machine
-    // collapse marks `zones_dirty`. This in-module test exercises the
-    // deactivation logic in isolation: mutate cells to Destroyed (the
-    // dispatcher's terminal effect) and call the refresh helper
-    // directly. The full pipeline is covered by world-level integration
-    // tests in `world_tests.rs`.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
-    // Pre-condition: endpoint exists and is active.
-    let records = state.endpoint_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].active);
-    let group_id = records[0].group_id;
-
-    // Mark every cell of the group destroyed (simulates a final-stage
-    // walker cascade landing on the entire group).
-    for (rx, ry) in [(1u16, 0u16), (2, 0), (3, 0)] {
-        if let Some(c) = state.cell_mut(rx, ry) {
-            c.damage_state = DamageState::Destroyed;
-        }
-    }
-    state.refresh_endpoint_active_flags();
-
-    let records = state.endpoint_records();
-    assert!(
-        !records[0].active,
-        "endpoint of destroyed group {group_id} must deactivate"
-    );
-    assert_eq!(records[0].bridge_kind, BridgeRecordKind::High);
-}
-
-#[test]
-fn refresh_endpoint_active_flags_deactivates_on_first_destroyed_cell() {
-    // Per the new state-machine semantic: a single destroyed cell in a
-    // group severs the bridge — the endpoint flips inactive immediately,
-    // not just when the entire group is destroyed.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
+fn invalidate_bridge_zones_deactivates_records_near_query() {
+    // MapClass::InvalidateBridgeZones 0x0056DAE0: every active high record
+    // within FindBridgeRecord's radius 3 of the query deactivates, and the
+    // return requests RebuildZoneConnectivity only when one changed.
+    let terrain = make_bridge_terrain();
+    let mut state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 50);
     assert!(state.endpoint_records()[0].active);
 
-    // Destroy only ONE cell of the 3-cell group.
-    if let Some(c) = state.cell_mut(2, 0) {
-        c.damage_state = DamageState::Destroyed;
-    }
-    state.refresh_endpoint_active_flags();
-
+    assert!(state.invalidate_bridge_zones(&terrain, (2, 0)));
+    assert!(!state.endpoint_records()[0].active);
+    assert_eq!(
+        state.endpoint_records()[0].bridge_kind,
+        BridgeRecordKind::High
+    );
     assert!(
-        !state.endpoint_records()[0].active,
-        "first destroyed cell must already deactivate the endpoint"
+        !state.invalidate_bridge_zones(&terrain, (2, 0)),
+        "an already inactive record requests no rebuild"
     );
 }
 
 #[test]
-fn refresh_endpoint_active_flags_leaves_intact_groups_active() {
-    // No destroyed cells anywhere — refresh must not flip anything.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
-    state.refresh_endpoint_active_flags();
+fn invalidate_bridge_zones_ignores_records_outside_radius() {
+    let terrain = make_bridge_terrain();
+    let mut state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 50);
+    assert!(!state.invalidate_bridge_zones(&terrain, (2, 4)));
     assert!(state.endpoint_records()[0].active);
-}
-
-#[test]
-fn refresh_endpoint_active_flags_reactivates_after_repair() {
-    // BR-08: re-activation must be keyed on the authoritative overlay byte
-    // (effective_render_state), NOT damage_state. The real engineer-repair path
-    // restores the overlay byte to a healthy band but leaves damage_state STALE
-    // at Destroyed (the original engine never resets the body damage byte). This
-    // test mirrors that exactly, so it FAILS if the recompute is keyed on
-    // damage_state and only passes under the overlay-derived predicate.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
-    assert!(state.endpoint_records()[0].active);
-
-    // Collapse (2,0) the way the body-SM does (BR-09): destroyed overlay + state.
-    {
-        let c = state.cell_mut(2, 0).unwrap();
-        c.damage_state = DamageState::Destroyed;
-        c.overlay_byte = 0xFF;
-    }
-    state.refresh_endpoint_active_flags();
-    assert!(
-        !state.endpoint_records()[0].active,
-        "destroyed cell must deactivate the record"
-    );
-
-    // Repair the REAL way: restore the overlay byte to a healthy body value,
-    // leaving damage_state stale at Destroyed.
-    {
-        let c = state.cell_mut(2, 0).unwrap();
-        c.overlay_byte = 0xCD; // healthy high-bridge body overlay (variant 0)
-        assert!(
-            matches!(c.damage_state, DamageState::Destroyed),
-            "repair leaves damage_state stale (matches the original engine)"
-        );
-    }
-    state.refresh_endpoint_active_flags();
-    assert!(
-        state.endpoint_records()[0].active,
-        "repaired (overlay-restored, damage_state stale) group must re-activate"
-    );
 }
 
 #[test]
@@ -1066,7 +989,7 @@ fn body_driver_damaged_anchor_collapses_and_emits_set_bridge_direction() {
             destroyed_cells,
             set_bridge_direction,
             adjacent_bridges_dirty,
-            zones_dirty,
+            zone_query,
             radar_cells,
             ..
         } => {
@@ -1083,7 +1006,7 @@ fn body_driver_damaged_anchor_collapses_and_emits_set_bridge_direction() {
             assert_eq!(blow_ups, 4);
             // 2 perpendicular cells flagged dirty (E and W of (5,5)).
             assert_eq!(adjacent_bridges_dirty.len(), 2);
-            assert!(zones_dirty);
+            assert_eq!(zone_query, (5, 5), "0x005721D1/0x005778CE query the anchor");
         }
         other => panic!("expected Collapsed, got {other:?}"),
     }
@@ -1417,7 +1340,7 @@ fn bridgehead_advance_repeat_high_hit_collapses_about_to_fall_slot() {
             destroyed_cells,
             set_bridge_direction,
             adjacent_bridges_dirty,
-            zones_dirty,
+            zone_query,
             radar_cells,
             ..
         } => {
@@ -1437,7 +1360,7 @@ fn bridgehead_advance_repeat_high_hit_collapses_about_to_fall_slot() {
             );
             // The NS ramp pair runs W then E (0x0057754F, 0x0057757B).
             assert_eq!(adjacent_bridges_dirty, vec![(1, 2), (3, 2)]);
-            assert!(zones_dirty);
+            assert_eq!(zone_query, (2, 2), "blow-up row center");
         }
         other => panic!("expected high bridgehead collapse, got {other:?}"),
     }
@@ -1470,7 +1393,7 @@ fn bridgehead_advance_repeat_low_hit_collapses_but_returns_false() {
         StateOutcome::Collapsed {
             binary_success,
             destroyed_cells,
-            zones_dirty,
+            zone_query,
             ..
         } => {
             assert!(
@@ -1478,7 +1401,7 @@ fn bridgehead_advance_repeat_low_hit_collapses_but_returns_false() {
                 "low bridgehead slot +3 collapses but gamemd returns false"
             );
             assert_eq!(destroyed_cells, vec![(2, 1), (2, 2), (2, 3)]);
-            assert!(zones_dirty);
+            assert_eq!(zone_query, (2, 2), "blow-up row center");
         }
         other => panic!("expected low bridgehead collapse side effects, got {other:?}"),
     }
