@@ -1129,7 +1129,7 @@ pub(crate) fn handle_death(
                 air_impact,
                 e.owner(),
                 e.category,
-                e.veterancy,
+                e.veterancy(),
             )
         });
 
@@ -4400,7 +4400,7 @@ pub(crate) fn tick_combat(
             if !obj.deploy_fire || !obj.immune_to_radiation {
                 continue;
             }
-            let Some(weapon) = combat_weapon::deploy_fire_weapon_id(obj, entity.veterancy)
+            let Some(weapon) = combat_weapon::deploy_fire_weapon_id(obj, entity.veterancy())
                 .and_then(|weapon_id| rules.weapon(weapon_id))
             else {
                 continue;
@@ -4512,7 +4512,7 @@ pub(crate) fn tick_combat(
                 rules
                     .object(world.interner.resolve(occ.type_ref()))
                     .and_then(|occupant| {
-                        combat_weapon::occupant_weapon(rules, occupant, occ.veterancy)
+                        combat_weapon::occupant_weapon(rules, occupant, occ.veterancy())
                     })
             })
             .and_then(|weapon| combat_weapon::warhead_of(rules, weapon))
@@ -4705,7 +4705,7 @@ pub(crate) fn tick_combat(
             let (fw, fh) = foundation_dimensions(&obj.foundation);
             Some(GarrisonSnapshot {
                 occupant_type_id: occ.type_ref(),
-                occupant_veterancy: occ.veterancy,
+                occupant_veterancy: occ.veterancy(),
                 fire_index: fire_idx,
                 occupant_count: count,
                 half_foundation: fw.min(fh) / 2,

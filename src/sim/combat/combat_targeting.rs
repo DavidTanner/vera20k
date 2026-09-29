@@ -484,7 +484,7 @@ pub(crate) fn should_retaliate(
         if source.category == EntityCategory::Structure
             && ((victim.category == EntityCategory::Infantry && victim_type.c4)
                 || super::veterancy::has_weapon_ability(
-                    super::veterancy::rank_from_u16(victim.veterancy),
+                    super::veterancy::rank_from_u16(victim.veterancy()),
                     victim_type,
                     Ability::C4,
                 ))

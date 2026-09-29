@@ -109,20 +109,17 @@ pub fn raw_for_rank(rank_u16: u16) -> NativeF32Bits {
     }
 }
 
-/// `VeterancyStruct::SetElite(1) @ 0x007500B0`: store 2.0f, refresh the
-/// projection. The rank cache is deliberately left alone — native does not
+/// `VeterancyStruct::SetElite(1) @ 0x007500B0`: store 2.0f. The rank cache is deliberately left alone — native does not
 /// touch `+0x13C` here, so the next `AI_Update` sample announces the crossing
 /// (or, for a never-sampled object, caches silently).
 pub fn set_elite(entity: &mut GameEntity) {
     entity.veterancy_raw = NativeF32Bits::from_bits(ELITE_THRESHOLD_BITS);
-    entity.veterancy = RANK_ELITE_U16;
 }
 
 /// `VeterancyStruct::SetVeteran(1) @ 0x00750090`: store 1.0f.
 #[cfg(test)]
 pub fn set_veteran(entity: &mut GameEntity) {
     entity.veterancy_raw = NativeF32Bits::from_bits(VETERAN_THRESHOLD_BITS);
-    entity.veterancy = RANK_VETERAN_U16;
 }
 
 /// `TechnoClass::HasWeaponAbility @ 0x0070D0D0`, literally.
@@ -505,7 +502,6 @@ pub fn award_kill(
         veteran_ratio,
         veteran_cap,
     );
-    recipient.veterancy = rank_u16(recipient.veterancy_raw);
 }
 
 #[cfg(test)]

@@ -895,7 +895,7 @@ impl ScatterTechno {
                 .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
                 .is_some_and(|object| {
                     has_weapon_ability(
-                        rank_from_u16(entity.veterancy),
+                        rank_from_u16(entity.veterancy()),
                         object,
                         crate::rules::object_type::Ability::Scatter,
                     )
@@ -975,7 +975,7 @@ pub fn cell_has_elite_occupant(occupants: &[u64], skip_id: u64, entities: &Entit
         id != skip_id
             && entities
                 .get(id)
-                .is_some_and(|entity| entity.veterancy >= ELITE_VETERANCY)
+                .is_some_and(|entity| entity.veterancy() >= ELITE_VETERANCY)
     })
 }
 
@@ -1502,7 +1502,7 @@ pub(super) fn infantry_damage_scatter_admitted(
         return false;
     }
     let has_scatter_ability = crate::sim::combat::veterancy::has_weapon_ability(
-        crate::sim::combat::veterancy::rank_from_u16(infantry.veterancy),
+        crate::sim::combat::veterancy::rank_from_u16(infantry.veterancy()),
         object,
         crate::rules::object_type::Ability::Scatter,
     );
@@ -2292,7 +2292,7 @@ mod tests {
         let mut elite = GameEntity::test_default(3, "E1", "Soviet", 5, 5);
         elite.category = EntityCategory::Infantry;
         elite.crushable = true;
-        elite.veterancy = 200;
+        elite.set_veterancy_rank(200);
         entities.insert(elite);
         let interner = crate::sim::intern::test_interner();
 
@@ -2476,7 +2476,7 @@ mod tests {
                     5,
                     true,
                 );
-                entity.veterancy = object["rank"].as_u64().unwrap_or(0) as u16 * 100;
+                entity.set_veterancy_rank(object["rank"].as_u64().unwrap_or(0) as u16 * 100);
                 let mut house = HouseState::new(owner, 0, None, true, 0, 10);
                 house.current_iq = object["iq"].as_i64().unwrap_or(0) as i32;
                 houses.insert(owner, house);
@@ -2549,7 +2549,7 @@ mod tests {
         );
         for (iq, rank, expected) in [(1, 0, false), (2, 0, true), (1, 100, true), (1, 0, false)] {
             houses.get_mut(&owner).unwrap().current_iq = iq;
-            entities.get_mut(2).unwrap().veterancy = rank;
+            entities.get_mut(2).unwrap().set_veterancy_rank(rank);
             let result = classify_drive_crush_phase(
                 DriveCrushPhase::EnteringCell,
                 &[2],
@@ -3094,7 +3094,7 @@ mod tests {
             // Deliberately disagree with Doing: presentation cannot admit or
             // refuse simulation work, including native-only action codes.
             victim.animation = Some(Animation::new(SequenceKind::Die1));
-            victim.veterancy = input["rank"].as_u64().unwrap_or(0) as u16 * 100;
+            victim.set_veterancy_rank(input["rank"].as_u64().unwrap_or(0) as u16 * 100);
             victim.locomotor = Some(
                 crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                     crate::rules::locomotor_type::LocomotorKind::Walk,

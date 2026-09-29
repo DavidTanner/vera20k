@@ -403,7 +403,7 @@ impl Simulation {
     fn guard_slower_weight(&self, entity: &GameEntity, rules: &RuleSet) -> bool {
         self.object_type(entity.type_ref(), rules)
             .is_some_and(|object| {
-                crate::sim::combat::combat_weapon::weapon_for_index(object, entity.veterancy, 0)
+                crate::sim::combat::combat_weapon::weapon_for_index(object, entity.veterancy(), 0)
                     .is_none()
                     || object.tech_level == -1
                     || object.deploys_into.is_some()
@@ -586,7 +586,7 @@ impl Simulation {
             let armed = self
                 .object_type(head.type_ref(), rules)
                 .and_then(|object| {
-                    crate::sim::combat::combat_weapon::weapon_for_index(object, head.veterancy, 0)
+                    crate::sim::combat::combat_weapon::weapon_for_index(object, head.veterancy(), 0)
                 })
                 .is_some();
             if head.category == EntityCategory::Aircraft

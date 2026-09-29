@@ -53,7 +53,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet) {
     };
     let mut source = GameEntity::test_default(1, "ORCA", "Americans", 10, 10);
     source.category = EntityCategory::Aircraft;
-    source.veterancy = (case["veterancy"].as_u64().unwrap_or(0) * 100) as u16;
+    source.set_veterancy_rank((case["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
     source.aircraft_ammo = Some(AircraftAmmo::new(2));
     source.aircraft_mission = Some(AircraftMission::Attack { sub_state: 3 });
     source.locomotor = Some(LocomotorState::from_object_type(
@@ -135,7 +135,7 @@ fn selected_strafe_range_branch_matches_native_and_dispatches_when_in_range() {
         assert_eq!(distance, row["distance"].as_i64().unwrap() as i32, "{row}");
         let weapon = crate::sim::combat::combat_weapon::primary_for_tier(
             rules.object("ORCA").unwrap(),
-            aircraft.veterancy,
+            aircraft.veterancy(),
         )
         .unwrap();
         assert_eq!(

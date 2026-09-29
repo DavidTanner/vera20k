@@ -44,7 +44,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
     entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: 4 });
     entity.aircraft_ammo = Some(AircraftAmmo::new(2));
     entity.aircraft_ammo.as_mut().unwrap().current = input["ammo"].as_i64().unwrap_or(2) as i32;
-    entity.veterancy = (input["veterancy"].as_u64().unwrap_or(0) * 100) as u16;
+    entity.set_veterancy_rank((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
     entity.body_facing = FacingClass::new(0, 5);
     entity.barrel_facing = Some(FacingClass::new(0, 5));
     entity.attack_target = Some(AttackTarget::for_cell(10, 9));

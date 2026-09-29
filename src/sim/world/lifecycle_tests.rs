@@ -6191,7 +6191,7 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
         firer.type_ref = sim.interner.intern("FIRER");
-        firer.veterancy = 200;
+        firer.set_veterancy_rank(200);
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(next_id),
             pending_infantry_fire: None,

@@ -1179,7 +1179,7 @@ pub(crate) fn estimated_damage_on(
         rules.country_armor_mult_for_type(sim.interner.resolve(house.house_type_id()), attacker_obj)
     });
     let rank_firepower = self::veterancy::has_weapon_ability(
-        self::veterancy::rank_from_u16(attacker.veterancy),
+        self::veterancy::rank_from_u16(attacker.veterancy()),
         attacker_obj,
         Ability::Firepower,
     )
@@ -1187,7 +1187,7 @@ pub(crate) fn estimated_damage_on(
     let rank_armor = target_obj
         .is_some_and(|object| {
             self::veterancy::has_weapon_ability(
-                self::veterancy::rank_from_u16(target.veterancy),
+                self::veterancy::rank_from_u16(target.veterancy()),
                 object,
                 Ability::Stronger,
             )
@@ -2258,7 +2258,7 @@ fn resolve_receive_damage(
     let rank_armor = target_type
         .is_some_and(|object| {
             self::veterancy::has_weapon_ability(
-                self::veterancy::rank_from_u16(target.veterancy),
+                self::veterancy::rank_from_u16(target.veterancy()),
                 object,
                 crate::rules::object_type::Ability::Stronger,
             )
@@ -2793,7 +2793,7 @@ pub(crate) fn build_attacker_snapshot(
         sub_x: entity.position.sub_x,
         sub_y: entity.position.sub_y,
         type_id: entity.type_ref(),
-        veterancy: entity.veterancy,
+        veterancy: entity.veterancy(),
         animation_sequence: entity.animation.as_ref().map(|a| a.sequence),
         animation_frame: entity.animation.as_ref().map(|a| a.frame_index),
         is_prone: entity

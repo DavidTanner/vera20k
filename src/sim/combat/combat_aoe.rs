@@ -2937,7 +2937,7 @@ mod tests {
         veteran.owner = american;
         veteran.type_ref = mtnk;
         veteran.health.current = 300;
-        veteran.veterancy = 100;
+        veteran.set_veterancy_rank(100);
         entities.insert(veteran);
 
         let mut occupancy = OccupancyGrid::new();

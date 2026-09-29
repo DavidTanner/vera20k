@@ -999,7 +999,7 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                 0 => {
                     let mut authored = map_entity(type_id, category, (4, 4));
                     authored.health = 128;
-                    authored.veterancy = 2;
+                    authored.veterancy = 100;
                     authored.facing = 64;
                     authored.sub_cell = 3;
                     authored.recruitable_a = false;
@@ -1021,7 +1021,7 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
             assert!(entity.debug_log.is_some(), "{type_id} route {route}");
             assert!(entity.dont_score);
             assert_eq!(entity.health.current, if route == 0 { 100 } else { 200 });
-            assert_eq!(entity.veterancy, if route == 0 { 2 } else { 0 });
+            assert_eq!(entity.veterancy(), if route == 0 { 100 } else { 0 });
             assert_eq!(entity.lifecycle.in_limbo, route == 2);
             if route == 0 {
                 assert!(!entity.base_defense_response.recruitable_a);

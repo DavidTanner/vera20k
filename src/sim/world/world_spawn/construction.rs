@@ -197,7 +197,7 @@ impl Simulation {
                 rules,
                 obj,
                 category,
-                ge.veterancy,
+                ge.veterancy(),
             )
         {
             ge.parasite = Some(Box::new(

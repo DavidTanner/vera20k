@@ -716,7 +716,9 @@ use crate::sim::world::Simulation;
 // VERA-only ground move phase.
 // 244 -> 245: a house's economy no longer saves the retained OrePurifier count;
 // deposits count purifiers on demand.
-const SNAPSHOT_VERSION: u32 = 245;
+// 245 -> 246: a Techno no longer saves its veterancy rank beside the
+// accumulator; the rank is sampled from it.
+const SNAPSHOT_VERSION: u32 = 246;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3742,7 +3744,8 @@ mod tests {
         // 242 -> 243: no locomotor `ROT=` copy.
         // 243 -> 244: no ground move phase.
         // 244 -> 245: no retained purifier count.
-        assert_eq!(super::SNAPSHOT_VERSION, 245);
+        // 245 -> 246: no stored veterancy rank.
+        assert_eq!(super::SNAPSHOT_VERSION, 246);
     }
 
     #[test]

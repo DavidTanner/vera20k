@@ -1266,8 +1266,8 @@ impl Simulation {
         };
         //Type+D28, or HasWeaponAbility(0x11) by rank (0x70D0D0).
         let crusher = object.crusher
-            || (actor.veterancy >= 100 && object.veteran_crusher)
-            || (actor.veterancy >= 200 && object.elite_crusher);
+            || (actor.veterancy() >= 100 && object.veteran_crusher)
+            || (actor.veterancy() >= 200 && object.elite_crusher);
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
         let native = cells.lookup(cell);
         let deck = cells.flags(native) & 0x100 != 0 && {

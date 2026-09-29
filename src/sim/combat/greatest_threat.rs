@@ -2509,7 +2509,7 @@ mod tests {
         ] {
             let obj = rules.object(kind).unwrap();
             let mut entity = GameEntity::test_default(1, kind, "Americans", 5, 5);
-            entity.veterancy = veterancy;
+            entity.set_veterancy_rank(veterancy);
             entity.weapon_override = Some(WeaponOverride::IfvSlot(slot));
             assert_eq!(
                 passive_scan_class_bits(&rules, obj, attacker_facts(&entity, obj), None) & 4 != 0,

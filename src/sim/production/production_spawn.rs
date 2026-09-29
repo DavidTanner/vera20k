@@ -733,7 +733,7 @@ pub(in crate::sim) fn produced_unit_unlimbo_entry_at_resolved_cell(
         .substrate
         .entities
         .get(produced_id)
-        .map_or(0, |entity| entity.veterancy);
+        .map_or(0, |entity| entity.veterancy());
     let regular_crusher = object.crusher
         || (produced_veterancy >= 100 && object.veteran_crusher)
         || (produced_veterancy >= 200 && object.elite_crusher);
@@ -2318,7 +2318,7 @@ mod tests {
         );
         ranker.type_ref = enemy.interner.intern("RANKER");
         ranker.owner = enemy.interner.intern("Americans");
-        ranker.veterancy = 100;
+        ranker.set_veterancy_rank(100);
         enemy.substrate.entities.insert(ranker);
         assert!(
             admission(&enemy, "RANKER").exact_zero(),

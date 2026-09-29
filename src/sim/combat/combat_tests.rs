@@ -7680,7 +7680,11 @@ fn gsi_04_07_damage_periodic_radiation_enters_direct_receiver_once() {
     let tank = sim
         .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &heights)
         .expect("veteran heavy target spawns");
-    sim.substrate.entities.get_mut(tank).unwrap().veterancy = 100;
+    sim.substrate
+        .entities
+        .get_mut(tank)
+        .unwrap()
+        .set_veterancy_rank(100);
     sim.radiation.apply_detonation(
         crate::sim::radiation::RadDetonation {
             rx: 5,
@@ -8868,7 +8872,7 @@ fn gsi_08_12_a_grizzly_promotes_through_the_damage_path() {
             &mut scenario_rng,
         );
         store.remove(victim_id);
-        ranks.push(store.get(1).expect("killer").veterancy);
+        ranks.push(store.get(1).expect("killer").veterancy());
     }
 
     assert_eq!(ranks, vec![0, 0, 100, 100, 200], "ranks after kills 1..5");
@@ -9203,7 +9207,7 @@ fn gsi_08_12_a_dont_score_victim_pays_no_experience() {
     }
 
     let killer = store.get(1).expect("killer");
-    assert_eq!(killer.veterancy, 0, "five DontScore kills earn nothing");
+    assert_eq!(killer.veterancy(), 0, "five DontScore kills earn nothing");
     assert_eq!(killer.veterancy_raw.bits(), 0);
 }
 

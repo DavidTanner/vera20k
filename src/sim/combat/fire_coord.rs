@@ -82,7 +82,7 @@ impl FireSource {
             exact_z_leptons: entity.position.exact_z_leptons,
             hull_facing: entity.body_facing,
             barrel_facing: entity.barrel_facing,
-            veterancy: entity.veterancy,
+            veterancy: entity.veterancy(),
             garrison_fire_index: None,
             tar_com: entity.attack_target.as_ref().map(|attack| attack.target),
         }

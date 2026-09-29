@@ -178,7 +178,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             .nav_com = Some(NavTargetRef::Entity { id: 3 });
     }
     let owner = sim.substrate.entities.get_mut(1).unwrap();
-    owner.veterancy = (input["veterancy"].as_u64().unwrap_or(0) * 100) as u16;
+    owner.set_veterancy_rank((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
     if input["flag_3d4"].as_bool().unwrap_or(false) {
         owner.mark_mission_only();
     }
@@ -240,7 +240,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         );
         let e = sim.substrate.entities.get_mut(id).unwrap();
         e.lifecycle.in_limbo = true;
-        e.veterancy = (passenger["veterancy"].as_u64().unwrap_or(0) * 100) as u16;
+        e.set_veterancy_rank((passenger["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
         e.weapon_override = Some(combat_weapon::WeaponOverride::IfvSlot(
             passenger["current"].as_u64().unwrap_or(0) as u32,
         ));

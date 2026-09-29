@@ -132,7 +132,7 @@ fn prepare(sim: &mut Simulation, id: u64, input: &Value) {
         int("latch", 0) == 1,
     );
     if state["veterancy"].as_f64().unwrap_or(0.0) >= 2.0 {
-        entity.veterancy = RANK_ELITE_U16;
+        entity.set_veterancy_rank(RANK_ELITE_U16);
     }
     entity.last_fire_frame = int("last_fire_frame", -100);
     entity.turret_anim_frame = int("turret_count", 0) as i32;

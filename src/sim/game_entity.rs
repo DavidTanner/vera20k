@@ -510,13 +510,8 @@ pub struct GameEntity {
     /// Immutable non-null `UndeploysInto` fact used by successful Unlimbo fallback.
     #[serde(default)]
     pub base_plan_has_undeploy_target: bool,
-    /// Veterancy level: 0 = rookie, 100 = veteran, 200 = elite.
-    ///
-    /// A projection of [`Self::veterancy_raw`], refreshed wherever the raw
-    /// accumulator is written. Every existing reader — the damage multiplier,
-    /// the armour divisor, elite weapon selection, the chevron — consumes this.
-    pub veterancy: u16,
-    /// The running accumulator every rank is sampled from.
+    /// The running accumulator every rank is sampled from
+    /// ([`Self::veterancy`]).
     ///
     /// gamemd-derived: the `VeterancyClass` float on `TechnoClass`, fed by
     /// `Record_The_Kill @ 0x00702D40` through `VeterancyClass::Add @
@@ -1315,7 +1310,7 @@ impl GameEntity {
         let Some(object) = rules.object(type_id) else {
             return;
         };
-        let camera = crate::sim::combat::combat_weapon::primary_for_tier(object, self.veterancy)
+        let camera = crate::sim::combat::combat_weapon::primary_for_tier(object, self.veterancy())
             .and_then(|id| rules.weapon(id))
             .is_some_and(|weapon| weapon.camera);
         if !object.selectable || !object.landable || camera {
@@ -1385,6 +1380,20 @@ impl GameEntity {
     /// 0x004C9680`): the constant 127 for infantry (`0x00517BC5`), `ROT=`
     /// (`Type+0x71C`) for a unit (`0x00735579`), an aircraft (`0x00413FE7`)
     /// and a building (`BuildingClass::Init` at `0x00442CA5`).
+    /// Veterancy level sampled from [`Self::veterancy_raw`]: 0 = rookie,
+    /// 100 = veteran, 200 = elite. The damage multiplier, the armour divisor,
+    /// elite weapon selection and the chevron read it.
+    pub fn veterancy(&self) -> u16 {
+        crate::sim::combat::veterancy::rank_u16(self.veterancy_raw)
+    }
+
+    /// Seed the accumulator at a rank's threshold (`SetVeteran @ 0x00750090`
+    /// writes 1.0f, `SetElite @ 0x007500B0` 2.0f; a rookie is 0.0f), as a
+    /// scenario-authored rank does.
+    pub fn set_veterancy_rank(&mut self, rank_u16: u16) {
+        self.veterancy_raw = crate::sim::combat::veterancy::raw_for_rank(rank_u16);
+    }
+
     pub(crate) fn set_body_facing_rot(&mut self, type_rot: i32) {
         self.body_facing
             .set_rot(if self.category == EntityCategory::Infantry {
@@ -1643,7 +1652,6 @@ impl GameEntity {
             base_plan_type_index: -1,
             base_plan_is_defense: false,
             base_plan_has_undeploy_target: false,
-            veterancy,
             veterancy_raw: crate::sim::combat::veterancy::raw_for_rank(veterancy),
             veterancy_rank_cache: veterancy_rank_cache_default(),
             elite_flash_frames: 0,
@@ -2071,7 +2079,7 @@ mod tests {
         assert_eq!(e.body_facing_current(0), 0);
         assert_eq!(e.health.current, 100);
         assert_eq!(e.category, EntityCategory::Unit);
-        assert_eq!(e.veterancy, 0);
+        assert_eq!(e.veterancy(), 0);
         assert_eq!(e.vision_range, 5);
         assert!(e.is_voxel);
         assert!(!e.selected);

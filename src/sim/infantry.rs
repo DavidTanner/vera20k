@@ -54,9 +54,9 @@ const VETERAN_LEVEL: u16 = 100;
 const ELITE_LEVEL: u16 = 200;
 
 pub fn has_veteran_fearless_ability(obj: &ObjectType, entity: &GameEntity) -> bool {
-    if entity.veterancy >= ELITE_LEVEL {
+    if entity.veterancy() >= ELITE_LEVEL {
         obj.veteran_fearless || obj.elite_fearless
-    } else if entity.veterancy >= VETERAN_LEVEL {
+    } else if entity.veterancy() >= VETERAN_LEVEL {
         obj.veteran_fearless
     } else {
         false
@@ -750,14 +750,14 @@ mod tests {
         let rules = rules_for("VeteranAbilities=FEARLESS\n");
         let obj = rules.object("E1").unwrap();
         let mut e = infantry(90);
-        e.veterancy = 100;
+        e.set_veterancy_rank(100);
         apply_fear_from_damage(obj, &mut e, 1, true, 0.25, 0.5);
         assert_eq!(e.infantry.unwrap().fear_level, 0);
 
         let rules = rules_for("EliteAbilities=FEARLESS\n");
         let obj = rules.object("E1").unwrap();
         let mut e = infantry(90);
-        e.veterancy = 200;
+        e.set_veterancy_rank(200);
         apply_panic_force(obj, &mut e);
         assert_eq!(e.infantry.unwrap().fear_level, 0);
     }
@@ -796,7 +796,7 @@ mod tests {
 
         let obj = infantry_obj("VeteranAbilities=FEARLESS\n", true);
         let mut e = infantry(100);
-        e.veterancy = 100;
+        e.set_veterancy_rank(100);
         e.infantry.as_mut().unwrap().fear_level = 100;
         assert_eq!(
             tick_fear_decay_and_prone(&obj, &mut e, false),

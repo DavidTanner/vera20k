@@ -43,7 +43,7 @@ fn mission_only_aircraft_reveal_matches_original_flag_histories() {
             !entity.is_mission_only(),
             "construction is not successful Unlimbo"
         );
-        entity.veterancy = input["veterancy"].as_u64().unwrap() as u16 * 100;
+        entity.set_veterancy_rank(input["veterancy"].as_u64().unwrap() as u16 * 100);
         if flag("previous") {
             entity.mark_mission_only();
         }

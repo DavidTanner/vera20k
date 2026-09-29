@@ -7028,7 +7028,7 @@ fn cell_scatter_world_reads_live_house_and_veteran_ability() {
         // cell's scatter dispatch instead of a simultaneous destruction.
         victim.position.sub_x = SIM_ZERO;
         victim.position.sub_y = SIM_ZERO;
-        victim.veterancy = rank;
+        victim.set_veterancy_rank(rank);
         victim.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Walk,

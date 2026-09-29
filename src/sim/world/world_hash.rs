@@ -1799,10 +1799,10 @@ impl Simulation {
                 entity.base_plan_is_defense.hash(hasher);
                 entity.base_plan_has_undeploy_target.hash(hasher);
             }
-            entity.veterancy.hash(hasher);
-            // The raw accumulator is authoritative — `veterancy` is only its
-            // rank projection, so two objects one kill apart inside the same
-            // rank are distinct sim state.
+            // The rank is sampled from the raw accumulator; its fold keeps its
+            // place in the stream. The accumulator itself is folded too, so
+            // two objects one kill apart inside the same rank are distinct.
+            entity.veterancy().hash(hasher);
             entity.veterancy_raw.bits().hash(hasher);
             entity.veterancy_rank_cache.hash(hasher);
             // Folded only while armed so the legacy default-zero hash stream
