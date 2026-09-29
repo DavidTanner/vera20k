@@ -6353,7 +6353,7 @@ mod tests {
             sim.session.tick + 3,
             Command::Stop { entity_id: 71 },
         ));
-        sim.scatter_rng().next_u32();
+        sim.scenario_rng.next_u32();
         sim.main_rng.next_u32();
         sim.mapgen_rng.next_u32();
         let process_default = crate::sim::rng::SimRng::new(0).logical_state();

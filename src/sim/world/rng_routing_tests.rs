@@ -70,7 +70,7 @@ fn drawing_scenario_leaves_main_untouched() {
     let mapgen_before = sim.mapgen_rng.state();
 
     for _ in 0..32 {
-        sim.scatter_rng().next_u32();
+        sim.scenario_rng.next_u32();
     }
     assert_eq!(
         sim.main_rng.state(),
@@ -185,7 +185,6 @@ macro_rules! assert_routes_scenario {
     };
 }
 
-assert_routes_scenario!(route_scatter_rng, scatter_rng);
 assert_routes_scenario!(route_bridge_rng, bridge_rng);
 assert_routes_scenario!(route_particle_rng, particle_rng);
 assert_routes_scenario!(route_superweapon_rng, superweapon_rng);
@@ -254,7 +253,7 @@ fn advancing_main_only_does_not_change_state_hash() {
 fn advancing_scenario_only_changes_state_hash() {
     let mut sim = Simulation::with_seed(99);
     let before = sim.state_hash();
-    sim.scatter_rng().next_u32();
+    sim.scenario_rng.next_u32();
     assert_ne!(
         sim.state_hash(),
         before,
@@ -295,7 +294,7 @@ fn advancing_mapgen_only_does_not_change_state_hash_or_gameplay_streams() {
 fn snapshot_load_resets_scenario_and_omits_process_globals() {
     let mut sim = Simulation::with_seed(0xABCD_1234);
     for _ in 0..11 {
-        sim.scatter_rng().next_u32();
+        sim.scenario_rng.next_u32();
     }
     for _ in 0..7 {
         sim.main_rng.next_u32();
@@ -366,7 +365,7 @@ fn determinism_both_streams_match_across_ticks() {
 fn production_in_scenario_load_retains_live_seed_main_and_mapgen() {
     let mut saved = Simulation::with_seed(0xABCD_1234);
     for _ in 0..11 {
-        saved.scatter_rng().next_u32();
+        saved.scenario_rng.next_u32();
     }
 
     let saved_seed = saved.session.seed;
@@ -377,7 +376,7 @@ fn production_in_scenario_load_retains_live_seed_main_and_mapgen() {
 
     let mut live = Simulation::with_seed(0x7654_3210);
     for _ in 0..3 {
-        live.scatter_rng().next_u32();
+        live.scenario_rng.next_u32();
     }
     for _ in 0..7 {
         live.main_rng.next_u32();
@@ -475,7 +474,7 @@ fn scenario_main_reseed_does_not_change_mapgen() {
 #[test]
 fn rng_views_name_all_three_streams() {
     let mut sim = Simulation::with_seed(5);
-    sim.scatter_rng().next_u32();
+    sim.scenario_rng.next_u32();
     sim.main_rng.next_u32();
     sim.mapgen_rng.next_u32();
     let views = sim.rng_views();

@@ -650,6 +650,7 @@ fn techno_ai_shell(
                 sim.update_building_absorb_anim(id, rules);
                 sim.update_building_storage_anims(id, rules);
             }
+            building_missions::idle_animation_ready_latch(sim, id, rules);
             // The ready check after UpdateAnimation (`0x0043FE27`).
             building_missions::ready_commence(sim, id);
             if let Some(rules) = rules

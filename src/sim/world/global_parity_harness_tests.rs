@@ -352,7 +352,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // mission, NavCom, attack and movement targets, locomotor kind and layer and
 // all three RNG states matched at all 600 ticks (the probe patch was not
 // committed). Old values: the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x19D1_51F4_9C23_0D0B;
+// 2026-09-29 garrison Unload chain (hashed state, not behavior): an idle
+// turretless building's UpdateAnimation now sets its ready byte +0x6DD every
+// frame (0x00451218), which the building leaf hash folds. With only that write
+// disabled the old pin reproduces exactly; the three RNG stream pins, per-tick
+// replay equality and every object's final mission are unchanged.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC24F_65FF_6A05_6EBB;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

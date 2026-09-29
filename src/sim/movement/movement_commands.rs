@@ -30,7 +30,7 @@ use crate::sim::game_entity::GameEntity;
 /// Check if an entity can accept a new movement destination.
 ///
 /// Prevents destination changes during special states: dying, deploying,
-/// undeploying, falling, and unloading passengers.
+/// undeploying and falling.
 pub(crate) fn can_accept_destination(entity: &GameEntity) -> bool {
     if entity.dying {
         return false;

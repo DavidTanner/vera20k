@@ -137,8 +137,8 @@ impl Simulation {
     /// store to `+0x2B8` or `+0x5A8`. Clearing there would leave a unit parked
     /// after a Stop where retail resumes its archived move on the next Restore.
     ///
-    /// Six commands `command_uses_megamission` also counts — Guard, MinerReturn,
-    /// EjectBunker, UnloadPassengers, HarvestCell, ToggleInfantryDeploy — write
+    /// Five commands `command_uses_megamission` also counts — Guard, MinerReturn,
+    /// EjectBunker, HarvestCell, ToggleInfantryDeploy — write
     /// their missions outside this funnel entirely and so still get no clear,
     /// and do not take a team member off its team (`0x004C7380`); only
     /// computer units are team members, and only `sim::ai`'s AttackMove,
