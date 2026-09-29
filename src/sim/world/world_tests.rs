@@ -96,10 +96,10 @@ fn game_speed_transition_applies_at_ingress_before_triggers_and_hash() {
     let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
 
     let result = sim
-        .advance_master_frame(&[command], None, None, None, 67, TickLane::Ordinary, None)
+        .advance_master_frame(&[command], None, None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
     let control_result = control
-        .advance_master_frame(&[], None, None, None, 67, TickLane::Ordinary, None)
+        .advance_master_frame(&[], None, None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
 
     assert!(result.frame_committed);
@@ -190,15 +190,7 @@ fn network_modal_does_not_execute_game_speed_ingress() {
     let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
 
     let result = sim
-        .advance_master_frame(
-            &[command],
-            None,
-            None,
-            None,
-            67,
-            TickLane::NetworkModal,
-            None,
-        )
+        .advance_master_frame(&[command], None, None, 67, TickLane::NetworkModal, None)
         .expect("fixture frame must complete");
 
     assert_eq!(result.executed_commands, 0);
@@ -319,7 +311,7 @@ fn master_frame_hash_observes_living_animation_completion_facing() {
     let (mut sim, rules) = animation_boundary_fixture();
 
     let result = sim
-        .advance_master_frame(&[], Some(&rules), None, None, 67, TickLane::Ordinary, None)
+        .advance_master_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
 
     let entity = sim.substrate.entities.get(1).expect("living infantry");
@@ -607,15 +599,7 @@ fn terminal_master_frame_does_not_advance_living_animation() {
     let exit = CommandEnvelope::new(owner, 1, Command::ExitMatch);
 
     let result = sim
-        .advance_master_frame(
-            &[exit],
-            Some(&rules),
-            None,
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-        )
+        .advance_master_frame(&[exit], Some(&rules), None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
 
     assert!(!result.frame_committed);

@@ -321,6 +321,9 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
                 .infantry_terminal,
             Some(terminal)
         );
+        // The fixture world never published navigation; the load rebuilds it.
+        // Give the saved side the same grid so both frames read one.
+        saved.install_fixture_path_grid(restored.path_grid());
         for visit in 1..=remaining_visits {
             saved.advance_tick(&[], Some(&rules), None, None, 100);
             restored.advance_tick(&[], Some(&rules), None, None, 100);

@@ -6,6 +6,8 @@
 //! remains on Simulation for persistence and replay.
 
 use super::Simulation;
+use std::sync::Arc;
+
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
@@ -548,16 +550,14 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
+        path_grid: Option<Arc<PathGrid>>,
         execute_tick: u64,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (usize, bool, Vec<InternedId>) {
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;
         let mut placed_building_owners = Vec::new();
-        let mut tail_path_grid = path_grid
-            .cloned()
-            .or_else(|| self.path_grid.as_deref().cloned());
+        let mut tail_path_grid = path_grid.or_else(|| self.path_grid.clone());
 
         for owner in self.due_command_house_order(commands, execute_tick) {
             for command in commands.iter().filter(|command| {
@@ -569,13 +569,13 @@ impl Simulation {
                 let (applied, spawned, placed_owner) = self.apply_one_due_command(
                     command,
                     rules,
-                    tail_path_grid.as_ref(),
+                    tail_path_grid.as_deref(),
                     overlay_registry,
                 );
                 if matches!(command.payload, Command::SellWallAtCell { .. }) {
-                    tail_path_grid = self.path_grid.as_deref().cloned();
+                    tail_path_grid = self.path_grid.clone();
                 } else if applied && self.is_wall_placement_command(&command.payload, rules) {
-                    tail_path_grid = self.path_grid.as_deref().cloned().or(tail_path_grid);
+                    tail_path_grid = self.path_grid.clone().or(tail_path_grid);
                 }
                 spawned_entities |= spawned;
                 placed_building_owners.extend(placed_owner);
@@ -591,12 +591,12 @@ impl Simulation {
                 })
                 .cloned()
                 .collect::<Vec<_>>();
-            self.adjust_staged_megamission_destinations(&mut staged, tail_path_grid.as_ref());
+            self.adjust_staged_megamission_destinations(&mut staged, tail_path_grid.as_deref());
             for command in &staged {
                 let (_, spawned, placed_owner) = self.apply_one_due_command(
                     command,
                     rules,
-                    tail_path_grid.as_ref(),
+                    tail_path_grid.as_deref(),
                     overlay_registry,
                 );
                 spawned_entities |= spawned;
