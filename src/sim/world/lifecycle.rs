@@ -66,6 +66,7 @@ pub(crate) enum PointerExpiryControl {
 pub(crate) struct UninitContext<'a> {
     terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
     rules: Option<&'a RuleSet>,
+    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
 }
 
 impl<'a> UninitContext<'a> {
@@ -76,6 +77,7 @@ impl<'a> UninitContext<'a> {
         Self {
             terrain,
             rules: None,
+            registry: None,
         }
     }
 
@@ -83,7 +85,23 @@ impl<'a> UninitContext<'a> {
         Self {
             terrain: None,
             rules: Some(rules),
+            registry: None,
         }
+    }
+
+    /// The match's OverlayTypeClass table, for receivers that classify a
+    /// cell's overlay (an ejected occupant's Scatter entry test).
+    pub(crate) const fn with_registry(
+        self,
+        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Self {
+        Self { registry, ..self }
+    }
+
+    pub(crate) const fn registry(
+        self,
+    ) -> Option<&'a crate::map::overlay_types::OverlayTypeRegistry> {
+        self.registry
     }
 
     pub(crate) const fn terrain(

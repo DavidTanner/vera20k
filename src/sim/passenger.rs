@@ -479,9 +479,13 @@ const NEIGHBORS: [(i16, i16); 8] = [
 ///
 /// Returns `true` if any entity's ownership changed this tick (garrison
 /// transfer or revert), signalling that the sprite atlas needs a rebuild.
-pub fn tick_passenger_system(sim: &mut Simulation, rules: &RuleSet) -> bool {
+pub fn tick_passenger_system(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> bool {
     let order = sim.live_object_order_snapshot();
-    tick_boarding_and_garrison_reconciliation_in_order(sim, rules, &order)
+    tick_boarding_and_garrison_reconciliation_in_order(sim, rules, registry, &order)
 }
 
 /// Local surrogate for gamemd's live object-vector walk for the garrison owner slice.
@@ -493,6 +497,7 @@ pub fn tick_passenger_system(sim: &mut Simulation, rules: &RuleSet) -> bool {
 fn tick_boarding_and_garrison_reconciliation_in_order(
     sim: &mut Simulation,
     rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     order: &[u64],
 ) -> bool {
     let mut ownership_changed = false;
@@ -522,7 +527,8 @@ fn tick_boarding_and_garrison_reconciliation_in_order(
             process_unloading_transport(sim, rules, entity_id);
         }
 
-        ownership_changed |= reconcile_civilian_garrison_owner_for_building(sim, rules, entity_id);
+        ownership_changed |=
+            reconcile_civilian_garrison_owner_for_building(sim, rules, registry, entity_id);
     }
     ownership_changed
 }
@@ -845,6 +851,7 @@ fn is_at_or_below_red_hp(current: i32, strength: i32, condition_red: f64) -> boo
 fn reconcile_civilian_garrison_owner_for_building(
     sim: &mut Simulation,
     rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
 ) -> bool {
     let Some((type_ref, mut current_owner, mut first_passenger, mut cargo_empty, red_hp_occupied)) =
@@ -883,7 +890,7 @@ fn reconcile_civilian_garrison_owner_for_building(
     }
 
     if red_hp_occupied {
-        crate::sim::production::eject_red_hp_garrison(sim, rules, building_id);
+        crate::sim::production::eject_red_hp_garrison(sim, rules, registry, building_id);
         let Some((owner_after_eject, first_after_eject, empty_after_eject)) = sim
             .substrate
             .entities
@@ -1265,6 +1272,9 @@ ConditionYellow=50%
         let mut ge = GameEntity::test_default(stable_id, type_ref, owner_str, rx, ry);
         ge.owner = owner_id;
         ge.type_ref = type_id;
+        ge.category = EntityCategory::Infantry;
+        ge.mission_leaf =
+            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category);
         ge.passenger_role = PassengerRole::Boarding {
             target_transport_id: transport_id,
         };
@@ -1440,8 +1450,12 @@ ConditionYellow=50%
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
         let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
 
-        let changed =
-            tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, &[pax, bldg]);
+        let changed = tick_boarding_and_garrison_reconciliation_in_order(
+            &mut sim,
+            &rules,
+            None,
+            &[pax, bldg],
+        );
 
         assert!(changed);
         assert_eq!(owner_name(&sim, bldg), "Americans");
@@ -1459,7 +1473,7 @@ ConditionYellow=50%
         );
         sim.set_logic_order_for_test(vec![pax, bldg]);
 
-        let changed = tick_passenger_system(&mut sim, &rules);
+        let changed = tick_passenger_system(&mut sim, &rules, None);
 
         assert!(
             changed,
@@ -1475,14 +1489,22 @@ ConditionYellow=50%
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
         let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
 
-        let changed =
-            tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, &[bldg, pax]);
+        let changed = tick_boarding_and_garrison_reconciliation_in_order(
+            &mut sim,
+            &rules,
+            None,
+            &[bldg, pax],
+        );
 
         assert!(!changed);
         assert_eq!(owner_name(&sim, bldg), "Neutral");
 
-        let changed =
-            tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, &[bldg, pax]);
+        let changed = tick_boarding_and_garrison_reconciliation_in_order(
+            &mut sim,
+            &rules,
+            None,
+            &[bldg, pax],
+        );
 
         assert!(changed);
         assert_eq!(owner_name(&sim, bldg), "Americans");
@@ -1502,7 +1524,7 @@ ConditionYellow=50%
             assert!(cargo.board(second, 1));
         }
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
 
         assert!(changed);
         assert_eq!(owner_name(&sim, bldg), "Russians");
@@ -1514,7 +1536,7 @@ ConditionYellow=50%
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
 
         assert!(changed);
         assert_eq!(owner_name(&sim, bldg), "Neutral");
@@ -1557,7 +1579,7 @@ ConditionYellow=50%
         );
 
         assert!(reconcile_civilian_garrison_owner_for_building(
-            &mut sim, &rules, bldg
+            &mut sim, &rules, None, bldg
         ));
         assert_eq!(sim.houses[&neutral].tracking.buildings(), 0);
         assert_eq!(sim.houses[&americans].tracking.buildings(), 1);
@@ -1571,7 +1593,7 @@ ConditionYellow=50%
                 .disembark(pax)
         );
         assert!(reconcile_civilian_garrison_owner_for_building(
-            &mut sim, &rules, bldg
+            &mut sim, &rules, None, bldg
         ));
         assert_eq!(sim.houses[&neutral].tracking.buildings(), 1);
         assert_eq!(sim.houses[&americans].tracking.buildings(), 0);
@@ -1579,8 +1601,9 @@ ConditionYellow=50%
 
     #[test]
     fn red_hp_captured_garrison_ejects_and_reverts_in_same_reconciliation() {
-        let mut sim = Simulation::new();
         let rules = garrison_test_rules();
+        let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
         let pax = place_inside_garrison(&mut sim, &rules, bldg, "E1", "Americans");
 
@@ -1591,7 +1614,7 @@ ConditionYellow=50%
             }
         }
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
 
         assert!(
             changed,
@@ -1644,7 +1667,7 @@ ConditionYellow=50%
         let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
         assert!(sim.live_object_order_snapshot().contains(&pax));
 
-        tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, &[pax, bldg]);
+        tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, None, &[pax, bldg]);
 
         assert!(
             matches!(
@@ -1689,7 +1712,7 @@ ConditionYellow=50%
             vec![transport, passenger, tail]
         );
 
-        tick_passenger_system(&mut sim, &rules);
+        tick_passenger_system(&mut sim, &rules, None);
 
         let passenger_entity = sim
             .substrate
@@ -1708,7 +1731,7 @@ ConditionYellow=50%
             vec![transport, tail, passenger]
         );
 
-        tick_passenger_system(&mut sim, &rules);
+        tick_passenger_system(&mut sim, &rules, None);
         assert_eq!(
             sim.live_object_order_snapshot(),
             vec![transport, tail, passenger],
@@ -1720,8 +1743,9 @@ ConditionYellow=50%
     /// Ejecting a garrison occupant reveals it: it re-enters the active order.
     #[test]
     fn garrison_eject_reveals_passenger_into_active_order() {
-        let mut sim = Simulation::new();
         let rules = garrison_test_rules();
+        let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
         let pax = place_inside_garrison(&mut sim, &rules, bldg, "E1", "Americans");
         assert!(
@@ -1736,7 +1760,7 @@ ConditionYellow=50%
             }
         }
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
         assert!(changed);
         assert!(matches!(
             sim.substrate.entities.get(pax).unwrap().passenger_role,
@@ -1752,12 +1776,13 @@ ConditionYellow=50%
     /// tail (idempotent, order-preserving — not sorted).
     #[test]
     fn board_then_eject_round_trip_reappends_once_at_tail() {
-        let mut sim = Simulation::new();
         let rules = garrison_test_rules();
+        let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
         let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
 
-        tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, &[pax, bldg]);
+        tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, None, &[pax, bldg]);
         assert!(!sim.live_object_order_snapshot().contains(&pax));
 
         if let Some(building) = sim.substrate.entities.get_mut(bldg) {
@@ -1766,7 +1791,7 @@ ConditionYellow=50%
                 cargo.garrison_fire_index = 3;
             }
         }
-        reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, bldg);
+        reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
 
         let order = sim.live_object_order_snapshot();
         assert_eq!(
@@ -2136,7 +2161,7 @@ ConditionYellow=50%
         sim.substrate.entities.insert(pax);
 
         // Tick unloading — should pop the one passenger and trigger empty branch.
-        let changed = tick_passenger_system(&mut sim, &rules);
+        let changed = tick_passenger_system(&mut sim, &rules, None);
         assert!(
             changed,
             "last-occupant normal unload should report ownership change in the same tick"
@@ -2181,7 +2206,7 @@ ConditionYellow=50%
             .iter()
             .filter(|evt| matches!(evt, SimSoundEvent::StructureAbandoned { .. }))
             .count();
-        let changed_again = tick_passenger_system(&mut sim, &rules);
+        let changed_again = tick_passenger_system(&mut sim, &rules, None);
         assert!(
             !changed_again,
             "empty revert must not be delayed into the next passenger pass"
@@ -2275,6 +2300,9 @@ ConditionYellow=50%
         let mut ge = GameEntity::test_default(stable_id, type_ref, owner_str, 0, 0);
         ge.owner = owner_id;
         ge.type_ref = type_id;
+        ge.category = EntityCategory::Infantry;
+        ge.mission_leaf =
+            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category);
         ge.passenger_role = PassengerRole::Inside {
             transport_id: building_id,
             open_topped: false,
@@ -2338,6 +2366,7 @@ ConditionYellow=50%
     fn test_garrison_eject_on_destruction_happy_path() {
         let rules = garrison_test_rules();
         let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let building_id = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Allied", 10, 10);
         let pax1 = place_inside_garrison(&mut sim, &rules, building_id, "E1", "Allied");
         let pax2 = place_inside_garrison(&mut sim, &rules, building_id, "E1", "Allied");

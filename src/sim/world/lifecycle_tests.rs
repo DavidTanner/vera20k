@@ -247,6 +247,14 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
     sim.playfield_bounds =
         Some(crate::sim::cell_rect::PlayfieldBounds::from_normalized_local_size(16, 2, 2, 12, 3));
     install_common_raw_terrain(&mut sim, 16, 16, 4, None);
+    // SellBuilding's exit probe is the occupant's own Can_Enter_Cell, which
+    // reads the cells' speed rows.
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    for (rx, ry) in (0..16u16).flat_map(|ry| (0..16u16).map(move |rx| (rx, ry))) {
+        let cell = terrain.cell_mut(rx, ry).unwrap();
+        cell.speed_costs = crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS;
+        cell.base_speed_costs = cell.speed_costs;
+    }
     let building_id = sim.allocate_stable_id();
     insert_entity(&mut sim, building_id, EntityCategory::Structure);
     let passenger_id = sim.allocate_stable_id();

@@ -701,7 +701,7 @@ fn a_gattling_tank_boards_with_its_spin_reset() {
         };
     }
     spin.sim.sound_events.clear();
-    crate::sim::passenger::tick_passenger_system(&mut spin.sim, &spin.rules);
+    crate::sim::passenger::tick_passenger_system(&mut spin.sim, &spin.rules, None);
     let tank = spin.sim.substrate.entities.get(spin.tank).unwrap();
     assert!(tank.passenger_role.is_inside_transport());
     assert_eq!((tank.gattling.stage(), tank.gattling.value()), (0, 0));
