@@ -81,12 +81,19 @@ pub(super) struct LiveObjectPassOutcome {
 }
 
 #[derive(Default)]
-pub(super) struct GroundLocomotorOutcome {
+pub(crate) struct GroundLocomotorOutcome {
     pub(super) movement: movement::MovementTickStats,
     pub(super) bridge_state_changed: bool,
     track_owned: bool,
     /// The Hover or tube-exit arrival ran `Per_Cell_Process(2)`.
     per_cell_ran: bool,
+}
+
+impl GroundLocomotorOutcome {
+    /// Whether the Process changed bridge state.
+    pub(crate) fn bridge_state_changed(&self) -> bool {
+        self.bridge_state_changed
+    }
 }
 
 /// Re-enter the pending movement pass for the same mover of this Process (see
@@ -158,7 +165,7 @@ impl Simulation {
     /// The ordinary ground locomotor Process corridor, without Object/Techno AI.
     /// Infantry Scatter51D478 calls the active locomotor synchronously; its
     /// PerCell and boundary receivers must finish before Scatter returns.
-    pub(super) fn process_ground_locomotor_one(
+    pub(crate) fn process_ground_locomotor_one(
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
@@ -288,6 +295,15 @@ impl Simulation {
         };
         let mut retry = false;
         loop {
+            // The Scatter calls a step queued while the pass held the world
+            // (tube exit, pass-lane cell entry), in call order.
+            outcome.bridge_state_changed |= sim
+                .run_scatter_requests(
+                    pending_movement.take_scatter_requests(),
+                    rules,
+                    overlay_registry,
+                )
+                .map_err(|cause| frame_error(sim, cause))?;
             if let Some(request) = pending_movement.take_foot_path_request() {
                 let held = Some(pending_movement.held_block_sets());
                 let outcome = sim
@@ -394,6 +410,13 @@ impl Simulation {
             );
             retry = true;
         }
+        outcome.bridge_state_changed |= sim
+            .run_scatter_requests(
+                pending_movement.take_scatter_requests(),
+                rules,
+                overlay_registry,
+            )
+            .map_err(|cause| frame_error(sim, cause))?;
         if let Some((id, head)) = pending_movement.take_walk_per_cell() {
             outcome.bridge_state_changed |=
                 sim.run_completed_walk_step(id, head, rules, overlay_registry)?;

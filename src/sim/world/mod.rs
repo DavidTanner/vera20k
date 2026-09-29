@@ -6347,11 +6347,7 @@ impl Simulation {
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
             building_dock::tick_building_docks(self, rules, phase_six_path_grid);
-            crate::sim::docking::bunker_install::tick_bunker_install(
-                self,
-                rules,
-                phase_six_path_grid,
-            );
+            crate::sim::docking::bunker_install::tick_bunker_install(self, rules, overlay_registry);
             aircraft_dock::tick_aircraft_docks(self, rules);
             if spawned_entities {
                 self.refresh_fog(phase_six_path_grid, &vision_config, Some(rules));

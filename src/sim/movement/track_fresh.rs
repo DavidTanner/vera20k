@@ -499,7 +499,7 @@ impl Simulation {
                     }
                 } else {
                     //4B38B3..4B393A: Scatter_Objects(Null, 1, 1, deck).
-                    self.scatter_blocked_track_cell(id, cell, rules);
+                    self.scatter_blocked_track_cell(id, cell, rules, call.registry)?;
                 }
                 self.track_first_rejected_tail(id);
                 Ok(false)
@@ -622,7 +622,7 @@ impl Simulation {
         //4B3C8D..4B3E21: publish the target speed fraction.
         self.publish_fresh_speed(id, cell, road, rules);
         //4B3E27..4B3E65: Unit+534(cell, 1), the crusher's pre-entry scatter.
-        self.track_crusher_pre_scatter(call, cell);
+        self.track_crusher_pre_scatter(call, cell)?;
         let actor = self
             .substrate
             .entities
@@ -801,7 +801,7 @@ impl Simulation {
                     }
                 } else {
                     //4B43D0..4B4437: Scatter_Objects on the second cell.
-                    self.scatter_blocked_track_cell(id, second_cell, rules);
+                    self.scatter_blocked_track_cell(id, second_cell, rules, call.registry)?;
                 }
                 self.track_second_refused(call)
             }
@@ -1180,12 +1180,13 @@ impl Simulation {
         id: u64,
         cell: (i16, i16),
         rules: &RuleSet,
-    ) {
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Result<(), String> {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return;
+            return Ok(());
         };
         let Some(actor) = self.substrate.entities.get(id) else {
-            return;
+            return Ok(());
         };
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
         let native = cells.lookup(cell);
@@ -1193,64 +1194,63 @@ impl Simulation {
         let location = ground_pose::position_world_coord(&actor.position);
         let deck = cells.flags(native) & 0x100 != 0
             && (location.z / GROUND_LEVEL_HEIGHT_LEPTONS - level).abs() > 2;
-        self.scatter_cell_contacts(cell, deck, true, rules);
+        self.scatter_cell_contacts(cell, deck, true, rules, registry)
     }
 
-    /// `CellClass::Scatter_Objects(null, 1, forced, deck)` on `cell`; also the
-    /// computer's site clearing (`sim::build_site::flush_for_placement`).
+    /// `CellClass::Scatter_Objects(null, 1, forced, deck)` on `cell`
+    /// ([`Self::scatter_cell_objects`]); also the computer's site clearing
+    /// (`sim::build_site::flush_for_placement`). The receivers' bridge-state
+    /// answer is dropped: only an Engineer arriving at a BridgeRepairHut cell
+    /// sets it, and a receiver's one Process walks toward a cell FNPC or the
+    /// neighbour search found passable, which a hut cell is not.
     pub(crate) fn scatter_cell_contacts(
         &mut self,
         cell: (i16, i16),
         deck: bool,
         forced: bool,
         rules: &RuleSet,
-    ) {
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Result<(), String> {
         #[cfg(test)]
         if super::fresh_oracle_seam::substitute(
             super::fresh_oracle_seam::FreshCallRecord::Scatter { cell, forced, deck },
         ) {
-            return;
+            return Ok(());
         }
         if cell.0 < 0 || cell.1 < 0 {
-            return;
+            return Ok(());
         }
-        let grid = self.path_grid_snapshot();
-        super::bump_crush::scatter_cell_objects(
-            &mut self.substrate.entities,
-            &self.substrate.occupancy,
+        self.scatter_cell_objects(
             (cell.0 as u16, cell.1 as u16),
             if deck {
                 MovementLayer::Bridge
             } else {
                 MovementLayer::Ground
             },
-            forced,
-            grid.as_deref(),
-            self.resolved_terrain.as_ref(),
-            &mut self.scenario_rng,
-            Some(rules),
-            &self.interner,
-            &self.houses,
-            super::DestinationTiming::new(
-                self.session.binary_frame,
-                rules.general.blockage_path_delay_ticks,
-            ),
-        );
+            super::ScatterFlags::new(true, forced),
+            rules,
+            registry,
+        )?;
+        Ok(())
     }
 
     /// Unit+534(cell, 1) = 0x7416A0 with its second argument set: a Crusher
     /// (Type+D28 or ability 0x11) scatters a Cell holding infantry (raw
     /// +124/+128 & 0x1F) without force. The deck list applies on a structural
     /// Cell the Foot rides or reaches from four levels above.
-    fn track_crusher_pre_scatter(&mut self, call: &FreshCall<'_>, cell: (i16, i16)) {
+    fn track_crusher_pre_scatter(
+        &mut self,
+        call: &FreshCall<'_>,
+        cell: (i16, i16),
+    ) -> Result<(), String> {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return;
+            return Ok(());
         };
         let Some(actor) = self.substrate.entities.get(call.id) else {
-            return;
+            return Ok(());
         };
         let Some(object) = call.rules.object(self.interner.resolve(actor.type_ref())) else {
-            return;
+            return Ok(());
         };
         //Type+D28, or HasWeaponAbility(0x11) by rank (0x70D0D0).
         let crusher = object.crusher
@@ -1267,7 +1267,7 @@ impl Simulation {
                     == level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS
         };
         if !crusher {
-            return;
+            return Ok(());
         }
         let layer = if deck {
             MovementLayer::Bridge
@@ -1280,8 +1280,9 @@ impl Simulation {
         ) & 0x1F
             != 0;
         if infantry {
-            self.scatter_cell_contacts(cell, deck, false, call.rules);
+            self.scatter_cell_contacts(cell, deck, false, call.rules, call.registry)?;
         }
+        Ok(())
     }
 
     /// Code 4/5 without a retry (0x4B3B03..0x4B3BE9): `Find_Blocking_Object`

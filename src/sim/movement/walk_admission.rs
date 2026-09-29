@@ -225,7 +225,7 @@ impl Simulation {
                 if request.allows_retry() {
                     return self.walk_retry_admission(request);
                 }
-                self.walk_scatter_or_stop(id, cell, rules)?;
+                self.walk_scatter_or_stop(id, cell, rules, registry)?;
                 Ok(None)
             }
             7 => self.walk_retry_admission(request),
@@ -416,6 +416,7 @@ impl Simulation {
         id: u64,
         cell: NativeCellIdentity,
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -464,8 +465,7 @@ impl Simulation {
             .wrapping_abs()
                 > 2;
         let at = cells.coord(cell);
-        self.scatter_cell_contacts(at, deck, true, rules);
-        Ok(())
+        self.scatter_cell_contacts(at, deck, true, rules, registry)
     }
 
     fn walk_override_blocker(

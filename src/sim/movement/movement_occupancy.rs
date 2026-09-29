@@ -25,7 +25,6 @@ use crate::sim::pathfinding::cell_entry::{
 };
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::{BridgeTraversalInput, PathGrid};
-use crate::sim::rng::SimRng;
 
 use super::{
     MovementConfig, MovementTickStats, MoverSnapshot, PATH_STUCK_INIT, PathfindingContext,
@@ -620,13 +619,11 @@ pub(super) fn handle_deferred_occupancy(
     raw_cell_occupation: &RawCellOccupationGrid,
     live_building_entry_skips: DeferredBuildingEntrySkips<'_>,
     alliances: &HouseAllianceMap,
-    path_grid: Option<&PathGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    rng: &mut SimRng,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     crush_kills: &mut Vec<PendingCrushKill>,
-    already_scattered: &mut BTreeSet<u64>,
+    scatters: &mut super::scatter::ScatterRequests,
     sim_tick: u64,
     interner: &crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
@@ -859,29 +856,14 @@ pub(super) fn handle_deferred_occupancy(
                     houses,
                 )
             {
+                // The entering cell's unforced Scatter_Objects hands each
+                // occupant its dispatch gate admitted `Scatter(null, 1, 0)`.
                 for blocker_id in blockers {
                     if kill_set.contains(&blocker_id) {
                         continue;
                     }
-                    if !already_scattered.contains(&blocker_id)
-                        && bump_crush::scatter_blocker(
-                            entities,
-                            blocker_id,
-                            path_grid,
-                            resolved_terrain,
-                            occupancy,
-                            object_list_layer,
-                            rng,
-                            rules,
-                            interner,
-                            crate::sim::movement::DestinationTiming::new(
-                                mcfg.binary_frame,
-                                mcfg.blockage_path_delay_ticks,
-                            ),
-                        )
-                    {
-                        already_scattered.insert(blocker_id);
-                        stats.scatter_successes = stats.scatter_successes.saturating_add(1);
+                    if scatters.request(blocker_id, super::ScatterFlags::new(true, false)) {
+                        stats.scatter_requests = stats.scatter_requests.saturating_add(1);
                     }
                 }
             }
@@ -937,34 +919,18 @@ pub(super) fn handle_deferred_occupancy(
             let blocker_is_structure = entities
                 .get(blocker_id)
                 .is_some_and(|blocker| blocker.category == EntityCategory::Structure);
-            // Scatter the stationary friendly blocker out of the way.
-            // Matches original engine: CellClass::Scatter_Objects with force=1
-            // tells the BLOCKER to move, not the mover. The blocker receives a
-            // movement command to walk to an adjacent cell.
-            let mut scattered = false;
-            if !blocker_is_structure && !already_scattered.contains(&blocker_id) {
-                scattered = bump_crush::scatter_blocker(
-                    entities,
-                    blocker_id,
-                    path_grid,
-                    resolved_terrain,
-                    occupancy,
-                    object_list_layer,
-                    rng,
-                    rules,
-                    interner,
-                    crate::sim::movement::DestinationTiming::new(
-                        mcfg.binary_frame,
-                        mcfg.blockage_path_delay_ticks,
-                    ),
-                );
-                if scattered {
-                    already_scattered.insert(blocker_id);
-                    stats.scatter_successes = stats.scatter_successes.saturating_add(1);
-                }
+            // Code 6 calls `Scatter_Objects(null, 1, 1, deck)` on the refused
+            // cell (Drive 0x004B393A, Hover 0x0051597D, Walk 0x0075B891) and
+            // reads no result from it: the wait below follows the call
+            // whatever the receivers do. This lane asks only the refusing
+            // occupant.
+            let scattered = !blocker_is_structure
+                && scatters.request(blocker_id, super::ScatterFlags::new(true, true));
+            if scattered {
+                stats.scatter_requests = stats.scatter_requests.saturating_add(1);
             }
-            // Mover waits — blocker is walking away. If scatter failed,
-            // fall through to handle_blocked_tick for repath.
+            // The mover waits while the blocker walks away. An allied building
+            // (code 7) or a blocker this pass already asked repaths instead.
             if let Some(mut turn) = entities.take_turn(entity_id) {
                 let (entity, others) = turn.split();
                 let marker_context =

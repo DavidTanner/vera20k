@@ -1006,7 +1006,7 @@ impl Simulation {
             }
             //4B1EC0..4B1F43: the forced deck-aware Scatter_Objects on the cell.
             6 => {
-                self.scatter_blocked_track_cell(id, target, rules);
+                self.scatter_blocked_track_cell(id, target, rules, registry)?;
                 return Ok(false);
             }
             _ => return Ok(false),

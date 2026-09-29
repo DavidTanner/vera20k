@@ -456,7 +456,7 @@ impl Simulation {
                 );
                 Ok(false)
             }
-            6 => self.answer_track_ally_cell(id, cell, rules),
+            6 => self.answer_track_ally_cell(id, cell, rules, registry),
             _ => Ok(false),
         }
     }
@@ -505,6 +505,7 @@ impl Simulation {
         id: u64,
         cell: (i32, i32),
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let terrain = self
             .resolved_terrain
@@ -560,7 +561,7 @@ impl Simulation {
             return Ok(true);
         }
         //4B2D68..4B2DC0: the forced scatter of the refused cell.
-        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules);
+        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, registry)?;
         Ok(false)
     }
 
