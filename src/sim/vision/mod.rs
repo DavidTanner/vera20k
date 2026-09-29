@@ -222,36 +222,6 @@ fn iso_height_shift_cells(height_leptons: i32) -> i32 {
     height_lift_px(height_leptons) / CELL_HEIGHT_PX
 }
 
-/// Height above the map plane, in leptons, for one entity.
-///
-/// The engine keeps a single 3-D world coordinate per object and feeds its Z to
-/// both the reveal-centre shift and the line-of-sight viewer level, so terrain
-/// elevation and flight altitude are one quantity here too. The precedence
-/// between the three things that can hold an object up mirrors
-/// `render::locomotor_visual` exactly, so the shroud and the sprite cannot
-/// disagree about where the object is.
-fn entity_height_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
-    use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::movement::locomotor::MovementLayer;
-
-    let terrain: i32 = i32::from(entity.position.z) * LEPTONS_PER_HEIGHT_LEVEL;
-    let above_ground: i32 = if let Some(state) = entity.parachute_state.as_ref() {
-        state.altitude.to_num::<i32>()
-    } else if let Some(state) = entity.rocket_state.as_ref() {
-        state.altitude.to_num::<i32>()
-    } else {
-        match entity.locomotor.as_ref() {
-            Some(loco)
-                if loco.layer == MovementLayer::Air && loco.kind != LocomotorKind::Rocket =>
-            {
-                loco.altitude.to_num::<i32>()
-            }
-            _ => 0,
-        }
-    };
-    terrain + above_ground
-}
-
 /// Per-owner visibility stored as a flat grid of flag bytes.
 ///
 /// Indexed by `ry * width + rx`. Each byte holds public visibility plus
@@ -1652,7 +1622,12 @@ fn update_entity_sight_admission(
     if width == 0 || height == 0 {
         return;
     }
-    let height_leptons: i32 = entity_height_leptons(entity);
+    // The object's one world coordinate Z feeds both the reveal-centre shift
+    // and the line-of-sight viewer level, so terrain elevation and flight
+    // altitude are one quantity. Vision holds no terrain: an object without
+    // an exact coordinate uses its stored level.
+    let height_leptons: i32 =
+        crate::sim::movement::ground_pose::object_world_z_leptons(entity, None);
 
     // Elevation raises sight MULTIPLICATIVELY, off the object's world Z in
     // leptons, not additively off its terrain level:
