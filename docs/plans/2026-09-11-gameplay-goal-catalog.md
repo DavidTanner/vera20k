@@ -1608,8 +1608,9 @@ relationships rather than substituting U3 for the user's larger objective.
 
 ## Coverage, priority and limits
 
-The [old phase inventory](2026-07-30-clean-slate-system-implementation-order.md)
-remains a source of scope candidates, including its added stock mechanisms.
+The retired clean-slate phase inventory, which defined the `GSI-xx.yy`
+identifiers still cited in code, is removed; read it at `e83df3d` in
+`docs/plans/2026-07-30-clean-slate-system-implementation-order.md`. Work is chosen chain by chain from this guide.
 This catalogue retains the original gameplay breadth while integrating assets,
 presentation and lifecycle with their consumers. The
 [evidence document](2026-09-11-gameplay-boundary-evidence.md) includes a migration

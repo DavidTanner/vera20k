@@ -1,7 +1,8 @@
 # Phase briefs
 
-One brief per phase of
-[`2026-07-30-clean-slate-system-implementation-order.md`](../2026-07-30-clean-slate-system-implementation-order.md).
+One brief per phase of the retired clean-slate phase plan (removed; read it at
+`e83df3d` in `docs/plans/2026-07-30-clean-slate-system-implementation-order.md`). New work is chosen chain by chain from the
+[gameplay implementation guide](../2026-09-11-gameplay-goal-catalog.md).
 A goal session reads the brief for its phase **before** the plan or the
 research archive. The brief is the handover between sessions working the
 same phase; the plan is only the dependency order.

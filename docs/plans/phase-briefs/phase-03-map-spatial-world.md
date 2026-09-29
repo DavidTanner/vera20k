@@ -1,6 +1,7 @@
 # Phase 3 brief — Map and spatial world
 
-Rows 37–52 of the [implementation order](../2026-07-30-clean-slate-system-implementation-order.md).
+Rows 37–52 of the retired clean-slate phase plan (read it at `e83df3d` in
+`docs/plans/2026-07-30-clean-slate-system-implementation-order.md`).
 State: **IN PROGRESS; every row remains open**. Baseline: fetched `origin/main`
 `ed8f4837910be9329505c3dfc2fc074d9c1f3106`, integrated on 2026-09-11 before final gap-operation validation.
 This is the current investigation frontier, not a completed mechanism census.
