@@ -133,13 +133,10 @@ const NEAREST_REACHABLE_SEARCH_RADIUS: u16 = 10;
 /// that the downstream legality path is locomotor-agnostic, not re-read at this
 /// callsite, and not the gate. Do not cite them as if they resolved `+0x2CC`.
 ///
-/// The remaining `Drive | Walk | Mech | Hover` list stays VERA-internal. Of
-/// `LocomotorKind`'s twelve variants the other eight — Ship, Fly, Teleport,
-/// Jumpjet, Rocket, Tunnel, DropPod and Parachute — are excluded because
+/// The remaining `Drive | Walk | Hover` list stays VERA-internal. The other
+/// five kinds — Ship, Fly, Teleport, Jumpjet and Rocket — are excluded because
 /// admitting them is a separate question with its own blast radius, not because
-/// the gate above excludes them; it excludes nothing by kind. `Mech` is a dead
-/// arm: its CLSID is deliberately absent from `INSTALLED_CLSID_KIND_TABLE`
-/// (`locomotor_type.rs`), so no stock type reaches it.
+/// the gate above excludes them; it excludes nothing by kind.
 pub(super) fn supports_layered_bridge_pathing(
     loco: &LocomotorState,
     grid: &PathGrid,
@@ -150,7 +147,7 @@ pub(super) fn supports_layered_bridge_pathing(
     }
     matches!(
         loco.kind,
-        LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Mech | LocomotorKind::Hover
+        LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Hover
     ) || on_bridge
 }
 

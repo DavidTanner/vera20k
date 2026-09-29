@@ -5953,7 +5953,7 @@ mod tests {
             .locomotor
             .as_mut()
             .unwrap()
-            .slot = LocomotorSlot::from_kind(LocomotorKind::Teleport);
+            .slot = LocomotorSlot::new(LocomotorKind::Teleport);
         assert_ordinary_drive_host_error(
             &primary_mismatch,
             &control,

@@ -1631,15 +1631,6 @@ pub(crate) fn object_world_z_leptons(
         })
         .or_else(|| {
             entity
-                .drop_pod_state
-                .as_ref()
-                .filter(|state| {
-                    state.phase == crate::sim::movement::drop_pod_movement::DropPodPhase::Descending
-                })
-                .map(|state| state.altitude.to_num::<i32>())
-        })
-        .or_else(|| {
-            entity
                 .locomotor
                 .as_ref()
                 .filter(|locomotor| {

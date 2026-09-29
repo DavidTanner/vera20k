@@ -4,7 +4,7 @@
 //! 7 is represented because its inheritance pattern is binary-derived, though
 //! the Rust mechanism will use the constant on the host-side entry model.
 
-use super::class::LocomotorClass;
+use crate::rules::locomotor_type::LocomotorKind;
 
 /// Base-vtable slots whose inherit/override pattern is relevant to live YR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -62,7 +62,7 @@ pub const BASE_DEFAULT_SLOTS: [BaseDefaultSlot; 9] = [
     BaseDefaultSlot::MarkAllOccupationBits,
 ];
 
-// Rows follow `LocomotorClass::ALL`; columns follow `BASE_DEFAULT_SLOTS`.
+// Rows follow `LocomotorKind::ALL`; columns follow `BASE_DEFAULT_SLOTS`.
 // `true` means the class installs the base body.
 const INHERITS_BASE_DEFAULT: [[bool; 9]; 8] = [
     // Head  Enter Turn   Unlimbo Track  Immediate Slope  MovingNow MarkBits
@@ -77,12 +77,12 @@ const INHERITS_BASE_DEFAULT: [[bool; 9]; 8] = [
 ];
 
 /// Whether `class` installs the native base body for `slot`.
-pub const fn inherits_base_default(class: LocomotorClass, slot: BaseDefaultSlot) -> bool {
+pub const fn inherits_base_default(class: LocomotorKind, slot: BaseDefaultSlot) -> bool {
     INHERITS_BASE_DEFAULT[class.table_index()][slot.table_index()]
 }
 
 /// Whether `class` replaces the native base body for `slot`.
-pub const fn overrides_base_default(class: LocomotorClass, slot: BaseDefaultSlot) -> bool {
+pub const fn overrides_base_default(class: LocomotorKind, slot: BaseDefaultSlot) -> bool {
     !inherits_base_default(class, slot)
 }
 
@@ -123,9 +123,9 @@ pub const fn mark_all_occupation_bits() {}
 mod tests {
     use super::*;
 
-    /// Which classes inherit `slot`, in `LocomotorClass::ALL` order.
-    fn inheritors(slot: BaseDefaultSlot) -> Vec<LocomotorClass> {
-        LocomotorClass::ALL
+    /// Which classes inherit `slot`, in `LocomotorKind::ALL` order.
+    fn inheritors(slot: BaseDefaultSlot) -> Vec<LocomotorKind> {
+        LocomotorKind::ALL
             .into_iter()
             .filter(|class| inherits_base_default(*class, slot))
             .collect()
@@ -148,10 +148,10 @@ mod tests {
     #[test]
     fn base_default_map_matches_vtables() {
         use BaseDefaultSlot::*;
-        use LocomotorClass::*;
+        use LocomotorKind::*;
 
         // Slot 7 is an always-OK stub in the base and no live class replaces it.
-        assert_eq!(inheritors(CanEnterCell), LocomotorClass::ALL.to_vec());
+        assert_eq!(inheritors(CanEnterCell), LocomotorKind::ALL.to_vec());
 
         // Rocket alone keeps the base turn body — it is a ballistic projectile
         // with no steering of its own.
@@ -194,7 +194,7 @@ mod tests {
         }
 
         // overrides_base_default is the exact complement, on every cell.
-        for class in LocomotorClass::ALL {
+        for class in LocomotorKind::ALL {
             for slot in BASE_DEFAULT_SLOTS {
                 assert_ne!(
                     inherits_base_default(class, slot),
@@ -206,7 +206,7 @@ mod tests {
         }
 
         // Whole-matrix total, so a compensating pair of edits cannot pass.
-        let inherited: usize = LocomotorClass::ALL
+        let inherited: usize = LocomotorKind::ALL
             .into_iter()
             .map(|class| {
                 BASE_DEFAULT_SLOTS

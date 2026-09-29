@@ -720,7 +720,11 @@ use crate::sim::world::Simulation;
 // accumulator; the rank is sampled from it.
 // 246 -> 247: every overlay grid saves its retained wall plane; the plane-less
 // legacy mode is gone.
-const SNAPSHOT_VERSION: u32 = 247;
+// 247 -> 248: LocomotorKind holds only the eight installable classes
+// (renumbered; the dormant Tunnel, DropPod, Mech and Parachute kinds, their
+// payloads and a Techno's tunnel and drop-pod states are gone), and the
+// installed slot stores it.
+const SNAPSHOT_VERSION: u32 = 248;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3630,7 +3634,9 @@ mod tests {
         // 244 -> 245: no retained purifier count.
         // 245 -> 246: no stored veterancy rank.
         // 246 -> 247: every overlay grid has a wall plane.
-        assert_eq!(super::SNAPSHOT_VERSION, 247);
+        // 247 -> 248: one eight-class locomotor enum; no dormant locomotor
+        // states.
+        assert_eq!(super::SNAPSHOT_VERSION, 248);
     }
 
     #[test]

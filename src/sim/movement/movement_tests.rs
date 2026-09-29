@@ -4185,14 +4185,14 @@ fn test_blocked_repath_uses_final_goal_not_segment_end() {
 
 /// Build a minimal Drive LocomotorState for layered-pathfinding tests. Required
 /// because the layered A* branch in find_move_path is only entered when the
-/// mover has a Drive/Walk/Mech locomotor; `test_default` leaves locomotor=None.
+/// mover has a Drive/Walk locomotor; `test_default` leaves locomotor=None.
 fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState {
     use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
     use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::util::fixed_math::SIM_ONE;
     LocomotorState {
         kind: LocomotorKind::Drive,
-        slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+        slot: LocomotorSlot::new(LocomotorKind::Drive),
         powered: true,
         piggyback: None,
         runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
@@ -4862,7 +4862,7 @@ use std::collections::BTreeMap;
 fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
     LocomotorState {
         kind: LocomotorKind::Drive,
-        slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+        slot: LocomotorSlot::new(LocomotorKind::Drive),
         powered: true,
         piggyback: None,
         runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
@@ -4892,7 +4892,7 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
 fn make_ship_loco(layer: MovementLayer) -> LocomotorState {
     let mut loco = make_drive_loco(layer);
     loco.kind = LocomotorKind::Ship;
-    loco.slot = LocomotorSlot::from_kind(LocomotorKind::Ship);
+    loco.slot = LocomotorSlot::new(LocomotorKind::Ship);
     loco.speed_type = SpeedType::Float;
     loco.movement_zone = MovementZone::Water;
     loco

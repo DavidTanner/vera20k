@@ -939,7 +939,7 @@ mod tests {
     fn make_fly_loco() -> LocomotorState {
         LocomotorState {
             kind: crate::rules::locomotor_type::LocomotorKind::Fly,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Fly),
+            slot: LocomotorSlot::new(LocomotorKind::Fly),
             powered: true,
             piggyback: None,
             runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(

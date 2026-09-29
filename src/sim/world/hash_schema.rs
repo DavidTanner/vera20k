@@ -45,6 +45,9 @@
 //! Every overlay grid retains its wall plane since snapshot 247; no policy
 //! folds the retired plane-less tag, and the global harness pins were
 //! re-baselined in that one step.
+//! Snapshot 248 renumbers `LocomotorKind` to the eight installable classes
+//! and drops the dormant Tunnel and DropPod folds; no policy folds the old
+//! numbering, and the harness pins were re-baselined in that one step.
 
 #[derive(Clone, Copy)]
 pub(super) enum HashSchema {

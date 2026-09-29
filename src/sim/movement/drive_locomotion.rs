@@ -389,9 +389,7 @@ mod tests {
             LocomotorKind::Walk,
             LocomotorKind::Hover,
             LocomotorKind::Jumpjet,
-            LocomotorKind::Mech,
             LocomotorKind::Teleport,
-            LocomotorKind::Tunnel,
             LocomotorKind::Fly,
         ] {
             assert_eq!(fraction_for(kind, true), SIM_ONE, "damaged {kind:?}");

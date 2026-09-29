@@ -8,9 +8,9 @@
 //! - landing on `altitude <= 0` (inclusive bound)
 //! - the infantry keeps its base locomotor and body sequence during descent
 //!
-//! Sibling of `droppod_movement` and follows the same shape: an `Option<State>`
-//! field on `GameEntity`, a `begin_*` entry, a `tick_*` per-tick driver, and
-//! cleanup when the object-level falling state lands.
+//! The shape: an `Option<State>` field on `GameEntity`, a `begin_*` entry, a
+//! `tick_*` per-tick driver, and cleanup when the object-level falling state
+//! lands.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/game_entity, sim/entity_store, sim/locomotor.
@@ -165,8 +165,7 @@ impl crate::sim::world::Simulation {
 
 /// Per-tick advance for all entities with `parachute_state`.
 ///
-/// Wired into `World::advance_tick` Phase 2 immediately after
-/// `tick_droppod_movement`.
+/// Wired into `World::advance_tick` Phase 2.
 ///
 /// Per-tick algorithm (mirrors gamemd's descent block):
 /// 1. Integrate Z FIRST: `altitude += rate` (rate is negative; first tick rate=0 → no move)
@@ -241,11 +240,10 @@ mod tests {
     use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 
-    /// Mirrors the helper used in droppod_movement.rs tests.
     fn make_walk_loco() -> LocomotorState {
         LocomotorState {
             kind: LocomotorKind::Walk,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Walk),
+            slot: LocomotorSlot::new(LocomotorKind::Walk),
             powered: true,
             piggyback: None,
             runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(

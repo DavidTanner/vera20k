@@ -167,7 +167,7 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 
 // Schema171: fresh-turn admission/residual clearing and retained-owner hashes.
 // See TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md, PR415 causal attribution.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x37F9_748A_3AB6_8EDF;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x5C06_496B_5755_9864;
 // Schema174 removes folds instead of adding them: OreGrowthState's node-era
 // scanner cursor, candidate lists and sample counters, and ProductionState's
 // fallback ore overlay id. The pre-174 projection folds the values those fields
@@ -176,10 +176,10 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x37F9_74
 // id. It is not a general reconstruction; a scenario finalized by the map
 // loader held Some(first TIB* id). The projection must still equal the previous
 // current pin, asserted below. Rust hash-composition ratchet, not a native golden.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 0xD2D5_AAFB_726A_C133;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 0xCFA3_C9B1_D359_0CD4;
 // v181 adds the default Foot+580 factor to every entity's hash. The pre-181
 // assertion below retains the previous entire fixture state/RNG ratchet.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0xF52C_63D3_985E_082A;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0xECA2_473D_759B_E119;
 // Snapshot182 adds ordered display vectors. The pre-182 projection below
 // must reproduce the previous whole-fixture hash, including all RNG/state.
 // Schema186 removes the always-None release-tail byte from each entity. This
@@ -368,19 +368,29 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0xF52C_63D3_985E_
 // fixture has no walls, and its Foot neighbour sources come from the
 // lifecycle writes instead of positions with the same result. Old values: the
 // commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0xD6B2_FBA0_C0B9_8511;
+// 2026-09-29 one locomotor enum (snapshot 248, composition only; #725):
+// LocomotorKind keeps only the eight installable classes, so the active kind,
+// the installed slot and the stash fold renumbered discriminants, and the
+// dormant Tunnel and DropPod states leave the object and payload folds, in
+// every projection. No schema rebuilds the old numbering, so this one step
+// re-pins every projection in this test. Ceremony: on the parent commit and on
+// this change, a probe printing every object's position, exact Z, health,
+// mission, NavCom, attack and movement targets, locomotor kind and layer and
+// all three RNG states matched at all 600 ticks (the probe patch was not
+// committed). Old values: the commit that moved them.
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0x998F_9E5E_3777_EF14;
 // Schema 239 adds only the barrel elevation fold: its projection
 // reproduces the prior pin.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x7712_861F_E5E5_9FF7;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0xF98C_C268_8AC3_8A90;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x1999_63B7_D245_A5E5;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0x5B00_FB53_514D_6F8F;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0xC13A_2D74_349D_DCA7;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0xF6ED_1B8F_D26C_DA6D;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0xBD59_F51C_4D27_FD64;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206: u64 = 0xA937_D323_9F33_9C3D;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0xB631_E862_ABD4_AE2F;
-const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0x7A11_0361_3E71_CA9E;
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x19D1_51F4_9C23_0D0B;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x1565_44A8_9372_C35D;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x33F3_5D13_1489_D541;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0x338D_FA12_1394_209C;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0xBA55_0B97_CD10_DE1A;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x2D1C_1533_3174_425B;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0x48A5_ECBC_08C4_FC19;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_DOCK_PHASE_V206: u64 = 0x1BBE_A5CC_EB2F_875C;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0x7895_E7FA_61D0_DAF8;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xD2C0_828F_DD02_2D7B;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -767,17 +777,17 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     );
     assert_eq!(
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(190)),
-        0x514C_3527_75B6_E747,
+        0x015B_224B_EC31_024F,
         "v190 changes only the Foot neighbor-history hash composition in this fixture"
     );
     assert_eq!(
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        0x5FB5_2FB7_3C18_904B,
+        0x75CC_8880_04E2_97DA,
         "v189 adds only the retained Techno+3D4 hash fold"
     );
     let before_burst_hash = rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(187));
     assert_eq!(
-        before_burst_hash, 0x378F_5027_F910_288F,
+        before_burst_hash, 0x44AB_4223_838F_9D40,
         "schema187 only replaces zero remaining-shot fields with the retained index in this fixture"
     );
     let before_release_hash =
@@ -843,8 +853,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // 2026-09-29: moved by the retired ground move phase fold (same place).
     // 2026-09-29: moved by the retired purifier count fold (same place).
     // 2026-09-29: moved by the one wall-plane mode fold (same place).
+    // 2026-09-29: moved by the one locomotor enum's folds (same place).
     assert_eq!(
-        before_power_hash, 0x0586_91D4_446B_5FB2,
+        before_power_hash, 0x99E9_A4CE_4708_4149,
         "full08 projection moved: investigate behavior or another hash owner; do not rebaseline"
     );
 

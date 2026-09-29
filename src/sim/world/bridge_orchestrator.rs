@@ -1934,7 +1934,7 @@ mod tests {
     fn drive_loco_on_bridge() -> LocomotorState {
         LocomotorState {
             kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+            slot: LocomotorSlot::new(LocomotorKind::Drive),
             powered: true,
             piggyback: None,
             runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(

@@ -879,7 +879,7 @@ mod tests {
     fn make_loco(layer: MovementLayer) -> Option<LocomotorState> {
         Some(LocomotorState {
             kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+            slot: LocomotorSlot::new(LocomotorKind::Drive),
             powered: true,
             piggyback: None,
             runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(

@@ -1988,9 +1988,7 @@ impl Simulation {
             entity.building_light.hash(hasher);
             entity.low_bridge_tube_state.hash(hasher);
             hash_teleport_state(entity.teleport_state.as_ref(), hasher);
-            hash_tunnel_state(entity.tunnel_state.as_ref(), hasher);
             hash_rocket_state(entity.rocket_state.as_ref(), hasher);
-            hash_drop_pod_state(entity.drop_pod_state.as_ref(), hasher);
             if let Some(cloak) = entity.cloak.as_ref() {
                 1u8.hash(hasher);
                 cloak.state.hash(hasher);
@@ -2561,17 +2559,9 @@ fn hash_locomotor_payload(
             2u8.hash(hasher);
             hash_teleport_state(state.as_ref(), hasher);
         }
-        LocomotorRuntimePayload::Tunnel(state) => {
-            3u8.hash(hasher);
-            hash_tunnel_state(state.as_ref(), hasher);
-        }
         LocomotorRuntimePayload::Rocket(state) => {
             4u8.hash(hasher);
             hash_rocket_state(state.as_ref(), hasher);
-        }
-        LocomotorRuntimePayload::DropPod(state) => {
-            5u8.hash(hasher);
-            hash_drop_pod_state(state.as_ref(), hasher);
         }
         LocomotorRuntimePayload::Hover(head) => {
             6u8.hash(hasher);
@@ -2579,7 +2569,6 @@ fn hash_locomotor_payload(
                 head.hash(hasher);
             }
         }
-        LocomotorRuntimePayload::Mech => 7u8.hash(hasher),
         LocomotorRuntimePayload::Ship(state) => {
             8u8.hash(hasher);
             hash_slope_transition_state(state, hasher);
@@ -2611,7 +2600,6 @@ fn hash_locomotor_payload(
                 state.hash(hasher);
             }
         }
-        LocomotorRuntimePayload::Parachute => 11u8.hash(hasher),
     }
 }
 
@@ -2651,21 +2639,6 @@ fn hash_teleport_state(
     }
 }
 
-/// YR TunnelLocomotionClass keeps the phase byte in its locomotor runtime.
-/// Keep the projection explicit instead of relying on a Rust derived hash.
-fn hash_tunnel_state(
-    state: Option<&crate::sim::movement::tunnel_movement::TunnelState>,
-    hasher: &mut impl Hasher,
-) {
-    match state {
-        None => 0u8.hash(hasher),
-        Some(state) => {
-            1u8.hash(hasher);
-            (state.phase as u8).hash(hasher);
-        }
-    }
-}
-
 /// RocketLocomotionClass::Process @ 0x006622c0 owns the complete flight table
 /// selection and current flight state. `pitch` is render-only, so it is omitted.
 fn hash_rocket_state(
@@ -2699,31 +2672,6 @@ fn hash_rocket_state(
             state.parameters.ascent_altitude.to_bits().hash(hasher);
             state.parameters.tilt_rate.to_bits().hash(hasher);
             state.parameters.relaunches.hash(hasher);
-        }
-    }
-}
-
-/// DropPodLocomotionClass flight state is lockstep state even while it has no
-/// surface occupation. This mirrors the typed serialized runtime exactly.
-fn hash_drop_pod_state(
-    state: Option<&crate::sim::movement::drop_pod_movement::DropPodState>,
-    hasher: &mut impl Hasher,
-) {
-    match state {
-        None => 0u8.hash(hasher),
-        Some(state) => {
-            1u8.hash(hasher);
-            let phase = match state.phase {
-                crate::sim::movement::drop_pod_movement::DropPodPhase::Descending => 0u8,
-                crate::sim::movement::drop_pod_movement::DropPodPhase::Landed => 1,
-                crate::sim::movement::drop_pod_movement::DropPodPhase::Destroyed => 2,
-            };
-            phase.hash(hasher);
-            state.target_rx.hash(hasher);
-            state.target_ry.hash(hasher);
-            state.altitude.to_bits().hash(hasher);
-            state.descent_speed.to_bits().hash(hasher);
-            state.elapsed_frames.hash(hasher);
         }
     }
 }
@@ -4375,46 +4323,6 @@ mod tube_movement_hash_tests {
             active.low_bridge_tube_state = Some(variant);
             assert_ne!(active_hash, hash_entity(active.clone()));
         }
-    }
-}
-
-#[cfg(test)]
-mod special_locomotor_hash_tests {
-    use super::Simulation;
-    use crate::sim::game_entity::GameEntity;
-    use crate::sim::movement::drop_pod_movement::{DropPodPhase, DropPodState};
-    use crate::sim::movement::tunnel_movement::{TunnelPhase, TunnelState};
-    use crate::util::fixed_math::SimFixed;
-
-    #[test]
-    fn tunnel_and_drop_pod_runtime_change_the_lockstep_hash() {
-        fn fixture() -> Simulation {
-            let mut sim = Simulation::new();
-            sim.substrate
-                .entities
-                .insert(GameEntity::test_default(1, "MTNK", "Americans", 5, 5));
-            sim
-        }
-
-        let base = fixture();
-        let hash_without_special_runtime = base.state_hash();
-
-        let mut tunnel = fixture();
-        tunnel.substrate.entities.get_mut(1).unwrap().tunnel_state = Some(TunnelState {
-            phase: TunnelPhase::UndergroundTravel,
-        });
-        assert_ne!(hash_without_special_runtime, tunnel.state_hash());
-
-        let mut pod = fixture();
-        pod.substrate.entities.get_mut(1).unwrap().drop_pod_state = Some(DropPodState {
-            phase: DropPodPhase::Descending,
-            target_rx: 7,
-            target_ry: 9,
-            altitude: SimFixed::from_num(100),
-            descent_speed: SimFixed::from_num(3),
-            elapsed_frames: 4,
-        });
-        assert_ne!(hash_without_special_runtime, pod.state_hash());
     }
 }
 

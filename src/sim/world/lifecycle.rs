@@ -460,9 +460,7 @@ impl Simulation {
             ) && loco.layer != MovementLayer::Air
         }) || entity.parachute_state.is_some()
             || entity.low_bridge_tube_state.is_some()
-            || entity.tunnel_state.is_some()
             || entity.rocket_state.is_some()
-            || entity.drop_pod_state.is_some()
         {
             // These owners still carry their own altitude/coordinate state.
             // In particular, attaching a parachute precedes ordinary Reveal.
@@ -1850,8 +1848,9 @@ impl Simulation {
         let _ = self.mark_entity_put(stable_id, UninitContext::default());
     }
 
-    /// Existing movement and fixture boundary; common lifecycle code calls the
-    /// private unmark transaction instead.
+    /// Fixture boundary; common lifecycle code calls the private unmark
+    /// transaction instead.
+    #[cfg(test)]
     pub(crate) fn remove_entity_occupancy(&mut self, stable_id: u64) {
         self.unmark_entity_remove(stable_id, UninitContext::default());
     }

@@ -1525,6 +1525,7 @@ fn classify_occupied_cell_with_slave_query(
 /// Phase-2 classification including the independent Unit occupation plane.
 /// A bit-only reservation has no destination-list blocker to attack or scatter,
 /// so it keeps native code 2 without inventing a `CellOccupant`.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn classify_occupied_cell_with_layers_and_ignored_and_occupation(
     target: (u16, u16),

@@ -839,7 +839,7 @@ mod tests {
         e.lifecycle.cell_marked = true;
         e.locomotor = Some(LocomotorState {
             kind: LocomotorKind::Fly,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Fly),
+            slot: LocomotorSlot::new(LocomotorKind::Fly),
             powered: true,
             piggyback: None,
             runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(

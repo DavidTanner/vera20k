@@ -173,7 +173,6 @@ impl LocomotorState {
             // old made-up 0.65x. The accel/brake throttle ramp + continuous XY
             // integrator land in later M2 phases (see sim/movement/hover.rs).
             LocomotorKind::Hover => (MovementLayer::Ground, sim_one),
-            LocomotorKind::Mech => (MovementLayer::Ground, sim_one),
             LocomotorKind::Ship => (MovementLayer::Ground, sim_one),
 
             // Air family — use Air layer with altitude state
@@ -183,16 +182,11 @@ impl LocomotorState {
 
             // Special — stubbed as ground for now
             LocomotorKind::Teleport => (MovementLayer::Ground, sim_one),
-            // Inert TS variants — unconstructible, retained for discriminant
-            // stability only. See LocomotorKind::Tunnel.
-            LocomotorKind::Tunnel => (MovementLayer::Ground, sim_one),
-            LocomotorKind::DropPod => (MovementLayer::Air, sim_one),
-            LocomotorKind::Parachute => (MovementLayer::Air, sim_one),
         };
 
         Self {
             kind,
-            slot: LocomotorSlot::from_kind(kind),
+            slot: LocomotorSlot::new(kind),
             powered: true,
             piggyback: None,
             runtime_payload: {
@@ -242,17 +236,16 @@ impl LocomotorState {
     #[cfg(test)]
     pub(crate) fn for_test_kind_at_frame(kind: LocomotorKind, binary_frame: u32) -> Self {
         let (layer, speed_multiplier) = match kind {
-            LocomotorKind::Fly
-            | LocomotorKind::Jumpjet
-            | LocomotorKind::Rocket
-            | LocomotorKind::Parachute => (MovementLayer::Air, SimFixed::from_num(1)),
+            LocomotorKind::Fly | LocomotorKind::Jumpjet | LocomotorKind::Rocket => {
+                (MovementLayer::Air, SimFixed::from_num(1))
+            }
             LocomotorKind::Hover => (MovementLayer::Ground, SimFixed::from_num(1)),
             _ => (MovementLayer::Ground, SimFixed::from_num(1)),
         };
 
         Self {
             kind,
-            slot: LocomotorSlot::from_kind(kind),
+            slot: LocomotorSlot::new(kind),
             powered: true,
             piggyback: None,
             runtime_payload: LocomotorRuntimePayload::for_kind(kind, binary_frame),
@@ -280,16 +273,12 @@ impl LocomotorState {
         }
     }
 
-    /// Whether this locomotor is in the ground family (Drive/Walk/Hover/Mech/Ship).
+    /// Whether this locomotor is in the ground family (Drive/Walk/Hover/Ship).
     #[cfg(test)]
     pub fn is_ground_mover(&self) -> bool {
         matches!(
             self.kind,
-            LocomotorKind::Drive
-                | LocomotorKind::Walk
-                | LocomotorKind::Hover
-                | LocomotorKind::Mech
-                | LocomotorKind::Ship
+            LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Hover | LocomotorKind::Ship
         )
     }
 
@@ -493,7 +482,7 @@ impl LocomotorState {
     /// *is* a Teleport unit; `kind` answers "what is driving right now" and this
     /// answers "what is this unit". Both are needed and must stay distinct.
     pub fn effective_kind(&self) -> LocomotorKind {
-        self.slot.into()
+        self.slot.installed()
     }
 
     /// Whether the primary locomotor is currently active and no piggyback is stored.

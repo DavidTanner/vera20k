@@ -30,12 +30,10 @@ use std::ops::Deref;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::util::fixed_math::SimFixed;
 
-use super::super::drop_pod_movement::DropPodState;
 use super::super::locomotor::{LocomotorState, MovementLayer};
 use super::super::rocket_movement::RocketState;
 use super::super::slope_transition::SlopeTransitionState;
 use super::super::teleport_movement::TeleportState;
-use super::super::tunnel_movement::TunnelState;
 
 /// Runtime state shared by every locomotor object, independent of its installed
 /// class identity. This is what moves as one object through the piggyback slot.
@@ -83,15 +81,11 @@ pub enum LocomotorRuntimePayload {
     Drive(SlopeTransitionState),
     Walk(WalkRuntime),
     Teleport(Option<TeleportState>),
-    Tunnel(Option<TunnelState>),
     Rocket(Option<RocketState>),
-    DropPod(Option<DropPodState>),
     Hover(Option<crate::sim::components::DriveCoord>),
-    Mech,
     Ship(SlopeTransitionState),
     Fly(super::super::fly_height::FlyRuntime),
     Jumpjet(super::super::jumpjet_movement::JumpjetRuntime),
-    Parachute,
 }
 
 impl LocomotorRuntimePayload {
@@ -102,15 +96,11 @@ impl LocomotorRuntimePayload {
             }
             LocomotorKind::Walk => Self::Walk(WalkRuntime::default()),
             LocomotorKind::Teleport => Self::Teleport(None),
-            LocomotorKind::Tunnel => Self::Tunnel(None),
             LocomotorKind::Rocket => Self::Rocket(None),
-            LocomotorKind::DropPod => Self::DropPod(None),
             LocomotorKind::Hover => Self::Hover(None),
-            LocomotorKind::Mech => Self::Mech,
             LocomotorKind::Ship => Self::Ship(SlopeTransitionState::at_binary_frame(binary_frame)),
             LocomotorKind::Fly => Self::Fly(Default::default()),
             LocomotorKind::Jumpjet => Self::Jumpjet(Default::default()),
-            LocomotorKind::Parachute => Self::Parachute,
         }
     }
 }
@@ -351,11 +341,9 @@ pub fn is_ok_to_end(state: &LocomotorState, context: EndGateContext) -> bool {
     }
 
     match state.kind {
-        LocomotorKind::Drive
-        | LocomotorKind::Walk
-        | LocomotorKind::Hover
-        | LocomotorKind::Mech
-        | LocomotorKind::Ship => !context.owner_teleporting && !context.owner_deploying,
+        LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Hover | LocomotorKind::Ship => {
+            !context.owner_teleporting && !context.owner_deploying
+        }
         LocomotorKind::Jumpjet => {
             // The Jumpjet's own state field; `AirMovePhase` is Fly's.
             state
@@ -364,8 +352,8 @@ pub fn is_ok_to_end(state: &LocomotorState, context: EndGateContext) -> bool {
                 && !context.owner_teleporting
                 && !context.owner_deploying
         }
-        // Neither native class exposes IPiggyback; it cannot finish a stash.
-        LocomotorKind::Fly | LocomotorKind::Parachute => false,
+        // Fly exposes no IPiggyback; it cannot finish a stash.
+        LocomotorKind::Fly => false,
         // `TeleportLocomotionClass::Is_Ok_To_End` is a real six-clause
         // predicate, not a constant false: the locomotor's own warp-active byte
         // must be clear, a runtime must be stashed, the owner's chrono-warp
@@ -382,29 +370,15 @@ pub fn is_ok_to_end(state: &LocomotorState, context: EndGateContext) -> bool {
         // `owner+0x6AD` (`FootClass::bIsDeploying`) by `context.owner_deploying`. This is the clause that hands a chrono-warped unit back to
         // its own locomotor when the warp finishes.
         LocomotorKind::Teleport => !context.owner_teleporting && !context.owner_deploying,
-        // Tunnel (`0x00728A00`) and Rocket (`0x00661EC0`) have no `IPiggyback`
-        // vtable at all, so gamemd can never reach an END gate for them. (The
-        // earlier reason given here, that no stock `Locomotor=` key selects
-        // them, is wrong for Rocket: `[V3ROCKET]`, `[DMISL]` and `[CMISL]` all
-        // do.)
-        //
-        // **DropPod is different and this arm is VERA-internal for it.**
-        // `DropPodLocomotionClass::Constructor` @ `0x004B5AB0` installs the
-        // IPiggyback vtable at `0x007E8254`, `Begin_Piggyback` @ `0x004B63B0`
-        // is a full body, and `Is_Ok_To_End` @ `0x004B6440` is exactly this
-        // module's common prefix — `!Is_Moving() && slot != 0` — so `false` is
-        // the wrong answer for it. Trigger: a DropPod locomotor with a live
-        // piggyback. Player effect: none — zero stock users of the class.
-        // Frequency: zero in ordinary skirmish. Downstream risk: the arm is one
-        // line from correct once anything installs one.
-        LocomotorKind::Tunnel | LocomotorKind::Rocket | LocomotorKind::DropPod => false,
+        // Rocket (`0x00661EC0`) has no `IPiggyback` vtable at all, so gamemd
+        // can never reach an END gate for it.
+        LocomotorKind::Rocket => false,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::movement::tunnel_movement::{TunnelPhase, TunnelState};
 
     fn teleporter() -> LocomotorState {
         LocomotorState::for_test_kind(LocomotorKind::Teleport)
@@ -460,10 +434,9 @@ mod tests {
 
     #[test]
     fn piggyback_restores_complete_typed_special_payload() {
-        let mut state = LocomotorState::for_test_kind(LocomotorKind::Tunnel);
-        state.runtime_payload = LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-            phase: TunnelPhase::UndergroundTravel,
-        }));
+        let head = crate::sim::components::DriveCoord::cell(4, 5, 0);
+        let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
+        state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
 
         assert_eq!(
             begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0,),
@@ -475,44 +448,36 @@ mod tests {
         );
         assert_eq!(
             state.piggyback.as_deref().map(|runtime| &runtime.payload),
-            Some(&LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-                phase: TunnelPhase::UndergroundTravel,
-            })))
+            Some(&LocomotorRuntimePayload::Hover(Some(head)))
         );
 
         assert!(end(&mut state).is_some());
         assert_eq!(
             state.runtime_payload,
-            LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-                phase: TunnelPhase::UndergroundTravel,
-            }))
+            LocomotorRuntimePayload::Hover(Some(head))
         );
     }
 
     #[test]
     fn serde_round_trip_preserves_active_and_suspended_payloads() {
-        let mut state = LocomotorState::for_test_kind(LocomotorKind::Tunnel);
-        state.runtime_payload = LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-            phase: TunnelPhase::Digging,
-        }));
+        let head = crate::sim::components::DriveCoord::cell(6, 7, 0);
+        let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
+        state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
         assert_eq!(
-            begin(&mut state, LocomotorKind::DropPod, MovementLayer::Air, 0,),
+            begin(&mut state, LocomotorKind::Rocket, MovementLayer::Air, 0,),
             BeginOutcome::Installed
         );
-        state.runtime_payload = LocomotorRuntimePayload::DropPod(None);
 
         let bytes = bincode::serialize(&state).expect("serialize locomotor");
         let loaded: LocomotorState = bincode::deserialize(&bytes).expect("load locomotor");
 
         assert_eq!(
             loaded.runtime_payload,
-            LocomotorRuntimePayload::DropPod(None)
+            LocomotorRuntimePayload::Rocket(None)
         );
         assert_eq!(
             loaded.piggyback.as_deref().map(|runtime| &runtime.payload),
-            Some(&LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-                phase: TunnelPhase::Digging,
-            })))
+            Some(&LocomotorRuntimePayload::Hover(Some(head)))
         );
     }
 
@@ -566,8 +531,8 @@ mod tests {
         ));
         assert!(is_ok_to_end(&state, ready));
 
-        // Classes no stock `Locomotor=` key selects stay conservative.
-        state.kind = LocomotorKind::Tunnel;
+        // Rocket has no IPiggyback, so it never finishes a stash.
+        state.kind = LocomotorKind::Rocket;
         assert!(!is_ok_to_end(&state, ready));
     }
 

@@ -246,7 +246,7 @@ fn refused_installation_and_absent_stash_do_not_retire_external_state() {
         Some(LocomotorState::for_test_kind(LocomotorKind::Drive)),
         {
             let mut incoherent = LocomotorState::for_test_kind(LocomotorKind::Drive);
-            incoherent.slot = LocomotorSlot::from_kind(LocomotorKind::Teleport);
+            incoherent.slot = LocomotorSlot::new(LocomotorKind::Teleport);
             Some(incoherent)
         },
     ] {

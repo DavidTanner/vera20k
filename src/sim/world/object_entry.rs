@@ -307,7 +307,6 @@ mod tests {
             Some(LocomotorKind::Drive),
             Some(LocomotorKind::Ship),
             Some(LocomotorKind::Hover),
-            Some(LocomotorKind::Mech),
         ] {
             let mut entity = GameEntity::test_default(90, "HORNET", "Americans", 17, 15);
             entity.locomotor = kind.map(|kind| {

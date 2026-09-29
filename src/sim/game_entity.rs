@@ -33,12 +33,10 @@ use crate::sim::docking::building_dock::DockState;
 use crate::sim::intern::InternedId;
 use crate::sim::miner::Miner;
 use crate::sim::mission::{MissionCom, MissionLeafState, MissionTimer, MissionType};
-use crate::sim::movement::drop_pod_movement::DropPodState;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::rocket_movement::RocketState;
 use crate::sim::movement::teleport_movement::TeleportState;
 use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
-use crate::sim::movement::tunnel_movement::TunnelState;
 use crate::sim::passenger::PassengerRole;
 use crate::sim::radio::Contacts;
 use crate::sim::superweapon::invulnerability::InvulnerabilityState;
@@ -920,10 +918,6 @@ pub struct GameEntity {
     pub disguise: Option<DisguiseRuntime>,
     /// Teleport movement state machine (warp out/in phases).
     pub teleport_state: Option<TeleportState>,
-    /// Dormant YR TunnelLocomotionClass process state. Its underground depth
-    /// lives in the typed runtime, because `Position::z` cannot represent -256.
-    #[serde(default)]
-    pub tunnel_state: Option<TunnelState>,
     /// Active low-bridge TubeClass movement. Active YR behaviour — not to be
     /// confused with the subterranean tunnel locomotor, which is Tiberian Sun
     /// legacy and was removed as unreachable in stock YR.
@@ -946,10 +940,6 @@ pub struct GameEntity {
     pub spawn_owner_id: Option<u64>,
     /// Rocket/missile flight state machine (launch/ascend/terminal/detonate).
     pub rocket_state: Option<RocketState>,
-    /// Distinct DropPodLocomotionClass descent state; never shares parachute
-    /// state or surface occupation while airborne.
-    #[serde(default)]
-    pub drop_pod_state: Option<DropPodState>,
     /// Homing missile flight state. `Some` while this entity is an in-flight
     /// homing projectile; `None` otherwise. Distinct from `rocket_state` —
     /// ballistic-arc rockets keep using `rocket_state`; only `Ranged=yes`
@@ -1733,13 +1723,11 @@ impl GameEntity {
             sensor_deposit: None,
             disguise: None,
             teleport_state: None,
-            tunnel_state: None,
             low_bridge_tube_state: None,
             capture_manager: None,
             spawn_manager: None,
             spawn_owner_id: None,
             rocket_state: None,
-            drop_pod_state: None,
             homing_state: None,
             parachute_state: None,
             invulnerability: None,

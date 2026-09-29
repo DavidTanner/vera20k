@@ -786,8 +786,6 @@ impl Simulation {
             crate::sim::spawn_manager::detonate_dead_missile(sim, stable_id);
             return Ok(outcome);
         }
-        sim.tick_tunnel_locomotor_one(stable_id, path_grid);
-        sim.tick_drop_pod_locomotor_one(stable_id, path_grid);
         let _ = homing_movement::tick_homing_movement(
             &mut sim.substrate.entities,
             &one,

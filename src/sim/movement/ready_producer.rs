@@ -74,28 +74,21 @@ pub(crate) fn ready_state_for(
         LocomotorKind::Jumpjet => Some(jumpjet(locomotor)),
         LocomotorKind::Walk => Some(walk(entity, locomotor)),
         LocomotorKind::Hover => Some(hover(entity, locomotor)),
-        // Catches six kinds: Fly, Rocket, Parachute, Tunnel, DropPod and Mech.
-        // None needs a producer, because nothing consumes one for them: our two
+        // Catches Fly and Rocket. Neither needs a producer, because nothing consumes one for them: our two
         // consumers of `is_moving_now` are the Unit and Infantry readiness
         // branches in `sim::mission::readiness`, aircraft readiness decides from
         // its mission plus two flags and never reads the locomotor, and
         // Rocket-locomotor objects are aircraft too, not vehicles or infantry.
         //
-        // Three things worth knowing before anyone "completes" this arm:
+        // Two things worth knowing before anyone "completes" this arm:
         //
         // - It is unreachable for the *readiness gate*, but the native slot
         //   itself is not dead. gamemd reads it every tick on every foot object
         //   for the sight/occupancy refresh and the move-sound state, and one
         //   aircraft weapon predicate is literally its negation. So the slot has
         //   consumers; the readiness answer just is not one of them.
-        // - These kinds do not agree on what the slot even is. Fly, Rocket and
-        //   Mech each override it with a real body — Mech's is Drive-shaped.
-        //   DropPod inherits the base thunk, which for an unspecialised
-        //   locomotor resolves to a constant false. Tunnel and Parachute have no
-        //   such slot at all; Parachute has no native locomotor class whatsoever.
-        // - Mech and DropPod are dormant TS in stock YR, and Tunnel is not the
-        //   low-bridge tube movement that *is* live.
-        _ => None,
+        // - Fly and Rocket each override the slot with a real body.
+        LocomotorKind::Fly | LocomotorKind::Rocket => None,
     }
 }
 
