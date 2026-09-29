@@ -44,7 +44,7 @@ resource store. This distinction matters when tracing a goal: an isolated test
 of that compatibility store does not exercise TIBTRE-to-miner production.
 
 **Native support.** The
-[HARV/CMIN harvest report](../research/HARVEST_ORE_TICK_TIMING_PARTIAL_FULL_EDGE_CASES_ORE_GEMS_GHIDRA_REPORT.md)
+[HARV/CMIN harvest report](https://github.com/YuriPlanet/vera20k/blob/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research/HARVEST_ORE_TICK_TIMING_PARTIAL_FULL_EDGE_CASES_ORE_GEMS_GHIDRA_REPORT.md)
 identifies the shared `Mission_Harvest` → `Harvest_Ore_Tick` → `Reduce_Tiberium`
 path for both stock miners and ore/gems. The
 [refinery synthesis](https://github.com/YuriPlanet/vera20k/blob/108924bc237d14342b68b8bb78f2bba0400d2443/docs/research/CHRONO_MINER_REFINERY_DOCK_UNLOAD_SYSTEM_MODEL_SYNTHESIS.md)
@@ -86,7 +86,7 @@ the held object through enqueue, completion and release/consumption.
 [placement](../../src/sim/production/production_placement.rs) consume that identity
 for mobile products, buildings and walls. This supports B1's consolidation of
 queue/charging/completion/exit/placement with category/faction variants.
-The [FactoryClass study](../research/FACTORYCLASS_PRODUCTION_DEEP_DIVE.md)
+The [FactoryClass study](https://github.com/YuriPlanet/vera20k/blob/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research/FACTORYCLASS_PRODUCTION_DEEP_DIVE.md)
 provides native owner context; it is not current implementation certification.
 
 [MCV conversion](../../src/sim/world/world_spawn.rs), `deploy_mcv` and reverse
@@ -116,7 +116,7 @@ claim of a completed current clone path.
 [Power state](../../src/sim/power_system.rs) consumes provider/occupant state and
 feeds building/radar changes; [factory stepping](../../src/sim/production/factory.rs)
 consumes the resulting production conditions. The
-[power research](../research/POWER_SYSTEM_GHIDRA_REPORT.md) is a starting reference,
+[power research](https://github.com/YuriPlanet/vera20k/blob/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research/POWER_SYSTEM_GHIDRA_REPORT.md) is a starting reference,
 but its generic Robot power explanation does not establish the complete stock
 `ROBO PoweredUnit` / `GAROBO PowersUnit=ROBO` provider relationship. The catalogue
 keeps that exact gate open for investigation.

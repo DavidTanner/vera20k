@@ -110,7 +110,7 @@ outside that path keep the whole-bridge goal open:
   can choose the wrong cursor or repair admission.
 - The structural hut fallback remains a separate required mechanism. Ordinary
   wooden damage now shares the synchronous owner; its evidence and remaining
-  boundaries are in [the wooden chain](bridge-wood-ground-damage.md).
+  boundaries are in [the wooden chain](https://github.com/YuriPlanet/vera20k/blob/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research/bridge-wood-ground-damage.md).
 - The physical witness covers one concrete orientation. Both scalar axes are
   executed, but physical loading, geometry and connected consumers of the other
   authored bridge arrangements remain part of the whole-bridge audit.
