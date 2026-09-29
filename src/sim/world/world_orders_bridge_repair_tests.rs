@@ -22,7 +22,6 @@ use crate::sim::command::Command;
 use crate::sim::components::{Health, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::timer::CdTimer;
-use std::collections::BTreeMap;
 
 /// Minimal 20x20 flat terrain so the repair path's `(bs, terrain)` gate
 /// succeeds. has_damaged_data=false → the embedded flood-fill clear is a
@@ -49,12 +48,12 @@ fn bridge_repair_test_rules() -> RuleSet {
     RuleSet::from_ini(&ini).expect("bridge-repair test rules should parse")
 }
 
-fn build_sim() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
+fn build_sim() -> (Simulation, RuleSet) {
     let mut sim = Simulation::new();
     let rules = bridge_repair_test_rules();
     sim.resolve_type_handles(&rules);
     sim.resolved_terrain = Some(dummy_resolved_terrain());
-    (sim, rules, BTreeMap::new())
+    (sim, rules)
 }
 
 fn build_ordinary_c4_sim(
@@ -435,7 +434,7 @@ fn advance_until_c4_claim(
 
 #[test]
 fn capture_building_command_accepts_noncapturable_bridge_repair_hut() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let engineer = spawn_engineer(&mut sim, 9, 10);
 
@@ -597,7 +596,7 @@ fn plant_c4(sim: &mut Simulation, rules: &RuleSet, target: u64, seal: u64) {
 
 #[test]
 fn c4_on_cabhut_without_bridge_clears_pending_marker() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 10, 10);
     let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
@@ -672,7 +671,7 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
 
 #[test]
 fn c4_on_cabhut_bridgehead_fallback_collapses_bridge() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     let hut_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
@@ -695,7 +694,7 @@ fn c4_on_cabhut_bridgehead_fallback_collapses_bridge() {
 
 #[test]
 fn c4_on_cabhut_pure_bridgehead_fallback_uses_opposite_anchor_offset() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_hut_pure_bridgehead_fallback_layout(&mut sim);
@@ -716,7 +715,7 @@ fn c4_on_cabhut_pure_bridgehead_fallback_uses_opposite_anchor_offset() {
 
 #[test]
 fn c4_on_cabhut_fallback_rejects_anchor_or_direction_flags_alone() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_hut_fallback_bridgehead_layout(&mut sim);
@@ -745,7 +744,7 @@ fn c4_on_cabhut_fallback_rejects_anchor_or_direction_flags_alone() {
 
 #[test]
 fn stock_high_cabhut_no_overlay_fallback_collapses_bridge() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_stock_high_cabhut_no_overlay_fallback_fixture(&mut sim);
@@ -767,7 +766,7 @@ fn stock_high_cabhut_no_overlay_fallback_collapses_bridge() {
 
 #[test]
 fn stock_low_cabhut_no_overlay_fallback_collapses_bridge() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_stock_low_cabhut_no_overlay_fallback_fixture(&mut sim);
@@ -789,7 +788,7 @@ fn stock_low_cabhut_no_overlay_fallback_collapses_bridge() {
 
 #[test]
 fn stock_cabhut_no_overlay_without_starter_is_noop() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_stock_no_starter_cabhut_no_overlay_fixture(&mut sim);
@@ -846,7 +845,7 @@ fn c4_on_cabhut_low_overlay_collapses_low_bridge() {
 
 #[test]
 fn c4_on_cabhut_low_terminal_overlay_0x65_uses_overlay_first_scan() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 10, 10);
     seed_terminal_overlay_with_fallback_trap(&mut sim, 0x65);
@@ -871,7 +870,7 @@ fn c4_on_cabhut_low_terminal_overlay_0x65_uses_overlay_first_scan() {
 
 #[test]
 fn c4_on_cabhut_high_terminal_overlay_0xe8_uses_overlay_first_scan() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 10, 10);
     seed_terminal_overlay_with_fallback_trap(&mut sim, 0xE8);
@@ -1004,7 +1003,7 @@ fn g4_collapse_path_keeps_damaged_variant_set() {
 
 #[test]
 fn ordinary_engineer_overlay_repair_preserves_pavement_damage() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     // Admit damaged-data tiles so an accidental pavement clear would
     // affect this fixture; native ordinary overlay repair must preserve it.
     sim.resolved_terrain = Some(damaged_data_resolved_terrain(42));
@@ -1042,7 +1041,7 @@ fn ordinary_engineer_overlay_repair_preserves_pavement_damage() {
 
 #[test]
 fn ordinary_engineer_overlay_repair_does_not_clear_neighbor_pavement() {
-    let (mut sim, rules, _) = build_sim();
+    let (mut sim, rules) = build_sim();
     sim.resolved_terrain = Some(damaged_data_resolved_terrain(42));
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let engineer = spawn_engineer(&mut sim, 9, 10);

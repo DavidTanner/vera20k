@@ -2,7 +2,6 @@
 //! IFV keep-one rule, the hover water→land pre-move, Move cancellation and
 //! the landed-only aircraft gate.
 
-use std::collections::BTreeMap;
 
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
@@ -105,7 +104,6 @@ struct Fixture {
     sim: Simulation,
     rules: RuleSet,
     grid: PathGrid,
-    heights: BTreeMap<(u16, u16), u8>,
 }
 
 impl Fixture {
@@ -125,7 +123,6 @@ impl Fixture {
             sim,
             rules,
             grid: PathGrid::test_all_passable(MAP, MAP),
-            heights: BTreeMap::new(),
         }
     }
 

@@ -283,9 +283,8 @@ fn follow_clicked_goal(
         (-100.25, 1800.5),
         1.25,
         &scenario
-            .runtime
-            .resources
-            .terrain_template
+            .sim()
+            .resolved_terrain
             .as_ref()
             .unwrap()
             .build_height_map(),

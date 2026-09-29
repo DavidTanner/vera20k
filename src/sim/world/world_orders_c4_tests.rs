@@ -13,7 +13,6 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::{C4PlantState, Health, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::timer::CdTimer;
-use std::collections::BTreeMap;
 
 fn c4_test_rules() -> RuleSet {
     let ini: IniFile = IniFile::from_str(
@@ -59,20 +58,20 @@ fn c4_damage_state_rules() -> RuleSet {
     rules
 }
 
-fn build_sim_with_c4_rules() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
+fn build_sim_with_c4_rules() -> (Simulation, RuleSet) {
     let mut sim = Simulation::new();
     let rules = c4_test_rules();
     // Required: tick_c4_plants calls rules.c4_warhead_id() which panics
     // unless this resolver has run.
     sim.resolve_type_handles(&rules);
-    (sim, rules, BTreeMap::new())
+    (sim, rules)
 }
 
-fn build_sim_with_c4_damage_state_rules() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
+fn build_sim_with_c4_damage_state_rules() -> (Simulation, RuleSet) {
     let mut sim = Simulation::new();
     let rules = c4_damage_state_rules();
     sim.resolve_type_handles(&rules);
-    (sim, rules, BTreeMap::new())
+    (sim, rules)
 }
 
 fn spawn_infantry(sim: &mut Simulation, type_str: &str, owner: &str, rx: u16, ry: u16) -> u64 {
@@ -146,7 +145,7 @@ fn plant_c4(sim: &mut Simulation, rules: &RuleSet, target: u64, seal: u64) {
 
 #[test]
 fn c4_plant_happy_path_kills_building_and_seal_survives() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     // Spawn SEAL adjacent (Chebyshev-1) to the building so the plant claims
     // on the first tick — skips the pathfinding walk-up which is tested
     // elsewhere. tick_c4_plants Phase 1's adjacency check is what we're
@@ -210,7 +209,7 @@ fn c4_plant_happy_path_kills_building_and_seal_survives() {
 
 #[test]
 fn c4_expiry_ignore_defenses_bypasses_verses_and_kills_building() {
-    let (mut sim, rules, _) = build_sim_with_c4_damage_state_rules();
+    let (mut sim, rules) = build_sim_with_c4_damage_state_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
     plant_c4(&mut sim, &rules, bld, seal);
@@ -234,7 +233,7 @@ fn c4_expiry_ignore_defenses_bypasses_verses_and_kills_building() {
 
 #[test]
 fn c4_does_not_claim_from_add_occupy_only_cell() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 9, 10);
     let refinery = spawn_building(&mut sim, "GAREFN", "Soviets", 10, 10);
 
@@ -268,7 +267,7 @@ fn c4_does_not_claim_from_add_occupy_only_cell() {
 
 #[test]
 fn c4_claims_from_remove_occupy_foundation_cell() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 13, 11);
     let refinery = spawn_building(&mut sim, "GAREFN", "Soviets", 10, 10);
 
@@ -301,7 +300,7 @@ fn c4_claims_from_remove_occupy_foundation_cell() {
 
 #[test]
 fn c4_attacker_death_does_not_abort_detonation() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -338,7 +337,7 @@ fn c4_attacker_death_does_not_abort_detonation() {
 #[test]
 fn c4_iron_curtain_application_cancels_pending_detonation() {
     use crate::sim::superweapon::invulnerability::{InvulnKind, apply_invulnerability};
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -380,7 +379,7 @@ fn c4_iron_curtain_application_cancels_pending_detonation() {
 
 #[test]
 fn second_c4_attacker_does_not_overwrite_plant() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     // Both adjacent to the building. seal_a gets the lower stable_id (sorted
     // iteration order in tick_c4_plants makes them deterministic).
     let seal_a = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
@@ -434,7 +433,7 @@ fn second_c4_attacker_does_not_overwrite_plant() {
 
 #[test]
 fn target_death_clears_c4_plant_on_attacker() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 5, 5);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -458,7 +457,7 @@ fn target_death_clears_c4_plant_on_attacker() {
 
 #[test]
 fn stop_cancels_walkup_but_not_already_claimed_plant() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 5, 5);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -532,7 +531,7 @@ fn stop_cancels_walkup_but_not_already_claimed_plant() {
 
 #[test]
 fn cannot_c4_building_rejects_plant_command() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 5, 5);
     let oil = spawn_building(&mut sim, "CAMISC01", "Soviets", 10, 10);
 
@@ -565,7 +564,7 @@ fn cannot_c4_building_rejects_plant_command() {
 
 #[test]
 fn non_c4_unit_rejects_plant_command() {
-    let (mut sim, rules, _) = build_sim_with_c4_rules();
+    let (mut sim, rules) = build_sim_with_c4_rules();
     let gi = spawn_infantry(&mut sim, "E1", "Americans", 5, 5);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
@@ -599,7 +598,7 @@ fn non_c4_unit_rejects_plant_command() {
 #[test]
 fn c4_lifecycle_is_deterministic() {
     fn run() -> Vec<u64> {
-        let (mut sim, rules, _) = build_sim_with_c4_rules();
+        let (mut sim, rules) = build_sim_with_c4_rules();
         let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
         let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
         let owner = sim.interner.intern("Americans");

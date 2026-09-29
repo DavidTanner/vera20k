@@ -1803,10 +1803,8 @@ impl Simulation {
         let sub_cell = entity.sub_cell;
         let insertion = CellListInsertion::from_category(entity.category);
         let ground_level = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(current_cell.0, current_cell.1))
-            .map_or(0, |cell| cell.level);
+            .terrain_cell_level(current_cell.0, current_cell.1)
+            .unwrap_or(0);
         for &(rx, ry) in &cells {
             self.substrate
                 .occupancy

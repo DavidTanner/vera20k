@@ -1015,11 +1015,7 @@ impl Simulation {
     /// A survivor's placement in a foundation cell: its request
     /// (`0x80`, `0xA4`) on the cell's floor.
     fn survivor_unlimbo(&self, cell: (u16, u16)) -> CrewUnlimbo {
-        let z = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(cell.0, cell.1))
-            .map_or(0, |terrain_cell| terrain_cell.level);
+        let z = self.terrain_cell_level(cell.0, cell.1).unwrap_or(0);
         CrewUnlimbo::Place {
             cell,
             z,

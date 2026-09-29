@@ -1035,10 +1035,8 @@ pub(super) fn unlimbo_held_naval_unit(
             z
         }
         None => sim
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(resolved_cell.0, resolved_cell.1))
-            .map_or(0, |cell| cell.level),
+            .terrain_cell_level(resolved_cell.0, resolved_cell.1)
+            .unwrap_or(0),
     };
     let placement = admitted_layer.map_or(
         crate::sim::world::PlacementEvidence::RejectedEarly,

@@ -380,11 +380,7 @@ pub(super) fn deliver_produced_object(
             overlay_registry,
         ),
         ProductionDeliveryKind::Standard => {
-            let z = sim
-                .resolved_terrain
-                .as_ref()
-                .and_then(|terrain| terrain.cell(rx, ry))
-                .map_or(0, |cell| cell.level);
+            let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
             sim.unlimbo_held_production_object_with_unit_context(
                 stable_id,
                 selection.producer_id,
