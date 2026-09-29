@@ -984,34 +984,19 @@ fn projectile_shp_candidates(
     let Some(load) = &projectile.image_load else {
         return Vec::new();
     };
-    let image = &load.image;
     let theater = load.theater;
-    let mut image = image.to_ascii_uppercase().into_bytes();
-    if !theater
-        && load.new_theater
-        && image.len() >= 2
-        && matches!(image[0], b'G' | b'N' | b'C' | b'Y')
-        && matches!(image[1], b'A' | b'T')
-    {
-        image[1] = match theater_name.to_ascii_uppercase().as_str() {
-            "TEMPERATE" => b'T',
-            "SNOW" => b'A',
-            "URBAN" => b'U',
-            "DESERT" => b'D',
-            "LUNAR" => b'L',
-            "NEWURBAN" => b'N',
-            _ => image[1],
-        };
-    }
-    let mut file = String::from_utf8(image).expect("ASCII case conversion preserves UTF-8");
-    file.push('.');
-    file.push_str(if theater { theater_ext } else { "SHP" });
-    let mut candidates = vec![file.clone()];
-    if file.is_ascii() && file.len() >= 2 {
-        file.replace_range(1..2, "G");
-        if file != candidates[0] {
-            candidates.push(file);
-        }
+    let upper = load.image.to_ascii_uppercase();
+    let [substituted, generic] = crate::rules::art_data::theater_shp_names(&upper, theater_name);
+    let first = if !theater && load.new_theater {
+        substituted
+    } else {
+        upper
+    };
+    let ext = if theater { theater_ext } else { "SHP" };
+    let mut candidates = vec![format!("{first}.{ext}")];
+    let fallback = format!("{generic}.{ext}");
+    if fallback != candidates[0] {
+        candidates.push(fallback);
     }
     candidates
 }

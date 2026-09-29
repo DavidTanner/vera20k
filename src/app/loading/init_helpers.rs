@@ -224,15 +224,7 @@ pub(crate) fn build_tile_atlas(
 
 /// Fallback theater extension from theater name when load_theater fails.
 pub(crate) fn theater_ext_for(theater_name: &str) -> &'static str {
-    match theater_name.to_uppercase().as_str() {
-        "TEMPERATE" => "tem",
-        "SNOW" => "sno",
-        "URBAN" => "urb",
-        "DESERT" => "des",
-        "LUNAR" => "lun",
-        "NEWURBAN" => "ubn",
-        _ => "tem",
-    }
+    crate::map::theater::theater_extension(theater_name).unwrap_or("tem")
 }
 
 /// Match-load rules for a test, through the path a match load takes: the cold
