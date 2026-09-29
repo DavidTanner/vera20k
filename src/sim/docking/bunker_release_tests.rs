@@ -65,7 +65,6 @@ fn release_fixture() -> Simulation {
     unit.radio_contacts.insert(2);
     unit.locomotor.as_mut().unwrap().power_off();
     unit.foot_speed.applied_fraction = SimFixed::lit("0.25");
-    unit.foot_speed.cached_current_speed = 7;
     let drive = unit.drive_locomotion.as_mut().unwrap();
     drive.track.residual = 971;
     drive.track.reversed = true;
@@ -125,7 +124,6 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
         (0x47, 0, 971)
     );
     assert!(drive.track.reversed);
-    assert_eq!(unit.foot_speed.cached_current_speed, 7);
     assert!(!unit.lifecycle.in_limbo && unit.in_logic_vector);
     assert!(!unit.radio_contacts.contains(2));
     assert!(

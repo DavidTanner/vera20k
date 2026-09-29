@@ -652,7 +652,9 @@ pub(crate) fn unit_mission_unload(
     match entity.mission.handler_state() {
         STATE_PICK_EXIT => {
             // `ILocomotion::Is_Moving` (`0x0073D729`) → `return 10`.
-            if is_moving_now_for(entity, now) || entity.movement_target.is_some() {
+            if is_moving_now_for(entity, Some((rules, &sim.interner)), now)
+                || entity.movement_target.is_some()
+            {
                 return WAIT_MOVING_FRAMES;
             }
             // No NavCom and the current cell's LandType is Water (`+0xEC == 2`,

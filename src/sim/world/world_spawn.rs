@@ -1549,7 +1549,11 @@ impl Simulation {
             // to radio contact 0, then +0x68C.
             let now = self.session.binary_frame;
             if let Some(entity) = self.substrate.entities.get_mut(stable_id)
-                && !crate::sim::movement::ready_producer::is_moving_now_for(entity, now)
+                && !crate::sim::movement::ready_producer::is_moving_now_for(
+                    entity,
+                    Some((rules, &self.interner)),
+                    now,
+                )
             {
                 crate::sim::movement::drive_do_turn(entity, u16::from(deploy_facing) << 8, now);
             }

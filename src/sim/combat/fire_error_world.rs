@@ -757,13 +757,18 @@ impl FireQuery for WorldQuery<'_, '_> {
     fn locomotor_moving(&mut self) -> bool {
         crate::sim::movement::ready_producer::is_moving_now_for(
             self.subject.firer,
+            Some((self.subject.rules, &self.subject.world.interner)),
             self.subject.frame(),
         )
     }
 
     fn target_locomotor_moving(&mut self) -> bool {
         self.subject.target_entity().is_some_and(|target| {
-            crate::sim::movement::ready_producer::is_moving_now_for(target, self.subject.frame())
+            crate::sim::movement::ready_producer::is_moving_now_for(
+                target,
+                Some((self.subject.rules, &self.subject.world.interner)),
+                self.subject.frame(),
+            )
         })
     }
 

@@ -79,6 +79,20 @@ pub(crate) fn owner_current_speed(
 }
 
 #[cfg(test)]
+impl crate::sim::world::Simulation {
+    /// An entity's live GetCurrentSpeed, for tests that observe a step's
+    /// speed budget.
+    pub(crate) fn current_speed_for_test(&self, id: u64, rules: &RuleSet) -> i32 {
+        let entity = self.substrate.entities.get(id).expect("live entity");
+        owner_current_speed(
+            entity,
+            self.object_type(entity.type_ref(), rules),
+            rules.general.veteran_speed,
+        )
+    }
+}
+
+#[cfg(test)]
 mod tests {
     /// The retail movers `order_speed`'s missing minimum can reach: every
     /// registered infantry, vehicle and aircraft type whose `Speed=` reads

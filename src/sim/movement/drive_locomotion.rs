@@ -259,7 +259,6 @@ mod tests {
         let speed = ra2_speed_to_leptons_per_second(8);
         let mut owner_speed = FootSpeedState::default();
         owner_speed.applied_fraction = SIM_HALF;
-        owner_speed.cached_current_speed = 10;
         let ship = ShipLocomotionRuntime {
             destination: None,
             head_to: Some(DriveCoord::cell(4, 3, 0)),
@@ -279,16 +278,17 @@ mod tests {
                 SIM_ZERO,
                 SimFixed::from_num(256),
             );
-            owner_speed.cached_current_speed =
-                owner_current_speed_from_fraction(speed, owner_speed.applied_fraction);
             assert_eq!(ship.target_speed_fraction, SimFixed::lit("0.3"));
-            assert!(owner_speed.cached_current_speed > 0);
+            assert!(owner_current_speed_from_fraction(speed, owner_speed.applied_fraction) > 0);
         }
 
         assert_eq!(ship.destination, None);
         assert_eq!(ship.head_to, Some(DriveCoord::cell(4, 3, 0)));
         assert_eq!(owner_speed.applied_fraction, SimFixed::lit("0.3"));
-        assert_eq!(owner_speed.cached_current_speed, 6);
+        assert_eq!(
+            owner_current_speed_from_fraction(speed, owner_speed.applied_fraction),
+            6
+        );
     }
 
     fn terrain_cell(rx: u16, ry: u16, speed_costs: SpeedCostProfile) -> ResolvedTerrainCell {

@@ -8,12 +8,19 @@ use crate::sim::components::{
     DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
 };
 use crate::sim::movement::teleport_movement::TeleportState;
-use crate::util::fixed_math::{SIM_ONE, SimFixed};
+use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 
 fn entity_with(kind: LocomotorKind) -> GameEntity {
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
     entity
+}
+
+fn mtnk_rules() -> RuleSet {
+    RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+        "[VehicleTypes]\n0=MTNK\n[MTNK]\nSpeed=6\n",
+    ))
+    .expect("minimal MTNK rules")
 }
 
 fn moving_target(speed: i32) -> MovementTarget {
@@ -31,7 +38,7 @@ fn moving_target(speed: i32) -> MovementTarget {
 #[test]
 fn parked_drive_unit_reports_not_moving() {
     let entity = entity_with(LocomotorKind::Drive);
-    let state = ready_state_for(&entity, 100).expect("Drive has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Drive has a producer");
     assert!(
         !state.is_moving_now(),
         "a parked tank must not report moving"
@@ -49,15 +56,23 @@ fn driving_unit_reports_moving() {
         z: 0,
     };
     entity.foot_speed.applied_fraction = SIM_ONE;
-    entity.foot_speed.cached_current_speed = 25;
     entity.drive_locomotion = Some(DriveLocomotionRuntime {
         destination: Some(head),
         head_to: Some(head),
         ..DriveLocomotionRuntime::default()
     });
+    let rules = mtnk_rules();
+    let interner = crate::sim::intern::test_interner();
 
-    let state = ready_state_for(&entity, 100).expect("Drive has a producer");
+    let state =
+        ready_state_for(&entity, Some((&rules, &interner)), 100).expect("Drive has a producer");
     assert!(state.is_moving_now(), "a driving tank must report moving");
+
+    // `0x004AFC71` reads the live getter: a callback that zeroes Foot+578
+    // (a stop, a bunker install) takes effect at the next query, with no
+    // speed cache left to refresh.
+    entity.foot_speed.applied_fraction = SIM_ZERO;
+    assert!(!is_moving_now_for(&entity, Some((&rules, &interner)), 100));
 }
 
 /// Standing exactly on the stale head-to point reads not-moving. This is native
@@ -75,7 +90,7 @@ fn unit_parked_on_its_head_to_reports_not_moving() {
         ..DriveLocomotionRuntime::default()
     });
 
-    let state = ready_state_for(&entity, 100).expect("Drive has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Drive has a producer");
     assert!(!state.is_moving_now());
 }
 
@@ -86,13 +101,17 @@ fn ship_mirrors_drive_but_keeps_its_own_variant() {
     let mut entity = entity_with(LocomotorKind::Ship);
     let head = DriveCoord::cell(6, 5, 0);
     entity.foot_speed.applied_fraction = SIM_ONE;
-    entity.foot_speed.cached_current_speed = 20;
+    // Without rules the getter reads the order's stamped speed.
+    entity.movement_target = Some(MovementTarget {
+        speed: SimFixed::from_num(300),
+        ..moving_target(20)
+    });
     entity.ship_locomotion = Some(ShipLocomotionRuntime {
         destination: Some(head),
         head_to: Some(head),
         ..Default::default()
     });
-    let state = ready_state_for(&entity, 100).expect("Ship has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Ship has a producer");
     assert!(matches!(state, LocomotorReadyState::Ship { .. }));
     assert!(state.is_moving_now());
 }
@@ -108,7 +127,7 @@ fn teleport_chrono_delay_reports_not_moving() {
         being_warped_ticks: 10,
     });
 
-    let state = ready_state_for(&entity, 100).expect("Teleport has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Teleport has a producer");
     assert!(
         !state.is_moving_now(),
         "chrono delay must not defer the unit's missions"
@@ -126,7 +145,7 @@ fn teleport_relocate_reports_moving() {
         being_warped_ticks: 16,
     });
 
-    let state = ready_state_for(&entity, 100).expect("Teleport has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Teleport has a producer");
     assert!(state.is_moving_now());
 }
 
@@ -152,7 +171,7 @@ fn jumpjet_readiness_reads_the_native_state_field() {
             .and_then(|locomotor| locomotor.jumpjet_runtime_mut())
             .expect("a Jumpjet locomotor carries its runtime")
             .phase = state;
-        let ready = ready_state_for(&entity, 100).expect("Jumpjet has a producer");
+        let ready = ready_state_for(&entity, None, 100).expect("Jumpjet has a producer");
         assert_eq!(ready.is_moving_now(), moving, "native state {state}");
     }
 
@@ -165,14 +184,14 @@ fn jumpjet_readiness_reads_the_native_state_field() {
         .unwrap()
         .phase = 2;
     entity.movement_target = Some(moving_target(20));
-    assert!(!ready_state_for(&entity, 100).unwrap().is_moving_now());
+    assert!(!ready_state_for(&entity, None, 100).unwrap().is_moving_now());
 }
 
 /// A standing infantryman is not moving.
 #[test]
 fn idle_walker_reports_not_moving() {
     let entity = entity_with(LocomotorKind::Walk);
-    let state = ready_state_for(&entity, 100).expect("Walk has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Walk has a producer");
     assert!(!state.is_moving_now());
 }
 
@@ -185,7 +204,7 @@ fn walking_infantry_reports_moving() {
     loco.set_walk_destination(Some(head));
     loco.set_step_head(Some(head));
     entity.foot_speed.applied_fraction = SIM_ONE;
-    let state = ready_state_for(&entity, 100).expect("Walk has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Walk has a producer");
     assert!(state.is_moving_now());
 }
 
@@ -194,7 +213,7 @@ fn walking_infantry_reports_moving() {
 fn blocked_walker_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Walk);
     entity.movement_target = Some(moving_target(10));
-    let state = ready_state_for(&entity, 100).expect("Walk has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Walk has a producer");
     assert!(
         !state.is_moving_now(),
         "a blocked walker must not defer its mission indefinitely"
@@ -211,12 +230,12 @@ fn walk_stop_keeps_paid_head_readiness_until_retirement_and_restore() {
     loco.set_walk_destination(None);
     entity.foot_speed.applied_fraction = SIM_ONE;
     assert!(entity.movement_target.is_none());
-    assert!(is_moving_now_for(&entity, 100));
+    assert!(is_moving_now_for(&entity, None, 100));
     let mut restored: GameEntity =
         serde_json::from_value(serde_json::to_value(&entity).unwrap()).unwrap();
-    assert!(is_moving_now_for(&restored, 100));
+    assert!(is_moving_now_for(&restored, None, 100));
     restored.locomotor.as_mut().unwrap().set_step_head(None);
-    assert!(!is_moving_now_for(&restored, 100));
+    assert!(!is_moving_now_for(&restored, None, 100));
     assert_eq!(
         restored.locomotor.as_ref().unwrap().walk_is_moving(),
         Some(true)
@@ -287,7 +306,7 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
                 has_order.then(|| crate::sim::components::NavTargetRef::cell(6, 5));
             let moving = if kind == LocomotorKind::Walk {
                 assert_eq!(
-                    is_moving_now_for(&entity, 100),
+                    is_moving_now_for(&entity, None, 100),
                     row["moving_now"].as_bool().unwrap(),
                     "{row}"
                 );
@@ -314,7 +333,7 @@ fn stopped_hover_reports_not_moving_despite_stale_request() {
         // Left over from the last leg — the producer must not trust it.
         locomotor.hover_speed_request = SIM_ONE;
     }
-    let state = ready_state_for(&entity, 100).expect("Hover has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Hover has a producer");
     assert!(!state.is_moving_now());
 }
 
@@ -326,7 +345,7 @@ fn hover_under_way_reports_moving() {
     if let Some(locomotor) = entity.locomotor.as_mut() {
         locomotor.hover_speed_request = SIM_ONE;
     }
-    let state = ready_state_for(&entity, 100).expect("Hover has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Hover has a producer");
     assert!(state.is_moving_now());
 }
 
@@ -339,7 +358,7 @@ fn hover_turn_stall_reports_not_moving() {
     if let Some(locomotor) = entity.locomotor.as_mut() {
         locomotor.hover_speed_request = SIM_ZERO;
     }
-    let state = ready_state_for(&entity, 100).expect("Hover has a producer");
+    let state = ready_state_for(&entity, None, 100).expect("Hover has a producer");
     assert!(!state.is_moving_now());
 }
 
@@ -358,7 +377,7 @@ fn unmapped_families_yield_no_producer() {
     for kind in [LocomotorKind::Fly, LocomotorKind::Rocket] {
         let entity = entity_with(kind);
         assert!(
-            ready_state_for(&entity, 100).is_none(),
+            ready_state_for(&entity, None, 100).is_none(),
             "{kind:?} has no faithful producer and must not be guessed"
         );
     }
@@ -368,5 +387,5 @@ fn unmapped_families_yield_no_producer() {
 #[test]
 fn entity_without_locomotor_yields_no_producer() {
     let entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-    assert!(ready_state_for(&entity, 100).is_none());
+    assert!(ready_state_for(&entity, None, 100).is_none());
 }

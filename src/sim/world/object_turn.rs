@@ -609,6 +609,7 @@ impl Simulation {
             ) {
                 crate::sim::animation::tick_shp_vehicle_body_frame_counter(
                     entity,
+                    rules.map(|rules| (rules, &sim.interner)),
                     cadence,
                     sim.session.binary_frame,
                 );

@@ -1302,7 +1302,6 @@ impl Simulation {
 
             hash_retained_track_classes(entity, hasher);
             entity.foot_speed.applied_fraction.hash(hasher);
-            entity.foot_speed.cached_current_speed.hash(hasher);
             if entity.flight_attitude != Default::default() {
                 0x2e8_u32.hash(hasher);
                 entity.flight_attitude.hash(hasher);

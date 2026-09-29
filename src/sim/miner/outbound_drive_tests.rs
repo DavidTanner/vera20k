@@ -580,14 +580,10 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
         {
             let entity = sim.substrate.entities.get(entity_id).expect("miner");
             assert!(entity.drive_locomotion.is_some());
-            let movement = entity.movement_target.as_ref().expect("movement");
+            assert!(entity.movement_target.is_some(), "movement");
             // One cell out is inside `SlowdownDistance=500`, so the ramp opens on
             // the destination brake floor and holds there for the whole hop.
             assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.3"));
-            assert_eq!(
-                movement.current_speed,
-                movement.speed * SimFixed::lit("0.3"),
-            );
         }
 
         let mut physically_departed = position_tuple(&sim, entity_id) != start_position;
@@ -688,16 +684,11 @@ fn production_harv_outbound_drive_uses_rule_profile() {
     advance(&mut sim, &oracle, &grid);
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
     assert!(entity.drive_locomotion.is_some());
-    let movement = entity.movement_target.as_ref().expect("movement");
+    assert!(entity.movement_target.is_some(), "movement");
     assert_eq!(
         entity.foot_speed.applied_fraction,
         acceleration + acceleration
     );
-    assert_eq!(
-        movement.current_speed,
-        movement.speed * (acceleration + acceleration)
-    );
-    assert!(movement.current_speed > SIM_ZERO);
     assert_eq!(
         sim.rng_state().scenario,
         rng_after_scan.scenario,
@@ -792,16 +783,12 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
 
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
     assert!(entity.drive_locomotion.is_some());
-    let movement = entity.movement_target.as_ref().expect("movement target");
+    assert!(entity.movement_target.is_some(), "movement target");
     assert!(
         entity.foot_speed.applied_fraction >= harv.accel_factor,
         "the rules accel profile ramps once the hull is under way"
     );
-    assert_eq!(
-        movement.current_speed,
-        movement.speed * entity.foot_speed.applied_fraction,
-    );
-    assert!(movement.current_speed > SIM_ZERO);
+    assert!(sim.current_speed_for_test(entity_id, &oracle.rules) > 0);
 }
 
 #[test]

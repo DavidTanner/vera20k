@@ -3354,6 +3354,7 @@ impl Simulation {
         let movement_changed = before.is_some() && before != after;
         let moving_now = crate::sim::movement::ready_producer::is_moving_now_for(
             entity,
+            rules.map(|rules| (rules, &self.interner)),
             self.session.binary_frame,
         );
         // `0x004DAA38`/`0x004DAA3E`: falling (`+0x8D`) or crashing (`+0x425`).
@@ -5768,13 +5769,19 @@ impl Simulation {
         }
         let binary_frame = self.session.binary_frame;
         let terrain = self.resolved_terrain.as_ref();
+        let rules_context = Some((rules, &self.interner));
         let wake_positions: Vec<(u16, u16, SimFixed, SimFixed, u8)> = self
             .substrate
             .entities
             .keys_sorted()
             .iter()
             .filter_map(|id| {
-                wake_anchor_for(self.substrate.entities.get(*id)?, terrain, binary_frame)
+                wake_anchor_for(
+                    self.substrate.entities.get(*id)?,
+                    rules_context,
+                    terrain,
+                    binary_frame,
+                )
             })
             .collect();
         if wake_positions.is_empty() {
@@ -6547,6 +6554,7 @@ const WAKE_DRAW_FLAGS: u32 = 0x600;
 /// cell whose `CellClass+0xEC` mirror is Water, anchored at its exact leptons.
 pub(crate) fn wake_anchor_for(
     entity: &crate::sim::game_entity::GameEntity,
+    rules: Option<(&RuleSet, &crate::sim::intern::StringInterner)>,
     terrain: Option<&ResolvedTerrainGrid>,
     binary_frame: u32,
 ) -> Option<(u16, u16, SimFixed, SimFixed, u8)> {
@@ -6555,7 +6563,7 @@ pub(crate) fn wake_anchor_for(
     if entity.sinking.is_active() {
         return None;
     }
-    if !crate::sim::movement::ready_producer::is_moving_now_for(entity, binary_frame) {
+    if !crate::sim::movement::ready_producer::is_moving_now_for(entity, rules, binary_frame) {
         return None;
     }
     if entity.is_on_bridge_layer() {

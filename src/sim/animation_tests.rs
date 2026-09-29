@@ -236,7 +236,6 @@ fn gsi_13_06_active_shp_unit(kind: LocomotorKind) -> GameEntity {
     match kind {
         LocomotorKind::Drive => {
             entity.foot_speed.applied_fraction = SimFixed::from_num(1);
-            entity.foot_speed.cached_current_speed = 1;
             entity.drive_locomotion = Some(DriveLocomotionRuntime {
                 destination: Some(head),
                 head_to: Some(head),
@@ -245,7 +244,6 @@ fn gsi_13_06_active_shp_unit(kind: LocomotorKind) -> GameEntity {
         }
         LocomotorKind::Ship => {
             entity.foot_speed.applied_fraction = SimFixed::from_num(1);
-            entity.foot_speed.cached_current_speed = 1;
             entity.ship_locomotion = Some(ShipLocomotionRuntime {
                 destination: Some(head),
                 head_to: Some(head),
@@ -269,13 +267,13 @@ fn gsi_13_06_body_counter_uses_absolute_precommit_binary_frame_phase() {
 
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         let mut entity = gsi_13_06_active_shp_unit(kind);
-        tick_shp_vehicle_body_frame_counter(&mut entity, cadence, 3);
+        tick_shp_vehicle_body_frame_counter(&mut entity, None, cadence, 3);
         assert_eq!(entity.body_frame_counter, 0);
-        tick_shp_vehicle_body_frame_counter(&mut entity, cadence, 4);
+        tick_shp_vehicle_body_frame_counter(&mut entity, None, cadence, 4);
         assert_eq!(entity.body_frame_counter, 1);
-        tick_shp_vehicle_body_frame_counter(&mut entity, cadence, 5);
+        tick_shp_vehicle_body_frame_counter(&mut entity, None, cadence, 5);
         assert_eq!(entity.body_frame_counter, 1);
-        tick_shp_vehicle_body_frame_counter(&mut entity, cadence, 8);
+        tick_shp_vehicle_body_frame_counter(&mut entity, None, cadence, 8);
         assert_eq!(entity.body_frame_counter, 2);
     }
 }
@@ -286,6 +284,7 @@ fn gsi_13_06_body_counter_wraps_and_survives_moving_idle_transitions() {
     entity.body_frame_counter = u32::MAX;
     tick_shp_vehicle_body_frame_counter(
         &mut entity,
+        None,
         ShpVehicleCadence {
             walk_rate: 1,
             idle_rate: 8,
@@ -299,10 +298,10 @@ fn gsi_13_06_body_counter_wraps_and_survives_moving_idle_transitions() {
         drive.destination = None;
         drive.head_to = None;
         entity.foot_speed.applied_fraction = SIM_ZERO;
-        entity.foot_speed.cached_current_speed = 0;
     }
     tick_shp_vehicle_body_frame_counter(
         &mut entity,
+        None,
         ShpVehicleCadence {
             walk_rate: 4,
             idle_rate: 8,
@@ -367,7 +366,7 @@ fn gsi_13_06_counter_suppressions_hold_the_persistent_value() {
 
     for (name, mut entity) in variants {
         entity.body_frame_counter = 17;
-        tick_shp_vehicle_body_frame_counter(&mut entity, cadence, 1);
+        tick_shp_vehicle_body_frame_counter(&mut entity, None, cadence, 1);
         assert_eq!(entity.body_frame_counter, 17, "{name}");
     }
 }
@@ -376,26 +375,20 @@ fn gsi_13_06_counter_suppressions_hold_the_persistent_value() {
 fn gsi_13_06_draw_and_cadence_use_distinct_movement_predicates() {
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         let mut entity = gsi_13_06_active_shp_unit(kind);
-        match kind {
-            LocomotorKind::Drive => {
-                entity.foot_speed.cached_current_speed = 0;
-            }
-            LocomotorKind::Ship => {
-                entity.foot_speed.cached_current_speed = 0;
-            }
-            _ => unreachable!(),
-        }
+        // No applied speed: GetCurrentSpeed reads 0 with the destination set.
+        entity.foot_speed.applied_fraction = SIM_ZERO;
 
         assert!(
             crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity),
             "slot-4 Is_Moving sees the class-owned destination"
         );
         assert!(
-            !crate::sim::movement::ready_producer::is_moving_now_for(&entity, 4),
+            !crate::sim::movement::ready_producer::is_moving_now_for(&entity, None, 4),
             "slot-32 Is_Moving_Now also requires positive applied speed"
         );
         tick_shp_vehicle_body_frame_counter(
             &mut entity,
+            None,
             ShpVehicleCadence {
                 walk_rate: 4,
                 idle_rate: 0,
@@ -423,29 +416,25 @@ fn gsi_13_06_positive_fraction_below_get_current_speed_threshold_is_idle() {
         );
         assert_eq!(owner_speed, 0, "{name} +0x538 truncation");
         match kind {
-            LocomotorKind::Drive => {
-                assert!(entity.drive_locomotion.is_some());
-                entity.foot_speed.applied_fraction = fraction;
-                entity.foot_speed.cached_current_speed = owner_speed;
-            }
-            LocomotorKind::Ship => {
-                assert!(entity.ship_locomotion.is_some());
-                entity.foot_speed.applied_fraction = fraction;
-                entity.foot_speed.cached_current_speed = owner_speed;
-            }
+            LocomotorKind::Drive => assert!(entity.drive_locomotion.is_some()),
+            LocomotorKind::Ship => assert!(entity.ship_locomotion.is_some()),
             _ => unreachable!(),
         }
+        entity.foot_speed.applied_fraction = fraction;
+        // Without rules the live getter reads the order's stamped type speed.
+        entity.movement_target.as_mut().unwrap().speed = ra2_speed_to_leptons_per_second(raw_speed);
 
         assert!(
             crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity),
             "{name} slot +0x10 still sees its locomotor destination"
         );
         assert!(
-            !crate::sim::movement::ready_producer::is_moving_now_for(&entity, 1),
+            !crate::sim::movement::ready_producer::is_moving_now_for(&entity, None, 1),
             "{name} slot +0x80 requires truncated GetCurrentSpeed > 0"
         );
         tick_shp_vehicle_body_frame_counter(
             &mut entity,
+            None,
             ShpVehicleCadence {
                 walk_rate: 1,
                 idle_rate: 0,
@@ -468,7 +457,6 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
         match kind {
             LocomotorKind::Drive => {
                 entity.foot_speed.applied_fraction = SimFixed::from_num(1);
-                entity.foot_speed.cached_current_speed = 1;
                 entity.drive_locomotion = Some(DriveLocomotionRuntime {
                     head_to: Some(owner),
                     ..Default::default()
@@ -476,7 +464,6 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
             }
             LocomotorKind::Ship => {
                 entity.foot_speed.applied_fraction = SimFixed::from_num(1);
-                entity.foot_speed.cached_current_speed = 1;
                 entity.ship_locomotion = Some(ShipLocomotionRuntime {
                     head_to: Some(owner),
                     ..Default::default()
@@ -486,17 +473,17 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
         }
         assert!(!crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity));
         assert!(!crate::sim::movement::ready_producer::is_moving_now_for(
-            &entity, 4
+            &entity, None, 4
         ));
 
         // Conversely, locomotor-owned state alone is sufficient; no
-        // MovementTarget is needed by either draw or cadence.
+        // MovementTarget is needed by either draw or cadence. The live
+        // GetCurrentSpeed reads DRON's type speed.
         entity.movement_target = None;
         let head = DriveCoord::cell(6, 5, 0);
         match kind {
             LocomotorKind::Drive => {
                 entity.foot_speed.applied_fraction = SimFixed::from_num(1);
-                entity.foot_speed.cached_current_speed = 1;
                 entity.drive_locomotion = Some(DriveLocomotionRuntime {
                     destination: Some(head),
                     head_to: Some(head),
@@ -505,7 +492,6 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
             }
             LocomotorKind::Ship => {
                 entity.foot_speed.applied_fraction = SimFixed::from_num(1);
-                entity.foot_speed.cached_current_speed = 1;
                 entity.ship_locomotion = Some(ShipLocomotionRuntime {
                     destination: Some(head),
                     head_to: Some(head),
@@ -514,9 +500,16 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
             }
             _ => unreachable!(),
         }
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=DRON\n[DRON]\nSpeed=10\n",
+        ))
+        .expect("DRON rules");
+        let interner = crate::sim::intern::test_interner();
         assert!(crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity));
         assert!(crate::sim::movement::ready_producer::is_moving_now_for(
-            &entity, 4
+            &entity,
+            Some((&rules, &interner)),
+            4
         ));
     }
 }
