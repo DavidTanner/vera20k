@@ -1906,7 +1906,7 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
     // The receiver transaction's commit constructs the AnimList anim.
     let _ = result
         .consequences
-        .commit(&mut sim, &rules, Some(&registry), None);
+        .commit(&mut sim, &rules, Some(&registry));
     assert!(
         sim.smudge_grid
             .as_ref()
@@ -4849,11 +4849,11 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     }
     let collapsed = sim.path_grid_snapshot().unwrap();
     assert_ne!(before_path.cell(5, 5), collapsed.cell(5, 5));
-    // The combat frame's fallback predates bridge fallout. Both receipt paths
-    // must return and publish the current projection without mutating that Arc.
+    // The pinned reader predates bridge fallout. Both receipt paths must
+    // return and publish the current projection without mutating that Arc.
     for changed_cells in [&[][..], &[(6, 0)][..]] {
         let tail = sim
-            .finish_terrain_navigation_changes(Some(&before_path), changed_cells)
+            .finish_terrain_navigation_changes(changed_cells)
             .unwrap();
         assert_eq!(tail.as_ref(), collapsed.as_ref());
         if changed_cells.is_empty() {

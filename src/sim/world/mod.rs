@@ -2536,7 +2536,7 @@ impl Simulation {
             under_attack_events,
             terrain_navigation_changed_cells,
         )
-        .commit(self, rules, overlay_registry, None)
+        .commit(self, rules, overlay_registry)
     }
 
     /// `HouseClass::NotifyUnderAttack @ 0x004F93E0` for one damaged asset,
@@ -4917,13 +4917,12 @@ impl Simulation {
     }
 
     /// Consume terrain/overlay receipts at their existing world-reader boundary.
-    /// VERA-internal projection protocol, gamemd equivalent UNCHECKED. A pinned
-    /// pre-callback grid is only a fallback: bridge and wall callbacks may have
-    /// already published newer canonical navigation. Never rebuild over it from
-    /// a stale reader snapshot. The returned projection serves subsequent phases.
+    /// VERA-internal projection protocol, gamemd equivalent UNCHECKED. Bridge
+    /// and wall callbacks may already have published newer canonical
+    /// navigation, so this reads the canonical grid, never a stale reader
+    /// snapshot. The returned projection serves subsequent phases.
     fn finish_terrain_navigation_changes(
         &mut self,
-        fallback_path_grid: Option<&PathGrid>,
         terrain_changed_cells: &[(u16, u16)],
     ) -> Option<Arc<PathGrid>> {
         let mut changed_cells = self
@@ -4938,10 +4937,9 @@ impl Simulation {
         }
         let canonical = self.path_grid_snapshot();
         if changed_cells.is_empty() {
-            return canonical.or_else(|| fallback_path_grid.cloned().map(Arc::new));
+            return canonical;
         }
-        let current = canonical.as_deref().or(fallback_path_grid);
-        self.refresh_navigation_after_terrain_changes(current, &changed_cells)?;
+        self.refresh_navigation_after_terrain_changes(canonical.as_deref(), &changed_cells)?;
         self.path_grid_snapshot()
     }
 
@@ -6247,12 +6245,9 @@ impl Simulation {
                 &ordinary_logic_order,
                 overlay_registry,
             );
-            let receipt = combat_result.consequences.commit(
-                self,
-                rules,
-                overlay_registry,
-                active_post_combat_path_grid,
-            );
+            let receipt = combat_result
+                .consequences
+                .commit(self, rules, overlay_registry);
             destroyed_structure |= receipt.structure_destroyed;
             bridge_state_changed |= receipt.bridge_state_changed;
             tail_path_grid = receipt.path_grid;

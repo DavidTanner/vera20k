@@ -152,7 +152,7 @@ fn owner_block_set_not_rebuilt_when_generation_unchanged() {
 const MOVER: u64 = 1;
 const CANDIDATE: (u16, u16) = (11, 9);
 
-fn chain_fixture(passive: bool) -> (Simulation, RuleSet, PathGrid, TrackInvocation) {
+fn chain_fixture(passive: bool) -> (Simulation, RuleSet, TrackInvocation) {
     let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
         "[VehicleTypes]\n0=MTNK\n[InfantryTypes]\n0=E1\n[BuildingTypes]\n0=GAGATE_A\n\
          [MTNK]\nSpeed=4\nCrusher=yes\nPassive={}\n\
@@ -200,10 +200,10 @@ fn chain_fixture(passive: bool) -> (Simulation, RuleSet, PathGrid, TrackInvocati
     sim.substrate.entities.insert(mover);
     sim.interner = test_interner();
     sim.substrate.occupancy = OccupancyGrid::rebuild(&sim.substrate.entities);
+    sim.path_grid = Some(std::sync::Arc::new(PathGrid::test_all_passable(24, 24)));
     (
         sim,
         rules,
-        PathGrid::test_all_passable(24, 24),
         TrackInvocation {
             entity_id: MOVER,
             family: TrackFamily::Drive,
@@ -252,7 +252,7 @@ fn assert_old_chain_continues(sim: &Simulation) {
 
 #[test]
 fn production_chain_code3_opens_gate_without_consuming_the_queue() {
-    let (mut sim, rules, grid, invocation) = chain_fixture(false);
+    let (mut sim, rules, invocation) = chain_fixture(false);
     let mut gate = GameEntity::test_default(100, "GAGATE_A", "Americans", CANDIDATE.0, CANDIDATE.1);
     gate.category = EntityCategory::Structure;
     gate.building_gate = Some(BuildingGateRuntime::default());
@@ -264,16 +264,9 @@ fn production_chain_code3_opens_gate_without_consuming_the_queue() {
     sim.substrate.occupancy = OccupancyGrid::rebuild(&sim.substrate.entities);
     let rng_before = sim.scenario_rng.logical_state();
     let mut per_cell = 0;
-    sim.run_track_points_observed(
-        invocation,
-        8,
-        Some(&rules),
-        Some(&grid),
-        None,
-        &mut |_, _, event| {
-            per_cell += usize::from(event == TrackWorldEvent::PerCell);
-        },
-    );
+    sim.run_track_points_observed(invocation, 8, Some(&rules), None, &mut |_, _, event| {
+        per_cell += usize::from(event == TrackWorldEvent::PerCell);
+    });
     let gate = sim
         .substrate
         .entities
@@ -290,12 +283,12 @@ fn production_chain_code3_opens_gate_without_consuming_the_queue() {
 
 #[test]
 fn production_chain_code6_scatters_once_without_adopting_the_candidate() {
-    let (mut sim, rules, grid, invocation) = chain_fixture(false);
+    let (mut sim, rules, invocation) = chain_fixture(false);
     add_blocker(&mut sim, false);
     let before = sim.substrate.entities.get(2).unwrap().position.clone();
     let mut expected_rng = sim.scenario_rng.clone();
     expected_rng.next_range_u32(8);
-    sim.run_track_points(invocation, 8, Some(&rules), Some(&grid), None);
+    sim.run_track_points(invocation, 8, Some(&rules), None);
     let blocker = sim.substrate.entities.get(2).unwrap();
     assert!(
         blocker.movement_target.is_some(),
@@ -318,7 +311,7 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
     for passive in [false, true] {
         // The body arm and bare occupation arm both yield native code2.
         for blocker in [0, 1, 2] {
-            let (mut sim, rules, grid, invocation) = chain_fixture(passive);
+            let (mut sim, rules, invocation) = chain_fixture(passive);
             if blocker == 1 {
                 add_blocker(&mut sim, true);
             } else if blocker == 2 {
@@ -359,16 +352,9 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
                 .get(2)
                 .map(|e| serde_json::to_value(&e.movement_target).unwrap());
             let mut per_cell = 0;
-            sim.run_track_points_observed(
-                invocation,
-                8,
-                Some(&rules),
-                Some(&grid),
-                None,
-                &mut |_, _, event| {
-                    per_cell += usize::from(event == TrackWorldEvent::PerCell);
-                },
-            );
+            sim.run_track_points_observed(invocation, 8, Some(&rules), None, &mut |_, _, event| {
+                per_cell += usize::from(event == TrackWorldEvent::PerCell);
+            });
             if passive {
                 let mover = sim.substrate.entities.get(MOVER).unwrap();
                 let drive = mover.drive_locomotion.as_ref().unwrap();
@@ -414,7 +400,7 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
 
 #[test]
 fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continuation() {
-    let (mut sim, rules, grid, invocation) = chain_fixture(true);
+    let (mut sim, rules, invocation) = chain_fixture(true);
     let position = sim.substrate.entities.get(MOVER).unwrap().position.clone();
     sim.substrate
         .entities
@@ -450,34 +436,27 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
         .collect::<Vec<_>>();
     sim.clear_lifecycle_test_events_for_test();
     let mut observed = false;
-    sim.run_track_points_observed(
-        invocation,
-        8,
-        Some(&rules),
-        Some(&grid),
-        None,
-        &mut |sim, _, event| {
-            if event == TrackWorldEvent::PerCell {
-                observed = true;
-                for id in [20, 10] {
-                    let victim = sim
-                        .substrate
-                        .entities
-                        .get(id)
-                        .expect("UnInit retains identity until drain");
-                    assert!(!victim.lifecycle.object_alive);
-                    assert!(!victim.lifecycle.cell_marked);
-                    assert!(victim.lifecycle.in_limbo);
-                    assert!(
-                        !sim.substrate
-                            .occupancy
-                            .contains_entity(position.rx, position.ry, id)
-                    );
-                    assert!(sim.substrate.pending_delete.contains(&id));
-                }
+    sim.run_track_points_observed(invocation, 8, Some(&rules), None, &mut |sim, _, event| {
+        if event == TrackWorldEvent::PerCell {
+            observed = true;
+            for id in [20, 10] {
+                let victim = sim
+                    .substrate
+                    .entities
+                    .get(id)
+                    .expect("UnInit retains identity until drain");
+                assert!(!victim.lifecycle.object_alive);
+                assert!(!victim.lifecycle.cell_marked);
+                assert!(victim.lifecycle.in_limbo);
+                assert!(
+                    !sim.substrate
+                        .occupancy
+                        .contains_entity(position.rx, position.ry, id)
+                );
+                assert!(sim.substrate.pending_delete.contains(&id));
             }
-        },
-    );
+        }
+    });
     assert!(observed, "the real accepted-chain PerCell receiver ran");
     let retired = sim
         .lifecycle_test_events_for_test()

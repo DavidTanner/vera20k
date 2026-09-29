@@ -527,7 +527,7 @@ pub(crate) fn exit_building(
         .building_type_index(&ty.id)
         .and_then(|index| find_node(sim, rules, owner, index, registry));
     let site = building_site(sim, rules, owner, ty, node, path_grid, registry);
-    match flush_for_placement(sim, rules, ty, site, owner, path_grid) {
+    match flush_for_placement(sim, rules, ty, site, owner) {
         Flush::Scattered => {
             // `0x00445237..0x004452C3`.
             if let Some(index) = node
