@@ -3441,7 +3441,6 @@ fn retail_under_high_span_geometry() {
                             sim.resolved_terrain.as_ref(),
                             costs,
                             false,
-                            crate::sim::pathfinding::cell_entry::TerrainEntryMode::AStarNeighbor,
                             infantry,
                             false,
                         )
@@ -4092,7 +4091,6 @@ fn ground_entry_under_a_high_span_is_admitted_on_every_lane() {
     };
     use crate::rules::locomotor_type::SpeedType;
     use crate::sim::movement::locomotor::MovementLayer;
-    use crate::sim::pathfinding::cell_entry::TerrainEntryMode;
 
     let scenario = headless_scenario::load(&retail, "Hills.mmx", SEED).expect("Hills.mmx loads");
     let sim = scenario.sim();
@@ -4111,7 +4109,6 @@ fn ground_entry_under_a_high_span_is_admitted_on_every_lane() {
             sim.resolved_terrain.as_ref(),
             costs,
             false,
-            TerrainEntryMode::AStarNeighbor,
             false,
             false,
         )
@@ -4173,7 +4170,6 @@ fn tank_cannot_reach_the_riverbed_beside_bay_of_pigs_high_bridge() {
     };
     use crate::rules::locomotor_type::SpeedType;
     use crate::sim::movement::locomotor::MovementLayer;
-    use crate::sim::pathfinding::cell_entry::TerrainEntryMode;
 
     let scenario =
         headless_scenario::load(&retail, "BayOPigs.mmx", SEED).expect("BayOPigs.mmx loads");
@@ -4197,7 +4193,6 @@ fn tank_cannot_reach_the_riverbed_beside_bay_of_pigs_high_bridge() {
             sim.resolved_terrain.as_ref(),
             track,
             false,
-            TerrainEntryMode::AStarNeighbor,
             false,
             false,
         );
