@@ -6,9 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::map::bridge_facts::{
-    BridgeFlagStamp, BridgeStampSlot, high_bridge_stamp_for_overlay,
-};
+use crate::map::bridge_facts::{BridgeFlagStamp, BridgeStampSlot, high_bridge_stamp_for_overlay};
 use crate::map::map_file::AuthoredOverlayPackReceipt;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{
@@ -161,9 +159,8 @@ impl NativeOverlayMapShape {
         if !(1..=512).contains(&self.width) || !(1..=512).contains(&self.height) {
             return Vec::new();
         }
-        let mut cells = Vec::with_capacity(
-            usize::try_from(self.height * (2 * self.width - 1)).unwrap_or(0),
-        );
+        let mut cells =
+            Vec::with_capacity(usize::try_from(self.height * (2 * self.width - 1)).unwrap_or(0));
         for sum in self.width + 1..=self.width + 2 * self.height {
             let first_x = (sum - self.width) / 2 + 1;
             let last_x = (sum + self.width - 1) / 2;
@@ -244,17 +241,9 @@ pub(crate) trait AuthoredOverlayLoadHost {
 
     /// Test/diagnostic observation only. The host receives a copied result and
     /// has no terrain or overlay mutation authority.
-    fn observe_recalc(
-        &mut self,
-        _cell: AuthoredOverlayCellRef,
-        _value: FinalizedOverlayCell,
-    ) {
-    }
+    fn observe_recalc(&mut self, _cell: AuthoredOverlayCellRef, _value: FinalizedOverlayCell) {}
 
-    fn merge_wall_zone(
-        &mut self,
-        cell: AuthoredOverlayCellRef,
-    ) -> Result<(), Self::Error>;
+    fn merge_wall_zone(&mut self, cell: AuthoredOverlayCellRef) -> Result<(), Self::Error>;
 
     fn observe_blocker_count_increment(
         &mut self,
@@ -271,10 +260,7 @@ pub(crate) trait AuthoredOverlayLoadHost {
 
     fn finish_common(&mut self, handle: Self::Handle) -> Result<(), Self::Error>;
 
-    fn finish_slope_survivor(
-        &mut self,
-        handle: Self::Handle,
-    ) -> Result<(), Self::Error>;
+    fn finish_slope_survivor(&mut self, handle: Self::Handle) -> Result<(), Self::Error>;
 
     fn drain_deferred(&mut self) -> Result<(), Self::Error>;
 }
@@ -310,16 +296,25 @@ impl<E: std::fmt::Display> std::fmt::Display for AuthoredOverlayFinalizeError<E>
                 write!(f, "authored wall Mark invariant failed: {result:?}")
             }
             Self::RecalcMalformedOverlayIdentity { identity } => {
-                write!(f, "authored Recalc observed malformed overlay identity {identity}")
+                write!(
+                    f,
+                    "authored Recalc observed malformed overlay identity {identity}"
+                )
             }
             Self::RecalcMissingOverlayType { overlay_id } => {
-                write!(f, "authored Recalc cannot resolve overlay type {overlay_id}")
+                write!(
+                    f,
+                    "authored Recalc cannot resolve overlay type {overlay_id}"
+                )
             }
             Self::RecalcCellIndexOutOfBounds { index } => {
                 write!(f, "authored Recalc cell index {index} is out of bounds")
             }
             Self::RecalcResidentInput { reason } => {
-                write!(f, "authored Recalc received invalid resident inputs: {reason}")
+                write!(
+                    f,
+                    "authored Recalc received invalid resident inputs: {reason}"
+                )
             }
             Self::Host(error) => std::fmt::Display::fmt(error, f),
         }
@@ -344,9 +339,7 @@ struct FinalizerLowHost<'a, 'resources, H> {
     host: &'a mut H,
 }
 
-impl<H: AuthoredOverlayLoadHost> AuthoredLowMarkHost
-    for FinalizerLowHost<'_, '_, H>
-{
+impl<H: AuthoredOverlayLoadHost> AuthoredLowMarkHost for FinalizerLowHost<'_, '_, H> {
     type Error = AuthoredOverlayFinalizeError<H::Error>;
 
     fn next_scenario_raw(&mut self) -> u32 {
@@ -358,8 +351,7 @@ impl<H: AuthoredOverlayLoadHost> AuthoredLowMarkHost
         cells: &mut LiveOverlayCells,
         cell: AuthoredOverlayCellRef,
     ) -> Result<(), Self::Error> {
-        recalc_target(self.terrain, self.recalc, cells, self.host, cell)
-            .map(|_| ())
+        recalc_target(self.terrain, self.recalc, cells, self.host, cell).map(|_| ())
     }
 }
 
@@ -409,9 +401,11 @@ fn map_recalc_error<E>(error: LoadCellRecalcError<E>) -> AuthoredOverlayFinalize
                 reason: "missing resident catalog".into(),
             }
         }
-        LoadCellRecalcError::ResidentInput(error) => AuthoredOverlayFinalizeError::RecalcResidentInput {
-            reason: error.to_string(),
-        },
+        LoadCellRecalcError::ResidentInput(error) => {
+            AuthoredOverlayFinalizeError::RecalcResidentInput {
+                reason: error.to_string(),
+            }
+        }
         LoadCellRecalcError::MalformedOverlayIdentity { identity } => {
             AuthoredOverlayFinalizeError::RecalcMalformedOverlayIdentity { identity }
         }
@@ -494,9 +488,7 @@ pub(crate) struct AuthoredOverlayFinalizer<'load, 'resources, H> {
     host: &'load mut H,
 }
 
-impl<'load, 'resources, H: AuthoredOverlayLoadHost>
-    AuthoredOverlayFinalizer<'load, 'resources, H>
-{
+impl<'load, 'resources, H: AuthoredOverlayLoadHost> AuthoredOverlayFinalizer<'load, 'resources, H> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn with_recalc(
         terrain: &'load mut ResolvedTerrainGrid,
@@ -558,9 +550,7 @@ impl<'load, 'resources, H: AuthoredOverlayLoadHost>
     ) -> Result<FinalizedOverlayPayload, AuthoredOverlayFinalizeError<H::Error>> {
         // gamemd-derived: ReadMapOverlayPacks @ 0x005FD2E0, followed by the
         // Full_Init first Recalc boundary @ 0x00687A3E..0x00687A6B.
-        if !(1..=512).contains(&self.shape.width)
-            || !(1..=512).contains(&self.shape.height)
-        {
+        if !(1..=512).contains(&self.shape.width) || !(1..=512).contains(&self.shape.height) {
             return Err(AuthoredOverlayFinalizeError::InvalidMapShape {
                 width: self.shape.width,
                 height: self.shape.height,
@@ -684,19 +674,20 @@ impl<'load, 'resources, H: AuthoredOverlayLoadHost>
         }
 
         let low_result = {
-            let (terrain, recalc, host) = (
-                &mut *self.terrain,
-                self.recalc.as_mut(),
-                &mut *self.host,
-            );
+            let (terrain, recalc, host) =
+                (&mut *self.terrain, self.recalc.as_mut(), &mut *self.host);
             let mut adapter = FinalizerLowHost {
                 terrain,
                 recalc,
                 host,
             };
-            self.cells
-                .try_mark_authored_low(self.shape, packed.0, packed.1, overlay_id, &mut adapter)
-                ?
+            self.cells.try_mark_authored_low(
+                self.shape,
+                packed.0,
+                packed.1,
+                overlay_id,
+                &mut adapter,
+            )?
         };
         if low_result.is_some() {
             self.recalc_cell(anchor)?;
@@ -729,7 +720,10 @@ impl<'load, 'resources, H: AuthoredOverlayLoadHost>
             let target = self
                 .terrain
                 .apply_authored_bridge_flag_slot(anchor.target, stamp, family, slot, requested)
-                .map_or(NativeOverlayCellTarget::Dummy, NativeOverlayCellTarget::Real);
+                .map_or(
+                    NativeOverlayCellTarget::Dummy,
+                    NativeOverlayCellTarget::Real,
+                );
             if matches!(
                 slot,
                 BridgeStampSlot::Anchor
@@ -744,7 +738,8 @@ impl<'load, 'resources, H: AuthoredOverlayLoadHost>
         self.cells
             .write_identity(anchor.target, i32::from(overlay_id));
         if let NativeOverlayCellTarget::Real(index) = anchor.target {
-            self.terrain.mirror_authored_overlay_identity(index, Some(overlay_id));
+            self.terrain
+                .mirror_authored_overlay_identity(index, Some(overlay_id));
         }
     }
 
@@ -774,10 +769,10 @@ impl<'load, 'resources, H: AuthoredOverlayLoadHost>
         if let Some(anim_name) = flags.cell_anim.as_deref() {
             mirror_real_overlay_pair(self.terrain, &self.cells, anchor);
             let world_z = match anchor.target {
-                NativeOverlayCellTarget::Real(index) => i32::from(
-                    self.terrain.cells()[index].level as i8,
-                )
-                .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS),
+                NativeOverlayCellTarget::Real(index) => {
+                    i32::from(self.terrain.cells()[index].level as i8)
+                        .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
+                }
                 NativeOverlayCellTarget::Dummy => 0,
             };
             self.host
@@ -797,50 +792,39 @@ impl<'load, 'resources, H: AuthoredOverlayLoadHost>
         overlay_id: u8,
         slope_type: u8,
     ) -> Result<(), AuthoredOverlayFinalizeError<H::Error>> {
-        let (terrain, recalc, host) = (
-            &mut *self.terrain,
-            self.recalc.as_mut(),
-            &mut *self.host,
-        );
-        let result = self
-            .cells
-            .try_mark_authored_wall(
-                self.overlay_types,
-                anchor.coord.0,
-                anchor.coord.1,
-                overlay_id,
-                slope_type,
-                |cells, effect| match effect {
-                    AuthoredWallEffect::TacticalDirty(cell) => {
-                        mirror_real_overlay_pair(terrain, cells, cell);
-                        host.publish_dirty(MapLoadDirtyKind::WallTactical, cell)
-                            .map_err(AuthoredOverlayFinalizeError::Host)
+        let (terrain, recalc, host) = (&mut *self.terrain, self.recalc.as_mut(), &mut *self.host);
+        let result = self.cells.try_mark_authored_wall(
+            self.overlay_types,
+            anchor.coord.0,
+            anchor.coord.1,
+            overlay_id,
+            slope_type,
+            |cells, effect| match effect {
+                AuthoredWallEffect::TacticalDirty(cell) => {
+                    mirror_real_overlay_pair(terrain, cells, cell);
+                    host.publish_dirty(MapLoadDirtyKind::WallTactical, cell)
+                        .map_err(AuthoredOverlayFinalizeError::Host)
+                }
+                AuthoredWallEffect::RadarDirty(cell) => host
+                    .publish_dirty(MapLoadDirtyKind::WallRadar, cell)
+                    .map_err(AuthoredOverlayFinalizeError::Host),
+                AuthoredWallEffect::CleanupRecalcAndZone(cell) => {
+                    let outcome = recalc_target(terrain, recalc, cells, host, cell)?;
+                    if outcome.is_some_and(|outcome| outcome.zone_before != outcome.zone_after) {
+                        host.merge_wall_zone(cell)
+                            .map_err(AuthoredOverlayFinalizeError::Host)?;
                     }
-                    AuthoredWallEffect::RadarDirty(cell) => {
-                        host.publish_dirty(MapLoadDirtyKind::WallRadar, cell)
-                            .map_err(AuthoredOverlayFinalizeError::Host)
-                    }
-                    AuthoredWallEffect::CleanupRecalcAndZone(cell) => {
-                        let outcome = recalc_target(terrain, recalc, cells, host, cell)?;
-                        if outcome.is_some_and(|outcome| {
-                            outcome.zone_before != outcome.zone_after
-                        }) {
-                            host.merge_wall_zone(cell)
-                                .map_err(AuthoredOverlayFinalizeError::Host)?;
-                        }
-                        Ok(())
-                    }
-                    AuthoredWallEffect::BlockerCountIncrement(cell) => {
-                        host.observe_blocker_count_increment(cell)
-                            .map_err(AuthoredOverlayFinalizeError::Host)
-                    }
-                    AuthoredWallEffect::CommonAnchorRecalc(cell) => {
-                        recalc_target(terrain, recalc, cells, host, cell)?;
-                        Ok(())
-                    }
-                },
-            )
-            ?;
+                    Ok(())
+                }
+                AuthoredWallEffect::BlockerCountIncrement(cell) => host
+                    .observe_blocker_count_increment(cell)
+                    .map_err(AuthoredOverlayFinalizeError::Host),
+                AuthoredWallEffect::CommonAnchorRecalc(cell) => {
+                    recalc_target(terrain, recalc, cells, host, cell)?;
+                    Ok(())
+                }
+            },
+        )?;
         if result != AuthoredWallMarkResult::Completed {
             return Err(AuthoredOverlayFinalizeError::WallInvariant(result));
         }
@@ -923,10 +907,7 @@ fn authored_low_trigger_spec(overlay_id: u8) -> Option<AuthoredLowTriggerSpec> {
 }
 
 const fn wrapping_step(cell: (i16, i16), delta: (i16, i16)) -> (i16, i16) {
-    (
-        cell.0.wrapping_add(delta.0),
-        cell.1.wrapping_add(delta.1),
-    )
+    (cell.0.wrapping_add(delta.0), cell.1.wrapping_add(delta.1))
 }
 
 /// Mutable, load-local native overlay cell surface. It cannot escape except by
@@ -951,8 +932,7 @@ impl LiveOverlayCells {
             width,
             height,
             native_allocated: terrain.native_allocation_mask().map(<[bool]>::to_vec),
-            cells: vec![FinalizedOverlayCell::default();
-                usize::from(width) * usize::from(height)],
+            cells: vec![FinalizedOverlayCell::default(); usize::from(width) * usize::from(height)],
             authored_wall_neighbor_counts: vec![0; usize::from(width) * usize::from(height)],
             shared_dummy: terrain.shared_cell_dummy(),
         }
@@ -960,13 +940,9 @@ impl LiveOverlayCells {
 
     /// `MapClass::Get_CellClass` narrows both operands to signed words before
     /// sign-extending `y * 512 + x`. A true miss stamps only dummy coordinates.
-    pub(crate) fn target(
-        &self,
-        x: i16,
-        y: i16,
-    ) -> NativeOverlayCellTarget {
-        let real = crate::map::cell_index::cell_linear_index(i32::from(x), i32::from(y))
-            .and_then(|linear| {
+    pub(crate) fn target(&self, x: i16, y: i16) -> NativeOverlayCellTarget {
+        let real = crate::map::cell_index::cell_linear_index(i32::from(x), i32::from(y)).and_then(
+            |linear| {
                 let rx = (linear % crate::map::cell_index::CELL_ROW_STRIDE) as usize;
                 let ry = (linear / crate::map::cell_index::CELL_ROW_STRIDE) as usize;
                 if rx >= usize::from(self.width) || ry >= usize::from(self.height) {
@@ -979,7 +955,8 @@ impl LiveOverlayCells {
                         .as_deref()
                         .is_none_or(|mask| mask.get(index).copied().unwrap_or(false)))
                 .then_some(index)
-            });
+            },
+        );
         if let Some(index) = real {
             return NativeOverlayCellTarget::Real(index);
         }
@@ -997,11 +974,7 @@ impl LiveOverlayCells {
         }
     }
 
-    pub(crate) fn write_identity(
-        &mut self,
-        target: NativeOverlayCellTarget,
-        identity: i32,
-    ) {
+    pub(crate) fn write_identity(&mut self, target: NativeOverlayCellTarget, identity: i32) {
         match target {
             NativeOverlayCellTarget::Real(index) => self.cells[index].identity = identity,
             NativeOverlayCellTarget::Dummy => {
@@ -1017,12 +990,7 @@ impl LiveOverlayCells {
         }
     }
 
-    pub(crate) fn write(
-        &mut self,
-        target: NativeOverlayCellTarget,
-        identity: i32,
-        state: u8,
-    ) {
+    pub(crate) fn write(&mut self, target: NativeOverlayCellTarget, identity: i32, state: u8) {
         match target {
             NativeOverlayCellTarget::Real(index) => {
                 self.cells[index] = FinalizedOverlayCell { identity, state };
@@ -1110,10 +1078,7 @@ impl LiveOverlayCells {
                 .and_then(|id| overlay_types.tiberium_type_for_overlay(tiberium_types, id));
             matching += usize::from(neighbor_type == Some(tiberium_type));
         }
-        self.write_state(
-            anchor.target,
-            DENSITY_FOR_MATCHING_NEIGHBORS[matching],
-        );
+        self.write_state(anchor.target, DENSITY_FOR_MATCHING_NEIGHBORS[matching]);
     }
 
     /// Execute the active-retail fixed-map low-overlay branch. The caller owns
@@ -1181,8 +1146,7 @@ impl LiveOverlayCells {
         let mut work = wrapping_step(found, reverse);
         let rows = (i32::from(work.0) - i32::from(first_fixed.0))
             .abs()
-            .max((i32::from(work.1) - i32::from(first_fixed.1)).abs())
-            as u32;
+            .max((i32::from(work.1) - i32::from(first_fixed.1)).abs()) as u32;
         let mut scenario_draws = 0u32;
         for _ in 0..rows {
             for (state, offset) in spec.body_cross.into_iter().enumerate() {
@@ -1358,58 +1322,18 @@ mod tests {
         let land = LandType::Clear.as_index();
         let speed_costs = SpeedCostProfile::default();
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
             filled_clear: true,
             tileset_index: None,
             land_type: land,
             yr_cell_land_type: land,
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
             speed_costs,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
             accepts_smudge: true,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
             zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
             base_land_type: land,
             base_yr_cell_land_type: land,
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -1606,18 +1530,11 @@ mod tests {
             Ok(())
         }
 
-        fn observe_recalc(
-            &mut self,
-            cell: AuthoredOverlayCellRef,
-            value: FinalizedOverlayCell,
-        ) {
+        fn observe_recalc(&mut self, cell: AuthoredOverlayCellRef, value: FinalizedOverlayCell) {
             self.events.push(LoadEvent::Recalc(cell, value));
         }
 
-        fn merge_wall_zone(
-            &mut self,
-            cell: AuthoredOverlayCellRef,
-        ) -> Result<(), Self::Error> {
+        fn merge_wall_zone(&mut self, cell: AuthoredOverlayCellRef) -> Result<(), Self::Error> {
             self.events.push(LoadEvent::WallZone(cell));
             Ok(())
         }
@@ -1647,10 +1564,7 @@ mod tests {
             Ok(())
         }
 
-        fn finish_slope_survivor(
-            &mut self,
-            handle: Self::Handle,
-        ) -> Result<(), Self::Error> {
+        fn finish_slope_survivor(&mut self, handle: Self::Handle) -> Result<(), Self::Error> {
             self.events.push(LoadEvent::FinishSlope(handle));
             Ok(())
         }
@@ -1821,13 +1735,20 @@ mod tests {
         assert_eq!(host.events.len(), 1 + shape.recalc_cells().len());
         assert!(host.events[1..].iter().all(|event| matches!(
             event,
-            LoadEvent::Recalc(_, FinalizedOverlayCell {
-                identity: NO_OVERLAY_IDENTITY,
-                state: 0,
-            })
+            LoadEvent::Recalc(
+                _,
+                FinalizedOverlayCell {
+                    identity: NO_OVERLAY_IDENTITY,
+                    state: 0,
+                }
+            )
         )));
         let (_, _, cells, _) = payload.into_parts();
-        assert!(cells.iter().all(|cell| *cell == FinalizedOverlayCell::default()));
+        assert!(
+            cells
+                .iter()
+                .all(|cell| *cell == FinalizedOverlayCell::default())
+        );
     }
 
     #[test]
@@ -1874,7 +1795,10 @@ mod tests {
         .run(raw_packs(&[(2, 1, 0)], &[]))
         .expect("allocation-null row is skipped");
         assert_eq!(null_host.events.first(), Some(&LoadEvent::Drain));
-        assert_eq!(null_payload.into_parts().2[8], FinalizedOverlayCell::default());
+        assert_eq!(
+            null_payload.into_parts().2[8],
+            FinalizedOverlayCell::default()
+        );
 
         let mut slope_terrain = flat_terrain(6, 6);
         slope_terrain.cells[8].slope_type = 5;
@@ -1901,7 +1825,10 @@ mod tests {
             ]
         );
         assert_eq!(slope_host.events[4], LoadEvent::Drain);
-        assert_eq!(slope_payload.into_parts().2[8], FinalizedOverlayCell::default());
+        assert_eq!(
+            slope_payload.into_parts().2[8],
+            FinalizedOverlayCell::default()
+        );
     }
 
     #[test]
@@ -1929,7 +1856,13 @@ mod tests {
         assert_eq!(b2_payload.into_parts().2[8].overlay_id(), Some(0xB2));
         assert!(matches!(
             b2_host.events[3],
-            LoadEvent::Recalc(_, FinalizedOverlayCell { identity: 0xB2, state: 0 })
+            LoadEvent::Recalc(
+                _,
+                FinalizedOverlayCell {
+                    identity: 0xB2,
+                    state: 0
+                }
+            )
         ));
         assert_eq!(b2_host.events[4], LoadEvent::FinishCommon(1));
 
@@ -1962,16 +1895,17 @@ mod tests {
                 LoadEvent::CellAnim(1, "SPARK".to_string(), real(8, (2, 1))),
                 LoadEvent::Recalc(
                     real(8, (2, 1)),
-                    FinalizedOverlayCell { identity: 0, state: 0 },
+                    FinalizedOverlayCell {
+                        identity: 0,
+                        state: 0
+                    },
                 ),
                 LoadEvent::FinishCommon(1),
             ]
         );
         assert_eq!(cell_anim_payload.into_parts().2[8].overlay_id(), Some(0));
 
-        let crate_ini = IniFile::from_str(
-            "[OverlayTypes]\n0=CRATE\n[CRATE]\nCrate=yes\n",
-        );
+        let crate_ini = IniFile::from_str("[OverlayTypes]\n0=CRATE\n[CRATE]\nCrate=yes\n");
         let crate_registry = OverlayTypeRegistry::from_ini(&crate_ini, None);
         let crate_shp = BTreeSet::from([0]);
         let mut rejected_terrain = flat_terrain(6, 6);
@@ -1989,7 +1923,10 @@ mod tests {
         .run(raw_packs(&[(2, 1, 0)], &[]))
         .expect("nonzero game mode rejects a crate before allocation");
         assert_eq!(rejected_host.events.first(), Some(&LoadEvent::Drain));
-        assert_eq!(rejected_payload.into_parts().2[8], FinalizedOverlayCell::default());
+        assert_eq!(
+            rejected_payload.into_parts().2[8],
+            FinalizedOverlayCell::default()
+        );
 
         let mut accepted_terrain = flat_terrain(6, 6);
         let mut accepted_host = LoadHost::default();
@@ -2007,7 +1944,13 @@ mod tests {
         .expect("zero game mode accepts the crate");
         assert!(matches!(
             accepted_host.events[3],
-            LoadEvent::Recalc(_, FinalizedOverlayCell { identity: 0, state: u8::MAX })
+            LoadEvent::Recalc(
+                _,
+                FinalizedOverlayCell {
+                    identity: 0,
+                    state: u8::MAX
+                }
+            )
         ));
         assert_eq!(accepted_payload.into_parts().2[8].state(), u8::MAX);
     }
@@ -2130,10 +2073,7 @@ mod tests {
         .run(raw_packs(&identity_rows, &data_rows))
         .expect("later OverlayData replaces germination bytes");
         let (_, _, data_cells, _) = with_data.into_parts();
-        assert_eq!(
-            indices.map(|index| data_cells[index].state()),
-            [9, 8, 7, 6]
-        );
+        assert_eq!(indices.map(|index| data_cells[index].state()), [9, 8, 7, 6]);
 
         let crate_ini = IniFile::from_str(
             "[OverlayTypes]\n0=TIBCRATE\n\
@@ -2203,7 +2143,10 @@ mod tests {
             .map(|offset| second + offset)
             .expect("first raw body draw");
         for draw in 0..9usize {
-            assert_eq!(host.events[first_scenario + draw * 2], LoadEvent::Scenario(draw as u32));
+            assert_eq!(
+                host.events[first_scenario + draw * 2],
+                LoadEvent::Scenario(draw as u32)
+            );
             assert!(matches!(
                 host.events[first_scenario + draw * 2 + 1],
                 LoadEvent::Recalc(_, _)
@@ -2255,17 +2198,14 @@ mod tests {
             cells.write(target.target, 0, 7);
             let mut host = LoadHost::default();
 
-            recalc_target(
-                &mut terrain,
-                &mut recalc,
-                &mut cells,
-                &mut host,
-                target,
-            )
-            .expect("map-owned resource Recalc");
+            recalc_target(&mut terrain, &mut recalc, &mut cells, &mut host, target)
+                .expect("map-owned resource Recalc");
 
             assert_eq!(cells.real_cell(8), expected, "slope {slope}");
-            assert_eq!(terrain.cells[8].bridge_facts.overlay_id, expected.overlay_id());
+            assert_eq!(
+                terrain.cells[8].bridge_facts.overlay_id,
+                expected.overlay_id()
+            );
             assert_eq!(terrain.cells[8].bridge_facts.state_byte, expected.state());
             assert_eq!(host.events, vec![LoadEvent::Recalc(target, expected)]);
         }
@@ -2285,14 +2225,8 @@ mod tests {
         };
         let mut host = LoadHost::default();
 
-        recalc_target(
-            &mut terrain,
-            &mut recalc,
-            &mut cells,
-            &mut host,
-            dummy,
-        )
-        .expect("dummy Recalc is a total no-op");
+        recalc_target(&mut terrain, &mut recalc, &mut cells, &mut host, dummy)
+            .expect("dummy Recalc is a total no-op");
 
         assert_eq!(
             cells.read(NativeOverlayCellTarget::Dummy),
@@ -2336,7 +2270,8 @@ mod tests {
                 .iter()
                 .find_map(|event| match event {
                     LoadEvent::Recalc(cell, value)
-                        if cell.coord == (7, y as i16) && value.overlay_id() == Some(later_dir0) =>
+                        if cell.coord == (7, y as i16)
+                            && value.overlay_id() == Some(later_dir0) =>
                     {
                         Some(*value)
                     }
@@ -2409,9 +2344,11 @@ mod tests {
             ]
         );
         assert_eq!(drain, 25);
-        assert!(host.events[15..23]
-            .iter()
-            .all(|event| matches!(event, LoadEvent::BlockerIncrement(_))));
+        assert!(
+            host.events[15..23]
+                .iter()
+                .all(|event| matches!(event, LoadEvent::BlockerIncrement(_)))
+        );
         assert!(matches!(host.events[23], LoadEvent::Recalc(cell, _) if cell == anchor));
         assert_eq!(host.events[24], LoadEvent::FinishCommon(1));
 
@@ -2725,10 +2662,7 @@ mod tests {
                 scenario_draws: 3,
             }))
         );
-        for (state, (y, id)) in [(7i16, 0x4D), (8, 0x4C), (9, 0x4B)]
-            .into_iter()
-            .enumerate()
-        {
+        for (state, (y, id)) in [(7i16, 0x4D), (8, 0x4C), (9, 0x4B)].into_iter().enumerate() {
             let cell = live.read(live.target(8, y));
             assert_eq!(cell.overlay_id(), Some(id));
             assert_eq!(cell.state(), state as u8);
@@ -2772,9 +2706,7 @@ mod tests {
 
         let mut effects = Vec::new();
         assert_eq!(
-            live.mark_authored_wall(&registry, 2, 2, 0, 0, |effect| {
-                effects.push(effect)
-            }),
+            live.mark_authored_wall(&registry, 2, 2, 0, 0, |effect| { effects.push(effect) }),
             AuthoredWallMarkResult::Completed
         );
 
@@ -2828,9 +2760,7 @@ mod tests {
         let mut effects = Vec::new();
 
         assert_eq!(
-            live.mark_authored_wall(&registry, 1, 1, 0, 5, |effect| {
-                effects.push(effect)
-            }),
+            live.mark_authored_wall(&registry, 1, 1, 0, 5, |effect| { effects.push(effect) }),
             AuthoredWallMarkResult::RejectedSteepSlope
         );
         assert!(effects.is_empty());
@@ -2851,9 +2781,7 @@ mod tests {
         live.authored_wall_neighbor_counts[511] = u8::MAX;
         let mut effects = Vec::new();
         assert_eq!(
-            live.mark_authored_wall(&registry, 0, 1, 0, 0, |effect| {
-                effects.push(effect)
-            }),
+            live.mark_authored_wall(&registry, 0, 1, 0, 0, |effect| { effects.push(effect) }),
             AuthoredWallMarkResult::Completed
         );
         assert_eq!(live.authored_wall_neighbor_counts[511], 0);

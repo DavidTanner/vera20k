@@ -1,9 +1,8 @@
 use super::*;
-use crate::map::bridge_facts::BridgeCellFacts;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::map::terrain::{TerrainGrid, build_terrain_grid_from_resolved};
 use crate::render::minimap_helpers::OverlayClassification;
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+use crate::rules::terrain_rules::TerrainClass;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, X87Value};
 use std::collections::{BTreeMap, HashMap};
 
@@ -285,9 +284,7 @@ fn cell_get_radar_color_precedence_feeds_raw_surface_before_weighted_generation(
         None,
     );
     let geometry = projection.native_radar_surface.expect("surface");
-    let terrain = projection
-        .native_radar_terrain
-        .expect("terrain");
+    let terrain = projection.native_radar_terrain.expect("terrain");
     let raw = terrain.raw_rgb().to_vec();
     let pair = |cell| {
         let (x, y) = geometry.cell_to_raw_pixel(cell);
@@ -296,7 +293,11 @@ fn cell_get_radar_color_precedence_feeds_raw_surface_before_weighted_generation(
 
     assert_eq!(pair((50, 50)), [[200, 200, 160]; 2], "TerrainClass wins");
     assert_eq!(pair((50, 51)), [[5, 6, 7]; 2], "flag 0x100 uses BRIDGE1 f0");
-    assert_eq!(pair((97, 97)), [[11, 12, 13]; 2], "ordinary overlay wins TMP");
+    assert_eq!(
+        pair((97, 97)),
+        [[11, 12, 13]; 2],
+        "ordinary overlay wins TMP"
+    );
     assert_eq!(
         pair((90, 90)),
         [[170, 170, 130]; 2],
@@ -304,7 +305,11 @@ fn cell_get_radar_color_precedence_feeds_raw_surface_before_weighted_generation(
     );
     assert_eq!(pair((85, 85)), [[31, 41, 59]; 2], "CellAnim header wins");
     assert_eq!(pair((80, 80)), [[0, 0, 0]; 2], "missing CellAnim is black");
-    assert_eq!(pair((51, 50)), [[60, 60, 60]; 2], "missing subimage fallback");
+    assert_eq!(
+        pair((51, 50)),
+        [[60, 60, 60]; 2],
+        "missing subimage fallback"
+    );
     assert_eq!(pair((52, 50)), [[0, 0, 0]; 2], "valid black remains black");
     assert_eq!(
         terrain.generated_rgb565(),
@@ -416,57 +421,10 @@ fn overlap(start: X87Value, end: X87Value, pixel: i32) -> X87Value {
 
 fn flat_cell(rx: u16, ry: u16, radar_left: [u8; 3], radar_right: [u8; 3]) -> ResolvedTerrainCell {
     ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
-        level: 0,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
-        template_height: 0,
-        height_in_pixels: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
-        speed_costs: SpeedCostProfile::default(),
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
         accepts_smudge: true,
-        allows_tiberium: false,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
         base_terrain_class: TerrainClass::Clear,
-        base_speed_costs: SpeedCostProfile::default(),
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: BridgeCellFacts::default(),
-        tube_index: None,
         radar_left,
         radar_right,
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     }
 }

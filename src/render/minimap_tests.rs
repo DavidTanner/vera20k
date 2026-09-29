@@ -71,65 +71,15 @@ fn playfield_projection_grid(side: u16) -> TerrainGrid {
 }
 
 fn flat_resolved_terrain(side: u16) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
-    use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::TerrainClass;
 
     let cells = (0..side)
         .flat_map(|ry| {
             (0..side).map(move |rx| ResolvedTerrainCell {
-                rx,
-                ry,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: false,
-                tileset_index: Some(0),
-                land_type: 0,
-                yr_cell_land_type: 0,
-                slope_type: 0,
-                template_height: 0,
-                height_in_pixels: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
-                speed_costs: SpeedCostProfile::default(),
-                is_water: false,
-                is_cliff_like: false,
-                is_rough: false,
-                is_road: false,
                 accepts_smudge: true,
-                allows_tiberium: false,
-                variant: 0,
-                has_ramp: false,
-                canonical_ramp: None,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
-                zone_type: 0,
-                base_ground_walk_blocked: false,
-                base_build_blocked: false,
-                base_land_type: 0,
-                base_yr_cell_land_type: 0,
                 base_terrain_class: TerrainClass::Clear,
-                base_speed_costs: SpeedCostProfile::default(),
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0; 3],
-                radar_right: [0; 3],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
             })
         })
         .collect();
@@ -418,19 +368,51 @@ fn playfield_projection_shrinks_and_reexpands_exact_mode_zero_membership() {
         .expect("diamond filler cell");
     let overlays = [
         overlay_datum(shared.0, shared.1, OverlayClassification::Ore, 102, 5, true),
-        overlay_datum(readded.0, readded.1, OverlayClassification::Gem, 27, 7, true),
-        overlay_datum(outside.0, outside.1, OverlayClassification::Wall, 0, 0, false),
+        overlay_datum(
+            readded.0,
+            readded.1,
+            OverlayClassification::Gem,
+            27,
+            7,
+            true,
+        ),
+        overlay_datum(
+            outside.0,
+            outside.1,
+            OverlayClassification::Wall,
+            0,
+            0,
+            false,
+        ),
     ];
     let colors = HashMap::new();
 
     let initial = MinimapPlayfieldProjection::derive(
-        &grid, None, &overlays, &colors, "TEMPERATE", Some(expanded), None,
+        &grid,
+        None,
+        &overlays,
+        &colors,
+        "TEMPERATE",
+        Some(expanded),
+        None,
     );
     let shrunk = MinimapPlayfieldProjection::derive(
-        &grid, None, &overlays, &colors, "TEMPERATE", Some(shrunken), None,
+        &grid,
+        None,
+        &overlays,
+        &colors,
+        "TEMPERATE",
+        Some(shrunken),
+        None,
     );
     let reexpanded = MinimapPlayfieldProjection::derive(
-        &grid, None, &overlays, &colors, "TEMPERATE", Some(expanded), None,
+        &grid,
+        None,
+        &overlays,
+        &colors,
+        "TEMPERATE",
+        Some(expanded),
+        None,
     );
 
     let initial_cells: BTreeSet<_> = initial
@@ -525,8 +507,7 @@ fn native_radar_event_surface_rebuild_uses_current_playfield_without_baseline_re
         .cells
         .iter()
         .find(|cell| {
-            shrunken_playfield()
-                .contains_geometry_packed(i32::from(cell.rx), i32::from(cell.ry))
+            shrunken_playfield().contains_geometry_packed(i32::from(cell.rx), i32::from(cell.ry))
         })
         .map(|cell| (cell.rx, cell.ry))
         .expect("cell retained by action-40 contraction");
@@ -545,7 +526,8 @@ fn native_radar_event_surface_rebuild_uses_current_playfield_without_baseline_re
         &overlays,
         &colors,
         "TEMPERATE",
-        Some(expanded_playfield()), None,
+        Some(expanded_playfield()),
+        None,
     );
     let rebuilt = MinimapPlayfieldProjection::derive(
         &grid,
@@ -553,10 +535,15 @@ fn native_radar_event_surface_rebuild_uses_current_playfield_without_baseline_re
         &overlays,
         &colors,
         "TEMPERATE",
-        Some(shrunken_playfield()), None,
+        Some(shrunken_playfield()),
+        None,
     );
-    let initial_surface = initial.native_radar_surface.expect("initial primary surface");
-    let rebuilt_surface = rebuilt.native_radar_surface.expect("rebuilt primary surface");
+    let initial_surface = initial
+        .native_radar_surface
+        .expect("initial primary surface");
+    let rebuilt_surface = rebuilt
+        .native_radar_surface
+        .expect("rebuilt primary surface");
     assert_eq!(initial_surface.raw_size(), (72, 62));
     assert_eq!(initial_surface.generated_size(), (125, 108));
     assert_eq!(rebuilt_surface.raw_size(), (20, 18));
@@ -620,19 +607,9 @@ fn native_radar_event_surface_rebuild_uses_current_playfield_without_baseline_re
         cell,
         radar_pixel: rebuilt_surface.cell_to_surface_pixel(cell),
     };
-    assert!(!events.create_enemy_sensed(
-        source,
-        20,
-        rebuilt_surface.generated_size(),
-        &config,
-    ));
+    assert!(!events.create_enemy_sensed(source, 20, rebuilt_surface.generated_size(), &config,));
     events.finish_baseline();
-    assert!(events.create_enemy_sensed(
-        source,
-        21,
-        rebuilt_surface.generated_size(),
-        &config,
-    ));
+    assert!(events.create_enemy_sensed(source, 21, rebuilt_surface.generated_size(), &config,));
 }
 
 #[test]
@@ -686,7 +663,8 @@ fn playfield_projection_updates_camera_bounds_and_click_inverse_mapping() {
         &[],
         &HashMap::new(),
         "TEMPERATE",
-        Some(shrunken_playfield()), None,
+        Some(shrunken_playfield()),
+        None,
     );
     let rect = (10.0, 20.0, 300.0, 240.0);
     let tex_x = projection.map_offset_x + projection.map_pixel_w * 0.5;
@@ -918,13 +896,8 @@ fn radar_pixel_fogged_but_explored_cell_passes_render_gate_without_gap_proxy() {
 
 #[test]
 fn radar_building_tracker_pixels_use_owner_color_not_khaki() {
-    let mut entity = crate::sim::game_entity::GameEntity::test_default(
-        1,
-        "GAPOWR",
-        "Americans",
-        0,
-        0,
-    );
+    let mut entity =
+        crate::sim::game_entity::GameEntity::test_default(1, "GAPOWR", "Americans", 0, 0);
     entity.category = crate::map::entities::EntityCategory::Structure;
     let interner = crate::sim::intern::test_interner();
     let mut colors = HouseColorMap::new();
@@ -936,13 +909,8 @@ fn radar_building_tracker_pixels_use_owner_color_not_khaki() {
 
 #[test]
 fn radar_tracker_color_uses_active_disguise_house_without_changing_priority_owner() {
-    let mut entity = crate::sim::game_entity::GameEntity::test_default(
-        1,
-        "MGTK",
-        "Americans",
-        0,
-        0,
-    );
+    let mut entity =
+        crate::sim::game_entity::GameEntity::test_default(1, "MGTK", "Americans", 0, 0);
     let soviet = test_intern("Soviet");
     let mut disguise = crate::sim::cloak_disguise::DisguiseRuntime::default();
     disguise.disguised = true;

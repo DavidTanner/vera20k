@@ -2,9 +2,7 @@ use super::*;
 
 use std::collections::BTreeMap;
 
-use crate::map::bridge_facts::{
-    Axis, BRIDGE_FLAG_ANCHOR_SELF, BridgeCellFacts, BridgeheadAnchorClass,
-};
+use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF, BridgeheadAnchorClass};
 use crate::map::entities::EntityCategory;
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::resolved_terrain::{RadarColorMetadata, ResolvedTerrainCell, ResolvedTerrainGrid};
@@ -15,7 +13,7 @@ use crate::render::radar_terrain_updates::{
 };
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+use crate::rules::terrain_rules::TerrainClass;
 use crate::sim::bridge_state::{
     AnchorSpan, BridgeCellRole, BridgeDamageEvent, BridgeRuntimeCell, BridgeRuntimeState,
     DamageState, Direction,
@@ -47,58 +45,15 @@ fn bounds() -> PlayfieldBounds {
 fn cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
     let in_flood = FLOOD.contains(&(rx, ry));
     ResolvedTerrainCell {
-        rx,
-        ry,
         source_tile_index: if in_flood { 42 } else { 0 },
-        source_sub_tile: 0,
         final_tile_index: if in_flood { 42 } else { 0 },
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
         level: 4,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
-        template_height: 0,
-        height_in_pixels: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
-        speed_costs: SpeedCostProfile::default(),
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
         accepts_smudge: true,
-        allows_tiberium: false,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
         base_terrain_class: TerrainClass::Clear,
-        base_speed_costs: SpeedCostProfile::default(),
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: BridgeCellFacts::default(),
-        tube_index: None,
         radar_left: [20, 40, 60],
         radar_right: [7, 8, 9],
         has_damaged_data: in_flood,
-        bridgehead_anchor_class_at_load: None,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     }
 }
 
