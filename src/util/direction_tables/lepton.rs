@@ -29,17 +29,6 @@ pub fn lepton_delta(dir: u8) -> Option<(i32, i32)> {
     LEPTON_DELTAS.get(dir as usize).copied()
 }
 
-/// Signed lepton→cell toward zero, matching gamemd `(v + (v>>31 & 0xFF)) >> 8`.
-///
-/// The single implementation of this conversion in the crate (F14): sim
-/// callers (`mission::readiness::native_lepton_cell`,
-/// `movement::group_destination`) delegate here rather than re-deriving the
-/// signum correction — the naive `v / 256` or bare `>> 8` differ on negative
-/// leptons.
-pub const fn lepton_to_cell(v: i32) -> i32 {
-    (v + ((v >> 31) & 0xFF)) >> 8
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,16 +60,5 @@ mod tests {
                 (CELL_DELTAS[i].0 * 256, CELL_DELTAS[i].1 * 256)
             );
         }
-    }
-
-    #[test]
-    fn lepton_to_cell_rounds_toward_zero() {
-        assert_eq!(lepton_to_cell(256), 1);
-        assert_eq!(lepton_to_cell(-256), -1);
-        assert_eq!(lepton_to_cell(255), 0);
-        assert_eq!(lepton_to_cell(-1), 0);
-        assert_eq!(lepton_to_cell(-255), 0);
-        assert_eq!(lepton_to_cell(384), 1); // 1.5 cells → 1 toward zero
-        assert_eq!(lepton_to_cell(-384), -1);
     }
 }

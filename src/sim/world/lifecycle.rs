@@ -12,7 +12,6 @@ use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::lifecycle_request::LifecycleRequest;
-use crate::sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS;
 use crate::sim::occupancy::{
     BUILDING_OCCUPATION_BIT, CellListInsertion, OBJECT_OCCUPATION_BIT, VEHICLE_OCCUPATION_BIT,
     air_spatial_bucket_index, air_spatial_tracks_entity, cell_list_layer_for_entity,
@@ -21,6 +20,7 @@ use crate::sim::occupancy::{
 use crate::sim::passenger::PassengerRole;
 use crate::sim::projectile::ProjectileTarget;
 use crate::util::fixed_math::SimFixed;
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
 use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
 
 use super::Simulation;
@@ -204,8 +204,8 @@ fn object_get_coords_cell(entity: &crate::sim::game_entity::GameEntity) -> Optio
         world_y = world_y.wrapping_add(i32::from(height.saturating_sub(1)).wrapping_mul(128));
     }
     Some((
-        u16::try_from(crate::sim::cell_kernel::world_to_cell_trunc(world_x)).ok()?,
-        u16::try_from(crate::sim::cell_kernel::world_to_cell_trunc(world_y)).ok()?,
+        u16::try_from(crate::util::lepton::lepton_to_cell(world_x)).ok()?,
+        u16::try_from(crate::util::lepton::lepton_to_cell(world_y)).ok()?,
     ))
 }
 
@@ -2159,8 +2159,8 @@ impl Simulation {
                     terrain.native_cell_identity(((xy[0] / 256) as i16, (xy[1] / 256) as i16));
                 terrain.native_cell_flags(cell) & 0x100 != 0
             });
-            if bridge && height >= 416 {
-                height = height.wrapping_sub(416);
+            if bridge && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS {
+                height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
             }
         }
         let landing_base = crate::sim::aircraft::landing_base::landing_base(

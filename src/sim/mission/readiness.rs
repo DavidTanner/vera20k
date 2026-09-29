@@ -130,12 +130,6 @@ pub(crate) const fn base_ready_to_commence() -> ReadyResult {
     Ok(true)
 }
 
-/// Native signed lepton-to-cell conversion used by Unit readiness.
-#[inline]
-pub(crate) const fn native_lepton_cell(value: i32) -> i16 {
-    crate::util::direction_tables::lepton_to_cell(value) as i16
-}
-
 /// Evaluate Unit readiness in active-gamemd branch order.
 pub(crate) fn unit_ready_to_commence<W: UnitReadyWorld + ?Sized>(
     view: UnitReadyView<'_, W>,
@@ -191,10 +185,11 @@ pub(crate) fn unit_ready_to_commence<W: UnitReadyWorld + ?Sized>(
         }
     } else if let Some(building) = view.world.building_under_in_stored_order(view.position)? {
         if building.weapons_factory
-            && native_lepton_cell(view.position.x) == native_lepton_cell(building.anchor.x)
-            && native_lepton_cell(view.position.y)
-                .wrapping_sub(native_lepton_cell(building.anchor.y))
-                == 1
+            && crate::util::lepton::lepton_to_cell_packed(view.position.x)
+                == crate::util::lepton::lepton_to_cell_packed(building.anchor.x)
+            && crate::util::lepton::lepton_to_cell_packed(view.position.y).wrapping_sub(
+                crate::util::lepton::lepton_to_cell_packed(building.anchor.y),
+            ) == 1
         {
             return Ok(false);
         }
@@ -572,16 +567,6 @@ mod tests {
 
     #[test]
     fn unit_ready_to_commence_factory_fallback_uses_exact_signed_anchor_geometry() {
-        assert_eq!(native_lepton_cell(-1), 0);
-        assert_eq!(native_lepton_cell(-255), 0);
-        assert_eq!(native_lepton_cell(-256), -1);
-        assert_eq!(native_lepton_cell(-257), -1);
-        assert_eq!(
-            native_lepton_cell(0x0100_0000),
-            0,
-            "native stores the converted cell in a 16-bit field"
-        );
-
         let mission = mission_fixture(MISSION_GUARD.raw(), MISSION_GUARD.raw(), 0);
         let leaf_state = unit_leaf(0, 0, 0, 0);
         let leaf = leaf_state.as_unit().expect("Unit leaf");

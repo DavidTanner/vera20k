@@ -51,9 +51,8 @@ const APPROACH_LEVEL: u8 = 4;
 /// never sit on while it is flagged on-bridge.
 const GORGE_LEVEL: u8 = 0;
 /// `FootClass::Set_Height_On_Bridge`'s deck term, in levels. Same number as
-/// `sim::movement::movement_occupancy::BRIDGE_DECK_LEVEL_DELTA`, which is
+/// `sim::movement::movement_occupancy::crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16`, which is
 /// `pub(super)` to the movement module and therefore not nameable from here.
-const DECK_LEVEL_DELTA: i16 = 4;
 
 /// Start cell: plain plateau ground, one step before the entry ramp.
 const APPROACH_A_X: u16 = 14;
@@ -459,7 +458,12 @@ struct CrossingFrame {
 impl CrossingFrame {
     /// `position.z == own cell's signed terrain level + (on_bridge ? 4 : 0)`.
     fn expected_z(&self) -> i16 {
-        self.terrain_level + if self.on_bridge { DECK_LEVEL_DELTA } else { 0 }
+        self.terrain_level
+            + if self.on_bridge {
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
+            } else {
+                0
+            }
     }
 
     fn holds_invariant(&self) -> bool {
@@ -592,8 +596,8 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         );
         assert_eq!(
             i16::from(frame.z as i8),
-            frame.terrain_level + DECK_LEVEL_DELTA,
-            "deck height broke at {:?}: z must be terrain + {DECK_LEVEL_DELTA}: {frame:?}",
+            frame.terrain_level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
+            "deck height broke at {:?}: z must be terrain + deck levels: {frame:?}",
             frame.cell
         );
         assert_ne!(

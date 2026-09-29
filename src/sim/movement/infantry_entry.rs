@@ -82,13 +82,13 @@ pub(crate) fn adjust_height_and_list(
     let target_level = level_slope(terrain, target).0;
     if direction == -1 {
         if *height == -1 && cells.flags(target) & 0x100 != 0 {
-            *height = target_level + 4;
+            *height = target_level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
         }
         return true;
     }
     let (source_level, source_slope) = level_slope(terrain, source);
     if *height == -1 && cells.flags(source) & 0x100 != 0 {
-        *height = source_level + 4;
+        *height = source_level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
         if cells.flags(target) & 0x200 == 0 {
             return false;
         }

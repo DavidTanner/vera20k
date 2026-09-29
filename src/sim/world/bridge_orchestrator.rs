@@ -39,7 +39,7 @@ use crate::sim::bridge_state::{
 };
 use crate::sim::world::Simulation;
 use crate::sim::{intern::InternedId, rng::SimRng};
-use crate::util::lepton::{BRIDGE_HEIGHT_DELTA_LEPTONS, LEPTONS_PER_LEVEL};
+use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, LEPTONS_PER_LEVEL};
 use crate::util::native_x87::{NativeF64Bits, X87Chop53};
 
 #[cfg(test)]
@@ -1500,7 +1500,7 @@ fn spawn_bridge_debris(sim: &mut Simulation, rules: &RuleSet, cells: &BTreeSet<(
             .as_ref()
             .map(|terrain| terrain.collapse_animation_level(rx as i16, ry as i16))
             .unwrap_or(0);
-        let z = i32::from(level) * LEPTONS_PER_LEVEL as i32 + BRIDGE_HEIGHT_DELTA_LEPTONS as i32;
+        let z = i32::from(level) * LEPTONS_PER_LEVEL as i32 + BRIDGE_DECK_HEIGHT_LEPTONS;
         let coord = bridge_jittered_coord(sim.bridge_rng(), (rx as i16, ry as i16), z);
         let metallic_draw = sim
             .bridge_rng()

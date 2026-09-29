@@ -714,8 +714,7 @@ impl Simulation {
         let structural = terrain
             .and_then(|terrain| terrain.cell(at.0, at.1))
             .is_some_and(|cell| cell.bridge_facts.has_structural_bridge());
-        let deck = coord.z
-            >= ground.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32)
+        let deck = coord.z >= ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS)
             && (!put || structural);
         let layer = if deck {
             MovementLayer::Bridge

@@ -234,7 +234,7 @@ pub(crate) struct HarvestReach {
 pub(crate) fn harvest_reach(sim: &Simulation, rules: &RuleSet, id: u64) -> Option<HarvestReach> {
     let entity = sim.substrate.entities.get(id)?;
     // `CDQ; AND EDX,0xFF; ADD; SAR 8` (`0x004DCF3E..0x004DCF5D`).
-    let cell = |leptons: i32| leptons.wrapping_add((leptons >> 31) & 0xFF) >> 8;
+    let cell = crate::util::lepton::lepton_to_cell;
     let source = match sim.foot_navigation_coordinate(id) {
         Ok(coord) => (cell(coord.x), cell(coord.y)),
         // VERA builds a Drive's runtime on its first move: until then it

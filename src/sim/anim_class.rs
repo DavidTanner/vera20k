@@ -62,7 +62,7 @@ use crate::sim::timer::CdTimer;
 use crate::sim::touch_log::{TouchLog, Touched};
 use crate::sim::world::{LifecycleOutput, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
-use crate::util::lepton::{BRIDGE_HEIGHT_DELTA_LEPTONS, ground_height_leptons};
+use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, ground_height_leptons};
 use crate::util::native_x87::{NativeF64Bits, NativeX87Error, X87Chop53};
 
 pub type AnimId = u64;
@@ -636,7 +636,7 @@ fn apply_anim_raw_occupation(
     live_structural_bridge: bool,
     operation: AnimOccupationOperation,
 ) {
-    let reaches_deck = world_z >= ground_z.wrapping_add(BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+    let reaches_deck = world_z >= ground_z.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
     let use_deck = match operation {
         AnimOccupationOperation::Mark => reaches_deck && live_structural_bridge,
         // AnimClass::ClearCellOccupancy deliberately ignores Cell+0x140 bit
@@ -1956,7 +1956,7 @@ impl Simulation {
             &self.effective_shared_cell_dummy(),
             crate::sim::projectile::ProjectileCoord::new(position.x, position.y, position.z),
         );
-        let above_deck = position.z >= ground.wrapping_add(BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        let above_deck = position.z >= ground.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
         if self.bounce_cell_is_water(position, rules) && !above_deck {
             let wake = rules.general.wake.name.clone();
             self.spawn_bounce_anim(rules, &wake, location, BOUNCE_CONTACT_DRAW_FLAGS, 0);

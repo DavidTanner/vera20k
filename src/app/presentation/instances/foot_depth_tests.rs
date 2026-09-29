@@ -153,7 +153,7 @@ fn native_on_bridge_controls_the_cliff_gate_and_shp_surface_independently_of_occ
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), -1);
     // Exactly on the native bridge surface: GetHeight()==0 still reaches Foot,
     // even when the derived occupancy marker is absent.
-    tank.position.exact_z_leptons = Some(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+    tank.position.exact_z_leptons = Some(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     let foot = unit_z_adjust_in_runtime(Some(&runtime), &tank, true);
     assert_eq!(
         shp_z_adjust_in_runtime(Some(&runtime), &tank),
