@@ -140,9 +140,9 @@ pub mod turret;
 
 pub use facing_class::FacingClass;
 
-pub(crate) use foot_speed::{order_speed, owner_current_speed};
 #[cfg(test)]
 pub(crate) use foot_speed::owner_current_speed_from_fraction;
+pub(crate) use foot_speed::{order_speed, owner_current_speed};
 // NOT test-gated: `techno_common_pre`'s DisguiseWhenStill check
 // (sim/world/techno_ai.rs) consumes this in every build; a 2026-08-14
 // warning-cleanup gate on it broke release-only compilation.
@@ -403,7 +403,6 @@ pub(super) struct MoverSnapshot {
     /// Slot-0 warhead `Wood=` (`+0x147`), which the arm admits only against an
     /// overlay whose own `Armor` is wood, and only for Units.
     pub warhead_wood: bool,
-    pub too_big_to_fit_under_bridge: bool,
     pub on_bridge: bool,
     pub runtime_bridge_transition: movement_bridge::RuntimeBridgeTransitionState,
     pub locomotor: Option<locomotor::LocomotorState>,

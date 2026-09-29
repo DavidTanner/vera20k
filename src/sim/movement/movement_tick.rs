@@ -118,7 +118,6 @@ pub(super) fn snapshot_mover(
         is_armed,
         warhead_wall,
         warhead_wood,
-        too_big_to_fit_under_bridge: e.too_big_to_fit_under_bridge,
         on_bridge: e.on_bridge,
         runtime_bridge_transition: e.runtime_bridge_transition,
         locomotor: e.locomotor.clone(),
@@ -337,7 +336,6 @@ fn handle_path_exhaustion(
                 mover_entity_blocks,
                 seg_zone_mz,
                 Some(snap.movement_zone),
-                snap.too_big_to_fit_under_bridge,
                 mover_entity_block_map,
                 // urgency=0: proactive segment repath, no block escalation.
                 // One crush authority for every search; see `CrushCapability::of`.
@@ -614,7 +612,6 @@ fn process_pending_drive_arrivals(
             occupied_blocks_ref,
             loco.movement_zone,
             movement_zone,
-            entity.too_big_to_fit_under_bridge,
             entity_block_map,
             // No `MoverSnapshot` on this path; see the constructor's note.
             super::MoverPathFacts {
@@ -696,7 +693,6 @@ fn handle_deferred_drive_selection_block(
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     mover_entity_block_map: Option<&crate::sim::pathfinding::LayeredEntityBlockMap>,
     occupancy: &OccupancyGrid,
-    rng: &mut SimRng,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     sim_tick: u64,
@@ -733,9 +729,7 @@ fn handle_deferred_drive_selection_block(
         entity_cost_grid,
         mover_entity_blocks,
         mover_entity_block_map,
-        snap.too_big_to_fit_under_bridge,
         mcfg,
-        rng,
         sim_tick,
         PATH_STUCK_INIT,
         super::MoverPathFacts::from_snapshot(snap, 0),
@@ -939,7 +933,6 @@ impl FootPathRequest {
             Some(&blocks.0),
             snap.movement_zone,
             Some(snap.movement_zone),
-            snap.too_big_to_fit_under_bridge,
             Some(&blocks.1),
             None,
             // One crush authority for every search; see `CrushCapability::of`.
@@ -2142,7 +2135,6 @@ fn advance_ordinary_mover(
                 mover_entity_blocks,
                 mover_entity_block_map,
                 occupancy,
-                rng,
                 stats,
                 finished_entities,
                 sim_tick,

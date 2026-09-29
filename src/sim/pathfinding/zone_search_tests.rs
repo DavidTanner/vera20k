@@ -948,7 +948,6 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     );
     assert_eq!(locomotor.movement_zone, MovementZone::Normal);
     assert!(!produced.on_bridge);
-    assert!(!produced.too_big_to_fit_under_bridge);
     let produced_id = produced.stable_id();
     let movement = first_track_process_route(&mut sim, produced_id, Some(&rules), &path_grid)
         .expect("completed MTNK should receive the hierarchy-backed rally route");
