@@ -1151,7 +1151,6 @@ pub(super) fn process_cell_crossings(
                                 cost_grid,
                                 target.bypass_grid
                                     || snap.slave_deposit_cells.contains(&Some((nx, ny))),
-                                crate::sim::pathfinding::cell_entry::TerrainEntryMode::RuntimeTransition,
                                 category == EntityCategory::Infantry,
                                 snap.crush_capability().wall_arm_crusher(),
                                 ctx.wall_tables.map(|tables| {
@@ -1193,7 +1192,6 @@ pub(super) fn process_cell_crossings(
                         resolved_terrain,
                         entity_cost_grid,
                         target.bypass_grid,
-                        crate::sim::pathfinding::cell_entry::TerrainEntryMode::RuntimeTransition,
                     )
                 }),
                 MovementLayer::Air | MovementLayer::Underground => false,

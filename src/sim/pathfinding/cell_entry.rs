@@ -333,9 +333,9 @@ pub struct SearchCellCostDecision {
 /// mechanism nothing in stock YR enables — latent, not live.
 pub fn search_cell_cost_decision(
     raw_cost_class: u8,
-    coerce_to_zero_gate: bool,
+    mover_is_train: bool,
 ) -> SearchCellCostDecision {
-    let effective_cost_class = if coerce_to_zero_gate && raw_cost_class < 7 {
+    let effective_cost_class = if mover_is_train && raw_cost_class < 7 {
         0
     } else {
         raw_cost_class
@@ -356,16 +356,6 @@ impl CanEnterCellResult {
     }
 }
 
-/// Caller flavor for the terrain-entry slice.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TerrainEntryMode {
-    AStarNeighbor,
-    RuntimeTransition,
-    Smoothing,
-    Scatter,
-    SpawnLike,
-}
-
 /// Native-shaped known-input context for the terrain/layer portion of cell entry.
 ///
 /// This deliberately stops before the unresolved search-only cost class and the
@@ -381,7 +371,6 @@ pub struct CanEnterCellContext<'a> {
     pub resolved_terrain: Option<&'a ResolvedTerrainGrid>,
     pub terrain_costs: Option<&'a TerrainCostGrid>,
     pub bypass_grid: bool,
-    pub mode: TerrainEntryMode,
     /// Selects the infantry view of terrain-object occupation. Retail terrain
     /// objects occupy sub-cells, and only the infantry entry gate reads that
     /// mask; vehicles stay blocked by the whole cell.
@@ -590,7 +579,6 @@ impl crate::sim::pathfinding::SearchCellCostClassifier for WallSearchCostClassif
             resolved_terrain: self.resolved_terrain,
             terrain_costs: self.terrain_costs,
             bypass_grid: false,
-            mode: TerrainEntryMode::AStarNeighbor,
             is_infantry: self.is_infantry,
             mover_is_crusher: self.mover_is_crusher,
         }) {
@@ -637,7 +625,6 @@ impl crate::sim::pathfinding::SearchCellCostClassifier for SlaveDepositSearchCla
                 resolved_terrain: self.resolved_terrain,
                 terrain_costs: self.terrain_costs,
                 bypass_grid: true,
-                mode: TerrainEntryMode::AStarNeighbor,
                 is_infantry: true,
                 mover_is_crusher: false,
             }) {
@@ -1204,7 +1191,6 @@ pub fn check_terrain_with_layers(
         resolved_terrain: None,
         terrain_costs: cost_grid,
         bypass_grid: false,
-        mode: TerrainEntryMode::RuntimeTransition,
         is_infantry: mover_category == EntityCategory::Infantry,
         // No resolved terrain is supplied here, so the wall arm never runs.
         mover_is_crusher: false,
@@ -2000,7 +1986,6 @@ mod tests {
             resolved_terrain: Some(terrain),
             terrain_costs: None,
             bypass_grid: false,
-            mode: TerrainEntryMode::RuntimeTransition,
             is_infantry,
             mover_is_crusher,
         })
@@ -2084,7 +2069,6 @@ mod tests {
             resolved_terrain: Some(&terrain),
             terrain_costs: None,
             bypass_grid: false,
-            mode: TerrainEntryMode::RuntimeTransition,
             is_infantry: false,
             mover_is_crusher: false,
         });
@@ -3428,7 +3412,6 @@ mod tests {
                 resolved_terrain: Some(&terrain),
                 terrain_costs: None,
                 bypass_grid: false,
-                mode: TerrainEntryMode::AStarNeighbor,
                 is_infantry: false,
                 mover_is_crusher: false,
             })
