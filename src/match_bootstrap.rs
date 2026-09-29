@@ -722,7 +722,7 @@ mod tests {
     fn rust_l0_receipt_captures_each_rng_stream_exactly() {
         let startup = prepared(7);
         let mut simulation = Simulation::with_seed(7);
-        simulation.scatter_rng().next_u32();
+        simulation.scenario_rng.next_u32();
         simulation.main_rng.next_u32();
         simulation.mapgen_rng.next_u32();
         let expected = simulation.rng_state();

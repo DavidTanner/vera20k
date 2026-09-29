@@ -737,7 +737,9 @@ use crate::sim::world::Simulation;
 // ever created one.
 // 252 -> 253: a Teleport or Rocket locomotor no longer saves a copy of the
 // entity's teleport or rocket state.
-const SNAPSHOT_VERSION: u32 = 253;
+// 253 -> 254: an order intent can no longer be the garrison Unloading flag;
+// a garrison unloads through its Unload mission.
+const SNAPSHOT_VERSION: u32 = 254;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3623,7 +3625,8 @@ mod tests {
         // wobble phase.
         // 251 -> 252: no entity homing state.
         // 252 -> 253: no Teleport/Rocket payload copies.
-        assert_eq!(super::SNAPSHOT_VERSION, 253);
+        // 253 -> 254: no garrison Unloading order intent.
+        assert_eq!(super::SNAPSHOT_VERSION, 254);
     }
 
     #[test]
@@ -6353,7 +6356,7 @@ mod tests {
             sim.session.tick + 3,
             Command::Stop { entity_id: 71 },
         ));
-        sim.scatter_rng().next_u32();
+        sim.scenario_rng.next_u32();
         sim.main_rng.next_u32();
         sim.mapgen_rng.next_u32();
         let process_default = crate::sim::rng::SimRng::new(0).logical_state();

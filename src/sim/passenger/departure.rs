@@ -17,7 +17,6 @@ use crate::util::lepton;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DepartureRoute {
-    Garrison,
     Vehicle,
     LandedAircraft,
     Paradrop,
@@ -59,8 +58,7 @@ pub(crate) fn depart_cargo_head(
         .ok_or(DepartureFailure::NoCargo)?;
     let (passenger_id, passenger_size) = cargo.unload_first().ok_or(DepartureFailure::NoCargo)?;
     // FUN_004DE710's empty-hold weapon reset occurs before placement for these
-    // callers. Garrison resets only after successful scatter; paradrop does
-    // not reset the carrier override at all.
+    // callers. Paradrop does not reset the carrier override at all.
     let emptied = matches!(
         route,
         DepartureRoute::Vehicle | DepartureRoute::LandedAircraft | DepartureRoute::DeathEscape
@@ -150,7 +148,7 @@ fn restore_departure(
         DepartureRoute::DeathEscape => {
             unreachable!("a dying transport's passenger never re-boards")
         }
-        DepartureRoute::Garrison | DepartureRoute::Vehicle | DepartureRoute::LandedAircraft => {
+        DepartureRoute::Vehicle | DepartureRoute::LandedAircraft => {
             assert!(
                 matches!(
                     failure,

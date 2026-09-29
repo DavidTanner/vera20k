@@ -1726,10 +1726,18 @@ impl Simulation {
                     .map(|t| t.category);
                 match category {
                     Some(crate::map::entities::EntityCategory::Structure) => {
-                        // Garrison eviction stays on the per-tick order path.
-                        if let Some(e) = self.substrate.entities.get_mut(*transport_id) {
-                            e.order_intent = Some(OrderIntent::Unloading);
+                        // A garrison's Unload is its own mission
+                        // (`BuildingClass::Mission_Unload @ 0x0044D880`),
+                        // commenced at the building's ready checks.
+                        if !self.order_actor_admits(*transport_id) {
+                            return false;
                         }
+                        self.queue_megamission_with_teardown(
+                            *transport_id,
+                            MissionType::Unload,
+                            DockTeardown::All,
+                            rules,
+                        );
                         true
                     }
                     Some(crate::map::entities::EntityCategory::Unit)

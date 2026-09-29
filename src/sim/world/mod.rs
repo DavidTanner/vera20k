@@ -3053,9 +3053,6 @@ impl Simulation {
     // debris and the smudge type pick; the overlay/wall damage roll; ore growth
     // and spread (queue, direction, variant, TIBTRE); the building damage-fire
     // type and start frame.
-    pub(crate) fn scatter_rng(&mut self) -> &mut SimRng {
-        &mut self.scenario_rng
-    } // bump displacement, idle/forced scatter, passenger unload exit, sell-eject
     pub(crate) fn bridge_rng(&mut self) -> &mut SimRng {
         &mut self.scenario_rng
     } // bridge collapse/debris/explosion

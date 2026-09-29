@@ -25,21 +25,17 @@ use super::movement_path::{
     supports_layered_bridge_pathing,
 };
 use crate::rules::locomotor_type::MovementZone;
-use crate::sim::components::OrderIntent;
 use crate::sim::game_entity::GameEntity;
 
 /// Check if an entity can accept a new movement destination.
 ///
 /// Prevents destination changes during special states: dying, deploying,
-/// undeploying, falling, and unloading passengers.
+/// undeploying and falling.
 pub(crate) fn can_accept_destination(entity: &GameEntity) -> bool {
     if entity.dying {
         return false;
     }
     if entity.building_up.is_some() || entity.building_down.is_some() {
-        return false;
-    }
-    if matches!(entity.order_intent, Some(OrderIntent::Unloading)) {
         return false;
     }
     true

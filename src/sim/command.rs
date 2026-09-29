@@ -550,7 +550,7 @@ pub enum Command {
     /// (the hidden occupant is not selectable in this slice); the occupant
     /// reappears on a passable cell SW of the bunker and drives out.
     EjectBunker { bunker_id: u64 },
-    /// Order a transport to unload all passengers to adjacent cells (one per tick).
+    /// Order a transport or garrison to unload: the Unload mission of its class.
     UnloadPassengers { transport_id: u64 },
     /// Direct a harvester to go harvest a specific ore cell.
     /// The miner will path to the cell, then enter Harvest state on arrival.
