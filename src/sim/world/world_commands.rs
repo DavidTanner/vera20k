@@ -1670,7 +1670,6 @@ impl Simulation {
                     e.dock_state = None;
                     e.passenger_role = passenger::PassengerRole::Boarding {
                         target_transport_id: *transport_id,
-                        phase: passenger::BoardingPhase::Approach,
                     };
                 }
                 // Issue movement toward transport cell.

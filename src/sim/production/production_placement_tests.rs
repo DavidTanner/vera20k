@@ -3373,7 +3373,6 @@ fn sell_player_built_garrisoned_building_demolishes_and_ejects_alive() {
     let amer_id = sim.interner.intern("Americans");
     let e1_id = sim.interner.intern("E1");
     if let Some(t) = sim.substrate.entities.get_mut(30) {
-        // garrison_original_owner stays None — player-built path.
         t.passenger_role = PassengerRole::Transport {
             cargo: PassengerCargo::new(5, 1),
         };

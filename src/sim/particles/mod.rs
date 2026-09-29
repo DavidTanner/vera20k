@@ -19,10 +19,10 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use crate::rules::particle_system_type::ParticleSystemTypeId;
-use crate::rules::particle_type::ParticleTypeId;
+use crate::rules::particle_type::{ParticleType, ParticleTypeId};
 use crate::sim::intern::InternedId;
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::SimFixed;
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 use glam::IVec3;
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,6 @@ pub struct ParticleSystem {
     pub lifetime: i32,
     pub spark_spawn_frames: i32,
     pub facing: u8,
-    pub directionless: bool,
     pub attached_entity: Option<u64>,
     pub owner_entity: Option<u64>,
     #[serde(with = "ivec3_serde")]
@@ -96,8 +95,6 @@ pub struct Particle {
     #[serde(with = "ivec3_serde")]
     pub coords: IVec3,
     #[serde(with = "ivec3_serde")]
-    pub previous_coords: IVec3,
-    #[serde(with = "ivec3_serde")]
     pub origin: IVec3,
     pub direction: [SimFixed; 3],
     pub velocity: SimFixed,
@@ -106,18 +103,13 @@ pub struct Particle {
     pub state_ai_advance: u8,
     pub animation_state: u8,
     pub translucency: u8,
-    pub hit_ground: bool,
     pub marked_for_deletion: bool,
 
     pub drift_x: i32,
     pub drift_y: i32,
     pub drift_z: i32,
 
-    pub current_color: [u8; 3],
-    pub color_index: u8,
-    pub color_accumulator: SimFixed,
-
-    /// Authoritative behavior-3 state. Generic direction/velocity/color fields
+    /// Authoritative behavior-3 state. Generic direction/velocity fields
     /// remain authoritative for the existing Smoke/Gas/Fire implementations only.
     pub spark: Option<SparkRuntimeState>,
 
@@ -130,6 +122,52 @@ pub struct Particle {
     /// `(image_frame_count % 2 + 1) + StateAIAdvance`, animation_state
     /// bumps by 1. Wraps at 256 (denom is always small in practice).
     pub state_advance_counter: u8,
+}
+
+impl Particle {
+    /// Constructor state shared by every particle spawn: the type's velocity,
+    /// damage counter, state-AI advance, start state and translucency, with
+    /// no direction, drift or spark runtime.
+    pub(super) fn new(
+        type_id: ParticleTypeId,
+        coords: IVec3,
+        pt: &ParticleType,
+        lifetime_remaining: i16,
+    ) -> Self {
+        Particle {
+            type_id,
+            coords,
+            origin: coords,
+            direction: [SIM_ZERO; 3],
+            velocity: pt.velocity,
+            lifetime_remaining,
+            damage_counter: pt.max_dc as i16,
+            state_ai_advance: pt.state_ai_advance,
+            animation_state: pt.start_state_ai,
+            translucency: pt.translucency,
+            marked_for_deletion: false,
+            drift_x: 0,
+            drift_y: 0,
+            drift_z: 0,
+            spark: None,
+            prev_delta: [SIM_ZERO; 3],
+            state_advance_counter: 0,
+        }
+    }
+}
+
+/// A Smoke/Gas/Fire particle: lifetime `MaxEC + |raw| % max(MaxEC, 1)`
+/// (one raw draw), everything else from [`Particle::new`].
+pub(super) fn make_particle(
+    type_id: ParticleTypeId,
+    coords: IVec3,
+    pt: &ParticleType,
+    rng: &mut crate::sim::rng::SimRng,
+) -> Particle {
+    let base = (pt.max_ec as u32).max(1);
+    let lifetime_extra = rng.next_raw_abs_modulo(base) as i16;
+    let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
+    Particle::new(type_id, coords, pt, lifetime_remaining)
 }
 
 mod ivec3_serde {
@@ -152,8 +190,7 @@ mod ivec3_serde {
     }
 }
 
-impl ParticleSystem {
-}
+impl ParticleSystem {}
 
 /// Deterministic store for `ParticleSystem` instances.
 ///
@@ -251,7 +288,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1D,
-            directionless: false,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,
@@ -301,7 +337,6 @@ mod tests {
         system.particles.push(Particle {
             type_id: ParticleTypeId(4),
             coords: IVec3::new(1, 2, 3),
-            previous_coords: IVec3::new(4, 5, 6),
             origin: IVec3::new(7, 8, 9),
             direction: [SimFixed::from_num(1); 3],
             velocity: SimFixed::from_num(2),
@@ -310,14 +345,10 @@ mod tests {
             state_ai_advance: 2,
             animation_state: 3,
             translucency: 4,
-            hit_ground: true,
             marked_for_deletion: false,
             drift_x: -1,
             drift_y: 2,
             drift_z: -3,
-            current_color: [10, 20, 30],
-            color_index: 2,
-            color_accumulator: SimFixed::from_num(3),
             spark: None,
             prev_delta: [SimFixed::from_num(4); 3],
             state_advance_counter: 7,

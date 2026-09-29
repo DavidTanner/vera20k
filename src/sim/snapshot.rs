@@ -724,7 +724,11 @@ use crate::sim::world::Simulation;
 // (renumbered; the dormant Tunnel, DropPod, Mech and Parachute kinds, their
 // payloads and a Techno's tunnel and drop-pod states are gone), and the
 // installed slot stores it.
-const SNAPSHOT_VERSION: u32 = 248;
+// 248 -> 249: a particle no longer saves its unread previous coordinates,
+// ground-hit flag or colour triple, a particle system its directionless flag; a
+// boarding passenger no longer saves a phase; an entity no longer saves a
+// garrison original owner.
+const SNAPSHOT_VERSION: u32 = 249;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3625,7 +3629,9 @@ mod tests {
         // 246 -> 247: every overlay grid has a wall plane.
         // 247 -> 248: one eight-class locomotor enum; no dormant locomotor
         // states.
-        assert_eq!(super::SNAPSHOT_VERSION, 248);
+        // 248 -> 249: no dead particle, boarding-phase or garrison-owner
+        // fields.
+        assert_eq!(super::SNAPSHOT_VERSION, 249);
     }
 
     #[test]
@@ -5657,7 +5663,6 @@ mod tests {
                 lifetime: -1,
                 spark_spawn_frames: 0,
                 facing: 0x1D,
-                directionless: true,
                 attached_entity: None,
                 owner_entity: Some(entity_id),
                 target_coords: glam::IVec3::ZERO,
@@ -6512,7 +6517,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1d,
-            directionless: false,
             attached_entity: Some(entity_id),
             owner_entity: Some(entity_id),
             target_coords: IVec3::ZERO,
@@ -6604,7 +6608,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1d,
-            directionless: false,
             attached_entity: Some(999),
             owner_entity: Some(entity_id),
             target_coords: IVec3::ZERO,

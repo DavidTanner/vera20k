@@ -2257,11 +2257,9 @@ impl Simulation {
                 }
                 crate::sim::passenger::PassengerRole::Boarding {
                     target_transport_id,
-                    phase,
                 } => {
                     2u8.hash(hasher);
                     target_transport_id.hash(hasher);
-                    (*phase as u8).hash(hasher);
                 }
                 crate::sim::passenger::PassengerRole::Inside {
                     transport_id,
@@ -4001,7 +3999,6 @@ mod particle_hash_tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1D,
-            directionless: false,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,
@@ -4043,7 +4040,6 @@ mod particle_hash_tests {
         let make_p = |counter: u8| Particle {
             type_id: ParticleTypeId(0),
             coords: IVec3::ZERO,
-            previous_coords: IVec3::ZERO,
             origin: IVec3::ZERO,
             direction: [SimFixed::from_num(0); 3],
             velocity: SimFixed::from_num(0),
@@ -4052,14 +4048,10 @@ mod particle_hash_tests {
             state_ai_advance: 4,
             animation_state: 0,
             translucency: 0,
-            hit_ground: false,
             marked_for_deletion: false,
             drift_x: 0,
             drift_y: 0,
             drift_z: 0,
-            current_color: [0; 3],
-            color_index: 0,
-            color_accumulator: SimFixed::from_num(0),
             spark: None,
             prev_delta: [SimFixed::from_num(0); 3],
             state_advance_counter: counter,
@@ -4079,7 +4071,6 @@ mod particle_hash_tests {
         Particle {
             type_id: ParticleTypeId(0),
             coords: IVec3::new(-1, 2, 3),
-            previous_coords: IVec3::ZERO,
             origin: IVec3::ZERO,
             direction: [SimFixed::from_num(0); 3],
             velocity: SimFixed::from_num(0),
@@ -4088,14 +4079,10 @@ mod particle_hash_tests {
             state_ai_advance: 0,
             animation_state: 0,
             translucency: 0,
-            hit_ground: false,
             marked_for_deletion: false,
             drift_x: 0,
             drift_y: 0,
             drift_z: 0,
-            current_color: [0; 3],
-            color_index: 0,
-            color_accumulator: SimFixed::from_num(0),
             spark,
             prev_delta: [SimFixed::from_num(0); 3],
             state_advance_counter: 0,

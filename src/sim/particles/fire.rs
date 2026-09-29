@@ -57,43 +57,6 @@ use glam::IVec3;
 /// within the last 4 slots create the non-monotonic flame trail.
 const FIRE_INSERT_RANGE: usize = 4;
 
-#[cfg(test)]
-fn make_particle(
-    type_id: ParticleTypeId,
-    coords: IVec3,
-    spawn_origin: IVec3,
-    pt: &ParticleType,
-    rng: &mut SimRng,
-) -> Particle {
-    let base = (pt.max_ec as u32).max(1);
-    let lifetime_extra = rng.next_raw_abs_modulo(base) as i16;
-    let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
-    Particle {
-        type_id,
-        coords,
-        previous_coords: spawn_origin,
-        origin: coords,
-        direction: [SIM_ZERO; 3],
-        velocity: pt.velocity,
-        lifetime_remaining,
-        damage_counter: pt.max_dc as i16,
-        state_ai_advance: pt.state_ai_advance,
-        animation_state: pt.start_state_ai,
-        translucency: pt.translucency,
-        hit_ground: false,
-        marked_for_deletion: false,
-        drift_x: 0,
-        drift_y: 0,
-        drift_z: 0,
-        current_color: [0; 3],
-        color_index: 0,
-        color_accumulator: SimFixed::from_num(0),
-        spark: None,
-        prev_delta: [SIM_ZERO; 3],
-        state_advance_counter: 0,
-    }
-}
-
 /// Per-tick AI for one fire particle.
 ///
 /// Order: state-AI advance (animation_state + translucency-state byte writes)
@@ -178,11 +141,9 @@ pub(super) fn move_fire(p: &mut Particle, old_ground: i32, new_ground: i32) {
     let new_coords = p.coords + IVec3::new(dx, dy, dz);
     if old_ground < new_ground {
         // Cliff death — terrain rises, particle hits ground.
-        p.hit_ground = true;
         p.marked_for_deletion = true;
         // Coords still advance — the binary's SetCoords runs after the kill.
     }
-    p.previous_coords = p.coords;
     p.coords = new_coords;
 }
 
@@ -212,7 +173,6 @@ pub(super) fn tick_system(sys: &mut ParticleSystem, sim: &mut Simulation, rules:
             let _ = spawn_particle_with_insert(
                 sys,
                 sys.coords,
-                sys.coords,
                 FIRE_INSERT_RANGE,
                 rules,
                 sim.particle_rng(),
@@ -226,7 +186,7 @@ mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::particle_system_type::ParticleSystemTypeId;
-    use crate::sim::particles::ParticleSystem;
+    use crate::sim::particles::{ParticleSystem, make_particle};
     use glam::IVec3;
 
     fn fake_system(type_id: ParticleSystemTypeId) -> ParticleSystem {
@@ -241,7 +201,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1D,
-            directionless: false,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,
@@ -266,13 +225,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::ZERO,
-            IVec3::ZERO,
-            pt,
-            sim.particle_rng(),
-        );
+        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
         p.velocity = SIM_ZERO;
         tick_particle(&mut p, pt, 0, sim.particle_rng());
         assert!(p.marked_for_deletion, "zero-velocity fire dies immediately");
@@ -298,13 +251,7 @@ mod tests {
         // Build the particle with a throwaway stream so the jitter draw below is
         // exactly the crafted stream's next draw.
         let mut throwaway = SimRng::new(7);
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::ZERO,
-            IVec3::ZERO,
-            pt,
-            &mut throwaway,
-        );
+        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, &mut throwaway);
         p.direction = [SimFixed::from_num(1), SIM_ZERO, SIM_ZERO];
         p.velocity = SimFixed::from_num(100);
 
@@ -344,13 +291,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::ZERO,
-            IVec3::ZERO,
-            pt,
-            sim.particle_rng(),
-        );
+        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
         // Force animation_state past final_damage_state (default 14).
         p.animation_state = 20;
         // Drive damage_counter to zero — must NOT reset to MaxDC.
@@ -366,7 +307,7 @@ mod tests {
 
     #[test]
     fn move_fire_marks_dead_when_terrain_rises() {
-        // Cliff death: old_ground < new_ground → hit_ground + marked dead.
+        // Cliff death: old_ground < new_ground → marked dead.
         // Coords still advance (binary's Move_Dispatch does SetCoords after
         // the kill); the dying particle renders one frame at the cliff cell.
         let rules = parse(
@@ -382,18 +323,15 @@ mod tests {
         let mut p = make_particle(
             ParticleTypeId(0),
             IVec3::new(100, 100, 0),
-            IVec3::ZERO,
             pt,
             sim.particle_rng(),
         );
         p.prev_delta = [SimFixed::from_num(5), SIM_ZERO, SIM_ZERO];
         // old_ground=0, new_ground=10 → terrain rises.
         move_fire(&mut p, 0, 10);
-        assert!(p.hit_ground, "cliff death sets hit_ground");
         assert!(p.marked_for_deletion, "cliff death marks for deletion");
         // Coords advance to the cliff cell — matches binary parity.
         assert_eq!(p.coords, IVec3::new(105, 100, 0));
-        assert_eq!(p.previous_coords, IVec3::new(100, 100, 0));
     }
 
     #[test]
@@ -412,7 +350,6 @@ mod tests {
         let mut p = make_particle(
             ParticleTypeId(0),
             IVec3::new(100, 100, 0),
-            IVec3::ZERO,
             pt,
             sim.particle_rng(),
         );

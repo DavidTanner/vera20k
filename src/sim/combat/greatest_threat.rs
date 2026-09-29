@@ -1891,7 +1891,7 @@ fn evaluate_candidate(
     if ctx.standing.team.is_none()
         && ctx.standing.human
         && building
-        && !is_one_by_one_undeployable(candidate_obj)
+        && !candidate_obj.is_1x1_with_undeploy()
         && (!is_armed(candidate, candidate_obj)
             || live_threat_posed(ctx.rules, candidate, candidate_obj) == 0)
     {
@@ -2043,7 +2043,7 @@ fn quarry_terms(mask: u32, score: i32, all_to_hunt: bool, facts: QuarryFacts) ->
 /// a unit never gets here, its own bit decides.
 fn vehicle_like(ctx: &ScanContext<'_>, candidate: &GameEntity, obj: &ObjectType) -> bool {
     match candidate.category {
-        EntityCategory::Structure => is_one_by_one_undeployable(obj),
+        EntityCategory::Structure => obj.is_1x1_with_undeploy(),
         EntityCategory::Aircraft => crate::sim::movement::air_movement::is_low_flying(
             candidate,
             ctx.terrain,
@@ -2101,16 +2101,6 @@ fn probe_is_illegal(
     }
     .fire_error(false)
         == super::fire_error::FireError::Illegal
-}
-
-/// `BuildingTypeClass::Is1x1WithUndeploy @ 0x00465D40` (reached through the
-/// candidate's vtable `+0x80`): a one-cell building that carries an
-/// `UndeploysInto=` vehicle. Such a building is a legal passive target for a
-/// human attacker regardless of its `ThreatPosed`, because it is really a
-/// parked unit.
-fn is_one_by_one_undeployable(obj: &ObjectType) -> bool {
-    let (width, height) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
-    width == 1 && height == 1 && obj.undeploys_into.is_some()
 }
 
 /// `TechnoClass::Get_ThreatPosed @ 0x00708B40` (vtable `+0x2C0`).

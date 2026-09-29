@@ -19,7 +19,7 @@ use crate::rules::particle_type::{ParticleBehavesLike, ParticleType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::rng::{RANDOM_RANGED_UNIT_SCALE, SimRng};
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::fixed_math::SIM_ZERO;
 use crate::util::native_x87::{
     NativeF32Bits, NativeF64Bits, NativeX87Error, X87Chop53, X87Ordering, X87Value, sqrt_approx_f32,
 };
@@ -360,7 +360,6 @@ where
         // Both constructor coordinate arguments are the system's own coord, so
         // the constructor's direction delta is zero and its normalise is a
         // no-op — the velocity assigned by the caller is the whole story.
-        previous_coords: system_coords,
         origin: coords,
         direction: [SIM_ZERO; 3],
         velocity: particle_type.velocity,
@@ -369,14 +368,10 @@ where
         state_ai_advance: particle_type.state_ai_advance,
         animation_state: particle_type.start_state_ai,
         translucency: particle_type.translucency,
-        hit_ground: false,
         marked_for_deletion: false,
         drift_x: 0,
         drift_y: 0,
         drift_z: 0,
-        current_color: start_rgb,
-        color_index: 0,
-        color_accumulator: SimFixed::from_num(0),
         spark: Some(SparkRuntimeState {
             velocity_x: NativeF32Bits::POSITIVE_ZERO,
             velocity_y: NativeF32Bits::POSITIVE_ZERO,
@@ -527,7 +522,6 @@ mod tests {
             // `SpawnDirection`. Kept true because that is what
             // `spawn_particle_system` derives for a system with no authored
             // `SpawnDirection`, which every stock Spark system is.
-            directionless: true,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,

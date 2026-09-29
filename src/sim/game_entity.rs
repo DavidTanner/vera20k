@@ -1058,12 +1058,6 @@ pub struct GameEntity {
     pub(crate) sinking: crate::sim::world::SinkingState,
 
     // --- Passenger/transport system ---
-    /// Original owner of a CanBeOccupied building, saved when the first garrison
-    /// occupant enters. Used to revert ownership when the last occupant exits.
-    /// Matches original engine's `CheckAutoSellOrCivilian` which transfers back
-    /// to the Civilian house — we store the actual pre-garrison owner instead of
-    /// hardcoding "Neutral".
-    pub garrison_original_owner: Option<InternedId>,
     /// Combined passenger/transport role — replaces separate passenger_cargo,
     /// transport_id, and boarding_state fields. See `PassengerRole` variants.
     pub passenger_role: PassengerRole,
@@ -1764,7 +1758,6 @@ impl GameEntity {
             crashing: false,
             crashing_seen: false,
             sinking: crate::sim::world::SinkingState::default(),
-            garrison_original_owner: None,
             passenger_role: PassengerRole::None,
             weapon_override: None,
             display_type_override: None,

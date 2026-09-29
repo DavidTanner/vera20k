@@ -1216,17 +1216,16 @@ mod tests {
         building_id: u64,
         passenger_id: u64,
     ) {
-        insert_player_owned_garrison(sim, "CAGAS01", Some("Neutral"), building_id, passenger_id);
+        insert_player_owned_garrison(sim, "CAGAS01", building_id, passenger_id);
     }
 
     fn insert_garrisoned_battle_bunker(sim: &mut Simulation, building_id: u64, passenger_id: u64) {
-        insert_player_owned_garrison(sim, "NABNKR", None, building_id, passenger_id);
+        insert_player_owned_garrison(sim, "NABNKR", building_id, passenger_id);
     }
 
     fn insert_player_owned_garrison(
         sim: &mut Simulation,
         type_id: &str,
-        original_owner: Option<&str>,
         building_id: u64,
         passenger_id: u64,
     ) {
@@ -1242,7 +1241,6 @@ mod tests {
         building.foundation = "2x2".to_string();
         building.owner = americans;
         building.type_ref = sim.interner.intern(type_id);
-        building.garrison_original_owner = original_owner.map(|house| sim.interner.intern(house));
         building.passenger_role = PassengerRole::Transport {
             cargo: crate::sim::passenger::PassengerCargo::new(5, 1),
         };
@@ -1388,7 +1386,6 @@ mod tests {
         insert_captured_player_owned_garrison(&mut sim, building_id, passenger_id);
 
         let americans = sim.interner.intern("Americans");
-        let neutral = sim.interner.intern("Neutral");
 
         assert_eq!(eject_garrison_occupants(&mut sim, &rules, building_id), 1);
 
@@ -1400,11 +1397,6 @@ mod tests {
         assert_eq!(
             building.owner, americans,
             "SellBuilding-style helper must not ChangeOwner"
-        );
-        assert_eq!(
-            building.garrison_original_owner,
-            Some(neutral),
-            "helper must not consume reconciliation state during player-sell ejection"
         );
         assert!(
             building

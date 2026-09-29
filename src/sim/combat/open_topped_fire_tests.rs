@@ -8,7 +8,7 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::ground_pose::position_world_coord;
-use crate::sim::passenger::{BoardingPhase, PassengerRole};
+use crate::sim::passenger::PassengerRole;
 use crate::sim::world::{SimFrameOutput, TickLane};
 
 /// A loaded Battle Fortress on retail Dustbowl.
@@ -115,7 +115,6 @@ fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
                 .expect("GI spawns");
             sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Boarding {
                 target_transport_id: bfrt,
-                phase: BoardingPhase::Entering,
             };
             id
         })

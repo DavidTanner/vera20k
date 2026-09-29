@@ -1337,7 +1337,6 @@ fn retail_dustbowl_crews_scatter_off_their_wrecks() {
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
 fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
-    use crate::sim::passenger::BoardingPhase;
     let dir = std::env::var("RA2_DIR")
         .ok()
         .filter(|path| !path.trim().is_empty())
@@ -1409,7 +1408,6 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
                 sim.substrate.entities.get_mut(id).unwrap().passenger_role =
                     PassengerRole::Boarding {
                         target_transport_id: transport,
-                        phase: BoardingPhase::Entering,
                     };
                 id
             })
