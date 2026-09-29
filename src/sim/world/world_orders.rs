@@ -174,19 +174,13 @@ impl Simulation {
         path_grid: Option<&PathGrid>,
         rules: Option<&RuleSet>,
     ) {
-        self.tick_order_intents_post_combat_with_overlay_registry(
-            path_grid,
-            rules,
-            None,
-            &BTreeSet::new(),
-        );
+        self.tick_order_intents_post_combat_except(path_grid, rules, &BTreeSet::new());
     }
 
-    pub(crate) fn tick_order_intents_post_combat_with_overlay_registry(
+    pub(crate) fn tick_order_intents_post_combat_except(
         &mut self,
         path_grid: Option<&PathGrid>,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
         let Some(grid) = path_grid else { return };
@@ -276,7 +270,6 @@ impl Simulation {
                         owner_blocks: false,
                         object_destination: None,
                     },
-                    overlay_registry,
                     rules,
                 );
             }
@@ -1344,7 +1337,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         Some(rules),
                     );
                     // No-op if A* fails — pursuit retries next tick.

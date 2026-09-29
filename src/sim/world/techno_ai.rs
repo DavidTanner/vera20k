@@ -748,7 +748,6 @@ fn techno_ai_shell(
                     id,
                     rules,
                     ctx.path_grid,
-                    ctx.overlay_registry,
                 );
                 // The remaining aircraft missions dispatch here too, inside
                 // this slot and before Fly Process (FootClass::AI4DA530).

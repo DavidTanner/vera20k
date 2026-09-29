@@ -649,10 +649,8 @@ mod tests {
             install_native_size_terrain(&mut sim, 16, 16);
             let terrain = sim.resolved_terrain.as_ref().unwrap().clone();
             sim.install_resolved_terrain_for_new_map(terrain.clone());
-            let mut overlays = crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(
-                terrain.width(),
-                terrain.height(),
-            );
+            let mut overlays =
+                crate::sim::overlay_grid::OverlayGrid::new(terrain.width(), terrain.height());
             overlays.place_overlay(12, 12, 0, 0);
             sim.overlay_grid = Some(overlays);
             let source = sim.allocate_stable_id();
@@ -934,12 +932,10 @@ mod tests {
             install_native_size_terrain(&mut sim, 16, 16);
             let terrain_template = sim.resolved_terrain.as_ref().unwrap().clone();
             sim.install_resolved_terrain_for_new_map(terrain_template.clone());
-            sim.overlay_grid = Some(
-                crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(
-                    terrain_template.width(),
-                    terrain_template.height(),
-                ),
-            );
+            sim.overlay_grid = Some(crate::sim::overlay_grid::OverlayGrid::new(
+                terrain_template.width(),
+                terrain_template.height(),
+            ));
             let source = sim.allocate_stable_id();
             let target = sim.allocate_stable_id();
             let z = if voxel { 1000 } else { 100 };

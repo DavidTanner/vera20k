@@ -3431,24 +3431,21 @@ fn retained_wall_plane_runtime_placement_and_damage_update_once() {
     let registry = OverlayTypeRegistry::from_ini(&ini, Some(&art));
     let mut sim = placement_sim();
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(5, 5, |_| {}));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(5, 5));
+    sim.overlay_grid = Some(OverlayGrid::new(5, 5));
     let owner = sim.interner.intern("WallOwner");
     assert!(super::wall_placement::stamp_wall(
         &mut sim, &registry, 2, 2, 0, owner
     ));
     let mut grid = sim.overlay_grid.take().unwrap();
     let mut terrain = sim.resolved_terrain.take().unwrap();
-    let placed = grid.retained_neighbor_counts().expect("retained authority");
+    let placed = grid.retained_neighbor_counts();
     for index in [6usize, 7, 8, 11, 13, 16, 17, 18] {
         assert_eq!(placed[index], 1);
     }
     assert_eq!(placed[12], 0);
 
     let mut rng = crate::sim::rng::SimRng::new(1);
-    let before_partial = grid
-        .retained_neighbor_counts()
-        .expect("retained authority")
-        .to_vec();
+    let before_partial = grid.retained_neighbor_counts().to_vec();
     let _ = grid.take_synchronous_navigation_cells();
     let partial = damage_wall_overlay_with_terrain(
         &mut grid,
@@ -3468,7 +3465,7 @@ fn retained_wall_plane_runtime_placement_and_damage_update_once() {
     );
     assert_eq!(
         grid.retained_neighbor_counts(),
-        Some(before_partial.as_slice()),
+        before_partial.as_slice(),
         "nonterminal damage must not change retained counts"
     );
 
@@ -3489,7 +3486,6 @@ fn retained_wall_plane_runtime_placement_and_damage_update_once() {
     );
     assert!(
         grid.retained_neighbor_counts()
-            .expect("retained authority")
             .iter()
             .all(|&count| count == 0)
     );
@@ -3503,7 +3499,7 @@ fn retained_wall_plane_placement_reaches_fixed_stride_alias() {
     );
     let mut sim = placement_sim();
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(512, 2, |_| {}));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(512, 2));
+    sim.overlay_grid = Some(OverlayGrid::new(512, 2));
     sim.overlay_grid
         .as_mut()
         .unwrap()
@@ -3524,16 +3520,13 @@ fn retained_wall_plane_placement_reaches_fixed_stride_alias() {
         "aliased real wall connects east back to anchor"
     );
     assert_eq!(
-        alias_grid
-            .retained_neighbor_counts()
-            .expect("retained authority")[511],
+        alias_grid.retained_neighbor_counts()[511],
         1,
         "west fixed-stride alias resolves to real slot 511"
     );
     assert_eq!(
         alias_grid
             .retained_neighbor_counts()
-            .expect("retained authority")
             .iter()
             .map(|&count| u32::from(count))
             .sum::<u32>(),

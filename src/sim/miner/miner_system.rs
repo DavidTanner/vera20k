@@ -375,7 +375,6 @@ mod gsi_04_03b_tests {
             1,
             shared_head,
             SimFixed::from_num(128),
-            None,
         );
         assert!(
             sim.substrate
@@ -415,7 +414,6 @@ mod gsi_04_03b_tests {
             2,
             shared_head,
             SimFixed::from_num(128),
-            None,
         );
         sim.process_ground_locomotor_for_test(2, None, Some(&grid), None)
             .expect("the second miner Process observes the existing reservation");
@@ -778,7 +776,7 @@ fn harvest_looking(
         .get(id)
         .and_then(|entity| entity.archive_target());
     if let Some(archive) = archive {
-        assign_archive_destination(sim, rules, path_grid, overlay_registry, id, archive);
+        assign_archive_destination(sim, rules, path_grid, id, archive);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.set_archive_target(None);
         }
@@ -836,7 +834,7 @@ fn harvest_looking(
             snap.dispatch_delay = NO_ORE_DELAY;
             return;
         };
-        assign_archive_destination(sim, rules, path_grid, overlay_registry, id, archive);
+        assign_archive_destination(sim, rules, path_grid, id, archive);
     }
     arm_rate_epilogue(sim, rules, snap);
 }
@@ -850,19 +848,11 @@ fn assign_archive_destination(
     sim: &mut Simulation,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     id: u64,
     archive: crate::sim::combat::TargetKind,
 ) {
     if let (crate::sim::combat::TargetKind::Cell(x, y), Some(grid)) = (archive, path_grid) {
-        let _ = issue_stock_miner_drive_move_with_overlay_registry(
-            sim,
-            rules,
-            grid,
-            id,
-            (x, y),
-            overlay_registry,
-        );
+        let _ = issue_stock_miner_drive_move(sim, rules, grid, id, (x, y));
     }
 }
 
@@ -1284,15 +1274,7 @@ fn handle_going_to_idle(
         && let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
         && let Some(exit) = building_nearby_passable_cell(sim, rules, refinery_sid, grid)
     {
-        issue_move_if_idle(
-            sim,
-            Some(rules),
-            grid,
-            snap.entity_id,
-            exit,
-            snap.speed,
-            overlay_registry,
-        );
+        issue_move_if_idle(sim, Some(rules), grid, snap.entity_id, exit, snap.speed);
     }
     queue_guard_from_harvest(sim, snap);
     true
@@ -1767,24 +1749,12 @@ fn neighbour_reachable(
 }
 
 /// Hand a selected stock-miner destination to the normal Drive command authority.
-#[cfg(test)]
 pub(crate) fn issue_stock_miner_drive_move(
     sim: &mut Simulation,
     rules: &RuleSet,
     grid: &PathGrid,
     entity_id: u64,
     target: (u16, u16),
-) -> bool {
-    issue_stock_miner_drive_move_with_overlay_registry(sim, rules, grid, entity_id, target, None)
-}
-
-pub(crate) fn issue_stock_miner_drive_move_with_overlay_registry(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    grid: &PathGrid,
-    entity_id: u64,
-    target: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return false;
@@ -1809,7 +1779,6 @@ pub(crate) fn issue_stock_miner_drive_move_with_overlay_registry(
             owner_blocks: false,
             object_destination: None,
         },
-        overlay_registry,
         Some(rules),
     );
     if !issued {
@@ -1846,7 +1815,6 @@ pub(crate) fn issue_move_if_idle(
     entity_id: u64,
     target: (u16, u16),
     speed: SimFixed,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return;
@@ -1876,7 +1844,6 @@ pub(crate) fn issue_move_if_idle(
                 owner_blocks: false,
                 object_destination: None,
             },
-            overlay_registry,
             rules,
         );
     }

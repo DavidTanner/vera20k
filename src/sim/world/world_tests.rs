@@ -1194,7 +1194,7 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
             .as_ref()
             .unwrap()
             .retained_neighbor_counts(),
-        Some(expected_after_sale.as_slice()),
+        expected_after_sale.as_slice(),
         "native sale leaves the sold wall contribution stale and reverses only cleanup removals"
     );
     assert_eq!(
@@ -1399,7 +1399,7 @@ fn wall_sale_preserves_the_sold_anchor_retained_count_source() {
     assert_eq!(grid.cell(2, 2).overlay_id, None);
     assert_eq!(
         grid.retained_neighbor_counts(),
-        Some(expected.as_slice()),
+        expected.as_slice(),
         "HouseClass sale has no CellClass+0x122 decrement for the sold anchor"
     );
 }
@@ -1477,7 +1477,7 @@ fn wall_sale_cleanup_reaches_fixed_stride_alias_and_reverses_that_source_only() 
     assert_eq!(grid.cell(511, 0).overlay_id, None);
     assert_eq!(
         grid.retained_neighbor_counts(),
-        Some(expected.as_slice()),
+        expected.as_slice(),
         "sale keeps the sold aliasing source but reverses the cleanup-removed aliased source"
     );
     assert!(sim.tactical_dirty_cells.contains(&(511, 0)));
@@ -1788,6 +1788,7 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
         let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(16, 16);
         overlays.place_overlay(8, 5, 0, 0);
         sim.overlay_grid = Some(overlays);
+        sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(16, 16));
         let detonation = crate::sim::projectile::ProjectileDetonation {
             projectile_id: 1,
             source_id: 99,

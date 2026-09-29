@@ -1552,7 +1552,6 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         1,
         (3, 0),
         SimFixed::from_num(128),
-        None,
     );
     assert_eq!(
         first_track_process_route(&mut refinery_return, 1, Some(&rules), &path_grid)

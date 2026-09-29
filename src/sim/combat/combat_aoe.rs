@@ -1446,6 +1446,7 @@ mod tests {
             (8_i32 + i32::from(wall_offset.1)) as u16,
         );
         let mut overlays = OverlayGrid::new(16, 16);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
         overlays.place_overlay(wall_cell.0, wall_cell.1, 2, 0);
         let mut scenario_rng = SimRng::new(91);
         let mut prelude = OreReseedDraw { cell: (8, 8) };
@@ -1464,7 +1465,7 @@ mod tests {
             (crate::sim::combat::RAD_NO_ATTACKER, None, warhead_ref),
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2310,6 +2311,7 @@ mod tests {
         let mut entities = EntityStore::new();
         let mut interner = test_interner();
         let mut overlays = OverlayGrid::new(16, 16);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
         overlays.place_overlay(8, 8, 0, 0);
         overlays.place_overlay(9, 7, 0, 0);
         let mut scenario_rng = SimRng::new(1);
@@ -2330,7 +2332,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2371,6 +2373,7 @@ mod tests {
         let mut entities = EntityStore::new();
         let mut interner = test_interner();
         let mut overlays = OverlayGrid::new(32, 32);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(32, 32);
         overlays.place_overlay(16, 16, 0, 0);
         overlays.place_overlay(17, 15, 0, 0);
         let mut scenario_rng = SimRng::new(19);
@@ -2386,7 +2389,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2415,6 +2418,7 @@ mod tests {
 
         let (rules, nuke, registry) = wall_aoe_fixture("10", "WallAbsoluteDestroyer=yes\nWall=yes");
         let mut overlays = OverlayGrid::new(40, 40);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(40, 40);
         let stock_cells = [(20, 20), (20, 10), (30, 20), (17, 29)];
         for &(rx, ry) in &stock_cells {
             overlays.place_overlay(rx, ry, 2, 0);
@@ -2432,7 +2436,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2486,6 +2490,7 @@ mod tests {
         let mut interner = test_interner();
         let owner = crate::sim::intern::InternedId::from_index(7);
         let mut overlays = OverlayGrid::new(16, 16);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
         overlays.place_overlay(8, 8, 2, 0);
         overlays.place_owned_wall(8, 7, 2, 0x24, owner);
         let mut scenario_rng = SimRng::new(5);
@@ -2500,7 +2505,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),

@@ -401,7 +401,6 @@ impl Simulation {
             grid,
             self.resolved_terrain.as_ref(),
             self.overlay_grid.as_ref(),
-            registry,
             &self.interner,
             Some(rules),
         );

@@ -718,7 +718,6 @@ impl Simulation {
                                     owner_blocks: true,
                                     object_destination: None,
                                 },
-                                overlay_registry,
                                 rules,
                             );
                         }
@@ -756,7 +755,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         rules,
                     )
                 };
@@ -1163,7 +1161,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         rules,
                     )
                 };
@@ -1593,7 +1590,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         Some(rules),
                     );
                 }
@@ -1699,7 +1695,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         Some(rules),
                     );
                 }
@@ -1848,13 +1843,12 @@ impl Simulation {
                     e.movement_target = None;
                 }
                 if let (Some(rules), Some(grid)) = (rules, path_grid) {
-                    let _ = crate::sim::miner::miner_system::issue_stock_miner_drive_move_with_overlay_registry(
+                    let _ = crate::sim::miner::miner_system::issue_stock_miner_drive_move(
                         self,
                         rules,
                         grid,
                         *entity_id,
                         (*target_rx, *target_ry),
-                        overlay_registry,
                     );
                 }
                 true
@@ -1966,7 +1960,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         Some(rules),
                     );
                 }
@@ -2099,7 +2092,6 @@ impl Simulation {
                                 target_coord,
                             )),
                         },
-                        overlay_registry,
                         Some(rules),
                     );
                 }
@@ -2342,7 +2334,6 @@ impl Simulation {
                                 owner_blocks: true,
                                 object_destination: None,
                             },
-                            overlay_registry,
                             Some(rules),
                         );
                     }

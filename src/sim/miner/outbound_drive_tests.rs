@@ -884,10 +884,13 @@ fn gsi_04_07_placement_miner_return_threads_live_wall_neighbor_authority() {
         let miner_id = spawn_stock_miner(&mut sim, &oracle, "HARV", MinerKind::War);
         arm_full_ore_return(&mut sim, miner_id, &config);
 
-        sim.overlay_grid
-            .as_mut()
-            .expect("live overlay grid")
-            .place_overlay(30, 33, overlay_id, 0);
+        let overlays = sim.overlay_grid.as_mut().expect("live overlay grid");
+        overlays.place_overlay(30, 33, overlay_id, 0);
+        if overlay_id == wall_id {
+            // A placed wall's `OverlayClass::Mark` increments
+            // (`0x005FC762..0x005FC775`); a rock contributes none.
+            overlays.add_retained_wall_neighbor_source(sim.resolved_terrain.as_ref(), 30, 33);
+        }
 
         // Zone_precheck marks only the start/goal zones (1 and 2). The route
         // must cross off-marker zones 3 and 4. The miner itself supplies the

@@ -21,7 +21,6 @@
 //! per site.
 
 use super::Simulation;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, NavTargetRef};
@@ -52,7 +51,6 @@ impl Simulation {
         &mut self,
         grid: &PathGrid,
         order: GroundMove,
-        overlay_registry: Option<&OverlayTypeRegistry>,
         rules: Option<&RuleSet>,
     ) -> bool {
         let block_owner = order
@@ -75,7 +73,6 @@ impl Simulation {
             grid,
             self.resolved_terrain.as_ref(),
             self.overlay_grid.as_ref(),
-            overlay_registry,
             &self.interner,
             rules,
         );

@@ -70,7 +70,6 @@ pub(crate) fn build_blocker_neighbor_counts(
         height,
         resolved_terrain,
         None,
-        None,
         interner,
         rules,
     )
@@ -82,18 +81,11 @@ pub(crate) fn build_blocker_neighbor_counts_with_overlays(
     height: u16,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     interner: &crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
 ) -> BlockerNeighborCounts {
-    let mut counts = blocker_plane_base(
-        width,
-        height,
-        resolved_terrain,
-        overlay_grid,
-        overlay_registry,
-    );
-    let retained_foot = overlay_grid.is_some_and(|grid| grid.retained_neighbor_counts().is_some());
+    let mut counts = blocker_plane_base(width, height, resolved_terrain, overlay_grid);
+    let retained_foot = overlay_grid.is_some();
     for entity in entities.values() {
         if let Some(source) = blocker_plane_source(entity, interner, rules, retained_foot) {
             source.add_to(&mut counts);
@@ -103,23 +95,20 @@ pub(crate) fn build_blocker_neighbor_counts_with_overlays(
 }
 
 /// Retained wall/Foot bytes plus the existing derived terrain contribution.
-/// Foot lifecycle writes are authoritative when the retained plane is present;
-/// only legacy fixtures without it reconstruct mobile position contributions.
+/// Foot lifecycle writes are authoritative when an overlay grid is present;
+/// only fixtures without one reconstruct mobile position contributions.
 pub(crate) fn blocker_plane_base(
     width: u16,
     height: u16,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> BlockerNeighborCounts {
-    let retained_wall_counts = overlay_grid.and_then(|grid| {
-        if grid.retained_neighbor_counts().is_some() {
-            assert_eq!(
-                (grid.width(), grid.height()),
-                (width, height),
-                "retained wall-neighbor authority must match pathfinding grid"
-            );
-        }
+    let retained_wall_counts = overlay_grid.map(|grid| {
+        assert_eq!(
+            (grid.width(), grid.height()),
+            (width, height),
+            "retained wall-neighbor authority must match pathfinding grid"
+        );
         grid.retained_neighbor_counts()
     });
     let mut counts = retained_wall_counts
@@ -139,26 +128,6 @@ pub(crate) fn blocker_plane_base(
         }
     }
 
-    // Legacy constructors have not yet crossed the consumed-once finalized
-    // payload boundary. Only they may reconstruct current walls. A retained
-    // plane, including an all-zero one, is the sole authored/runtime wall
-    // authority and must never be supplemented from final identities.
-    if retained_wall_counts.is_none()
-        && let (Some(grid), Some(registry)) = (overlay_grid, overlay_registry)
-    {
-        for y in 0..height {
-            for x in 0..width {
-                if grid
-                    .cell(x, y)
-                    .overlay_id
-                    .and_then(|id| registry.flags(id))
-                    .is_some_and(|flags| flags.wall)
-                {
-                    counts.add_single_cell_neighbor_source(x, y);
-                }
-            }
-        }
-    }
     counts
 }
 
@@ -1882,85 +1851,10 @@ mod tests {
     }
 
     #[test]
-    fn gsi_04_07_placement_neighbor_plane_counts_only_wall_overlay_and_reverses() {
-        use crate::map::overlay_types::OverlayTypeRegistry;
-        use crate::rules::ini_parser::IniFile;
-        use crate::sim::overlay_grid::OverlayGrid;
-
-        let ini = IniFile::from_str(
-            "[OverlayTypes]\n0=WALL\n1=ROCK\n2=ZEROWHEEL\n\
-             [Wall]\nWheel=100%\n\
-             [Rock]\nWheel=0%\n\
-             [WALL]\nWall=yes\n\
-             [ROCK]\nIsARock=yes\n\
-             [ZEROWHEEL]\nLand=Rock\n",
-        );
-        let registry = OverlayTypeRegistry::from_ini(&ini, None);
-        let entities = EntityStore::new();
-        let interner = crate::sim::intern::StringInterner::new();
-
-        for non_wall in [1u8, 2u8] {
-            let mut overlays = OverlayGrid::new(5, 5);
-            overlays.place_overlay(2, 2, non_wall, 0);
-            let counts = build_blocker_neighbor_counts_with_overlays(
-                &entities,
-                5,
-                5,
-                None,
-                Some(&overlays),
-                Some(&registry),
-                &interner,
-                None,
-            );
-            let counts_ref = &counts;
-            assert_eq!(
-                (0..5)
-                    .flat_map(|y| (0..5).map(move |x| counts_ref.count_at(x, y) as u32))
-                    .sum::<u32>(),
-                0,
-                "non-wall overlay {non_wall} must not produce neighbor counts"
-            );
-        }
-
-        let mut overlays = OverlayGrid::new(5, 5);
-        overlays.place_overlay(2, 2, 0, 0);
-        let mut counts = build_blocker_neighbor_counts_with_overlays(
-            &entities,
-            5,
-            5,
-            None,
-            Some(&overlays),
-            Some(&registry),
-            &interner,
-            None,
-        );
-        for y in 1..=3 {
-            for x in 1..=3 {
-                assert_eq!(counts.count_at(x, y), u8::from((x, y) != (2, 2)));
-            }
-        }
-        counts.remove_single_cell_neighbor_source(2, 2);
-        let counts_ref = &counts;
-        assert_eq!(
-            (0..5)
-                .flat_map(|y| (0..5).map(move |x| counts_ref.count_at(x, y) as u32))
-                .sum::<u32>(),
-            0
-        );
-    }
-
-    #[test]
     fn finalized_wall_plane_is_sole_baseline_without_identity_double_count() {
         use crate::map::authored_overlay::FinalizedOverlayPayload;
-        use crate::map::overlay_types::OverlayTypeRegistry;
-        use crate::rules::ini_parser::IniFile;
         use crate::sim::overlay_grid::OverlayGrid;
 
-        let ini = IniFile::from_str(
-            "[OverlayTypes]\n0=WALL\n1=BODY\n\
-             [WALL]\nWall=yes\n",
-        );
-        let registry = OverlayTypeRegistry::from_ini(&ini, None);
         let entities = EntityStore::new();
         let interner = crate::sim::intern::StringInterner::new();
         let mut wall_plane = vec![0u8; 25];
@@ -1979,7 +1873,6 @@ mod tests {
             5,
             None,
             Some(&surviving),
-            Some(&registry),
             &interner,
             None,
         );
@@ -2004,7 +1897,6 @@ mod tests {
             5,
             None,
             Some(&overwritten),
-            Some(&registry),
             &interner,
             None,
         );
@@ -2022,7 +1914,6 @@ mod tests {
             5,
             None,
             Some(&authoritative_zero),
-            Some(&registry),
             &interner,
             None,
         );
@@ -2053,7 +1944,7 @@ mod tests {
         assert!(!dynamic.contains_any(&(2, 2)));
 
         let counts = build_blocker_neighbor_counts_with_overlays(
-            &entities, 5, 5, None, None, None, &interner, None,
+            &entities, 5, 5, None, None, &interner, None,
         );
         let counts_ref = &counts;
         assert_eq!(

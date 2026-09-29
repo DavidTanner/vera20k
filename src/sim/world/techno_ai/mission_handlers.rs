@@ -474,7 +474,6 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 sim,
                 rules,
                 ctx.path_grid,
-                ctx.overlay_registry,
                 id,
             ))
         }

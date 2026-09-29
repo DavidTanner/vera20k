@@ -42,6 +42,9 @@
 //! Nor does any fold the retired per-house purifier count (dropped at
 //! snapshot 245), which only the hash read; the global harness pins were
 //! re-baselined in that one step.
+//! Every overlay grid retains its wall plane since snapshot 247; no policy
+//! folds the retired plane-less tag, and the global harness pins were
+//! re-baselined in that one step.
 
 #[derive(Clone, Copy)]
 pub(super) enum HashSchema {

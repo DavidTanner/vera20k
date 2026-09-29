@@ -2317,7 +2317,7 @@ fn advance_ordinary_mover(
 /// The base contains retained wall/Foot bytes and derived terrain occupation.
 /// Wall/terrain edits rebuild under their epochs. Foot writes replay the owner's
 /// bounded cell-delta journal, rebuilding only if the reader fell behind. The
-/// entity touch log maintains building contributions (and legacy fixture mobiles).
+/// entity touch log maintains building contributions (and, in fixtures without an overlay grid, mobiles).
 /// Debug checks compare against a fresh sum. No cache data is saved or hashed.
 #[derive(Default)]
 pub(crate) struct MovementPassCache {
@@ -2345,16 +2345,12 @@ struct BlockerPlaneEntry {
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct BlockerPlaneKey {
     terrain_epoch: Option<u64>,
-    overlay_epoch: Option<(bool, u64)>,
+    overlay_epoch: Option<u64>,
     width: u16,
     height: u16,
     /// A building's foundation size comes from its type. By address, never
     /// dereferenced.
     rules: Option<usize>,
-    /// The overlay registry a grid without a retained wall plane rebuilds its
-    /// walls from (`bump_crush::blocker_plane_base`); `None` when the plane
-    /// does not read it. By address, never dereferenced.
-    wall_registry: Option<usize>,
 }
 
 impl MovementPassCache {
@@ -2401,7 +2397,6 @@ impl MovementPassCache {
         grid: &PathGrid,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         interner: &crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> &crate::sim::pathfinding::BlockerNeighborCounts {
@@ -2413,7 +2408,6 @@ impl MovementPassCache {
             grid,
             resolved_terrain,
             overlay_grid,
-            overlay_registry,
             interner,
             rules,
         )
@@ -2465,7 +2459,6 @@ impl MovementPassCache {
         grid: &PathGrid,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         interner: &crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> &'a crate::sim::pathfinding::BlockerNeighborCounts {
@@ -2475,13 +2468,8 @@ impl MovementPassCache {
             width: grid.width(),
             height: grid.height(),
             rules: rules.map(|rules| std::ptr::from_ref(rules) as usize),
-            wall_registry: overlay_grid
-                .filter(|grid| grid.retained_neighbor_counts().is_none())
-                .and(overlay_registry)
-                .map(|registry| std::ptr::from_ref(registry) as usize),
         };
-        let retained_foot =
-            overlay_grid.is_some_and(|grid| grid.retained_neighbor_counts().is_some());
+        let retained_foot = overlay_grid.is_some();
         match blocker.entry.as_mut().filter(|entry| {
             entry.key == key
                 && !touched.everything
@@ -2522,7 +2510,6 @@ impl MovementPassCache {
                     grid.height(),
                     resolved_terrain,
                     overlay_grid,
-                    overlay_registry,
                 );
                 let mut sources = BTreeMap::new();
                 for entity in entities.values() {
@@ -2559,7 +2546,6 @@ impl MovementPassCache {
                         grid.height(),
                         resolved_terrain,
                         overlay_grid,
-                        overlay_registry,
                         interner,
                         rules,
                     ),
@@ -3065,7 +3051,6 @@ impl PendingMovementPass {
                 grid,
                 terrain,
                 overlay_grid,
-                overlay_registry,
                 interner,
                 rules,
             )
@@ -3257,7 +3242,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
                     grid,
                     resolved_terrain,
                     overlay_grid,
-                    overlay_registry,
                     interner,
                     rules,
                 )
@@ -3710,8 +3694,7 @@ mod pass_cache_tests {
                 })
                 .collect(),
         );
-        let mut overlays =
-            crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(5, 5);
+        let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(5, 5);
         let mut entities = EntityStore::new();
         let mut unit = GameEntity::test_default(7, "MTNK", "Americans", 2, 2);
         unit.lifecycle.cell_marked = true;
@@ -3726,7 +3709,6 @@ mod pass_cache_tests {
                     &grid,
                     Some(&terrain),
                     Some(&overlays),
-                    None,
                     &interner,
                     None
                 )
@@ -3742,7 +3724,6 @@ mod pass_cache_tests {
                     &grid,
                     Some(&terrain),
                     Some(&overlays),
-                    None,
                     &interner,
                     None
                 )
@@ -3757,7 +3738,6 @@ mod pass_cache_tests {
             &grid,
             Some(&terrain),
             Some(&overlays),
-            None,
             &interner,
             None,
         );
@@ -3776,7 +3756,6 @@ mod pass_cache_tests {
             5,
             Some(&terrain),
             Some(&overlays),
-            None,
             &interner,
             None,
         );
@@ -3786,7 +3765,6 @@ mod pass_cache_tests {
                 &grid,
                 Some(&terrain),
                 Some(&overlays),
-                None,
                 &interner,
                 None
             ),
@@ -3817,7 +3795,7 @@ mod pass_cache_tests {
         let mut cache = MovementPassCache::default();
 
         let before = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(
             before.count_at(1, 1),
@@ -3826,14 +3804,14 @@ mod pass_cache_tests {
         );
         // Nothing touched: kept (and cross-checked in debug builds).
         let again = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(again, before);
 
         // Death sequence: the object stays on the grid.
         entities.get_mut(7).unwrap().dying = true;
         let after = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(
             after.count_at(1, 1),
@@ -3856,21 +3834,12 @@ mod pass_cache_tests {
         let grid = PathGrid::new(5, 5);
         let mut entities = EntityStore::new();
         let interner = test_interner();
-        let mut overlays =
-            crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(5, 5);
+        let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(5, 5);
         let mut cache = MovementPassCache::default();
         let mut plane = |cache: &mut MovementPassCache,
                          overlays: &crate::sim::overlay_grid::OverlayGrid| {
             cache
-                .blocker_plane(
-                    &mut entities,
-                    &grid,
-                    None,
-                    Some(overlays),
-                    None,
-                    &interner,
-                    None,
-                )
+                .blocker_plane(&mut entities, &grid, None, Some(overlays), &interner, None)
                 .clone()
         };
         let before = plane(&mut cache, &overlays);
@@ -3884,7 +3853,7 @@ mod pass_cache_tests {
         assert_eq!(plane(&mut cache, &overlays), before);
         assert_eq!(cache.blocker_plane_world_rebuilds(), 1);
 
-        overlays.retain_zero_wall_plane_for_tests();
+        overlays.seed_neighbor_counts_for_tests(0);
         let _ = plane(&mut cache, &overlays);
         assert_eq!(cache.blocker_plane_world_rebuilds(), 2);
     }
@@ -3951,21 +3920,12 @@ Foundation=2x2
             }
             if step % 3 == 0 {
                 let kept = cache
-                    .blocker_plane(
-                        &mut entities,
-                        &grid,
-                        None,
-                        None,
-                        None,
-                        &interner,
-                        Some(&rules),
-                    )
+                    .blocker_plane(&mut entities, &grid, None, None, &interner, Some(&rules))
                     .clone();
                 let built = bump_crush::build_blocker_neighbor_counts_with_overlays(
                     &entities,
                     12,
                     12,
-                    None,
                     None,
                     None,
                     &interner,

@@ -461,7 +461,6 @@ fn diagnose_rejected_order(
                 grid.height(),
                 sim.resolved_terrain.as_ref(),
                 sim.overlay_grid.as_ref(),
-                Some(&scenario.runtime.resources.overlay_registry),
                 &sim.interner,
                 Some(&scenario.runtime.resources.rules),
             );
@@ -2148,7 +2147,7 @@ fn infantry_crosses_hills_high_bridge_at_deck_height() {
 // wrapped round it — `queue_megamission_with_teardown(MissionType::AttackMove)`,
 // the `attack_target` / `passively_acquired_target` clear, and the
 // `OrderIntent::AttackMove` stamp, which arms a per-tick resume in
-// `tick_order_intents_post_combat_with_overlay_registry` (`world_orders.rs`)
+// `tick_order_intents_post_combat_except` (`world_orders.rs`)
 // that re-issues the move from wherever the unit is standing every time it
 // finds itself with no attack target and no movement target.
 //

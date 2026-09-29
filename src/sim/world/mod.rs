@@ -6277,10 +6277,9 @@ impl Simulation {
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
             let phase_six_path_grid = post_terrain_path_grid;
             passenger_ownership_changed = passenger::tick_passenger_system(self, rules);
-            self.tick_order_intents_post_combat_with_overlay_registry(
+            self.tick_order_intents_post_combat_except(
                 phase_six_path_grid,
                 Some(rules),
-                overlay_registry,
                 &tube_turn_owned_ids,
             );
             // `LogicClass__PerTickUpdate @ 0x0055AFB0` calls

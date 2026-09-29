@@ -22,7 +22,7 @@ fn saved_current_house_drives_app_fog_and_command_owner_after_load() {
     saved.session.map_name = "LOCAL-OWNER.MAP".into();
     saved.session.map_width = 8;
     saved.session.map_height = 8;
-    saved.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(8, 8));
+    saved.overlay_grid = Some(OverlayGrid::new(8, 8));
     saved.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(8, 8, Vec::new()));
     let outgoing = saved.interner.intern("New Player");
     let player = saved.interner.intern("Player");

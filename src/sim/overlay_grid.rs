@@ -78,12 +78,10 @@ pub struct OverlayGrid {
     width: u16,
     height: u16,
     cells: Vec<OverlayCell>,
-    /// Retained wall and Foot contribution to CellClass+0x122. `Some`, even
-    /// when all zero, means the finalized authored plane was retained and final
-    /// wall identities must never be scanned as a substitute. `None` is the
-    /// temporary legacy-constructor compatibility mode.
-    #[serde(default)]
-    retained_neighbor_counts: Option<Vec<u8>>,
+    /// Retained wall and Foot contribution to CellClass+0x122, one byte per
+    /// cell. It is the sole wall authority, even when all zero: final wall
+    /// identities are never scanned as a substitute.
+    retained_neighbor_counts: Vec<u8>,
     #[serde(skip, default)]
     foot_neighbor_changes: crate::sim::cell_neighbors::NeighborCountChanges,
     /// Cells mutated this tick — drained by Simulation's end-of-frame finalizer
@@ -192,14 +190,14 @@ fn increment_wall_neighbor_plane(
 }
 
 impl OverlayGrid {
-    /// Create an empty grid with no overlays.
+    /// Create an empty grid with no overlays and an all-zero wall plane.
     pub fn new(width: u16, height: u16) -> Self {
         let count = width as usize * height as usize;
         Self {
             width,
             height,
             cells: vec![OverlayCell::default(); count],
-            retained_neighbor_counts: None,
+            retained_neighbor_counts: vec![0u8; count],
             foot_neighbor_changes: Default::default(),
             dirty_cells: Vec::new(),
             mutation_epoch: 0,
@@ -210,33 +208,9 @@ impl OverlayGrid {
         }
     }
 
-    /// Test-only stand-in for a production map-authority grid: an empty grid
-    /// that already retains its `CellClass+0x122` wall plane, as both
-    /// production constructors do. Fixtures that cross the snapshot
-    /// map-authority restore need this rather than the legacy `new`.
-    #[cfg(test)]
-    pub(crate) fn new_with_retained_wall_plane(width: u16, height: u16) -> Self {
-        let mut grid = Self::new(width, height);
-        grid.retained_neighbor_counts = Some(vec![0u8; usize::from(width) * usize::from(height)]);
-        grid
-    }
-
-    /// Attach an all-zero `CellClass+0x122` wall plane to a fixture grid that
-    /// was built through a legacy constructor but has to cross the snapshot
-    /// map-authority restore, which every production grid now satisfies.
-    #[cfg(test)]
-    pub(crate) fn retain_zero_wall_plane_for_tests(&mut self) {
-        self.mutation_epoch = self.mutation_epoch.wrapping_add(1);
-        self.wall_plane_epoch = self.wall_plane_epoch.wrapping_add(1);
-        self.retained_neighbor_counts = Some(vec![0u8; self.cells.len()]);
-    }
-
     #[cfg(test)]
     pub(crate) fn seed_neighbor_counts_for_tests(&mut self, value: u8) {
-        self.retained_neighbor_counts
-            .as_mut()
-            .expect("retained plane")
-            .fill(value);
+        self.retained_neighbor_counts.fill(value);
         self.wall_plane_epoch = self.wall_plane_epoch.wrapping_add(1);
     }
 
@@ -263,7 +237,7 @@ impl OverlayGrid {
             width,
             height,
             cells,
-            retained_neighbor_counts: Some(retained_neighbor_counts),
+            retained_neighbor_counts,
             foot_neighbor_changes: Default::default(),
             dirty_cells: Vec::new(),
             mutation_epoch: 0,
@@ -432,7 +406,7 @@ impl OverlayGrid {
                 }
             }
         }
-        grid.retained_neighbor_counts = Some(wall_neighbor_counts);
+        grid.retained_neighbor_counts = wall_neighbor_counts;
         grid
     }
 
@@ -481,23 +455,19 @@ impl OverlayGrid {
     }
 
     /// The epoch under which the movement blocker plane's wall part is
-    /// current: the wall plane's own when one is retained, else (legacy
-    /// constructors, which scan wall identities instead) every mutation.
-    pub(crate) fn blocker_plane_epoch(&self) -> (bool, u64) {
-        match self.retained_neighbor_counts {
-            Some(_) => (true, self.wall_plane_epoch),
-            None => (false, self.mutation_epoch),
-        }
+    /// current: the wall plane's own.
+    pub(crate) fn blocker_plane_epoch(&self) -> u64 {
+        self.wall_plane_epoch
     }
 
-    /// Read the retained wall and Foot contribution plane. `Some(all-zero)` is
+    /// Read the retained wall and Foot contribution plane. All-zero is
     /// authoritative and must not fall back to a final-identity scan.
-    pub(crate) fn retained_neighbor_counts(&self) -> Option<&[u8]> {
-        self.retained_neighbor_counts.as_deref()
+    pub(crate) fn retained_neighbor_counts(&self) -> &[u8] {
+        &self.retained_neighbor_counts
     }
 
-    pub(crate) fn retained_neighbor_count_storage_len(&self) -> Option<usize> {
-        self.retained_neighbor_counts.as_ref().map(Vec::len)
+    pub(crate) fn retained_neighbor_count_storage_len(&self) -> usize {
+        self.retained_neighbor_counts.len()
     }
 
     pub(crate) fn foot_neighbor_revision(&self) -> u64 {
@@ -519,9 +489,7 @@ impl OverlayGrid {
         source: (i16, i16),
         add: bool,
     ) {
-        let Some(counts) = self.retained_neighbor_counts.as_mut() else {
-            return;
-        };
+        let counts = &mut self.retained_neighbor_counts;
         let terrain = terrain.expect("retained neighbor counts need native CellClass lookup");
         self.mutation_epoch = self.mutation_epoch.wrapping_add(1);
         for (dx, dy) in [
@@ -588,9 +556,7 @@ impl OverlayGrid {
         // 0x00481070..0x00481082; cleanup auto-removal's conditional decrement
         // uses the zone comparison returned by recalculate_runtime_cell below.
         let (width, height) = (self.width, self.height);
-        let Some(counts) = self.retained_neighbor_counts.as_mut() else {
-            return;
-        };
+        let counts = &mut self.retained_neighbor_counts;
         let terrain = resolved_terrain
             .expect("retained wall-neighbor authority requires resolved CellClass lookup state");
         assert_eq!(
@@ -1291,7 +1257,18 @@ pub fn damage_wall_overlay(
     damage: i32,
     rng: &mut crate::sim::rng::SimRng,
 ) -> WallDamageResult {
-    damage_wall_overlay_with_terrain(overlay_grid, registry, None, rx, ry, damage, rng)
+    // Production always damages walls with its resolved CellClass grid; a
+    // flat clear one of the grid's size stands in.
+    let mut terrain = tests::clear_terrain_grid(overlay_grid.width(), overlay_grid.height());
+    damage_wall_overlay_with_terrain(
+        overlay_grid,
+        registry,
+        Some(&mut terrain),
+        rx,
+        ry,
+        damage,
+        rng,
+    )
 }
 
 /// Runtime-authoritative wall damage. Finalized grids require the resolved
@@ -1331,7 +1308,7 @@ pub(crate) fn damage_wall_overlay_with_runtime_host(
     mut host: Option<&mut dyn WallDamageTransactionHost>,
 ) -> WallDamageResult {
     assert!(
-        overlay_grid.retained_neighbor_counts().is_none() || resolved_terrain.is_some(),
+        resolved_terrain.is_some(),
         "retained wall-neighbor authority requires resolved terrain for wall damage"
     );
     let mut result = WallDamageResult::default();
@@ -1824,7 +1801,7 @@ pub(crate) fn refresh_wall_connectivity_after_placement_with_host(
     mut host: Option<&mut dyn WallDamageTransactionHost>,
 ) {
     assert!(
-        grid.retained_neighbor_counts().is_none() || resolved_terrain.is_some(),
+        resolved_terrain.is_some(),
         "retained wall-neighbor authority requires resolved terrain for placement cleanup"
     );
     const CLEANUP_CROSS: [(i32, i32); 5] = [(0, -1), (1, 0), (0, 1), (-1, 0), (0, 0)];
@@ -2127,7 +2104,7 @@ mod tests {
             (Some(0x18), 9)
         );
         assert!(grid.dirty_cells.is_empty());
-        assert_eq!(grid.retained_neighbor_counts(), Some(&[5, 8][..]));
+        assert_eq!(grid.retained_neighbor_counts(), &[5, 8][..]);
     }
 
     #[test]
@@ -2143,10 +2120,7 @@ mod tests {
         let restored: OverlayGrid =
             bincode::deserialize(&bytes).expect("deserialize overlay authority");
 
-        assert_eq!(
-            restored.retained_neighbor_counts(),
-            Some(&[0, 7, 255, 3][..])
-        );
+        assert_eq!(restored.retained_neighbor_counts(), &[0, 7, 255, 3][..]);
         assert_eq!(restored.cell(1, 0), grid.cell(1, 0));
     }
 
@@ -2479,7 +2453,7 @@ mod tests {
         );
         assert_eq!(
             no_wall.retained_neighbor_counts(),
-            Some(&[0u8; 12][..]),
+            &[0u8; 12][..],
             "a stamped non-wall overlay still retains an all-zero plane"
         );
 
@@ -2497,9 +2471,7 @@ mod tests {
             true,
         );
         assert_eq!(walled.cell(1, 1).overlay_id, Some(2));
-        let plane = walled
-            .retained_neighbor_counts()
-            .expect("map-pack boundary retains the plane");
+        let plane = walled.retained_neighbor_counts();
         // Every neighbour of (1,1) took one increment; the anchor took none,
         // and (3, y) is two cells away.
         assert_eq!(
@@ -2543,7 +2515,7 @@ mod tests {
         );
         assert_eq!(
             grid.retained_neighbor_counts(),
-            Some(&[1u8, 1, 1, 1, 0, 0, 1, 1, 1][..]),
+            &[1u8, 1, 1, 1, 0, 0, 1, 1, 1][..],
             "the unallocated east neighbour resolves to the shared dummy"
         );
     }
@@ -2570,7 +2542,7 @@ mod tests {
         );
         assert_eq!(
             grid.retained_neighbor_counts(),
-            Some(&[0u8, 1, 1, 1][..]),
+            &[0u8, 1, 1, 1][..],
             "only the three in-grid neighbours took an increment"
         );
     }
@@ -2944,7 +2916,6 @@ mod tests {
         );
         assert!(
             grid.retained_neighbor_counts()
-                .expect("retained authority")
                 .iter()
                 .all(|&count| count == 0),
             "direct and cleanup removals each reverse one retained source"
@@ -2984,7 +2955,7 @@ mod tests {
         assert_eq!(result.destroyed_cells, vec![(2, 2), (2, 1)]);
         assert_eq!(
             unchanged_zone_grid.retained_neighbor_counts(),
-            Some(retained_cleanup_plane.as_slice()),
+            retained_cleanup_plane.as_slice(),
             "cleanup removal retains its source when Recalc leaves zone type unchanged"
         );
     }
@@ -2998,16 +2969,13 @@ mod tests {
                 vec![(0, 0), (-1, 0), (-1, 0), (-1, 0)],
                 vec![7, 8, 9, 10],
             ));
-        let retained = grid
-            .retained_neighbor_counts()
-            .expect("retained authority")
-            .to_vec();
+        let retained = grid.retained_neighbor_counts().to_vec();
 
         assert_eq!(grid.clear_overlay(0, 0), Some(0));
         grid.place_overlay(1, 1, 3, 4);
         assert_eq!(
             grid.retained_neighbor_counts(),
-            Some(retained.as_slice()),
+            retained.as_slice(),
             "generic identity writers cannot infer or reverse historical wall sources"
         );
     }
@@ -3028,7 +2996,7 @@ mod tests {
             FinalizedOverlayPayload::from_cells_for_test(1, 1, vec![(0, 0)], vec![0]),
         );
         let mut rng = crate::sim::rng::SimRng::new(1);
-        let _ = damage_wall_overlay(&mut grid, &registry, 0, 0, -1, &mut rng);
+        let _ = damage_wall_overlay_with_terrain(&mut grid, &registry, None, 0, 0, -1, &mut rng);
     }
 
     #[test]
@@ -3908,7 +3876,6 @@ Strength=400
         assert!(
             cleanup
                 .retained_neighbor_counts()
-                .expect("retained authority")
                 .iter()
                 .all(|&count| count == 0),
             "direct and cleanup removals reverse both fixed-alias count sources"
@@ -4087,17 +4054,9 @@ Strength=400
     }
 
     #[test]
-    fn wall_radar_dirty_retains_legacy_edges_fixed_aliases_and_dummy_words() {
+    fn wall_radar_dirty_retains_fixed_aliases_and_dummy_words() {
         let registry = make_retail_stage_registry();
         let mut rng = crate::sim::rng::SimRng::new(0x407_512);
-
-        let mut edge = OverlayGrid::new(3, 3);
-        edge.place_overlay(0, 0, 0, 0);
-        let edge_result = damage_wall_overlay(&mut edge, &registry, 0, 0, -1, &mut rng);
-        assert_eq!(
-            edge_result.radar_dirty_cells,
-            vec![(0, 0), (1, 1), (0, 2), (0, 1), (2, 0), (1, 0)],
-        );
 
         let mut alias_terrain = super::tests::clear_terrain_grid(512, 2);
         let mut aliased_edge = OverlayGrid::new(512, 2);

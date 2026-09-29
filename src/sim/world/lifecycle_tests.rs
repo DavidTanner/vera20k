@@ -4090,6 +4090,7 @@ fn persistent_bullet_logic_slot_publishes_native_wall_dirty_visits() {
         grid.place_overlay(5, 5, 2, initial_wall_data);
         let _ = grid.take_dirty_cells();
         sim.overlay_grid = Some(grid);
+        sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(12, 12));
 
         let projectile_id = sim.allocate_stable_id();
         let impact = ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0);
@@ -6661,7 +6662,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     let decal = overlay_registry.id_for_name("DECAL").expect("test decal");
     overlay.place_overlay(0, 0, decal, 11);
     overlay.place_overlay(1, 0, decal, 12);
-    overlay.retain_zero_wall_plane_for_tests();
     sim.overlay_grid = Some(overlay);
     let mut smudge = crate::sim::smudge_grid::SmudgeGrid::new(16, 16);
     for (rx, frame_offset) in [(0, 0), (1, 1)] {

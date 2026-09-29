@@ -1501,6 +1501,7 @@ fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
         issue_attack_command(&mut entities, 1, 2);
         let mut overlays = OverlayGrid::new(12, 12);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(12, 12);
         overlays.place_overlay(8, 5, 0, 0);
         let mut scenario_rng = SimRng::new(1);
         align_attackers_to_targets(&mut entities, &rules, &interner);
@@ -1514,7 +1515,7 @@ fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
             None,
             Some(&mut overlays),
             Some(&registry),
-            None,
+            Some(&mut terrain),
             0,
             100,
             0,
@@ -1602,6 +1603,7 @@ fn gsi_04_07_damage_wall_dies_in_the_tail_after_both_attackers_fire() {
     ));
 
     let mut overlays = OverlayGrid::new(16, 16);
+    let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
     overlays.place_overlay(8, 5, 0, 0);
     let mut scenario_rng = SimRng::new(31);
     // Two attackers fire this tick, so the scenario stream advances by exactly
@@ -1622,7 +1624,7 @@ fn gsi_04_07_damage_wall_dies_in_the_tail_after_both_attackers_fire() {
         None,
         Some(&mut overlays),
         Some(&registry),
-        None,
+        Some(&mut terrain),
         0,
         100,
         0,
@@ -1726,6 +1728,7 @@ fn gsi_04_07_damage_prior_projectile_fatal_death_weapon_is_inline() {
         ));
 
         let mut overlays = OverlayGrid::new(16, 16);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
         overlays.place_overlay(8, 5, 0, 0);
         let detonation = ProjectileDetonation {
             projectile_id: 1,
@@ -1745,9 +1748,15 @@ fn gsi_04_07_damage_prior_projectile_fatal_death_weapon_is_inline() {
         let handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
         align_attackers_to_targets(&mut entities, &rules, &interner);
+        // With resolved terrain the detonation collects its victims from the
+        // cell lists, so the objects are placed there as live ones are.
+        for id in [10, 20, 30] {
+            entities.get_mut(id).unwrap().lifecycle.cell_marked = true;
+        }
+        let mut occupancy = OccupancyGrid::rebuild(&entities);
         let result = tick_combat_with_fog_and_main_rng(
             &mut entities,
-            &mut OccupancyGrid::new(),
+            &mut occupancy,
             &rules,
             &mut interner,
             Some(handles),
@@ -1759,7 +1768,7 @@ fn gsi_04_07_damage_prior_projectile_fatal_death_weapon_is_inline() {
             None,
             Some(&mut overlays),
             Some(&registry),
-            None,
+            Some(&mut terrain),
             0,
             100,
             0,
@@ -3795,6 +3804,7 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
         source_entity_id: Some(center),
     });
     sim.overlay_grid = Some(OverlayGrid::new(20, 12));
+    sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(20, 12));
     sim.overlay_grid.as_mut().unwrap().place_overlay(8, 5, 0, 0);
     let oil_wh = sim.interner.intern("OilExplosionWH");
 
@@ -5991,6 +6001,7 @@ fn build_minimal_sim_with_gawall(rx: u16, ry: u16) -> (Simulation, RuleSet, Over
     // Place GAWALL (overlay_id=2). Initial frame = 0 (isolated, stage 0).
     grid.place_overlay(rx, ry, 2, 0);
     sim.overlay_grid = Some(grid);
+    sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(10, 10));
 
     (sim, rules, registry)
 }
@@ -6116,6 +6127,7 @@ fn crusher_driveover_destroys_wall_but_noncrusher_does_not() {
         let mut grid = OverlayGrid::new(10, 10);
         grid.place_overlay(5, 5, 2, 0); // GAWALL overlay_id=2
         sim.overlay_grid = Some(grid);
+        sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(10, 10));
 
         let owner_id = sim.interner.intern("Test");
         let obj = rules.object(veh_type).expect("veh object");
@@ -6216,6 +6228,7 @@ fn crushable_fence_falls_to_any_crusher_and_plays_its_crush_sound() {
         let mut grid = OverlayGrid::new(10, 10);
         grid.place_overlay(5, 5, overlay_id, 0);
         sim.overlay_grid = Some(grid);
+        sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(10, 10));
         let owner_id = sim.interner.intern("Test");
         let obj = rules.object(veh_type).expect("veh object");
         let veh_type_id = sim.interner.intern(veh_type);
@@ -6309,6 +6322,7 @@ fn build_minimal_sim_with_gawall_row(
         next_id += 1;
     }
     sim.overlay_grid = Some(grid);
+    sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(10, 10));
     sim.substrate.entities.rebuild_infantry_registry();
 
     (sim, rules, registry)
@@ -10546,6 +10560,7 @@ fn a_drive_crusher_without_crusherall_leaves_a_plain_wall_standing() {
         let mut grid = OverlayGrid::new(10, 10);
         grid.place_overlay(5, 5, 2, 0);
         sim.overlay_grid = Some(grid);
+        sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(10, 10));
         let owner_id = sim.interner.intern("Test");
         let obj = rules.object(veh_type).expect("veh object");
         let veh_type_id = sim.interner.intern(veh_type);

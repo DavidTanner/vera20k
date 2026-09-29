@@ -1285,12 +1285,6 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
         assert_eq!(e.movement_target.as_ref().unwrap().next_index, 0);
         assert_eq!(e.navigation.nav_com.is_none(), stop);
         // Both instance-owned XYZ values survive the actual snapshot envelope.
-        // This synthetic map has no walls; retain its known zero contribution
-        // plane before exercising the production map-load restoration owners.
-        sim.overlay_grid
-            .as_mut()
-            .unwrap()
-            .retain_zero_wall_plane_for_tests();
         let map_terrain = sim.resolved_terrain.as_ref().unwrap().clone();
         let bytes = GameSnapshot::save(&sim, 0, 0, "walk retained order", 0);
         let mut replay = GameSnapshot::load(&bytes).unwrap().sim;
@@ -1711,10 +1705,6 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
         // Map assets are deliberately skipped by the snapshot envelope.
         // Supply the same map-load grid and run the production restore owners
         // before resuming repair; this fixture has no wall contributions.
-        sim.overlay_grid
-            .as_mut()
-            .unwrap()
-            .retain_zero_wall_plane_for_tests();
         let map_terrain = sim.resolved_terrain.as_ref().unwrap().clone();
         let saved = GameSnapshot::save(&sim, 0, 0, "jumpjet", 0);
         let mut restored = GameSnapshot::load(&saved).unwrap().sim;

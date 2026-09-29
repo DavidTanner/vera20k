@@ -1484,15 +1484,13 @@ impl Simulation {
         }
         if schema.includes(HashFeature::WallRuntime) {
             b"retained-wall-neighbor-counts-v1".hash(hasher);
-            match overlay_grid.retained_neighbor_counts() {
-                None => 0u8.hash(hasher),
-                Some(counts) => {
-                    1u8.hash(hasher);
-                    counts.len().hash(hasher);
-                    for count in counts {
-                        count.hash(hasher);
-                    }
-                }
+            // The presence tag the retired plane-less fixture mode folded as
+            // 0 keeps its place.
+            1u8.hash(hasher);
+            let counts = overlay_grid.retained_neighbor_counts();
+            counts.len().hash(hasher);
+            for count in counts {
+                count.hash(hasher);
             }
         }
     }
@@ -2959,32 +2957,19 @@ mod overlay_grid_hash_tests {
     }
 
     #[test]
-    fn retained_wall_neighbor_authority_mode_changes_hash_even_when_zero() {
-        let mut legacy = Simulation::new();
-        legacy.overlay_grid = Some(OverlayGrid::new(2, 2));
+    fn a_new_grid_hashes_like_a_finalized_all_zero_wall_plane() {
+        let mut fresh = Simulation::new();
+        fresh.overlay_grid = Some(OverlayGrid::new(2, 2));
 
-        let mut retained = Simulation::new();
-        retained.overlay_grid = Some(OverlayGrid::from_finalized_map_payload(
+        let mut finalized = Simulation::new();
+        finalized.overlay_grid = Some(OverlayGrid::from_finalized_map_payload(
             FinalizedOverlayPayload::from_cells_for_test(2, 2, vec![(-1, 0); 4], vec![0; 4]),
         ));
 
-        for y in 0..2 {
-            for x in 0..2 {
-                assert_eq!(
-                    legacy.overlay_grid.as_ref().expect("legacy").cell(x, y),
-                    retained.overlay_grid.as_ref().expect("retained").cell(x, y)
-                );
-            }
-        }
-        assert_ne!(
-            legacy.state_hash(),
-            retained.state_hash(),
-            "None and Some(all-zero) select different future wall-count behavior"
-        );
         assert_eq!(
-            legacy.state_hash_without_wall_runtime_v115(),
-            retained.state_hash_without_wall_runtime_v115(),
-            "retained authority mode begins with schema v115"
+            fresh.state_hash(),
+            finalized.state_hash(),
+            "every grid retains its wall plane, all-zero included"
         );
     }
 

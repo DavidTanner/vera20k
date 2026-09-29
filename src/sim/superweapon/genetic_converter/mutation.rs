@@ -315,6 +315,7 @@ mod tests {
             overlays.place_overlay(5, 5, 0, 0);
             overlays.place_overlay(6, 5, 0, 0);
             sim.overlay_grid = Some(overlays);
+            sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(12, 12));
 
             let killed = apply_mutate_explosion(&mut sim, &rules, 5, 5, owner, Some(&registry));
             let count = killed.len();

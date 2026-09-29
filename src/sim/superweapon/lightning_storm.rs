@@ -1092,6 +1092,7 @@ Layer=ground
             let mut overlays = OverlayGrid::new(12, 12);
             overlays.place_overlay(5, 5, 0, 0);
             sim.overlay_grid = Some(overlays);
+            sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(12, 12));
 
             spawn_bolt(&mut sim, &rules, 5, 5, owner, Some(&registry));
             let rng_state = sim.scenario_rng.state();

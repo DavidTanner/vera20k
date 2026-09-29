@@ -1301,7 +1301,7 @@ fn finalization_keeps_live_neighbor_counts_instead_of_the_loader_copy() {
             .flat_map(|y| (0..8).map(move |x| test_flat_cell(x, y)))
             .collect(),
     ));
-    let stale = OverlayGrid::new_with_retained_wall_plane(8, 8);
+    let stale = OverlayGrid::new(8, 8);
     sim.overlay_grid = Some(stale.clone());
     sim.overlay_grid
         .as_mut()
@@ -1312,15 +1312,13 @@ fn finalization_keeps_live_neighbor_counts_instead_of_the_loader_copy() {
         .as_ref()
         .unwrap()
         .retained_neighbor_counts()
-        .unwrap()
         .to_vec();
     finalize_constructed_scenario(&mut sim, &map, &rules, &registry, stale, &roster, None);
     assert_eq!(
         sim.overlay_grid
             .as_ref()
             .unwrap()
-            .retained_neighbor_counts()
-            .unwrap(),
+            .retained_neighbor_counts(),
         expected
     );
 }
