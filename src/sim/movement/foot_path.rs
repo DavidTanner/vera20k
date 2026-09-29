@@ -30,7 +30,6 @@ use crate::sim::find_nearby_cell::{
 use crate::sim::mission::MissionId;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::concrete_effects::represented_assign_target;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneQueryCell};
 use crate::sim::world::Simulation;
 
@@ -222,10 +221,9 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<FootPathOutcome, String> {
-        self.run_walk_path_request(request, held, rules, fallback, registry)
+        self.run_walk_path_request(request, held, rules, registry)
             .map(|resumed| {
                 if resumed {
                     FootPathOutcome::Resume
@@ -243,7 +241,6 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<FindPathResult, String> {
         let id = request.entity_id;
@@ -286,7 +283,7 @@ impl Simulation {
             return Ok(FindPathResult::Failed);
         }
         let goal = self.find_path_admitted_goal(id, request.destination, rules, registry)?;
-        match self.search_foot_path(request, held, goal, rules, fallback, registry)? {
+        match self.search_foot_path(request, held, goal, rules, registry)? {
             Ok(true) => Ok(FindPathResult::Route),
             Ok(false) => Ok(FindPathResult::EmptyRoute),
             Err(refusal) => {
@@ -355,15 +352,14 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         goal: DriveCoord,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Result<bool, CoreRefusal>, String> {
         let id = request.entity_id;
         let frame = self.session.binary_frame;
-        if self.path_grid.is_none() && fallback.is_none() {
+        if self.path_grid.is_none() {
             return Err("Find_Path core requires PathGrid; no native failure inferred".into());
         }
-        self.foot_mark_remove(id, Some(rules), fallback, registry);
+        self.foot_mark_remove(id, Some(rules), registry);
         #[cfg(test)]
         self.export_bridge_engineer_entry_inputs(id, rules, "mark0");
         let owner = request.owner();
@@ -392,7 +388,7 @@ impl Simulation {
             )),
         };
         let snapshot = self.path_grid_snapshot();
-        let grid = snapshot.as_deref().or(fallback).expect("checked above");
+        let grid = snapshot.as_deref().expect("checked above");
         self.movement_pass_cache.blocker_plane(
             &mut self.substrate.entities,
             grid,
@@ -447,7 +443,7 @@ impl Simulation {
             searched
         };
         //4D3EAC restores Mark1 before inspecting the core result.
-        self.foot_mark_put(id, Some(rules), fallback, registry);
+        self.foot_mark_put(id, Some(rules), registry);
         if let Err(super::movement_path::MovePathFailure::Search(
             crate::sim::pathfinding::zone_search::PathSearchFailure::CellEntryUnavailable(cause),
         )) = &searched

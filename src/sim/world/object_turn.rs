@@ -150,6 +150,7 @@ impl Simulation {
         grid: Option<&PathGrid>,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
+        self.install_fixture_path_grid(grid);
         self.process_ground_locomotor_one(id, rules, grid, registry)
             .map(|outcome| outcome.movement)
     }
@@ -290,7 +291,7 @@ impl Simulation {
             if let Some(request) = pending_movement.take_foot_path_request() {
                 let held = Some(pending_movement.held_block_sets());
                 let outcome = sim
-                    .run_foot_path_request(&request, held, rules, path_grid, overlay_registry)
+                    .run_foot_path_request(&request, held, rules, overlay_registry)
                     .map_err(|cause| frame_error(sim, cause))?;
                 if outcome == movement::FootPathOutcome::Resume {
                     reenter_pending_pass(
@@ -310,7 +311,6 @@ impl Simulation {
                         request,
                         Some(pending_movement.held_block_sets()),
                         rules,
-                        path_grid,
                         overlay_registry,
                     )
                     .map_err(|cause| frame_error(sim, cause))?;
@@ -336,7 +336,6 @@ impl Simulation {
                         movement::ProcessMovementArgs::OUTER,
                         Some(pending_movement.held_block_sets()),
                         rules,
-                        path_grid,
                         overlay_registry,
                     )
                     .map_err(|cause| frame_error(sim, cause))?;
@@ -371,7 +370,7 @@ impl Simulation {
                 ..invocation
             };
             let pass = sim
-                .run_track_process(invocation, rules, path_grid, overlay_registry)
+                .run_track_process(invocation, rules, overlay_registry)
                 .map_err(|cause| frame_error(sim, cause))?;
             pending_movement.record_track_movement(pass.moved);
             outcome.track_owned = true;
@@ -397,11 +396,11 @@ impl Simulation {
         }
         if let Some((id, head)) = pending_movement.take_walk_per_cell() {
             outcome.bridge_state_changed |=
-                sim.run_completed_walk_step(id, head, rules, path_grid, overlay_registry)?;
+                sim.run_completed_walk_step(id, head, rules, overlay_registry)?;
             pending_movement.retain_walk_completion(id, &sim.substrate.entities);
         }
         if let Some((id, coord)) = pending_movement.take_walk_boundary() {
-            sim.run_walk_boundary(id, coord, rules, path_grid, overlay_registry);
+            sim.run_walk_boundary(id, coord, rules, overlay_registry);
             pending_movement.record_track_movement(1);
         }
 

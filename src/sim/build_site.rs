@@ -201,7 +201,6 @@ pub(crate) fn flush_for_placement(
     ty: &ObjectType,
     origin: (i16, i16),
     house: InternedId,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
 ) -> Flush {
     if origin == (0, 0) {
         return Flush::Clear;
@@ -255,7 +254,7 @@ pub(crate) fn flush_for_placement(
         {
             continue;
         }
-        sim.scatter_cell_contacts(cell, false, true, rules, path_grid);
+        sim.scatter_cell_contacts(cell, false, true, rules);
     }
     if scattered {
         Flush::Scattered

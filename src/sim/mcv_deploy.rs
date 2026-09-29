@@ -196,7 +196,7 @@ pub(crate) fn try_to_deploy(
             .is_some_and(|e| e.navigation.nav_com.is_some())
     };
     let origin_of = |cell: (i16, i16)| (cell.0.wrapping_sub(1), cell.1.wrapping_sub(1));
-    sim.foot_mark_remove(id, Some(rules), None, registry);
+    sim.foot_mark_remove(id, Some(rules), registry);
     if !has_destination(sim) {
         if crate::sim::build_site::can_place_building_at(
             sim,
@@ -206,7 +206,7 @@ pub(crate) fn try_to_deploy(
             origin_of(cell),
             None,
         ) {
-            sim.foot_mark_put(id, Some(rules), None, registry);
+            sim.foot_mark_put(id, Some(rules), registry);
             return true;
         }
         // 0x007392CA..0x00739360: the first fallback site the type can stand
@@ -230,7 +230,7 @@ pub(crate) fn try_to_deploy(
             sim.set_unit_cell_destination(id, (site.0 as u16, site.1 as u16), rules);
         }
     }
-    sim.foot_mark_put(id, Some(rules), None, registry);
+    sim.foot_mark_put(id, Some(rules), registry);
     // 0x00739372..0x00739394: vt+0x174 Scatter(&ZeroCoord, 0, 0).
     //
     // RESIDUAL: `UnitClass::Scatter @ 0x00743A50` runs through the shared

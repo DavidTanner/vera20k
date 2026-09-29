@@ -69,7 +69,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
 
     // Exercise real world completion, including Mark/PerCell and navigation.
     // Original75BD70..75BF82 has no movement-turn call;75BC97 owns the next one.
-    sim.run_completed_walk_step(id, head, Some(&rules), None, None)
+    sim.run_completed_walk_step(id, head, Some(&rules), None)
         .unwrap();
     let actor = sim.substrate.entities.get(id).unwrap();
     assert_eq!(ground_pose::position_world_coord(&actor.position), head);
@@ -328,11 +328,10 @@ fn paid_walk_world_scold_tails_match_original_boundaries() {
             "arrival_mark" => {
                 // The native golden supplies the final Mark callback. Here
                 // the real completion owner runs Mark/PerCell through it.
-                sim.run_completed_walk_step(1, head, None, None, None)
-                    .unwrap();
+                sim.run_completed_walk_step(1, head, None, None).unwrap();
                 assert!(sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
             }
-            "common_return" => sim.run_walk_boundary(1, head, None, None, None),
+            "common_return" => sim.run_walk_boundary(1, head, None, None),
             _ => {
                 // Supplied post-PerCell liveness is the native corpus boundary;
                 // these rows do not claim to execute a death/limbo producer.

@@ -17,7 +17,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
 
@@ -196,7 +195,7 @@ impl Simulation {
             }
             return false;
         }
-        self.track_apply_occupation_at(id, TrackFamily::Drive, supplied, true, None);
+        self.track_apply_occupation_at(id, TrackFamily::Drive, supplied, true);
         let Some(drive) = self
             .substrate
             .entities
@@ -214,16 +213,10 @@ impl Simulation {
         &mut self,
         invocation: TrackInvocation,
         rules: Option<&RuleSet>,
-        fallback_grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<TrackPass, String> {
         if invocation.apply_fresh_occupation {
-            self.track_apply_occupation(
-                invocation.entity_id,
-                invocation.family,
-                true,
-                fallback_grid,
-            );
+            self.track_apply_occupation(invocation.entity_id, invocation.family, true);
         }
         let object = self
             .substrate
@@ -239,13 +232,12 @@ impl Simulation {
         // One native entry owns admission, scalar prefix and paid loop, in that
         // order. No scalar speed update crosses the world receiver handoff.
         // The prefix also runs for `retry`, whose budget masks its speed.
-        let current_grid = self.path_grid.as_deref().or(fallback_grid);
+        let current_grid = self.path_grid.as_deref();
         let fresh_budget = super::track_speed::advance(entity, object, rules, current_grid);
         self.try_run_track_points_observed(
             invocation,
             fresh_budget,
             rules,
-            fallback_grid,
             registry,
             &mut |_, _, _| {},
         )
@@ -259,25 +251,12 @@ impl Simulation {
         invocation: TrackInvocation,
         fresh_budget: i32,
         rules: Option<&RuleSet>,
-        fallback_grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> u32 {
         if invocation.apply_fresh_occupation {
-            self.track_apply_occupation(
-                invocation.entity_id,
-                invocation.family,
-                true,
-                fallback_grid,
-            );
+            self.track_apply_occupation(invocation.entity_id, invocation.family, true);
         }
-        self.run_track_points_observed(
-            invocation,
-            fresh_budget,
-            rules,
-            fallback_grid,
-            registry,
-            &mut |_, _, _| {},
-        )
+        self.run_track_points_observed(invocation, fresh_budget, rules, registry, &mut |_, _, _| {})
     }
 
     pub(super) fn track_survives(&self, id: u64) -> bool {
@@ -309,20 +288,12 @@ impl Simulation {
         invocation: TrackInvocation,
         fresh_budget: i32,
         rules: Option<&RuleSet>,
-        fallback_grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
     ) -> u32 {
-        self.try_run_track_points_observed(
-            invocation,
-            fresh_budget,
-            rules,
-            fallback_grid,
-            registry,
-            observe,
-        )
-        .expect("track fixture must provide every coordinate receiver")
-        .moved
+        self.try_run_track_points_observed(invocation, fresh_budget, rules, registry, observe)
+            .expect("track fixture must provide every coordinate receiver")
+            .moved
     }
 
     fn try_run_track_points_observed(
@@ -330,7 +301,6 @@ impl Simulation {
         invocation: TrackInvocation,
         fresh_budget: i32,
         rules: Option<&RuleSet>,
-        fallback_grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
     ) -> Result<TrackPass, String> {
@@ -382,7 +352,6 @@ impl Simulation {
                     cell(current),
                     true,
                     rules,
-                    fallback_grid,
                     registry,
                     observe,
                 );
@@ -486,7 +455,7 @@ impl Simulation {
             }
 
             if self.track_occupation_enabled(id) {
-                self.track_raw_mark(id, false, fallback_grid);
+                self.track_raw_mark(id, false);
                 self.set_track_occupation_enabled(id, false);
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     entity.navigation.path_runtime.path_blocked = false;
@@ -533,7 +502,6 @@ impl Simulation {
                 previous,
                 false,
                 rules,
-                fallback_grid,
                 registry,
                 observe,
             );
@@ -553,7 +521,7 @@ impl Simulation {
                     &mut entity.position,
                     entity.on_bridge,
                     self.resolved_terrain.as_ref(),
-                    self.path_grid.as_deref().or(fallback_grid),
+                    self.path_grid.as_deref(),
                 );
                 entity.lifecycle.cell_marked = marked;
             }
@@ -568,7 +536,7 @@ impl Simulation {
                 return Ok(TrackPass::paid(moved));
             };
             if call.is_at_occupation_handoff(&live) {
-                self.track_raw_mark(id, false, fallback_grid);
+                self.track_raw_mark(id, false);
             }
             let Some((live, _, _)) = self.track_state(id, family) else {
                 return Ok(TrackPass::paid(moved));
@@ -580,7 +548,6 @@ impl Simulation {
                     &mut call,
                     candidate_direction.unwrap(),
                     rules,
-                    fallback_grid,
                     registry,
                     observe,
                 )? {
@@ -627,16 +594,7 @@ impl Simulation {
                 matches(step.interpolated, step.full),
                 live.residual,
             );
-            self.track_place(
-                id,
-                chosen,
-                cell(current),
-                false,
-                rules,
-                fallback_grid,
-                registry,
-                observe,
-            );
+            self.track_place(id, chosen, cell(current), false, rules, registry, observe);
         }
         Ok(TrackPass::paid(moved))
     }
@@ -687,28 +645,22 @@ impl Simulation {
 
     /// Unit7441B0/744210 select the raw plane from exact live XYZ; REMOVE
     /// deliberately does not require a surviving structural bridge flag.
-    pub(super) fn track_raw_mark(&mut self, id: u64, put: bool, fallback_grid: Option<&PathGrid>) {
+    pub(super) fn track_raw_mark(&mut self, id: u64, put: bool) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
         let coord = position_world_coord(&entity.position);
-        self.track_raw_mark_at(id, coord, put, fallback_grid);
+        self.track_raw_mark_at(id, coord, put);
     }
 
-    fn track_raw_mark_at(
-        &mut self,
-        id: u64,
-        coord: DriveCoord,
-        put: bool,
-        fallback_grid: Option<&PathGrid>,
-    ) -> MovementLayer {
+    fn track_raw_mark_at(&mut self, id: u64, coord: DriveCoord, put: bool) -> MovementLayer {
         let at = cell(coord);
         let terrain = self.resolved_terrain.as_ref();
         let ground = super::ground_pose::ground_surface_z_at(
             [coord.x, coord.y],
             false,
             terrain,
-            self.path_grid.as_deref().or(fallback_grid),
+            self.path_grid.as_deref(),
         )
         .unwrap_or(coord.z);
         let structural = terrain
@@ -793,7 +745,6 @@ impl Simulation {
         previous_track_cell: (u16, u16),
         terminal: bool,
         rules: Option<&RuleSet>,
-        fallback_grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
     ) {
@@ -804,7 +755,7 @@ impl Simulation {
         let selected_cell = cell(coord);
         let crossing = old != selected_cell;
         if crossing {
-            self.foot_mark_remove(id, rules, fallback_grid, registry);
+            self.foot_mark_remove(id, rules, registry);
             observe(self, id, TrackWorldEvent::MarkRemove);
         }
         let saved_marked = if !crossing {
@@ -821,7 +772,7 @@ impl Simulation {
         if crossing && !terminal {
             // Crossing uses actual current cell; this predicate instead uses
             // the previous transformed cached point (or current at cursor0).
-            let grid = self.path_grid.as_deref().or(fallback_grid);
+            let grid = self.path_grid.as_deref();
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 if let Some((source, destination)) = grid.and_then(|grid| {
                     grid.cell(previous_track_cell.0, previous_track_cell.1)
@@ -848,7 +799,7 @@ impl Simulation {
                     &mut entity.position,
                     entity.on_bridge,
                     self.resolved_terrain.as_ref(),
-                    self.path_grid.as_deref().or(fallback_grid),
+                    self.path_grid.as_deref(),
                 );
             }
         }
@@ -858,7 +809,7 @@ impl Simulation {
             }
         }
         if crossing {
-            self.foot_mark_put_observed(id, rules, fallback_grid, registry, &mut |sim, id| {
+            self.foot_mark_put_observed(id, rules, registry, &mut |sim, id| {
                 observe(sim, id, TrackWorldEvent::MarkPut)
             });
         }
@@ -866,15 +817,9 @@ impl Simulation {
 
     /// Apply_Track_Occupation_Mode(0/1), Drive4B0AD0 / Ship6A01A0:
     /// direct raw handoff then full supplied head, with no Foot+6B6 gate.
-    pub(super) fn track_apply_occupation(
-        &mut self,
-        id: u64,
-        family: TrackFamily,
-        put: bool,
-        fallback_grid: Option<&PathGrid>,
-    ) {
+    pub(super) fn track_apply_occupation(&mut self, id: u64, family: TrackFamily, put: bool) {
         let supplied = head_or_null(self.substrate.entities.get(id), family);
-        self.track_apply_occupation_at(id, family, supplied, put, fallback_grid);
+        self.track_apply_occupation_at(id, family, supplied, put);
     }
 
     fn track_apply_occupation_at(
@@ -883,7 +828,6 @@ impl Simulation {
         family: TrackFamily,
         supplied: DriveCoord,
         put: bool,
-        fallback_grid: Option<&PathGrid>,
     ) {
         let Some((state, retained_head, current)) = self.track_state(id, family) else {
             return;
@@ -925,14 +869,14 @@ impl Simulation {
             })
             .flatten();
         let handoff_mark = handoff.map(|coord| {
-            let layer = self.track_raw_mark_at(id, coord, put, fallback_grid);
+            let layer = self.track_raw_mark_at(id, coord, put);
             DriveOccupationFootprint {
                 rx: cell(coord).0,
                 ry: cell(coord).1,
                 layer,
             }
         });
-        let layer = self.track_raw_mark_at(id, supplied, put, fallback_grid);
+        let layer = self.track_raw_mark_at(id, supplied, put);
         if put {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 let marks = match family {
@@ -972,7 +916,7 @@ impl Simulation {
             }
         });
         if let Some(family) = family {
-            self.track_apply_occupation(id, family, false, None);
+            self.track_apply_occupation(id, family, false);
         }
     }
 
@@ -983,7 +927,6 @@ impl Simulation {
         call: &mut TrackProcess,
         direction: u8,
         rules: Option<&RuleSet>,
-        fallback_grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
     ) -> Result<bool, String> {
@@ -1063,7 +1006,7 @@ impl Simulation {
             }
             //4B1EC0..4B1F43: the forced deck-aware Scatter_Objects on the cell.
             6 => {
-                self.scatter_blocked_track_cell(id, target, rules, fallback_grid);
+                self.scatter_blocked_track_cell(id, target, rules);
                 return Ok(false);
             }
             _ => return Ok(false),
@@ -1112,7 +1055,7 @@ impl Simulation {
         set_head(entity, family, Some(candidate));
         // Crate pickup is an explicit receiver gap. A surviving pickup
         // precedes Apply1, then the saved owner fraction and live queue shift.
-        self.track_apply_occupation(id, family, true, fallback_grid);
+        self.track_apply_occupation(id, family, true);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.foot_speed.applied_fraction = saved_speed;
             super::path_markers::consume_path_replay(&mut entity.navigation.path_replay, 1);

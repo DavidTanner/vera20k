@@ -443,14 +443,12 @@ fn fresh_arm_rows_match_the_original_responses() {
         sim.session.binary_frame = 101;
         let (codes, paths) = supplied(input);
         fresh_oracle_seam::install(codes, paths);
-        let grid = sim.path_grid.clone();
         let out = sim.run_track_process_movement(
             id,
             family,
             ProcessMovementArgs::OUTER,
             None,
             &rules,
-            grid.as_deref(),
             Some(&registry),
         );
         let (records, unused) = fresh_oracle_seam::finish();
@@ -490,7 +488,6 @@ fn first_code7_scold_request_retains_the_native_byte() {
             .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
         sim.session.binary_frame = 101;
         fresh_oracle_seam::install(vec![7], vec![]);
-        let grid = sim.path_grid.clone();
         // The native sound fragment stops at the code7 retry ladder. This
         // production call takes its nonrecursive Stop path; the byte remains
         // live there too. Clearing on sound delivery would fail this check.
@@ -507,7 +504,6 @@ fn first_code7_scold_request_retains_the_native_byte() {
             },
             None,
             &rules,
-            grid.as_deref(),
             Some(&registry),
         );
         let (_, unused) = fresh_oracle_seam::finish();

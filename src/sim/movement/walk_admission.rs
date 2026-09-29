@@ -23,7 +23,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::native_xyz_distance;
 use crate::sim::combat::TargetKind;
 use crate::sim::components::DriveCoord;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
@@ -37,7 +36,6 @@ impl Simulation {
         request: WalkAdmissionRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Option<FootPathRequest>, String> {
         let rules = rules.ok_or("Walk admission requires rules")?;
@@ -101,9 +99,7 @@ impl Simulation {
             rules,
             registry,
         )?;
-        self.finish_walk_admission_response(
-            request, candidate, code, held, rules, fallback, registry,
-        )
+        self.finish_walk_admission_response(request, candidate, code, held, rules, registry)
     }
 
     ///75B696: one response owner for the live classifier and the corpus's
@@ -116,7 +112,6 @@ impl Simulation {
         code: u8,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Option<FootPathRequest>, String> {
         let id = request.entity_id;
@@ -129,7 +124,7 @@ impl Simulation {
                 &self.substrate.occupancy,
                 &mut self.substrate.raw_cell_occupation,
                 self.resolved_terrain.as_ref(),
-                grid.as_deref().or(fallback),
+                grid.as_deref(),
                 Some(rules),
                 &self.interner,
                 &mut self.scenario_rng,
@@ -162,7 +157,7 @@ impl Simulation {
                 self.walk_retry_admission(request)
             }
             2 => {
-                self.walk_blocked_delay(request, held, rules, fallback, registry)?;
+                self.walk_blocked_delay(request, held, rules, registry)?;
                 Ok(None)
             }
             3 => {
@@ -230,7 +225,7 @@ impl Simulation {
                 if request.allows_retry() {
                     return self.walk_retry_admission(request);
                 }
-                self.walk_scatter_or_stop(id, cell, rules, fallback)?;
+                self.walk_scatter_or_stop(id, cell, rules)?;
                 Ok(None)
             }
             7 => self.walk_retry_admission(request),
@@ -257,7 +252,7 @@ impl Simulation {
             rules,
         )
         .ok_or("missing Walk corpus receiver")?;
-        self.finish_walk_admission_response(request, candidate, code, None, rules, None, registry)
+        self.finish_walk_admission_response(request, candidate, code, None, rules, registry)
     }
 
     fn walk_lookup_cell(&self, cell: (i16, i16)) -> Result<NativeCellIdentity, String> {
@@ -351,7 +346,6 @@ impl Simulation {
         request: WalkAdmissionRequest,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<(), String> {
         let id = request.entity_id;
@@ -380,7 +374,7 @@ impl Simulation {
             .and_then(|loco| loco.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         let request = request.into_path_request(destination, urgency);
-        let found = self.foot_find_path(&request, held, rules, fallback, registry)?;
+        let found = self.foot_find_path(&request, held, rules, registry)?;
         self.substrate
             .entities
             .get_mut(id)
@@ -422,7 +416,6 @@ impl Simulation {
         id: u64,
         cell: NativeCellIdentity,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -471,7 +464,7 @@ impl Simulation {
             .wrapping_abs()
                 > 2;
         let at = cells.coord(cell);
-        self.scatter_cell_contacts(at, deck, true, rules, fallback);
+        self.scatter_cell_contacts(at, deck, true, rules);
         Ok(())
     }
 
