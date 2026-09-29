@@ -3063,12 +3063,12 @@ pub(super) struct AdmittedFire<'a> {
 /// (`0x005F65A0`), at the object's world height.
 fn object_get_coords(world: &Simulation, rules: &RuleSet, id: u64) -> Option<ProjectileCoord> {
     let entity = world.substrate.entities.get(id)?;
-    let (rx, ry, sub_x, sub_y) = target_coords(entity, Some(rules), &world.interner);
-    Some(ProjectileCoord::new(
-        i32::from(rx) * 256 + sub_x.to_num::<i32>(),
-        i32::from(ry) * 256 + sub_y.to_num::<i32>(),
-        object_world_z_leptons(entity, world.resolved_terrain.as_ref()),
-    ))
+    let coord = crate::sim::movement::ground_pose::object_get_coords(
+        entity,
+        rules.object(world.interner.resolve(entity.type_ref())),
+        world.resolved_terrain.as_ref(),
+    );
+    Some(ProjectileCoord::new(coord.x, coord.y, coord.z))
 }
 
 /// `TechnoClass::ReceiveDamage @ 0x00702A58..0x00702B2F`, after
