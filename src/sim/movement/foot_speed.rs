@@ -1,7 +1,34 @@
 //! Shared Foot speed inputs and the existing deterministic fraction projection.
 use crate::rules::object_type::ObjectType;
+use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+
+/// The speed a move order stamps into `MovementTarget::speed`: the adjusted
+/// type speed of `FootClass::GetCurrentSpeed @ 0x004DB1A0` (stages 1 and 2),
+/// in leptons/second. Every order, resume, scatter and rally calls this.
+///
+/// The stamp is VERA's; native keeps no order speed and re-queries the getter
+/// (or a Fly/Jumpjet/Rocket locomotor its own speed) each Process frame. The
+/// track, walk and Fly steps already re-query live, so the stamp's remaining
+/// production reader is the legacy pass lane.
+///
+/// No minimum: none of the getter's truncations (`0x004DB1DB`, `0x004DB200`,
+/// `0x004DB213`) clamp, so a `Speed=0` type stamps 0. Every retail mover that
+/// authors `Speed=` reads at least 1. A rules-less fixture without a type moves
+/// as `Speed=4`.
+pub(crate) fn order_speed(
+    entity: &GameEntity,
+    object: Option<&ObjectType>,
+    rules: Option<&RuleSet>,
+) -> SimFixed {
+    crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
+        entity,
+        object,
+        object.map_or(4, |object| object.speed),
+        rules.map_or(1.0, |rules| rules.general.veteran_speed),
+    )
+}
 
 /// Resolve live type/veterancy speed. A MovementTarget speed is a path cache,
 /// not the type authority. Like gamemd's getter (`0x004DB1A0`), nothing about
@@ -49,4 +76,37 @@ pub(crate) fn owner_current_speed(
         adjusted_speed(entity, object, veteran_speed),
         entity.foot_speed.applied_fraction,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    /// The retail movers `order_speed`'s missing minimum can reach: every
+    /// registered infantry, vehicle and aircraft type whose `Speed=` reads
+    /// below 1 through the production reader. They are exactly the five
+    /// registry entries that author no `Speed=` (the Visceroids come from
+    /// `[General]`; `[DeathDummy]` authors only a weapon), so no authored
+    /// retail mover saw the former 25-lepton floor or `.max(1)` clamps.
+    #[test]
+    fn retail_movers_below_speed_one_author_no_speed() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).expect("retail rules parse");
+        let slow: Vec<&str> = rules
+            .infantry_ids
+            .iter()
+            .chain(&rules.vehicle_ids)
+            .chain(&rules.aircraft_ids)
+            .filter(|id| rules.object(id).is_none_or(|object| object.speed < 1))
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            slow,
+            ["DeathDummy", "YDUM", "VISC_LRG", "VISC_SML", "APACHE"]
+        );
+        assert!(slow.iter().all(|id| {
+            ini.section(id)
+                .is_none_or(|section| !section.is_present("Speed"))
+        }));
+    }
 }

@@ -727,11 +727,12 @@ fn apply_mission_mutation(
             .substrate
             .entities
             .get(m.id)
-            .and_then(|e| {
-                let obj = sim.object_type(e.type_ref(), rules)?;
-                Some(crate::util::fixed_math::ra2_speed_to_leptons_per_second(
-                    obj.speed.max(1),
-                ))
+            .map(|e| {
+                crate::sim::movement::order_speed(
+                    e,
+                    sim.object_type(e.type_ref(), rules),
+                    Some(rules),
+                )
             })
             .unwrap_or(SimFixed::from_num(8));
         sim.issue_air_cell_destination(m.id, (rx, ry), speed, Some(rules));

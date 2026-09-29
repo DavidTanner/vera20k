@@ -1942,8 +1942,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Bridge,
-
-            speed_multiplier: SimFixed::from_num(1),
             speed_fraction: SimFixed::from_num(1),
             fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,

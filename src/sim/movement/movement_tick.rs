@@ -639,18 +639,7 @@ fn process_pending_drive_arrivals(
             continue;
         }
         let obj = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-        let speed_multiplier = loco.speed_multiplier;
-        // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: the FASTER multiply sits
-        // on the truncated per-frame type speed, before the locomotor's own
-        // fraction — see `veterancy::veteran_speed_leptons_per_second`.
-        let veteran_speed = rules.map_or(1.0, |r| r.general.veteran_speed);
-        let speed = (crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-            entity,
-            obj,
-            obj.map_or(4, |o| o.speed),
-            veteran_speed,
-        ) * speed_multiplier)
-            .max(SimFixed::lit("25"));
+        let speed = super::order_speed(entity, obj, rules);
         let dx = path[1].0 as i32 - path[0].0 as i32;
         let dy = path[1].1 as i32 - path[0].1 as i32;
         let (move_dir_x, move_dir_y, move_dir_len) =

@@ -728,7 +728,9 @@ use crate::sim::world::Simulation;
 // ground-hit flag or colour triple, a particle system its directionless flag; a
 // boarding passenger no longer saves a phase; an entity no longer saves a
 // garrison original owner.
-const SNAPSHOT_VERSION: u32 = 249;
+// 249 -> 250: a locomotor and its piggyback stash no longer save the
+// always-1.0 speed multiplier.
+const SNAPSHOT_VERSION: u32 = 250;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3631,7 +3633,8 @@ mod tests {
         // states.
         // 248 -> 249: no dead particle, boarding-phase or garrison-owner
         // fields.
-        assert_eq!(super::SNAPSHOT_VERSION, 249);
+        // 249 -> 250: no always-1.0 locomotor speed multiplier.
+        assert_eq!(super::SNAPSHOT_VERSION, 250);
     }
 
     #[test]

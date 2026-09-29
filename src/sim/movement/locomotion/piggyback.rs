@@ -40,7 +40,6 @@ use super::super::teleport_movement::TeleportState;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocomotorCommonRuntime {
     pub powered: bool,
-    pub speed_multiplier: SimFixed,
     pub speed_fraction: SimFixed,
     pub fly_current_speed: SimFixed,
     pub altitude: SimFixed,
@@ -124,7 +123,6 @@ impl LocomotorRuntime {
             layer: state.layer,
             common: LocomotorCommonRuntime {
                 powered: state.powered,
-                speed_multiplier: state.speed_multiplier,
                 speed_fraction: state.speed_fraction,
                 fly_current_speed: state.fly_current_speed,
                 altitude: state.altitude,
@@ -180,7 +178,6 @@ impl LocomotorRuntime {
         state.kind = self.kind;
         state.layer = self.layer;
         state.powered = self.common.powered;
-        state.speed_multiplier = self.common.speed_multiplier;
         state.speed_fraction = self.common.speed_fraction;
         state.fly_current_speed = self.common.fly_current_speed;
         state.altitude = self.common.altitude;
