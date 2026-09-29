@@ -380,7 +380,6 @@ impl JumpjetFlightHost for CruiseHost<'_> {
             self.terrain,
             None,
             false,
-            crate::sim::pathfinding::cell_entry::TerrainEntryMode::AStarNeighbor,
         );
         if clear { 0 } else { 3 }
     }

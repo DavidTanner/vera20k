@@ -14,8 +14,8 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use super::cell_entry::{
-    CanEnterCellContext, CanEnterCellResult, CanEnterLayerContext, TerrainEntryMode,
-    WallArmContext, evaluate_can_enter_cell, search_cell_cost_decision,
+    CanEnterCellContext, CanEnterCellResult, CanEnterLayerContext, WallArmContext,
+    evaluate_can_enter_cell, search_cell_cost_decision,
 };
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_hierarchy::ZoneLevelGraph;
@@ -756,12 +756,11 @@ fn search_cell_allocated(terrain: Option<&ResolvedTerrainGrid>, coord: (u16, u16
 pub struct AStarOptions<'a> {
     /// Terrain speed multipliers (cost 0 = blocked for this SpeedType).
     pub terrain_costs: Option<&'a TerrainCostGrid>,
-    /// Search-only bridge/coercion gate for the native Foot predicate result.
-    ///
-    /// This never receives a terrain speed percentage: those remain in
-    /// `terrain_costs`. The default is off until a mover's native gate source is
-    /// represented by runtime state.
-    pub search_cost_class_coerce_to_zero: bool,
+    /// The mover type's `IsTrain=` flag (`TechnoTypeClass+0xC94`), which
+    /// `AStar_main_loop` reads at `0x00429B64`/`0x00429C79` to zero every
+    /// passable `+0x1AC` class. Residual: no mover supplies it (always false);
+    /// no retail `rulesmd.ini` type sets `IsTrain=`, so the arm is dormant.
+    pub mover_is_train: bool,
     /// Optional native cost-class producer for the Foot `+0x1ac` search call.
     /// The classifier is deliberately cell/search scoped and never receives a
     /// `TerrainCostGrid` speed percentage.
@@ -1201,7 +1200,6 @@ pub fn astar_search(
                                 options.resolved_terrain,
                                 options.terrain_costs,
                                 false,
-                                TerrainEntryMode::AStarNeighbor,
                             );
                         if prev_on_bridge {
                             bridge_terrain_passable
@@ -1219,7 +1217,6 @@ pub fn astar_search(
                             options.resolved_terrain,
                             options.terrain_costs,
                             false,
-                            TerrainEntryMode::AStarNeighbor,
                             options.is_infantry,
                             options.mover_is_crusher,
                         )
@@ -1341,10 +1338,7 @@ pub fn astar_search(
                 // One native class supplies both admission and the edge base.
                 // Reduced adapters use None for clear; live Foot returns Some(0).
                 let raw_cost_class = refused_cost_class.unwrap_or(0);
-                let search_cost = search_cell_cost_decision(
-                    raw_cost_class,
-                    options.search_cost_class_coerce_to_zero,
-                );
+                let search_cost = search_cell_cost_decision(raw_cost_class, options.mover_is_train);
                 if !search_cost.expands {
                     continue;
                 }
@@ -1525,7 +1519,6 @@ pub fn is_cell_passable_for_mover(
         resolved_terrain,
         None,
         false,
-        TerrainEntryMode::AStarNeighbor,
     )
 }
 
@@ -1539,7 +1532,6 @@ pub fn is_cell_passable_for_mover_with_speed(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     terrain_costs: Option<&TerrainCostGrid>,
     bypass_grid: bool,
-    mode: TerrainEntryMode,
 ) -> bool {
     is_cell_passable_for_mover_on_layer_with_speed(
         grid,
@@ -1551,7 +1543,6 @@ pub fn is_cell_passable_for_mover_with_speed(
         resolved_terrain,
         terrain_costs,
         bypass_grid,
-        mode,
     )
 }
 
@@ -1571,7 +1562,6 @@ pub fn is_cell_passable_for_category_on_layer(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     terrain_costs: Option<&TerrainCostGrid>,
     bypass_grid: bool,
-    mode: TerrainEntryMode,
     is_infantry: bool,
     mover_is_crusher: bool,
 ) -> bool {
@@ -1585,7 +1575,6 @@ pub fn is_cell_passable_for_category_on_layer(
         resolved_terrain,
         terrain_costs,
         bypass_grid,
-        mode,
         is_infantry,
         mover_is_crusher,
         None,
@@ -1618,7 +1607,6 @@ pub fn evaluate_cell_entry_for_category_on_layer(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     terrain_costs: Option<&TerrainCostGrid>,
     bypass_grid: bool,
-    mode: TerrainEntryMode,
     is_infantry: bool,
     mover_is_crusher: bool,
     wall: Option<WallArmContext<'_>>,
@@ -1633,7 +1621,6 @@ pub fn evaluate_cell_entry_for_category_on_layer(
         resolved_terrain,
         terrain_costs,
         bypass_grid,
-        mode,
         is_infantry,
         mover_is_crusher,
     })
@@ -1650,7 +1637,6 @@ pub fn is_cell_passable_for_mover_on_layer_with_speed(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     terrain_costs: Option<&TerrainCostGrid>,
     bypass_grid: bool,
-    mode: TerrainEntryMode,
 ) -> bool {
     evaluate_can_enter_cell(CanEnterCellContext {
         wall: None,
@@ -1662,7 +1648,6 @@ pub fn is_cell_passable_for_mover_on_layer_with_speed(
         resolved_terrain,
         terrain_costs,
         bypass_grid,
-        mode,
         is_infantry: false,
         // Callers of this wrapper (bridge plane, scheduling, placement) carry
         // no mover type; the crusher route of the wall arm is not theirs.

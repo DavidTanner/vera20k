@@ -334,7 +334,6 @@ impl Simulation {
                     self.resolved_terrain.as_ref(),
                     cost_grid,
                     false,
-                    crate::sim::pathfinding::cell_entry::TerrainEntryMode::Smoothing,
                 )
             }
             MovementLayer::Bridge => {
