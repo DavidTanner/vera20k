@@ -56,7 +56,6 @@ use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::block_index::HeldBlockSets;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::direction::DIRECTION_DELTAS;
 use crate::util::fixed_math::SimFixed;
@@ -140,7 +139,6 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<FootPathOutcome, String> {
         let rules = rules.ok_or("Drive/Ship path request requires rules")?;
@@ -154,7 +152,7 @@ impl Simulation {
             .navigation
             .path_runtime
             .start_movement(frame, rules.general.path_delay_ticks());
-        let found = self.foot_find_path(request, held, rules, fallback, registry)?;
+        let found = self.foot_find_path(request, held, rules, registry)?;
         self.continue_track_path_request(id, found, rules, registry)
     }
 
@@ -562,7 +560,7 @@ impl Simulation {
             return Ok(true);
         }
         //4B2D68..4B2DC0: the forced scatter of the refused cell.
-        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, None);
+        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules);
         Ok(false)
     }
 

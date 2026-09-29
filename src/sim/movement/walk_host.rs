@@ -4,7 +4,7 @@
 use super::{ground_pose, locomotor::MovementLayer};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::{components::DriveCoord, pathfinding::PathGrid, world::Simulation};
+use crate::sim::{components::DriveCoord, world::Simulation};
 
 #[cfg(test)]
 #[path = "walk_completion_tests.rs"]
@@ -142,7 +142,6 @@ impl Simulation {
         id: u64,
         coord: DriveCoord,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) {
         let Some(old_cell) = self
@@ -153,7 +152,7 @@ impl Simulation {
         else {
             return;
         };
-        self.foot_mark_remove(id, rules, fallback, registry);
+        self.foot_mark_remove(id, rules, registry);
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return;
         };
@@ -174,7 +173,7 @@ impl Simulation {
         // flags after REMOVE, then SetHeight samples current resolved terrain.
         let update = super::movement_bridge::resolve_cell_transition_bridge_state(
             &mut e.position,
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
             old_cell,
             cell,
             e.on_bridge,
@@ -191,7 +190,7 @@ impl Simulation {
             &mut e.position,
             e.on_bridge,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
         );
         // OccupancyGrid is a list projection, not an independent subcell
         // reservation chooser. The current coordinate supplies its slot.
@@ -202,7 +201,7 @@ impl Simulation {
             },
         ));
         e.navigation.path_runtime.path_blocked = false;
-        self.foot_mark_put(id, rules, fallback, registry);
+        self.foot_mark_put(id, rules, registry);
         //75C1EA: the boundary placement tail clears +68A after Mark(PUT).
         //This is not the post-PerCell dead/limbo/falling exit at75C1F1.
         if let Some(e) = self.substrate.entities.get_mut(id) {
@@ -215,10 +214,9 @@ impl Simulation {
         id: u64,
         head: DriveCoord,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, crate::sim::world::FrameAdvanceError> {
-        self.foot_mark_remove(id, rules, fallback, registry);
+        self.foot_mark_remove(id, rules, registry);
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return Ok(false);
         };
@@ -245,7 +243,7 @@ impl Simulation {
             &mut e.position,
             e.on_bridge,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
         );
         let current = ground_pose::position_world_coord(&e.position);
         let owner = e.owner();
@@ -256,7 +254,7 @@ impl Simulation {
                 old,
                 false,
                 self.resolved_terrain.as_ref(),
-                self.path_grid.as_deref().or(fallback),
+                self.path_grid.as_deref(),
             );
         }
         if let Some(loco) = e.locomotor.as_mut() {
@@ -275,7 +273,7 @@ impl Simulation {
             current,
             true,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
         );
         //75BE3C: Per_Cell_Process(2); 75BE42..75BE69 then leaves at 75C1F1
         //for a dead, limboed or falling owner.
@@ -292,7 +290,7 @@ impl Simulation {
                 cause,
             }
         })?;
-        self.foot_mark_put(id, rules, fallback, registry);
+        self.foot_mark_put(id, rules, registry);
         //75BF77 follows the final Mark(PUT). The earlier post-PerCell exits
         //jump to75C1F1 and must retain the byte on a surviving object.
         if let Some(e) = self.substrate.entities.get_mut(id) {

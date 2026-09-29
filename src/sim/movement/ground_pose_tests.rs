@@ -839,6 +839,9 @@ fn forced_track_terminal_samples_full_head_xy_before_relink() {
             z: -347
         }
     ));
+    if sim.path_grid.is_none() {
+        sim.path_grid = Some(std::sync::Arc::new(grid.clone()));
+    }
     for frame in 0..64 {
         sim.session.binary_frame = frame;
         sim.run_track_points(
@@ -851,7 +854,6 @@ fn forced_track_terminal_samples_full_head_xy_before_relink() {
             },
             128,
             None,
-            Some(&grid),
             None,
         );
         if super::track_head::committed_track_head(sim.substrate.entities.get(1).unwrap()).is_none()

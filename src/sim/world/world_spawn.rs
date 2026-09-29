@@ -1505,11 +1505,11 @@ impl Simulation {
         // type's CanPlaceAt tests the origin for no house, and the unit is put
         // back (`0x0073953B..0x00739565` / `0x0073959C..0x007395B4`) before
         // either outcome acts.
-        self.foot_mark_remove(stable_id, Some(rules), None, registry);
+        self.foot_mark_remove(stable_id, Some(rules), registry);
         let placeable = rules.object(&yard_type).is_some_and(|yard| {
             crate::sim::build_site::can_place_building_at(self, rules, registry, yard, origin, None)
         });
-        self.foot_mark_put(stable_id, Some(rules), None, registry);
+        self.foot_mark_put(stable_id, Some(rules), registry);
         if !placeable {
             log::info!("MCV deploy blocked at origin {origin:?}");
             // `0x007394E0..0x0073950A`: EVA CannotDeployHere only for the

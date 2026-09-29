@@ -101,7 +101,6 @@ impl DamageConsequences {
         world: &mut Simulation,
         rules: &RuleSet,
         overlay_registry: Option<&OverlayTypeRegistry>,
-        fallback_path_grid: Option<&PathGrid>,
     ) -> DamageCommitReceipt {
         let Self {
             mut effects,
@@ -159,10 +158,7 @@ impl DamageConsequences {
             );
         }
 
-        let path_grid = world.finish_terrain_navigation_changes(
-            fallback_path_grid,
-            &terrain_navigation_changed_cells,
-        );
+        let path_grid = world.finish_terrain_navigation_changes(&terrain_navigation_changed_cells);
         if world.session.game_options.super_weapons && effects.structure_destroyed {
             let mut refreshed = Vec::new();
             for &(owner, category) in &dead_infos {

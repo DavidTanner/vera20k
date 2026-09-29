@@ -88,7 +88,6 @@ use crate::sim::combat::TargetKind;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::direction::TUBE_STEP_DIRECTION;
 use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
@@ -122,7 +121,6 @@ struct FreshCall<'a> {
     family: TrackFamily,
     args: ProcessMovementArgs,
     rules: &'a RuleSet,
-    fallback: Option<&'a PathGrid>,
     registry: Option<&'a OverlayTypeRegistry>,
 }
 
@@ -149,7 +147,6 @@ impl Simulation {
         args: ProcessMovementArgs,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let call = FreshCall {
@@ -157,7 +154,6 @@ impl Simulation {
             family,
             args,
             rules,
-            fallback,
             registry,
         };
         self.track_process_movement(&call, held)
@@ -302,7 +298,6 @@ impl Simulation {
             &request,
             held.as_deref_mut(),
             Some(call.rules),
-            call.fallback,
             call.registry,
         )? {
             FootPathOutcome::Deleted => Ok(true),
@@ -404,9 +399,9 @@ impl Simulation {
             return Ok(false);
         }
         //4B345B..4B34D1: Mark0, Unit+1AC(cell, dir, height, 0, 1), Mark1.
-        self.foot_mark_remove(id, Some(rules), call.fallback, call.registry);
+        self.foot_mark_remove(id, Some(rules), call.registry);
         let code = self.track_can_enter(call, cell, direction, height)?;
-        self.foot_mark_put(id, Some(rules), call.fallback, call.registry);
+        self.foot_mark_put(id, Some(rules), call.registry);
         let object = self.track_object(id, rules)?;
         let overlay = self.track_overlay(cell);
         //4B34D7..4B351D: the train and crusher coercions.
@@ -504,7 +499,7 @@ impl Simulation {
                     }
                 } else {
                     //4B38B3..4B393A: Scatter_Objects(Null, 1, 1, deck).
-                    self.scatter_blocked_track_cell(id, cell, rules, call.fallback);
+                    self.scatter_blocked_track_cell(id, cell, rules);
                 }
                 self.track_first_rejected_tail(id);
                 Ok(false)
@@ -581,7 +576,7 @@ impl Simulation {
         let destination =
             track_destination(actor).ok_or("Drive/Ship code-2 ladder without destination")?;
         let request = self.track_path_request(call, destination, urgency)?;
-        let found = self.foot_find_path(&request, held, rules, call.fallback, call.registry)?;
+        let found = self.foot_find_path(&request, held, rules, call.registry)?;
         //4B3A13..4B3A2A: a vanished Foot sets the out byte.
         if self.substrate.entities.get(id).is_none() {
             return Ok(true);
@@ -648,13 +643,8 @@ impl Simulation {
             if distance > 0x200 {
                 //Find_Path(cell(destination), IsTrain, 0); see the train residual.
                 let request = self.track_path_request(call, destination, 0)?;
-                let found = self.foot_find_path(
-                    &request,
-                    held.as_deref_mut(),
-                    rules,
-                    call.fallback,
-                    call.registry,
-                )?;
+                let found =
+                    self.foot_find_path(&request, held.as_deref_mut(), rules, call.registry)?;
                 if found == FindPathResult::Failed {
                     //4B3F40..4B3F55: a vanished Foot sets the out byte.
                     if self.substrate.entities.get(id).is_none() {
@@ -811,7 +801,7 @@ impl Simulation {
                     }
                 } else {
                     //4B43D0..4B4437: Scatter_Objects on the second cell.
-                    self.scatter_blocked_track_cell(id, second_cell, rules, call.fallback);
+                    self.scatter_blocked_track_cell(id, second_cell, rules);
                 }
                 self.track_second_refused(call)
             }
@@ -909,7 +899,7 @@ impl Simulation {
         //4B46DF..4B46FA: the crate question (see residual), then limbo.
         if !actor.lifecycle.in_limbo {
             //4B46FC..4B4705: Apply_Track_Occupation_Mode(head, 1).
-            self.track_apply_occupation(id, call.family, true, call.fallback);
+            self.track_apply_occupation(id, call.family, true);
             return Ok(false);
         }
         //4B4716..4B473C: a live owner drops the head again.
@@ -1190,7 +1180,6 @@ impl Simulation {
         id: u64,
         cell: (i16, i16),
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
     ) {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return;
@@ -1204,7 +1193,7 @@ impl Simulation {
         let location = ground_pose::position_world_coord(&actor.position);
         let deck = cells.flags(native) & 0x100 != 0
             && (location.z / GROUND_LEVEL_HEIGHT_LEPTONS - level).abs() > 2;
-        self.scatter_cell_contacts(cell, deck, true, rules, fallback);
+        self.scatter_cell_contacts(cell, deck, true, rules);
     }
 
     /// `CellClass::Scatter_Objects(null, 1, forced, deck)` on `cell`; also the
@@ -1215,7 +1204,6 @@ impl Simulation {
         deck: bool,
         forced: bool,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
     ) {
         #[cfg(test)]
         if super::fresh_oracle_seam::substitute(
@@ -1237,7 +1225,7 @@ impl Simulation {
                 MovementLayer::Ground
             },
             forced,
-            grid.as_deref().or(fallback),
+            grid.as_deref(),
             self.resolved_terrain.as_ref(),
             &mut self.scenario_rng,
             Some(rules),
@@ -1292,7 +1280,7 @@ impl Simulation {
         ) & 0x1F
             != 0;
         if infantry {
-            self.scatter_cell_contacts(cell, deck, false, call.rules, call.fallback);
+            self.scatter_cell_contacts(cell, deck, false, call.rules);
         }
     }
 
