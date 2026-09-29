@@ -369,22 +369,6 @@ impl Simulation {
         let _ = self.remove_cached_sensor_deposit(stable_id, Some(rules));
     }
 
-    /// FootClass::PerCellProcess old-remove/new-add pair. TubeMovement owns an
-    /// early-return turn and is intentionally not routed here until its native
-    /// completion writer lands.
-    pub(crate) fn move_unit_sensor_after_cell_change(
-        &mut self,
-        stable_id: u64,
-        old_cell: Option<(u16, u16)>,
-        new_cell: Option<(u16, u16)>,
-        rules: &RuleSet,
-    ) {
-        if old_cell == new_cell {
-            return;
-        }
-        self.refresh_unit_sensor_at_per_cell(stable_id, rules);
-    }
-
     /// Foot4D8611/4D8621 executes both receivers for PerCellProcess(2),
     /// including a terminal or chain callback in the same cell.
     pub(crate) fn refresh_unit_sensor_at_per_cell(&mut self, stable_id: u64, rules: &RuleSet) {
@@ -532,9 +516,8 @@ mod tests {
             "the overlapping second deposit remains positive"
         );
 
-        let old = Some((40, 30));
         sim.substrate.entities.get_mut(second).unwrap().position.rx = 50;
-        sim.move_unit_sensor_after_cell_change(second, old, Some((50, 30)), &rules);
+        sim.refresh_unit_sensor_at_per_cell(second, &rules);
         assert!(!sim.fog.has_sensor_for_house(americans, 33, 30));
         assert!(sim.fog.has_sensor_for_house(americans, 57, 30));
 

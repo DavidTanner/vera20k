@@ -1961,9 +1961,9 @@ impl Simulation {
         // the ground ends it in the impact, which the object turn commits.
         if transact_fly && self.fly_crash_fall(stable_id) {
             return crate::sim::movement::air_movement::AirMovementTickStats {
-                air_movers: 1,
                 arrivals: 0,
                 impact: true,
+                touched_down: false,
             };
         }
 

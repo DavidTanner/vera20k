@@ -16,7 +16,6 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress};
 use crate::sim::game_entity::GameEntity;
-use crate::sim::lifecycle_request::{LifecycleRequest, UninitReason};
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
@@ -281,7 +280,7 @@ impl Simulation {
         )
     }
 
-    fn track_survives(&self, id: u64) -> bool {
+    pub(super) fn track_survives(&self, id: u64) -> bool {
         self.substrate.entities.get(id).is_some_and(|entity| {
             entity.lifecycle.object_alive
                 && !entity.lifecycle.in_limbo
@@ -439,9 +438,9 @@ impl Simulation {
                         super::movement_commands::spend_track_route(entity);
                     }
                 }
-                self.unit_track_per_cell(
+                self.unit_per_cell_process(
                     id,
-                    super::track_turn::PerCellReason::Arrival,
+                    super::per_cell::PerCellReason::Arrival,
                     rules,
                     registry,
                 );
@@ -1091,9 +1090,9 @@ impl Simulation {
         set_head(entity, family, None);
         // Drive4B1CF5 / Ship6A1338 publish +63 for the PerCell receiver.
         set_track_valid(entity, family, true);
-        self.unit_track_per_cell(
+        self.unit_per_cell_process(
             id,
-            super::track_turn::PerCellReason::Arrival,
+            super::per_cell::PerCellReason::Arrival,
             Some(rules),
             registry,
         );
@@ -1277,185 +1276,6 @@ impl Simulation {
             return false;
         }
         self.track_enter_idle_mode(id, rules)
-    }
-
-    /// Unit Per_Cell_Process(2) (`0x00739EC0`) outside a track: the Teleport
-    /// warp's arrival call (`0x0071971C`).
-    pub(crate) fn unit_per_cell_process_arrival(
-        &mut self,
-        id: u64,
-        rules: Option<&RuleSet>,
-        registry: Option<&OverlayTypeRegistry>,
-    ) {
-        self.unit_track_per_cell(
-            id,
-            super::track_turn::PerCellReason::Arrival,
-            rules,
-            registry,
-        );
-    }
-
-    pub(super) fn unit_track_per_cell(
-        &mut self,
-        id: u64,
-        reason: super::track_turn::PerCellReason,
-        rules: Option<&RuleSet>,
-        registry: Option<&OverlayTypeRegistry>,
-    ) {
-        // Unit739EC0 invokes the MCV receiver before normal crush/Foot tail.
-        if let Some(rules) = rules {
-            crate::sim::mcv_deploy::per_cell_process(self, id, rules, registry);
-        }
-        if !self.track_survives(id) {
-            return;
-        }
-        // 0x0073A31F..0x0073A5EA, before the Ready/Commence below: a tethered
-        // unit on Enter arriving north-adjacent to its dock sends DOCK_NOW.
-        if let Some(rules) = rules
-            && reason == super::track_turn::PerCellReason::Arrival
-        {
-            crate::sim::miner::per_cell_dock_now(self, rules, id);
-        }
-        // Unit PerCell2 739EC0: after MCV retry, +6D1==0 admits
-        // Ready(+200)73ACC2 -> Commence(+1EC)73ACD1, BEFORE full-cell
-        // crush73B089 and Foot sensor/playfield tail73B0A0. The existing
-        // miner.unload_active owns +6D1 (ctor7353FE, unload73DFDA).
-        // This promotes only: it does not dispatch a mission handler or
-        // repeat the object AI prefix. mission_host_promote retains its
-        // documented unavailable locomotor/height fallback for other inputs.
-        let promote = reason == super::track_turn::PerCellReason::Arrival
-            && self.substrate.entities.get(id).is_some_and(|entity| {
-                !entity
-                    .miner
-                    .as_ref()
-                    .is_some_and(|miner| miner.unload_active)
-            });
-        if let Some(rules) = rules.filter(|_| promote) {
-            self.mission_host_promote(id, self.session.binary_frame, rules);
-        }
-        // 0x0073ACD7..0x0073ADC4: a harvester (or weeder) off Enter/Unload
-        // drops a refinery (weeder) contact at every track end.
-        if let Some(rules) = rules
-            && reason == super::track_turn::PerCellReason::Arrival
-        {
-            crate::sim::miner::per_cell_release_dock_contact(self, rules, id);
-        }
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return;
-        };
-        let at = (entity.position.rx, entity.position.ry);
-        let layer = if entity.on_bridge {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
-        let mut cursor = self
-            .substrate
-            .occupancy
-            .get(at.0, at.1)
-            .and_then(|list| list.first_on_layer(layer));
-        while let Some(victim) = cursor {
-            // Save successor BEFORE lifecycle can remove the current object.
-            cursor = self
-                .substrate
-                .occupancy
-                .get(at.0, at.1)
-                .and_then(|list| list.next_on_layer(layer, victim));
-            if victim == id {
-                continue;
-            }
-            let Some(crusher) = self.substrate.entities.get(id) else {
-                return;
-            };
-            let coord = position_world_coord(&crusher.position);
-            let capability = super::bump_crush::CrushCapability::new(
-                crusher.regular_crusher,
-                crusher.omni_crusher,
-            );
-            let kills = super::bump_crush::classify_drive_crush_phase(
-                super::bump_crush::DriveCrushPhase::FullyInCell,
-                &[victim],
-                &self.substrate.entities,
-                id,
-                &self.house_alliances,
-                &self.interner,
-                (coord.x, coord.y),
-                capability,
-                super::bump_crush::ScatterEligibility::from_rules(rules),
-                self.session.binary_frame,
-                rules,
-                &self.houses,
-            );
-            if !matches!(kills, super::bump_crush::DriveCrushOutcome::Kill { ref victims } if victims.contains(&victim))
-            {
-                continue;
-            }
-            if let Some(rules) = rules {
-                if let Some(entity) = self.substrate.entities.get(victim) {
-                    super::bump_crush::emit_crush_kill_sounds_at(
-                        entity,
-                        (i32::from(at.0), i32::from(at.1)),
-                        rules,
-                        &mut self.interner,
-                        &mut self.sound_events,
-                    );
-                }
-                let owner = self.substrate.entities.get(id).map(|entity| entity.owner());
-                if let Some(entity) = self.substrate.entities.get_mut(victim) {
-                    entity.health.current = 0;
-                }
-                self.record_the_kill(victim, Some(id), owner, rules);
-                self.apply_lifecycle_request_with_rules(
-                    LifecycleRequest::Uninit {
-                        stable_id: victim,
-                        reason: UninitReason::Crush,
-                    },
-                    rules,
-                );
-            } else {
-                self.apply_lifecycle_request(LifecycleRequest::Uninit {
-                    stable_id: victim,
-                    reason: UninitReason::Crush,
-                });
-            }
-        }
-        if !self.track_survives(id) {
-            return;
-        }
-        // Foot4D85D7 skips the reason2 body for turn completion. Shared
-        // planning-waypoint maintenance at4D8DFD remains a required receiver
-        // gap; it must not be substituted with the ordinary path queue.
-        if reason == super::track_turn::PerCellReason::TurnComplete {
-            return;
-        }
-        if let Some(rules) = rules {
-            self.refresh_unit_sensor_at_per_cell(id, rules);
-        }
-        self.foot_neighbors_at_per_cell(id);
-        if let Some(rules) = rules {
-            crate::sim::world::techno_ai_cloak::uncloak_on_sensor_neighbour_after_cell_entry(
-                self, id, rules,
-            );
-            // `0x004D882F..0x004D896E`: the range stop's OpenTopped arm (the
-            // pursuit stage stands in for its InRange arm), then the class
-            // Set_Destination(NULL, 1) and `+0x5E0 = -1`.
-            if self
-                .substrate
-                .entities
-                .get(id)
-                .and_then(|entity| self.object_type(entity.type_ref(), rules))
-                .is_some_and(|obj| obj.open_topped)
-                && self.foot_per_cell_range_stop(id, rules, None)
-            {
-                self.set_unit_null_destination(id, Some(rules));
-                if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    entity.navigation.path_replay.clear_live_head();
-                }
-            }
-        }
-        // `0x006F5090`'s head lets a held Temporal target go.
-        self.temporal_release_if_warping(id);
-        self.promote_entity_playfield_membership_after_move(id);
     }
 }
 

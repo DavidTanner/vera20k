@@ -97,6 +97,8 @@ pub(crate) use navcom::{
 #[cfg(test)]
 pub(crate) mod fresh_oracle_seam;
 mod path_markers;
+mod per_cell;
+pub(crate) use per_cell::PerCellReason;
 pub(crate) mod ready_producer;
 mod scatter_cell;
 pub(crate) mod slope_transition;
