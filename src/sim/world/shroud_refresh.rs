@@ -14,7 +14,9 @@ fn moving_now(entity: &GameEntity, frame: u32) -> bool {
         return false;
     };
     match loco.active_kind() {
-        LocomotorKind::Fly => loco.fly_current_speed != crate::util::fixed_math::SIM_ZERO,
+        LocomotorKind::Fly => loco
+            .fly_runtime()
+            .is_some_and(|fly| fly.current_speed != crate::util::fixed_math::SIM_ZERO),
         LocomotorKind::Rocket => entity.rocket_state.as_ref().is_some_and(|state| {
             matches!(
                 state.phase,

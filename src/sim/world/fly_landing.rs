@@ -134,7 +134,13 @@ impl Simulation {
         if dropship && height == 0 {
             entity.flight_attitude.settle();
         }
-        entity.locomotor.as_mut().unwrap().speed_fraction = SIM_ZERO;
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .fly_runtime_mut()
+            .unwrap()
+            .target_speed = SIM_ZERO;
         let entity = self.substrate.entities.get(id).unwrap();
         let base = crate::sim::aircraft::landing_base::landing_base(
             entity,
@@ -250,11 +256,16 @@ impl Simulation {
         self.set_object_height(id, base);
         self.aircraft_tracker_remove(id);
         let entity = self.substrate.entities.get_mut(id).unwrap();
-        let loco = entity.locomotor.as_mut().unwrap();
-        loco.fly_runtime_mut().unwrap().finish_landing();
+        let fly = entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .fly_runtime_mut()
+            .unwrap();
+        fly.finish_landing();
+        fly.target_speed = SIM_ZERO;
+        fly.current_speed = SIM_ZERO;
         entity.foot_speed.applied_fraction = SIM_ZERO;
-        loco.speed_fraction = SIM_ZERO;
-        loco.fly_current_speed = SIM_ZERO;
         self.foot_neighbors_after_fly_landing(id);
         let entity = self.substrate.entities.get(id).unwrap();
         let destination = entity
@@ -682,8 +693,9 @@ mod tests {
         ));
         let l = e.locomotor.as_mut().unwrap();
         *l.fly_runtime_mut().unwrap()=serde_json::from_value::<FlyRuntime>(serde_json::json!({"target_height":0,"taking_off":false,"landing":before["phase"][1]==1,"landing_effect_latched":before["phase"][2]==1,"airport_bound":input["airport_bound"].as_bool().unwrap_or(false),"moving":true,"destination":before["destination"]})).unwrap();
-        l.speed_fraction = SimFixed::lit("0.75");
-        l.fly_current_speed = SimFixed::lit("0.5");
+        let fly = l.fly_runtime_mut().unwrap();
+        fly.target_speed = SimFixed::lit("0.75");
+        fly.current_speed = SimFixed::lit("0.5");
         e.flight_attitude=serde_json::from_value::<FlightAttitude>(serde_json::json!({"pitch":SimFixed::from_num(input["owner_float_2e8"].as_f64().unwrap_or(0.0))})).unwrap();
         e.navigation.neighbor_state =
             serde_json::from_value(serde_json::json!({"cell": before["neighbor_cell"]})).unwrap();
@@ -1045,8 +1057,8 @@ mod tests {
             );
             assert_eq!(
                 serde_json::json!([
-                    l.speed_fraction.to_num::<f64>(),
-                    l.fly_current_speed.to_num::<f64>()
+                    l.fly_runtime().unwrap().target_speed.to_num::<f64>(),
+                    l.fly_runtime().unwrap().current_speed.to_num::<f64>()
                 ]),
                 after["speeds"],
                 "{}",

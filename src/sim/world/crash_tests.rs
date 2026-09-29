@@ -145,7 +145,8 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     entity.body_facing = facing;
     let loco = entity.locomotor.as_mut().unwrap();
     loco.set_fly_target_height(int(input, "target_height", 1500) as i32);
-    loco.fly_current_speed = SimFixed::from_bits(int(input, "speed_bits", 65536) as i32);
+    loco.fly_runtime_mut().unwrap().current_speed =
+        SimFixed::from_bits(int(input, "speed_bits", 65536) as i32);
     if int(input, "moving", 1) != 0 {
         let destination = input["destination"].as_array().map_or(
             DriveCoord {

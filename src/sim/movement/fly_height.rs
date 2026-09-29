@@ -7,6 +7,7 @@
 
 use super::locomotor::AirMovePhase;
 use crate::sim::components::DriveCoord;
+use crate::util::fixed_math::SimFixed;
 
 /// Constructor4CC9EE..4CC9FA clears target+38 and takeoff/landing+50/+51.
 /// Only this owner mutates those fields. Object coordinates own current Z.
@@ -39,6 +40,16 @@ pub struct FlyRuntime {
     /// only Process's fall block writes it (`0x004CD6C6`), never resetting it.
     #[serde(default)]
     fall_counter: i32,
+    /// Fly+40, the target speed fraction the ramp chases. The constructor
+    /// (`0x004CC9E5`) starts it at 0; Process's slowdown
+    /// (`air_movement::write_fly_target_speed`), the takeoff callback and the
+    /// landing write it.
+    #[serde(default)]
+    pub(crate) target_speed: SimFixed,
+    /// Fly+48, the current speed fraction, chasing `target_speed` by 0.1 a
+    /// frame (`0x004CE441..0x004CE495`).
+    #[serde(default)]
+    pub(crate) current_speed: SimFixed,
 }
 
 /// Techno-owned approach pitch. Native stores f32; the engine uses SimFixed.

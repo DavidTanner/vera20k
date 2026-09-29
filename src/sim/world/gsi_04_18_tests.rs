@@ -684,7 +684,7 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
     let mut loco = LocomotorState::for_test_kind(LocomotorKind::Fly);
     loco.layer = MovementLayer::Air;
     loco.altitude = SimFixed::from_num(207);
-    loco.fly_current_speed = SimFixed::from_num(1);
+    loco.fly_runtime_mut().unwrap().current_speed = SimFixed::from_num(1);
     sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(loco);
     sim.session.binary_frame = 119;
     sim.refresh_high_flying_sight_before_process(2, None, None);
@@ -708,7 +708,7 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
             .as_mut()
             .unwrap();
         loco.altitude = SimFixed::from_num(208);
-        loco.fly_current_speed = SimFixed::from_num(0);
+        loco.fly_runtime_mut().unwrap().current_speed = SimFixed::from_num(0);
     }
     sim.refresh_high_flying_sight_before_process(2, None, None);
     assert_eq!(
@@ -728,7 +728,9 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
         .locomotor
         .as_mut()
         .unwrap()
-        .fly_current_speed = SimFixed::from_num(-1);
+        .fly_runtime_mut()
+        .unwrap()
+        .current_speed = SimFixed::from_num(-1);
     // Membership is false: the admitted FootAI event calls leaves which reject,
     // then still reloads15. Native moving compares !=0, so negative speed admits.
     sim.refresh_high_flying_sight_before_process(2, None, None);

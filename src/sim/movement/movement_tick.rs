@@ -1898,22 +1898,14 @@ fn advance_ordinary_mover(
                     resolved_terrain,
                     path_grid,
                 );
-                movement_step::advance_infantry_wobble(
-                    &mut entity.locomotor,
-                    entity.category,
-                    entity_id,
-                    dt,
-                );
                 movement_step::AdvanceResult::ReadyForCrossings
             } else {
                 movement_step::advance_lepton_position(
                     target,
                     &mut entity.position,
                     &mut entity.locomotor,
-                    entity.category,
                     effective_speed,
                     dt,
-                    entity_id,
                 )
             };
             let target = entity
@@ -3603,7 +3595,6 @@ fn finalize_finished_entities(
             // the frame clock.
             entity.movement_target = None;
             if let Some(ref mut loco) = entity.locomotor {
-                loco.infantry_wobble_phase = 0.0;
                 loco.subcell_dest = None;
                 // Full stop zeroes the hover throttle (the hover locomotor's
                 // arrival cleanup) so the next order spins up from rest.

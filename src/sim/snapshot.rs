@@ -730,7 +730,10 @@ use crate::sim::world::Simulation;
 // garrison original owner.
 // 249 -> 250: a locomotor and its piggyback stash no longer save the
 // always-1.0 speed multiplier.
-const SNAPSHOT_VERSION: u32 = 250;
+// 250 -> 251: Fly's target and current speed move from the shared locomotor
+// state into the Fly runtime; the unread air progress and wobble phase are
+// gone.
+const SNAPSHOT_VERSION: u32 = 251;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3634,7 +3637,9 @@ mod tests {
         // 248 -> 249: no dead particle, boarding-phase or garrison-owner
         // fields.
         // 249 -> 250: no always-1.0 locomotor speed multiplier.
-        assert_eq!(super::SNAPSHOT_VERSION, 250);
+        // 250 -> 251: Fly speeds live in the Fly runtime; no air progress or
+        // wobble phase.
+        assert_eq!(super::SNAPSHOT_VERSION, 251);
     }
 
     #[test]

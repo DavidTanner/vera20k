@@ -84,16 +84,6 @@ pub struct LocomotorState {
     pub runtime_payload: LocomotorRuntimePayload,
     /// Which spatial layer the unit currently occupies.
     pub layer: MovementLayer,
-    /// Fly target speed (`+0x40`), which `fly_current_speed` ramps toward.
-    /// Written by Fly Process's slowdown (`air_movement::
-    /// write_fly_target_speed`), the takeoff callback and the landing; the
-    /// Fly constructor (`0x004CC9E5`) starts it at 0. Only Fly reads it.
-    pub speed_fraction: SimFixed,
-    /// Actual flight speed fraction (0.0–1.0) for Fly aircraft.
-    /// Ramps toward `speed_fraction` (which acts as target) by +/-0.1 per tick,
-    /// matching the original engine's TargetSpeed/CurrentSpeed system.
-    /// A Jumpjet keeps its speeds in its own runtime (`JumpjetFlight`).
-    pub fly_current_speed: SimFixed,
     /// Bounded altitude cache for movement/presentation adapters. Fly's exact
     /// current height comes from Object Z and terrain; its target is in FlyRuntime.
     pub altitude: SimFixed,
@@ -107,21 +97,6 @@ pub struct LocomotorState {
     /// Pathfinder movement zone — determines crush capability and special routing.
     /// Cached from ObjectType at spawn to avoid per-tick RuleSet lookups.
     pub movement_zone: MovementZone,
-    /// Air movement progress in cells (0.0 → 1.0 per cell step).
-    /// Air movement uses cell-based progress separately from the lepton
-    /// advancement used by ground movement. This field is only meaningful
-    /// for air-layer entities during horizontal flight.
-    pub air_progress: SimFixed,
-    /// Infantry lateral wobble phase (radians). Sine wave applied perpendicular
-    /// to facing direction during walking, creating natural visual sway/spacing.
-    /// **VERA-internal, gamemd equivalent UNCHECKED.** No `+0x88` operand
-    /// appears anywhere in `WalkLocomotionClass::ProcessMovement` @
-    /// `0x0075AEC0`. A double at object `+0x88` does exist — in
-    /// `JumpjetLocomotionClass`, applied by `Update_Coordinates_And_Altitude`
-    /// @ `0x0054D0F0` in states 2 and 3.
-    /// Render-only (f32) — does not affect simulation determinism.
-    #[serde(skip, default)]
-    pub infantry_wobble_phase: f32,
     /// Within-cell walk destination for infantry. Set when a sub-cell is allocated
     /// during cell entry. The locomotor walks the infantry toward this point after
     /// the path is exhausted.
@@ -160,7 +135,6 @@ impl LocomotorState {
     /// FlightLevel when takeoff is admitted, not during construction.
     pub fn from_object_type(obj: &ObjectType, binary_frame: u32) -> Self {
         let kind: LocomotorKind = obj.locomotor;
-        let sim_one: SimFixed = SimFixed::from_num(1);
 
         let layer: MovementLayer = match kind {
             LocomotorKind::Drive
@@ -195,20 +169,12 @@ impl LocomotorState {
                 payload
             },
             layer,
-            speed_fraction: if kind == LocomotorKind::Fly {
-                SIM_ZERO
-            } else {
-                sim_one
-            },
-            fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,
 
             balloon_hover: obj.balloon_hover,
             hover_attack: obj.hover_attack,
             speed_type: obj.speed_type,
             movement_zone: obj.movement_zone,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
             subcell_dest: None,
             hover_throttle: SIM_ZERO,
             hover_speed_request: SIM_ZERO,
@@ -237,20 +203,12 @@ impl LocomotorState {
             piggyback: None,
             runtime_payload: LocomotorRuntimePayload::for_kind(kind, binary_frame),
             layer,
-            speed_fraction: if kind == LocomotorKind::Fly {
-                SIM_ZERO
-            } else {
-                SimFixed::from_num(1)
-            },
-            fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,
 
             balloon_hover: false,
             hover_attack: false,
             speed_type: SpeedType::Track,
             movement_zone: MovementZone::Normal,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
             subcell_dest: None,
             hover_throttle: SIM_ZERO,
             hover_speed_request: SIM_ZERO,

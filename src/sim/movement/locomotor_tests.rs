@@ -547,7 +547,8 @@ fn test_fly_locomotor_air_layer() {
     assert!(state.is_air_mover());
     assert_eq!(state.fly_target_height(), 0);
     assert_eq!(
-        state.speed_fraction, SIM_ZERO,
+        state.fly_runtime().unwrap().target_speed,
+        SIM_ZERO,
         "constructor4CC9E5 target speed"
     );
 }
