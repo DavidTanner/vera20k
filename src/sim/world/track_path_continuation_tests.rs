@@ -965,7 +965,7 @@ fn track_end_frame_spends_one_speed_budget() {
             (
                 committed_track_head(e),
                 residual,
-                e.foot_speed.cached_current_speed,
+                sim.current_speed_for_test(id, &rules),
             )
         };
         let mut checked = 0;

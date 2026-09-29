@@ -535,7 +535,6 @@ fn drive_stop_moving(entity: &mut GameEntity) {
         if entity.foot_speed.applied_fraction > SIM_ZERO {
             entity.foot_speed.applied_fraction = SIM_ZERO;
         }
-        entity.foot_speed.cached_current_speed = 0;
     }
 }
 
@@ -576,7 +575,6 @@ fn ship_stop_moving(entity: &mut GameEntity) {
         if entity.foot_speed.applied_fraction > SIM_ZERO {
             entity.foot_speed.applied_fraction = SIM_ZERO;
         }
-        entity.foot_speed.cached_current_speed = 0;
     }
 }
 
@@ -628,7 +626,6 @@ mod tests {
         );
         ship.target_speed_fraction = SIM_ONE;
         entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
         entity.navigation.path_replay.directions = vec![2, 2];
         entity.navigation.path_replay.cursor = 0;
 
@@ -638,7 +635,6 @@ mod tests {
         assert_eq!(ship.target_speed_fraction, TRACK_STOP_TARGET_FRACTION);
         assert_eq!(entity.navigation.path_replay.cursor, 0);
         assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
-        assert_eq!(entity.foot_speed.cached_current_speed, 0);
     }
 
     #[test]
@@ -652,7 +648,6 @@ mod tests {
             ..Default::default()
         };
         entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
         entity.ship_locomotion = Some(ShipLocomotionRuntime {
             destination: Some(DriveCoord::cell(5, 3, 0)),
             head_to: Some(DriveCoord::cell(4, 3, 0)),
@@ -668,7 +663,6 @@ mod tests {
         assert_eq!(ship.head_to, Some(DriveCoord::cell(4, 3, 0)));
         assert_eq!(ship.target_speed_fraction, TRACK_STOP_TARGET_FRACTION);
         assert_eq!(entity.foot_speed.applied_fraction, SIM_HALF);
-        assert_eq!(entity.foot_speed.cached_current_speed, 10);
 
         let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
         ship.destination = Some(DriveCoord::cell(5, 3, 0));
@@ -696,7 +690,6 @@ mod tests {
             ..Default::default()
         };
         entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
         entity.ship_locomotion = Some(ShipLocomotionRuntime {
             destination: Some(DriveCoord::cell(4, 3, 0)),
             head_to: Some(DriveCoord::cell(4, 3, 0)),
@@ -712,7 +705,6 @@ mod tests {
         assert_eq!(ship.head_to, None);
         assert_eq!(entity.navigation.path_replay.cursor, 1);
         assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
-        assert_eq!(entity.foot_speed.cached_current_speed, 0);
     }
 
     fn resting_drive_miner() -> GameEntity {

@@ -142,7 +142,7 @@ pub use facing_class::FacingClass;
 
 #[cfg(test)]
 pub(crate) use foot_speed::owner_current_speed_from_fraction;
-pub(crate) use foot_speed::{order_speed, owner_current_speed};
+pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 // NOT test-gated: `techno_common_pre`'s DisguiseWhenStill check
 // (sim/world/techno_ai.rs) consumes this in every build; a 2026-08-14
 // warning-cleanup gate on it broke release-only compilation.

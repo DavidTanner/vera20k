@@ -156,7 +156,13 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // mission, NavCom, attack and movement targets, locomotor kind and layer and
 // all three RNG states matched at all 16 ticks (the probe patch was not
 // committed). Old values: the commit that moved them.
-const SLICE6_BASELINE_HASH: u64 = 0xF9E4_49DA_5683_0027;
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+const SLICE6_BASELINE_HASH: u64 = 0x6701_D1B6_4062_FFB0;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -270,7 +276,7 @@ fn replay_hash_stable_through_slice6() {
                 u64::from(infantry.body_facing.current(sim.session.binary_frame)),
                 row["facing"].as_u64().unwrap()
             );
-            assert_eq!(infantry.foot_speed.cached_current_speed, 10);
+            assert_eq!(sim.current_speed_for_test(3, &rules), 10);
         }
 
         if tick >= 10 {

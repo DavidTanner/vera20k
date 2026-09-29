@@ -117,7 +117,6 @@ fn fixture(case: &Value) -> Simulation {
     entity.lifecycle.cell_marked = false;
     entity.foot_occupation_enabled = input["occupation_enabled"].as_bool().unwrap_or(false);
     entity.foot_speed.applied_fraction = fraction(&before["applied_fraction_bits"]);
-    entity.foot_speed.cached_current_speed = 73;
     put_coords(
         &mut entity,
         DriveCoord {

@@ -741,7 +741,9 @@ use crate::sim::world::Simulation;
 // a garrison unloads through its Unload mission.
 // 254 -> 255: an entity no longer saves its unread TooBigToFitUnderBridge and
 // ZFudgeBridge copies; movement never read them and the draw reads the type.
-const SNAPSHOT_VERSION: u32 = 255;
+// 255 -> 256: a Foot owner no longer saves a cached GetCurrentSpeed; readers
+// query the live getter.
+const SNAPSHOT_VERSION: u32 = 256;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3235,14 +3237,15 @@ mod tests {
         let mut bytes = GameSnapshot::save(&sim, 0, 0, "test_map", 0);
 
         // Product magic and public envelope version occupy the first 12 bytes.
-        bytes[12] = 254;
+        let other = SNAPSHOT_VERSION + 1;
+        bytes[12..16].copy_from_slice(&other.to_le_bytes());
 
         assert!(matches!(
             GameSnapshot::load(&bytes),
             Err(SnapshotError::VersionMismatch {
                 expected: SNAPSHOT_VERSION,
-                found: 254,
-            })
+                found,
+            }) if found == other
         ));
     }
 
@@ -3629,7 +3632,8 @@ mod tests {
         // 252 -> 253: no Teleport/Rocket payload copies.
         // 253 -> 254: no garrison Unloading order intent.
         // 254 -> 255: entity TooBigToFitUnderBridge/ZFudgeBridge copies removed.
-        assert_eq!(super::SNAPSHOT_VERSION, 255);
+        // 255 -> 256: no cached GetCurrentSpeed.
+        assert_eq!(super::SNAPSHOT_VERSION, 256);
     }
 
     #[test]
@@ -5004,7 +5008,6 @@ mod tests {
         let ship_head = DriveCoord::cell(6, 5, 0);
         let entity = sim.substrate.entities.get_mut(1).expect("SHP unit");
         entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
         entity.ship_locomotion = Some(ShipLocomotionRuntime {
             destination: Some(ship_head),
             head_to: Some(ship_head),
@@ -5040,7 +5043,6 @@ mod tests {
         assert_eq!(restored_ship.target_speed_fraction, SIM_ONE);
         let restored_owner_speed = &restored.substrate.entities.get(1).unwrap().foot_speed;
         assert_eq!(restored_owner_speed.applied_fraction, SIM_HALF);
-        assert_eq!(restored_owner_speed.cached_current_speed, 10);
         assert_eq!(restored.state_hash(), populated_shp_state_hash);
     }
 

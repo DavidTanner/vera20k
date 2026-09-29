@@ -605,8 +605,13 @@ pub(crate) fn build_unit_instances(
         // so a miner hopping to its next ore cell shows none. RESIDUAL:
         // native frames it from `(Unit+0x538 + frame) % 15`; this overlay
         // keeps its own counter.
-        let moving =
-            crate::sim::movement::ready_producer::is_moving_now_for(entity, display_binary_frame);
+        let moving = crate::sim::movement::ready_producer::is_moving_now_for(
+            entity,
+            state.rules().map(|rules| {
+                crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.type_handles)
+            }),
+            display_binary_frame,
+        );
         if let Some(ref ho) = entity.harvest_overlay
             && ho.visible
             && !moving

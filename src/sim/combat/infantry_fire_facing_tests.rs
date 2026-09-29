@@ -619,7 +619,8 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
         if entity.foot_speed.applied_fraction > SimFixed::ONE / SimFixed::from_num(10) {
             if boosted {
                 assert_eq!(
-                    entity.foot_speed.cached_current_speed, 11,
+                    sim.current_speed_for_test(firer, &rules),
+                    11,
                     "live native crate speed"
                 );
             }

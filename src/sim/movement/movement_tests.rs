@@ -1267,7 +1267,6 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         ..Default::default()
     });
     entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
-    entity.foot_speed.cached_current_speed = 123;
     sim.substrate.entities.insert(entity);
     assert!(matches!(
         sim.reveal(1),
@@ -1281,7 +1280,6 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
     assert!(sim.force_drive_track(1, 0x47, head));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
-    assert_eq!(entity.foot_speed.cached_current_speed, 123);
     let drive = entity.drive_locomotion.as_ref().unwrap();
     assert_eq!(drive.destination, Some(head));
     assert_eq!(drive.head_to, Some(head));
@@ -1299,10 +1297,6 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
             .unwrap();
         let entity = sim.substrate.entities.get(1).unwrap();
         assert!(entity.movement_target.is_none());
-        assert_ne!(
-            entity.foot_speed.cached_current_speed, 123,
-            "live getter replaces the seeded value"
-        );
         let current_cell = (entity.position.rx, entity.position.ry);
         assert!(
             sim.substrate
@@ -2160,7 +2154,6 @@ fn test_reissue_mid_curve_keeps_track_and_anchors_path_at_head() {
         let drive = entity.drive_locomotion.as_mut().expect("drive state");
         drive.target_speed_fraction = SimFixed::lit("0.4");
         entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
-        entity.foot_speed.cached_current_speed = 7;
     }
 
     // Re-order behind the body while the curve is in flight. Pre-fix this
@@ -2216,7 +2209,6 @@ fn test_reissue_mid_curve_keeps_track_and_anchors_path_at_head() {
     );
     assert_eq!(drive.target_speed_fraction, SimFixed::lit("0.4"));
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
-    assert_eq!(entity.foot_speed.cached_current_speed, 7);
     assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::cell(0, 3)));
 }
 
@@ -4510,15 +4502,6 @@ fn drive_accelerates_false_tick_stores_modified_fraction_without_mutating_speed(
         SimFixed::from_num(100),
         "Drive speed fraction must not mutate raw top speed"
     );
-    assert_eq!(
-        entity
-            .movement_target
-            .as_ref()
-            .expect("still moving")
-            .current_speed,
-        SimFixed::from_num(50),
-        "Drive current speed should be raw speed scaled by current fraction"
-    );
 }
 
 #[test]
@@ -4595,14 +4578,7 @@ fn drive_accelerates_true_tick_ramps_fraction_before_movement_speed() {
     let drive = entity.drive_locomotion.as_ref().expect("drive state");
     assert_eq!(drive.target_speed_fraction, SIM_ONE);
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.03"));
-    assert_eq!(
-        entity
-            .movement_target
-            .as_ref()
-            .expect("still moving")
-            .current_speed,
-        SimFixed::from_num(100) * SimFixed::lit("0.03"),
-    );
+    assert!(entity.movement_target.is_some(), "still moving");
 }
 
 /// One Structure per 2x2 foundation cell at (5,5), so the per-owner block

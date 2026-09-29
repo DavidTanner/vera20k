@@ -9,7 +9,11 @@ use crate::sim::{game_entity::GameEntity, pathfinding::PathGrid, vision};
 /// Active represented slot80 implementations: Fly4CCAC0 compares current speed
 /// with zero; Rocket661F90 accepts signed states3..5; other live families use
 /// the existing native-readiness owner (including Jumpjet54D0D0 state!=0,2).
-fn moving_now(entity: &GameEntity, frame: u32) -> bool {
+fn moving_now(
+    entity: &GameEntity,
+    rules: Option<crate::sim::movement::SpeedRules<'_>>,
+    frame: u32,
+) -> bool {
     let Some(loco) = entity.locomotor.as_ref() else {
         return false;
     };
@@ -25,7 +29,7 @@ fn moving_now(entity: &GameEntity, frame: u32) -> bool {
                     | crate::sim::movement::rocket_movement::RocketPhase::Terminal
             )
         }),
-        _ => crate::sim::movement::ready_producer::is_moving_now_for(entity, frame),
+        _ => crate::sim::movement::ready_producer::is_moving_now_for(entity, rules, frame),
     }
 }
 
@@ -46,7 +50,13 @@ impl Simulation {
                 entity.category,
                 EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
             )
-            || !moving_now(entity, frame)
+            || !moving_now(
+                entity,
+                rules.map(|rules| {
+                    crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)
+                }),
+                frame,
+            )
         {
             return;
         }

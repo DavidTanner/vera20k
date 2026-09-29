@@ -1601,7 +1601,15 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
     }
     // `Is_Moving` on the teleport locomotor: the Relocate tick only.
     miner.is_full()
-        && crate::sim::movement::ready_producer::is_moving_now_for(entity, sim.session.binary_frame)
+        && crate::sim::movement::ready_producer::is_moving_now_for(
+            entity,
+            Some(crate::sim::movement::SpeedRules::new(
+                rules,
+                &sim.interner,
+                &sim.type_handles,
+            )),
+            sim.session.binary_frame,
+        )
 }
 
 /// `MapCoord_StepByDir_GetCell(dir)` for dir 0..8 — the eight neighbours in
