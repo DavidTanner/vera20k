@@ -135,39 +135,6 @@ impl Simulation {
         Ok(())
     }
 
-    /// FootPerCell(mode2)4D882F..896E, reached after Infantry's own PerCell
-    /// work: the range stop ([`Self::foot_per_cell_range_stop`]) with the
-    /// Infantry null destination.
-    /// See tools/spatial_oracle/walk_percell_stop.{py,json,meta.json}.
-    fn finish_walk_pursuit_at_per_cell(
-        &mut self,
-        id: u64,
-        rules: &RuleSet,
-        registry: Option<&OverlayTypeRegistry>,
-    ) {
-        if !self.foot_per_cell_range_stop(id, rules, registry) {
-            return;
-        }
-        let accepts = self.set_walk_null_destination(id, Some(rules));
-        let actor = self
-            .substrate
-            .entities
-            .get_mut(id)
-            .expect("same PerCell actor");
-        if accepts {
-            // The proved null/non-Enter Infantry envelope reaches Foot4D94B0
-            // and Walk75ADA0. There is no paid head left at this call site.
-            // The setter already reset persistent Foot timers. Only the
-            // execution adapter is retired at this completion boundary.
-            if let Some(target) = actor.movement_target.as_mut() {
-                target.next_index = target.path.len();
-            }
-        }
-        // 4D896E executes even when the human Doing gate refuses +480.
-        // Keep the backing suffix/cursor/reference; this is one native DWORD.
-        actor.navigation.path_replay.clear_live_head();
-    }
-
     /// Walk75C117..75C1AE relinks current XYZ while retaining the paid head
     /// and Foot path entry. This corridor does not invoke PerCell.
     pub(crate) fn run_walk_boundary(
@@ -310,29 +277,12 @@ impl Simulation {
             self.resolved_terrain.as_ref(),
             self.path_grid.as_deref().or(fallback),
         );
-        let changed = if let Some(rules) = rules {
-            self.infantry_per_cell_bridge_repair(id, rules, registry)?
-        } else {
-            false
-        };
-        let survives = self.substrate.entities.get(id).is_some_and(|e| {
-            e.lifecycle.object_alive && !e.lifecycle.in_limbo && e.object_is_falling_down == 0
-        });
-        if !survives {
+        //75BE3C: Per_Cell_Process(2); 75BE42..75BE69 then leaves at 75C1F1
+        //for a dead, limboed or falling owner.
+        let changed =
+            self.per_cell_process(id, super::per_cell::PerCellReason::Arrival, rules, registry)?;
+        if !self.track_survives(id) {
             return Ok(changed);
-        }
-        if let Some(rules) = rules {
-            self.refresh_unit_sensor_at_per_cell(id, rules);
-        }
-        self.foot_neighbors_at_per_cell(id);
-        if let Some(rules) = rules {
-            crate::sim::world::techno_ai_cloak::uncloak_on_sensor_neighbour_after_cell_entry(
-                self, id, rules,
-            );
-            // `0x006F5090`'s head lets a held Temporal target go.
-            self.temporal_release_if_warping(id);
-            self.promote_entity_playfield_membership_after_move(id);
-            self.finish_walk_pursuit_at_per_cell(id, rules, registry);
         }
         self.finish_walk_navigation(id, rules).map_err(|cause| {
             crate::sim::world::FrameAdvanceError {

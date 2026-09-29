@@ -870,7 +870,13 @@ fn per_cell_release_matches_the_original_track_end_arm() {
         let mut s = scene(input);
         radio::take_transmit_log();
         s.sim
-            .unit_per_cell_process_arrival(s.miner, Some(&s.rules), None);
+            .per_cell_process(
+                s.miner,
+                crate::sim::movement::PerCellReason::Arrival,
+                Some(&s.rules),
+                None,
+            )
+            .unwrap();
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_state(&s, row, &context);
         let miner = s.sim.substrate.entities.get(s.miner).unwrap();

@@ -894,12 +894,7 @@ fn per_cell_promotes_queued_mission_before_tail_without_dispatching_handler() {
             ai_counter: 11,
             dispatch_timer: MissionDispatchTimer::from_raw(3, 90),
         });
-        sim.unit_track_per_cell(
-            1,
-            super::super::track_turn::PerCellReason::Arrival,
-            Some(&rules),
-            None,
-        );
+        sim.unit_per_cell_process(1, super::super::PerCellReason::Arrival, Some(&rules), None);
         let mission = sim.substrate.entities.get(1).unwrap().mission;
         if unload_active {
             assert_eq!(mission.current().known(), Some(MissionType::Move));

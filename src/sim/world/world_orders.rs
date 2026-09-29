@@ -1339,9 +1339,8 @@ impl Simulation {
                     // SetDestination(NULL, 1), so a vehicle that stops to fire
                     // holds no NavCom. GetFireError's NavCom tests (U7..U10)
                     // would otherwise keep refusing a spark, flame, drain or
-                    // temporal weapon. Infantry take the Walk port's stop
-                    // (`finish_walk_pursuit_at_per_cell`), an open-topped unit
-                    // the track PerCell's (`foot_per_cell_range_stop`).
+                    // temporal weapon. Infantry and open-topped units take
+                    // the per-cell owner's stop (`movement/per_cell.rs`).
                     if e.category == EntityCategory::Unit && movement::range_stop_admits(e) {
                         self.set_unit_null_destination(entity_id, Some(rules));
                     }

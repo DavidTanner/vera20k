@@ -70,6 +70,10 @@ mod forced_track_object_turn_tests;
 #[path = "teleport_anim_object_turn_tests.rs"]
 mod teleport_anim_object_turn_tests;
 
+#[cfg(test)]
+#[path = "per_cell_object_turn_tests.rs"]
+mod per_cell_object_turn_tests;
+
 #[derive(Default)]
 pub(super) struct LiveObjectPassOutcome {
     pub movement: movement::MovementTickStats,
@@ -83,6 +87,8 @@ pub(super) struct GroundLocomotorOutcome {
     pub(super) movement: movement::MovementTickStats,
     pub(super) bridge_state_changed: bool,
     track_owned: bool,
+    /// The Hover or tube-exit arrival ran `Per_Cell_Process(2)`.
+    per_cell_ran: bool,
 }
 
 /// Re-enter the pending movement pass for the same mover of this Process (see
@@ -421,15 +427,22 @@ impl Simulation {
         if let Some((old_cell, had_target, tube_active, kind)) = movement_before {
             let per_cell = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
                 // Tube exits Unit73603F / Infantry51BA9B and Hover arrival5146CA / cell-entry
-                // 515A1C. The existing Hover integrator still approximates
-                // native crossing timing; its accepted entries use this owner.
+                // 515A1C call vt+0x18C(2). The existing Hover integrator still
+                // approximates native crossing timing; its accepted entries
+                // use this owner.
                 (tube_active && entity.low_bridge_tube_state.is_none())
                     || (kind == Some(crate::rules::locomotor_type::LocomotorKind::Hover)
                         && (old_cell != (entity.position.rx, entity.position.ry)
                             || (had_target && entity.movement_target.is_none())))
             });
             if per_cell {
-                sim.foot_neighbors_at_per_cell(stable_id);
+                outcome.bridge_state_changed |= sim.per_cell_process(
+                    stable_id,
+                    movement::PerCellReason::Arrival,
+                    rules,
+                    overlay_registry,
+                )?;
+                outcome.per_cell_ran = true;
             }
         }
         Ok(outcome)
@@ -565,6 +578,7 @@ impl Simulation {
             sim.process_ground_locomotor_one(stable_id, rules, path_grid, overlay_registry)?
         };
         let track_owned = ground.track_owned;
+        let mut per_cell_ran = ground.per_cell_ran;
         outcome.movement.merge(ground.movement);
         outcome.bridge_state_changed |= ground.bridge_state_changed;
         // Synchronous turn/arrival callbacks may convert or remove the owner.
@@ -621,6 +635,15 @@ impl Simulation {
         }
 
         let air = sim.tick_air_movement_with_cell_lists_one(stable_id, rules);
+        if air.touched_down {
+            outcome.bridge_state_changed |= sim.per_cell_process(
+                stable_id,
+                movement::PerCellReason::Arrival,
+                rules,
+                overlay_registry,
+            )?;
+            per_cell_ran = true;
+        }
         let infantry = sim
             .substrate
             .entities
@@ -742,10 +765,16 @@ impl Simulation {
             if let Some(rules) = rules {
                 teleport_warp_sounds(sim, stable_id, cell_before_movement, rules);
             }
+            // Relocation 0x0071971C calls vt+0x18C(2), including a same-cell
+            // relocation; ordinary Fly motion has no such call.
+            outcome.bridge_state_changed |= sim.per_cell_process(
+                stable_id,
+                movement::PerCellReason::Arrival,
+                rules,
+                overlay_registry,
+            )?;
+            per_cell_ran = true;
             if unit_warp_arrival {
-                // 0x0071971C: vt+0x18C(2) is UnitClass::Per_Cell_Process
-                // (0x00739EC0), with the Foot body and its playfield tail.
-                sim.unit_per_cell_process_arrival(stable_id, rules, overlay_registry);
                 // 0x00719725 Stop_Moving: the tick retired the request.
                 // 0x0071972E CellClass::PickupCrate (`0x00481A00`): the crate
                 // receiver every mover still lacks (`movement::track_fresh`
@@ -754,13 +783,6 @@ impl Simulation {
                 // contact gets a Drive here, which the FootClass::AI tail below
                 // ends again.
                 sim.set_unit_null_destination(stable_id, rules);
-            } else {
-                // Relocation71971C calls PerCell(2), including a same-cell
-                // relocation; ordinary Fly motion has no such call.
-                sim.foot_neighbors_at_per_cell(stable_id);
-                // PerCell(2)'s tail `0x006F5090` lets a held Temporal target go
-                // (a Chrono Legionnaire teleporting away from its victim).
-                sim.temporal_release_if_warping(stable_id);
             }
         }
         let rocket_arrivals = rocket_movement::tick_rocket_movement(
@@ -806,9 +828,15 @@ impl Simulation {
                 sim.session.tick,
             );
             if was_falling && !falling(sim) {
-                // Object AI5F3F8D: grounded fall completion precedes the
-                // parachute animation's wind-down.
-                sim.foot_neighbors_at_per_cell(stable_id);
+                // Object AI5F3F8D: grounded fall completion calls
+                // vt+0x18C(2) before the parachute animation's wind-down.
+                outcome.bridge_state_changed |= sim.per_cell_process(
+                    stable_id,
+                    movement::PerCellReason::Arrival,
+                    Some(rules),
+                    overlay_registry,
+                )?;
+                per_cell_ran = true;
                 sim.wind_down_parachute_anim(rules, stable_id);
             }
         }
@@ -824,39 +852,28 @@ impl Simulation {
             .entities
             .get(stable_id)
             .map(|entity| (entity.position.rx, entity.position.ry));
+        // A mover whose Process has no ported `Per_Cell_Process` call (Fly,
+        // a cruising Jumpjet, Rocket, the legacy lane's other movers) takes
+        // VERA's cell-change stand-in for the Foot body's sensor, uncloak,
+        // Temporal and promote steps (`movement/per_cell.rs`).
+        //
+        // RESIDUAL: native Fly and Jumpjet cruise reach none of these from a
+        // cell change. Trigger: such a mover changing cell. Effect: its
+        // sensor deposit, cloak scan, Temporal release and playfield promote
+        // run there. Risk: an aircraft with `Sensors=` or a held Temporal
+        // target; the promote is what admits an aircraft arriving from off
+        // the map.
         if !track_owned
             && !walk_process_owned
-            && !unit_warp_arrival
-            && let Some(rules) = rules
+            && !per_cell_ran
+            && cell_before_movement != cell_after_movement
         {
-            sim.move_unit_sensor_after_cell_change(
-                stable_id,
-                cell_before_movement,
-                cell_after_movement,
-                rules,
-            );
-        }
-        if unit_warp_arrival {
-            // The Unit Per_Cell_Process above ran the Foot body.
-        } else if teleport_relocating {
-            // The warp's PerCell(2) ends in the `0x006F5090` playfield tail,
-            // which only promotes. (The exact outside clear at `0x00719A99`
-            // belongs to the Chronosphere warp states, not this step.)
-            sim.promote_entity_playfield_membership_after_move(stable_id);
-        } else if !track_owned && !walk_process_owned && cell_before_movement != cell_after_movement
-        {
-            // `FootClass::PerCellProcess @ 0x004D85D0` runs the `Sensors=`
-            // neighbour scan on its cell-enter arm, after the sensor
-            // deposit has moved (`0x004D8611`/`0x004D8621`, issued just
-            // above) and before its `FUN_006F5090` playfield-membership
-            // tail — which is the promote below.
             if let Some(rules) = rules {
+                sim.refresh_unit_sensor_at_per_cell(stable_id, rules);
                 crate::sim::world::techno_ai_cloak::uncloak_on_sensor_neighbour_after_cell_entry(
                     sim, stable_id, rules,
                 );
             }
-            // `0x006F5090`'s head (`0x006F50A3..0x006F50B4`): entering a cell
-            // lets a held Temporal target go.
             sim.temporal_release_if_warping(stable_id);
             sim.promote_entity_playfield_membership_after_move(stable_id);
         }

@@ -11,6 +11,7 @@ use crate::sim::components::{
 };
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId};
+use crate::sim::movement::PerCellReason;
 use crate::sim::movement::facing_class::FacingClass;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::pathfinding::PathGrid;
@@ -378,7 +379,7 @@ fn actual_turn_completion_reason_zero_does_not_promote_queued_mission() {
         assert_eq!(sim.substrate.entities.get(1).unwrap().mission, before);
         // Positive control: the same receiver with arrival reason2 must
         // promote this fixture, without dispatching the new mission handler.
-        sim.unit_track_per_cell(1, PerCellReason::Arrival, Some(&rules), None);
+        sim.unit_per_cell_process(1, PerCellReason::Arrival, Some(&rules), None);
         let mission = sim.substrate.entities.get(1).unwrap().mission;
         assert_eq!(mission.current().known(), Some(MissionType::Unload));
         assert_eq!(mission.queued(), MissionId::NONE);

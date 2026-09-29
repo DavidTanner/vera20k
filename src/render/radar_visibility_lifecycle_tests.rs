@@ -141,7 +141,7 @@ fn radar_visibility_consumes_live_stock_cloak_and_sensor_lifecycle() {
         detector.position.rx = cell.0;
         detector.position.ry = cell.1;
     }
-    sim.move_unit_sensor_after_cell_change(detector, Some(far_cell), Some(cell), &rules);
+    sim.refresh_unit_sensor_at_per_cell(detector, &rules);
     // CORRECTION: this used to require the sensor deposit to force-cloak the
     // state-zero resident. `TechnoClass+0x420 @ 0x006F4EB0` gates that arm on
     // `CellClass::IsVisibleToHouse` — the `CloakedByHouses` bit written only by
@@ -161,10 +161,9 @@ fn radar_visibility_consumes_live_stock_cloak_and_sensor_lifecycle() {
         "a sensor deposit never starts a cloak in stock YR"
     );
     assert!(
-        !sim.sound_events.iter().any(|event| matches!(
-            event,
-            crate::sim::world::SimSoundEvent::CloakSound { .. }
-        )),
+        !sim.sound_events
+            .iter()
+            .any(|event| matches!(event, crate::sim::world::SimSoundEvent::CloakSound { .. })),
         "and therefore emits no entering-cloak cue"
     );
     assert_eq!(
@@ -234,7 +233,7 @@ fn radar_visibility_consumes_live_stock_cloak_and_sensor_lifecycle() {
         detector.position.rx = far_cell.0;
         detector.position.ry = far_cell.1;
     }
-    sim.move_unit_sensor_after_cell_change(detector, Some(cell), Some(far_cell), &rules);
+    sim.refresh_unit_sensor_at_per_cell(detector, &rules);
     assert_eq!(sim.fog.sensors_by_house[&local][sensor_index], 1);
     assert_eq!(evaluate(&sim).out_code, 1, "overlapping DEST remains");
 
@@ -260,12 +259,7 @@ fn radar_visibility_consumes_live_stock_cloak_and_sensor_lifecycle() {
         detector.position.rx = far_cell.0;
         detector.position.ry = far_cell.1;
     }
-    sim.move_unit_sensor_after_cell_change(
-        second_detector,
-        Some(second_detector_cell),
-        Some(far_cell),
-        &rules,
-    );
+    sim.refresh_unit_sensor_at_per_cell(second_detector, &rules);
     assert_eq!(sim.fog.sensors_by_house[&local][sensor_index], 0);
     assert_eq!(evaluate(&sim), RadarVisibilityResult::HIDDEN);
     assert_eq!(tracker.update_object(build_update(&sim, sub), false), None);

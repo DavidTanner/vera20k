@@ -2360,12 +2360,24 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
 
         {
             let entity = sim.substrate.entities.get(1).expect("Tube mover survives");
-            assert_eq!(entity.mission.ai_counter(), 41, "{category:?}");
-            assert_eq!(
-                entity.mission.queued(),
-                MissionId::from_known(MissionType::Move),
-                "{category:?} skips both mission-promotion checkpoints"
-            );
+            if category == EntityCategory::Unit {
+                // The leaf's Per_Cell_Process(2) (`0x0073603F`) is the Unit
+                // override, whose arrival checkpoint promotes the queue
+                // (`0x0073ACC2` Ready_To_Commence, `0x0073ACD1` Commence).
+                assert_eq!(entity.mission.ai_counter(), 0);
+                assert_eq!(
+                    entity.mission.current(),
+                    MissionId::from_known(MissionType::Move)
+                );
+                assert_eq!(entity.mission.queued(), MissionId::NONE);
+            } else {
+                assert_eq!(entity.mission.ai_counter(), 41);
+                assert_eq!(
+                    entity.mission.queued(),
+                    MissionId::from_known(MissionType::Move),
+                    "Infantry skips both mission-promotion checkpoints"
+                );
+            }
             assert!(entity.low_bridge_tube_state.is_none(), "{category:?}");
             assert!(entity.lifecycle.cell_marked, "{category:?}");
             assert!(

@@ -12,12 +12,6 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::MissionType;
 use crate::sim::world::Simulation;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PerCellReason {
-    TurnComplete,
-    Arrival,
-}
-
 pub(super) fn sample(latched: &mut bool, rotating: bool) -> bool {
     let completed = *latched && !rotating;
     *latched = rotating;
@@ -137,7 +131,12 @@ impl Simulation {
             return false;
         }
         if completed {
-            self.unit_track_per_cell(id, PerCellReason::TurnComplete, rules, registry);
+            self.unit_per_cell_process(
+                id,
+                super::per_cell::PerCellReason::TurnComplete,
+                rules,
+                registry,
+            );
             // Native reloads these three bytes after the synchronous callback.
             if !self.substrate.entities.get(id).is_some_and(|e| {
                 e.lifecycle.object_alive && !e.lifecycle.in_limbo && e.object_is_falling_down == 0
