@@ -4065,48 +4065,6 @@ impl Simulation {
         Ok(())
     }
 
-    /// Recompute the serialized/hash-covered OrePurifier count without changing
-    /// cash or accumulated spending/harvesting statistics. Iterate only existing
-    /// houses; never insert a missing house. A single pass over the entity store
-    /// accumulates purifier counts per owner, so the cost is O(entities), not
-    /// O(houses x entities). `rules` is the advance_tick tail's `Option`; with
-    /// `None` the purifier count is 0 (no type data to classify structures by).
-    pub(crate) fn refresh_economy_shadow(&mut self, rules: Option<&RuleSet>) {
-        // One pass: accumulate OrePurifier building count per owner through
-        // the same `House+0x538C` predicate as `count_purifiers_for_owner`
-        // (`counts_as_purifier`: completed, alive, on-map purifier — a
-        // `building_up` one is still before `OnConstructionComplete`
-        // 0x0044637C and does not count), in a single sweep keyed by owner id.
-        let mut purifiers: std::collections::BTreeMap<crate::sim::intern::InternedId, i32> =
-            std::collections::BTreeMap::new();
-        if let Some(rules) = rules {
-            for e in self.substrate.entities.values() {
-                if crate::sim::miner::miner_system::counts_as_purifier(self, rules, e) {
-                    *purifiers.entry(e.owner()).or_insert(0) += 1;
-                }
-            }
-        }
-        for (id, house) in self.houses.iter_mut() {
-            // Purifier-bonus base = real OrePurifier building COUNT (NOT silo
-            // storage capacity, NOT the AI-virtual-inclusive effective count). Hashed.
-            house.economy.purifier_count = purifiers.get(id).copied().unwrap_or(0);
-            // spent_credits / harvested_credits accumulate via step_all / deposits;
-            // intentionally untouched here.
-        }
-    }
-
-    /// Per-tick production tail: refresh the per-house economy shadow (purifier count).
-    /// Runs at the advance_tick tail, AFTER all authoritative systems.
-    ///
-    /// P5d: the factory registry is the authoritative queue-of-record and is mutated
-    /// DIRECTLY by enqueue/cancel/delivery — there is no longer a `reconcile_from_queues`
-    /// pass (the `queues_by_owner` mirror is retired), so its progress simply persists
-    /// across ticks with no end-of-tick rebuild. `rules` is the tail's `Option`, threaded
-    /// to the economy refresh.
-    pub(crate) fn refresh_production_shadow(&mut self, rules: Option<&RuleSet>) {
-        self.refresh_economy_shadow(rules);
-    }
-
     /// Debug-only production asserts: the factory shell
     /// trace is well-formed (live Structures, strictly-increasing visit order).
     /// Divergence is surfaced, never equalized.
@@ -6444,9 +6402,6 @@ impl Simulation {
         self.debug_assert_logic_membership_consistent();
         #[cfg(debug_assertions)]
         self.debug_assert_lifecycle_consistent();
-        // Refresh the retained purifier-count projection before hashing.
-        // Cash and factory state remain owned by their direct mutation paths.
-        self.refresh_production_shadow(rules);
         #[cfg(debug_assertions)]
         self.debug_assert_production_shadow();
 

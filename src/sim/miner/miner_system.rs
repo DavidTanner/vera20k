@@ -1963,9 +1963,7 @@ pub(crate) fn count_purifiers_for_owner(sim: &Simulation, rules: &RuleSet, owner
 }
 
 /// The owner-independent half of the `House+0x538C` predicate: a completed,
-/// alive, on-map `OrePurifier=` structure. Shared by
-/// [`count_purifiers_for_owner`] and the per-tick economy shadow
-/// (`refresh_economy_shadow`) so both count the same buildings.
+/// alive, on-map `OrePurifier=` structure, for [`count_purifiers_for_owner`].
 pub(crate) fn counts_as_purifier(
     sim: &Simulation,
     rules: &RuleSet,

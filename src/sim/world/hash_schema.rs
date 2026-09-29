@@ -39,6 +39,9 @@
 //! No policy folds the retired ground move phase (dropped at snapshot 244):
 //! nothing retained records it, so every projection lost that fold at once
 //! and the harness pins were re-baselined in that one step.
+//! Nor does any fold the retired per-house purifier count (dropped at
+//! snapshot 245), which only the hash read; the global harness pins were
+//! re-baselined in that one step.
 
 #[derive(Clone, Copy)]
 pub(super) enum HashSchema {
