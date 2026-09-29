@@ -89,15 +89,10 @@ impl Simulation {
     }
     /// Shared original Object5F5F40 adapter for the two distinct smoke gates.
     fn damage_smoke_owner_height(&self, entity: &crate::sim::game_entity::GameEntity) -> i32 {
-        let raw = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-        let surface = crate::sim::movement::ground_pose::ground_surface_z_at(
-            [raw.x, raw.y],
-            entity.on_bridge,
+        crate::sim::movement::air_movement::current_fly_height(
+            entity,
             self.resolved_terrain.as_ref(),
-            None,
         )
-        .unwrap_or(0);
-        raw.z.wrapping_sub(surface)
     }
 
     /// Spawn a new particle system. Returns the new system's stable id, or

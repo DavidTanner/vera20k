@@ -3904,11 +3904,13 @@ impl Simulation {
             expired_is_selling,
             expired_owner,
         )) = self.substrate.entities.get(expired_id).map(|expired| {
-            let high_flying = expired.locomotor.as_ref().is_some_and(|locomotor| {
-                // High-flying objects expire to null; lower objects preserve
-                // GetHeight() >= 2 * LevelHeight (2 * 104 leptons).
-                locomotor.is_airborne() && locomotor.altitude >= SimFixed::from_num(2 * 104)
-            });
+            // High-flying objects expire to null (the target's vt+0x54 at
+            // `0x00468562`); lower objects preserve their cell.
+            let high_flying = crate::sim::movement::air_movement::is_high_flying(
+                expired,
+                context.terrain().or(self.resolved_terrain.as_ref()),
+                context.rules().map(|rules| (rules, &self.interner)),
+            );
             (
                 object_get_coords_cell(expired),
                 high_flying,
