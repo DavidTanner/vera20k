@@ -15,7 +15,6 @@ use crate::assets::asset_manager::AssetManager;
 use crate::assets::pal_file::{Color, Palette};
 use crate::assets::tmp_file::TmpFile;
 use crate::map::bridge_facts::{Axis, BridgeheadAnchorClass};
-use crate::map::bridge_facts::{BridgeRampKind, BridgeRampTile};
 use crate::map::map_file::MapError;
 use crate::rules::ini_parser::{IniFile, IniSection};
 
@@ -744,22 +743,6 @@ pub struct TheaterData {
     pub slope_set_pieces: Option<u16>,
     /// `[General] SlopeSetPieces2=N` - TileSet section whose first tile becomes DAT_00AA1098.
     pub slope_set_pieces2: Option<u16>,
-    /// `[General] BridgeTopLeft1=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_left_1: Option<u16>,
-    /// `[General] BridgeTopLeft2=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_left_2: Option<u16>,
-    /// `[General] BridgeBottomRight1=N` - east-edge pavement-under-bridge tile key.
-    pub bridge_bottom_right_1: Option<u16>,
-    /// `[General] BridgeBottomRight2=N` - alternate east-edge pavement tile key.
-    pub bridge_bottom_right_2: Option<u16>,
-    /// `[General] BridgeTopRight1=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_right_1: Option<u16>,
-    /// `[General] BridgeTopRight2=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_right_2: Option<u16>,
-    /// `[General] BridgeBottomLeft1=N` - south-edge pavement-under-bridge tile key.
-    pub bridge_bottom_left_1: Option<u16>,
-    /// `[General] BridgeBottomLeft2=N` - alternate south-edge pavement tile key.
-    pub bridge_bottom_left_2: Option<u16>,
     /// `[General] BridgeMiddle1=N` — BridgeSet-relative offset for the NS
     /// bridgehead variant block. The 4 NS variant tile_ids occupy
     /// `BridgeSet_start + {N-1, N, N+1, N+2}`. None if the key is absent.
@@ -800,108 +783,6 @@ pub struct BridgeAnchorVariantTable {
     pub ew: [u16; 4],
 }
 
-/// BridgeSet-relative tile keys used by gamemd.exe `MapClass::IsBridgeRampTile`.
-#[derive(Debug, Clone, Copy)]
-pub struct BridgeRampTileTable {
-    pub top_right_1: Option<u16>,
-    pub top_right_2: Option<u16>,
-    pub top_left_1: Option<u16>,
-    pub top_left_2: Option<u16>,
-    pub middle_1: Option<u16>,
-    pub middle_2: Option<u16>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TheaterBridgePieceKeys {
-    bridge_top_left_1: Option<u16>,
-    bridge_top_left_2: Option<u16>,
-    bridge_bottom_right_1: Option<u16>,
-    bridge_bottom_right_2: Option<u16>,
-    bridge_top_right_1: Option<u16>,
-    bridge_top_right_2: Option<u16>,
-    bridge_bottom_left_1: Option<u16>,
-    bridge_bottom_left_2: Option<u16>,
-    bridge_middle_1: Option<u16>,
-    bridge_middle_2: Option<u16>,
-}
-
-impl BridgeRampTileTable {
-    pub fn from_theater(td: &TheaterData) -> Option<Self> {
-        Some(Self {
-            top_right_1: td.bridge_top_right_1,
-            top_right_2: td.bridge_top_right_2,
-            top_left_1: td.bridge_top_left_1,
-            top_left_2: td.bridge_top_left_2,
-            middle_1: td.bridge_middle_1,
-            middle_2: td.bridge_middle_2,
-        })
-        .filter(|table| {
-            table.top_right_1.is_some()
-                || table.top_right_2.is_some()
-                || table.top_left_1.is_some()
-                || table.top_left_2.is_some()
-                || table.middle_1.is_some()
-                || table.middle_2.is_some()
-        })
-    }
-
-    pub fn match_relative_tile(
-        &self,
-        relative_tile_index: u16,
-        height_byte: u8,
-    ) -> Option<BridgeRampTile> {
-        if height_byte == 0x0C
-            && (self.top_right_1 == Some(relative_tile_index)
-                || self.top_right_2 == Some(relative_tile_index))
-        {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::TopRight,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        if height_byte == 0x08
-            && (self.top_left_1 == Some(relative_tile_index)
-                || self.top_left_2 == Some(relative_tile_index))
-        {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::TopLeft,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        if height_byte == 0x04 && in_four_tile_run(relative_tile_index, self.middle_1) {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::Middle1,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        if height_byte == 0x02 && in_four_tile_run(relative_tile_index, self.middle_2) {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::Middle2,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        None
-    }
-
-    pub fn match_tile_id(
-        &self,
-        tile_id: u16,
-        bridge_set_start: u16,
-        bridge_set_count: u16,
-        height_byte: u8,
-    ) -> Option<BridgeRampTile> {
-        let zero_based = tile_id.checked_sub(bridge_set_start)?;
-        if zero_based >= bridge_set_count {
-            return None;
-        }
-        self.match_relative_tile(zero_based + 1, height_byte)
-    }
-}
-
 impl TheaterData {
     pub fn is_special_terrain_tile(&self, tile_id: u16, sub_tile: u8) -> bool {
         self.cliff_ranges.is_special_terrain_tile(tile_id, sub_tile)
@@ -927,14 +808,6 @@ impl TheaterData {
             .start;
         Some((first, second))
     }
-}
-
-fn in_four_tile_run(relative_tile_index: u16, start: Option<u16>) -> bool {
-    start.is_some_and(|first| {
-        let relative_tile_index = u32::from(relative_tile_index);
-        let first = u32::from(first);
-        relative_tile_index >= first && relative_tile_index < first + 4
-    })
 }
 
 impl BridgeAnchorVariantTable {
@@ -1068,18 +941,8 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
     let mut wood_bridge_set = read_general_u16(general, "WoodBridgeSet");
     let slope_set_pieces = read_general_u16(general, "SlopeSetPieces");
     let slope_set_pieces2 = read_general_u16(general, "SlopeSetPieces2");
-    let TheaterBridgePieceKeys {
-        bridge_top_left_1,
-        bridge_top_left_2,
-        bridge_bottom_right_1,
-        bridge_bottom_right_2,
-        bridge_top_right_1,
-        bridge_top_right_2,
-        bridge_bottom_left_1,
-        bridge_bottom_left_2,
-        bridge_middle_1,
-        bridge_middle_2,
-    } = read_bridge_piece_keys(general);
+    let bridge_middle_1 = read_general_u16(general, "BridgeMiddle1");
+    let bridge_middle_2 = read_general_u16(general, "BridgeMiddle2");
     let tunnels = read_general_u16(general, "Tunnels");
     let track_tunnels = read_general_u16(general, "TrackTunnels");
     let dirt_tunnels = read_general_u16(general, "DirtTunnels");
@@ -1101,18 +964,10 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
     );
     if bridge_set.is_some() || wood_bridge_set.is_some() {
         log::info!(
-            "Theater {}: BridgeSet={:?}, WoodBridgeSet={:?}, BridgePieces={:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}, Tunnels={:?}/{:?}/{:?}/{:?}",
+            "Theater {}: BridgeSet={:?}, WoodBridgeSet={:?}, BridgeMiddle={:?}/{:?}, Tunnels={:?}/{:?}/{:?}/{:?}",
             theater_name,
             bridge_set,
             wood_bridge_set,
-            bridge_top_left_1,
-            bridge_top_left_2,
-            bridge_bottom_right_1,
-            bridge_bottom_right_2,
-            bridge_top_right_1,
-            bridge_top_right_2,
-            bridge_bottom_left_1,
-            bridge_bottom_left_2,
             bridge_middle_1,
             bridge_middle_2,
             tunnels,
@@ -1148,14 +1003,6 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
         wood_bridge_set,
         slope_set_pieces,
         slope_set_pieces2,
-        bridge_top_left_1,
-        bridge_top_left_2,
-        bridge_bottom_right_1,
-        bridge_bottom_right_2,
-        bridge_top_right_1,
-        bridge_top_right_2,
-        bridge_bottom_left_1,
-        bridge_bottom_left_2,
         bridge_middle_1,
         bridge_middle_2,
         tunnels,
@@ -1319,21 +1166,6 @@ fn waterfall_is_special(start: Option<u16>, tile_id: u16, sub_tile: u8, ordinary
 /// owned by HighBridgeRimTiles and must not be reconstructed from this view.
 fn read_general_u16(general: Option<&IniSection>, key: &str) -> Option<u16> {
     u16::try_from(general?.read_int(key, -1)).ok()
-}
-
-fn read_bridge_piece_keys(general: Option<&IniSection>) -> TheaterBridgePieceKeys {
-    TheaterBridgePieceKeys {
-        bridge_top_left_1: read_general_u16(general, "BridgeTopLeft1"),
-        bridge_top_left_2: read_general_u16(general, "BridgeTopLeft2"),
-        bridge_bottom_right_1: read_general_u16(general, "BridgeBottomRight1"),
-        bridge_bottom_right_2: read_general_u16(general, "BridgeBottomRight2"),
-        bridge_top_right_1: read_general_u16(general, "BridgeTopRight1"),
-        bridge_top_right_2: read_general_u16(general, "BridgeTopRight2"),
-        bridge_bottom_left_1: read_general_u16(general, "BridgeBottomLeft1"),
-        bridge_bottom_left_2: read_general_u16(general, "BridgeBottomLeft2"),
-        bridge_middle_1: read_general_u16(general, "BridgeMiddle1"),
-        bridge_middle_2: read_general_u16(general, "BridgeMiddle2"),
-    }
 }
 
 fn load_exact_palette(

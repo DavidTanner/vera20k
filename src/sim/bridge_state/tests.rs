@@ -1236,14 +1236,14 @@ fn body_driver_out_of_bounds_returns_no_change() {
     assert!(matches!(outcome, StateOutcome::NoChange));
 }
 
-/// 5x5 grid; column X=2 carries the NS bridgehead walk:
-/// (2,4)=8 (bridgehead high-ramp peak), (2,3)=6, (2,2)=4 (anchor body),
-/// (2,1)=0, (2,0)=0. Walk N from (2,4) terminates at (2,2).
+/// 5x5 grid; column X=2 carries the NS bridgehead walk's sub-tiles:
+/// (2,4)=8, (2,3)=6, (2,2)=4 (anchor body), (2,1)=0, (2,0)=0. Walk N from
+/// (2,4) terminates at (2,2).
 fn make_bridgehead_terrain_ns() -> crate::map::resolved_terrain::ResolvedTerrainGrid {
     let mut cells = Vec::with_capacity(25);
     for ry in 0..5u16 {
         for rx in 0..5u16 {
-            let template_height: u8 = if rx == 2 {
+            let final_sub_tile: u8 = if rx == 2 {
                 match ry {
                     4 => 8,
                     3 => 6,
@@ -1254,7 +1254,7 @@ fn make_bridgehead_terrain_ns() -> crate::map::resolved_terrain::ResolvedTerrain
                 0
             };
             cells.push(ResolvedTerrainCell {
-                template_height,
+                final_sub_tile,
                 bridge_facts: crate::map::bridge_facts::BridgeCellFacts {
                     raw_flags: if ry == 2 && (1..=3).contains(&rx) {
                         crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF
@@ -1435,7 +1435,8 @@ fn bridgehead_advance_repeat_high_hit_collapses_about_to_fall_slot() {
                         crate::sim::bridge_specs::CellAction::BlowUpBridge
                     ))
             );
-            assert_eq!(adjacent_bridges_dirty, vec![(3, 2), (1, 2)]);
+            // The NS ramp pair runs W then E (0x0057754F, 0x0057757B).
+            assert_eq!(adjacent_bridges_dirty, vec![(1, 2), (3, 2)]);
             assert!(zones_dirty);
         }
         other => panic!("expected high bridgehead collapse, got {other:?}"),
@@ -1485,12 +1486,12 @@ fn bridgehead_advance_repeat_low_hit_collapses_but_returns_false() {
 
 #[test]
 fn bridgehead_advance_odd_h_ns_absorbs_with_no_change() {
-    // Bridgehead at h=5 (odd NS ramp): parity gate fires.
+    // Bridgehead at sub-tile 5 (odd NS ramp): parity gate fires.
     let mut state = make_bridgehead_state_ns();
     let mut terrain = make_bridgehead_terrain_ns();
-    // Override (2, 4) height to 5 — odd, parity-gated.
+    // Override (2, 4) sub-tile to 5 — odd, parity-gated.
     if let Some(cell) = terrain.cells.get_mut(4 * 5 + 2) {
-        cell.template_height = 5;
+        cell.final_sub_tile = 5;
     }
     let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
     assert_eq!(outcome, StateOutcome::NoChange);
@@ -1522,9 +1523,9 @@ fn bridgehead_advance_h_gt_4_ew_absorbs_with_no_change() {
             bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
-    // 3x3 terrain with cell (2,2) h=0xC.
+    // 3x3 terrain with cell (2,2) at sub-tile 0xC.
     let mut terrain = crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| ResolvedTerrainCell {
-        template_height: if rx == 2 && ry == 2 { 0x0C } else { 0 },
+        final_sub_tile: if rx == 2 && ry == 2 { 0x0C } else { 0 },
         ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     });
     let outcome = state.bridgehead_advance_state(2, 2, true, &mut terrain);
@@ -1537,9 +1538,9 @@ fn bridgehead_advance_walks_through_odd_intermediate() {
     // intermediate between h=8 start and h=4 anchor.
     let mut state = make_bridgehead_state_ns();
     let mut terrain = make_bridgehead_terrain_ns();
-    // Patch the walk path: (2,4)=8, (2,3)=5 (odd!), (2,2)=4.
+    // Patch the walk path's sub-tiles: (2,4)=8, (2,3)=5 (odd!), (2,2)=4.
     if let Some(c) = terrain.cells.get_mut(3 * 5 + 2) {
-        c.template_height = 5;
+        c.final_sub_tile = 5;
     }
     let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
     assert!(matches!(outcome, StateOutcome::Absorbed { .. }));
@@ -1561,13 +1562,13 @@ fn bridgehead_advance_non_bridgehead_role_no_change() {
 
 #[test]
 fn bridgehead_advance_anchor_walk_failure_no_change() {
-    // All heights = 10: start cell is even (passes parity gate) but walk
-    // never converges to h=4 within the 16-iter cap (heights stay 10
+    // All sub-tiles = 10: start cell is even (passes parity gate) but walk
+    // never converges to h=4 within the 16-iter cap (sub-tiles stay 10
     // along the column / walking off-map).
     let mut state = make_bridgehead_state_ns();
     let mut terrain = make_bridgehead_terrain_ns();
     for c in terrain.cells.iter_mut() {
-        c.template_height = 10;
+        c.final_sub_tile = 10;
     }
     let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
     assert_eq!(outcome, StateOutcome::NoChange);

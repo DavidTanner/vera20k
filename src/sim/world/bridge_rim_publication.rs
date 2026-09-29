@@ -55,21 +55,11 @@ impl HighBridgeRimHost for LiveRim<'_, '_> {
     }
     fn read(&self, cell: Cell) -> RimCell {
         let terrain = self.publication.terrain();
-        let (tile, subtile) = match cell {
-            Cell::Real(index) => {
-                let resolved = &terrain.cells()[index];
-                (resolved.final_tile_index, resolved.final_sub_tile)
-            }
-            // Constructor47BBF0 supplies +38=FFFF/+11A=0. Live dummy tile
-            // replacement is not modeled; no general malformed-map parity is
-            // claimed by the stock corpus. Do not substitute a real cell.
-            Cell::Dummy => (0xffff, 0),
-        };
         RimCell {
             coord: self.publication.coord(cell),
             flags: self.publication.flags(cell),
-            tile,
-            subtile,
+            tile: terrain.native_cell_tile_index(cell),
+            subtile: terrain.native_cell_sub_tile(cell),
             anchor: terrain
                 .native_cell_anchor(cell)
                 .map(|anchor| terrain.native_cell_coord(anchor)),

@@ -11,6 +11,7 @@ use crate::map::cell_index::NativeCellIdentity as Cell;
 use crate::map::resolved_terrain::DynamicTerrainCellState;
 use crate::sim::bridge_state::Phase;
 use crate::sim::bridge_state::publication::{self, BridgePublicationHost, CellCoord};
+use crate::sim::bridge_state::ramp_repair::Family;
 
 #[path = "bridge_rim_publication.rs"]
 mod rim_publication;
@@ -70,7 +71,9 @@ pub(super) fn try_body(
         .bridge_state
         .as_ref()?
         .cell(input.0 as u16, input.1 as u16)?;
-    if matches!(runtime.overlay_byte, 0x4a..=0x63 | 0xcd..=0xe6)
+    let overlay = i32::from(runtime.overlay_byte);
+    if ordinary::standing(overlay, Family::Low)
+        || ordinary::standing(overlay, Family::High)
         || runtime.role == BridgeCellRole::Bridgehead
     {
         return None;
@@ -115,6 +118,25 @@ pub(super) fn try_body(
         returned,
         collapsed: host.collapsed,
     })
+}
+
+/// UpdateAdjacentBridges_High (`0x00576770`) outside a body publication: the
+/// bridgehead state machine's ramp pair and the CABHUT fallback's ramp
+/// (`0x005745B4`). Its clears reach BlowUpBridge; returns whether one ran.
+pub(super) fn update_adjacent_bridges(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    input: CellCoord,
+) -> bool {
+    let mut host = LivePublication {
+        sim,
+        rules,
+        registry,
+        collapsed: false,
+    };
+    rim_publication::update(&mut host, input);
+    host.collapsed
 }
 
 struct LivePublication<'a> {
