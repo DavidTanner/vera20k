@@ -350,7 +350,7 @@ impl Wave {
                 self.source = owner;
                 self.target = target;
                 self.edge_geometry = legacy_nonmagnetic_edges(owner, target);
-                let yaw = crate::sim::movement::homing_movement::atan2_bam(
+                let yaw = crate::util::bam_trig::atan2_bam(
                     crate::util::fixed_math::SimFixed::from_num(target.y.wrapping_sub(owner.y)),
                     crate::util::fixed_math::SimFixed::from_num(target.x.wrapping_sub(owner.x)),
                 );

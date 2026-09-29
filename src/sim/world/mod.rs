@@ -102,7 +102,7 @@ pub(crate) use lifecycle_tests::common_raw_terrain_cell as common_raw_test_terra
 mod team_script_vm_tests;
 
 pub(crate) use lifecycle::{
-    ConcealOutcome, LifecycleOutput, NULL_TARGET_CELL_SENTINEL, PlacementEvidence, RevealOutcome,
+    ConcealOutcome, LifecycleOutput, PlacementEvidence, RevealOutcome,
     RevealPosition, RevealRequest, UninitContext,
 };
 #[cfg(test)]

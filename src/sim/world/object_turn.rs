@@ -10,9 +10,7 @@ use super::{Simulation, techno_ai};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::lifecycle_request::LifecycleRequest;
-use crate::sim::movement::{
-    self, homing_movement, parachute_descent, rocket_movement, teleport_movement,
-};
+use crate::sim::movement::{self, parachute_descent, rocket_movement, teleport_movement};
 use crate::sim::pathfinding::PathGrid;
 
 /// Whether this Unit visit reaches FootClass's SHP body-counter cadence.
@@ -808,11 +806,6 @@ impl Simulation {
             crate::sim::spawn_manager::detonate_dead_missile(sim, stable_id);
             return Ok(outcome);
         }
-        let _ = homing_movement::tick_homing_movement(
-            &mut sim.substrate.entities,
-            &one,
-            sim.session.tick,
-        );
         if let Some(rules) = rules {
             let falling = |sim: &Simulation| {
                 sim.substrate
