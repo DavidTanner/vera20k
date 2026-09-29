@@ -1,51 +1,36 @@
 <img src="docs/images/new-conscirpt-hero-image.png" alt="VERA20k hero image" width="100%">
 
-[![VERA20k Discord](https://img.shields.io/badge/VERA20k%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/kmjRUn5m5F)
-[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE-GPL)
-[![Windows](https://img.shields.io/github/actions/workflow/status/YuriPlanet/vera20k/windows.yml?branch=main&label=Windows&style=for-the-badge&labelColor=0078D6&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMS40djExLjRIMHpNMTIuNiAwSDI0djExLjRIMTIuNnpNMCAxMi42aDExLjRWMjRIMHpNMTIuNiAxMi42SDI0VjI0SDEyLjZ6Ii8%2BPC9zdmc%2B)](https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml)
-[![Linux](https://img.shields.io/github/actions/workflow/status/YuriPlanet/vera20k/linux.yml?branch=main&label=Linux&style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=1E1E1E)](https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml)
-[![macOS](https://img.shields.io/github/actions/workflow/status/YuriPlanet/vera20k/macos.yml?branch=main&label=macOS&style=for-the-badge&logo=apple&logoColor=white&labelColor=000000)](https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml)
-[![Linux ARM](https://img.shields.io/github/actions/workflow/status/YuriPlanet/vera20k/linux-arm.yml?branch=main&label=Linux%20ARM&style=for-the-badge&logo=linux&logoColor=FCC624&labelColor=1E1E1E)](https://github.com/YuriPlanet/vera20k/actions/workflows/linux-arm.yml)
-[![Windows ARM](https://img.shields.io/github/actions/workflow/status/YuriPlanet/vera20k/windows-arm.yml?branch=main&label=Windows%20ARM&style=for-the-badge&labelColor=0078D6&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMS40djExLjRIMHpNMTIuNiAwSDI0djExLjRIMTIuNnpNMCAxMi42aDExLjRWMjRIMHpNMTIuNiAxMi42SDI0VjI0SDEyLjZ6Ii8%2BPC9zdmc%2B)](https://github.com/YuriPlanet/vera20k/actions/workflows/windows-arm.yml)
-[![Clippy](https://img.shields.io/github/actions/workflow/status/YuriPlanet/vera20k/rust.yml?branch=main&label=Clippy&style=for-the-badge&logo=rust&logoColor=F74C00&labelColor=000000)](https://github.com/YuriPlanet/vera20k/actions/workflows/rust.yml)
-
 # VERA20k
 
-**Red Alert 2: Yuri's Revenge, rebuilt in Rust.** Faithful to the original game, with a goal
-of 30 players and 20,000 units.
+VERA20k is a rewrite of the Red Alert 2: Yuri's Revenge engine (`gamemd.exe`) in Rust. It ports
+the original game's behavior one mechanic at a time, and aims to scale up to 30 players and
+20,000 units. Unlike [OpenRA](https://www.openra.net), which remakes the classic games on its
+own engine, it tries to reproduce Yuri's Revenge itself.
 
-VERA20k is an open-source reimplementation of the Yuri's Revenge engine (`gamemd.exe`). It
-plays from your own copy of the game and ports the original's behavior one mechanism at a
-time. Unlike [OpenRA](https://www.openra.net), which recreates the classic games on its own
-engine, VERA20k aims to reproduce Yuri's Revenge itself.
-
-> **You need the original game.** VERA20k contains no game files. EA sells Red Alert 2 and
-> Yuri's Revenge in *Command & Conquer The Ultimate Collection*, on
-> [Steam](https://store.steampowered.com/bundle/39394/) and from
-> [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc).
+You'll need your own copy of the game. EA sells it in *Command & Conquer The Ultimate
+Collection*, on [Steam](https://store.steampowered.com/bundle/39394/) and on
+[EA's site](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc).
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k skirmish setup screen and in-game view" width="100%">
 
 ## Status
 
-**Pre-alpha** (September 2026). A local skirmish on retail maps is playable on Windows against
-a placeholder AI.
+Pre-alpha (September 2026). You can play a local skirmish on the retail maps on Windows, against
+a placeholder AI. A lot of the game works already: retail and random maps, the original menus
+and sidebar, base building and power, the tech tree, the miners, infantry, vehicle, naval and
+base-defense combat, garrisons, transports, engineers, cloaking, some support powers, and save
+and load.
 
-| Works | Partial or in progress | Not yet |
-|---|---|---|
-| Retail and random maps, original menus and sidebar | Aircraft attack runs and Carrier Hornets | Multiplayer (lockstep exists, no network) |
-| Building, power, tech tree, selling and repair | Mind control | The original AI (a placeholder for now) |
-| War, Chrono and Slave Miners | Crate pickup | Campaign and most map triggers |
-| Infantry, vehicle, naval and base-defense combat | Death effects (Aegis sinking works; other cases remain) | Chrono Legionnaire, Crazy Ivan, Magnetron and other special weapons |
-| Attack dogs and Terror Drones | Bridge variants (ordinary wood/concrete damage and hut repair work) | Gattling spin-up, Prism chaining, Tesla charging |
-| Garrisons, transports, engineers and cloaking | | Nuke, Chronosphere, Psychic Dominator, Spy Plane |
-| Lightning Storm, Iron Curtain and other support powers | | Movies and credits |
-| Save and load | | 30 players / 20,000 units (not demonstrated yet) |
+Aircraft attack runs, mind control, crates, death effects and some bridge types are partly
+done. Not there yet: multiplayer, the original AI, the campaign and most map triggers, the
+movies, and several special weapons and superweapons, such as the Chrono Legionnaire, Prism
+chaining, the Nuke and the Chronosphere. The 30-player, 20,000-unit scale hasn't been
+demonstrated yet.
 
-## Quick start
+## Running it
 
 You need Rust 1.88 or newer, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.
-It has been played on Windows, Linux and macOS, and CI builds and tests all three.
+It's been played on Windows, Linux and macOS, and CI builds and tests all three.
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -54,33 +39,26 @@ cp config.toml.example config.toml   # then set ra2_dir to your game folder
 cargo run --release --bin vera20k    # always --release: debug builds are too slow to play
 ```
 
-The retail menu is the only match-setup interface. If the game files or menu
-resources cannot load, startup shows the failure and the searched asset directory.
-`config.toml` is read from the launch directory first, then beside the executable;
-relative `ra2_dir` paths are relative to that config file. Without a config, assets
-are searched beside the executable. For a macOS `.app`, put the config beside the
-binary in `Contents/MacOS/` so Finder launches work independently of the working
-directory. Keep this machine-specific config out of Git.
-
-`cargo test -p vera20k --lib` runs the tests, no game needed. More setup details are in
-[CONTRIBUTING.md](CONTRIBUTING.md#set-up).
+The tests don't need the game: `cargo test -p vera20k --lib`. See
+[CONTRIBUTING.md](CONTRIBUTING.md#set-up) for more setup details, including where VERA20k looks
+for `config.toml`.
 
 ## How it's built
 
-The original `gamemd.exe` is the reference. Newer gameplay code cites the original function it
+The original `gamemd.exe` is the reference. Newer gameplay code names the original function it
 was ported from, and [native harnesses](tools/native_oracle.md) run the original code to check
-the Rust results. Most code is written by AI coding assistants that the maintainer directs,
-following the rules in [AGENTS.md](AGENTS.md).
+the Rust results. Most of the code is written by AI coding agents that I direct, following the
+rules in [AGENTS.md](AGENTS.md).
 
 ## Contributing
 
-Help is welcome, and you don't need reverse-engineering experience. Compare VERA20k with the
-original and report differences, try it on Linux or macOS, or pick a
-[good first issue](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue). Start
-with [CONTRIBUTING.md](CONTRIBUTING.md), or say hi on [Discord](https://discord.gg/kmjRUn5m5F).
-
-**Learn more:** [architecture overview](https://yuriplanet.github.io/vera20k/) ·
-[native oracle](tools/native_oracle.md) · [research notes](docs/research/README.md)
+Help is welcome, and you don't need reverse-engineering experience. Playing VERA20k next to the
+original and reporting differences helps a lot, and so does trying it on Linux or macOS. Start
+with [CONTRIBUTING.md](CONTRIBUTING.md) or the
+[good first issues](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue), or say
+hi on [Discord](https://discord.gg/kmjRUn5m5F). For more depth there's the
+[architecture overview](https://yuriplanet.github.io/vera20k/), the
+[native oracle](tools/native_oracle.md) and the [research notes](docs/research/README.md).
 
 ## Credits and legal
 
@@ -89,5 +67,5 @@ Command & Conquer and Red Alert, World-Altering Editor, Final Alert, YRpp, Ares,
 many others.
 
 Licensed under the [GPLv3](LICENSE-GPL). This repository contains no game files. Command &
-Conquer and Red Alert are trademarks of Electronic Arts Inc., and screenshots show game art
+Conquer and Red Alert are trademarks of Electronic Arts Inc., and the screenshots show game art
 owned by Electronic Arts. VERA20k is not affiliated with or endorsed by Electronic Arts.
