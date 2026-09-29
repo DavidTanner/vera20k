@@ -31,9 +31,7 @@ use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::util::fixed_math::SimFixed;
 
 use super::super::locomotor::{LocomotorState, MovementLayer};
-use super::super::rocket_movement::RocketState;
 use super::super::slope_transition::SlopeTransitionState;
-use super::super::teleport_movement::TeleportState;
 
 /// Runtime state shared by every locomotor object, independent of its installed
 /// class identity. This is what moves as one object through the piggyback slot.
@@ -70,13 +68,16 @@ pub struct WalkRuntime {
 /// Class-local state that travels with the locomotor object.
 ///
 /// Special process state is carried here rather than reconstructed from a phase
-/// byte when a complete locomotor is suspended or loaded.
+/// byte when a complete locomotor is suspended or loaded. Teleport and Rocket
+/// are the exceptions: their process state has one owner on the entity
+/// (`GameEntity::teleport_state`, `rocket_state`), and their variants only
+/// mark the class.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LocomotorRuntimePayload {
     Drive(SlopeTransitionState),
     Walk(WalkRuntime),
-    Teleport(Option<TeleportState>),
-    Rocket(Option<RocketState>),
+    Teleport,
+    Rocket,
     Hover(Option<crate::sim::components::DriveCoord>),
     Ship(SlopeTransitionState),
     Fly(super::super::fly_height::FlyRuntime),
@@ -90,8 +91,8 @@ impl LocomotorRuntimePayload {
                 Self::Drive(SlopeTransitionState::at_binary_frame(binary_frame))
             }
             LocomotorKind::Walk => Self::Walk(WalkRuntime::default()),
-            LocomotorKind::Teleport => Self::Teleport(None),
-            LocomotorKind::Rocket => Self::Rocket(None),
+            LocomotorKind::Teleport => Self::Teleport,
+            LocomotorKind::Rocket => Self::Rocket,
             LocomotorKind::Hover => Self::Hover(None),
             LocomotorKind::Ship => Self::Ship(SlopeTransitionState::at_binary_frame(binary_frame)),
             LocomotorKind::Fly => Self::Fly(Default::default()),
@@ -189,18 +190,6 @@ impl LocomotorRuntime {
 pub struct StashedLocomotor(Box<LocomotorRuntime>);
 
 impl StashedLocomotor {
-    /// These legacy height fields mirror the linked owner's height, rather
-    /// than a native field belonging to the suspended interface. A real
-    /// SetHeight(0) coordinate writer invalidates their previous values.
-    pub(crate) fn owner_grounded(&mut self) {
-        if matches!(self.0.kind, LocomotorKind::Fly | LocomotorKind::Hover) {
-            self.0.common.altitude = crate::util::fixed_math::SIM_ZERO;
-        }
-        if let LocomotorRuntimePayload::Rocket(Some(rocket)) = &mut self.0.payload {
-            rocket.altitude = crate::util::fixed_math::SIM_ZERO;
-        }
-    }
-
     pub fn capture(state: &LocomotorState) -> Self {
         Self(Box::new(LocomotorRuntime::capture(state)))
     }
@@ -303,64 +292,6 @@ pub fn serialized_presence(state: &LocomotorState) -> u8 {
     u8::from(state.piggyback.is_some())
 }
 
-/// Inputs to the class-local `IsOKToEnd` gates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EndGateContext {
-    pub owner_moving: bool,
-    pub owner_teleporting: bool,
-    pub owner_deploying: bool,
-}
-
-/// Whether the active piggyback may be unwound now.
-///
-/// The movement and populated-slot checks are common; the ground family adds
-/// clear owner transition flags. An active Drive's native gate
-/// (`Is_OK_To_End @ 0x004AF970`) also reads Drive-owned state this function
-/// cannot see, so entity callers go through
-/// `locomotor_owner::piggyback_end_admitted`. Special locomotors stay
-/// conservative until their Process state machines supply their own completed
-/// phase to the caller.
-pub fn is_ok_to_end(state: &LocomotorState, context: EndGateContext) -> bool {
-    if context.owner_moving || state.piggyback.is_none() {
-        return false;
-    }
-
-    match state.kind {
-        LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Hover | LocomotorKind::Ship => {
-            !context.owner_teleporting && !context.owner_deploying
-        }
-        LocomotorKind::Jumpjet => {
-            // The Jumpjet's own state field; `AirMovePhase` is Fly's.
-            state
-                .jumpjet_runtime()
-                .is_none_or(|runtime| runtime.phase == super::super::jumpjet_flight::STATE_GROUND)
-                && !context.owner_teleporting
-                && !context.owner_deploying
-        }
-        // Fly exposes no IPiggyback; it cannot finish a stash.
-        LocomotorKind::Fly => false,
-        // `TeleportLocomotionClass::Is_Ok_To_End` is a real six-clause
-        // predicate, not a constant false: the locomotor's own warp-active byte
-        // must be clear, a runtime must be stashed, the owner's chrono-warp
-        // field must be clear, the pending warp phase must be zero and the
-        // owner must not be deploying. VERA carries the whole warp in
-        // `teleport_state`, so that one flag stands for the warp-active byte
-        // and the pending warp phase together. `+0x35` is a **locomotor** byte,
-        // not an owner one: `TeleportLocomotionClass::Is_Ok_To_End` @
-        // `0x00719F30` reads `*(char*)(this+0x1D)` where `this` is the
-        // IPiggyback sub-object at LocomotorBase+0x18. Only `+0x27C` is an
-        // owner field, and neither `+0x35` nor `+0x27C` has a Rust model —
-        // VERA-internal, gamemd equivalent UNCHECKED. The other two clauses do:
-        // `Is_Moving() == 0` is approximated by `context.owner_moving` and
-        // `owner+0x6AD` (`FootClass::bIsDeploying`) by `context.owner_deploying`. This is the clause that hands a chrono-warped unit back to
-        // its own locomotor when the warp finishes.
-        LocomotorKind::Teleport => !context.owner_teleporting && !context.owner_deploying,
-        // Rocket (`0x00661EC0`) has no `IPiggyback` vtable at all, so gamemd
-        // can never reach an END gate for it.
-        LocomotorKind::Rocket => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,10 +387,7 @@ mod tests {
         let bytes = bincode::serialize(&state).expect("serialize locomotor");
         let loaded: LocomotorState = bincode::deserialize(&bytes).expect("load locomotor");
 
-        assert_eq!(
-            loaded.runtime_payload,
-            LocomotorRuntimePayload::Rocket(None)
-        );
+        assert_eq!(loaded.runtime_payload, LocomotorRuntimePayload::Rocket);
         assert_eq!(
             loaded.piggyback.as_deref().map(|runtime| &runtime.payload),
             Some(&LocomotorRuntimePayload::Hover(Some(head)))
@@ -484,41 +412,6 @@ mod tests {
             LocomotorKind::Teleport
         );
         assert!(state.piggyback.is_none());
-    }
-
-    #[test]
-    fn ordinary_and_special_end_gates_are_distinct() {
-        let mut state = teleporter();
-        begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0);
-        let ready = EndGateContext {
-            owner_moving: false,
-            owner_teleporting: false,
-            owner_deploying: false,
-        };
-        assert!(is_ok_to_end(&state, ready));
-
-        // `TeleportLocomotionClass::Is_Ok_To_End` refuses while the warp is
-        // live and permits once it has finished — it is not a constant false.
-        state.kind = LocomotorKind::Teleport;
-        assert!(!is_ok_to_end(
-            &state,
-            EndGateContext {
-                owner_teleporting: true,
-                ..ready
-            }
-        ));
-        assert!(!is_ok_to_end(
-            &state,
-            EndGateContext {
-                owner_deploying: true,
-                ..ready
-            }
-        ));
-        assert!(is_ok_to_end(&state, ready));
-
-        // Rocket has no IPiggyback, so it never finishes a stash.
-        state.kind = LocomotorKind::Rocket;
-        assert!(!is_ok_to_end(&state, ready));
     }
 
     #[test]

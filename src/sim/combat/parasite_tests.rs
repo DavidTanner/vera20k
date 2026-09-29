@@ -576,13 +576,14 @@ fn a_teleport_warp_ejects_the_drone_before_the_host_relocates() {
     let drone = arena.spawn(&rules, "DRON", "Russians", (10, 10));
     let tank = arena.spawn(&rules, "MTNK", "Americans", (11, 10));
     arena.infect(&rules, drone, tank);
-    arena
-        .sim
-        .substrate
-        .entities
-        .get_mut(tank)
-        .unwrap()
-        .teleport_state = Some(crate::sim::movement::teleport_movement::TeleportState {
+    let host = arena.sim.substrate.entities.get_mut(tank).unwrap();
+    // A warping host runs Teleport as its active locomotor (the Chrono Miner).
+    host.locomotor = Some(
+        crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+            crate::rules::locomotor_type::LocomotorKind::Teleport,
+        ),
+    );
+    host.teleport_state = Some(crate::sim::movement::teleport_movement::TeleportState {
         phase: crate::sim::movement::teleport_movement::TeleportPhase::Relocate,
         target_rx: 20,
         target_ry: 20,

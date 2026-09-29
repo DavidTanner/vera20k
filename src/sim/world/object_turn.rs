@@ -686,6 +686,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
+            .filter(|entity| teleport_movement::teleport_process_active(entity))
             .and_then(|entity| entity.teleport_state.as_ref())
             .is_some_and(|state| {
                 state.phase == crate::sim::movement::teleport_movement::TeleportPhase::Relocate
@@ -749,15 +750,23 @@ impl Simulation {
             );
         }
         // Teleport Process's warp step (`0x007192F0`), after the relocation.
+        // Its `vt+0x480(NULL, 1)` is the owner's class setter: the Unit one,
+        // or the represented NavCom clear for an infantryman.
         let unit_teleport = sim
             .substrate
             .entities
             .get(stable_id)
             .is_some_and(|entity| entity.category == EntityCategory::Unit);
-        let unit_warp_arrival = teleport_relocating && unit_teleport;
-        if teleport_reached && unit_teleport {
+        let null_destination = |sim: &mut Simulation| {
+            if unit_teleport {
+                sim.set_unit_null_destination(stable_id, rules);
+            } else {
+                sim.assign_null_destination(stable_id, rules);
+            }
+        };
+        if teleport_reached {
             // 0x007197B4: vt+0x480(NULL, 1) before Stop_Moving.
-            sim.set_unit_null_destination(stable_id, rules);
+            null_destination(sim);
         }
         if teleport_relocating {
             if let Some(rules) = rules {
@@ -772,16 +781,14 @@ impl Simulation {
                 overlay_registry,
             )?;
             per_cell_ran = true;
-            if unit_warp_arrival {
-                // 0x00719725 Stop_Moving: the tick retired the request.
-                // 0x0071972E CellClass::PickupCrate (`0x00481A00`): the crate
-                // receiver every mover still lacks (`movement::track_fresh`
-                // residuals).
-                // 0x0071973C: vt+0x480(NULL, 1). A Teleporter still in radio
-                // contact gets a Drive here, which the FootClass::AI tail below
-                // ends again.
-                sim.set_unit_null_destination(stable_id, rules);
-            }
+            // 0x00719725 Stop_Moving: the tick retired the request.
+            // 0x0071972E CellClass::PickupCrate (`0x00481A00`): the crate
+            // receiver every mover still lacks (`movement::track_fresh`
+            // residuals).
+            // 0x0071973C: vt+0x480(NULL, 1). A Teleporter still in radio
+            // contact gets a Drive here, which the FootClass::AI tail below
+            // ends again.
+            null_destination(sim);
         }
         let rocket_arrivals = rocket_movement::tick_rocket_movement(
             &mut sim.substrate.entities,
