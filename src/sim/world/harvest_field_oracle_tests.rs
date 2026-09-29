@@ -183,12 +183,7 @@ pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String)) -> S
             .unwrap();
         let grid = s.sim.overlay_grid.as_mut().unwrap();
         grid.place_overlay(at.0, at.1, id, ore[4].as_u64().unwrap() as u8);
-        grid.recalculate_runtime_cell(
-            s.sim.resolved_terrain.as_mut().unwrap(),
-            registry,
-            at,
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        grid.recalculate_runtime_cell(s.sim.resolved_terrain.as_mut().unwrap(), registry, at);
     }
     let frame = s.sim.session.binary_frame;
     s.sim.production.ore_growth_state = OreGrowthState::new(33, 33);

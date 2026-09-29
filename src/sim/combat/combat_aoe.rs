@@ -33,9 +33,10 @@ use crate::sim::occupancy::{
 #[cfg(test)]
 use crate::sim::overlay_grid::WallMutation;
 use crate::sim::overlay_grid::{
-    OverlayGrid, WallDamageTransactionHost, WallDirtyStep, WallPointerTarget, WallZoneRepairKind,
+    OverlayGrid, WallDamageTransactionHost, WallDirtyStep, WallPointerTarget,
     damage_wall_overlay_with_runtime_host,
 };
+use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::rng::SimRng;
 use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
 #[cfg(test)]
@@ -96,7 +97,7 @@ pub(crate) trait AoECellPrelude {
         _terrain: &ResolvedTerrainGrid,
         _cell: (u16, u16),
         _navigation_changed: bool,
-        _repair: WallZoneRepairKind,
+        _repair: ZoneRepairKind,
     ) {
     }
 
@@ -122,7 +123,7 @@ impl WallDamageTransactionHost for AoEWallDamageHost<'_, '_> {
         terrain: &ResolvedTerrainGrid,
         cell: (u16, u16),
         navigation_changed: bool,
-        repair: WallZoneRepairKind,
+        repair: ZoneRepairKind,
     ) {
         if let Some(prelude) = self.prelude.as_deref_mut() {
             prelude.wall_navigation_step(terrain, cell, navigation_changed, repair);

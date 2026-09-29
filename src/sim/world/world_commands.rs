@@ -35,7 +35,7 @@ use crate::sim::movement::jumpjet_movement;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::teleport_movement;
 use crate::sim::overlay_grid::{
-    NavigationPublication, OverlayRecalcOutcome, RecomputeResult, runtime_wall_cleanup_visit_at,
+    OverlayRecalcOutcome, RecomputeResult, runtime_wall_cleanup_visit_at,
 };
 use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
@@ -423,13 +423,8 @@ impl Simulation {
             // eight neighbour contributions permanently.
             grid.clear_overlay(rx, ry);
             if let Some(terrain) = self.resolved_terrain.as_mut() {
-                grid.recalculate_runtime_cell(
-                    terrain,
-                    overlays,
-                    (rx, ry),
-                    NavigationPublication::NextPathReader,
-                )
-                .navigation_changed
+                grid.recalculate_runtime_cell(terrain, overlays, (rx, ry))
+                    .navigation_changed
             } else {
                 false
             }
@@ -484,12 +479,9 @@ impl Simulation {
             };
             let result = visit.recomputed;
             let recalc = match (self.overlay_grid.as_mut(), self.resolved_terrain.as_mut()) {
-                (Some(grid), Some(terrain)) => grid.recalculate_runtime_cell(
-                    terrain,
-                    overlays,
-                    (nx, ny),
-                    NavigationPublication::NextPathReader,
-                ),
+                (Some(grid), Some(terrain)) => {
+                    grid.recalculate_runtime_cell(terrain, overlays, (nx, ny))
+                }
                 _ => OverlayRecalcOutcome::default(),
             };
             self.refresh_wall_sale_recalc_prefix(&mut tail_grid, nx, ny, recalc.navigation_changed);
