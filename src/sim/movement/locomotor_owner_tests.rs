@@ -8,9 +8,9 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::Command;
 use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, Health};
+use crate::sim::movement;
 use crate::sim::movement::locomotion::{LocomotorRuntimePayload, LocomotorSlot};
-use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-use crate::sim::movement::{self, teleport_movement};
+use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -299,40 +299,6 @@ fn stop_command_retires_only_the_drive_admitted_by_its_existing_gate() {
     }
 }
 
-#[test]
-fn finished_teleport_restores_suspended_drive_without_retiring_its_state() {
-    let (mut sim, rules) = fixture();
-    let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    supply_drive_state(entity);
-    let before = owned_state(entity);
-
-    assert!(teleport_movement::issue_teleport_command(
-        &mut sim.substrate.entities,
-        1,
-        (12, 8),
-        &rules.general,
-        true,
-        37,
-    ));
-    teleport_movement::tick_teleport_movement(
-        &mut sim.substrate.entities,
-        &mut sim.substrate.occupancy,
-        &[1],
-        1,
-        None,
-        None,
-    );
-
-    let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(entity.teleport_state.is_none());
-    assert_eq!(
-        entity.locomotor.as_ref().unwrap().layer,
-        MovementLayer::Ground
-    );
-    assert_eq!(owned_state(entity), before);
-}
-
 /// Unit741970's class refusals return before its Teleporter swap (0x7423CD),
 /// so a refused Chrono Miner order never installs Drive: payload and external
 /// instance state stay untouched. An accepted order has no rollback (the
@@ -372,7 +338,7 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         assert_eq!(entity.navigation.path_runtime, path_runtime);
         assert!(matches!(
             entity.locomotor.as_ref().unwrap().runtime_payload,
-            LocomotorRuntimePayload::Teleport(None)
+            LocomotorRuntimePayload::Teleport
         ));
         assert!(entity.movement_target.is_none());
     }

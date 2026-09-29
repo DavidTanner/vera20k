@@ -686,6 +686,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
+            .filter(|entity| teleport_movement::teleport_process_active(entity))
             .and_then(|entity| entity.teleport_state.as_ref())
             .is_some_and(|state| {
                 state.phase == crate::sim::movement::teleport_movement::TeleportPhase::Relocate

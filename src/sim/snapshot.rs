@@ -735,7 +735,9 @@ use crate::sim::world::Simulation;
 // gone.
 // 251 -> 252: an entity no longer saves a homing state; nothing in production
 // ever created one.
-const SNAPSHOT_VERSION: u32 = 252;
+// 252 -> 253: a Teleport or Rocket locomotor no longer saves a copy of the
+// entity's teleport or rocket state.
+const SNAPSHOT_VERSION: u32 = 253;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3620,7 +3622,8 @@ mod tests {
         // 250 -> 251: Fly speeds live in the Fly runtime; no air progress or
         // wobble phase.
         // 251 -> 252: no entity homing state.
-        assert_eq!(super::SNAPSHOT_VERSION, 252);
+        // 252 -> 253: no Teleport/Rocket payload copies.
+        assert_eq!(super::SNAPSHOT_VERSION, 253);
     }
 
     #[test]

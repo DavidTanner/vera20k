@@ -31,9 +31,7 @@ use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::util::fixed_math::SimFixed;
 
 use super::super::locomotor::{LocomotorState, MovementLayer};
-use super::super::rocket_movement::RocketState;
 use super::super::slope_transition::SlopeTransitionState;
-use super::super::teleport_movement::TeleportState;
 
 /// Runtime state shared by every locomotor object, independent of its installed
 /// class identity. This is what moves as one object through the piggyback slot.
@@ -70,13 +68,16 @@ pub struct WalkRuntime {
 /// Class-local state that travels with the locomotor object.
 ///
 /// Special process state is carried here rather than reconstructed from a phase
-/// byte when a complete locomotor is suspended or loaded.
+/// byte when a complete locomotor is suspended or loaded. Teleport and Rocket
+/// are the exceptions: their process state has one owner on the entity
+/// (`GameEntity::teleport_state`, `rocket_state`), and their variants only
+/// mark the class.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LocomotorRuntimePayload {
     Drive(SlopeTransitionState),
     Walk(WalkRuntime),
-    Teleport(Option<TeleportState>),
-    Rocket(Option<RocketState>),
+    Teleport,
+    Rocket,
     Hover(Option<crate::sim::components::DriveCoord>),
     Ship(SlopeTransitionState),
     Fly(super::super::fly_height::FlyRuntime),
@@ -90,8 +91,8 @@ impl LocomotorRuntimePayload {
                 Self::Drive(SlopeTransitionState::at_binary_frame(binary_frame))
             }
             LocomotorKind::Walk => Self::Walk(WalkRuntime::default()),
-            LocomotorKind::Teleport => Self::Teleport(None),
-            LocomotorKind::Rocket => Self::Rocket(None),
+            LocomotorKind::Teleport => Self::Teleport,
+            LocomotorKind::Rocket => Self::Rocket,
             LocomotorKind::Hover => Self::Hover(None),
             LocomotorKind::Ship => Self::Ship(SlopeTransitionState::at_binary_frame(binary_frame)),
             LocomotorKind::Fly => Self::Fly(Default::default()),
@@ -189,18 +190,6 @@ impl LocomotorRuntime {
 pub struct StashedLocomotor(Box<LocomotorRuntime>);
 
 impl StashedLocomotor {
-    /// These legacy height fields mirror the linked owner's height, rather
-    /// than a native field belonging to the suspended interface. A real
-    /// SetHeight(0) coordinate writer invalidates their previous values.
-    pub(crate) fn owner_grounded(&mut self) {
-        if matches!(self.0.kind, LocomotorKind::Fly | LocomotorKind::Hover) {
-            self.0.common.altitude = crate::util::fixed_math::SIM_ZERO;
-        }
-        if let LocomotorRuntimePayload::Rocket(Some(rocket)) = &mut self.0.payload {
-            rocket.altitude = crate::util::fixed_math::SIM_ZERO;
-        }
-    }
-
     pub fn capture(state: &LocomotorState) -> Self {
         Self(Box::new(LocomotorRuntime::capture(state)))
     }
@@ -456,10 +445,7 @@ mod tests {
         let bytes = bincode::serialize(&state).expect("serialize locomotor");
         let loaded: LocomotorState = bincode::deserialize(&bytes).expect("load locomotor");
 
-        assert_eq!(
-            loaded.runtime_payload,
-            LocomotorRuntimePayload::Rocket(None)
-        );
+        assert_eq!(loaded.runtime_payload, LocomotorRuntimePayload::Rocket);
         assert_eq!(
             loaded.piggyback.as_deref().map(|runtime| &runtime.payload),
             Some(&LocomotorRuntimePayload::Hover(Some(head)))

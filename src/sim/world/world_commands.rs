@@ -550,6 +550,38 @@ impl Simulation {
         true
     }
 
+    /// A Move or AttackMove for a non-harvester Teleport or `Teleporter=`
+    /// owner. A `Teleporter=` Unit takes its class setter (`0x741970`), whose
+    /// Teleporter arm drives it except onto a dock. Any other owner takes
+    /// Teleport Move_To (`0x00718100`), which refuses a paralyzed or warped
+    /// owner.
+    ///
+    /// RESIDUAL: for the latter, the class setter (Infantry `0x0051AA40`) and
+    /// the Foot tail (`0x004D94B0`, its NavCom write) are not represented; the
+    /// order reaches Move_To directly. Trigger: every Chrono Legionnaire,
+    /// Chrono Commando or Chrono Ivan move order. Risk: the setter's
+    /// same-destination and mission arms.
+    fn teleport_move_order(
+        &mut self,
+        id: u64,
+        cell: (u16, u16),
+        info: &MoveInfo,
+        rules: Option<&RuleSet>,
+    ) -> bool {
+        if info.is_teleporter
+            && !info.is_infantry
+            && let Some(rules) = rules
+        {
+            return self.set_unit_cell_destination(id, cell, rules);
+        }
+        let default_general = crate::rules::ruleset::GeneralRules::default();
+        let general = rules.map_or(&default_general, |rules| &rules.general);
+        let frame = self.session.binary_frame;
+        self.substrate.entities.get_mut(id).is_some_and(|entity| {
+            teleport_movement::teleport_move_to(entity, cell, general, false, frame)
+        })
+    }
+
     /// Snapshot entity + rules data needed for movement dispatch in one lookup.
     pub(crate) fn resolve_move_info(
         &self,
@@ -667,19 +699,8 @@ impl Simulation {
                 let use_teleport_move = !info.is_harvester
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
-                let general_rules = rules.map(|r| &r.general);
                 let result = if use_teleport_move {
-                    // Teleport locomotor or non-harvester Teleporter=yes: instant relocation.
-                    // `use_teleport_move` already excludes harvesters, so is_harvester=false.
-                    let default_general = crate::rules::ruleset::GeneralRules::default();
-                    teleport_movement::issue_teleport_command(
-                        &mut self.substrate.entities,
-                        *entity_id,
-                        (*target_rx, *target_ry),
-                        general_rules.unwrap_or(&default_general),
-                        false,
-                        self.session.binary_frame,
-                    )
+                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules)
                 } else if info.loco_layer == MovementLayer::Air {
                     // Jumpjet infantry walk fallback: ≤3 cells + !HoverAttack → ground walk.
                     if info.loco_kind == Some(LocomotorKind::Jumpjet) && info.is_infantry {
@@ -1103,18 +1124,8 @@ impl Simulation {
                 let use_teleport_move = !info.is_harvester
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
-                let default_general = crate::rules::ruleset::GeneralRules::default();
-                let general_rules_ref = rules.map(|r| &r.general).unwrap_or(&default_general);
                 let issued = if use_teleport_move {
-                    // `use_teleport_move` excludes harvesters, so is_harvester=false.
-                    teleport_movement::issue_teleport_command(
-                        &mut self.substrate.entities,
-                        *entity_id,
-                        (*target_rx, *target_ry),
-                        general_rules_ref,
-                        false,
-                        self.session.binary_frame,
-                    )
+                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules)
                 } else if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines.
                     let ok = self.issue_air_cell_destination(

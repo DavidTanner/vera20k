@@ -3397,7 +3397,8 @@ fn teleport_command_test_rules() -> RuleSet {
          [AircraftTypes]\n\n\
          [BuildingTypes]\n0=GAREFN\n\n\
          [CMIN]\nStrength=400\nArmor=light\nSpeed=4\nHarvester=yes\nTeleporter=yes\nDock=GAREFN\n\n\
-         [CHRONO]\nStrength=200\nArmor=light\nSpeed=5\nTeleporter=yes\n\n\
+         [CHRONO]\nStrength=200\nArmor=light\nSpeed=5\nTeleporter=yes\n\
+         Locomotor={4A582747-9839-11d1-B709-00A024DDAFD1}\n\n\
          [GAREFN]\nStrength=900\nArmor=wood\nFoundation=4x3\nRefinery=yes\nDockUnload=yes\n",
     );
     RuleSet::from_ini(&ini).expect("teleport command rules should parse")
@@ -6648,8 +6649,11 @@ fn test_move_command_chrono_miner_uses_ground_path() {
     );
 }
 
+/// A `Teleporter=` Unit's move order runs the Unit setter's Teleporter arm
+/// (`0x007423CD..0x007427C0`): a destination that is not a dock drives, a
+/// Drive piggybacking over the Teleport primary (`0x007425E6..0x0074277E`).
 #[test]
-fn test_move_command_non_harvester_teleporter_uses_teleport() {
+fn test_move_command_non_harvester_teleporter_drives() {
     let rules = teleport_command_test_rules();
     let mut sim: Simulation = Simulation::new();
     let entity = sim
@@ -6674,16 +6678,78 @@ fn test_move_command_non_harvester_teleporter_uses_teleport() {
             .entities
             .get(entity)
             .and_then(|e| e.teleport_state.as_ref())
-            .is_some(),
-        "Non-harvester teleporters should still use teleport movement"
+            .is_none(),
+        "the arm drives a Teleporter= Unit to a non-dock cell"
+    );
+    let e = sim.substrate.entities.get(entity).unwrap();
+    assert_eq!(
+        e.locomotor.as_ref().map(|loco| loco.active_kind()),
+        Some(LocomotorKind::Drive)
     );
     assert!(
-        sim.substrate
-            .entities
-            .get(entity)
-            .is_some_and(|e| e.movement_target.is_none()),
-        "Teleport movement should not attach a ground MovementTarget"
+        e.locomotor
+            .as_ref()
+            .is_some_and(|loco| loco.is_overridden())
     );
+}
+
+/// A Chrono Legionnaire's move order reaches `TeleportLocomotionClass::
+/// Move_To @ 0x00718100`, which refuses a timer-locked owner (Foot+0x6A0,
+/// `vt+0x380`) or one still warping in (`vt+0x1D8`) with a raw NavCom clear
+/// (`0x0071820F`). The order entry this replaced armed a new warp anyway.
+#[test]
+fn a_paralyzed_or_warping_in_teleport_infantryman_refuses_a_move_order() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=CLEG\n\n[VehicleTypes]\n\n[AircraftTypes]\n\n[BuildingTypes]\n\n\
+         [CLEG]\nStrength=125\nSpeed=4\nTeleporter=yes\n\
+         Locomotor={4A582747-9839-11d1-B709-00A024DDAFD1}\n",
+    ))
+    .expect("legionnaire rules");
+    let grid = PathGrid::new(32, 32);
+    let order = |sim: &mut Simulation, id: u64, rx: u16| {
+        let cmd = cmd_envelope(
+            sim,
+            "Americans",
+            1,
+            Command::Move {
+                entity_id: id,
+                target_rx: rx,
+                target_ry: 2,
+                queue: false,
+            },
+        );
+        let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 33);
+        // The order runs in the frame's event tail; Process runs next frame.
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
+    };
+    let spawn = |sim: &mut Simulation| {
+        sim.spawn_object("CLEG", "Americans", 2, 2, 64, &rules)
+            .expect("spawn legionnaire")
+    };
+
+    // A free legionnaire warps; one ordered again while warping in stays.
+    let mut sim: Simulation = Simulation::new();
+    let id = spawn(&mut sim);
+    order(&mut sim, id, 8);
+    let entity = sim.substrate.entities.get(id).unwrap();
+    assert_eq!((entity.position.rx, entity.position.ry), (8, 2));
+    assert!(entity.is_warping_in());
+    order(&mut sim, id, 12);
+    let entity = sim.substrate.entities.get(id).unwrap();
+    assert_eq!((entity.position.rx, entity.position.ry), (8, 2));
+    assert!(entity.navigation.nav_com.is_none());
+
+    // A paralyzed one never warps.
+    let mut sim: Simulation = Simulation::new();
+    let id = spawn(&mut sim);
+    let frame = sim.session.binary_frame as i32;
+    sim.substrate.entities.get_mut(id).unwrap().paralysis_timer =
+        crate::sim::timer::CdTimer::started(frame, 100);
+    order(&mut sim, id, 8);
+    let entity = sim.substrate.entities.get(id).unwrap();
+    assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
+    assert!(entity.teleport_state.is_none());
+    assert!(entity.navigation.nav_com.is_none());
 }
 
 #[test]

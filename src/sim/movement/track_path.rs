@@ -891,13 +891,10 @@ impl Simulation {
     /// no producer in VERA and read clear; the Foot locomotor-swap byte
     /// (+0x6AD) is read.
     ///
-    /// RESIDUAL: the Drive install stashes the Teleport without a Stop, so a
-    /// warp the Teleport had armed waits natively until End_Piggyback hands
-    /// it back; VERA's warp request (`teleport_state`) lives on the entity,
-    /// so the next frame's Teleport step warps under the Drive. Trigger: a
-    /// non-pad re-assign between the arm and the same object's Process. The
-    /// dock chain arms and warps inside one FootClass::AI, so only an
-    /// outside setter call in between (none represented) reaches it.
+    /// The Drive install stashes the Teleport without a Stop, so a warp the
+    /// Teleport had armed waits until End_Piggyback hands it back: the
+    /// Teleport step runs only while Teleport is the active locomotor
+    /// (`teleport_movement::teleport_process_active`).
     fn unit_teleporter_arm(&mut self, id: u64, cell: Option<(u16, u16)>, rules: &RuleSet) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
