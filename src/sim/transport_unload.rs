@@ -738,11 +738,15 @@ pub(crate) fn unit_mission_unload(
 
 /// Whether the aircraft is on the ground: `GetHeight() == 0` (vtable `+0x1C8`,
 /// `0x004151F0`) and the flight-altitude float `+0x2E8 == 0.0` (`0x00415200`).
-fn aircraft_landed(entity: &GameEntity) -> bool {
-    entity
-        .locomotor
-        .as_ref()
-        .is_none_or(|loco| loco.altitude == SIM_ZERO)
+fn aircraft_landed(
+    entity: &GameEntity,
+    terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
+) -> bool {
+    crate::sim::movement::air_movement::current_fly_height(entity, terrain) == 0
+        && entity
+            .locomotor
+            .as_ref()
+            .is_none_or(|loco| loco.altitude == SIM_ZERO)
 }
 
 /// The Aircraft Unload slot `0x004151E0` (Nighthawk and any other landed
@@ -808,7 +812,7 @@ pub(crate) fn dispatch_aircraft_unload(
             // Team-less: landed → 3 (`0x00415250`), otherwise → 2
             // (`0x0041530C`). The destination compare is team-only
             // (residual above).
-            let next = if aircraft_landed(entity) {
+            let next = if aircraft_landed(entity, sim.resolved_terrain.as_ref()) {
                 AIR_STATE_EJECT
             } else {
                 AIR_STATE_WAIT_STOP
@@ -825,7 +829,9 @@ pub(crate) fn dispatch_aircraft_unload(
             // jumpjet does not yet auto-land on Unload (recorded residual), so
             // the landed altitude gate is applied here as well; an airborne
             // Nighthawk keeps waiting rather than dropping its cargo mid-air.
-            if entity.movement_target.is_none() && aircraft_landed(entity) {
+            if entity.movement_target.is_none()
+                && aircraft_landed(entity, sim.resolved_terrain.as_ref())
+            {
                 if let Some(entity) = sim.substrate.entities.get_mut(id) {
                     entity.mission.set_handler_state(AIR_STATE_EJECT);
                 }
