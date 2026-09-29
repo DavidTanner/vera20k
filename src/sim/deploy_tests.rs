@@ -9,7 +9,6 @@ use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::terrain_rules::TerrainClass;
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell};
 use crate::sim::combat::AttackTarget;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -252,31 +251,16 @@ fn spawn_infantry(sim: &mut Simulation, type_str: &str, owner: &str, rx: u16, ry
     id
 }
 
-/// One flat clear-land cell (also reused by `miner_tests` for the resolved
-/// terrain `LandType` fixture).
-pub(crate) fn clear_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-    ResolvedTerrainCell {
-        accepts_smudge: true,
-        allows_tiberium: true,
-        base_terrain_class: TerrainClass::Clear,
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-    }
-}
-
 pub(crate) fn mcv_deploy_terrain_with(
     mut mutate: impl FnMut(&mut ResolvedTerrainCell),
 ) -> ResolvedTerrainGrid {
-    let width = 32;
-    let height = 32;
-    let mut cells = Vec::with_capacity(width as usize * height as usize);
-    for ry in 0..height {
-        for rx in 0..width {
-            cells.push(clear_terrain_cell(rx, ry));
+    crate::map::resolved_terrain::test_grid(32, 32, |rx, ry| {
+        let mut cell = crate::map::resolved_terrain::test_tiberium_cell(rx, ry);
+        if (rx, ry) == (20, 21) {
+            mutate(&mut cell);
         }
-    }
-    let idx = 21usize * width as usize + 20usize;
-    mutate(&mut cells[idx]);
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+        cell
+    })
 }
 
 /// A Simulation on the shared flat arena, whose ground a Construction Yard

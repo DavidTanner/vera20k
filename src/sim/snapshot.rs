@@ -2373,9 +2373,8 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+    use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::rules::locomotor_type::{MovementZone, SpeedType};
-    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::pathfinding::PathGrid;
     use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
@@ -2389,22 +2388,12 @@ mod tests {
         sim.advance_tick(&[], None, &height_map, None, None, 67);
     }
 
-    fn clear_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        ResolvedTerrainCell {
-            zone_type: crate::map::resolved_terrain::zone_class::GROUND,
-            base_terrain_class: TerrainClass::Clear,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
-        for ry in 0..height {
-            for rx in 0..width {
-                cells.push(clear_terrain_cell(rx, ry));
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     mod gsi_17_04_tests {
@@ -4003,7 +3992,7 @@ mod tests {
                 if state.hash_fields() == (2, 7, 49, 3)
         ));
 
-        let mut live_cell = clear_terrain_cell(0, 0);
+        let mut live_cell = crate::map::resolved_terrain::test_clear_cell(0, 0);
         live_cell.slope_type = 12;
         let live_terrain = ResolvedTerrainGrid::from_cells(1, 1, vec![live_cell]);
         restored.resolved_terrain = Some(live_terrain.clone());

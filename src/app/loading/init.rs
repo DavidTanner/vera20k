@@ -403,8 +403,7 @@ mod native_overlay_shp_tests {
 mod map_wall_owner_candidate_tests {
     use super::*;
     use crate::map::entities::EntityCategory;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::components::{BuildingUp, Health};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::overlay_grid::{MapWallOwnerCandidate, OverlayGrid};
@@ -412,30 +411,12 @@ mod map_wall_owner_candidate_tests {
     use crate::sim::radiation::RadDetonation;
     use crate::sim::runtime::map_wall_owner_candidate_from_building;
 
-    fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        let land = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile::default();
-        ResolvedTerrainCell {
-            filled_clear: true,
-            tileset_index: None,
-            land_type: land,
-            yr_cell_land_type: land,
-            speed_costs,
-            accepts_smudge: true,
-            zone_type: zone_class::GROUND,
-            base_land_type: land,
-            base_yr_cell_land_type: land,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_loader_clear_cell,
+        )
     }
 
     fn building(

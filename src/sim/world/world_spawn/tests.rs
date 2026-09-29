@@ -1,7 +1,6 @@
 use super::*;
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::rules::ini_parser::IniFile;
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::rng::SimRng;
 
 fn constructor_rules() -> RuleSet {
@@ -648,27 +647,15 @@ fn install_constructor_test_playfield(sim: &mut Simulation) {
 }
 
 fn install_constructor_flat_terrain(sim: &mut Simulation) {
-    let speed_costs = SpeedCostProfile {
-        foot: Some(100),
-        track: Some(100),
-        wheel: Some(100),
-        float: Some(100),
-        amphibious: Some(100),
-        float_beach: Some(100),
-        hover: Some(100),
-    };
-    let cells = (0..10)
-        .flat_map(|ry| {
-            (0..10).map(move |rx| ResolvedTerrainCell {
-                speed_costs,
-                zone_type: zone_class::GROUND,
-                base_terrain_class: TerrainClass::Clear,
-                base_speed_costs: speed_costs,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            })
-        })
-        .collect();
-    sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(10, 10, cells));
+    sim.install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_grid(
+        10,
+        10,
+        |rx, ry| ResolvedTerrainCell {
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_clear_cell(rx, ry)
+        },
+    ));
 }
 
 fn assert_generated_projection_rejects_before_mutation(

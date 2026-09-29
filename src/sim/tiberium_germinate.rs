@@ -186,10 +186,9 @@ mod tests {
     use super::*;
 
     use crate::map::basic::{BasicSection, SpecialFlagsSection};
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
+    use crate::map::resolved_terrain::ResolvedTerrainCell;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
     use crate::sim::world::Simulation;
 
     /// Storage covering the whole `(8, 8)` native diamond (`x`, `y` in
@@ -199,36 +198,15 @@ mod tests {
     const MAP_HEIGHT: u16 = 8;
 
     fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            float: Some(100),
-            amphibious: Some(100),
-            float_beach: Some(100),
-            hover: Some(100),
-        };
         ResolvedTerrainCell {
-            land_type,
-            yr_cell_land_type: land_type,
-            speed_costs,
-            accepts_smudge: true,
-            allows_tiberium: true,
-            zone_type: zone_class::GROUND,
-            base_land_type: land_type,
-            base_yr_cell_land_type: land_type,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_tiberium_cell(rx, ry)
         }
     }
 
     fn flat_terrain() -> ResolvedTerrainGrid {
-        let cells = (0..STORAGE)
-            .flat_map(|ry| (0..STORAGE).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(STORAGE, STORAGE, cells)
+        crate::map::resolved_terrain::test_grid(STORAGE, STORAGE, flat_cell)
     }
 
     /// Overlay ids: `ORE` = 0 (outside every native image range, so it falls

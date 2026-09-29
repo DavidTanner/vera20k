@@ -680,17 +680,11 @@ mod tests {
             .cell(0, 0)
             .expect("clear template")
             .clone();
-        let mut cells = Vec::with_capacity(9);
-        for ry in 0..3 {
-            for rx in 0..3 {
-                cells.push(ResolvedTerrainCell {
-                    rx,
-                    ry,
-                    ..template.clone()
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(3, 3, cells)
+        crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| ResolvedTerrainCell {
+            rx,
+            ry,
+            ..template.clone()
+        })
     }
 
     #[test]

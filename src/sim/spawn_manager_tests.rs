@@ -14,11 +14,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::missile_spawn::MissileFamily;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::combat::TargetKind;
 use crate::sim::spawn_manager::{SpawnManagerMode, SpawnSlotState, tick_spawn_managers};
 use crate::sim::timer::CdTimer;
@@ -254,31 +253,16 @@ fn empty_height_map() -> BTreeMap<(u16, u16), u8> {
 }
 
 fn flat_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-    let speed_costs = SpeedCostProfile {
-        foot: Some(100),
-        track: Some(100),
-        wheel: Some(100),
-        float: Some(100),
-        amphibious: Some(100),
-        float_beach: Some(100),
-        hover: Some(100),
-    };
     ResolvedTerrainCell {
-        speed_costs,
-        accepts_smudge: true,
-        allows_tiberium: true,
-        base_terrain_class: TerrainClass::Clear,
-        base_speed_costs: speed_costs,
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+        base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+        ..crate::map::resolved_terrain::test_tiberium_cell(rx, ry)
     }
 }
 
 fn flat_sim() -> Simulation {
     const WIDTH: u16 = 40;
     const HEIGHT: u16 = 32;
-    let cells = (0..HEIGHT)
-        .flat_map(|ry| (0..WIDTH).map(move |rx| flat_terrain_cell(rx, ry)))
-        .collect();
     let mut sim = Simulation::new();
     sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
         base: 0,
@@ -287,7 +271,11 @@ fn flat_sim() -> Simulation {
         off_104: 80,
         off_108: 41,
     });
-    sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(WIDTH, HEIGHT, cells));
+    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(
+        WIDTH,
+        HEIGHT,
+        flat_terrain_cell,
+    ));
     sim
 }
 

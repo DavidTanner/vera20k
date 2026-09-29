@@ -728,18 +728,12 @@ mod tests {
     use crate::map::resolved_terrain::ResolvedTerrainCell;
 
     fn make_terrain(w: u16, h: u16, accepts: bool) -> ResolvedTerrainGrid {
-        let mut cells: Vec<ResolvedTerrainCell> = Vec::with_capacity((w * h) as usize);
-        for ry in 0..h {
-            for rx in 0..w {
-                cells.push(ResolvedTerrainCell {
-                    filled_clear: true,
-                    terrain_class: Default::default(),
-                    accepts_smudge: accepts,
-                    ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(w, h, cells)
+        crate::map::resolved_terrain::test_grid(w, h, |rx, ry| ResolvedTerrainCell {
+            filled_clear: true,
+            terrain_class: Default::default(),
+            accepts_smudge: accepts,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        })
     }
 
     fn make_registry_with_one_crater_1x1() -> SmudgeTypeRegistry {

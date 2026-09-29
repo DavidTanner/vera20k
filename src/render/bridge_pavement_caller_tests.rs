@@ -128,15 +128,10 @@ fn pavement_raw_caller_gate_keeps_plain_and_structural_endpoint_art() {
 }
 
 fn endpoint_test_terrain() -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(20 * 20);
-    for ry in 0..20u16 {
-        for rx in 0..20u16 {
-            cells.push(ResolvedTerrainCell {
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
-        }
-    }
-    let mut terrain = ResolvedTerrainGrid::from_cells(20, 20, cells);
+    let mut terrain =
+        crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        });
     terrain.test_set_high_bridge_rim_tiles(crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
         0, b"[General]\nBridgeMiddle1=1\nBridgeMiddle2=1\nBridgeTopLeft1=11\nBridgeTopLeft2=12\nBridgeBottomRight1=13\nBridgeBottomRight2=14\nBridgeTopRight1=15\nBridgeTopRight2=16\nBridgeBottomLeft1=17\nBridgeBottomLeft2=18\n"));
     terrain

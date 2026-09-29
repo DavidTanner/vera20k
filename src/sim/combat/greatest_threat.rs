@@ -2574,10 +2574,9 @@ mod tests {
     /// A square map cut in two by one impassable column, so that
     /// `MovementZone::Normal` has two disconnected components.
     fn split_zone_grid(side: u16, barrier_rx: u16) -> ZoneGrid {
-        let cells = (0..side)
-            .flat_map(|ry| (0..side).map(move |rx| zone_test_cell(rx, ry, rx == barrier_rx)))
-            .collect();
-        let terrain = ResolvedTerrainGrid::from_cells(side, side, cells);
+        let terrain = crate::map::resolved_terrain::test_grid(side, side, |rx, ry| {
+            zone_test_cell(rx, ry, rx == barrier_rx)
+        });
         let path_grid = crate::sim::pathfinding::PathGrid::from_resolved_terrain(&terrain);
         ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], side, side)
     }

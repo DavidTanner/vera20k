@@ -1523,16 +1523,10 @@ fn bridgehead_advance_h_gt_4_ew_absorbs_with_no_change() {
         },
     );
     // 3x3 terrain with cell (2,2) h=0xC.
-    let mut cells = Vec::with_capacity(9);
-    for ry in 0..3u16 {
-        for rx in 0..3u16 {
-            cells.push(ResolvedTerrainCell {
-                template_height: if rx == 2 && ry == 2 { 0x0C } else { 0 },
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
-        }
-    }
-    let mut terrain = ResolvedTerrainGrid::from_cells(3, 3, cells);
+    let mut terrain = crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| ResolvedTerrainCell {
+        template_height: if rx == 2 && ry == 2 { 0x0C } else { 0 },
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+    });
     let outcome = state.bridgehead_advance_state(2, 2, true, &mut terrain);
     assert_eq!(outcome, StateOutcome::NoChange);
 }
@@ -1625,18 +1619,12 @@ fn bridge_state_destroyable_flag_disabled() {
 /// all other fields are zero/default. Suitable for flood-fill unit tests
 /// that only care about tile_id equality + has_damaged_data gating.
 fn flood_fill_terrain(width: u16, height: u16, tile_id: i32) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(width as usize * height as usize);
-    for ry in 0..height {
-        for rx in 0..width {
-            cells.push(ResolvedTerrainCell {
-                source_tile_index: tile_id,
-                final_tile_index: tile_id,
-                has_damaged_data: true,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
-        }
-    }
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(width, height, |rx, ry| ResolvedTerrainCell {
+        source_tile_index: tile_id,
+        final_tile_index: tile_id,
+        has_damaged_data: true,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+    })
 }
 
 /// Build a `BridgeRuntimeState` with healthy body cells at the given coords.

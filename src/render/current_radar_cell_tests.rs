@@ -13,7 +13,6 @@ use crate::render::minimap_projection::MinimapPlayfieldProjection;
 use crate::render::radar_terrain_updates::{
     RadarTerrainUpdateLayers, apply_radar_terrain_dirty_cells,
 };
-use crate::rules::terrain_rules::TerrainClass;
 use crate::sim::bridge_state::{
     BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
 };
@@ -859,10 +858,8 @@ fn gsi_04_01_full_and_incremental_paths_share_current_cell_source_precedence() {
 
 fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
     ResolvedTerrainCell {
-        accepts_smudge: true,
-        base_terrain_class: TerrainClass::Clear,
         radar_left: [20, 40, 60],
         radar_right: [90, 90, 90],
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        ..crate::map::resolved_terrain::test_smudge_cell(rx, ry)
     }
 }

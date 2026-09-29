@@ -44,26 +44,11 @@ fn flat_trigger_playfield_terrain(
     width: u16,
     height: u16,
 ) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
-    use crate::rules::terrain_rules::TerrainClass;
-
-    let prototype = ResolvedTerrainCell {
-        zone_type: zone_class::GROUND,
-        base_terrain_class: TerrainClass::Clear,
-        ..crate::map::resolved_terrain::test_flat_cell(0, 0)
-    };
-    let cells = (0..height)
-        .flat_map(|ry| {
-            let prototype = prototype.clone();
-            (0..width).map(move |rx| {
-                let mut cell = prototype.clone();
-                cell.rx = rx;
-                cell.ry = ry;
-                cell
-            })
-        })
-        .collect();
-    crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(
+        width,
+        height,
+        crate::map::resolved_terrain::test_clear_cell,
+    )
 }
 
 fn make_trigger(

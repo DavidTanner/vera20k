@@ -682,13 +682,7 @@ mod dispatch_tests {
     }
 
     fn flat_terrain(w: u16, h: u16) -> ResolvedTerrainGrid {
-        let mut cells: Vec<ResolvedTerrainCell> = Vec::with_capacity((w * h) as usize);
-        for ry in 0..h {
-            for rx in 0..w {
-                cells.push(test_default_cell(rx, ry));
-            }
-        }
-        ResolvedTerrainGrid::from_cells(w, h, cells)
+        crate::map::resolved_terrain::test_grid(w, h, test_default_cell)
     }
 
     fn test_default_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {

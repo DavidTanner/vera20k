@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF, BridgeheadAnchorClass};
 use crate::map::entities::EntityCategory;
 use crate::map::playfield::PlayfieldBounds;
-use crate::map::resolved_terrain::{RadarColorMetadata, ResolvedTerrainCell, ResolvedTerrainGrid};
+use crate::map::resolved_terrain::{RadarColorMetadata, ResolvedTerrainCell};
 use crate::map::terrain::build_terrain_grid_from_resolved;
 use crate::render::minimap_projection::MinimapPlayfieldProjection;
 use crate::render::radar_terrain_updates::{
@@ -73,10 +73,7 @@ fn bridge_cell(role: BridgeCellRole, span: Option<u16>, overlay_byte: u8) -> Bri
 }
 
 fn simulation_fixture() -> (Simulation, crate::map::terrain::TerrainGrid) {
-    let cells = (0..SIDE)
-        .flat_map(|ry| (0..SIDE).map(move |rx| cell(rx, ry)))
-        .collect();
-    let mut terrain = ResolvedTerrainGrid::from_cells(SIDE, SIDE, cells);
+    let mut terrain = crate::map::resolved_terrain::test_grid(SIDE, SIDE, |rx, ry| cell(rx, ry));
     // Native572230 selects pavement from the raw tile independently of its
     // overlay-state write. Give synthetic tile42 the retail relative identity
     // BridgeBottomRight1=3 with BridgeSet base40; an overlay alone is not enough.

@@ -110,7 +110,6 @@ pub fn build_visible_instances(
 mod tests {
     use super::*;
     use crate::map::resolved_terrain::ResolvedTerrainCell;
-    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::smudge_grid::SmudgeCell;
     use std::cell::RefCell;
 
@@ -126,20 +125,12 @@ mod tests {
     fn flat_terrain_cell(rx: u16, ry: u16, level: u8) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
             level,
-            accepts_smudge: true,
-            base_terrain_class: TerrainClass::Clear,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            ..crate::map::resolved_terrain::test_smudge_cell(rx, ry)
         }
     }
 
     fn flat_terrain(level: u8) -> ResolvedTerrainGrid {
-        let mut cells = Vec::with_capacity(64);
-        for ry in 0..8 {
-            for rx in 0..8 {
-                cells.push(flat_terrain_cell(rx, ry, level));
-            }
-        }
-        ResolvedTerrainGrid::from_cells(8, 8, cells)
+        crate::map::resolved_terrain::test_grid(8, 8, |rx, ry| flat_terrain_cell(rx, ry, level))
     }
 
     #[test]

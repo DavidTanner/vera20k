@@ -796,9 +796,8 @@ fn ftol_add_f32_product(base: i32, factor: f32, amount: crate::util::native_x87:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::map::tube_facts::TubeSource;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::components::{DriveLocomotionRuntime, Health};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
@@ -853,17 +852,9 @@ mod tests {
     }
 
     fn flat_cell(rx: u16, ry: u16, tube_index: Option<TubeId>) -> ResolvedTerrainCell {
-        let speed_costs = SpeedCostProfile::default();
         ResolvedTerrainCell {
-            filled_clear: true,
-            tileset_index: None,
-            speed_costs,
-            accepts_smudge: true,
-            zone_type: zone_class::GROUND,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
             tube_index,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
         }
     }
 

@@ -189,10 +189,9 @@ mod tests {
 
     use crate::map::basic::{BasicSection, SpecialFlagsSection};
     use crate::map::houses::HouseDefinition;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::house_colors::HouseColorIndex;
     use crate::rules::ini_parser::IniFile;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
     use crate::sim::house_state::HouseState;
     use crate::sim::overlay_grid::OverlayGrid;
     use crate::skirmish_launch::{
@@ -243,35 +242,11 @@ mod tests {
     }
 
     fn flat_terrain() -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            float: Some(100),
-            amphibious: Some(100),
-            float_beach: Some(100),
-            hover: Some(100),
-        };
-        let mut cells = Vec::with_capacity(MAP_SIZE as usize * MAP_SIZE as usize);
-        for ry in 0..MAP_SIZE {
-            for rx in 0..MAP_SIZE {
-                cells.push(ResolvedTerrainCell {
-                    land_type,
-                    yr_cell_land_type: land_type,
-                    speed_costs,
-                    accepts_smudge: true,
-                    allows_tiberium: true,
-                    zone_type: zone_class::GROUND,
-                    base_land_type: land_type,
-                    base_yr_cell_land_type: land_type,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: speed_costs,
-                    ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(MAP_SIZE, MAP_SIZE, cells)
+        crate::map::resolved_terrain::test_grid(MAP_SIZE, MAP_SIZE, |rx, ry| ResolvedTerrainCell {
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_tiberium_cell(rx, ry)
+        })
     }
 
     fn twinkle_rules_and_overlays() -> (RuleSet, OverlayTypeRegistry) {

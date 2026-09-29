@@ -1696,24 +1696,17 @@ pub(super) fn free_helipad_cell(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainGrid, zone_class};
     use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::pathfinding::PathGrid;
 
-    fn terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        ResolvedTerrainCell {
-            zone_type: zone_class::GROUND,
-            base_terrain_class: TerrainClass::Clear,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| terrain_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     fn test_playfield_bounds() -> crate::sim::cell_rect::PlayfieldBounds {

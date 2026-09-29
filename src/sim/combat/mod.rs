@@ -3336,10 +3336,9 @@ mod impact_height_tests {
     }
 
     pub(super) fn terrain_at_level(level: u8) -> ResolvedTerrainGrid {
-        let cells: Vec<ResolvedTerrainCell> = (0..TEST_GRID)
-            .flat_map(|ry| (0..TEST_GRID).map(move |rx| terrain_cell(rx, ry, level)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(TEST_GRID, TEST_GRID, cells)
+        crate::map::resolved_terrain::test_grid(TEST_GRID, TEST_GRID, |rx, ry| {
+            terrain_cell(rx, ry, level)
+        })
     }
 
     /// Armed tank plus a warhead that emits an impact animation, so a

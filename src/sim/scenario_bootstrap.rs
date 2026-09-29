@@ -2647,9 +2647,8 @@ mod tests {
             "negative chops toward zero"
         );
     }
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
+    use crate::map::resolved_terrain::ResolvedTerrainCell;
     use crate::rules::ini_parser::IniFile;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
 
     fn descriptor(seed: u32) -> ScenarioDescriptor {
         ScenarioDescriptor {
@@ -2984,35 +2983,11 @@ mod tests {
     }
 
     fn techno_constructor_flat_start_terrain(size: u16) -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            float: Some(100),
-            amphibious: Some(100),
-            float_beach: Some(100),
-            hover: Some(100),
-        };
-        let mut cells = Vec::with_capacity(usize::from(size) * usize::from(size));
-        for ry in 0..size {
-            for rx in 0..size {
-                cells.push(ResolvedTerrainCell {
-                    land_type,
-                    yr_cell_land_type: land_type,
-                    speed_costs,
-                    accepts_smudge: true,
-                    allows_tiberium: true,
-                    zone_type: zone_class::GROUND,
-                    base_land_type: land_type,
-                    base_yr_cell_land_type: land_type,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: speed_costs,
-                    ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(size, size, cells)
+        crate::map::resolved_terrain::test_grid(size, size, |rx, ry| ResolvedTerrainCell {
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_tiberium_cell(rx, ry)
+        })
     }
 
     fn techno_constructor_start_sim(seed: u64, size: u16) -> Simulation {

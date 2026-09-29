@@ -444,7 +444,6 @@ mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::map::tube_facts::TubeId;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::components::DriveCoord;
     use crate::sim::docking::aircraft_dock::AircraftAmmo;
     use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
@@ -636,29 +635,15 @@ mod tests {
     }
 
     fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        let speed_costs = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            float: Some(100),
-            amphibious: Some(100),
-            float_beach: Some(100),
-            hover: Some(100),
-        };
         ResolvedTerrainCell {
-            speed_costs,
-            accepts_smudge: true,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_smudge_cell(rx, ry)
         }
     }
 
     pub(super) fn flat_terrain(side: u16) -> ResolvedTerrainGrid {
-        let cells = (0..side)
-            .flat_map(|ry| (0..side).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(side, side, cells)
+        crate::map::resolved_terrain::test_grid(side, side, flat_cell)
     }
 
     pub(super) fn visibility_projection() -> RadarProjectionFacts {

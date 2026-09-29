@@ -1753,10 +1753,9 @@ mod tests {
     use crate::map::entities::EntityCategory;
     use crate::map::overlay::OverlayEntry;
     use crate::map::overlay_types::OverlayTypeRegistry;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
     use crate::rules::tiberium_type::{TiberiumTypeId, TiberiumTypeRegistry};
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
@@ -1771,29 +1770,10 @@ mod tests {
     }
 
     fn flat_clear_resolved_grid(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile::default();
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
-        for ry in 0..height {
-            for rx in 0..width {
-                cells.push(ResolvedTerrainCell {
-                    filled_clear: true,
-                    tileset_index: None,
-                    land_type,
-                    yr_cell_land_type: land_type,
-                    speed_costs,
-                    accepts_smudge: true,
-                    allows_tiberium: true,
-                    zone_type: zone_class::GROUND,
-                    base_land_type: land_type,
-                    base_yr_cell_land_type: land_type,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: speed_costs,
-                    ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(width, height, |rx, ry| ResolvedTerrainCell {
+            allows_tiberium: true,
+            ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
+        })
     }
 
     fn tiberium_rebuild_fixture() -> (IniFile, OverlayTypeRegistry, TiberiumTypeRegistry) {

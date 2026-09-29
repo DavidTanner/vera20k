@@ -2,7 +2,6 @@ use super::*;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::map::terrain::{TerrainGrid, build_terrain_grid_from_resolved};
 use crate::render::minimap_helpers::OverlayClassification;
-use crate::rules::terrain_rules::TerrainClass;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, X87Value};
 use std::collections::{BTreeMap, HashMap};
 
@@ -421,10 +420,8 @@ fn overlap(start: X87Value, end: X87Value, pixel: i32) -> X87Value {
 
 fn flat_cell(rx: u16, ry: u16, radar_left: [u8; 3], radar_right: [u8; 3]) -> ResolvedTerrainCell {
     ResolvedTerrainCell {
-        accepts_smudge: true,
-        base_terrain_class: TerrainClass::Clear,
         radar_left,
         radar_right,
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        ..crate::map::resolved_terrain::test_smudge_cell(rx, ry)
     }
 }

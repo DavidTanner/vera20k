@@ -5,11 +5,9 @@ use super::{
     depth_cell, shp_z_adjust_in_runtime, unit_bridge_split_in_runtime, unit_z_adjust_in_runtime,
 };
 use crate::map::entities::EntityCategory;
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::terrain_rules::TerrainClass;
 use crate::sim::cloak_disguise::DisguiseRuntime;
 use crate::sim::components::{BridgeOccupancy, Health};
 use crate::sim::game_entity::GameEntity;
@@ -58,10 +56,9 @@ ZFudgeCliff=99
 fn runtime() -> SimRuntime {
     let mut resources = SimResources::empty();
     resources.rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("fixture rules parse");
-    let cells = (0..8)
-        .flat_map(|y| (0..8).map(move |x| flat_cell(x, y)))
-        .collect();
-    let terrain = ResolvedTerrainGrid::from_cells(8, 8, cells);
+    let terrain = crate::map::resolved_terrain::test_grid(8, 8, |x, y| {
+        crate::map::resolved_terrain::test_smudge_cell(x, y)
+    });
     resources.terrain_template = Some(terrain.clone());
     let mut simulation = Simulation::new();
     simulation.intern_rule_type_ids(&resources.rules);
@@ -501,12 +498,4 @@ fn composite_factory_split_requires_navcom_and_slot_zero_weapons_factory() {
     ))
     .unwrap();
     assert!(!evaluate(&runtime, &tank));
-}
-
-fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-    ResolvedTerrainCell {
-        accepts_smudge: true,
-        base_terrain_class: TerrainClass::Clear,
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-    }
 }

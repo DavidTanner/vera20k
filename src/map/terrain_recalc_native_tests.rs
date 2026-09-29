@@ -140,10 +140,7 @@ fn recalc_pristine_metadata_and_level_override_match_original_instructions() {
         map.header.local_top = 0;
         map.header.local_width = 16;
         map.header.local_height = 16;
-        let cells = (0..33)
-            .flat_map(|y| (0..33).map(move |x| make_test_cell(x, y)))
-            .collect();
-        let mut grid = ResolvedTerrainGrid::from_cells(33, 33, cells);
+        let mut grid = crate::map::resolved_terrain::test_grid(33, 33, |x, y| make_test_cell(x, y));
         let index = 16 * 33 + 16;
         grid.cells[index].final_tile_index = if flag("invalid") {
             2

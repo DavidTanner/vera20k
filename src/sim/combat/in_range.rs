@@ -996,10 +996,7 @@ mod tests {
     // ─── Fixtures for compute_in_range tests ────────────────────────────
 
     pub(super) fn flat_terrain(w: u16, h: u16) -> ResolvedTerrainGrid {
-        let cells: Vec<ResolvedTerrainCell> = (0..h)
-            .flat_map(|ry| (0..w).map(move |rx| default_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(w, h, cells)
+        crate::map::resolved_terrain::test_grid(w, h, default_cell)
     }
 
     #[test]

@@ -71,19 +71,11 @@ fn playfield_projection_grid(side: u16) -> TerrainGrid {
 }
 
 fn flat_resolved_terrain(side: u16) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-    use crate::rules::terrain_rules::TerrainClass;
-
-    let cells = (0..side)
-        .flat_map(|ry| {
-            (0..side).map(move |rx| ResolvedTerrainCell {
-                accepts_smudge: true,
-                base_terrain_class: TerrainClass::Clear,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            })
-        })
-        .collect();
-    ResolvedTerrainGrid::from_cells(side, side, cells)
+    crate::map::resolved_terrain::test_grid(
+        side,
+        side,
+        crate::map::resolved_terrain::test_smudge_cell,
+    )
 }
 
 fn expanded_playfield() -> PlayfieldBounds {

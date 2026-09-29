@@ -965,18 +965,12 @@ fn legacy_nonmagnetic_edges(source: ProjectileCoord, target: ProjectileCoord) ->
 mod tests {
     use super::*;
 
-    fn flat_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::ResolvedTerrainCell {
-        crate::map::resolved_terrain::ResolvedTerrainCell {
-            base_terrain_class: crate::rules::terrain_rules::TerrainClass::Clear,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     fn point(x: i32, y: i32, z: i32) -> ProjectileCoord {

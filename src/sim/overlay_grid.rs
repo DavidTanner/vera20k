@@ -2548,25 +2548,11 @@ mod tests {
     }
 
     pub(super) fn clear_terrain_grid(width: u16, height: u16) -> ResolvedTerrainGrid {
-        use crate::rules::terrain_rules::{LandType, SpeedCostProfile};
-
-        let mut single = single_cell_terrain(
-            LandType::Clear.as_index(),
-            SpeedCostProfile::default(),
-            false,
-            false,
-        );
-        let template = single.cells.remove(0);
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
-        for ry in 0..height {
-            for rx in 0..width {
-                let mut cell = template.clone();
-                cell.rx = rx;
-                cell.ry = ry;
-                cells.push(cell);
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_loader_clear_cell,
+        )
     }
 
     fn gsi_04_07_placement_registry() -> OverlayTypeRegistry {
@@ -3610,7 +3596,7 @@ NoUseTileLandType=yes
     /// runtime ore placement bypassed RecalcAttributes-equivalent logic.
     #[test]
     fn gsi_04_04_tiberium_overlay_round_trip_updates_terrain_metadata() {
-        use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+        use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
         use crate::rules::ini_parser::IniFile;
         use crate::rules::terrain_rules::LandType;
         use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
@@ -3625,26 +3611,21 @@ NoUseTileLandType=yes
         // `resolved_terrain::build()` would produce on a clear-grass tile.
         let clear_lt = LandType::Clear.as_index();
         let base_speed = SpeedCostProfile::default();
-        let mut cells = Vec::with_capacity(100);
-        for ry in 0..10u16 {
-            for rx in 0..10u16 {
-                cells.push(ResolvedTerrainCell {
-                    filled_clear: true,
-                    tileset_index: None,
-                    land_type: clear_lt,
-                    yr_cell_land_type: clear_lt,
-                    speed_costs: base_speed,
-                    accepts_smudge: true,
-                    zone_type: zone_class::GROUND,
-                    base_land_type: clear_lt,
-                    base_yr_cell_land_type: clear_lt,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: base_speed,
-                    ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-                });
-            }
-        }
-        let mut terrain = ResolvedTerrainGrid::from_cells(10, 10, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(10, 10, |rx, ry| ResolvedTerrainCell {
+                filled_clear: true,
+                tileset_index: None,
+                land_type: clear_lt,
+                yr_cell_land_type: clear_lt,
+                speed_costs: base_speed,
+                accepts_smudge: true,
+                zone_type: zone_class::GROUND,
+                base_land_type: clear_lt,
+                base_yr_cell_land_type: clear_lt,
+                base_terrain_class: TerrainClass::Clear,
+                base_speed_costs: base_speed,
+                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            });
 
         // Install a distinct Tiberium-mode speed profile so we can prove the
         // round-trip actually copies it (not the same default).

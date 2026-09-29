@@ -546,10 +546,10 @@ mod tests {
 
     use crate::map::overlay::{OverlayDataPack, OverlayEntry};
     use crate::map::overlay_types::OverlayTypeRegistry;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::LandType;
     use crate::rules::tiberium_type::TiberiumTypeRegistry;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::intern::StringInterner;
@@ -659,42 +659,14 @@ SpreadPercentage=.06
     }
 
     fn flat_clear_terrain() -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile::default();
-        ResolvedTerrainGrid::from_cells(
-            1,
-            1,
-            vec![ResolvedTerrainCell {
-                filled_clear: true,
-                tileset_index: None,
-                land_type,
-                yr_cell_land_type: land_type,
-                speed_costs,
-                accepts_smudge: true,
-                allows_tiberium: true,
-                zone_type: zone_class::GROUND,
-                base_land_type: land_type,
-                base_yr_cell_land_type: land_type,
-                base_terrain_class: TerrainClass::Clear,
-                base_speed_costs: speed_costs,
-                ..crate::map::resolved_terrain::test_flat_cell(0, 0)
-            }],
-        )
+        flat_clear_terrain_grid(1, 1)
     }
 
     fn flat_clear_terrain_grid(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let mut seed = flat_clear_terrain();
-        let template = seed.cells.remove(0);
-        let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
-        for ry in 0..height {
-            for rx in 0..width {
-                let mut cell = template.clone();
-                cell.rx = rx;
-                cell.ry = ry;
-                cells.push(cell);
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(width, height, |rx, ry| ResolvedTerrainCell {
+            allows_tiberium: true,
+            ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
+        })
     }
 
     #[test]

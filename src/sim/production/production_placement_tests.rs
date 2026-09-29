@@ -309,27 +309,18 @@ fn resolved_clear_grid_with_override(
     mut override_cell: impl FnMut(&mut ResolvedTerrainCell),
 ) -> ResolvedTerrainGrid {
     let clear_speed_costs = SpeedCostProfile {
-        foot: Some(100),
-        track: Some(100),
-        wheel: Some(100),
         float: Some(0),
-        amphibious: Some(100),
-        float_beach: Some(100),
-        hover: Some(100),
+        ..crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS
     };
-    let mut cells = Vec::with_capacity((width as usize) * (height as usize));
-    for ry in 0..height {
-        for rx in 0..width {
-            let mut cell = ResolvedTerrainCell {
-                speed_costs: clear_speed_costs,
-                base_speed_costs: clear_speed_costs,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            };
-            override_cell(&mut cell);
-            cells.push(cell);
-        }
-    }
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(width, height, |rx, ry| {
+        let mut cell = ResolvedTerrainCell {
+            speed_costs: clear_speed_costs,
+            base_speed_costs: clear_speed_costs,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        };
+        override_cell(&mut cell);
+        cell
+    })
 }
 
 /// Insert a unit already standing in `cell`, without UnitClass::Unlimbo's

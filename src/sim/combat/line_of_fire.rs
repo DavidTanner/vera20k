@@ -484,10 +484,7 @@ mod tests {
     }
 
     fn flat_terrain() -> ResolvedTerrainGrid {
-        let cells: Vec<ResolvedTerrainCell> = (0..GRID)
-            .flat_map(|ry| (0..GRID).map(move |rx| cell_at(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(GRID, GRID, cells)
+        crate::map::resolved_terrain::test_grid(GRID, GRID, cell_at)
     }
 
     fn set_level(terrain: &mut ResolvedTerrainGrid, rx: u16, ry: u16, level: u8) {

@@ -28,15 +28,9 @@ use std::collections::BTreeMap;
 /// succeeds. has_damaged_data=false → the embedded flood-fill clear is a
 /// no-op, leaving the repair test focused on damage-state transitions.
 fn dummy_resolved_terrain() -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(20 * 20);
-    for ry in 0..20u16 {
-        for rx in 0..20u16 {
-            cells.push(ResolvedTerrainCell {
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
-        }
-    }
-    ResolvedTerrainGrid::from_cells(20, 20, cells)
+    crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+    })
 }
 
 const BRIDGE_REPAIR_TEST_INI: &str = "[InfantryTypes]\n0=ENGI\n1=GHOST\n\n\
@@ -917,26 +911,20 @@ fn c4_on_cabhut_high_terminal_overlay_0xe8_uses_overlay_first_scan() {
 /// every cell. Lets the damaged-variant flood-fill propagate freely across
 /// any bridge cells defined in the test BridgeRuntimeState.
 fn damaged_data_resolved_terrain(tile_id: i32) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(20 * 20);
-    for ry in 0..20u16 {
-        for rx in 0..20u16 {
-            cells.push(ResolvedTerrainCell {
-                source_tile_index: tile_id,
-                final_tile_index: tile_id,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts {
-                    raw_flags: if ry == 10 && matches!(rx, 10 | 11) {
-                        crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF
-                    } else {
-                        0
-                    },
-                    ..Default::default()
-                },
-                has_damaged_data: true,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
-        }
-    }
-    ResolvedTerrainGrid::from_cells(20, 20, cells)
+    crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
+        source_tile_index: tile_id,
+        final_tile_index: tile_id,
+        bridge_facts: crate::map::bridge_facts::BridgeCellFacts {
+            raw_flags: if ry == 10 && matches!(rx, 10 | 11) {
+                crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF
+            } else {
+                0
+            },
+            ..Default::default()
+        },
+        has_damaged_data: true,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+    })
 }
 
 /// Seed a single NS-anchor body cell at `pos` with the given state. Uses span

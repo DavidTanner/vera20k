@@ -346,13 +346,7 @@ mod tests {
     }
 
     fn click_terrain(width: u16, height: u16) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
-        let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
-        for ry in 0..height {
-            for rx in 0..width {
-                cells.push(terrain_cell(rx, ry));
-            }
-        }
-        crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(width, height, |rx, ry| terrain_cell(rx, ry))
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
@@ -59,21 +59,11 @@ fn clear_costs() -> SpeedCostProfile {
 }
 
 fn clear_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-    let land_type = LandType::Clear.as_index();
     ResolvedTerrainCell {
-        filled_clear: true,
-        tileset_index: None,
-        land_type,
-        yr_cell_land_type: land_type,
         speed_costs: clear_costs(),
-        accepts_smudge: true,
-        allows_tiberium: true,
-        zone_type: zone_class::GROUND,
-        base_land_type: land_type,
-        base_yr_cell_land_type: land_type,
-        base_terrain_class: TerrainClass::Clear,
         base_speed_costs: clear_costs(),
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        allows_tiberium: true,
+        ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
     }
 }
 
@@ -102,17 +92,13 @@ fn water_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
 }
 
 fn flat_terrain(water: impl Fn(u16, u16) -> bool) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(usize::from(MAP) * usize::from(MAP));
-    for ry in 0..MAP {
-        for rx in 0..MAP {
-            cells.push(if water(rx, ry) {
-                water_cell(rx, ry)
-            } else {
-                clear_cell(rx, ry)
-            });
+    crate::map::resolved_terrain::test_grid(MAP, MAP, |rx, ry| {
+        if water(rx, ry) {
+            water_cell(rx, ry)
+        } else {
+            clear_cell(rx, ry)
         }
-    }
-    ResolvedTerrainGrid::from_cells(MAP, MAP, cells)
+    })
 }
 
 struct Fixture {

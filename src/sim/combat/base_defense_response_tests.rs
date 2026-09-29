@@ -2,11 +2,10 @@
 
 use super::*;
 use crate::map::entities::EntityCategory;
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::team_ai_ini::TeamAiDefinitionSource;
-use crate::rules::terrain_rules::TerrainClass;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
@@ -34,15 +33,11 @@ fn threat(cost: i32, distance: i32, range: i32, speed: i32) -> ThreatFacts {
 }
 
 fn clear_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-    let cells = (0..height)
-        .flat_map(|ry| {
-            (0..width).map(move |rx| ResolvedTerrainCell {
-                base_terrain_class: TerrainClass::Clear,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            })
-        })
-        .collect();
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(
+        width,
+        height,
+        crate::map::resolved_terrain::test_clear_cell,
+    )
 }
 
 #[test]

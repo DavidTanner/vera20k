@@ -1,6 +1,6 @@
 //! Production command regressions for native CellClass membership authority.
 use super::SuperWeaponInstance;
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::rules::terrain_rules::SpeedCostProfile;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::{command::Command, house_state::HouseState, production, world::Simulation};
@@ -42,10 +42,9 @@ fn fixture_with_extra(extra: &str) -> (Simulation, RuleSet) {
         .insert(owner, HouseState::new(owner, 0, None, true, 50_000, 10));
     sim.session.house_order.push(owner);
     sim.session.game_options.super_weapons = true;
-    let cells = (0..16)
-        .flat_map(|y| (0..16).map(move |x| test_terrain_cell(x, y)))
-        .collect();
-    sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(16, 16, cells));
+    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(16, 16, |x, y| {
+        test_terrain_cell(x, y)
+    }));
     sim.playfield_bounds = Some(test_playfield_bounds());
     sim.spawn_object_at_height("GAPILE", "Americans", 10, 10, 0, 0, &rules)
         .unwrap();

@@ -386,7 +386,6 @@ fn out_of_range_velocity_runs_away_not_inward() {
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::terrain_rules::SpeedCostProfile;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use std::collections::BTreeMap;
@@ -396,27 +395,12 @@ const GRID_H: u16 = 10;
 const TICK_MS: u32 = 33;
 
 fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity((width as usize) * (height as usize));
-    let speed_costs = SpeedCostProfile {
-        foot: Some(100),
-        track: Some(100),
-        wheel: Some(100),
-        float: Some(100),
-        amphibious: Some(100),
-        float_beach: Some(100),
-        hover: Some(100),
-    };
-    for y in 0..height {
-        for x in 0..width {
-            cells.push(ResolvedTerrainCell {
-                filled_clear: true,
-                speed_costs,
-                base_speed_costs: speed_costs,
-                ..crate::map::resolved_terrain::test_flat_cell(x, y)
-            });
-        }
-    }
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(width, height, |x, y| ResolvedTerrainCell {
+        filled_clear: true,
+        speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+        base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+        ..crate::map::resolved_terrain::test_flat_cell(x, y)
+    })
 }
 
 fn minimal_rules() -> RuleSet {

@@ -1552,14 +1552,6 @@ mod tests {
         RuleSet::from_ini(&ini).expect("cell action rules")
     }
 
-    /// A minimal flat clear land cell for the cursor fixtures.
-    fn flat_land_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::ResolvedTerrainCell {
-        use crate::map::resolved_terrain::ResolvedTerrainCell;
-        ResolvedTerrainCell {
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        }
-    }
-
     /// A tank that actually carries a locomotor, and therefore a SpeedType.
     ///
     /// `cell_action_rules` declares no `Speed=`, so its MTNK spawns with
@@ -1632,7 +1624,7 @@ mod tests {
             entity.position.exact_z_leptons = Some(900);
             entity.lifecycle.cell_marked = true;
         }
-        let mut retained_cell = flat_land_cell(0, 0);
+        let mut retained_cell = crate::map::resolved_terrain::test_flat_cell(0, 0);
         // A bridge anchor retaining Dummy makes its requested coordinate a
         // deterministic future input. World hashing intentionally omits that
         // transient coordinate when no Bullet or bridge anchor retains it.
@@ -1846,7 +1838,7 @@ mod tests {
         let mut cells = Vec::new();
         for ry in 0..SIZE {
             for rx in 0..SIZE {
-                cells.push(flat_land_cell(rx, ry));
+                cells.push(crate::map::resolved_terrain::test_flat_cell(rx, ry));
             }
         }
         let mut terrain =

@@ -1145,7 +1145,7 @@ mod tests {
     use super::*;
     use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
     use crate::map::map_file::MapHeader;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::SpeedCostProfile;
     use crate::sim::occupancy::CellListInsertion;
     use crate::sim::pathfinding::zone_map::ZoneGrid;
 
@@ -1410,19 +1410,12 @@ mod tests {
         assert!(matches!(vehicle_ignored, IsClearToMoveResult::Clear { .. }));
     }
 
-    fn terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        ResolvedTerrainCell {
-            zone_type: zone_class::GROUND,
-            base_terrain_class: TerrainClass::Clear,
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| terrain_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     fn assert_dummy(cell: CellRef<'_>, coord: (i32, i32), level: i8, slope_type: u8) {

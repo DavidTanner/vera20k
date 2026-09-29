@@ -9775,37 +9775,18 @@ fn gsi_08_06_point_blank_shot_clamps_the_launch_speed_to_half_the_distance() {
     );
 }
 
-/// A flat level-0 grid, so the `Vertical` arm's floor probe has a ground
-/// surface to reach.
 fn flat_level_zero_terrain(
     width: u16,
     height: u16,
 ) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
-
-    let speed_costs = SpeedCostProfile {
-        foot: Some(100),
-        track: Some(100),
-        wheel: Some(100),
-        float: Some(100),
-        amphibious: Some(100),
-        float_beach: Some(100),
-        hover: Some(100),
-    };
-    let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
-    for ry in 0..height {
-        for rx in 0..width {
-            cells.push(ResolvedTerrainCell {
-                filled_clear: true,
-                speed_costs,
-                base_terrain_class: TerrainClass::Clear,
-                base_speed_costs: speed_costs,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
+    crate::map::resolved_terrain::test_grid(width, height, |rx, ry| {
+        crate::map::resolved_terrain::ResolvedTerrainCell {
+            filled_clear: true,
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_clear_cell(rx, ry)
         }
-    }
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    })
 }
 
 /// GSI-08.08 end to end: the Kirov bomb has to FALL and explode.
