@@ -6,18 +6,8 @@
 //! `CellBridgeView` over the canonical cell store and read these predicates
 //! instead of re-deriving each one at their own call site.
 //!
-//! Scope of THIS slice: the verified, hash-neutral predicate/offset
-//! consolidation, plus the gamemd-correct SHADOW layer selectors — the
-//! structural/bridgehead/anchor flag predicates, signed effective-height, the
-//! concrete- and wood-bridge tileset windows (kept SEPARATE from the structural
-//! `0x100` flag), the low-bridge/tube predicate, the list layer enum, a
-//! delegating handle to the existing pathfinding traversal gate, and the verified
-//! deck-height consts + AoE/occupancy layer selectors AS SHADOW.
-//!
-//! The shadow selectors (`aoe_object_layer`, `occupancy_bit_layer`) encode the
-//! verified binary threshold (deck offset = `4 × per_level`). The authority-flip
-//! is NOT done here: the authoritative AoE selector and occupancy storage keep
-//! their current owners, while these predicates remain read-service mirrors.
+//! It holds the structural/anchor flag predicates, signed effective height,
+//! the list layer enum and the AoE object-layer selector.
 //!
 //! ## Dependency rules
 //! - Depends on map/bridge_facts (flag bits), map/resolved_terrain, sim/pathfinding
@@ -29,14 +19,7 @@
 
 use crate::map::bridge_facts::BridgeFlags;
 use crate::map::resolved_terrain::ResolvedTerrainCell;
-#[cfg(test)]
-use crate::map::resolved_terrain::YR_CELL_LAND_TUNNEL;
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
-
-/// Width of a tileset window: a concrete- or wood-bridge tileset occupies the
-/// first 16 tiles `[base, base + 0x10)` of its theater set. Gated on base != -1.
-#[cfg(test)]
-const BRIDGE_TILESET_WINDOW: i32 = 0x10;
 
 /// Which persistent cell list an object belongs to. The ground list and the
 /// bridge-deck list are distinct so movers/projectiles on a high bridge do not
@@ -105,13 +88,6 @@ impl CellBridgeView {
         self.flags.structural()
     }
 
-    /// `0x200` — bridgehead/transition (on/off-ramp boundary) cell.
-    #[cfg(test)]
-    #[inline]
-    pub fn is_bridgehead(&self) -> bool {
-        self.flags.bridgehead()
-    }
-
     /// `0x80` — anchor cell of the stamp.
     #[inline]
     pub fn is_anchor(&self) -> bool {
@@ -142,56 +118,7 @@ impl CellBridgeView {
     // `0x100` flag. Conflating a tileset window with structural is DRIFT #6, so
     // the windows are their own predicates and never alias `is_bridge_cell`.
 
-    /// Concrete-bridge tileset window `[base, base + 0x10)`, gated on `base >= 0`.
-    /// `base` is the theater-loaded `g_BridgeSet_TileSetBase` equivalent (passed
-    /// in because it is theater state, not cell-local). Returns `false` when no
-    /// concrete-bridge set is loaded (`base == None` / `< 0`).
-    /// `CellClass::IsBridge` 0x00486750: `base != -1 && base <= IsoTileTypeIndex
-    /// < base + 0x10`. Leaf, no calls, no RNG. `base` is
-    /// `g_BridgeSet_TileSetBase` 0x00AA0E28, written per theater by
-    /// `Read_Theater_TileSets_INI` at 0x00545A80 / 0x00545DDB / 0x00546CB3.
-    #[cfg(test)]
-    #[inline]
-    pub fn is_bridge_tileset(&self, base: Option<i32>) -> bool {
-        base.is_some_and(|b| {
-            b >= 0 && (b..b + BRIDGE_TILESET_WINDOW).contains(&self.iso_tile_index)
-        })
-    }
-
-    /// Wood-bridge tileset window `[wood_base, wood_base + 0x10)`, gated on
-    /// `wood_base >= 0`. Distinct from the concrete window AND from structural.
-    /// `wood_base` is the theater-loaded `g_WoodBridgeSet_TileSetBase` equivalent.
-    ///
-    /// NOTE: the canonical store already precomputes the wood-window membership
-    /// for `final_tile_index` as `ResolvedTerrainCell.is_wood_bridge_repair_tile`
-    /// (the CABHUT repair-dispatch predicate). When a `CellBridgeView` is built
-    /// from a resolved cell, prefer routing through that precompute rather than
-    /// re-deriving the window with a re-passed base (single-source). This method
-    /// exists for callers that hold only the tile id + base.
-    /// `CellClass::IsWoodBridge` 0x00486770 — the structural twin of
-    /// 0x00486750 with `g_WoodBridgeSet_TileSetBase` 0x00ABAD1C substituted,
-    /// written at 0x00545A86 / 0x00545DEA / 0x00546CB9.
-    #[cfg(test)]
-    #[inline]
-    pub fn is_wood_bridge_tileset(&self, wood_base: Option<i32>) -> bool {
-        wood_base.is_some_and(|b| {
-            b >= 0 && (b..b + BRIDGE_TILESET_WINDOW).contains(&self.iso_tile_index)
-        })
-    }
-
     // --- Low bridge / tube (L5 / C6) -----------------------------------------
-
-    /// Low-bridge/tube cell: BOTH a valid tube index in `[0, tube_count)` AND a
-    /// LandType of `YR_CELL_LAND_TUNNEL` (10). Both conditions are required —
-    /// either alone is not a tube cell. This is the low-bridge tube, NOT
-    /// subterranean/tunnel (TS-legacy, not modelled).
-    #[cfg(test)]
-    #[inline]
-    pub fn is_low_bridge_cell(&self, tube_count: usize) -> bool {
-        self.tube_index
-            .is_some_and(|t| t >= 0 && (t as usize) < tube_count)
-            && self.land_type == YR_CELL_LAND_TUNNEL
-    }
 
     // --- AoE object-layer selector (SHADOW; not yet authoritative) -----------
     //
@@ -224,38 +151,6 @@ impl CellBridgeView {
     // occupant's persistent `on_bridge` byte; the bit layer keys off the object's
     // Z height vs ground. The two are independent and may disagree at ramp
     // boundaries — a verified gamemd behavior, kept separate here.
-
-    /// Select the occupancy BIT layer for an object at `obj_z` over this cell.
-    ///
-    /// Bridge bit layer iff the object sits at/above the full deck height
-    /// (`ground_z + DECK <= obj_z`, threshold inclusive `<=`) AND — for the MARK
-    /// path only — the cell is structural (`Flags & 0x100`). The CLEAR path passes
-    /// `require_structural = false`: it clears by the Z threshold ALONE and does
-    /// NOT re-check the structural flag, so collapse cleanup still finds the deck
-    /// bit after the bridge flag is gone. This Mark/Clear asymmetry is load-bearing.
-    ///
-    /// SHADOW: `OccupancyGrid` authoritative storage (`src/sim/occupancy.rs`) is
-    /// NOT changed by this pass; this selector is only consumed by shadow tests and
-    /// the not-yet-wired bit-layer repr.
-    ///
-    /// (Source: `GATE_BRIDGE_ONBRIDGE_OCCUPANCY_RESOLUTION_GHIDRA_REPORT.md` §b —
-    /// Mark `0x007441B0` gates on `Flags&0x100`, Clear `0x00744210` does not.)
-    #[cfg(test)]
-    #[inline]
-    pub fn occupancy_bit_layer(
-        &self,
-        obj_z: i32,
-        ground_z: i32,
-        require_structural: bool,
-    ) -> ListLayer {
-        let z_on_deck = ground_z + BRIDGE_DECK_HEIGHT_LEVELS <= obj_z;
-        let structural_ok = !require_structural || self.is_bridge_cell();
-        if z_on_deck && structural_ok {
-            ListLayer::Bridge
-        } else {
-            ListLayer::Ground
-        }
-    }
 }
 
 // --- P2: service-facing traversal-gate handle --------------------------------
@@ -291,9 +186,7 @@ impl CellBridgeView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::bridge_facts::{
-        BRIDGE_FLAG_ANCHOR_SELF, BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION,
-    };
+    use crate::map::bridge_facts::{BRIDGE_FLAG_ANCHOR_SELF, BRIDGE_FLAG_STRUCTURAL};
     use crate::sim::pathfinding::{
         BridgeTraversalInput, BridgeTraversalResult, PathGrid,
         check_bridge_traversal as bridge_traversal_gate,
@@ -310,25 +203,6 @@ mod tests {
             tube_index: None,
             land_type: 0,
             state_byte: 0,
-        }
-    }
-
-    #[test]
-    fn bridge_topology_predicates_match_pathcell() {
-        // Shadow assert-equal: for a battery of raw-flag fixtures, the view's
-        // flag predicates must agree with the canonical `BridgeFlags` consts the
-        // pathfinding/load views also read.
-        for raw in [
-            0u32,
-            BRIDGE_FLAG_STRUCTURAL,
-            BRIDGE_FLAG_TRANSITION,
-            BRIDGE_FLAG_ANCHOR_SELF,
-            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_TRANSITION | BRIDGE_FLAG_ANCHOR_SELF,
-        ] {
-            let v = view(2, raw, 0);
-            assert_eq!(v.is_bridge_cell(), raw & BRIDGE_FLAG_STRUCTURAL != 0);
-            assert_eq!(v.is_bridgehead(), raw & BRIDGE_FLAG_TRANSITION != 0);
-            assert_eq!(v.is_anchor(), raw & BRIDGE_FLAG_ANCHOR_SELF != 0);
         }
     }
 
@@ -352,67 +226,6 @@ mod tests {
             -2,
             "non-anchor is the bare level"
         );
-    }
-
-    #[test]
-    fn is_bridge_tileset_distinct_from_structural_flag() {
-        // DRIFT #6: a cell whose tile id falls in the bridge window but which has
-        // NO structural flag is a tileset hit, NOT a structural-bridge cell. The
-        // two predicates must never alias.
-        let base = Some(100);
-        let v = view(0, 0, 105); // in [100, 116), structural flag clear
-        assert!(v.is_bridge_tileset(base));
-        assert!(!v.is_bridge_cell());
-
-        // Boundary: base + 0x10 is exclusive.
-        assert!(view(0, 0, 100).is_bridge_tileset(base)); // lower bound inclusive
-        assert!(view(0, 0, 115).is_bridge_tileset(base)); // last in-window tile
-        assert!(!view(0, 0, 116).is_bridge_tileset(base)); // upper bound exclusive
-        assert!(!view(0, 0, 99).is_bridge_tileset(base)); // below window
-
-        // No set loaded -> never a tileset bridge.
-        assert!(!view(0, 0, 105).is_bridge_tileset(None));
-        assert!(!view(0, 0, 105).is_bridge_tileset(Some(-1)));
-    }
-
-    #[test]
-    fn is_wood_bridge_tileset_distinct_from_concrete_and_structural() {
-        // L4: the wood window is distinct from the concrete window AND from
-        // structural. A tile in the wood window but outside the concrete window
-        // and without the structural flag is wood-only.
-        let concrete_base = Some(100);
-        let wood_base = Some(200);
-        let v = view(0, 0, 205); // in wood window, outside concrete window
-        assert!(v.is_wood_bridge_tileset(wood_base));
-        assert!(!v.is_bridge_tileset(concrete_base));
-        assert!(!v.is_bridge_cell());
-    }
-
-    #[test]
-    fn is_low_bridge_requires_landtype10_and_tube_in_range() {
-        // L5: BOTH conditions required.
-        let tube_count = 4;
-        let with = |tube: Option<i16>, land: u8| CellBridgeView {
-            level: 0,
-            flags: BridgeFlags(0),
-            ramp_byte: 0,
-            iso_tile_index: 0,
-            tube_index: tube,
-            land_type: land,
-            state_byte: 0,
-        };
-
-        // tube in range + land 10 -> true
-        assert!(with(Some(0), YR_CELL_LAND_TUNNEL).is_low_bridge_cell(tube_count));
-        assert!(with(Some(3), YR_CELL_LAND_TUNNEL).is_low_bridge_cell(tube_count));
-        // tube in range + wrong land -> false
-        assert!(!with(Some(2), 9).is_low_bridge_cell(tube_count));
-        // tube out of range + land 10 -> false
-        assert!(!with(Some(4), YR_CELL_LAND_TUNNEL).is_low_bridge_cell(tube_count));
-        // negative tube index (signed compare) + land 10 -> false
-        assert!(!with(Some(-1), YR_CELL_LAND_TUNNEL).is_low_bridge_cell(tube_count));
-        // no tube + land 10 -> false
-        assert!(!with(None, YR_CELL_LAND_TUNNEL).is_low_bridge_cell(tube_count));
     }
 
     #[test]
@@ -445,66 +258,6 @@ mod tests {
         assert_eq!(
             non_bridge.aoe_object_layer(ground_z + 999, ground_z),
             ListLayer::Ground
-        );
-    }
-
-    #[test]
-    fn occupancy_bit_layer_inclusive_full_deck_and_clear_asymmetry() {
-        // GATE A2 §b: bit layer is bridge iff (ground + full_deck <= obj_z) AND,
-        // for MARK only, the cell is structural. Threshold is INCLUSIVE `<=` and
-        // uses the FULL deck (not the half-deck AoE term).
-        let deck = BRIDGE_DECK_HEIGHT_LEVELS; // = 4 (full deck)
-        let ground_z = 50;
-        let structural = view(50, BRIDGE_FLAG_STRUCTURAL, 0);
-        let non_structural = view(50, 0, 0);
-
-        // MARK (require_structural = true):
-        //   exactly at full deck on a structural cell -> Bridge (inclusive).
-        assert_eq!(
-            structural.occupancy_bit_layer(ground_z + deck, ground_z, true),
-            ListLayer::Bridge
-        );
-        //   one below full deck -> Ground.
-        assert_eq!(
-            structural.occupancy_bit_layer(ground_z + deck - 1, ground_z, true),
-            ListLayer::Ground
-        );
-        //   at full deck but NON-structural -> Ground (Mark gates on Flags&0x100).
-        assert_eq!(
-            non_structural.occupancy_bit_layer(ground_z + deck, ground_z, true),
-            ListLayer::Ground
-        );
-
-        // CLEAR (require_structural = false): same Z but NO structural re-check ->
-        // a non-structural cell still resolves to Bridge by Z alone. This is the
-        // load-bearing collapse-cleanup asymmetry (the bridge flag may be gone).
-        assert_eq!(
-            non_structural.occupancy_bit_layer(ground_z + deck, ground_z, false),
-            ListLayer::Bridge
-        );
-    }
-
-    #[test]
-    fn clear_occupation_no_structural_flag_required() {
-        // GATE A2 §b / P5 (L14): Mark gates the bridge bit layer on Flags&0x100,
-        // but Clear does NOT — it resolves by the Z threshold alone. So a
-        // non-structural cell (the bridge flag already cleared by a collapse) at
-        // full deck height resolves to Bridge under Clear (require_structural=false)
-        // but Ground under Mark (require_structural=true). This asymmetry lets
-        // collapse cleanup still find the deck bit after the structural flag is gone.
-        let deck = BRIDGE_DECK_HEIGHT_LEVELS; // full deck = 4 levels
-        let ground_z = 0;
-        let non_structural = view(0, 0, 0);
-
-        // Mark on a non-structural cell at full deck -> Ground (flag re-checked).
-        assert_eq!(
-            non_structural.occupancy_bit_layer(ground_z + deck, ground_z, /* mark */ true),
-            ListLayer::Ground
-        );
-        // Clear on the SAME cell/Z -> Bridge (no structural re-check).
-        assert_eq!(
-            non_structural.occupancy_bit_layer(ground_z + deck, ground_z, /* clear */ false),
-            ListLayer::Bridge
         );
     }
 
