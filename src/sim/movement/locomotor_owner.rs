@@ -34,24 +34,13 @@ pub(crate) fn try_restore_primary(entity: &mut GameEntity) -> bool {
     piggyback_end_admitted(entity) && restore_admitted_primary(entity)
 }
 
-/// The active locomotor's END gate for an entity-level caller: an active
-/// Drive's own gate, otherwise the generic piggyback gate.
+/// The active locomotor's END gate for an entity-level caller. The one
+/// piggyback VERA installs is a Drive over a Teleport primary (the Unit
+/// setter's Teleporter arm), so the active Drive's own gate is the only one.
+/// A piggyback over any other primary needs the Chronosphere's
+/// ChangeLocomotorTo, which is not represented.
 pub(crate) fn piggyback_end_admitted(entity: &GameEntity) -> bool {
-    if entity
-        .locomotor
-        .as_ref()
-        .is_some_and(|locomotor| locomotor.active_kind() == LocomotorKind::Drive)
-    {
-        return drive_end_admitted(entity);
-    }
-    let gate = super::locomotor_end_gate_context(entity);
-    entity.locomotor.as_ref().is_some_and(|locomotor| {
-        locomotor.can_restore_primary_from_piggyback(
-            gate.owner_moving,
-            gate.owner_teleporting,
-            gate.owner_deploying,
-        )
-    })
+    drive_end_admitted(entity)
 }
 
 /// Drive IsOKToEnd4AF970 at Foot EnterIdle4D833D, before NavQueue.

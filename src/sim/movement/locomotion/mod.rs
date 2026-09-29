@@ -15,7 +15,7 @@ pub mod power;
 pub mod slot;
 
 pub use piggyback::{
-    BeginOutcome, EndGateContext, EndOutcome, LocomotorCommonRuntime, LocomotorRuntime,
+    BeginOutcome, EndOutcome, LocomotorCommonRuntime, LocomotorRuntime,
     LocomotorRuntimePayload, StashedLocomotor,
 };
 pub use slot::LocomotorSlot;

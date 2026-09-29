@@ -9,7 +9,7 @@ use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::rules::object_type::ObjectType;
 use crate::sim::movement::locomotion::LocomotorSlot;
 use crate::sim::movement::locomotion::piggyback::{
-    self, EndGateContext, LocomotorRuntimePayload, StashedLocomotor,
+    self, LocomotorRuntimePayload, StashedLocomotor,
 };
 use crate::sim::movement::slope_transition::SlopeTransitionState;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -459,20 +459,6 @@ impl LocomotorState {
         self.end_piggyback()
     }
 
-    /// Whether the active piggyback can safely restore to the primary locomotor.
-    pub fn can_restore_primary_from_piggyback(
-        &self,
-        owner_moving: bool,
-        owner_teleporting: bool,
-        owner_deploying: bool,
-    ) -> bool {
-        self.is_ok_to_end_piggyback(EndGateContext {
-            owner_moving,
-            owner_teleporting,
-            owner_deploying,
-        })
-    }
-
     /// Begin a piggyback: stash the driving locomotor and install this one.
     ///
     /// Refuses, changing nothing, if a stash is already present — the native
@@ -507,29 +493,6 @@ impl LocomotorState {
     /// Whether this locomotor is powered.
     pub fn is_powered(&self) -> bool {
         self.powered
-    }
-
-    /// Whether the active piggyback may be unwound now. The movement clause
-    /// dominates: a moving unit never unwinds.
-    ///
-    /// **Recorded gap, not closed — VERA has no single locomotor dispatch
-    /// point.** `FootClass::AI` @ `0x004DA530` makes exactly *one* `Process`
-    /// dispatch per object per frame (it also calls `Is_Moving_Now` `+0x80`
-    /// four times and `QueryInterface` around it), `ILocomotion::Process`
-    /// (Drive ILocomotion vtable
-    /// `0x007E7EB0`, slot `+0x40` = `DriveLocomotionClass::Process` @
-    /// `0x004B0500`), and the installed object alone decides which body runs —
-    /// there is no kind switch anywhere. VERA instead runs about ten
-    /// independent per-kind world passes each tick, every one self-gating on
-    /// `locomotor.kind` or on a per-kind state component, with the piggyback
-    /// restore last. Trigger: every object, every tick. Player effect: none
-    /// named — but inter-family ordering becomes a property of the tick's pass
-    /// order rather than of the installed locomotor. Frequency: continuous.
-    /// Downstream risk: this is why a piggyback can be installed by one pass and
-    /// observed by another in the same tick, and it is the shape rows GSI-06.13
-    /// and GSI-06.14 have to build on.
-    pub fn is_ok_to_end_piggyback(&self, context: EndGateContext) -> bool {
-        piggyback::is_ok_to_end(self, context)
     }
 }
 

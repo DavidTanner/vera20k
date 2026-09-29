@@ -697,11 +697,6 @@ fn drive_piggyback_restores_primary_teleport_only_after_not_moving() {
     assert!(state.begin_drive_piggyback_for_teleporter(0));
     assert_eq!(state.active_kind(), LocomotorKind::Drive);
     assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
-    assert!(!state.can_restore_primary_from_piggyback(true, false, false));
-    assert!(!state.can_restore_primary_from_piggyback(false, true, false));
-    assert!(!state.can_restore_primary_from_piggyback(false, false, true));
-    assert!(state.can_restore_primary_from_piggyback(false, false, false));
-
     assert!(state.restore_primary_from_piggyback());
     assert_eq!(state.active_kind(), LocomotorKind::Teleport);
     assert_eq!(state.effective_kind(), LocomotorKind::Teleport);

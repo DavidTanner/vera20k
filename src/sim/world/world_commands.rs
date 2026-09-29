@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 
 use super::ground_move::GroundMove;
 use super::{SimSoundEvent, Simulation, SimulationWallRuntimeHost};
+use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
 #[cfg(test)]
 use crate::rules::locomotor_type::MovementZone;
@@ -550,36 +551,50 @@ impl Simulation {
         true
     }
 
-    /// A Move or AttackMove for a non-harvester Teleport or `Teleporter=`
-    /// owner. A `Teleporter=` Unit takes its class setter (`0x741970`), whose
-    /// Teleporter arm drives it except onto a dock. Any other owner takes
-    /// Teleport Move_To (`0x00718100`), which refuses a paralyzed or warped
-    /// owner.
+    /// The class setter a Move or AttackMove order reaches for a non-harvester
+    /// Teleport owner, or `None` when the order is an ordinary move.
+    /// - Infantry on a Teleport locomotor: the Infantry setter (`0x0051AA40`),
+    ///   whose Foot tail reaches Teleport Move_To (`0x00718100`). The setter
+    ///   never reads `Teleporter=`, so a `Teleporter=` infantryman on another
+    ///   locomotor moves as any other.
+    /// - A `Teleporter=` Unit: the Unit setter (`0x741970`), whose Teleporter
+    ///   arm drives it except onto a dock.
     ///
-    /// RESIDUAL: for the latter, the class setter (Infantry `0x0051AA40`) and
-    /// the Foot tail (`0x004D94B0`, its NavCom write) are not represented; the
-    /// order reaches Move_To directly. Trigger: every Chrono Legionnaire,
-    /// Chrono Commando or Chrono Ivan move order. Risk: the setter's
-    /// same-destination and mission arms.
+    /// RESIDUAL: a Unit on a Teleport locomotor without `Teleporter=` reaches
+    /// Move_To without the Unit setter, which does not represent it. No
+    /// retail type is one (CMON and SMON are harvesters). Effect: the
+    /// setter's same-NavCom return and its NavCom write are skipped.
     fn teleport_move_order(
         &mut self,
         id: u64,
         cell: (u16, u16),
         info: &MoveInfo,
         rules: Option<&RuleSet>,
-    ) -> bool {
-        if info.is_teleporter
-            && !info.is_infantry
-            && let Some(rules) = rules
-        {
-            return self.set_unit_cell_destination(id, cell, rules);
+    ) -> Option<bool> {
+        if info.is_harvester {
+            return None;
         }
-        let default_general = crate::rules::ruleset::GeneralRules::default();
-        let general = rules.map_or(&default_general, |rules| &rules.general);
-        let frame = self.session.binary_frame;
-        self.substrate.entities.get_mut(id).is_some_and(|entity| {
-            teleport_movement::teleport_move_to(entity, cell, general, false, frame)
-        })
+        let teleport_primary = info.loco_kind == Some(LocomotorKind::Teleport);
+        match self.substrate.entities.get(id)?.category {
+            EntityCategory::Infantry if teleport_primary => Some(rules.is_some_and(|rules| {
+                self.set_infantry_cell_destination(id, cell, rules, None)
+                    .unwrap_or_else(|error| {
+                        log::debug!("Teleport infantry order {id} refused: {error}");
+                        false
+                    })
+            })),
+            EntityCategory::Unit if info.is_teleporter => {
+                Some(rules.is_some_and(|rules| self.set_unit_cell_destination(id, cell, rules)))
+            }
+            EntityCategory::Unit if teleport_primary => {
+                let rules = rules?;
+                let frame = self.session.binary_frame;
+                Some(self.substrate.entities.get_mut(id).is_some_and(|entity| {
+                    teleport_movement::teleport_move_to(entity, cell, &rules.general, false, frame)
+                }))
+            }
+            _ => None,
+        }
     }
 
     /// Snapshot entity + rules data needed for movement dispatch in one lookup.
@@ -696,11 +711,11 @@ impl Simulation {
                 // commands; they warp only onto a refinery pad, through the Unit
                 // setter's Teleporter arm (`set_unit_cell_destination`). RESIDUAL:
                 // this Move does not run that setter (no arm, no +0x1F8 clear).
-                let use_teleport_move = !info.is_harvester
-                    && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
+                let teleport_order =
+                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules);
 
-                let result = if use_teleport_move {
-                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules)
+                let result = if let Some(accepted) = teleport_order {
+                    accepted
                 } else if info.loco_layer == MovementLayer::Air {
                     // Jumpjet infantry walk fallback: ≤3 cells + !HoverAttack → ground walk.
                     if info.loco_kind == Some(LocomotorKind::Jumpjet) && info.is_infantry {
@@ -880,12 +895,14 @@ impl Simulation {
                     movement::DestinationTiming::from_rules(self.session.binary_frame, rules)
                         .accept(entity);
                 }
-                // Cancel any special locomotor states in progress.
+                // Event Stop's null destination reaches the active locomotor's
+                // Stop_Moving; a Teleport one drops only an armed warp.
+                //
                 // **VERA-internal: retail Stop leaves the installed locomotor
                 // alone.** This existing unwind policy uses the same END gate
                 // as FootAI4DAEC3 / SetDestination742587 (an active Drive's
-                // IsOKToEnd4AF970), after navigation is cleared but before
-                // teleport/layer cleanup. A live Drive head still refuses it.
+                // IsOKToEnd4AF970), after navigation is cleared. A live Drive
+                // head still refuses it.
                 // Keep that timing while centralizing the actual instance
                 // transfer/retirement in locomotor_owner.
                 // Trigger: Stop on a piggybacked Chrono Miner, a few times per
@@ -900,13 +917,7 @@ impl Simulation {
                         && crate::sim::movement::locomotor_owner::piggyback_end_admitted(e)
                 });
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    e.teleport_state = None;
-                    // Restore ground layer and base locomotor if overridden.
-                    if let Some(ref mut loco) = e.locomotor
-                        && loco.layer == MovementLayer::Underground
-                    {
-                        loco.layer = MovementLayer::Ground;
-                    }
+                    teleport_movement::teleport_stop_moving(e);
                     if may_end {
                         crate::sim::movement::locomotor_owner::restore_admitted_primary(e);
                     }
@@ -1121,11 +1132,11 @@ impl Simulation {
                     return false;
                 };
                 // Chrono Miners drive normally for player commands.
-                let use_teleport_move = !info.is_harvester
-                    && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
+                let teleport_order =
+                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules);
 
-                let issued = if use_teleport_move {
-                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules)
+                let issued = if let Some(accepted) = teleport_order {
+                    accepted
                 } else if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines.
                     let ok = self.issue_air_cell_destination(

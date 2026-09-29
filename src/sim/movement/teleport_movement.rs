@@ -162,8 +162,8 @@ pub fn compute_chrono_delay(rules: &GeneralRules, distance_leptons: i32) -> u32 
 }
 
 /// `TeleportLocomotionClass::Move_To @ 0x00718100`, the one Teleport move
-/// entry: the Unit setter's Foot tail and a Teleport infantryman's move order
-/// reach it. A timer-locked owner (`vt+0x380`, the Foot+0x6A0 paralysis
+/// entry: the Unit and Infantry setters' Foot tail reaches it. A timer-locked
+/// owner (`vt+0x380`, the Foot+0x6A0 paralysis
 /// timer), one warped out (`vt+0x1D4`, Techno+0x270: a Temporal warp) or one
 /// warping in (`vt+0x1D8`, +0x271: a teleporter's post-warp delay) refuses
 /// with a raw NavCom clear (`0x0071820F`). Otherwise the destination cell's
@@ -181,7 +181,10 @@ pub fn compute_chrono_delay(rules: &GeneralRules, distance_leptons: i32) -> u32 
 /// occupy bit another vehicle holds (the only case rows `pad_cannot_enter*`
 /// cover); and that resolution's reservation bit (Unit `vt+0xF0`/`+0xF4`),
 /// which the next resolution clears at the previous destination whoever
-/// stands there.
+/// stands there. The Infantry-only arm (`0x0071816F..0x0071819F`: with the
+/// Techno+0x1F8 override up, the destination cell's occupants are scattered)
+/// is not ported; TechnoClass::Unlimbo raises +0x1F8 only around its own
+/// setter call (`0x006F6E1B`/`0x006F6E34`), so no order reaches it.
 pub(crate) fn teleport_move_to(
     entity: &mut crate::sim::game_entity::GameEntity,
     target: (u16, u16),
@@ -194,6 +197,21 @@ pub(crate) fn teleport_move_to(
         return false;
     }
     arm_teleport(entity, target, rules, is_harvester)
+}
+
+/// `TeleportLocomotionClass::Stop_Moving @ 0x00718230` on the owner's active
+/// Teleport: it nulls the armed destination (+0x18..+0x20) and clears the
+/// +0x30/+0x32 request bytes. The post-warp delay is the owner's (+0x271),
+/// so a warping-in owner keeps it.
+pub(crate) fn teleport_stop_moving(entity: &mut crate::sim::game_entity::GameEntity) {
+    if teleport_process_active(entity)
+        && entity
+            .teleport_state
+            .as_ref()
+            .is_some_and(|state| state.phase == TeleportPhase::Relocate)
+    {
+        entity.teleport_state = None;
+    }
 }
 
 /// Whether the owner's Teleport Process runs this frame: Teleport is its
@@ -502,6 +520,26 @@ mod tests {
         tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
         let entity = entities.get(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (20, 20));
+    }
+
+    /// Stop_Moving (`0x00718230`) nulls the armed request; the warp-in is the
+    /// owner's and survives it.
+    #[test]
+    fn stop_moving_drops_an_armed_warp_but_not_a_warp_in() {
+        let mut entities = EntityStore::new();
+        entities.insert(teleport_owner(1, "CLEG", 5, 5));
+        let rules = default_rules();
+        let owner = entities.get_mut(1).unwrap();
+        assert!(teleport_move_to(owner, (20, 20), &rules, false, 0));
+        teleport_stop_moving(owner);
+        assert!(owner.teleport_state.is_none());
+
+        assert!(teleport_move_to(owner, (20, 20), &rules, false, 0));
+        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        let owner = entities.get_mut(1).unwrap();
+        assert!(owner.is_warping_in());
+        teleport_stop_moving(owner);
+        assert!(owner.is_warping_in());
     }
 
     #[test]
