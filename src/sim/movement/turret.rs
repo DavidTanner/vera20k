@@ -317,7 +317,7 @@ pub(crate) fn current_weapon_is_omni_fire(
     } else {
         0
     };
-    crate::sim::combat::combat_weapon::weapon_for_index(obj, entity.veterancy, index)
+    crate::sim::combat::combat_weapon::weapon_for_index(obj, entity.veterancy(), index)
         .and_then(|(weapon_id, _)| rules.weapon(weapon_id))
         .is_some_and(|weapon| weapon.omni_fire)
 }

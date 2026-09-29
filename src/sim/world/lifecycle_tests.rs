@@ -450,62 +450,18 @@ pub(crate) fn common_raw_terrain_cell(
         BridgeCellFacts::default()
     };
     ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
         level,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
         template_height: level,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
-        speed_costs: SpeedCostProfile::default(),
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: false,
-        allows_tiberium: false,
-        height_in_pixels: 0,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
         base_terrain_class: TerrainClass::Clear,
-        base_speed_costs: SpeedCostProfile::default(),
         has_bridge_deck,
         bridge_walkable: has_bridge_deck,
-        bridge_transition: false,
         bridge_deck_level: if has_bridge_deck {
             level.saturating_add(4)
         } else {
             level
         },
-        bridge_layer: None,
         bridge_facts,
-        tube_index: None,
-        radar_left: [0, 0, 0],
-        radar_right: [0, 0, 0],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     }
 }
 
@@ -1840,7 +1796,6 @@ fn insert_particle_system(sim: &mut Simulation, stable_id: u64) {
         lifetime: -1,
         spark_spawn_frames: 0,
         facing: 0,
-        directionless: true,
         attached_entity: None,
         owner_entity: None,
         target_coords: IVec3::ZERO,
@@ -4134,6 +4089,7 @@ fn persistent_bullet_logic_slot_publishes_native_wall_dirty_visits() {
         grid.place_overlay(5, 5, 2, initial_wall_data);
         let _ = grid.take_dirty_cells();
         sim.overlay_grid = Some(grid);
+        sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(12, 12));
 
         let projectile_id = sim.allocate_stable_id();
         let impact = ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0);
@@ -6191,7 +6147,7 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
         firer.type_ref = sim.interner.intern("FIRER");
-        firer.veterancy = 200;
+        firer.set_veterancy_rank(200);
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(next_id),
             pending_infantry_fire: None,
@@ -6705,7 +6661,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     let decal = overlay_registry.id_for_name("DECAL").expect("test decal");
     overlay.place_overlay(0, 0, decal, 11);
     overlay.place_overlay(1, 0, decal, 12);
-    overlay.retain_zero_wall_plane_for_tests();
     sim.overlay_grid = Some(overlay);
     let mut smudge = crate::sim::smudge_grid::SmudgeGrid::new(16, 16);
     for (rx, frame_offset) in [(0, 0), (1, 1)] {
@@ -7782,7 +7737,6 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
 
         loco.fly_current_speed = SIM_ONE;
         loco.speed_fraction = SIM_ONE;
-        loco.rot = 0;
         assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), None,));
         sim.tick_air_movement_with_cell_lists_one(1, None);
         let entity = sim.substrate.entities.get_mut(1).unwrap();

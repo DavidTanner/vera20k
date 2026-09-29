@@ -22,16 +22,12 @@ use crate::sim::world::Simulation;
 /// Side length of the overlay grid [`place_tiberium`] creates on demand.
 pub(crate) const TEST_GRID_SIZE: u16 = 64;
 
-/// A flat clear map whose every cell accepts tiberium: the terrain half of a
-/// `NewTiberiumAdmission`.
 pub(crate) fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
-    for ry in 0..height {
-        for rx in 0..width {
-            cells.push(crate::sim::deploy_tests::clear_terrain_cell(rx, ry));
-        }
-    }
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(
+        width,
+        height,
+        crate::map::resolved_terrain::test_tiberium_cell,
+    )
 }
 
 /// A world with no objects in it: the live-object half of a

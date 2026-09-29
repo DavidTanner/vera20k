@@ -113,7 +113,7 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
             .flat_map(|y| (0..32).map(move |x| test_flat_cell(x, y)))
             .collect(),
     ));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(32, 32));
+    sim.overlay_grid = Some(OverlayGrid::new(32, 32));
     // This fixture's original reveal preceded its map installation. Establish
     // that admitted Unlimbo's counters before executing the real object turn.
     sim.foot_neighbors_after_unlimbo(1, Some(&rules));
@@ -123,8 +123,7 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
         .overlay_grid
         .as_ref()
         .unwrap()
-        .retained_neighbor_counts()
-        .unwrap();
+        .retained_neighbor_counts();
     assert_eq!(plane.iter().map(|v| u32::from(*v)).sum::<u32>(), 8);
     assert_eq!(plane[4 * 32 + 4], 0, "released origin neighbors");
     assert_eq!(
@@ -138,7 +137,6 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
             .as_ref()
             .unwrap()
             .retained_neighbor_counts()
-            .unwrap()
             .iter()
             .all(|v| *v == 0),
         "Limbo removes the destination source saved by Teleport's callback"

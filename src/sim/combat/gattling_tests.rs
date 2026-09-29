@@ -697,7 +697,7 @@ fn a_gattling_tank_winds_down_without_a_target() {
 /// (`0x0073A6FC..0x0073A70F`), and Limbo releases its loop.
 #[test]
 fn a_gattling_tank_boards_with_its_spin_reset() {
-    use crate::sim::passenger::{BoardingPhase, PassengerRole};
+    use crate::sim::passenger::PassengerRole;
     let mut spin = Spin::new();
     let hover = spin
         .sim
@@ -708,7 +708,6 @@ fn a_gattling_tank_boards_with_its_spin_reset() {
         tank.gattling = GattlingState::from_fields(2, 600, true);
         tank.passenger_role = PassengerRole::Boarding {
             target_transport_id: hover,
-            phase: BoardingPhase::Entering,
         };
     }
     spin.sim.sound_events.clear();

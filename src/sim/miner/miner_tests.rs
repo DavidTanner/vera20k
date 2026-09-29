@@ -3516,7 +3516,6 @@ fn sim_with_resolved_tiberium_cell(
     registry: &crate::map::overlay_types::OverlayTypeRegistry,
     cell: (u16, u16),
 ) -> Simulation {
-    use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::rules::terrain_rules::LandType;
     use crate::sim::house_state::HouseState;
 
@@ -3525,13 +3524,11 @@ fn sim_with_resolved_tiberium_cell(
     let owner = sim.interner.intern("Americans");
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
-    let mut cells = Vec::with_capacity(64 * 64);
-    for ry in 0..64u16 {
-        for rx in 0..64u16 {
-            cells.push(crate::sim::deploy_tests::clear_terrain_cell(rx, ry));
-        }
-    }
-    let mut terrain = ResolvedTerrainGrid::from_cells(64, 64, cells);
+    let mut terrain = crate::map::resolved_terrain::test_grid(
+        64,
+        64,
+        crate::map::resolved_terrain::test_tiberium_cell,
+    );
     let mut overlay = OverlayGrid::new(64, 64);
     overlay.place_overlay(cell.0, cell.1, tib01, 3);
     assert!(crate::sim::overlay_grid::recalc_overlay_passability(
@@ -3556,16 +3553,12 @@ fn sim_with_resolved_tiberium_cell(
 /// `ResolvedTerrainGrid` with every tiberium overlay folded into `land_type`
 /// by `recalc_overlay_passability`, as the map loader does.
 fn install_land_types_for_placed_ore(sim: &mut Simulation) {
-    use crate::map::resolved_terrain::ResolvedTerrainGrid;
-
     let size = crate::sim::tiberium::test_support::TEST_GRID_SIZE;
-    let mut cells = Vec::with_capacity(usize::from(size) * usize::from(size));
-    for ry in 0..size {
-        for rx in 0..size {
-            cells.push(crate::sim::deploy_tests::clear_terrain_cell(rx, ry));
-        }
-    }
-    let mut terrain = ResolvedTerrainGrid::from_cells(size, size, cells);
+    let mut terrain = crate::map::resolved_terrain::test_grid(
+        size,
+        size,
+        crate::map::resolved_terrain::test_tiberium_cell,
+    );
     let overlay = sim.overlay_grid.as_mut().expect("place_ore ran first");
     let ore_cells: Vec<(u16, u16)> = overlay
         .iter_occupied()

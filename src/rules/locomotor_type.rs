@@ -16,61 +16,70 @@
 // LocomotorKind
 // ---------------------------------------------------------------------------
 
-/// Which locomotor class controls a unit's movement behavior.
+/// Which locomotor class controls a unit's movement behavior: the eight
+/// classes an uncommented retail YR `Locomotor=` key selects.
 ///
 /// Each variant is a distinct movement controller / state machine in the
 /// original engine. Do NOT collapse these into one generic "ground mover" —
 /// they have meaningfully different behavior (see locomotor report).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+///
+/// The executable also registers Tiberian Sun's Mech, Tunnel and DropPod
+/// classes. They are dormant in YR: no retail `Locomotor=` names them and
+/// DropPod's only installer (`0x004DB8A0`) has no references
+/// (`docs/plans/2026-07-29-locomotion-substrate-design.md`), so they have no
+/// variant here.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum LocomotorKind {
     /// Standard ground vehicle movement. Baseline for all ground movers.
     Drive,
-    /// Hovering vehicle (Robot Tank, Hover MLRS). ~35% slower than Drive.
+    /// Hovering vehicle (Robot Tank, Hover MLRS).
     Hover,
-    /// Tiberian Sun subterranean burrowing. **Inert — no movement system, and no
-    /// CLSID resolves to it**, so nothing can construct one. The variant is
-    /// retained only because `world_hash` hashes this enum by discriminant
-    /// (`(loco.kind as u8)`), so deleting it would renumber every later variant
-    /// and shift the replay baseline for zero runtime benefit. Fold it into the
-    /// substrate's locomotor class when that migration re-baselines anyway.
-    /// Not to be confused with low-bridge `TubeClass` movement, which is live YR.
-    Tunnel,
     /// Infantry ground movement. Distinct arrival threshold from vehicles.
     Walk,
-    /// Tiberian Sun drop-pod entry. **Inert** for the same reason as
-    /// [`LocomotorKind::Tunnel`] — no movement system, no CLSID resolves to it,
-    /// and the variant is kept only to preserve discriminant numbering.
-    DropPod,
     /// True aircraft (Harrier, Kirov). Dedicated altitude state machine.
     Fly,
     /// Chrono movement (instant relocation). Often a temporary override.
     Teleport,
-    /// Walker vehicle (e.g., Mammoth Mk. II). Drive-like with wobble/gait quirks.
-    Mech,
     /// Naval vessel. Drive-like but carries naval identity for AI recognition.
     Ship,
     /// Jumpjet hover-flight (Rocketeer). Altitude-holding state machine, NOT Fly.
     Jumpjet,
     /// Spawned missile (V3, Dreadnought). Scripted missile controller.
     Rocket,
-    /// Falling under a parachute (paradropped infantry). Runtime-only — no
-    /// CLSID maps to it, so it is not installable and cannot reach a locomotor
-    /// slot. Nothing sets it today: the separate "override" mechanism that once
-    /// did was folded into the single piggyback slot, and paradrop descent
-    /// carries its own state rather than displacing the locomotor.
-    Parachute,
+}
+
+impl LocomotorKind {
+    pub const ALL: [Self; 8] = [
+        Self::Drive,
+        Self::Hover,
+        Self::Walk,
+        Self::Fly,
+        Self::Teleport,
+        Self::Ship,
+        Self::Jumpjet,
+        Self::Rocket,
+    ];
+
+    /// Row of this kind in [`Self::ALL`] and [`INSTALLED_CLSID_KIND_TABLE`].
+    pub const fn table_index(self) -> usize {
+        self as usize
+    }
+
+    /// The canonical retail CLSID text for this kind.
+    pub const fn clsid(self) -> &'static str {
+        INSTALLED_CLSID_KIND_TABLE[self.table_index()].0
+    }
 }
 
 /// The eight CLSIDs selected by uncommented `Locomotor=` keys in retail YR, in
-/// the braces-and-upper-case spelling the retail INI uses. Kind-valued mirror
-/// of the substrate's class table; `install_tables_agree_with_rules_kind_table`
-/// in `sim::movement::locomotion::install` locks the two together.
+/// the braces-and-upper-case spelling the retail INI uses, in
+/// [`LocomotorKind::ALL`] order.
 ///
 /// The dormant Tiberian Sun CLSIDs (Mech, Tunnel, DropPod) are deliberately
-/// absent: the executable registers those classes, but no live movement system
-/// exists, so an INI naming one falls back to the constructor seed like any
-/// other unrecognized value. (An earlier parser here resolved the Mech CLSID
-/// to `LocomotorKind::Mech`; that was VERA-invented and never production-reachable.)
+/// absent: an INI naming one falls back to the constructor seed like any other
+/// unrecognized value.
 pub const INSTALLED_CLSID_KIND_TABLE: [(&str, LocomotorKind); 8] = [
     (
         "{4A582741-9839-11D1-B709-00A024DDAFD1}",
@@ -124,11 +133,16 @@ pub fn kind_from_clsid(text: &str) -> Option<LocomotorKind> {
 /// The kind a type installs when its `Locomotor=` value is absent or does not
 /// parse: the native type constructor's seed.
 ///
-/// gamemd seeds the type's locomotor-CLSID field with the **Teleport** GUID
-/// before any INI is read, then passes the field's current value as the CLSID
-/// reader's default argument — so an absent key and an unparseable value take
-/// the same path with no category input. Full derivation and the retail
-/// reachability analysis live in `sim::movement::locomotion::install`.
+/// There is one field and one default, not a "no key" rule and a "bad CLSID"
+/// rule. The type constructor seeds the type's locomotor-CLSID field with the
+/// **Teleport** GUID before any INI is read (a plain 16-byte copy, not a
+/// category lookup); the INI read then passes the field's current value as the
+/// CLSID reader's default argument. So an absent key and an unparseable value
+/// both keep the seed, with no dependence on the unit's category. (VERA once
+/// fell back per category — infantry Walk, vehicles Drive, aircraft Fly — which
+/// has no native counterpart.) In stock YR only `DeathDummy`, an internal type,
+/// of the 157 units on the `InfantryTypes`/`VehicleTypes`/`AircraftTypes`
+/// rosters omits `Locomotor=`.
 pub const DEFAULT_INSTALLED_KIND: LocomotorKind = LocomotorKind::Teleport;
 
 /// Resolve the locomotor kind a type installs at spawn from its raw
@@ -453,6 +467,72 @@ mod tests {
     }
 
     #[test]
+    fn installed_table_follows_kind_order() {
+        for (row, &(clsid, kind)) in INSTALLED_CLSID_KIND_TABLE.iter().enumerate() {
+            assert_eq!(LocomotorKind::ALL[row], kind);
+            assert_eq!(kind.table_index(), row);
+            assert_eq!(kind.clsid(), clsid);
+        }
+    }
+
+    #[test]
+    fn retail_locomotor_keys_select_only_installed_kinds() {
+        // PARITY: the golden is the retail `ini/rulesmd.ini` byte content. Strip
+        // `;` comments before counting: two Drive rows name the dormant Mech
+        // GUID in trailing comments.
+        let Some(rulesmd) = crate::rules::retail_ini_fixture::retail_ini_text("rulesmd.ini") else {
+            return;
+        };
+        let mut histogram = std::collections::BTreeMap::new();
+        let mut locomotor_key_total = 0usize;
+        for raw_line in rulesmd.lines() {
+            let line = raw_line.split_once(';').map_or(raw_line, |(body, _)| body);
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            if !key.trim().eq_ignore_ascii_case("Locomotor") {
+                continue;
+            }
+            locomotor_key_total += 1;
+            if let Some(kind) = kind_from_clsid(value.trim()) {
+                *histogram.entry(kind).or_insert(0usize) += 1;
+            }
+        }
+        let expected = std::collections::BTreeMap::from([
+            (LocomotorKind::Walk, 60),
+            (LocomotorKind::Drive, 52),
+            (LocomotorKind::Ship, 13),
+            (LocomotorKind::Jumpjet, 9),
+            (LocomotorKind::Fly, 8),
+            (LocomotorKind::Teleport, 6),
+            (LocomotorKind::Hover, 4),
+            (LocomotorKind::Rocket, 3),
+        ]);
+        assert_eq!(histogram, expected);
+        assert_eq!(locomotor_key_total, 155);
+    }
+
+    /// The six stock sections that run a Teleport locomotor. Four name the
+    /// CLSID with a trailing comment, and two of those spell `11d1` in lower
+    /// case.
+    #[test]
+    fn six_stock_teleport_sections_resolve_to_teleport() {
+        for section_value in [
+            "{4A582747-9839-11d1-B709-00A024DDAFD1}", // CLEG
+            "{4A582747-9839-11d1-B709-00A024DDAFD1}", // CCOMAND
+            "{4A582747-9839-11d1-B709-00A024DDAFD1}", // CIVAN
+            "{4A582747-9839-11d1-B709-00A024DDAFD1}", // CMIN
+            "{4A582747-9839-11d1-B709-00A024DDAFD1}", // CMON
+            "{4A582747-9839-11D1-B709-00A024DDAFD1}", // SMON
+        ] {
+            assert_eq!(
+                resolve_installed_kind(Some(section_value)),
+                LocomotorKind::Teleport
+            );
+        }
+    }
+
+    #[test]
     fn lowercase_retail_spelling_resolves() {
         // Four stock sections spell `11d1` in lower case.
         assert_eq!(
@@ -472,10 +552,8 @@ mod tests {
 
     #[test]
     fn dormant_mech_clsid_does_not_resolve() {
-        // The executable registers the Mech class but no live movement system
-        // exists; the production install path treats its CLSID like any other
-        // unrecognized value. The deleted `from_clsid` parser mapped it to
-        // `LocomotorKind::Mech` — VERA-invented, never production-reachable.
+        // The executable registers the Mech class but YR never selects it; the
+        // install path treats its CLSID like any other unrecognized value.
         let mech = "{55D141B8-DB94-11D1-AC98-006008055BB5}";
         assert_eq!(kind_from_clsid(mech), None);
         assert_eq!(resolve_installed_kind(Some(mech)), LocomotorKind::Teleport);

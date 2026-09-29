@@ -181,15 +181,6 @@ impl PassengerCargo {
     }
 }
 
-/// Boarding intent phase — tracks a passenger's approach to a transport.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum BoardingPhase {
-    /// Moving toward the transport cell.
-    Approach,
-    /// Adjacent to transport, entering this tick.
-    Entering,
-}
-
 /// Passenger/transport role for an entity. Replaces three separate Option fields
 /// with a single enum that makes invalid states unrepresentable.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -199,10 +190,7 @@ pub enum PassengerRole {
     /// Entity is a transport or garrisonable building that can hold passengers.
     Transport { cargo: PassengerCargo },
     /// Entity is approaching a transport to board it.
-    Boarding {
-        target_transport_id: u64,
-        phase: BoardingPhase,
-    },
+    Boarding { target_transport_id: u64 },
     /// Entity is inside a transport (hidden from map, not targetable).
     Inside {
         transport_id: u64,
@@ -731,18 +719,24 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
         sim.open_topped_passengers_take_target(pax_id, None, rules);
 
         if transport_gunner {
-            if let Some(t) = sim.substrate.entities.get_mut(transport_id) {
-                t.weapon_override = Some(
-                    crate::sim::combat::combat_weapon::WeaponOverride::IfvSlot(pax_ifv_mode),
-                );
-            }
-            // UnitClass +0x4D4 (`0x00746420`): the gunner's TemporalClass
-            // moves to the IFV.
-            sim.temporal_receive_gunner(transport_id, pax_id);
+            receive_gunner(sim, transport_id, pax_id, pax_ifv_mode);
         }
     } else if let Some(pax) = sim.substrate.entities.get_mut(pax_id) {
         pax.passenger_role = PassengerRole::None;
     }
+}
+
+/// UnitClass `+0x4D4` (`0x00746420`) for a `Gunner=yes` transport: the
+/// passenger's `IFVMode=` becomes the transport's weapon slot (VERA's
+/// representation of that swap is `weapon_override`), and the gunner's
+/// TemporalClass moves to the IFV.
+fn receive_gunner(sim: &mut Simulation, transport_id: u64, pax_id: u64, ifv_mode: u32) {
+    if let Some(transport) = sim.substrate.entities.get_mut(transport_id) {
+        transport.weapon_override = Some(
+            crate::sim::combat::combat_weapon::WeaponOverride::IfvSlot(ifv_mode),
+        );
+    }
+    sim.temporal_receive_gunner(transport_id, pax_id);
 }
 
 /// `FootClass::SetLocation @ 0x004DB810`'s `OpenTopped=` tail (`0x004DB88A`
@@ -1279,7 +1273,6 @@ ConditionYellow=50%
         ge.type_ref = type_id;
         ge.passenger_role = PassengerRole::Boarding {
             target_transport_id: transport_id,
-            phase: BoardingPhase::Entering,
         };
         sim.substrate.entities.insert(ge);
         assert!(matches!(
@@ -1444,15 +1437,6 @@ ConditionYellow=50%
             sim.substrate.entities.get(pax).unwrap().passenger_role,
             PassengerRole::Inside { transport_id, .. } if transport_id == bldg
         ));
-        assert_eq!(
-            sim.substrate
-                .entities
-                .get(bldg)
-                .unwrap()
-                .garrison_original_owner,
-            None,
-            "civilian garrison boarding must not save a per-building original owner"
-        );
     }
 
     #[test]
@@ -1535,10 +1519,6 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let special_id = sim.interner.intern("Special");
-        if let Some(building) = sim.substrate.entities.get_mut(bldg) {
-            building.garrison_original_owner = Some(special_id);
-        }
 
         let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, bldg);
 
@@ -2140,12 +2120,9 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         // Spawn a CanBeOccupied building owned by Americans (post-garrison state),
-        // with garrison_original_owner = Neutral (pre-garrison state).
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let neutral_id = sim.interner.intern("Neutral");
-        // Set up the "1 occupant inside, original owner = Neutral" state.
+        // Set up the "1 occupant inside" state.
         if let Some(t) = sim.substrate.entities.get_mut(bldg) {
-            t.garrison_original_owner = Some(neutral_id);
             if let Some(cargo) = t.passenger_role.cargo_mut() {
                 // Pretend a passenger entity 12345 was inside.
                 cargo.board(12345, 1);
@@ -2321,9 +2298,6 @@ ConditionYellow=50%
         // also set category=Structure since GameEntity::test_default leaves it
         // as Unit — the death-loop branch keys on Structure.
         if let Some(bldg) = sim.substrate.entities.get_mut(building_id) {
-            if bldg.garrison_original_owner.is_none() {
-                bldg.garrison_original_owner = Some(bldg.owner);
-            }
             bldg.owner = owner_id;
             bldg.category = crate::map::entities::EntityCategory::Structure;
         }

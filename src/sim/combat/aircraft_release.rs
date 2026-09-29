@@ -130,8 +130,8 @@ pub(super) fn visit(
         return;
     }
     let entity = world.substrate.entities.get(id).unwrap();
-    let weapon0 =
-        combat_weapon::primary_for_tier(obj, entity.veterancy).and_then(|name| rules.weapon(name));
+    let weapon0 = combat_weapon::primary_for_tier(obj, entity.veterancy())
+        .and_then(|name| rules.weapon(name));
     let facts = StrikeFacts {
         state,
         target: attack_mission::aircraft_target_present(
@@ -142,7 +142,7 @@ pub(super) fn visit(
             .aircraft_ammo
             .as_ref()
             .map_or(-1, |ammo| ammo.current),
-        strafe: combat_weapon::aircraft_strafes(rules, obj, entity.veterancy),
+        strafe: combat_weapon::aircraft_strafes(rules, obj, entity.veterancy()),
         fighter: obj.fighter,
         curley_shuffle: rules.general.curley_shuffle,
         weapon0_rof: weapon0.map_or(0, |weapon| weapon.rof),

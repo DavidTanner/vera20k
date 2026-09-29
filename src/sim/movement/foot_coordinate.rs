@@ -110,9 +110,6 @@ pub(super) fn navigation_coordinate(
                 .ok_or("Jumpjet payload does not match active class")?;
             Ok(head_or_current(Some(state.coordinate(current)), current))
         }
-        other => Err(format!(
-            "Foot coordinate requires the {other:?} +18 receiver"
-        )),
     }
 }
 

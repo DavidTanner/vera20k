@@ -41,7 +41,7 @@ use crate::util::fixed_math::{
 
 use super::block_index::{HeldBlockSets, LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
-use super::locomotor::{GroundMovePhase, MovementLayer};
+use super::locomotor::MovementLayer;
 use super::movement_bridge::{BRIDGE_Z_OFFSET, apply_pending_bridge_render_state};
 use super::movement_occupancy::{
     DeferredBuildingEntrySkips, DeferredCellCheck, MoverBuildingEntryFacts,
@@ -1624,14 +1624,9 @@ fn advance_ordinary_mover(
                     match movement_step::handle_vehicle_rotation(
                         &mut entity.body_facing,
                         None,
-                        &mut entity.locomotor,
                         native_frame,
-                        sim_tick,
                     ) {
-                        movement_step::RotationResult::StillRotating { debug_events: evts } => {
-                            debug_events.extend(evts);
-                            return;
-                        }
+                        movement_step::RotationResult::StillRotating => return,
                         movement_step::RotationResult::ReadyToMove => {}
                     }
                 }
@@ -1875,17 +1870,11 @@ fn advance_ordinary_mover(
                         // request. Use the same rotation owner now, preserving
                         // its native-frame anchor and same-frame publication.
                         // Native evidence: drive_fresh_turn.json.
-                        if let movement_step::RotationResult::StillRotating { debug_events: evts } =
-                            movement_step::handle_vehicle_rotation(
-                                &mut entity.body_facing,
-                                Some(u16::from(desired) << 8),
-                                &mut entity.locomotor,
-                                native_frame,
-                                sim_tick,
-                            )
-                        {
-                            debug_events.extend(evts);
-                        }
+                        movement_step::handle_vehicle_rotation(
+                            &mut entity.body_facing,
+                            Some(u16::from(desired) << 8),
+                            native_frame,
+                        );
                         *native_track = Some(invocation);
                         movement_step::AdvanceResult::DriveTrackActive
                     }
@@ -2328,7 +2317,7 @@ fn advance_ordinary_mover(
 /// The base contains retained wall/Foot bytes and derived terrain occupation.
 /// Wall/terrain edits rebuild under their epochs. Foot writes replay the owner's
 /// bounded cell-delta journal, rebuilding only if the reader fell behind. The
-/// entity touch log maintains building contributions (and legacy fixture mobiles).
+/// entity touch log maintains building contributions (and, in fixtures without an overlay grid, mobiles).
 /// Debug checks compare against a fresh sum. No cache data is saved or hashed.
 #[derive(Default)]
 pub(crate) struct MovementPassCache {
@@ -2356,16 +2345,12 @@ struct BlockerPlaneEntry {
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct BlockerPlaneKey {
     terrain_epoch: Option<u64>,
-    overlay_epoch: Option<(bool, u64)>,
+    overlay_epoch: Option<u64>,
     width: u16,
     height: u16,
     /// A building's foundation size comes from its type. By address, never
     /// dereferenced.
     rules: Option<usize>,
-    /// The overlay registry a grid without a retained wall plane rebuilds its
-    /// walls from (`bump_crush::blocker_plane_base`); `None` when the plane
-    /// does not read it. By address, never dereferenced.
-    wall_registry: Option<usize>,
 }
 
 impl MovementPassCache {
@@ -2412,7 +2397,6 @@ impl MovementPassCache {
         grid: &PathGrid,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         interner: &crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> &crate::sim::pathfinding::BlockerNeighborCounts {
@@ -2424,7 +2408,6 @@ impl MovementPassCache {
             grid,
             resolved_terrain,
             overlay_grid,
-            overlay_registry,
             interner,
             rules,
         )
@@ -2476,7 +2459,6 @@ impl MovementPassCache {
         grid: &PathGrid,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         interner: &crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> &'a crate::sim::pathfinding::BlockerNeighborCounts {
@@ -2486,13 +2468,8 @@ impl MovementPassCache {
             width: grid.width(),
             height: grid.height(),
             rules: rules.map(|rules| std::ptr::from_ref(rules) as usize),
-            wall_registry: overlay_grid
-                .filter(|grid| grid.retained_neighbor_counts().is_none())
-                .and(overlay_registry)
-                .map(|registry| std::ptr::from_ref(registry) as usize),
         };
-        let retained_foot =
-            overlay_grid.is_some_and(|grid| grid.retained_neighbor_counts().is_some());
+        let retained_foot = overlay_grid.is_some();
         match blocker.entry.as_mut().filter(|entry| {
             entry.key == key
                 && !touched.everything
@@ -2533,7 +2510,6 @@ impl MovementPassCache {
                     grid.height(),
                     resolved_terrain,
                     overlay_grid,
-                    overlay_registry,
                 );
                 let mut sources = BTreeMap::new();
                 for entity in entities.values() {
@@ -2570,7 +2546,6 @@ impl MovementPassCache {
                         grid.height(),
                         resolved_terrain,
                         overlay_grid,
-                        overlay_registry,
                         interner,
                         rules,
                     ),
@@ -3076,7 +3051,6 @@ impl PendingMovementPass {
                 grid,
                 terrain,
                 overlay_grid,
-                overlay_registry,
                 interner,
                 rules,
             )
@@ -3268,7 +3242,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
                     grid,
                     resolved_terrain,
                     overlay_grid,
-                    overlay_registry,
                     interner,
                     rules,
                 )
@@ -3362,7 +3335,6 @@ pub(crate) fn finish_movement_pass(
     houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
     alliances: &HouseAllianceMap,
     cell_occupation: &mut CellOccupationGrid,
-    sim_tick: u64,
     native_frame: u32,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     path_grid: Option<&PathGrid>,
@@ -3444,7 +3416,6 @@ pub(crate) fn finish_movement_pass(
         entities,
         &finished_entities,
         &crush_kills,
-        sim_tick,
         resolved_terrain,
         cell_occupation,
         path_grid,
@@ -3454,7 +3425,6 @@ pub(crate) fn finish_movement_pass(
         .copied()
         .filter(|entity_id| !tube_processed.contains(entity_id))
         .collect();
-    update_locomotor_phases(entities, &ordinary_tail_order, &crush_kills, sim_tick);
 
     // Hover vertical controller — every hover unit, moving OR parked (idle
     // units still float at cruise height and bob). Runs after the XY stage so
@@ -3549,8 +3519,6 @@ pub(crate) fn finish_movement_pass(
 // Post-loop helpers — extracted from tick_movement_with_grids
 // ---------------------------------------------------------------------------
 
-/// Remove movement targets from finished entities, reset sub-cell to final
-/// position, and transition locomotor to Idle.
 fn contains_crush_victim(crush_kills: &[PendingCrushKill], stable_id: u64) -> bool {
     // The mover loop consults this before the deferred kill list is sorted.
     // Preserve native live-order visibility with a linear membership check;
@@ -3558,11 +3526,12 @@ fn contains_crush_victim(crush_kills: &[PendingCrushKill], stable_id: u64) -> bo
     crush_kills.iter().any(|kill| kill.victim_id == stable_id)
 }
 
+/// Remove movement targets from finished entities and reset sub-cell to
+/// final position.
 fn finalize_finished_entities(
     entities: &mut EntityStore,
     finished: &[u64],
     crush_kills: &[PendingCrushKill],
-    sim_tick: u64,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     cell_occupation: &mut CellOccupationGrid,
     path_grid: Option<&PathGrid>,
@@ -3644,84 +3613,12 @@ fn finalize_finished_entities(
             // The body's +388 survives arrival: a turn still running ends on
             // the frame clock.
             entity.movement_target = None;
-            let old_phase = entity.locomotor.as_ref().map(|l| l.phase);
             if let Some(ref mut loco) = entity.locomotor {
-                loco.phase = GroundMovePhase::Idle;
                 loco.infantry_wobble_phase = 0.0;
                 loco.subcell_dest = None;
                 // Full stop zeroes the hover throttle (the hover locomotor's
                 // arrival cleanup) so the next order spins up from rest.
                 loco.hover_throttle = crate::util::fixed_math::SIM_ZERO;
-            }
-            if let Some(old) = old_phase {
-                if old != GroundMovePhase::Idle {
-                    entity.push_debug_event(
-                        sim_tick as u32,
-                        DebugEventKind::PhaseChange {
-                            from: format!("{:?}", old),
-                            to: "Idle".into(),
-                            reason: "movement complete".into(),
-                        },
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Update locomotor phases for all active movers — 7-state mapping.
-/// Maps the current movement state to the appropriate WalkLocomotionClass state.
-fn update_locomotor_phases(
-    entities: &mut EntityStore,
-    entity_order: &[u64],
-    crush_kills: &[PendingCrushKill],
-    sim_tick: u64,
-) {
-    for &id in entity_order {
-        if contains_crush_victim(crush_kills, id) {
-            continue;
-        }
-        if let Some(entity) = entities.get_mut(id) {
-            // Compute new phase and capture old phase in a scoped block to release
-            // borrows before calling push_debug_event.
-            let phase_change: Option<(GroundMovePhase, GroundMovePhase, &'static str)> = {
-                if let (Some(target), Some(loco)) = (&entity.movement_target, &mut entity.locomotor)
-                {
-                    let old_phase = loco.phase;
-                    let (new_phase, reason) = if entity.navigation.path_runtime.path_blocked {
-                        (GroundMovePhase::Blocked, "cell blocked")
-                    } else if target.current_speed <= SIM_ZERO {
-                        // Speed is zero but path remains — stopping or waiting to start.
-                        (GroundMovePhase::Stopping, "decelerating to stop")
-                    } else if target.current_speed < target.speed * MIN_BRAKE_FRACTION {
-                        // Below 30% of max speed — still accelerating from rest.
-                        (GroundMovePhase::Accelerating, "reached cruise speed")
-                    } else if target.current_speed >= target.speed {
-                        // At or above max speed — cruising.
-                        (GroundMovePhase::Cruising, "reached cruise speed")
-                    } else {
-                        // Between 30% and max — path following with speed ramping.
-                        (GroundMovePhase::PathFollow, "approaching next cell")
-                    };
-                    loco.phase = new_phase;
-                    if old_phase != new_phase {
-                        Some((old_phase, new_phase, reason))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            };
-            if let Some((old, new, reason)) = phase_change {
-                entity.push_debug_event(
-                    sim_tick as u32,
-                    DebugEventKind::PhaseChange {
-                        from: format!("{:?}", old),
-                        to: format!("{:?}", new),
-                        reason: reason.into(),
-                    },
-                );
             }
         }
     }
@@ -3797,8 +3694,7 @@ mod pass_cache_tests {
                 })
                 .collect(),
         );
-        let mut overlays =
-            crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(5, 5);
+        let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(5, 5);
         let mut entities = EntityStore::new();
         let mut unit = GameEntity::test_default(7, "MTNK", "Americans", 2, 2);
         unit.lifecycle.cell_marked = true;
@@ -3813,7 +3709,6 @@ mod pass_cache_tests {
                     &grid,
                     Some(&terrain),
                     Some(&overlays),
-                    None,
                     &interner,
                     None
                 )
@@ -3829,7 +3724,6 @@ mod pass_cache_tests {
                     &grid,
                     Some(&terrain),
                     Some(&overlays),
-                    None,
                     &interner,
                     None
                 )
@@ -3844,7 +3738,6 @@ mod pass_cache_tests {
             &grid,
             Some(&terrain),
             Some(&overlays),
-            None,
             &interner,
             None,
         );
@@ -3863,7 +3756,6 @@ mod pass_cache_tests {
             5,
             Some(&terrain),
             Some(&overlays),
-            None,
             &interner,
             None,
         );
@@ -3873,7 +3765,6 @@ mod pass_cache_tests {
                 &grid,
                 Some(&terrain),
                 Some(&overlays),
-                None,
                 &interner,
                 None
             ),
@@ -3904,7 +3795,7 @@ mod pass_cache_tests {
         let mut cache = MovementPassCache::default();
 
         let before = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(
             before.count_at(1, 1),
@@ -3913,14 +3804,14 @@ mod pass_cache_tests {
         );
         // Nothing touched: kept (and cross-checked in debug builds).
         let again = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(again, before);
 
         // Death sequence: the object stays on the grid.
         entities.get_mut(7).unwrap().dying = true;
         let after = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(
             after.count_at(1, 1),
@@ -3943,21 +3834,12 @@ mod pass_cache_tests {
         let grid = PathGrid::new(5, 5);
         let mut entities = EntityStore::new();
         let interner = test_interner();
-        let mut overlays =
-            crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(5, 5);
+        let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(5, 5);
         let mut cache = MovementPassCache::default();
         let mut plane = |cache: &mut MovementPassCache,
                          overlays: &crate::sim::overlay_grid::OverlayGrid| {
             cache
-                .blocker_plane(
-                    &mut entities,
-                    &grid,
-                    None,
-                    Some(overlays),
-                    None,
-                    &interner,
-                    None,
-                )
+                .blocker_plane(&mut entities, &grid, None, Some(overlays), &interner, None)
                 .clone()
         };
         let before = plane(&mut cache, &overlays);
@@ -3971,7 +3853,7 @@ mod pass_cache_tests {
         assert_eq!(plane(&mut cache, &overlays), before);
         assert_eq!(cache.blocker_plane_world_rebuilds(), 1);
 
-        overlays.retain_zero_wall_plane_for_tests();
+        overlays.seed_neighbor_counts_for_tests(0);
         let _ = plane(&mut cache, &overlays);
         assert_eq!(cache.blocker_plane_world_rebuilds(), 2);
     }
@@ -4038,21 +3920,12 @@ Foundation=2x2
             }
             if step % 3 == 0 {
                 let kept = cache
-                    .blocker_plane(
-                        &mut entities,
-                        &grid,
-                        None,
-                        None,
-                        None,
-                        &interner,
-                        Some(&rules),
-                    )
+                    .blocker_plane(&mut entities, &grid, None, None, &interner, Some(&rules))
                     .clone();
                 let built = bump_crush::build_blocker_neighbor_counts_with_overlays(
                     &entities,
                     12,
                     12,
-                    None,
                     None,
                     None,
                     &interner,

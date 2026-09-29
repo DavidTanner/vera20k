@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
@@ -59,60 +59,11 @@ fn clear_costs() -> SpeedCostProfile {
 }
 
 fn clear_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-    let land_type = LandType::Clear.as_index();
     ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
-        level: 0,
-        filled_clear: true,
-        tileset_index: None,
-        land_type,
-        yr_cell_land_type: land_type,
-        slope_type: 0,
-        template_height: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
         speed_costs: clear_costs(),
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: true,
-        allows_tiberium: true,
-        height_in_pixels: 0,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: zone_class::GROUND,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: land_type,
-        base_yr_cell_land_type: land_type,
-        base_terrain_class: TerrainClass::Clear,
         base_speed_costs: clear_costs(),
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-        tube_index: None,
-        radar_left: [0; 3],
-        radar_right: [0; 3],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        allows_tiberium: true,
+        ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
     }
 }
 
@@ -141,17 +92,13 @@ fn water_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
 }
 
 fn flat_terrain(water: impl Fn(u16, u16) -> bool) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(usize::from(MAP) * usize::from(MAP));
-    for ry in 0..MAP {
-        for rx in 0..MAP {
-            cells.push(if water(rx, ry) {
-                water_cell(rx, ry)
-            } else {
-                clear_cell(rx, ry)
-            });
+    crate::map::resolved_terrain::test_grid(MAP, MAP, |rx, ry| {
+        if water(rx, ry) {
+            water_cell(rx, ry)
+        } else {
+            clear_cell(rx, ry)
         }
-    }
-    ResolvedTerrainGrid::from_cells(MAP, MAP, cells)
+    })
 }
 
 struct Fixture {
@@ -546,7 +493,7 @@ fn nighthawk_unloads_only_when_landed() {
                 .expect("locomotor");
             loco.altitude = SimFixed::from_num(600);
         }
-        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
         fx.sim.session.binary_frame += 1;
     }
     assert_eq!(fx.cargo_ids(shad).len(), 2, "airborne: nothing leaves");
@@ -565,7 +512,7 @@ fn nighthawk_unloads_only_when_landed() {
     }
     let mut frames = Vec::new();
     for _ in 0..80 {
-        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
         fx.sim.session.binary_frame += 1;
         for &id in &pax {
             if fx.revealed(id) && !frames.iter().any(|(seen, _)| *seen == id) {
@@ -856,7 +803,7 @@ fn descending_nighthawk_draws_no_scenario_rng_until_it_ejects() {
 
     // First dispatch: state 0 → 2 with exactly one epilogue draw.
     let before = fx.sim.scenario_rng.state();
-    super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+    super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
     fx.sim.session.binary_frame += 1;
     assert_eq!(handler_state(&fx, shad), super::AIR_STATE_WAIT_STOP);
     assert_ne!(
@@ -872,7 +819,7 @@ fn descending_nighthawk_draws_no_scenario_rng_until_it_ejects() {
         altitude -= 20;
         set_altitude(&mut fx, shad, altitude);
         let before = fx.sim.scenario_rng.state();
-        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
         fx.sim.session.binary_frame += 1;
         if fx.sim.scenario_rng.state() != before {
             airborne_draws += 1;
@@ -887,7 +834,7 @@ fn descending_nighthawk_draws_no_scenario_rng_until_it_ejects() {
     assert_eq!(handler_state(&fx, shad), super::AIR_STATE_EJECT);
     assert_eq!(fx.cargo_ids(shad).len(), 2);
     let before = fx.sim.scenario_rng.state();
-    super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+    super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
     assert!(
         fx.revealed(pax[1]),
         "cargo head ejected on the state-3 dispatch"
@@ -926,12 +873,12 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
     assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
 
     // State 0 → 3 (landed, team-less), one draw.
-    super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+    super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
     assert_eq!(handler_state(&fx, shad), super::AIR_STATE_EJECT);
     // Advance to the state-3 dispatch: the ejection is refused.
     for _ in 0..20 {
         fx.sim.session.binary_frame += 1;
-        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
         if fx.mission_queued(shad) == MissionId::from_known(MissionType::Guard) {
             break;
         }
@@ -962,7 +909,7 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
     let before = fx.sim.scenario_rng.state();
     for _ in 0..60 {
         fx.sim.session.binary_frame += 1;
-        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid), None);
+        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, Some(&fx.grid));
     }
     assert_eq!(
         fx.sim.scenario_rng.state(),
@@ -1028,18 +975,11 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
                     &mut fx.sim,
                     &fx.rules,
                     Some(&fx.grid),
-                    None,
                     transport
                 ));
             } else {
                 assert!(matches!(
-                    super::eject_head_passenger(
-                        &mut fx.sim,
-                        &fx.rules,
-                        Some(&fx.grid),
-                        None,
-                        transport
-                    ),
+                    super::eject_head_passenger(&mut fx.sim, &fx.rules, Some(&fx.grid), transport),
                     super::EjectOutcome::Failed
                 ));
             }

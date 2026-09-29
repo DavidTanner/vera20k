@@ -1910,20 +1910,89 @@ pub(crate) fn test_flat_ground_grid(size: u16) -> ResolvedTerrainGrid {
         wheel: Some(100),
         ..Default::default()
     };
-    ResolvedTerrainGrid::from_cells(
-        size,
-        size,
-        (0..size)
-            .flat_map(|ry| {
-                (0..size).map(move |rx| {
-                    let mut cell = test_flat_cell(rx, ry);
-                    cell.speed_costs = costs;
-                    cell.base_speed_costs = costs;
-                    cell
-                })
-            })
-            .collect(),
-    )
+    test_grid(size, size, |rx, ry| ResolvedTerrainCell {
+        speed_costs: costs,
+        base_speed_costs: costs,
+        ..test_flat_cell(rx, ry)
+    })
+}
+
+/// A `width` x `height` grid of `cell(rx, ry)`, in row-major order.
+#[cfg(test)]
+pub(crate) fn test_grid(
+    width: u16,
+    height: u16,
+    mut cell: impl FnMut(u16, u16) -> ResolvedTerrainCell,
+) -> ResolvedTerrainGrid {
+    let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
+    for ry in 0..height {
+        for rx in 0..width {
+            cells.push(cell(rx, ry));
+        }
+    }
+    ResolvedTerrainGrid::from_cells(width, height, cells)
+}
+
+/// Every SpeedType at 100%.
+#[cfg(test)]
+pub(crate) const TEST_OPEN_SPEED_COSTS: SpeedCostProfile = SpeedCostProfile {
+    foot: Some(100),
+    track: Some(100),
+    wheel: Some(100),
+    float: Some(100),
+    amphibious: Some(100),
+    float_beach: Some(100),
+    hover: Some(100),
+};
+
+/// [`test_flat_cell`] whose base terrain class is Clear.
+#[cfg(test)]
+pub(crate) fn test_clear_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
+    ResolvedTerrainCell {
+        base_terrain_class: TerrainClass::Clear,
+        ..test_flat_cell(rx, ry)
+    }
+}
+
+/// [`test_clear_cell`] that accepts smudges.
+#[cfg(test)]
+pub(crate) fn test_smudge_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
+    ResolvedTerrainCell {
+        accepts_smudge: true,
+        ..test_clear_cell(rx, ry)
+    }
+}
+
+/// [`test_smudge_cell`] that also allows tiberium.
+#[cfg(test)]
+pub(crate) fn test_tiberium_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
+    ResolvedTerrainCell {
+        allows_tiberium: true,
+        ..test_smudge_cell(rx, ry)
+    }
+}
+
+/// [`test_flat_cell`] that is `filled_clear`, has an Unknown terrain class
+/// (`TerrainClass`'s default) and accepts smudges.
+#[cfg(test)]
+pub(crate) fn test_unclassified_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
+    ResolvedTerrainCell {
+        filled_clear: true,
+        terrain_class: TerrainClass::default(),
+        accepts_smudge: true,
+        ..test_flat_cell(rx, ry)
+    }
+}
+
+/// [`test_smudge_cell`] as the map loader fills a clear cell: `filled_clear`
+/// and no tileset.
+#[cfg(test)]
+pub(crate) fn test_loader_clear_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
+    ResolvedTerrainCell {
+        filled_clear: true,
+        tileset_index: None,
+        ..test_smudge_cell(rx, ry)
+    }
 }
 
 /// A fully-populated flat `ResolvedTerrainCell`, for tests in other modules that
@@ -7290,10 +7359,8 @@ mod tests {
 
     #[test]
     fn gsi_04_01_runtime_setter_uses_native_real_or_dummy_order() {
-        let cells = (0..3)
-            .flat_map(|ry| (0..3).map(move |rx| make_test_cell(rx, ry)))
-            .collect();
-        let mut grid = ResolvedTerrainGrid::from_cells(3, 3, cells);
+        let mut grid =
+            crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| make_test_cell(rx, ry));
         grid.test_set_native_allocated_cells(&[(1, 1)]);
         let dummy = grid.shared_cell_dummy();
         let stamp = BridgeFlagStamp::new((1, 1), 0, true);
@@ -7338,10 +7405,8 @@ mod tests {
 
     #[test]
     fn bridge_publication_retains_allocation_identity_across_other_lookups() {
-        let cells = (0..3)
-            .flat_map(|y| (0..3).map(move |x| make_test_cell(x, y)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(3, 3, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(3, 3, |x, y| make_test_cell(x, y));
         terrain.test_set_native_allocated_cells(&[(1, 1)]);
         let real = terrain.native_cell_identity((-511, 2));
         assert_eq!(real, NativeCellIdentity::Real(4));
@@ -7368,10 +7433,8 @@ mod tests {
 
     #[test]
     fn bridge_publication_overlapping_mark_preserves_literal_anchor_pointer() {
-        let cells = (0..7)
-            .flat_map(|y| (0..7).map(move |x| make_test_cell(x, y)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(7, 7, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(7, 7, |x, y| make_test_cell(x, y));
         let first = terrain.native_cell_identity((3, 3));
         let second = terrain.native_cell_identity((4, 3));
         terrain.apply_runtime_bridge_mark_stamp(
@@ -8353,10 +8416,7 @@ mod tests {
 
     #[test]
     fn invalid_non_8_direction_does_not_wrap() {
-        let cells = (0..3)
-            .flat_map(|ry| (0..3).map(move |rx| make_test_cell(rx, ry)))
-            .collect();
-        let grid = ResolvedTerrainGrid::from_cells(3, 3, cells);
+        let grid = crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| make_test_cell(rx, ry));
 
         assert_eq!(grid.step_coord_by_direction((1, 1), 9), None);
         assert_eq!(grid.step_coord_by_direction((1, 1), 255), None);
@@ -9840,58 +9900,16 @@ NoUseTileLandType=no
             1,
             1,
             vec![ResolvedTerrainCell {
-                rx: 0,
-                ry: 0,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: false,
-                tileset_index: Some(0),
                 land_type: metadata.land_type,
                 yr_cell_land_type: metadata.yr_cell_land_type,
                 slope_type: metadata.slope_type,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
                 terrain_class: metadata.terrain_class,
                 speed_costs: metadata.speed_costs,
-                is_water: false,
                 is_cliff_like: true,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                height_in_pixels: 0,
-                variant: 0,
                 has_ramp: true,
                 canonical_ramp,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
-                zone_type: 0,
-                base_ground_walk_blocked: false,
                 base_build_blocked: true,
-                base_land_type: 0,
-                base_yr_cell_land_type: 0,
-                base_terrain_class: Default::default(),
-                base_speed_costs: Default::default(),
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0, 0, 0],
-                radar_right: [0, 0, 0],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(0, 0)
             }],
         );
         let cell = grid.cell(0, 0).expect("resolved ramp cell");
@@ -11221,61 +11239,15 @@ impl ResolvedTerrainCell {
     /// template the terrain-object tests build by hand; `zone_type` and the
     /// overlay fields are the knobs a test turns.
     pub(crate) fn clear_for_test(rx: u16, ry: u16) -> Self {
-        let mut speed_costs = SpeedCostProfile::default();
-        speed_costs.wheel = Some(100);
+        let speed_costs = SpeedCostProfile {
+            wheel: Some(100),
+            ..Default::default()
+        };
         Self {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
             tileset_index: None,
-            land_type: LandType::Clear.as_index(),
-            yr_cell_land_type: LandType::Clear.as_index(),
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
             speed_costs,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: LandType::Clear.as_index(),
-            base_yr_cell_land_type: LandType::Clear.as_index(),
-            base_terrain_class: TerrainClass::Clear,
             base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..test_clear_cell(rx, ry)
         }
     }
 }

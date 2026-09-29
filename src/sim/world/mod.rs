@@ -16,15 +16,15 @@
 
 pub(crate) mod authored_load_host;
 mod bridge_hut_scatter;
+pub(crate) mod bridge_orchestrator;
 #[cfg(test)]
 pub(crate) mod bridge_test_evidence;
-pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
 mod cell_content;
-mod object_entry;
+mod crash;
 #[cfg(test)]
 mod entry_test_fixture;
-mod crash;
+mod object_entry;
 mod sinking;
 pub(crate) use sinking::SinkingState;
 pub mod edge_cell;
@@ -143,11 +143,7 @@ use crate::sim::house_strategy;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::movement;
-use crate::sim::movement::drop_pod_movement;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::movement::rocket_movement;
-use crate::sim::movement::teleport_movement;
-use crate::sim::movement::tunnel_movement::{self, TunnelProcessContext};
 use crate::sim::movement::turret;
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::overlay_grid::{
@@ -2087,7 +2083,7 @@ impl Simulation {
                 };
                 let Some(weapon_name) = crate::sim::combat::combat_weapon::primary_for_tier(
                     object_type,
-                    firer.veterancy,
+                    firer.veterancy(),
                 ) else {
                     break;
                 };
@@ -4064,48 +4060,6 @@ impl Simulation {
         Ok(())
     }
 
-    /// Recompute the serialized/hash-covered OrePurifier count without changing
-    /// cash or accumulated spending/harvesting statistics. Iterate only existing
-    /// houses; never insert a missing house. A single pass over the entity store
-    /// accumulates purifier counts per owner, so the cost is O(entities), not
-    /// O(houses x entities). `rules` is the advance_tick tail's `Option`; with
-    /// `None` the purifier count is 0 (no type data to classify structures by).
-    pub(crate) fn refresh_economy_shadow(&mut self, rules: Option<&RuleSet>) {
-        // One pass: accumulate OrePurifier building count per owner through
-        // the same `House+0x538C` predicate as `count_purifiers_for_owner`
-        // (`counts_as_purifier`: completed, alive, on-map purifier — a
-        // `building_up` one is still before `OnConstructionComplete`
-        // 0x0044637C and does not count), in a single sweep keyed by owner id.
-        let mut purifiers: std::collections::BTreeMap<crate::sim::intern::InternedId, i32> =
-            std::collections::BTreeMap::new();
-        if let Some(rules) = rules {
-            for e in self.substrate.entities.values() {
-                if crate::sim::miner::miner_system::counts_as_purifier(self, rules, e) {
-                    *purifiers.entry(e.owner()).or_insert(0) += 1;
-                }
-            }
-        }
-        for (id, house) in self.houses.iter_mut() {
-            // Purifier-bonus base = real OrePurifier building COUNT (NOT silo
-            // storage capacity, NOT the AI-virtual-inclusive effective count). Hashed.
-            house.economy.purifier_count = purifiers.get(id).copied().unwrap_or(0);
-            // spent_credits / harvested_credits accumulate via step_all / deposits;
-            // intentionally untouched here.
-        }
-    }
-
-    /// Per-tick production tail: refresh the per-house economy shadow (purifier count).
-    /// Runs at the advance_tick tail, AFTER all authoritative systems.
-    ///
-    /// P5d: the factory registry is the authoritative queue-of-record and is mutated
-    /// DIRECTLY by enqueue/cancel/delivery — there is no longer a `reconcile_from_queues`
-    /// pass (the `queues_by_owner` mirror is retired), so its progress simply persists
-    /// across ticks with no end-of-tick rebuild. `rules` is the tail's `Option`, threaded
-    /// to the economy refresh.
-    pub(crate) fn refresh_production_shadow(&mut self, rules: Option<&RuleSet>) {
-        self.refresh_economy_shadow(rules);
-    }
-
     /// Debug-only production asserts: the factory shell
     /// trace is well-formed (live Structures, strictly-increasing visit order).
     /// Divergence is surfaced, never equalized.
@@ -4520,7 +4474,10 @@ impl Simulation {
         // `FootClass::ChangeOwner @ 0x004DBF13..0x004DBF32`: a Foot given to
         // a human house leaves its team.
         if category != EntityCategory::Structure
-            && self.houses.get(&new_owner).is_some_and(|house| house.is_human)
+            && self
+                .houses
+                .get(&new_owner)
+                .is_some_and(|house| house.is_human)
         {
             self.leave_team(stable_id, false, rules);
         }
@@ -6046,11 +6003,6 @@ impl Simulation {
         destroyed_structure |= object_pass.destroyed_structure;
         bridge_state_changed |= object_pass.bridge_state_changed;
         let tube_turn_owned_ids = object_pass.tube_turn_owned_ids;
-        if let Some(rules) = rules {
-            self.for_each_multiplayer_feedback_anim(|sim, id| {
-                sim.visit_anim(id, rules, None);
-            });
-        }
         // Spawn-manager missiles that reached their target during the movement
         // pass are consumed here — the missile leaves the world at the moment
         // `RocketLocomotion::Process` would have called Detonate. The impact
@@ -6320,10 +6272,9 @@ impl Simulation {
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
             let phase_six_path_grid = post_terrain_path_grid;
             passenger_ownership_changed = passenger::tick_passenger_system(self, rules);
-            self.tick_order_intents_post_combat_with_overlay_registry(
+            self.tick_order_intents_post_combat_except(
                 phase_six_path_grid,
                 Some(rules),
-                overlay_registry,
                 &tube_turn_owned_ids,
             );
             // `LogicClass__PerTickUpdate @ 0x0055AFB0` calls
@@ -6445,9 +6396,6 @@ impl Simulation {
         self.debug_assert_logic_membership_consistent();
         #[cfg(debug_assertions)]
         self.debug_assert_lifecycle_consistent();
-        // Refresh the retained purifier-count projection before hashing.
-        // Cash and factory state remain owned by their direct mutation paths.
-        self.refresh_production_shadow(rules);
         #[cfg(debug_assertions)]
         self.debug_assert_production_shadow();
 
@@ -6498,294 +6446,6 @@ impl Simulation {
             bridge_state_changed,
             movement: movement_stats,
         })
-    }
-
-    /// World owner for the dormant `TunnelLocomotionClass::Process` path.
-    ///
-    /// `TunnelLocomotionClass::Process @ 0x00728e30` removes the surface
-    /// object before it enters state 3, then restores that same object-list
-    /// membership before Foot's state-7 abort-motion cleanup.
-    fn tick_tunnel_locomotor_one(&mut self, stable_id: u64, path_grid: Option<&PathGrid>) {
-        let Some((mut state, position, movement_target, cell_marked, layer)) =
-            self.substrate.entities.get(stable_id).and_then(|entity| {
-                entity.tunnel_state.map(|state| {
-                    (
-                        state,
-                        (entity.position.rx, entity.position.ry),
-                        entity
-                            .movement_target
-                            .as_ref()
-                            .map(|target| (target.next_index, target.path.len())),
-                        entity.lifecycle.cell_marked,
-                        entity.locomotor.as_ref().map(|locomotor| locomotor.layer),
-                    )
-                })
-            })
-        else {
-            return;
-        };
-
-        // The Burrow transition owns the remove-before-underground ordering.
-        if state.phase == tunnel_movement::TunnelPhase::Burrow && cell_marked {
-            self.remove_entity_occupancy(stable_id);
-        }
-
-        let destination_reached = movement_target
-            .map(|(next_index, path_len)| next_index.saturating_add(1) >= path_len)
-            .unwrap_or(true);
-        let surface_cell_available = path_grid.map_or(true, |grid| {
-            grid.is_walkable_on_layer(position.0, position.1, MovementLayer::Ground)
-        }) && self.substrate.occupancy.is_empty_on_layer(
-            position.0,
-            position.1,
-            MovementLayer::Ground,
-        );
-        let mut context = TunnelProcessContext {
-            destination_reached,
-            surface_cell_available,
-            layer: layer.unwrap_or(MovementLayer::Ground),
-            z: 0,
-            surface_occupied: cell_marked,
-            underground_occupied: false,
-            abort_motion_called: false,
-        };
-        let outcome = tunnel_movement::process_tunnel(&mut state, &mut context);
-
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.tunnel_state = Some(state);
-            if let Some(locomotor) = entity.locomotor.as_mut() {
-                locomotor.layer = context.layer;
-                locomotor.runtime_payload =
-                    crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload::Tunnel(
-                        Some(state),
-                    );
-            }
-            if context.abort_motion_called {
-                entity.movement_target = None;
-            }
-        }
-
-        // State 6's surface mark happens before state 7 clears Foot motion.
-        if context.surface_occupied
-            && self
-                .substrate
-                .entities
-                .get(stable_id)
-                .is_some_and(|entity| !entity.lifecycle.cell_marked)
-        {
-            self.add_entity_occupancy(stable_id);
-        }
-        if outcome == teleport_movement::SpecialMovementOutcome::Complete
-            && self
-                .substrate
-                .entities
-                .get(stable_id)
-                .is_some_and(|entity| entity.tunnel_state.is_some())
-        {
-            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                entity.tunnel_state = None;
-                if let Some(locomotor) = entity.locomotor.as_mut() {
-                    locomotor.runtime_payload = crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload::Tunnel(None);
-                }
-            }
-        }
-    }
-
-    /// World owner for `DropPodLocomotionClass::Process` placement.
-    ///
-    /// Drop pods retain no cell-list membership while descending. On the
-    /// terminal frame this performs one atomic choice: unlimbo and mark the
-    /// target, or zero health and enqueue the common crush teardown.
-    fn drop_pod_virtual_unlimbo_admitted(
-        &self,
-        stable_id: u64,
-        target: (u16, u16),
-        path_grid: Option<&PathGrid>,
-    ) -> bool {
-        use crate::sim::cell_rect::{
-            IsClearToMoveResult, LiveCellPassabilityQuery, evaluate_live_cell_passability,
-        };
-        use crate::sim::pathfinding::cell_entry::{
-            CanEnterCellContext, CanEnterLayerContext, CellEntryResult, TerrainCheckResult,
-            TerrainEntryMode, check_terrain_with_layers,
-            classify_occupied_cell_with_layers_and_ignored_and_occupation, evaluate_can_enter_cell,
-        };
-
-        let Some(entity) = self.substrate.entities.get(stable_id) else {
-            return false;
-        };
-        let category = entity.category;
-        let owner = entity.owner();
-        let regular_crusher = entity.regular_crusher;
-        let omni_crusher = entity.omni_crusher;
-        let locomotor = entity.locomotor.as_ref();
-        let movement_zone = locomotor.map_or(Default::default(), |state| state.movement_zone);
-        let speed_type = locomotor.map_or(Default::default(), |state| state.speed_type);
-        let locomotor_kind = locomotor.map_or(
-            crate::rules::locomotor_type::LocomotorKind::Drive,
-            |state| state.effective_kind(),
-        );
-        let cost_grid = self.terrain_costs.get(&speed_type);
-
-        // Named location: ObjectClass::Unlimbo's virtual Foot +0x1AC gate.
-        // DropPod itself never substitutes a direct list-emptiness predicate.
-        let land_passable = evaluate_can_enter_cell(CanEnterCellContext {
-            wall: None,
-            target,
-            terrain_layer: MovementLayer::Ground,
-            movement_zone: Some(movement_zone),
-            speed_type: Some(speed_type),
-            path_grid,
-            resolved_terrain: self.resolved_terrain.as_ref(),
-            terrain_costs: cost_grid,
-            bypass_grid: false,
-            mode: TerrainEntryMode::SpawnLike,
-            is_infantry: category == EntityCategory::Infantry,
-            mover_is_crusher: crate::sim::movement::bump_crush::CrushCapability::new(
-                regular_crusher,
-                omni_crusher,
-            )
-            .wall_arm_crusher(),
-        })
-        .is_clear();
-        let cell_clear = evaluate_live_cell_passability(LiveCellPassabilityQuery {
-            target,
-            speed_type,
-            movement_zone,
-            requested_zone: None,
-            actual_zone: 0,
-            requested_layer: Some(MovementLayer::Ground),
-            ignore_infantry: false,
-            ignore_vehicles: false,
-            land_passable,
-            path_grid,
-            resolved_terrain: self.resolved_terrain.as_ref(),
-            raw_occupation: Some(&self.substrate.raw_cell_occupation),
-        });
-        if !matches!(
-            cell_clear,
-            IsClearToMoveResult::Clear { .. } | IsClearToMoveResult::ClearWinged
-        ) {
-            return false;
-        }
-
-        let layers = CanEnterLayerContext::single(MovementLayer::Ground);
-        match check_terrain_with_layers(
-            target,
-            layers,
-            category,
-            path_grid,
-            cost_grid,
-            &self.substrate.occupancy,
-        ) {
-            TerrainCheckResult::Clear => true,
-            TerrainCheckResult::Impassable => false,
-            TerrainCheckResult::NeedsBlockerCheck => matches!(
-                classify_occupied_cell_with_layers_and_ignored_and_occupation(
-                    target,
-                    layers,
-                    stable_id,
-                    movement::bump_crush::CrushCapability::new(regular_crusher, omni_crusher,),
-                    self.interner.resolve(owner),
-                    locomotor_kind,
-                    false,
-                    None,
-                    &self.substrate.occupancy,
-                    &self.substrate.cell_occupation,
-                    &self.substrate.raw_cell_occupation,
-                    self.session.binary_frame,
-                    &self.substrate.entities,
-                    &self.house_alliances,
-                    &self.interner,
-                ),
-                CellEntryResult::Clear
-            ),
-        }
-    }
-
-    fn tick_drop_pod_locomotor_one(&mut self, stable_id: u64, path_grid: Option<&PathGrid>) {
-        let Some(state) = self
-            .substrate
-            .entities
-            .get(stable_id)
-            .and_then(|entity| entity.drop_pod_state.clone())
-        else {
-            return;
-        };
-
-        if self
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.lifecycle.cell_marked)
-        {
-            self.remove_entity_occupancy(stable_id);
-        }
-
-        let landing = drop_pod_movement::landing_from_virtual_unlimbo(&state, |target, _facing| {
-            self.drop_pod_virtual_unlimbo_admitted(stable_id, target, path_grid)
-        });
-        let result = {
-            let entity = self
-                .substrate
-                .entities
-                .get_mut(stable_id)
-                .expect("drop pod owner remained live during its Process visit");
-            let state = entity
-                .drop_pod_state
-                .as_mut()
-                .expect("drop pod state remained attached during its Process visit");
-            drop_pod_movement::process_drop_pod_state(state, landing)
-        };
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            if let (Some(state), Some(locomotor)) =
-                (entity.drop_pod_state.as_ref(), entity.locomotor.as_mut())
-            {
-                locomotor.runtime_payload =
-                    crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload::DropPod(
-                        Some(state.clone()),
-                    );
-            }
-        }
-
-        match result.outcome {
-            rocket_movement::SpecialMovementOutcome::Continue => {}
-            rocket_movement::SpecialMovementOutcome::Complete => {
-                let target = self
-                    .substrate
-                    .entities
-                    .get(stable_id)
-                    .and_then(|entity| entity.drop_pod_state.as_ref())
-                    .map(|state| (state.target_rx, state.target_ry));
-                if let (Some((rx, ry)), Some(entity)) =
-                    (target, self.substrate.entities.get_mut(stable_id))
-                {
-                    entity.position.rx = rx;
-                    entity.position.ry = ry;
-                    entity.position.z = 0;
-                    entity.position.exact_z_leptons = None;
-                    if let Some(locomotor) = entity.locomotor.as_mut() {
-                        locomotor.layer = MovementLayer::Ground;
-                        locomotor.runtime_payload = crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload::DropPod(None);
-                    }
-                    entity.drop_pod_state = None;
-                }
-                self.add_entity_occupancy(stable_id);
-            }
-            rocket_movement::SpecialMovementOutcome::Abort => {
-                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                    entity.health.current = 0;
-                    if let Some(locomotor) = entity.locomotor.as_mut() {
-                        locomotor.runtime_payload = crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload::DropPod(None);
-                    }
-                }
-                self.pending_lifecycle_requests
-                    .push(LifecycleRequest::Uninit {
-                        stable_id,
-                        reason: crate::sim::lifecycle_request::UninitReason::Crush,
-                    });
-            }
-        }
     }
 }
 

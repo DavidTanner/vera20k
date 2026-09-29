@@ -336,7 +336,7 @@ presentation. It does not enter the fresh scenario/overlay-Mark path. Cold
 resource admission, saved content identity and process-state handoff therefore
 need their own complete implementation; routing the shell button through fresh
 scenario construction would not establish resume parity. The existing
-[shell evidence](shell/2026-09-25-load-saved-game-evidence.md) records this boundary.
+[shell evidence](https://github.com/YuriPlanet/vera20k/blob/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research/shell/2026-09-25-load-saved-game-evidence.md) records this boundary.
 
 ### Ordinary release capture
 

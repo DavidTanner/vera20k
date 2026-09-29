@@ -307,7 +307,6 @@ mod tests {
             Some(LocomotorKind::Drive),
             Some(LocomotorKind::Ship),
             Some(LocomotorKind::Hover),
-            Some(LocomotorKind::Mech),
         ] {
             let mut entity = GameEntity::test_default(90, "HORNET", "Americans", 17, 15);
             entity.locomotor = kind.map(|kind| {
@@ -1213,11 +1212,11 @@ fn classify_entry(
         return Ok(7);
     }
     let p = live.coord(cell);
-    let weapon0 = combat_weapon::weapon_for_index(obj, e.veterancy, 0)
+    let weapon0 = combat_weapon::weapon_for_index(obj, e.veterancy(), 0)
         .and_then(|(name, _)| live.rules.weapon(name));
     let crusher = obj.crusher
-        || (e.veterancy >= 100 && obj.veteran_crusher)
-        || (e.veterancy >= 200 && obj.elite_crusher);
+        || (e.veterancy() >= 100 && obj.veteran_crusher)
+        || (e.veterancy() >= 200 && obj.elite_crusher);
     let capability = CrushCapability::new(crusher, obj.omni_crusher);
     let mut entry_result: u8 = 0;
     let mut stationary_infantry = 0u32;
@@ -1300,7 +1299,7 @@ fn classify_entry(
                     &combat_weapon::attacker_facts(e, obj),
                     Some(&combat_weapon::TargetFacts::Terrain),
                 );
-                let weapon = combat_weapon::weapon_for_index(obj, e.veterancy, selected)
+                let weapon = combat_weapon::weapon_for_index(obj, e.veterancy(), selected)
                     .and_then(|(name, _)| live.rules.weapon(name));
                 if !weapon
                     .and_then(|w| w.warhead.as_deref())

@@ -1179,7 +1179,7 @@ pub(crate) fn estimated_damage_on(
         rules.country_armor_mult_for_type(sim.interner.resolve(house.house_type_id()), attacker_obj)
     });
     let rank_firepower = self::veterancy::has_weapon_ability(
-        self::veterancy::rank_from_u16(attacker.veterancy),
+        self::veterancy::rank_from_u16(attacker.veterancy()),
         attacker_obj,
         Ability::Firepower,
     )
@@ -1187,7 +1187,7 @@ pub(crate) fn estimated_damage_on(
     let rank_armor = target_obj
         .is_some_and(|object| {
             self::veterancy::has_weapon_ability(
-                self::veterancy::rank_from_u16(target.veterancy),
+                self::veterancy::rank_from_u16(target.veterancy()),
                 object,
                 Ability::Stronger,
             )
@@ -1627,15 +1627,6 @@ pub(crate) fn object_world_z_leptons(
             entity
                 .rocket_state
                 .as_ref()
-                .map(|state| state.altitude.to_num::<i32>())
-        })
-        .or_else(|| {
-            entity
-                .drop_pod_state
-                .as_ref()
-                .filter(|state| {
-                    state.phase == crate::sim::movement::drop_pod_movement::DropPodPhase::Descending
-                })
                 .map(|state| state.altitude.to_num::<i32>())
         })
         .or_else(|| {
@@ -2258,7 +2249,7 @@ fn resolve_receive_damage(
     let rank_armor = target_type
         .is_some_and(|object| {
             self::veterancy::has_weapon_ability(
-                self::veterancy::rank_from_u16(target.veterancy),
+                self::veterancy::rank_from_u16(target.veterancy()),
                 object,
                 crate::rules::object_type::Ability::Stronger,
             )
@@ -2793,7 +2784,7 @@ pub(crate) fn build_attacker_snapshot(
         sub_x: entity.position.sub_x,
         sub_y: entity.position.sub_y,
         type_id: entity.type_ref(),
-        veterancy: entity.veterancy,
+        veterancy: entity.veterancy(),
         animation_sequence: entity.animation.as_ref().map(|a| a.sequence),
         animation_frame: entity.animation.as_ref().map(|a| a.frame_index),
         is_prone: entity
@@ -3144,7 +3135,6 @@ pub(crate) use self::threat_range::scan_mission_for;
 #[cfg(test)]
 mod impact_height_tests {
     use super::*;
-    use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::sim::intern::test_interner;
@@ -3337,66 +3327,18 @@ mod impact_height_tests {
 
     fn terrain_cell(rx: u16, ry: u16, level: u8) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
             level,
             filled_clear: true,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
             terrain_class: Default::default(),
-            speed_costs: Default::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
             accepts_smudge: true,
-            allows_tiberium: false,
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
     pub(super) fn terrain_at_level(level: u8) -> ResolvedTerrainGrid {
-        let cells: Vec<ResolvedTerrainCell> = (0..TEST_GRID)
-            .flat_map(|ry| (0..TEST_GRID).map(move |rx| terrain_cell(rx, ry, level)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(TEST_GRID, TEST_GRID, cells)
+        crate::map::resolved_terrain::test_grid(TEST_GRID, TEST_GRID, |rx, ry| {
+            terrain_cell(rx, ry, level)
+        })
     }
 
     /// Armed tank plus a warhead that emits an impact animation, so a

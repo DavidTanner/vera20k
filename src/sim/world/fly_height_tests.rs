@@ -740,7 +740,6 @@ fn takeoff_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
     entity.body_facing = facing(0x4000, 0xC000);
     entity.barrel_facing = Some(facing(0x6000, 0x2000));
     let loco = entity.locomotor.as_mut().unwrap();
-    loco.rot = rot;
     loco.speed_fraction = SimFixed::lit("0.25");
     *loco.fly_runtime_mut().unwrap() = serde_json::from_value(serde_json::json!({
         "target_height": input["target"].as_i64().unwrap_or(1500),
@@ -1266,7 +1265,7 @@ fn fly_paid_step_matches_native_math_and_production_type_speed() {
         entity.position.sub_x = SimFixed::from_num(current[0] % 256);
         entity.position.sub_y = SimFixed::from_num(current[1] % 256);
         entity.body_facing = primary;
-        entity.veterancy = 2; // Fly's getter bypasses Foot's FASTER path
+        entity.set_veterancy_rank(2); // Fly's getter bypasses Foot's FASTER path
         sim.add_entity_occupancy(1);
         assert!(issue_coordinate(
             &mut sim,

@@ -265,58 +265,12 @@ mod gsi_04_03b_tests {
 
     fn sloped_cell() -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx: 0,
-            ry: 0,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
             filled_clear: true,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
             slope_type: 1,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
             terrain_class: Default::default(),
-            speed_costs: Default::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            height_in_pixels: 0,
-            variant: 0,
             has_ramp: true,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: Default::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
             accepts_smudge: true,
-            allows_tiberium: false,
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(0, 0)
         }
     }
 
@@ -421,7 +375,6 @@ mod gsi_04_03b_tests {
             1,
             shared_head,
             SimFixed::from_num(128),
-            None,
         );
         assert!(
             sim.substrate
@@ -461,7 +414,6 @@ mod gsi_04_03b_tests {
             2,
             shared_head,
             SimFixed::from_num(128),
-            None,
         );
         sim.process_ground_locomotor_for_test(2, None, Some(&grid), None)
             .expect("the second miner Process observes the existing reservation");
@@ -824,7 +776,7 @@ fn harvest_looking(
         .get(id)
         .and_then(|entity| entity.archive_target());
     if let Some(archive) = archive {
-        assign_archive_destination(sim, rules, path_grid, overlay_registry, id, archive);
+        assign_archive_destination(sim, rules, path_grid, id, archive);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.set_archive_target(None);
         }
@@ -882,7 +834,7 @@ fn harvest_looking(
             snap.dispatch_delay = NO_ORE_DELAY;
             return;
         };
-        assign_archive_destination(sim, rules, path_grid, overlay_registry, id, archive);
+        assign_archive_destination(sim, rules, path_grid, id, archive);
     }
     arm_rate_epilogue(sim, rules, snap);
 }
@@ -896,19 +848,11 @@ fn assign_archive_destination(
     sim: &mut Simulation,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     id: u64,
     archive: crate::sim::combat::TargetKind,
 ) {
     if let (crate::sim::combat::TargetKind::Cell(x, y), Some(grid)) = (archive, path_grid) {
-        let _ = issue_stock_miner_drive_move_with_overlay_registry(
-            sim,
-            rules,
-            grid,
-            id,
-            (x, y),
-            overlay_registry,
-        );
+        let _ = issue_stock_miner_drive_move(sim, rules, grid, id, (x, y));
     }
 }
 
@@ -1330,15 +1274,7 @@ fn handle_going_to_idle(
         && let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
         && let Some(exit) = building_nearby_passable_cell(sim, rules, refinery_sid, grid)
     {
-        issue_move_if_idle(
-            sim,
-            Some(rules),
-            grid,
-            snap.entity_id,
-            exit,
-            snap.speed,
-            overlay_registry,
-        );
+        issue_move_if_idle(sim, Some(rules), grid, snap.entity_id, exit, snap.speed);
     }
     queue_guard_from_harvest(sim, snap);
     true
@@ -1813,24 +1749,12 @@ fn neighbour_reachable(
 }
 
 /// Hand a selected stock-miner destination to the normal Drive command authority.
-#[cfg(test)]
 pub(crate) fn issue_stock_miner_drive_move(
     sim: &mut Simulation,
     rules: &RuleSet,
     grid: &PathGrid,
     entity_id: u64,
     target: (u16, u16),
-) -> bool {
-    issue_stock_miner_drive_move_with_overlay_registry(sim, rules, grid, entity_id, target, None)
-}
-
-pub(crate) fn issue_stock_miner_drive_move_with_overlay_registry(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    grid: &PathGrid,
-    entity_id: u64,
-    target: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return false;
@@ -1855,7 +1779,6 @@ pub(crate) fn issue_stock_miner_drive_move_with_overlay_registry(
             owner_blocks: false,
             object_destination: None,
         },
-        overlay_registry,
         Some(rules),
     );
     if !issued {
@@ -1892,7 +1815,6 @@ pub(crate) fn issue_move_if_idle(
     entity_id: u64,
     target: (u16, u16),
     speed: SimFixed,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return;
@@ -1922,7 +1844,6 @@ pub(crate) fn issue_move_if_idle(
                 owner_blocks: false,
                 object_destination: None,
             },
-            overlay_registry,
             rules,
         );
     }
@@ -1963,9 +1884,7 @@ pub(crate) fn count_purifiers_for_owner(sim: &Simulation, rules: &RuleSet, owner
 }
 
 /// The owner-independent half of the `House+0x538C` predicate: a completed,
-/// alive, on-map `OrePurifier=` structure. Shared by
-/// [`count_purifiers_for_owner`] and the per-tick economy shadow
-/// (`refresh_economy_shadow`) so both count the same buildings.
+/// alive, on-map `OrePurifier=` structure, for [`count_purifiers_for_owner`].
 pub(crate) fn counts_as_purifier(
     sim: &Simulation,
     rules: &RuleSet,

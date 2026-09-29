@@ -1671,7 +1671,7 @@ mod tests {
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_intern;
     use crate::sim::movement::locomotion::LocomotorSlot;
-    use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::sim::occupancy::CellListInsertion;
     use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
@@ -1702,58 +1702,13 @@ mod tests {
             for x in 0..=5u16 {
                 let is_bridge = x == 5 && y == 5;
                 cells.push(ResolvedTerrainCell {
-                    rx: x,
-                    ry: y,
-                    source_tile_index: 0,
-                    source_sub_tile: 0,
-                    final_tile_index: 0,
-                    final_sub_tile: 0,
-                    is_wood_bridge_repair_tile: false,
-                    level: 0,
-                    filled_clear: false,
-                    tileset_index: Some(0),
-                    land_type: 0,
-                    yr_cell_land_type: 0,
-                    slope_type: 0,
-                    template_height: 0,
-                    render_offset_x: 0,
-                    render_offset_y: 0,
-                    terrain_class: TerrainClass::Clear,
-                    speed_costs: SpeedCostProfile::default(),
                     is_water: is_bridge,
-                    is_cliff_like: false,
-                    height_in_pixels: 0,
-                    variant: 0,
-                    is_rough: false,
-                    is_road: false,
-                    accepts_smudge: false,
-                    allows_tiberium: false,
-                    has_ramp: false,
-                    canonical_ramp: None,
                     ground_walk_blocked: is_bridge,
-                    terrain_object_blocks: false,
-                    terrain_object_occupation: None,
-                    overlay_blocks: false,
-                    overlay_zone_type: None,
-                    outside_playfield: false,
-                    zone_type: 0,
-                    base_ground_walk_blocked: false,
-                    base_build_blocked: false,
-                    base_land_type: 0,
-                    base_yr_cell_land_type: 0,
-                    base_terrain_class: Default::default(),
-                    base_speed_costs: Default::default(),
                     has_bridge_deck: is_bridge,
                     bridge_walkable: is_bridge,
                     bridge_transition: is_bridge,
                     bridge_deck_level: if is_bridge { deck_level } else { 0 },
-                    bridge_layer: None,
-                    bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                    tube_index: None,
-                    radar_left: [0, 0, 0],
-                    radar_right: [0, 0, 0],
-                    has_damaged_data: false,
-                    bridgehead_anchor_class_at_load: None,
+                    ..crate::map::resolved_terrain::test_flat_cell(x, y)
                 });
             }
         }
@@ -1801,51 +1756,18 @@ mod tests {
         let mut bridge_facts = crate::map::bridge_facts::BridgeCellFacts::default();
         bridge_facts.overlay_id = Some(0x4A);
         ResolvedTerrainCell {
-            rx: 0,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
             is_wood_bridge_repair_tile: true,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
             land_type: LandType::Road.as_index(),
             yr_cell_land_type: LandType::Road.as_index(),
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
             terrain_class: TerrainClass::Road,
             speed_costs: road_speed,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
             is_road: true,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
             zone_type: crate::map::resolved_terrain::zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
             base_land_type: LandType::Rough.as_index(),
             base_yr_cell_land_type: LandType::Rough.as_index(),
             base_terrain_class: TerrainClass::Rough,
             base_speed_costs: rough_speed,
             has_bridge_deck: true,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
             bridge_layer: Some(crate::map::resolved_terrain::BridgeLayer {
                 overlay_id: 0x4A,
                 overlay_name: "LOBRDG01".to_owned(),
@@ -1853,11 +1775,7 @@ mod tests {
                 direction: BridgeDirection::Low,
             }),
             bridge_facts,
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(0, ry)
         }
     }
 
@@ -2016,7 +1934,7 @@ mod tests {
     fn drive_loco_on_bridge() -> LocomotorState {
         LocomotorState {
             kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+            slot: LocomotorSlot::new(LocomotorKind::Drive),
             powered: true,
             piggyback: None,
             runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
@@ -2024,7 +1942,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Bridge,
-            phase: GroundMovePhase::Cruising,
 
             speed_multiplier: SimFixed::from_num(1),
             speed_fraction: SimFixed::from_num(1),
@@ -2035,7 +1952,6 @@ mod tests {
             hover_attack: false,
             speed_type: SpeedType::Track,
             movement_zone: MovementZone::Normal,
-            rot: 0,
             air_progress: SIM_ZERO,
             infantry_wobble_phase: 0.0,
             subcell_dest: None,
@@ -2107,7 +2023,6 @@ mod tests {
             MovementLayer::Ground,
             "layer flipped Bridge → Ground"
         );
-        assert_eq!(loco.phase, GroundMovePhase::Idle, "phase reset to Idle");
         let cell = sim
             .substrate
             .occupancy

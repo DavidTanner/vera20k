@@ -314,7 +314,46 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // change behaviour (its AttackMove tank keeps moving when hit), and a `[Map]
 // Size=` would clip the threat scan to its diamond; neither is in this step.
 // Old values: the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x501E_B454_CEF9_365B;
+// 2026-09-29 retired ground move phase (snapshot 244, composition only; #726):
+// the locomotor's VERA-only `GroundMovePhase` and its stashed twin leave the
+// object and piggyback folds in every projection; no schema can rebuild the
+// retired value, so this one step re-pins every projection in this test.
+// Ceremony: on the parent commit with only those two folds removed, and on
+// this change, a soft-assert probe of every pin in this test printed identical
+// values, and per-tick replay and the RNG receipts passed at all 600 ticks
+// (the probe patch was not committed): the only change to these pins is the
+// fold. Old values: the commit that moved them.
+// 2026-09-29 retired purifier count (snapshot 245, composition only; #705):
+// each house's retained OrePurifier count, which only the hash read, leaves the
+// house fold in every projection (none folds it back), so this one step
+// re-pins every projection it moved. Ceremony: on the parent
+// commit with only that fold removed, and on this change, a soft-assert probe
+// of every pin in this test printed identical values, and per-tick replay and
+// the RNG receipts passed at all 600 ticks (the probe patch was not committed):
+// the only change to these pins is the fold. Old values: the commit that moved
+// them.
+// 2026-09-29 one wall-plane mode (snapshot 247, composition only; #717):
+// `OverlayGrid::new` now retains an all-zero wall plane like every production
+// grid, so this fixture's grid folds the plane's tag, length and bytes where
+// it folded the retired plane-less tag. No schema folds the retired mode, so
+// this one step re-pins every projection it moved. Ceremony: on the parent
+// commit and on this change, a probe printing every object's position, exact
+// Z, health, mission, NavCom, attack and movement targets and all three RNG
+// states matched at all 600 ticks (the probe patch was not committed): the
+// fixture has no walls, and its Foot neighbour sources come from the
+// lifecycle writes instead of positions with the same result. Old values: the
+// commit that moved them.
+// 2026-09-29 one locomotor enum (snapshot 248, composition only; #725):
+// LocomotorKind keeps only the eight installable classes, so the active kind,
+// the installed slot and the stash fold renumbered discriminants, and the
+// dormant Tunnel and DropPod states leave the object and payload folds, in
+// every projection. No schema rebuilds the old numbering, so this one step
+// re-pins every projection in this test. Ceremony: on the parent commit and on
+// this change, a probe printing every object's position, exact Z, health,
+// mission, NavCom, attack and movement targets, locomotor kind and layer and
+// all three RNG states matched at all 600 ticks (the probe patch was not
+// committed). Old values: the commit that moved them.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x19D1_51F4_9C23_0D0B;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -585,10 +624,8 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // read per frame, with correct results and no other symptom.
     let world_reads = rec.movement_pass_cache.block_index_world_rebuilds();
     // The blocker plane follows the same log. It is rebuilt from the whole map
-    // only when the terrain epoch or the wall plane moves; this fixture's grid is
-    // a legacy one without a retained wall plane, so every overlay write
-    // counts, which this script does a couple of dozen times; a rebuild per
-    // moving object's turn would be thousands.
+    // only when the terrain epoch or the wall plane moves (or a reader misses
+    // Foot deltas); a rebuild per moving object's turn would be thousands.
     let plane_reads = rec.movement_pass_cache.blocker_plane_world_rebuilds();
     assert!(
         plane_reads <= 60,

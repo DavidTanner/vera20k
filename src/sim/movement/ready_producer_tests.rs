@@ -7,7 +7,6 @@ use super::*;
 use crate::sim::components::{
     DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
 };
-use crate::sim::movement::locomotor::GroundMovePhase;
 use crate::sim::movement::teleport_movement::TeleportState;
 use crate::util::fixed_math::{SIM_ONE, SimFixed};
 
@@ -195,9 +194,6 @@ fn walking_infantry_reports_moving() {
 fn blocked_walker_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Walk);
     entity.movement_target = Some(moving_target(10));
-    if let Some(locomotor) = entity.locomotor.as_mut() {
-        locomotor.phase = GroundMovePhase::Blocked;
-    }
     let state = ready_state_for(&entity, 100).expect("Walk has a producer");
     assert!(
         !state.is_moving_now(),
@@ -213,7 +209,6 @@ fn walk_stop_keeps_paid_head_readiness_until_retirement_and_restore() {
     loco.set_walk_destination(Some(head));
     loco.set_step_head(Some(head));
     loco.set_walk_destination(None);
-    loco.phase = GroundMovePhase::Blocked;
     entity.foot_speed.applied_fraction = SIM_ONE;
     assert!(entity.movement_target.is_none());
     assert!(is_moving_now_for(&entity, 100));

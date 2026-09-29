@@ -172,7 +172,26 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // fields folded back in their old place, this change reproduced every
 // facing-only pin (final 0x9FD9_D4EE_7F06_E1ED), RNG streams included. Old
 // values: the commit that moved them.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x5C4C_02D6_9EB0_C65D;
+// 2026-09-29 retired ground move phase (snapshot 244, composition only; #726):
+// the locomotor's VERA-only `GroundMovePhase` and its stashed twin leave the
+// object and piggyback folds in every projection; no schema can rebuild the
+// retired value, so this one step re-pins every projection in this test.
+// Ceremony: on the parent commit with only those two folds removed, and on
+// this change, a soft-assert probe of every pin in this test printed identical
+// values, and per-tick replay and the RNG receipts passed at all 200 ticks
+// (the probe patch was not committed): the only change to these pins is the
+// fold. Old values: the commit that moved them.
+// 2026-09-29 one locomotor enum (snapshot 248, composition only; #725):
+// LocomotorKind keeps only the eight installable classes, so the active kind,
+// the installed slot and the stash fold renumbered discriminants, and the
+// dormant Tunnel and DropPod states leave the object and payload folds, in
+// every projection. No schema rebuilds the old numbering, so this one step
+// re-pins every projection in this test. Ceremony: on the parent commit and on
+// this change, a probe printing every object's position, exact Z, health,
+// mission, NavCom, attack and movement targets, locomotor kind and layer and
+// all three RNG states matched at all 200 ticks (the probe patch was not
+// committed). Old values: the commit that moved them.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xCE12_E6CB_8870_62E5;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -296,61 +315,23 @@ fn bridge_resolved_terrain(
                 0
             };
             cells.push(ResolvedTerrainCell {
-                rx,
-                ry,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
                 level: path.ground_level,
-                filled_clear: false,
                 tileset_index: None,
-                land_type: 0,
-                yr_cell_land_type: 0,
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
                 speed_costs: clear_costs,
-                is_water: false,
-                is_cliff_like: false,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                height_in_pixels: 0,
-                variant: 0,
-                has_ramp: false,
-                canonical_ramp: None,
                 ground_walk_blocked: !path.ground_walkable,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
-                zone_type: 0,
                 base_ground_walk_blocked: !path.ground_walkable,
                 base_build_blocked: !path.ground_walkable,
-                base_land_type: 0,
-                base_yr_cell_land_type: 0,
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: clear_costs,
                 has_bridge_deck: path.bridge_walkable,
                 bridge_walkable: path.bridge_walkable,
                 bridge_transition: path.transition,
                 bridge_deck_level: path.bridge_deck_level,
-                bridge_layer: None,
                 bridge_facts: BridgeCellFacts {
                     raw_flags: flags,
                     ..Default::default()
                 },
-                tube_index: None,
-                radar_left: [0; 3],
-                radar_right: [0; 3],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
             });
         }
     }

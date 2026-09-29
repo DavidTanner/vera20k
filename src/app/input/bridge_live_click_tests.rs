@@ -32,7 +32,7 @@ fn runtime(direction: u8) -> SimRuntime {
         })
         .collect();
     sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(32, 32, cells));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(32, 32));
+    sim.overlay_grid = Some(OverlayGrid::new(32, 32));
     sim.apply_runtime_bridge_mark_stamp(
         BridgeFlagStamp::new((16, 16), direction, true),
         if direction == 0 {

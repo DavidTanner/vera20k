@@ -1,8 +1,7 @@
 //! Production command regressions for native CellClass membership authority.
 use super::SuperWeaponInstance;
-use crate::map::bridge_facts::BridgeCellFacts;
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+use crate::map::resolved_terrain::ResolvedTerrainCell;
+use crate::rules::terrain_rules::SpeedCostProfile;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::{command::Command, house_state::HouseState, production, world::Simulation};
 use std::collections::BTreeMap;
@@ -43,10 +42,9 @@ fn fixture_with_extra(extra: &str) -> (Simulation, RuleSet) {
         .insert(owner, HouseState::new(owner, 0, None, true, 50_000, 10));
     sim.session.house_order.push(owner);
     sim.session.game_options.super_weapons = true;
-    let cells = (0..16)
-        .flat_map(|y| (0..16).map(move |x| test_terrain_cell(x, y)))
-        .collect();
-    sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(16, 16, cells));
+    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(16, 16, |x, y| {
+        test_terrain_cell(x, y)
+    }));
     sim.playfield_bounds = Some(test_playfield_bounds());
     sim.spawn_object_at_height("GAPILE", "Americans", 10, 10, 0, 0, &rules)
         .unwrap();
@@ -1095,23 +1093,6 @@ pub(super) fn test_playfield_bounds() -> crate::sim::cell_rect::PlayfieldBounds 
 
 pub(super) fn test_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
     ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
-        level: 0,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
-        template_height: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
         speed_costs: SpeedCostProfile {
             foot: Some(100),
             track: Some(100),
@@ -1120,28 +1101,6 @@ pub(super) fn test_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
             amphibious: Some(100),
             ..SpeedCostProfile::default()
         },
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: false,
-        allows_tiberium: false,
-        height_in_pixels: 0,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
-        base_terrain_class: Default::default(),
         base_speed_costs: SpeedCostProfile {
             foot: Some(100),
             track: Some(100),
@@ -1150,16 +1109,6 @@ pub(super) fn test_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
             amphibious: Some(100),
             ..SpeedCostProfile::default()
         },
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: BridgeCellFacts::default(),
-        tube_index: None,
-        radar_left: [0, 0, 0],
-        radar_right: [0, 0, 0],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     }
 }

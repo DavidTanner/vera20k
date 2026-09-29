@@ -192,7 +192,6 @@ impl Simulation {
             );
             return None;
         }
-        let directionless = pst.spawn_direction == IVec3::ZERO;
         let stable_id = self.allocate_stable_id();
         let sys = ParticleSystem {
             stable_id,
@@ -205,7 +204,6 @@ impl Simulation {
             lifetime: pst.lifetime,
             spark_spawn_frames: pst.spark_spawn_frames as i32,
             facing: 0x1D,
-            directionless,
             attached_entity,
             owner_entity,
             target_coords,
@@ -358,7 +356,6 @@ fn damage_smoke_offset(object: &crate::rules::object_type::ObjectType) -> IVec3 
 pub(super) fn spawn_particle(
     sys: &mut ParticleSystem,
     coords: IVec3,
-    spawn_origin: IVec3,
     rules: &RuleSet,
     rng: &mut SimRng,
 ) -> bool {
@@ -382,28 +379,9 @@ pub(super) fn spawn_particle(
     let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
 
     sys.particles.push(Particle {
-        type_id: pt_id,
-        coords,
-        previous_coords: spawn_origin,
-        origin: coords,
         direction,
-        velocity: pt.velocity,
-        lifetime_remaining,
-        damage_counter: pt.max_dc as i16,
         state_ai_advance,
-        animation_state: pt.start_state_ai,
-        translucency: pt.translucency,
-        hit_ground: false,
-        marked_for_deletion: false,
-        drift_x: 0,
-        drift_y: 0,
-        drift_z: 0,
-        current_color: [0; 3],
-        color_index: 0,
-        color_accumulator: SimFixed::from_num(0),
-        spark: None,
-        prev_delta: [SimFixed::from_num(0); 3],
-        state_advance_counter: 0,
+        ..Particle::new(pt_id, coords, pt, lifetime_remaining)
     });
     true
 }
@@ -495,12 +473,11 @@ fn i48_to_sim(val: I48F16) -> SimFixed {
 pub(super) fn spawn_particle_with_insert(
     sys: &mut ParticleSystem,
     coords: IVec3,
-    spawn_origin: IVec3,
     insert_range: usize,
     rules: &RuleSet,
     rng: &mut SimRng,
 ) -> bool {
-    if insert_range == 0 || !spawn_particle(sys, coords, spawn_origin, rules, rng) {
+    if insert_range == 0 || !spawn_particle(sys, coords, rules, rng) {
         return false;
     }
     let count = sys.particles.len();
@@ -744,7 +721,6 @@ mod tests {
         assert_eq!(sys.coords, IVec3::new(100, 100, 0));
         assert_eq!(sys.lifetime, 200);
         assert_eq!(sys.facing, 0x1D);
-        assert!(sys.directionless);
     }
 
     #[test]
@@ -765,7 +741,7 @@ mod tests {
         let mut rng = SimRng::new(1);
         let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
         for _ in 0..10 {
-            spawn_particle(sys, IVec3::ZERO, IVec3::ZERO, &rules, &mut rng);
+            spawn_particle(sys, IVec3::ZERO, &rules, &mut rng);
         }
         assert_eq!(sys.particles.len(), 3);
     }
@@ -791,7 +767,7 @@ mod tests {
             .unwrap();
         let mut rng = SimRng::new(1);
         let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
-        spawn_particle(sys, IVec3::ZERO, IVec3::ZERO, &rules, &mut rng);
+        spawn_particle(sys, IVec3::ZERO, &rules, &mut rng);
         assert_eq!(sys.particles[0].lifetime_remaining, 11);
 
         // Exactly one raw draw consumed by the lifetime roll.
@@ -818,7 +794,7 @@ mod tests {
         let mut rng = SimRng::new(1);
         let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
         for _ in 0..10 {
-            spawn_particle_with_insert(sys, IVec3::ZERO, IVec3::ZERO, 3, &rules, &mut rng);
+            spawn_particle_with_insert(sys, IVec3::ZERO, 3, &rules, &mut rng);
         }
         assert_eq!(sys.particles.len(), 5);
     }
@@ -847,13 +823,7 @@ mod tests {
             .unwrap();
         let mut rng = SimRng::new(1);
         let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
-        assert!(!spawn_particle(
-            sys,
-            IVec3::ZERO,
-            IVec3::ZERO,
-            &rules,
-            &mut rng
-        ));
+        assert!(!spawn_particle(sys, IVec3::ZERO, &rules, &mut rng));
         assert!(sys.particles.is_empty());
     }
 
@@ -893,13 +863,7 @@ mod tests {
         let mut rng = SimRng::new(1);
         let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
 
-        assert!(spawn_particle(
-            sys,
-            IVec3::new(0, 0, 0),
-            IVec3::new(0, 0, 0),
-            &rules,
-            &mut rng
-        ));
+        assert!(spawn_particle(sys, IVec3::new(0, 0, 0), &rules, &mut rng));
 
         let particle = &sys.particles[0];
         assert_eq!(particle.direction, [SIM_ONE, SIM_ZERO, SIM_ZERO]);
@@ -942,13 +906,7 @@ mod tests {
         let mut rng = SimRng::new(1);
         let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
 
-        assert!(spawn_particle(
-            sys,
-            IVec3::new(0, 0, 0),
-            IVec3::ZERO,
-            &rules,
-            &mut rng
-        ));
+        assert!(spawn_particle(sys, IVec3::new(0, 0, 0), &rules, &mut rng));
 
         let particle = &sys.particles[0];
         assert!(particle.direction[2] > SIM_ZERO);
@@ -993,13 +951,7 @@ mod tests {
         let mut rng = SimRng::new(1);
         let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
 
-        assert!(spawn_particle(
-            sys,
-            IVec3::ZERO,
-            IVec3::ZERO,
-            &rules,
-            &mut rng
-        ));
+        assert!(spawn_particle(sys, IVec3::ZERO, &rules, &mut rng));
 
         // advance=trunc(300/1/(0+1)+1)=301; byte store keeps 45.
         assert_eq!(sys.particles[0].state_ai_advance, 45);

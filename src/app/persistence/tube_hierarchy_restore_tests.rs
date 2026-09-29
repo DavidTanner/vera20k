@@ -60,7 +60,7 @@ fn tube_hierarchy_restore_prepares_detached_dummy_then_publishes_terminal_fields
     assert_eq!(bridges.endpoint_records().len(), 1);
     let make_sim = || {
         let mut sim = load_fixture_simulation(false);
-        sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(32, 32));
+        sim.overlay_grid = Some(OverlayGrid::new(32, 32));
         sim.install_resolved_terrain_for_new_map(template.clone());
         sim.bridge_state = Some(bridges.clone());
         assert!(sim.rebuild_dynamic_navigation(&rules));

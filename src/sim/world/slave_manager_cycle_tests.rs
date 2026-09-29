@@ -790,7 +790,7 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     );
     let unit = sim.substrate.entities.get(back).unwrap();
     let elite = sim.substrate.entities.get(yarefn).unwrap().veterancy_raw;
-    assert_eq!((unit.veterancy_raw, unit.veterancy), (elite, 200));
+    assert_eq!((unit.veterancy_raw, unit.veterancy()), (elite, 200));
     // The rank cache (`+0x13C`) is not copied: the constructor's -1.
     assert_eq!(unit.veterancy_rank_cache, -1);
     assert_eq!(pool(&sim, back), slaves);

@@ -389,7 +389,6 @@ fn issue_pathed_move(
     sim: &mut Simulation,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     id: u64,
     dest: (u16, u16),
 ) {
@@ -410,7 +409,6 @@ fn issue_pathed_move(
             owner_blocks: true,
             object_destination: None,
         },
-        overlay_registry,
         Some(rules),
     );
 }
@@ -476,7 +474,6 @@ fn eject_head_passenger(
     sim: &mut Simulation,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     transport_id: u64,
 ) -> EjectOutcome {
     match depart_cargo_head(
@@ -624,7 +621,7 @@ fn eject_head_passenger(
                 DockTeardown::None,
                 Some(rules),
             );
-            issue_pathed_move(sim, rules, path_grid, overlay_registry, pax_id, dest);
+            issue_pathed_move(sim, rules, path_grid, pax_id, dest);
 
             if let Some(sound) = leave_sound {
                 let sound_id = sim.interner.intern(&sound);
@@ -649,7 +646,6 @@ pub(crate) fn unit_mission_unload(
     sim: &mut Simulation,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     id: u64,
 ) -> i32 {
     let now = sim.session.binary_frame;
@@ -687,7 +683,7 @@ pub(crate) fn unit_mission_unload(
                 ) {
                     // `Set_Destination` only — the committed selector stays
                     // Unload and state 0 re-runs once the drive has ended.
-                    issue_pathed_move(sim, rules, path_grid, overlay_registry, id, cell);
+                    issue_pathed_move(sim, rules, path_grid, id, cell);
                 }
                 return WAIT_MOVING_FRAMES;
             }
@@ -725,7 +721,7 @@ pub(crate) fn unit_mission_unload(
         }
         STATE_EJECT => {
             if cargo_count(entity) > entity.transport_unload_keep_count {
-                let _ = eject_head_passenger(sim, rules, path_grid, overlay_registry, id);
+                let _ = eject_head_passenger(sim, rules, path_grid, id);
             } else if let Some(entity) = sim.substrate.entities.get_mut(id) {
                 entity.mission.set_handler_state(STATE_DONE);
             }
@@ -798,7 +794,6 @@ pub(crate) fn dispatch_aircraft_unload(
     id: u64,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
@@ -844,7 +839,7 @@ pub(crate) fn dispatch_aircraft_unload(
             if cargo_count(entity) == 0 {
                 aircraft_enter_idle_mode(sim, id);
             } else {
-                let ejected = eject_from_aircraft(sim, rules, path_grid, overlay_registry, id);
+                let ejected = eject_from_aircraft(sim, rules, path_grid, id);
                 let hold_empty = sim
                     .substrate
                     .entities
@@ -947,7 +942,6 @@ fn eject_from_aircraft(
     sim: &mut Simulation,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     aircraft_id: u64,
 ) -> bool {
     depart_cargo_head(
@@ -1028,7 +1022,7 @@ fn eject_from_aircraft(
                 Some(rules),
             );
             if let Some(dest) = scan_cell {
-                issue_pathed_move(sim, rules, path_grid, overlay_registry, pax_id, dest);
+                issue_pathed_move(sim, rules, path_grid, pax_id, dest);
             }
             Ok(())
         },

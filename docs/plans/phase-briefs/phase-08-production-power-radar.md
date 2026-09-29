@@ -1,7 +1,7 @@
 # Phase 8 brief — Production, construction, power and radar
 
-Rows 166–184 of
-[`2026-07-30-clean-slate-system-implementation-order.md`](../2026-07-30-clean-slate-system-implementation-order.md).
+Rows 166–184 of the retired clean-slate phase plan (read it at `e83df3d` in
+`docs/plans/2026-07-30-clean-slate-system-implementation-order.md`).
 State: **OPEN** (never targeted as a phase; several rows carry earlier slice
 work).
 

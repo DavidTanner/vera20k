@@ -301,7 +301,7 @@ impl Fixture {
             entity.prism_support_count = count as i32;
         }
         if let Some(veterancy) = state["veterancy"].as_f64() {
-            entity.veterancy = (veterancy * 100.0) as u16;
+            entity.set_veterancy_rank((veterancy * 100.0) as u16);
         }
         let countdown = state["countdown"].as_i64().unwrap_or(0) as i32;
         let payload = |axis: usize| state["payload"][axis].as_i64().unwrap_or(0) as i32;

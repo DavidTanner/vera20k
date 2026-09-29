@@ -27,8 +27,8 @@ fn stock_cloak_tick_facts(
         return None;
     }
     let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
-    let rank_cloak = entity.veterancy >= 100 && object.veteran_cloak
-        || entity.veterancy >= 200 && object.elite_cloak;
+    let rank_cloak = entity.veterancy() >= 100 && object.veteran_cloak
+        || entity.veterancy() >= 200 && object.elite_cloak;
     if !object.cloakable && !rank_cloak {
         return None;
     }
@@ -616,7 +616,7 @@ pub(super) fn tick_stock_cloak_producer(sim: &mut Simulation, id: u64, rules: &R
         .substrate
         .entities
         .get(id)
-        .map(|entity| (entity.category, entity.type_ref(), entity.veterancy))
+        .map(|entity| (entity.category, entity.type_ref(), entity.veterancy()))
     else {
         return;
     };

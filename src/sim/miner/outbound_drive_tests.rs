@@ -5,7 +5,6 @@ use crate::sim::movement::locomotion::piggyback::StashedLocomotor;
 
 use std::collections::BTreeMap;
 
-use crate::map::bridge_facts::BridgeCellFacts;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
 use crate::rules::art_data::ArtRegistry;
@@ -16,7 +15,7 @@ use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::house_state::HouseState;
 use crate::sim::miner::{CargoBale, MinerConfig, MinerKind, MinerState, ResourceType};
-use crate::sim::movement::locomotor::{GroundMovePhase, MovementLayer};
+use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::passability::LandType;
@@ -132,58 +131,16 @@ fn resolved_cell(
     speed_costs: SpeedCostProfile,
 ) -> ResolvedTerrainCell {
     ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
-        level: 0,
-        filled_clear: false,
-        tileset_index: Some(0),
         land_type,
         yr_cell_land_type: land_type,
-        slope_type: 0,
-        template_height: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
         terrain_class,
         speed_costs,
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: false,
-        allows_tiberium: false,
-        height_in_pixels: 0,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
         zone_type: zone_class::GROUND,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
         base_land_type: LandType::Clear.as_index(),
         base_yr_cell_land_type: LandType::Clear.as_index(),
         base_terrain_class: TerrainClass::Clear,
         base_speed_costs: speed_costs,
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: BridgeCellFacts::default(),
-        tube_index: None,
-        radar_left: [0, 0, 0],
-        radar_right: [0, 0, 0],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     }
 }
 
@@ -517,7 +474,6 @@ fn locomotor_tuple(
     LocomotorSlot,
     Option<StashedLocomotor>,
     MovementLayer,
-    GroundMovePhase,
 ) {
     let locomotor = sim
         .substrate
@@ -530,7 +486,6 @@ fn locomotor_tuple(
         locomotor.slot,
         locomotor.piggyback.clone(),
         locomotor.layer,
-        locomotor.phase,
     )
 }
 
@@ -613,10 +568,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 // a Drive piggyback on top of it — that is what makes a stock
                 // chrono miner DRIVE to its first ore field instead of warping.
                 assert_eq!(locomotor.kind, LocomotorKind::Drive);
-                assert_eq!(
-                    locomotor.slot,
-                    LocomotorSlot::from_kind(LocomotorKind::Teleport)
-                );
+                assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
                 assert_eq!(
                     locomotor
                         .piggyback
@@ -626,10 +578,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                     LocomotorKind::Teleport,
                 );
             } else {
-                assert_eq!(
-                    locomotor.slot,
-                    LocomotorSlot::from_kind(LocomotorKind::Drive)
-                );
+                assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Drive));
                 assert_eq!(locomotor.piggyback, None);
             }
             assert!(entity.teleport_state.is_none());
@@ -671,10 +620,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
             if type_id == "CMIN" && entity.movement_target.is_some() {
                 let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
                 assert_eq!(locomotor.kind, LocomotorKind::Drive);
-                assert_eq!(
-                    locomotor.slot,
-                    LocomotorSlot::from_kind(LocomotorKind::Teleport)
-                );
+                assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
                 assert!(locomotor.piggyback.is_some());
             }
             if reached_harvest {
@@ -698,10 +644,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 entity.navigation,
                 entity.mission
             );
-            assert_eq!(
-                locomotor.slot,
-                LocomotorSlot::from_kind(LocomotorKind::Teleport)
-            );
+            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
             assert_eq!(locomotor.piggyback, None);
             assert!(
                 entity.drive_locomotion.is_none(),
@@ -929,10 +872,13 @@ fn gsi_04_07_placement_miner_return_threads_live_wall_neighbor_authority() {
         let miner_id = spawn_stock_miner(&mut sim, &oracle, "HARV", MinerKind::War);
         arm_full_ore_return(&mut sim, miner_id, &config);
 
-        sim.overlay_grid
-            .as_mut()
-            .expect("live overlay grid")
-            .place_overlay(30, 33, overlay_id, 0);
+        let overlays = sim.overlay_grid.as_mut().expect("live overlay grid");
+        overlays.place_overlay(30, 33, overlay_id, 0);
+        if overlay_id == wall_id {
+            // A placed wall's `OverlayClass::Mark` increments
+            // (`0x005FC762..0x005FC775`); a rock contributes none.
+            overlays.add_retained_wall_neighbor_source(sim.resolved_terrain.as_ref(), 30, 33);
+        }
 
         // Zone_precheck marks only the start/goal zones (1 and 2). The route
         // must cross off-marker zones 3 and 4. The miner itself supplies the
@@ -1159,10 +1105,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
             Some(NavTargetRef::cell(target.0, target.1)),
         );
         assert_eq!(locomotor.kind, LocomotorKind::Drive);
-        assert_eq!(
-            locomotor.slot,
-            LocomotorSlot::from_kind(LocomotorKind::Teleport)
-        );
+        assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
         assert_eq!(
             locomotor
                 .piggyback
@@ -1185,10 +1128,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
         if entity.movement_target.is_some() {
             let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
             assert_eq!(locomotor.kind, LocomotorKind::Drive);
-            assert_eq!(
-                locomotor.slot,
-                LocomotorSlot::from_kind(LocomotorKind::Teleport)
-            );
+            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
             assert!(locomotor.piggyback.is_some());
         }
         if entity.miner_state().expect("miner") == MinerState::Harvest {
@@ -1204,10 +1144,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
                 entity.navigation,
                 entity.mission
             );
-            assert_eq!(
-                locomotor.slot,
-                LocomotorSlot::from_kind(LocomotorKind::Teleport)
-            );
+            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
             assert_eq!(locomotor.piggyback, None);
             assert_eq!(entity.navigation.nav_com, None);
             assert!(!entity.navigation.pending_arrival_clear);
@@ -1248,7 +1185,7 @@ fn production_cmin_unreachable_outbound_drive_returns_to_teleport() {
     advance(&mut sim, &oracle, &grid);
     let before = locomotor_tuple(&sim, entity_id);
     assert_eq!(before.0, LocomotorKind::Teleport);
-    assert_eq!(before.1, LocomotorSlot::from_kind(LocomotorKind::Teleport));
+    assert_eq!(before.1, LocomotorSlot::new(LocomotorKind::Teleport));
     assert_eq!(before.2, None);
     assert_eq!(
         sim.substrate
@@ -1433,10 +1370,7 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
                 entity.navigation,
                 entity.mission
             );
-            assert_eq!(
-                locomotor.slot,
-                LocomotorSlot::from_kind(LocomotorKind::Teleport)
-            );
+            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
             assert_eq!(locomotor.piggyback, None);
             assert!(
                 entity.drive_locomotion.is_none(),

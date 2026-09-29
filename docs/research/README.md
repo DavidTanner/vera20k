@@ -11,9 +11,11 @@ preservation and checksum verification in a separate versioned archive. A second
 pass archived the retired system map and checker (11 files), another 50 research
 reports retained only for that map, and 20 completed or superseded planning and
 audit records. Seven reports still cited by active acceptance documents or phase
-briefs stayed in place. The research collection now has 180 retained files plus
-this guide. Historical cross-references use immutable links instead of keeping
-the entire old library in ordinary searches.
+briefs stayed in place. On 2026-09-29 a third pass removed the 107 reports that
+source, tools, tests and project guidance no longer cited (only other documents
+did), keeping their data files. The research collection now has 102 retained
+files plus this guide. Historical cross-references use immutable links instead of
+keeping the entire old library in ordinary searches.
 
 Current task plans and phase briefs remain in `docs/plans/` for continuation and
 are opt-in search material. Archiving a completion record does not close its
@@ -33,6 +35,12 @@ The second pass is preserved at source commit
 
 - [Retired system map](https://github.com/YuriPlanet/vera20k/tree/1dbaf80c89c9348df493ab618dbefed8663aef96/docs/system-map) and [its optional historical checker](https://github.com/YuriPlanet/vera20k/tree/1dbaf80c89c9348df493ab618dbefed8663aef96/tools/system_map)
 - [Research](https://github.com/YuriPlanet/vera20k/tree/1dbaf80c89c9348df493ab618dbefed8663aef96/docs/research), [plans](https://github.com/YuriPlanet/vera20k/tree/1dbaf80c89c9348df493ab618dbefed8663aef96/docs/plans), [gap scans](https://github.com/YuriPlanet/vera20k/tree/1dbaf80c89c9348df493ab618dbefed8663aef96/docs/gap-scans) and [contracts](https://github.com/YuriPlanet/vera20k/tree/1dbaf80c89c9348df493ab618dbefed8663aef96/docs/contracts)
+
+The third pass is preserved at source commit
+`e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a`, which also holds the retired
+clean-slate phase plan:
+
+- [Research](https://github.com/YuriPlanet/vera20k/tree/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research)
 
 These are historical records, including useful evidence, old assumptions and
 superseded status claims. Archiving does not establish that a report is wrong or

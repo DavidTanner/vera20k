@@ -710,7 +710,25 @@ use crate::sim::world::Simulation;
 // 241 -> 242: each team keeps `Coordinate_Attack`'s restart flag (`+0x81`),
 // a TeamType its `Droppod=` and `OnlyTargetHouseEnemy=`; the `sim::ai`
 // stand-in's per-house attack-wave state is gone.
-const SNAPSHOT_VERSION: u32 = 242;
+// 242 -> 243: a locomotor and its piggyback stash no longer save a copy of
+// `ROT=`; the body FacingClass holds the rate.
+// 243 -> 244: the locomotor and its piggyback stash no longer save the
+// VERA-only ground move phase.
+// 244 -> 245: a house's economy no longer saves the retained OrePurifier count;
+// deposits count purifiers on demand.
+// 245 -> 246: a Techno no longer saves its veterancy rank beside the
+// accumulator; the rank is sampled from it.
+// 246 -> 247: every overlay grid saves its retained wall plane; the plane-less
+// legacy mode is gone.
+// 247 -> 248: LocomotorKind holds only the eight installable classes
+// (renumbered; the dormant Tunnel, DropPod, Mech and Parachute kinds, their
+// payloads and a Techno's tunnel and drop-pod states are gone), and the
+// installed slot stores it.
+// 248 -> 249: a particle no longer saves its unread previous coordinates,
+// ground-hit flag or colour triple, a particle system its directionless flag; a
+// boarding passenger no longer saves a phase; an entity no longer saves a
+// garrison original owner.
+const SNAPSHOT_VERSION: u32 = 249;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -933,10 +951,6 @@ pub enum SnapshotRestoreError {
         "snapshot retained wall-neighbor storage has {found} cells, but its dimensions require {expected}"
     )]
     RetainedWallNeighborStorageMismatch { expected: usize, found: usize },
-    #[error(
-        "snapshot overlay grid carries no retained wall-neighbor plane; every current-version map authority owns one"
-    )]
-    MissingRetainedWallNeighborPlane,
     #[error("snapshot real-cell bridge flags do not match restored CellClass allocation")]
     RealCellBridgeFlagAuthorityMismatch,
     #[error(
@@ -2176,13 +2190,8 @@ impl Simulation {
         }
         // `CellClass+0x122`'s wall contribution is written only by
         // `OverlayClass::Mark` and decremented only by an explicit removal;
-        // nothing in gamemd rebuilds it from final wall identities. Both
-        // production map-authority constructors now retain the plane (the
-        // finalized authored payload and the map-pack boundary), so a
-        // current-version state without one has no wall authority to restore.
-        let Some(retained_wall_count) = retained_wall_count else {
-            return Err(SnapshotRestoreError::MissingRetainedWallNeighborPlane);
-        };
+        // nothing in gamemd rebuilds it from final wall identities, so the
+        // saved plane must cover every cell.
         if retained_wall_count != expected_overlay_cell_count {
             return Err(SnapshotRestoreError::RetainedWallNeighborStorageMismatch {
                 expected: expected_overlay_cell_count,
@@ -2368,9 +2377,8 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+    use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::rules::locomotor_type::{MovementZone, SpeedType};
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::pathfinding::PathGrid;
     use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
@@ -2384,71 +2392,12 @@ mod tests {
         sim.advance_tick(&[], None, &height_map, None, None, 67);
     }
 
-    fn clear_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: crate::map::resolved_terrain::zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
-        for ry in 0..height {
-            for rx in 0..width {
-                cells.push(clear_terrain_cell(rx, ry));
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     mod gsi_17_04_tests {
@@ -2514,7 +2463,7 @@ mod tests {
                 tiberium_grows_flag: false,
             };
             sim.production.ore_growth_state = OreGrowthState::new(size, size);
-            let mut overlays = OverlayGrid::new_with_retained_wall_plane(size, size);
+            let mut overlays = OverlayGrid::new(size, size);
             for &(rx, ry) in cells {
                 overlays.place_overlay(rx, ry, ore_id, 5);
             }
@@ -3019,7 +2968,6 @@ mod tests {
             3,
             1,
         );
-        map_overlays.retain_zero_wall_plane_for_tests();
         assert!(recalc_overlay_passability(
             &mut map_overlays,
             &mut map_terrain,
@@ -3035,7 +2983,7 @@ mod tests {
         );
 
         let mut sim = Simulation::new();
-        let mut runtime_overlays = OverlayGrid::from_overlay_entries(
+        let runtime_overlays = OverlayGrid::from_overlay_entries(
             &[OverlayEntry {
                 rx: runtime_wall.0,
                 ry: runtime_wall.1,
@@ -3046,9 +2994,8 @@ mod tests {
             1,
         );
         // This fixture places a live wall but is not a blocker-count subject:
-        // the zero plane only satisfies the map-authority restore gate. A real
-        // wall always carries its `OverlayClass::Mark` increments.
-        runtime_overlays.retain_zero_wall_plane_for_tests();
+        // its plane stays zero. A real wall always carries its
+        // `OverlayClass::Mark` increments.
         sim.overlay_grid = Some(runtime_overlays);
         sim.install_resolved_terrain_for_new_map(map_terrain.clone());
 
@@ -3123,14 +3070,14 @@ mod tests {
             width: u16,
             height: u16,
             cells: Vec<OverlayCell>,
-            retained_neighbor_counts: Option<Vec<u8>>,
+            retained_neighbor_counts: Vec<u8>,
         }
 
         let malformed_bytes = bincode::serialize(&OverlayGridWire {
             width: 2,
             height: 1,
             cells: vec![OverlayCell::default()],
-            retained_neighbor_counts: None,
+            retained_neighbor_counts: vec![0; 2],
         })
         .expect("malformed overlay wire fixture");
         let malformed: OverlayGrid =
@@ -3165,14 +3112,14 @@ mod tests {
             width: u16,
             height: u16,
             cells: Vec<OverlayCell>,
-            retained_neighbor_counts: Option<Vec<u8>>,
+            retained_neighbor_counts: Vec<u8>,
         }
 
         let malformed_bytes = bincode::serialize(&OverlayGridWire {
             width: 2,
             height: 1,
             cells: vec![OverlayCell::default(); 2],
-            retained_neighbor_counts: Some(vec![7]),
+            retained_neighbor_counts: vec![7],
         })
         .expect("malformed retained wall-neighbor wire fixture");
         let malformed: OverlayGrid =
@@ -3193,64 +3140,6 @@ mod tests {
                 expected: 2,
                 found: 1,
             })
-        ));
-    }
-
-    /// `CellClass+0x122`'s wall contribution is written only by
-    /// `OverlayClass::Mark` and cleared only by an explicit removal; gamemd
-    /// never rebuilds it from final wall identities. Both production map
-    /// authorities retain the plane, so a current-version state without one is
-    /// rejected rather than silently rescanned.
-    #[test]
-    fn snapshot_restore_rejects_a_current_version_state_without_a_retained_wall_plane() {
-        use crate::rules::ini_parser::IniFile;
-        use crate::rules::ruleset::RuleSet;
-        use crate::sim::overlay_grid::{OverlayCell, OverlayGrid};
-
-        #[derive(serde::Serialize)]
-        struct OverlayGridWire {
-            width: u16,
-            height: u16,
-            cells: Vec<OverlayCell>,
-            retained_neighbor_counts: Option<Vec<u8>>,
-        }
-
-        let planeless_bytes = bincode::serialize(&OverlayGridWire {
-            width: 2,
-            height: 1,
-            cells: vec![OverlayCell::default(); 2],
-            retained_neighbor_counts: None,
-        })
-        .expect("plane-less retained wall wire fixture");
-        let planeless: OverlayGrid =
-            bincode::deserialize(&planeless_bytes).expect("wire-compatible OverlayGrid");
-        let ini = IniFile::from_str(
-            "[InfantryTypes]
-[VehicleTypes]
-[AircraftTypes]
-[BuildingTypes]
-             [OverlayTypes]
-",
-        );
-        let rules = RuleSet::from_ini(&ini).expect("plane-less grid rules");
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
-        let mut sim = Simulation::new();
-        sim.overlay_grid = Some(planeless);
-        sim.resolved_terrain = Some(flat_terrain(2, 1));
-
-        assert!(matches!(
-            sim.restore_map_authority_after_snapshot_load(&rules, &registry),
-            Err(SnapshotRestoreError::MissingRetainedWallNeighborPlane)
-        ));
-
-        // The same shape with the plane retained clears this gate; any later
-        // rejection comes from a different missing map-authority component.
-        let mut retained = Simulation::new();
-        retained.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(2, 1));
-        retained.resolved_terrain = Some(flat_terrain(2, 1));
-        assert!(!matches!(
-            retained.restore_map_authority_after_snapshot_load(&rules, &registry),
-            Err(SnapshotRestoreError::MissingRetainedWallNeighborPlane)
         ));
     }
 
@@ -3733,7 +3622,16 @@ mod tests {
         // 240 -> 241: team members, recruitment and script state.
         // 241 -> 242: the team restart flag and two TeamType keys; no
         // `sim::ai` state.
-        assert_eq!(super::SNAPSHOT_VERSION, 242);
+        // 242 -> 243: no locomotor `ROT=` copy.
+        // 243 -> 244: no ground move phase.
+        // 244 -> 245: no retained purifier count.
+        // 245 -> 246: no stored veterancy rank.
+        // 246 -> 247: every overlay grid has a wall plane.
+        // 247 -> 248: one eight-class locomotor enum; no dormant locomotor
+        // states.
+        // 248 -> 249: no dead particle, boarding-phase or garrison-owner
+        // fields.
+        assert_eq!(super::SNAPSHOT_VERSION, 249);
     }
 
     #[test]
@@ -4004,7 +3902,7 @@ mod tests {
                 .as_ref()
                 .expect("overlay authority")
                 .retained_neighbor_counts(),
-            Some(&[0, 7, 255, 4][..])
+            &[0, 7, 255, 4][..]
         );
     }
 
@@ -4100,7 +3998,7 @@ mod tests {
                 if state.hash_fields() == (2, 7, 49, 3)
         ));
 
-        let mut live_cell = clear_terrain_cell(0, 0);
+        let mut live_cell = crate::map::resolved_terrain::test_clear_cell(0, 0);
         live_cell.slope_type = 12;
         let live_terrain = ResolvedTerrainGrid::from_cells(1, 1, vec![live_cell]);
         restored.resolved_terrain = Some(live_terrain.clone());
@@ -5715,7 +5613,6 @@ mod tests {
                 lifetime: -1,
                 spark_spawn_frames: 0,
                 facing: 0x1D,
-                directionless: true,
                 attached_entity: None,
                 owner_entity: Some(entity_id),
                 target_coords: glam::IVec3::ZERO,
@@ -6570,7 +6467,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1d,
-            directionless: false,
             attached_entity: Some(entity_id),
             owner_entity: Some(entity_id),
             target_coords: IVec3::ZERO,
@@ -6662,7 +6558,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1d,
-            directionless: false,
             attached_entity: Some(999),
             owner_entity: Some(entity_id),
             target_coords: IVec3::ZERO,
@@ -7130,7 +7025,7 @@ mod tests {
             .expect("fixture uses a native-supported CellClass slope")
         };
         live.install_resolved_terrain_for_new_map(map_load_terrain);
-        live.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(4, 3));
+        live.overlay_grid = Some(OverlayGrid::new(4, 3));
         assert_ne!(
             live.resolved_terrain
                 .as_ref()

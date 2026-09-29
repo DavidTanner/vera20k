@@ -515,15 +515,11 @@ pub fn tick_teleport_movement(
         let Some(entity) = entities.get(id) else {
             continue;
         };
-        let gate = crate::sim::movement::locomotor_end_gate_context(entity);
-        let may_end = entity.locomotor.as_ref().is_some_and(|loco| {
-            loco.is_overridden()
-                && loco.can_restore_primary_from_piggyback(
-                    gate.owner_moving,
-                    gate.owner_teleporting,
-                    gate.owner_deploying,
-                )
-        });
+        let may_end = entity
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| loco.is_overridden())
+            && super::locomotor_owner::piggyback_end_admitted(entity);
         if may_end && let Some(entity) = entities.get_mut(id) {
             super::locomotor_owner::restore_admitted_primary(entity);
         }

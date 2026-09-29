@@ -657,8 +657,7 @@ mod tests {
             .unwrap();
         cell.level = input["level"].as_u64().unwrap_or(0) as u8;
         cell.slope_type = input["slope"].as_u64().unwrap_or(0) as u8;
-        sim.overlay_grid =
-            Some(crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(128, 128));
+        sim.overlay_grid = Some(crate::sim::overlay_grid::OverlayGrid::new(128, 128));
         sim.overlay_grid
             .as_mut()
             .unwrap()
@@ -1106,8 +1105,7 @@ mod tests {
                 .overlay_grid
                 .as_ref()
                 .unwrap()
-                .retained_neighbor_counts()
-                .unwrap();
+                .retained_neighbor_counts();
             for c in after["neighbors"].as_array().unwrap() {
                 assert_eq!(
                     u64::from(

@@ -409,7 +409,6 @@ impl Simulation {
                 &sim.houses,
                 &sim.house_alliances,
                 &mut sim.substrate.cell_occupation,
-                sim.session.tick,
                 sim.session.binary_frame,
                 sim.resolved_terrain.as_ref(),
                 sim.path_grid.as_deref().or(path_grid),
@@ -787,8 +786,6 @@ impl Simulation {
             crate::sim::spawn_manager::detonate_dead_missile(sim, stable_id);
             return Ok(outcome);
         }
-        sim.tick_tunnel_locomotor_one(stable_id, path_grid);
-        sim.tick_drop_pod_locomotor_one(stable_id, path_grid);
         let _ = homing_movement::tick_homing_movement(
             &mut sim.substrate.entities,
             &one,

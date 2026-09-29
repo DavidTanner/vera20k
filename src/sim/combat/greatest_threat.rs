@@ -1891,7 +1891,7 @@ fn evaluate_candidate(
     if ctx.standing.team.is_none()
         && ctx.standing.human
         && building
-        && !is_one_by_one_undeployable(candidate_obj)
+        && !candidate_obj.is_1x1_with_undeploy()
         && (!is_armed(candidate, candidate_obj)
             || live_threat_posed(ctx.rules, candidate, candidate_obj) == 0)
     {
@@ -2043,7 +2043,7 @@ fn quarry_terms(mask: u32, score: i32, all_to_hunt: bool, facts: QuarryFacts) ->
 /// a unit never gets here, its own bit decides.
 fn vehicle_like(ctx: &ScanContext<'_>, candidate: &GameEntity, obj: &ObjectType) -> bool {
     match candidate.category {
-        EntityCategory::Structure => is_one_by_one_undeployable(obj),
+        EntityCategory::Structure => obj.is_1x1_with_undeploy(),
         EntityCategory::Aircraft => crate::sim::movement::air_movement::is_low_flying(
             candidate,
             ctx.terrain,
@@ -2103,16 +2103,6 @@ fn probe_is_illegal(
         == super::fire_error::FireError::Illegal
 }
 
-/// `BuildingTypeClass::Is1x1WithUndeploy @ 0x00465D40` (reached through the
-/// candidate's vtable `+0x80`): a one-cell building that carries an
-/// `UndeploysInto=` vehicle. Such a building is a legal passive target for a
-/// human attacker regardless of its `ThreatPosed`, because it is really a
-/// parked unit.
-fn is_one_by_one_undeployable(obj: &ObjectType) -> bool {
-    let (width, height) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
-    width == 1 && height == 1 && obj.undeploys_into.is_some()
-}
-
 /// `TechnoClass::Get_ThreatPosed @ 0x00708B40` (vtable `+0x2C0`).
 ///
 /// A garrisoned building's threat is `occupants * [General] ThreatPerOccupant`
@@ -2136,11 +2126,10 @@ fn live_threat_posed(rules: &RuleSet, candidate: &GameEntity, obj: &ObjectType) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::locomotor_type::MovementZone;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::intern::test_interner;
 
     /// A skirmish-shaped fixture: one gun tank, the two civilian object classes
@@ -2509,7 +2498,7 @@ mod tests {
         ] {
             let obj = rules.object(kind).unwrap();
             let mut entity = GameEntity::test_default(1, kind, "Americans", 5, 5);
-            entity.veterancy = veterancy;
+            entity.set_veterancy_rank(veterancy);
             entity.weapon_override = Some(WeaponOverride::IfvSlot(slot));
             assert_eq!(
                 passive_scan_class_bits(&rules, obj, attacker_facts(&entity, obj), None) & 4 != 0,
@@ -2558,40 +2547,8 @@ mod tests {
     /// One clear ground cell.
     fn zone_test_cell(rx: u16, ry: u16, impassable: bool) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
             is_cliff_like: impassable,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
             ground_walk_blocked: impassable,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
             zone_type: if impassable {
                 zone_class::IMPASSABLE
             } else {
@@ -2599,31 +2556,17 @@ mod tests {
             },
             base_ground_walk_blocked: impassable,
             base_build_blocked: impassable,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
             base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
     /// A square map cut in two by one impassable column, so that
     /// `MovementZone::Normal` has two disconnected components.
     fn split_zone_grid(side: u16, barrier_rx: u16) -> ZoneGrid {
-        let cells = (0..side)
-            .flat_map(|ry| (0..side).map(move |rx| zone_test_cell(rx, ry, rx == barrier_rx)))
-            .collect();
-        let terrain = ResolvedTerrainGrid::from_cells(side, side, cells);
+        let terrain = crate::map::resolved_terrain::test_grid(side, side, |rx, ry| {
+            zone_test_cell(rx, ry, rx == barrier_rx)
+        });
         let path_grid = crate::sim::pathfinding::PathGrid::from_resolved_terrain(&terrain);
         ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], side, side)
     }

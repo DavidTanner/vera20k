@@ -272,8 +272,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     sim.production.ore_growth_config.spreads = false;
     let terrain = gsi_04_10_clear_terrain(16, 16);
     sim.install_resolved_terrain_for_new_map(terrain.clone());
-    let mut overlay_grid = OverlayGrid::from_overlay_entries(&[], 16, 16);
-    overlay_grid.retain_zero_wall_plane_for_tests();
+    let overlay_grid = OverlayGrid::from_overlay_entries(&[], 16, 16);
     sim.overlay_grid = Some(overlay_grid);
     sim.intern_rule_type_ids(&rules);
     let owner = sim.interner.intern("Americans");

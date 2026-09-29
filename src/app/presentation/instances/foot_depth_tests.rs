@@ -4,13 +4,10 @@
 use super::{
     depth_cell, shp_z_adjust_in_runtime, unit_bridge_split_in_runtime, unit_z_adjust_in_runtime,
 };
-use crate::map::bridge_facts::BridgeCellFacts;
 use crate::map::entities::EntityCategory;
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::cloak_disguise::DisguiseRuntime;
 use crate::sim::components::{BridgeOccupancy, Health};
 use crate::sim::game_entity::GameEntity;
@@ -59,10 +56,9 @@ ZFudgeCliff=99
 fn runtime() -> SimRuntime {
     let mut resources = SimResources::empty();
     resources.rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("fixture rules parse");
-    let cells = (0..8)
-        .flat_map(|y| (0..8).map(move |x| flat_cell(x, y)))
-        .collect();
-    let terrain = ResolvedTerrainGrid::from_cells(8, 8, cells);
+    let terrain = crate::map::resolved_terrain::test_grid(8, 8, |x, y| {
+        crate::map::resolved_terrain::test_smudge_cell(x, y)
+    });
     resources.terrain_template = Some(terrain.clone());
     let mut simulation = Simulation::new();
     simulation.intern_rule_type_ids(&resources.rules);
@@ -502,61 +498,4 @@ fn composite_factory_split_requires_navcom_and_slot_zero_weapons_factory() {
     ))
     .unwrap();
     assert!(!evaluate(&runtime, &tank));
-}
-
-fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-    ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
-        level: 0,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
-        template_height: 0,
-        height_in_pixels: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
-        speed_costs: SpeedCostProfile::default(),
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: true,
-        allows_tiberium: false,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
-        base_terrain_class: TerrainClass::Clear,
-        base_speed_costs: SpeedCostProfile::default(),
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: BridgeCellFacts::default(),
-        tube_index: None,
-        radar_left: [0; 3],
-        radar_right: [0; 3],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
-    }
 }

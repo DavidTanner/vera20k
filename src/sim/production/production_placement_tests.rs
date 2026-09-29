@@ -309,76 +309,18 @@ fn resolved_clear_grid_with_override(
     mut override_cell: impl FnMut(&mut ResolvedTerrainCell),
 ) -> ResolvedTerrainGrid {
     let clear_speed_costs = SpeedCostProfile {
-        foot: Some(100),
-        track: Some(100),
-        wheel: Some(100),
         float: Some(0),
-        amphibious: Some(100),
-        float_beach: Some(100),
-        hover: Some(100),
+        ..crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS
     };
-    let mut cells = Vec::with_capacity((width as usize) * (height as usize));
-    for ry in 0..height {
-        for rx in 0..width {
-            let mut cell = ResolvedTerrainCell {
-                rx,
-                ry,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: false,
-                tileset_index: Some(0),
-                land_type: 0,
-                yr_cell_land_type: 0,
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
-                speed_costs: clear_speed_costs,
-                is_water: false,
-                is_cliff_like: false,
-                height_in_pixels: 0,
-                variant: 0,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                has_ramp: false,
-                canonical_ramp: None,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
-                zone_type: 0,
-                base_ground_walk_blocked: false,
-                base_build_blocked: false,
-                base_land_type: 0,
-                base_yr_cell_land_type: 0,
-                base_terrain_class: Default::default(),
-                base_speed_costs: clear_speed_costs,
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0, 0, 0],
-                radar_right: [0, 0, 0],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
-            };
-            override_cell(&mut cell);
-            cells.push(cell);
-        }
-    }
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(width, height, |rx, ry| {
+        let mut cell = ResolvedTerrainCell {
+            speed_costs: clear_speed_costs,
+            base_speed_costs: clear_speed_costs,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        };
+        override_cell(&mut cell);
+        cell
+    })
 }
 
 /// Insert a unit already standing in `cell`, without UnitClass::Unlimbo's
@@ -3431,7 +3373,6 @@ fn sell_player_built_garrisoned_building_demolishes_and_ejects_alive() {
     let amer_id = sim.interner.intern("Americans");
     let e1_id = sim.interner.intern("E1");
     if let Some(t) = sim.substrate.entities.get_mut(30) {
-        // garrison_original_owner stays None — player-built path.
         t.passenger_role = PassengerRole::Transport {
             cargo: PassengerCargo::new(5, 1),
         };
@@ -3480,24 +3421,21 @@ fn retained_wall_plane_runtime_placement_and_damage_update_once() {
     let registry = OverlayTypeRegistry::from_ini(&ini, Some(&art));
     let mut sim = placement_sim();
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(5, 5, |_| {}));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(5, 5));
+    sim.overlay_grid = Some(OverlayGrid::new(5, 5));
     let owner = sim.interner.intern("WallOwner");
     assert!(super::wall_placement::stamp_wall(
         &mut sim, &registry, 2, 2, 0, owner
     ));
     let mut grid = sim.overlay_grid.take().unwrap();
     let mut terrain = sim.resolved_terrain.take().unwrap();
-    let placed = grid.retained_neighbor_counts().expect("retained authority");
+    let placed = grid.retained_neighbor_counts();
     for index in [6usize, 7, 8, 11, 13, 16, 17, 18] {
         assert_eq!(placed[index], 1);
     }
     assert_eq!(placed[12], 0);
 
     let mut rng = crate::sim::rng::SimRng::new(1);
-    let before_partial = grid
-        .retained_neighbor_counts()
-        .expect("retained authority")
-        .to_vec();
+    let before_partial = grid.retained_neighbor_counts().to_vec();
     let _ = grid.take_synchronous_navigation_cells();
     let partial = damage_wall_overlay_with_terrain(
         &mut grid,
@@ -3517,7 +3455,7 @@ fn retained_wall_plane_runtime_placement_and_damage_update_once() {
     );
     assert_eq!(
         grid.retained_neighbor_counts(),
-        Some(before_partial.as_slice()),
+        before_partial.as_slice(),
         "nonterminal damage must not change retained counts"
     );
 
@@ -3538,7 +3476,6 @@ fn retained_wall_plane_runtime_placement_and_damage_update_once() {
     );
     assert!(
         grid.retained_neighbor_counts()
-            .expect("retained authority")
             .iter()
             .all(|&count| count == 0)
     );
@@ -3552,7 +3489,7 @@ fn retained_wall_plane_placement_reaches_fixed_stride_alias() {
     );
     let mut sim = placement_sim();
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(512, 2, |_| {}));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(512, 2));
+    sim.overlay_grid = Some(OverlayGrid::new(512, 2));
     sim.overlay_grid
         .as_mut()
         .unwrap()
@@ -3573,16 +3510,13 @@ fn retained_wall_plane_placement_reaches_fixed_stride_alias() {
         "aliased real wall connects east back to anchor"
     );
     assert_eq!(
-        alias_grid
-            .retained_neighbor_counts()
-            .expect("retained authority")[511],
+        alias_grid.retained_neighbor_counts()[511],
         1,
         "west fixed-stride alias resolves to real slot 511"
     );
     assert_eq!(
         alias_grid
             .retained_neighbor_counts()
-            .expect("retained authority")
             .iter()
             .map(|&count| u32::from(count))
             .sum::<u32>(),

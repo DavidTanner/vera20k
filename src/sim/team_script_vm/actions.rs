@@ -1109,7 +1109,7 @@ impl Simulation {
                     .is_some_and(|object| {
                         crate::sim::combat::combat_weapon::primary_for_tier(
                             object,
-                            entity.veterancy,
+                            entity.veterancy(),
                         )
                         .is_some()
                             && member_ammo(entity, object) <= 0

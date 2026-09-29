@@ -748,7 +748,6 @@ fn techno_ai_shell(
                     id,
                     rules,
                     ctx.path_grid,
-                    ctx.overlay_registry,
                 );
                 // The remaining aircraft missions dispatch here too, inside
                 // this slot and before Fly Process (FootClass::AI4DA530).
@@ -5954,7 +5953,7 @@ mod tests {
             .locomotor
             .as_mut()
             .unwrap()
-            .slot = LocomotorSlot::from_kind(LocomotorKind::Teleport);
+            .slot = LocomotorSlot::new(LocomotorKind::Teleport);
         assert_ordinary_drive_host_error(
             &primary_mismatch,
             &control,

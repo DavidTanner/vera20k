@@ -544,7 +544,6 @@ pub(super) fn deliver_produced_object(
                     owner_blocks: false,
                     object_destination: None,
                 },
-                overlay_registry,
                 Some(rules),
             );
             if naval_rally.is_some()

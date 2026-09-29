@@ -683,7 +683,7 @@ impl Simulation {
         let index = crate::sim::combat::combat_weapon::what_weapon_should_i_use(
             rules, object, &facts, None,
         );
-        crate::sim::combat::combat_weapon::weapon_for_index(object, entity.veterancy, index)
+        crate::sim::combat::combat_weapon::weapon_for_index(object, entity.veterancy(), index)
             .and_then(|(weapon, _)| rules.weapon(weapon))
             .map_or(0, |weapon| weapon.damage)
     }

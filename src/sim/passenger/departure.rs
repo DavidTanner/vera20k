@@ -246,9 +246,8 @@ pub(crate) fn reveal_unloaded_passenger(
 /// and applies InfantryType+0x688 (IFVMode) through `FUN_0070DC70`. It reverses
 /// the empty-pop `+0x4D8` (`0x007464E0`). Aircraft/Techno bind those slots to
 /// stubs `0x004DE750`/`0x004DE760`; preserve the represented Rust Gunner gate.
-/// UnitClass `+0x4D4` (`0x00746420`) for a `Gunner=yes` transport: the
-/// re-added head passenger's `IFVMode=` becomes the transport's weapon slot
-/// again. VERA's representation of that swap is `weapon_override`.
+/// Gates UnitClass `+0x4D4` ([`super::receive_gunner`]) on a `Gunner=yes`
+/// transport for the re-added head passenger.
 fn reapply_gunner_weapon(sim: &mut Simulation, rules: &RuleSet, transport_id: u64, pax_id: u64) {
     let Some(transport) = sim.substrate.entities.get(transport_id) else {
         return;
@@ -265,10 +264,5 @@ fn reapply_gunner_weapon(sim: &mut Simulation, rules: &RuleSet, transport_id: u6
     let ifv_mode = sim
         .object_type(passenger.type_ref(), rules)
         .map_or(0, |obj| obj.ifv_mode);
-    if let Some(transport) = sim.substrate.entities.get_mut(transport_id) {
-        transport.weapon_override = Some(
-            crate::sim::combat::combat_weapon::WeaponOverride::IfvSlot(ifv_mode),
-        );
-    }
-    sim.temporal_receive_gunner(transport_id, pax_id);
+    super::receive_gunner(sim, transport_id, pax_id, ifv_mode);
 }

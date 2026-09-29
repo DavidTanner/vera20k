@@ -54,7 +54,7 @@ This proof concerns normal initialized geometry, not arbitrary corrupt coordinat
 The dummy no-tile/no-tube defaults come from CellClass constructor `0x0047BBF0`
 and in-place Resize reconstruction. IsoMap misses discard tile/subtile payload;
 dummy Recalc returns before tile, land or zone work. Existing supporting audit:
-[shared dummy final-recalc field evidence](bridges/01-assets-map-load-overlay/OVERLAYPACK_SHARED_DUMMY_FINAL_RECALC_FIELDS_REINVESTIGATION_GHIDRA_REPORT.md).
+[shared dummy final-recalc field evidence](https://github.com/YuriPlanet/vera20k/blob/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research/bridges/01-assets-map-load-overlay/OVERLAYPACK_SHARED_DUMMY_FINAL_RECALC_FIELDS_REINVESTIGATION_GHIDRA_REPORT.md).
 The new producer reads the modeled retained structural bit and writes coordinates
 through the shared lookup; it does not create a private dummy. Native comparison
 fixtures start with no tile, no tube and zero land/flags. No claim is made for

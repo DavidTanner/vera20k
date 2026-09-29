@@ -70,7 +70,6 @@ pub(crate) fn build_blocker_neighbor_counts(
         height,
         resolved_terrain,
         None,
-        None,
         interner,
         rules,
     )
@@ -82,18 +81,11 @@ pub(crate) fn build_blocker_neighbor_counts_with_overlays(
     height: u16,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     interner: &crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
 ) -> BlockerNeighborCounts {
-    let mut counts = blocker_plane_base(
-        width,
-        height,
-        resolved_terrain,
-        overlay_grid,
-        overlay_registry,
-    );
-    let retained_foot = overlay_grid.is_some_and(|grid| grid.retained_neighbor_counts().is_some());
+    let mut counts = blocker_plane_base(width, height, resolved_terrain, overlay_grid);
+    let retained_foot = overlay_grid.is_some();
     for entity in entities.values() {
         if let Some(source) = blocker_plane_source(entity, interner, rules, retained_foot) {
             source.add_to(&mut counts);
@@ -103,23 +95,20 @@ pub(crate) fn build_blocker_neighbor_counts_with_overlays(
 }
 
 /// Retained wall/Foot bytes plus the existing derived terrain contribution.
-/// Foot lifecycle writes are authoritative when the retained plane is present;
-/// only legacy fixtures without it reconstruct mobile position contributions.
+/// Foot lifecycle writes are authoritative when an overlay grid is present;
+/// only fixtures without one reconstruct mobile position contributions.
 pub(crate) fn blocker_plane_base(
     width: u16,
     height: u16,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> BlockerNeighborCounts {
-    let retained_wall_counts = overlay_grid.and_then(|grid| {
-        if grid.retained_neighbor_counts().is_some() {
-            assert_eq!(
-                (grid.width(), grid.height()),
-                (width, height),
-                "retained wall-neighbor authority must match pathfinding grid"
-            );
-        }
+    let retained_wall_counts = overlay_grid.map(|grid| {
+        assert_eq!(
+            (grid.width(), grid.height()),
+            (width, height),
+            "retained wall-neighbor authority must match pathfinding grid"
+        );
         grid.retained_neighbor_counts()
     });
     let mut counts = retained_wall_counts
@@ -139,26 +128,6 @@ pub(crate) fn blocker_plane_base(
         }
     }
 
-    // Legacy constructors have not yet crossed the consumed-once finalized
-    // payload boundary. Only they may reconstruct current walls. A retained
-    // plane, including an all-zero one, is the sole authored/runtime wall
-    // authority and must never be supplemented from final identities.
-    if retained_wall_counts.is_none()
-        && let (Some(grid), Some(registry)) = (overlay_grid, overlay_registry)
-    {
-        for y in 0..height {
-            for x in 0..width {
-                if grid
-                    .cell(x, y)
-                    .overlay_id
-                    .and_then(|id| registry.flags(id))
-                    .is_some_and(|flags| flags.wall)
-                {
-                    counts.add_single_cell_neighbor_source(x, y);
-                }
-            }
-        }
-    }
     counts
 }
 
@@ -895,7 +864,7 @@ impl ScatterTechno {
                 .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
                 .is_some_and(|object| {
                     has_weapon_ability(
-                        rank_from_u16(entity.veterancy),
+                        rank_from_u16(entity.veterancy()),
                         object,
                         crate::rules::object_type::Ability::Scatter,
                     )
@@ -975,7 +944,7 @@ pub fn cell_has_elite_occupant(occupants: &[u64], skip_id: u64, entities: &Entit
         id != skip_id
             && entities
                 .get(id)
-                .is_some_and(|entity| entity.veterancy >= ELITE_VETERANCY)
+                .is_some_and(|entity| entity.veterancy() >= ELITE_VETERANCY)
     })
 }
 
@@ -1502,7 +1471,7 @@ pub(super) fn infantry_damage_scatter_admitted(
         return false;
     }
     let has_scatter_ability = crate::sim::combat::veterancy::has_weapon_ability(
-        crate::sim::combat::veterancy::rank_from_u16(infantry.veterancy),
+        crate::sim::combat::veterancy::rank_from_u16(infantry.veterancy()),
         object,
         crate::rules::object_type::Ability::Scatter,
     );
@@ -1531,76 +1500,16 @@ mod unit_scatter_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
     use crate::sim::game_entity::{GameEntity, InfantryRuntime};
     use crate::sim::occupancy::CellListInsertion;
     use std::collections::BTreeSet;
 
-    fn flat_resolved_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        let land = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile::default();
-        ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: true,
-            tileset_index: None,
-            land_type: land,
-            yr_cell_land_type: land,
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: true,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: land,
-            base_yr_cell_land_type: land,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
-
     fn flat_resolved_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| flat_resolved_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_loader_clear_cell,
+        )
     }
 
     /// Owns what a `CrushAllyGate` borrows, so a test can make one in a line.
@@ -1922,85 +1831,10 @@ mod tests {
     }
 
     #[test]
-    fn gsi_04_07_placement_neighbor_plane_counts_only_wall_overlay_and_reverses() {
-        use crate::map::overlay_types::OverlayTypeRegistry;
-        use crate::rules::ini_parser::IniFile;
-        use crate::sim::overlay_grid::OverlayGrid;
-
-        let ini = IniFile::from_str(
-            "[OverlayTypes]\n0=WALL\n1=ROCK\n2=ZEROWHEEL\n\
-             [Wall]\nWheel=100%\n\
-             [Rock]\nWheel=0%\n\
-             [WALL]\nWall=yes\n\
-             [ROCK]\nIsARock=yes\n\
-             [ZEROWHEEL]\nLand=Rock\n",
-        );
-        let registry = OverlayTypeRegistry::from_ini(&ini, None);
-        let entities = EntityStore::new();
-        let interner = crate::sim::intern::StringInterner::new();
-
-        for non_wall in [1u8, 2u8] {
-            let mut overlays = OverlayGrid::new(5, 5);
-            overlays.place_overlay(2, 2, non_wall, 0);
-            let counts = build_blocker_neighbor_counts_with_overlays(
-                &entities,
-                5,
-                5,
-                None,
-                Some(&overlays),
-                Some(&registry),
-                &interner,
-                None,
-            );
-            let counts_ref = &counts;
-            assert_eq!(
-                (0..5)
-                    .flat_map(|y| (0..5).map(move |x| counts_ref.count_at(x, y) as u32))
-                    .sum::<u32>(),
-                0,
-                "non-wall overlay {non_wall} must not produce neighbor counts"
-            );
-        }
-
-        let mut overlays = OverlayGrid::new(5, 5);
-        overlays.place_overlay(2, 2, 0, 0);
-        let mut counts = build_blocker_neighbor_counts_with_overlays(
-            &entities,
-            5,
-            5,
-            None,
-            Some(&overlays),
-            Some(&registry),
-            &interner,
-            None,
-        );
-        for y in 1..=3 {
-            for x in 1..=3 {
-                assert_eq!(counts.count_at(x, y), u8::from((x, y) != (2, 2)));
-            }
-        }
-        counts.remove_single_cell_neighbor_source(2, 2);
-        let counts_ref = &counts;
-        assert_eq!(
-            (0..5)
-                .flat_map(|y| (0..5).map(move |x| counts_ref.count_at(x, y) as u32))
-                .sum::<u32>(),
-            0
-        );
-    }
-
-    #[test]
     fn finalized_wall_plane_is_sole_baseline_without_identity_double_count() {
         use crate::map::authored_overlay::FinalizedOverlayPayload;
-        use crate::map::overlay_types::OverlayTypeRegistry;
-        use crate::rules::ini_parser::IniFile;
         use crate::sim::overlay_grid::OverlayGrid;
 
-        let ini = IniFile::from_str(
-            "[OverlayTypes]\n0=WALL\n1=BODY\n\
-             [WALL]\nWall=yes\n",
-        );
-        let registry = OverlayTypeRegistry::from_ini(&ini, None);
         let entities = EntityStore::new();
         let interner = crate::sim::intern::StringInterner::new();
         let mut wall_plane = vec![0u8; 25];
@@ -2019,7 +1853,6 @@ mod tests {
             5,
             None,
             Some(&surviving),
-            Some(&registry),
             &interner,
             None,
         );
@@ -2044,7 +1877,6 @@ mod tests {
             5,
             None,
             Some(&overwritten),
-            Some(&registry),
             &interner,
             None,
         );
@@ -2062,7 +1894,6 @@ mod tests {
             5,
             None,
             Some(&authoritative_zero),
-            Some(&registry),
             &interner,
             None,
         );
@@ -2093,7 +1924,7 @@ mod tests {
         assert!(!dynamic.contains_any(&(2, 2)));
 
         let counts = build_blocker_neighbor_counts_with_overlays(
-            &entities, 5, 5, None, None, None, &interner, None,
+            &entities, 5, 5, None, None, &interner, None,
         );
         let counts_ref = &counts;
         assert_eq!(
@@ -2292,7 +2123,7 @@ mod tests {
         let mut elite = GameEntity::test_default(3, "E1", "Soviet", 5, 5);
         elite.category = EntityCategory::Infantry;
         elite.crushable = true;
-        elite.veterancy = 200;
+        elite.set_veterancy_rank(200);
         entities.insert(elite);
         let interner = crate::sim::intern::test_interner();
 
@@ -2476,7 +2307,7 @@ mod tests {
                     5,
                     true,
                 );
-                entity.veterancy = object["rank"].as_u64().unwrap_or(0) as u16 * 100;
+                entity.set_veterancy_rank(object["rank"].as_u64().unwrap_or(0) as u16 * 100);
                 let mut house = HouseState::new(owner, 0, None, true, 0, 10);
                 house.current_iq = object["iq"].as_i64().unwrap_or(0) as i32;
                 houses.insert(owner, house);
@@ -2549,7 +2380,7 @@ mod tests {
         );
         for (iq, rank, expected) in [(1, 0, false), (2, 0, true), (1, 100, true), (1, 0, false)] {
             houses.get_mut(&owner).unwrap().current_iq = iq;
-            entities.get_mut(2).unwrap().veterancy = rank;
+            entities.get_mut(2).unwrap().set_veterancy_rank(rank);
             let result = classify_drive_crush_phase(
                 DriveCrushPhase::EnteringCell,
                 &[2],
@@ -3094,7 +2925,7 @@ mod tests {
             // Deliberately disagree with Doing: presentation cannot admit or
             // refuse simulation work, including native-only action codes.
             victim.animation = Some(Animation::new(SequenceKind::Die1));
-            victim.veterancy = input["rank"].as_u64().unwrap_or(0) as u16 * 100;
+            victim.set_veterancy_rank(input["rank"].as_u64().unwrap_or(0) as u16 * 100);
             victim.locomotor = Some(
                 crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                     crate::rules::locomotor_type::LocomotorKind::Walk,

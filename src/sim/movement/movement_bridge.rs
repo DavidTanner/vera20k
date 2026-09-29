@@ -872,7 +872,6 @@ mod tests {
     // ------------------------------------------------------------------------
 
     use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::sim::movement::locomotor::GroundMovePhase;
     use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 
     /// Build a minimal `LocomotorState` for tests. Lists all fields explicitly
@@ -880,7 +879,7 @@ mod tests {
     fn make_loco(layer: MovementLayer) -> Option<LocomotorState> {
         Some(LocomotorState {
             kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+            slot: LocomotorSlot::new(LocomotorKind::Drive),
             powered: true,
             piggyback: None,
             runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
@@ -888,7 +887,6 @@ mod tests {
                 0,
             ),
             layer,
-            phase: GroundMovePhase::Idle,
 
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,
@@ -899,7 +897,6 @@ mod tests {
             hover_attack: false,
             speed_type: SpeedType::Track,
             movement_zone: MovementZone::Normal,
-            rot: 0,
             air_progress: SIM_ZERO,
             infantry_wobble_phase: 0.0,
             subcell_dest: None,

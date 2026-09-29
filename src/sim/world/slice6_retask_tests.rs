@@ -138,7 +138,26 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // the same step: with its four default fields folded back in their old place,
 // this change reproduced every facing-only pin (final 0x6CAD_D2FC_438A_0BC2),
 // RNG streams included. Old values: the commit that moved them.
-const SLICE6_BASELINE_HASH: u64 = 0x8CB9_BA0F_43C5_BB2A;
+// 2026-09-29 retired ground move phase (snapshot 244, composition only; #726):
+// the locomotor's VERA-only `GroundMovePhase` and its stashed twin leave the
+// object and piggyback folds in every projection; no schema can rebuild the
+// retired value, so this one step re-pins every projection in this test.
+// Ceremony: on the parent commit with only those two folds removed, and on
+// this change, a soft-assert probe of every pin in this test printed identical
+// values, and per-tick replay and the RNG receipts passed at all 16 ticks
+// (the probe patch was not committed): the only change to these pins is the
+// fold. Old values: the commit that moved them.
+// 2026-09-29 one locomotor enum (snapshot 248, composition only; #725):
+// LocomotorKind keeps only the eight installable classes, so the active kind,
+// the installed slot and the stash fold renumbered discriminants, and the
+// dormant Tunnel and DropPod states leave the object and payload folds, in
+// every projection. No schema rebuilds the old numbering, so this one step
+// re-pins every projection in this test. Ceremony: on the parent commit and on
+// this change, a probe printing every object's position, exact Z, health,
+// mission, NavCom, attack and movement targets, locomotor kind and layer and
+// all three RNG states matched at all 16 ticks (the probe patch was not
+// committed). Old values: the commit that moved them.
+const SLICE6_BASELINE_HASH: u64 = 0xF9E4_49DA_5683_0027;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

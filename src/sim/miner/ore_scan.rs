@@ -99,14 +99,7 @@ pub(crate) fn search_for_tiberium_and_move(
         return true;
     }
     if let Some(grid) = path_grid {
-        let _ = super::miner_system::issue_stock_miner_drive_move_with_overlay_registry(
-            sim,
-            rules,
-            grid,
-            id,
-            cell,
-            overlay_registry,
-        );
+        let _ = super::miner_system::issue_stock_miner_drive_move(sim, rules, grid, id, cell);
     }
     false
 }

@@ -499,7 +499,7 @@ fn step_ready_docked(
     let launch_ry = owner.position.ry;
     let launch_z = owner.position.z;
     let launch_facing = owner.body_facing_byte(frame);
-    let owner_veterancy = owner.veterancy;
+    let owner_veterancy = owner.veterancy();
     let parent_missile_spawn = rules
         .object(&owner_type)
         .map(|o| o.missile_spawn)

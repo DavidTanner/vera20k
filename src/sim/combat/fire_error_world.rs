@@ -93,7 +93,7 @@ impl FireSubject<'_> {
         if let Some((weapon, _)) = self.garrison {
             return (index >= 0).then_some(weapon);
         }
-        combat_weapon::weapon_for_index(self.obj, self.firer.veterancy, index)
+        combat_weapon::weapon_for_index(self.obj, self.firer.veterancy(), index)
             .and_then(|(weapon_id, _)| self.rules.weapon(weapon_id))
     }
 
@@ -439,7 +439,7 @@ pub(crate) fn garrison_weapon<'r>(
     let weapon = rules
         .object(world.interner.resolve(occupant.type_ref()))
         .and_then(|occupant_obj| {
-            combat_weapon::occupant_weapon(rules, occupant_obj, occupant.veterancy)
+            combat_weapon::occupant_weapon(rules, occupant_obj, occupant.veterancy())
         })?;
     let (width, height) = crate::sim::production::foundation_dimensions(&obj.foundation);
     let cells = i32::from(width.min(height) / 2) + rules.garrison_rules.occupy_weapon_range;

@@ -302,7 +302,7 @@ pub(crate) fn weapon_damage_value(entity: &GameEntity, obj: &ObjectType, rules: 
         obj.is_gattling,
         attacker_facts(entity, obj).current_weapon_number,
         |slot| {
-            weapon_for_index(obj, entity.veterancy, slot)
+            weapon_for_index(obj, entity.veterancy(), slot)
                 .and_then(|(name, _)| rules.weapon(name))
                 .map(|weapon| weapon.damage.wrapping_add(weapon.ambient_damage))
         },
@@ -454,7 +454,7 @@ pub(crate) fn weapon_range(
     interner: &StringInterner,
 ) -> i32 {
     let Some(weapon) =
-        weapon_for_index(obj, entity.veterancy, index).and_then(|(name, _)| rules.weapon(name))
+        weapon_for_index(obj, entity.veterancy(), index).and_then(|(name, _)| rules.weapon(name))
     else {
         return 0;
     };
@@ -1006,7 +1006,7 @@ pub(crate) fn attacker_facts(entity: &GameEntity, obj: &ObjectType) -> AttackerF
             .is_some_and(|cargo| !cargo.is_empty());
     AttackerFacts {
         kind,
-        veterancy: entity.veterancy,
+        veterancy: entity.veterancy(),
         current_weapon_number: current_weapon_number_from_override(entity.weapon_override),
         open_transport_weapon: open_transport_weapon(
             entity.passenger_role.in_open_transport(),

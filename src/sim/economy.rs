@@ -1,7 +1,7 @@
 //! Sole per-house cash balance and economy statistics, owned by `HouseState`.
 //!
-//! The retained purifier count is an end-of-frame hash projection; deposits
-//! count current buildings and the AI virtual bonus through their own producer.
+//! Deposits count purifier buildings and the AI virtual bonus on demand
+//! (`miner_system::effective_purifier_count`).
 //! `IncomeMult` is read per-deposit from the house's country type. Never depends on
 //! render/ui/sidebar/audio/net (sim invariant #1).
 //! The balance and statistics are serialized and hashed. Factory kernels borrow
@@ -18,9 +18,6 @@ pub struct Economy {
     pub spent_credits: i32,
     /// Ore-deposit x5.0 statistics accumulator.
     pub harvested_credits: i32,
-    /// Retained end-of-frame OrePurifier building-count projection used by the
-    /// existing hash schema. Gameplay deposits count live buildings instead.
-    pub purifier_count: i32,
 }
 
 impl Economy {
@@ -115,15 +112,7 @@ mod tests {
     #[test]
     fn economy_default_is_zeroed() {
         let e = Economy::default();
-        assert_eq!(
-            (
-                e.credits,
-                e.spent_credits,
-                e.harvested_credits,
-                e.purifier_count
-            ),
-            (0, 0, 0, 0)
-        );
+        assert_eq!((e.credits, e.spent_credits, e.harvested_credits), (0, 0, 0));
     }
 
     /// The x5.0 statistics

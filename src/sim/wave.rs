@@ -331,12 +331,9 @@ impl Wave {
         }
 
         if self.wave_type != 3
-            && let (Some(owner), Some(target)) =
-                (context.owner_position, context.target_position)
-            && distance_3d_leptons(
-                [owner.x, owner.y, owner.z],
-                [target.x, target.y, target.z],
-            ) > MAX_TRACKING_DISTANCE_LEPTONS
+            && let (Some(owner), Some(target)) = (context.owner_position, context.target_position)
+            && distance_3d_leptons([owner.x, owner.y, owner.z], [target.x, target.y, target.z])
+                > MAX_TRACKING_DISTANCE_LEPTONS
         {
             self.active_geometry = false;
             self.decaying = true;
@@ -362,10 +359,8 @@ impl Wave {
         }
 
         self.fade_in = add_f32_step_to_f64(self.fade_in);
-        if X87Chop53::compare(
-            load_f32(f64_to_f32(self.fade_in)),
-            load_f32(SNAP_FADE_F32),
-        ) == X87Ordering::Greater
+        if X87Chop53::compare(load_f32(f64_to_f32(self.fade_in)), load_f32(SNAP_FADE_F32))
+            == X87Ordering::Greater
         {
             self.fade_in = NativeF64Bits::ONE;
         }
@@ -970,68 +965,12 @@ fn legacy_nonmagnetic_edges(source: ProjectileCoord, target: ProjectileCoord) ->
 mod tests {
     use super::*;
 
-    fn flat_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::ResolvedTerrainCell {
-        crate::map::resolved_terrain::ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: crate::rules::terrain_rules::TerrainClass::Clear,
-            speed_costs: crate::rules::terrain_rules::SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            height_in_pixels: 0,
-            variant: 0,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: crate::rules::terrain_rules::TerrainClass::Clear,
-            base_speed_costs: crate::rules::terrain_rules::SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     fn point(x: i32, y: i32, z: i32) -> ProjectileCoord {
@@ -1532,8 +1471,7 @@ mod tests {
             owner_current_target: Some(target_ref),
             target_position: Some(point(2173, 0, 0)),
         };
-        let mut at_limit =
-            Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2173, 0, 0));
+        let mut at_limit = Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2173, 0, 0));
         let _ = at_limit.advance(context_at_limit, None);
         assert!(at_limit.active_geometry);
 
@@ -1541,14 +1479,12 @@ mod tests {
             target_position: Some(point(2174, 0, 0)),
             ..context_at_limit
         };
-        let mut beyond =
-            Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
+        let mut beyond = Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
         let _ = beyond.advance(context_beyond, None);
         assert!(!beyond.active_geometry);
         assert!(beyond.decaying);
 
-        let mut magnetic =
-            Wave::new_owned(3, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
+        let mut magnetic = Wave::new_owned(3, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
         let _ = magnetic.advance(context_beyond, None);
         assert!(magnetic.active_geometry);
     }

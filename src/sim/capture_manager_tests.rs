@@ -1345,7 +1345,7 @@ fn capture_and_release_drop_the_previous_order() {
 /// PerCellProcess sites): it goes in as its original house's unit.
 #[test]
 fn a_captive_boarding_an_absorber_is_freed_first() {
-    use crate::sim::passenger::{BoardingPhase, PassengerRole};
+    use crate::sim::passenger::PassengerRole;
     let rules = rules();
     let mut sim = sim(35);
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
@@ -1355,7 +1355,6 @@ fn a_captive_boarding_an_absorber_is_freed_first() {
     sim.sound_events.clear();
     sim.substrate.entities.get_mut(gi).unwrap().passenger_role = PassengerRole::Boarding {
         target_transport_id: reactor,
-        phase: BoardingPhase::Entering,
     };
 
     crate::sim::passenger::tick_passenger_system(&mut sim, &rules);

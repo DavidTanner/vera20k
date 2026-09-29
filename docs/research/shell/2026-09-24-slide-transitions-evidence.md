@@ -360,7 +360,7 @@ captures of retail YR at 800x600 (SHA-256 prefixes: `to-mm.png` `71ad979c`,
   dialog.
 - **Single Player substitute panel.** Load Saved Game still opens a substitute
   panel over `0x100`, so it does not slide it out. New Campaign slides it out
-  into `0x94` ([campaign selection note](2026-09-25-campaign-select-evidence.md)).
+  into `0x94` ([campaign selection note](https://github.com/YuriPlanet/vera20k/blob/e83df3de8bf2d9fa1ba6d7c4a9e70b5236b7294a/docs/research/shell/2026-09-25-campaign-select-evidence.md)).
 - **Unported routes.** Network and Internet have no ported route, so there is no
   teardown there.
 - **Keyboard flush.** `WWKeyboard__Clear` has no counterpart: VERA20k blocks

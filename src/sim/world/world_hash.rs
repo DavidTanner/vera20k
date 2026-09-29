@@ -630,7 +630,6 @@ impl Simulation {
             // The sole cash balance retains its original position in the hash stream.
             house.economy.spent_credits.hash(hasher);
             house.economy.harvested_credits.hash(hasher);
-            house.economy.purifier_count.hash(hasher);
             // Live score totals affect the later terminal Scenario draw, and
             // House504080/503040 preserves them through native load. The
             // retained-ship chain needs both its initial and terminal loss.
@@ -975,15 +974,13 @@ impl Simulation {
             }
         }
         b"retained-wall-neighbor-counts-v1".hash(hasher);
-        match overlay_grid.retained_neighbor_counts() {
-            None => 0u8.hash(hasher),
-            Some(counts) => {
-                1u8.hash(hasher);
-                counts.len().hash(hasher);
-                for count in counts {
-                    count.hash(hasher);
-                }
-            }
+        // The presence tag the retired plane-less fixture mode folded as 0
+        // keeps its place.
+        1u8.hash(hasher);
+        let counts = overlay_grid.retained_neighbor_counts();
+        counts.len().hash(hasher);
+        for count in counts {
+            count.hash(hasher);
         }
     }
 
@@ -1230,10 +1227,10 @@ impl Simulation {
             entity.base_plan_type_index.hash(hasher);
             entity.base_plan_is_defense.hash(hasher);
             entity.base_plan_has_undeploy_target.hash(hasher);
-            entity.veterancy.hash(hasher);
-            // The raw accumulator is authoritative — `veterancy` is only its
-            // rank projection, so two objects one kill apart inside the same
-            // rank are distinct sim state.
+            // The rank is sampled from the raw accumulator; its fold keeps its
+            // place in the stream. The accumulator itself is folded too, so
+            // two objects one kill apart inside the same rank are distinct.
+            entity.veterancy().hash(hasher);
             entity.veterancy_raw.bits().hash(hasher);
             entity.veterancy_rank_cache.hash(hasher);
             // Folded only while armed so the legacy default-zero hash stream
@@ -1333,7 +1330,6 @@ impl Simulation {
                 // lockstep hash.
                 loco.powered.hash(hasher);
                 (loco.layer as u8).hash(hasher);
-                (loco.phase as u8).hash(hasher);
                 // Hover throttle is authoritative movement state (persists across
                 // repaths); I16F16 has no Hash — fold the raw bits. The vertical
                 // pair (altitude + bob spring state) is likewise authoritative:
@@ -1373,9 +1369,7 @@ impl Simulation {
             entity.building_light.hash(hasher);
             entity.low_bridge_tube_state.hash(hasher);
             hash_teleport_state(entity.teleport_state.as_ref(), hasher);
-            hash_tunnel_state(entity.tunnel_state.as_ref(), hasher);
             hash_rocket_state(entity.rocket_state.as_ref(), hasher);
-            hash_drop_pod_state(entity.drop_pod_state.as_ref(), hasher);
             if let Some(cloak) = entity.cloak.as_ref() {
                 1u8.hash(hasher);
                 cloak.state.hash(hasher);
@@ -1614,11 +1608,9 @@ impl Simulation {
                 }
                 crate::sim::passenger::PassengerRole::Boarding {
                     target_transport_id,
-                    phase,
                 } => {
                     2u8.hash(hasher);
                     target_transport_id.hash(hasher);
-                    (*phase as u8).hash(hasher);
                 }
                 crate::sim::passenger::PassengerRole::Inside {
                     transport_id,
@@ -1824,7 +1816,6 @@ fn hash_locomotor_runtime(
     (runtime.layer as u8).hash(hasher);
     let common = &runtime.common;
     common.powered.hash(hasher);
-    (common.phase as u8).hash(hasher);
     // Fixed separators retain the retired common-air slots for non-air replay
     // stability. Fly/Jumpjet authoritative fields are hashed in their payloads.
     0u8.hash(hasher);
@@ -1839,7 +1830,6 @@ fn hash_locomotor_runtime(
     common.hover_attack.hash(hasher);
     common.speed_type.hash(hasher);
     common.movement_zone.hash(hasher);
-    common.rot.hash(hasher);
     common.air_progress.to_bits().hash(hasher);
     common.infantry_wobble_phase.to_bits().hash(hasher);
     common
@@ -1870,23 +1860,14 @@ fn hash_locomotor_payload(
             2u8.hash(hasher);
             hash_teleport_state(state.as_ref(), hasher);
         }
-        LocomotorRuntimePayload::Tunnel(state) => {
-            3u8.hash(hasher);
-            hash_tunnel_state(state.as_ref(), hasher);
-        }
         LocomotorRuntimePayload::Rocket(state) => {
             4u8.hash(hasher);
             hash_rocket_state(state.as_ref(), hasher);
-        }
-        LocomotorRuntimePayload::DropPod(state) => {
-            5u8.hash(hasher);
-            hash_drop_pod_state(state.as_ref(), hasher);
         }
         LocomotorRuntimePayload::Hover(head) => {
             6u8.hash(hasher);
             head.hash(hasher);
         }
-        LocomotorRuntimePayload::Mech => 7u8.hash(hasher),
         LocomotorRuntimePayload::Ship(state) => {
             8u8.hash(hasher);
             hash_slope_transition_state(state, hasher);
@@ -1908,7 +1889,6 @@ fn hash_locomotor_payload(
             10u8.hash(hasher);
             state.hash(hasher);
         }
-        LocomotorRuntimePayload::Parachute => 11u8.hash(hasher),
     }
 }
 
@@ -1948,21 +1928,6 @@ fn hash_teleport_state(
     }
 }
 
-/// YR TunnelLocomotionClass keeps the phase byte in its locomotor runtime.
-/// Keep the projection explicit instead of relying on a Rust derived hash.
-fn hash_tunnel_state(
-    state: Option<&crate::sim::movement::tunnel_movement::TunnelState>,
-    hasher: &mut impl Hasher,
-) {
-    match state {
-        None => 0u8.hash(hasher),
-        Some(state) => {
-            1u8.hash(hasher);
-            (state.phase as u8).hash(hasher);
-        }
-    }
-}
-
 /// RocketLocomotionClass::Process @ 0x006622c0 owns the complete flight table
 /// selection and current flight state. `pitch` is render-only, so it is omitted.
 fn hash_rocket_state(
@@ -1996,31 +1961,6 @@ fn hash_rocket_state(
             state.parameters.ascent_altitude.to_bits().hash(hasher);
             state.parameters.tilt_rate.to_bits().hash(hasher);
             state.parameters.relaunches.hash(hasher);
-        }
-    }
-}
-
-/// DropPodLocomotionClass flight state is lockstep state even while it has no
-/// surface occupation. This mirrors the typed serialized runtime exactly.
-fn hash_drop_pod_state(
-    state: Option<&crate::sim::movement::drop_pod_movement::DropPodState>,
-    hasher: &mut impl Hasher,
-) {
-    match state {
-        None => 0u8.hash(hasher),
-        Some(state) => {
-            1u8.hash(hasher);
-            let phase = match state.phase {
-                crate::sim::movement::drop_pod_movement::DropPodPhase::Descending => 0u8,
-                crate::sim::movement::drop_pod_movement::DropPodPhase::Landed => 1,
-                crate::sim::movement::drop_pod_movement::DropPodPhase::Destroyed => 2,
-            };
-            phase.hash(hasher);
-            state.target_rx.hash(hasher);
-            state.target_ry.hash(hasher);
-            state.altitude.to_bits().hash(hasher);
-            state.descent_speed.to_bits().hash(hasher);
-            state.elapsed_frames.hash(hasher);
         }
     }
 }
@@ -2222,6 +2162,61 @@ mod overlay_grid_hash_tests {
         assert!(a.iter_occupied().next().is_none());
         assert!(b.iter_occupied().next().is_none());
         assert_ne!(sim_a.state_hash(), sim_b.state_hash());
+    }
+
+    #[test]
+    fn retained_wall_neighbor_plane_changes_hash_with_identical_final_cells() {
+        let cells = vec![(-1, 0), (1, 2), (-1, 0), (-1, 0)];
+        let mut sim_a = Simulation::new();
+        let mut sim_b = Simulation::new();
+        sim_a.overlay_grid = Some(OverlayGrid::from_finalized_map_payload(
+            crate::map::authored_overlay::FinalizedOverlayPayload::from_cells_for_test(
+                2,
+                2,
+                cells.clone(),
+                vec![0, 1, 0, 0],
+            ),
+        ));
+        sim_b.overlay_grid = Some(OverlayGrid::from_finalized_map_payload(
+            crate::map::authored_overlay::FinalizedOverlayPayload::from_cells_for_test(
+                2,
+                2,
+                cells,
+                vec![0, 2, 0, 0],
+            ),
+        ));
+
+        for y in 0..2 {
+            for x in 0..2 {
+                assert_eq!(
+                    sim_a.overlay_grid.as_ref().expect("A").cell(x, y),
+                    sim_b.overlay_grid.as_ref().expect("B").cell(x, y)
+                );
+            }
+        }
+        assert_ne!(sim_a.state_hash(), sim_b.state_hash());
+    }
+
+    #[test]
+    fn a_new_grid_hashes_like_a_finalized_all_zero_wall_plane() {
+        let mut fresh = Simulation::new();
+        fresh.overlay_grid = Some(OverlayGrid::new(2, 2));
+
+        let mut finalized = Simulation::new();
+        finalized.overlay_grid = Some(OverlayGrid::from_finalized_map_payload(
+            crate::map::authored_overlay::FinalizedOverlayPayload::from_cells_for_test(
+                2,
+                2,
+                vec![(-1, 0); 4],
+                vec![0; 4],
+            ),
+        ));
+
+        assert_eq!(
+            fresh.state_hash(),
+            finalized.state_hash(),
+            "every grid retains its wall plane, all-zero included"
+        );
     }
 
     #[test]
@@ -3053,7 +3048,6 @@ mod particle_hash_tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1D,
-            directionless: false,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,
@@ -3095,7 +3089,6 @@ mod particle_hash_tests {
         let make_p = |counter: u8| Particle {
             type_id: ParticleTypeId(0),
             coords: IVec3::ZERO,
-            previous_coords: IVec3::ZERO,
             origin: IVec3::ZERO,
             direction: [SimFixed::from_num(0); 3],
             velocity: SimFixed::from_num(0),
@@ -3104,14 +3097,10 @@ mod particle_hash_tests {
             state_ai_advance: 4,
             animation_state: 0,
             translucency: 0,
-            hit_ground: false,
             marked_for_deletion: false,
             drift_x: 0,
             drift_y: 0,
             drift_z: 0,
-            current_color: [0; 3],
-            color_index: 0,
-            color_accumulator: SimFixed::from_num(0),
             spark: None,
             prev_delta: [SimFixed::from_num(0); 3],
             state_advance_counter: counter,
@@ -3131,7 +3120,6 @@ mod particle_hash_tests {
         Particle {
             type_id: ParticleTypeId(0),
             coords: IVec3::new(-1, 2, 3),
-            previous_coords: IVec3::ZERO,
             origin: IVec3::ZERO,
             direction: [SimFixed::from_num(0); 3],
             velocity: SimFixed::from_num(0),
@@ -3140,14 +3128,10 @@ mod particle_hash_tests {
             state_ai_advance: 0,
             animation_state: 0,
             translucency: 0,
-            hit_ground: false,
             marked_for_deletion: false,
             drift_x: 0,
             drift_y: 0,
             drift_z: 0,
-            current_color: [0; 3],
-            color_index: 0,
-            color_accumulator: SimFixed::from_num(0),
             spark,
             prev_delta: [SimFixed::from_num(0); 3],
             state_advance_counter: 0,
@@ -3375,46 +3359,6 @@ mod tube_movement_hash_tests {
             active.low_bridge_tube_state = Some(variant);
             assert_ne!(active_hash, hash_entity(active.clone()));
         }
-    }
-}
-
-#[cfg(test)]
-mod special_locomotor_hash_tests {
-    use super::Simulation;
-    use crate::sim::game_entity::GameEntity;
-    use crate::sim::movement::drop_pod_movement::{DropPodPhase, DropPodState};
-    use crate::sim::movement::tunnel_movement::{TunnelPhase, TunnelState};
-    use crate::util::fixed_math::SimFixed;
-
-    #[test]
-    fn tunnel_and_drop_pod_runtime_change_the_lockstep_hash() {
-        fn fixture() -> Simulation {
-            let mut sim = Simulation::new();
-            sim.substrate
-                .entities
-                .insert(GameEntity::test_default(1, "MTNK", "Americans", 5, 5));
-            sim
-        }
-
-        let base = fixture();
-        let hash_without_special_runtime = base.state_hash();
-
-        let mut tunnel = fixture();
-        tunnel.substrate.entities.get_mut(1).unwrap().tunnel_state = Some(TunnelState {
-            phase: TunnelPhase::UndergroundTravel,
-        });
-        assert_ne!(hash_without_special_runtime, tunnel.state_hash());
-
-        let mut pod = fixture();
-        pod.substrate.entities.get_mut(1).unwrap().drop_pod_state = Some(DropPodState {
-            phase: DropPodPhase::Descending,
-            target_rx: 7,
-            target_ry: 9,
-            altitude: SimFixed::from_num(100),
-            descent_speed: SimFixed::from_num(3),
-            elapsed_frames: 4,
-        });
-        assert_ne!(hash_without_special_runtime, pod.state_hash());
     }
 }
 

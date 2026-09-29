@@ -3591,7 +3591,6 @@ fn lifecycle_authority_crush_emits_one_request_without_store_removal() {
 #[test]
 fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() {
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::movement::locomotor::GroundMovePhase;
 
     let mut entities = EntityStore::new();
     let grid = PathGrid::new(8, 8);
@@ -3603,9 +3602,7 @@ fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() 
     victim.crushable = true;
     victim.lifecycle.in_limbo = false;
     victim.lifecycle.cell_marked = true;
-    let mut victim_locomotor = LocomotorState::for_test_kind(LocomotorKind::Hover);
-    victim_locomotor.phase = GroundMovePhase::Accelerating;
-    victim.locomotor = Some(victim_locomotor);
+    victim.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Hover));
     victim.movement_target = Some(MovementTarget {
         path: vec![(2, 2)],
         path_layers: vec![MovementLayer::Ground],
@@ -3666,11 +3663,6 @@ fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() 
         "finished-target cleanup must skip a queued crush victim"
     );
     let locomotor = victim.locomotor.as_ref().expect("hover locomotor");
-    assert_eq!(
-        locomotor.phase,
-        GroundMovePhase::Accelerating,
-        "phase postpass must not mutate a queued crush victim"
-    );
     assert_eq!(
         locomotor.altitude, SIM_ZERO,
         "hover vertical postpass must not mutate a queued crush victim"
@@ -4193,14 +4185,14 @@ fn test_blocked_repath_uses_final_goal_not_segment_end() {
 
 /// Build a minimal Drive LocomotorState for layered-pathfinding tests. Required
 /// because the layered A* branch in find_move_path is only entered when the
-/// mover has a Drive/Walk/Mech locomotor; `test_default` leaves locomotor=None.
+/// mover has a Drive/Walk locomotor; `test_default` leaves locomotor=None.
 fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState {
     use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::util::fixed_math::SIM_ONE;
     LocomotorState {
         kind: LocomotorKind::Drive,
-        slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+        slot: LocomotorSlot::new(LocomotorKind::Drive),
         powered: true,
         piggyback: None,
         runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
@@ -4208,7 +4200,6 @@ fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState
             0,
         ),
         layer: MovementLayer::Ground,
-        phase: GroundMovePhase::Idle,
 
         speed_multiplier: SIM_ONE,
         speed_fraction: SIM_ONE,
@@ -4219,7 +4210,6 @@ fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState
         hover_attack: false,
         speed_type: SpeedType::Track,
         movement_zone: MovementZone::Normal,
-        rot: 0,
         air_progress: SIM_ZERO,
         infantry_wobble_phase: 0.0,
         subcell_dest: None,
@@ -4235,58 +4225,8 @@ fn drive_speed_test_cell(
     speed_costs: crate::rules::terrain_rules::SpeedCostProfile,
 ) -> crate::map::resolved_terrain::ResolvedTerrainCell {
     crate::map::resolved_terrain::ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
-        level: 0,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
-        template_height: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: crate::rules::terrain_rules::TerrainClass::Clear,
         speed_costs,
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: false,
-        allows_tiberium: false,
-        height_in_pixels: 0,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
-        base_terrain_class: Default::default(),
-        base_speed_costs: Default::default(),
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-        tube_index: None,
-        radar_left: [0, 0, 0],
-        radar_right: [0, 0, 0],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     }
 }
 
@@ -4914,7 +4854,7 @@ fn test_segment_exhaustion_repath_avoids_friendly_building_footprint() {
 use crate::map::houses::HouseAllianceMap;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::sim::components::BridgeOccupancy;
-use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState};
+use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::tick_movement_with_grid;
 use crate::sim::pathfinding::{PathGrid, terrain_cost::TerrainCostGrid};
 use std::collections::BTreeMap;
@@ -4922,7 +4862,7 @@ use std::collections::BTreeMap;
 fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
     LocomotorState {
         kind: LocomotorKind::Drive,
-        slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
+        slot: LocomotorSlot::new(LocomotorKind::Drive),
         powered: true,
         piggyback: None,
         runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
@@ -4930,7 +4870,6 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
             0,
         ),
         layer,
-        phase: GroundMovePhase::Idle,
 
         speed_multiplier: SIM_ONE,
         speed_fraction: SIM_ONE,
@@ -4941,7 +4880,6 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
         hover_attack: false,
         speed_type: SpeedType::Track,
         movement_zone: MovementZone::Normal,
-        rot: 0,
         air_progress: SIM_ZERO,
         infantry_wobble_phase: 0.0,
         subcell_dest: None,
@@ -4954,7 +4892,7 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
 fn make_ship_loco(layer: MovementLayer) -> LocomotorState {
     let mut loco = make_drive_loco(layer);
     loco.kind = LocomotorKind::Ship;
-    loco.slot = LocomotorSlot::from_kind(LocomotorKind::Ship);
+    loco.slot = LocomotorSlot::new(LocomotorKind::Ship);
     loco.speed_type = SpeedType::Float;
     loco.movement_zone = MovementZone::Water;
     loco
@@ -7040,7 +6978,7 @@ fn cell_scatter_world_reads_live_house_and_veteran_ability() {
         // cell's scatter dispatch instead of a simultaneous destruction.
         victim.position.sub_x = SIM_ZERO;
         victim.position.sub_y = SIM_ZERO;
-        victim.veterancy = rank;
+        victim.set_veterancy_rank(rank);
         victim.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Walk,

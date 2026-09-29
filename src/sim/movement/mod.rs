@@ -111,8 +111,8 @@ mod track_speed;
 #[cfg(test)]
 pub(crate) mod track_speed_native;
 pub(crate) mod track_turn;
-pub(crate) mod walk_head;
 mod walk_admission;
+pub(crate) mod walk_head;
 mod walk_host;
 mod walk_path;
 mod walk_step;
@@ -122,7 +122,6 @@ pub mod air_movement;
 pub(crate) mod block_index;
 pub mod bump_crush;
 pub mod drive_track;
-pub mod drop_pod_movement;
 pub mod facing_class;
 pub mod fly_height;
 pub mod group_destination;
@@ -136,7 +135,6 @@ pub mod parachute_descent;
 pub mod rocket_movement;
 pub mod teleport_movement;
 pub mod tube_movement;
-pub mod tunnel_movement;
 pub mod turret;
 
 pub use facing_class::FacingClass;
@@ -150,6 +148,8 @@ pub(crate) use foot_speed::owner_current_speed_from_fraction;
 pub(crate) use drive_locomotion::{drive_do_turn, drive_locomotor_is_moving};
 
 // Re-export command functions so callers can use `movement::issue_move_command` etc.
+#[cfg(test)]
+pub(crate) use movement_commands::issue_move_command_with_layered;
 pub use movement_commands::{
     DestinationTiming, clear_navigation_for_entity, issue_direct_move, issue_move_command,
     stop_navigation_at_committed_head,
@@ -158,8 +158,6 @@ pub(crate) use movement_commands::{
     can_accept_destination, issue_move_command_with_destination, prepare_walk_cell_destination,
     retain_committed_movement,
 };
-#[cfg(test)]
-pub(crate) use movement_commands::issue_move_command_with_layered;
 #[cfg(test)]
 pub(crate) use movement_path::{
     path_search_used_zone_grid_marker, reset_path_search_used_zone_grid_marker,

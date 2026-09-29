@@ -373,7 +373,7 @@ fn terminal_load_world(rules: &RuleSet) -> (Simulation, ResolvedTerrainGrid) {
             .collect(),
     );
     let mut saved = load_fixture_simulation(true);
-    saved.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(4, 4));
+    saved.overlay_grid = Some(OverlayGrid::new(4, 4));
     saved.install_resolved_terrain_for_new_map(terrain.clone());
     saved.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 0,

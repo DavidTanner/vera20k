@@ -512,7 +512,6 @@ fn test_drive_locomotor() {
     let state = LocomotorState::from_object_type(&obj, 0);
     assert_eq!(state.kind, LocomotorKind::Drive);
     assert_eq!(state.layer, MovementLayer::Ground);
-    assert_eq!(state.phase, GroundMovePhase::Idle);
     assert_eq!(state.air_phase(), AirMovePhase::Landed);
     assert_eq!(state.speed_multiplier, SIM_ONE);
     assert!(state.is_ground_mover());
@@ -626,14 +625,12 @@ fn cmin_locomotor_initializes_primary_and_active_teleport() {
     let mut obj = make_obj(LocomotorKind::Teleport, ObjectCategory::Vehicle);
     obj.harvester = true;
     obj.teleporter = true;
-    obj.turret_rot = 5;
 
     let state = LocomotorState::from_object_type(&obj, 0);
 
     assert_eq!(state.active_kind(), LocomotorKind::Teleport);
     assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
     assert!(state.is_primary_active());
-    assert_eq!(state.rot, 5);
 }
 
 #[test]

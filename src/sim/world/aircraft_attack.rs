@@ -123,8 +123,8 @@ impl Simulation {
         let object = rules
             .object(self.interner.resolve(entity.type_ref()))
             .expect("aircraft type");
-        if combat_weapon::aircraft_strafes(rules, object, entity.veterancy) {
-            let weapon = combat_weapon::primary_for_tier(object, entity.veterancy)
+        if combat_weapon::aircraft_strafes(rules, object, entity.veterancy()) {
+            let weapon = combat_weapon::primary_for_tier(object, entity.veterancy())
                 .and_then(|name| rules.weapon(name))
                 .expect("strafe classifier's weapon");
             let distance = crate::sim::combat::object_distance_to(

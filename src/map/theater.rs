@@ -709,6 +709,11 @@ fn parse_tile_anim(section: &IniSection, tile_ordinal: u32) -> Option<TileAnimAt
     })
 }
 
+/// The TMP extension of a theater name (e.g. "TEMPERATE" -> "tem").
+pub fn theater_extension(name: &str) -> Option<&'static str> {
+    theater_def(name).map(|def| def.extension)
+}
+
 /// Look up the theater definition for a theater name (e.g., "TEMPERATE").
 fn theater_def(name: &str) -> Option<&'static TheaterDef> {
     let upper: String = name.to_ascii_uppercase();

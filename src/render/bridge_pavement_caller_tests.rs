@@ -1,7 +1,6 @@
 //! Perpendicular pavement branch is independent of state-byte/role writes.
 use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::bridge_specs::update_ramp_perpendicular;
 use crate::sim::bridge_state::{Axis, BridgeRuntimeState, DamageState, Phase};
 use crate::sim::bridge_state::{BridgeCellRole, BridgeRuntimeCell, BridgeheadAnchorClass};
@@ -129,66 +128,10 @@ fn pavement_raw_caller_gate_keeps_plain_and_structural_endpoint_art() {
 }
 
 fn endpoint_test_terrain() -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(20 * 20);
-    for ry in 0..20u16 {
-        for rx in 0..20u16 {
-            cells.push(ResolvedTerrainCell {
-                rx,
-                ry,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: false,
-                tileset_index: Some(0),
-                land_type: 0,
-                yr_cell_land_type: 0,
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
-                speed_costs: SpeedCostProfile::default(),
-                is_water: false,
-                is_cliff_like: false,
-                height_in_pixels: 0,
-                variant: 0,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                has_ramp: false,
-                canonical_ramp: None,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
-                zone_type: 0,
-                base_ground_walk_blocked: false,
-                base_build_blocked: false,
-                base_land_type: 0,
-                base_yr_cell_land_type: 0,
-                base_terrain_class: Default::default(),
-                base_speed_costs: Default::default(),
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0, 0, 0],
-                radar_right: [0, 0, 0],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
-            });
-        }
-    }
-    let mut terrain = ResolvedTerrainGrid::from_cells(20, 20, cells);
+    let mut terrain =
+        crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+        });
     terrain.test_set_high_bridge_rim_tiles(crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
         0, b"[General]\nBridgeMiddle1=1\nBridgeMiddle2=1\nBridgeTopLeft1=11\nBridgeTopLeft2=12\nBridgeBottomRight1=13\nBridgeBottomRight2=14\nBridgeTopRight1=15\nBridgeTopRight2=16\nBridgeBottomLeft1=17\nBridgeBottomLeft2=18\n"));
     terrain
