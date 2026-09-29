@@ -85,15 +85,8 @@ fn test_body_rotation_matches_native_frame_duration() {
         let target = u16::from(to) << 8;
         let mut body_facing = crate::sim::movement::FacingClass::new(u16::from(from) << 8, rot);
         let mut desired = Some(target);
-        let mut locomotor = None;
         for frame in 0..1000u32 {
-            match handle_vehicle_rotation(
-                &mut body_facing,
-                desired.take(),
-                &mut locomotor,
-                frame,
-                0,
-            ) {
+            match handle_vehicle_rotation(&mut body_facing, desired.take(), frame) {
                 RotationResult::ReadyToMove => {
                     assert_eq!(
                         body_facing.current(frame),
@@ -102,7 +95,7 @@ fn test_body_rotation_matches_native_frame_duration() {
                     );
                     return frame;
                 }
-                RotationResult::StillRotating { .. } => {}
+                RotationResult::StillRotating => {}
             }
         }
         panic!("rotation did not complete within 1000 frames");
@@ -287,7 +280,7 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
     // mismatch proved by drive_fresh_turn.json (initial0x4001/direction2).
     entity.body_facing = crate::sim::movement::FacingClass::new(0x4001, 5);
     assert!(matches!(
-        handle_vehicle_rotation(&mut entity.body_facing, None, &mut entity.locomotor, 2, 3),
+        handle_vehicle_rotation(&mut entity.body_facing, None, 2),
         RotationResult::ReadyToMove
     ));
     let live_facing = entity.body_facing.current(2);

@@ -409,7 +409,6 @@ impl Simulation {
                 &sim.houses,
                 &sim.house_alliances,
                 &mut sim.substrate.cell_occupation,
-                sim.session.tick,
                 sim.session.binary_frame,
                 sim.resolved_terrain.as_ref(),
                 sim.path_grid.as_deref().or(path_grid),

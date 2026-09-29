@@ -872,7 +872,6 @@ mod tests {
     // ------------------------------------------------------------------------
 
     use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::sim::movement::locomotor::GroundMovePhase;
     use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 
     /// Build a minimal `LocomotorState` for tests. Lists all fields explicitly
@@ -888,7 +887,6 @@ mod tests {
                 0,
             ),
             layer,
-            phase: GroundMovePhase::Idle,
 
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,

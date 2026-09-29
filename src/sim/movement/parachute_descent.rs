@@ -238,7 +238,7 @@ mod tests {
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotion::LocomotorSlot;
-    use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 
     /// Mirrors the helper used in droppod_movement.rs tests.
@@ -253,7 +253,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Ground,
-            phase: GroundMovePhase::Idle,
 
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,

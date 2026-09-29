@@ -41,7 +41,7 @@ use crate::util::fixed_math::{
 
 use super::block_index::{HeldBlockSets, LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
-use super::locomotor::{GroundMovePhase, MovementLayer};
+use super::locomotor::MovementLayer;
 use super::movement_bridge::{BRIDGE_Z_OFFSET, apply_pending_bridge_render_state};
 use super::movement_occupancy::{
     DeferredBuildingEntrySkips, DeferredCellCheck, MoverBuildingEntryFacts,
@@ -1624,14 +1624,9 @@ fn advance_ordinary_mover(
                     match movement_step::handle_vehicle_rotation(
                         &mut entity.body_facing,
                         None,
-                        &mut entity.locomotor,
                         native_frame,
-                        sim_tick,
                     ) {
-                        movement_step::RotationResult::StillRotating { debug_events: evts } => {
-                            debug_events.extend(evts);
-                            return;
-                        }
+                        movement_step::RotationResult::StillRotating => return,
                         movement_step::RotationResult::ReadyToMove => {}
                     }
                 }
@@ -1875,17 +1870,11 @@ fn advance_ordinary_mover(
                         // request. Use the same rotation owner now, preserving
                         // its native-frame anchor and same-frame publication.
                         // Native evidence: drive_fresh_turn.json.
-                        if let movement_step::RotationResult::StillRotating { debug_events: evts } =
-                            movement_step::handle_vehicle_rotation(
-                                &mut entity.body_facing,
-                                Some(u16::from(desired) << 8),
-                                &mut entity.locomotor,
-                                native_frame,
-                                sim_tick,
-                            )
-                        {
-                            debug_events.extend(evts);
-                        }
+                        movement_step::handle_vehicle_rotation(
+                            &mut entity.body_facing,
+                            Some(u16::from(desired) << 8),
+                            native_frame,
+                        );
                         *native_track = Some(invocation);
                         movement_step::AdvanceResult::DriveTrackActive
                     }
@@ -3362,7 +3351,6 @@ pub(crate) fn finish_movement_pass(
     houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
     alliances: &HouseAllianceMap,
     cell_occupation: &mut CellOccupationGrid,
-    sim_tick: u64,
     native_frame: u32,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     path_grid: Option<&PathGrid>,
@@ -3444,7 +3432,6 @@ pub(crate) fn finish_movement_pass(
         entities,
         &finished_entities,
         &crush_kills,
-        sim_tick,
         resolved_terrain,
         cell_occupation,
         path_grid,
@@ -3454,7 +3441,6 @@ pub(crate) fn finish_movement_pass(
         .copied()
         .filter(|entity_id| !tube_processed.contains(entity_id))
         .collect();
-    update_locomotor_phases(entities, &ordinary_tail_order, &crush_kills, sim_tick);
 
     // Hover vertical controller — every hover unit, moving OR parked (idle
     // units still float at cruise height and bob). Runs after the XY stage so
@@ -3549,8 +3535,6 @@ pub(crate) fn finish_movement_pass(
 // Post-loop helpers — extracted from tick_movement_with_grids
 // ---------------------------------------------------------------------------
 
-/// Remove movement targets from finished entities, reset sub-cell to final
-/// position, and transition locomotor to Idle.
 fn contains_crush_victim(crush_kills: &[PendingCrushKill], stable_id: u64) -> bool {
     // The mover loop consults this before the deferred kill list is sorted.
     // Preserve native live-order visibility with a linear membership check;
@@ -3558,11 +3542,12 @@ fn contains_crush_victim(crush_kills: &[PendingCrushKill], stable_id: u64) -> bo
     crush_kills.iter().any(|kill| kill.victim_id == stable_id)
 }
 
+/// Remove movement targets from finished entities and reset sub-cell to
+/// final position.
 fn finalize_finished_entities(
     entities: &mut EntityStore,
     finished: &[u64],
     crush_kills: &[PendingCrushKill],
-    sim_tick: u64,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     cell_occupation: &mut CellOccupationGrid,
     path_grid: Option<&PathGrid>,
@@ -3644,84 +3629,12 @@ fn finalize_finished_entities(
             // The body's +388 survives arrival: a turn still running ends on
             // the frame clock.
             entity.movement_target = None;
-            let old_phase = entity.locomotor.as_ref().map(|l| l.phase);
             if let Some(ref mut loco) = entity.locomotor {
-                loco.phase = GroundMovePhase::Idle;
                 loco.infantry_wobble_phase = 0.0;
                 loco.subcell_dest = None;
                 // Full stop zeroes the hover throttle (the hover locomotor's
                 // arrival cleanup) so the next order spins up from rest.
                 loco.hover_throttle = crate::util::fixed_math::SIM_ZERO;
-            }
-            if let Some(old) = old_phase {
-                if old != GroundMovePhase::Idle {
-                    entity.push_debug_event(
-                        sim_tick as u32,
-                        DebugEventKind::PhaseChange {
-                            from: format!("{:?}", old),
-                            to: "Idle".into(),
-                            reason: "movement complete".into(),
-                        },
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Update locomotor phases for all active movers — 7-state mapping.
-/// Maps the current movement state to the appropriate WalkLocomotionClass state.
-fn update_locomotor_phases(
-    entities: &mut EntityStore,
-    entity_order: &[u64],
-    crush_kills: &[PendingCrushKill],
-    sim_tick: u64,
-) {
-    for &id in entity_order {
-        if contains_crush_victim(crush_kills, id) {
-            continue;
-        }
-        if let Some(entity) = entities.get_mut(id) {
-            // Compute new phase and capture old phase in a scoped block to release
-            // borrows before calling push_debug_event.
-            let phase_change: Option<(GroundMovePhase, GroundMovePhase, &'static str)> = {
-                if let (Some(target), Some(loco)) = (&entity.movement_target, &mut entity.locomotor)
-                {
-                    let old_phase = loco.phase;
-                    let (new_phase, reason) = if entity.navigation.path_runtime.path_blocked {
-                        (GroundMovePhase::Blocked, "cell blocked")
-                    } else if target.current_speed <= SIM_ZERO {
-                        // Speed is zero but path remains — stopping or waiting to start.
-                        (GroundMovePhase::Stopping, "decelerating to stop")
-                    } else if target.current_speed < target.speed * MIN_BRAKE_FRACTION {
-                        // Below 30% of max speed — still accelerating from rest.
-                        (GroundMovePhase::Accelerating, "reached cruise speed")
-                    } else if target.current_speed >= target.speed {
-                        // At or above max speed — cruising.
-                        (GroundMovePhase::Cruising, "reached cruise speed")
-                    } else {
-                        // Between 30% and max — path following with speed ramping.
-                        (GroundMovePhase::PathFollow, "approaching next cell")
-                    };
-                    loco.phase = new_phase;
-                    if old_phase != new_phase {
-                        Some((old_phase, new_phase, reason))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            };
-            if let Some((old, new, reason)) = phase_change {
-                entity.push_debug_event(
-                    sim_tick as u32,
-                    DebugEventKind::PhaseChange {
-                        from: format!("{:?}", old),
-                        to: format!("{:?}", new),
-                        reason: reason.into(),
-                    },
-                );
             }
         }
     }

@@ -32,57 +32,6 @@ pub enum MovementLayer {
     Underground,
 }
 
-/// Phase within a ground mover's movement cycle.
-///
-/// **VERA-internal, gamemd equivalent UNCHECKED.** The earlier claim here — a
-/// "7-state machine matching WalkLocomotionClass (+0x50)" — is refuted:
-/// `WalkLocomotionClass::Process` @ `0x0075AC80` toggles a byte at
-/// ILocomotion-frame `+0x31` and delegates to `ProcessMovement` @ `0x0075AEC0`,
-/// whose 1505 instructions contain no object-relative `+0x50` and no state
-/// switch; `DriveLocomotionClass::Process` @ `0x004B0500` branches on `+0x54`
-/// and `+0x5F` instead. The `+0x50` that does exist in that family is Drive's
-/// **piggyback slot**, in the *IPiggyback* frame at LocomotorBase+0x18
-/// (`Begin_Piggyback` @ `0x004AF8E0`; `Save` @ `0x004AF800` reaches the same
-/// slot as LocomotorBase `+0x68`) — a different frame from the ILocomotion one
-/// these phases would live in. The only numbered 0..=6 locomotor state machine
-/// in the binary is Jumpjet's, at *ILocomotion*-frame `+0x4C`, switched in
-/// `JumpjetLocomotionClass::Process` @ `0x0054AEC0`.
-///
-/// The variants below describe Drive behaviours — cruise speed, cell entry,
-/// crush, bridge — which Walk does not implement, so this is VERA's own
-/// ground-mover phasing. Trigger: every ground mover, every tick. Player
-/// effect: none identified; the phasing drives VERA's own step machine.
-/// Frequency: continuous. Downstream risk: it is the shape rows GSI-06.13 and
-/// GSI-06.14 will have to reconcile with the real `Process` bodies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum GroundMovePhase {
-    /// State 0: No movement order. Unit is stationary at a valid cell position.
-    /// Entry: set when speed reaches 0 and unit completes all movement at cell center.
-    Idle,
-    /// State 1: Post-paradrop landing. Speed set to 1.0, velocity zeroed.
-    /// Transitions to Accelerating when movement begins.
-    Landed,
-    /// State 2: Ramping up speed toward cruise. Entered when a new cell-to-cell
-    /// step begins — facing is updated and speed starts increasing.
-    Accelerating,
-    /// State 3: At cruise speed, following path. Entered from Accelerating when
-    /// unit reaches cruise speed, or from CellEntry after successful transition.
-    Cruising,
-    /// State 4: Core path-following tick with distance-based speed zones.
-    /// Handles approach deceleration and arrival detection (< 20 leptons).
-    PathFollow,
-    /// State 5: Cell-to-cell transition step. Handles obstacle detection,
-    /// crush logic, passability checks, and bridge-specific behaviors.
-    CellEntry,
-    /// State 6: Decelerating to halt. Target speed zeroed, deceleration in
-    /// UpdatePosition brings speed to 0, then transitions to Idle.
-    Stopping,
-    /// Blocked by another entity or impassable terrain. Waiting for repath.
-    /// Not a state in the original engine's +0x50 field, but tracked here
-    /// for diagnostics and UI feedback.
-    Blocked,
-}
-
 /// Derived view of Fly height versus target for legacy aircraft missions.
 /// This is neither serialized controller state nor native takeoff/landing flags.
 ///
@@ -135,8 +84,6 @@ pub struct LocomotorState {
     pub runtime_payload: LocomotorRuntimePayload,
     /// Which spatial layer the unit currently occupies.
     pub layer: MovementLayer,
-    /// Current movement phase (for ground movers).
-    pub phase: GroundMovePhase,
     /// Speed multiplier applied on top of ObjectType.speed.
     /// 1.0 for most units, 0.65 for Hover, etc.
     pub speed_multiplier: SimFixed,
@@ -264,7 +211,6 @@ impl LocomotorState {
                 payload
             },
             layer,
-            phase: GroundMovePhase::Idle,
 
             speed_multiplier,
             speed_fraction: if kind == LocomotorKind::Fly {
@@ -311,7 +257,6 @@ impl LocomotorState {
             piggyback: None,
             runtime_payload: LocomotorRuntimePayload::for_kind(kind, binary_frame),
             layer,
-            phase: GroundMovePhase::Idle,
 
             speed_multiplier,
             speed_fraction: if kind == LocomotorKind::Fly {

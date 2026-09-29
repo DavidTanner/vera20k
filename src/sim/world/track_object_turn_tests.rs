@@ -670,8 +670,6 @@ fn terminal_piggyback_end_is_synchronous_and_preserves_owner_speed() {
         ..Default::default()
     });
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
-    entity.locomotor.as_mut().unwrap().phase =
-        crate::sim::movement::locomotor::GroundMovePhase::Cruising;
     entity.foot_speed.applied_fraction = SimFixed::from_num(1);
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");

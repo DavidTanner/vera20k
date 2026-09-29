@@ -512,7 +512,6 @@ fn test_drive_locomotor() {
     let state = LocomotorState::from_object_type(&obj, 0);
     assert_eq!(state.kind, LocomotorKind::Drive);
     assert_eq!(state.layer, MovementLayer::Ground);
-    assert_eq!(state.phase, GroundMovePhase::Idle);
     assert_eq!(state.air_phase(), AirMovePhase::Landed);
     assert_eq!(state.speed_multiplier, SIM_ONE);
     assert!(state.is_ground_mover());

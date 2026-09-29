@@ -821,7 +821,7 @@ mod tests {
     use crate::sim::intern::test_interner;
     use crate::sim::movement::air_movement::{is_high_flying, is_low_flying};
     use crate::sim::movement::locomotion::LocomotorSlot;
-    use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
     use crate::util::lepton::{HIGH_FLIGHT_THRESHOLD_LEPTONS, LEPTONS_PER_LEVEL};
 
@@ -847,7 +847,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Air,
-            phase: GroundMovePhase::Idle,
 
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,

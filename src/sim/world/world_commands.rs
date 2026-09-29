@@ -879,9 +879,9 @@ impl Simulation {
                 // Cancel any special locomotor states in progress.
                 // **VERA-internal: retail Stop leaves the installed locomotor
                 // alone.** This existing unwind policy uses the same END gate
-                // as FootAI4DAEC3 / SetDestination742587, after navigation is
-                // cleared but before teleport/layer cleanup. A live Drive head
-                // still refuses it. Keep that timing while centralizing the
+                // as FootAI4DAEC3 / SetDestination742587 (an active Drive's
+                // IsOKToEnd4AF970), after navigation is cleared but before
+                // teleport/layer cleanup. A live Drive head still refuses it. Keep that timing while centralizing the
                 // actual instance transfer/retirement in locomotor_owner.
                 // Trigger: Stop on a piggybacked Chrono Miner, a few times per
                 // ordinary Allied match; a premature unwind can change the next
@@ -889,15 +889,10 @@ impl Simulation {
                 // production command's admitted/refused lifetime is covered by
                 // locomotor_owner_tests::stop_command_retires_only_the_drive_admitted_by_its_existing_gate.
                 let may_end = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    let gate = crate::sim::movement::locomotor_end_gate_context(e);
-                    e.locomotor.as_ref().is_some_and(|loco| {
-                        loco.is_overridden()
-                            && loco.can_restore_primary_from_piggyback(
-                                gate.owner_moving,
-                                gate.owner_teleporting,
-                                gate.owner_deploying,
-                            )
-                    })
+                    e.locomotor
+                        .as_ref()
+                        .is_some_and(|loco| loco.is_overridden())
+                        && crate::sim::movement::locomotor_owner::piggyback_end_admitted(e)
                 });
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.teleport_state = None;

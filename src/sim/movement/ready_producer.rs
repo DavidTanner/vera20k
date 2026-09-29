@@ -232,7 +232,7 @@ fn jumpjet(locomotor: &LocomotorState) -> LocomotorReadyState {
 
 /// Walk75AB40 calls IsMoving75AB30, reads Foot+578 >0, then tests the
 /// retained step XYZ. The Walk owner now retains all three inputs; NavCom,
-/// MovementTarget and GroundMovePhase are not authorities for this query.
+/// MovementTarget is not an authority for this query.
 /// Project the fixed fraction's sign to 1/0 without a float conversion.
 fn walk(entity: &GameEntity, locomotor: &LocomotorState) -> LocomotorReadyState {
     LocomotorReadyState::Walk {

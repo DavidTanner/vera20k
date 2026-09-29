@@ -947,7 +947,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Air,
-            phase: crate::sim::movement::locomotor::GroundMovePhase::Idle,
 
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,

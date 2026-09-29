@@ -79,7 +79,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Schema171: live type acceleration preserves retasked track progression;
 // fresh turning defers admission.
 // See docs/research/TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md, PR415 attribution.
-const SLICE6_BASELINE_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x35D6_8C9D_840F_2F74;
+const SLICE6_BASELINE_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x37CB_7B54_2128_75CA;
 // Schema174 removes folds instead of adding them: OreGrowthState's node-era
 // scanner cursor, candidate lists and sample counters, and ProductionState's
 // fallback ore overlay id. The pre-174 projection folds the values those fields
@@ -93,19 +93,19 @@ const SLICE6_BASELINE_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 0x35D6_8C9D_84
 // E1 with ec27dc26's final state reproduces old current90DA2A8E0C06D5E3 and
 // pre174221E77F911A4FB24 exactly; tanks and RNG match on all16 frames. See
 // docs/research/COMBAT_WALK_REPLAY_ATTRIBUTION.md. Rust pins, not native goldens.
-const SLICE6_BASELINE_HASH_PRE_CRATE_SPEED_V181: u64 = 0x7B34_5825_40F4_B3BA;
+const SLICE6_BASELINE_HASH_PRE_CRATE_SPEED_V181: u64 = 0x4370_F607_9B7B_1887;
 // v181 folds Foot+580, including default1.0. The pre-181 assertion below
 // proves this fixture's shift comes only from the added hash field.
-const SLICE6_BASELINE_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x952D_1DDE_1A61_B49D;
+const SLICE6_BASELINE_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0xA3EC_2975_E4D9_D945;
 // Snapshot182 adds ordered display vectors. The pre-182 projection below
 // must reproduce the previous whole-fixture hash, including all RNG/state.
-const SLICE6_BEFORE_INFANTRY_ROT_HASH: u64 = 2557321976219781054;
+const SLICE6_BEFORE_INFANTRY_ROT_HASH: u64 = 13717124571662978787;
 // Infantry ctor517BBD supplies PrimaryFacing ROT127. The comparison below
 // changes only that retained rate back to0 and reproduces every previous pin.
 // Schema186 removes each entity's always-None aircraft release-tail fold. The
 // pre186 assertion retains this fixture's preceding current hash, independently
 // of the existing constructor-rate projection and native paid-Walk witnesses.
-const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0x8801_AD46_9E2A_9ECA;
+const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0x6B3D_204A_1B25_8163;
 // Schema187: the pre187 projection below preserves the preceding full pin.
 // Schema189 folds retained Techno+3D4; Before(189) below reproduces v188.
 // v190 adds saved Foot neighbor history. Before(190) reproduces the full v189
@@ -168,14 +168,23 @@ const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0x8801_AD46_9E2A_9EC
 // the same step: with its four default fields folded back in their old place,
 // this change reproduced every facing-only pin (final 0x6CAD_D2FC_438A_0BC2),
 // RNG streams included. Old values: the commit that moved them.
-const SLICE6_BASELINE_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0xD28A_0344_C7E9_5CB4;
+// 2026-09-29 retired ground move phase (snapshot 244, composition only; #726):
+// the locomotor's VERA-only `GroundMovePhase` and its stashed twin leave the
+// object and piggyback folds in every projection; no schema can rebuild the
+// retired value, so this one step re-pins every projection in this test.
+// Ceremony: on the parent commit with only those two folds removed, and on
+// this change, a soft-assert probe of every pin in this test printed identical
+// values, and per-tick replay and the RNG receipts passed at all 16 ticks
+// (the probe patch was not committed): the only change to these pins is the
+// fold. Old values: the commit that moved them.
+const SLICE6_BASELINE_HASH_PRE_BARREL_ELEVATION_V239: u64 = 0xEF80_8830_D0B7_9CFC;
 // Schema 239 adds only the barrel elevation fold: its projection
 // reproduces the prior pin.
-const SLICE6_BASELINE_HASH: u64 = 0x8CB9_BA0F_43C5_BB2A;
-const SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x8A48_34A5_69FE_54D2;
-const SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x2092_3652_93FA_213F;
-const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x3710_07AB_7B8C_0BF8;
-const SLICE6_BASELINE_HASH_PRE_REARM_TIMER_V202: u64 = 0x1F51_0E2E_EFE9_BF48;
+const SLICE6_BASELINE_HASH: u64 = 0x0988_4DB9_7531_02C6;
+const SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220: u64 = 0xCDD1_CF3E_24B8_EA18;
+const SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x2FDF_65F8_C3AE_4FF2;
+const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x3E34_F071_2E8A_B4EB;
+const SLICE6_BASELINE_HASH_PRE_REARM_TIMER_V202: u64 = 0x207E_7836_3EED_400C;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -481,17 +490,17 @@ fn replay_hash_stable_through_slice6() {
     );
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(187)),
-        0x43BD_B315_707D_27CA,
+        0x786D_AAE0_7D86_6F26,
         "schema187 only replaces zero remaining-shot fields with the retained index in this fixture"
     );
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        0x121F_3225_5B6F_8747,
+        0xD122_0AC8_3854_9D3A,
         "v189 adds only the retained Techno+3D4 hash fold"
     );
     assert_eq!(
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(190)),
-        13190223968348790889,
+        11021505366680267256,
         "v190 changes only the Foot neighbor-history hash composition in this fixture"
     );
     assert_eq!(

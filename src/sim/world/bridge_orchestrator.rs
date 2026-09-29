@@ -1671,7 +1671,7 @@ mod tests {
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_intern;
     use crate::sim::movement::locomotion::LocomotorSlot;
-    use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::sim::occupancy::CellListInsertion;
     use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
@@ -2024,7 +2024,6 @@ mod tests {
                 0,
             ),
             layer: MovementLayer::Bridge,
-            phase: GroundMovePhase::Cruising,
 
             speed_multiplier: SimFixed::from_num(1),
             speed_fraction: SimFixed::from_num(1),
@@ -2106,7 +2105,6 @@ mod tests {
             MovementLayer::Ground,
             "layer flipped Bridge → Ground"
         );
-        assert_eq!(loco.phase, GroundMovePhase::Idle, "phase reset to Idle");
         let cell = sim
             .substrate
             .occupancy

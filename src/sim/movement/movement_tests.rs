@@ -3591,7 +3591,6 @@ fn lifecycle_authority_crush_emits_one_request_without_store_removal() {
 #[test]
 fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() {
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::movement::locomotor::GroundMovePhase;
 
     let mut entities = EntityStore::new();
     let grid = PathGrid::new(8, 8);
@@ -3603,9 +3602,7 @@ fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() 
     victim.crushable = true;
     victim.lifecycle.in_limbo = false;
     victim.lifecycle.cell_marked = true;
-    let mut victim_locomotor = LocomotorState::for_test_kind(LocomotorKind::Hover);
-    victim_locomotor.phase = GroundMovePhase::Accelerating;
-    victim.locomotor = Some(victim_locomotor);
+    victim.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Hover));
     victim.movement_target = Some(MovementTarget {
         path: vec![(2, 2)],
         path_layers: vec![MovementLayer::Ground],
@@ -3666,11 +3663,6 @@ fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() 
         "finished-target cleanup must skip a queued crush victim"
     );
     let locomotor = victim.locomotor.as_ref().expect("hover locomotor");
-    assert_eq!(
-        locomotor.phase,
-        GroundMovePhase::Accelerating,
-        "phase postpass must not mutate a queued crush victim"
-    );
     assert_eq!(
         locomotor.altitude, SIM_ZERO,
         "hover vertical postpass must not mutate a queued crush victim"
@@ -4196,7 +4188,7 @@ fn test_blocked_repath_uses_final_goal_not_segment_end() {
 /// mover has a Drive/Walk/Mech locomotor; `test_default` leaves locomotor=None.
 fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState {
     use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::util::fixed_math::SIM_ONE;
     LocomotorState {
         kind: LocomotorKind::Drive,
@@ -4208,7 +4200,6 @@ fn make_drive_loco_for_test() -> crate::sim::movement::locomotor::LocomotorState
             0,
         ),
         layer: MovementLayer::Ground,
-        phase: GroundMovePhase::Idle,
 
         speed_multiplier: SIM_ONE,
         speed_fraction: SIM_ONE,
@@ -4913,7 +4904,7 @@ fn test_segment_exhaustion_repath_avoids_friendly_building_footprint() {
 use crate::map::houses::HouseAllianceMap;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::sim::components::BridgeOccupancy;
-use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState};
+use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::tick_movement_with_grid;
 use crate::sim::pathfinding::{PathGrid, terrain_cost::TerrainCostGrid};
 use std::collections::BTreeMap;
@@ -4929,7 +4920,6 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
             0,
         ),
         layer,
-        phase: GroundMovePhase::Idle,
 
         speed_multiplier: SIM_ONE,
         speed_fraction: SIM_ONE,

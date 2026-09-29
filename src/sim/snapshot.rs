@@ -712,7 +712,9 @@ use crate::sim::world::Simulation;
 // stand-in's per-house attack-wave state is gone.
 // 242 -> 243: a locomotor and its piggyback stash no longer save a copy of
 // `ROT=`; the body FacingClass holds the rate.
-const SNAPSHOT_VERSION: u32 = 243;
+// 243 -> 244: the locomotor and its piggyback stash no longer save the
+// VERA-only ground move phase.
+const SNAPSHOT_VERSION: u32 = 244;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3736,7 +3738,8 @@ mod tests {
         // 241 -> 242: the team restart flag and two TeamType keys; no
         // `sim::ai` state.
         // 242 -> 243: no locomotor `ROT=` copy.
-        assert_eq!(super::SNAPSHOT_VERSION, 243);
+        // 243 -> 244: no ground move phase.
+        assert_eq!(super::SNAPSHOT_VERSION, 244);
     }
 
     #[test]

@@ -649,8 +649,6 @@ fn foot_idle_drive_end_uses_native_gates_and_preserves_owner_state() {
         let (mut sim, _) = fixture();
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         activate_drive(entity);
-        entity.locomotor.as_mut().unwrap().phase =
-            super::super::locomotor::GroundMovePhase::Cruising;
         match denied {
             1 => entity.drive_locomotion.as_mut().unwrap().end_permitted = false,
             2 => entity.foot_locomotor_swap_active = true,

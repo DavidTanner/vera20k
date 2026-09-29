@@ -18,7 +18,7 @@ use crate::sim::components::{
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::drive_track;
-use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
 use crate::sim::movement::movement_bridge::resolve_cell_transition_bridge_state;
 use crate::sim::movement::movement_occupancy::{
@@ -222,9 +222,7 @@ pub(super) fn hover_steer(
 /// Result of vehicle rotation — tells the caller whether to skip this tick.
 pub(super) enum RotationResult {
     /// Still rotating in place — caller should `continue` (skip lepton advancement).
-    StillRotating {
-        debug_events: Vec<(u32, DebugEventKind)>,
-    },
+    StillRotating,
     /// Rotation complete or not needed — proceed with movement.
     ReadyToMove,
 }
@@ -243,9 +241,7 @@ pub(super) enum RotationResult {
 pub(super) fn handle_vehicle_rotation(
     body_facing: &mut super::facing_class::FacingClass,
     desired: Option<u16>,
-    locomotor: &mut Option<LocomotorState>,
     native_frame: u32,
-    sim_tick: u64,
 ) -> RotationResult {
     if let Some(desired) = desired {
         body_facing.set(desired, native_frame);
@@ -254,22 +250,7 @@ pub(super) fn handle_vehicle_rotation(
         return RotationResult::ReadyToMove;
     }
     // Still rotating in place — the hull turns but the mover does not advance.
-    let mut debug_events = Vec::new();
-    if let Some(loco) = locomotor {
-        let old_phase = loco.phase;
-        loco.phase = GroundMovePhase::Accelerating;
-        if old_phase != GroundMovePhase::Accelerating {
-            debug_events.push((
-                sim_tick as u32,
-                DebugEventKind::PhaseChange {
-                    from: format!("{:?}", old_phase),
-                    to: "Accelerating".into(),
-                    reason: "movement started".into(),
-                },
-            ));
-        }
-    }
-    RotationResult::StillRotating { debug_events }
+    RotationResult::StillRotating
 }
 
 /// Result of lepton position advancement.

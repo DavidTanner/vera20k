@@ -1952,7 +1952,6 @@ impl Simulation {
                 // lockstep hash.
                 loco.powered.hash(hasher);
                 (loco.layer as u8).hash(hasher);
-                (loco.phase as u8).hash(hasher);
                 // Hover throttle is authoritative movement state (persists across
                 // repaths); I16F16 has no Hash — fold the raw bits. The vertical
                 // pair (altitude + bob spring state) is likewise authoritative:
@@ -2500,7 +2499,6 @@ fn hash_locomotor_runtime(
     (runtime.layer as u8).hash(hasher);
     let common = &runtime.common;
     common.powered.hash(hasher);
-    (common.phase as u8).hash(hasher);
     // Fixed separators retain the retired common-air slots for non-air replay
     // stability. Fly/Jumpjet authoritative fields are hashed in their payloads.
     0u8.hash(hasher);

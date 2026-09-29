@@ -16,7 +16,7 @@ use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::house_state::HouseState;
 use crate::sim::miner::{CargoBale, MinerConfig, MinerKind, MinerState, ResourceType};
-use crate::sim::movement::locomotor::{GroundMovePhase, MovementLayer};
+use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::passability::LandType;
@@ -517,7 +517,6 @@ fn locomotor_tuple(
     LocomotorSlot,
     Option<StashedLocomotor>,
     MovementLayer,
-    GroundMovePhase,
 ) {
     let locomotor = sim
         .substrate
@@ -530,7 +529,6 @@ fn locomotor_tuple(
         locomotor.slot,
         locomotor.piggyback.clone(),
         locomotor.layer,
-        locomotor.phase,
     )
 }
 

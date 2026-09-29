@@ -1796,7 +1796,7 @@ impl Simulation {
     /// hidden-building occupation entry remain DRIFT. Add/RemoveContent skip Infantry raw callbacks;
     /// full Mark/Unmark would also discard reservations and building smudges.
     pub(super) fn drop_in_bridge_member(&mut self, stable_id: u64) {
-        use crate::sim::movement::locomotor::{GroundMovePhase, MovementLayer};
+        use crate::sim::movement::locomotor::MovementLayer;
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
         };
@@ -1828,7 +1828,6 @@ impl Simulation {
         entity.occupancy_enter_order = order;
         if let Some(loco) = entity.locomotor.as_mut() {
             loco.layer = MovementLayer::Ground;
-            loco.phase = GroundMovePhase::Idle;
         }
         // Rebuild only the derived vehicle projection: serialized head-to,
         // handoff and current-cleared facts retain their existing owners.

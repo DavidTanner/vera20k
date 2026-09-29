@@ -31,7 +31,7 @@ use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::util::fixed_math::SimFixed;
 
 use super::super::drop_pod_movement::DropPodState;
-use super::super::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+use super::super::locomotor::{LocomotorState, MovementLayer};
 use super::super::rocket_movement::RocketState;
 use super::super::slope_transition::SlopeTransitionState;
 use super::super::teleport_movement::TeleportState;
@@ -42,7 +42,6 @@ use super::super::tunnel_movement::TunnelState;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocomotorCommonRuntime {
     pub powered: bool,
-    pub phase: GroundMovePhase,
     pub speed_multiplier: SimFixed,
     pub speed_fraction: SimFixed,
     pub fly_current_speed: SimFixed,
@@ -135,7 +134,6 @@ impl LocomotorRuntime {
             layer: state.layer,
             common: LocomotorCommonRuntime {
                 powered: state.powered,
-                phase: state.phase,
                 speed_multiplier: state.speed_multiplier,
                 speed_fraction: state.speed_fraction,
                 fly_current_speed: state.fly_current_speed,
@@ -163,7 +161,7 @@ impl LocomotorRuntime {
     /// then `Link_To_Object(owner)` and nothing else — so the temporary starts
     /// default-initialised and the displaced locomotor keeps all of its state
     /// untouched in the stash. This clones the displaced runtime and resets only
-    /// `phase` and `payload`, so the temporary inherits
+    /// its `payload`, so the temporary inherits
     /// `altitude`, the hover throttle/speed/bob fields, `subcell_dest`, the two
     /// speed fractions, `fly_current_speed` **and `powered`** — and [`install_into`] copies `powered` back on restore, so a
     /// powered-off flag survives a swap in both directions, which native cannot
@@ -184,7 +182,6 @@ impl LocomotorRuntime {
         let mut runtime = Self::capture(state);
         runtime.kind = kind;
         runtime.layer = layer;
-        runtime.common.phase = GroundMovePhase::Idle;
         runtime.payload = LocomotorRuntimePayload::for_kind(kind, binary_frame);
         runtime
     }
@@ -193,7 +190,6 @@ impl LocomotorRuntime {
         state.kind = self.kind;
         state.layer = self.layer;
         state.powered = self.common.powered;
-        state.phase = self.common.phase;
         state.speed_multiplier = self.common.speed_multiplier;
         state.speed_fraction = self.common.speed_fraction;
         state.fly_current_speed = self.common.fly_current_speed;
@@ -342,11 +338,13 @@ pub struct EndGateContext {
 
 /// Whether the active piggyback may be unwound now.
 ///
-/// The movement and populated-slot checks are common. Walk's named-location
-/// gate additionally requires its local state and linked owner bytes clear;
-/// mapped here to an idle active phase and clear owner transition flags. Special
-/// locomotors stay conservative until their Process state machines supply their
-/// own completed phase to the caller.
+/// The movement and populated-slot checks are common; the ground family adds
+/// clear owner transition flags. An active Drive's native gate
+/// (`Is_OK_To_End @ 0x004AF970`) also reads Drive-owned state this function
+/// cannot see, so entity callers go through
+/// `locomotor_owner::piggyback_end_admitted`. Special locomotors stay
+/// conservative until their Process state machines supply their own completed
+/// phase to the caller.
 pub fn is_ok_to_end(state: &LocomotorState, context: EndGateContext) -> bool {
     if context.owner_moving || state.piggyback.is_none() {
         return false;
@@ -357,11 +355,7 @@ pub fn is_ok_to_end(state: &LocomotorState, context: EndGateContext) -> bool {
         | LocomotorKind::Walk
         | LocomotorKind::Hover
         | LocomotorKind::Mech
-        | LocomotorKind::Ship => {
-            state.phase == GroundMovePhase::Idle
-                && !context.owner_teleporting
-                && !context.owner_deploying
-        }
+        | LocomotorKind::Ship => !context.owner_teleporting && !context.owner_deploying,
         LocomotorKind::Jumpjet => {
             // The Jumpjet's own state field; `AirMovePhase` is Fly's.
             state
@@ -574,10 +568,6 @@ mod tests {
 
         // Classes no stock `Locomotor=` key selects stay conservative.
         state.kind = LocomotorKind::Tunnel;
-        assert!(!is_ok_to_end(&state, ready));
-
-        state.kind = LocomotorKind::Drive;
-        state.phase = GroundMovePhase::Cruising;
         assert!(!is_ok_to_end(&state, ready));
     }
 

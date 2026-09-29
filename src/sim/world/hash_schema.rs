@@ -36,6 +36,9 @@
 //! in their place and the harness pins were re-baselined in that one step.
 //! Schema230's building-facing gate went with them: a building's `+0x388` is
 //! its body FacingClass, which every projection folds.
+//! No policy folds the retired ground move phase (dropped at snapshot 244):
+//! nothing retained records it, so every projection lost that fold at once
+//! and the harness pins were re-baselined in that one step.
 
 #[derive(Clone, Copy)]
 pub(super) enum HashSchema {
