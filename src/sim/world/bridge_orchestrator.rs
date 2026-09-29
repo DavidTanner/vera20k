@@ -2035,7 +2035,6 @@ mod tests {
             hover_attack: false,
             speed_type: SpeedType::Track,
             movement_zone: MovementZone::Normal,
-            rot: 0,
             air_progress: SIM_ZERO,
             infantry_wobble_phase: 0.0,
             subcell_dest: None,

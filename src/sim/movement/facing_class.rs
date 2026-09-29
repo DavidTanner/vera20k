@@ -52,6 +52,13 @@ impl FacingClass {
         fc
     }
 
+    /// A controller at rest on `initial` that turns at `rate_source`'s rate.
+    pub(crate) fn with_rate_of(initial: u16, rate_source: &Self) -> Self {
+        let mut fc = Self::new(initial, 0);
+        fc.rot_per_frame = rate_source.rot_per_frame;
+        fc
+    }
+
     /// Update the rate of turn. Mirrors gamemd's SetROT (`FacingClass::Set_ROT` @ `0x004C9680`):
     /// clamps only inputs >=127, then shifts the low byte. For example,
     /// -1 becomes 0xFF00 (instant), while -255 becomes 0x0100 (animated).

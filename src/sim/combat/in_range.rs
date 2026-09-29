@@ -858,7 +858,6 @@ mod tests {
             hover_attack: false,
             speed_type: SpeedType::Winged,
             movement_zone: MovementZone::Fly,
-            rot: 0,
             air_progress: SIM_ZERO,
             infantry_wobble_phase: 0.0,
             subcell_dest: None,

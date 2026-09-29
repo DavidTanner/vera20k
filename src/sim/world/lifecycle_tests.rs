@@ -7782,7 +7782,6 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
 
         loco.fly_current_speed = SIM_ONE;
         loco.speed_fraction = SIM_ONE;
-        loco.rot = 0;
         assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), None,));
         sim.tick_air_movement_with_cell_lists_one(1, None);
         let entity = sim.substrate.entities.get_mut(1).unwrap();

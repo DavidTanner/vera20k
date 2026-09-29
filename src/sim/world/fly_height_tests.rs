@@ -746,7 +746,6 @@ fn takeoff_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
     entity.body_facing = facing(0x4000, 0xC000);
     entity.barrel_facing = Some(facing(0x6000, 0x2000));
     let loco = entity.locomotor.as_mut().unwrap();
-    loco.rot = rot;
     loco.speed_fraction = SimFixed::lit("0.25");
     *loco.fly_runtime_mut().unwrap() = serde_json::from_value(serde_json::json!({
         "target_height": input["target"].as_i64().unwrap_or(1500),

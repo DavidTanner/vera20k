@@ -51,7 +51,6 @@ pub struct LocomotorCommonRuntime {
     pub hover_attack: bool,
     pub speed_type: SpeedType,
     pub movement_zone: MovementZone,
-    pub rot: i32,
     pub air_progress: SimFixed,
     pub infantry_wobble_phase: f32,
     pub subcell_dest: Option<(SimFixed, SimFixed)>,
@@ -145,7 +144,6 @@ impl LocomotorRuntime {
                 hover_attack: state.hover_attack,
                 speed_type: state.speed_type,
                 movement_zone: state.movement_zone,
-                rot: state.rot,
                 air_progress: state.air_progress,
                 infantry_wobble_phase: state.infantry_wobble_phase,
                 subcell_dest: state.subcell_dest,
@@ -204,7 +202,6 @@ impl LocomotorRuntime {
         state.hover_attack = self.common.hover_attack;
         state.speed_type = self.common.speed_type;
         state.movement_zone = self.common.movement_zone;
-        state.rot = self.common.rot;
         state.air_progress = self.common.air_progress;
         state.infantry_wobble_phase = self.common.infantry_wobble_phase;
         state.subcell_dest = self.common.subcell_dest;

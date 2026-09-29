@@ -421,8 +421,7 @@ fn fresh_arm_rows_match_the_original_responses() {
         e.navigation.path_replay.directions = route;
         e.navigation.path_replay.cursor = 0;
         e.navigation.path_replay.reference_cell = Some((9, 8));
-        let rot = e.locomotor.as_ref().map_or(0, |loco| loco.rot);
-        e.body_facing = FacingClass::new(rest, rot);
+        e.body_facing = FacingClass::with_rate_of(rest, &e.body_facing);
         let runtime = &mut e.navigation.path_runtime;
         runtime.start_movement(movement[0] as u32, movement[2] as i32);
         runtime.start_blocked(blocked[0] as u32, blocked[2] as i32);
@@ -487,8 +486,7 @@ fn first_code7_scold_request_retains_the_native_byte() {
         e.navigation.path_replay.directions = vec![2, 2, 2];
         e.navigation.path_replay.cursor = 0;
         e.navigation.path_replay.reference_cell = Some((9, 8));
-        let rot = e.locomotor.as_ref().unwrap().rot;
-        e.body_facing = FacingClass::new(2 << 13, rot);
+        e.body_facing = FacingClass::with_rate_of(2 << 13, &e.body_facing);
         e.navigation.path_runtime.start_movement(100, 0);
         e.navigation
             .path_runtime

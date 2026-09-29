@@ -710,7 +710,9 @@ use crate::sim::world::Simulation;
 // 241 -> 242: each team keeps `Coordinate_Attack`'s restart flag (`+0x81`),
 // a TeamType its `Droppod=` and `OnlyTargetHouseEnemy=`; the `sim::ai`
 // stand-in's per-house attack-wave state is gone.
-const SNAPSHOT_VERSION: u32 = 242;
+// 242 -> 243: a locomotor and its piggyback stash no longer save a copy of
+// `ROT=`; the body FacingClass holds the rate.
+const SNAPSHOT_VERSION: u32 = 243;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3733,7 +3735,8 @@ mod tests {
         // 240 -> 241: team members, recruitment and script state.
         // 241 -> 242: the team restart flag and two TeamType keys; no
         // `sim::ai` state.
-        assert_eq!(super::SNAPSHOT_VERSION, 242);
+        // 242 -> 243: no locomotor `ROT=` copy.
+        assert_eq!(super::SNAPSHOT_VERSION, 243);
     }
 
     #[test]

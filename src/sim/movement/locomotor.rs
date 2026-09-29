@@ -163,11 +163,6 @@ pub struct LocomotorState {
     /// Pathfinder movement zone — determines crush capability and special routing.
     /// Cached from ObjectType at spawn to avoid per-tick RuleSet lookups.
     pub movement_zone: MovementZone,
-    /// `ROT=` (`Type+0x71C`), cached at spawn. The body turns at the rate its
-    /// class constructor wrote into `GameEntity::body_facing`, not this copy,
-    /// which only seeds a headless Fly mover's missing Secondary facing
-    /// (`ensure_fly_secondary_facing`) and rides the piggyback swap.
-    pub rot: i32,
     /// Air movement progress in cells (0.0 → 1.0 per cell step).
     /// Air movement uses cell-based progress separately from the lepton
     /// advancement used by ground movement. This field is only meaningful
@@ -284,7 +279,6 @@ impl LocomotorState {
             hover_attack: obj.hover_attack,
             speed_type: obj.speed_type,
             movement_zone: obj.movement_zone,
-            rot: obj.turret_rot,
             air_progress: SIM_ZERO,
             infantry_wobble_phase: 0.0,
             subcell_dest: None,
@@ -332,7 +326,6 @@ impl LocomotorState {
             hover_attack: false,
             speed_type: SpeedType::Track,
             movement_zone: MovementZone::Normal,
-            rot: 5,
             air_progress: SIM_ZERO,
             infantry_wobble_phase: 0.0,
             subcell_dest: None,

@@ -626,14 +626,12 @@ fn cmin_locomotor_initializes_primary_and_active_teleport() {
     let mut obj = make_obj(LocomotorKind::Teleport, ObjectCategory::Vehicle);
     obj.harvester = true;
     obj.teleporter = true;
-    obj.turret_rot = 5;
 
     let state = LocomotorState::from_object_type(&obj, 0);
 
     assert_eq!(state.active_kind(), LocomotorKind::Teleport);
     assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
     assert!(state.is_primary_active());
-    assert_eq!(state.rot, 5);
 }
 
 #[test]

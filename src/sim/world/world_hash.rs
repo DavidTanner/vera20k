@@ -2517,7 +2517,6 @@ fn hash_locomotor_runtime(
     common.hover_attack.hash(hasher);
     common.speed_type.hash(hasher);
     common.movement_zone.hash(hasher);
-    common.rot.hash(hasher);
     common.air_progress.to_bits().hash(hasher);
     common.infantry_wobble_phase.to_bits().hash(hasher);
     common
