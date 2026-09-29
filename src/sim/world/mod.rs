@@ -3354,7 +3354,9 @@ impl Simulation {
         let movement_changed = before.is_some() && before != after;
         let moving_now = crate::sim::movement::ready_producer::is_moving_now_for(
             entity,
-            rules.map(|rules| (rules, &self.interner)),
+            rules.map(|rules| {
+                crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)
+            }),
             self.session.binary_frame,
         );
         // `0x004DAA38`/`0x004DAA3E`: falling (`+0x8D`) or crashing (`+0x425`).
@@ -5769,7 +5771,11 @@ impl Simulation {
         }
         let binary_frame = self.session.binary_frame;
         let terrain = self.resolved_terrain.as_ref();
-        let rules_context = Some((rules, &self.interner));
+        let rules_context = Some(crate::sim::movement::SpeedRules::new(
+            rules,
+            &self.interner,
+            &self.type_handles,
+        ));
         let wake_positions: Vec<(u16, u16, SimFixed, SimFixed, u8)> = self
             .substrate
             .entities
@@ -6554,7 +6560,7 @@ const WAKE_DRAW_FLAGS: u32 = 0x600;
 /// cell whose `CellClass+0xEC` mirror is Water, anchored at its exact leptons.
 pub(crate) fn wake_anchor_for(
     entity: &crate::sim::game_entity::GameEntity,
-    rules: Option<(&RuleSet, &crate::sim::intern::StringInterner)>,
+    rules: Option<crate::sim::movement::SpeedRules<'_>>,
     terrain: Option<&ResolvedTerrainGrid>,
     binary_frame: u32,
 ) -> Option<(u16, u16, SimFixed, SimFixed, u8)> {

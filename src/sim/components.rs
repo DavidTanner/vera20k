@@ -180,8 +180,8 @@ pub struct MovementTarget {
     /// The legacy pass lane's speed this frame (`movement_tick`): Hover's
     /// throttled speed, else a ramp toward `speed` that brakes near the
     /// destination, or `speed` itself without ramp data. It is not
-    /// GetCurrentSpeed, which the track, Walk and tube steps and the
-    /// readiness gate query live (`movement::owner_current_speed`).
+    /// GetCurrentSpeed, which the track and Walk steps and the readiness gate
+    /// query live (`movement::owner_current_speed`).
     pub current_speed: SimFixed,
     /// Fraction of max speed gained per tick during acceleration (AccelerationFactor=).
     pub accel_factor: SimFixed,

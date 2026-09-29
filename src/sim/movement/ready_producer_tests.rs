@@ -4,11 +4,15 @@
 //! feed is separately proven exhaustively in `locomotor_ready.rs`.
 
 use super::*;
+use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{
     DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
 };
+use crate::sim::movement::SpeedRules;
 use crate::sim::movement::teleport_movement::TeleportState;
+use crate::sim::type_handle_table::TypeHandleTable;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
+use crate::util::native_x87::NativeF64Bits;
 
 fn entity_with(kind: LocomotorKind) -> GameEntity {
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
@@ -23,13 +27,28 @@ fn mtnk_rules() -> RuleSet {
     .expect("minimal MTNK rules")
 }
 
-fn moving_target(speed: i32) -> MovementTarget {
+fn moving_target() -> MovementTarget {
     MovementTarget {
         path: vec![(5, 5), (6, 5)],
         next_index: 1,
-        current_speed: SimFixed::from_num(speed),
         ..MovementTarget::default()
     }
+}
+
+fn driving_mtnk() -> GameEntity {
+    let mut entity = entity_with(LocomotorKind::Drive);
+    let head = DriveCoord {
+        x: 6 * 256 + 128,
+        y: 5 * 256 + 128,
+        z: 0,
+    };
+    entity.foot_speed.applied_fraction = SIM_ONE;
+    entity.drive_locomotion = Some(DriveLocomotionRuntime {
+        destination: Some(head),
+        head_to: Some(head),
+        ..DriveLocomotionRuntime::default()
+    });
+    entity
 }
 
 /// A parked vehicle must report "not moving". This is the direction that
@@ -49,30 +68,45 @@ fn parked_drive_unit_reports_not_moving() {
 /// speed reports moving without a path-execution adapter.
 #[test]
 fn driving_unit_reports_moving() {
-    let mut entity = entity_with(LocomotorKind::Drive);
-    let head = DriveCoord {
-        x: 6 * 256 + 128,
-        y: 5 * 256 + 128,
-        z: 0,
-    };
-    entity.foot_speed.applied_fraction = SIM_ONE;
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        destination: Some(head),
-        head_to: Some(head),
-        ..DriveLocomotionRuntime::default()
-    });
+    let mut entity = driving_mtnk();
     let rules = mtnk_rules();
     let interner = crate::sim::intern::test_interner();
+    let types = TypeHandleTable::default();
+    let speed = Some(SpeedRules::new(&rules, &interner, &types));
 
-    let state =
-        ready_state_for(&entity, Some((&rules, &interner)), 100).expect("Drive has a producer");
+    let state = ready_state_for(&entity, speed, 100).expect("Drive has a producer");
     assert!(state.is_moving_now(), "a driving tank must report moving");
 
     // `0x004AFC71` reads the live getter: a callback that zeroes Foot+578
-    // (a stop, a bunker install) takes effect at the next query, with no
-    // speed cache left to refresh.
+    // (a stop) takes effect at the next query, with no speed cache left to
+    // refresh.
     entity.foot_speed.applied_fraction = SIM_ZERO;
-    assert!(!is_moving_now_for(&entity, Some((&rules, &interner)), 100));
+    assert!(!is_moving_now_for(&entity, speed, 100));
+}
+
+/// A speed crate multiplies the type speed inside GetCurrentSpeed
+/// (`0x004DB1A0`), so the pickup reaches the next moving query without a
+/// cache refresh. At three quarters of a lepton per frame the getter truncates
+/// to 0; the doubled type speed reads one and a half.
+#[test]
+fn speed_crate_reaches_the_next_moving_query() {
+    let mut entity = driving_mtnk();
+    let rules = mtnk_rules();
+    let interner = crate::sim::intern::test_interner();
+    let types = TypeHandleTable::default();
+    let speed = SpeedRules::new(&rules, &interner, &types);
+
+    let full = speed.owner_current_speed(&entity);
+    assert!(full > 1, "MTNK covers several leptons per frame");
+    entity.foot_speed.applied_fraction = SimFixed::lit("0.75") / SimFixed::from_num(full);
+    assert!(!is_moving_now_for(&entity, Some(speed), 100));
+
+    assert!(
+        entity
+            .foot_speed
+            .accept_speed_crate(NativeF64Bits::from_bits(2.0f64.to_bits()))
+    );
+    assert!(is_moving_now_for(&entity, Some(speed), 100));
 }
 
 /// Standing exactly on the stale head-to point reads not-moving. This is native
@@ -104,7 +138,7 @@ fn ship_mirrors_drive_but_keeps_its_own_variant() {
     // Without rules the getter reads the order's stamped speed.
     entity.movement_target = Some(MovementTarget {
         speed: SimFixed::from_num(300),
-        ..moving_target(20)
+        ..moving_target()
     });
     entity.ship_locomotion = Some(ShipLocomotionRuntime {
         destination: Some(head),
@@ -183,7 +217,7 @@ fn jumpjet_readiness_reads_the_native_state_field() {
         .and_then(|locomotor| locomotor.jumpjet_runtime_mut())
         .unwrap()
         .phase = 2;
-    entity.movement_target = Some(moving_target(20));
+    entity.movement_target = Some(moving_target());
     assert!(!ready_state_for(&entity, None, 100).unwrap().is_moving_now());
 }
 
@@ -212,7 +246,7 @@ fn walking_infantry_reports_moving() {
 #[test]
 fn blocked_walker_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Walk);
-    entity.movement_target = Some(moving_target(10));
+    entity.movement_target = Some(moving_target());
     let state = ready_state_for(&entity, None, 100).expect("Walk has a producer");
     assert!(
         !state.is_moving_now(),
@@ -301,7 +335,7 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
         }
         // The compatibility path/order must not affect any represented query.
         for has_order in [false, true] {
-            entity.movement_target = has_order.then(|| moving_target(20));
+            entity.movement_target = has_order.then(moving_target);
             entity.navigation.nav_com =
                 has_order.then(|| crate::sim::components::NavTargetRef::cell(6, 5));
             let moving = if kind == LocomotorKind::Walk {
@@ -341,7 +375,7 @@ fn stopped_hover_reports_not_moving_despite_stale_request() {
 #[test]
 fn hover_under_way_reports_moving() {
     let mut entity = entity_with(LocomotorKind::Hover);
-    entity.movement_target = Some(moving_target(15));
+    entity.movement_target = Some(moving_target());
     if let Some(locomotor) = entity.locomotor.as_mut() {
         locomotor.hover_speed_request = SIM_ONE;
     }
@@ -354,7 +388,7 @@ fn hover_under_way_reports_moving() {
 #[test]
 fn hover_turn_stall_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Hover);
-    entity.movement_target = Some(moving_target(15));
+    entity.movement_target = Some(moving_target());
     if let Some(locomotor) = entity.locomotor.as_mut() {
         locomotor.hover_speed_request = SIM_ZERO;
     }

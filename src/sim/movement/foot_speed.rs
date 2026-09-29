@@ -2,6 +2,8 @@
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::intern::StringInterner;
+use crate::sim::type_handle_table::TypeHandleTable;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// The speed a move order stamps into `MovementTarget::speed`: the adjusted
@@ -62,6 +64,40 @@ pub(crate) fn owner_current_speed_from_fraction(
 ) -> i32 {
     let adjusted_type_speed = (adjusted_speed_per_second / SimFixed::from_num(15)).to_num::<i32>();
     (SimFixed::from_num(adjusted_type_speed) * current_speed_fraction).to_num::<i32>()
+}
+
+/// What the live GetCurrentSpeed reads beyond the owner: its type, through
+/// the precomputed handle table, and `VeteranSpeed`. A query that runs every
+/// frame for every Foot must not resolve the type by name.
+#[derive(Clone, Copy)]
+pub(crate) struct SpeedRules<'a> {
+    rules: &'a RuleSet,
+    interner: &'a StringInterner,
+    types: &'a TypeHandleTable,
+}
+
+impl<'a> SpeedRules<'a> {
+    pub(crate) fn new(
+        rules: &'a RuleSet,
+        interner: &'a StringInterner,
+        types: &'a TypeHandleTable,
+    ) -> Self {
+        Self {
+            rules,
+            interner,
+            types,
+        }
+    }
+
+    /// Foot4DB1A0 for `entity`, live.
+    pub(crate) fn owner_current_speed(self, entity: &GameEntity) -> i32 {
+        owner_current_speed(
+            entity,
+            self.types
+                .object(self.interner, entity.type_ref(), self.rules),
+            self.rules.general.veteran_speed,
+        )
+    }
 }
 
 /// Foot4DB1A0 for the live owner outside a locomotor's own step: its adjusted

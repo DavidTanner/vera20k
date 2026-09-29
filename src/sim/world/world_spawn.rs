@@ -1551,7 +1551,11 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(stable_id)
                 && !crate::sim::movement::ready_producer::is_moving_now_for(
                     entity,
-                    Some((rules, &self.interner)),
+                    Some(crate::sim::movement::SpeedRules::new(
+                        rules,
+                        &self.interner,
+                        &self.type_handles,
+                    )),
                     now,
                 )
             {

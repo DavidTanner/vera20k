@@ -51,9 +51,7 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::intern::StringInterner;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::locomotor::LocomotorState;
@@ -69,7 +67,7 @@ use super::track_process::TrackFamily;
 /// the speed getter falls back to the order's stamped speed.
 pub(crate) fn ready_state_for(
     entity: &GameEntity,
-    rules: Option<(&RuleSet, &StringInterner)>,
+    rules: Option<super::SpeedRules<'_>>,
     binary_frame: u32,
 ) -> Option<LocomotorReadyState> {
     let locomotor = entity.locomotor.as_ref()?;
@@ -107,7 +105,7 @@ pub(crate) fn ready_state_for(
 /// MoveSound. Native dispatches this locomotor slot at each consumer.
 pub(crate) fn is_moving_now_for(
     entity: &GameEntity,
-    rules: Option<(&RuleSet, &StringInterner)>,
+    rules: Option<super::SpeedRules<'_>>,
     binary_frame: u32,
 ) -> bool {
     ready_state_for(entity, rules, binary_frame).is_some_and(LocomotorReadyState::is_moving_now)
@@ -154,7 +152,7 @@ const F64_BITS_HALF: u64 = 0x3FE0_0000_0000_0000;
 /// model.
 fn drive_family(
     entity: &GameEntity,
-    rules: Option<(&RuleSet, &StringInterner)>,
+    rules: Option<super::SpeedRules<'_>>,
     binary_frame: u32,
     family: TrackFamily,
 ) -> LocomotorReadyState {
@@ -164,12 +162,17 @@ fn drive_family(
 
     // `0x004AFC71` calls the owner's live GetCurrentSpeed (`0x004DB1A0`): the
     // signed speed after two truncations, so a low positive fraction can
-    // still read zero.
-    let owner_speed = super::foot_speed::owner_current_speed(
-        entity,
-        rules.and_then(|(rules, interner)| rules.object(interner.resolve(entity.type_ref()))),
-        rules.map_or(1.0, |(rules, _)| rules.general.veteran_speed),
-    );
+    // still read zero. Native reaches the call only after the turn timer,
+    // Is_Moving and the head test (`0x004AFC35..0x004AFC6A`); elsewhere the
+    // predicate is already decided and the getter is not run.
+    let owner_speed = if !turning_active && slot_moving && head_to_nonnull {
+        match rules {
+            Some(rules) => rules.owner_current_speed(entity),
+            None => super::foot_speed::owner_current_speed(entity, None, 1.0),
+        }
+    } else {
+        0
+    };
 
     match family {
         TrackFamily::Drive => LocomotorReadyState::Drive {

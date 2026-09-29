@@ -818,12 +818,12 @@ fn veterancy_promotion_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
 /// @ 0x004B1274`, `WalkLocomotionClass::ProcessMovement @ 0x0075BFC0`,
 /// `ShipLocomotionClass::Process_Drive_Track @ 0x006A093C`,
 /// `HoverLocomotionClass::Move @ 0x00514372`), so a unit promoted mid-path
-/// speeds up on the very next frame. VERA stamps `MovementTarget::speed` once,
-/// at path creation, and recomputes only `current_speed` per frame — so the
-/// rank is the one input to the getter that can change while a path is live.
-/// Refreshing it here reproduces the native observable without a per-frame
-/// type lookup: the type speed, the house multiplier and the crate multiplier
-/// are stable for the life of a path or are separate open rows.
+/// speeds up on the very next frame. VERA's track and Walk steps and the
+/// readiness gate query the getter live; the legacy pass lane still moves by
+/// the `MovementTarget::speed` stamp made at path creation, so the stamp is
+/// refreshed here when the rank changes. The crate multiplier and the house
+/// factor do not refresh it: a legacy-lane mover keeps its stamp until its
+/// next order.
 fn refresh_mover_speed_after_promotion(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -6158,7 +6158,6 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         entity.movement_target = walking.then(|| crate::sim::components::MovementTarget {
             path: vec![(5, 5), (6, 5)],
             next_index: 1,
-            current_speed: crate::util::fixed_math::SimFixed::from_num(4),
             ..Default::default()
         });
     }

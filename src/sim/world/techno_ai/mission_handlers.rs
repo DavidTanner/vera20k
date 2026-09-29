@@ -1603,7 +1603,11 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
     miner.is_full()
         && crate::sim::movement::ready_producer::is_moving_now_for(
             entity,
-            Some((rules, &sim.interner)),
+            Some(crate::sim::movement::SpeedRules::new(
+                rules,
+                &sim.interner,
+                &sim.type_handles,
+            )),
             sim.session.binary_frame,
         )
 }

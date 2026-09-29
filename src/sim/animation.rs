@@ -215,10 +215,7 @@ pub fn resolve_shp_frame(def: &SequenceDef, facing: u8, frame_index: u16) -> u16
 /// division. The counter itself is a native dword, so increment wraps.
 pub(crate) fn tick_shp_vehicle_body_frame_counter(
     entity: &mut crate::sim::game_entity::GameEntity,
-    rules: Option<(
-        &crate::rules::ruleset::RuleSet,
-        &crate::sim::intern::StringInterner,
-    )>,
+    rules: Option<crate::sim::movement::SpeedRules<'_>>,
     cadence: ShpVehicleCadence,
     binary_frame: u32,
 ) {

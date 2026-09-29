@@ -11,7 +11,7 @@ use crate::sim::{game_entity::GameEntity, pathfinding::PathGrid, vision};
 /// the existing native-readiness owner (including Jumpjet54D0D0 state!=0,2).
 fn moving_now(
     entity: &GameEntity,
-    rules: Option<(&RuleSet, &crate::sim::intern::StringInterner)>,
+    rules: Option<crate::sim::movement::SpeedRules<'_>>,
     frame: u32,
 ) -> bool {
     let Some(loco) = entity.locomotor.as_ref() else {
@@ -50,7 +50,13 @@ impl Simulation {
                 entity.category,
                 EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
             )
-            || !moving_now(entity, rules.map(|rules| (rules, &self.interner)), frame)
+            || !moving_now(
+                entity,
+                rules.map(|rules| {
+                    crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)
+                }),
+                frame,
+            )
         {
             return;
         }

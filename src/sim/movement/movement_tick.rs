@@ -1631,7 +1631,9 @@ fn advance_ordinary_mover(
             // consumed above. Other ground locomotors have a unity modifier.
             let cell_speed_mod = SIM_ONE;
             if uses_drive_locomotor || uses_ship_locomotor {
-                // Speed was calculated once by the shared track owner.
+                // A Unit's Drive/Ship leaves through `prepare_native_track`
+                // below; its track step queries GetCurrentSpeed live and
+                // writes nothing here.
             } else if uses_hover_locomotor {
                 // Hover throttle (the hover locomotor's SpeedUpdate model, see
                 // sim/movement/hover.rs): a [0,1] fraction of base Speed ramped
@@ -1745,6 +1747,9 @@ fn advance_ordinary_mover(
                 // No ramping data — constant speed fallback.
                 target.current_speed = target.speed;
             }
+            // Drive/Ship never move by this value: a Unit's leaves through
+            // `prepare_native_track` below, and no step writes `current_speed`
+            // for another class's Drive/Ship (#689).
             let mut effective_speed: SimFixed = if uses_drive_locomotor || uses_ship_locomotor {
                 target.current_speed
             } else {

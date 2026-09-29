@@ -450,7 +450,9 @@ fn evaluate_ready(
         // the second call with the first call's state.
         let locomotor = crate::sim::movement::ready_producer::ready_state_for(
             entity,
-            rules.map(|rules| (rules, &sim.interner)),
+            rules.map(|rules| {
+                crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.type_handles)
+            }),
             sim.session.binary_frame,
         )
         .or(if degraded_moving_gate {
