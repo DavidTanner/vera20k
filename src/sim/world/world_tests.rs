@@ -2474,10 +2474,11 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
         let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
         unmark_terrain_occupation(production, &tree, terrain.as_mut());
     }
-    let tail_path_grid =
-        sim.refresh_navigation_after_terrain_changes(Some(&input_path_grid), &[(0, 0)]);
-    let phase_six_consumer_grid = tail_path_grid.as_ref().or(Some(&input_path_grid));
-    let phase_six_consumer_grid = phase_six_consumer_grid.expect("tail grid");
+    sim.path_grid = Some(Arc::new(input_path_grid));
+    let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
+    let phase_six_consumer_grid = sim
+        .finish_terrain_navigation_changes(&rules, &[(0, 0)])
+        .expect("tail grid");
 
     assert!(phase_six_consumer_grid.is_walkable(0, 0));
     assert_eq!(phase_six_consumer_grid.terrain_object_cell_bits_at(0, 0), 0);
@@ -2542,11 +2543,12 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
         let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
         unmark_terrain_occupation(production, &tree, terrain.as_mut());
     }
+    let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     let tail_path_grid = sim
-        .refresh_navigation_after_terrain_changes(Some(&input_path_grid), &[(0, 0)])
+        .finish_terrain_navigation_changes(&rules, &[(0, 0)])
         .expect("tail grid");
 
-    assert_eq!(tail_path_grid, input_path_grid);
+    assert_eq!(*tail_path_grid, input_path_grid);
     assert_eq!(
         sim.resolved_terrain
             .as_ref()
@@ -2563,7 +2565,7 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
             .expect("normal zone map")
             .zone_at(0, 0, MovementLayer::Ground),
         ZONE_INVALID,
-        "forced rebuild must observe the reduced-zone change despite identical PathGrid cells"
+        "Limbo's AssignOrphaned must observe the reduced-zone change despite identical PathGrid cells"
     );
 }
 
@@ -4853,7 +4855,7 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     // return and publish the current projection without mutating that Arc.
     for changed_cells in [&[][..], &[(6, 0)][..]] {
         let tail = sim
-            .finish_terrain_navigation_changes(changed_cells)
+            .finish_terrain_navigation_changes(&rules, changed_cells)
             .unwrap();
         assert_eq!(tail.as_ref(), collapsed.as_ref());
         if changed_cells.is_empty() {

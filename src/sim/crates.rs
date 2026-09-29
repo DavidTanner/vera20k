@@ -883,12 +883,7 @@ fn recalc_real_crate_mark_cell(
     else {
         return;
     };
-    grid.recalculate_runtime_cell(
-        terrain,
-        registry,
-        cell,
-        crate::sim::overlay_grid::NavigationPublication::NextPathReader,
-    );
+    grid.recalculate_runtime_cell(terrain, registry, cell);
 }
 
 fn set_crate_mark_data(sim: &mut Simulation, cell: (u16, u16), data: u8) {
@@ -2099,7 +2094,6 @@ pub(crate) mod tests {
 
     #[test]
     fn crate_mark_publishes_navigation_before_next_reader_and_frame_delivery() {
-        use crate::sim::overlay_grid::NavigationPublication;
         use crate::sim::world::TickLane;
         use std::sync::Arc;
 
@@ -2150,15 +2144,11 @@ pub(crate) mod tests {
             sim.resolved_terrain.as_mut().unwrap(),
             &registry,
             cells[0],
-            NavigationPublication::NextPathReader,
         );
         assert!(!repeated.navigation_changed);
         let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
         assert_eq!(pending.take_synchronous_navigation_cells(), cells);
-        assert_eq!(
-            pending.take_dirty_cells_with_passability_signal(),
-            (cells.to_vec(), true)
-        );
+        assert_eq!(pending.take_dirty_cells(), cells);
 
         // Even an empty receiver batch executes the production consequence settlement.
         // It must publish pending crate terrain before its next navigation reader.
@@ -2172,9 +2162,9 @@ pub(crate) mod tests {
         let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
         assert!(pending.take_synchronous_navigation_cells().is_empty());
         assert_eq!(
-            pending.take_dirty_cells_with_passability_signal(),
-            (cells.to_vec(), true),
-            "next-reader settlement does not consume presentation dirtiness or the frame signal"
+            pending.take_dirty_cells(),
+            cells,
+            "next-reader settlement does not consume presentation dirtiness"
         );
         let settled = sim.path_grid_snapshot().unwrap();
         let first = sim
@@ -2198,8 +2188,8 @@ pub(crate) mod tests {
         assert_eq!(first.tick.state_hash, sim.state_hash());
         let published = sim.path_grid_snapshot().unwrap();
         assert!(
-            !Arc::ptr_eq(&settled, &published),
-            "the independent frame signal also publishes"
+            Arc::ptr_eq(&settled, &published),
+            "the next-reader settlement already published the Recalc"
         );
         let second = sim
             .advance_app_frame(

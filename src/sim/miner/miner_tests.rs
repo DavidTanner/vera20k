@@ -1569,7 +1569,6 @@ fn harvester_clears_density_zero_overlay_without_bale_and_moves_on() {
             terrain,
             crate::sim::tiberium::test_support::overlay_registry_with_land(),
             at,
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
         );
     }
 

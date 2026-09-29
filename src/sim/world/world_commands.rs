@@ -35,13 +35,11 @@ use crate::sim::movement::jumpjet_movement;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::teleport_movement;
 use crate::sim::overlay_grid::{
-    NavigationPublication, OverlayRecalcOutcome, RecomputeResult, runtime_wall_cleanup_visit_at,
+    OverlayRecalcOutcome, RecomputeResult, runtime_wall_cleanup_visit_at,
 };
 use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::zone_incremental::{
-    PackedZoneCoord, ZoneRepairKind, repair_zone_cell,
-};
+use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::production;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed, ra2_speed_to_leptons_per_second};
 
@@ -333,24 +331,19 @@ impl Simulation {
         };
         #[cfg(not(test))]
         let _ = sold_cell;
-        let Some(zone_grid) = self.zone_grid.as_mut() else {
+        let Some(_zone_grid) = self.zone_grid.as_mut() else {
             return;
         };
-        let bridge_records = self
-            .bridge_state
-            .as_ref()
-            .map(|state| state.endpoint_records())
-            .unwrap_or(&[]);
         #[cfg(test)]
-        trace_wall_sell_zone_repair_step(zone_grid, tail_grid, sold_cell, repair_cell);
-        let _ = repair_zone_cell(
-            zone_grid,
-            PackedZoneCoord::new(repair_cell.0 as i16, repair_cell.1 as i16),
-            repair,
+        trace_wall_sell_zone_repair_step(_zone_grid, tail_grid, sold_cell, repair_cell);
+        super::repair_zone_after_recalc(
+            &mut self.zone_grid,
             tail_grid,
-            self.playfield_bounds,
             terrain,
-            bridge_records,
+            self.bridge_state.as_ref(),
+            self.playfield_bounds,
+            repair_cell,
+            repair,
         );
     }
 
@@ -423,13 +416,8 @@ impl Simulation {
             // eight neighbour contributions permanently.
             grid.clear_overlay(rx, ry);
             if let Some(terrain) = self.resolved_terrain.as_mut() {
-                grid.recalculate_runtime_cell(
-                    terrain,
-                    overlays,
-                    (rx, ry),
-                    NavigationPublication::NextPathReader,
-                )
-                .navigation_changed
+                grid.recalculate_runtime_cell(terrain, overlays, (rx, ry))
+                    .navigation_changed
             } else {
                 false
             }
@@ -484,12 +472,9 @@ impl Simulation {
             };
             let result = visit.recomputed;
             let recalc = match (self.overlay_grid.as_mut(), self.resolved_terrain.as_mut()) {
-                (Some(grid), Some(terrain)) => grid.recalculate_runtime_cell(
-                    terrain,
-                    overlays,
-                    (nx, ny),
-                    NavigationPublication::NextPathReader,
-                ),
+                (Some(grid), Some(terrain)) => {
+                    grid.recalculate_runtime_cell(terrain, overlays, (nx, ny))
+                }
                 _ => OverlayRecalcOutcome::default(),
             };
             self.refresh_wall_sale_recalc_prefix(&mut tail_grid, nx, ny, recalc.navigation_changed);

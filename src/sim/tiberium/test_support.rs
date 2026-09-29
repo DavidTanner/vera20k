@@ -157,12 +157,7 @@ pub(crate) fn place_tiberium_on_map(
     place_tiberium(sim, cell.0, cell.1, resource, bales);
     if let (Some(grid), Some(terrain)) = (sim.overlay_grid.as_mut(), sim.resolved_terrain.as_mut())
     {
-        grid.recalculate_runtime_cell(
-            terrain,
-            overlay_registry_with_land(),
-            cell,
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        grid.recalculate_runtime_cell(terrain, overlay_registry_with_land(), cell);
     }
 }
 
@@ -215,12 +210,7 @@ pub(crate) fn clear_tiberium(sim: &mut Simulation, cell: (u16, u16)) {
     if let Some(grid) = sim.overlay_grid.as_mut() {
         grid.clear_overlay(cell.0, cell.1);
         if let Some(terrain) = sim.resolved_terrain.as_mut() {
-            grid.recalculate_runtime_cell(
-                terrain,
-                overlay_registry_with_land(),
-                cell,
-                crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-            );
+            grid.recalculate_runtime_cell(terrain, overlay_registry_with_land(), cell);
         }
     }
 }

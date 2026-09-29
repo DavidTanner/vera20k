@@ -534,12 +534,7 @@ fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRe
         let (rx, ry) = (rx + HARNESS_COORD_SHIFT, ry + HARNESS_COORD_SHIFT);
         overlay_grid.place_overlay(rx, ry, tib01, 11);
         // RecalcAttributes: LandType 5 and its [Tiberium] speed row.
-        overlay_grid.recalculate_runtime_cell(
-            terrain,
-            overlays,
-            (rx, ry),
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        overlay_grid.recalculate_runtime_cell(terrain, overlays, (rx, ry));
     }
     overlay_grid.take_dirty_cells();
     sim.overlay_grid = Some(overlay_grid);

@@ -14,6 +14,7 @@ use crate::map::overlay_types::{
 };
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::intern::InternedId;
+use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
 use crate::util::native_x87::object_distance;
 use std::collections::BTreeSet;
@@ -110,26 +111,12 @@ pub struct OverlayGrid {
     /// Not part of game state; never serialized.
     #[serde(skip, default)]
     removed_render_cells: Vec<(u16, u16)>,
-    /// A synchronous sim-side recalc already observed a passability change for
-    /// one of the dirty cells. The frame finalizer must preserve that first result
-    /// even though recalculating the now-current terrain returns `false`.
-    #[serde(skip, default)]
-    synchronous_passability_changed: bool,
-    /// Coordinates whose synchronous overlay recalc changed movement authority.
-    /// Drained by `World` before post-combat order readers rebuild paths/zones.
+    /// Coordinates whose synchronous overlay recalc changed movement authority,
+    /// in first-seen order. `Simulation` publishes each through the one-cell
+    /// navigation owner at its next path reader or the frame tail, whichever
+    /// comes first; zone IDs stay with the mutation owner's native helper.
     #[serde(skip, default)]
     synchronous_navigation_cells: Vec<(u16, u16)>,
-}
-
-/// Which existing world-reader boundary needs the synchronous projection.
-/// VERA-internal delivery policy, gamemd equivalent UNCHECKED. Native callback
-/// order remains with the mutation owner; these receipts do not run callbacks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NavigationPublication {
-    /// The owner already publishes inline, or its first reader is the frame tail.
-    FrameBoundary,
-    /// Publish the changed cell before the next path/zone reader as well.
-    NextPathReader,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -202,7 +189,6 @@ impl OverlayGrid {
             dirty_cells: Vec::new(),
             mutation_epoch: 0,
             wall_plane_epoch: 0,
-            synchronous_passability_changed: false,
             removed_render_cells: Vec::new(),
             synchronous_navigation_cells: Vec::new(),
         }
@@ -242,7 +228,6 @@ impl OverlayGrid {
             dirty_cells: Vec::new(),
             mutation_epoch: 0,
             wall_plane_epoch: 0,
-            synchronous_passability_changed: false,
             removed_render_cells: Vec::new(),
             synchronous_navigation_cells: Vec::new(),
         }
@@ -926,21 +911,10 @@ impl OverlayGrid {
         self.cells.len()
     }
 
-    /// Drain the list of cells mutated since last call. Simulation's frame
-    /// finalizer recalculates passability and may trigger a navigation rebuild.
-    ///
-    /// Drained at the first frame boundary with rules, resolved terrain, and an
-    /// overlay registry. Partial-input frames retain it so derived terrain and
-    /// navigation cannot miss the mutation.
-    #[cfg(test)]
-    pub fn take_dirty_cells(&mut self) -> Vec<(u16, u16)> {
-        self.take_dirty_cells_with_passability_signal().0
-    }
-
-    /// Recalculate one runtime mutation and retain its delivery obligations.
-    /// A later unchanged projection cannot erase an earlier change. The
-    /// next-reader receipt preserves first-seen order independently of the
-    /// presentation dirty list and the frame signal.
+    /// Recalculate one runtime mutation and queue its navigation receipt.
+    /// A later unchanged projection cannot erase an earlier change: the
+    /// receipt keeps first-seen order independently of the presentation
+    /// dirty list until `Simulation` publishes it.
     ///
     /// Zone comparison serves ordered wall cleanup: CellClass cleanup
     /// @ 0x00480630 runs Recalc @ 0x00480969, compares old/new zone at
@@ -951,7 +925,6 @@ impl OverlayGrid {
         terrain: &mut ResolvedTerrainGrid,
         registry: &OverlayTypeRegistry,
         cell: (u16, u16),
-        publication: NavigationPublication,
     ) -> OverlayRecalcOutcome {
         self.mutation_epoch = self.mutation_epoch.wrapping_add(1);
         let old_zone = terrain.cell(cell.0, cell.1).map(|cell| cell.zone_type);
@@ -960,11 +933,7 @@ impl OverlayGrid {
         let zone_changed = old_zone
             .zip(terrain.cell(cell.0, cell.1).map(|cell| cell.zone_type))
             .is_some_and(|(old, new)| old != new);
-        self.synchronous_passability_changed |= navigation_changed;
-        if navigation_changed
-            && publication == NavigationPublication::NextPathReader
-            && !self.synchronous_navigation_cells.contains(&cell)
-        {
+        if navigation_changed && !self.synchronous_navigation_cells.contains(&cell) {
             self.synchronous_navigation_cells.push(cell);
         }
         OverlayRecalcOutcome {
@@ -979,13 +948,14 @@ impl OverlayGrid {
         std::mem::take(&mut self.synchronous_navigation_cells)
     }
 
-    /// Drain overlay dirtiness and any already-observed passability change as
-    /// one runtime-only result. Neither component is serialized or hashed.
-    pub(crate) fn take_dirty_cells_with_passability_signal(&mut self) -> (Vec<(u16, u16)>, bool) {
-        (
-            std::mem::take(&mut self.dirty_cells),
-            std::mem::take(&mut self.synchronous_passability_changed),
-        )
+    /// Drain the cells mutated since the last call. Simulation's frame
+    /// finalizer recalculates their attributes and publishes navigation.
+    ///
+    /// Drained at the first frame boundary with rules, resolved terrain, and an
+    /// overlay registry. Partial-input frames retain it so derived terrain and
+    /// navigation cannot miss the mutation. Runtime-only; never serialized.
+    pub(crate) fn take_dirty_cells(&mut self) -> Vec<(u16, u16)> {
+        std::mem::take(&mut self.dirty_cells)
     }
 }
 
@@ -1061,12 +1031,6 @@ pub struct WallMutation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WallZoneRepairKind {
-    AssignOrphaned,
-    MergeAdjacent,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WallDirtyStep {
     Tactical,
     Radar,
@@ -1091,7 +1055,7 @@ pub(crate) trait WallDamageTransactionHost {
         terrain: &ResolvedTerrainGrid,
         cell: (u16, u16),
         navigation_changed: bool,
-        repair: WallZoneRepairKind,
+        repair: ZoneRepairKind,
     );
 
     fn pointer_expired(&mut self, target: WallPointerTarget);
@@ -1462,22 +1426,13 @@ fn damage_wall_recursive(
     if let NativeRuntimeOverlayCell::Real(rx, ry) = target
         && let Some(terrain) = resolved_terrain.as_deref_mut()
     {
-        let recalc = grid.recalculate_runtime_cell(
-            terrain,
-            registry,
-            (rx, ry),
-            if host.is_some() {
-                NavigationPublication::FrameBoundary
-            } else {
-                NavigationPublication::NextPathReader
-            },
-        );
+        let recalc = grid.recalculate_runtime_cell(terrain, registry, (rx, ry));
         if let Some(host) = host.as_deref_mut() {
             host.navigation_step(
                 terrain,
                 (rx, ry),
                 recalc.navigation_changed,
-                WallZoneRepairKind::AssignOrphaned,
+                ZoneRepairKind::AssignOrphaned,
             );
         }
     }
@@ -1837,16 +1792,7 @@ pub(crate) fn refresh_wall_connectivity_after_placement_with_host(
             continue;
         };
         if was_wall && let Some(terrain) = resolved_terrain.as_deref_mut() {
-            let recalc = grid.recalculate_runtime_cell(
-                terrain,
-                registry,
-                (nx, ny),
-                if host.is_some() {
-                    NavigationPublication::FrameBoundary
-                } else {
-                    NavigationPublication::NextPathReader
-                },
-            );
+            let recalc = grid.recalculate_runtime_cell(terrain, registry, (nx, ny));
             if recalc.zone_changed
                 && let Some(host) = host.as_deref_mut()
             {
@@ -1855,9 +1801,9 @@ pub(crate) fn refresh_wall_connectivity_after_placement_with_host(
                     (nx, ny),
                     recalc.navigation_changed,
                     if result == RecomputeResult::Destroyed {
-                        WallZoneRepairKind::AssignOrphaned
+                        ZoneRepairKind::AssignOrphaned
                     } else {
-                        WallZoneRepairKind::MergeAdjacent
+                        ZoneRepairKind::MergeAdjacent
                     },
                 );
             }
@@ -1998,16 +1944,7 @@ fn cleanup_wall_neighbors_into(
             // removal's retained-count reversal is completed here only after
             // that Recalc proves the reduced zone changed.
             if let Some(terrain) = resolved_terrain.as_deref_mut() {
-                let recalc = grid.recalculate_runtime_cell(
-                    terrain,
-                    registry,
-                    (nx, ny),
-                    if host.is_some() {
-                        NavigationPublication::FrameBoundary
-                    } else {
-                        NavigationPublication::NextPathReader
-                    },
-                );
+                let recalc = grid.recalculate_runtime_cell(terrain, registry, (nx, ny));
                 if recalc.zone_changed
                     && let Some(host) = host.as_deref_mut()
                 {
@@ -2016,9 +1953,9 @@ fn cleanup_wall_neighbors_into(
                         (nx, ny),
                         recalc.navigation_changed,
                         if recomputed == RecomputeResult::Destroyed {
-                            WallZoneRepairKind::AssignOrphaned
+                            ZoneRepairKind::AssignOrphaned
                         } else {
-                            WallZoneRepairKind::MergeAdjacent
+                            ZoneRepairKind::MergeAdjacent
                         },
                     );
                 }
@@ -3685,7 +3622,7 @@ mod recompute_tests {
         Navigation {
             cell: (u16, u16),
             navigation_changed: bool,
-            repair: WallZoneRepairKind,
+            repair: ZoneRepairKind,
         },
         Pointer(WallPointerTarget),
     }
@@ -3705,7 +3642,7 @@ mod recompute_tests {
             _terrain: &ResolvedTerrainGrid,
             cell: (u16, u16),
             navigation_changed: bool,
-            repair: WallZoneRepairKind,
+            repair: ZoneRepairKind,
         ) {
             self.events.push(WallHostEvent::Navigation {
                 cell,
@@ -3968,7 +3905,7 @@ Strength=400
             WallHostEvent::Navigation {
                 cell: (5, 5),
                 navigation_changed: false,
-                repair: WallZoneRepairKind::AssignOrphaned,
+                repair: ZoneRepairKind::AssignOrphaned,
             },
             WallHostEvent::Dirty(WallDirtyStep::Radar, (5, 5)),
         ];

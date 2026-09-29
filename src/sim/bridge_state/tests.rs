@@ -364,7 +364,7 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
     assert!(intact.endpoint_records()[0].active);
     assert_ne!(intact.endpoint_records()[0].group_id, 0);
 
-    let mut broken = BridgeRuntimeState::from_resolved_terrain(&make(false), true, 300);
+    let broken = BridgeRuntimeState::from_resolved_terrain(&make(false), true, 300);
     assert!(!broken.endpoint_records()[0].active);
     assert_eq!(broken.endpoint_records()[0].group_id, 0);
 
@@ -377,7 +377,7 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
             cell.bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
         }
     });
-    let mut mixed = BridgeRuntimeState::from_resolved_terrain(&mixed_gap, true, 300);
+    let mixed = BridgeRuntimeState::from_resolved_terrain(&mixed_gap, true, 300);
     assert!(!mixed.endpoint_records()[0].active);
     assert_eq!(mixed.endpoint_records()[0].group_id, 0);
     assert!(mixed.cell(2, 0).unwrap().bridge_group_id.is_some());

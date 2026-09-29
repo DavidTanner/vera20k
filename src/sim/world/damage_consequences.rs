@@ -158,7 +158,8 @@ impl DamageConsequences {
             );
         }
 
-        let path_grid = world.finish_terrain_navigation_changes(&terrain_navigation_changed_cells);
+        let path_grid =
+            world.finish_terrain_navigation_changes(rules, &terrain_navigation_changed_cells);
         if world.session.game_options.super_weapons && effects.structure_destroyed {
             let mut refreshed = Vec::new();
             for &(owner, category) in &dead_infos {

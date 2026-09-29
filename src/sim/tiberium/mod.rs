@@ -475,12 +475,7 @@ pub fn reduce_tiberium(
         {
             // Retail recalculates cell attributes synchronously inside the full
             // removal boundary, before any later sim system can observe it.
-            grid.recalculate_runtime_cell(
-                terrain,
-                registry,
-                cell,
-                crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-            );
+            grid.recalculate_runtime_cell(terrain, registry, cell);
         }
     }
 
@@ -1008,8 +1003,8 @@ SpreadPercentage=.06
             "unallocated native slot receives neither pack"
         );
         assert_eq!(
-            grid.take_dirty_cells_with_passability_signal(),
-            (Vec::new(), false),
+            grid.take_dirty_cells(),
+            Vec::new(),
             "map initialization creates no runtime mutation trace"
         );
 
@@ -1210,7 +1205,6 @@ SpreadPercentage=.06
     #[test]
     fn gsi_04_09_full_reduction_propagates_synchronous_path_refresh() {
         use crate::rules::locomotor_type::SpeedType;
-        use crate::sim::overlay_grid::NavigationPublication;
         use crate::sim::world::TickLane;
         use std::sync::Arc;
 
@@ -1270,7 +1264,6 @@ SpreadPercentage=.06
             sim.resolved_terrain.as_mut().unwrap(),
             &overlay_registry,
             (0, 0),
-            NavigationPublication::FrameBoundary,
         );
         assert!(!repeated.navigation_changed);
 
@@ -1278,16 +1271,23 @@ SpreadPercentage=.06
             .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
             .expect("fixture frame must complete");
         assert!(deferred.overlay_updates.is_empty());
-        assert!(Arc::ptr_eq(&before, &sim.path_grid_snapshot().unwrap()));
         assert_eq!(
-            sim.overlay_grid
-                .as_ref()
-                .unwrap()
-                .clone()
-                .take_dirty_cells_with_passability_signal(),
-            (vec![(0, 0)], true),
-            "missing registry retains the first true result despite the false repeat"
+            sim.terrain_costs[&SpeedType::Foot].cost_at(0, 0),
+            37,
+            "the next path reader publishes the Recalc without an overlay registry"
         );
+        let published = sim.path_grid_snapshot().unwrap();
+        assert!(
+            Arc::ptr_eq(&before, &published),
+            "the walkable path cell is current; only its costs change"
+        );
+        let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
+        assert_eq!(
+            pending.take_dirty_cells(),
+            vec![(0, 0)],
+            "presentation dirtiness waits for the registry"
+        );
+        assert!(pending.take_synchronous_navigation_cells().is_empty());
 
         let first = sim
             .advance_app_frame(
@@ -1299,23 +1299,16 @@ SpreadPercentage=.06
                 None,
             )
             .expect("fixture frame must complete");
-        assert_eq!(sim.terrain_costs[&SpeedType::Foot].cost_at(0, 0), 37);
         assert!(sim.zone_grid.is_some());
         assert!(
             first.overlay_updates.is_empty(),
             "erased tiberium has no overlay upsert"
         );
         assert_eq!(first.tick.state_hash, sim.state_hash());
-        let published = sim.path_grid_snapshot().unwrap();
-        assert!(!Arc::ptr_eq(&before, &published));
-        assert_eq!(
-            sim.overlay_grid
-                .as_ref()
-                .unwrap()
-                .clone()
-                .take_dirty_cells_with_passability_signal(),
-            (Vec::new(), false)
-        );
+        assert!(Arc::ptr_eq(&published, &sim.path_grid_snapshot().unwrap()));
+        let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
+        assert!(pending.take_dirty_cells().is_empty());
+        assert!(pending.take_synchronous_navigation_cells().is_empty());
         let second = sim
             .advance_app_frame(
                 &[],
