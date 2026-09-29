@@ -116,9 +116,26 @@ impl Host {
         }
     }
 }
-impl RepairHost for Host {
+impl HutCells for Host {
     type Cell = usize;
     type Error = String;
+    fn lookup(&mut self, p: CellCoord) -> usize {
+        self.get(p)
+    }
+    fn coord(&self, c: usize) -> CellCoord {
+        self.cells[c].coord
+    }
+    fn flags(&self, c: usize) -> u32 {
+        self.cells[c].flags
+    }
+    fn anchor(&self, c: usize) -> Result<usize, String> {
+        self.cells[c]
+            .anchor
+            .and_then(|p| self.allocated_index(p))
+            .ok_or_else(|| "unadmitted null anchor".into())
+    }
+}
+impl RepairHost for Host {
     fn tiles(&self, family: Family) -> HighBridgeRimTiles {
         let keys = &self.input["rim_keys"];
         let get = |k: &str| keys[k].as_i64().unwrap() as i32;
@@ -137,15 +154,6 @@ impl RepairHost for Host {
             middle: [get("BridgeMiddle1"), get("BridgeMiddle2")],
         }
     }
-    fn lookup(&mut self, p: CellCoord) -> usize {
-        self.get(p)
-    }
-    fn coord(&self, c: usize) -> CellCoord {
-        self.cells[c].coord
-    }
-    fn flags(&self, c: usize) -> u32 {
-        self.cells[c].flags
-    }
     fn tile(&self, c: usize) -> i32 {
         self.cells[c].tile
     }
@@ -159,12 +167,6 @@ impl RepairHost for Host {
         self.cells[c].level = level;
         self.event(json!({"kind":"level","coord":self.cells[c].coord,"level":level}));
         self.callback_result("level")
-    }
-    fn anchor(&self, c: usize) -> Result<usize, String> {
-        self.cells[c]
-            .anchor
-            .and_then(|p| self.allocated_index(p))
-            .ok_or_else(|| "unadmitted null anchor".into())
     }
     fn overlay(&self, c: usize) -> i32 {
         self.cells[c].overlay

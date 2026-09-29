@@ -2286,6 +2286,16 @@ impl ResolvedTerrainGrid {
         }
     }
 
+    /// Read retained CellClass+11A, the iso sub-tile. Constructor 47BBF0
+    /// gives the shared fallback 0; live dummy tile replacement is not
+    /// modeled, so no malformed-map parity is claimed.
+    pub(crate) fn native_cell_sub_tile(&self, cell: NativeCellIdentity) -> u8 {
+        match cell {
+            NativeCellIdentity::Real(index) => self.cells[index].final_sub_tile,
+            NativeCellIdentity::Dummy => 0,
+        }
+    }
+
     /// Smudge CanPlace's Morphable read (`0x006B601A..0x006B603A`) on one
     /// resolved cell: a real cell's current-tile query; the shared dummy keeps
     /// the constructor's 0xFFFF tile, which reads theater tile 0.
@@ -4728,42 +4738,6 @@ impl ResolvedTerrainGrid {
             }
         }
 
-        if projection.is_eager()
-            && let Some(td) = theater_data
-        {
-            if let (Some(bs_idx), Some(ramp_table)) = (
-                td.bridge_set,
-                crate::map::theater::BridgeRampTileTable::from_theater(td),
-            ) {
-                if let Some(bridge_set_bounds) = td.lookup.bounds().get(bs_idx as usize) {
-                    let bridge_set_start = bridge_set_bounds.start;
-                    let mut ramp_count = 0usize;
-                    for cell in &mut cells {
-                        if cell.final_tile_index < 0 {
-                            continue;
-                        }
-                        let tile_id = normalize_tile_id(cell.final_tile_index);
-                        let Some(ramp_tile) = ramp_table.match_tile_id(
-                            tile_id,
-                            bridge_set_start,
-                            bridge_set_bounds.count,
-                            cell.template_height,
-                        ) else {
-                            continue;
-                        };
-                        cell.bridge_facts.ramp_tile = Some(ramp_tile);
-                        ramp_count += 1;
-                    }
-                    if ramp_count > 0 {
-                        log::info!(
-                            "ResolvedTerrain: {} exact high bridge ramp cells detected",
-                            ramp_count,
-                        );
-                    }
-                }
-            }
-        }
-
         {
             let mut high_deck: Vec<(u16, u16, u8, u32)> = cells
                 .iter()
@@ -6669,14 +6643,6 @@ mod tests {
             wood_bridge_set: Some(1),
             slope_set_pieces: None,
             slope_set_pieces2: None,
-            bridge_top_left_1: None,
-            bridge_top_left_2: None,
-            bridge_bottom_right_1: None,
-            bridge_bottom_right_2: None,
-            bridge_top_right_1: None,
-            bridge_top_right_2: None,
-            bridge_bottom_left_1: None,
-            bridge_bottom_left_2: None,
             bridge_middle_1: None,
             bridge_middle_2: None,
             tunnels: None,
@@ -6704,14 +6670,6 @@ mod tests {
             wood_bridge_set: None,
             slope_set_pieces: None,
             slope_set_pieces2: None,
-            bridge_top_left_1: None,
-            bridge_top_left_2: None,
-            bridge_bottom_right_1: None,
-            bridge_bottom_right_2: None,
-            bridge_top_right_1: None,
-            bridge_top_right_2: None,
-            bridge_bottom_left_1: None,
-            bridge_bottom_left_2: None,
             bridge_middle_1: None,
             bridge_middle_2: None,
             tunnels: None,
@@ -10741,14 +10699,6 @@ Tile03ZAdjust=-10
             wood_bridge_set: None,
             slope_set_pieces: None,
             slope_set_pieces2: None,
-            bridge_top_left_1: None,
-            bridge_top_left_2: None,
-            bridge_bottom_right_1: None,
-            bridge_bottom_right_2: None,
-            bridge_top_right_1: None,
-            bridge_top_right_2: None,
-            bridge_bottom_left_1: None,
-            bridge_bottom_left_2: None,
             bridge_middle_1: None,
             bridge_middle_2: None,
             tunnels: None,

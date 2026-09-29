@@ -126,7 +126,10 @@ pub enum BridgeStampSlot {
 
 impl BridgeStampSlot {
     pub(crate) const fn writes_native_anchor(self) -> bool {
-        matches!(self, Self::Forward1 | Self::Forward2 | Self::Opposite | Self::ExtraDir6)
+        matches!(
+            self,
+            Self::Forward1 | Self::Forward2 | Self::Opposite | Self::ExtraDir6
+        )
     }
 }
 
@@ -240,21 +243,6 @@ pub struct BridgeAnchorRelation {
     pub direction: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum BridgeRampKind {
-    TopRight,
-    TopLeft,
-    Middle1,
-    Middle2,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct BridgeRampTile {
-    pub kind: BridgeRampKind,
-    pub relative_tile_index: u16,
-    pub height_byte: u8,
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default,
 )]
@@ -268,7 +256,6 @@ pub struct BridgeCellFacts {
     /// Literal CellClass+0x2C. Native47E040 preserves this on Anchor/Forward3;
     /// the derived self relation above must not replace a retained pointer.
     pub native_anchor: Option<crate::map::cell_index::NativeCellIdentity>,
-    pub ramp_tile: Option<BridgeRampTile>,
 }
 
 impl BridgeCellFacts {

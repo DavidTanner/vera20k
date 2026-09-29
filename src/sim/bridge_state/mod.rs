@@ -1038,21 +1038,7 @@ impl BridgeRuntimeState {
         is_high_bridge: bool,
         terrain: &mut ResolvedTerrainGrid,
     ) -> StateOutcome {
-        let mut live_flags = terrain.bridge_flag_execution_state();
-        self.body_cell_advance_state_with_flags(rx, ry, is_high_bridge, terrain, &mut live_flags)
-    }
-
-    /// Same native body driver with a caller-owned live flag transaction.
-    /// CABHUT fallback retries keep this value across immediate attempts so
-    /// synchronous setters from one attempt gate the next one.
-    pub(crate) fn body_cell_advance_state_with_flags(
-        &mut self,
-        rx: u16,
-        ry: u16,
-        is_high_bridge: bool,
-        terrain: &mut ResolvedTerrainGrid,
-        live_flags: &mut crate::map::resolved_terrain::CellClassBridgeFlagState,
-    ) -> StateOutcome {
+        let live_flags = &mut terrain.bridge_flag_execution_state();
         // 1. Resolve input cell.
         let Some(input_cell) = self.cell(rx, ry).copied() else {
             return StateOutcome::NoChange;
@@ -1268,7 +1254,7 @@ impl BridgeRuntimeState {
     ///
     /// Sparse-by-design: most bridgehead cells absorb damage via the per-axis
     /// start-cell gate inside `bridgehead_walk_to_anchor` (NS rejects odd
-    /// heights; EW rejects heights > 4). Only the small subset that passes
+    /// sub-tiles; EW rejects sub-tiles > 4). Only the small subset that passes
     /// the gate reaches the anchor-write path.
     ///
     /// On a successful walk:
@@ -1293,7 +1279,8 @@ impl BridgeRuntimeState {
     /// `is_high_bridge` selects the slot `+3` binary return value
     /// (high true; low false after collapse side effects).
     ///
-    /// Height-source: `ResolvedTerrainCell.template_height`.
+    /// Both walks read `CellClass+0x11A`, the iso sub-tile (`0x00576C5F`,
+    /// `0x0057722E`, `0x0057727C`), through the live cell lookup.
     pub fn bridgehead_advance_state(
         &mut self,
         rx: u16,
@@ -1301,20 +1288,7 @@ impl BridgeRuntimeState {
         is_high_bridge: bool,
         terrain: &mut crate::map::resolved_terrain::ResolvedTerrainGrid,
     ) -> StateOutcome {
-        let mut live_flags = terrain.bridge_flag_execution_state();
-        self.bridgehead_advance_state_with_flags(rx, ry, is_high_bridge, terrain, &mut live_flags)
-    }
-
-    /// Same native bridgehead driver with a caller-owned live flag
-    /// transaction. This is required by synchronous CABHUT fallback retries.
-    pub(crate) fn bridgehead_advance_state_with_flags(
-        &mut self,
-        rx: u16,
-        ry: u16,
-        is_high_bridge: bool,
-        terrain: &mut crate::map::resolved_terrain::ResolvedTerrainGrid,
-        live_flags: &mut crate::map::resolved_terrain::CellClassBridgeFlagState,
-    ) -> StateOutcome {
+        let live_flags = &mut terrain.bridge_flag_execution_state();
         // 1. Resolve input cell.
         let Some(input_cell) = self.cell(rx, ry).copied() else {
             return StateOutcome::NoChange;
@@ -1329,20 +1303,20 @@ impl BridgeRuntimeState {
             return StateOutcome::NoChange;
         };
 
-        // 3. Walk to anchor via the height-based predicate. The helper
-        //    computes walk direction internally per the start cell's height
-        //    and applies the per-axis start-cell gate. Failures (odd-h NS,
-        //    h>4 EW, off-map) yield None — the damage is absorbed without
+        // 3. Walk to anchor via the sub-tile predicate. The helper
+        //    computes walk direction internally per the start cell's sub-tile
+        //    and applies the per-axis start-cell gate. Failures (odd NS,
+        //    above 4 EW, off-map) yield None — the damage is absorbed without
         //    state change.
         let map_w = self.width;
         let map_h = self.height;
-        let height_lookup = |pos: (u16, u16)| -> Option<u8> {
-            terrain.cell(pos.0, pos.1).map(|c| c.template_height)
+        let sub_tile = |pos: (u16, u16)| {
+            terrain.native_cell_sub_tile(terrain.native_cell_identity((pos.0 as i16, pos.1 as i16)))
         };
         let Some(anchor_pos) = crate::sim::bridge_specs::bridgehead_walk_to_anchor(
             (rx, ry),
             axis,
-            height_lookup,
+            |pos| Some(sub_tile(pos)),
             map_w,
             map_h,
         ) else {
@@ -1368,16 +1342,12 @@ impl BridgeRuntimeState {
                 anchor_cell.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
             }
 
-            let anchor_height = terrain
-                .cell(anchor_pos.0, anchor_pos.1)
-                .map(|c| c.template_height)
-                .unwrap_or(anchor_snapshot.deck_level);
             let mut destroyed = Vec::new();
             let mut actions = Vec::new();
             for (slot, pos) in crate::sim::bridge_specs::bridgehead_blow_up_row(
                 anchor_pos,
                 axis,
-                anchor_height,
+                sub_tile(anchor_pos),
                 map_w,
                 map_h,
             )
@@ -1761,15 +1731,15 @@ fn walk_anchor_pattern(
     }
 }
 
-/// Compute the two perpendicular cells where `UpdateAdjacentBridges_High`
-/// should fire after a body-cell collapse. Per binary `0x576BA0`, the call
-/// passes the ORIGINAL damaged cell coord (not the anchor); the offsets are
-/// directional.
+/// The two cells the High machine's ramp branch hands to
+/// `UpdateAdjacentBridges_High`, around the ramp's canonical sub-tile cell:
+/// N then S on an EW ramp (`0x00576FFB..0x00577065`), W then E on an NS ramp
+/// (`0x0057752F..0x0057757B`).
 fn compute_adjacent_bridges_dirty(rx: u16, ry: u16, axis: Axis) -> Vec<(u16, u16)> {
     let mut out = Vec::with_capacity(2);
     let perpendiculars: [Direction; 2] = match axis {
-        Axis::NS => [Direction::E, Direction::W],
-        Axis::EW => [Direction::S, Direction::N],
+        Axis::NS => [Direction::W, Direction::E],
+        Axis::EW => [Direction::N, Direction::S],
     };
     for d in perpendiculars {
         let (dx, dy) = d.offset();

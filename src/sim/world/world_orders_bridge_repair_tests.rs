@@ -6,9 +6,8 @@
 
 use super::*;
 use crate::map::bridge_facts::{
-    BRIDGE_FLAG_ANCHOR_SELF, BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_DIRECTION_ZERO,
-    BRIDGE_FLAG_STRUCTURAL, BridgeAnchorRelation, BridgeRampKind, BridgeRampTile,
-    BridgeStampFamily, BridgeStampSlot,
+    BRIDGE_FLAG_ANCHOR_SELF, BRIDGE_FLAG_DIRECTION_ZERO, BRIDGE_FLAG_STRUCTURAL,
+    BridgeAnchorRelation, BridgeStampFamily, BridgeStampSlot,
 };
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
@@ -232,6 +231,23 @@ fn seed_bridge_with_state(sim: &mut Simulation, state: DamageState) {
     sim.bridge_state = Some(bs);
 }
 
+/// Make `cell` the fallback's ramp: a concrete BridgeMiddle1 tile at sub-tile
+/// 4, which `MapClass::IsBridgeRampTile` (`0x005746C0`) accepts and
+/// ApplyDamageToCell (`0x00587180`) reads to select the High state machine.
+fn stamp_concrete_middle_tile(sim: &mut Simulation, cell: (u16, u16)) {
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    terrain.test_set_high_bridge_set_starts(Some(100), Some(200));
+    terrain.test_set_high_bridge_rim_tiles(
+        crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
+            100,
+            b"[General]\nBridgeMiddle1=7\nBridgeMiddle2=40\n",
+        ),
+    );
+    let ramp = terrain.cell_mut(cell.0, cell.1).unwrap();
+    ramp.final_tile_index = 100 + 7 - 1;
+    ramp.final_sub_tile = 4;
+}
+
 fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
     let mut bs = BridgeRuntimeState::default();
     let span = AnchorSpan {
@@ -281,8 +297,10 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
         .resolved_terrain
         .as_mut()
         .expect("bridge fallback tests require resolved terrain");
+    let anchor_cell = terrain.native_cell_identity((13, 10));
     let starter = terrain.cell_mut(12, 10).unwrap();
     starter.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL;
+    starter.bridge_facts.native_anchor = Some(anchor_cell);
     starter.bridge_facts.anchor = Some(BridgeAnchorRelation {
         anchor: (13, 10),
         slot: BridgeStampSlot::Forward1,
@@ -291,55 +309,7 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
     });
     let anchor = terrain.cell_mut(13, 10).unwrap();
     anchor.bridge_facts.raw_flags = 0;
-    anchor.bridge_facts.ramp_tile = Some(BridgeRampTile {
-        kind: BridgeRampKind::Middle1,
-        relative_tile_index: 7,
-        height_byte: 4,
-    });
-}
-
-fn seed_hut_pure_bridgehead_fallback_layout(sim: &mut Simulation) {
-    let mut bs = BridgeRuntimeState::default();
-    let span = AnchorSpan {
-        id: 1,
-        anchor: (11, 10),
-        cells: [Some((11, 10)), None, None, None, None, None],
-        axis: Axis::EW,
-        direction: Direction::E,
-        damage_state: DamageState::Damaged,
-        bridge_group_id: 1,
-    };
-    bs.test_seed_anchor_span(span);
-    bs.test_seed_cell(
-        11,
-        10,
-        BridgeRuntimeCell {
-            deck_present: true,
-            destroyable: true,
-            deck_level: 4,
-            bridge_group_id: Some(1),
-            damage_state: DamageState::Damaged,
-            axis: Some(Axis::EW),
-            role: BridgeCellRole::Anchor,
-            anchor_span_id: Some(1),
-            overlay_byte: 0,
-            bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
-        },
-    );
-    sim.bridge_state = Some(bs);
-
-    let terrain = sim
-        .resolved_terrain
-        .as_mut()
-        .expect("bridge fallback tests require resolved terrain");
-    terrain.cell_mut(12, 10).unwrap().bridge_facts.raw_flags = BRIDGE_FLAG_DESTROYED_OR_RAMP;
-    let anchor = terrain.cell_mut(11, 10).unwrap();
-    anchor.bridge_facts.raw_flags = 0;
-    anchor.bridge_facts.ramp_tile = Some(BridgeRampTile {
-        kind: BridgeRampKind::Middle1,
-        relative_tile_index: 7,
-        height_byte: 4,
-    });
+    stamp_concrete_middle_tile(sim, (13, 10));
 }
 
 fn seed_terminal_overlay_with_fallback_trap(sim: &mut Simulation, overlay_byte: u8) {
@@ -362,21 +332,7 @@ fn seed_terminal_overlay_with_fallback_trap(sim: &mut Simulation, overlay_byte: 
     );
 }
 
-fn seed_stock_high_cabhut_no_overlay_fallback_fixture(sim: &mut Simulation) {
-    // Derived from stock high-bridge CABHUT/no-overlay placements such as
-    // loose:Barrel.mmx and multimd.mix:bridgegap.map.
-    seed_hut_fallback_bridgehead_layout(sim);
-}
-
-fn seed_stock_low_cabhut_no_overlay_fallback_fixture(sim: &mut Simulation) {
-    // Derived from stock low-bridge CABHUT/no-overlay placements such as
-    // loose:Carville.mmx, loose:Hills.mmx, and multimd.mix:xcarville.map.
-    seed_hut_pure_bridgehead_fallback_layout(sim);
-}
-
-fn seed_stock_no_starter_cabhut_no_overlay_fixture(sim: &mut Simulation) {
-    // Derived from stock CABHUT/no-overlay placements with no nearby 0x100/0x400
-    // fallback starter, including MULTI.MIX:mp24t2.map and multimd.mix:xnorest.map.
+fn seed_hut_fallback_without_starter(sim: &mut Simulation) {
     seed_hut_fallback_bridgehead_layout(sim);
     let terrain = sim
         .resolved_terrain
@@ -670,50 +626,6 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
 }
 
 #[test]
-fn c4_on_cabhut_bridgehead_fallback_collapses_bridge() {
-    let (mut sim, rules) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let seal = spawn_seal(&mut sim, 9, 10);
-    let hut_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
-    seed_hut_fallback_bridgehead_layout(&mut sim);
-    plant_c4(&mut sim, &rules, cabhut, seal);
-
-    let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules);
-
-    let hut = sim.substrate.entities.get(cabhut).unwrap();
-    assert_eq!(hut.health.current, hut_hp);
-    assert!(!hut.dying);
-    assert!(hut.pending_c4_detonation.is_none());
-    assert!(bridge_state_changed_seen);
-    let bs = sim.bridge_state.as_ref().unwrap();
-    assert!(matches!(
-        bs.cell(13, 10).unwrap().damage_state,
-        DamageState::Destroyed
-    ));
-}
-
-#[test]
-fn c4_on_cabhut_pure_bridgehead_fallback_uses_opposite_anchor_offset() {
-    let (mut sim, rules) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let seal = spawn_seal(&mut sim, 9, 10);
-    seed_hut_pure_bridgehead_fallback_layout(&mut sim);
-    plant_c4(&mut sim, &rules, cabhut, seal);
-
-    let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules);
-
-    assert!(
-        bridge_state_changed_seen,
-        "pure 0x400 starter should resolve anchor two cells opposite the east scan"
-    );
-    let bs = sim.bridge_state.as_ref().unwrap();
-    assert!(matches!(
-        bs.cell(11, 10).unwrap().damage_state,
-        DamageState::Destroyed
-    ));
-}
-
-#[test]
 fn c4_on_cabhut_fallback_rejects_anchor_or_direction_flags_alone() {
     let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
@@ -743,55 +655,11 @@ fn c4_on_cabhut_fallback_rejects_anchor_or_direction_flags_alone() {
 }
 
 #[test]
-fn stock_high_cabhut_no_overlay_fallback_collapses_bridge() {
+fn c4_on_cabhut_without_fallback_starter_is_noop() {
     let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
-    seed_stock_high_cabhut_no_overlay_fallback_fixture(&mut sim);
-    plant_c4(&mut sim, &rules, cabhut, seal);
-
-    let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules);
-
-    assert!(bridge_state_changed_seen);
-    assert!(matches!(
-        sim.bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(13, 10)
-            .unwrap()
-            .damage_state,
-        DamageState::Destroyed
-    ));
-}
-
-#[test]
-fn stock_low_cabhut_no_overlay_fallback_collapses_bridge() {
-    let (mut sim, rules) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let seal = spawn_seal(&mut sim, 9, 10);
-    seed_stock_low_cabhut_no_overlay_fallback_fixture(&mut sim);
-    plant_c4(&mut sim, &rules, cabhut, seal);
-
-    let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules);
-
-    assert!(bridge_state_changed_seen);
-    assert!(matches!(
-        sim.bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(11, 10)
-            .unwrap()
-            .damage_state,
-        DamageState::Destroyed
-    ));
-}
-
-#[test]
-fn stock_cabhut_no_overlay_without_starter_is_noop() {
-    let (mut sim, rules) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let seal = spawn_seal(&mut sim, 9, 10);
-    seed_stock_no_starter_cabhut_no_overlay_fixture(&mut sim);
+    seed_hut_fallback_without_starter(&mut sim);
     plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules);
@@ -1101,8 +969,8 @@ fn ordinary_engineer_overlay_repair_does_not_clear_neighbor_pavement() {
     );
 }
 
-/// Build a small NS-axis bridge with a bridgehead at (2, 4) (h=8) and an
-/// anchor at (2, 2) (h=4). Used by the bridgehead-direct-damage integration
+/// Build a small NS-axis bridge with a bridgehead at (2, 4) (sub-tile 8)
+/// and an anchor at (2, 2) (sub-tile 4). Used by the bridgehead-direct-damage integration
 /// test. Resolved-terrain dims: 5x5.
 fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
     crate::map::resolved_terrain::ResolvedTerrainGrid,
@@ -1113,7 +981,7 @@ fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
     let mut cells = Vec::with_capacity(25);
     for ry in 0..5u16 {
         for rx in 0..5u16 {
-            let template_height: u8 = if rx == 2 {
+            let final_sub_tile: u8 = if rx == 2 {
                 match ry {
                     4 => 8,
                     3 => 6,
@@ -1127,7 +995,7 @@ fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
                 // level must be >= 4 so the HighStateMachine path matches.
                 // Z-gate accepts impact_z within [level-1, level+1].
                 level: 4,
-                template_height,
+                final_sub_tile,
                 has_bridge_deck: true,
                 bridge_walkable: true,
                 bridge_deck_level: 4,

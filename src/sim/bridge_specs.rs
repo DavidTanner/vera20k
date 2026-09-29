@@ -970,28 +970,24 @@ pub(crate) fn apply_anchor_class_transition(
 /// cell coord, or `None` if the start cell fails the per-axis parity /
 /// upper-bound gate or the walk runs off the map.
 ///
-/// Per the HIGH bridge damage state machine:
-/// - **NS branch (start-cell gate):** reject `(h & 1) != 0` — odd heights
-///   (h=5, h=7) absorb damage with no state change.
-/// - **EW branch (start-cell gate):** reject `h > 4` — high-ramp peak
-///   (h=0xC) and other oversized heights early-return.
+/// Per the HIGH bridge damage state machine, with `h` the cell's iso
+/// sub-tile (`CellClass+0x11A`): the NS middle template is two cells wide,
+/// the EW one five.
+/// - **NS branch (start-cell gate):** reject `(h & 1) != 0` — the second
+///   column absorbs damage with no state change.
+/// - **EW branch (start-cell gate):** reject `h > 4` — the second row
+///   returns early.
 /// - **Walk direction (NS):** `h < 4 → S`, `h == 4 → at anchor`, `h > 4 → N`.
 /// - **Walk direction (EW):** `h < 2 → E`, `h == 2 → at anchor`, `h > 2 → W`.
-/// - **Mid-walk parity:** none. The walk silently passes through odd-h
-///   intermediates. (The previous Rust check was stricter than the
-///   reference behavior and caused damage absorption on multi-cell ramps.)
+/// - **Mid-walk parity:** none (`0x005771D3..0x00577237` tests only `== 4`).
 ///
-/// Walk terminates when `height == target` (4 NS / 2 EW). The 16-iter cap
+/// Walk terminates when `h == target` (4 NS / 2 EW). The 16-iter cap
 /// is an internal defensive bound — there is no equivalent cap in the
 /// reference, but bridges aren't placed near map edges in practice.
-///
-/// `cell_height` should read `ResolvedTerrainCell.template_height` (the
-/// TMP per-tile byte at offset 40, mirroring the reference's
-/// `CellClass+0x11A`).
 pub fn bridgehead_walk_to_anchor(
     start: (u16, u16),
     axis: Axis,
-    cell_height: impl Fn((u16, u16)) -> Option<u8>,
+    cell_sub_tile: impl Fn((u16, u16)) -> Option<u8>,
     map_width: u16,
     map_height: u16,
 ) -> Option<(u16, u16)> {
@@ -1002,7 +998,7 @@ pub fn bridgehead_walk_to_anchor(
 
     // Start-cell gate (parity check / upper-bound check). Only the START
     // cell is gated; mid-walk intermediates pass through.
-    let start_h = cell_height(start)?;
+    let start_h = cell_sub_tile(start)?;
     match axis {
         Axis::NS => {
             if start_h & 1 != 0 {
@@ -1048,7 +1044,7 @@ pub fn bridgehead_walk_to_anchor(
             return None;
         }
         current = (nx as u16, ny as u16);
-        h = cell_height(current)?;
+        h = cell_sub_tile(current)?;
         // No mid-walk parity check.
         if h == target_height {
             return Some(current);
@@ -1061,7 +1057,7 @@ pub fn bridgehead_walk_to_anchor(
 /// Geometry verified live `[GHIDRA 0x576BA0]` step-3 branch.
 ///
 /// Body-axis-aligned 3-cell row (NOT perpendicular). Offset to which row /
-/// column is chosen depends on `anchor_height`'s bit predicate:
+/// column is chosen depends on the anchor's sub-tile `h` (`0x0057727C`):
 ///
 /// | Axis | predicate                 | row geometry                                                       |
 /// |------|---------------------------|---------------------------------------------------------------------|
@@ -1071,24 +1067,21 @@ pub fn bridgehead_walk_to_anchor(
 /// | EW   | `h >= 5`                  | row    at `anchor.Y-1`,  X in `{anchor.X-1, anchor.X, anchor.X+1}` |
 ///
 /// Off-map cells return `None` and are skipped by the caller.
-///
-/// `anchor_height` is whatever the consumer of `bridgehead_walk_to_anchor`
-/// uses for its closure (currently `ResolvedTerrainCell.template_height`).
 pub fn bridgehead_blow_up_row(
     anchor_pos: (u16, u16),
     axis: Axis,
-    anchor_height: u8,
+    anchor_sub_tile: u8,
     map_width: u16,
     map_height: u16,
 ) -> [Option<(u16, u16)>; 3] {
     let (anchor_x, anchor_y) = (anchor_pos.0 as i32, anchor_pos.1 as i32);
     let (col_x, row_y) = match axis {
         Axis::NS => {
-            let x_offset = if anchor_height & 1 == 0 { 0 } else { -1 };
+            let x_offset = if anchor_sub_tile & 1 == 0 { 0 } else { -1 };
             (anchor_x + x_offset, anchor_y)
         }
         Axis::EW => {
-            let y_offset = if anchor_height < 5 { 0 } else { -1 };
+            let y_offset = if anchor_sub_tile < 5 { 0 } else { -1 };
             (anchor_x, anchor_y + y_offset)
         }
     };

@@ -1,7 +1,7 @@
 //! Native489E87..48A2C4 comparison. Callback returns/writes come from the
 //! corpus; this compares the production outer dispatcher, not driver bodies.
 
-use super::{CellFields, DamageHost, dispatch, select_driver};
+use super::{CellFields, CellReader, DamageHost, dispatch, select_driver};
 use crate::sim::bridge_state::DispatchPath;
 use crate::sim::rng::SimRng;
 use serde_json::{Value, json};
@@ -71,7 +71,7 @@ impl<'a> Host<'a> {
     }
 }
 
-impl DamageHost for Host<'_> {
+impl CellReader for Host<'_> {
     type Cell = usize;
 
     fn fields(&self, cell: Self::Cell) -> CellFields {
@@ -100,7 +100,9 @@ impl DamageHost for Host<'_> {
     fn middle_tiles(&self) -> Option<[i32; 2]> {
         Some([20, 40])
     }
+}
 
+impl DamageHost for Host<'_> {
     fn roll_strength(&mut self) -> i32 {
         let high = int(self.input, "strength", 1500);
         let result = self.rng.next_range_i32_inclusive(1, high);

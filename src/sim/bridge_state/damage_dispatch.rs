@@ -5,6 +5,8 @@
 //! admission. Native comparisons: tools/spatial_oracle/bridge_damage_admission.
 
 use super::DispatchPath;
+use super::ordinary;
+use super::ramp_repair::Family;
 
 #[cfg(test)]
 #[path = "damage_dispatch_tests.rs"]
@@ -18,13 +20,17 @@ pub(crate) struct CellFields {
     pub level: u8,
 }
 
-pub(crate) trait DamageHost {
+/// The live cell reads ApplyDamageToCell's driver selection makes.
+pub(crate) trait CellReader {
     type Cell: Copy;
     fn fields(&self, cell: Self::Cell) -> CellFields;
     /// Read self/+2C's current coordinate, then perform the native GetCell.
     fn resolve_anchor(&mut self, cell: Self::Cell) -> Option<Self::Cell>;
     fn tile_bases(&self) -> [i32; 2];
     fn middle_tiles(&self) -> Option<[i32; 2]>;
+}
+
+pub(crate) trait DamageHost: CellReader {
     fn roll_strength(&mut self) -> i32;
     fn apply(&mut self, path: DispatchPath) -> bool;
     fn detach(&mut self, cell: Self::Cell);
@@ -86,8 +92,8 @@ pub(crate) fn dispatch<H: DamageHost>(
                         .is_some_and(|anchor| matches!(host.fields(anchor).overlay, 0xed | 0xee)))
                     && in_height_window(current, impact_z_leptons)
             }
-            DispatchPath::LowDirect => (0x4a..=0x63).contains(&current.overlay),
-            DispatchPath::HighDirect => (0xcd..=0xe6).contains(&current.overlay),
+            DispatchPath::LowDirect => ordinary::standing(current.overlay, Family::Low),
+            DispatchPath::HighDirect => ordinary::standing(current.overlay, Family::High),
         };
         if !matches || (!ion_cannon && host.roll_strength() >= damage) {
             continue;
@@ -111,12 +117,12 @@ pub(crate) fn dispatch<H: DamageHost>(
 
 /// ApplyDamageToCell 00587180 chooses its driver again on every invocation;
 /// the caller's A/B block does not force the concrete/wooden family.
-pub(crate) fn select_driver<H: DamageHost>(host: &mut H, cell: H::Cell) -> Option<DispatchPath> {
+pub(crate) fn select_driver<H: CellReader>(host: &mut H, cell: H::Cell) -> Option<DispatchPath> {
     let fields = host.fields(cell);
-    if (0x4a..=0x63).contains(&fields.overlay) {
+    if ordinary::standing(fields.overlay, Family::Low) {
         return Some(DispatchPath::LowDirect);
     }
-    if (0xcd..=0xe6).contains(&fields.overlay) {
+    if ordinary::standing(fields.overlay, Family::High) {
         return Some(DispatchPath::HighDirect);
     }
     let anchor = if fields.flags & 0x100 != 0 {

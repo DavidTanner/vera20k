@@ -9,6 +9,7 @@
 use crate::map::houses::HouseColorMap;
 use crate::rules::house_colors::{HouseColorIndex, HouseColorRamps, NO_REMAP};
 use crate::rules::ruleset::RuleSet;
+use crate::sim::bridge_state::{ordinary, ramp_repair::Family};
 use crate::sim::intern::InternedId;
 use crate::sim::vision::FogState;
 use std::collections::HashMap;
@@ -49,7 +50,6 @@ pub enum OverlayClassification {
     /// Non-rendered overlay (unknown or not worth showing).
     Other,
 }
-
 
 /// An overlay pixel to stamp on the minimap (pre-computed at init time).
 #[derive(Clone, Copy)]
@@ -186,9 +186,7 @@ pub(super) fn radar_colors_for_tmp_metadata(
     (color, color)
 }
 
-pub(super) fn structural_bridge_radar_color(
-    colors: &HashMap<(u8, u8), [u8; 3]>,
-) -> [u8; 3] {
+pub(super) fn structural_bridge_radar_color(colors: &HashMap<(u8, u8), [u8; 3]>) -> [u8; 3] {
     colors.get(&(24, 0)).copied().unwrap_or([0, 0, 0])
 }
 
@@ -211,7 +209,10 @@ pub(super) fn overlay_radar_color(
     if matches!(overlay_id, 100 | 101 | 231 | 232 | 239) {
         return None;
     }
-    let frame = if matches!(overlay_id, 0x4A..=0x63 | 0xCD..=0xE6) {
+    let frame = if [Family::Low, Family::High]
+        .into_iter()
+        .any(|family| ordinary::standing(i32::from(overlay_id), family))
+    {
         1
     } else {
         frame

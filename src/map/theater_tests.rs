@@ -569,98 +569,6 @@ fn general_reader_missing_bridge_middle_returns_none() {
     assert_eq!(super::read_general_u16(general, "BridgeMiddle2"), None);
 }
 
-fn bridge_piece_values(keys: super::TheaterBridgePieceKeys) -> [Option<u16>; 10] {
-    [
-        keys.bridge_top_left_1,
-        keys.bridge_top_left_2,
-        keys.bridge_bottom_right_1,
-        keys.bridge_bottom_right_2,
-        keys.bridge_top_right_1,
-        keys.bridge_top_right_2,
-        keys.bridge_bottom_left_1,
-        keys.bridge_bottom_left_2,
-        keys.bridge_middle_1,
-        keys.bridge_middle_2,
-    ]
-}
-
-fn loaded_bridge_piece_values(theater: &TheaterData) -> [Option<u16>; 10] {
-    [
-        theater.bridge_top_left_1,
-        theater.bridge_top_left_2,
-        theater.bridge_bottom_right_1,
-        theater.bridge_bottom_right_2,
-        theater.bridge_top_right_1,
-        theater.bridge_top_right_2,
-        theater.bridge_bottom_left_1,
-        theater.bridge_bottom_left_2,
-        theater.bridge_middle_1,
-        theater.bridge_middle_2,
-    ]
-}
-
-#[test]
-fn bridge_piece_parser_keeps_all_ten_keys_independent() {
-    let ini = "[General]\n\
-BridgeTopLeft1=11\n\
-BridgeTopLeft2=12\n\
-BridgeBottomRight1=13\n\
-BridgeBottomRight2=14\n\
-BridgeTopRight1=15\n\
-BridgeTopRight2=16\n\
-BridgeBottomLeft1=17\n\
-BridgeBottomLeft2=18\n\
-BridgeMiddle1=19\n\
-BridgeMiddle2=20\n";
-
-    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
-    let general = parsed.section("General");
-    assert_eq!(
-        bridge_piece_values(super::read_bridge_piece_keys(general)),
-        [
-            Some(11),
-            Some(12),
-            Some(13),
-            Some(14),
-            Some(15),
-            Some(16),
-            Some(17),
-            Some(18),
-            Some(19),
-            Some(20),
-        ]
-    );
-}
-
-#[test]
-fn bridge_piece_parser_preserves_native_absent_values() {
-    let ini = "[General]\n\
-BridgeTopLeft1=-1\n\
-BridgeBottomRight1=3\n\
-BridgeBottomRight2=-1\n\
-BridgeBottomLeft1=6\n\
-BridgeMiddle1=256\n\
-BridgeMiddle2=70000\n";
-
-    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
-    let general = parsed.section("General");
-    assert_eq!(
-        bridge_piece_values(super::read_bridge_piece_keys(general)),
-        [
-            None,
-            None,
-            Some(3),
-            None,
-            None,
-            None,
-            Some(6),
-            None,
-            Some(256),
-            None,
-        ]
-    );
-}
-
 fn native_general_corpus() -> serde_json::Value {
     serde_json::from_str(include_str!(
         "../../tools/rules_oracle/theater_general_reader.json"
@@ -746,6 +654,8 @@ fn general_helpers_match_original_reader_and_signed_repair_keys() {
             "TrackTunnels",
             "DirtTunnels",
             "DirtTrackTunnels",
+            "BridgeMiddle1",
+            "BridgeMiddle2",
         ] {
             assert_eq!(
                 read_general_u16(general, key),
@@ -762,9 +672,7 @@ fn general_helpers_match_original_reader_and_signed_repair_keys() {
             rim.middle,
         ]
         .concat();
-        let projected = bridge_piece_values(read_bridge_piece_keys(general));
-        // Compare the two consumer representations with the same original
-        // signed DWORDs; oversized/negative repair identities must survive.
+        // Oversized/negative repair identities must survive the signed read.
         for (index, key) in [
             "BridgeTopLeft1",
             "BridgeTopLeft2",
@@ -785,11 +693,6 @@ fn general_helpers_match_original_reader_and_signed_repair_keys() {
                 i64::from(signed_pieces[index]),
                 native,
                 "{name}: signed {key}"
-            );
-            assert_eq!(
-                projected[index],
-                u16::try_from(native).ok(),
-                "{name}: projected {key}"
             );
         }
     }
@@ -909,23 +812,12 @@ fn active_retail_automatic_shell_corpus_is_exact() {
             expected["sha256"].as_str().unwrap(),
             "{theater_name}: executed physical INI"
         );
-        let expected_bridge_pieces = [
-            "BridgeTopLeft1",
-            "BridgeTopLeft2",
-            "BridgeBottomRight1",
-            "BridgeBottomRight2",
-            "BridgeTopRight1",
-            "BridgeTopRight2",
-            "BridgeBottomLeft1",
-            "BridgeBottomLeft2",
-            "BridgeMiddle1",
-            "BridgeMiddle2",
-        ]
-        .map(|key| u16::try_from(expected["values"][key].as_i64().unwrap()).ok());
+        let expected_bridge_middles = ["BridgeMiddle1", "BridgeMiddle2"]
+            .map(|key| u16::try_from(expected["values"][key].as_i64().unwrap()).ok());
         assert_eq!(
-            loaded_bridge_piece_values(&theater),
-            expected_bridge_pieces,
-            "loaded {theater_name} bridge-piece keys"
+            [theater.bridge_middle_1, theater.bridge_middle_2],
+            expected_bridge_middles,
+            "loaded {theater_name} BridgeMiddle keys"
         );
 
         let mut candidate_tiles = BTreeSet::new();
@@ -1224,14 +1116,6 @@ fn bridge_railing_slope_starts_use_tileset_bounds() {
         wood_bridge_set: None,
         slope_set_pieces: Some(1),
         slope_set_pieces2: Some(2),
-        bridge_top_left_1: None,
-        bridge_top_left_2: None,
-        bridge_bottom_right_1: None,
-        bridge_bottom_right_2: None,
-        bridge_top_right_1: None,
-        bridge_top_right_2: None,
-        bridge_bottom_left_1: None,
-        bridge_bottom_left_2: None,
         bridge_middle_1: None,
         bridge_middle_2: None,
         tunnels: None,
@@ -1268,14 +1152,6 @@ fn synthetic_theater_with_bridge_keys(
         wood_bridge_set: None,
         slope_set_pieces: None,
         slope_set_pieces2: None,
-        bridge_top_left_1: Some(1),
-        bridge_top_left_2: Some(2),
-        bridge_bottom_right_1: Some(3),
-        bridge_bottom_right_2: Some(3),
-        bridge_top_right_1: Some(4),
-        bridge_top_right_2: Some(5),
-        bridge_bottom_left_1: Some(6),
-        bridge_bottom_left_2: Some(6),
         bridge_middle_1,
         bridge_middle_2,
         tunnels: None,
@@ -1286,97 +1162,6 @@ fn synthetic_theater_with_bridge_keys(
         cliff_ranges: TheaterCliffRanges::default(),
         rmg_tiles: super::RmgTileKeys::default(),
     }
-}
-
-#[test]
-fn ramp_tile_table_matches_binary_height_predicates() {
-    use crate::map::bridge_facts::BridgeRampKind;
-
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-
-    assert_eq!(
-        table.match_relative_tile(4, 0x0C).map(|r| r.kind),
-        Some(BridgeRampKind::TopRight)
-    );
-    assert_eq!(table.match_relative_tile(4, 0x08).map(|r| r.kind), None);
-    assert_eq!(
-        table.match_relative_tile(1, 0x08).map(|r| r.kind),
-        Some(BridgeRampKind::TopLeft)
-    );
-    assert_eq!(
-        table.match_relative_tile(7, 0x04).map(|r| r.kind),
-        Some(BridgeRampKind::Middle1)
-    );
-    assert_eq!(
-        table.match_relative_tile(10, 0x04).map(|r| r.kind),
-        Some(BridgeRampKind::Middle1)
-    );
-    assert_eq!(table.match_relative_tile(11, 0x04), None);
-    assert_eq!(
-        table.match_relative_tile(12, 0x02).map(|r| r.kind),
-        Some(BridgeRampKind::Middle2)
-    );
-}
-
-#[test]
-fn bottom_piece_keys_do_not_enter_the_ramp_classifier() {
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    assert_eq!(td.bridge_bottom_right_1, Some(3));
-    assert_eq!(td.bridge_bottom_right_2, Some(3));
-    assert_eq!(td.bridge_bottom_left_1, Some(6));
-    assert_eq!(td.bridge_bottom_left_2, Some(6));
-
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-    for (relative_tile, height) in [(3, 0x0c), (3, 0x08), (6, 0x0c), (6, 0x08)] {
-        assert_eq!(
-            table.match_relative_tile(relative_tile, height),
-            None,
-            "bottom pavement key {relative_tile} at height {height:#x}"
-        );
-    }
-}
-
-#[test]
-fn ramp_tile_match_tile_id_uses_one_based_bridge_key() {
-    use crate::map::bridge_facts::BridgeRampKind;
-
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-
-    assert_eq!(
-        table.match_tile_id(103, 100, 20, 0x0C).map(|r| r.kind),
-        Some(BridgeRampKind::TopRight)
-    );
-    assert_eq!(
-        table
-            .match_tile_id(103, 100, 20, 0x0C)
-            .map(|r| r.relative_tile_index),
-        Some(4)
-    );
-}
-
-#[test]
-fn ramp_tile_match_tile_id_rejects_tile_before_bridge_set() {
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-
-    assert_eq!(table.match_tile_id(99, 100, 20, 0x0C), None);
-}
-
-#[test]
-fn ramp_tile_match_tile_id_rejects_tile_at_bridge_set_end() {
-    let table = BridgeRampTileTable {
-        top_right_1: Some(4),
-        top_right_2: None,
-        top_left_1: None,
-        top_left_2: None,
-        middle_1: None,
-        middle_2: None,
-    };
-
-    assert_eq!(table.match_tile_id(120, 100, 20, 0x0C), None);
-    assert_eq!(table.match_tile_id(104, 100, 20, 0x0C), None);
 }
 
 #[test]
