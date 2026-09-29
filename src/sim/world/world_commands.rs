@@ -39,7 +39,6 @@ use crate::sim::overlay_grid::{
 };
 use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids;
 use crate::sim::pathfinding::zone_incremental::{
     PackedZoneCoord, ZoneRepairKind, repair_zone_cell,
 };
@@ -299,16 +298,18 @@ impl Simulation {
         };
 
         if navigation_changed {
-            self.terrain_costs = build_canonical_terrain_cost_grids(terrain);
-            let resolved =
-                PathGrid::from_resolved_terrain_with_bridges(terrain, self.bridge_state.as_ref());
+            crate::sim::pathfinding::terrain_cost::refresh_canonical_terrain_costs_at(
+                &mut self.terrain_costs,
+                terrain,
+                (rx, ry),
+            );
             if tail_grid.as_ref().is_some_and(|tail| {
-                tail.width() != resolved.width() || tail.height() != resolved.height()
+                tail.width() != terrain.width() || tail.height() != terrain.height()
             }) {
                 *tail_grid = None;
             }
-            if let Some(tail) = tail_grid.as_mut() {
-                let _ = tail.replace_cell_from(&resolved, rx, ry);
+            if let (Some(tail), Some(cell)) = (tail_grid.as_mut(), terrain.cell(rx, ry)) {
+                let _ = tail.refresh_resolved_cell(cell, self.bridge_state.as_ref(), false);
             }
         }
 
