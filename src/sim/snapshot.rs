@@ -739,7 +739,9 @@ use crate::sim::world::Simulation;
 // entity's teleport or rocket state.
 // 253 -> 254: an order intent can no longer be the garrison Unloading flag;
 // a garrison unloads through its Unload mission.
-const SNAPSHOT_VERSION: u32 = 254;
+// 254 -> 255: an entity no longer saves its unread TooBigToFitUnderBridge and
+// ZFudgeBridge copies; movement never read them and the draw reads the type.
+const SNAPSHOT_VERSION: u32 = 255;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3233,13 +3235,13 @@ mod tests {
         let mut bytes = GameSnapshot::save(&sim, 0, 0, "test_map", 0);
 
         // Product magic and public envelope version occupy the first 12 bytes.
-        bytes[12] = 255;
+        bytes[12] = 254;
 
         assert!(matches!(
             GameSnapshot::load(&bytes),
             Err(SnapshotError::VersionMismatch {
                 expected: SNAPSHOT_VERSION,
-                found: 255,
+                found: 254,
             })
         ));
     }
@@ -3626,7 +3628,8 @@ mod tests {
         // 251 -> 252: no entity homing state.
         // 252 -> 253: no Teleport/Rocket payload copies.
         // 253 -> 254: no garrison Unloading order intent.
-        assert_eq!(super::SNAPSHOT_VERSION, 254);
+        // 254 -> 255: entity TooBigToFitUnderBridge/ZFudgeBridge copies removed.
+        assert_eq!(super::SNAPSHOT_VERSION, 255);
     }
 
     #[test]

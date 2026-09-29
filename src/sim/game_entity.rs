@@ -1007,10 +1007,6 @@ pub struct GameEntity {
     /// Whether this entity ignores per-cell radiation damage (ImmuneToRadiation= in rules.ini).
     #[serde(default)]
     pub immune_to_radiation: bool,
-    /// Render-only depth bias used when this entity is under or near a bridge.
-    pub zfudge_bridge: i32,
-    /// Prevents the unit from taking under-bridge water routes.
-    pub too_big_to_fit_under_bridge: bool,
     /// Whether this entity is playing its death animation (health=0, not yet despawned).
     /// Dying entities are excluded from combat targeting, pathfinding, and selection.
     /// A dying object stays cell-marked until its terminal UnInit. Products
@@ -1741,8 +1737,6 @@ impl GameEntity {
             drive_accelerates: true,
             omni_crush_resistant: false,
             immune_to_radiation: false,
-            zfudge_bridge: 0,
-            too_big_to_fit_under_bridge: false,
             dying: false,
             infantry_terminal: None,
             blocked_scatter_timer: 0,

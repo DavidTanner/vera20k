@@ -168,8 +168,6 @@ impl Simulation {
         // no Buildup SHP clears the AI sale byte (`0x00442CBC`).
         ge.ai_sellable = category == EntityCategory::Structure
             && rules.is_some_and(|rules| rules.has_buildup(&obj.id));
-        ge.zfudge_bridge = obj.zfudge_bridge;
-        ge.too_big_to_fit_under_bridge = obj.too_big_to_fit_under_bridge;
         if should_construct_locomotor(category, obj) {
             ge.locomotor = Some(LocomotorState::from_object_type(
                 obj,

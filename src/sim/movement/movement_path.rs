@@ -22,7 +22,6 @@ use crate::sim::pathfinding::zone_search;
 use crate::sim::pathfinding::{
     MAX_PATH_SEGMENT_STEPS, PathGrid, SearchMarkerOverlay, truncate_layered_path,
 };
-use crate::sim::rng::SimRng;
 
 use super::{MovementConfig, MoverPathFacts, PathfindingContext};
 
@@ -39,19 +38,6 @@ pub(crate) fn path_search_used_zone_grid_marker() -> bool {
 #[cfg(test)]
 thread_local! {
     static PATH_SEARCH_USED_ZONE_GRID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-pub(super) fn merge_path_blocks(
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    _resolved_terrain: Option<&ResolvedTerrainGrid>,
-    _movement_zone: Option<MovementZone>,
-    _too_big_to_fit_under_bridge: bool,
-) -> BTreeSet<(u16, u16)> {
-    // gamemd does not gate movement on TooBigToFitUnderBridge — the flag at
-    // TechnoTypeClass+0xE16 is read only in the draw pipeline (sprite Z fudge
-    // for units on bridge edge cells). UnitClass::Can_Enter_Cell never touches
-    // it. See TOO_BIG_TO_FIT_UNDER_BRIDGE_GHIDRA_REPORT.md.
-    entity_blocks.cloned().unwrap_or_default()
 }
 
 /// Ring radius the blocked-goal fallback searches for a reachable substitute.
@@ -79,8 +65,8 @@ const NEAREST_REACHABLE_SEARCH_RADIUS: u16 = 10;
 /// Stock YR gives the Hover CLSID to `[LCRF]`, `[ROBO]`, `[SAPC]` and `[YHVR]`
 /// — the Robot Tank and all three amphibious transports. (`ROBO` also carries
 /// `TooBigToFitUnderBridge=true`, but that flag gates nothing in movement:
-/// `merge_path_blocks` above records it as draw-pipeline-only, its parameter is
-/// unused, and `Can_Enter_Cell` never reads it. It is not why a Robot Tank
+/// it is draw-pipeline-only (see `ObjectType::too_big_to_fit_under_bridge`)
+/// and `Can_Enter_Cell` never reads it. It is not why a Robot Tank
 /// could not use a span, and it did not stop one driving under one either.)
 ///
 /// **What the one native gate on this path actually does.** VERIFIED 2026-08-27
@@ -378,7 +364,6 @@ pub(super) fn find_move_path(
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     facts: MoverPathFacts,
     allow_zone_hierarchy: bool,
@@ -395,7 +380,6 @@ pub(super) fn find_move_path(
         bridge_blocks,
         zone_mz,
         movement_zone,
-        too_big_to_fit_under_bridge,
         entity_block_map,
         None,
         facts,
@@ -416,7 +400,6 @@ pub(super) fn find_move_path_with_marker(
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverPathFacts,
@@ -434,7 +417,6 @@ pub(super) fn find_move_path_with_marker(
         bridge_blocks,
         zone_mz,
         movement_zone,
-        too_big_to_fit_under_bridge,
         entity_block_map,
         marker_overlay,
         facts,
@@ -466,7 +448,6 @@ pub(super) fn find_move_path_with_marker_detailed(
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverPathFacts,
@@ -480,12 +461,7 @@ pub(super) fn find_move_path_with_marker_detailed(
         PATH_SEARCH_USED_ZONE_GRID.with(|used| used.set(true));
     }
     let resolved_terrain = ctx.resolved_terrain;
-    let merged_entity_blocks = merge_path_blocks(
-        entity_blocks,
-        resolved_terrain,
-        movement_zone,
-        too_big_to_fit_under_bridge,
-    );
+    let merged_entity_blocks = entity_blocks.cloned().unwrap_or_default();
     let entity_blocks = (!merged_entity_blocks.is_empty()).then_some(&merged_entity_blocks);
     // Build the Foot `+0x1AC` cost-class producer here, at the search boundary:
     // the tables are per pass and on `ctx`, the rest is per mover and on
@@ -736,9 +712,7 @@ pub(super) fn try_repath_after_block(
     ctx: PathfindingContext<'_>,
     terrain_costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    _rng: &mut SimRng,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     mcfg: MovementConfig,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     facts: MoverPathFacts,
@@ -756,12 +730,7 @@ pub(super) fn try_repath_after_block(
         return false;
     };
 
-    let combined_blocks: BTreeSet<(u16, u16)> = merge_path_blocks(
-        entity_blocks,
-        ctx.resolved_terrain,
-        movement_zone,
-        too_big_to_fit_under_bridge,
-    );
+    let combined_blocks: BTreeSet<(u16, u16)> = entity_blocks.cloned().unwrap_or_default();
     let Some(effective_goal) = resolve_requested_move_goal(
         grid,
         goal,
@@ -805,7 +774,6 @@ pub(super) fn try_repath_after_block(
         Some(&combined_blocks),
         zone_mz,
         movement_zone,
-        too_big_to_fit_under_bridge,
         entity_block_map,
         marker_overlay,
         MoverPathFacts {
@@ -894,7 +862,6 @@ mod tests {
                 None,
                 MovementZone::Normal,
                 Some(MovementZone::Normal),
-                false,
                 None,
                 None,
                 super::MoverPathFacts::without_wall_arm(0, false, true),
@@ -995,7 +962,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             super::MoverPathFacts::without_wall_arm(0, false, false),
             true,
@@ -1033,7 +999,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             Some(&marker_overlay),
             super::MoverPathFacts::without_wall_arm(0, false, false),
@@ -1095,7 +1060,6 @@ mod tests {
         let mut path_runtime = crate::sim::components::FootPathRuntime::default();
         path_runtime.path_blocked = true;
         path_runtime.start_blocked(0, 1);
-        let mut rng = SimRng::new(0);
 
         assert!(try_repath_after_block(
             &mut target,
@@ -1113,9 +1077,7 @@ mod tests {
             },
             None,
             None,
-            &mut rng,
             Some(MovementZone::Normal),
-            false,
             MovementConfig {
                 binary_frame: 0,
                 close_enough: crate::util::fixed_math::SIM_ZERO,
@@ -1147,7 +1109,6 @@ mod tests {
             ..MovementTarget::default()
         };
         let mut path_runtime = crate::sim::components::FootPathRuntime::default();
-        let mut rng = crate::sim::rng::SimRng::new(0);
 
         assert!(try_repath_after_block(
             &mut target,
@@ -1165,9 +1126,7 @@ mod tests {
             },
             None,
             None,
-            &mut rng,
             Some(MovementZone::Normal),
-            false,
             MovementConfig {
                 binary_frame: 0,
                 close_enough: crate::util::fixed_math::SIM_ZERO,
@@ -1217,7 +1176,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             super::MoverPathFacts::without_wall_arm(0, false, false),
             true,
@@ -1244,7 +1202,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             super::MoverPathFacts::without_wall_arm(0, false, false),
             true,
@@ -1340,7 +1297,6 @@ mod tests {
                 None,
                 MovementZone::Normal,
                 Some(MovementZone::Normal),
-                false,
                 None,
                 facts,
                 true,
@@ -1475,7 +1431,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             armed,
             true,

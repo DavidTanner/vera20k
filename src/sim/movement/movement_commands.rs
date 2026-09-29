@@ -21,7 +21,7 @@ use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::PathfindingContext;
 use super::movement_path::{
-    find_move_path, merge_path_blocks, resolve_reachable_move_goal, resolve_requested_move_goal,
+    find_move_path, resolve_reachable_move_goal, resolve_requested_move_goal,
     supports_layered_bridge_pathing,
 };
 use crate::rules::locomotor_type::MovementZone;
@@ -420,7 +420,6 @@ pub(crate) fn issue_move_command_with_destination(
     // Derive movement_zone from the entity's locomotor — no parameter needed.
     let movement_zone: Option<MovementZone> = entity.locomotor.as_ref().map(|l| l.movement_zone);
     let speed_type = entity.locomotor.as_ref().map(|l| l.speed_type);
-    let too_big_to_fit_under_bridge = entity.too_big_to_fit_under_bridge;
     let layered_pathing = entity
         .locomotor
         .as_ref()
@@ -469,12 +468,7 @@ pub(crate) fn issue_move_command_with_destination(
     {
         loco.power_on();
     }
-    let mut merged_entity_blocks = merge_path_blocks(
-        entity_blocks,
-        resolved_terrain,
-        movement_zone,
-        too_big_to_fit_under_bridge,
-    );
+    let mut merged_entity_blocks = entity_blocks.cloned().unwrap_or_default();
     if let Some(occupation) = cell_occupation.as_deref() {
         merged_entity_blocks.extend(occupation.occupied_cells_ignoring(
             crate::sim::movement::locomotor::MovementLayer::Ground,
@@ -547,7 +541,6 @@ pub(crate) fn issue_move_command_with_destination(
                     merged_entity_blocks_ref,
                     zone_mz,
                     movement_zone,
-                    too_big_to_fit_under_bridge,
                     entity_block_map,
                     path_facts,
                     allow_zone_hierarchy,
@@ -600,7 +593,6 @@ pub(crate) fn issue_move_command_with_destination(
             merged_entity_blocks_ref,
             zone_mz,
             movement_zone,
-            too_big_to_fit_under_bridge,
             entity_block_map,
             path_facts,
             allow_zone_hierarchy,
