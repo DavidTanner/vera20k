@@ -163,6 +163,24 @@ function") is not evidence until that code is shown to run. Some numbers in data
 tables were once typed as pointers into code. A data reference into the middle of a
 function is not proof of a code pointer until its source has been checked.
 
+## Virtual-call references
+
+Since 2026-09-30, a `call [reg+disp]` site whose receiver's class is established has
+user-defined `COMPUTED_CALL` references to every function the RTTI vtables can put in
+that slot. Caller lists, cross-references and call graphs include these virtual calls;
+the decompile does not change. 6,296 of the 18,872 such sites have them. The analysis
+and the list of added references are in the research folder listed in `LOCAL.md`.
+
+- The receiver's class comes from the bytes: `this` of a virtual method (its class and
+  every subclass), `this` of a function whose every caller passes a known object, a
+  global object, an object a constructor just built, or a vtable the function stored.
+- They are may-call edges: a call through a base class lists every override, including
+  overrides that site never reaches.
+- Calls through an object loaded from a field, an argument or a container have none. A
+  method without callers may still be called virtually.
+- `get_bulk_function_hashes` hashes cover references, so the hashes of the functions
+  that got one changed that day.
+
 ## Preserve findings without polluting shared analysis
 
 During authorized reverse engineering, preserve proven identities and useful evidence
