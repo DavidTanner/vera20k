@@ -591,8 +591,8 @@ pub fn tick_air_movement(
 /// (`+0x1C8`): the Location's Z less the ground under it and, on a bridge, the
 /// deck. An exact coordinate is the Location's Z. An object without one keeps
 /// its height apart from its ground ([`object_world_z_leptons`]), so its
-/// height is that part ([`object_altitude_leptons`]): a parachute's descent,
-/// a rocket's flight, an Air-layer locomotor's or an active Hover's altitude.
+/// height is that part ([`object_altitude_leptons`]): a rocket's flight, an
+/// Air-layer locomotor's or an active Hover's altitude.
 ///
 /// [`object_world_z_leptons`]: super::ground_pose::object_world_z_leptons
 /// [`object_altitude_leptons`]: super::ground_pose::object_altitude_leptons

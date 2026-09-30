@@ -7735,10 +7735,9 @@ fn radiation_skips_only_objects_in_the_air() {
     let low = spawn("E2", 6);
     let hover = spawn("MTNK", 4);
     for (id, height) in [(high, 208), (low, 207)] {
-        sim.substrate.entities.get_mut(id).unwrap().parachute_state = Some(ParachuteDescentState {
-            rate: -3,
-            altitude: SimFixed::from_num(height),
-        });
+        let paratrooper = sim.substrate.entities.get_mut(id).unwrap();
+        paratrooper.position.exact_z_leptons = Some(height);
+        paratrooper.parachute_state = Some(ParachuteDescentState { rate: -3 });
     }
     let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Hover);
     locomotor.altitude = SimFixed::from_num(120);

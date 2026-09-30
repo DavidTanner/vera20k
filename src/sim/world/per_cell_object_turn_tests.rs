@@ -7,7 +7,6 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::parachute_descent::ParachuteDescentState;
-use crate::util::fixed_math::SimFixed;
 
 /// Object AI `0x005F3F8D` calls `Per_Cell_Process(2)` when a fall grounds,
 /// in the cell it fell through too; the Foot body's Techno tail then
@@ -34,10 +33,8 @@ fn a_parachute_landing_in_its_own_cell_runs_the_foot_body() {
     entity.owner = sim.intern("Americans");
     entity.type_ref = sim.intern("E1");
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
-    entity.parachute_state = Some(ParachuteDescentState {
-        rate: -3,
-        altitude: SimFixed::from_num(2),
-    });
+    entity.position.exact_z_leptons = Some(2);
+    entity.parachute_state = Some(ParachuteDescentState { rate: -3 });
     sim.substrate.entities.insert(entity);
     sim.substrate.next_stable_object_id = 2;
     assert!(matches!(
