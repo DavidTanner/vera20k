@@ -1573,13 +1573,16 @@ fn finish_concrete_death(
         _ => {}
     }
     // `UnitClass::ReceiveDamage` then lifts the dying unit off its cell
-    // (`0x00737F7A`) before its passengers and crew leave.
+    // (vt+0x124 Mark(UP) at `0x00737F7A`) before its passengers and crew
+    // leave. The UnInit that follows finds it already unmarked. Mark leaves
+    // the AircraftTracker alone: a falling Jumpjet wreck stays in it until its
+    // impact (`0x0054D075`), any other dying unit until its UnInit.
     let crashable = category == EntityCategory::Unit
         && world
             .object_type(type_id, rules)
             .is_some_and(|object| object.crashable);
     if category == EntityCategory::Unit && callbacks_enabled(world) {
-        world.mark_up_dying_unit(dead_id, crate::sim::world::UninitContext::with_rules(rules));
+        world.foot_mark_remove(dead_id, Some(rules), overlay_registry);
         let dying = crate::sim::crew_survival::DyingTransport {
             attacker: killing_attacker(world, damage_events, dead_id),
             ignore_defenses,

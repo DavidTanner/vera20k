@@ -654,32 +654,24 @@ impl Simulation {
         self.track_raw_mark_at(id, coord, put);
     }
 
-    fn track_raw_mark_at(&mut self, id: u64, coord: DriveCoord, put: bool) -> MovementLayer {
-        let at = cell(coord);
-        let terrain = self.resolved_terrain.as_ref();
-        let ground = super::ground_pose::ground_surface_z_at(
-            [coord.x, coord.y],
-            false,
-            terrain,
+    pub(super) fn track_raw_mark_at(
+        &mut self,
+        id: u64,
+        coord: DriveCoord,
+        put: bool,
+    ) -> MovementLayer {
+        let (at, layer) = super::foot_mark::raw_occupation_plane(
+            coord,
+            put,
+            self.resolved_terrain.as_ref(),
             self.path_grid.as_deref(),
-        )
-        .unwrap_or(coord.z);
-        let structural = terrain
-            .and_then(|terrain| terrain.cell(at.0, at.1))
-            .is_some_and(|cell| cell.bridge_facts.has_structural_bridge());
-        let deck = coord.z >= ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS)
-            && (!put || structural);
-        let layer = if deck {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
+        );
         let raw = &mut self.substrate.raw_cell_occupation;
-        match (put, deck) {
-            (true, true) => raw.mark_deck(at.0, at.1, 0x20),
-            (true, false) => raw.mark_ground(at.0, at.1, 0x20),
-            (false, true) => raw.clear_deck(at.0, at.1, 0x20),
-            (false, false) => raw.clear_ground(at.0, at.1, 0x20),
+        match (put, layer) {
+            (true, MovementLayer::Bridge) => raw.mark_deck(at.0, at.1, 0x20),
+            (true, _) => raw.mark_ground(at.0, at.1, 0x20),
+            (false, MovementLayer::Bridge) => raw.clear_deck(at.0, at.1, 0x20),
+            (false, _) => raw.clear_ground(at.0, at.1, 0x20),
         }
         if put {
             self.substrate

@@ -41,6 +41,19 @@ impl Simulation {
         }
     }
 
+    /// `FootClass::Limbo` (`0x004DB260`) on its first Limbo removes a tracked
+    /// Foot (+0x560 not the empty cell) at `0x004DB37C..0x004DB3AA`, before
+    /// `TechnoClass::Limbo`. Mark(REMOVE) itself never touches the tracker.
+    pub(super) fn release_foot_air_tracker_before_limbo(&mut self, id: u64) {
+        if self.substrate.entities.get(id).is_some_and(|entity| {
+            entity.category != EntityCategory::Structure
+                && !entity.lifecycle.in_limbo
+                && entity.air_spatial_bucket.is_some()
+        }) {
+            self.aircraft_tracker_remove(id);
+        }
+    }
+
     pub(crate) fn finish_fly_takeoff_entry(&mut self, id: u64, rules: Option<&RuleSet>) {
         self.register_fly_air_tracker(id);
         let Some(e) = self.substrate.entities.get_mut(id) else {
@@ -976,7 +989,7 @@ mod tests {
         for row in rows {
             let (mut sim, rules) = fixture(&row);
             let rng = sim.scenario_rng.logical_state();
-            sim.complete_fly_phase(1, Some(&rules));
+            sim.complete_fly_phase(1, Some(&rules), None);
             let e = sim.substrate.entities.get(1).unwrap();
             let l = e.locomotor.as_ref().unwrap();
             let f = l.fly_runtime().unwrap();

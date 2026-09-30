@@ -842,7 +842,7 @@ fn fly_takeoff_phase_matches_native_display_reordering_and_gates() {
         sim.submit_entity_display(1, Some(&rules), None);
         sim.submit_entity_display(peer, Some(&rules), None);
         let rng = sim.scenario_rng.logical_state();
-        let admitted = sim.complete_fly_phase(1, Some(&rules));
+        let admitted = sim.complete_fly_phase(1, Some(&rules), None);
         assert_eq!(
             admitted,
             !row["phase_calls"].as_array().unwrap().is_empty(),
@@ -905,7 +905,7 @@ fn fly_nonlandable_phase_matches_native_without_display_resubmission() {
         sim.submit_entity_display(1, Some(&rules), None);
         sim.submit_entity_display(peer, Some(&rules), None);
         let rng = sim.scenario_rng.logical_state();
-        assert!(!sim.complete_fly_phase(1, Some(&rules)));
+        assert!(!sim.complete_fly_phase(1, Some(&rules), None));
         assert_native_takeoff_result(&sim, &row);
         let entity = sim.substrate.entities.get(1).unwrap();
         let state = entity.locomotor.as_ref().unwrap().fly_runtime().unwrap();
@@ -1005,7 +1005,7 @@ fn fly_phase_outer_health_power_and_life_gates_precede_nonlandable_override() {
             _ => unreachable!(),
         }
         let before = sim.state_hash();
-        assert!(!sim.complete_fly_phase(1, Some(&rules)));
+        assert!(!sim.complete_fly_phase(1, Some(&rules), None));
         assert_eq!(sim.state_hash(), before, "{gate}");
     }
 }

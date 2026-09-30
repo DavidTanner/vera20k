@@ -32,12 +32,26 @@ Then per frame, in `InfantryClass::AI`'s order:
 
 Rows run to the UnInit.
 
+Mark (vtable +0x124) is the original FootClass::Mark 0x004D3780 with its
+TechnoClass, ObjectClass, layer, Pick_Up and Place_Down bodies, so State 5's
+Mark pair (0x0054CBE1 / 0x0054CBFE) links the faller into its cell's ground
+list (+0xE4) once the Jumpjet layer 0x0054B8D0 answers Ground (IsHighFlying
+0x005F6B90 below twice the level height), and the reference height's cell top
+(0x00485080 -> Find_Nearest_Object 0x0047C3D0) finds it there. Each frame
+records whether the owner is in that list.
+
 Not executed:
 - the rest of ReceiveDamage: the death announcement, the mission reset,
   KillPassengers, the S_BANG34 anim, experience and credit. None of them
   touches the locomotor or the Scenario RNG.
 - the radio broadcasts, Detach_All and the pointer-expiry dispatch, which are
   recorded no-ops.
+- CellClass::Recalc 0x0047D2B0 after each Pick_Up/Place_Down cell, and
+  AddContent's discovery (0x00586360 answers visible; DiscoveredBy +0x198
+  stays a no-op): neither touches the cell's object list.
+- SetHeight's own Mark pair: SetHeight (+0x1CC) writes Z alone. At the impact
+  State 5's last Mark(PUT) has already linked the owner at height 0, where the
+  pair would unlink and relink it into the same one-object list.
 - bridges.
 """
 from pathlib import Path
@@ -50,7 +64,7 @@ from tools.spatial_oracle.map_queries import dwords, packed
 from tools.spatial_oracle.jumpjet_infantry_actions import (
     Actions, EXTRA, UNINIT, rocketeer_records,
 )
-from tools.spatial_oracle.jumpjet_states import LOCO, OWNER, SCRATCH
+from tools.spatial_oracle.jumpjet_states import LOCO, OWNER, SCRATCH, cell_of
 from tools.spatial_oracle.walk_head_occupation import TYPE, VTABLE, SCENARIO
 
 MAP = 0x87F7E8
@@ -62,9 +76,12 @@ RULES = EXTRA + 0x8000
 (RADIO_FIRST, RADIO_ALL, DETACH_ALL, HOUSE_GET, SET_HEIGHT) = [
     SCRATCH + 0xEE00 + i * 0x20 for i in range(5)]
 KILL_PASSENGERS, POINTER_EXPIRED, LAYER_REMOVE = 0x707CB0, 0x7258D0, 0x4A9770
+CELL_RECALC, CRT_ATEXIT, CELL_DISCOVERY = 0x47D2B0, 0x7C978A, 0x586360
+# The type's vtable: only InfantryTypeClass's occupy list (+0x90) is reached.
+TYPE_VTABLE = EXTRA + 0xC000
 # Seam -> stdcall argument bytes.
 NO_OPS = {RADIO_FIRST: 4, RADIO_ALL: 4, DETACH_ALL: 4, KILL_PASSENGERS: 4,
-          POINTER_EXPIRED: 0, LAYER_REMOVE: 4}
+          POINTER_EXPIRED: 0, LAYER_REMOVE: 4, CELL_RECALC: 4, CRT_ATEXIT: 0}
 
 
 class Kill(Actions):
@@ -85,6 +102,20 @@ class Kill(Actions):
         u.mem_write(0x8871E0, dwords(RULES))
         u.mem_write(OWNER + 8, dwords(NOTICE_SINK))
         u.mem_write(TYPE + 0xD95, bytes([int(row.get('crashable', True))]))
+        # The original Mark chain: FootClass::Mark, the Foot layer (the
+        # locomotor's In_Which_Layer), the Infantry type getter, ObjectClass's
+        # occupy list and redraw mark, and the dead getter ObjectClass::Mark
+        # calls through +0x2C0.
+        for slot, fn in [(0x124, 0x4D3780), (0x78, 0x4DB7E0), (0x88, 0x51FAF0),
+                         (0x108, 0x5F5B90), (0x134, 0x5F4D10), (0x2C0, 0x708B40)]:
+            u.mem_write(VTABLE + slot, dwords(fn))
+        u.mem_write(TYPE, dwords(TYPE_VTABLE))
+        u.mem_write(TYPE_VTABLE + 0x90, dwords(0x523C20))
+        # TechnoClass's constructor sets the Techno flag Find_Nearest_Object
+        # filters on (0x006F3228..0x006F3237); ObjectTypeClass's sets the +0x235
+        # byte Place_Down and Pick_Up require (0x005F716E).
+        u.mem_write(OWNER + 0x14, bytes([u.mem_read(OWNER + 0x14, 1)[0] | 1]))
+        u.mem_write(TYPE + 0x235, b'\x01')
         self.log = []
         # `States` keeps its own merged row; the kill's keys stay here.
         self.kill_row = row
@@ -98,6 +129,8 @@ class Kill(Actions):
             super().observe(u, address, size, data)
         elif address in NO_OPS:
             self.ret(NO_OPS[address], 0)
+        elif address == CELL_DISCOVERY:
+            self.ret(4, 1)
         elif address == HOUSE_GET:
             self.ret(0, HOUSE)
         elif address == SET_HEIGHT:
@@ -130,7 +163,18 @@ class Kill(Actions):
                     moving=bool(u.mem_read(LOCO + 0x4C, 1)[0]),
                     destination=list(struct.unpack('<iii', u.mem_read(LOCO + 0x40, 12))),
                     crash_latch=bool(u.mem_read(OWNER + 0x425, 1)[0]),
+                    listed=self.listed(),
                     scenario_rng=[self.read32(SCENARIO + 0x21C), self.read32(SCENARIO + 0x220)])
+
+    def listed(self):
+        """The owner is in its cell's ground object list (+0xE4, linked by +0x30)."""
+        cell = cell_of(*self.owner_cell())
+        node = self.read32(cell + 0xE4) if cell else 0
+        while node:
+            if node == OWNER:
+                return True
+            node = self.read32(node + 0x30)
+        return False
 
     def kill(self):
         """The kill's locomotor work in ReceiveDamage's order, at Health 0."""
@@ -232,7 +276,8 @@ if __name__ == '__main__':
               'the Infantry sink 0x522A60), the sequencer 0x520AE0 and the tail 0x520F40, to the '
               'UnInit. Kills in the hover with Doing Hover/Fly/FireFly/none/Cheer, in the cruise, '
               'a second kill in the fall, a fall from 1200 leptons (AirDeathFalling), and a '
-              'grounded kill. Not bridges.',
+              'grounded kill, with the original FootClass::Mark chain behind vtable +0x124; each '
+              'snapshot records whether the owner is in its cell\'s ground list. Not bridges.',
         entry_points={'foot_stun': 0x4D5660, 'infantry_stop_driver': 0x51DAF0,
                       'infantry_set_destination': 0x51AA40, 'infantry_assign_target': 0x51B1F0,
                       'techno_stun': 0x6FCD40, 'foot_crash': 0x4DEBB0, 'stop_moving': STOP_MOVING,
@@ -242,10 +287,15 @@ if __name__ == '__main__':
         assumptions=['Everything jumpjet_infantry_actions.Actions assumes, with the row\'s action '
                      'started by the original Do_Action (forced) before the kill; the owner type '
                      'Crashable +0xD95 set; an AI house (+0x21C, zeroed); Rules +0x1768 = 9; '
-                     'MapClass diamond 13 x 20; the owner holds no target and no NavCom.'],
+                     'MapClass diamond 13 x 20; the owner holds no target and no NavCom; the '
+                     'owner carries the TechnoClass constructor\'s Techno flag (+0x14 bit 0) and '
+                     'its type the ObjectTypeClass constructor\'s +0x235 = 1.'],
         substitutions=['As jumpjet_infantry_actions, plus: every FNPC 0x56DC20 search answers the '
                        'owner\'s cell; the radio (vtable +0x274, +0x280), Detach_All (+0xDC), '
                        'KillPassengers 0x707CB0, the pointer-expiry dispatch 0x7258D0 and the '
                        'layer remove 0x4A9770 are no-ops; SetHeight (+0x1CC) writes the '
-                       'coordinate\'s Z; UnInit (+0xF8) is recorded.'],
+                       'coordinate\'s Z without its Mark pair; UnInit (+0xF8) is recorded. Mark '
+                       '(+0x124) is the original FootClass::Mark 0x4D3780 chain, with CellClass::'
+                       'Recalc 0x47D2B0 and the CRT atexit 0x7C978A no-ops and AddContent\'s '
+                       'discovery query 0x586360 answering visible.'],
     ))

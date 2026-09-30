@@ -13,15 +13,14 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::occupancy::{
-    BUILDING_OCCUPATION_BIT, CellListInsertion, OBJECT_OCCUPATION_BIT, VEHICLE_OCCUPATION_BIT,
-    air_spatial_bucket_index, air_spatial_tracks_entity, cell_list_layer_for_entity,
-    entity_occupancy_cells, infantry_raw_occupation_mask,
+    BUILDING_OCCUPATION_BIT, CellListInsertion, air_spatial_bucket_index,
+    air_spatial_tracks_entity, cell_list_layer_for_entity, entity_occupancy_cells,
 };
 use crate::sim::passenger::PassengerRole;
 use crate::sim::projectile::ProjectileTarget;
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
-use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
+use crate::util::lepton::LEPTONS_PER_LEVEL;
 
 use super::Simulation;
 use super::display_layers::DisplayLayer;
@@ -524,253 +523,6 @@ impl Simulation {
             })
     }
 
-    fn raw_occupation_cell_facts(
-        &self,
-        position: RevealPosition,
-        context: UninitContext<'_>,
-    ) -> (i32, i32, bool) {
-        let Some(terrain_cell) = context
-            .terrain()
-            .or(self.resolved_terrain.as_ref())
-            .and_then(|terrain| terrain.cell(position.rx, position.ry))
-        else {
-            return (0, 0, false);
-        };
-        let ground_level = i32::from(terrain_cell.level as i8);
-        let world_x = i32::from(position.rx)
-            .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-            .wrapping_add(position.sub_x.to_num::<i32>());
-        let world_y = i32::from(position.ry)
-            .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-            .wrapping_add(position.sub_y.to_num::<i32>());
-        let ground_z = ground_height_leptons(
-            terrain_cell.level,
-            terrain_cell.slope_type,
-            world_x,
-            world_y,
-        )
-        .unwrap_or_else(|_| {
-            i32::from(terrain_cell.level as i8).wrapping_mul(LEPTONS_PER_LEVEL as i32)
-        });
-        // Object5F60A0/5F6120 read live Cell+140 bit100, independently of
-        // sprite availability. Constructor5FC380 leaves stamped side cells
-        // without an overlay; bridge_constructor.json cases8..11 pin this.
-        let live_structural_bridge = terrain_cell.bridge_facts.has_structural_bridge();
-        (ground_level, ground_z, live_structural_bridge)
-    }
-
-    /// gamemd-derived: active YR `ObjectClass__Mark_Put @ 0x005F60A0` and
-    /// `ObjectClass__Mark_Remove @ 0x005F6120` compare the signed absolute
-    /// Object coordinate Z with exact ground Z plus the 416-lepton deck height.
-    fn raw_occupation_reaches_deck(
-        position: RevealPosition,
-        exact_z_leptons: Option<i32>,
-        ground_level: i32,
-        ground_z: i32,
-    ) -> bool {
-        exact_z_leptons.map_or_else(
-            || i32::from(position.z as i8) >= ground_level.wrapping_add(4),
-            |object_z| object_z >= ground_z.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS),
-        )
-    }
-
-    fn mark_common_raw_occupation(
-        &mut self,
-        stable_id: u64,
-        category: EntityCategory,
-        cells: &[(u16, u16)],
-        position: RevealPosition,
-        exact_z_leptons: Option<i32>,
-        context: UninitContext<'_>,
-    ) -> bool {
-        match category {
-            EntityCategory::Unit => {
-                let (ground_level, ground_z, live_structural_bridge) =
-                    self.raw_occupation_cell_facts(position, context);
-                if Self::raw_occupation_reaches_deck(
-                    position,
-                    exact_z_leptons,
-                    ground_level,
-                    ground_z,
-                ) && live_structural_bridge
-                {
-                    self.substrate.raw_cell_occupation.mark_deck(
-                        position.rx,
-                        position.ry,
-                        VEHICLE_OCCUPATION_BIT,
-                    );
-                } else {
-                    self.substrate.raw_cell_occupation.mark_ground(
-                        position.rx,
-                        position.ry,
-                        VEHICLE_OCCUPATION_BIT,
-                    );
-                }
-                true
-            }
-            EntityCategory::Infantry => {
-                let Some(owner) = self.substrate.entities.get(stable_id).map(|e| e.owner()) else {
-                    return false;
-                };
-                let (ground_level, ground_z, live_structural_bridge) =
-                    self.raw_occupation_cell_facts(position, context);
-                let mask = infantry_raw_occupation_mask(position.sub_x, position.sub_y);
-                // Native: `InfantryClass::MarkCellOccupancy` @ `0x005217C0`
-                // selects the deck only at/above the bridge plane and only
-                // while `CellClass+0x140 & 0x100` holds. (`0x00743FC0` is
-                // inside `UnitClass`, not `InfantryClass`.)
-                if Self::raw_occupation_reaches_deck(
-                    position,
-                    exact_z_leptons,
-                    ground_level,
-                    ground_z,
-                ) && live_structural_bridge
-                {
-                    self.substrate.raw_cell_occupation.mark_deck_infantry(
-                        position.rx,
-                        position.ry,
-                        mask,
-                        owner,
-                    );
-                } else {
-                    self.substrate.raw_cell_occupation.mark_ground_infantry(
-                        position.rx,
-                        position.ry,
-                        mask,
-                        owner,
-                    );
-                }
-                true
-            }
-            EntityCategory::Structure => {
-                for &(rx, ry) in cells {
-                    self.substrate
-                        .raw_cell_occupation
-                        .mark_ground(rx, ry, BUILDING_OCCUPATION_BIT);
-                }
-                !cells.is_empty()
-            }
-            EntityCategory::Aircraft => {
-                let (ground_level, ground_z, live_structural_bridge) =
-                    self.raw_occupation_cell_facts(position, context);
-                if Self::raw_occupation_reaches_deck(
-                    position,
-                    exact_z_leptons,
-                    ground_level,
-                    ground_z,
-                ) && live_structural_bridge
-                {
-                    self.substrate.raw_cell_occupation.mark_deck(
-                        position.rx,
-                        position.ry,
-                        OBJECT_OCCUPATION_BIT,
-                    );
-                } else {
-                    self.substrate.raw_cell_occupation.mark_ground(
-                        position.rx,
-                        position.ry,
-                        OBJECT_OCCUPATION_BIT,
-                    );
-                }
-                true
-            }
-        }
-    }
-
-    fn clear_common_raw_occupation(
-        &mut self,
-        _stable_id: u64,
-        category: EntityCategory,
-        cells: &[(u16, u16)],
-        position: RevealPosition,
-        exact_z_leptons: Option<i32>,
-        context: UninitContext<'_>,
-    ) -> bool {
-        match category {
-            EntityCategory::Unit => {
-                let (ground_level, ground_z, _) = self.raw_occupation_cell_facts(position, context);
-                if Self::raw_occupation_reaches_deck(
-                    position,
-                    exact_z_leptons,
-                    ground_level,
-                    ground_z,
-                ) {
-                    self.substrate.raw_cell_occupation.clear_deck(
-                        position.rx,
-                        position.ry,
-                        VEHICLE_OCCUPATION_BIT,
-                    );
-                } else {
-                    self.substrate.raw_cell_occupation.clear_ground(
-                        position.rx,
-                        position.ry,
-                        VEHICLE_OCCUPATION_BIT,
-                    );
-                }
-                true
-            }
-            EntityCategory::Structure => {
-                for &(rx, ry) in cells {
-                    self.substrate.raw_cell_occupation.clear_ground(
-                        rx,
-                        ry,
-                        BUILDING_OCCUPATION_BIT,
-                    );
-                }
-                !cells.is_empty()
-            }
-            EntityCategory::Aircraft => {
-                let (ground_level, ground_z, live_structural_bridge) =
-                    self.raw_occupation_cell_facts(position, context);
-                if Self::raw_occupation_reaches_deck(
-                    position,
-                    exact_z_leptons,
-                    ground_level,
-                    ground_z,
-                ) && live_structural_bridge
-                {
-                    self.substrate.raw_cell_occupation.clear_deck(
-                        position.rx,
-                        position.ry,
-                        OBJECT_OCCUPATION_BIT,
-                    );
-                } else {
-                    self.substrate.raw_cell_occupation.clear_ground(
-                        position.rx,
-                        position.ry,
-                        OBJECT_OCCUPATION_BIT,
-                    );
-                }
-                true
-            }
-            EntityCategory::Infantry => {
-                let (ground_level, ground_z, _) = self.raw_occupation_cell_facts(position, context);
-                let mask = infantry_raw_occupation_mask(position.sub_x, position.sub_y);
-                // Native: InfantryClass::Unmark (+0x744170) picks its plane from
-                // height alone, retaining the proven mark/unmark bridge-bit asymmetry.
-                if Self::raw_occupation_reaches_deck(
-                    position,
-                    exact_z_leptons,
-                    ground_level,
-                    ground_z,
-                ) {
-                    self.substrate.raw_cell_occupation.clear_deck_infantry(
-                        position.rx,
-                        position.ry,
-                        mask,
-                    );
-                } else {
-                    self.substrate.raw_cell_occupation.clear_ground_infantry(
-                        position.rx,
-                        position.ry,
-                        mask,
-                    );
-                }
-                true
-            }
-        }
-    }
-
     /// Compatibility convenience for already-admitted current-position callers.
     /// It still executes the complete result-bearing Reveal transaction.
     #[cfg(test)]
@@ -1058,6 +810,42 @@ impl Simulation {
         {
             entity.discovery.discovered_by_current_house = false;
         }
+        // Then `InfantryClass::Unlimbo` marks the man's sub-cell through his
+        // vt+0xF0 (`0x005217C0`) unless he was placed more than a deck above
+        // the ground (`0x0051E0F6..0x0051E10E`). His Mark never writes it.
+        if let Some((owner, coord)) = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .filter(|entity| entity.category == EntityCategory::Infantry)
+            .map(|entity| {
+                (
+                    entity.owner(),
+                    crate::sim::movement::ground_pose::position_world_coord(&entity.position),
+                )
+            })
+        {
+            let terrain = context.terrain().or(self.resolved_terrain.as_ref());
+            let ground = crate::sim::movement::ground_pose::ground_surface_z_at(
+                [coord.x, coord.y],
+                false,
+                terrain,
+                None,
+            )
+            .unwrap_or(coord.z);
+            if coord.z <= ground.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS) {
+                crate::sim::movement::walk_head::raw_at(
+                    &mut self.substrate.raw_cell_occupation,
+                    owner,
+                    coord,
+                    true,
+                    terrain,
+                    self.path_grid.as_deref(),
+                );
+                #[cfg(test)]
+                self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationMarked);
+            }
+        }
         if !self
             .substrate
             .entities
@@ -1265,144 +1053,77 @@ impl Simulation {
         }
     }
 
+    /// Mark(PUT) through the object's vt+0x124: `FootClass::Mark`
+    /// ([`Simulation::foot_mark_put`]) for Infantry, Unit and Aircraft, the
+    /// building transaction below for a Structure.
     fn mark_entity_put(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return false;
         };
+        if entity.category != EntityCategory::Structure {
+            return self.foot_mark_put(stable_id, context.rules, context.registry());
+        }
         if entity.lifecycle.cell_marked {
             return false;
         }
-        // Object5F58F7 publishes +74 before Foot4D37A6 queries virtual +78.
-        // Jumpjet high-flying5F6B90 reads this intermediate value.
         entity.lifecycle.cell_marked = true;
         let cells = entity_occupancy_cells(entity);
         let layer = cell_list_layer_for_entity(
             entity,
             context.terrain().or(self.resolved_terrain.as_ref()),
         );
-        let sub_cell = if entity.category == EntityCategory::Infantry {
-            entity.sub_cell
-        } else {
-            None
-        };
         let insertion = CellListInsertion::from_category(entity.category);
-        let category = entity.category;
         let foundation = entity.foundation.clone();
         let hidden_profile = entity.building_hidden_occupancy;
         let current_cell = (entity.position.rx, entity.position.ry);
-        let raw_position = RevealPosition {
-            rx: entity.position.rx,
-            ry: entity.position.ry,
-            z: entity.position.z,
-            sub_x: entity.position.sub_x,
-            sub_y: entity.position.sub_y,
-        };
-        let exact_z_leptons = entity.position.exact_z_leptons;
-        let inside_transport = entity.passenger_role.is_inside_transport();
-        let tracks_air = if entity
-            .locomotor
-            .as_ref()
-            .and_then(|l| l.fly_runtime())
-            .is_some()
-        {
-            entity.air_spatial_bucket.is_some()
-        } else {
-            air_spatial_tracks_entity(entity)
-        };
-        let air_spatial_bucket = (!inside_transport && tracks_air).then(|| {
-            air_spatial_bucket_index(
-                entity.position.rx,
-                entity.position.ry,
-                self.session.map_width,
-                self.session.map_height,
-            )
-        });
-        if category == EntityCategory::Structure {
-            let (width, height) = crate::rules::foundation::foundation_dimensions(&foundation);
-            let mut intersections = Vec::with_capacity(usize::from(width) * usize::from(height));
-            for dy in 0..height {
-                for dx in 0..width {
-                    let Some(rx) = current_cell.0.checked_add(dx) else {
-                        continue;
-                    };
-                    let Some(ry) = current_cell.1.checked_add(dy) else {
-                        continue;
-                    };
-                    intersections.push((rx, ry));
-                }
+        let (width, height) = crate::rules::foundation::foundation_dimensions(&foundation);
+        let mut intersections = Vec::with_capacity(usize::from(width) * usize::from(height));
+        for dy in 0..height {
+            for dx in 0..width {
+                let Some(rx) = current_cell.0.checked_add(dx) else {
+                    continue;
+                };
+                let Some(ry) = current_cell.1.checked_add(dy) else {
+                    continue;
+                };
+                intersections.push((rx, ry));
             }
-            if let Some(smudge_grid) = self.smudge_grid.as_mut() {
-                smudge_grid.clear_intersecting_footprints(&intersections);
-            }
-            self.flush_smudge_dirty();
         }
+        if let Some(smudge_grid) = self.smudge_grid.as_mut() {
+            smudge_grid.clear_intersecting_footprints(&intersections);
+        }
+        self.flush_smudge_dirty();
 
-        if !inside_transport {
-            if let Some(layer) = layer {
-                for &(rx, ry) in &cells {
-                    self.substrate
-                        .occupancy
-                        .add(rx, ry, stable_id, layer, sub_cell, insertion);
-                }
-                if matches!(
-                    category,
-                    EntityCategory::Unit
-                        | EntityCategory::Infantry
-                        | EntityCategory::Structure
-                        | EntityCategory::Aircraft
-                ) {
-                    #[cfg(test)]
-                    self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListLinked);
-                    if category == EntityCategory::Structure
-                        && layer == crate::sim::movement::locomotor::MovementLayer::Ground
-                        && hidden_profile.is_some_and(|profile| {
-                            self.substrate.hidden_occupation.enter_building(
-                                current_cell,
-                                &foundation,
-                                profile,
-                                Some((self.session.map_width, self.session.map_height)),
-                            )
-                        })
-                    {
-                        #[cfg(test)]
-                        self.trace_lifecycle_for_test(LifecycleTestEvent::HiddenOccupationEntered);
-                    }
-                    if self.mark_common_raw_occupation(
-                        stable_id,
-                        category,
-                        &cells,
-                        raw_position,
-                        exact_z_leptons,
-                        context,
-                    ) {
-                        #[cfg(test)]
-                        self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationMarked);
-                    }
-                }
-                if category == EntityCategory::Unit {
-                    self.substrate.cell_occupation.mark_vehicle_on_layer(
-                        current_cell.0,
-                        current_cell.1,
-                        stable_id,
-                        layer,
-                    );
-                }
+        if let Some(layer) = layer {
+            for &(rx, ry) in &cells {
+                self.substrate
+                    .occupancy
+                    .add(rx, ry, stable_id, layer, None, insertion);
             }
-        }
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            match air_spatial_bucket {
-                Some(bucket) if entity.air_spatial_bucket != Some(bucket) => {
-                    entity.air_spatial_bucket = Some(bucket);
-                    entity.air_spatial_enter_order = self.substrate.next_air_tracker_order.next();
-                }
-                Some(_) => {}
-                None => {
-                    entity.air_spatial_bucket = None;
-                    entity.air_spatial_enter_order = 0;
-                }
+            #[cfg(test)]
+            self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListLinked);
+            if layer == crate::sim::movement::locomotor::MovementLayer::Ground
+                && hidden_profile.is_some_and(|profile| {
+                    self.substrate.hidden_occupation.enter_building(
+                        current_cell,
+                        &foundation,
+                        profile,
+                        Some((self.session.map_width, self.session.map_height)),
+                    )
+                })
+            {
+                #[cfg(test)]
+                self.trace_lifecycle_for_test(LifecycleTestEvent::HiddenOccupationEntered);
             }
-            entity.lifecycle.cell_marked = true;
-            entity.foot_occupation_enabled = true;
+            for &(rx, ry) in &cells {
+                self.substrate
+                    .raw_cell_occupation
+                    .mark_ground(rx, ry, BUILDING_OCCUPATION_BIT);
+            }
+            #[cfg(test)]
+            if !cells.is_empty() {
+                self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationMarked);
+            }
         }
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::CellMarked);
@@ -1661,115 +1382,58 @@ impl Simulation {
         true
     }
 
+    /// Mark(REMOVE) through the object's vt+0x124: `FootClass::Mark`
+    /// ([`Simulation::foot_mark_remove`]) for Infantry, Unit and Aircraft, the
+    /// building transaction below for a Structure.
     fn unmark_entity_remove(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
-        self.unmark_entity_remove_impl(stable_id, true, context)
-    }
-
-    fn unmark_entity_remove_impl(
-        &mut self,
-        stable_id: u64,
-        clear_air_spatial: bool,
-        context: UninitContext<'_>,
-    ) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return false;
         };
+        if entity.category != EntityCategory::Structure {
+            return self.foot_mark_remove(stable_id, context.rules, context.registry());
+        }
         if !entity.lifecycle.cell_marked {
             return false;
         }
-        // REMOVE5F5913 clears +74 before the same Foot +78 query.
         entity.lifecycle.cell_marked = false;
         let cells = entity_occupancy_cells(entity);
         let layer = cell_list_layer_for_entity(
             entity,
             context.terrain().or(self.resolved_terrain.as_ref()),
         );
-        let category = entity.category;
         let foundation = entity.foundation.clone();
         let hidden_profile = entity.building_hidden_occupancy;
         let current_cell = (entity.position.rx, entity.position.ry);
-        let raw_position = RevealPosition {
-            rx: entity.position.rx,
-            ry: entity.position.ry,
-            z: entity.position.z,
-            sub_x: entity.position.sub_x,
-            sub_y: entity.position.sub_y,
-        };
-        let exact_z_leptons = entity.position.exact_z_leptons;
-        let inside_transport = entity.passenger_role.is_inside_transport();
-        if category == EntityCategory::Unit {
-            let (entities, occupation) = (
-                &mut self.substrate.entities,
-                &mut self.substrate.cell_occupation,
-            );
-            if let Some(drive) = entities
-                .get_mut(stable_id)
-                .and_then(|entity| entity.drive_locomotion.as_mut())
-            {
-                crate::sim::occupancy::clear_drive_head_to_occupation_for_remove(
-                    drive, occupation, stable_id,
-                );
-            }
-        }
         if let Some(layer) = layer {
             for &(rx, ry) in &cells {
                 self.substrate
                     .occupancy
                     .remove_on_layer(rx, ry, stable_id, layer);
             }
-            if !inside_transport
-                && matches!(
-                    category,
-                    EntityCategory::Unit
-                        | EntityCategory::Infantry
-                        | EntityCategory::Structure
-                        | EntityCategory::Aircraft
-                )
+            #[cfg(test)]
+            self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListUnlinked);
+            if layer == crate::sim::movement::locomotor::MovementLayer::Ground
+                && hidden_profile.is_some_and(|profile| {
+                    self.substrate.hidden_occupation.exit_building(
+                        current_cell,
+                        &foundation,
+                        profile,
+                        Some((self.session.map_width, self.session.map_height)),
+                    )
+                })
             {
                 #[cfg(test)]
-                self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListUnlinked);
-                if category == EntityCategory::Structure
-                    && layer == crate::sim::movement::locomotor::MovementLayer::Ground
-                    && hidden_profile.is_some_and(|profile| {
-                        self.substrate.hidden_occupation.exit_building(
-                            current_cell,
-                            &foundation,
-                            profile,
-                            Some((self.session.map_width, self.session.map_height)),
-                        )
-                    })
-                {
-                    #[cfg(test)]
-                    self.trace_lifecycle_for_test(LifecycleTestEvent::HiddenOccupationExited);
-                }
-                if self.clear_common_raw_occupation(
-                    stable_id,
-                    category,
-                    &cells,
-                    raw_position,
-                    exact_z_leptons,
-                    context,
-                ) {
-                    #[cfg(test)]
-                    self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationCleared);
-                }
+                self.trace_lifecycle_for_test(LifecycleTestEvent::HiddenOccupationExited);
             }
-            if category == EntityCategory::Unit {
-                self.substrate.cell_occupation.clear_vehicle_on_layer(
-                    current_cell.0,
-                    current_cell.1,
-                    stable_id,
-                    layer,
-                );
+            for &(rx, ry) in &cells {
+                self.substrate
+                    .raw_cell_occupation
+                    .clear_ground(rx, ry, BUILDING_OCCUPATION_BIT);
             }
-        }
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.lifecycle.cell_marked = false;
-            if clear_air_spatial {
-                entity.air_spatial_bucket = None;
-                entity.air_spatial_enter_order = 0;
+            #[cfg(test)]
+            if !cells.is_empty() {
+                self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationCleared);
             }
-            entity.foot_occupation_enabled = false;
         }
         true
     }
@@ -1877,9 +1541,14 @@ impl Simulation {
         }
     }
 
-    /// Test/fixture helper retained at the transaction boundary.  It is
-    /// idempotent and updates the authoritative `cell_marked` fact.
+    /// Fixture boundary: puts a fixture object on the map and marks it
+    /// (idempotent). Fixtures are constructed in Limbo, which Mark refuses
+    /// (`0x005F5854`), so this clears InLimbo first.
+    #[cfg(test)]
     pub(crate) fn add_entity_occupancy(&mut self, stable_id: u64) {
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            entity.lifecycle.in_limbo = false;
+        }
         let _ = self.mark_entity_put(stable_id, UninitContext::default());
     }
 
@@ -1888,23 +1557,6 @@ impl Simulation {
     #[cfg(test)]
     pub(crate) fn remove_entity_occupancy(&mut self, stable_id: u64) {
         self.unmark_entity_remove(stable_id, UninitContext::default());
-    }
-
-    /// Mark(REMOVE) around a locomotor's own relocation: native Mark never
-    /// touches the AircraftTracker, which Limbo and the locomotors' touchdown
-    /// and crash impact remove from.
-    pub(crate) fn unmark_entity_remove_keeping_air_tracker(&mut self, stable_id: u64) {
-        self.unmark_entity_remove_impl(stable_id, false, UninitContext::default());
-    }
-
-    /// `UnitClass::ReceiveDamage` lifts a dying unit off its cell
-    /// (vt+0x124 Mark(UP) at `0x00737F7A`) before its passengers and crew are
-    /// placed there. The UnInit that follows finds it already unmarked. Mark
-    /// leaves the AircraftTracker alone: a falling Jumpjet wreck stays in it
-    /// until its impact (`0x0054D075`), and any other dying unit leaves it
-    /// with its UnInit.
-    pub(crate) fn mark_up_dying_unit(&mut self, stable_id: u64, context: UninitContext<'_>) {
-        self.unmark_entity_remove_impl(stable_id, false, context);
     }
 
     /// Materialize the legacy split representation before its first Fly
@@ -1978,7 +1630,7 @@ impl Simulation {
         // Fly4CD600 dispatches owner Mark around movement independently of
         // RTTI. Custom Fly Infantry/Unit must also leave their ground list.
         if transact_fly {
-            self.unmark_entity_remove_impl(stable_id, false, UninitContext::default());
+            self.foot_mark_remove(stable_id, rules, registry);
         }
 
         self.materialize_legacy_fly_coordinate(stable_id);
@@ -2017,9 +1669,9 @@ impl Simulation {
                 .get(stable_id)
                 .is_some_and(|entity| entity.lifecycle.object_alive && !entity.lifecycle.in_limbo)
         {
-            self.add_entity_occupancy(stable_id);
+            self.foot_mark_put(stable_id, rules, registry);
         }
-        self.complete_fly_phase(stable_id, rules);
+        self.complete_fly_phase(stable_id, rules, registry);
         self.sync_air_spatial_membership(stable_id);
         if let Some(before) = jumpjet_layer_before {
             self.complete_jumpjet_display_process(stable_id, before, rules);
@@ -2031,7 +1683,12 @@ impl Simulation {
     /// Non-Landable aircraft return before the phase's OWN Mark/Display pair.
     /// Landing runs first, then rechecks takeoff; both resubmit on equal layers.
     /// Return whether the phase performed the Display transaction.
-    pub(super) fn complete_fly_phase(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
+    pub(super) fn complete_fly_phase(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
         let admitted = self.substrate.entities.get(id).is_some_and(|entity| {
             entity.lifecycle.object_alive
                 && entity.health.current > 0
@@ -2077,7 +1734,7 @@ impl Simulation {
             return false;
         }
         let before = self.entity_display_layer(id, rules);
-        self.unmark_entity_remove_impl(id, false, UninitContext::default());
+        self.foot_mark_remove(id, rules, registry);
         self.substrate.display.remove(id);
         if self
             .substrate
@@ -2121,13 +1778,13 @@ impl Simulation {
                         .reject_landing_cell();
                     entity.on_bridge = false;
                 }
-                self.unmark_entity_remove_impl(id, false, UninitContext::default());
+                self.foot_mark_remove(id, rules, registry);
                 let height = crate::sim::movement::air_movement::current_fly_height(
                     self.substrate.entities.get(id).unwrap(),
                     self.resolved_terrain.as_ref(),
                 );
                 self.set_object_height(id, height.wrapping_add(10));
-                self.add_entity_occupancy(id);
+                self.foot_mark_put(id, rules, registry);
             } else {
                 self.finish_fly_layer_transition(id, after, rules);
             }
@@ -2143,7 +1800,7 @@ impl Simulation {
             .get(id)
             .is_some_and(|e| !e.lifecycle.in_limbo)
         {
-            self.add_entity_occupancy(id);
+            self.foot_mark_put(id, rules, registry);
         }
         true
     }
@@ -2718,7 +2375,20 @@ impl Simulation {
         }
         self.foot_neighbors_before_limbo(stable_id);
         self.release_track_occupation_before_foot_limbo(stable_id);
+        // The legacy Drive lane keeps its own head-to and handoff projections
+        // of that +9C(0) release; they leave with it on the first Limbo.
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && !entity.lifecycle.in_limbo
+            && let Some(drive) = entity.drive_locomotion.as_mut()
+        {
+            crate::sim::occupancy::clear_drive_head_to_occupation_for_remove(
+                drive,
+                &mut self.substrate.cell_occupation,
+                stable_id,
+            );
+        }
         self.release_walk_occupation_before_foot_limbo(stable_id);
+        self.release_foot_air_tracker_before_limbo(stable_id);
         if self
             .substrate
             .entities

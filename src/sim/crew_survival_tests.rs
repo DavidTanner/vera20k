@@ -592,7 +592,7 @@ fn a_crewed_vehicle_rolls_crew_escape_then_places_its_crewman() {
         ] {
             let mut sim = sim_with_houses(seed);
             let mcv = spawn(&mut sim, &rules, "AMCV", owner, 10, 10);
-            sim.mark_up_dying_unit(mcv, UninitContext::with_rules(&rules));
+            sim.foot_mark_remove(mcv, Some(&rules), None);
             let before = sim.substrate.entities.keys_sorted();
             let mut replay = sim.scenario_rng.clone();
             sim.spawn_vehicle_crew(&rules, None, mcv, false, false);
@@ -654,7 +654,7 @@ fn a_crewman_leaving_a_bridge_deck_keeps_the_vehicle_coordinate() {
             unit.position.sub_x = sub_x;
             unit.position.sub_y = sub_y;
         }
-        sim.mark_up_dying_unit(mcv, UninitContext::with_rules(&rules));
+        sim.foot_mark_remove(mcv, Some(&rules), None);
         let before = sim.substrate.entities.keys_sorted();
         let mut replay = sim.scenario_rng.clone();
         sim.spawn_vehicle_crew(&rules, None, mcv, false, false);
@@ -692,7 +692,7 @@ fn prevent_escape_and_passenger_capacity_skip_the_crew_draw() {
     let mcv = spawn(&mut sim, &rules, "AMCV", "Americans", 10, 10);
     let ifv = spawn(&mut sim, &rules, "IFV", "Americans", 20, 10);
     for (id, prevent) in [(mcv, true), (ifv, false)] {
-        sim.mark_up_dying_unit(id, UninitContext::with_rules(&rules));
+        sim.foot_mark_remove(id, Some(&rules), None);
         let before = sim.scenario_rng.state();
         sim.spawn_vehicle_crew(&rules, None, id, prevent, false);
         assert_eq!(sim.scenario_rng.state(), before);

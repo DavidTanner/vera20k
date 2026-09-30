@@ -371,6 +371,7 @@ impl RawCellOccupationGrid {
     /// The interned house identity survives entity retirement and ownership
     /// changes, matching native's retained House index. Repair CanEnter uses
     /// this raw slot even when no infantry object remains in the selected list.
+    #[cfg(test)]
     pub(crate) fn mark_ground_infantry(&mut self, rx: u16, ry: u16, mask: u8, owner: InternedId) {
         let key = RawCellKey::Real(rx, ry);
         self.write_occupant(key, MovementLayer::Ground, mask, Some(owner), true);
@@ -380,6 +381,7 @@ impl RawCellOccupationGrid {
     /// `+0xF4`, `0x007EB14C`) resets the selected owner to `0xFFFFFFFF` only
     /// once `byte & 0x1C == 0`, i.e. after functional sub-cells 2..4 are all
     /// clear. Bits 0/1 do not retain it.
+    #[cfg(test)]
     pub(crate) fn clear_ground_infantry(&mut self, rx: u16, ry: u16, mask: u8) {
         let key = RawCellKey::Real(rx, ry);
         self.write_occupant(key, MovementLayer::Ground, mask, None, false);
@@ -427,14 +429,10 @@ impl RawCellOccupationGrid {
             .and_then(|cell| cell.deck_infantry_owner)
     }
 
+    #[cfg(test)]
     pub(crate) fn mark_deck_infantry(&mut self, rx: u16, ry: u16, mask: u8, owner: InternedId) {
         let key = RawCellKey::Real(rx, ry);
         self.write_occupant(key, MovementLayer::Bridge, mask, Some(owner), true);
-    }
-
-    pub(crate) fn clear_deck_infantry(&mut self, rx: u16, ry: u16, mask: u8) {
-        let key = RawCellKey::Real(rx, ry);
-        self.write_occupant(key, MovementLayer::Bridge, mask, None, false);
     }
 
     fn update_and_prune(&mut self, rx: u16, ry: u16, update: impl FnOnce(&mut RawCellOccupation)) {
