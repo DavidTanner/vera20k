@@ -151,7 +151,7 @@ pub const BRIDGE_DECK_HEIGHT_LEVELS: i32 = 4;
 /// gamemd keeps separate globals for this value, each initialized once to four
 /// times a 104-lepton level step: Foot `[0x00AC13BC]` (stored by
 /// `0x005F37C0..0x005F3890`, `LEA ECX,[EAX*4]` at `0x005F3866`, added by
-/// `Set_Height_On_Bridge 0x005F5FA0`), Bounce `[0x0089C76C]` (initializer
+/// `ObjectClass::SetHeight 0x005F5FA0`), Bounce `[0x0089C76C]` (initializer
 /// `0x00439610`, read by `0x00439A10`/`0x00439B00`), Jumpjet `[0x00ABC5DC]`,
 /// the parasite release deck `[0x00AC497C]`, and Anim `[0x0089A1B4]`
 /// (initializer `0x00421E20`, the same `4 * level + 0.5` truncation, read by

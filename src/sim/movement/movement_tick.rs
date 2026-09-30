@@ -2247,9 +2247,10 @@ fn advance_ordinary_mover(
                 )
             })
         {
-            super::ground_pose::commit_ground_height(
+            super::ground_pose::set_height(
                 &mut entity.position,
                 entity.on_bridge,
+                0,
                 resolved_terrain,
                 path_grid,
             );
@@ -3551,9 +3552,10 @@ fn finalize_finished_entities(
                         | crate::rules::locomotor_type::LocomotorKind::Walk
                 )
             }) {
-                super::ground_pose::commit_ground_height(
+                super::ground_pose::set_height(
                     &mut entity.position,
                     entity.on_bridge,
+                    0,
                     resolved_terrain,
                     path_grid,
                 );

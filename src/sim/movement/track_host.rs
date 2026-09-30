@@ -7,7 +7,7 @@
 //! playfield receivers. Discovery/tag4, crates and the refinery radio branch
 //! remain explicit receiver gaps; this host does not replay object AI for them.
 
-use super::ground_pose::{commit_ground_height, position_world_coord};
+use super::ground_pose::{position_world_coord, set_height};
 use super::locomotor::MovementLayer;
 use super::track_process::{TrackFamily, TrackInvocation, TrackPayment, TrackProcess};
 #[cfg(test)]
@@ -517,9 +517,10 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 let marked = entity.lifecycle.cell_marked;
                 entity.lifecycle.cell_marked = false;
-                commit_ground_height(
+                set_height(
                     &mut entity.position,
                     entity.on_bridge,
+                    0,
                     self.resolved_terrain.as_ref(),
                     self.path_grid.as_deref(),
                 );
@@ -792,9 +793,10 @@ impl Simulation {
         }
         if terminal {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
-                commit_ground_height(
+                set_height(
                     &mut entity.position,
                     entity.on_bridge,
+                    0,
                     self.resolved_terrain.as_ref(),
                     self.path_grid.as_deref(),
                 );

@@ -1,6 +1,6 @@
 //! Grounded ObjectClass coordinate writes shared by movement and placement.
 //!
-//! Native FootClass::Set_Height_On_Bridge @ 0x005F5FA0 samples the committed
+//! `ObjectClass::SetHeight @ 0x005F5FA0` ([`set_height`]) samples the committed
 //! world XY through GetGroundHeight @ 0x00578080, then adds the explicit
 //! OnBridge offset. Callers own cadence: Drive/Ship residual movement does
 //! not call this setter and retains the last raw coordinate Z.
@@ -9,6 +9,7 @@ use crate::map::cell_index::NativeCellIdentity;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::sim::components::{DriveCoord, Position};
 use crate::sim::pathfinding::PathGrid;
+use crate::sim::world::Simulation;
 use crate::util::lepton::{
     BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons,
 };
@@ -233,52 +234,143 @@ pub(crate) fn object_get_coords(
     }
 }
 
-/// Sample the live surface at full world XY. A PathGrid supplies the same
-/// level/ramp fields only for callers without resolved terrain. Missing
-/// headless terrain leaves the caller's existing coordinate authoritative.
+/// The level and slope `CellClass::GetGroundHeight @ 0x00578080` reads at
+/// full world XY. With resolved terrain that is Map[coord] (`0x00565730`),
+/// which forms the wrapping fixed-stride index before narrowing fallback
+/// coordinates; keep the common lookup owner. A PathGrid supplies the same
+/// fields only for callers without resolved terrain.
+fn ground_fields_at(
+    world_xy: [i32; 2],
+    terrain: Option<&ResolvedTerrainGrid>,
+    path_grid: Option<&PathGrid>,
+) -> Option<(u8, u8)> {
+    if let Some(terrain) = terrain {
+        let cells = NativeCellQuery::canonical(terrain);
+        return Some(cells.ground_fields(cells.lookup_world(world_xy[0], world_xy[1])));
+    }
+    let rx = (world_xy[0] / 256) as i16;
+    let ry = (world_xy[1] / 256) as i16;
+    let cell = path_grid?.cell(rx as u16, ry as u16)?;
+    Some((cell.ground_level, cell.slope_type))
+}
+
+fn supported_ground(level: u8, slope: u8, world_xy: [i32; 2]) -> Option<i32> {
+    match ground_height_leptons(level, slope, world_xy[0], world_xy[1]) {
+        Ok(ground) => Some(ground),
+        Err(_) => {
+            log::warn!(
+                "ground pose at {world_xy:?} has unsupported slope {slope}; retaining raw Z"
+            );
+            None
+        }
+    }
+}
+
+/// Sample the live surface at full world XY: the ground plus the deck when
+/// `on_bridge`, which is the Z SetHeight(0) writes. Missing headless terrain
+/// leaves the caller's existing coordinate authoritative.
 pub(crate) fn ground_surface_z_at(
     world_xy: [i32; 2],
     on_bridge: bool,
     terrain: Option<&ResolvedTerrainGrid>,
     path_grid: Option<&PathGrid>,
 ) -> Option<i32> {
-    let rx = (world_xy[0] / 256) as i16;
-    let ry = (world_xy[1] / 256) as i16;
-    let (level, slope) = if let Some(terrain) = terrain {
-        // Map578080 ->565730 forms the wrapping fixed-stride index before
-        // narrowing fallback coordinates. Keep the common lookup owner.
-        let cells = NativeCellQuery::canonical(terrain);
-        cells.ground_fields(cells.lookup_world(world_xy[0], world_xy[1]))
-    } else {
-        let cell = path_grid?.cell(rx as u16, ry as u16)?;
-        (cell.ground_level, cell.slope_type)
-    };
-    let ground = match ground_height_leptons(level, slope, world_xy[0], world_xy[1]) {
-        Ok(ground) => ground,
-        Err(_) => {
-            log::warn!(
-                "ground pose at {world_xy:?} has unsupported slope {slope}; retaining raw Z"
-            );
-            return None;
-        }
-    };
-    Some(ground.wrapping_add(if on_bridge {
+    let (level, slope) = ground_fields_at(world_xy, terrain, path_grid)?;
+    Some(z_at_height(
+        supported_ground(level, slope, world_xy)?,
+        0,
+        on_bridge,
+    ))
+}
+
+/// `ObjectClass::SetHeight @ 0x005F5FA0`'s Z for a sampled ground: the
+/// requested height gains the deck (`[0x00AC13BC]`) when OnBridge
+/// (`0x005F5FAB..0x005F5FB5`), then the ground under the Location
+/// (`0x00578080`) is added (`0x005F5FFB`, `0x005F6044`).
+pub(crate) fn z_at_height(ground: i32, height: i32, on_bridge: bool) -> i32 {
+    ground.wrapping_add(height).wrapping_add(if on_bridge {
         BRIDGE_DECK_HEIGHT_LEPTONS
     } else {
         0
-    }))
+    })
 }
 
-pub(crate) fn commit_ground_height(
+/// `ObjectClass::GetHeight @ 0x005F5F40` for a sampled ground: the Z less the
+/// ground and, OnBridge, the deck. The inverse of [`z_at_height`].
+pub(crate) fn height_at_z(z: i32, ground: i32, on_bridge: bool) -> i32 {
+    z.wrapping_sub(ground).wrapping_sub(if on_bridge {
+        BRIDGE_DECK_HEIGHT_LEPTONS
+    } else {
+        0
+    })
+}
+
+/// `ObjectClass::SetHeight @ 0x005F5FA0` (every object vtable's `+0x1CC`)
+/// writing the Location's Z: [`z_at_height`] over the ground under its XY.
+///
+/// Callers that hold the object through a borrow call this where native runs
+/// SetHeight unmarked: between Mark(REMOVE) and Mark(PUT), or with `+0x74`
+/// cleared around it, as Drive (`0x004B1A88`, `0x004B209F`) and Walk
+/// (`0x0075C1FB`) do. [`Simulation::set_object_height`] is the entry point for
+/// an object id.
+///
+/// Without resolved terrain, the headless movement hosts that pass their
+/// PathGrid take the cell's level and slope from it. Otherwise (mapless
+/// fixtures) every lookup would be the Dummy cell, whose constructor ground is
+/// flat level 0. An unsupported slope leaves Z unchanged.
+pub(crate) fn set_height(
     position: &mut Position,
     on_bridge: bool,
+    height: i32,
     terrain: Option<&ResolvedTerrainGrid>,
     path_grid: Option<&PathGrid>,
-) -> bool {
-    let Some(z) = ground_surface_z_at(position_world_xy(position), on_bridge, terrain, path_grid)
-    else {
-        return false;
-    };
-    position.exact_z_leptons = Some(z);
-    true
+) {
+    let world_xy = position_world_xy(position);
+    let (level, slope) = ground_fields_at(world_xy, terrain, path_grid).unwrap_or((0, 0));
+    if let Some(ground) = supported_ground(level, slope, world_xy) {
+        position.exact_z_leptons = Some(z_at_height(ground, height, on_bridge));
+    }
+}
+
+impl Simulation {
+    /// [`set_height`] for an object id. It samples terrain only, as GetHeight
+    /// ([`current_fly_height`]) does, so `SetHeight(GetHeight() + n)` round-trips
+    /// without a map too. It also keeps `LocomotorState.altitude` equal to the
+    /// requested height, for the readers that still take it as the object's
+    /// height (#692).
+    ///
+    /// RESIDUAL: native SetHeight on a marked object (`+0x74`) removes it from
+    /// its cell before the write and marks it again after (vt+0x124,
+    /// `0x005F5FC2..0x005F6009`), through `FootClass::Mark` (`0x004D3780`) for
+    /// a Foot. VERA writes Z only.
+    /// - Trigger: a Jumpjet's crash notice (`0x007461B9`,
+    ///   `0x00522B7D`/`0x00522B8B`) and a Fly crash impact (`0x004CD7BF`),
+    ///   whose fall re-marks the wreck (`0x004CD783`). VERA's Fly wreck is
+    ///   unmarked there: its fall has no Mark pair, and the impact returns
+    ///   before the transaction marks it again. A paratrooper's landing
+    ///   (`0x005F3F7A`) runs it too, but as a no-op: the falling block has just
+    ///   re-added it (`0x005F3F58`).
+    /// - Effect: the wreck is not in its cell's lists for its death weapon,
+    ///   explosion or AirDeathFinish.
+    /// - Frequency: every Jumpjet and aircraft crash.
+    /// - Risk: list walks and first-object reads in that cell.
+    /// - Blocked by two ports of `FootClass::Mark` that disagree (#922).
+    ///
+    /// [`current_fly_height`]: super::air_movement::current_fly_height
+    pub(crate) fn set_object_height(&mut self, id: u64, height: i32) {
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return;
+        };
+        set_height(
+            &mut entity.position,
+            entity.on_bridge,
+            height,
+            self.resolved_terrain.as_ref(),
+            None,
+        );
+        if let Some(locomotor) = entity.locomotor.as_mut() {
+            locomotor.altitude =
+                crate::util::fixed_math::SimFixed::from_num(height.clamp(-32768, 32767));
+        }
+    }
 }

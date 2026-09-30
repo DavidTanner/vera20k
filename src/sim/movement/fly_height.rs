@@ -340,11 +340,7 @@ impl FlyRuntime {
         } = input;
         // Object GetHeight5F5F40 subtracts ground and its current OnBridge
         // adjustment. Fly then independently normalizes an unattached deck.
-        let mut height = world_z.wrapping_sub(ground_z).wrapping_sub(if on_bridge {
-            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-        } else {
-            0
-        });
+        let mut height = super::ground_pose::height_at_z(world_z, ground_z, on_bridge);
         let mut bridge_bonus = 0;
         if !on_bridge
             && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
@@ -364,15 +360,11 @@ impl FlyRuntime {
             };
             let step = self.target_height.wrapping_sub(height).min(rate);
             // SetHeight happens BEFORE OnBridge is cleared (4CDE9D/4CDEA6).
-            output_z = ground_z
-                .wrapping_add(height)
-                .wrapping_add(step)
-                .wrapping_add(bridge_bonus)
-                .wrapping_add(if on_bridge {
-                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-                } else {
-                    0
-                });
+            output_z = super::ground_pose::z_at_height(
+                ground_z,
+                height.wrapping_add(step).wrapping_add(bridge_bonus),
+                on_bridge,
+            );
             on_bridge = false;
         }
         // Native compares the original normalized height again. Health==0
@@ -402,23 +394,16 @@ impl FlyRuntime {
                     bridge_bonus = 0;
                 }
             }
-            output_z = ground_z
-                .wrapping_add(height)
-                .wrapping_add(bridge_bonus)
-                .wrapping_add(if on_bridge {
-                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-                } else {
-                    0
-                });
+            output_z = super::ground_pose::z_at_height(
+                ground_z,
+                height.wrapping_add(bridge_bonus),
+                on_bridge,
+            );
         }
         HeightOutput {
             world_z: output_z,
             on_bridge,
-            height: output_z.wrapping_sub(ground_z).wrapping_sub(if on_bridge {
-                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-            } else {
-                0
-            }),
+            height: super::ground_pose::height_at_z(output_z, ground_z, on_bridge),
         }
     }
 }

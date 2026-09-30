@@ -45,12 +45,28 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         entity.foot_speed.set_speed_fraction(SimFixed::lit("0.5"));
         entity.navigation.path_runtime.path_blocked = true;
         let speed = input["speed"].as_i64().unwrap() as i32;
+        // The corpus stops before the same-cell SetCoords/SetHeight
+        // (`0x0075C20F`, `0x0075C21C`), so it records the proposal's Z. Stand
+        // the walker on flat ground at its own height so SetHeight(0) keeps it.
+        let level = (current.z / 104) as u8;
+        let terrain = crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+            12,
+            12,
+            (0..12)
+                .flat_map(|y| {
+                    (0..12).map(move |x| crate::map::resolved_terrain::ResolvedTerrainCell {
+                        level,
+                        ..crate::map::resolved_terrain::test_flat_cell(x, y)
+                    })
+                })
+                .collect(),
+        );
         advance(
             &mut entity,
             SimFixed::from_num(speed * 15),
             None,
             100,
-            None,
+            Some(&terrain),
             None,
         );
         let proposed = crate::sim::movement::ground_pose::position_world_coord(&entity.position);

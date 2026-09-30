@@ -8,8 +8,8 @@
 //! dropping to the riverbed underneath?
 //!
 //! The invariant asserted after every committed frame is the algebraic inverse
-//! of `FootClass::Set_Height_On_Bridge` @ `0x005F5FA0` recorded by
-//! `ObjectClass::GetHeight` @ `0x005F5F30`:
+//! of `ObjectClass::SetHeight` @ `0x005F5FA0` recorded by
+//! `ObjectClass::GetHeight` @ `0x005F5F40`:
 //!
 //! ```text
 //! position.z == GroundHeight(own cell) + (OnBridge ? 4 levels : 0)
@@ -194,7 +194,7 @@ struct TickRow {
 }
 
 impl TickRow {
-    /// `ObjectClass::GetHeight` @ `0x005F5F30` inverted: the only Z the native
+    /// `ObjectClass::GetHeight` @ `0x005F5F40` inverted: the only Z the native
     /// model can produce for this cell and this OnBridge state.
     fn expected_z(&self) -> i16 {
         i16::from(self.terrain_level as i8)
@@ -1467,14 +1467,14 @@ fn print_low_inventory(terrain: &ResolvedTerrainGrid, grid: &PathGrid, span: &Lo
 /// event anywhere on a low span; the crossing *is* the ground plane.
 ///
 /// So the correct invariant is the degenerate case of
-/// `ObjectClass::GetHeight @ 0x005F5F30` with OnBridge clear:
+/// `ObjectClass::GetHeight @ 0x005F5F40` with OnBridge clear:
 ///
 /// ```text
 /// position.z == GroundHeight(own cell)   and   OnBridge == false
 /// ```
 ///
 /// The `OnBridge == false` half is load-bearing, not decoration: were a low deck
-/// to set it, `Set_Height_On_Bridge` would add four levels of nothing and float
+/// to set it, SetHeight would add four levels of nothing and float
 /// the mover over a flat span. Asserting only "z == ground" would pass a
 /// hypothetical implementation that sets `on_bridge` and then re-derives z from
 /// it, so both halves are checked.
@@ -1492,7 +1492,7 @@ fn assert_low_span_invariant(rows: &[TickRow], deck_frames: &[&TickRow]) {
         assert!(
             !row.on_bridge,
             "a LOW deck cell {:?} set on_bridge; there is no deck plane over a low span, so \
-             Set_Height_On_Bridge would lift the mover four levels above flat ground: {row:?}",
+             SetHeight would lift the mover four levels above flat ground: {row:?}",
             row.cell
         );
         assert!(
@@ -3521,7 +3521,7 @@ impl UnderSpanRun {
     }
 }
 
-/// The under-span invariant: `ObjectClass::GetHeight` @ `0x005F5F30` with
+/// The under-span invariant: `ObjectClass::GetHeight` @ `0x005F5F40` with
 /// OnBridge clear, plus the two other places the deck term is stored.
 ///
 /// A mover under a span occupies the same cell as the deck above it, so the only

@@ -2385,7 +2385,7 @@ impl PathGrid {
     /// is structurally part of a span while its walkability permission or its
     /// stored deck value says otherwise. gamemd has no such coupling — the deck
     /// height there is terrain plus a constant gated only on the mover's own
-    /// OnBridge byte (`FootClass::Set_Height_On_Bridge` 0x005F5FA0) — so tests
+    /// OnBridge byte (`ObjectClass::SetHeight` 0x005F5FA0) — so tests
     /// need to be able to build the decoupled state to prove the mover's height
     /// is immune to it.
     #[cfg(test)]
