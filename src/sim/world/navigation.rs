@@ -62,6 +62,19 @@ fn visit_structure_movement_cells(
     }
 }
 
+/// Every cell a marked structure blocks for movement.
+pub(super) fn structure_movement_cells(
+    entities: &EntityStore,
+    interner: &StringInterner,
+    rules: &RuleSet,
+) -> BTreeSet<(u16, u16)> {
+    let mut cells = BTreeSet::new();
+    visit_structure_movement_cells(entities, interner, rules, |cell| {
+        cells.insert(cell);
+    });
+    cells
+}
+
 /// The requested cells a marked structure blocks, from one structure scan.
 pub(super) fn structure_blocked_among(
     entities: &EntityStore,
@@ -127,6 +140,7 @@ impl NavigationCaches<'_> {
         Ok(())
     }
 
+    /// Returns the structure cells it blocked, for the caller's derived cache.
     pub(super) fn rebuild_dynamic(
         &mut self,
         terrain: &ResolvedTerrainGrid,
@@ -134,15 +148,17 @@ impl NavigationCaches<'_> {
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
-    ) {
+    ) -> BTreeSet<(u16, u16)> {
         let mut grid = PathGrid::from_resolved_terrain_with_bridges(terrain, bridges);
         *self.terrain_costs = build_canonical_terrain_cost_grids(terrain);
 
-        visit_structure_movement_cells(entities, interner, rules, |(x, y)| {
+        let structure_cells = structure_movement_cells(entities, interner, rules);
+        for &(x, y) in &structure_cells {
             grid.block_structure_cell(x, y);
-        });
+        }
 
         self.rebuild_zones(&grid, terrain, bridges);
+        structure_cells
     }
 
     /// Publish the path/cost views of one completed47D2B0 Recalc before another
