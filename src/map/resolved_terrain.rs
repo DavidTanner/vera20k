@@ -331,17 +331,6 @@ pub struct ResolvedTerrainCell {
     /// cells with baked damage art may initiate propagation) and the render-side
     /// substitution that swaps in variant=1 when the bridge sim flags the cell.
     pub has_damaged_data: bool,
-    /// Author-damaged anchor pre-classification: `Some(class)` if this
-    /// cell's `final_tile_index` matches one of the 8 bridgehead anchor
-    /// variant tile_ids in the current theater's BridgeAnchorVariantTable.
-    /// `None` when not a variant tile (the common case for both
-    /// non-bridge cells and pristine anchor cells).
-    ///
-    /// Sim's `BridgeRuntimeState::from_resolved_terrain` reads this to
-    /// initialize `BridgeRuntimeCell.bridgehead_anchor_class` instead of
-    /// the unconditional Variant0 default. None defaults to Variant0
-    /// sim-side.
-    pub bridgehead_anchor_class_at_load: Option<crate::map::bridge_facts::BridgeheadAnchorClass>,
 }
 
 impl ResolvedTerrainCell {
@@ -846,93 +835,6 @@ impl RealCellBridgeFlags0x1180 {
     }
 }
 
-/// Ephemeral mutable view of the represented live `CellClass+0x140` bridge
-/// bits during one native state-machine transaction.
-///
-/// Ramp helpers recurse before their caller can project a returned outcome.
-/// This value seam mirrors allocated real cells and retains the actual shared
-/// dummy identity while the transaction is being constructed. Each native
-/// setter call updates the real-cell mirror and synchronously stamps/mutates
-/// that live dummy, so later recursive GetCell frames observe exact flag and
-/// coordinate interleaving. The ordered setter transcript subsequently
-/// commits only allocated real-cell values and serialized authority; replaying
-/// it through the dummy would duplicate and reorder already-live effects.
-#[derive(Debug, Clone)]
-pub(crate) struct CellClassBridgeFlagState {
-    width: u16,
-    height: u16,
-    native_allocated: Option<Vec<bool>>,
-    flags: Vec<u16>,
-    shared_cell_dummy: SharedCellDummy,
-}
-
-impl CellClassBridgeFlagState {
-    fn from_grid(grid: &ResolvedTerrainGrid) -> Self {
-        Self {
-            width: grid.width,
-            height: grid.height,
-            native_allocated: grid.native_allocated.clone(),
-            flags: grid
-                .cells
-                .iter()
-                .map(|cell| {
-                    (cell.bridge_facts.raw_flags & RETAINED_CELLCLASS_BRIDGE_FLAG_MASK) as u16
-                })
-                .collect(),
-            shared_cell_dummy: grid.shared_cell_dummy.clone(),
-        }
-    }
-
-    pub(crate) fn flags_at(&self, coord: (u16, u16)) -> u32 {
-        native_resolved_cell_index(
-            self.width,
-            self.height,
-            self.native_allocated.as_deref(),
-            self.flags.len(),
-            i32::from(coord.0),
-            i32::from(coord.1),
-        )
-        .and_then(|index| self.flags.get(index).copied())
-        .map(u32::from)
-        .unwrap_or_else(|| self.shared_cell_dummy.bridge_flags_0x1180())
-    }
-
-    pub(crate) fn apply_stamp(&mut self, stamp: BridgeFlagStamp) {
-        let Some(slots) = stamp.slots() else {
-            return;
-        };
-        for (slot, requested) in slots {
-            let Some((x, y)) = requested else {
-                continue;
-            };
-            if let Some(index) = native_resolved_cell_index(
-                self.width,
-                self.height,
-                self.native_allocated.as_deref(),
-                self.flags.len(),
-                x,
-                y,
-            ) {
-                let mut flags = u32::from(self.flags[index]);
-                crate::map::bridge_facts::apply_retained_cellclass_bridge_slot(
-                    &mut flags,
-                    slot,
-                    stamp.set,
-                    stamp.direction,
-                );
-                self.flags[index] = flags as u16;
-            } else {
-                self.shared_cell_dummy.stamp_coord(x, y);
-                self.shared_cell_dummy.apply_retained_bridge_flag_slot(
-                    slot,
-                    stamp.set,
-                    stamp.direction,
-                );
-            }
-        }
-    }
-}
-
 /// Serialized behavior authority for a CellClass whose isometric tile was
 /// replaced after map construction. The live ResolvedTerrainGrid is derived
 /// and skipped by Simulation snapshots, so collapse projects these exact
@@ -982,7 +884,6 @@ pub(crate) struct DynamicTerrainCellState {
     pub radar_left: [u8; 3],
     pub radar_right: [u8; 3],
     pub has_damaged_data: bool,
-    pub bridgehead_anchor_class_at_load: Option<crate::map::bridge_facts::BridgeheadAnchorClass>,
 }
 
 impl DynamicTerrainCellState {
@@ -1031,7 +932,6 @@ impl DynamicTerrainCellState {
             radar_left: cell.radar_left,
             radar_right: cell.radar_right,
             has_damaged_data: cell.has_damaged_data,
-            bridgehead_anchor_class_at_load: cell.bridgehead_anchor_class_at_load,
         }
     }
 
@@ -1079,7 +979,6 @@ impl DynamicTerrainCellState {
         cell.radar_left = self.radar_left;
         cell.radar_right = self.radar_right;
         cell.has_damaged_data = self.has_damaged_data;
-        cell.bridgehead_anchor_class_at_load = self.bridgehead_anchor_class_at_load;
     }
 }
 
@@ -1731,41 +1630,6 @@ fn apply_native_bridge_flag_stamp_to_parts(
     real_cell_updates
 }
 
-/// Project a setter transcript that already executed against the live dummy
-/// through [`CellClassBridgeFlagState`]. Only allocated real CellClass values
-/// are deferred; missing slots must have no second lookup or dummy mutation.
-fn apply_planned_bridge_flag_stamp_to_real_parts(
-    cells: &mut [ResolvedTerrainCell],
-    width: u16,
-    height: u16,
-    native_allocated: Option<&[bool]>,
-    stamp: BridgeFlagStamp,
-) -> Vec<(usize, u32)> {
-    let Some(slots) = stamp.slots() else {
-        return Vec::new();
-    };
-    let mut real_cell_updates = Vec::with_capacity(slots.len());
-    for (slot, requested) in slots {
-        let Some((x, y)) = requested else {
-            continue;
-        };
-        let Some(index) =
-            native_resolved_cell_index(width, height, native_allocated, cells.len(), x, y)
-        else {
-            continue;
-        };
-        let facts = &mut cells[index].bridge_facts;
-        crate::map::bridge_facts::apply_retained_cellclass_bridge_slot(
-            &mut facts.raw_flags,
-            slot,
-            stamp.set,
-            stamp.direction,
-        );
-        real_cell_updates.push((index, facts.raw_flags & RETAINED_CELLCLASS_BRIDGE_FLAG_MASK));
-    }
-    real_cell_updates
-}
-
 fn refresh_runtime_bridge_projection(cell: &mut ResolvedTerrainCell, structural_removed: bool) {
     let facts = cell.bridge_facts;
     if facts.has_structural_bridge() {
@@ -2051,7 +1915,6 @@ pub(crate) fn test_flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         radar_left: [0, 0, 0],
         radar_right: [0, 0, 0],
         has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
     }
 }
 
@@ -2951,10 +2814,6 @@ impl ResolvedTerrainGrid {
         self.native_allocated.as_deref()
     }
 
-    pub(crate) fn bridge_flag_execution_state(&self) -> CellClassBridgeFlagState {
-        CellClassBridgeFlagState::from_grid(self)
-    }
-
     pub(crate) fn bind_shared_cell_dummy(&mut self, shared_cell_dummy: SharedCellDummy) {
         self.shared_cell_dummy = shared_cell_dummy;
     }
@@ -3122,22 +2981,6 @@ impl ResolvedTerrainGrid {
         cell.bridge_facts.overlay_id = None;
         cell.bridge_facts.state_byte = 0;
         true
-    }
-
-    /// Project only allocated real-cell values for a setter that already ran
-    /// synchronously through [`CellClassBridgeFlagState`]. This performs no
-    /// GetCell fallback and cannot stamp or mutate the shared dummy.
-    pub(crate) fn apply_planned_bridge_flag_stamp_to_real_cells(
-        &mut self,
-        stamp: BridgeFlagStamp,
-    ) -> Vec<(usize, u32)> {
-        apply_planned_bridge_flag_stamp_to_real_parts(
-            &mut self.cells,
-            self.width,
-            self.height,
-            self.native_allocated.as_deref(),
-            stamp,
-        )
     }
 
     pub(crate) fn capture_real_cell_bridge_flags_0x1180(&self) -> RealCellBridgeFlags0x1180 {
@@ -4632,7 +4475,6 @@ impl ResolvedTerrainGrid {
                     radar_left: metadata.radar_left,
                     radar_right: metadata.radar_right,
                     has_damaged_data: metadata.has_damaged_data,
-                    bridgehead_anchor_class_at_load: None,
                 });
             }
         }
@@ -4907,7 +4749,7 @@ impl ResolvedTerrainGrid {
             })
             .collect();
 
-        let mut grid = Self {
+        let grid = Self {
             width,
             height,
             cells,
@@ -4961,44 +4803,7 @@ impl ResolvedTerrainGrid {
                 _ => None,
             },
         };
-        if projection.is_eager()
-            && let Some(theater) = theater_data
-        {
-            grid.rebuild_bridgehead_anchor_classes_from_final_tiles(theater);
-        }
         grid
-    }
-
-    /// Rebuild the authored bridgehead classification from the current,
-    /// finalized tile surface. Pending authored Fill deliberately leaves this
-    /// empty because LAT/Recalc has not established final tile authority yet.
-    pub(crate) fn rebuild_bridgehead_anchor_classes_from_final_tiles(
-        &mut self,
-        theater: &TheaterData,
-    ) {
-        for cell in &mut self.cells {
-            cell.bridgehead_anchor_class_at_load = None;
-        }
-        let Some(table) = crate::map::theater::BridgeAnchorVariantTable::from_theater(theater)
-        else {
-            return;
-        };
-        let Some(bridge_set) = theater.bridge_set else {
-            return;
-        };
-        for cell in &mut self.cells {
-            if cell.tileset_index != Some(bridge_set) || cell.final_tile_index < 0 {
-                continue;
-            }
-            let tile_id = if cell.final_tile_index == 0xFFFF {
-                0
-            } else {
-                cell.final_tile_index as u16
-            };
-            if let Some((_axis, class)) = table.match_tile_id(tile_id) {
-                cell.bridgehead_anchor_class_at_load = Some(class);
-            }
-        }
     }
 
     pub fn build_height_map(&self) -> BTreeMap<(u16, u16), u8> {
@@ -5692,7 +5497,6 @@ fn recalc_dynamic_tile_attributes(
     cell.radar_left = metadata.radar_left;
     cell.radar_right = metadata.radar_right;
     cell.has_damaged_data = metadata.has_damaged_data;
-    cell.bridgehead_anchor_class_at_load = None;
 }
 
 fn load_tile_metadata(
@@ -7560,10 +7364,6 @@ mod tests {
         assert!(eager_cell.bridge_facts.has_structural_bridge());
         assert_eq!(eager_cell.bridge_facts.state_byte, 99);
         assert_eq!(eager_cell.terrain_object_occupation, Some(7));
-        assert_eq!(
-            eager_cell.bridgehead_anchor_class_at_load,
-            Some(crate::map::bridge_facts::BridgeheadAnchorClass::Variant0)
-        );
         assert!(!eager.tile_animations().is_empty());
         assert!(!eager.tube_facts().is_empty());
 
@@ -7637,7 +7437,6 @@ mod tests {
         assert!(pending_grid.tile_animations().is_empty());
         assert!(pending_grid.tube_facts().is_empty());
         assert_eq!(pending_cell.tube_index, None);
-        assert_eq!(pending_cell.bridgehead_anchor_class_at_load, None);
         assert_eq!(dummy.snapshot().bridge_flags_0x1180, 0);
         assert_eq!(
             map.overlay_data_pack()

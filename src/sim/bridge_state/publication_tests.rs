@@ -1,6 +1,8 @@
 //! Compare observable callback boundaries and final scalar cells with original
-//! code. Native instruction-width stores and setter-entry instrumentation are
-//! retained in the oracle but are not part of this Rust comparison.
+//! code: the concrete body (bridge_body_publication) and both drivers'
+//! bridgehead branches (bridge_head_publication). Native instruction-width
+//! stores and setter-entry instrumentation are retained in the oracles but
+//! are not part of this Rust comparison.
 
 use super::*;
 use serde_json::{Value, json};
@@ -14,9 +16,16 @@ struct Cell {
     state: u8,
     overlay: i32,
     anchor: Option<usize>,
+    tile: i32,
+    subtile: u8,
+    level: i8,
 }
 
 struct Host {
+    /// The bridgehead corpus records families and no anchor snapshots.
+    head: bool,
+    base: i32,
+    middles: [i32; 2],
     cells: Vec<Cell>,
     allocation: BTreeMap<CellCoord, usize>,
     events: Vec<Value>,
@@ -51,18 +60,38 @@ impl Host {
                     overlay: row[5].as_i64().unwrap_or(-1) as i32,
                     anchor: (flags & 0x80 == 0 && row[7].is_array())
                         .then(|| allocation[&coord(&row[7])]),
+                    tile: row[2].as_i64().unwrap() as i32,
+                    subtile: row[3].as_u64().unwrap() as u8,
+                    level: row[8].as_i64().unwrap() as i8,
                 }
             })
             .collect();
+        let key = |name: &str| source["rim_keys"][name].as_i64().unwrap() as i32;
         let mut host = Self {
+            head: false,
+            base: source["bridge_base"].as_i64().unwrap() as i32,
+            middles: [key("BridgeMiddle1"), key("BridgeMiddle2")],
             cells,
             allocation,
             events: Vec::new(),
             mutation: case["mutation"].as_str().map(str::to_owned),
             injected: false,
         };
-        host.cells[host.allocation[&(112, 140)]].state =
-            case["initial_anchor_state"].as_u64().unwrap() as u8;
+        if let Some(state) = case["initial_anchor_state"].as_u64() {
+            host.cells[host.allocation[&(112, 140)]].state = state as u8;
+        }
+        host
+    }
+
+    fn head(source: &Value, case: &Value) -> Self {
+        let mut host = Self::new(source, case);
+        host.head = true;
+        for row in case["template_cells"].as_array().unwrap() {
+            let cell = &mut host.cells[host.allocation[&coord(row)]];
+            cell.tile = row[2].as_i64().unwrap() as i32;
+            cell.subtile = row[3].as_u64().unwrap() as u8;
+            cell.level = row[4].as_i64().unwrap() as i8;
+        }
         host
     }
 
@@ -138,7 +167,14 @@ impl BridgePublicationHost for Host {
         self.events
             .push(json!({"kind":"radar_sink", "coord":self.coord(cell)}));
     }
-    fn perpendicular(&mut self, coord: CellCoord, axis: Axis, phase: Phase, direction: u8) {
+    fn perpendicular(
+        &mut self,
+        coord: CellCoord,
+        axis: Axis,
+        phase: Phase,
+        direction: u8,
+        family: Family,
+    ) {
         let axis = match axis {
             Axis::NS => "ns",
             Axis::EW => "ew",
@@ -149,8 +185,12 @@ impl BridgePublicationHost for Host {
             Phase::CollapseA => "collapse_a",
             Phase::CollapseB => "collapse_b",
         };
-        self.events.push(json!({"kind":"perpendicular_sink",
-            "function":format!("{axis}_{phase}"), "coord":coord, "direction":direction}));
+        let mut event = json!({"kind":"perpendicular_sink",
+            "function":format!("{axis}_{phase}"), "coord":coord, "direction":direction});
+        if self.head {
+            event["family"] = json!(family_name(family));
+        }
+        self.events.push(event);
         if !self.injected
             && self.mutation.as_deref() == Some("first_perpendicular_changes_anchor_state")
         {
@@ -159,14 +199,51 @@ impl BridgePublicationHost for Host {
             self.callback_write(anchor);
         }
     }
-    fn rim(&mut self, coord: CellCoord) {
-        self.events.push(json!({"kind":"rim_sink", "coord":coord,
-            "anchor":self.snapshot(self.allocation[&(112,140)])}));
+    fn rim(&mut self, coord: CellCoord, family: Family) {
+        let event = if self.head {
+            json!({"kind":"rim_sink", "family":family_name(family), "coord":coord})
+        } else {
+            json!({"kind":"rim_sink", "coord":coord,
+                "anchor":self.snapshot(self.allocation[&(112,140)])})
+        };
+        self.events.push(event);
     }
-    fn zones(&mut self, anchor: usize) {
+    fn zones(&mut self, query: CellCoord) {
+        let event = if self.head {
+            json!({"kind":"zone_sink", "coord":query})
+        } else {
+            json!({"kind":"zone_sink", "coord":query,
+                "anchor":self.snapshot(self.allocation[&(112,140)])})
+        };
+        self.events.push(event);
+    }
+    fn tile(&self, cell: usize) -> i32 {
+        self.cells[cell].tile
+    }
+    fn subtile(&self, cell: usize) -> u8 {
+        self.cells[cell].subtile
+    }
+    fn level(&self, cell: usize) -> i8 {
+        self.cells[cell].level
+    }
+    fn flood(&mut self, coord: CellCoord, tile: i32, level: i32) {
         self.events
-            .push(json!({"kind":"zone_sink", "coord":self.coord(anchor),
-            "anchor":self.snapshot(anchor)}));
+            .push(json!({"kind":"flood", "coord":coord, "tile":tile, "level":level}));
+    }
+    fn recalc_zones(&mut self, cells: &[CellCoord]) {
+        self.events
+            .push(json!({"kind":"recalc_sink", "cells":cells}));
+    }
+    fn middles(&self, _family: Family) -> Option<(i32, [i32; 2])> {
+        // The corpus supplies the stock BridgeSet base to both drivers.
+        Some((self.base, self.middles))
+    }
+}
+
+fn family_name(family: Family) -> &'static str {
+    match family {
+        Family::High => "high",
+        Family::Low => "low",
     }
 }
 
@@ -192,7 +269,7 @@ fn high_body_publication_matches_original_callback_boundaries() {
         } else {
             host.cells[selected].anchor.unwrap()
         };
-        let returned = advance_body_at_anchor(&mut host, input, anchor);
+        let returned = advance_body_at_anchor(&mut host, input, anchor, Family::High);
         assert_eq!(
             u64::from(returned),
             case["returned"].as_u64().unwrap(),
@@ -222,5 +299,39 @@ fn high_body_publication_matches_original_callback_boundaries() {
             "{}",
             case["name"]
         );
+    }
+}
+
+/// Both drivers' middle-tile branches over a synthetic template in the stock
+/// crop: tile gate, walk, variant branch, blow-up row, flood tile and level,
+/// helper family and order (the wooden EW damage calls the concrete helpers),
+/// rim pair, zone query, the 586990 vector and the family return value.
+#[test]
+fn bridgehead_branches_match_original_callback_boundaries() {
+    let source: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tools/spatial_oracle/bridge_rim_stock_inputs.json"
+    )))
+    .unwrap();
+    let native: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tools/spatial_oracle/bridge_head_publication.json"
+    )))
+    .unwrap();
+    for case in native["cases"].as_array().unwrap() {
+        let mut host = Host::head(&source, case);
+        let family = if case["family"] == "low" {
+            Family::Low
+        } else {
+            Family::High
+        };
+        let returned = advance_bridgehead(&mut host, coord(&case["input_coord"]), family);
+        assert_eq!(
+            u64::from(returned),
+            case["returned"].as_u64().unwrap(),
+            "{}",
+            case["name"]
+        );
+        assert_eq!(json!(host.events), case["calls"], "{}", case["name"]);
     }
 }

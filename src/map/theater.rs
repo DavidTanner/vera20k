@@ -14,7 +14,6 @@ use std::collections::{HashMap, HashSet};
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::pal_file::{Color, Palette};
 use crate::assets::tmp_file::TmpFile;
-use crate::map::bridge_facts::{Axis, BridgeheadAnchorClass};
 use crate::map::map_file::MapError;
 use crate::rules::ini_parser::{IniFile, IniSection};
 
@@ -767,20 +766,14 @@ pub struct TheaterData {
     pub rmg_tiles: RmgTileKeys,
 }
 
-/// Theater-derived 4-NS + 4-EW tile_id table for HIGH bridge anchor variants.
-///
-/// Built once at theater load from `BridgeSet` (tileset start tile_id)
-/// + `BridgeMiddle1` / `BridgeMiddle2` (BridgeSet-relative offsets).
-/// The 4 variant tile_ids per axis occupy consecutive slots starting at
-/// `BridgeSet_start + (BridgeMiddle* - 1)`.
-///
-/// Enum order: `[Variant0, Variant1, Damaged, AboutToFall]`.
-#[derive(Debug, Clone, Copy)]
-pub struct BridgeAnchorVariantTable {
-    /// NS variant tile_ids in enum order (Variant0..AboutToFall).
-    pub ns: [u16; 4],
-    /// EW variant tile_ids in enum order.
-    pub ew: [u16; 4],
+/// Every BridgeMiddle1/2 tile a live bridge publication can write, for the
+/// tile atlas pre-load. Relative to each family's tileset base (BridgeSet,
+/// WoodBridgeSet), a middle variant `v` is `base + key - 1 + v`: damage
+/// floods write variant 3 and collapse floods and ramp tails variant 4
+/// (576BA0/571490 via 56EB80; 572230..573170 and their wooden twins).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeMiddleTiles {
+    pub tile_ids: Vec<u16>,
 }
 
 impl TheaterData {
@@ -810,75 +803,27 @@ impl TheaterData {
     }
 }
 
-impl BridgeAnchorVariantTable {
-    /// Derive the variant table from a fully-loaded TheaterData.
-    ///
-    /// Returns None when BridgeSet, BridgeMiddle1, or BridgeMiddle2 is
-    /// absent, BridgeMiddle1 or BridgeMiddle2 is 0 (Variant0 = BS+M-1
-    /// would underflow), or any of the 8 computed tile_ids falls outside
-    /// the tileset bounds.
+impl BridgeMiddleTiles {
+    /// None without BridgeMiddle1/2 or without either family's tileset.
+    /// Variants past the end of the tileset lookup are omitted.
     pub fn from_theater(td: &TheaterData) -> Option<Self> {
-        let bs_idx = td.bridge_set?;
-        let m1 = td.bridge_middle_1?;
-        let m2 = td.bridge_middle_2?;
-        if m1 < 1 || m2 < 1 {
-            return None;
-        }
-        let bs_start = td.lookup.bounds().get(bs_idx as usize).map(|b| b.start)?;
-        let max_tid = td.lookup.len() as u32;
-
-        let compute_axis = |m: u16| -> Option<[u16; 4]> {
-            let base = bs_start as u32 + (m as u32) - 1;
-            let highest = base + 3;
-            if highest >= max_tid {
-                return None;
+        let keys = [td.bridge_middle_1?, td.bridge_middle_2?];
+        let max_tile = td.lookup.len() as u32;
+        let mut tile_ids = Vec::new();
+        for set in [td.bridge_set, td.wood_bridge_set].into_iter().flatten() {
+            let Some(start) = td.lookup.bounds().get(usize::from(set)).map(|b| b.start) else {
+                continue;
+            };
+            for key in keys.into_iter().filter(|&key| key >= 1) {
+                for variant in 0..=4 {
+                    let tile = u32::from(start) + u32::from(key) - 1 + variant;
+                    if tile < max_tile && !tile_ids.contains(&(tile as u16)) {
+                        tile_ids.push(tile as u16);
+                    }
+                }
             }
-            Some([
-                base as u16,
-                (base + 1) as u16,
-                (base + 2) as u16,
-                (base + 3) as u16,
-            ])
-        };
-        let ns = compute_axis(m1)?;
-        let ew = compute_axis(m2)?;
-        Some(Self { ns, ew })
-    }
-
-    /// Look up the tile_id for a (axis, class) pair. Returns None when
-    /// class is Variant0 — callers fall through to the cell's native
-    /// tile_id in that case (no render-side override needed).
-    pub fn tile_id_for(&self, axis: Axis, class: BridgeheadAnchorClass) -> Option<u16> {
-        let slot = match class {
-            BridgeheadAnchorClass::Variant0 => return None,
-            BridgeheadAnchorClass::Variant1 => 1usize,
-            BridgeheadAnchorClass::Damaged => 2usize,
-            BridgeheadAnchorClass::AboutToFall => 3usize,
-        };
-        let arr = match axis {
-            Axis::NS => &self.ns,
-            Axis::EW => &self.ew,
-        };
-        Some(arr[slot])
-    }
-
-    /// Reverse-match a tile_id to (axis, class). Used at map load to
-    /// pre-classify author-damaged anchors. None when the tile_id is not
-    /// a variant.
-    pub fn match_tile_id(&self, tile_id: u16) -> Option<(Axis, BridgeheadAnchorClass)> {
-        const CLASS_ORDER: [BridgeheadAnchorClass; 4] = [
-            BridgeheadAnchorClass::Variant0,
-            BridgeheadAnchorClass::Variant1,
-            BridgeheadAnchorClass::Damaged,
-            BridgeheadAnchorClass::AboutToFall,
-        ];
-        if let Some(slot) = self.ns.iter().position(|&t| t == tile_id) {
-            return Some((Axis::NS, CLASS_ORDER[slot]));
         }
-        if let Some(slot) = self.ew.iter().position(|&t| t == tile_id) {
-            return Some((Axis::EW, CLASS_ORDER[slot]));
-        }
-        None
+        (!tile_ids.is_empty()).then_some(Self { tile_ids })
     }
 }
 
@@ -1249,14 +1194,13 @@ pub(crate) fn wrapped_subtile_index(
 /// Silently skips tile_ids whose TMP file is absent from `asset_manager`
 /// (e.g., mod theaters missing a variant TMP). Logs one `WARN` per missing
 /// TMP at theater load.
-pub fn inject_bridge_anchor_variant_tiles(
+pub fn inject_bridge_middle_tiles(
     needed: &mut HashSet<TileKey>,
-    table: &BridgeAnchorVariantTable,
+    table: &BridgeMiddleTiles,
     lookup: &TilesetLookup,
     asset_manager: &crate::assets::asset_manager::AssetManager,
 ) {
-    let all_tile_ids = table.ns.iter().chain(table.ew.iter()).copied();
-    for tile_id in all_tile_ids {
+    for &tile_id in &table.tile_ids {
         let Some(filename) = lookup.filename(tile_id as i32) else {
             log::warn!(
                 "Bridge anchor variant tile_id {} has no entry in TilesetLookup; skipping pre-load",

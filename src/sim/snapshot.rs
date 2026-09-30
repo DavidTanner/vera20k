@@ -749,6 +749,8 @@ use crate::sim::world::Simulation;
 // 257 -> 258: a piggyback stash saves the complete suspended locomotor object
 // instead of a separate runtime copy of its fields, and a locomotor no longer
 // saves the installed slot the stash's own kind already records.
+// 258 -> 259: bridge cells no longer save a bridgehead anchor class; the
+// bridgehead branch writes CellClass tiles and the draw reads them.
 // 259 -> 260: an entity no longer saves bridge_occupancy or a ground cell
 // enter order; the enter-order counter serves only the AirTracker.
 const SNAPSHOT_VERSION: u32 = 260;
@@ -3640,6 +3642,7 @@ mod tests {
         // 256 -> 257: no bridge group/destroyable/span-damage copies or
         // inert paradrop latches.
         // 257 -> 258: the stash saves the complete suspended locomotor.
+        // 258 -> 259: no bridgehead anchor class.
         // 259 -> 260: no bridge_occupancy or ground enter order.
         assert_eq!(super::SNAPSHOT_VERSION, 260);
     }

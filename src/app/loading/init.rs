@@ -2888,13 +2888,13 @@ pub(crate) fn load_map_from_initial(
     // with its existing eager grid unchanged.
     let height_map: BTreeMap<(u16, u16), u8> = resolved_terrain.build_height_map();
     let bridge_height_map: BTreeMap<(u16, u16), u8> = resolved_terrain.build_bridge_height_map();
-    let anchor_variant_table = theater_result
+    let bridge_middle_tiles = theater_result
         .as_ref()
-        .and_then(crate::map::theater::BridgeAnchorVariantTable::from_theater);
+        .and_then(crate::map::theater::BridgeMiddleTiles::from_theater);
     let grid: TerrainGrid = terrain::build_terrain_grid_from_resolved(
         &resolved_terrain,
         local_bounds,
-        anchor_variant_table,
+        bridge_middle_tiles,
     );
     progress.milestone(50);
     progress.milestone(55);
