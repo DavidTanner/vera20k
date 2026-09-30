@@ -416,3 +416,16 @@ clippy completes with765 repository warnings, and the field ratchet remains
 2,646 versus2,661 on main474. Complete source/build/execution and comparison
 receipts are preserved; original replay contexts remain intact. These results
 retain the previous bounds on native world and production Rescue coverage.
+
+The final ordinary release label `bridge-response-runtime-20260930-stage267-main474`
+has binary SHA256
+`0ae9a62af1e315bfa1d0940901a49a490acf29c277bfb2362a814e4b0402a455`.
+The three committed profiles again pass Hills2400 (2,401 observations),
+AnyTown800 (801) and AnyTown1184 (1,185). Hills943/945 remain alive on
+the high deck at Z624;944/947 remain alive on ground Z208. AnyTown1381/1383
+stage at low-bridge Z416, and1383 begins Doing4 firing at step912. Hostile1386
+ends at7HP; yard1408 remains1,000HP, with no observed Rescue mission. GPU
+frames were inspected. The local raw-output/input receipt in
+`logs/bridge-response-stage267-main474-validation/receipt.json` has SHA256
+`96eb9813a679bb31123406fa2c89334a7cfc72d84a43b0ea8d0f9498d3ce4c9f`.
+These production checks carry native parity certification NONE.
