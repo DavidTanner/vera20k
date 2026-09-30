@@ -267,7 +267,11 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
                 // walk_head_occupation.json: deck8 -> deck9 (slot0).
                 (EntityCategory::Infantry, 0x01),
             ] {
-                crate::sim::world::lifecycle_tests::insert_entity(&mut sim, id, category);
+                if category == EntityCategory::Infantry {
+                    crate::sim::world::lifecycle_tests::insert_walker(&mut sim, id);
+                } else {
+                    crate::sim::world::lifecycle_tests::insert_entity(&mut sim, id, category);
+                }
                 assert!(matches!(
                     sim.try_reveal_entity(
                         id,
@@ -295,7 +299,10 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
                     mask,
                     "{row}"
                 );
-                let _ = sim.object_conceal(id);
+                // Mark(UP) clears the Unit's 0x20. The infantryman's bit
+                // leaves with his Limbo: `FootClass::Limbo` (`0x004DB260`)
+                // has Walk release it through Infantry vt+0xF4.
+                let _ = sim.techno_limbo(id);
                 assert_eq!(
                     sim.substrate.raw_cell_occupation.deck_bits(x, y),
                     0,

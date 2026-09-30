@@ -217,10 +217,13 @@ fn warp_moves_a_units_occupation_through_the_mark_pair() {
     assert!(sim.substrate.occupancy.contains_entity(8, 9, 1));
 }
 
-/// The same Mark pair moves an infantryman's cell list entry and his raw
-/// sub-cell bits.
+/// The same Mark pair moves an infantryman's cell list entry but not his raw
+/// sub-cell bit: Remove/AddContent return for Infantry before any receiver
+/// (`0x0047EAFE` / `0x0047E9EA`), and nothing from `0x007195DB` to
+/// `0x007196BF` calls vt+0xF0/+0xF4. Foot SetLocation (`0x004DB810`) marks
+/// only while +0x74 is set, which Mark(UP) has cleared.
 #[test]
-fn warp_moves_an_infantrymans_occupation_through_the_mark_pair() {
+fn warp_moves_an_infantrymans_list_entry_and_leaves_his_raw_bit() {
     let rules = rules(false);
     let mut sim = relocating_legionnaire((8, 9));
     let origin_bits = raw_bits(&sim, (5, 5));
@@ -230,8 +233,8 @@ fn warp_moves_an_infantrymans_occupation_through_the_mark_pair() {
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();
 
-    assert_eq!(raw_bits(&sim, (5, 5)), 0, "the origin is released");
-    assert_eq!(raw_bits(&sim, (8, 9)), origin_bits, "the same sub-cell");
+    assert_eq!(raw_bits(&sim, (5, 5)), origin_bits, "the origin keeps it");
+    assert_eq!(raw_bits(&sim, (8, 9)), 0, "the destination gets none");
     assert!(!sim.substrate.occupancy.contains_entity(5, 5, 1));
     assert!(sim.substrate.occupancy.contains_entity(8, 9, 1));
 }

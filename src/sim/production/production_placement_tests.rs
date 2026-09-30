@@ -422,6 +422,7 @@ fn ground_occupant_placement_rules() -> RuleSet {
          [E1]\n\
          Strength=100\n\
          Armor=flak\n\
+         Locomotor={4A582744-9839-11D1-B709-00A024DDAFD1}\n\
          [MTNK]\n\
          Strength=300\n\
          Armor=heavy\n\
@@ -1609,10 +1610,13 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
             "rejected placement must preserve the ready building"
         );
 
-        let _ = sim.conceal(blocker_id);
+        // Mark(UP) unlinks either blocker, and the tank's clears its 0x20.
+        // The infantryman's sub-cell bit is left to his Limbo: `FootClass::
+        // Limbo` (`0x004DB260`) has Walk release it through Infantry vt+0xF4.
+        let _ = sim.techno_limbo_with_rules(blocker_id, &rules);
         assert!(
             !sim.substrate.occupancy.contains_entity(13, 11, blocker_id),
-            "Conceal must remove the blocker before placement becomes legal"
+            "Limbo must remove the blocker before placement becomes legal"
         );
         let preview = placement_preview_for_owner_without_overlays(
             &sim,

@@ -26,7 +26,8 @@
 //!   actions on discovery.
 //! - AddContent skips the insert when the list's second object is already this
 //!   one (`0x0047E903..0x0047E906`). Mark's +0x74 gate keeps an unmarked
-//!   object out of its lists, so VERA's lists never reach that state.
+//!   object out of its lists, and the one direct Place_Down follows its own
+//!   Pick_Up, so VERA's lists never reach that state.
 
 use super::{ground_pose, locomotor::MovementLayer};
 use crate::map::entities::EntityCategory;
@@ -89,8 +90,23 @@ impl Simulation {
             return false;
         }
         entity.lifecycle.cell_marked = false;
+        self.foot_pick_up(id, rules, registry);
+        true
+    }
+
+    /// `MapClass::Pick_Up` (`0x005687F0`) of a Foot: at the Cell and on the
+    /// OnBridge list [`Self::foot_mark_cell`] picks, RemoveContent
+    /// (`0x0047EA90`) unlinks it and runs its raw receiver tail, then Recalc.
+    /// Mark(UP) runs it after clearing +0x74; the Aircraft Unload ejection
+    /// calls it directly (`0x0041552E`).
+    pub(crate) fn foot_pick_up(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
         let Some((cell, layer)) = self.foot_mark_cell(id, rules) else {
-            return true;
+            return;
         };
         self.substrate
             .occupancy
@@ -102,7 +118,6 @@ impl Simulation {
             self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationCleared);
         }
         self.recalculate_track_cell(cell, rules, registry);
-        true
     }
 
     pub(crate) fn foot_mark_put(
@@ -115,8 +130,7 @@ impl Simulation {
     }
 
     /// Mark(DOWN). `receive` runs after the list link, where AddContent's
-    /// discovery sits. Both the Foot enable and the Location are read again
-    /// after it; Recalc still addresses the Cell this Mark linked.
+    /// discovery sits.
     pub(super) fn foot_mark_put_observed(
         &mut self,
         id: u64,
@@ -131,35 +145,54 @@ impl Simulation {
             return false;
         }
         entity.lifecycle.cell_marked = true;
-        if let Some((cell, layer)) = self.foot_mark_cell(id, rules) {
-            let (sub_cell, insertion) = {
-                let entity = self.substrate.entities.get(id).expect("marked Foot");
-                (
-                    entity.sub_cell,
-                    CellListInsertion::from_category(entity.category),
-                )
-            };
-            self.substrate
-                .occupancy
-                .add(cell.0, cell.1, id, layer, sub_cell, insertion);
-            #[cfg(test)]
-            self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListLinked);
-            receive(self, id);
-            if self.foot_mark_raw(id, true) {
-                #[cfg(test)]
-                self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationMarked);
-            }
-            self.recalculate_track_cell(cell, rules, registry);
-        }
+        self.foot_place_down(id, rules, registry, receive);
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::CellMarked);
         true
     }
 
+    /// `MapClass::Place_Down` (`0x005683C0`) of a Foot: AddContent
+    /// (`0x0047E8A0`) prepends it to the list [`Self::foot_mark_cell`] picks,
+    /// `receive` runs where its discovery sits, then the raw receiver tail and
+    /// Recalc. Both the Foot enable and the Location are read again after
+    /// `receive`; Recalc still addresses the Cell it linked. Mark(DOWN) runs it
+    /// after setting +0x74; the Aircraft Unload ejection calls it directly
+    /// (`0x00415565`).
+    pub(crate) fn foot_place_down(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+        receive: &mut impl FnMut(&mut Simulation, u64),
+    ) {
+        let Some((cell, layer)) = self.foot_mark_cell(id, rules) else {
+            return;
+        };
+        let (sub_cell, insertion) = {
+            let entity = self.substrate.entities.get(id).expect("placed Foot");
+            (
+                entity.sub_cell,
+                CellListInsertion::from_category(entity.category),
+            )
+        };
+        self.substrate
+            .occupancy
+            .add(cell.0, cell.1, id, layer, sub_cell, insertion);
+        #[cfg(test)]
+        self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListLinked);
+        receive(self, id);
+        if self.foot_mark_raw(id, true) {
+            #[cfg(test)]
+            self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationMarked);
+        }
+        self.recalculate_track_cell(cell, rules, registry);
+    }
+
     /// The Cell Pick_Up/Place_Down address and the OnBridge list, or `None`
     /// when the layer query (`0x004D37A6`) is not Ground or the Location's
-    /// Cell is not a real one (`0x00568471..0x0056848E`).
-    fn foot_mark_cell(
+    /// Cell is not a real one (`0x00568471..0x0056848E`). `rules` only tells
+    /// Air from Top, so a Ground answer does not depend on it.
+    pub(crate) fn foot_mark_cell(
         &self,
         id: u64,
         rules: Option<&RuleSet>,

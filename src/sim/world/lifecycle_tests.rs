@@ -63,7 +63,7 @@ pub(super) fn insert_entity(sim: &mut Simulation, stable_id: u64, category: Enti
 
 /// An Infantry fixture on the Walk locomotor, whose Limbo hook clears his
 /// sub-cell.
-fn insert_walker(sim: &mut Simulation, stable_id: u64) {
+pub(super) fn insert_walker(sim: &mut Simulation, stable_id: u64) {
     insert_entity(sim, stable_id, EntityCategory::Infantry);
     sim.substrate.entities.get_mut(stable_id).unwrap().locomotor =
         Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
