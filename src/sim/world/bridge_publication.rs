@@ -1,7 +1,7 @@
-//! Live high-body publication (576BA0/47E040). Authorities stay in Simulation
+//! Live structural-body publication (576BA0/571490, setters 47E040/47E470). Authorities stay in Simulation
 //! through synchronous fallout, including recursive DeathWeapon damage.
 //!
-//! Rim576770/576200 runs against live scalar cells and uses this same publisher.
+//! Rims 576770/576200 and 571050/570AE0 run against live scalar cells and uses this same publisher.
 //! Literal middle-tile replacement uses resident56EB80/47D2B0 inputs. Repair
 //! constructors share this publisher; full engineer/zone/render delivery is
 //! separately required before the bridge mechanism can close.
@@ -107,8 +107,11 @@ pub(super) fn try_body(
         }
         Cell::Dummy => terrain.shared_cell_dummy().overlay_fields().0,
     };
-    // ApplyDamageToCell 0x00587180 admits the family's state machine by these
-    // anchor overlays; the drivers themselves switch on +11E alone.
+    // Residual: ApplyDamageToCell 0x00587180 also admits a state machine by
+    // a middle tile, and neither driver tests the anchor overlay before its
+    // +11E switch. This gate keeps the pre-existing concrete behavior for
+    // both families; its no-change result for a structural cell whose anchor
+    // lacks these overlays is unproven against native.
     let anchor_overlays = match family {
         Family::High => [0x18, 0x19],
         Family::Low => [0xed, 0xee],

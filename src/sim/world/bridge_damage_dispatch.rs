@@ -115,9 +115,8 @@ impl CellReader for LiveCells<'_> {
 /// A structural driver's outcome and the state machine that produced it.
 pub(super) struct DriverOutcome {
     pub(super) outcome: StateOutcome,
-    /// The High machine (`0x00576BA0`) refreshes its ramp pair through
-    /// UpdateAdjacentBridges_High; the Low one (`0x00571490`) calls its own
-    /// rim `0x00571050`, which is not ported.
+    /// Selects the ramp-pair rim: the High machine (`0x00576BA0`) calls
+    /// `0x00576770`, the Low one (`0x00571490`) its wooden twin `0x00571050`.
     pub(super) high: bool,
 }
 

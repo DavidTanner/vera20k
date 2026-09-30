@@ -52,10 +52,10 @@ pub(crate) fn repair_from_engineer(
         rules,
         registry,
         collapsed: false,
+        // Repair runs no rim or ramp-tile helper through this host.
         family: Family::High,
     };
     let (input, family) = engineer_repair_family(&mut live, engineer)?;
-    live.family = family;
     let mut host = LiveOrdinary {
         live: &mut live,
         changed: false,

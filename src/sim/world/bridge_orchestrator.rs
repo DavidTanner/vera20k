@@ -411,7 +411,7 @@ fn canonicalize_hut_destroy_seed(
 
 /// The collapse cascade after one bridge-damage batch, for area damage and
 /// the CABHUT death alike: per structural outcome its BlowUpBridge fallout,
-/// then the High machine's ramp-pair rim refresh; then the CABHUT ramp's rim
+/// then that machine's ramp-pair rim refresh; then the CABHUT ramp's rim
 /// refresh, TriggerEvent 31, the zone rebuild and the radar marks. `extra`
 /// adds the CABHUT fallback's own zone and rim requests. Returns whether a
 /// cell collapsed or the fallback asked for a refresh.
@@ -660,10 +660,6 @@ fn run_hut_fallback(
     }
 }
 
-/// The `Bridge*` theater keys both CABHUT tails compare, relative to the
-/// BridgeSet base (0xAA0E28) for the high twin and the WoodBridgeSet base
-/// (0xABAD1C) for the wooden one. Grids without an active theater read
-/// every key as -1.
 /// The live theater keys with the family's tileset base, absent on synthetic
 /// grids without an active theater. Each wooden bridge helper reads
 /// g_WoodBridgeSet_TileSetBase 0xABAD1C where its concrete twin reads
@@ -677,6 +673,8 @@ fn family_rim_tiles(
         .map(|_| hut_tile_keys(terrain, family))
 }
 
+/// The `Bridge*` theater keys both CABHUT tails compare, with the family's
+/// base. Grids without an active theater read every key as -1.
 fn hut_tile_keys(terrain: &ResolvedTerrainGrid, family: HutBridgeFamily) -> HighBridgeRimTiles {
     let mut keys = terrain
         .high_bridge_rim_tiles()
