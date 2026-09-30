@@ -145,6 +145,14 @@ checked:
   - A switch got its table and cases.
   - A jump to another function's entry was marked as a tail call.
   - A reference that pointed into the middle of an instruction was removed.
+  - A body that left out bytes of its own instructions got them (11 functions).
+  - `FUN_00435b70`, which started inside another instruction, became
+    `BuildingLightClass__Destructor` at its real start 0x435B50.
+  - Four functions that store a vtable were created where the bytes had never been
+    decoded or were in no function, such as `LightConvertClass__Destructor` 0x556510.
+  - Three scalar deleting destructors named `__Destructor` were renamed
+    `__ScalarDeletingDestructor`, like every other function in the AbstractClass
+    destructor slot (+0x20). `X__Destructor` names the plain destructor.
 
 The decompiler follows control flow past a function's body, so a completed body
 changes listings, cross-references and call graphs, but rarely the decompile. A switch
@@ -162,6 +170,31 @@ nothing references, so a reference from one of them (a reader or writer "in no
 function") is not evidence until that code is shown to run. Some numbers in data
 tables were once typed as pointers into code. A data reference into the middle of a
 function is not proof of a code pointer until its source has been checked.
+
+Undecoded bytes that decode as code are not always a missed function. Some functions
+begin with a patched `ret` or `mov al,1; ret`, and their original body follows as
+undecoded bytes that never run: 0x49F5C0, 0x49F740, 0x49F7A0 and 0x49F8B0, for example.
+The code after each stub reaches its `ret` having popped 4 to 16 bytes more than it
+pushed, which only the overwritten prologue could have supplied. At 0x4E60EB a
+conditional jump was patched to `jmp`, which skips the code after it.
+
+## Virtual-call references
+
+Since 2026-09-30, a `call [reg+disp]` site whose receiver's class is established has
+user-defined `COMPUTED_CALL` references to every function the RTTI vtables can put in
+that slot. Caller lists, cross-references and call graphs include these virtual calls;
+the decompile does not change. 6,296 of the 18,872 such sites have them. The analysis
+and the list of added references are in the research folder listed in `LOCAL.md`.
+
+- The receiver's class comes from the bytes: `this` of a virtual method (its class and
+  every subclass), `this` of a function whose every caller passes a known object, a
+  global object, an object a constructor just built, or a vtable the function stored.
+- They are may-call edges: a call through a base class lists every override, including
+  overrides that site never reaches.
+- Calls through an object loaded from a field, an argument or a container have none. A
+  method without callers may still be called virtually.
+- `get_bulk_function_hashes` hashes cover references, so the hashes of the functions
+  that got one changed that day.
 
 ## Preserve findings without polluting shared analysis
 
