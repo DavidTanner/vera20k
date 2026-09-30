@@ -6,8 +6,8 @@
 //!      Attack / ForceAttack / ForceAttackCell / AttackMove) and asserts the
 //!      end-of-run `state_hash()` equals the committed baseline. At the slice's
 //!      introduction, this exposed wrong `DockTeardown` subsets and dropped
-//!      legacy-field clears. Later hash-schema changes require a separately
-//!      proven composition-only re-baseline.
+//!      legacy-field clears. Changes require causal behavior or hash-composition
+//!      evidence before updating the Rust regression receipt.
 //!   2. The verb-write + retaliation-gate tripwires (added below the gate).
 
 use super::*;
@@ -199,6 +199,12 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // all819 frame rows, all three RNG states and ordered raw draw callers.
 // Incoming main preserves candidate state; its source-line changes remain
 // recorded. This Rust replay pin does not establish native whole-world parity.
+// Incoming-main integration: v24 diagnostics match all main actor fields and
+// all three RNG streams at all 17 boundaries except tank 1 MissionCom: Stop
+// clears TarCom/NavCom at frame10 without queuing Stop13; Attack retains its
+// frame5 timer and ends with11 visits instead of5. Frames0..9 hashes match
+// exactly; final changed fields are only current/start/dispatch/counter.
+// Native Event IDLE: tools/spatial_oracle/fv_cell_attack/paid_conditional*.json.
 // 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
 // AircraftTracker, which native Mark never touches, so a ground object keeps
 // its constructor-seeded enter order (its stable id) where the old lifecycle
@@ -206,7 +212,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // restored printed the old value for all three replay pins (bridge, global,
 // slice 6), with the RNG pins above unchanged (the probe patch was not
 // committed). Old value: the commit that moved it.
-const SLICE6_BASELINE_HASH: u64 = 0x1C2E_FDD2_3AD2_056E;
+const SLICE6_BASELINE_HASH: u64 = 0x38A2_A509_33EC_5219;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -222,6 +228,14 @@ fn replay_hash_stable_through_slice6() {
             unit("Americans", "E1", 5, 5, EntityCategory::Infantry),
         ],
         Some(&rules),
+    );
+    let mut diagnostic = super::global_parity_harness_tests::replay_diagnostic_file("slice6");
+    super::global_parity_harness_tests::record_replay_diagnostic(
+        &mut diagnostic,
+        &sim,
+        None,
+        &[],
+        &[],
     );
 
     // (execute_tick, command) — apply_due_commands fires each when self.session.tick+1 == tick.
@@ -290,7 +304,19 @@ fn replay_hash_stable_through_slice6() {
             .filter(|(t, _)| *t == tick + 1)
             .map(|(t, c)| cmd_envelope(&sim, "Americans", *t, c.clone()))
             .collect();
-        let result = sim.advance_tick(&due, Some(&rules), Some(&grid), None, 67);
+        let mut advance = || sim.advance_tick(&due, Some(&rules), Some(&grid), None, 67);
+        let (result, draws) = if diagnostic.is_some() {
+            crate::sim::rng::trace_draws(advance)
+        } else {
+            (advance(), Vec::new())
+        };
+        super::global_parity_harness_tests::record_replay_diagnostic(
+            &mut diagnostic,
+            &sim,
+            Some(&result),
+            &due,
+            &draws,
+        );
         assert!(result.frame_committed, "retask frame {tick} must commit");
         assert_eq!(
             result.executed_commands,
@@ -322,6 +348,21 @@ fn replay_hash_stable_through_slice6() {
 
         if tick >= 10 {
             let tank = sim.substrate.entities.get(1).expect("retasked tank lives");
+            assert_eq!(
+                tank.mission.current(),
+                MissionId::from_known(MissionType::Attack)
+            );
+            assert_eq!(tank.mission.queued(), MissionId::NONE);
+            assert_eq!(tank.mission.mission_start_frame(), 5);
+            assert_eq!(tank.mission.ai_counter(), tick as u32 - 4);
+            assert_eq!(
+                (
+                    tank.mission.dispatch_timer().start_frame(),
+                    tank.mission.dispatch_timer().delay()
+                ),
+                (5, 14),
+                "Stop retains Attack's dispatch timer and counter"
+            );
             let drive = tank.drive_locomotion.as_ref().expect("Drive owner");
             if tick == 10 {
                 stopped_head = drive.head_to;
@@ -401,10 +442,11 @@ fn replay_hash_stable_through_slice6() {
             "retask window must not turn into a combat/death fixture"
         );
     }
+    super::global_parity_harness_tests::print_replay_summary("slice6", &sim);
     assert_eq!(
         [1, 2, 3].map(|id| sim.substrate.entities.get(id).unwrap().mission.ai_counter()),
-        [5, 16, 7],
-        "Unit/Infantry Commence precedes the Techno counter increment"
+        [11, 16, 7],
+        "Stop retains Attack; Unit/Infantry Commence precedes the Techno counter increment"
     );
     // Original Unit736473 / Infantry51BC51 Commence clears C4 before
     // Techno6FA64E increments it; the mission_counter corpus pins that owner.
@@ -433,7 +475,7 @@ fn replay_hash_stable_through_slice6() {
     assert_eq!(
         sim.state_hash(),
         SLICE6_BASELINE_HASH,
-        "Slice 6 scripted-retask state hash drifted; establish native behavior or composition provenance before rebaselining"
+        "scripted-retask state drifted: establish the changed behavior, RNG producer, or hash composition before updating"
     );
 }
 

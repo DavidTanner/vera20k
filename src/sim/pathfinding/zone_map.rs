@@ -596,6 +596,119 @@ impl ZoneGrid {
         &self.bridge_records
     }
 
+    /// Map 583820: find a structural bridge's exit cell in one hierarchy
+    /// zone. EstimateZoneCost uses this for its two bridge-distance terms.
+    /// Original instructions and bounded controls are retained alongside
+    /// tools/spatial_oracle/fv_cell_attack/zone_cost.json.
+    pub(crate) fn bridge_cell_for_hierarchy_zone(
+        &self,
+        terrain: &ResolvedTerrainGrid,
+        original: (u16, u16),
+        level: usize,
+        zone: ZoneId,
+        bounds: Option<crate::map::playfield::PlayfieldBounds>,
+    ) -> Result<(u16, u16), String> {
+        use crate::sim::cell_rect::{
+            CellRef, cell_is_in_playfield_height_aware, get_cellclass_fallback,
+        };
+        use crate::util::direction::DIRECTION_DELTAS;
+
+        let lookup = |coord: (u16, u16)| {
+            get_cellclass_fallback(
+                Some(terrain),
+                i32::from(coord.0 as i16),
+                i32::from(coord.1 as i16),
+            )
+        };
+        let coord = |cell: &CellRef<'_>| match cell {
+            CellRef::Real(cell) => (cell.rx, cell.ry),
+            CellRef::Dummy { cell } => {
+                let xy = cell.snapshot().coord;
+                (xy.0 as u16, xy.1 as u16)
+            }
+        };
+        let flags = |cell: &CellRef<'_>| match cell {
+            CellRef::Real(cell) => cell.bridge_facts.raw_flags,
+            CellRef::Dummy { cell } => cell.retained_bridge_flags(),
+        };
+        let is_exit = |cell: &CellRef<'_>| {
+            matches!(cell, CellRef::Real(cell)
+                if terrain.high_bridge_tile_offset(cell).is_some()
+                && cell.yr_cell_land_type != LandType::Rock.as_index())
+        };
+        let step = |xy: (u16, u16), direction: usize| {
+            let delta = DIRECTION_DELTAS[direction];
+            (
+                xy.0.wrapping_add(delta.0 as u16),
+                xy.1.wrapping_add(delta.1 as u16),
+            )
+        };
+        let mut positive = lookup(original);
+        if flags(&positive) & 0x100 == 0 {
+            return Ok(coord(&positive));
+        }
+        let direction = if flags(&positive) & 0x800 != 0 { 2 } else { 4 };
+        let mut negative = positive.clone();
+        let mut positive_exit = (0, 0);
+        let mut negative_exit = (0, 0);
+        let mut visited = std::collections::BTreeSet::new();
+        loop {
+            let state = (
+                coord(&positive),
+                matches!(positive, CellRef::Dummy { .. }),
+                coord(&negative),
+                matches!(negative, CellRef::Dummy { .. }),
+            );
+            if !visited.insert(state) {
+                return Err("cyclic583820 bridge exit walk".into());
+            }
+            if flags(&positive) & 0x100 != 0 {
+                positive = lookup(step(coord(&positive), direction));
+                if flags(&positive) & 0x100 == 0 && is_exit(&positive) {
+                    positive_exit = coord(&positive);
+                }
+            }
+            if flags(&negative) & 0x100 != 0 {
+                negative = lookup(step(coord(&negative), (direction + 4) & 7));
+                if flags(&negative) & 0x100 == 0 && is_exit(&negative) {
+                    negative_exit = coord(&negative);
+                }
+            }
+            if flags(&positive) & 0x100 == 0 && flags(&negative) & 0x100 == 0 {
+                break;
+            }
+        }
+        // 583972..583AA0 probes six copied coordinates, including offsets
+        // from the (0,0) sentinel. Each mode-1 bounds query executes in order.
+        for candidate in [
+            positive_exit,
+            step(positive_exit, (direction + 2) & 7),
+            step(positive_exit, (direction + 6) & 7),
+            negative_exit,
+            step(negative_exit, (direction + 2) & 7),
+            step(negative_exit, (direction + 6) & 7),
+        ] {
+            if bounds.is_some_and(|bounds| {
+                !cell_is_in_playfield_height_aware(
+                    (i32::from(candidate.0 as i16), i32::from(candidate.1 as i16)),
+                    Some(bounds),
+                    Some(terrain),
+                )
+            }) {
+                continue;
+            }
+            let found = self
+                .hierarchy_zone_at_native(level, candidate)
+                .ok_or("583820 requires the native hierarchy node")?;
+            // The native load sign-extends the stored short, whereas its
+            // requested zone argument is the zero-extended path identifier.
+            if i32::from(found as i16) == i32::from(zone) {
+                return Ok(candidate);
+            }
+        }
+        Ok((0, 0))
+    }
+
     pub(crate) fn movement_classes_match(&self, terrain: &ResolvedTerrainGrid) -> bool {
         let base = &self.base_topology;
         base.movement_classes.len() == self.width as usize * self.height as usize

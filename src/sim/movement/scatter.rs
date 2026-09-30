@@ -302,7 +302,7 @@ impl Simulation {
             return;
         }
         if let Some(cell) = self.scatter_nearby_cell(id, rules) {
-            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules);
+            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true);
         }
     }
 

@@ -149,7 +149,7 @@ impl Simulation {
                     false
                 }),
             EntityCategory::Unit if self.unit_setter_receiver(id, Some(rules)) => {
-                self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules)
+                self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true)
             }
             EntityCategory::Unit => {
                 let harvester = self

@@ -622,7 +622,7 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
             ));
         }
         let accepted = if family == "MTNK" {
-            sim.set_unit_destination(1, requested, &rules)
+            sim.set_unit_destination(1, requested, &rules, true)
         } else {
             sim.set_infantry_destination(1, requested, &rules, Some(&overlays))
                 .unwrap()

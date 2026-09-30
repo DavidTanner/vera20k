@@ -90,6 +90,10 @@ mod forced_track_object_turn_tests;
 mod teleport_anim_object_turn_tests;
 
 #[cfg(test)]
+#[path = "unit_fire_turn_tests.rs"]
+mod unit_fire_turn_tests;
+
+#[cfg(test)]
 #[path = "per_cell_object_turn_tests.rs"]
 mod per_cell_object_turn_tests;
 
@@ -1043,7 +1047,18 @@ impl Simulation {
         }
         // UnitClass::AI after FootClass::AI, before its second Ready/Commence.
         crate::sim::miner::miner_system::unit_ai_clear_harvesting(sim, stable_id);
+        // Unit7365E1 Fire_At_Target then7365E8 Facing_Update precede
+        // its second Ready/Commence. FireAt appends into the live Logic walk.
         if !infantry {
+            if let Some(rules) = rules {
+                let receipt = sim.commit_fire_visit(
+                    crate::sim::combat::world_receiver::FireVisit::UnitTarget(stable_id),
+                    rules,
+                    overlay_registry,
+                );
+                outcome.bridge_state_changed |= receipt.bridge_state_changed;
+                outcome.destroyed_structure |= receipt.structure_destroyed;
+            }
             sim.object_ai_post_movement_promote_one(stable_id, rules);
         }
         if let Some(rules) = rules {

@@ -27,9 +27,95 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
+use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
+use std::io::Write;
+
+/// Optional observations of the two bounded replay fixtures, never golden input.
+/// The file records existing owners without changing or draining their state.
+pub(super) fn replay_diagnostic_file(name: &str) -> Option<std::io::BufWriter<std::fs::File>> {
+    let root = std::path::PathBuf::from(std::env::var_os("VERA20K_REPLAY_DIAGNOSTICS")?);
+    std::fs::create_dir_all(&root).unwrap();
+    Some(std::io::BufWriter::new(
+        std::fs::File::create(root.join(format!("{name}.jsonl"))).unwrap(),
+    ))
+}
+
+pub(super) fn record_replay_diagnostic(
+    writer: &mut Option<std::io::BufWriter<std::fs::File>>,
+    sim: &Simulation,
+    result: Option<&TickResult>,
+    commands: &[CommandEnvelope],
+    draws: &[serde_json::Value],
+) {
+    let Some(writer) = writer else { return };
+    let actors: Vec<_> = sim
+        .substrate
+        .entities
+        .keys_sorted()
+        .into_iter()
+        .map(|id| sim.substrate.entities.get(id).unwrap())
+        .collect();
+    let fires: Vec<_> = sim
+        .fire_events
+        .iter()
+        .map(|fire| {
+            serde_json::json!({
+                "attacker":fire.attacker_id, "target":fire.target,
+                "weapon":sim.resolve(fire.weapon_id),
+                "position":[fire.fire_coord.x,fire.fire_coord.y,fire.fire_coord.z],
+            })
+        })
+        .collect();
+    serde_json::to_writer(
+        &mut *writer,
+        &serde_json::json!({
+            "next_frame":sim.session.binary_frame,
+            "tick_result":result.map(|r| serde_json::json!({"tick":r.tick,
+                "committed":r.frame_committed,"executed_commands":r.executed_commands,
+                "state_hash":r.state_hash,"terminal_score_finalized":r.terminal_score_finalized})),
+            "commands":commands,"entities":actors,"logic_order":sim.logic_order(),
+            "fire_events_accumulated":fires,
+            "lifecycle_outputs_accumulated":format!("{:?}",sim.lifecycle_outputs),
+            "rng":{"scenario":sim.scenario_rng.native_state_hex(),
+                "main":sim.main_rng.native_state_hex(),"mapgen":sim.mapgen_rng.native_state_hex()},
+            "draws":draws,
+        }),
+    )
+    .unwrap();
+    writeln!(writer).unwrap();
+    writer.flush().unwrap();
+}
+
+pub(super) fn print_replay_summary(name: &str, sim: &Simulation) {
+    if std::env::var_os("VERA20K_REPLAY_DIAGNOSTICS").is_none() {
+        return;
+    }
+    let actors: Vec<_> = sim
+        .substrate
+        .entities
+        .keys_sorted()
+        .into_iter()
+        .map(|id| {
+            let e = sim.substrate.entities.get(id).unwrap();
+            serde_json::json!({"id":id,"type":sim.resolve(e.type_ref()),
+            "health":e.health.current,"position":e.position,"mission":e.mission,
+            "target":e.attack_target,"nav":e.navigation.nav_com,
+            "passive_timer":e.passive_scan_timer,"last_scan":e.last_target_scan_frame,
+            "rearm":e.rearm_timer})
+        })
+        .collect();
+    println!(
+        "[replay observation {name}] {}",
+        serde_json::json!({
+            "next_frame":sim.session.binary_frame,"hash":sim.state_hash(),
+            "streams":[sim.scenario_rng.state(),sim.main_rng.state(),sim.mapgen_rng.state()],
+            "actors":actors,"fire_count":sim.fire_events.len(),
+        })
+    );
+}
 
 const HARNESS_SEED: u64 = 0xC0FFEE_1234;
 const HARNESS_TICKS: u64 = 600;
@@ -41,116 +127,21 @@ const HARNESS_COORD_SHIFT: u16 = HARNESS_MAP_SIZE / 2;
 /// (after the tick at this index executes).
 const STREAM_CHECKPOINT_TICKS: &[u64] = &[149, 299, 449, 599];
 
-/// AT-8 proper: ABSOLUTE committed per-stream fingerprints at the final
-/// checkpoint (tick 599). Record-vs-replay equality alone cannot catch a
-/// deterministic cross-stream misroute — both passes run the same code, so a
-/// misrouted draw appears identically in both. Only committed values detect
-/// it, and when a legitimate change shifts the total hash, these localize
-/// WHICH stream moved. Same re-baseline ceremony as GLOBAL_HARNESS_FINAL_HASH
-/// (one documented re-baseline per behavior-bearing change; paste the failing
-/// `left` values).
-/// Baselined at SC-2 review hardening. scenario == main here: this scripted
-/// scenario consumes ZERO draws from either gameplay stream (they stay at the
-/// identical post-seed state), and MapGen holds the fresh native Seed(0)
-/// fingerprint — so ANY future draw in this scenario shifts exactly one
-/// component loudly.
-/// Re-baselined after MapGen was split from the scenario seed. The new MapGen
-/// value was identical in two focused runs with pristine fresh Seed(0) MapGen.
-/// This remains a Rust regression ratchet, not a gamemd parity reference.
-/// Re-baselined with the tube-gate fix (off-tube non-adjacent path steps are
-/// no longer killed as failed tube traversals): the harness harvester's
-/// sharp-turn outbound legs now execute instead of dying on their issue tick,
-/// so it reaches ore and Reduce_Tiberium's growth reseeding consumes scenario
-/// draws this fixture never reached before. Streams 1 and 2 are unchanged and
-/// the total hash moved with stream 0 — a behavior-bearing shift, not a
-/// misroute.
-/// Re-baselined with the native Mission_Harvest per-path dispatch delays:
-/// the return/idle/still-driving handler exits now draw the native
-/// RandomRanged(0,2) Rate-epilogue jitter on the scenario stream, so this
-/// fixture's harvester consumes scenario draws on every non-productive
-/// dispatch. Streams 1 and 2 are unchanged and the total hash moved with
-/// stream 0 — a behavior-bearing shift, not a misroute.
-/// Re-baselined for the Phase-0 native-frame authority: 600 admitted visits now
-/// commit exactly 600 frames. The former 67-ms-derived clock skipped three
-/// frame values, changing frame-anchored Harvest dispatch jitter draws.
-/// Main and MapGen remain unchanged, localizing the intended shift to Scenario.
-/// Re-baselined 2026-08-02 for passive/opportunity target acquisition: every
-/// object that passes the gate now draws one `RandomRanged(0, 2)` on the
-/// SCENARIO stream when its scan timer expires, roughly every 27-29 frames.
-/// Which objects that is, in THIS fixture, is narrower than it looks. Measured,
-/// per tick, on an instrumented run — stated here as observations, with the
-/// causes marked where they were not established:
-///
-/// - The Allied MTNK (id 4) holds `mission.current() == AttackMove` and
-///   `order_intent == Some(AttackMove)` continuously from roughly tick 45 to the
-///   end of the run, across ticks 300 and 320. AttackMove is not one of the
-///   three missions the gate admits, so id 4 never scans — identically before
-///   and after the finished-mission bridge.
-/// - The Stop and Move envelopes scripted for id 4 at 300 and 320 ARE delivered
-///   and report `executed_commands == 0`, leaving its mission and order intent
-///   untouched. **Why they have no effect is UNCHECKED** — it is a property of
-///   this fixture, not of this change, and it is the reason the earlier claim
-///   here (that those handlers clear the order intent) did not match what the
-///   run actually does.
-/// - `due_commands` issues every scripted command under the Allied owner, so the
-///   Soviet MTNK's tick-120 Move does not move id 6 off the `NONE` selector.
-///
-/// So the objects that actually scan here are the Soviet MTNK (id 6) and both
-/// E1 riflemen (ids 5 and 7) — all three sitting on the `NONE` selector, which
-/// already read as Guard before the bridge — plus the harvester's own Harvest
-/// mission. Nothing in this fixture is ordered-then-idle, which is why the
-/// bridge left every pin here untouched.
-/// Streams 1 (Main) and 2 (MapGen) are byte-identical to the previous
-/// baseline, which is the proof that the new draw is routed to the scenario
-/// instance and to no other — a lone stream-0 shift is the expected signature
-/// here, and a shift in either other component would have been a misroute.
-///
-/// A SECOND scenario-stream source went live in the same slice and is part of
-/// this shift: the pointer-expiry path already drew `RandomRanged(4, 8)` to
-/// shorten a listener's passive-scan timer when its current target died, gated
-/// on that timer having more than 10 frames left. That draw was unreachable in
-/// production because the timer was always the zero-duration sentinel; arming it
-/// at construction makes the gate satisfiable, so it now fires on target deaths
-/// throughout the run. It is deterministic and on the same stream, so the
-/// re-baseline stands — but the per-scan jitter draw is not the whole story.
-/// Re-measured in the same slice when the passive block was extended to the
-/// Infantry leaf (it reaches the common Techno AI body through the same foot
-/// call the Unit leaf does). This fixture's two E1 riflemen now scan on the
-/// same cadence, adding their draws. Streams 1 and 2 are still byte-identical
-/// to the pre-slice baseline.
-/// Re-baselined 2026-08-04 for the GSI-07.02 constructed-`Rate` default (0 ->
-/// 0.016 min = 14 frames, the value gamemd's MissionControl ctor stores when a
-/// `[<MissionName>]` section or its `Rate=` key is absent). `harness_rules()`
-/// declares no mission sections at all, so every mission in this fixture moved
-/// off the zero sentinel and the per-object dispatch timer now arms on a
-/// different schedule. Streams 1 and 2 below are byte-identical to the previous
-/// baseline -- only stream 0, the scenario stream the cadence jitter draws
-/// from, moved -- and the intra-run determinism assertion still passes, so this
-/// is a changed schedule, not an RNG misroute. No draw site was added or
-/// removed.
-/// Re-baselined 2026-08-11 after this fixture stopped using the since-removed
-/// per-cell resource node stand-in and installed the production `OverlayGrid` plus
-/// Tiberium rules on both record and replay. The harvester now reaches the
-/// native overlay authority and consumes the Scenario draws owned by that
-/// path. Main and MapGen remain byte-identical, and record/replay equality
-/// remains exact, localizing the intended change to Scenario.
-/// Re-baselined 2026-08-15 for `167527ac`: this fixture reaches a natural
-/// terminal edge, where sim now latches the preserved Rust score projection
-/// before the returned hash and consumes its victory-bonus draw from Scenario.
-/// Main and MapGen remain byte-identical and record/replay equality remains
-/// exact. The native bonus formula and score traversal remain UNCHECKED.
-/// Re-baselined for TechnoClass::TechnoClass @ 0x006F2B90: seven authored
-/// Technos now consume the raw Scenario words stored at 0x006F3254. Only
-/// Scenario moves; Main and MapGen plus tick-for-tick record/replay remain exact.
-/// Re-baselined 2026-09-05 for GSI-09.03 harvest bite size: `Harvest_Ore_Tick`
-/// @ 0x0073D450 requests `ftol(min(1.0f, Storage - total))` = one density level
-/// per 19-frame gate (was the whole free capacity, draining a cell per gate).
-/// The harness harvester fills ~36 gates later, so its return/dock Scenario
-/// draws land on different frames. Only Scenario moves; Main and MapGen plus
-/// tick-for-tick record/replay remain exact.
-// 2026-09-13: first changed Scenario draw follows the live NavCom guard at
-// tick116 after corrected TrackProcess payment; Main/MapGen remain unchanged.
-// See TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md for the two raw draw values.
+/// Rust regression receipts, not native whole-skirmish goldens. Incoming-main
+/// integration v25 preserves all 600 record/replay frames and three-stream
+/// checkpoints. Saved main and candidate full hashes match through frame279.
+/// The first difference is the ROF word521608482: main's global combat tail
+/// emits at280, the native Unit own-slot owner (`7365E1`, Logic55B613) at281.
+/// Event IDLE (`4C74CB..4C76BB`) then retains Attack after299, suppressing
+/// main's frame300 passive draw1945012778 (`6FA697` reads committed mission).
+/// Downstream raw Scenario words by producer: mission203->200, idle31->33,
+/// scan69->73, ROF20->18 (bounded-RNG retries included). The entire323-word
+/// main sequence is a prefix of the324-word candidate sequence; Main/MapGen
+/// are unchanged. The13-shot duel leaves tank6 at12 HP. Target expiry588,
+/// Guard Commence595 and first passive scan596 pass the transition checks below.
+/// Original conditional native Stop/FV evidence and reproduction entry points:
+/// `tools/spatial_oracle/fv_cell_attack/README.md`. These fixture observations
+/// refresh a Rust regression pin; they do not establish native world parity.
 const FINAL_STREAM_STATES: (u64, u64, u64) = (
     // MERGE 2026-08-03: both branches re-baselined these independently (dev:
     // passive acquire + spawner; foundations: Move cadence + hashed runtime
@@ -166,7 +157,7 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
     // frame0 omits four old global idle-tail draws; first bound ART idle at
     // frame14 precedes Guard cadence. Saved production-call receipts are in
     // foot_bridge_layer.replay.json. Full Main/MapGen are unchanged.
-    0xF0AB_E9EE_DB8C_2871,
+    0x5F1A_988D_BB0A_157F,
     0x39F3_258B_A550_EB7C,
     0x1CE8_1848_7043_6163,
 );
@@ -414,6 +405,8 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // prior frame hash and CE21_A562_A129_5C86; gameplay XYZ remains untouched.
 // The uncommitted control is preserved with source/binary identities. This
 // composition change establishes a Rust regression pin, not native world parity.
+// v25 integration: native own-slot Fire, literal passive mission and Stop
+// retention change behavior; see the complete causal account above.
 // 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
 // AircraftTracker, which native Mark never touches, so a ground object keeps
 // its constructor-seeded enter order (its stable id) where the old lifecycle
@@ -421,7 +414,7 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // restored printed the old value for all three replay pins (bridge, global,
 // slice 6), with the RNG pins above unchanged (the probe patch was not
 // committed). Old value: the commit that moved it.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xE8CE_CD4F_61DC_C735;
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC9C5_B19A_6873_6EA8;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -671,6 +664,8 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // ---- Record pass: build a ReplayLog through the live advance_tick path. ----
     let mut rec = Simulation::with_seed(HARNESS_SEED);
     seed_scenario(&mut rec, &rules, &overlays);
+    let mut diagnostic = replay_diagnostic_file("global");
+    record_replay_diagnostic(&mut diagnostic, &rec, None, &[], &[]);
     let mut log = ReplayLog::new(ReplayHeader {
         version: 1,
         pixel_conversion_bounds: rec.session.pixel_conversion_bounds,
@@ -693,15 +688,93 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // per-stream checkpoints catch misrouting directly.
     let mut recorded_streams: Vec<(u64, u64, u64, u64)> = Vec::new();
     let mut first_uncommitted_frame = None;
+    let mut target_expired = None;
+    let mut guard_commenced = None;
+    let mut post_guard_scan = None;
     for tick in 0..HARNESS_TICKS {
         let due = due_commands(&rec, &script, tick);
-        let result = rec.advance_tick(
-            &due,
-            Some(&rules),
-            Some(&grid),
-            Some(&overlays),
-            HARNESS_TICK_MS,
-        );
+        let before_scan = {
+            let tank = rec.substrate.entities.get(6).expect("surviving tank");
+            (tank.last_target_scan_frame, tank.passive_scan_timer)
+        };
+        let mut advance = || {
+            rec.advance_tick(
+                &due,
+                Some(&rules),
+                Some(&grid),
+                Some(&overlays),
+                HARNESS_TICK_MS,
+            )
+        };
+        let (result, draws) = if diagnostic.is_some() {
+            crate::sim::rng::trace_draws(advance)
+        } else {
+            (advance(), Vec::new())
+        };
+        record_replay_diagnostic(&mut diagnostic, &rec, Some(&result), &due, &draws);
+
+        // Event IDLE clears TarCom after Logic frame 299; it does not queue
+        // Stop or reset MissionCom. The overdue passive timer still cannot
+        // scan while the committed selector is Attack (native 0x006FA697).
+        if (299..319).contains(&tick) {
+            let tank = rec.substrate.entities.get(4).expect("stopped tank lives");
+            assert_eq!(
+                tank.mission.current(),
+                MissionId::from_known(MissionType::Attack)
+            );
+            assert_eq!(tank.mission.queued(), MissionId::NONE);
+            assert_eq!(tank.mission.mission_start_frame(), 40);
+            assert_eq!(tank.mission.ai_counter(), tick as u32 - 39);
+            assert_eq!(
+                (
+                    tank.mission.dispatch_timer().start_frame(),
+                    tank.mission.dispatch_timer().delay()
+                ),
+                (40, 450),
+                "Stop retains the active dispatch timer"
+            );
+            assert!(tank.attack_target.is_none());
+            assert_eq!(tank.last_target_scan_frame, 0);
+            assert_eq!(
+                (
+                    tank.passive_scan_timer.start_frame,
+                    tank.passive_scan_timer.duration
+                ),
+                (0, 45)
+            );
+        }
+        // The fatal Bullet detaches TarCom after the Unit's own visit. The
+        // literal committed Attack gate cannot scan before a due Attack
+        // handler queues Guard and the later Unit Commence promotes it.
+        // Observe that transition rather than importing a pre-integration
+        // death frame: main's native Infantry cadence changes the duel's draws.
+        if rec.substrate.entities.get(4).is_none() {
+            let tank = rec.substrate.entities.get(6).expect("surviving tank");
+            assert!(tank.attack_target.is_none());
+            let scan = (tank.last_target_scan_frame, tank.passive_scan_timer);
+            if target_expired.is_none() {
+                target_expired = Some(tick);
+                assert_eq!(scan, before_scan, "expiry itself cannot run a scanner");
+            }
+            match tank.mission.current().known() {
+                Some(MissionType::Attack) => {
+                    assert!(guard_commenced.is_none());
+                    assert_eq!(scan, before_scan, "committed Attack rejects passive scan");
+                }
+                Some(MissionType::Guard) => {
+                    if let Some(guard_frame) = guard_commenced {
+                        if tick == guard_frame + 1 {
+                            assert_eq!(tank.last_target_scan_frame, tick as u32);
+                            post_guard_scan = Some(tick);
+                        }
+                    } else {
+                        guard_commenced = Some(tick);
+                        assert_eq!(scan, before_scan, "passive slot precedes Unit Commence");
+                    }
+                }
+                mission => panic!("unexpected surviving-tank mission: {mission:?}"),
+            }
+        }
 
         if !result.frame_committed {
             first_uncommitted_frame.get_or_insert(tick);
@@ -732,10 +805,23 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             ));
         }
     }
+    assert!(
+        target_expired.is_some(),
+        "the duel must detach the dead target"
+    );
+    assert!(
+        guard_commenced > target_expired,
+        "Guard follows target expiry"
+    );
+    assert_eq!(post_guard_scan, guard_commenced.map(|frame| frame + 1));
     // The movement pass keeps its owner block sets current from the entity
     // store's touch log. Anything that hands out every entity mutably each
     // frame (`values_mut`) would quietly turn that back into a whole-world
     // read per frame, with correct results and no other symptom.
+    assert_eq!(
+        first_uncommitted_frame, None,
+        "all scripted frames must commit"
+    );
     let world_reads = rec.movement_pass_cache.block_index_world_rebuilds();
     // The blocker plane follows the same log. It is rebuilt from the whole map
     // only when the terrain epoch or the wall plane moves (or a reader misses
@@ -819,56 +905,54 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     let (_, final_scen, final_main, final_mapgen) =
         *recorded_streams.last().expect("final checkpoint recorded");
     let final_hash = *replayed.last().expect("at least one tick recorded");
-    println!(
-        "[global parity] final_hash={final_hash:016X} \
-         streams={final_scen:016X},{final_main:016X},{final_mapgen:016X} \
-         first_uncommitted_frame={first_uncommitted_frame:?}"
-    );
+    print_replay_summary("global", &rep);
     assert_eq!(
         (final_scen, final_main, final_mapgen),
         FINAL_STREAM_STATES,
-        "AT-8 absolute per-stream pin at tick 599: a stream's committed \
-         fingerprint moved. If a real behavior change shifted it, re-baseline \
-         ONCE with a one-line documented reason (paste this `left` tuple into \
-         FINAL_STREAM_STATES); the shifted component tells you WHICH stream \
-         consumed differently — a lone shift in one stream with an unchanged \
-         total-hash baseline is a misroute, never a re-baseline."
+        "absolute per-stream regression: establish the changed producer/cadence before updating"
     );
+    assert!(
+        rep.substrate
+            .entities
+            .get(2)
+            .expect("harness refinery")
+            .radio_contacts
+            .is_empty(),
+        "the fixture ends without a held refinery contact"
+    );
+    assert_eq!(
+        rep.substrate.anims.len(),
+        0,
+        "the fixture emits no Anim objects"
+    );
+    assert!(
+        rep.substrate
+            .entities
+            .values()
+            .all(|e| e.gap_generator == Default::default())
+    );
+    assert!(
+        rep.power_states
+            .values()
+            .all(|s| !s.has_drained_power_source)
+    );
+    assert!(
+        rep.substrate
+            .entities
+            .values()
+            .all(|e| e.building_storage == Default::default()
+                && e.aircraft_ammo.is_none()
+                && e.aircraft_mission.is_none()),
+        "the fixture contains no storage or aircraft state"
+    );
+    assert!(rep.production.airfield_docks.is_empty());
 
-    // Schema166 and older final projections folded an independently mutable
-    // detached curve. Their archived receipts (removed after 148327c3) cannot
-    // be regenerated from an active retained class. Current full-hash, actual
-    // replay, terminal coverage, miner engagement and unchanged absolute RNG
-    // pins remain gates.
-    for id in rep.substrate.entities.keys_sorted() {
-        let entity = rep.substrate.entities.get(id).unwrap();
-        println!(
-            "[global owner] id={id} cell=({},{}) sub=({},{}) health={} mission={:?} queued={:?} nav={:?} path={:?} drive={:?} speed={:?}",
-            entity.position.rx,
-            entity.position.ry,
-            entity.position.sub_x,
-            entity.position.sub_y,
-            entity.health.current,
-            entity.mission.current(),
-            entity.mission.queued(),
-            entity.navigation.nav_com,
-            entity.movement_target.as_ref().map(|target| (
-                target.next_index,
-                target.path.len(),
-                target.final_goal
-            )),
-            entity.drive_locomotion,
-            entity.foot_speed,
-        );
-    }
-    // Tank 4's attack-move acquires Soviet tank 6 at tick 281 and fires; tank 6
-    // retaliates. After the Stop (300) and the Move home (320) a hit from tank
-    // 6 turns tank 4 back (ShouldRetaliate 0x007087C0: no Target, and Move
-    // keeps the constructor's Retaliate=yes). On the fixture's map cells
-    // (2026-09-25; see GLOBAL_HARNESS_FINAL_HASH) tank 4 takes its seventh hit
-    // and dies at tick 586..590. The same-call track continuation this block
-    // used to follow is covered by track_path_continuation_tests on
-    // production rows.
+    // Tank 4 first fires at frame 281; tank 6 retaliates at 283. Stop clears
+    // tank 4's target at 299 and Move is issued at 319. A later hit overrides
+    // that Move with Attack. Six returned hits leave tank 6 at 12 HP; its
+    // seventh hit kills tank 4 at frame 588. These are Rust regression values,
+    // not a native execution of this synthetic whole-skirmish fixture.
+    assert_eq!(rep.fire_events.len(), 13);
     assert_eq!(
         rep.substrate
             .entities
@@ -885,12 +969,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         Some(12),
         "tank 6 takes six 105mm hits (65 * 75% heavy)"
     );
-
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,
-        "committed global-harness baseline drifted. Do not copy the observed value: \
-         first prove whether behavior, RNG routing, or intentional hash composition \
-         changed, and document reproducible baseline provenance"
+        "committed global-harness baseline drifted: establish the changed behavior, RNG producer, or hash composition before updating"
     );
 }
 
@@ -908,8 +989,8 @@ const DENSE_ROWS: u16 = 10;
 /// Scope note: this fixture was built to exercise movement/arrival churn only, and
 /// for most of its life the tanks converged without engaging. That is no longer
 /// true. Each tank is ordered under its own owner, arrives, and is then
-/// ordered-then-idle — the case the finished-mission bridge releases back to
-/// Guard — so they now acquire each other on arrival, fire, and kill. The
+/// ordered-then-idle. The fixture now includes target acquisition and combat;
+/// its original finished-mission workaround has since been removed. The
 /// position fingerprint below therefore covers engagement churn as well as
 /// arrival churn.
 /// Shared construction for the dense converging-battle fixture (20 tanks, two
@@ -1001,7 +1082,7 @@ fn dense_converging_setup() -> (
 /// selector, which the gate does not admit, for the whole run; its other three
 /// combatants sit on the `NONE` selector and were already scanning before this
 /// change. The per-tick observations, and the one cause left UNCHECKED, are
-/// written up at `FINAL_STREAM_STATES`.
+/// recorded in this file's Git history.
 /// Re-baselined 2026-08-04 with FINAL_STREAM_STATES for the same
 /// constructed-`Rate` change; see the provenance note there.
 /// Re-baselined 2026-08-05 for the Drive cell-admission gate. A curve is now

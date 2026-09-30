@@ -27,6 +27,10 @@ movies, and several special weapons and superweapons, such as the Chrono Legionn
 chaining, the Nuke and the Chronosphere. The 30-player, 20,000-unit scale hasn't been
 demonstrated yet.
 
+Empty IFVs can approach and fire at concrete bridges, continue launched missiles
+after Stop, and resume saved pursuit state. The [native comparisons](tools/spatial_oracle/fv_cell_attack/README.md)
+cover six concrete-bridge cases; the whole-bridge audit remains in progress.
+
 ## Running it
 
 You need Rust 1.88 or newer, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.

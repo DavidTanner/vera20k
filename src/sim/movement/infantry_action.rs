@@ -433,11 +433,13 @@ impl Simulation {
         let mut bridge_changed = self.infantry_fear_turn(id, rules, registry)?;
         //51BF59 owns all Infantry firing; its new Bullet/Anim objects join
         // the current dynamic Logic suffix before the next actor visit.
-        bridge_changed |= self.commit_fire_visit(
-            crate::sim::combat::world_receiver::FireVisit::InfantryTarget(id),
-            rules,
-            registry,
-        );
+        bridge_changed |= self
+            .commit_fire_visit(
+                crate::sim::combat::world_receiver::FireVisit::InfantryTarget(id),
+                rules,
+                registry,
+            )
+            .bridge_state_changed;
         if self
             .substrate
             .entities

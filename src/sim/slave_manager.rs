@@ -876,6 +876,7 @@ impl Simulation {
             master,
             crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
             rules,
+            true,
         ) {
             log::debug!("slave master {master} has no Unit setter for {cell:?}");
         }

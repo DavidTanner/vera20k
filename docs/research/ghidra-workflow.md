@@ -90,6 +90,30 @@ A name without a dated paragraph predates these passes; judge it by its own plat
 re-derive it. The scripts, plans and results of the 2026-09-30 passes are in the
 machine-local research folder listed in `LOCAL.md`.
 
+## Function boundaries
+
+Two offline passes on 2026-09-30 changed function extents. Their plates name what
+was checked:
+
+- `[2026-09-30 DB repair]`: misdecoded bytes that overlapped real instructions were
+  cleared. The function was created or its body was extended, and the plate gives the
+  old and new instruction counts. Decompiles made before the repair miss that code.
+- `[2026-09-30 recovered functions]`: a function created where real code had none.
+  The plate names the evidence. It can be an entry of the startup or exit
+  initializer tables (static initializers, which set globals' startup values), a call
+  or tail jump, or an address stored as a callback. It can also say that no reference
+  was found. Such functions are probably dead code: show that one runs before porting
+  it. Three functions were split out of bodies that had absorbed them, including one
+  that `AircraftClass__Mission_Move` tail-jumps to.
+
+The decompiler shows a plain jump to another function's entry as that function's
+code, inline. Tail jumps in recovered functions carry the flow override
+`CALL_RETURN`, which makes them show as calls. About 40 older jumps, mostly
+`_adjustor` thunks, do not. About 33,500 instructions still belong to no function.
+Most of them are bytes misdecoded from stray data values. A reference from such an
+instruction (a reader or writer "in no function") is not evidence until the site is
+decoded from a real boundary.
+
 ## Preserve findings without polluting shared analysis
 
 During authorized reverse engineering, preserve proven identities and useful evidence

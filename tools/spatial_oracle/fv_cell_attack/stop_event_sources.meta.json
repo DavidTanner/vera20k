@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Pinned original Stop-command producer, Event6 dispatch and receiver instructions.",
+  "assumptions": [
+    "All bytes come from verified active-retail file-backed PE spans. The Event body is disassembled from its actual entry, then only entry and reached Event6 instructions are selected. Unit vtable slots and Event switch entries are original bytes."
+  ],
+  "substitutions": [
+    "Static original byte/disassembly evidence only; does not claim caller runtime admission or outcomes. Conditional paid Stop execution separately supplies those results."
+  ],
+  "entry_points": {
+    "stop_command": "0x00730EA0",
+    "unit_event_enqueue": "0x006FFE00",
+    "target_constructor": "0x006E6AB0",
+    "event_constructor": "0x004C65E0",
+    "event_execute": "0x004C6CB0"
+  },
+  "capstone_version": "5.0.7",
+  "harness_sha256": "c904963824c4758e0391b02242ec8e041f753dfd576cbcc55988f8d9d733b38c",
+  "payload_sha256": "b9202b749f0ca4cc5b48c65bd131d6d9c1bd7d67fed8715353fce5eb19a66984"
+}

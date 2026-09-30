@@ -397,13 +397,31 @@ fn set_target_queues_and_the_ai_pass_promotes_it() {
 }
 
 #[test]
-fn gsi_05_08_hornet_launcher_maximum_accepts_6400_and_clears_6401() {
+fn hornet_launcher_maximum_matches_native_distance_ties() {
     let rules = make_spawner_rules();
-
-    for (distance, expected_mode) in [
-        (6400, SpawnManagerMode::Launching),
-        (6401, SpawnManagerMode::Idle),
-    ] {
+    // SpawnManager6B7B43 -> Unit+3AC/6F7780 -> CanFireAt6F77B0 ->
+    // InRange6F7220. Its approximate distance accepts 6401 at Range6400;
+    // the three original numeric controls bound this shared caller check.
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/fv_cell_attack/range_ties.json"
+    ))
+    .unwrap();
+    let rows: Vec<_> = native["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["input"]["range"] == 6400)
+        .collect();
+    assert_eq!(rows.len(), 3);
+    for row in rows {
+        let distance = (row["input"]["target_xyz"][0].as_i64().unwrap()
+            - row["input"]["source_xyz"][0].as_i64().unwrap()) as i32;
+        let accepted = row["result"] == 1;
+        let expected_mode = if accepted {
+            SpawnManagerMode::Launching
+        } else {
+            SpawnManagerMode::Idle
+        };
         let mut sim = flat_sim();
         let carrier = sim
             .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
@@ -430,7 +448,7 @@ fn gsi_05_08_hornet_launcher_maximum_accepts_6400_and_clears_6401() {
             .and_then(|entity| entity.spawn_manager.as_ref())
             .expect("carrier manager after update");
         assert_eq!(manager.mode, expected_mode, "distance {distance}");
-        let expected_target = (distance == 6400).then_some(TargetKind::Entity(target));
+        let expected_target = accepted.then_some(TargetKind::Entity(target));
         assert_eq!(
             manager.current_target, expected_target,
             "distance {distance}"

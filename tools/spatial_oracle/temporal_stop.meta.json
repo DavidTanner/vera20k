@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Bounded original Infantry target-clear -> retained Attack dispatch -> Temporal LetGo.\n\nSupplied already-warping ordinary Infantry/Unit runtime state, actual CLEG\nInfantryType constructor/physical ART sequence reader, actual Teleport constructor,\nMissionControl constructor/physical readers, original setters and dispatch bodies.\nNo native gameplay result or RNG return is substituted. Full Event admission,\nInfantry/target construction, firing and full per-frame AI remain outside scope.\n\nFrom the repository root, set VERA20K_GAMEMD_EXE (or RA2_DIR),\nVERA20K_SHRAPNEL_INPUTS to physical RULESMD/ARTMD/MPBattleMD extracts, and\nVERA20K_ANYTOWN_INPUTS to the physical XMP03T4.MAP directory. Run with\nPYTHONPATH=. python tools/spatial_oracle/temporal_stop.py --check (the default);\n--write explicitly refreshes the native result and provenance sidecar.\n\nRust consumer: src/sim/temporal_tests.rs. The supplied retained timer proves\nbefore/deadline admission, not a fixed Stop-to-release delay or full Scenario\ncadence. No post-dispatch class Commence or target TemporalAI is invoked.\n",
+  "assumptions": [
+    "Supplied live human rookie ordinary Infantry with Attack1, no NavCom/queue, retained active Temporal single-head link to ordinary Unit, no pending scan/transport/parasite/particle/archived/AttackMove references; no full object constructors or original shot producer.",
+    "Original InfantryType CLEG constructor plus physical ART Sequence reader; unrelated CLEG rules fields remain constructor defaults. This is not full retail CLEG loader closure.",
+    "MissionControl static construction and actual rules MissionControl reader over physical RULESMD, optional LANGRULE, MPBattleMD and XMP03T4; lexical section caches replace physical file loading.",
+    "Event executes only admitted setter fragment4C75E6..4C75FE. Earlier admission/radio/team work and later deploy/miner arms are excluded. Native event selector never supplies Stop13; full Event proof remains the existing FV packet.",
+    "Scenario/Main/MapGen are originally seeded3. FPCW0E3F and ftol cache are supplied; no claim the WinMain producer is executed. Tick values and retained timer are supplied boundary controls; target AI/warp progress and full InfantryAI per-frame ordering excluded."
+  ],
+  "substitutions": [
+    "Shared Reader bounded heap/delete/TLS/file transport; CRT atexit registration is a no-op; imported Interlocked increment/decrement transport matches the existing Mission owner. No native gameplay callable, mission/timer state, Temporal release, Mark(2), RNG value or return is replaced."
+  ],
+  "entry_points": {
+    "event_setters": "0x004C75E6",
+    "infantry_target": "0x0051B1F0",
+    "techno_target": "0x006FCDB0",
+    "dispatch": "0x005B3060",
+    "infantry_attack": "0x0051F3E0",
+    "foot_attack": "0x004D4DC0",
+    "infantry_idle": "0x0051CBA0",
+    "foot_idle": "0x004D82B0",
+    "techno_idle": "0x00709A40",
+    "let_go": "0x0071ABC0",
+    "range": "0x0065C7E0"
+  },
+  "harness_sha256": "f99833e5b4e40f26faffb506143691d09f74e5561258007ff58a3a1f0b68e328",
+  "source_pins": {
+    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+    "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+    "tools/rules_oracle/bridge_anim_inputs.py": "f7f2941e11bbede50ffab19554a789e4e3e42f4969b04ad4e9697973e659d316",
+    "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6"
+  },
+  "payload_sha256": "6da654193046fcaa64e93cf3b21d696bae466fd8a691ad91a83af92d07a9da2e"
+}

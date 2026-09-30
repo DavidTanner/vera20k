@@ -308,7 +308,7 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                 crate::map::entities::EntityCategory::Unit
                     if sim.unit_setter_receiver(prepared.receiver, Some(rules)) =>
                 {
-                    let _ = sim.set_unit_destination(prepared.receiver, requested, rules);
+                    let _ = sim.set_unit_destination(prepared.receiver, requested, rules, true);
                     return;
                 }
                 crate::map::entities::EntityCategory::Infantry

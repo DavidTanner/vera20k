@@ -304,39 +304,24 @@ mod tests {
     }
 
     #[test]
-    fn normalized_animation_short_delay_table_is_exact() {
-        let expected = [
-            [2, 2, 1, 1, 1, 1, 1, 1],
-            [3, 3, 3, 2, 2, 2, 1, 1],
-            [5, 4, 4, 3, 3, 2, 2, 1],
-            [7, 6, 5, 4, 4, 4, 3, 2],
-        ];
-        for (delay, row) in expected.into_iter().enumerate() {
-            for (speed, value) in row.into_iter().enumerate() {
-                let options = GameOptions {
-                    game_speed: speed as i32,
-                    ..GameOptions::default()
-                };
-                assert_eq!(options.normalized_anim_delay((delay + 1) as u16), value);
-            }
-        }
-    }
-
-    #[test]
-    fn normalized_animation_formula_and_zero_boundary_are_exact() {
-        for speed in 0..=7 {
+    fn normalized_animation_rates_match_original_execution() {
+        // Original5FB2E0 executes independently for all56 supplied controls;
+        // neither the table nor the formula is duplicated in this expectation.
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/fv_cell_attack/speed_normalize.json"
+        ))
+        .unwrap();
+        let rows = native["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 56);
+        for row in rows {
             let options = GameOptions {
-                game_speed: speed,
+                game_speed: row["stored_speed"].as_i64().unwrap() as i32,
                 ..GameOptions::default()
             };
-            assert_eq!(options.normalized_anim_delay(0), 0);
             assert_eq!(
-                options.normalized_anim_delay(5),
-                ((5_u32 << 3) / (speed as u32 + 1)) as u16
-            );
-            assert_eq!(
-                options.normalized_anim_delay(900),
-                ((900_u32 << 3) / (speed as u32 + 1)) as u16
+                options.normalized_anim_delay(row["input_delay"].as_u64().unwrap() as u16),
+                row["returned_eax"].as_u64().unwrap() as u16,
+                "{row}"
             );
         }
     }

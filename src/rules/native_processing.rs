@@ -1992,3 +1992,7 @@ mod guided_controls_tests;
 #[cfg(test)]
 #[path = "select_anim_rules_tests.rs"]
 mod select_anim_rules_tests;
+
+#[cfg(test)]
+#[path = "approach_rules_tests.rs"]
+mod approach_rules_tests;

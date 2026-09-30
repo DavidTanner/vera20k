@@ -28,9 +28,14 @@ def layers():
  root=Path(os.environ['VERA20K_SHRAPNEL_INPUTS'])
  return [(n,root/n) for n in ('RULESMD.INI','LANGRULE.INI','MPBattleMD.ini')]+[('XMP03T4.MAP',identity.ASSETS/'XMP03T4.MAP')]
 
-def sound_inputs(m,root,art):
+def sound_inputs(m,root,art,*,wanted_names=None):
+ """Read a declared physical SoundList subset in the caller's existing VM.
+
+ The default preserves the MTNK impact corpus. Other compositions select
+ their own names before the original type readers bind sound vectors.
+ """
  raw=(root/'SOUNDMD.INI').read_bytes();physical=sound_sections(raw)
- wanted={'GrizzlyTankAttack','Explosion14','ExplosionWaterLarge','ExplosionWaterMed','ExplosionWaterSmall'}
+ wanted=set(wanted_names) if wanted_names is not None else {'GrizzlyTankAttack','Explosion14','ExplosionWaterLarge','ExplosionWaterMed','ExplosionWaterSmall'}
  selected={k:v for k,v in physical.items() if k in wanted|{'Defaults'}}
  selected['SoundList']={k:v for k,v in physical['SoundList'].items() if v in wanted}
  # Reuse the owning Sound source-order cache writer in this same VM and heap.

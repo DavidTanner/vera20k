@@ -393,8 +393,7 @@ pub fn tick_turret_rotation(
             Some(e) => e,
             None => continue,
         };
-        // Unit barrels are owned by the per-object path (combat Phase-2 read
-        // window + `unit_post::apply_unit_facing`).
+        // Unit barrels are committed by their own live Fire -> Facing slot.
         if entity.category == crate::map::entities::EntityCategory::Unit {
             continue;
         }
