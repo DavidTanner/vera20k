@@ -479,16 +479,12 @@ fn assert_repaired_hills_authorities(sim: &Simulation, engineer: u64, hut: u64) 
             .cell(64, 69)
             .unwrap()
             .bridge_walkable,
-        "repaired deck runtime{:?}, terrain{:?}, path{:?}",
-        bridges.cell(64, 69),
+        "repaired deck terrain{:?}, path{:?}",
         cell.bridge_facts,
         sim.path_grid().unwrap().cell(64, 69)
     );
     // Original constructor25 writes raw100/state9 on non-anchor side cells
     // while leaving their own overlay at -1; only the center carries25.
-    let runtime = bridges.cell(64, 69).unwrap();
-    assert!(runtime.deck_present);
-    assert_eq!(runtime.overlay_byte, u8::MAX);
     assert_eq!(cell.bridge_facts.overlay_id, None);
     assert!(
         sim.entities().get(engineer).is_none(),

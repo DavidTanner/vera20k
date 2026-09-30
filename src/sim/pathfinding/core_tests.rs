@@ -8,7 +8,6 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, YR_
 use crate::map::tube_facts::{TubeFact, TubeId};
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
-use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_hierarchy::{ZoneLevelGraph, ZoneRecord};
@@ -1036,7 +1035,8 @@ fn test_layered_path_transitions_onto_bridge_and_stays_on_deck() {
                 ..make_resolved_cell(4, 0)
             },
         ],
-    );
+    )
+    .test_mark_decks_structural();
     let grid = PathGrid::from_resolved_terrain(&terrain);
     let path = find_layered_path(
         &grid,
@@ -1137,8 +1137,12 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
             },
         ],
     );
-    let mut bridge_state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 10);
-    let intact_grid = PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
+    let mut terrain = terrain;
+    // Legacy decks (no bit0x100) stay intact while their +44 identity decodes.
+    for rx in 1..=3 {
+        terrain.cell_mut(rx, 0).unwrap().bridge_facts.overlay_id = Some(0x18);
+    }
+    let intact_grid = PathGrid::from_resolved_terrain_with_bridges(&terrain);
     assert!(
         find_layered_path(
             &intact_grid,
@@ -1158,16 +1162,13 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
         "intact bridge should be traversable"
     );
 
-    // Destroy only the body cell (rx=2). The bridgeheads at rx=1 / rx=3 must
-    // stay Healthy — pass 4 of `from_resolved_terrain` creates them with
-    // `damage_state = Healthy { variant: 0 }` permanently, and the contract
-    // for `BridgeCellRole::Bridgehead` is that no code mutates that field.
-    if let Some(c) = bridge_state.cell_mut(2, 0) {
-        c.damage_state = crate::sim::bridge_state::DamageState::Destroyed;
-    }
+    // Destroy only the body cell (rx=2) with 47E040's destroyed stamp: state
+    // 0, bit0x100 clear and bit0x400 set. The bridgeheads keep their state.
+    let body = &mut terrain.cell_mut(2, 0).unwrap().bridge_facts;
+    body.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_DESTROYED_OR_RAMP;
+    body.state_byte = 0;
 
-    let destroyed_grid =
-        PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
+    let destroyed_grid = PathGrid::from_resolved_terrain_with_bridges(&terrain);
     assert!(
         find_layered_path(
             &destroyed_grid,
@@ -1192,8 +1193,7 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
 fn test_pathcell_bridge_walkable_preserved_for_bridgeheads_across_rebuild() {
     // After the G7 fix, PathCell.bridge_walkable for pass-4 bridgeheads
     // (rx=1, rx=3) must stay true across every PathGrid rebuild driven by
-    // from_resolved_terrain_with_bridges. Pre-fix this would flip to false
-    // because the bridgeheads aren't registered in BridgeRuntimeState.
+    // from_resolved_terrain_with_bridges.
     let terrain = ResolvedTerrainGrid::from_cells(
         5,
         1,
@@ -1235,12 +1235,10 @@ fn test_pathcell_bridge_walkable_preserved_for_bridgeheads_across_rebuild() {
             },
         ],
     );
-    let bridge_state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 10);
-
     // Multiple rebuilds: in production each fires from a non-bridge event
     // (unit spawn, ownership change, destroyed structure).
     for _ in 0..3 {
-        let grid = PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
+        let grid = PathGrid::from_resolved_terrain_with_bridges(&terrain);
         let pc1 = grid.cell(1, 0).expect("bridgehead cell exists");
         let pc3 = grid.cell(3, 0).expect("bridgehead cell exists");
         assert!(
@@ -2689,10 +2687,11 @@ fn runtime_and_search_share_known_water_cell_admission() {
 
     // Ground movement uses RuntimeTransition at the cell boundary; A* uses
     // AStarNeighbor. Both must enter through the same known-input predicate.
-    assert!(!is_cell_passable_for_mover_with_speed(
+    assert!(!is_cell_passable_for_mover_on_layer_with_speed(
         &grid,
         0,
         1,
+        MovementLayer::Ground,
         Some(MovementZone::Normal),
         Some(SpeedType::Track),
         Some(&terrain),
@@ -3030,7 +3029,8 @@ fn test_height_based_bridge_routing_deck_at_4() {
                 ..make_resolved_cell(4, 0)
             },
         ],
-    );
+    )
+    .test_mark_decks_structural();
     let grid = PathGrid::from_resolved_terrain(&terrain);
     let path = find_layered_path(
         &grid,
@@ -3093,7 +3093,8 @@ fn test_cliff_cost_uses_effective_height_not_ground_level() {
                 ..make_resolved_cell(2, 0)
             },
         ],
-    );
+    )
+    .test_mark_decks_structural();
     let grid = PathGrid::from_resolved_terrain(&terrain);
     // Path from bridge start to land at same effective height
     let path = find_layered_path(

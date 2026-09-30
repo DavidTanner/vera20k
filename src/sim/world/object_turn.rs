@@ -239,7 +239,7 @@ impl Simulation {
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         let mut process = LocomotorProcess::admitted();
         self.complete_pending_order(stable_id, rules);
-        let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules);
+        let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules, overlay_registry);
         if air.touched_down {
             process.bridge_state_changed |= self.per_cell_process(
                 stable_id,

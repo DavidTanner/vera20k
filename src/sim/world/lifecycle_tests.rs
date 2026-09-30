@@ -1458,7 +1458,7 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert!(aircraft.locomotor.as_ref().unwrap().altitude > SimFixed::from_num(0));
@@ -1490,7 +1490,7 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
         .unwrap()
         .position
         .exact_z_leptons = Some(1);
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1527,7 +1527,7 @@ fn gsi_05_05_fly_takeoff_commits_absolute_z_after_remove_process() {
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     let altitude = aircraft
@@ -1565,7 +1565,7 @@ fn gsi_05_05_fly_landing_on_bridge_uses_absolute_z_for_deck_put() {
         locomotor.begin_fly_landing();
         locomotor.set_fly_target_height(0);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1642,7 +1642,7 @@ fn gsi_05_05_mapless_fly_uses_dummy_ground_then_bridge_height() {
     }
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 2, 128, 128));
 
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1678,7 +1678,7 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     let shared_bucket = second.air_spatial_bucket;
     let second_order = second.air_spatial_enter_order;
 
-    sim.tick_air_movement_with_cell_lists_one(20, None);
+    sim.tick_air_movement_with_cell_lists_one(20, None, None);
     assert_eq!(
         sim.substrate
             .entities
@@ -1690,7 +1690,7 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     );
 
     sim.substrate.entities.get_mut(20).unwrap().position.rx = 12;
-    sim.tick_air_movement_with_cell_lists_one(20, None);
+    sim.tick_air_movement_with_cell_lists_one(20, None, None);
     let crossed = sim.substrate.entities.get(20).unwrap();
     assert_ne!(crossed.air_spatial_bucket, shared_bucket);
     assert!(crossed.air_spatial_enter_order > second_order);
@@ -4825,7 +4825,7 @@ fn gsi_05_04_building_get_coords_uses_foundation_center_cell() {
 }
 
 #[test]
-fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
+fn gsi_04_01_cell_target_uses_live_structural_bit() {
     let mut sim = Simulation::new();
     sim.session.map_width = 16;
     sim.session.map_height = 16;
@@ -4873,24 +4873,11 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
         cell_target_coord(sim.resolved_terrain.as_ref(), 6, 7),
         center
     );
-    {
-        // Legacy runtime walkability drops while live bit100 stays set.
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        bridge_state.cell_mut(6, 7).unwrap().deck_present = false;
-        assert!(!bridge_state.is_bridge_walkable(6, 7));
-    }
-    assert_eq!(
-        cell_target_coord(sim.resolved_terrain.as_ref(), 6, 7),
-        center,
-        "CellClass target height follows live +0x100, not bridge runtime walkability"
-    );
-
     assert!(sim.object_ai_visit_one(projectile_id, None, ObjectAiCtx::default()));
 
-    // The actual Bullet visit consumes the live Cell target coordinate even
-    // though runtime bridge walkability is false. Being stationary at that
-    // target is not an admission: old height is 416, above both native tail
-    // gates (4677D3: <208; 467B68: <10).
+    // The actual Bullet visit consumes the live Cell target coordinate. Being
+    // stationary at that target is not an admission: old height is 416, above
+    // both native tail gates (4677D3: <208; 467B68: <10).
     assert!(sim.pending_projectile_detonations.is_empty());
     assert_eq!(sim.projectiles.get(projectile_id).unwrap().position, center);
 }
@@ -4936,9 +4923,10 @@ fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
     };
 
     assert!(
-        sim.bridge_state
+        sim.resolved_terrain
             .as_ref()
-            .is_some_and(|state| state.is_bridge_walkable(6, 7))
+            .and_then(|terrain| terrain.cell(6, 7))
+            .is_some_and(|cell| cell.bridge_facts.has_structural_bridge())
     );
     let result = sim.tick_combat_with_fatal_lifecycle(
         &rules,
@@ -6586,7 +6574,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     );
     let canonical_path = crate::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
     );
     for rx in 9..=12 {
         assert_eq!(
@@ -7474,7 +7461,7 @@ fn production_air_wrapper_keeps_fly_exact_producer_and_reads_live_dummy_for_lega
             .as_mut()
             .unwrap()
             .set_fly_target_height((SimFixed::from_num(expected - ground - 416)).to_num::<i32>());
-        sim.tick_air_movement_with_cell_lists_one(1, None);
+        sim.tick_air_movement_with_cell_lists_one(1, None, None);
         let e = sim.substrate.entities.get(1).unwrap();
         assert_eq!(e.position.exact_z_leptons, Some(expected));
         assert_eq!(sim.foot_navigation_coordinate(1).unwrap().z, expected);
@@ -7507,7 +7494,7 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         sim
     }
     let mut direct = fixture();
-    assert!(direct.tick_jumpjet_cruise_one(1, None).is_some());
+    assert!(direct.tick_jumpjet_cruise_one(1, None, None).is_some());
     let expected = direct
         .substrate
         .entities
@@ -7533,7 +7520,7 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         SimFixed::from_num(0)
     );
     let mut wrapped = fixture();
-    wrapped.tick_air_movement_with_cell_lists_one(1, None);
+    wrapped.tick_air_movement_with_cell_lists_one(1, None, None);
     assert_eq!(
         wrapped
             .substrate
@@ -7581,7 +7568,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         fly.current_speed = SIM_ONE;
         fly.target_speed = SIM_ONE;
         assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), None,));
-        sim.tick_air_movement_with_cell_lists_one(1, None);
+        sim.tick_air_movement_with_cell_lists_one(1, None, None);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
         let moved_z = entity.position.exact_z_leptons.unwrap();
@@ -7612,7 +7599,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             for instance in [&mut sim, &mut restored] {
                 instance.session.tick = frame;
                 instance.session.binary_frame = frame as u32;
-                instance.tick_air_movement_with_cell_lists_one(1, None);
+                instance.tick_air_movement_with_cell_lists_one(1, None, None);
             }
             assert_eq!(restored.state_hash(), sim.state_hash());
             let entity = sim.substrate.entities.get(1).unwrap();
@@ -7891,7 +7878,7 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     sim.substrate
         .display
         .submit(id, Some(DisplayLayer::TOP), &|_| 0);
-    sim.tick_air_movement_with_cell_lists_one(id, None);
+    sim.tick_air_movement_with_cell_lists_one(id, None, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 
     // A real changed query re-submits even if cached membership is absent.

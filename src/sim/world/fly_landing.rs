@@ -166,7 +166,8 @@ impl Simulation {
                     .contains(building)
             })
         } else {
-            self.fly_landing_destination_admitted(id, destination)
+            let cell = ((destination.x / 256) as i16, (destination.y / 256) as i16);
+            self.aircraft_can_enter(id, cell) == 0
         };
         if !admitted && !self.retry_fly_landing(id, rules) {
             return;
@@ -329,47 +330,6 @@ impl Simulation {
         entity.navigation.pending_arrival_clear = false;
         entity.movement_target = None;
         DestinationTiming::from_rules(self.session.binary_frame, rules).accept(entity);
-    }
-
-    /// Aircraft4196B0: Winged passability always succeeds. The mode0 owned
-    /// aircraft arm reads native ground shroud knowledge, not current sight.
-    fn fly_landing_destination_admitted(&self, id: u64, dest: DriveCoord) -> bool {
-        let e = self.substrate.entities.get(id).unwrap();
-        let cell = ((dest.x / 256) as i16, (dest.y / 256) as i16);
-        if let Some(t) = &self.resolved_terrain {
-            t.native_cell_identity(cell);
-        }
-        if self.session.game_mode_nonzero
-            || !e.discovery.owned_by_current_house
-            || e.is_mission_only()
-        {
-            return true;
-        }
-        let xyz = crate::sim::movement::target_cell_coord(
-            cell.0 as u16,
-            cell.1 as u16,
-            self.resolved_terrain.as_ref(),
-        );
-        let q = xyz.z / 104;
-        let offset = q / 2 + i32::from(q & 1 != 0);
-        let projected = (
-            ((xyz.x / 256) as i16).wrapping_sub(offset as i16),
-            ((xyz.y / 256) as i16).wrapping_sub(offset as i16),
-        );
-        let visible = |c: (i16, i16)| {
-            let resolved = self.resolved_terrain.as_ref().map_or(c, |t| {
-                let identity = t.native_cell_identity(c);
-                t.native_cell_coord(identity)
-            });
-            (
-                self.fog
-                    .is_ground_unshrouded(e.owner(), resolved.0 as u16, resolved.1 as u16),
-                resolved,
-            )
-        };
-        let (first_visible, first_cell) = visible(projected);
-        first_visible
-            || q & 1 != 0 && visible((first_cell.0.wrapping_add(1), first_cell.1.wrapping_add(1))).0
     }
 
     /// Foot4DDC60: height-aware playfield, nearest ground-list Techno, then
@@ -891,15 +851,16 @@ mod tests {
                 row["coordinate"],
                 "{input}"
             );
+            let cell = ((request.x / 256) as i16, (request.y / 256) as i16);
             assert_eq!(
-                sim.fly_landing_destination_admitted(1, request),
-                row["result"] == 0,
+                u64::from(sim.aircraft_can_enter(1, cell)),
+                row["result"].as_u64().unwrap(),
                 "{input}"
             );
             sim.fog.build_merged_for(owner, &sim.interner);
             assert_eq!(
-                sim.fly_landing_destination_admitted(1, request),
-                row["result"] == 0,
+                u64::from(sim.aircraft_can_enter(1, cell)),
+                row["result"].as_u64().unwrap(),
                 "{input}"
             );
         }
@@ -1148,7 +1109,7 @@ mod tests {
             .find(|r| r["input"]["name"] == "height_301")
             .unwrap();
         let (mut sim, rules) = fixture(row);
-        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         let e = sim.substrate.entities.get(1).unwrap();
         assert!(e.air_spatial_bucket.is_some());
         assert!(
@@ -1171,7 +1132,7 @@ mod tests {
         for frame in 101..126 {
             for s in [&mut sim, &mut restored] {
                 s.session.binary_frame = frame;
-                s.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+                s.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
             }
             assert_eq!(sim.state_hash(), restored.state_hash(), "frame{frame}");
         }

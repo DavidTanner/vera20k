@@ -520,7 +520,7 @@ fn probe_g5_astar_rejects_all_trusted_firing_pairs() {
         }
 
         let path_grid =
-            vera20k::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(&grid, None);
+            vera20k::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(&grid);
 
         let g5 = scan_g5(&grid);
         if g5.examples.is_empty() {

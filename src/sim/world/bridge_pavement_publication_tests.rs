@@ -24,6 +24,14 @@ fn retail_plain_pavement_native_entry_draw_selection_and_snapshot() {
     let original = &corpus["stock"]["perpendicular"]["result"];
     assert_eq!(original["trace"], corpus["stock"]["steps"][0]["trace"]);
     let initial = scenario.sim().resolved_terrain.as_ref().unwrap().clone();
+    // A plain cell carries no bridge deck or bridge walkability at map load.
+    let plain_at_load = |p: (u16, u16)| {
+        initial.cell(p.0, p.1).is_some_and(|cell| {
+            !cell.bridge_facts.has_structural_bridge()
+                && !cell.has_bridge_deck
+                && !cell.bridge_walkable
+        })
+    };
     let runtime = &mut scenario.runtime;
     runtime.simulation.radar_terrain_dirty_cells.clear();
     let before_hash = runtime.simulation.state_hash();
@@ -33,14 +41,7 @@ fn retail_plain_pavement_native_entry_draw_selection_and_snapshot() {
         registry: Some(&runtime.resources.overlay_registry),
         collapsed: false,
     };
-    assert!(
-        live.sim
-            .bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(66, 102)
-            .is_none()
-    );
+    assert!(plain_at_load((66, 102)));
     live.perpendicular((67, 102), Axis::NS, Phase::DamageB, 6, Family::High);
     let expected_radar: Vec<(u16, u16)> = original["trace"]
         .as_array()
@@ -76,14 +77,7 @@ fn retail_plain_pavement_native_entry_draw_selection_and_snapshot() {
                 Some(&DynamicTerrainCellState::capture(cell))
             );
             assert_eq!(live.terrain().pavement_draw_variant(p.0, p.1), Some(1));
-            plain += usize::from(
-                live.sim
-                    .bridge_state
-                    .as_ref()
-                    .unwrap()
-                    .cell(p.0, p.1)
-                    .is_none(),
-            );
+            plain += usize::from(plain_at_load(p));
         }
     }
     assert_eq!(plain, 11);

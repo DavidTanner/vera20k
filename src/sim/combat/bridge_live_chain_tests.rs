@@ -5,7 +5,7 @@
 
 use super::TargetKind;
 use crate::headless_scenario::{HeadlessScenario, SIM_TICK_MS};
-use crate::sim::bridge_state::BridgeCellRole;
+use crate::map::bridge_facts::BridgeStampSlot;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::projectile::{ProjectileCoord, ProjectileTarget};
 use crate::sim::runtime::SimRuntime;
@@ -19,13 +19,16 @@ fn firing_sites(scenario: &HeadlessScenario) -> Vec<((u16, u16), (u16, u16))> {
     let sim = scenario.sim();
     let terrain = sim.resolved_terrain.as_ref().unwrap();
     let navigation = sim.path_grid().unwrap();
-    let bridges = sim.bridge_state.as_ref().unwrap();
     let mut sites = Vec::new();
     for target in terrain.cells() {
+        // A structural span body: neither the self-anchor nor the opposite slot.
         if !target.bridge_facts.has_structural_bridge()
             || target.slope_type != 0
-            || !bridges.is_bridge_walkable(target.rx, target.ry)
-            || bridges.cell(target.rx, target.ry).unwrap().role != BridgeCellRole::Body
+            || target.bridge_facts.is_anchor_self()
+            || target
+                .bridge_facts
+                .anchor
+                .is_some_and(|relation| relation.slot == BridgeStampSlot::Opposite)
         {
             continue;
         }
@@ -44,7 +47,6 @@ fn firing_sites(scenario: &HeadlessScenario) -> Vec<((u16, u16), (u16, u16))> {
                     cell.bridge_facts.has_structural_bridge()
                         && cell.level == target.level
                         && cell.slope_type == 0
-                        && bridges.is_bridge_walkable(x, y)
                 })
             }) {
                 continue;
@@ -155,20 +157,6 @@ fn assert_collapsed_bridge_restores(
             == terrain.capture_real_cell_bridge_flags_0x1180(),
         "every allocated cell retains its current bridge flag authority"
     );
-    let live_bridges = live.bridge_state.as_ref().unwrap();
-    let restored_bridges = restored.bridge_state.as_ref().unwrap();
-    for (coord, state) in live_bridges.iter_cells() {
-        assert_eq!(
-            restored_bridges.cell(coord.0, coord.1),
-            Some(state),
-            "bridge runtime {coord:?}"
-        );
-        assert_eq!(
-            restored_bridges.is_bridge_walkable(coord.0, coord.1),
-            live_bridges.is_bridge_walkable(coord.0, coord.1),
-            "bridge surface {coord:?}"
-        );
-    }
     assert!(
         !restored
             .path_grid()
@@ -670,10 +658,13 @@ fn retail_bridge_forcefire_chain(vehicle_name: &str, weapon_name: &str, projecti
             assert!(
                 !scenario
                     .sim()
-                    .bridge_state
+                    .resolved_terrain
                     .as_ref()
                     .unwrap()
-                    .is_bridge_walkable(target.0, target.1)
+                    .cell(target.0, target.1)
+                    .unwrap()
+                    .bridge_facts
+                    .has_structural_bridge()
             );
             assert!(
                 scenario

@@ -31,10 +31,6 @@ pub enum SparkWorldError {
     UnavailableOverlayCell { rx: u16, ry: u16 },
     #[error("slope type {0} is outside the verified 0..=20 table")]
     UnsupportedSlope(u8),
-    #[error("structural bridge cell ({rx}, {ry}) has no live BridgeRuntimeState")]
-    MissingBridgeRuntimeState { rx: u16, ry: u16 },
-    #[error("structural bridge cell ({rx}, {ry}) has no live runtime cell")]
-    MissingBridgeRuntimeCell { rx: u16, ry: u16 },
     #[error("cell occupancy references missing entity {0}")]
     MissingOccupantEntity(u64),
     #[error("building entity {0} has no resolved ObjectType")]
@@ -235,21 +231,7 @@ impl<'a> SparkCollisionWorld<'a> {
             CellRef::Dummy { cell } => {
                 Ok(cell.snapshot().bridge_flags_0x1180 & BRIDGE_FLAG_STRUCTURAL != 0)
             }
-            CellRef::Real(cell) => {
-                if !cell.bridge_facts.has_structural_bridge() {
-                    return Ok(false);
-                }
-                let (rx, ry) = (cell.rx, cell.ry);
-                let state = self
-                    .sim
-                    .bridge_state
-                    .as_ref()
-                    .ok_or(SparkWorldError::MissingBridgeRuntimeState { rx, ry })?;
-                let runtime = state
-                    .cell(rx, ry)
-                    .ok_or(SparkWorldError::MissingBridgeRuntimeCell { rx, ry })?;
-                Ok(runtime.deck_present)
-            }
+            CellRef::Real(cell) => Ok(cell.bridge_facts.has_structural_bridge()),
         }
     }
 
@@ -440,9 +422,6 @@ pub(super) mod tests {
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::terrain_rules::TerrainClass;
-    use crate::sim::bridge_state::{
-        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
-    };
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
@@ -541,25 +520,10 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn live_bridge_fact_is_static_stamp_and_runtime_deck_state() {
+    fn live_bridge_fact_is_the_live_structural_flag() {
         let mut cell = terrain_cell(0, 0);
         cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL;
         let mut sim = one_cell_sim(cell);
-        let mut bridge = BridgeRuntimeState::default();
-        bridge.test_seed_cell(
-            0,
-            0,
-            BridgeRuntimeCell {
-                deck_present: true,
-                deck_level: 4,
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis: Some(Axis::NS),
-                role: BridgeCellRole::Body,
-                anchor_span_id: Some(1),
-                overlay_byte: 0x18,
-            },
-        );
-        sim.bridge_state = Some(bridge);
         let rules = empty_rules();
 
         let intact = SparkCollisionWorld::new(&sim, &rules)
@@ -569,12 +533,13 @@ pub(super) mod tests {
         assert!(!intact.old_has_structural_bridge);
         assert!(intact.candidate_has_structural_bridge);
 
-        sim.bridge_state
+        sim.resolved_terrain
             .as_mut()
             .unwrap()
             .cell_mut(0, 0)
             .unwrap()
-            .deck_present = false;
+            .bridge_facts
+            .raw_flags &= !BRIDGE_FLAG_STRUCTURAL;
         let collapsed = SparkCollisionWorld::new(&sim, &rules)
             .unwrap()
             .query(motion_at(0, 0))
@@ -942,21 +907,6 @@ pub(super) mod tests {
             CellListInsertion::AppendBuilding,
         );
         sim.overlay_grid = None;
-        let mut bridge = BridgeRuntimeState::default();
-        bridge.test_seed_cell(
-            0,
-            0,
-            BridgeRuntimeCell {
-                deck_present: true,
-                deck_level: 4,
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis: Some(Axis::NS),
-                role: BridgeCellRole::Body,
-                anchor_span_id: Some(1),
-                overlay_byte: 0x18,
-            },
-        );
-        sim.bridge_state = Some(bridge);
         let rules = empty_rules();
         let world = SparkCollisionWorld::new(&sim, &rules).unwrap();
         let motion = motion_between(IVec3::new(0, 0, 500), IVec3::new(0, 0, 100));

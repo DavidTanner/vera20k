@@ -1008,6 +1008,93 @@ impl Simulation {
         };
         classify_entry(&live, CellObjectMember::Entity(id), cell, args)
     }
+
+    /// `AircraftClass::Can_Enter_Cell` (`0x004196B0`) for a live aircraft,
+    /// as its native code: 0 admits, 7 refuses. Fly landing (`0x004CE840`)
+    /// consumes it, and so does [`Self::mover_can_enter`]'s Aircraft arm.
+    /// The body reads only its cell argument (`0x004196B5`; it returns with
+    /// `RET 0x14`).
+    /// - The occupant arm tests Winged passability (SpeedType 4 at
+    ///   `0x0041974D`), which always succeeds, so it never refuses.
+    /// - In game mode 0, an aircraft owned by the current house that is not
+    ///   mission-only (`+0x41A`, `+0x3D4`) refuses a cell whose ground is
+    ///   shrouded: `MapClass::IsShrouded` (`0x00586360`, the one port
+    ///   `vision::coordinate_is_shrouded`) at the cell's centre
+    ///   (`0x00419764..0x004197A7`). A Cell is open when the owner has mapped
+    ///   its ground (not current sight); the shared dummy never is.
+    ///
+    /// Native executions: tools/spatial_oracle/fly_can_enter.{py,json,meta.json}.
+    /// RESIDUAL: the Team arm (`0x004196BC..0x004196DE`) is not ported. A team
+    /// member whose script step answers `0x006EC300` admits a cell outside the
+    /// playfield before the shroud test. Only a player-owned team aircraft
+    /// reaches that test, so the gap is a campaign's scripted aircraft sent or
+    /// landing outside the playfield.
+    pub(crate) fn aircraft_can_enter(&self, id: u64, cell: (i16, i16)) -> u8 {
+        let e = self.substrate.entities.get(id).unwrap();
+        let Some(terrain) = self.resolved_terrain.as_ref() else {
+            return 0;
+        };
+        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+        cells.lookup(cell);
+        if self.session.game_mode_nonzero
+            || !e.discovery.owned_by_current_house
+            || e.is_mission_only()
+        {
+            return 0;
+        }
+        let centre =
+            crate::sim::movement::target_cell_coord(cell.0 as u16, cell.1 as u16, Some(terrain));
+        let open = |cell: Cell| {
+            Ok(match cell {
+                Cell::Real(index) => {
+                    let cell = &terrain.cells()[index];
+                    self.fog.is_ground_unshrouded(e.owner(), cell.rx, cell.ry)
+                }
+                Cell::Dummy => false,
+            })
+        };
+        let shrouded = crate::sim::vision::coordinate_is_shrouded(&cells, centre, &open);
+        if matches!(shrouded, Ok(true)) { 7 } else { 0 }
+    }
+
+    /// A mover's own `Can_Enter_Cell` (vtable `+0x1AC`) at a cell, as its
+    /// native code: [`Self::aircraft_can_enter`] for an Aircraft, which reads
+    /// no argument but the cell, otherwise [`Self::foot_can_enter`] with
+    /// `args` on the cell's canonical lookup.
+    ///
+    /// Every caller passes 1 as the fifth argument, which `args` has no slot
+    /// for. Unit forwards it as `0x004D9C10`'s enable flag (`0x0073F3B3`),
+    /// where every retail locomotor's `+0x1C` is the constant-zero
+    /// `0x0055ABF0` (`tools/spatial_oracle/foot_locomotor_entry`); the Unit
+    /// corpus runs with 1 (`tools/spatial_oracle/unit_entry.py`).
+    ///
+    /// Callers: the group spread (`0x0064D52F`), the team centre
+    /// (`0x006EAEE0`) and Jumpjet State 4 (`0x0054C66D`). Each decides what
+    /// an answer VERA cannot read (`Err`) means for it; native has no such
+    /// state.
+    pub(crate) fn mover_can_enter(
+        &self,
+        id: u64,
+        cell: (i16, i16),
+        args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<u8, String> {
+        let mover = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("Can_Enter_Cell of a retired mover")?;
+        if mover.category == EntityCategory::Aircraft {
+            return Ok(self.aircraft_can_enter(id, cell));
+        }
+        let terrain = self
+            .resolved_terrain
+            .as_ref()
+            .ok_or("Foot entry requires map cells")?;
+        let cell = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain).lookup(cell);
+        self.foot_can_enter(id, cell, args, rules, registry)
+    }
 }
 
 /// Repair's object-list controller uses the same numeric decision owner as

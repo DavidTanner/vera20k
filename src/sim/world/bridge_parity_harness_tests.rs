@@ -361,7 +361,8 @@ fn bridge_resolved_terrain(
                 base_build_blocked: !path.ground_walkable,
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: clear_costs,
-                has_bridge_deck: path.bridge_walkable,
+                // Production bridgeheads carry no deck: only 0x100 cells do.
+                has_bridge_deck: path.bridge_walkable && flags & BRIDGE_FLAG_STRUCTURAL != 0,
                 bridge_walkable: path.bridge_walkable,
                 bridge_transition: path.transition,
                 bridge_deck_level: path.bridge_deck_level,

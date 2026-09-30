@@ -309,7 +309,7 @@ fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
         // transaction. Changing only the altitude cache after Unlimbo would
         // leave a ground member behind without a native REMOVE producer.
         assert!(sim.begin_fly_takeoff(victim, Some(&rules)));
-        sim.tick_air_movement_with_cell_lists_one(victim, Some(&rules));
+        sim.tick_air_movement_with_cell_lists_one(victim, Some(&rules), None);
         let entity = sim.substrate.entities.get_mut(victim).unwrap();
         assert!(entity.aircraft_mission.is_some(), "authored Fly admission");
         assert!(
@@ -928,10 +928,7 @@ fn command_uses_packed_aliases_and_stamps_missing_cells(name: &str, object_type:
 
 #[test]
 fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in() {
-    use crate::sim::bridge_state::{
-        AnchorSpan, Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
-        Direction,
-    };
+    use crate::sim::bridge_state::BridgeRuntimeState;
     use crate::sim::movement::locomotor::MovementLayer;
     let (mut sim, rules) = fixture_with_extra("[DeathWH]\nWall=yes\n[DeathBoom]\nDamage=2000\n");
     assert!(rules.warhead("DeathWH").unwrap().wall);
@@ -971,35 +968,8 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
     facts.overlay_id = Some(24);
     facts.state_byte = 6;
     facts.raw_flags |= 0x2000;
-    let mut state =
+    let state =
         BridgeRuntimeState::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap(), true, 1);
-    state.test_seed_cell(
-        5,
-        5,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 4,
-            damage_state: DamageState::Damaged,
-            axis: Some(Axis::NS),
-            role: BridgeCellRole::Anchor,
-            anchor_span_id: Some(1),
-            overlay_byte: 24,
-        },
-    );
-    state.test_seed_anchor_span(AnchorSpan {
-        id: 1,
-        anchor: (5, 5),
-        cells: [
-            Some(span[0]),
-            Some(span[1]),
-            Some(span[2]),
-            Some(span[3]),
-            Some(span[4]),
-            None,
-        ],
-        axis: Axis::NS,
-        direction: Direction::N,
-    });
     sim.bridge_state = Some(state);
     // Older deck recipient is visited only after the newer Infantry's callback.
     let tank = sim
