@@ -80,7 +80,7 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         // @ 0x0073E5E0` is only reached when the committed selector is
         // Harvest(10). The Harvest handler declines Enter-with-depot for the
         // same single-writer reason (`harvest_mission.rs`).
-        let depot_dock_state = entity.dock_state.is_some();
+        let depot_dock_state = crate::sim::docking::building_dock::depot_owns_enter(entity);
         let miner_enter_depot = mission == Some(MissionType::Enter) && depot_dock_state;
         // A harvester's refinery dock runs the native Enter and Unload
         // handlers (`miner::refinery_dock`); the Harvest handler declines

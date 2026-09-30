@@ -798,34 +798,6 @@ mod tests {
         e
     }
 
-    /// A descending parachutist's GetCoords Z is its falling Z: the falling
-    /// block of `ObjectClass::AI` (`0x005F3E70`) writes its Location Z every
-    /// frame. The range family measures to it; an exact coordinate wins.
-    #[test]
-    fn a_descending_parachutists_target_z_is_its_falling_z() {
-        let mut e = ground_entity_at_level(0);
-        e.parachute_state = Some(
-            crate::sim::movement::parachute_descent::ParachuteDescentState {
-                rate: -3,
-                altitude: SimFixed::from_num(1200),
-            },
-        );
-        let id = e.stable_id();
-        let terrain = flat_terrain(16, 16);
-        let mut entities = EntityStore::new();
-        entities.insert(e);
-        let target = TargetKind::Entity(id);
-        assert_eq!(
-            target_own_z_leptons(&target, &entities, &terrain),
-            Some(1200)
-        );
-        entities.get_mut(id).unwrap().position.exact_z_leptons = Some(300);
-        assert_eq!(
-            target_own_z_leptons(&target, &entities, &terrain),
-            Some(300)
-        );
-    }
-
     #[test]
     fn world_z_ground_unit() {
         let e = ground_entity_at_level(5);

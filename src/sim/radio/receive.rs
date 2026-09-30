@@ -108,14 +108,128 @@ fn building_receive(
         }
         RadioMessage::CanDock => building_docking(sim, building, sender, rules),
         RadioMessage::DockNow => building_dock_now(sim, building, sender, payload, rules),
-        // 8, 0xB, 0xC, 0xD and 0xF (0x0043C2F8; the refinery scan evaluates
-        // CAN_LOAD directly) have no represented bus sender.
+        RadioMessage::CanEnter if is_repair_depot(sim, building, rules) => {
+            depot_can_load(sim, building, sender, rules)
+        }
+        // 8, 0xB, 0xC, 0xD and any other 0xF (0x0043C2F8; the refinery scan
+        // evaluates CAN_LOAD directly) have no represented bus sender.
         RadioMessage::RequestClearance
         | RadioMessage::DockApproach
         | RadioMessage::DockArrived
         | RadioMessage::AnimStop
         | RadioMessage::CanEnter => RadioResponse::None,
         _ => techno_receive(sim, building, sender, msg, payload, rules),
+    }
+}
+
+fn is_repair_depot(sim: &Simulation, building: u64, rules: Option<&RuleSet>) -> bool {
+    let (Some(building), Some(rules)) = (sim.substrate.entities.get(building), rules) else {
+        return false;
+    };
+    sim.object_type(building.type_ref(), rules)
+        .is_some_and(|object| object.unit_repair)
+}
+
+/// CAN_LOAD, `BuildingClass::Receive_Radio` case 0x0F (`0x0043CB25..`), for a
+/// `UnitRepair=` building, the pending entry's second question
+/// (`building_dock::try_pending_entry`). In order: a sender that is no ally
+/// gets 0; Construction or Selling, the construction BState (`+0x534` = 0),
+/// no free or own slot (the absorb exemption aside), a Naval mismatch for a
+/// sender not `MovementZone=Amphibious`, a `BalloonHover=` sender and an
+/// offline depot (`+0x660`) each get NEGATORY; then the UnitRepair arm: a
+/// sender that is neither Unit nor Aircraft gets NEGATORY, and so does one
+/// already standing on the depot (IsOccupied 0x23 answering ROGER);
+/// otherwise ROGER. The Techno receiver's message history is not kept.
+///
+/// The UnitAbsorb/InfantryAbsorb, Grinding and Bunker arms ahead of the
+/// UnitRepair one belong to other building types; a depot type carrying one
+/// of those keys answers static (0) here, as an unported arm.
+fn depot_can_load(
+    sim: &mut Simulation,
+    depot: u64,
+    sender: Option<u64>,
+    rules: Option<&RuleSet>,
+) -> RadioResponse {
+    let (Some(from), Some(rules)) = (sender, rules) else {
+        return RadioResponse::None;
+    };
+    let (Some(building), Some(unit)) = (
+        sim.substrate.entities.get(depot),
+        sim.substrate.entities.get(from),
+    ) else {
+        return RadioResponse::None;
+    };
+    let (Some(depot_type), Some(unit_type)) = (
+        sim.object_type(building.type_ref(), rules),
+        sim.object_type(unit.type_ref(), rules),
+    ) else {
+        return RadioResponse::None;
+    };
+    if !crate::sim::combat::combat_weapon::is_ally_by_object(
+        Some(&sim.fog.alliances),
+        &sim.interner,
+        building.owner(),
+        unit.owner(),
+    ) {
+        return RadioResponse::None;
+    }
+    let absorbs = depot_type.unit_absorb || depot_type.infantry_absorb;
+    let refused = matches!(
+        building.mission.current().known(),
+        Some(MissionType::Construction | MissionType::Selling)
+    ) || building.in_construction_bstate()
+        || (!building.radio_contacts.has_free_or(from) && !absorbs)
+        || (unit_type.movement_zone != crate::rules::locomotor_type::MovementZone::Amphibious
+            && depot_type.naval != unit_type.naval)
+        || unit_type.balloon_hover
+        || !building.building_online();
+    if refused {
+        return RadioResponse::Negatory;
+    }
+    if absorbs || depot_type.grinding || depot_type.bunker {
+        return RadioResponse::None;
+    }
+    if !matches!(
+        unit.category,
+        EntityCategory::Unit | EntityCategory::Aircraft
+    ) {
+        return RadioResponse::Negatory;
+    }
+    match transmit(
+        sim,
+        depot,
+        from,
+        RadioMessage::IsOccupied,
+        RadioPayload::default(),
+        Some(rules),
+    ) {
+        RadioResponse::Roger => RadioResponse::Negatory,
+        _ => RadioResponse::Roger,
+    }
+}
+
+/// IsOccupied (0x23), `FootClass::Receive_Radio @ 0x004D8FB0`: ROGER when
+/// the first building in the cell of the foot's coordinate is the sender,
+/// else NEGATORY.
+fn foot_is_occupied(sim: &Simulation, foot: u64, sender: Option<u64>) -> RadioResponse {
+    let Some(entity) = sim.substrate.entities.get(foot) else {
+        return RadioResponse::None;
+    };
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+    let building = u16::try_from(x / 256)
+        .ok()
+        .zip(u16::try_from(y / 256).ok())
+        .and_then(|(rx, ry)| {
+            sim.substrate.occupancy.first_building_on_layer(
+                rx,
+                ry,
+                crate::sim::movement::locomotor::MovementLayer::Ground,
+            )
+        });
+    if sender.is_some() && building == sender {
+        RadioResponse::Roger
+    } else {
+        RadioResponse::Negatory
     }
 }
 
@@ -475,10 +589,9 @@ fn foot_receive(
             foot_run_away(sim, foot, rules);
             techno_receive(sim, foot, sender, msg, payload, rules)
         }
-        // 0x11, 0x1C and 0x23 have no represented sender.
-        RadioMessage::IsUnitLinked | RadioMessage::RepairTick | RadioMessage::IsOccupied => {
-            RadioResponse::None
-        }
+        RadioMessage::IsOccupied => foot_is_occupied(sim, foot, sender),
+        // 0x11 and 0x1C have no represented sender.
+        RadioMessage::IsUnitLinked | RadioMessage::RepairTick => RadioResponse::None,
         _ => techno_receive(sim, foot, sender, msg, payload, rules),
     }
 }

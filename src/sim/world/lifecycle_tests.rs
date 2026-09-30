@@ -598,8 +598,9 @@ fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs(
         None
     );
 
-    // Actual paradrop ordering: attach while limbo, then Reveal. The ground
-    // adapter must not reinstate a stale exact Z over the descent integrator.
+    // Actual paradrop ordering: attach while limbo, then Reveal. Paradrop's
+    // Unlimbo coordinate is the drop coordinate (0x005F5A50), so the ground
+    // adapter keeps the drop's Z rather than the passenger's old one.
     install_common_raw_terrain(&mut sim, 8, 8, 0, None);
     insert_entity(&mut sim, 2, EntityCategory::Infantry);
     let entity = sim.substrate.entities.get_mut(2).unwrap();
@@ -609,7 +610,7 @@ fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs(
         crate::sim::movement::parachute_descent::begin_parachute_descent(
             &mut sim.substrate.entities,
             2,
-            SimFixed::from_num(1200)
+            1200
         )
     );
     assert!(matches!(
@@ -617,11 +618,8 @@ fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs(
         RevealOutcome::Revealed { .. }
     ));
     let entity = sim.substrate.entities.get(2).unwrap();
-    assert_eq!(entity.position.exact_z_leptons, None);
-    assert_eq!(
-        entity.parachute_state.as_ref().unwrap().altitude,
-        SimFixed::from_num(1200)
-    );
+    assert_eq!(entity.position.exact_z_leptons, Some(1200));
+    assert!(entity.is_falling_down());
 }
 
 #[test]

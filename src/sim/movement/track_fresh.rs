@@ -57,16 +57,16 @@
 //!   path word with Find_Path's append form (`0x4B3F07`), which keeps the
 //!   queue and appends at most 24 - prefix words (`0x4D3E82`). VERA's route
 //!   install replaces the queue, so a train takes the ordinary request.
-//! - Units on a Rust route adapter (`issue_direct_move`: refinery and repair
-//!   pads, building entry, sell, passengers, grid-less scatter; and component
-//!   fixtures without native zone topology) keep the pass lane's own head
-//!   selection (`movement_step::select_fresh_drive_track_at_current_cell`
-//!   with `DriveCellAdmission`) and target publish
+//! - Drive/Ship Units off this owner keep the pass lane's own head selection
+//!   (`movement_step::select_fresh_drive_track_at_current_cell` with
+//!   `DriveCellAdmission`) and target publish
 //!   (`track_speed::publish_fresh_target`), a second implementation of this
-//!   arm. Trigger: every direct pad approach and direct scatter. Effect:
-//!   those moves skip the native gates, responses and speed products.
-//!   Frequency: every harvester dock and repair visit. Risk: the dock chain
-//!   (native Enter/Unload missions) removes the direct moves.
+//!   arm: component fixtures without native zone topology, and a Rust route
+//!   adapter (`issue_direct_move`). Trigger: the only adapter producer a Unit
+//!   can reach is C4 building entry, for a `C4=` VehicleType (no retail
+//!   type; the UI issues PlantC4 only for infantry). Effect: that move skips
+//!   the native gates, responses and speed products. Frequency: none with
+//!   retail data. Risk: the fixtures and the C4 entry's own chain retire it.
 
 use super::block_index::HeldBlockSets;
 use super::foot_path::{FindPathResult, FootPathOutcome, coord_cell};

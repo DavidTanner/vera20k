@@ -1771,13 +1771,13 @@ impl Simulation {
                 }
                 None => 0u8.hash(hasher),
             }
-            // ObjectClass +0x8D IsFallingDown and its descent: absent hashes
-            // the one zero byte the retired falling byte did.
+            // ObjectClass +0x8D IsFallingDown and its FallRate: absent hashes
+            // the one zero byte the retired falling byte did. The fall's
+            // height is the Location Z, hashed with the position.
             match entity.parachute_state.as_ref() {
                 Some(fall) => {
                     1u8.hash(hasher);
                     fall.rate.hash(hasher);
-                    fall.altitude.to_bits().hash(hasher);
                 }
                 None => 0u8.hash(hasher),
             }
@@ -2613,20 +2613,16 @@ mod mission_authority_hash_tests {
     }
 
     #[test]
-    fn falling_state_and_its_descent_change_state_hash() {
+    fn falling_state_and_its_fall_rate_change_state_hash() {
         let base = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
         let mut falling = base.clone();
         falling.set_falling_down_for_test(true);
         let mut faster = falling.clone();
         faster.parachute_state.as_mut().unwrap().rate = -2;
-        let mut higher = falling.clone();
-        higher.parachute_state.as_mut().unwrap().altitude =
-            crate::util::fixed_math::SimFixed::from_num(300);
 
         let falling_hash = hash_entity(falling);
         assert_ne!(hash_entity(base), falling_hash, "IsFallingDown");
         assert_ne!(falling_hash, hash_entity(faster), "fall rate");
-        assert_ne!(falling_hash, hash_entity(higher), "fall height");
     }
 }
 

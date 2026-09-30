@@ -763,7 +763,11 @@ use crate::sim::world::Simulation;
 // and Building metadata no longer save competing stage/rate/timer copies.
 // Infantry retains the native pending-Deploy6E4 and Techno crush2A4 bytes;
 // its TarCom no longer saves a competing cached sequence/discharge frame.
-const SNAPSHOT_VERSION: u32 = 264;
+// 264 -> 265: a parachute descent no longer saves an altitude; the falling
+// object's height is its Location Z.
+// 265 -> 266: a depot dock state no longer saves an Approach phase;
+// WaitForDock is the depot as pending entry (Unit+0x500).
+const SNAPSHOT_VERSION: u32 = 266;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3654,7 +3658,9 @@ mod tests {
         // 261 -> 262: retained House radius, Foot688 and inherited Foot68D.
         // 262 -> 263: no runtime copy of CellClass bridge cell state.
         // 263 -> 264: shared native StageClass; no Miner/Building clock copies.
-        assert_eq!(super::SNAPSHOT_VERSION, 264);
+        // 264 -> 265: no parachute altitude beside the Location Z.
+        // 265 -> 266: no Approach depot phase; WaitForDock is pending entry.
+        assert_eq!(super::SNAPSHOT_VERSION, 266);
     }
 
     #[test]

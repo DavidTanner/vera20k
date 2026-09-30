@@ -5936,7 +5936,7 @@ mod tests {
             .unwrap()
             .dock_state = Some(DockState {
             dock_building_id: 99,
-            phase: DockPhase::Approach,
+            phase: DockPhase::EnterDock,
             service_timer: 0,
             no_funds_ticks: 0,
             enter_retry: Default::default(),
