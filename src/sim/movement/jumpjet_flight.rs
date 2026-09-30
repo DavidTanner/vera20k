@@ -9,6 +9,9 @@
 //!   integrates height toward the bobbed target height over a terrain reference,
 //!   zeroes the speed while too low outside the destination cell, then steps the
 //!   owner along the locomotor's own facing and copies that facing to the body.
+//!   Outside the hold and the cruise it runs between the owner's Mark(REMOVE)
+//!   and Mark(PUT), so its own cell no longer lists it while it samples cell
+//!   tops.
 //! - `JumpjetLocomotionClass::State3_Translate @ 0x0054BFF0`: desired facing
 //!   toward the destination through the retail atan table, four distance speed
 //!   zones with a turn-error slowdown, target-height choice, and arrival below
@@ -29,8 +32,24 @@
 //! The kill and the crash fall to its impact are pinned by
 //! `tools/spatial_oracle/jumpjet_crash.json` for ZEP, SHAD, HIND, SCHP and DISK
 //! (not the deployed SCHD, whose block matches SCHP's) in the hover, and for
-//! kills in the cruise and in the descent's last step. Bridges, building tops
-//! and cell objects are Rust-tested only.
+//! kills in the cruise and in the descent's last step. The Rocketeer's fall
+//! (`tools/spatial_oracle/jumpjet_infantry_crash.json`) runs the original
+//! `FootClass::Mark` chain, so it also pins Update's Mark bracket: the faller
+//! is listed in its cell below twice the level height, yet never lifts its own
+//! cell top. Bridges, building tops and other cell objects are Rust-tested only.
+//!
+//! RESIDUAL: the states' own Mark calls are not ported. Their transitions run
+//! Mark(REMOVE) and then restore +0x74 (`0x0054BB3C`, `0x0054BB73`,
+//! `0x0054BD13`, `0x0054BE19`, `0x0054BE81`, `0x0054BFCB`, `0x0054C2BC`,
+//! `0x0054C36A`, `0x0054C603`, `0x0054C63B`), and the touchdown brackets its
+//! SetLocation with Mark(REMOVE)/Mark(PUT) (`0x0054C820`, `0x0054C8C5`).
+//! Trigger: a state change, or a landing. Effect: an owner still in the
+//! Ground layer (below twice the level height) keeps its list entry and a
+//! Unit's 0x20 until the next Update bracket, where native drops them; a
+//! touchdown relists at Update's last location, which is the destination's
+//! cell but not its snapped XY. Frequency: transitions mostly happen at
+//! cruise height, where nothing is listed; every landing. Risk: a ground
+//! mover sees the owner one frame late or early at the landing cell.
 //!
 //! Numeric model: `WinMain` installs x87 control word `0x0E7F` (53-bit
 //! precision, round toward zero; `_controlfp(0x300, 0x300)` at `0x006BBFC1`),
@@ -340,6 +359,9 @@ pub(crate) trait JumpjetFlightHost {
     /// moves (`SetLocation`, `+0x1B4`), and is marked (`Mark(PUT)`) and
     /// submitted (`0x004A9720`) again.
     fn crash_relocate(&mut self, coord: [i32; 3]);
+    /// The owner's `Mark` (vtable `+0x124`, `FootClass::Mark @ 0x004D3780`)
+    /// at its current location: PUT when `put`, REMOVE otherwise.
+    fn mark(&mut self, put: bool);
     /// The crash impact's owner work after its air slot release
     /// (`0x0054D06C..0x0054D095`): `AircraftTracker::Remove @ 0x004135D0`, then
     /// the owner's `INoticeSink` slot 0 with `(0x117C, 0)`, whose handler
@@ -423,6 +445,18 @@ pub(crate) fn update_coordinates_and_altitude(
     host: &mut impl JumpjetFlightHost,
 ) {
     let hold_or_translate = matches!(phase, STATE_HOLD | STATE_TRANSLATE);
+    // 0x0054D0FF..0x0054D134: outside the hold and the cruise the owner is
+    // taken off the map for the body (Mark(REMOVE) here, Mark(PUT) at the end,
+    // 0x0054D6A6), so its own cell does not list it while the reference height
+    // samples the cell top. The hold and the cruise instead clear +0x74 here
+    // and restore the saved byte at the end (0x0054D6B4..0x0054D6BD), leaving
+    // the lists alone. Either way SetZ (0x005F6060) finds +0x74 clear and
+    // skips its own Mark pair; `set_z` never marks, so the byte is not
+    // modelled.
+    let lifted = !hold_or_translate;
+    if lifted {
+        host.mark(false);
+    }
 
     // Speed ramp 0x0054D138..D1AE. The acceleration test runs first and the
     // deceleration test reads the updated value, so a target below the cap can
@@ -536,6 +570,11 @@ pub(crate) fn update_coordinates_and_altitude(
     }
     if let Some(next) = new_z {
         host.set_z(next);
+        // 0x0054D546..0x0054D554: a second Mark(REMOVE), which the first one
+        // has already made a refusal.
+        if lifted {
+            host.mark(false);
+        }
     }
 
     // Horizontal step along the locomotor facing (0x0054D55A..D607).
@@ -572,6 +611,9 @@ pub(crate) fn update_coordinates_and_altitude(
             }
             None => host.snap_body_facing(flight.facing.current(frame)),
         }
+    }
+    if lifted {
+        host.mark(true);
     }
 }
 
@@ -819,9 +861,17 @@ fn sub_cell_of(coord: [i32; 3]) -> i32 {
 
 /// `State0_GroundIdle @ 0x0054B980`. Returns the new state.
 ///
-/// The air-bucket add at `0x0054BA20` is gated on the owner's cell matching the
-/// global cell at `0x00ABC588`, which this port does not model; no corpus row
-/// reaches it.
+/// RESIDUAL: a takeoff adds an untracked owner to the AircraftTracker
+/// (`0x0054B9F8..0x0054BA20`). The owner's vtable `+0x2F4` (`0x0041C150` for
+/// Unit, Infantry and Aircraft) reads its tracker cell `+0x560`, and the zeroed
+/// cell at `0x00ABC588` means none. Touchdown removes it again (`0x0054C9DC`).
+/// This port makes neither call; `Simulation::sync_air_spatial_membership`
+/// keeps every marked Jumpjet tracked instead, landed ones too.
+/// - Trigger: every Jumpjet takeoff and touchdown.
+/// - Effect: tracker membership and enter order.
+/// - Frequency: common.
+/// - Risk: tracker readers, such as area damage and the greatest-threat air
+///   pre-pass, count a landed Jumpjet as airborne.
 pub(crate) fn state0_ground(
     moving: bool,
     params: &JumpjetFlightParams,
@@ -1315,6 +1365,8 @@ mod tests {
             self.events.push("crash_relocate");
             self.location = coord;
         }
+        // The flight corpus stubs Mark (`jumpjet_coordinates.MARK`).
+        fn mark(&mut self, _put: bool) {}
         fn crash_impact(&mut self) {
             self.events.push("crash_impact");
         }
@@ -1780,6 +1832,8 @@ mod tests {
             self.impact_events.push(json!("layer_remove"));
             self.location = coord;
         }
+        // The states corpus stubs Mark (`jumpjet_states.MARK`).
+        fn mark(&mut self, _put: bool) {}
         fn crash_impact(&mut self) {
             self.impact_events.push(json!("bucket_remove"));
             self.impact_events.push(json!([0x117C, 0]));

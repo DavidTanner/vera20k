@@ -231,6 +231,23 @@ pub(crate) fn teleport_process_active(entity: &crate::sim::game_entity::GameEnti
         .is_some_and(|locomotor| locomotor.active_kind() == LocomotorKind::Teleport)
 }
 
+impl crate::sim::world::Simulation {
+    /// Foot Limbo's first Limbo calls ILocomotion `+0x9C(0)` (`0x004DB324`).
+    /// Teleport's (`0x0071A090`) calls the owner's vtable `+0xF4` at
+    /// Head_To_Coord, which is the owner's Location (`0x0055ACA0`). For an
+    /// infantryman that is what clears his sub-cell: Infantry Mark clears none
+    /// (`0x0047EAFE`).
+    pub(crate) fn release_teleport_occupation_before_foot_limbo(&mut self, id: u64) {
+        let Some(coord) = self.substrate.entities.get(id).and_then(|entity| {
+            (!entity.lifecycle.in_limbo && teleport_process_active(entity))
+                .then(|| super::ground_pose::position_world_coord(&entity.position))
+        }) else {
+            return;
+        };
+        self.object_raw_receiver_at(id, coord, false);
+    }
+}
+
 /// Process `0x00719375..0x007193C1`: an owner whose exact coordinate is
 /// already the armed destination takes `vt+0x480(NULL, 1)` and Stop_Moving
 /// instead of the warp (`0x007197AF`): no animation, sound or PerCell.

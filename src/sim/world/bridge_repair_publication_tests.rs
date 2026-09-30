@@ -280,31 +280,36 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
             if e.position.rx == 16 && e.locomotor.as_ref().unwrap().step_head().is_some() {
                 assert!(!changed, "crossing alone must not emit PerCell repair");
                 if !saw_boundary_before_completion {
-                    let mask = crate::sim::occupancy::infantry_raw_occupation_mask(
-                        e.position.sub_x,
-                        e.position.sub_y,
-                    );
-                    assert_ne!(
-                        (if e.on_bridge {
-                            sim.substrate
-                                .raw_cell_occupation
-                                .deck_bits(e.position.rx, e.position.ry)
+                    // The boundary's Mark pair leaves an Infantry's raw
+                    // occupation alone (AddContent `0x0047E9EA`): his bit is
+                    // still the head sub-cell his acceptance marked
+                    // (`0x0075C5F1`), not his current XYZ.
+                    use crate::sim::occupancy::infantry_raw_occupation_mask;
+                    use crate::util::fixed_math::SimFixed;
+                    let bits = |rx: u16, ry: u16| {
+                        if e.on_bridge {
+                            sim.substrate.raw_cell_occupation.deck_bits(rx, ry)
                         } else {
-                            sim.substrate
-                                .raw_cell_occupation
-                                .ground_bits(e.position.rx, e.position.ry)
-                        }) & mask,
+                            sim.substrate.raw_cell_occupation.ground_bits(rx, ry)
+                        }
+                    };
+                    let head = e.locomotor.as_ref().unwrap().step_head().unwrap();
+                    let head_mask = infantry_raw_occupation_mask(
+                        SimFixed::from_num(head.x % 256),
+                        SimFixed::from_num(head.y % 256),
+                    );
+                    let current_mask =
+                        infantry_raw_occupation_mask(e.position.sub_x, e.position.sub_y);
+                    assert_ne!(current_mask, head_mask);
+                    assert_eq!(
+                        bits((head.x / 256) as u16, (head.y / 256) as u16) & head_mask,
+                        head_mask,
+                        "the head stays reserved across the boundary: {trace:#?}"
+                    );
+                    assert_eq!(
+                        bits(e.position.rx, e.position.ry) & current_mask,
                         0,
-                        "current XYZ is marked before a later object's repair query; marked={} enabled={} bridge={} raw={:x}/{:x} mask={mask:x} trace={trace:#?}",
-                        e.lifecycle.cell_marked,
-                        e.foot_occupation_enabled,
-                        e.on_bridge,
-                        sim.substrate
-                            .raw_cell_occupation
-                            .ground_bits(e.position.rx, e.position.ry),
-                        sim.substrate
-                            .raw_cell_occupation
-                            .deck_bits(e.position.rx, e.position.ry)
+                        "the boundary marks no current XYZ: {trace:#?}"
                     );
                 }
                 saw_boundary_before_completion = true;
@@ -369,8 +374,12 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
     }
 }
 
+/// The boundary (`0x0075C117..0x0075C1AE`) relinks the man at his current
+/// XYZ through Mark, which skips an Infantry's raw receiver
+/// (`0x0047E9EA` / `0x0047EAFE`): his bit stays on the head his acceptance
+/// marked, after it cleared his old spot (`0x0075C2A0` / `0x0075C5F1`).
 #[test]
-fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
+fn walk_boundary_relinks_current_xyz_and_leaves_the_raw_bit_on_the_head() {
     use crate::sim::components::DriveCoord;
     use crate::sim::movement::{ground_pose, locomotor::MovementLayer, walk_head};
     use crate::util::fixed_math::SimFixed;
@@ -396,14 +405,13 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
         y: 15 * 256 + 192,
         z: 0,
     };
-    let (owner, current, queue, path_index) = {
+    let (owner, queue, path_index) = {
         let e = sim.substrate.entities.get_mut(id).unwrap();
         e.position.sub_x = SimFixed::from_num(192);
         e.position.sub_y = SimFixed::from_num(64);
         e.locomotor.as_mut().unwrap().set_step_head(Some(head));
         (
             e.owner(),
-            ground_pose::position_world_coord(&e.position),
             e.navigation.path_replay.clone(),
             e.movement_target.as_ref().unwrap().next_index,
         )
@@ -411,16 +419,14 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
     sim.substrate
         .raw_cell_occupation
         .clear_ground_infantry(15, 15, 0x1f);
-    for coord in [current, head] {
-        walk_head::raw_at(
-            &mut sim.substrate.raw_cell_occupation,
-            owner,
-            coord,
-            true,
-            sim.resolved_terrain.as_ref(),
-            None,
-        );
-    }
+    walk_head::raw_at(
+        &mut sim.substrate.raw_cell_occupation,
+        owner,
+        head,
+        true,
+        sim.resolved_terrain.as_ref(),
+        None,
+    );
     let crossing = DriveCoord {
         x: 16 * 256 + 8,
         y: 15 * 256 + 64,
@@ -440,7 +446,7 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
     );
     assert_eq!(
         sim.substrate.raw_cell_occupation.ground_bits(16, 15) & 0x1f,
-        0x11
+        0x10
     );
     assert_eq!(
         sim.substrate
@@ -497,13 +503,23 @@ fn diagonal_walk_relinks_the_first_actual_side_cell_before_reaching_its_head() {
             assert_eq!((head.x / 256, head.y / 256), (16, 16));
             assert!(sim.substrate.occupancy.contains_entity(16, 15, id));
             assert!(!sim.substrate.occupancy.contains_entity(15, 15, id));
+            // The side cell lists him, but Mark skips his raw receiver
+            // (`0x0047E9EA`): his bit stays on the head sub-cell.
             let mask = crate::sim::occupancy::infantry_raw_occupation_mask(
                 e.position.sub_x,
                 e.position.sub_y,
             );
-            assert_ne!(
+            assert_eq!(
                 sim.substrate.raw_cell_occupation.ground_bits(16, 15) & mask,
                 0
+            );
+            let head_mask = crate::sim::occupancy::infantry_raw_occupation_mask(
+                SimFixed::from_num(head.x % 256),
+                SimFixed::from_num(head.y % 256),
+            );
+            assert_eq!(
+                sim.substrate.raw_cell_occupation.ground_bits(16, 16) & head_mask,
+                head_mask
             );
             return;
         }

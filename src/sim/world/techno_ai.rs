@@ -747,7 +747,12 @@ fn techno_ai_shell(
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
             {
-                crate::sim::transport_unload::dispatch_aircraft_unload(sim, id, rules);
+                crate::sim::transport_unload::dispatch_aircraft_unload(
+                    sim,
+                    id,
+                    rules,
+                    ctx.overlay_registry,
+                );
                 // The remaining aircraft missions dispatch here too, inside
                 // this slot and before Fly Process (FootClass::AI4DA530).
                 if crate::sim::aircraft::dispatch_aircraft_mission(sim, rules, id) {

@@ -61,6 +61,14 @@ pub(super) fn insert_entity(sim: &mut Simulation, stable_id: u64, category: Enti
     sim.substrate.entities.insert(entity);
 }
 
+/// An Infantry fixture on the Walk locomotor, whose Limbo hook clears his
+/// sub-cell.
+pub(super) fn insert_walker(sim: &mut Simulation, stable_id: u64) {
+    insert_entity(sim, stable_id, EntityCategory::Infantry);
+    sim.substrate.entities.get_mut(stable_id).unwrap().locomotor =
+        Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
+}
+
 fn insert_reservation_building(
     sim: &mut Simulation,
     stable_id: u64,
@@ -323,24 +331,20 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
 }
 
 #[test]
-fn receiver_borrowed_map_uninit_clears_aircraft_bridge_occupation() {
+fn uninit_clears_aircraft_bridge_occupation() {
     let mut sim = Simulation::new();
-    install_common_raw_terrain(&mut sim, 8, 8, 0xFE, Some((3, 4)));
+    install_common_raw_terrain(&mut sim, 8, 8, 1, Some((3, 4)));
     install_fly_aircraft(&mut sim, 1, SimFixed::from_num(0));
     sim.substrate.entities.get_mut(1).unwrap().on_bridge = true;
     assert!(matches!(
-        sim.try_reveal_entity(1, common_raw_request(3, 4, 2, 128, 128)),
+        sim.try_reveal_entity(1, common_raw_request(3, 4, 5, 128, 128)),
         RevealOutcome::Revealed { .. }
     ));
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0x40);
 
-    // Exercise the borrowed-map UnInit boundary, not Aircraft ReceiveDamage:
-    // fatal Aircraft damage starts a crash and does not immediately UnInit.
-    let terrain = sim.resolved_terrain.take();
-    let bridge_state = sim.bridge_state.take();
-    sim.uninit_with_context(1, super::UninitContext::with_terrain(terrain.as_ref()));
-    sim.resolved_terrain = terrain;
-    sim.bridge_state = bridge_state;
+    // UnInit itself, not Aircraft ReceiveDamage: fatal Aircraft damage
+    // starts a crash and does not immediately UnInit.
+    sim.uninit_with_context(1, super::UninitContext::default());
 
     assert!(sim.substrate.entities.get(1).unwrap().lifecycle.in_limbo);
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
@@ -535,9 +539,13 @@ fn grounded_ramp_reveal_commits_native_height_before_occupation() {
                 Some(expected_z),
                 "{kind:?} bridge={on_bridge} level={requested_level}"
             );
+            // An infantryman's bits come from InfantryClass::Unlimbo, which
+            // skips a man placed more than a deck above the ground
+            // (`0x0051E0F6..0x0051E10E`), not from his Mark.
+            let marked = deck && (category == EntityCategory::Unit || expected_z <= 52 + 416);
             assert_eq!(
                 sim.substrate.raw_cell_occupation.deck_bits(2, 2) != 0,
-                deck,
+                marked,
                 "Mark(PUT) must read the committed ramp/deck coordinate"
             );
             assert_eq!(sim.scenario_rng.logical_state(), before_rng);
@@ -1096,11 +1104,19 @@ fn gsi_04_12_common_raw_occupation_signed_z_marks_ground_on_live_bridge() {
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 }
 
+/// Signed level -2 grounds at -207 (`ground_height_leptons`), so its deck
+/// starts at 209; an on-bridge Drive unit revealed at the deck level sits
+/// there exactly, is marked on the deck and cleared there by height.
 #[test]
 fn gsi_04_12_common_raw_occupation_signed_ground_pins_mark_and_height_clear() {
     let mut sim = Simulation::new();
     install_common_raw_terrain(&mut sim, 8, 8, 0xFE, Some((3, 4)));
     insert_entity(&mut sim, 1, EntityCategory::Unit);
+    {
+        let unit = sim.substrate.entities.get_mut(1).unwrap();
+        unit.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
+        unit.on_bridge = true;
+    }
 
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 2, 128, 128));
 
@@ -1157,10 +1173,14 @@ fn gsi_04_12_common_raw_occupation_infantry_masks_follow_coordinates_and_never_b
     }
 }
 
+/// Infantry Mark skips the receiver (AddContent `0x0047E9EA`, RemoveContent
+/// `0x0047EAFE`). `InfantryClass::Unlimbo` writes the sub-cell after Foot's
+/// Unlimbo has linked him (`0x0051E0F6..0x0051E10E`), and Walk's Limbo hook
+/// (`0x004DB324` -> `0x0075CA69`) clears it before Techno's Limbo unlinks him.
 #[test]
-fn gsi_04_12_common_raw_occupation_infantry_marks_after_link_then_clears() {
+fn gsi_04_12_common_raw_occupation_infantry_unlimbo_marks_after_link_and_walk_limbo_clears_first() {
     let mut sim = Simulation::new();
-    insert_entity(&mut sim, 1, EntityCategory::Infantry);
+    insert_walker(&mut sim, 1);
 
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 0, 192, 64));
     let linked = sim
@@ -1183,7 +1203,7 @@ fn gsi_04_12_common_raw_occupation_infantry_marks_after_link_then_clears() {
     );
 
     sim.lifecycle_test_events.clear();
-    let _ = sim.object_conceal(1);
+    let _ = sim.techno_limbo(1);
 
     assert!(!sim.substrate.occupancy.contains_entity(3, 4, 1));
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
@@ -1193,24 +1213,62 @@ fn gsi_04_12_common_raw_occupation_infantry_marks_after_link_then_clears() {
             .ground_infantry_owner(3, 4),
         None
     );
-    assert!(
-        sim.lifecycle_test_events
-            .contains(&LifecycleTestEvent::RawOccupationListUnlinked),
-        "object-list unlink precedes the independent raw occupation clear"
-    );
-    assert!(
-        sim.lifecycle_test_events
-            .contains(&LifecycleTestEvent::RawOccupationCleared)
-    );
+    let cleared = sim
+        .lifecycle_test_events
+        .iter()
+        .position(|event| *event == LifecycleTestEvent::RawOccupationCleared)
+        .expect("Walk Limbo raw clear");
+    let unlinked = sim
+        .lifecycle_test_events
+        .iter()
+        .position(|event| *event == LifecycleTestEvent::RawOccupationListUnlinked)
+        .expect("Infantry list unlink");
+    assert!(cleared < unlinked);
 }
 
+/// The same Limbo hook (`0x004DB324`) on a Chrono Legionnaire's Teleport
+/// (`0x0071A090`) or a grounded Rocketeer's Jumpjet (`0x0054D930`, State 0)
+/// clears his sub-cell at his Location. Nothing else would: Infantry Mark
+/// clears none (`0x0047EAFE`).
 #[test]
-fn gsi_04_12_common_raw_occupation_infantry_above_deck_height_marks_and_clears_deck() {
+fn teleport_and_grounded_jumpjet_limbo_clear_the_infantrymans_sub_cell() {
+    for kind in [LocomotorKind::Teleport, LocomotorKind::Jumpjet] {
+        let mut sim = Simulation::new();
+        insert_entity(&mut sim, 1, EntityCategory::Infantry);
+        sim.substrate.entities.get_mut(1).unwrap().locomotor =
+            Some(LocomotorState::for_test_kind(kind));
+        let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 0, 192, 64));
+        assert_eq!(
+            sim.substrate.raw_cell_occupation.ground_bits(3, 4),
+            0x04,
+            "{kind:?}"
+        );
+
+        let _ = sim.techno_limbo(1);
+
+        assert!(
+            !sim.substrate.occupancy.contains_entity(3, 4, 1),
+            "{kind:?}"
+        );
+        assert_eq!(
+            sim.substrate.raw_cell_occupation.ground_bits(3, 4),
+            0,
+            "{kind:?}"
+        );
+    }
+}
+
+/// A man placed exactly a deck above a structural bridge's ground is marked
+/// on the deck plane (`0x005217C0`) and cleared there by height alone
+/// (`0x00521850`). One placed higher is not marked at all: Unlimbo skips its
+/// vt+0xF0 above the deck (`0x0051E0F6..0x0051E10E`).
+#[test]
+fn gsi_04_12_common_raw_occupation_infantry_on_the_deck_marks_and_clears_deck() {
     let mut sim = Simulation::new();
     install_common_raw_terrain(&mut sim, 8, 8, 1, Some((3, 4)));
-    insert_entity(&mut sim, 1, EntityCategory::Infantry);
+    insert_walker(&mut sim, 1);
 
-    let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 6, 192, 64));
+    let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 5, 192, 64));
 
     assert!(sim.substrate.occupancy.contains_entity(3, 4, 1));
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
@@ -1228,25 +1286,31 @@ fn gsi_04_12_common_raw_occupation_infantry_above_deck_height_marks_and_clears_d
             .contains(&LifecycleTestEvent::RawOccupationMarked)
     );
 
-    let _ = sim.object_conceal(1);
+    let _ = sim.techno_limbo(1);
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
     assert_eq!(
         sim.substrate.raw_cell_occupation.deck_infantry_owner(3, 4),
         None
     );
+
+    insert_walker(&mut sim, 2);
+    let _ = sim.try_reveal_entity(2, common_raw_request(3, 4, 6, 192, 64));
+    assert!(sim.substrate.occupancy.contains_entity(3, 4, 2));
+    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
+    assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 }
 
 #[test]
 fn gsi_04_12_common_raw_occupation_high_nonstructural_infantry_retains_mark_plane_asymmetry() {
     let mut sim = Simulation::new();
     install_common_raw_terrain(&mut sim, 8, 8, 2, None);
-    insert_entity(&mut sim, 1, EntityCategory::Infantry);
+    insert_walker(&mut sim, 1);
 
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 6, 192, 64));
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0x04);
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 
-    let _ = sim.object_conceal(1);
+    let _ = sim.techno_limbo(1);
     assert_eq!(
         sim.substrate.raw_cell_occupation.ground_bits(3, 4),
         0x04,
@@ -1336,25 +1400,18 @@ fn gsi_04_05_hidden_lifecycle_follows_base_lists_without_expanding_them() {
     assert!(unlinked < hidden);
 }
 
+/// Mark asks the object's layer (vt+0x78, `0x004D37A6`), which a Drive
+/// locomotor answers as Ground whatever VERA's path layer says.
 #[test]
-fn gsi_04_12_common_raw_occupation_skips_transport_and_airborne_entities() {
+fn gsi_04_12_common_raw_occupation_follows_the_layer_query_not_the_path_layer() {
     let mut sim = Simulation::new();
-    insert_entity(&mut sim, 1, EntityCategory::Unit);
-    sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Inside {
-        transport_id: 99,
-        open_topped: false,
-    };
-    let _ = sim.try_reveal_entity(1, common_raw_request(2, 3, 0, 128, 128));
-    assert!(!sim.substrate.occupancy.contains_entity(2, 3, 1));
-    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(2, 3), 0);
-
     insert_entity(&mut sim, 2, EntityCategory::Unit);
     let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Drive);
     locomotor.layer = MovementLayer::Air;
     sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
     let _ = sim.try_reveal_entity(2, common_raw_request(5, 6, 0, 128, 128));
-    assert!(!sim.substrate.occupancy.contains_entity(5, 6, 2));
-    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(5, 6), 0);
+    assert!(sim.substrate.occupancy.contains_entity(5, 6, 2));
+    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(5, 6), 0x20);
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(5, 6), 0);
 }
 
@@ -1426,12 +1483,12 @@ fn gsi_04_12_object_raw_occupation_airborne_and_non_fly_aircraft_are_excluded() 
 #[test]
 fn gsi_04_12_object_raw_occupation_deck_clear_rechecks_live_structural_state() {
     let mut sim = Simulation::new();
-    // Signed level -2 makes z=2 exactly four normalized levels above ground.
-    install_common_raw_terrain(&mut sim, 8, 8, 0xFE, Some((3, 4)));
+    // Level 1 makes z=5 exactly one deck above ground.
+    install_common_raw_terrain(&mut sim, 8, 8, 1, Some((3, 4)));
     install_fly_aircraft(&mut sim, 1, SimFixed::from_num(0));
     sim.substrate.entities.get_mut(1).unwrap().on_bridge = true;
 
-    let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 2, 128, 128));
+    let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 5, 128, 128));
     assert_eq!(
         sim.substrate
             .occupancy
@@ -1446,7 +1503,7 @@ fn gsi_04_12_object_raw_occupation_deck_clear_rechecks_live_structural_state() {
 
     install_fly_aircraft(&mut sim, 2, SimFixed::from_num(0));
     sim.substrate.entities.get_mut(2).unwrap().on_bridge = true;
-    let _ = sim.try_reveal_entity(2, common_raw_request(3, 4, 2, 128, 128));
+    let _ = sim.try_reveal_entity(2, common_raw_request(3, 4, 5, 128, 128));
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0x40);
 
     {
@@ -1726,10 +1783,55 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     assert_ne!(crossed.air_spatial_bucket, shared_bucket);
     assert!(crossed.air_spatial_enter_order > second_order);
 
-    let _ = sim.object_conceal(20);
+    // FootClass::Limbo removes the tracked aircraft (`0x004DB3AA`); its
+    // Mark(UP) does not.
+    let _ = sim.techno_limbo(20);
     let exited = sim.substrate.entities.get(20).unwrap();
     assert_eq!(exited.air_spatial_bucket, None);
     assert_eq!(exited.air_spatial_enter_order, 0);
+}
+
+/// Foot Unlimbo's AircraftTracker admission (`0x004D72B2..0x004D72DB`) is
+/// not Fly's alone: a high-flying object (vt+0x54) whose type sets
+/// ConsideredAircraft (TechnoType `+0xD96`) enters the tracker at Reveal,
+/// here a Jumpjet VehicleType. Without that key it does not. Mark itself
+/// never adds anything.
+#[test]
+fn unlimbo_adds_a_high_flying_considered_aircraft_to_the_air_tracker() {
+    for (considered_aircraft, tracked) in [("yes", true), ("no", false)] {
+        let rules = crate::rules::ruleset::RuleSet::from_ini(
+            &crate::rules::ini_parser::IniFile::from_str(&format!(
+                "[VehicleTypes]\n0=JJET\n\
+                 [JJET]\nStrength=100\nSpeed=14\nConsideredAircraft={considered_aircraft}\n\
+                 Locomotor={{92612C46-F71F-11d1-AC9F-006008055BB5}}\n",
+            )),
+        )
+        .expect("Jumpjet VehicleType rules");
+        let mut sim = Simulation::new();
+        sim.session.map_width = 40;
+        sim.session.map_height = 40;
+        install_common_raw_terrain(&mut sim, 40, 40, 0, None);
+        insert_entity(&mut sim, 30, EntityCategory::Unit);
+        let type_ref = sim.interner.intern("JJET");
+        let entity = sim.substrate.entities.get_mut(30).unwrap();
+        entity.type_ref = type_ref;
+        // Reveal leaves an air unit without an exact Z (#692), so its height
+        // is the altitude cache, as in `install_fly_aircraft`.
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
+        locomotor.altitude = SimFixed::from_num(416);
+        entity.locomotor = Some(locomotor);
+
+        let _ = sim.try_reveal_entity_with_context(
+            30,
+            common_raw_request(3, 4, 4, 128, 128),
+            super::UninitContext::with_rules(&rules),
+        );
+
+        let jumpjet = sim.substrate.entities.get(30).unwrap();
+        assert!(jumpjet.lifecycle.cell_marked);
+        assert_eq!(jumpjet.air_spatial_bucket.is_some(), tracked);
+        assert!(!sim.substrate.occupancy.contains_entity(3, 4, 30));
+    }
 }
 
 fn insert_anim(sim: &mut Simulation, stable_id: u64, inactive: bool) {
@@ -2286,7 +2388,9 @@ fn gsi_04_05_hard_limbo_clears_pending_then_current_vehicle_occupation() {
         .cell_occupation
         .mark_vehicle_on_layer(head.0, head.1, 1, MovementLayer::Ground);
 
-    let _ = sim.object_conceal(1);
+    // FootClass::Limbo's +9C(0) releases the pending mark before the
+    // Conceal's Mark(UP) clears the current one.
+    let _ = sim.techno_limbo(1);
 
     assert_eq!(
         sim.substrate

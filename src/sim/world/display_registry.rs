@@ -224,7 +224,7 @@ impl Simulation {
         self.submit_object_display(id, layer, rules);
     }
 
-    pub(super) fn entity_display_layer(
+    pub(crate) fn entity_display_layer(
         &self,
         id: u64,
         rules: Option<&RuleSet>,

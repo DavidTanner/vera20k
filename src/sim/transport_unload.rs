@@ -756,7 +756,12 @@ fn aircraft_landed(
 /// unloads. Only script actions 8, 14 and 43 load or unload one, and they
 /// are not ported (`team_script_vm::actions`), so no ported path reaches
 /// these arms; once they are, passengers would leave their team at unload.
-pub(crate) fn dispatch_aircraft_unload(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+pub(crate) fn dispatch_aircraft_unload(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -803,7 +808,7 @@ pub(crate) fn dispatch_aircraft_unload(sim: &mut Simulation, id: u64, rules: &Ru
             if cargo_count(entity) == 0 {
                 aircraft_enter_idle_mode(sim, id);
             } else {
-                let ejected = eject_from_aircraft(sim, rules, id);
+                let ejected = eject_from_aircraft(sim, rules, overlay_registry, id);
                 let hold_empty = sim
                     .substrate
                     .entities
@@ -876,7 +881,11 @@ fn aircraft_enter_idle_mode(sim: &mut Simulation, id: u64) {
 const AIRCRAFT_EXIT_SCAN: [usize; 9] = [4, 5, 3, 7, 1, 0, 6, 2, 4];
 
 /// AircraftClass vtable `+0x100` = `0x00415B10` (Ghidra label
-/// `AircraftClass__Can_Enter_Cell` is wrong): the state-3 ejector.
+/// `AircraftClass__Can_Enter_Cell` is wrong): the state-3 ejector, run between
+/// the dispatcher's `Pick_Up` and `Place_Down` of the aircraft
+/// (`0x0041552E` / `0x00415565`). Mark lists a landed Jumpjet transport in
+/// its Cell with its 0x40, which would otherwise refuse the passenger's
+/// placement there.
 ///
 /// `0x00415B32`..`0x00415BAB`: for each table octant, the candidate cell is
 /// the aircraft cell plus `g_DirectionOffsets[octant & 7]`, kept in
@@ -902,13 +911,23 @@ const AIRCRAFT_EXIT_SCAN: [usize; 9] = [4, 5, 3, 7, 1, 0, 6, 2, 4];
 /// success: `Queue_Mission(Move)` (`0x00415C05`), `Set_Destination(scan
 /// cell, 1)` (`0x00415C21`), then the radio handshake described on
 /// [`aircraft_enter_idle_mode`]. No `LeaveTransportSound` on this path.
-fn eject_from_aircraft(sim: &mut Simulation, rules: &RuleSet, aircraft_id: u64) -> bool {
-    depart_cargo_head(
+fn eject_from_aircraft(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    aircraft_id: u64,
+) -> bool {
+    let mut picked_up = false;
+    let ejected = depart_cargo_head(
         sim,
         rules,
         aircraft_id,
         DepartureRoute::LandedAircraft,
         |sim, pax_id| {
+            // `0x0041552E`: with the head popped, the aircraft leaves its Cell
+            // (`MapClass::Pick_Up`), taking its list entry and raw bit along.
+            sim.foot_pick_up(aircraft_id, Some(rules), overlay_registry);
+            picked_up = true;
             let (cell, z, sub_x, sub_y) = match sim.substrate.entities.get(aircraft_id) {
                 Some(aircraft) => (
                     (aircraft.position.rx, aircraft.position.ry),
@@ -984,7 +1003,12 @@ fn eject_from_aircraft(sim: &mut Simulation, rules: &RuleSet, aircraft_id: u64) 
             Ok(())
         },
     )
-    .is_ok()
+    .is_ok();
+    // `0x00415565`: and goes back once the ejector returns.
+    if picked_up {
+        sim.foot_place_down(aircraft_id, Some(rules), overlay_registry, &mut |_, _| {});
+    }
+    ejected
 }
 
 #[cfg(test)]

@@ -917,7 +917,9 @@ fn scenario_draws(before: i32, after: i32) -> i32 {
 /// Cheer, 11 from Fly, FireFly or no action), keeps its action and crash
 /// latch as native does, and then, through `advance_tick`, falls,
 /// plays AirDeathStart, lands in AirDeathFinish at Health 1 and is removed
-/// on the native frame. A second kill in the fall draws 10 more and one at
+/// on the native frame. Below twice the level height its Mark lists it in
+/// its cell, as native's does; Update's own Mark bracket keeps it out of the
+/// cell top it falls toward. A second kill in the fall draws 10 more and one at
 /// its landing (the Health-0 re-entry into Stop_Driver); a fall from 1200
 /// leptons outlasts AirDeathStart, plays AirDeathFalling and takes the default
 /// arm to Hover before it lands; a grounded kill crashes nothing and draws
@@ -1046,6 +1048,17 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
                 expected["coord"][2].as_i64().unwrap(),
                 "{at}: height"
             );
+            assert_eq!(
+                sim.substrate
+                    .occupancy
+                    .get(entity.position.rx, entity.position.ry)
+                    .is_some_and(|cell| {
+                        cell.iter_layer(crate::sim::movement::locomotor::MovementLayer::Ground)
+                            .any(|object| object.entity_id == 1)
+                    }),
+                expected["listed"].as_bool().unwrap(),
+                "{at}: in its cell's ground list"
+            );
             // The landing: at Health 0 its forced AirDeathFinish re-enters
             // Stop_Driver (`0x0051DA96`), one Stop_Moving and one draw.
             if events.iter().any(|event| event[0] == "set_height") {
@@ -1063,4 +1076,38 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
             );
         }
     }
+}
+
+/// A grounded Rocketeer ordered away clears his sub-cell as he lifts off:
+/// Update's grounded reset hands the ground he leaves to his raw REMOVE
+/// receiver (vtable `+0xF4`, `0x0054D407..0x0054D438`), Infantry's
+/// `0x00521850`. His Mark never writes that bit (`0x0047EAFE`).
+#[test]
+fn a_rocketeer_lifting_off_clears_his_sub_cell() {
+    use crate::sim::command::Command;
+    let input = serde_json::json!({
+        "doing": 0,
+        "height": 0,
+        "owner": {"phase": 0, "moving": false},
+    });
+    let (mut sim, rules, _) = rocketeer_crash_fixture(&input);
+    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(52, 52), 0x01);
+    assert!(sim.apply_command(
+        "Americans",
+        &Command::Move {
+            entity_id: 1,
+            target_rx: 60,
+            target_ry: 52,
+            queue: false,
+        },
+        Some(&rules),
+    ));
+    let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
+    let rocketeer = sim.substrate.entities.get(1).unwrap();
+    assert!(
+        rocketeer.position.exact_z_leptons.unwrap() > 0,
+        "he lifted off"
+    );
+    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(52, 52), 0);
 }

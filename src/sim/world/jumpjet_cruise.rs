@@ -104,7 +104,13 @@ struct CruiseHost<'a> {
     body_facing: u16,
     /// The flight's `Set_Current` on the body, when it made one.
     snapped_body_facing: Option<u16>,
-    grounded_reset: bool,
+    /// The owner's Mark calls and grounded resets in the order the frame made
+    /// them, each at the location it made them from. The commit replays them
+    /// through the owner's Mark once the world is writable again.
+    owner_ops: Vec<OwnerOp>,
+    /// A Mark(REMOVE) has not been followed by a Mark(PUT) yet, so the
+    /// owner's cell no longer lists it.
+    owner_lifted: bool,
     /// The owner, as the air slots identify it.
     stable_id: u64,
     /// `ScenarioClass+0x218`, drawn only when a scatter actually happens so the
@@ -217,7 +223,9 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 
     fn grounded_reset(&mut self) {
-        self.grounded_reset = true;
+        self.owner_ops.push(OwnerOp::GroundedReset {
+            location: self.location,
+        });
         self.on_bridge = false;
     }
 
@@ -270,7 +278,10 @@ impl JumpjetFlightHost for CruiseHost<'_> {
             .substrate
             .occupancy
             .get(rx, ry)
-            .is_some_and(|cell| !cell.is_empty_on(MovementLayer::Ground));
+            .is_some_and(|cell| {
+                cell.iter_layer(MovementLayer::Ground)
+                    .any(|object| !(self.owner_lifted && object.entity_id == self.stable_id))
+            });
         jumpjet_flight::cell_top_height(centre, building_height, any_techno)
     }
 
@@ -458,6 +469,8 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 
     fn touchdown(&mut self) {
+        // The AircraftTracker removal (`0x0054C9DC`) is not made: see the
+        // residual on `state0_ground`.
         self.touched_down = true;
         let here = self.cell_of([self.location[0], self.location[1]]);
         if self.holds_air_slot_at(here) {
@@ -476,9 +489,19 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 
     fn crash_relocate(&mut self, coord: [i32; 3]) {
-        // The Mark and display calls run on the committed move below.
+        // The display resubmission follows the replayed Mark(PUT).
+        self.mark(false);
         self.location = coord;
+        self.mark(true);
         self.crash_relocated = true;
+    }
+
+    fn mark(&mut self, put: bool) {
+        self.owner_lifted = !put;
+        self.owner_ops.push(OwnerOp::Mark {
+            put,
+            location: self.location,
+        });
     }
 
     fn crash_impact(&mut self) {
@@ -506,6 +529,16 @@ fn commit_world_location(position: &mut Position, location: [i32; 3]) {
     position.exact_z_leptons = Some(location[2]);
 }
 
+/// An owner call the kernel made over the frozen world, replayed on commit.
+#[derive(Clone, Copy)]
+enum OwnerOp {
+    /// `Mark` (vtable `+0x124`) from `location`.
+    Mark { put: bool, location: [i32; 3] },
+    /// Update's grounded reset (`0x0054D407..0x0054D438`): the owner's raw
+    /// REMOVE receiver (vtable `+0xF4`) on `location`, then `+0x8C = 0`.
+    GroundedReset { location: [i32; 3] },
+}
+
 /// Every Jumpjet the native locomotor owns - all of them, airborne or landed.
 /// `Process 0x0054AEC0` itself decides whether a frame does anything, so an
 /// idle landed or idle holding owner is advanced by nothing.
@@ -526,7 +559,7 @@ struct HostEffects {
     entry_state: i32,
     /// The flight's `Set_Current` on the body, when it made one.
     body_facing: Option<u16>,
-    grounded_reset: bool,
+    owner_ops: Vec<OwnerOp>,
     height: i32,
     slot_ops: Vec<((u16, u16), Option<u64>)>,
     scatter_to: Option<(i16, i16)>,
@@ -575,10 +608,33 @@ impl Simulation {
             }
         }
 
-        if effects.crash_relocated {
-            // State 5's Mark(REMOVE) before its SetLocation. Mark leaves the
-            // AircraftTracker alone; the impact removes the wreck from it.
-            self.unmark_entity_remove_keeping_air_tracker(stable_id);
+        // Update's Mark bracket and grounded reset and State 5's Mark pair, in
+        // the frame's order, each from the location it was made at. Mark
+        // leaves the AircraftTracker alone; the impact removes a wreck from it.
+        for op in effects.owner_ops {
+            match op {
+                OwnerOp::Mark { put, location } => {
+                    let entity = self.substrate.entities.get_mut(stable_id)?;
+                    commit_world_location(&mut entity.position, location);
+                    if put {
+                        self.foot_mark_put(stable_id, rules, registry);
+                    } else {
+                        self.foot_mark_remove(stable_id, rules, registry);
+                    }
+                }
+                OwnerOp::GroundedReset { location } => {
+                    self.object_raw_receiver_at(
+                        stable_id,
+                        crate::sim::components::DriveCoord {
+                            x: location[0],
+                            y: location[1],
+                            z: location[2],
+                        },
+                        false,
+                    );
+                    self.substrate.entities.get_mut(stable_id)?.on_bridge = false;
+                }
+            }
         }
         let entity = self.substrate.entities.get_mut(stable_id)?;
         commit_world_location(&mut entity.position, location);
@@ -588,15 +644,11 @@ impl Simulation {
         if let Some(bits) = effects.speed_fraction {
             entity.foot_speed.set_speed_fraction_native_bits(bits);
         }
-        if effects.grounded_reset {
-            entity.on_bridge = false;
-        }
         if let Some(facing) = effects.body_facing {
             entity.body_facing.snap(facing, frame);
         }
         if effects.crash_relocated {
-            // Mark(PUT) and the display resubmission after it.
-            self.add_entity_occupancy(stable_id);
+            // The display resubmission after State 5's Mark(PUT).
             self.submit_entity_display(stable_id, rules, None);
         }
 
@@ -731,7 +783,8 @@ impl Simulation {
             deploy_to_land: object.is_some_and(|object| object.deploy_to_land),
             body_facing: entity.body_facing_current(frame),
             snapped_body_facing: None,
-            grounded_reset: false,
+            owner_ops: Vec::new(),
+            owner_lifted: false,
             stable_id,
             rng,
             slot_ops: Vec::new(),
@@ -753,13 +806,14 @@ impl Simulation {
         let entry_state = state;
         let state =
             jumpjet_flight::process(moving, state, destination, &params, &mut flight, &mut host);
+        let height = host.height_above_ground();
         let effects = HostEffects {
             moving,
             destination,
             entry_state,
             body_facing: host.snapped_body_facing,
-            grounded_reset: host.grounded_reset,
-            height: host.height_above_ground(),
+            owner_ops: host.owner_ops,
+            height,
             slot_ops: host.slot_ops,
             scatter_to: host.scatter_to,
             stop_requested: host.stop_requested,
@@ -1009,6 +1063,41 @@ mod tests {
             sim.tick_air_movement_with_cell_lists_one(1, None, None);
         }
         sim
+    }
+
+    /// A Jumpjet unit lifting off leaves its takeoff cell once it climbs past
+    /// twice the level height: Update takes it off the map for its body and
+    /// puts it back (`0x0054D12C` / `0x0054D6A6`), and that Mark(PUT) finds it
+    /// in the Air layer (`0x0054B8D0`), so no ground list holds it and its
+    /// 0x20 is gone (`0x00744210`).
+    #[test]
+    fn a_lifting_jumpjet_unit_leaves_its_takeoff_cell() {
+        let mut sim = hovering_jumpjet(0x40);
+        {
+            let entity = sim.substrate.entities.get_mut(1).expect("jumpjet");
+            entity.foot_occupation_enabled = true;
+            entity.position.exact_z_leptons = Some(0);
+            let locomotor = entity.locomotor.as_mut().expect("locomotor");
+            locomotor.altitude = SimFixed::from_num(0);
+            let runtime = locomotor.jumpjet_runtime_mut().expect("runtime");
+            runtime.phase = jumpjet_flight::STATE_GROUND;
+            runtime.moving = false;
+            runtime.destination = JumpjetRuntime::NULL;
+        }
+        sim.add_entity_occupancy(1);
+        assert!(sim.substrate.occupancy.contains_entity(10, 10, 1));
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(10, 10), 0x20);
+        for frame in 0..80 {
+            sim.session.binary_frame = 1001 + frame;
+            sim.tick_air_movement_with_cell_lists_one(1, None, None);
+        }
+        let entity = sim.substrate.entities.get(1).expect("jumpjet");
+        assert!(entity.position.exact_z_leptons.unwrap() >= 208);
+        let here = (entity.position.rx, entity.position.ry);
+        for (rx, ry) in [(10, 10), here] {
+            assert!(!sim.substrate.occupancy.contains_entity(rx, ry, 1));
+            assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(rx, ry), 0);
+        }
     }
 
     /// Before the locomotor owned this tick, VERA's air adapter cycled an idle

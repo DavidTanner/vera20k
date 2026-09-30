@@ -2368,7 +2368,7 @@ fn prepare_movement_pass(
     let resolved_terrain = ctx.resolved_terrain;
     for &entity_id in entity_order {
         if let Some(entity) = entities.get_mut(entity_id) {
-            cell_occupation.reconcile_entity(entity);
+            cell_occupation.reconcile_entity(entity, occupancy);
         }
     }
     // Active TubeMovement owns the entire object turn. Capture this before any

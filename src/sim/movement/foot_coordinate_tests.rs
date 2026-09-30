@@ -41,9 +41,13 @@ fn entity(id: u64, kind: LocomotorKind, current: DriveCoord, head: DriveCoord) -
                 ..Default::default()
             })
         }
-        LocomotorKind::Walk | LocomotorKind::Hover => {
-            e.locomotor.as_mut().unwrap().set_step_head(Some(head))
-        }
+        LocomotorKind::Walk => e.locomotor.as_mut().unwrap().set_step_head(Some(head)),
+        LocomotorKind::Hover => e
+            .locomotor
+            .as_mut()
+            .and_then(|loco| loco.hover_runtime_mut())
+            .unwrap()
+            .set_head(Some(head)),
         _ => {}
     }
     e

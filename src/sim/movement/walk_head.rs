@@ -162,6 +162,8 @@ impl crate::sim::world::Simulation {
             self.resolved_terrain.as_ref(),
             self.path_grid.as_deref(),
         );
+        #[cfg(test)]
+        self.trace_lifecycle_for_test(crate::sim::world::LifecycleTestEvent::RawOccupationCleared);
     }
 }
 

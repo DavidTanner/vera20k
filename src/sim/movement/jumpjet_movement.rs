@@ -172,6 +172,22 @@ impl JumpjetRuntime {
         }
     }
 
+    /// `Mark_All_Occupation_Bits @ 0x0054D930` with REMOVE, as Foot Limbo
+    /// calls it (`0x004DB324`). Head_To_Coord (`0x0054D9B0`) is the owner's
+    /// Location in State 0. The owner's vtable `+0xF4` runs there while
+    /// grounded, or at Head_To_Coord for an admitted landing, and the landing
+    /// byte clears (`0x0054D97B..0x0054D99C`). The null-coordinate skip
+    /// (`0x0054D962..0x0054D979`) never meets a live owner's Location. VERA's
+    /// admission placed no bit ([`Self::withdraw_landing`]), so only the
+    /// grounded call reaches a receiver. Whether it does.
+    pub(crate) fn mark_all_occupation_bits_remove(&mut self) -> bool {
+        let grounded = self.phase == 0;
+        if grounded || self.landing_latched {
+            self.landing_latched = false;
+        }
+        grounded
+    }
+
     /// `JumpjetLocomotionClass::Move_To @ 0x0054B1C0`.
     ///
     /// The request is stored first (`0x0054B22F`); NullCoord clears the moving
@@ -498,6 +514,33 @@ impl JumpjetOrderHost for WorldOrderHost<'_> {
 }
 
 impl Simulation {
+    /// Foot Limbo's first Limbo calls ILocomotion `+0x9C(0)` (`0x004DB324`):
+    /// Jumpjet's [`JumpjetRuntime::mark_all_occupation_bits_remove`]. For an
+    /// infantryman that is what clears his sub-cell: Infantry Mark clears none
+    /// (`0x0047EAFE`).
+    pub(crate) fn release_jumpjet_occupation_before_foot_limbo(&mut self, id: u64) {
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return;
+        };
+        if entity.lifecycle.in_limbo {
+            return;
+        }
+        let Some(runtime) = entity
+            .locomotor
+            .as_mut()
+            .filter(|locomotor| {
+                locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+            })
+            .and_then(|locomotor| locomotor.jumpjet_runtime_mut())
+        else {
+            return;
+        };
+        if runtime.mark_all_occupation_bits_remove() {
+            let coord = super::ground_pose::position_world_coord(&entity.position);
+            self.object_raw_receiver_at(id, coord, false);
+        }
+    }
+
     /// Run one Jumpjet order on a live owner over the world's grids. The
     /// runtime is worked on a copy and written back with the NavCom the order
     /// set, so the host can borrow the rest of the world. `None` for an owner
@@ -884,6 +927,24 @@ mod tests {
         occupancy::{OccupancyGrid, RawCellOccupationGrid},
         rng::SimRng,
     };
+
+    /// `0x0054D930` on REMOVE: a grounded owner's receiver runs; an airborne
+    /// one's runs only for an admitted landing, whose byte clears either way.
+    #[test]
+    fn mark_all_occupation_bits_remove_runs_the_receiver_only_when_grounded() {
+        let mut runtime = JumpjetRuntime::default();
+        assert!(runtime.mark_all_occupation_bits_remove());
+
+        runtime.phase = 4;
+        runtime.landing_latched = true;
+        assert!(!runtime.mark_all_occupation_bits_remove());
+        assert!(!runtime.landing_latched);
+
+        runtime.phase = 0;
+        runtime.landing_latched = true;
+        assert!(runtime.mark_all_occupation_bits_remove());
+        assert!(!runtime.landing_latched);
+    }
 
     /// The `jumpjet_coordinates` corpus owner: an Infantry at `(2496, 2624)`
     /// whose searches all answer cell (10,10), or NullCell when failing.

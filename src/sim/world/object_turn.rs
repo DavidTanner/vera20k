@@ -206,7 +206,9 @@ impl Simulation {
             && !sinking
             && let Some(entity) = self.substrate.entities.get(stable_id)
         {
-            self.substrate.cell_occupation.reconcile_entity(entity);
+            self.substrate
+                .cell_occupation
+                .reconcile_entity(entity, &self.substrate.occupancy);
         }
         let Some(kind) = admitted else {
             return Ok(LocomotorProcess::default());
@@ -328,9 +330,11 @@ impl Simulation {
                 sim.parasite_exit_unit(eater, rules);
             }
             // `0x007195DB` Mark(UP) and `0x007196BF` Mark(DOWN) bracket the
-            // relocation: the cell lists, the raw occupation and the vehicle
-            // plane leave the old cell and join the new one on its OnBridge
-            // layer. ChronoOut plays at the old Location (`0x0071962C`).
+            // relocation: the cell list entry, and a Unit's raw 0x20 and
+            // vehicle plane, leave the old cell and join the new one on its
+            // OnBridge layer. An infantryman's sub-cell bit stays: his Mark
+            // reaches no receiver, and the window calls none of its own.
+            // ChronoOut plays at the old Location (`0x0071962C`).
             sim.foot_mark_remove(stable_id, rules, overlay_registry);
             if let Some(rules) = rules {
                 teleport_warp_sound(sim, stable_id, WarpSound::Out, rules);

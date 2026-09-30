@@ -371,6 +371,7 @@ impl RawCellOccupationGrid {
     /// The interned house identity survives entity retirement and ownership
     /// changes, matching native's retained House index. Repair CanEnter uses
     /// this raw slot even when no infantry object remains in the selected list.
+    #[cfg(test)]
     pub(crate) fn mark_ground_infantry(&mut self, rx: u16, ry: u16, mask: u8, owner: InternedId) {
         let key = RawCellKey::Real(rx, ry);
         self.write_occupant(key, MovementLayer::Ground, mask, Some(owner), true);
@@ -380,6 +381,7 @@ impl RawCellOccupationGrid {
     /// `+0xF4`, `0x007EB14C`) resets the selected owner to `0xFFFFFFFF` only
     /// once `byte & 0x1C == 0`, i.e. after functional sub-cells 2..4 are all
     /// clear. Bits 0/1 do not retain it.
+    #[cfg(test)]
     pub(crate) fn clear_ground_infantry(&mut self, rx: u16, ry: u16, mask: u8) {
         let key = RawCellKey::Real(rx, ry);
         self.write_occupant(key, MovementLayer::Ground, mask, None, false);
@@ -427,14 +429,10 @@ impl RawCellOccupationGrid {
             .and_then(|cell| cell.deck_infantry_owner)
     }
 
+    #[cfg(test)]
     pub(crate) fn mark_deck_infantry(&mut self, rx: u16, ry: u16, mask: u8, owner: InternedId) {
         let key = RawCellKey::Real(rx, ry);
         self.write_occupant(key, MovementLayer::Bridge, mask, Some(owner), true);
-    }
-
-    pub(crate) fn clear_deck_infantry(&mut self, rx: u16, ry: u16, mask: u8) {
-        let key = RawCellKey::Real(rx, ry);
-        self.write_occupant(key, MovementLayer::Bridge, mask, None, false);
     }
 
     fn update_and_prune(&mut self, rx: u16, ry: u16, update: impl FnOnce(&mut RawCellOccupation)) {
@@ -817,40 +815,15 @@ impl CellOccupationGrid {
         Self::default()
     }
 
-    pub(crate) fn rebuild(entities: &crate::sim::entity_store::EntityStore) -> Self {
+    /// Rebuild after a snapshot load, from the restored lists and entity/Drive
+    /// state, as each object turn reconciles it.
+    pub(crate) fn rebuild(
+        entities: &crate::sim::entity_store::EntityStore,
+        lists: &OccupancyGrid,
+    ) -> Self {
         let mut grid = Self::new();
         for entity in entities.values() {
-            if entity.category != EntityCategory::Unit
-                || !entity.lifecycle.cell_marked
-                || entity.passenger_role.is_inside_transport()
-            {
-                continue;
-            }
-            let current_cleared = !entity.foot_occupation_enabled;
-            if !current_cleared && let Some(layer) = entity.occupancy_list_layer() {
-                grid.mark_vehicle_on_layer(
-                    entity.position.rx,
-                    entity.position.ry,
-                    entity.stable_id(),
-                    layer,
-                );
-            }
-            for mark in entity
-                .drive_locomotion
-                .as_ref()
-                .into_iter()
-                .flat_map(|drive| [drive.occupation_handoff, drive.occupation_head_to])
-                .chain(
-                    entity
-                        .ship_locomotion
-                        .as_ref()
-                        .into_iter()
-                        .flat_map(|ship| [ship.occupation_handoff, ship.occupation_head_to]),
-                )
-                .flatten()
-            {
-                grid.mark_vehicle_on_layer(mark.rx, mark.ry, entity.stable_id(), mark.layer);
-            }
+            grid.reconcile_entity(entity, lists);
         }
         grid
     }
@@ -860,7 +833,12 @@ impl CellOccupationGrid {
     /// Most world command paths update this transient index directly. This
     /// narrow reconciliation also covers internal direct/scatter orders whose
     /// command surface owns only `EntityStore`.
-    pub(crate) fn reconcile_entity(&mut self, entity: &GameEntity) {
+    ///
+    /// A marked Unit's own cell is on its list layer. Unit Mark writes that
+    /// bit (`0x007441B0`) as it places the Unit in the list its layer query
+    /// chose, so an Air-path Unit that Mark listed, a landed or low Jumpjet,
+    /// is on the list `lists` holds it in.
+    pub(crate) fn reconcile_entity(&mut self, entity: &GameEntity, lists: &OccupancyGrid) {
         let old_footprints = self
             .footprints_by_owner
             .get_mut(&entity.stable_id())
@@ -878,7 +856,10 @@ impl CellOccupationGrid {
             return;
         }
         let current_cleared = !entity.foot_occupation_enabled;
-        if !current_cleared && let Some(layer) = entity.occupancy_list_layer() {
+        let current_layer = entity.occupancy_list_layer().or_else(|| {
+            lists.listed_layer(entity.position.rx, entity.position.ry, entity.stable_id())
+        });
+        if !current_cleared && let Some(layer) = current_layer {
             self.mark_vehicle_on_layer(
                 entity.position.rx,
                 entity.position.ry,
@@ -1842,6 +1823,16 @@ impl OccupancyGrid {
         self.cells
             .get(&(rx, ry))
             .is_some_and(|occ| occ.occupants.iter().any(|o| o.entity_id == entity_id))
+    }
+
+    /// The list (ground or deck) this cell links the entity in, if any.
+    pub(crate) fn listed_layer(&self, rx: u16, ry: u16, entity_id: u64) -> Option<MovementLayer> {
+        self.cells
+            .get(&(rx, ry))?
+            .occupants
+            .iter()
+            .find(|o| o.entity_id == entity_id)
+            .map(|o| o.layer)
     }
 
     /// Total number of occupied cells (for diagnostics).
@@ -2866,11 +2857,14 @@ mod tests {
             layer: MovementLayer::Ground,
         };
         entity.drive_locomotion.as_mut().unwrap().occupation_head_to = Some(head);
-        let mut bits = CellOccupationGrid::rebuild(&{
-            let mut entities = crate::sim::entity_store::EntityStore::new();
-            entities.insert(entity.clone());
-            entities
-        });
+        let mut bits = CellOccupationGrid::rebuild(
+            &{
+                let mut entities = crate::sim::entity_store::EntityStore::new();
+                entities.insert(entity.clone());
+                entities
+            },
+            &OccupancyGrid::new(),
+        );
 
         crate::sim::movement::clear_navigation_for_entity(&mut entity);
 
@@ -2879,7 +2873,7 @@ mod tests {
             Some(head)
         );
         assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);
-        bits.reconcile_entity(&entity);
+        bits.reconcile_entity(&entity, &OccupancyGrid::new());
         assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);
     }
 
@@ -2896,7 +2890,7 @@ mod tests {
             });
         let mut entities = crate::sim::entity_store::EntityStore::new();
         entities.insert(entity.clone());
-        let mut bits = CellOccupationGrid::rebuild(&entities);
+        let mut bits = CellOccupationGrid::rebuild(&entities, &OccupancyGrid::new());
 
         for offset in 0..UNRELATED_OWNERS {
             let entity_id = u64::from(offset) + 2;
@@ -2916,7 +2910,7 @@ mod tests {
                 ry: 1,
                 layer: MovementLayer::Ground,
             });
-        bits.reconcile_entity(&entity);
+        bits.reconcile_entity(&entity, &OccupancyGrid::new());
 
         assert_eq!(bits.vehicle_bits(1, 1, MovementLayer::Ground), 0);
         assert_eq!(bits.vehicle_bits(2, 1, MovementLayer::Ground), 0);
@@ -3029,7 +3023,7 @@ mod tests {
             });
         entities.insert(unit);
 
-        let bits = CellOccupationGrid::rebuild(&entities);
+        let bits = CellOccupationGrid::rebuild(&entities, &OccupancyGrid::new());
 
         assert_eq!(bits.vehicle_bits(2, 2, MovementLayer::Ground), 0x20);
         assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);

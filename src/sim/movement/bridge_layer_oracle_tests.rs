@@ -86,6 +86,12 @@ pub(crate) fn candidate(input: &Value, id: u64, type_name: &str) -> GameEntity {
                     ..Default::default()
                 })
             }
+            LocomotorKind::Hover => entity
+                .locomotor
+                .as_mut()
+                .and_then(|loco| loco.hover_runtime_mut())
+                .unwrap()
+                .set_head(Some(head)),
             _ => entity.locomotor.as_mut().unwrap().set_step_head(Some(head)),
         }
     }

@@ -4060,19 +4060,30 @@ impl Simulation {
                     entity.stable_id()
                 );
             }
-            if entity.lifecycle.cell_marked
-                && !entity.passenger_role.is_inside_transport()
-                && entity.occupancy_list_layer().is_some()
-            {
-                for (rx, ry) in crate::sim::occupancy::entity_occupancy_cells(entity) {
-                    debug_assert!(
-                        self.substrate
-                            .occupancy
-                            .contains_entity(rx, ry, entity.stable_id()),
-                        "cell-marked entity {} missing occupancy at ({rx}, {ry})",
-                        entity.stable_id()
-                    );
+            if !entity.lifecycle.cell_marked || entity.passenger_role.is_inside_transport() {
+                continue;
+            }
+            // A marked Foot sits where its Mark put it: the Mark owner's own
+            // list decision, which the Ground answer makes rules-independent.
+            let listed = if entity.category == EntityCategory::Structure {
+                if entity.occupancy_list_layer().is_some() {
+                    crate::sim::occupancy::entity_occupancy_cells(entity)
+                } else {
+                    Vec::new()
                 }
+            } else {
+                self.foot_mark_cell(entity.stable_id(), None)
+                    .map(|(cell, _)| vec![cell])
+                    .unwrap_or_default()
+            };
+            for (rx, ry) in listed {
+                debug_assert!(
+                    self.substrate
+                        .occupancy
+                        .contains_entity(rx, ry, entity.stable_id()),
+                    "cell-marked entity {} missing occupancy at ({rx}, {ry})",
+                    entity.stable_id()
+                );
             }
         }
     }

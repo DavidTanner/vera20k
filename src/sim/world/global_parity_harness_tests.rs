@@ -412,7 +412,15 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // place of its head. Ceremony: this change with the old composition (three
 // zero words, head only; probe not committed) printed the previous pin, so
 // no hashed state moved. Previous: 0xC9C5_B19A_6873_6EA8.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x64B4_3781_2052_4AF1;
+// 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
+// AircraftTracker, which native Mark never touches, so a ground object keeps
+// its constructor-seeded enter order (its stable id) where the old lifecycle
+// Mark reset it to 0 on every Foot and Building Mark. Ceremony, rerun after
+// merging main: this change with only that reset restored printed the old
+// value for all three replay pins (bridge, global, slice 6), with the RNG pins
+// above unchanged (the probe patch was not committed). Previous:
+// 0x64B4_3781_2052_4AF1.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xF066_BF94_338B_683B;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

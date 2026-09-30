@@ -1359,7 +1359,7 @@ fn gsi_04_05_production_finish_promotes_endpoint_without_clearing_bit() {
     let drive = entities.get(1).unwrap().drive_locomotion.as_ref().unwrap();
     assert_eq!(drive.occupation_head_to, None);
     assert!(entities.get(1).unwrap().foot_occupation_enabled);
-    let rebuilt = CellOccupationGrid::rebuild(&entities);
+    let rebuilt = CellOccupationGrid::rebuild(&entities, &OccupancyGrid::new());
     assert_eq!(
         rebuilt.vehicle_bits(3, 2, MovementLayer::Ground),
         crate::sim::occupancy::VEHICLE_OCCUPATION_BIT
@@ -2677,7 +2677,8 @@ fn code_two_arms_blockage_path_delay_once_and_never_scatters() {
     for native_frame in 0..TICKS {
         // The per-frame fixture `tick_movement_with_grid` builds, run one
         // object at a time in its order so the mover's stats stay separate.
-        let mut cell_occupation = crate::sim::occupancy::CellOccupationGrid::rebuild(&entities);
+        let mut cell_occupation =
+            crate::sim::occupancy::CellOccupationGrid::rebuild(&entities, &occupancy);
         let mut raw_cell_occupation = crate::sim::occupancy::RawCellOccupationGrid::new();
         for id in [1, 2, 3] {
             let stats = super::movement_tick::tick_movement_object_with_grids(
@@ -6333,8 +6334,10 @@ fn deferred_crush_uses_binary_frame_after_cell_classification_with_offset_clocks
             });
             sim.substrate.entities.insert(crusher);
             sim.substrate.occupancy = OccupancyGrid::rebuild(&sim.substrate.entities);
-            sim.substrate.cell_occupation =
-                crate::sim::occupancy::CellOccupationGrid::rebuild(&sim.substrate.entities);
+            sim.substrate.cell_occupation = crate::sim::occupancy::CellOccupationGrid::rebuild(
+                &sim.substrate.entities,
+                &sim.substrate.occupancy,
+            );
             let stats = sim
                 .process_ground_locomotor_for_test(1, None, Some(&PathGrid::new(8, 8)), None)
                 .unwrap();

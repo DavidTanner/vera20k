@@ -229,7 +229,15 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // place of its head. Ceremony: this change with the old composition (three
 // zero words, head only; probe not committed) printed the previous pin, so
 // no hashed state moved. Previous: 0x4477_C324_18ED_A27F.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x6670_93CF_F88F_7008;
+// 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
+// AircraftTracker, which native Mark never touches, so a ground object keeps
+// its constructor-seeded enter order (its stable id) where the old lifecycle
+// Mark reset it to 0 on every Foot and Building Mark. Ceremony, rerun after
+// merging main: this change with only that reset restored printed the old
+// value for all three replay pins (bridge, global, slice 6), with the RNG pins
+// above unchanged (the probe patch was not committed). Previous:
+// 0x6670_93CF_F88F_7008.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x14B8_172A_D6EA_A02C;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

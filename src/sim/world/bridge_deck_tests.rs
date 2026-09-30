@@ -154,17 +154,19 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
         layer: MovementLayer::Bridge,
     });
     let drive_before = bincode::serialize(drive).unwrap();
-    sim.substrate
-        .cell_occupation
-        .reconcile_entity(sim.substrate.entities.get(older).unwrap());
+    sim.substrate.cell_occupation.reconcile_entity(
+        sim.substrate.entities.get(older).unwrap(),
+        &sim.substrate.occupancy,
+    );
     sim.substrate
         .entities
         .get_mut(newer)
         .unwrap()
         .foot_occupation_enabled = false;
-    sim.substrate
-        .cell_occupation
-        .reconcile_entity(sim.substrate.entities.get(newer).unwrap());
+    sim.substrate.cell_occupation.reconcile_entity(
+        sim.substrate.entities.get(newer).unwrap(),
+        &sim.substrate.occupancy,
+    );
     let next_order = sim.substrate.next_air_tracker_order.current();
     let raw_before = sim.substrate.raw_cell_occupation.clone();
     let mut smudge = crate::sim::smudge_grid::SmudgeGrid::new(10, 10);
