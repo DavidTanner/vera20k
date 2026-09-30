@@ -582,6 +582,108 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
     );
 }
 
+/// Three badly damaged tanks ordered onto one depot, arriving in a column
+/// from the east or the south, or one of them ordered late from further off:
+/// the depot repairs each in turn, and no tank without the depot's contact
+/// slot stands on its pad. The first order links (`0x00741DD6`); the others
+/// take the depot as their pending entry with no destination (`0x00741D9F`),
+/// park beside it (`0x0070D8F0`) and take the slot from their own
+/// `FootClass::AI` once it frees (`0x0070D7E0`).
+#[test]
+fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
+    let depot_rules = format!(
+        "{UNITS}[BuildingTypes]\n1=DEPOT\n\
+         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n"
+    );
+    for (arrival, cells, late) in [
+        ("east", [(21, 10), (22, 10), (23, 10)], 0),
+        ("south", [(17, 14), (17, 15), (17, 16)], 0),
+        ("east adjacent", [(19, 10), (20, 10), (21, 10)], 0),
+        ("south adjacent", [(17, 12), (17, 13), (17, 14)], 0),
+        ("late from the east", [(19, 10), (23, 10), (20, 10)], 90),
+        ("late from the north-east", [(19, 10), (20, 8), (20, 10)], 9),
+    ] {
+        let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
+        let owner = sim.interner.intern("Americans");
+        let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 50_000, 0);
+        house.player_control = true;
+        sim.houses.insert(owner, house);
+        let depot = sim
+            .spawn_object("DEPOT", "Americans", 16, 9, 0, &rules)
+            .unwrap();
+        let pad = (17, 10);
+        let tanks: Vec<u64> = cells
+            .iter()
+            .map(|&(x, y)| {
+                let tank = sim
+                    .spawn_object("DRV", "Americans", x, y, 0, &rules)
+                    .unwrap();
+                sim.substrate.entities.get_mut(tank).unwrap().health.current = 40;
+                tank
+            })
+            .collect();
+        let order = |sim: &mut Simulation, tank: u64| {
+            assert!(sim.apply_command(
+                "Americans",
+                &crate::sim::command::Command::RepairAtDepot {
+                    entity_id: tank,
+                    depot_id: depot,
+                },
+                Some(&rules),
+            ));
+        };
+        // The second tank is the late one.
+        order(&mut sim, tanks[0]);
+        order(&mut sim, tanks[2]);
+        use crate::sim::docking::building_dock::DockPhase;
+        let mut serviced = Vec::new();
+        for frame in 0..4000 {
+            if frame == late {
+                order(&mut sim, tanks[1]);
+            }
+            sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
+            for &tank in &tanks {
+                let e = sim.substrate.entities.get(tank).unwrap();
+                assert!(
+                    (e.position.rx, e.position.ry) != pad
+                        || e.dock_state.is_none()
+                        || e.radio_contacts.contains(depot),
+                    "{arrival}: tank {tank} on the pad without the slot at frame {}",
+                    sim.session.binary_frame
+                );
+                let phase = e.dock_state.as_ref().map(|state| state.phase);
+                if phase == Some(DockPhase::Servicing) && !serviced.contains(&tank) {
+                    serviced.push(tank);
+                }
+            }
+            if frame > late
+                && tanks.iter().all(|&tank| {
+                    sim.substrate
+                        .entities
+                        .get(tank)
+                        .unwrap()
+                        .dock_state
+                        .is_none()
+                })
+            {
+                break;
+            }
+        }
+        for &tank in &tanks {
+            let e = sim.substrate.entities.get(tank).unwrap();
+            assert_eq!(
+                e.health.current,
+                300,
+                "{arrival}: tank {tank} at {:?} dock {:?} nav {:?} serviced {serviced:?}",
+                (e.position.rx, e.position.ry),
+                e.dock_state.as_ref().map(|state| state.phase),
+                e.navigation.nav_com,
+            );
+        }
+        assert_eq!(serviced.len(), 3, "{arrival}: one service each");
+    }
+}
+
 /// tools/spatial_oracle/track_order_path: after the accepted setter the first
 /// Process requests a route only once Foot+640 has expired (Drive 0x4B2825 /
 /// Ship 0x6A1E75), powered or not, and neither the setter nor the Process
@@ -1161,4 +1263,56 @@ fn queued_waypoint_arrival_returns_before_the_continuation() {
         return;
     }
     panic!("the unit never took its waypoint");
+}
+
+/// A damaged Hover unit ordered to a free depot reaches the pad and is
+/// serviced. Native admits the pad through Hover `Find_Path`/`Can_Enter_Cell`;
+/// VERA's Hover arm of the Unit setter still routes through the legacy
+/// pass-lane move, whose goal resolver relocates the blocked footprint cell,
+/// so the unit parks beside the depot (observed at (15,8), pad (17,10)) and
+/// never docks. Ignored until the native Hover host lands (#689).
+#[test]
+#[ignore = "Hover Move_To is the legacy pass lane; needs the native Hover host (#689)"]
+fn damaged_hover_unit_reaches_a_free_depot_pad() {
+    use crate::sim::docking::building_dock::DockPhase;
+    let depot_rules = format!(
+        "{}[HOV]\nStrength=300\nSpeed=6\nSpeedType=Hover\nMovementZone=Normal\n\
+         Locomotor={{4A582742-9839-11d1-B709-00A024DDAFD1}}\n\
+         [BuildingTypes]\n1=DEPOT\n\
+         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n",
+        UNITS.replace("1=SHP\n", "1=SHP\n2=HOV\n")
+    );
+    let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
+    let owner = sim.interner.intern("Americans");
+    let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 5000, 0);
+    house.player_control = true;
+    sim.houses.insert(owner, house);
+    let depot = sim
+        .spawn_object("DEPOT", "Americans", 16, 9, 0, &rules)
+        .unwrap();
+    let hov = sim
+        .spawn_object("HOV", "Americans", 22, 10, 0, &rules)
+        .unwrap();
+    sim.substrate.entities.get_mut(hov).unwrap().health.current = 150;
+    assert!(sim.apply_command(
+        "Americans",
+        &crate::sim::command::Command::RepairAtDepot {
+            entity_id: hov,
+            depot_id: depot,
+        },
+        Some(&rules),
+    ));
+    for _ in 0..1500 {
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
+        let e = sim.substrate.entities.get(hov).unwrap();
+        if e.dock_state.as_ref().map(|s| s.phase) == Some(DockPhase::Servicing) {
+            return;
+        }
+    }
+    let e = sim.substrate.entities.get(hov).unwrap();
+    panic!(
+        "hover never docked: at {:?}, phase {:?}",
+        (e.position.rx, e.position.ry),
+        e.dock_state.as_ref().map(|s| s.phase)
+    );
 }

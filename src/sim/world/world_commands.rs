@@ -26,7 +26,7 @@ use crate::sim::command::{
     SellWallAtCellRecord,
 };
 use crate::sim::components::OrderIntent;
-use crate::sim::docking::building_dock::{self, DockState};
+use crate::sim::docking::building_dock;
 use crate::sim::mission::concrete_effects::represented_assign_target;
 use crate::sim::mission::{DockTeardown, MissionType};
 use crate::sim::movement;
@@ -1434,28 +1434,24 @@ impl Simulation {
                     return false;
                 }
                 // Validate depot exists, is friendly, and has UnitRepair=yes.
-                let depot_info = self.substrate.entities.get(*depot_id).and_then(|depot| {
-                    if !command_owner.eq_ignore_ascii_case(self.interner.resolve(depot.owner())) {
-                        return None;
-                    }
-                    let obj = self.object_type(depot.type_ref(), rules)?;
-                    if !obj.unit_repair {
-                        return None;
-                    }
-                    Some(building_dock::depot_dock_cell(depot))
+                let depot_ok = self.substrate.entities.get(*depot_id).is_some_and(|depot| {
+                    command_owner.eq_ignore_ascii_case(self.interner.resolve(depot.owner()))
+                        && self
+                            .object_type(depot.type_ref(), rules)
+                            .is_some_and(|obj| obj.unit_repair)
                 });
-                let Some((dock_rx, dock_ry)) = depot_info else {
+                if !depot_ok {
                     return false;
-                };
-                // Validate entity is a unit or infantry (not structure/aircraft).
+                }
+                // A damaged vehicle: the player's click issues the order only
+                // for Units (`input::context_order`), and the depot's CAN_LOAD
+                // refuses any sender but a Unit or an Aircraft (Building
+                // Receive_Radio 0x0F, UnitRepair arm).
                 let entity_ok = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    matches!(
-                        e.category,
-                        crate::map::entities::EntityCategory::Unit
-                            | crate::map::entities::EntityCategory::Infantry
-                    ) && self
-                        .object_type(e.type_ref(), rules)
-                        .is_some_and(|object| e.health.current < object.strength)
+                    e.category == crate::map::entities::EntityCategory::Unit
+                        && self
+                            .object_type(e.type_ref(), rules)
+                            .is_some_and(|object| e.health.current < object.strength)
                         && !e.dying
                 });
                 if !entity_ok {
@@ -1479,35 +1475,13 @@ impl Simulation {
                     DockTeardown::Depot,
                     Some(rules),
                 );
-                // Set dock state and issue move toward depot.
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     // Event4C7467 dispatches Assign_Target before the destination write.
                     represented_assign_target(e, None);
                     e.order_intent = None;
-                    e.dock_state = Some(DockState::approach(*depot_id));
                 }
-                // Issue movement toward dock cell.
-                let info = self.resolve_move_info(*entity_id, Some(rules));
-                let speed = info
-                    .as_ref()
-                    .map(|i| i.speed)
-                    .unwrap_or(ra2_speed_to_leptons_per_second(4));
-                let speed_type = info
-                    .as_ref()
-                    .map(|i| i.speed_type)
-                    .unwrap_or(SpeedType::Track);
-                self.issue_ground_move(
-                    GroundMove {
-                        entity_id: *entity_id,
-                        target: (dock_rx, dock_ry),
-                        speed,
-                        queue: false,
-                        speed_type: Some(speed_type),
-                        owner_blocks: true,
-                        object_destination: None,
-                    },
-                    Some(rules),
-                );
+                // Event4C747C: the Unit class setter with the depot.
+                building_dock::order_onto_depot(self, rules, *entity_id, *depot_id);
                 true
             }
             Command::EnterTransport {
