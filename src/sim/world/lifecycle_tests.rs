@@ -11,7 +11,6 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::anim_class::{AnimObject, AnimRuntime, AnimWorldCoord};
 use crate::sim::animation::{Animation, SequenceKind};
-use crate::sim::bridge_state::StateOutcome;
 use crate::sim::combat::{AttackTarget, PendingInfantryFire, TargetKind};
 use crate::sim::components::{
     C4PlantState, DriveLocomotionRuntime, DriveOccupationFootprint, Health, NavTargetRef,
@@ -1020,28 +1019,8 @@ fn gsi_04_12_common_raw_occupation_structural_deck_unit_tracks_live_collapse_fla
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 
     {
+        // The collapse setter 47E040 clears bit100 before any later receiver.
         let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
-        assert!(
-            bridge_state
-                .cell(3, 4)
-                .expect("collapsed bridge cell")
-                .deck_present,
-            "collapse leaves the structural deck record present"
-        );
-        assert!(!bridge_state.is_bridge_walkable(3, 4));
-        // The legacy controller above returns its flag transaction; its
-        // isolated entry does not publish it. Supply native47E040's cleared
-        // bit100 at this occupation-reader boundary, as the live publisher
-        // does before the next receiver. A render-only collapse is not enough.
         let cell = terrain.native_cell_identity((3, 4));
         terrain.write_native_cell_flags(
             cell,
@@ -1440,19 +1419,8 @@ fn gsi_04_12_object_raw_occupation_deck_clear_rechecks_live_structural_state() {
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0x40);
 
     {
+        // The collapse setter 47E040 clears bit100 before any later receiver.
         let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
-        assert!(!bridge_state.is_bridge_walkable(3, 4));
-        // Supply the live47E040 structural clear, not just the legacy
-        // controller's overlay/damage projection, before Object5F6120.
         let cell = terrain.native_cell_identity((3, 4));
         terrain.write_native_cell_flags(
             cell,
@@ -4883,16 +4851,9 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
         center
     );
     {
-        let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
+        // Legacy runtime walkability drops while live bit100 stays set.
         let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(6, 7, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(6, 7, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
+        bridge_state.cell_mut(6, 7).unwrap().deck_present = false;
         assert!(!bridge_state.is_bridge_walkable(6, 7));
     }
     assert_eq!(

@@ -411,7 +411,7 @@ fn canonicalize_hut_destroy_seed(
 
 /// The collapse cascade after one bridge-damage batch, for area damage and
 /// the CABHUT death alike: per structural outcome its BlowUpBridge fallout,
-/// then the High machine's ramp-pair rim refresh; then the CABHUT ramp's rim
+/// then that machine's ramp-pair rim refresh; then the CABHUT ramp's rim
 /// refresh, TriggerEvent 31, the zone rebuild and the radar marks. `extra`
 /// adds the CABHUT fallback's own zone and rim requests. Returns whether a
 /// cell collapsed or the fallback asked for a refresh.
@@ -460,25 +460,35 @@ fn finish_bridge_damage(
                 blow_up_bridge_cell_fallout(sim, rules, cell.0, cell.1, overlay_registry);
             }
         }
-        // The High machine's ramp pair follows its setters: N then S on an
-        // EW ramp (0x0057702C, 0x00577065), W then E on an NS ramp
-        // (0x0057754F, 0x0057757B). The Low machine's rim is not ported.
-        if *high {
-            for &(x, y) in adjacent_bridges_dirty {
-                rim_collapsed |= live_publication::update_adjacent_bridges(
-                    sim,
-                    rules,
-                    overlay_registry,
-                    (x as i16, y as i16),
-                );
-            }
+        // Each machine's ramp pair follows its setters: N then S on an EW
+        // ramp (High 0x0057702C/0x00577065, Low 0x00571E63/0x00571E8F), W
+        // then E on an NS ramp (High 0x0057754F/0x0057757B, Low
+        // 0x0057193D/0x00571976).
+        let family = if *high {
+            HutBridgeFamily::High
+        } else {
+            HutBridgeFamily::Low
+        };
+        for &(x, y) in adjacent_bridges_dirty {
+            rim_collapsed |= live_publication::update_adjacent_bridges(
+                sim,
+                rules,
+                overlay_registry,
+                (x as i16, y as i16),
+                family,
+            );
         }
         // Its56C510 request is subsumed by the publication below.
         let _ = invalidate_bridge_zones(sim, *zone_query);
     }
     if let Some(ramp) = extra.rim_cell {
-        rim_collapsed |=
-            live_publication::update_adjacent_bridges(sim, rules, overlay_registry, ramp);
+        rim_collapsed |= live_publication::update_adjacent_bridges(
+            sim,
+            rules,
+            overlay_registry,
+            ramp,
+            HutBridgeFamily::High,
+        );
     }
     project_pending_low_bridge_overlay_writes(sim, overlay_registry);
     // TriggerEvent 31 broadcast (HIGH §11.3).
@@ -650,10 +660,21 @@ fn run_hut_fallback(
     }
 }
 
-/// The `Bridge*` theater keys both CABHUT tails compare, relative to the
-/// BridgeSet base (0xAA0E28) for the high twin and the WoodBridgeSet base
-/// (0xABAD1C) for the wooden one. Grids without an active theater read
-/// every key as -1.
+/// The live theater keys with the family's tileset base, absent on synthetic
+/// grids without an active theater. Each wooden bridge helper reads
+/// g_WoodBridgeSet_TileSetBase 0xABAD1C where its concrete twin reads
+/// g_BridgeSet_TileSetBase 0xAA0E28.
+fn family_rim_tiles(
+    terrain: &ResolvedTerrainGrid,
+    family: HutBridgeFamily,
+) -> Option<HighBridgeRimTiles> {
+    terrain
+        .high_bridge_rim_tiles()
+        .map(|_| hut_tile_keys(terrain, family))
+}
+
+/// The `Bridge*` theater keys both CABHUT tails compare, with the family's
+/// base. Grids without an active theater read every key as -1.
 fn hut_tile_keys(terrain: &ResolvedTerrainGrid, family: HutBridgeFamily) -> HighBridgeRimTiles {
     let mut keys = terrain
         .high_bridge_rim_tiles()
@@ -1919,175 +1940,6 @@ mod tests {
             sim.scenario_rng.state(),
             predicted.state(),
             "in-band high cell must consume exactly 2 BridgeStrength draws (block A + block D)"
-        );
-    }
-
-    #[test]
-    fn gsi_04_01_dispatcher_applies_direct_setter_descriptor() {
-        use crate::map::bridge_facts::{BridgeStampSlot, MODELED_CELLCLASS_BRIDGE_FLAG_MASK};
-        use crate::sim::bridge_state::{AnchorSpan, Direction};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.test_set_native_allocated_cells(&[(1, 1)]);
-        terrain.cell_mut(1, 1).unwrap().bridge_facts.raw_flags = MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        let dummy = terrain.shared_cell_dummy();
-        dummy.apply_bridge_flag_slot(BridgeStampSlot::Anchor, true);
-        sim.resolved_terrain = Some(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut anchor = seed_bridge_cell(24);
-        anchor.deck_level = 4;
-        anchor.damage_state = DamageState::Damaged;
-        anchor.axis = Some(Axis::NS);
-        anchor.role = BridgeCellRole::Anchor;
-        anchor.anchor_span_id = Some(1);
-        bridge_state.test_seed_cell(1, 1, anchor);
-        bridge_state.test_seed_anchor_span(AnchorSpan {
-            id: 1,
-            anchor: (1, 1),
-            cells: [
-                Some((1, 1)),
-                Some((2, 1)),
-                Some((3, 1)),
-                Some((4, 1)),
-                Some((0, 1)),
-                None,
-            ],
-            axis: Axis::NS,
-            direction: Direction::E,
-        });
-        sim.bridge_state = Some(bridge_state);
-
-        let event = BridgeDamageEvent {
-            rx: 1,
-            ry: 1,
-            damage: 1,
-            warhead_ref: crate::sim::intern::InternedId::default(),
-            is_ion_cannon: true,
-            impact_z_leptons: 416,
-        };
-        let (outcomes, _) = damage_dispatch::run(&mut sim, &[event], 1500, None);
-        assert_eq!(outcomes.len(), 1);
-        assert!(matches!(
-            outcomes[0].outcome,
-            StateOutcome::Collapsed { .. }
-        ));
-        assert_eq!(
-            dummy.bridge_flags_0x1180(),
-            crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF,
-            "missing non-anchor slots clear 0x1100 but preserve the dummy's pre-existing 0x80"
-        );
-        assert_eq!(dummy.snapshot().coord, (0, 1));
-        assert_eq!(
-            sim.resolved_terrain
-                .as_ref()
-                .unwrap()
-                .cell(1, 1)
-                .unwrap()
-                .bridge_facts
-                .raw_flags
-                & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0
-        );
-    }
-
-    #[test]
-    fn gsi_04_01_ns_perpendicular_dir0_precedes_parent_setter_on_real_and_dummy() {
-        use crate::map::bridge_facts::{
-            BridgeFlagStamp, BridgeStampSlot, MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-        };
-        use crate::sim::bridge_state::{AnchorSpan, Direction};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.test_set_native_allocated_cells(&[(2, 2), (3, 2)]);
-        for (rx, ry) in [(2, 2), (3, 2)] {
-            terrain.cell_mut(rx, ry).unwrap().bridge_facts.raw_flags =
-                MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        }
-        let dummy = terrain.shared_cell_dummy();
-        dummy.apply_bridge_flag_slot(BridgeStampSlot::Anchor, true);
-        sim.install_resolved_terrain_for_new_map(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut parent = seed_bridge_cell(0);
-        parent.damage_state = DamageState::Damaged;
-        parent.axis = Some(Axis::NS);
-        parent.role = BridgeCellRole::Anchor;
-        parent.anchor_span_id = Some(1);
-        bridge_state.test_seed_cell(2, 2, parent);
-
-        let mut perpendicular = seed_bridge_cell(0);
-        perpendicular.damage_state = DamageState::PartialCollapseB;
-        perpendicular.axis = Some(Axis::NS);
-        perpendicular.role = BridgeCellRole::Anchor;
-        perpendicular.anchor_span_id = None;
-        bridge_state.test_seed_cell(3, 2, perpendicular);
-        bridge_state.test_seed_anchor_span(AnchorSpan {
-            id: 1,
-            anchor: (2, 2),
-            cells: [
-                Some((2, 2)),
-                Some((3, 2)),
-                Some((4, 2)),
-                Some((5, 2)),
-                Some((1, 2)),
-                None,
-            ],
-            axis: Axis::NS,
-            direction: Direction::E,
-        });
-        sim.bridge_state = Some(bridge_state);
-
-        let outcome = {
-            let terrain = sim.resolved_terrain.as_mut().unwrap();
-            sim.bridge_state
-                .as_mut()
-                .unwrap()
-                .body_cell_advance_state(2, 2, true, terrain)
-        };
-        assert_eq!(
-            outcome.setter_transcript(),
-            &[
-                BridgeFlagStamp::new((3, 2), Direction::N as u8, false),
-                BridgeFlagStamp::new((2, 2), Direction::E as u8, false),
-            ],
-            "native CollapseA perpendicular dir0 setter precedes parent span setter"
-        );
-        let dummy_after_planning = dummy.snapshot();
-        assert_eq!(
-            dummy_after_planning.coord,
-            (1, 2),
-            "with no later helper lookup, the parent direction-2 opposite slot remains the final dummy writer"
-        );
-        apply_runtime_bridge_flag_transcript_from_outcome(&mut sim, &outcome);
-
-        let terrain = sim.resolved_terrain.as_mut().unwrap();
-        assert_eq!(
-            terrain.cell(3, 2).unwrap().bridge_facts.raw_flags & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0,
-            "perpendicular allocated CellClass is cleared through the live seam"
-        );
-        assert_eq!(
-            terrain.cell(2, 2).unwrap().bridge_facts.raw_flags & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0,
-            "later parent setter clears its allocated anchor"
-        );
-        assert_eq!(
-            sim.real_cell_bridge_flags_0x1180,
-            terrain.capture_real_cell_bridge_flags_0x1180(),
-            "ordered live projection keeps serialized real-cell value authority exact"
-        );
-        assert_eq!(
-            dummy.bridge_flags_0x1180(),
-            crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF,
-            "missing non-anchor slots preserve the dummy's independent live anchor bit"
-        );
-        assert_eq!(
-            dummy.snapshot(),
-            dummy_after_planning,
-            "real-only transcript projection cannot replay the parent setter into the dummy"
         );
     }
 

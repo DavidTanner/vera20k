@@ -32,6 +32,7 @@ fn retail_plain_pavement_native_entry_draw_selection_and_snapshot() {
         rules: &runtime.resources.rules,
         registry: Some(&runtime.resources.overlay_registry),
         collapsed: false,
+        family: Family::High,
     };
     assert!(
         live.sim

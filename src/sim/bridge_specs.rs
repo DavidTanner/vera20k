@@ -1,10 +1,7 @@
 //! Live bridge ramp and destruction helpers: ramp state transitions, the
-//! destroyed-overlay pick, `SetBridgeDirection` and the perpendicular ramp
-//! update.
+//! destroyed-overlay pick and the perpendicular ramp update.
 
-use crate::sim::bridge_state::{
-    AnchorSpan, Axis, BridgeRuntimeState, DamageState, Direction, Phase,
-};
+use crate::sim::bridge_state::{Axis, BridgeRuntimeState, DamageState, Direction, Phase};
 
 /// Apply a single ramp state transition. Mirrors one of the binary's 16
 /// `UpdateRamp_*_High/_Low` helpers (HIGH §11.1).
@@ -124,7 +121,7 @@ static DESTRUCTION_OVERLAY_LOW_EW: [u8; 16] = [
     0xFF, 0x58, 0x5B, 0xFF, 0x57, 0x59, 0x5B, 0xFF, 0x5A, 0x5A, 0x65, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 ];
 
-/// Per-cell action emitted by `set_bridge_direction` walker. The orchestrator
+/// Per-cell action of an unmigrated bridgehead collapse. The orchestrator
 /// in `world::bridge_orchestrator::apply_bridge_damage_events` consumes these
 /// and dispatches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,7 +134,7 @@ pub enum CellAction {
     FlagOnly,
 }
 
-/// Result from `set_bridge_direction` walker. Each entry is one cell + its
+/// An unmigrated bridgehead collapse's setter group. Each entry is one cell + its
 /// action.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetBridgeDirectionResult {
@@ -146,54 +143,6 @@ pub struct SetBridgeDirectionResult {
     /// `SetBridgeDirection_*` group transaction. Other bridge walkers may emit
     /// BlowUpBridge actions without that setter and therefore leave it absent.
     pub flag_stamp: Option<crate::map::bridge_facts::BridgeFlagStamp>,
-}
-
-/// Emit the per-cell action list for an anchor span. Mirrors binary's
-/// `SetBridgeDirection_NESW @ 0x47E040`.
-///
-/// `set == false` is the destruction path (4 BlowUpBridge calls + 1–2
-/// flag-only). `set == true` is the build/intact path (no BlowUpBridge —
-/// flag writes only). Tier 2 only consumes destruction path; build path
-/// is exercised by map-load anchor walker construction (Task 7).
-pub fn set_bridge_direction(span: &AnchorSpan, set: bool) -> SetBridgeDirectionResult {
-    let mut actions = Vec::with_capacity(6);
-    for (slot, cell) in span.iter_cells() {
-        let action = if !set {
-            // `CellClass::BlowUpBridge` 0x0047DD70 is what a BlowUpBridge slot
-            // means: gated on `g_IsMapEditor == 0`, it walks the cell's
-            // FirstObject list calling vtable+0x16C with `RulesClass+0xFA8`,
-            // walks the AltObject list calling vtable+0xEC, appends the coord
-            // to the global at 0x0087F8C0, and then — only when
-            // `RulesClass+0x168 > 0` and a `RandomRanged(0, 0x7FFFFFFE)` roll
-            // lands under 0.95, draws five or six MORE times, i.e. six or
-            // seven in total including the gate roll. Call sites:
-            // 0x0047DE54 (gate), 0x0047DEC6 (x jitter), 0x0047DF04 (y
-            // jitter), 0x0047DF43 (the < 0.5 test), 0x0047DF91 (first anim
-            // index, only on the < 0.5 branch), 0x0047DFE1
-            // (`RandomRanged(1, 5)`) and 0x0047E004 (second anim index).
-            // Those draws are lockstep-visible, so the count matters as
-            // much as the anims.
-            // Destruction path: slots 0, 1, 2, 4 = BlowUpBridge; 3, 5 = FlagOnly.
-            if AnchorSpan::BLOW_UP_SLOTS.contains(&slot) {
-                CellAction::BlowUpBridge
-            } else {
-                CellAction::FlagOnly
-            }
-        } else {
-            // Build path: every cell is FlagOnly (no BlowUpBridge). Used by
-            // map-load construction.
-            CellAction::FlagOnly
-        };
-        actions.push((cell, slot, action));
-    }
-    SetBridgeDirectionResult {
-        actions,
-        flag_stamp: Some(crate::map::bridge_facts::BridgeFlagStamp::new(
-            span.anchor,
-            span.direction as u8,
-            set,
-        )),
-    }
 }
 
 /// Outcome of one perpendicular `UpdateRamp_*` call. One Rust function stands
@@ -784,8 +733,7 @@ mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::sim::bridge_state::{
-        AnchorSpan, Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
-        Direction, Phase,
+        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState, Direction, Phase,
     };
 
     /// Build a minimal 20x20 flat terrain for `update_ramp_perpendicular`
@@ -1020,80 +968,6 @@ mod tests {
                 "EW slot {i}"
             );
         }
-    }
-
-    #[test]
-    fn set_bridge_direction_destruction_emits_4_blow_up_actions() {
-        let span = AnchorSpan {
-            id: 1,
-            anchor: (5, 5),
-            cells: [
-                Some((5, 5)),
-                Some((6, 5)),
-                Some((7, 5)),
-                Some((8, 5)),
-                Some((4, 5)),
-                None,
-            ],
-            axis: Axis::NS,
-            direction: Direction::E,
-        };
-        let result = set_bridge_direction(&span, false);
-        let blow_ups = result
-            .actions
-            .iter()
-            .filter(|(_, _, a)| matches!(a, CellAction::BlowUpBridge))
-            .count();
-        assert_eq!(blow_ups, 4);
-        let flag_only = result
-            .actions
-            .iter()
-            .filter(|(_, _, a)| matches!(a, CellAction::FlagOnly))
-            .count();
-        assert_eq!(flag_only, 1); // slot 3 (cell 4)
-    }
-
-    #[test]
-    fn set_bridge_direction_build_emits_no_blow_up_actions() {
-        let span = AnchorSpan {
-            id: 1,
-            anchor: (0, 0),
-            cells: [Some((0, 0)), None, None, None, None, None],
-            axis: Axis::NS,
-            direction: Direction::E,
-        };
-        let result = set_bridge_direction(&span, true);
-        assert!(
-            result
-                .actions
-                .iter()
-                .all(|(_, _, a)| matches!(a, CellAction::FlagOnly))
-        );
-    }
-
-    #[test]
-    fn set_bridge_direction_includes_slot_5_only_when_present() {
-        let span = AnchorSpan {
-            id: 1,
-            anchor: (5, 5),
-            cells: [
-                Some((5, 5)),
-                Some((6, 5)),
-                Some((7, 5)),
-                Some((8, 5)),
-                Some((4, 5)),
-                Some((6, 5)), // hypothetical slot 5
-            ],
-            axis: Axis::NS,
-            direction: Direction::W,
-        };
-        let result = set_bridge_direction(&span, false);
-        let slot_5_action = result
-            .actions
-            .iter()
-            .find(|(_, slot, _)| *slot == 5)
-            .map(|(_, _, a)| *a);
-        assert_eq!(slot_5_action, Some(CellAction::FlagOnly));
     }
 
     /// Build a minimal BridgeRuntimeState for update_ramp tests:
