@@ -1859,16 +1859,11 @@ impl GameEntity {
         self.parachute_state.is_some()
     }
 
-    /// Put a fixture into a fall at its current height: an object with a
-    /// descent state but no altitude, so nothing else about it moves.
+    /// Put a fixture into a fall where it is, with a FallRate of 0.
     #[cfg(test)]
     pub(crate) fn set_falling_down_for_test(&mut self, falling: bool) {
-        self.parachute_state = falling.then_some(
-            crate::sim::movement::parachute_descent::ParachuteDescentState {
-                rate: 0,
-                altitude: crate::util::fixed_math::SIM_ZERO,
-            },
-        );
+        self.parachute_state = falling
+            .then_some(crate::sim::movement::parachute_descent::ParachuteDescentState { rate: 0 });
     }
 
     /// Record a debug event if the event log is active. No-op when `debug_log` is `None`.

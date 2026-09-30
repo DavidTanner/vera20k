@@ -532,10 +532,10 @@ fn evaluate_ready(
                             == MissionId::from_known(super::MissionType::Unload)
                             && crate::sim::mcv_deploy::is_mcv(sim, entity, rules))
                         .then(|| {
-                            entity
-                                .locomotor
-                                .as_ref()
-                                .map_or(0, |l| l.altitude.to_num::<i32>())
+                            crate::sim::movement::air_movement::current_fly_height(
+                                entity,
+                                sim.resolved_terrain.as_ref(),
+                            )
                         }),
                         attack_target_present,
                         position,

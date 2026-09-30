@@ -637,7 +637,7 @@ fn place_building(
     }
     let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
     if sim
-        .unlimbo_held_production_object(
+        .reveal_constructed_object_at_height(
             product,
             rx,
             ry,

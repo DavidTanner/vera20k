@@ -458,6 +458,12 @@ impl Simulation {
         use crate::sim::movement::locomotor::MovementLayer;
 
         let entity = self.substrate.entities.get(stable_id)?;
+        if entity.parachute_state.is_some() {
+            // Paradrop's Unlimbo coordinate is the drop coordinate, which
+            // SetLocation then commits whole (`0x005F5A50`): the falling
+            // object keeps the Z its drop gave it.
+            return entity.position.exact_z_leptons;
+        }
         if !matches!(
             entity.category,
             EntityCategory::Unit | EntityCategory::Infantry
@@ -466,12 +472,10 @@ impl Simulation {
                 loco.kind,
                 LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Ship
             ) && loco.layer != MovementLayer::Air
-        }) || entity.parachute_state.is_some()
-            || entity.low_bridge_tube_state.is_some()
+        }) || entity.low_bridge_tube_state.is_some()
             || entity.rocket_state.is_some()
         {
             // These owners still carry their own altitude/coordinate state.
-            // In particular, attaching a parachute precedes ordinary Reveal.
             return None;
         }
         let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
@@ -878,14 +882,33 @@ impl Simulation {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::RevealLimboCleared);
 
-        let exact_z = self.grounded_reveal_z(stable_id, request.position, context);
+        // `CheckBridgeTraversal @ 0x004D9C60`: the plane a Unit's exact-zero
+        // Can_Enter_Cell admitted sets OnBridge and, on a bridge, the Level+4
+        // deck height before mode-one Mark. Mark then reads OnBridge for its
+        // E4/E8 list and the committed Z for the +0x124/+0x128 raw plane.
+        let mut position = request.position;
+        if let PlacementEvidence::UnitCanEnterExactZero { layer } = request.placement {
+            let on_bridge = layer == crate::sim::movement::locomotor::MovementLayer::Bridge;
+            if on_bridge
+                && let Some(cell) = context
+                    .terrain()
+                    .or(self.resolved_terrain.as_ref())
+                    .and_then(|terrain| terrain.cell(position.rx, position.ry))
+            {
+                position.z = cell.bridge_deck_level;
+            }
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                entity.on_bridge = on_bridge;
+            }
+        }
+        let exact_z = self.grounded_reveal_z(stable_id, position, context);
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.position.rx = request.position.rx;
-            entity.position.ry = request.position.ry;
-            entity.position.z = request.position.z;
+            entity.position.rx = position.rx;
+            entity.position.ry = position.ry;
+            entity.position.z = position.z;
             entity.position.exact_z_leptons = exact_z;
-            entity.position.sub_x = request.position.sub_x;
-            entity.position.sub_y = request.position.sub_y;
+            entity.position.sub_x = position.sub_x;
+            entity.position.sub_y = position.sub_y;
         }
         if let Some(rules) = context.rules {
             self.reposition_building_anim_slots(stable_id, rules);
@@ -1794,8 +1817,11 @@ impl Simulation {
     /// is set, then clears it and re-enters through the multi-cell hooks.
     /// The fresh entry order also owns reconstruction after snapshot restore.
     ///
-    /// This preserves the existing Rust ground snap and locomotor reset.
-    /// Native falling/unchanged-Z, concrete raw occupation callbacks, and
+    /// This preserves the existing Rust ground snap and locomotor reset for an
+    /// object that is not falling. DropIn writes no Location, so an object
+    /// already falling onto the deck keeps its Z and falls on to the ground
+    /// ([`Simulation::advance_fall`]). Native falling/unchanged-Z for the
+    /// others, IsABomb (`+0x8F`), concrete raw occupation callbacks, and
     /// hidden-building occupation entry remain DRIFT. Add/RemoveContent skip Infantry raw callbacks;
     /// full Mark/Unmark would also discard reservations and building smudges.
     pub(super) fn drop_in_bridge_member(&mut self, stable_id: u64) {
@@ -1822,7 +1848,9 @@ impl Simulation {
             .expect("member remains represented");
         entity.on_bridge = false;
         entity.position.z = ground_level;
-        entity.position.exact_z_leptons = None;
+        if !entity.is_falling_down() {
+            entity.position.exact_z_leptons = None;
+        }
         entity.movement_target = None;
         if let Some(loco) = entity.locomotor.as_mut() {
             loco.layer = MovementLayer::Ground;

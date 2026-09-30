@@ -139,15 +139,12 @@ pub(crate) fn object_ground_z_leptons(
 }
 
 /// Height above the ground of an object without an exact coordinate: a
-/// parachute's descent height, else a rocket's own flight state (its
-/// locomotor keeps only a lagging piggyback copy), else the altitude of an
-/// Air-layer locomotor or of an active Hover (which floats on the Ground
-/// layer). Any other Ground-layer locomotor never lifts, which keeps a landed
-/// or docked aircraft on the floor whatever its stale altitude.
+/// rocket's own flight state (its locomotor keeps only a lagging piggyback
+/// copy), else the altitude of an Air-layer locomotor or of an active Hover
+/// (which floats on the Ground layer). Any other Ground-layer locomotor never
+/// lifts, which keeps a landed or docked aircraft on the floor whatever its
+/// stale altitude. A falling object always has an exact coordinate.
 pub(crate) fn object_altitude_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
-    if let Some(state) = entity.parachute_state.as_ref() {
-        return state.altitude.to_num::<i32>();
-    }
     if let Some(state) = entity.rocket_state.as_ref() {
         return state.altitude.to_num::<i32>();
     }

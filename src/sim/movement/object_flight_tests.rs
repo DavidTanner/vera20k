@@ -81,3 +81,59 @@ fn native_object_flight_queries_use_live_ground_bridge_and_mark() {
         );
     }
 }
+
+/// Paradrop (`0x005F5940`) places the falling object at the drop coordinate.
+/// Each frame `ObjectClass::AI`'s falling block moves its Location Z by the
+/// FallRate (`0x005F3F2C..0x005F3F60`) until GetHeight (`0x005F5F40`) is at
+/// most 0 (`0x005F3F6A`), then SetHeight(0) grounds it. The flight queries
+/// read that height: IsInAir (`0x005F6B90`) holds from two levels up. On a
+/// bridge GetHeight subtracts the deck (`0x005F5F86`), so the fall ends on it.
+#[test]
+fn a_paratroopers_fall_moves_its_location_z_to_the_ground_or_deck() {
+    use crate::sim::movement::parachute_descent::begin_parachute_descent;
+    use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
+
+    for (on_bridge, floor) in [(false, 0), (true, BRIDGE_DECK_HEIGHT_LEPTONS)] {
+        let mut sim = crate::sim::world::Simulation::new();
+        sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(
+            25,
+            25,
+            (0..25)
+                .flat_map(|y| (0..25).map(move |x| test_flat_cell(x, y)))
+                .collect(),
+        ));
+        let mut paratrooper = GameEntity::test_default(1, "E1", "Americans", 10, 10);
+        paratrooper.lifecycle.cell_marked = true;
+        paratrooper.on_bridge = on_bridge;
+        sim.substrate.entities.insert(paratrooper);
+        assert!(begin_parachute_descent(
+            &mut sim.substrate.entities,
+            1,
+            floor + 212
+        ));
+        fn entity(sim: &crate::sim::world::Simulation) -> &GameEntity {
+            sim.substrate.entities.get(1).unwrap()
+        }
+
+        // FallRate 0, -1, -2: the object hangs a frame, then sinks to 209.
+        for _ in 0..3 {
+            assert!(!sim.advance_fall(1, -3));
+        }
+        let t = sim.resolved_terrain.clone();
+        assert_eq!(current_fly_height(entity(&sim), t.as_ref()), 209);
+        assert!(is_high_flying(entity(&sim), t.as_ref(), None));
+        assert!(!sim.advance_fall(1, -3));
+        assert_eq!(current_fly_height(entity(&sim), t.as_ref()), 206);
+        assert!(is_low_flying(entity(&sim), t.as_ref(), None));
+
+        let mut frames = 4;
+        while !sim.advance_fall(1, -3) {
+            frames += 1;
+            assert!(frames < 100, "the fall must ground");
+        }
+        let landed = entity(&sim);
+        assert!(!landed.is_falling_down());
+        assert_eq!(landed.position.exact_z_leptons, Some(floor), "SetHeight(0)");
+        assert_eq!(current_fly_height(landed, t.as_ref()), 0);
+    }
+}

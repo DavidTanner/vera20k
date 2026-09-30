@@ -587,8 +587,15 @@ pub fn tick_air_movement(
     stats
 }
 
-/// Object5F5F40 evaluated from retained Z and the current ground/bridge surface.
-/// Only pre-migration fixtures without an exact coordinate read the cache.
+/// `ObjectClass::GetHeight @ 0x005F5F40`, shared by every object vtable
+/// (`+0x1C8`): the Location's Z less the ground under it and, on a bridge, the
+/// deck. An exact coordinate is the Location's Z. An object without one keeps
+/// its height apart from its ground ([`object_world_z_leptons`]), so its
+/// height is that part ([`object_altitude_leptons`]): a rocket's flight, an
+/// Air-layer locomotor's or an active Hover's altitude.
+///
+/// [`object_world_z_leptons`]: super::ground_pose::object_world_z_leptons
+/// [`object_altitude_leptons`]: super::ground_pose::object_altitude_leptons
 pub(crate) fn current_fly_height(
     entity: &crate::sim::game_entity::GameEntity,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
@@ -602,10 +609,7 @@ fn queried_flight_height(
     cells: Option<&crate::map::resolved_terrain::NativeCellQuery<'_>>,
 ) -> i32 {
     let Some(z) = entity.position.exact_z_leptons else {
-        return entity
-            .locomotor
-            .as_ref()
-            .map_or(0, |l| l.altitude.to_num::<i32>());
+        return super::ground_pose::object_altitude_leptons(entity);
     };
     let ground = cells
         .and_then(|cells| {
