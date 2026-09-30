@@ -739,7 +739,7 @@ mod tests {
         assert!(begin_parachute_descent(
             &mut entities,
             1,
-            SimFixed::from_num(STOCK_FLIGHT_LEVEL_LEPTONS)
+            STOCK_FLIGHT_LEVEL_LEPTONS
         ));
         let gi = entities.get(1).expect("entity");
 

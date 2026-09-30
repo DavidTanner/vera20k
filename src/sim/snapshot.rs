@@ -757,7 +757,9 @@ use crate::sim::world::Simulation;
 // parachute descent it saves is IsFallingDown.
 // 261 -> 262: bridge cells no longer save a runtime copy of CellClass bridge
 // state (deck, damage state, axis, role, span, overlay); anchor spans are gone.
-const SNAPSHOT_VERSION: u32 = 262;
+// 262 -> 263: a parachute descent no longer saves an altitude; the falling
+// object's height is its Location Z.
+const SNAPSHOT_VERSION: u32 = 263;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3646,7 +3648,8 @@ mod tests {
         // 259 -> 260: no bridge_occupancy or ground enter order.
         // 260 -> 261: no falling byte beside the parachute descent.
         // 261 -> 262: no runtime copy of CellClass bridge cell state.
-        assert_eq!(super::SNAPSHOT_VERSION, 262);
+        // 262 -> 263: no parachute altitude beside the Location Z.
+        assert_eq!(super::SNAPSHOT_VERSION, 263);
     }
 
     #[test]

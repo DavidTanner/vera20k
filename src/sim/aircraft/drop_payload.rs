@@ -27,7 +27,7 @@ use crate::sim::world::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
 };
 use crate::util::facing_table::facing_to_movement;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_to_i32};
+use crate::util::fixed_math::{SimFixed, sim_to_i32};
 use crate::util::lepton;
 
 /// V-pattern lateral radius. From gamemd constant at 0x7E2808 = 128.0 leptons
@@ -99,15 +99,22 @@ pub fn try_drop(
     // Capture the aircraft's full lepton position (cell + sub-cell) so the
     // V-pattern offset can apply at lepton precision. With cell-only math the
     // ±128 lateral offset truncates to 0 and every drop lands on the same cell.
-    let (facing, altitude, aircraft_x_lep, aircraft_y_lep) =
+    //
+    // The drop coordinate is the plane's GetCoords (`0x00415C93`), and only
+    // its XY moves to the landing spot (`0x00415DD7..0x00415DDF`): each
+    // passenger starts falling at the plane's Z.
+    let (facing, drop_z, aircraft_x_lep, aircraft_y_lep) =
         match sim.substrate.entities.get(aircraft_id) {
             Some(a) => {
-                let alt = a.locomotor.as_ref().map(|l| l.altitude).unwrap_or(SIM_ZERO);
+                let drop_z = crate::sim::movement::ground_pose::object_world_z_leptons(
+                    a,
+                    sim.resolved_terrain.as_ref(),
+                );
                 let x_lep = a.position.rx as i32 * 256 + sim_to_i32(a.position.sub_x);
                 let y_lep = a.position.ry as i32 * 256 + sim_to_i32(a.position.sub_y);
                 (
                     a.body_facing_byte(sim.session.binary_frame),
-                    alt,
+                    drop_z,
                     x_lep,
                     y_lep,
                 )
@@ -249,19 +256,21 @@ pub fn try_drop(
 
             // 5. Supply caller-owned subcell/role state while the passenger is still
             // limbo. Parachute attachment follows; Reveal is the success boundary.
-            // Do NOT touch
-            // `loco.altitude` here: normal paradropped infantry keep their base
-            // locomotor identity, while descent altitude lives in ParachuteDescentState.
+            // Do NOT touch `loco.altitude` here: normal paradropped infantry keep
+            // their base locomotor identity, and the fall's height is the
+            // Location Z. Paradrop sets OnBridge over a bridge (`0x005F5986`)
+            // before Unlimbo's Mark, so GetHeight measures the fall to the deck.
             if let Some(passenger) = sim.substrate.entities.get_mut(passenger_id) {
                 passenger.sub_cell = selected_sub_cell;
                 passenger.passenger_role = PassengerRole::None;
+                passenger.on_bridge = landing_layer == MovementLayer::Bridge;
                 if let Some(locomotor) = passenger.locomotor.as_mut() {
                     locomotor.layer = landing_layer;
                 }
             }
             // 6. Attach parachute descent while the passenger is still limbo. Reveal
             // is the local success boundary; an attach retry is not Techno Limbo.
-            if !begin_parachute_descent(&mut sim.substrate.entities, passenger_id, altitude) {
+            if !begin_parachute_descent(&mut sim.substrate.entities, passenger_id, drop_z) {
                 return Err(DepartureFailure::ParachuteAttach(prior_movement_layer));
             }
 
@@ -538,6 +547,55 @@ mod tests {
         assert!(wound_down, "the landing zeroed the remaining loops");
         assert!(played_out, "the canopy left at its last frame");
         assert!(sim.substrate.entities.get(passenger_id).is_some());
+    }
+
+    /// The drop coordinate is the plane's GetCoords (`0x00415C93`) with only
+    /// its XY moved to the landing spot (`0x00415DD7..0x00415DDF`), and
+    /// Paradrop places the passenger there (`0x005F5A50`). Dropped from a
+    /// plane over higher ground than its landing spot, a paratrooper starts at
+    /// the plane's Z, not at the plane's altitude above the landing ground.
+    #[test]
+    fn a_paratrooper_starts_falling_at_the_planes_z() {
+        use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
+        use crate::rules::locomotor_type::LocomotorKind;
+        use crate::sim::movement::locomotor::LocomotorState;
+
+        let mut sim = Simulation::new();
+        let cells = (0..64u16)
+            .flat_map(|y| {
+                (0..64u16).map(move |x| {
+                    let mut cell = test_flat_cell(x, y);
+                    if (x, y) == (50, 20) {
+                        cell.level = 2;
+                    }
+                    cell
+                })
+            })
+            .collect();
+        sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(64, 64, cells));
+        let rules = drop_test_rules();
+        let (aircraft_id, passenger_id) = (1, 2);
+        insert_loaded_paradrop_pair(&mut sim, aircraft_id, passenger_id);
+        // In flight 1500 leptons over its level-2 cell, as the Fly host keeps it.
+        let plane_z = 2 * 104 + 1500;
+        let plane = sim.substrate.entities.get_mut(aircraft_id).unwrap();
+        plane.position.exact_z_leptons = Some(plane_z);
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
+        locomotor.altitude = SimFixed::from_num(1500);
+        plane.locomotor = Some(locomotor);
+
+        assert_eq!(
+            try_drop(&mut sim, &rules, aircraft_id, 4),
+            DropResult::Success
+        );
+        let passenger = sim.substrate.entities.get(passenger_id).unwrap();
+        assert_eq!(
+            (passenger.position.rx, passenger.position.ry),
+            (51, 20),
+            "the landing cell is at level 0"
+        );
+        assert!(passenger.is_falling_down());
+        assert_eq!(passenger.position.exact_z_leptons, Some(plane_z));
     }
 
     #[test]

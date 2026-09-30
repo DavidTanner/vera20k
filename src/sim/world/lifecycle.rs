@@ -458,6 +458,12 @@ impl Simulation {
         use crate::sim::movement::locomotor::MovementLayer;
 
         let entity = self.substrate.entities.get(stable_id)?;
+        if entity.parachute_state.is_some() {
+            // Paradrop's Unlimbo coordinate is the drop coordinate, which
+            // SetLocation then commits whole (`0x005F5A50`): the falling
+            // object keeps the Z its drop gave it.
+            return entity.position.exact_z_leptons;
+        }
         if !matches!(
             entity.category,
             EntityCategory::Unit | EntityCategory::Infantry
@@ -466,12 +472,10 @@ impl Simulation {
                 loco.kind,
                 LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Ship
             ) && loco.layer != MovementLayer::Air
-        }) || entity.parachute_state.is_some()
-            || entity.low_bridge_tube_state.is_some()
+        }) || entity.low_bridge_tube_state.is_some()
             || entity.rocket_state.is_some()
         {
             // These owners still carry their own altitude/coordinate state.
-            // In particular, attaching a parachute precedes ordinary Reveal.
             return None;
         }
         let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
