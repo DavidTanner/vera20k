@@ -1783,9 +1783,6 @@ fn prepare_movement_pass(
             {
                 super::walk_step::finish_idle(entity);
             }
-            if entity.navigation.pending_arrival_clear {
-                mover_owners.insert(entity.owner());
-            }
             if tube_processed.contains(&id)
                 || (entity.movement_target.is_none()
                     && super::track_head::active_track_family(entity).is_none())
@@ -1819,23 +1816,6 @@ fn prepare_movement_pass(
         .keys()
         .map(|&owner| (owner, block_set_build_gen))
         .collect();
-
-    movers.clear();
-    for &id in entity_order {
-        if let Some(entity) = entities.get(id) {
-            if tube_processed.contains(&id)
-                || (entity.movement_target.is_none()
-                    && super::track_head::active_track_family(entity).is_none())
-                || entity.low_bridge_tube_state.is_some()
-            {
-                continue;
-            }
-            let layer = entity.movement_layer_or_ground();
-            if !matches!(layer, MovementLayer::Air | MovementLayer::Underground) {
-                movers.push(id);
-            }
-        }
-    }
 
     Ok(PreparedMovementPass {
         movers,
@@ -2241,21 +2221,20 @@ impl PendingMovementPass {
 
 /// Whether any object of this pass can reach a path build.
 ///
-/// The blocker-neighbour plane's only consumers are path builds: ordinary movers repathing, pending
-/// Drive arrivals, and objects that Tube or forced-track processing may hand
+/// The blocker-neighbour plane's only consumers are path builds: ordinary
+/// movers repathing, and objects that Tube or forced-track processing may hand
 /// back to ordinary movement this pass. An object turn with none of those never
 /// reads it, so the pass does not bring it current there (the touched
 /// entities wait in the forwarded backlog). When brought current, the value is
 /// the same as an unconditional build; only idle turns skip the work. The
 /// `debug_assert!`s beside each in-pass `find_move_path` call keep this
-/// contract checked: a new in-pass writer of `movement_target` or
-/// `pending_arrival_clear` on an object this predicate does not name would
-/// otherwise flip the hierarchy branch silently.
+/// contract checked: a new in-pass writer of `movement_target` on an object
+/// this predicate does not name would otherwise flip the hierarchy branch
+/// silently.
 fn pass_may_build_paths(entities: &EntityStore, entity_order: &[u64]) -> bool {
     entity_order.iter().any(|&entity_id| {
         entities.get(entity_id).is_some_and(|entity| {
             entity.movement_target.is_some()
-                || entity.navigation.pending_arrival_clear
                 || entity.navigation.nav_com.is_some()
                 || entity.low_bridge_tube_state.is_some()
                 || super::track_head::active_track_family(entity).is_some()

@@ -1394,13 +1394,30 @@ fn owed_restore_setter_moves_walk_and_hover_objects_to_the_saved_order() {
             Some(NavTargetRef::cell(14, 12)),
         );
         e.navigation.pending_arrival_clear = true;
+        e.navigation.nav_queue = vec![NavTargetRef::cell(16, 12)];
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
+        let e = sim.substrate.entities.get(id).unwrap();
+        assert!(!e.navigation.pending_arrival_clear, "{kind}");
+        // Unit 0x741970 clears NavQueue for clear_queue = 1; Infantry
+        // 0x0051AA40 and the Foot tail 0x004D94B0 never read NavQueue.
+        assert_eq!(
+            e.navigation.nav_queue.is_empty(),
+            kind != "ENGINEER",
+            "{kind}: NavQueue after the owed setter"
+        );
+        assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(14, 12)));
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .navigation
+            .nav_queue
+            .clear();
         assert_eq!(
             advance_until_order_ends(&mut sim, &rules, &registry, id),
             (14, 12),
             "{kind}"
         );
-        let e = sim.substrate.entities.get(id).unwrap();
-        assert!(!e.navigation.pending_arrival_clear, "{kind}");
     }
 }
 
@@ -1409,7 +1426,7 @@ fn owed_restore_setter_moves_walk_and_hover_objects_to_the_saved_order() {
 /// setter runs in that call, so nothing is left owed.
 #[test]
 fn idle_mode_queue_head_runs_the_hover_unit_setter_in_the_same_call() {
-    let (mut sim, rules, registry) = walk_and_hover_fixture();
+    let (mut sim, rules, _) = walk_and_hover_fixture();
     let id = sim
         .spawn_object("HOV", "Americans", 10, 10, 0, &rules)
         .unwrap();
@@ -1427,7 +1444,6 @@ fn idle_mode_queue_head_runs_the_hover_unit_setter_in_the_same_call() {
             .is_some_and(|hover| hover.is_moving()),
         "Hover Move_To ran"
     );
-    let _ = registry;
 }
 
 /// A Hover unit's order through the Unit setter: Move_To (0x00514D90), then

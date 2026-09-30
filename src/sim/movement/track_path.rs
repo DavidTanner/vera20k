@@ -705,8 +705,9 @@ impl Simulation {
     ///   order, not the saved one), so the Unit setter's unchanged-NavCom
     ///   return cannot swallow the call.
     ///
-    /// - Walk and Hover: the object's class setter with NavCom's target (or
-    ///   the queue's first cell), `clear_queue` = 1 as Restore passes it:
+    /// - Walk and Hover: the object's class setter with NavCom's target,
+    ///   `clear_queue` = 1 as Restore passes it (only the Unit setter reads
+    ///   it; Infantry 0x0051AA40 and the Foot tail never touch NavQueue):
     ///   Infantry [`Self::set_infantry_destination`], Unit
     ///   [`Self::set_unit_destination`]. NavCom is cleared first, as for the
     ///   class arm. A receiver without a represented class setter keeps the
@@ -808,7 +809,17 @@ impl Simulation {
     }
 
     /// [`Self::complete_pending_order`]'s Walk/Hover arm: Restore's
-    /// `Assign_Destination(saved, 1)` through the object's class setter.
+    /// `Assign_Destination(saved, 1)` through the object's class setter, with
+    /// the Restore preflight's input checks (`concrete_effects`); a receiver
+    /// whose inputs are missing keeps the represented NavCom.
+    ///
+    /// Residual: native Restore (0x004D8F99) runs this setter inside the
+    /// restore; VERA runs it at the object's next Process entry. Trigger: the
+    /// entity-local target-expiry Restore (`restore_entity_after_target_expiry`,
+    /// an AoE cell target expiring under a suspended mission) or a receiver
+    /// without a represented setter. Effect: the setter's timers, NavQueue
+    /// clear and Move_To land up to one frame later. Frequency: cell-target
+    /// expiry under a suspended Walk/Hover mission. Risk: timing only.
     fn finish_setter_destination(
         &mut self,
         id: u64,
@@ -820,25 +831,30 @@ impl Simulation {
         };
         actor.navigation.pending_arrival_clear = false;
         let category = actor.category;
-        let requested = match actor.navigation.nav_com {
-            Some(target) => target,
-            None => match actor.navigation.nav_queue.first().copied() {
-                Some(target @ NavTargetRef::Cell { .. }) => {
-                    actor.navigation.nav_queue.remove(0);
-                    target
-                }
-                _ => {
-                    super::navcom::set_destination_internal_null(actor);
-                    return;
-                }
-            },
+        // A NavCom cleared after the restore (a Stop) leaves nothing owed.
+        let Some(requested) = actor.navigation.nav_com else {
+            return;
         };
-        let receiver = match category {
-            EntityCategory::Unit => self.unit_setter_receiver(id, Some(rules)),
-            EntityCategory::Infantry => self.infantry_setter_receiver(id, requested, rules),
+        let available = match category {
+            EntityCategory::Unit => {
+                self.unit_setter_receiver(id, Some(rules))
+                    && (matches!(requested, NavTargetRef::Cell { .. })
+                        || super::navcom::nav_target_coordinate(
+                            requested,
+                            Some(id),
+                            &self.substrate.entities,
+                            self.resolved_terrain.as_ref(),
+                            Some((rules, &self.interner)),
+                        )
+                        .is_ok())
+            }
+            EntityCategory::Infantry => {
+                self.infantry_setter_receiver(id, requested, rules)
+                    && self.infantry_destination_inputs_available(id, requested, rules, registry)
+            }
             _ => false,
         };
-        if !receiver {
+        if !available {
             return;
         }
         if let Some(actor) = self.substrate.entities.get_mut(id) {
@@ -848,7 +864,7 @@ impl Simulation {
             self.set_unit_destination(id, requested, rules, true);
         } else {
             self.set_infantry_destination(id, requested, rules, registry)
-                .expect("represented Infantry destination dependencies must be available");
+                .expect("checked Infantry destination inputs");
         }
     }
 
