@@ -1366,7 +1366,7 @@ fn foot_set_location_always_writes_but_moves_riders_only_on_a_change() {
     .expect("rules");
     let mut entities = crate::sim::entity_store::EntityStore::new();
     let mut transport = GameEntity::test_default(1, "BFRT", "Americans", 1, 0);
-    // A Walk-style staged step: the world XY has left cell 1, the cell has not.
+    // A non-canonical Location: the world XY has left cell 1, the cell has not.
     transport.position.sub_x = SimFixed::from_num(300);
     transport.position.sub_y = SimFixed::from_num(128);
     transport.position.exact_z_leptons = Some(0);

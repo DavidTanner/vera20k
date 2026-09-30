@@ -93,6 +93,8 @@ pub(crate) fn position_world_xy(position: &Position) -> [i32; 2] {
 /// keeps the rest, so a negative or 16-bit-aliased coordinate from -32768 to
 /// 65535 * 256 + 32767 still reads back unchanged through
 /// [`position_world_xy`]; its native cell word comes from that full XY.
+/// Beyond that range the sub-cell overflows (a debug panic, a wrap in
+/// release), where native keeps any `i32`; no mover on a map reaches it.
 pub(crate) fn set_position_world_xy(position: &mut Position, xy: [i32; 2]) {
     let [x, y] = xy;
     let cell_x = crate::util::lepton::lepton_to_cell(x).clamp(0, i32::from(u16::MAX));
@@ -118,16 +120,25 @@ pub(crate) fn put_location(position: &mut Position, coord: DriveCoord) {
 ///
 /// RESIDUAL: its marked branch (`0x004DB83F..0x004DB866`, Mark(UP),
 /// `ObjectClass::SetLocation`, Mark(DOWN) while `+0x74` is set) is not
-/// ported. Every Rust caller runs it unmarked: Drive, Hover and Walk Mark(UP)
-/// first on a cell change (`0x004B2071`, `0x005148E3`, `0x0075BD7D`,
-/// `0x0075C11E`) and clear `+0x74` around it otherwise (`0x004B209F`,
-/// `0x005149F7`, `0x0075C1FE`), and the Fly crash fall Mark(UP)s first
-/// (`0x004CD766`). Natively `ObjectClass::Paradrop` calls it on the object Unlimbo just
-/// marked, with the same coordinate (`0x005F5A3D`, `0x005F5A50`); VERA's
-/// Reveal commits the drop coordinate instead, which skips a
-/// Pick_Up/Place_Down pair that leaves the list order as it was, and its two
-/// Recalcs. Trigger: every paradrop. Effect: none on the lists. Risk: a new
-/// caller that sets a marked object's Location.
+/// ported. Every native call a Rust caller ports runs it unmarked: Drive,
+/// Hover and Walk Mark(UP) first on a cell change (`0x004B2071`,
+/// `0x005148E3`, `0x0075BD7D`, `0x0075C11E`) and Drive and Hover clear
+/// `+0x74` around it otherwise (`0x004B209F`, `0x005149F7`); Jumpjet clears
+/// `+0x74` around it (`0x0054C189..0x0054C1A3`) or Mark(UP)s first
+/// (`0x0054C820`, `0x0054CBE1`); a tube mover is out of the lists until its
+/// exit's Mark(DOWN); and the Fly crash fall Mark(UP)s first (`0x004CD766`).
+/// The Jumpjet replay also sets the Location it Mark(UP)s from while marked,
+/// which moves nothing. Natively `ObjectClass::Paradrop` calls it on the
+/// object Unlimbo just marked, with the same coordinate (`0x005F5A3D`,
+/// `0x005F5A50`); VERA's Reveal commits the drop coordinate instead, which
+/// skips a Pick_Up/Place_Down pair that leaves the list order as it was, and
+/// its two Recalcs. Trigger: every paradrop. Effect: none on the lists. Risk:
+/// a new caller that sets a marked object's Location.
+///
+/// RESIDUAL: the change test reads [`position_world_coord`], whose Z is the
+/// stored level when no exact Z is kept (an Air or Hover owner before it
+/// first moves). Only the rider copy depends on it; an extra copy changes
+/// nothing, and a Z-only change it misses leaves riders at the old Z.
 ///
 /// [`open_topped_riders_follow`]: crate::sim::passenger::open_topped_riders_follow
 pub(crate) fn foot_set_location(

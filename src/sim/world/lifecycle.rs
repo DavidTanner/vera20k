@@ -663,6 +663,14 @@ impl Simulation {
             }
         }
         let exact_z = self.grounded_reveal_z(stable_id, position, context);
+        // RESIDUAL: `ObjectClass::Unlimbo` sets this Location through
+        // SetLocation (vt+0x1B4 at 0x005F4FA8, before its Mark(1) at
+        // 0x005F4FB4), which for a Foot also runs the OpenTopped rider tail.
+        // VERA copies the parts, keeping no exact Z for an owner whose height
+        // still lives in its locomotor (`grounded_reveal_z`), so it cannot go
+        // through `foot_set_location` yet. Trigger: a loaded OpenTopped
+        // transport revealed away from its riders. Frequency: none known in
+        // retail. Effect: the riders keep their old Location.
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.position.rx = position.rx;
             entity.position.ry = position.ry;

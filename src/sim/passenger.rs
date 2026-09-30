@@ -742,15 +742,21 @@ pub(crate) fn open_topped_riders_follow(
     let Some(transport) = entities.get(transport_id) else {
         return;
     };
+    // Cargo first: every changed SetLocation asks, and the type lookup costs
+    // an allocation.
+    let Some(cargo) = transport
+        .passenger_role
+        .cargo()
+        .filter(|cargo| !cargo.passengers.is_empty())
+    else {
+        return;
+    };
     if !rules
         .object(interner.resolve(transport.type_ref()))
         .is_some_and(|object| object.open_topped)
     {
         return;
     }
-    let Some(cargo) = transport.passenger_role.cargo() else {
-        return;
-    };
     let (riders, position) = (cargo.passengers.clone(), transport.position.clone());
     for rider in riders {
         if let Some(entity) = entities.get_mut(rider) {

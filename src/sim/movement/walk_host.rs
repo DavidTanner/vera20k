@@ -143,11 +143,6 @@ impl Simulation {
 
     /// Walk75C117..75C1AE relinks current XYZ while retaining the paid head
     /// and Foot path entry. This corridor does not invoke PerCell.
-    ///
-    /// RESIDUAL: here and at the completed step, VERA's Location already
-    /// holds the staged step, so SetLocation can see no change and skip the
-    /// OpenTopped rider tail that native runs from the old Location. Dormant:
-    /// retail rulesmd.ini makes only the Drive BFRT OpenTopped=yes.
     pub(crate) fn run_walk_boundary(
         &mut self,
         id: u64,

@@ -376,8 +376,11 @@ pub fn process_teleport(
             // RESIDUAL: native sets the Location through
             // FootClass::SetLocation (vt+0x1B4, 0x00719637 and again at
             // 0x00719684); VERA keeps no destination Z for it (SetHeight(0)
-            // replaces the Z) and skips its OpenTopped rider tail. Dormant:
-            // retail rulesmd.ini makes only the Drive BFRT OpenTopped=yes.
+            // replaces the Z) and skips its OpenTopped rider tail. Trigger:
+            // a loaded OpenTopped transport (retail: the Drive BFRT) warped
+            // by a superweapon, whose SuperClass code gives any Foot a
+            // Teleport locomotor (0x006CC989..0x006CC999); VERA ports no such
+            // warp yet. Effect: the riders stay at the departure point.
             if let Some(terrain) = terrain {
                 let cell = terrain
                     .native_cell_identity((teleport.target_rx as i16, teleport.target_ry as i16));

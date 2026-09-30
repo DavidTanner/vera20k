@@ -439,26 +439,41 @@ fn finalize_tube_object(
         return true;
     }
 
-    if category != EntityCategory::Infantry {
-        // 0x00735FA1..0x00735FEC: the exit cell's centre at the target's Z
-        // (+0x570), through SetLocation (vt+0x1B4).
+    // Both exits set the Location through SetLocation (vt+0x1B4): a unit at
+    // the exit cell's centre at the target's Z (+0x570,
+    // 0x00735FA1..0x00735FEC), infantry at the spot PlaceInfantryInCell
+    // (0x00481180, `allocate_sub_cell_with_preference` above) chose, at the
+    // floor there (0x00578080, 0x0051B967..0x0051B99C).
+    let (exit, floor_supported) = if let Some(sub_cell) = infantry_subcell {
+        let (sub_x, sub_y) = lepton::subcell_lepton_offset(Some(sub_cell));
+        let xy = [
+            i32::from(reached_cell.0) * 256 + sub_x.to_num::<i32>(),
+            i32::from(reached_cell.1) * 256 + sub_y.to_num::<i32>(),
+        ];
+        let floor = ground_pose::ground_surface_z_at(xy, false, Some(terrain), None);
+        let z = floor.unwrap_or_else(|| {
+            entities.get(entity_id).map_or(state.target.z, |entity| {
+                ground_pose::position_world_coord(&entity.position).z
+            })
+        });
+        let exit = DriveCoord {
+            x: xy[0],
+            y: xy[1],
+            z,
+        };
+        (exit, floor.is_some())
+    } else {
         let exit = DriveCoord::cell(tube.exit.0, tube.exit.1, state.target.z);
-        ground_pose::foot_set_location(entities, entity_id, exit, rules, interner);
-    }
+        (exit, false)
+    };
+    ground_pose::foot_set_location(entities, entity_id, exit, rules, interner);
     if let Some(entity) = entities.get_mut(entity_id) {
-        if category == EntityCategory::Infantry {
-            let sub_cell = infantry_subcell.expect("checked infantry exit sub-cell");
-            entity.position.rx = reached_cell.0;
-            entity.position.ry = reached_cell.1;
+        if let Some(sub_cell) = infantry_subcell {
             entity.sub_cell = Some(sub_cell);
-            (entity.position.sub_x, entity.position.sub_y) =
-                lepton::subcell_lepton_offset(Some(sub_cell));
-            let xy = ground_pose::position_world_xy(&entity.position);
-            if ground_pose::ground_surface_z_at(xy, false, Some(terrain), None).is_some() {
+            if floor_supported {
                 entity.position.z = terrain
                     .cell(reached_cell.0, reached_cell.1)
                     .map_or(entity.position.z, |cell| cell.level);
-                entity.position.exact_z_leptons = None;
             }
         } else {
             if let Some(cell) = terrain.cell(tube.exit.0, tube.exit.1) {
@@ -1047,6 +1062,62 @@ mod tests {
         update_unit_final_facing(&mut entities, 1, &terrain, 0);
         // Exit has no tube index in this fixture: facing is preserved.
         assert_eq!(entities.get(1).unwrap().body_facing_current(0), 0);
+    }
+
+    /// Infantry leaves a tube at its chosen spot, at the floor there
+    /// (`0x00578080` at `0x0051B98A`), through SetLocation (`0x0051B99C`).
+    /// The floor is native's: `tools/ramp_height_vectors.json`
+    /// `ramp_1_sub_64_192` (level 0, ramp 1, sub-cell (64, 192)) is 26.
+    #[test]
+    fn infantry_leaves_a_tube_at_the_floor_of_its_spot() {
+        let mut terrain = explicit_terrain(vec![2, 2]);
+        terrain.cell_mut(2, 0).unwrap().slope_type = 1;
+        let mut entity = unit(1);
+        entity.category = EntityCategory::Infantry;
+        entity.drive_locomotion = None;
+        entity.lifecycle.cell_marked = false;
+        entity.position.rx = 2;
+        entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(64);
+        entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(192);
+        entity.position.exact_z_leptons = Some(0);
+        let state = LowBridgeTubeMovementState {
+            tube_id: TubeId(0),
+            cursor: 2,
+            target: DriveCoord {
+                x: 2 * 256 + 64,
+                y: 192,
+                z: 0,
+            },
+        };
+        entity.low_bridge_tube_state = Some(state);
+        let mut entities = EntityStore::new();
+        entities.insert(entity);
+        assert!(finalize_tube_object(
+            &mut entities,
+            1,
+            state,
+            &terrain,
+            None,
+            &mut OccupancyGrid::new(),
+            &mut CellOccupationGrid::new(),
+            &mut RawCellOccupationGrid::new(),
+            None,
+            &crate::sim::intern::test_interner(),
+            &mut SimRng::new(7),
+            21,
+            &mut ScatterRequests::default(),
+        ));
+        let owner = entities.get(1).unwrap();
+        assert!(owner.low_bridge_tube_state.is_none());
+        assert_eq!(owner.sub_cell, Some(3));
+        assert_eq!(
+            ground_pose::position_world_coord(&owner.position),
+            DriveCoord {
+                x: 2 * 256 + 64,
+                y: 192,
+                z: 26
+            }
+        );
     }
 
     /// A step that reaches its target moves the unit through

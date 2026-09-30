@@ -55,6 +55,12 @@ pub(super) fn advance(
     // the displacement even if snap's equality branch retains an old target.
     entity.body_facing.snap(desired, native_frame);
     let proposed = crate::util::native_trig::facing_step_world_xy(current, desired, speed);
+    // A boundary step's staged sub-cell only feeds the crossing test, which
+    // restores the old Location for walk_host's SetLocation (0x0075C12E). A
+    // same-cell step's is its Location, which native sets through
+    // FootClass::SetLocation at 0x0075C20F.
+    // RESIDUAL: this direct write skips that call's OpenTopped rider tail.
+    // Dormant: retail rulesmd.ini makes only the Drive BFRT OpenTopped=yes.
     entity.position.sub_x = SimFixed::from_num(proposed[0] - i32::from(entity.position.rx) * 256);
     entity.position.sub_y = SimFixed::from_num(proposed[1] - i32::from(entity.position.ry) * 256);
     if proposed[0] / 256 == i32::from(entity.position.rx)
