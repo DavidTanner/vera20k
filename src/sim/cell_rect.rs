@@ -104,21 +104,28 @@ pub fn get_cellclass_fallback<'a>(
     y: i32,
 ) -> CellRef<'a> {
     let (x, y) = packed_cell_coord(x, y);
-    if let Some(index) = cell_linear_index(x, y) {
-        let rx = (index % CELL_ROW_STRIDE) as u16;
-        let ry = (index / CELL_ROW_STRIDE) as u16;
-        if let Some(cell) = terrain.and_then(|t| t.cell(rx, ry)) {
-            return CellRef::Real(cell);
+    let Some(terrain) = terrain else {
+        return CellRef::Dummy {
+            cell: detached_dummy(x, y),
+        };
+    };
+    let query = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+    native_cell_ref(&query, query.lookup((x as i16, y as i16)))
+}
+
+/// The view of one identity a Map lookup returned through `query`.
+fn native_cell_ref<'a>(
+    query: &crate::map::resolved_terrain::NativeCellQuery<'a>,
+    cell: crate::map::cell_index::NativeCellIdentity,
+) -> CellRef<'a> {
+    match cell {
+        crate::map::cell_index::NativeCellIdentity::Real(index) => {
+            CellRef::Real(&query.terrain().cells()[index])
         }
-    }
-    let cell = terrain.map_or_else(
-        || detached_dummy(x, y),
-        |terrain| {
-            terrain.stamp_dummy_cell_requested_coord(x, y);
-            terrain.shared_cell_dummy()
+        crate::map::cell_index::NativeCellIdentity::Dummy => CellRef::Dummy {
+            cell: query.dummy(),
         },
-    );
-    CellRef::Dummy { cell }
+    }
 }
 
 pub(crate) fn get_cellclass_in_query<'a>(
@@ -131,48 +138,29 @@ pub(crate) fn get_cellclass_in_query<'a>(
         return get_cellclass_fallback(terrain, x, y);
     };
     debug_assert!(terrain.is_some_and(|terrain| std::ptr::eq(terrain, query.terrain())));
-    match query.lookup((x as i16, y as i16)) {
-        crate::map::cell_index::NativeCellIdentity::Real(index) => {
-            CellRef::Real(&query.terrain().cells()[index])
-        }
-        crate::map::cell_index::NativeCellIdentity::Dummy => CellRef::Dummy {
-            cell: query.dummy(),
-        },
-    }
+    native_cell_ref(query, query.lookup((x as i16, y as i16)))
 }
 
-/// Engine world/lepton coordinate lookup, preserving full signed-i32 `/256`
-/// quotients and wrapping fixed-stride index arithmetic. Coordinate words are
-/// narrowed only after a miss, when native stamps the shared dummy.
-///
-/// Verified against `MapClass::Get_CellClass @ 0x00565730`: a real slot leaves
-/// the shared dummy untouched, while either an invalid slot or a null entry
-/// stamps the converted packed coordinate before returning the dummy.
+/// Engine world/lepton coordinate lookup, `MapClass::Get_CellClass @
+/// 0x00565730`, as a [`CellRef`] view of the one port,
+/// [`NativeCellQuery::lookup_world`](crate::map::resolved_terrain::NativeCellQuery::lookup_world):
+/// full signed-i32 `/256` quotients and wrapping fixed-stride index
+/// arithmetic. A real slot leaves the shared dummy untouched, while either an
+/// invalid slot or a null entry stamps the converted packed coordinate before
+/// returning the dummy.
 pub fn get_cellclass_fallback_leptons<'a>(
     terrain: Option<&'a ResolvedTerrainGrid>,
     x_leptons: i32,
     y_leptons: i32,
 ) -> CellRef<'a> {
-    let x = x_leptons / 256;
-    let y = y_leptons / 256;
-    let index = y.wrapping_mul(CELL_ROW_STRIDE as i32).wrapping_add(x);
-    if (0..=MAX_CELL_INDEX as i32).contains(&index) {
-        let rx = (index % CELL_ROW_STRIDE as i32) as u16;
-        let ry = (index / CELL_ROW_STRIDE as i32) as u16;
-        if let Some(cell) = terrain.and_then(|terrain| terrain.cell(rx, ry)) {
-            return CellRef::Real(cell);
-        }
-    }
-
-    let (x, y) = packed_cell_coord(x, y);
-    let cell = terrain.map_or_else(
-        || detached_dummy(x, y),
-        |terrain| {
-            terrain.stamp_dummy_cell_requested_coord(x, y);
-            terrain.shared_cell_dummy()
-        },
-    );
-    CellRef::Dummy { cell }
+    let Some(terrain) = terrain else {
+        let (x, y) = packed_cell_coord(x_leptons / 256, y_leptons / 256);
+        return CellRef::Dummy {
+            cell: detached_dummy(x, y),
+        };
+    };
+    let query = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+    native_cell_ref(&query, query.lookup_world(x_leptons, y_leptons))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
