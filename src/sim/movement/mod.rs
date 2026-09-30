@@ -467,8 +467,6 @@ pub struct MovementTickStats {
     pub scatter_requests: u32,
     pub crush_kills: u32,
     pub stuck_aborts: u32,
-    /// Scatter attempts triggered when infantry are blocked.
-    pub scatter_attempts: u32,
     /// Track selections triggered for vehicle turns.
     pub track_selections: u32,
     /// Stuck entities that recovered via repath or scatter.
@@ -491,7 +489,6 @@ impl MovementTickStats {
         self.scatter_requests = self.scatter_requests.saturating_add(other.scatter_requests);
         self.crush_kills = self.crush_kills.saturating_add(other.crush_kills);
         self.stuck_aborts = self.stuck_aborts.saturating_add(other.stuck_aborts);
-        self.scatter_attempts = self.scatter_attempts.saturating_add(other.scatter_attempts);
         self.track_selections = self.track_selections.saturating_add(other.track_selections);
         self.stuck_recoveries = self.stuck_recoveries.saturating_add(other.stuck_recoveries);
         self.selection_admission_refusals = self

@@ -36,10 +36,13 @@ fn sim_with(entity: GameEntity) -> Simulation {
     sim
 }
 
-/// The hut caller's `Scatter(NULL, 1, 1)` gate rows, with their one
-/// `RandomRanged(0, 4)` on admission.
+/// The hut caller's `Scatter(NULL, 1, 1)` rows (tools/spatial_oracle/hut_scatter)
+/// through the production receiver: its gates on the man each row describes,
+/// then its one `RandomRanged(0, 4)` from the corpus seed. This fixture has
+/// no map, so the receiver ends at the search; the native Scenario indices
+/// pin the gate answer and the draw together.
 #[test]
-fn forced_gates_match_original_hut_caller() {
+fn forced_gates_and_draw_match_original_hut_caller() {
     let rows: serde_json::Value = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/hut_scatter.json"
     ))
@@ -48,47 +51,38 @@ fn forced_gates_match_original_hut_caller() {
     assert_eq!(rows.len(), 12);
     for row in &rows[..8] {
         let input = &row["input"];
-        let output = &row["output"];
-        let facts = InfantryScatterFacts {
-            doing: input["doing"].as_i64().unwrap() as i32,
-            moving: input["moving"].as_bool().unwrap(),
-            mission_scatter: input["mission_scatter"].as_bool().unwrap(),
-            fraidycat: input["fraidycat"].as_bool().unwrap(),
-            has_target: input["attack"].as_bool().unwrap(),
-            player_scatter: false,
-            scatter_ability: false,
-            human: false,
-            in_team: false,
-        };
-        let admitted = infantry_scatter_gates_admit(&facts, ScatterFlags::new(true, true)).unwrap();
-        assert_eq!(
-            admitted,
-            output["destination_changed"].as_bool().unwrap(),
-            "{row}"
-        );
-        let mut rng = crate::sim::rng::SimRng::new(31);
-        if admitted {
-            rng.next_range_u32_inclusive(0, 4);
+        let flag = |key: &str| input[key].as_bool().unwrap();
+        // The corpus runs a computer man on Guard with `PlayerScatter=` set.
+        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[General]\n[InfantryTypes]\n0=E1\n[E1]\nSpeed=4\nFraidycat={}\n[Guard]\n\
+             Scatter={}\n[CombatDamage]\nPlayerScatter=yes\n",
+            flag("fraidycat"),
+            flag("mission_scatter"),
+        )))
+        .unwrap();
+        let mut man = infantry();
+        set_mission(&mut man, MissionType::Guard);
+        man.mission_leaf
+            .set_infantry_doing_verified(input["doing"].as_i64().unwrap() as i32)
+            .unwrap();
+        if flag("attack") {
+            man.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
         }
-        let state = rng.logical_state();
+        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
+        loco.set_walk_destination(flag("moving").then(|| DriveCoord::cell(6, 5, 0)));
+        man.locomotor = Some(loco);
+        let mut sim = sim_with(man);
+        sim.scenario_rng = crate::sim::rng::SimRng::new(31);
+        assert!(
+            !sim.infantry_scatter_null(1, ScatterFlags::new(true, true), &rules, None)
+                .unwrap()
+        );
+        let state = sim.scenario_rng.logical_state();
         assert_eq!(
             serde_json::json!([state.index_a, state.index_b]),
-            output["random_indices"],
+            row["output"]["random_indices"],
             "{row}"
         );
-        if admitted {
-            assert_eq!(
-                output["events"],
-                serde_json::json!([
-                    "coordinate",
-                    "random",
-                    "coordinate",
-                    ["fnpc", [10, 10], [0, 0]],
-                    "destination",
-                    "process"
-                ])
-            );
-        }
     }
 }
 

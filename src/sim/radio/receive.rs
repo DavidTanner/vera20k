@@ -19,11 +19,14 @@
 //! - Building OVER_OUT's `Begin_Mode(IDLE)` (`0x00447780`) queues the
 //!   building's IDLE BState (+0x538); VERA has no BState owner.
 //! - The bus carries no overlay registry, so RUN_AWAY's Scatter reaches an
-//!   Infantry receiver without one: its passability and setter queries fail
-//!   on a cell with any overlay (ore included), which is logged, and the man
-//!   stays. Trigger: RUN_AWAY reaching an infantryman in radio contact.
-//!   Frequency: rare, radio contacts are mostly docked Units. A Unit receiver
-//!   reads no overlay.
+//!   Infantry receiver without one, and its overlay reads fail on any cell
+//!   holding an overlay (ore included); the error is logged. When
+//!   Find_Nearby_Passable_Cell found a cell, the draw and the setter have
+//!   already run: the man keeps that destination and walks at his next turn,
+//!   but loses the immediate Process. When the neighbour fallback runs
+//!   instead, he stays. Trigger: RUN_AWAY reaching an infantryman in radio
+//!   contact. Frequency: rare, radio contacts are mostly docked Units. A Unit
+//!   receiver reads no overlay.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/radio + sim/world. sim/ NEVER depends on

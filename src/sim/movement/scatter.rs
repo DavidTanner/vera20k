@@ -22,17 +22,17 @@ use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::rules::ruleset::RuleSet;
+use crate::sim::entity_store::EntityStore;
 use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
     map_owned_radius_cap,
 };
 use crate::sim::game_entity::GameEntity;
+use crate::sim::house_state::HouseState;
+use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::world::Simulation;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use super::bump_crush::{
-    ScatterEligibility, ScatterTechno, cell_has_elite_occupant, scatter_dispatch_allowed,
-};
 use super::locomotor::MovementLayer;
 
 /// The two flags every Scatter call passes after its coordinate, under
@@ -85,7 +85,10 @@ impl ScatterRequests {
 }
 
 /// The current mission's MissionControl `Scatter=` (`0x005B3A00` indexes the
-/// table by `+0xAC`). A mission outside the table reads as permitted.
+/// table at `0x00A8E3A8` by `+0xAC`). No mission (-1) reads the byte before
+/// the table, `0x00A8E391`: the second byte of the vtable pointer
+/// `0x007E9E64` the static initializer stores at `0x00A8E390`
+/// (`0x004E6BFD`), which is nonzero, so it reads as permitted.
 pub(super) fn mission_permits_scatter(entity: &GameEntity, rules: &RuleSet) -> bool {
     entity
         .mission
@@ -129,6 +132,135 @@ pub(super) fn unit_scatter_admitted(
         && locomotor.is_powered()
 }
 
+/// The veterancy `Scatter_Objects`' elite pre-scan asks each occupant's
+/// `VeterancyClass::IsElite` for.
+const ELITE_VETERANCY: u16 = 200;
+
+/// Live Techno inputs at one `Scatter_Objects` dispatch
+/// (`0x00481771..0x004817C1`). A non-Techno has none and passes only on a
+/// cell-wide term.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ScatterTechno {
+    pub(super) has_scatter_ability: bool,
+    pub(super) house_iq: i32,
+}
+
+impl ScatterTechno {
+    pub(super) fn from_entity(
+        entity: &GameEntity,
+        rules: Option<&RuleSet>,
+        houses: &BTreeMap<InternedId, HouseState>,
+        interner: &StringInterner,
+    ) -> Self {
+        use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
+        Self {
+            has_scatter_ability: rules
+                .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
+                .is_some_and(|object| {
+                    has_weapon_ability(
+                        rank_from_u16(entity.veterancy()),
+                        object,
+                        crate::rules::object_type::Ability::Scatter,
+                    )
+                }),
+            // A rulesless/component fixture may omit its House. Runtime houses
+            // own CurrentIQ; zero is their constructor default, not a human/AI
+            // inference. The value is already saved/restored by HouseState.
+            house_iq: houses
+                .get(&entity.owner())
+                .map_or(0, |house| house.current_iq),
+        }
+    }
+}
+
+/// Rules inputs of the `Scatter_Objects` dispatch gate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ScatterEligibility {
+    /// `[CombatDamage] PlayerScatter` — stock `no`.
+    pub(super) player_scatter: bool,
+    /// `[IQ] Scatter` — stock `2`, constructor default `3`.
+    pub(super) iq_scatter: i32,
+}
+
+impl Default for ScatterEligibility {
+    /// The RulesClass constructor values, used when no ruleset is loaded.
+    fn default() -> Self {
+        Self {
+            player_scatter: false,
+            iq_scatter: 3,
+        }
+    }
+}
+
+impl ScatterEligibility {
+    pub(super) fn from_rules(rules: Option<&RuleSet>) -> Self {
+        rules.map_or_else(Self::default, |rules| Self {
+            player_scatter: rules.general.player_scatter,
+            iq_scatter: rules.general.iq_scatter,
+        })
+    }
+}
+
+/// Whether `Scatter_Objects` dispatches to one occupant:
+/// `eliteFound || no_kidding || PlayerScatter || HasWeaponAbility(SCATTER) ||
+/// IQ.Scatter <= occupantHouse.IQ`. `eliteFound` is the per-cell pre-scan;
+/// the ability and IQ terms are per occupant. Draws no RNG.
+/// Evidence: tools/spatial_oracle/cell_scatter.{py,json,meta.json} executes the
+/// original dispatcher and ability reader.
+pub(super) fn scatter_dispatch_allowed(
+    eligibility: ScatterEligibility,
+    no_kidding: bool,
+    elite_in_cell: bool,
+    techno: Option<ScatterTechno>,
+) -> bool {
+    elite_in_cell
+        || no_kidding
+        || eligibility.player_scatter
+        || techno.is_some_and(|facts| {
+            facts.has_scatter_ability || facts.house_iq >= eligibility.iq_scatter
+        })
+}
+
+/// `CellClass::Scatter_Objects`' dispatch walk (`0x00481670`): the objects of
+/// one cell list, in list order, its gate hands `Scatter(coord, forced,
+/// no_kidding)`. Without no-kidding the list is first pre-scanned for an
+/// elite, which releases every occupant. `caller` is the object asking when
+/// VERA already lists it in that cell (the pass lane's crusher); native
+/// never lists it there, so it is neither scanned nor dispatched.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn scatter_objects_admitted(
+    occupants: &[u64],
+    caller: Option<u64>,
+    no_kidding: bool,
+    rules: Option<&RuleSet>,
+    entities: &EntityStore,
+    houses: &BTreeMap<InternedId, HouseState>,
+    interner: &StringInterner,
+) -> Vec<u64> {
+    let listed = || occupants.iter().copied().filter(|&id| Some(id) != caller);
+    let eligibility = ScatterEligibility::from_rules(rules);
+    let elite_in_cell = !no_kidding
+        && listed().any(|id| {
+            entities
+                .get(id)
+                .is_some_and(|entity| entity.veterancy() >= ELITE_VETERANCY)
+        });
+    listed()
+        .filter(|&id| {
+            entities.get(id).is_some_and(|occupant| {
+                scatter_dispatch_allowed(
+                    eligibility,
+                    no_kidding,
+                    elite_in_cell,
+                    Some(ScatterTechno::from_entity(
+                        occupant, rules, houses, interner,
+                    )),
+                )
+            })
+        })
+        .collect()
+}
+
 impl Simulation {
     /// `TechnoClass::Scatter` (vtable `+0x174`) with a null coordinate.
     /// Answers whether an Infantry receiver's immediate Process changed bridge
@@ -157,8 +289,10 @@ impl Simulation {
     /// `UnitClass::Scatter @ 0x00743A50` with a null coordinate
     /// (`0x00743BE0..0x00743C9B`): after [`unit_scatter_admitted`], the
     /// nearby passable cell and `SetDestination(cell, 1)` (`0x00744063..
-    /// 0x00744070`). This arm draws no RNG, queues no mission and runs no
-    /// Process.
+    /// 0x00744070`), whose answer native does not read. This arm draws no
+    /// RNG, queues no mission and runs no Process. The setter
+    /// ([`Simulation::set_unit_cell_destination`]) reaches the Move_To of
+    /// every retail Unit locomotor.
     fn unit_scatter_null(&mut self, id: u64, flags: ScatterFlags, rules: &RuleSet) {
         let Some(unit) = self.substrate.entities.get(id) else {
             return;
@@ -242,11 +376,11 @@ impl Simulation {
     }
 
     /// `CellClass::Scatter_Objects @ 0x00481670` with a null coordinate on
-    /// `layer`'s list (`+0xE4` ground, `+0xE8` deck). The list is
-    /// snapshotted first. Without dispatch-all (`flags.no_kidding`) it is
-    /// pre-scanned for an elite occupant. Each occupant [`scatter_dispatch_allowed`]
-    /// admits then takes `Scatter(null, flags)` (`vt+0x174`) in list order.
-    /// Evidence: tools/spatial_oracle/cell_scatter.{py,json,meta.json}.
+    /// `layer`'s list (`+0xE4` ground, `+0xE8` deck): the list is
+    /// snapshotted, then each occupant [`scatter_objects_admitted`] selects
+    /// takes `Scatter(null, flags)` (`vt+0x174`) in list order. The gate
+    /// reads nothing a receiver writes, so selecting first dispatches the
+    /// same objects.
     pub(crate) fn scatter_cell_objects(
         &mut self,
         cell: (u16, u16),
@@ -260,27 +394,18 @@ impl Simulation {
             .occupancy
             .get(cell.0, cell.1)
             .map_or_else(Vec::new, |occ| occ.snapshot_layer(layer));
-        let eligibility = ScatterEligibility::from_rules(Some(rules));
-        let elite_in_cell = !flags.no_kidding
-            && cell_has_elite_occupant(&occupants, u64::MAX, &self.substrate.entities);
+        let admitted = scatter_objects_admitted(
+            &occupants,
+            None,
+            flags.no_kidding,
+            Some(rules),
+            &self.substrate.entities,
+            &self.houses,
+            &self.interner,
+        );
         let mut bridge_state_changed = false;
-        for id in occupants {
-            let admitted = self.substrate.entities.get(id).is_some_and(|occupant| {
-                scatter_dispatch_allowed(
-                    eligibility,
-                    flags.no_kidding,
-                    elite_in_cell,
-                    Some(ScatterTechno::from_entity(
-                        occupant,
-                        Some(rules),
-                        &self.houses,
-                        &self.interner,
-                    )),
-                )
-            });
-            if admitted {
-                bridge_state_changed |= self.scatter_null(id, flags, rules, registry)?;
-            }
+        for id in admitted {
+            bridge_state_changed |= self.scatter_null(id, flags, rules, registry)?;
         }
         Ok(bridge_state_changed)
     }

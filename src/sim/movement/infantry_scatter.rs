@@ -74,9 +74,18 @@ impl Simulation {
     /// `InfantryClass::Scatter`'s gates before its coordinate
     /// (`0x0051D0DD..0x0051D220`). A deploy-family Doing takes
     /// `Do_Action(Undeploy, 0, 0)` (`0x0051D103..0x0051D10D`) when forced and
-    /// no-kidding; otherwise a human owner refuses it (`0x0051D115..
-    /// 0x0051D148`). Then [`infantry_scatter_gates_admit`] on the Doing the
-    /// action left. Nothing here draws RNG.
+    /// no-kidding, then continues; otherwise a human owner refuses it
+    /// (`0x0051D115..0x0051D148`). Then [`infantry_scatter_gates_admit`] on
+    /// the Doing the action left. Nothing here draws RNG.
+    ///
+    /// RESIDUAL: VERA's infantry deploy lives in `deploy_state`, not in the
+    /// Doing (#850), so the deploy arm never fires and a deploying or
+    /// deployed man is admitted as if standing. Trigger: a scatter reaching a
+    /// deployed infantryman, such as a friendly vehicle pushing through his
+    /// cell. Effect: he takes the scatter destination while still deployed,
+    /// instead of undeploying (forced and no-kidding) or staying (a human
+    /// owner's man on any other call). Frequency: whenever vehicles push
+    /// through deployed infantry. The retired adapter did the same.
     pub(super) fn infantry_scatter_admitted(
         &mut self,
         id: u64,
@@ -140,15 +149,19 @@ impl Simulation {
     }
 
     /// `InfantryClass::Scatter` with a null coordinate (`0x0051D2D9..`):
-    /// - the fallback direction first (`0x0051D2D9..0x0051D390`): the body
-    ///   facing when the physical coordinate (`vt+0x48`) is at its cell's
-    ///   centre, else the heading from the centre to it, rounded to an octant,
-    ///   plus `RandomRanged(0, 4) - 2`;
+    /// - the fallback direction first ([`null_start_direction`], with its
+    ///   one draw);
     /// - then the nearby passable cell. When found: `SetDestination(cell, 1)`
     ///   and the locomotor's Process at once (`0x0051D43F..0x0051D478`);
     /// - otherwise the eight neighbours from that direction, then
     ///   `Queue_Mission(Move)` and `SetDestination(cell, 1)`
-    ///   (`0x0051D487..0x0051D6E0`).
+    ///   (`0x0051D487..0x0051D6E0`), with no Process.
+    ///
+    /// Evidence: tools/spatial_oracle/hut_scatter (found cell) and the null
+    /// rows of tools/spatial_oracle/infantry_source_scatter (NullCell answer)
+    /// execute the original body.
+    ///
+    /// [`null_start_direction`]: super::scatter_cell::null_start_direction
     ///
     /// Answers whether the immediate Process changed bridge state.
     pub(super) fn infantry_scatter_null(
@@ -167,14 +180,11 @@ impl Simulation {
             .get(id)
             .ok_or("Scatter lost its infantryman")?;
         let coord = super::foot_coordinate::current_coordinate(infantry);
-        let within = (coord.x & 0xFF, coord.y & 0xFF);
-        let heading = if within == (0x80, 0x80) {
-            infantry.body_facing.current(self.session.binary_frame)
-        } else {
-            crate::util::direction_tables::facing16_between([0x80, 0x80], [within.0, within.1])
-        };
-        let octant = (((u32::from(heading) >> 12) + 1) >> 1) as i32 & 7;
-        let start = octant + self.scenario_rng.next_range_u32_inclusive(0, 4) as i32 - 2;
+        let start = super::scatter_cell::null_start_direction(
+            (coord.x, coord.y),
+            infantry.body_facing.current(self.session.binary_frame),
+            &mut self.scenario_rng,
+        );
         if let Some(cell) = self.scatter_nearby_cell(id, rules) {
             return self.infantry_scatter_destination(id, cell, rules, registry, true);
         }

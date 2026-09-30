@@ -1197,7 +1197,7 @@ impl Simulation {
         self.scatter_cell_contacts(cell, deck, true, rules, registry)
     }
 
-    /// `CellClass::Scatter_Objects(null, 1, forced, deck)` on `cell`
+    /// `CellClass::Scatter_Objects(null, 1, no_kidding, deck)` on `cell`
     /// ([`Self::scatter_cell_objects`]); also the computer's site clearing
     /// (`sim::build_site::flush_for_placement`). The receivers' bridge-state
     /// answer is dropped: only an Engineer arriving at a BridgeRepairHut cell
@@ -1207,13 +1207,17 @@ impl Simulation {
         &mut self,
         cell: (i16, i16),
         deck: bool,
-        forced: bool,
+        no_kidding: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<(), String> {
         #[cfg(test)]
         if super::fresh_oracle_seam::substitute(
-            super::fresh_oracle_seam::FreshCallRecord::Scatter { cell, forced, deck },
+            super::fresh_oracle_seam::FreshCallRecord::Scatter {
+                cell,
+                no_kidding,
+                deck,
+            },
         ) {
             return Ok(());
         }
@@ -1227,7 +1231,7 @@ impl Simulation {
             } else {
                 MovementLayer::Ground
             },
-            super::ScatterFlags::new(true, forced),
+            super::ScatterFlags::new(true, no_kidding),
             rules,
             registry,
         )?;

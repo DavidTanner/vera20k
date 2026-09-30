@@ -139,8 +139,7 @@ impl Simulation {
                 crusher.regular_crusher,
                 crusher.omni_crusher,
             );
-            let kills = super::bump_crush::classify_drive_crush_phase(
-                super::bump_crush::DriveCrushPhase::FullyInCell,
+            let kills = super::bump_crush::select_crush_victims(
                 &[victim],
                 &self.substrate.entities,
                 id,
@@ -148,13 +147,9 @@ impl Simulation {
                 &self.interner,
                 (coord.x, coord.y),
                 capability,
-                super::bump_crush::ScatterEligibility::from_rules(rules),
                 self.session.binary_frame,
-                rules,
-                &self.houses,
             );
-            if !matches!(kills, super::bump_crush::DriveCrushOutcome::Kill { ref victims } if victims.contains(&victim))
-            {
+            if !kills.contains(&victim) {
                 continue;
             }
             if let Some(rules) = rules {

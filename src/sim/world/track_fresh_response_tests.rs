@@ -269,12 +269,12 @@ fn expected_records(events: &Value) -> Vec<FreshCallRecord> {
                     }
                 }
                 "scatter" => {
-                    // Scatter_Objects(Null, 1, force, deck).
+                    // Scatter_Objects(Null, 1, no_kidding, deck).
                     assert_eq!(event[2].as_i64(), Some(1));
                     let (x, y) = pair(&event[1]);
                     FreshCallRecord::Scatter {
                         cell: (x as i16, y as i16),
-                        forced: event[3] != 0,
+                        no_kidding: event[3] != 0,
                         deck: event[4] != 0,
                     }
                 }

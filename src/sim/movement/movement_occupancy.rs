@@ -816,14 +816,12 @@ pub(super) fn handle_deferred_occupancy(
         CellEntryResult::Crushable { victims } => {
             let crusher_cell = (i32::from(nx), i32::from(ny));
             let crusher_lepton = (i32::from(nx) * 256 + 128, i32::from(ny) * 256 + 128);
-            let eligibility = bump_crush::ScatterEligibility::from_rules(rules);
             // The entering-cell scatter walks the whole selected cell list, not
             // just the crushable subset, and it runs before any kill filter.
             let cell_occupants = occupancy
                 .get(nx, ny)
                 .map_or_else(Vec::new, |occ| occ.snapshot_layer(object_list_layer));
-            let victims = match bump_crush::classify_drive_crush_phase(
-                bump_crush::DriveCrushPhase::FullyInCell,
+            let victims = bump_crush::select_crush_victims(
                 &victims,
                 entities,
                 entity_id,
@@ -831,34 +829,22 @@ pub(super) fn handle_deferred_occupancy(
                 interner,
                 crusher_lepton,
                 crush_capability,
-                eligibility,
                 mcfg.binary_frame,
-                rules,
-                houses,
-            ) {
-                bump_crush::DriveCrushOutcome::Kill { victims } => victims,
-                _ => Vec::new(),
-            };
+            );
             let kill_set: BTreeSet<u64> = victims.iter().copied().collect();
-            if let bump_crush::DriveCrushOutcome::Scatter { blockers } =
-                bump_crush::classify_drive_crush_phase(
-                    bump_crush::DriveCrushPhase::EnteringCell,
+            // A crusher's entering cell takes the unforced
+            // `Scatter_Objects(null, 1, 0, deck)` (`0x0074177A`): each occupant
+            // its dispatch gate admits is asked `Scatter(null, 1, 0)`.
+            if crush_capability.can_crush_units() {
+                for blocker_id in super::scatter::scatter_objects_admitted(
                     &cell_occupants,
-                    entities,
-                    entity_id,
-                    alliances,
-                    interner,
-                    crusher_lepton,
-                    crush_capability,
-                    eligibility,
-                    mcfg.binary_frame,
+                    Some(entity_id),
+                    false,
                     rules,
+                    entities,
                     houses,
-                )
-            {
-                // The entering cell's unforced Scatter_Objects hands each
-                // occupant its dispatch gate admitted `Scatter(null, 1, 0)`.
-                for blocker_id in blockers {
+                    interner,
+                ) {
                     if kill_set.contains(&blocker_id) {
                         continue;
                     }

@@ -473,19 +473,6 @@ impl CrushCapability {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DriveCrushPhase {
-    EnteringCell,
-    FullyInCell,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DriveCrushOutcome {
-    None,
-    Scatter { blockers: Vec<u64> },
-    Kill { victims: Vec<u64> },
-}
-
 pub const CRUSH_DISTANCE_SQ_LIMIT: i64 = 0x3fff;
 
 pub fn within_crush_distance_sq(crusher: (i32, i32), victim: (i32, i32)) -> bool {
@@ -819,135 +806,14 @@ pub fn cell_passable_after_crush(
     true
 }
 
-// ---------------------------------------------------------------------------
-// Cell scatter dispatch eligibility (the `force = 0` gate)
-// ---------------------------------------------------------------------------
-
-/// Elite veterancy level — the pre-scan in the native cell scatter asks each
-/// occupant's `VeterancyClass::IsElite`.
-const ELITE_VETERANCY: u16 = 200;
-
-/// Live Techno inputs at one Cell Scatter dispatch. Non-Technos have no such
-/// facts and pass only a cell-wide override. Native: 481771..4817C1.
-#[derive(Clone, Copy, Debug)]
-pub struct ScatterTechno {
-    pub has_scatter_ability: bool,
-    pub house_iq: i32,
-}
-
-impl ScatterTechno {
-    pub(super) fn from_entity(
-        entity: &GameEntity,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-        houses: &std::collections::BTreeMap<
-            crate::sim::intern::InternedId,
-            crate::sim::house_state::HouseState,
-        >,
-        interner: &crate::sim::intern::StringInterner,
-    ) -> Self {
-        use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
-        Self {
-            has_scatter_ability: rules
-                .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
-                .is_some_and(|object| {
-                    has_weapon_ability(
-                        rank_from_u16(entity.veterancy()),
-                        object,
-                        crate::rules::object_type::Ability::Scatter,
-                    )
-                }),
-            // A rulesless/component fixture may omit its House. Runtime houses
-            // own CurrentIQ; zero is their constructor default, not a human/AI
-            // inference. The value is already saved/restored by HouseState.
-            house_iq: houses
-                .get(&entity.owner())
-                .map_or(0, |house| house.current_iq),
-        }
-    }
-}
-
-/// Rules inputs of the native cell-scatter dispatch gate.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ScatterEligibility {
-    /// `[CombatDamage] PlayerScatter` — stock `no`.
-    pub player_scatter: bool,
-    /// `[IQ] Scatter` — stock `2`, constructor default `3`.
-    pub iq_scatter: i32,
-}
-
-impl Default for ScatterEligibility {
-    /// The RulesClass constructor values, used when no ruleset is loaded.
-    fn default() -> Self {
-        Self {
-            player_scatter: false,
-            iq_scatter: 3,
-        }
-    }
-}
-
-impl ScatterEligibility {
-    pub fn from_rules(rules: Option<&crate::rules::ruleset::RuleSet>) -> Self {
-        rules.map_or_else(Self::default, |rules| Self {
-            player_scatter: rules.general.player_scatter,
-            iq_scatter: rules.general.iq_scatter,
-        })
-    }
-}
-
-/// Whether the native cell scatter actually dispatches to one occupant.
-///
-/// The dispatch condition is
-/// `eliteFound || force != 0 || PlayerScatter || (HasWeaponAbility(3) || IQ.Scatter <= occupantHouse.IQ)`.
-/// `eliteFound` is a **per-cell** pre-scan result — the walk breaks on the first
-/// elite occupant and the answer then applies to every occupant of that cell —
-/// while the IQ term is per-occupant.
-///
-/// `HasWeaponAbility(3)` is SCATTER, using the shared rank/ability owner.
-/// Evidence: tools/spatial_oracle/cell_scatter.{py,json,meta.json} executes the
-/// original full dispatcher and ability reader. Eligibility itself draws no
-/// RNG; the recipient's Scatter virtual may draw, so dispatch is not RNG-free.
-pub fn scatter_dispatch_allowed(
-    eligibility: ScatterEligibility,
-    forced: bool,
-    elite_in_cell: bool,
-    techno: Option<ScatterTechno>,
-) -> bool {
-    elite_in_cell
-        || forced
-        || eligibility.player_scatter
-        || techno.is_some_and(|facts| {
-            facts.has_scatter_ability || facts.house_iq >= eligibility.iq_scatter
-        })
-}
-
-/// The per-cell elite pre-scan: does any occupant of this cell carry elite rank?
-///
-/// The native pre-scan runs only for an unforced scatter and breaks on the first
-/// elite it finds. It walks the *cell's* occupants, so the vehicle doing the
-/// scattering is not one of them — an elite crusher must not release the cell's
-/// own dispatch gate, which is why `skip_id` exists.
-pub fn cell_has_elite_occupant(occupants: &[u64], skip_id: u64, entities: &EntityStore) -> bool {
-    occupants.iter().any(|&id| {
-        id != skip_id
-            && entities
-                .get(id)
-                .is_some_and(|entity| entity.veterancy() >= ELITE_VETERANCY)
-    })
-}
-
-/// Classify what a crusher does to the occupants of the cell it is touching.
-///
-/// `EnteringCell` mirrors `UnitClass::PerCellProcess(entering != 0)`, which
-/// scatters the cell with **force = 0** and never crushes; `FullyInCell` mirrors
-/// the `entering == 0` crush loop. The unforced scatter is subject to the
-/// dispatch gate — an elite in the cell, `PlayerScatter`, or the occupant's
-/// house IQ — which is why player-owned infantry stand still under an
-/// approaching tank in retail instead of dodging.
+/// The occupants a crusher fully inside the cell kills, in cell-list order:
+/// the `entering == 0` crush loop of `UnitClass::PerCellProcess`. The
+/// entering cell's unforced scatter is `Scatter_Objects`' dispatch walk
+/// ([`super::scatter::scatter_objects_admitted`]).
 ///
 /// `current_frame` feeds the Iron Curtain gate of the crush predicate.
 #[allow(clippy::too_many_arguments)]
-pub fn classify_drive_crush_phase(
-    phase: DriveCrushPhase,
+pub fn select_crush_victims(
     occ: &[u64],
     entities: &EntityStore,
     crusher_id: u64,
@@ -955,77 +821,36 @@ pub fn classify_drive_crush_phase(
     interner: &crate::sim::intern::StringInterner,
     crusher_coord: (i32, i32),
     capability: CrushCapability,
-    eligibility: ScatterEligibility,
     current_frame: u32,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    houses: &std::collections::BTreeMap<
-        crate::sim::intern::InternedId,
-        crate::sim::house_state::HouseState,
-    >,
-) -> DriveCrushOutcome {
+) -> Vec<u64> {
     if !capability.can_crush_units() {
-        return DriveCrushOutcome::None;
+        return Vec::new();
     }
     let Some(crusher) = entities.get(crusher_id) else {
-        return DriveCrushOutcome::None;
+        return Vec::new();
     };
-    let crusher_owner = interner.resolve(crusher.owner());
-    // Per-cell pre-scan, exactly once, before the dispatch walk.
-    let elite_in_cell = match phase {
-        DriveCrushPhase::EnteringCell => cell_has_elite_occupant(occ, crusher_id, entities),
-        DriveCrushPhase::FullyInCell => false,
-    };
-    let mut selected = Vec::new();
-    for &id in occ {
-        if id == crusher_id {
-            continue;
-        }
-        let Some(victim) = entities.get(id) else {
-            continue;
-        };
-        match phase {
-            DriveCrushPhase::EnteringCell => {
-                if scatter_dispatch_allowed(
-                    eligibility,
-                    false,
-                    elite_in_cell,
-                    Some(ScatterTechno::from_entity(victim, rules, houses, interner)),
-                ) {
-                    selected.push(id);
-                }
-            }
-            DriveCrushPhase::FullyInCell => {
-                // The same gate admission uses. Two inline copies of one
-                // predicate is how admission and the kill came to disagree.
-                if CrushAllyGate::new(crusher_owner, alliances, interner).spares(victim) {
-                    continue;
-                }
-                if !within_crush_distance_sq(crusher_coord, entity_crush_coord(victim)) {
-                    continue;
-                }
-                if can_crush(capability, CrushTarget::from_entity(victim, current_frame)) {
-                    selected.push(id);
-                }
-            }
-        }
-    }
-    // Native `CellClass::Scatter_Objects` @ `0x00481670` dispatches its
-    // selected-list snapshot
-    // forward. Sorting by stable id here would erase Cell list authority.
-    match (phase, selected.is_empty()) {
-        (_, true) => DriveCrushOutcome::None,
-        (DriveCrushPhase::EnteringCell, false) => DriveCrushOutcome::Scatter { blockers: selected },
-        (DriveCrushPhase::FullyInCell, false) => DriveCrushOutcome::Kill { victims: selected },
-    }
+    // The same gate admission uses. Two inline copies of one predicate is how
+    // admission and the kill came to disagree.
+    let allies = CrushAllyGate::new(interner.resolve(crusher.owner()), alliances, interner);
+    occ.iter()
+        .copied()
+        .filter(|&id| id != crusher_id)
+        .filter(|&id| {
+            entities.get(id).is_some_and(|victim| {
+                !allies.spares(victim)
+                    && within_crush_distance_sq(crusher_coord, entity_crush_coord(victim))
+                    && can_crush(capability, CrushTarget::from_entity(victim, current_frame))
+            })
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
 // Scatter
 // ---------------------------------------------------------------------------
 //
-// `CellClass::Scatter_Objects` and the class Scatter receivers live in
-// `movement::scatter` and `movement::infantry_scatter`; this module keeps the
-// cell dispatch gate the crusher classification shares.
+// `CellClass::Scatter_Objects`, its dispatch gate and the class Scatter
+// receivers live in `movement::scatter` and `movement::infantry_scatter`.
 
 /// Frames a blocked mover waits after telling the cell to scatter.
 ///
@@ -1638,20 +1463,8 @@ mod tests {
         assert!(!within_crush_distance_sq((0, 0), (128, 0)));
     }
 
-    /// Stock skirmish gate values: `[CombatDamage] PlayerScatter=no`,
-    /// `[IQ] Scatter=2`.
-    fn stock_eligibility() -> ScatterEligibility {
-        ScatterEligibility {
-            player_scatter: false,
-            iq_scatter: 2,
-        }
-    }
-
     #[test]
-    fn classify_drive_crush_phase_entering_holds_player_infantry_still() {
-        // Retail: the crusher's cell-entry scatter passes force = 0, so with
-        // PlayerScatter=no, no elite present and a human house (IQ 0 < 2) the
-        // occupant is never dispatched. Player infantry stand and get squashed.
+    fn full_cell_crush_kills_centered_enemy() {
         let mut entities = EntityStore::new();
         let mut crusher = vehicle(1, 5, 5);
         crusher.regular_crusher = true;
@@ -1662,8 +1475,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
+        let outcome = select_crush_victims(
             &[2],
             &entities,
             1,
@@ -1671,345 +1483,14 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::None);
+        assert_eq!(outcome, vec![2]);
     }
 
     #[test]
-    fn classify_drive_crush_phase_entering_scatters_when_an_elite_shares_the_cell() {
-        // The elite pre-scan is per-cell: one elite occupant releases the
-        // dispatch for every occupant of that cell, rookie or not.
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut rookie = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        rookie.category = EntityCategory::Infantry;
-        rookie.crushable = true;
-        entities.insert(rookie);
-        let mut elite = GameEntity::test_default(3, "E1", "Soviet", 5, 5);
-        elite.category = EntityCategory::Infantry;
-        elite.crushable = true;
-        elite.set_veterancy_rank(200);
-        entities.insert(elite);
-        let interner = crate::sim::intern::test_interner();
-
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
-            &[3, 2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            stock_eligibility(),
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(
-            outcome,
-            DriveCrushOutcome::Scatter {
-                blockers: vec![3, 2]
-            }
-        );
-    }
-
-    #[test]
-    fn classify_drive_crush_phase_entering_scatters_when_player_scatter_is_on() {
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        victim.crushable = true;
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
-            &[2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            ScatterEligibility {
-                player_scatter: true,
-                iq_scatter: 2,
-            },
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(outcome, DriveCrushOutcome::Scatter { blockers: vec![2] });
-    }
-
-    #[test]
-    fn scatter_dispatch_gate_matches_the_native_disjunction() {
-        let stock = stock_eligibility();
-        // Nothing set: no dispatch.
-        assert!(!scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 0
-            })
-        ));
-        // force = 1 (every locomotor blocked-cell caller) always dispatches.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            true,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 0
-            })
-        ));
-        // An elite in the cell releases it.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            false,
-            true,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 0
-            })
-        ));
-        // An AI house at MaxIQLevels=5 clears [IQ] Scatter=2.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 5
-            })
-        ));
-        // Exactly at the threshold: `IQ.Scatter <= house.IQ`.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 2
-            })
-        ));
-        assert!(!scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 1
-            })
-        ));
-    }
-
-    #[test]
-    fn scatter_eligibility_defaults_are_the_rules_constructor_values() {
-        let defaults = ScatterEligibility::default();
-        assert!(!defaults.player_scatter);
-        assert_eq!(defaults.iq_scatter, 3);
-    }
-
-    #[test]
-    fn cell_scatter_recipient_gate_matches_original_execution() {
-        use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
-        use crate::sim::{house_state::HouseState, intern::StringInterner};
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/cell_scatter.json"
-        ))
-        .unwrap();
-        for row in corpus.as_array().unwrap() {
-            let input = &row["input"];
-            let objects = input["objects"].as_array().unwrap();
-            let mut ini = String::from("[VehicleTypes]\n");
-            for (n, object) in objects.iter().enumerate() {
-                ini.push_str(&format!("{n}=T{}\n", object["id"]));
-            }
-            for object in objects {
-                ini.push_str(&format!(
-                    "[T{}]\nVeteranAbilities={}\nEliteAbilities={}\n",
-                    object["id"],
-                    if object["veteran_scatter"].as_bool().unwrap_or(false) {
-                        "SCATTER"
-                    } else {
-                        ""
-                    },
-                    if object["elite_scatter"].as_bool().unwrap_or(false) {
-                        "SCATTER"
-                    } else {
-                        ""
-                    },
-                ));
-            }
-            let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).unwrap();
-            let mut interner = StringInterner::new();
-            let mut entities = EntityStore::new();
-            let mut houses = std::collections::BTreeMap::new();
-            for object in objects {
-                let id = object["id"].as_u64().unwrap();
-                let owner = interner.intern(&format!("H{id}"));
-                let kind = interner.intern(&format!("T{id}"));
-                let mut entity = GameEntity::new_at_frame_zero_for_test(
-                    id,
-                    5,
-                    5,
-                    0,
-                    0,
-                    owner,
-                    crate::sim::components::Health { current: 100 },
-                    kind,
-                    EntityCategory::Unit,
-                    0,
-                    5,
-                    true,
-                );
-                entity.set_veterancy_rank(object["rank"].as_u64().unwrap_or(0) as u16 * 100);
-                let mut house = HouseState::new(owner, 0, None, true, 0, 10);
-                house.current_iq = object["iq"].as_i64().unwrap_or(0) as i32;
-                houses.insert(owner, house);
-                entities.insert(entity);
-            }
-            let bridge = input["bridge"].as_bool().unwrap_or(false);
-            let selected: Vec<_> = objects
-                .iter()
-                .filter(|object| object["bridge"].as_bool().unwrap_or(false) == bridge)
-                .collect();
-            let elite = selected.iter().any(|object| {
-                object["techno"].as_bool().unwrap_or(true)
-                    && object["rank"].as_u64().unwrap_or(0) >= 2
-            });
-            let eligibility = ScatterEligibility {
-                player_scatter: input["player_scatter"].as_bool().unwrap_or(false),
-                iq_scatter: input["threshold"].as_i64().unwrap_or(2) as i32,
-            };
-            let actual: Vec<u64> = selected
-                .iter()
-                .filter_map(|object| {
-                    let id = object["id"].as_u64().unwrap();
-                    let facts = object["techno"].as_bool().unwrap_or(true).then(|| {
-                        ScatterTechno::from_entity(
-                            entities.get(id).unwrap(),
-                            Some(&rules),
-                            &houses,
-                            &interner,
-                        )
-                    });
-                    scatter_dispatch_allowed(
-                        eligibility,
-                        input["dispatch_all"].as_bool().unwrap_or(false),
-                        elite,
-                        facts,
-                    )
-                    .then_some(id)
-                })
-                .collect();
-            let expected: Vec<u64> = row["dispatch"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|id| id.as_u64().unwrap())
-                .collect();
-            assert_eq!(actual, expected, "{}", input["name"]);
-        }
-    }
-
-    /// Exercise the production cell-entry classifier with live HouseState and
-    /// parsed type abilities. No replacement IQ cache is introduced.
-    #[test]
-    fn entering_cell_scatter_reads_house_iq_and_shared_ability_owner() {
-        let mut entities = EntityStore::new();
-        entities.insert(vehicle(1, 5, 5));
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        let owner = victim.owner();
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-        let rules =
-            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-                "[InfantryTypes]\n0=E1\n[E1]\nVeteranAbilities=SCATTER\n",
-            ))
-            .unwrap();
-        let mut houses = std::collections::BTreeMap::new();
-        houses.insert(
-            owner,
-            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
-        );
-        for (iq, rank, expected) in [(1, 0, false), (2, 0, true), (1, 100, true), (1, 0, false)] {
-            houses.get_mut(&owner).unwrap().current_iq = iq;
-            entities.get_mut(2).unwrap().set_veterancy_rank(rank);
-            let result = classify_drive_crush_phase(
-                DriveCrushPhase::EnteringCell,
-                &[2],
-                &entities,
-                1,
-                &crate::map::houses::HouseAllianceMap::new(),
-                &interner,
-                (1280, 1280),
-                CrushCapability::new(true, false),
-                stock_eligibility(),
-                0,
-                Some(&rules),
-                &houses,
-            );
-            assert_eq!(
-                result,
-                if expected {
-                    DriveCrushOutcome::Scatter { blockers: vec![2] }
-                } else {
-                    DriveCrushOutcome::None
-                }
-            );
-        }
-    }
-
-    #[test]
-    fn classify_drive_crush_phase_full_cell_kills_centered_enemy() {
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        victim.crushable = true;
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
-            &[2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            stock_eligibility(),
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(outcome, DriveCrushOutcome::Kill { victims: vec![2] });
-    }
-
-    #[test]
-    fn classify_drive_crush_phase_full_cell_skips_allied_victim() {
+    fn full_cell_crush_skips_allied_victim() {
         let mut entities = EntityStore::new();
         let mut crusher = vehicle(1, 5, 5);
         crusher.regular_crusher = true;
@@ -2019,8 +1500,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
+        let outcome = select_crush_victims(
             &[2],
             &entities,
             1,
@@ -2028,13 +1508,10 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::None);
+        assert_eq!(outcome, Vec::<u64>::new());
     }
 
     #[test]
@@ -2056,8 +1533,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
+        let outcome = select_crush_victims(
             &[2],
             &entities,
             1,
@@ -2065,13 +1541,10 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::Kill { victims: vec![2] });
+        assert_eq!(outcome, vec![2]);
     }
 
     #[test]
@@ -2097,8 +1570,7 @@ mod tests {
         entities.insert(ggi);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
+        let outcome = select_crush_victims(
             &[2, 3],
             &entities,
             1,
@@ -2106,13 +1578,10 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::Kill { victims: vec![2] });
+        assert_eq!(outcome, vec![2]);
     }
 
     #[test]
@@ -2133,8 +1602,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
         let call = |frame: u32| {
-            classify_drive_crush_phase(
-                DriveCrushPhase::FullyInCell,
+            select_crush_victims(
                 &[2],
                 &entities,
                 1,
@@ -2142,53 +1610,12 @@ mod tests {
                 &interner,
                 (5 * 256 + 128, 5 * 256 + 128),
                 CrushCapability::new(true, false),
-                stock_eligibility(),
                 frame,
-                None,
-                &std::collections::BTreeMap::new(),
             )
         };
 
-        assert_eq!(call(100), DriveCrushOutcome::None, "curtain still running");
-        assert_eq!(
-            call(760),
-            DriveCrushOutcome::Kill { victims: vec![2] },
-            "curtain expired"
-        );
-    }
-
-    #[test]
-    fn entering_cell_scatter_consumes_no_rng() {
-        // The whole native cell-scatter body contains no random draw; the
-        // dispatch gate is pure boolean.
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        victim.crushable = true;
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-        let rng = SimRng::new(0x1234_5678);
-        let before = rng.clone();
-
-        let _ = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
-            &[2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            stock_eligibility(),
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(rng.state(), before.state());
+        assert_eq!(call(100), Vec::<u64>::new(), "curtain still running");
+        assert_eq!(call(760), vec![2], "curtain expired");
     }
 
     // `post_scatter_wait_is_ten_frames_not_blockage_path_delay` used to sit
@@ -2396,10 +1823,6 @@ mod tests {
         ));
         crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap()
     }
-
-    /// `UnitClass::Scatter` never queries its locomotor — with the force byte
-    /// the locomotor blocked-cell path always passes, a MOVING vehicle is
-    /// displaced. VERA previously refused every moving blocker outright.
 
     // -- allocate_sub_cell_with_reserved tests --
 
