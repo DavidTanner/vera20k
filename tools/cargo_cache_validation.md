@@ -16,7 +16,7 @@ tests require no compiler, retail data or debugging utilities:
 python -m tools.run_tests
 ```
 
-The full final Python suite passed369 tests (3 optional tests skipped).
+The full final369-test Python suite passed (3 optional tests skipped).
 The focused final suite passed62 tests:40 retention tests and22 existing runner
 tests. The opt-in native test passed separately. Saved log identities are in the
 receipt. The single fresh critic found discovery-window, nested-layout and
