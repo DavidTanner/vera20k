@@ -2,7 +2,6 @@
 //! stuck recovery, and infantry sub-cell mechanics using minimal simulation setups.
 
 use super::track_head::committed_track_head;
-use crate::sim::movement::locomotion::LocomotorSlot;
 
 use super::*;
 use crate::map::entities::EntityCategory;
@@ -4841,7 +4840,6 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
 fn make_ship_loco(layer: MovementLayer) -> LocomotorState {
     let mut loco = make_drive_loco(layer);
     loco.kind = LocomotorKind::Ship;
-    loco.slot = LocomotorSlot::new(LocomotorKind::Ship);
     loco.speed_type = SpeedType::Float;
     loco.movement_zone = MovementZone::Water;
     loco

@@ -1718,8 +1718,7 @@ mod tests {
     use crate::sim::mission::{
         MissionCom, MissionControl, MissionDispatchTimer, MissionId, MissionType,
     };
-    use crate::sim::movement::locomotion::LocomotorSlot;
-    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
     use crate::sim::rng::SimRngLogicalState;
     use crate::sim::snapshot::GameSnapshot;
@@ -4798,11 +4797,7 @@ mod tests {
             .locomotor
             .as_ref()
             .ok_or(HostTraceError::SpecialLocomotorPath)?;
-        if locomotor.active_kind() != LocomotorKind::Drive
-            || locomotor.effective_kind() != LocomotorKind::Drive
-            || locomotor.piggyback.is_some()
-            || locomotor.is_overridden()
-        {
+        if locomotor.active_kind() != LocomotorKind::Drive || locomotor.piggyback.is_some() {
             return Err(HostTraceError::SpecialLocomotorPath);
         }
         if entity.drive_locomotion.is_none() && entity.navigation.nav_com.is_some() {
@@ -5901,16 +5896,17 @@ mod tests {
             HostTraceError::AircraftPath,
         );
 
+        // A Chrono Miner's Drive leg: the active Drive stands over the
+        // Teleport the unit was built with.
         let mut primary_mismatch = ordinary_drive_host_sim(13);
-        primary_mismatch
+        let teleporter = primary_mismatch
             .substrate
             .entities
             .get_mut(ORDINARY_DRIVE_HOST_ID)
             .unwrap()
             .locomotor
-            .as_mut()
-            .unwrap()
-            .slot = LocomotorSlot::new(LocomotorKind::Teleport);
+            .insert(LocomotorState::for_test_kind(LocomotorKind::Teleport));
+        assert!(teleporter.begin_drive_piggyback_for_teleporter(0));
         assert_ordinary_drive_host_error(
             &primary_mismatch,
             &control,
@@ -5928,7 +5924,7 @@ mod tests {
             .locomotor
             .as_mut()
             .unwrap()
-            .begin_piggyback(LocomotorKind::Teleport, MovementLayer::Ground, 0);
+            .begin_piggyback(LocomotorKind::Teleport, 0);
         assert_ordinary_drive_host_error(
             &piggyback,
             &control,

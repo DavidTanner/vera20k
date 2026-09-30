@@ -475,7 +475,7 @@ mod tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
-    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::LocomotorState;
 
     /// An owner whose active locomotor is Teleport.
     fn teleport_owner(id: u64, name: &str, rx: u16, ry: u16) -> GameEntity {
@@ -505,7 +505,7 @@ mod tests {
             0
         ));
         let locomotor = entities.get_mut(1).unwrap().locomotor.as_mut().unwrap();
-        assert!(locomotor.begin_piggyback(LocomotorKind::Drive, MovementLayer::Ground, 0));
+        assert!(locomotor.begin_piggyback(LocomotorKind::Drive, 0));
 
         tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
         let entity = entities.get(1).unwrap();

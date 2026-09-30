@@ -29,7 +29,7 @@ use std::ops::Deref;
 
 use crate::rules::locomotor_type::LocomotorKind;
 
-use super::super::locomotor::{LocomotorState, MovementLayer};
+use super::super::locomotor::LocomotorState;
 use super::super::slope_transition::SlopeTransitionState;
 
 /// Walk MoveTo75ACB0 / Stop75ADA0 retain destination independently of the
@@ -85,8 +85,12 @@ impl LocomotorRuntimePayload {
 }
 
 /// The suspended locomotor: the complete object a BEGIN displaced, boxed as
-/// the one nested COM object the class `Save` persists. It holds no stash of
-/// its own, since BEGIN refuses a nested one.
+/// the one nested COM object the class `Save` persists.
+///
+/// It holds no stash of its own because BEGIN refuses when the displaced
+/// object has one. Native E_FAIL (`0x004AF8F4`) instead tests the receiving
+/// object's own slot, which a fresh object never fills; neither case arises,
+/// since the setter reuses an active Drive rather than BEGIN over it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StashedLocomotor(Box<LocomotorState>);
 
@@ -140,13 +144,8 @@ fn begin_with(state: &mut LocomotorState, incoming: Option<LocomotorState>) -> B
 
 /// BEGIN with a freshly constructed `kind` object
 /// ([`LocomotorState::fresh_linked`]), as every native BEGIN site installs one.
-pub fn begin(
-    state: &mut LocomotorState,
-    kind: LocomotorKind,
-    layer: MovementLayer,
-    binary_frame: u32,
-) -> BeginOutcome {
-    let incoming = state.fresh_linked(kind, layer, binary_frame);
+pub fn begin(state: &mut LocomotorState, kind: LocomotorKind, binary_frame: u32) -> BeginOutcome {
+    let incoming = state.fresh_linked(kind, binary_frame);
     begin_with(state, Some(incoming))
 }
 
@@ -168,11 +167,19 @@ pub fn end_into(
     EndOutcome::Restored
 }
 
-/// Make the suspended object active again, untouched since its BEGIN.
-/// Answers the displaced temporary, which the owner then releases.
+/// Make the suspended object active again. Answers the displaced temporary,
+/// which the owner then releases.
+///
+/// The restored object keeps everything from its BEGIN except the layer,
+/// which is the Foot's: END (`0x004AF930`) does not move the Foot, and Drive
+/// and Teleport both answer Ground from `In_Which_Layer` (`0x004B4820`,
+/// `0x00719E20`), so a Foot that drove onto or off a bridge deck stays there.
+/// Its `altitude` is left as the object kept it; neither class reads one.
 pub fn end(state: &mut LocomotorState) -> Option<LocomotorState> {
     let stashed = state.piggyback.take()?;
-    Some(std::mem::replace(state, *stashed.0))
+    let released = std::mem::replace(state, *stashed.0);
+    state.layer = released.layer;
+    Some(released)
 }
 
 /// The nested-object save marker used by the clean-room snapshot seam.
@@ -186,6 +193,7 @@ pub fn serialized_presence(state: &LocomotorState) -> u8 {
 mod tests {
     use super::*;
     use crate::rules::locomotor_type::SpeedType;
+    use crate::sim::movement::locomotor::MovementLayer;
     use crate::util::fixed_math::SimFixed;
 
     fn teleporter() -> LocomotorState {
@@ -199,12 +207,12 @@ mod tests {
         let before = state.clone();
 
         assert_eq!(
-            begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
         let nested_before = state.clone();
         assert_eq!(
-            begin(&mut state, LocomotorKind::Ship, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Ship, 0),
             BeginOutcome::RefusedNested
         );
         assert_eq!(state.piggyback, nested_before.piggyback);
@@ -212,24 +220,23 @@ mod tests {
     }
 
     /// BEGIN installs a freshly constructed object and suspends the displaced
-    /// one whole; END restores that object untouched and releases the
-    /// temporary, whatever happened to the temporary meanwhile.
+    /// one whole; END restores that object and releases the temporary,
+    /// whatever happened to the temporary meanwhile.
     #[test]
-    fn begin_and_end_transfer_complete_object_without_touching_installed_slot() {
+    fn begin_and_end_transfer_the_complete_object() {
         let mut state = teleporter();
         state.altitude = SimFixed::from_num(123);
         state.hover_speed_request = SimFixed::from_num(1);
         state.speed_type = SpeedType::Wheel;
         state.power_off();
         let before = state.clone();
-        let installed = state.slot;
 
         assert_eq!(
-            begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
         assert_eq!(state.kind, LocomotorKind::Drive);
-        assert_eq!(state.slot, installed);
+        assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
         // LocomotionClass constructor 0x0055A6C0 raises Powered; the
         // temporary shares only the type's data with the displaced object.
         assert!(state.powered);
@@ -243,6 +250,29 @@ mod tests {
         assert_eq!(released.kind, LocomotorKind::Drive);
         assert_eq!(released.altitude, SimFixed::from_num(7));
         assert_eq!(state, before);
+        assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
+    }
+
+    /// Neither swap moves the Foot: a Teleport on a bridge deck hands the
+    /// deck to its Drive, and a Drive that left the deck hands the ground
+    /// back (Drive and Teleport In_Which_Layer `0x004B4820` / `0x00719E20`
+    /// both answer Ground; `Bridge` is the Foot's OnBridge).
+    #[test]
+    fn begin_and_end_keep_the_foot_layer() {
+        let mut state = teleporter();
+        state.layer = MovementLayer::Bridge;
+
+        assert_eq!(
+            begin(&mut state, LocomotorKind::Drive, 0),
+            BeginOutcome::Installed
+        );
+        assert_eq!(state.layer, MovementLayer::Bridge);
+
+        state.layer = MovementLayer::Ground;
+        let released = end(&mut state).expect("suspended object");
+        assert_eq!(released.layer, MovementLayer::Ground);
+        assert_eq!(state.kind, LocomotorKind::Teleport);
+        assert_eq!(state.layer, MovementLayer::Ground);
     }
 
     #[test]
@@ -252,7 +282,7 @@ mod tests {
         state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
 
         assert_eq!(
-            begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
         assert_eq!(
@@ -280,7 +310,7 @@ mod tests {
         let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
         state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
         assert_eq!(
-            begin(&mut state, LocomotorKind::Rocket, MovementLayer::Air, 0,),
+            begin(&mut state, LocomotorKind::Rocket, 0),
             BeginOutcome::Installed
         );
 
@@ -304,7 +334,7 @@ mod tests {
         let mut output = None;
         assert_eq!(end_into(&mut state, Some(&mut output)), EndOutcome::Empty);
 
-        begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0);
+        begin(&mut state, LocomotorKind::Drive, 0);
         assert_eq!(
             end_into(&mut state, Some(&mut output)),
             EndOutcome::Restored
@@ -321,7 +351,7 @@ mod tests {
     fn serialized_presence_matches_the_single_suspended_object() {
         let mut state = teleporter();
         assert_eq!(serialized_presence(&state), 0);
-        begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0);
+        begin(&mut state, LocomotorKind::Drive, 0);
         assert_eq!(serialized_presence(&state), 1);
     }
 }

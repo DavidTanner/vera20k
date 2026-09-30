@@ -56,7 +56,7 @@ mod drive_ship_slope_hash_tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotion::LocomotorRuntimePayload;
-    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::movement::slope_transition::SlopeTransitionState;
 
     fn hash_with_state(kind: LocomotorKind, stashed: bool, state: SlopeTransitionState) -> u64 {
@@ -70,7 +70,7 @@ mod drive_ship_slope_hash_tests {
             _ => unreachable!(),
         };
         if stashed {
-            assert!(locomotor.begin_piggyback(LocomotorKind::Teleport, MovementLayer::Ground, 90,));
+            assert!(locomotor.begin_piggyback(LocomotorKind::Teleport, 90,));
         }
         entity.locomotor = Some(locomotor);
         sim.substrate.entities.insert(entity);
@@ -96,6 +96,80 @@ mod drive_ship_slope_hash_tests {
                         "kind={kind:?} stashed={stashed} must hash every slope field"
                     );
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod locomotor_field_hash_tests {
+    use super::Simulation;
+    use crate::map::entities::EntityCategory;
+    use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
+    use crate::sim::game_entity::GameEntity;
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+    use crate::util::fixed_math::SimFixed;
+
+    /// A Teleport unit, optionally on a Drive leg, with `mutate` applied to the
+    /// active object or, on the leg, to the suspended Teleport.
+    fn hash_with(stashed: bool, mutate: Option<fn(&mut LocomotorState)>) -> u64 {
+        let mut sim = Simulation::new();
+        let mut entity = GameEntity::test_default(1, "LOCO", "Americans", 2, 2);
+        entity.category = EntityCategory::Unit;
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Teleport);
+        if stashed {
+            assert!(locomotor.begin_drive_piggyback_for_teleporter(0));
+        }
+        if let Some(mutate) = mutate {
+            match locomotor.piggyback.as_mut() {
+                Some(stash) => mutate(stash.suspended_mut_for_test()),
+                None => mutate(&mut locomotor),
+            }
+        }
+        entity.locomotor = Some(locomotor);
+        sim.substrate.entities.insert(entity);
+        sim.state_hash()
+    }
+
+    /// Every field outside the class payload (`drive_ship_slope_hash_tests`
+    /// and the payload tests cover it) changes the hash, on the active object
+    /// and on a suspended one. The six fields #680 found missing from the
+    /// active fold are among them.
+    #[test]
+    fn every_active_and_stashed_locomotor_field_changes_current_hash() {
+        let mutations: [(&str, fn(&mut LocomotorState)); 12] = [
+            ("kind", |l| l.kind = LocomotorKind::Walk),
+            ("powered", |l| l.powered = false),
+            ("layer", |l| l.layer = MovementLayer::Bridge),
+            ("altitude", |l| l.altitude = SimFixed::from_num(5)),
+            ("balloon_hover", |l| l.balloon_hover = true),
+            ("hover_attack", |l| l.hover_attack = true),
+            ("speed_type", |l| l.speed_type = SpeedType::Wheel),
+            ("movement_zone", |l| {
+                l.movement_zone = MovementZone::Amphibious
+            }),
+            ("subcell_dest", |l| {
+                l.subcell_dest = Some((SimFixed::from_num(64), SimFixed::from_num(192)))
+            }),
+            ("hover_throttle", |l| {
+                l.hover_throttle = SimFixed::from_num(1)
+            }),
+            ("hover_speed_request", |l| {
+                l.hover_speed_request = SimFixed::from_num(1)
+            }),
+            ("hover_bob_offset", |l| {
+                l.hover_bob_offset = SimFixed::from_num(1)
+            }),
+        ];
+        assert_ne!(hash_with(false, None), hash_with(true, None));
+        for stashed in [false, true] {
+            let baseline = hash_with(stashed, None);
+            for (field, mutate) in mutations {
+                assert_ne!(
+                    baseline,
+                    hash_with(stashed, Some(mutate)),
+                    "stashed={stashed} must hash {field}"
+                );
             }
         }
     }
@@ -1774,15 +1848,16 @@ impl Simulation {
 }
 
 /// One locomotor object, field for field, and the object its piggyback slot
-/// suspends through the same fold. The destructuring makes a new field a
-/// compile error here until it is folded.
+/// suspends through the same fold. The destructuring names every field, and
+/// `deny(unused_variables)` makes a named but unfolded field a compile error;
+/// `locomotor_field_hash_tests` checks that each one reaches the hash.
+#[deny(unused_variables)]
 fn hash_locomotor(
     loco: &crate::sim::movement::locomotor::LocomotorState,
     hasher: &mut impl Hasher,
 ) {
     let crate::sim::movement::locomotor::LocomotorState {
         kind,
-        slot,
         powered,
         piggyback,
         runtime_payload,
@@ -1797,12 +1872,9 @@ fn hash_locomotor(
         hover_speed_request,
         hover_bob_offset,
     } = loco;
+    // The installed class is the kind of the bottom object, which this
+    // fold reaches through the stash.
     (*kind as u8).hash(hasher);
-    // The installed slot, distinct from the active kind: the two differ while
-    // a piggyback stash is up, so hashing only the active class would let a
-    // desync in which locomotor a unit was built with hide behind a matching
-    // current one.
-    slot.installed().hash(hasher);
     powered.hash(hasher);
     (*layer as u8).hash(hasher);
     // SimFixed has no Hash; fold the raw bits.
@@ -4041,7 +4113,7 @@ mod bridge161_hash_projection_tests {
     use crate::sim::components::{DriveCoord, Health};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload;
-    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::LocomotorState;
 
     fn supplied_payload_world(kind: LocomotorKind, stashed: bool) -> Simulation {
         let mut sim = Simulation::new();
@@ -4063,7 +4135,7 @@ mod bridge161_hash_projection_tests {
         );
         let mut locomotor = LocomotorState::for_test_kind(kind);
         if stashed {
-            assert!(locomotor.begin_piggyback(LocomotorKind::Teleport, MovementLayer::Ground, 0));
+            assert!(locomotor.begin_piggyback(LocomotorKind::Teleport, 0));
         }
         entity.locomotor = Some(locomotor);
         sim.substrate.entities.insert(entity);

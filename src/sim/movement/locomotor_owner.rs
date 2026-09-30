@@ -71,7 +71,7 @@ pub(crate) fn restore_admitted_primary(entity: &mut GameEntity) -> bool {
         return false;
     };
     let retired_drive = locomotor.active_kind() == LocomotorKind::Drive;
-    let restored = locomotor.restore_primary_from_piggyback();
+    let restored = locomotor.end_piggyback();
     if restored {
         // END transfers the controller without moving Object+9C. Restored
         // altitude is controller state, not an addition to this exact XYZ.

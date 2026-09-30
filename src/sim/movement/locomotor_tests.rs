@@ -652,7 +652,7 @@ fn test_override_teleport_round_trip() {
     assert_eq!(state.layer, MovementLayer::Ground);
 
     // Begin teleport override.
-    state.begin_piggyback(LocomotorKind::Teleport, MovementLayer::Ground, 0);
+    state.begin_piggyback(LocomotorKind::Teleport, 0);
     assert!(state.is_overridden());
     assert_eq!(state.kind, LocomotorKind::Teleport);
     assert_eq!(state.layer, MovementLayer::Ground);
@@ -683,7 +683,7 @@ fn test_override_preserves_speed_type() {
     let mut state = LocomotorState::from_object_type(&obj, 0);
     assert_eq!(state.speed_type, SpeedType::Wheel);
 
-    state.begin_piggyback(LocomotorKind::Teleport, MovementLayer::Ground, 0);
+    state.begin_piggyback(LocomotorKind::Teleport, 0);
     // SpeedType should still reflect the original during override.
     state.end_piggyback();
     assert_eq!(state.speed_type, SpeedType::Wheel);
@@ -697,7 +697,7 @@ fn drive_piggyback_restores_primary_teleport_only_after_not_moving() {
     assert!(state.begin_drive_piggyback_for_teleporter(0));
     assert_eq!(state.active_kind(), LocomotorKind::Drive);
     assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
-    assert!(state.restore_primary_from_piggyback());
+    assert!(state.end_piggyback());
     assert_eq!(state.active_kind(), LocomotorKind::Teleport);
     assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
     assert!(state.is_primary_active());

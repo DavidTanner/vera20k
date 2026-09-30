@@ -323,11 +323,13 @@ mod tests {
         );
 
         let mut stashed_drive = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        assert!(stashed_drive.locomotor.as_mut().unwrap().begin_piggyback(
-            LocomotorKind::Teleport,
-            crate::sim::movement::locomotor::MovementLayer::Ground,
-            23,
-        ));
+        assert!(
+            stashed_drive
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .begin_piggyback(LocomotorKind::Teleport, 23)
+        );
         assert!(super::state_for_entity(&stashed_drive).is_none());
         assert!(matches!(
             stashed_drive
