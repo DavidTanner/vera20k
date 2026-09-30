@@ -263,11 +263,6 @@ impl LocomotorState {
         )
     }
 
-    /// Whether this unit is currently airborne (altitude > 0).
-    pub fn is_airborne(&self) -> bool {
-        self.altitude > SIM_ZERO
-    }
-
     pub(crate) fn fly_runtime(&self) -> Option<&super::fly_height::FlyRuntime> {
         match (self.kind, &self.runtime_payload) {
             (LocomotorKind::Fly, LocomotorRuntimePayload::Fly(state)) => Some(state),

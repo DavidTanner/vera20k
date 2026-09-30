@@ -81,3 +81,30 @@ fn native_object_flight_queries_use_live_ground_bridge_and_mark() {
         );
     }
 }
+
+/// Paradrop (`0x005F5940`) raises the falling byte (`0x005F5965`), and each
+/// frame `ObjectClass::AI`'s falling block writes the Location Z
+/// (`0x005F3F2C..0x005F3F60`). So GetHeight (`0x005F5F40`) is the descent
+/// height, and IsInAir (`0x005F6B90`) holds while it is at least two levels.
+/// VERA keeps that height in the descent state, without an exact Z.
+#[test]
+fn a_descending_paratrooper_reads_its_descent_height() {
+    let cells: Vec<_> = (0..25)
+        .flat_map(|y| (0..25).map(move |x| test_flat_cell(x, y)))
+        .collect();
+    let terrain = ResolvedTerrainGrid::from_cells(25, 25, cells);
+    let mut entity = GameEntity::test_default(1, "E1", "Americans", 10, 10);
+    entity.lifecycle.cell_marked = true;
+    entity.parachute_state = Some(
+        crate::sim::movement::parachute_descent::ParachuteDescentState {
+            rate: -3,
+            altitude: SimFixed::from_num(1200),
+        },
+    );
+    assert_eq!(current_fly_height(&entity, Some(&terrain)), 1200);
+    assert!(is_high_flying(&entity, Some(&terrain), None));
+
+    entity.parachute_state.as_mut().unwrap().altitude = SimFixed::from_num(207);
+    assert_eq!(current_fly_height(&entity, Some(&terrain)), 207);
+    assert!(is_low_flying(&entity, Some(&terrain), None));
+}

@@ -1133,10 +1133,17 @@ fn considered_aircraft_infantry_is_air_only_while_high_flying() {
         );
 
         if altitude_leptons > 0 {
-            sim.substrate
+            // Airborne as the Jumpjet host leaves it: its Location Z above
+            // the mapless ground, with the locomotor's altitude copy.
+            let rocketeer = sim
+                .substrate
                 .entities
                 .get_mut(target)
-                .and_then(|entity| entity.locomotor.as_mut())
+                .expect("target should exist");
+            rocketeer.position.exact_z_leptons = Some(altitude_leptons as i32);
+            rocketeer
+                .locomotor
+                .as_mut()
                 .expect("Rocketeer carries a locomotor")
                 .altitude = crate::util::fixed_math::SimFixed::from_num(altitude_leptons);
         }

@@ -337,8 +337,10 @@ impl Simulation {
                     {
                         continue;
                     }
-                    let coord_z =
-                        crate::sim::combat::in_range::range_object_z_leptons(entity, Some(terrain));
+                    let coord_z = crate::sim::movement::ground_pose::object_world_z_leptons(
+                        entity,
+                        Some(terrain),
+                    );
                     members.push(group_destination::GroupDestinationMember {
                         command_index,
                         entity_id,
