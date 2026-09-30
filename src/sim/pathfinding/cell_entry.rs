@@ -1100,7 +1100,7 @@ pub fn classify_occupied_cell(
     alliances: &HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
 ) -> CellEntryResult {
-    classify_occupied_cell_with_slave_query(
+    classify_occupied_cell_with_layers_and_ignored_and_occupation(
         target,
         CanEnterLayerContext::single(target_layer),
         mover_id,
@@ -1110,13 +1110,12 @@ pub fn classify_occupied_cell(
         mover_bypass_grid,
         None,
         occupancy,
+        &CellOccupationGrid::new(),
+        &RawCellOccupationGrid::new(),
         0,
         entities,
         alliances,
         interner,
-        None,
-        &mut false,
-        false,
     )
 }
 
@@ -1149,12 +1148,10 @@ fn classify_occupied_cell_with_slave_query(
     // raised the running code above 0. An occupant the mover can crush does not
     // contribute a code; one it cannot crush raises the code like any blocker.
     let ally_gate = bump_crush::CrushAllyGate::new(mover_owner, alliances, interner);
-    // Infantry's native predicate has no Unit crush latch. The missing-mover
-    // allowance is for the older frame-independent planning API; live runtime
-    // callers supply their mover and the raw occupation wrapper below.
+    // Infantry's native predicate has no Unit crush latch.
     let victims = if entities
         .get(mover_id)
-        .is_none_or(|mover| mover.category == EntityCategory::Unit)
+        .is_some_and(|mover| mover.category == EntityCategory::Unit)
     {
         bump_crush::collect_crush_victims(
             target,
@@ -1259,18 +1256,9 @@ fn classify_occupied_cell_with_slave_query(
         return apply_overrides(CellEntryResult::Impassable, mover_locomotor);
     }
 
-    if worst == CellEntryResult::Clear
-        && !victims.is_empty()
-        && (native_unit_tail
-            || bump_crush::cell_passable_after_crush(
-                target,
-                occupancy,
-                layers.occupancy_bits_layer,
-                crush_capability,
-                entities,
-                ally_gate,
-            ))
-    {
+    // Victims exist only for a live Unit mover, whose post-latch tail
+    // (`0x0073FCF6`) the wrapper runs.
+    if worst == CellEntryResult::Clear && !victims.is_empty() {
         return apply_overrides(CellEntryResult::Crushable { victims }, mover_locomotor);
     }
 
@@ -2159,6 +2147,14 @@ mod tests {
         assert_eq!(result.yr_code(), 6);
     }
 
+    /// A tank moving from the next cell west, as the legacy pass supplies its
+    /// mover to the classifier.
+    fn live_unit_mover(id: u64, owner: &str) -> crate::sim::game_entity::GameEntity {
+        let mut mover = crate::sim::game_entity::GameEntity::test_default(id, "MTNK", owner, 4, 5);
+        mover.category = EntityCategory::Unit;
+        mover
+    }
+
     /// The player-visible half of A7 D1: a crusher classifies its own infantry
     /// as a friendly blocker, not as something to crush.
     ///
@@ -2182,6 +2178,7 @@ mod tests {
         gi.crushable = true;
         gi.sub_cell = Some(2);
         entities.insert(gi);
+        entities.insert(live_unit_mover(1, "Americans"));
 
         let occupancy = {
             let mut grid = OccupancyGrid::new();
@@ -2256,6 +2253,7 @@ mod tests {
         let mut foe = GameEntity::test_default(301, "HTNK", "Soviets", 5, 5);
         foe.category = EntityCategory::Unit;
         entities.insert(foe);
+        entities.insert(live_unit_mover(999, "Americans"));
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
 
@@ -2306,6 +2304,7 @@ mod tests {
         let mut refinery = GameEntity::test_default(311, "GAREFN", "Americans", 5, 5);
         refinery.category = EntityCategory::Structure;
         entities.insert(refinery);
+        entities.insert(live_unit_mover(999, "Americans"));
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
 
@@ -2654,10 +2653,11 @@ mod tests {
         let mut bridge = GameEntity::test_default(20, "HTNK", "Soviets", 5, 5);
         bridge.category = EntityCategory::Unit;
         entities.insert(bridge);
+        entities.insert(live_unit_mover(42, "Allies"));
 
         let alliances = HouseAllianceMap::new();
         let interner = crate::sim::intern::test_interner();
-        let result = classify_occupied_cell_with_slave_query(
+        let result = classify_occupied_cell_with_layers_and_ignored_and_occupation(
             (5, 5),
             CanEnterLayerContext {
                 terrain_layer: MovementLayer::Bridge,
@@ -2671,13 +2671,12 @@ mod tests {
             false,
             None,
             &occ,
+            &CellOccupationGrid::new(),
+            &RawCellOccupationGrid::new(),
             0,
             &entities,
             &alliances,
             &interner,
-            None,
-            &mut false,
-            false,
         );
 
         assert_eq!(result, CellEntryResult::OccupiedEnemy { blocker_id: 20 });

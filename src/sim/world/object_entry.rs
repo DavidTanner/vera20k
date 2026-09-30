@@ -1016,8 +1016,10 @@ impl Simulation {
     ///   `0x0041974D`), which always succeeds, so it never refuses.
     /// - In game mode 0, an aircraft owned by the current house that is not
     ///   mission-only (`+0x41A`, `+0x3D4`) refuses a cell whose ground is
-    ///   shrouded (`0x00586360` at the cell's centre, `0x00419764..0x004197A7`).
-    ///   The arm reads native shroud knowledge, not current sight.
+    ///   shrouded: `MapClass::IsShrouded` (`0x00586360`, the one port
+    ///   `vision::coordinate_is_shrouded`) at the cell's centre
+    ///   (`0x00419764..0x004197A7`). A Cell is open when the owner has mapped
+    ///   its ground (not current sight); the shared dummy never is.
     ///
     /// Native executions: tools/spatial_oracle/fly_can_enter.{py,json,meta.json}.
     /// RESIDUAL: the Team arm (`0x004196BC..0x004196DE`) is not ported. A team
@@ -1027,45 +1029,30 @@ impl Simulation {
     /// landing outside the playfield.
     pub(crate) fn aircraft_can_enter(&self, id: u64, cell: (i16, i16)) -> u8 {
         let e = self.substrate.entities.get(id).unwrap();
-        if let Some(t) = &self.resolved_terrain {
-            t.native_cell_identity(cell);
-        }
+        let Some(terrain) = self.resolved_terrain.as_ref() else {
+            return 0;
+        };
+        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+        cells.lookup(cell);
         if self.session.game_mode_nonzero
             || !e.discovery.owned_by_current_house
             || e.is_mission_only()
         {
             return 0;
         }
-        let xyz = crate::sim::movement::target_cell_coord(
-            cell.0 as u16,
-            cell.1 as u16,
-            self.resolved_terrain.as_ref(),
-        );
-        let q = xyz.z / 104;
-        let offset = q / 2 + i32::from(q & 1 != 0);
-        let projected = (
-            ((xyz.x / 256) as i16).wrapping_sub(offset as i16),
-            ((xyz.y / 256) as i16).wrapping_sub(offset as i16),
-        );
-        let visible = |c: (i16, i16)| {
-            let resolved = self.resolved_terrain.as_ref().map_or(c, |t| {
-                let identity = t.native_cell_identity(c);
-                t.native_cell_coord(identity)
-            });
-            (
-                self.fog
-                    .is_ground_unshrouded(e.owner(), resolved.0 as u16, resolved.1 as u16),
-                resolved,
-            )
+        let centre =
+            crate::sim::movement::target_cell_coord(cell.0 as u16, cell.1 as u16, Some(terrain));
+        let open = |cell: Cell| {
+            Ok(match cell {
+                Cell::Real(index) => {
+                    let cell = &terrain.cells()[index];
+                    self.fog.is_ground_unshrouded(e.owner(), cell.rx, cell.ry)
+                }
+                Cell::Dummy => false,
+            })
         };
-        let (first_visible, first_cell) = visible(projected);
-        if first_visible
-            || q & 1 != 0 && visible((first_cell.0.wrapping_add(1), first_cell.1.wrapping_add(1))).0
-        {
-            0
-        } else {
-            7
-        }
+        let shrouded = crate::sim::vision::coordinate_is_shrouded(&cells, centre, &open);
+        if matches!(shrouded, Ok(true)) { 7 } else { 0 }
     }
 }
 

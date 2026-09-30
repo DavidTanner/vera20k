@@ -7,14 +7,18 @@
 
 use super::Simulation;
 
+use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
+use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::intern::InternedId;
 use crate::sim::movement::group_destination;
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 
 impl Simulation {
     /// Queue one already-prepared command for future execution.
@@ -197,17 +201,53 @@ impl Simulation {
         }
     }
 
+    /// What `0x0064CDA0` reads once for each member it probes, before the
+    /// candidates: the target's height (`0x0064D2AA..0x0064D2DF`), and the
+    /// target's zone for the member type's MovementZone (`+0x5B4`, GetZoneID
+    /// `0x0056D230` with bridge resolution on, `0x0064D407..0x0064D42C`).
+    fn group_member_target(
+        &self,
+        rules: &RuleSet,
+        terrain: &ResolvedTerrainGrid,
+        zones: &ZoneGrid,
+        clicked_target: (i16, i16),
+        entity_id: u64,
+    ) -> GroupMemberTarget {
+        let entity = self
+            .substrate
+            .entities
+            .get(entity_id)
+            .expect("a group member stays live while its run is staged");
+        let movement_zone = rules
+            .object(self.interner.resolve(entity.type_ref()))
+            .map_or_else(Default::default, |object| object.movement_zone);
+        let cells = NativeCellQuery::canonical(terrain);
+        GroupMemberTarget {
+            entity_id,
+            movement_zone,
+            height: spread_height(terrain, cells.lookup(clicked_target)),
+            zone: zones.get_path_zone_id_native(
+                terrain,
+                (clicked_target.0 as u16, clicked_target.1 as u16),
+                movement_zone,
+                true,
+            ),
+        }
+    }
+
     /// One candidate's gates for one member, as `0x0064CDA0` reads them:
     /// - the candidate's cell (`0x0064D4D6`) and `IsCellInPlayfield(candidate,
     ///   1)` (`0x0064D4E9`);
-    /// - its zone for the member type's MovementZone (`0x0056D230` with the
-    ///   cell's bridge flag `0x100`, `0x0064D51B`) against the target's
-    ///   (`0x0064D427`, bridge resolution on);
+    /// - its zone (`0x0056D230` with the cell's own bridge flag, `0x0064D51B`),
+    ///   compared with the target's as the native DWORD (`0x0064D537`);
     /// - the member's own `Can_Enter_Cell` (`vt+0x1AC` at `0x0064D52F`) with
-    ///   no direction, the target's height (level plus 4 on a bridge flag,
-    ///   `0x0064D2AA..0x0064D2DF`) and no source cell;
-    /// - the height band on the candidate's level and bridge flag
-    ///   (`0x0064D53D..0x0064D592`).
+    ///   no direction, the target's height and no source cell;
+    /// - the height band ([`within_spread_band`], `0x0064D53D..0x0064D592`).
+    ///
+    /// A `None` zone is an inactive-deck walk that native never finishes; it
+    /// compares equal only to another `None`. A member whose `Can_Enter_Cell`
+    /// VERA cannot read (a retired receiver, a missing type or overlay registry)
+    /// refuses the candidate with 7 and a warning; native has no such outcome.
     #[allow(clippy::too_many_arguments)]
     fn group_destination_candidate_facts(
         &self,
@@ -215,8 +255,7 @@ impl Simulation {
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         terrain: &ResolvedTerrainGrid,
         zones: &ZoneGrid,
-        clicked_target: (i16, i16),
-        member: &group_destination::GroupDestinationMember,
+        target: &GroupMemberTarget,
         candidate: (i16, i16),
     ) -> group_destination::CandidateFacts {
         let cells = NativeCellQuery::canonical(terrain);
@@ -228,46 +267,37 @@ impl Simulation {
         ) {
             return group_destination::CandidateFacts::outside_playfield();
         }
-        let entity = self
+        let id = target.entity_id;
+        let bridge = terrain.native_cell_flags(cell) & BRIDGE_FLAG_STRUCTURAL != 0;
+        let zone = zones.get_path_zone_id_native(
+            terrain,
+            (candidate.0 as u16, candidate.1 as u16),
+            target.movement_zone,
+            bridge,
+        );
+        let aircraft = self
             .substrate
             .entities
-            .get(member.entity_id)
-            .expect("a group member stays live while its run is staged");
-        let movement_zone = rules
-            .object(self.interner.resolve(entity.type_ref()))
-            .map_or_else(Default::default, |object| object.movement_zone);
-        let bridge = |cell| terrain.native_cell_flags(cell) & 0x100 != 0;
-        let height = |cell| {
-            i32::from(terrain.native_cell_ground_fields(cell).0 as i8) + 4 * i32::from(bridge(cell))
-        };
-        let target_height = height(cells.lookup(clicked_target));
-        let zone = |coord: (i16, i16), check_bridge| {
-            zones.get_path_zone_id_native(
-                terrain,
-                (coord.0 as u16, coord.1 as u16),
-                movement_zone,
-                check_bridge,
-            )
-        };
-        let same_zone = zone(clicked_target, true) == zone(candidate, bridge(cell));
-        let can_enter_code = if entity.category == EntityCategory::Aircraft {
-            self.aircraft_can_enter(member.entity_id, candidate)
+            .get(id)
+            .is_some_and(|entity| entity.category == EntityCategory::Aircraft);
+        let can_enter_code = if aircraft {
+            self.aircraft_can_enter(id, candidate)
         } else {
             let args = InfantryEntryArgs {
                 direction: -1,
-                height: target_height,
+                height: target.height,
                 previous_cell: None,
             };
-            self.foot_can_enter(member.entity_id, cell, args, rules, registry)
+            self.foot_can_enter(id, cell, args, rules, registry)
                 .unwrap_or_else(|error| {
-                    log::warn!("group destination entry for {}: {error}", member.entity_id);
+                    log::warn!("group destination entry for {id}: {error}");
                     7
                 })
         };
         group_destination::CandidateFacts {
             in_playfield: true,
-            same_zone,
-            height_band_ok: (height(cell) - target_height).abs() <= 2,
+            same_zone: zone == target.zone,
+            height_band_ok: within_spread_band(target.height, spread_height(terrain, cell)),
             can_enter_code,
         }
     }
@@ -332,18 +362,27 @@ impl Simulation {
                         source_cell: (entity.position.rx as i16, entity.position.ry as i16),
                     });
                 }
+                let clicked_target = (key.1 as i16, key.2 as i16);
+                let mut member_target: Option<GroupMemberTarget> = None;
                 let assignments = group_destination::distribute_group_destinations(
-                    (key.1 as i16, key.2 as i16),
+                    clicked_target,
                     &members,
                     |member, candidate| {
+                        if member_target
+                            .as_ref()
+                            .is_none_or(|target| target.entity_id != member.entity_id)
+                        {
+                            member_target = Some(self.group_member_target(
+                                rules,
+                                terrain,
+                                zones,
+                                clicked_target,
+                                member.entity_id,
+                            ));
+                        }
+                        let target = member_target.as_ref().expect("read for this member");
                         self.group_destination_candidate_facts(
-                            rules,
-                            registry,
-                            terrain,
-                            zones,
-                            (key.1 as i16, key.2 as i16),
-                            member,
-                            candidate,
+                            rules, registry, terrain, zones, target, candidate,
                         )
                     },
                 );
@@ -482,3 +521,35 @@ impl Simulation {
         (executed_commands, spawned_entities, placed_building_owners)
     }
 }
+
+/// The target facts `0x0064CDA0` reads once per probed member.
+struct GroupMemberTarget {
+    entity_id: u64,
+    movement_zone: MovementZone,
+    height: i32,
+    zone: Option<u32>,
+}
+
+/// The spread's height of a Cell: its signed level (`+0x11B`), plus
+/// `BRIDGE_DECK_HEIGHT_LEVELS` on the bridge flag (`+0x140 & 0x100`). The
+/// target's is EBX (`0x0064D2AA..0x0064D2DF`), which Can_Enter_Cell receives;
+/// a candidate's is measured against it (`0x0064D55F..0x0064D592`).
+/// Native executions: tools/spatial_oracle/group_spread_gates.{py,json,meta.json}.
+fn spread_height(terrain: &ResolvedTerrainGrid, cell: NativeCellIdentity) -> i32 {
+    let level = i32::from(terrain.native_cell_ground_fields(cell).0 as i8);
+    if terrain.native_cell_flags(cell) & BRIDGE_FLAG_STRUCTURAL != 0 {
+        level + BRIDGE_DECK_HEIGHT_LEVELS
+    } else {
+        level
+    }
+}
+
+/// A candidate more than two levels from the target's height ends the
+/// member's probes (`JG` at `0x0064D575` and `0x0064D592`).
+fn within_spread_band(target_height: i32, candidate_height: i32) -> bool {
+    (candidate_height - target_height).abs() <= 2
+}
+
+#[cfg(test)]
+#[path = "group_spread_gate_tests.rs"]
+mod group_spread_gate_tests;

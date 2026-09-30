@@ -10498,3 +10498,50 @@ fn a_group_spread_keeps_aircraft_out_of_shrouded_cells() {
         assert_eq!(targets, [western, (20, 20)], "revealed {revealed}");
     }
 }
+
+/// Infantry members ask InfantryClass's own `Can_Enter_Cell`. A target with
+/// the bridge flag `0x100` gives the deck height (level 1 plus 4). With no
+/// bridge record behind the flag, the target's GetZoneID answers the DWORD -1,
+/// which no candidate shares. Every probe still asks `Can_Enter_Cell` first
+/// (`0x0064D52F`, before the zone compare at `0x0064D537`), and the member
+/// keeps the target.
+#[test]
+fn a_group_spread_asks_infantry_with_a_flagged_targets_deck_height() {
+    use crate::sim::movement::fresh_oracle_seam::{self, FreshCallRecord};
+    let Some((mut sim, rules, _)) = stacking_world(32) else {
+        return;
+    };
+    let target = sim
+        .resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(20, 20)
+        .unwrap();
+    target.level = 1;
+    target.bridge_facts.raw_flags |= crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+    let west = sim
+        .spawn_object("E1", "Americans", 6, 6, 0, &rules)
+        .expect("infantry spawns");
+    let east = sim
+        .spawn_object("E1", "Americans", 8, 6, 0, &rules)
+        .expect("infantry spawns");
+
+    fresh_oracle_seam::install(vec![0; 6], Vec::new());
+    let targets = group_spread(&sim, &rules, &[west, east]);
+    let (records, unused) = fresh_oracle_seam::finish();
+
+    assert_eq!(unused, 0, "six probes, one Can_Enter_Cell each");
+    for record in &records {
+        let FreshCallRecord::CanEnter {
+            cell,
+            direction,
+            height,
+            ..
+        } = record
+        else {
+            panic!("unexpected call {record:?}");
+        };
+        assert_eq!((cell.1, *direction, *height), (20, -1, 5), "{record:?}");
+    }
+    assert_eq!(targets, [(20, 20), (20, 20)]);
+}
