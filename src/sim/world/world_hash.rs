@@ -185,7 +185,7 @@ mod locomotor_field_hash_tests {
     /// active fold are among them.
     #[test]
     fn every_active_and_stashed_locomotor_field_changes_current_hash() {
-        let mutations: [(&str, fn(&mut LocomotorState)); 12] = [
+        let mutations: [(&str, fn(&mut LocomotorState)); 9] = [
             ("kind", |l| l.kind = LocomotorKind::Walk),
             ("powered", |l| l.powered = false),
             ("layer", |l| l.layer = MovementLayer::Bridge),
@@ -198,15 +198,6 @@ mod locomotor_field_hash_tests {
             }),
             ("subcell_dest", |l| {
                 l.subcell_dest = Some((SimFixed::from_num(64), SimFixed::from_num(192)))
-            }),
-            ("hover_throttle", |l| {
-                l.hover_throttle = SimFixed::from_num(1)
-            }),
-            ("hover_speed_request", |l| {
-                l.hover_speed_request = SimFixed::from_num(1)
-            }),
-            ("hover_bob_offset", |l| {
-                l.hover_bob_offset = SimFixed::from_num(1)
             }),
         ];
         assert_ne!(hash_with(false, None), hash_with(true, None));
@@ -1961,9 +1952,6 @@ fn hash_locomotor(
         speed_type,
         movement_zone,
         subcell_dest,
-        hover_throttle,
-        hover_speed_request,
-        hover_bob_offset,
     } = loco;
     // The installed class is the kind of the bottom object, which this
     // fold reaches through the stash.
@@ -1979,9 +1967,6 @@ fn hash_locomotor(
     subcell_dest
         .map(|(x, y)| (x.to_bits(), y.to_bits()))
         .hash(hasher);
-    hover_throttle.to_bits().hash(hasher);
-    hover_speed_request.to_bits().hash(hasher);
-    hover_bob_offset.to_bits().hash(hasher);
     hash_locomotor_payload(runtime_payload, hasher);
     match piggyback.as_deref() {
         Some(stashed) => {
@@ -2017,9 +2002,9 @@ fn hash_locomotor_payload(
             4u8.hash(hasher);
             hash_rocket_state(None, hasher);
         }
-        LocomotorRuntimePayload::Hover(head) => {
+        LocomotorRuntimePayload::Hover(state) => {
             6u8.hash(hasher);
-            head.hash(hasher);
+            state.hash(hasher);
         }
         LocomotorRuntimePayload::Ship(state) => {
             8u8.hash(hasher);
@@ -4297,7 +4282,7 @@ mod bridge161_hash_projection_tests {
                 3 => state.animation_moving = true,
                 _ => unreachable!(),
             },
-            LocomotorRuntimePayload::Hover(head) => *head = Some(coord),
+            LocomotorRuntimePayload::Hover(state) => state.set_head(Some(coord)),
             LocomotorRuntimePayload::Jumpjet(state) => match field {
                 0 => state.destination = coord,
                 1 => state.moving = true,

@@ -120,6 +120,19 @@ impl Fixture {
         sim.install_resolved_terrain_for_new_map(flat_terrain(water));
         let grid = PathGrid::test_all_passable(MAP, MAP);
         sim.install_fixture_path_grid(Some(&grid));
+        // Hover's Find_Path and its zone precheck read the zone topology and
+        // the Map Size.
+        sim.playfield_size_height = Some(i32::from(MAP));
+        let terrain = sim.resolved_terrain.as_ref().expect("fixture terrain");
+        sim.zone_grid = Some(
+            crate::sim::pathfinding::zone_map::ZoneGrid::build_with_terrain(
+                &grid,
+                terrain,
+                &[],
+                MAP,
+                MAP,
+            ),
+        );
         Self { sim, rules, grid }
     }
 

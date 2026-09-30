@@ -334,16 +334,17 @@ fn playfield_hierarchy_initial_order_outside_endpoint_uses_flat_astar() {
     ));
 
     let mut entities = EntityStore::new();
-    // Hover keeps the command-time search adapter; Drive/Ship reach the same
-    // hierarchy/flat choice at their first Process search.
-    let mut mover = gsi_04_12_cell_listed_entity(1, "LCRF", "Americans", 6, 6);
-    mover.category = crate::map::entities::EntityCategory::Unit;
-    let mut hover = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-        crate::rules::locomotor_type::LocomotorKind::Hover,
+    // A queued Walk order keeps the command-time search adapter; Drive/Ship
+    // reach the same hierarchy/flat choice at their first Process search.
+    let mut mover = gsi_04_12_cell_listed_entity(1, "E1", "Americans", 6, 6);
+    mover.category = crate::map::entities::EntityCategory::Infantry;
+    let mut walk = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+        crate::rules::locomotor_type::LocomotorKind::Walk,
     );
-    hover.movement_zone = MovementZone::Normal;
-    mover.locomotor = Some(hover);
+    walk.movement_zone = MovementZone::Normal;
+    mover.locomotor = Some(walk);
     mover.in_playfield = true;
+    mover.movement_target = Some(crate::sim::components::MovementTarget::default());
     entities.insert(mover);
 
     assert!(issue_move_command_with_layered(
@@ -352,7 +353,7 @@ fn playfield_hierarchy_initial_order_outside_endpoint_uses_flat_astar() {
         1,
         (8, 6),
         SimFixed::from_num(128),
-        false,
+        true,
         None,
         None,
         Some(&terrain),
@@ -363,8 +364,9 @@ fn playfield_hierarchy_initial_order_outside_endpoint_uses_flat_astar() {
         None,
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
+    // The append drops the start cell it searched from.
     let target = entities.get(1).unwrap().movement_target.as_ref().unwrap();
-    assert_eq!(target.path.first().copied(), Some((6, 6)));
+    assert!(!target.path.is_empty());
     assert_eq!(target.path.last().copied(), Some((8, 6)));
 }
 

@@ -240,7 +240,7 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         // This route continues beyond the first retained segment. Native
         // owner NavCom must survive that terminal; a route without it admits
         // EnterIdleMode and its Foot SetSpeedFraction(0) at that first end.
-        super::navcom::set_destination_internal_cell(&mut entity, (3, 1), Some(&terrain));
+        super::navcom::set_destination_internal_cell(&mut entity, (3, 1), Some(&terrain), 0);
         assert_eq!(
             entity.drive_locomotion.as_ref().unwrap().destination,
             Some(DriveCoord::cell(3, 1, 416))
@@ -1153,7 +1153,12 @@ fn destination_cell_height_keeps_receiver_before_structural_lookup() {
     terrain.write_native_cell_flags(real, 0x100);
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 3, 3);
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    super::navcom::set_destination_internal_cell(&mut entity, (u16::MAX, u16::MAX), Some(&terrain));
+    super::navcom::set_destination_internal_cell(
+        &mut entity,
+        (u16::MAX, u16::MAX),
+        Some(&terrain),
+        0,
+    );
     // Original486840/47B3A0 returns(-128,-128,-311): native adds0.5 before
     // truncation, including negative heights. Setter4AFD40 then looks up real
     // cell(0,0), because signed division truncates toward zero, and adds416.

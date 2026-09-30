@@ -52,7 +52,7 @@
 
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::fixed_math::SIM_ZERO;
 
 use super::locomotor::LocomotorState;
 use super::locomotor_ready::LocomotorReadyState;
@@ -82,7 +82,7 @@ pub(crate) fn ready_state_for(
         LocomotorKind::Teleport => Some(teleport(entity)),
         LocomotorKind::Jumpjet => Some(jumpjet(locomotor)),
         LocomotorKind::Walk => Some(walk(entity, locomotor)),
-        LocomotorKind::Hover => Some(hover(entity, locomotor)),
+        LocomotorKind::Hover => Some(hover(locomotor)),
         // Catches Fly and Rocket. Neither needs a producer, because nothing consumes one for them: our two
         // consumers of `is_moving_now` are the Unit and Infantry readiness
         // branches in `sim::mission::readiness`, aircraft readiness decides from
@@ -129,8 +129,6 @@ pub(crate) fn is_moving_for_unit_shp_draw(entity: &GameEntity) -> bool {
 /// Positive sign projection used by Walk's strict >0 query. The native
 /// fraction can take other values; only its sign affects this predicate.
 const F64_BITS_ONE: u64 = 0x3FF0_0000_0000_0000;
-/// The hover throttle request's third reachable value.
-const F64_BITS_HALF: u64 = 0x3FE0_0000_0000_0000;
 
 /// Drive and Ship read the same four inputs through separate native slots.
 ///
@@ -263,45 +261,20 @@ fn walk(entity: &GameEntity, locomotor: &LocomotorState) -> LocomotorReadyState 
     }
 }
 
-/// Hover's readiness inputs.
-///
-/// Native predicate: `slot_moving && speed != 0`, where the speed is a double on
-/// the locomotor itself and the test really is `!= 0` — a *negative* speed counts
-/// as moving. That makes the speed term weaker than a `> 0` test would be, so it
-/// does **not** compensate for an over-inclusive `slot_moving`; an earlier
-/// revision of this comment claimed it did.
-///
-/// Our `slot_moving` is a loose analogue of native's two-coord test, built from
-/// the two nearest carriers we have. It is UNCHECKED, and over-inclusive.
-///
-/// The speed input is the **unramped request**, not `hover_throttle`. The ramp
-/// lags the request by up to roughly 27 ticks on the brake side, so reading it
-/// would keep reporting "moving" well after a hover unit stopped — the stall
-/// direction.
-fn hover(entity: &GameEntity, locomotor: &LocomotorState) -> LocomotorReadyState {
-    LocomotorReadyState::Hover {
-        slot_moving: entity.movement_target.is_some() || entity.navigation.nav_com.is_some(),
-        // Forced to zero without a live movement target: the request is only
-        // written inside the hover movement branch, so a stopped unit would
-        // otherwise keep its last non-zero value indefinitely.
-        speed_bits: if entity.movement_target.is_some() {
-            hover_request_bits(locomotor.hover_speed_request)
-        } else {
-            0
+/// Hover's readiness inputs: `Is_Moving_Now` 0x00514C80 is `Is_Moving`
+/// (0x00514C30, a destination or a head) and a nonzero +0x48 request. The
+/// test is `!= 0`, so a negative request would count as moving.
+fn hover(locomotor: &LocomotorState) -> LocomotorReadyState {
+    locomotor.hover_runtime().map_or(
+        LocomotorReadyState::Hover {
+            slot_moving: false,
+            speed_bits: 0,
         },
-    }
-}
-
-/// The hover throttle request has exactly three reachable values, so it maps to
-/// the native double's bits by table — no float arithmetic in `sim/`.
-fn hover_request_bits(request: SimFixed) -> u64 {
-    if request == SIM_ZERO {
-        0
-    } else if request == SimFixed::lit("0.5") {
-        F64_BITS_HALF
-    } else {
-        F64_BITS_ONE
-    }
+        |hover| LocomotorReadyState::Hover {
+            slot_moving: hover.is_moving(),
+            speed_bits: hover.speed_request_bits(),
+        },
+    )
 }
 
 #[cfg(test)]

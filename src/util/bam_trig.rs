@@ -1,62 +1,12 @@
-//! Deterministic BAM trig: `cos_bam`/`sin_bam` (Q16.16 tables) and an integer
-//! `atan2_bam`. BAM angles are `u16`, 0 = +x (east), 0x4000 = +y.
+//! Deterministic integer `atan2_bam`. BAM angles are `u16`, 0 = +x (east),
+//! 0x4000 = +y.
 //!
-//! These are VERA's own tables, not gamemd's retail sine table
-//! (`util::native_trig`). The Hover integrator and the wave yaw use them.
+//! This is VERA's own table, not gamemd's retail trig (`util::native_trig`).
+//! The wave yaw uses it.
 
 use std::sync::OnceLock;
 
 use crate::util::fixed_math::SimFixed;
-
-/// Q16.16 cosine table indexed by BAM angle. `BAM_COS[i]` is `cos(i * 2π/65536)`
-/// quantized to i32 Q16.16. Exact 1-BAM resolution, no interpolation.
-///
-/// Built once at first call from f64 trig and frozen as integers; the rounding
-/// step absorbs the sub-ULP differences between platforms' libm so the table
-/// is bitwise identical across machines. Boxed to keep the 256 KB array off
-/// the stack during init.
-fn bam_cos_table() -> &'static [i32; 65536] {
-    static TABLE: OnceLock<Box<[i32; 65536]>> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        let mut t: Box<[i32; 65536]> = vec![0i32; 65536]
-            .into_boxed_slice()
-            .try_into()
-            .expect("65536-entry vec to fixed array");
-        for i in 0..65536u32 {
-            let angle = (i as f64) * (2.0 * std::f64::consts::PI / 65536.0);
-            t[i as usize] = (angle.cos() * 65536.0).round() as i32;
-        }
-        t
-    })
-}
-
-/// Q16.16 sine table; see `bam_cos_table` for the determinism rationale.
-fn bam_sin_table() -> &'static [i32; 65536] {
-    static TABLE: OnceLock<Box<[i32; 65536]>> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        let mut t: Box<[i32; 65536]> = vec![0i32; 65536]
-            .into_boxed_slice()
-            .try_into()
-            .expect("65536-entry vec to fixed array");
-        for i in 0..65536u32 {
-            let angle = (i as f64) * (2.0 * std::f64::consts::PI / 65536.0);
-            t[i as usize] = (angle.sin() * 65536.0).round() as i32;
-        }
-        t
-    })
-}
-
-/// Deterministic `cos(bam)` as `SimFixed`. O(1) table lookup.
-#[inline]
-pub(crate) fn cos_bam(bam: u16) -> SimFixed {
-    SimFixed::from_bits(bam_cos_table()[bam as usize])
-}
-
-/// Deterministic `sin(bam)` as `SimFixed`. O(1) table lookup.
-#[inline]
-pub(crate) fn sin_bam(bam: u16) -> SimFixed {
-    SimFixed::from_bits(bam_sin_table()[bam as usize])
-}
 
 /// Compute the BAM heading from a delta vector via deterministic integer
 /// arithmetic. 0 BAM = +x, 0x4000 = +y, 0x8000 = −x, 0xC000 = −y.
@@ -140,53 +90,7 @@ fn atan_lut() -> &'static [u16; 65537] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
-
-    #[test]
-    fn cos_bam_cardinal_angles() {
-        // 0 BAM = 0 rad: cos = 1
-        assert_eq!(cos_bam(0), SIM_ONE);
-        // 0x4000 BAM = π/2: cos ≈ 0
-        let c = cos_bam(0x4000);
-        assert!(c.abs() <= SimFixed::from_bits(2), "cos(π/2) = {:?}", c);
-        // 0x8000 BAM = π: cos = -1
-        assert_eq!(cos_bam(0x8000), SimFixed::from_num(-1));
-        // 0xC000 BAM = 3π/2: cos ≈ 0
-        let c = cos_bam(0xC000);
-        assert!(c.abs() <= SimFixed::from_bits(2), "cos(3π/2) = {:?}", c);
-    }
-
-    #[test]
-    fn sin_bam_cardinal_angles() {
-        // 0 BAM: sin = 0
-        assert_eq!(sin_bam(0), SIM_ZERO);
-        // 0x4000 BAM = π/2: sin = 1
-        assert_eq!(sin_bam(0x4000), SIM_ONE);
-        // 0x8000 BAM = π: sin ≈ 0
-        let s = sin_bam(0x8000);
-        assert!(s.abs() <= SimFixed::from_bits(2), "sin(π) = {:?}", s);
-        // 0xC000 BAM = 3π/2: sin = -1
-        assert_eq!(sin_bam(0xC000), SimFixed::from_num(-1));
-    }
-
-    #[test]
-    fn bam_trig_pythagorean_identity() {
-        // cos² + sin² ≈ 1 for arbitrary BAMs. Q16.16 rounding budget is a
-        // few ULPs per multiplication.
-        for &bam in &[0u16, 0x1234, 0x2BCD, 0x4001, 0x7FFF, 0xABCD, 0xFFFF] {
-            let c = cos_bam(bam);
-            let s = sin_bam(bam);
-            let sum = c * c + s * s;
-            let err = (sum - SIM_ONE).abs();
-            assert!(
-                err <= SimFixed::lit("0.001"),
-                "bam={:#06X}: cos²+sin² = {:?} (err {:?})",
-                bam,
-                sum,
-                err
-            );
-        }
-    }
+    use crate::util::fixed_math::SIM_ZERO;
 
     #[test]
     fn atan2_bam_cardinal_directions() {

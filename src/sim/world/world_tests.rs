@@ -2597,37 +2597,6 @@ fn single_bridge_cell(rx: u16, ry: u16, deck_level: u8) -> ResolvedTerrainGrid {
     ResolvedTerrainGrid::from_cells(rx + 1, ry + 1, cells)
 }
 
-fn bridge_cell_with_ground_block(
-    rx: u16,
-    ry: u16,
-    deck_level: u8,
-    ground_walk_blocked: bool,
-    level: u8,
-) -> ResolvedTerrainGrid {
-    let mut terrain = single_bridge_cell(rx, ry, deck_level);
-    let water_speed_costs = crate::rules::terrain_rules::SpeedCostProfile {
-        float: Some(100),
-        ..Default::default()
-    };
-    for cell in &mut terrain.cells {
-        cell.land_type = 4;
-        cell.yr_cell_land_type = 4;
-        cell.speed_costs = water_speed_costs;
-        cell.is_water = true;
-        cell.zone_type = 4;
-        cell.base_land_type = 4;
-        cell.base_yr_cell_land_type = 4;
-        cell.base_speed_costs = water_speed_costs;
-    }
-    let idx = terrain.index(rx, ry).expect("bridge index");
-    let cell = &mut terrain.cells[idx];
-    cell.level = level;
-    cell.ground_walk_blocked = ground_walk_blocked;
-    cell.is_water = ground_walk_blocked;
-    cell.base_build_blocked = ground_walk_blocked;
-    terrain
-}
-
 /// Supply rectangular bounds for synthetic cell-list and lifecycle fixtures.
 fn install_rectangular_test_playfield(sim: &mut Simulation, width: u16, height: u16) {
     let span = i32::from(width.max(height));
@@ -2669,6 +2638,30 @@ fn structural_bridge_for_damage_dispatch() -> (ResolvedTerrainGrid, BridgeRuntim
                 .has_structural_bridge()
         );
     }
+    (terrain, state)
+}
+
+/// The direction6 structural deck over water: every cell takes
+/// `water_terrain`'s ground, the deck spans (3..=6, 5).
+fn water_under_structural_bridge() -> (ResolvedTerrainGrid, BridgeRuntimeState) {
+    let (mut terrain, _) = structural_bridge_for_damage_dispatch();
+    let water = water_terrain(1, 1).cells[0].clone();
+    for cell in &mut terrain.cells {
+        cell.land_type = water.land_type;
+        cell.yr_cell_land_type = water.yr_cell_land_type;
+        cell.terrain_class = water.terrain_class;
+        cell.speed_costs = water.speed_costs;
+        cell.is_water = water.is_water;
+        cell.ground_walk_blocked = water.ground_walk_blocked;
+        cell.zone_type = water.zone_type;
+        cell.base_ground_walk_blocked = water.base_ground_walk_blocked;
+        cell.base_build_blocked = water.base_build_blocked;
+        cell.base_land_type = water.base_land_type;
+        cell.base_yr_cell_land_type = water.base_yr_cell_land_type;
+        cell.base_terrain_class = water.base_terrain_class;
+        cell.base_speed_costs = water.base_speed_costs;
+    }
+    let state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 15);
     (terrain, state)
 }
 
@@ -3447,8 +3440,7 @@ fn short_game_defeat_test_rules() -> RuleSet {
     RuleSet::from_ini(&ini).expect("short game defeat test rules should parse")
 }
 
-/// Water movers on Hover: the retail family whose Process is still the ground
-/// corridor's route (#689). Ships have their own Process and tests below.
+/// Water movers on Hover (HoverLocomotionClass Process 0x00514310).
 fn naval_bridge_test_rules() -> RuleSet {
     let ini: IniFile = IniFile::from_str(
         "[InfantryTypes]\n\n\
@@ -4893,8 +4885,7 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     mover.cell_y = 0;
     assert_eq!(sim.spawn_from_map(&[building, mover], Some(&rules)), 2);
     sim.resolve_type_handles(&rules);
-    // A Hover mover searches its route when the order is given (#689), and
-    // the resumed order below reads that search.
+    // A Hover mover: the resumed order below reaches its Move_To.
     sim.substrate.entities.get_mut(2).unwrap().locomotor =
         Some(LocomotorState::for_test_kind(LocomotorKind::Hover));
     assert!(sim.rebuild_dynamic_navigation(&rules));
@@ -4950,8 +4941,8 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
         assert_eq!(sim.path_grid(), Some(collapsed.as_ref()));
         assert_ne!(before_path.cell(5, 5), tail.cell(5, 5));
 
-        // Real Phase-6 order resumption consumes the returned grid alongside
-        // the live zone owner, before any frame-final projection rebuild.
+        // Real Phase-6 order resumption reaches the Hover Move_To before any
+        // frame-final projection rebuild; its Process searches the live grid.
         let unit = sim.substrate.entities.get_mut(2).unwrap();
         unit.movement_target = None;
         unit.order_intent = Some(crate::sim::components::OrderIntent::AttackMove {
@@ -4959,16 +4950,17 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
             goal_ry: 3,
         });
         sim.tick_order_intents_post_combat(Some(&rules));
-        let target = sim
-            .substrate
-            .entities
-            .get(2)
-            .unwrap()
-            .movement_target
-            .as_ref()
-            .unwrap();
-        assert_eq!(target.path.last(), Some(&(6, 3)));
-        assert!(target.path.iter().all(|&(rx, ry)| !(rx < 4 && ry < 3)));
+        let unit = sim.substrate.entities.get(2).unwrap();
+        assert_eq!(
+            unit.navigation.nav_com,
+            Some(crate::sim::components::NavTargetRef::cell(6, 3))
+        );
+        assert!(
+            unit.locomotor
+                .as_ref()
+                .and_then(|loco| loco.hover_runtime())
+                .is_some_and(|hover| hover.is_moving())
+        );
     }
 
     // The persisted bridge/entity owners must reconstruct the same navigation
@@ -5135,177 +5127,102 @@ fn test_bridge_dispatcher_consumes_one_path_gate_draw_per_non_ion_event() {
     assert_eq!(sim.mapgen_rng.logical_state(), mapgen_before);
 }
 
-#[test]
-fn test_water_mover_lookahead_does_not_set_on_bridge_under_bridge() {
-    let rules = naval_bridge_test_rules();
-    let mut sim = Simulation::new();
-    let resolved = bridge_cell_with_ground_block(1, 0, 3, true, 0);
-    install_rectangular_test_playfield(&mut sim, resolved.width(), resolved.height());
-    sim.resolved_terrain = Some(resolved.clone());
-    sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
-        &resolved, true, 15,
-    ));
-    let boat_id = sim
-        .spawn_object("BOAT", "Americans", 0, 0, 64, &rules)
-        .expect("spawn boat");
-    let boat = sim
-        .substrate
-        .entities
-        .get_mut(boat_id)
-        .expect("boat entity");
-    boat.movement_target = Some(MovementTarget {
-        path: vec![(0, 0), (1, 0)],
-        path_layers: vec![MovementLayer::Ground, MovementLayer::Ground],
-        next_index: 1,
-        speed: SimFixed::from_num(256),
-        current_speed: SimFixed::from_num(256),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
-        ..Default::default()
-    });
-
-    let path_grid = PathGrid::new(2, 1);
-    let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 33);
-
-    let boat = sim
-        .substrate
-        .entities
-        .get(boat_id)
-        .expect("boat still exists");
-    assert!(
-        !boat.on_bridge,
-        "Ship under a bridge should stay on the water layer"
-    );
-    assert_eq!(boat.position.z, 0);
+/// Installs `resolved` and publishes its navigation (path grid, zones and
+/// bridge records) with the Map Size that Hover's Find_Path reads.
+fn install_water_move_fixture(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    resolved: ResolvedTerrainGrid,
+) -> PathGrid {
+    install_rectangular_test_playfield(sim, resolved.width(), resolved.height());
+    sim.playfield_size_height = Some(i32::from(resolved.height()));
+    sim.resolved_terrain = Some(resolved);
+    assert!(sim.rebuild_dynamic_navigation(rules));
+    sim.path_grid().expect("published path grid").clone()
 }
 
-#[test]
-fn test_too_big_ship_can_move_under_bridge_route() {
-    let rules = naval_bridge_test_rules();
-    let mut sim = Simulation::new();
-    // Build a 2x1 water terrain where cell (1,0) has a bridge deck.
-    // Water movers need land_type=4 (Water) for passability.
-    let mut resolved = water_terrain(2, 1);
-    let idx = resolved.index(1, 0).expect("bridge cell index");
-    resolved.cells[idx].has_bridge_deck = true;
-    resolved.cells[idx].bridge_walkable = true;
-    resolved.cells[idx].bridge_transition = true;
-    resolved.cells[idx].bridge_deck_level = 3;
-    resolved.cells[idx].ground_walk_blocked = true;
-    install_rectangular_test_playfield(&mut sim, resolved.width(), resolved.height());
-    sim.resolved_terrain = Some(resolved.clone());
-    sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
-        &resolved, true, 15,
+/// Orders the Hover water mover `id` to `cell` through the Unit setter and
+/// runs frames until the order ends. Returns the cells it stood in.
+fn drive_water_mover(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    grid: &PathGrid,
+    id: u64,
+    cell: (u16, u16),
+) -> Vec<(u16, u16, bool)> {
+    assert!(sim.set_unit_destination(
+        id,
+        crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+        rules,
+        true,
     ));
-    let ship_id = sim
-        .spawn_object("DRED", "Americans", 0, 0, 64, &rules)
-        .expect("spawn dreadnought");
-    let ship = sim
-        .substrate
-        .entities
-        .get_mut(ship_id)
-        .expect("ship entity");
-    ship.movement_target = Some(MovementTarget {
-        path: vec![(0, 0), (1, 0)],
-        path_layers: vec![MovementLayer::Ground, MovementLayer::Ground],
-        next_index: 1,
-        speed: SimFixed::from_num(256),
-        current_speed: SimFixed::from_num(256),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
-        ..Default::default()
-    });
-
-    // TooBigToFitUnderBridge is rendering-only in retail. Advance admitted
-    // native frames until the one-cell route completes; host milliseconds do
-    // not scale locomotor movement.
-    let path_grid = PathGrid::new(2, 1);
-    for _ in 0..256 {
-        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 1);
-        if sim
-            .substrate
-            .entities
-            .get(ship_id)
-            .is_some_and(|ship| ship.movement_target.is_none())
-        {
-            break;
+    // Plain OverlayTypes 0..=25: the structural deck's anchor holds 25, and
+    // Unit Can_Enter_Cell reads the type of any overlay it meets.
+    let overlay_ini = IniFile::from_str(&format!(
+        "[OverlayTypes]\n{}",
+        (0..=25).map(|i| format!("{i}=O{i}\n")).collect::<String>()
+    ));
+    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&overlay_ini, None);
+    let mut visited = Vec::new();
+    for _ in 0..600 {
+        let _ = sim.advance_tick(&[], Some(rules), Some(grid), Some(&registry), 67);
+        let mover = sim.substrate.entities.get(id).expect("mover");
+        let here = (mover.position.rx, mover.position.ry, mover.on_bridge);
+        if visited.last() != Some(&here) {
+            visited.push(here);
+        }
+        if mover.navigation.nav_com.is_none() {
+            return visited;
         }
     }
+    panic!("the water mover's order never ended: {visited:?}");
+}
 
-    let ship = sim
-        .substrate
-        .entities
-        .get(ship_id)
-        .expect("ship still exists");
-    assert!(
-        ship.movement_target.is_none(),
-        "TooBigToFitUnderBridge must not gate the ship's direct retail route"
-    );
-    assert_eq!((ship.position.rx, ship.position.ry), (1, 0));
+/// A water mover crossing under a structural deck stays on the water layer
+/// and passes; TooBigToFitUnderBridge (DRED) is rendering-only in retail.
+#[test]
+fn test_water_movers_pass_under_a_structural_bridge() {
+    let rules = naval_bridge_test_rules();
+    for mover in ["BOAT", "DRED"] {
+        let mut sim = Simulation::new();
+        let (resolved, bridge_state) = water_under_structural_bridge();
+        sim.bridge_state = Some(bridge_state);
+        let grid = install_water_move_fixture(&mut sim, &rules, resolved);
+        let id = sim
+            .spawn_object(mover, "Americans", 5, 3, 64, &rules)
+            .expect("spawn water mover");
+
+        let visited = drive_water_mover(&mut sim, &rules, &grid, id, (5, 7));
+        assert_eq!(
+            visited.last().map(|&(rx, ry, _)| (rx, ry)),
+            Some((5, 7)),
+            "{mover}"
+        );
+        assert!(
+            visited.contains(&(5, 5, false)),
+            "{mover} crosses under the deck: {visited:?}"
+        );
+        assert!(
+            visited.iter().all(|&(_, _, on_bridge)| !on_bridge),
+            "{mover} stays on the water layer: {visited:?}"
+        );
+    }
 }
 
 #[test]
 fn test_ship_turn_path_completes_without_drive_track_stall() {
     let rules = naval_bridge_test_rules();
     let mut sim = Simulation::new();
-    // Water movers need resolved_terrain with water cells (land_type=4) for
-    // the passability check in is_cell_passable_for_mover.
-    install_rectangular_test_playfield(&mut sim, 3, 3);
-    sim.resolved_terrain = Some(water_terrain(3, 3));
+    let grid = install_water_move_fixture(&mut sim, &rules, water_terrain(3, 3));
     let boat_id = sim
         .spawn_object("BOAT", "Americans", 0, 0, 64, &rules)
         .expect("spawn boat");
-    let boat = sim
-        .substrate
-        .entities
-        .get_mut(boat_id)
-        .expect("boat entity");
-    boat.movement_target = Some(MovementTarget {
-        path: vec![(0, 0), (1, 0), (1, 1)],
-        path_layers: vec![
-            MovementLayer::Ground,
-            MovementLayer::Ground,
-            MovementLayer::Ground,
-        ],
-        next_index: 1,
-        speed: SimFixed::from_num(1024),
-        current_speed: SimFixed::from_num(1024),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
-        ..Default::default()
-    });
 
-    // Hover accelerates from rest (the ground corridor's Hover lane, #689),
-    // so the turn path takes more than its fixed-speed frames.
-    let path_grid = PathGrid::new(3, 3);
-    for _ in 0..256 {
-        let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
-        if sim
-            .substrate
-            .entities
-            .get(boat_id)
-            .is_some_and(|boat| boat.movement_target.is_none())
-        {
-            break;
-        }
-    }
-
-    let boat = sim
-        .substrate
-        .entities
-        .get(boat_id)
-        .expect("boat still exists");
+    let visited = drive_water_mover(&mut sim, &rules, &grid, boat_id, (1, 1));
     assert_eq!(
-        (boat.position.rx, boat.position.ry),
-        (1, 1),
+        visited.last().map(|&(rx, ry, _)| (rx, ry)),
+        Some((1, 1)),
         "ship should finish a simple turn path instead of stalling in place"
-    );
-    assert!(
-        boat.movement_target.is_none(),
-        "ship movement should complete after reaching the goal"
     );
 }
 

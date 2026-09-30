@@ -75,8 +75,8 @@ fn track_unit(entity: &GameEntity) -> bool {
         })
 }
 
-/// A Unit on a Hover locomotor. Its Move_To is the pass lane's command-time
-/// route (#689), the ground move a Move order takes for it.
+/// A Unit on a Hover locomotor: the Unit setter's Foot tail reaches Hover
+/// Move_To (0x00514D90) and Stop_Moving (0x00516320).
 fn hover_unit(entity: &GameEntity) -> bool {
     entity.category == EntityCategory::Unit
         && entity
@@ -330,6 +330,62 @@ impl Simulation {
         self.finish_track_path_tail(id, rules, registry)
     }
 
+    /// Whether the Foot can fire at its TarCom (vt+0x3AC, TechnoClass::
+    /// CanFireAtTarget 0x6F7780); None without one.
+    pub(super) fn foot_can_fire_at_target(
+        &self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Option<bool> {
+        let target = self
+            .substrate
+            .entities
+            .get(id)?
+            .attack_target
+            .as_ref()?
+            .target;
+        Some(self.resolved_terrain.as_ref().is_some_and(|terrain| {
+            crate::sim::combat::can_fire_at_target(
+                &self.substrate.entities,
+                rules,
+                &self.interner,
+                id,
+                &target,
+                terrain,
+                Some(&self.house_alliances),
+                &crate::sim::combat::line_of_fire::LineOfFireInputs {
+                    overlay_grid: self.overlay_grid.as_ref(),
+                    overlay_registry: registry,
+                    alliances: Some(&self.house_alliances),
+                },
+            )
+        }))
+    }
+
+    /// A stopped Foot's failed-route tail (Drive 0x4B2E92, Ship 0x6A24C7,
+    /// Hover 0x00516822): a TarCom it cannot fire at sets +688 before a team
+    /// member's team drops its targets (TeamClass::Scan_Limit 0x6EC3A0, which
+    /// invokes each member's class target setter and sets its latch too),
+    /// then TarCom is cleared.
+    pub(super) fn drop_unfireable_target(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        if self.foot_can_fire_at_target(id, rules, registry) != Some(false) {
+            return;
+        }
+        if let Some(actor) = self.substrate.entities.get_mut(id) {
+            actor.mark_stopped_cannot_fire();
+        }
+        if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
+            self.team_scan_limit(team_id, rules, registry);
+        }
+        let _ = self.assign_target_represented(id, None, Some(rules));
+    }
+
     /// 0x4B2E77..0x4B2F1A / 0x6A24C7..: a stopped Foot holding a target it
     /// cannot fire at drops it; then the head and selector are cleared.
     fn finish_track_path_tail(
@@ -343,38 +399,8 @@ impl Simulation {
             .entities
             .get(id)
             .ok_or("retired Drive/Ship path owner")?;
-        let moving = super::motion_query::is_moving(actor).unwrap_or(false);
-        if !moving && let Some(target) = actor.attack_target.as_ref().map(|t| t.target) {
-            //4B2E92 vt+3AC = TechnoClass::CanFireAtTarget 0x6F7780.
-            let can_fire = self.resolved_terrain.as_ref().is_some_and(|terrain| {
-                crate::sim::combat::can_fire_at_target(
-                    &self.substrate.entities,
-                    rules,
-                    &self.interner,
-                    id,
-                    &target,
-                    terrain,
-                    Some(&self.house_alliances),
-                    &crate::sim::combat::line_of_fire::LineOfFireInputs {
-                        overlay_grid: self.overlay_grid.as_ref(),
-                        overlay_registry: registry,
-                        alliances: Some(&self.house_alliances),
-                    },
-                )
-            });
-            if !can_fire {
-                //4B2E9F /6A24F2: set +688 before Scan_Limit, which invokes
-                //each member's class target setter and sets its latch too.
-                self.substrate
-                    .entities
-                    .get_mut(id)
-                    .unwrap()
-                    .mark_stopped_cannot_fire();
-                if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
-                    self.team_scan_limit(team_id, rules, registry);
-                }
-                let _ = self.assign_target_represented(id, None, Some(rules));
-            }
+        if !super::motion_query::is_moving(actor).unwrap_or(false) {
+            self.drop_unfireable_target(id, rules, registry);
         }
         let actor = self
             .substrate
@@ -739,7 +765,12 @@ impl Simulation {
                 self.finish_class_destination(id, kind, (rx, ry), speed, rules);
                 return;
             }
-            super::navcom::set_destination_internal_cell(actor, (rx, ry), terrain);
+            super::navcom::set_destination_internal_cell(
+                actor,
+                (rx, ry),
+                terrain,
+                timing.binary_frame,
+            );
             timing.accept(actor);
             super::movement_commands::schedule_track_process(actor, (rx, ry), speed);
         } else {
@@ -826,15 +857,13 @@ impl Simulation {
     }
 
     /// Whether the Unit setter (`0x741970`) is represented for `id` as the
-    /// team and harvest callers use it: a Drive/Ship receiver, or a
+    /// team and harvest callers use it: a Drive, Ship or Hover receiver, or a
     /// `Teleporter=` Unit whatever its active locomotor. Its cell arm
-    /// ([`Self::set_unit_destination`]) also reaches Hover and Jumpjet
-    /// Move_To.
+    /// ([`Self::set_unit_destination`]) also reaches Jumpjet Move_To.
     pub(crate) fn unit_setter_receiver(&self, id: u64, rules: Option<&RuleSet>) -> bool {
-        self.substrate
-            .entities
-            .get(id)
-            .is_some_and(|actor| track_unit(actor) || teleporter_unit(self, actor, rules))
+        self.substrate.entities.get(id).is_some_and(|actor| {
+            track_unit(actor) || hover_unit(actor) || teleporter_unit(self, actor, rules)
+        })
     }
 
     /// Unit 0x741970(target, clear_queue) from a class caller: the radio MOVE_HERE (Foot
@@ -851,16 +880,16 @@ impl Simulation {
     ///   locomotor's Move_To — Drive/Ship ([`prepare_track_destination`]),
     ///   Teleport ([`teleport_move_to`]), Jumpjet
     ///   ([`Self::issue_air_cell_destination`], which writes the NavCom and
-    ///   the timers itself) or Hover — unless Foot+0x6AC skips it once.
-    ///   Hover's Move_To is the pass lane's route: the ground move a Move
-    ///   order takes, which publishes no NavCom (#689).
+    ///   the timers itself) or Hover ([`hover_move_to`]) — unless Foot+0x6AC
+    ///   skips it once.
     ///
     /// Returns false for a receiver without a represented Move_To or a
-    /// refused destination. Hover and Jumpjet still use their existing Cell
-    /// adapters; their non-cell Move_To remains required bridge work.
+    /// refused destination. Jumpjet still uses its Cell adapter; its non-cell
+    /// Move_To remains required bridge work.
     ///
     /// [`prepare_track_destination`]: super::movement_commands::prepare_track_destination
     /// [`teleport_move_to`]: super::teleport_movement::teleport_move_to
+    /// [`hover_move_to`]: super::hover::hover_move_to
     pub(crate) fn set_unit_destination(
         &mut self,
         id: u64,
@@ -925,17 +954,6 @@ impl Simulation {
         });
         let adapter_route = if skip_move_to {
             None
-        } else if let Some(cell) = requested_cell.filter(|_| hover) {
-            let order = crate::sim::world::GroundMove {
-                entity_id: id,
-                target: cell,
-                speed: info.speed,
-                queue: false,
-                speed_type: Some(info.speed_type),
-                owner_blocks: true,
-                object_destination: None,
-            };
-            Some(self.issue_ground_move(order, Some(rules)))
         } else if let Some(cell) = requested_cell.filter(|_| jumpjet) {
             Some(self.issue_air_cell_destination(id, cell, info.speed, Some(rules)))
         } else {
@@ -959,10 +977,12 @@ impl Simulation {
             true
         } else {
             match actor.locomotor.as_ref().map(|loco| loco.active_kind()) {
-                Some(LocomotorKind::Drive | LocomotorKind::Ship) => {
+                Some(LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Hover) => {
                     let coord = coord.expect("accepted Move_To captures target +4C");
                     let cell = ((coord.x / 256) as u16, (coord.y / 256) as u16);
-                    super::navcom::set_destination_internal_coord(actor, requested, coord, terrain);
+                    super::navcom::set_destination_internal_coord(
+                        actor, requested, coord, terrain, frame,
+                    );
                     super::movement_commands::prepare_destination_execution(
                         actor, cell, info.speed,
                     );

@@ -440,7 +440,7 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
             assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             assert!(begin_drive_for_teleporter(entity, 3));
-            super::super::navcom::set_destination_internal_cell(entity, (12, 8), None);
+            super::super::navcom::set_destination_internal_cell(entity, (12, 8), None, 0);
             assert_eq!(entity.foot_speed, owner_speed);
             assert_eq!(
                 entity
@@ -471,7 +471,7 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
             assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-            super::super::navcom::set_destination_internal_cell(entity, (12, 8), None);
+            super::super::navcom::set_destination_internal_cell(entity, (12, 8), None, 0);
             assert_eq!(entity.foot_speed, owner_speed);
             assert_eq!(
                 entity

@@ -170,54 +170,6 @@ pub(super) fn configure_motion_after_transition(
     }
 }
 
-/// Per-tick hover steering: turn the body facing toward the current one-cell
-/// waypoint through the native-frame `FacingClass` at the unit's rules ROT, and
-/// point `move_dir` along the resulting hull heading (unit vector, len = 1) so
-/// the shared lepton advancement produces facing-lagged curved motion.
-///
-/// Returns `true` while the required turn exceeds 45° (the turn-stall): the
-/// caller brakes the throttle (request 0) and holds position for the tick.
-/// Holding position during the hard-turn phase is a disclosed approximation —
-/// the original translates along the stale heading while braking, but the
-/// path-directed crossing loop cannot absorb a sideways cell exit; the drift
-/// this suppresses is bounded by the brake-decay tail (see the P2b plan doc).
-///
-/// Hover never uses the stop-rotate-go path (`handle_vehicle_rotation`).
-pub(super) fn hover_steer(
-    body_facing: &mut super::facing_class::FacingClass,
-    position: &Position,
-    target: &mut MovementTarget,
-    native_frame: u32,
-) -> bool {
-    use crate::util::lepton::CELL_CENTER_LEPTON;
-
-    let (wx, wy): (u16, u16) = if target.next_index < target.path.len() {
-        target.path[target.next_index]
-    } else {
-        target.final_goal.unwrap_or((position.rx, position.ry))
-    };
-    let dxl: SimFixed = SimFixed::from_num((wx as i32 - position.rx as i32) * 256)
-        + (CELL_CENTER_LEPTON - position.sub_x);
-    let dyl: SimFixed = SimFixed::from_num((wy as i32 - position.ry as i32) * 256)
-        + (CELL_CENTER_LEPTON - position.sub_y);
-    if dxl == SIM_ZERO && dyl == SIM_ZERO {
-        // Already exactly on the waypoint — nothing to steer toward. A turn
-        // already started keeps running on the frame clock.
-        return false;
-    }
-
-    let desired16: u16 = super::hover::hover_desired_facing16(dxl, dyl);
-    body_facing.set(desired16, native_frame);
-    let current16: u16 = body_facing.current(native_frame);
-
-    let (mx, my) = super::hover::hover_move_dir(current16);
-    target.move_dir_x = mx;
-    target.move_dir_y = my;
-    target.move_dir_len = SIM_ONE;
-
-    super::hover::hover_turning_hard(current16, desired16)
-}
-
 /// Result of vehicle rotation — tells the caller whether to skip this tick.
 pub(super) enum RotationResult {
     /// Still rotating in place — caller should `continue` (skip lepton advancement).

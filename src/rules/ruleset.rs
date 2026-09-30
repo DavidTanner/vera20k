@@ -471,25 +471,24 @@ pub struct GeneralRules {
     /// Rules+420, [JumpjetControls] CruiseHeight. Object5F4260 uses this
     /// global threshold; linked Jumpjets instead use their own +2C height.
     pub display_cruise_height: i32,
-    /// Hover locomotor cruise altitude in leptons (`[General] HoverHeight=`, default 120).
-    /// The damped-spring vertical controller holds hover units at this height.
+    /// `[General] HoverHeight=`, Rules+0x5CC: the Hover altitude controller's
+    /// cruise height in leptons (0x00513D20). Constructor 120 (0x00665E2B).
     pub hover_height: i32,
-    /// Hover bob PERIOD in minutes (`[General] HoverBob=`, default 0.04). The visible
-    /// `2·cos` float wobble completes one cycle every `round(HoverBob × 900)` ticks
-    /// (≈36 moving). NOTE: this is the period, not the amplitude (amplitude = `Gravity`).
-    pub hover_bob: SimFixed,
-    /// Hover straightaway speed boost (`[General] HoverBoost=`, default 1.5 / 150%).
-    /// Applied as `SpeedMult` when two same-direction path steps are queued, but the
-    /// throttle target is clamped to 1.0 afterward, so it only bites at approach speed.
-    pub hover_boost: SimFixed,
-    /// Hover acceleration TIME in minutes (`[General] HoverAcceleration=`, default 0.02).
-    /// Per-tick throttle ramp-up = `1 / (HoverAcceleration × 900)` → 18 ticks 0→full.
-    pub hover_acceleration: SimFixed,
-    /// Hover brake TIME in minutes (`[General] HoverBrake=`, default 0.03).
-    /// Per-tick throttle ramp-down = `1 / (HoverBrake × 900)` → 27 ticks full→0.
-    pub hover_brake: SimFixed,
-    /// Hover vertical damped-spring coefficient (`[General] HoverDampen=`, default 0.4 / 40%).
-    pub hover_dampen: SimFixed,
+    /// `[General] HoverBob=`, Rules+0x5D0 double: the bob period in minutes
+    /// (0x00513E1A). Constructor 30.0 (0x00665E35/3B).
+    pub hover_bob: NativeF64Bits,
+    /// `[General] HoverBoost=`, Rules+0x5D8 double: SpeedMult for two equal
+    /// queued path words (0x00516141). Constructor 1.3 (0x00665E45/54).
+    pub hover_boost: NativeF64Bits,
+    /// `[General] HoverAcceleration=`, Rules+0x5E0 double, minutes: the ramp
+    /// step is `1 / (value * 900)` (0x0051617F). Constructor 0.03 (0x00665E63).
+    pub hover_acceleration: NativeF64Bits,
+    /// `[General] HoverBrake=`, Rules+0x5E8 double, minutes (0x005161B7).
+    /// Constructor 0.03 (0x00665E6F).
+    pub hover_brake: NativeF64Bits,
+    /// `[General] HoverDampen=`, Rules+0x5F0 double (0x00513F21). Constructor
+    /// 0.8 (0x00665E7B/81).
+    pub hover_dampen: NativeF64Bits,
     /// Descent rate cap for parachuted units, in leptons/tick (signed).
     /// Per gamemd, the rate field accumulates by `-1` per tick and clamps
     /// to this value. Default `-3` matches `[General] ParachuteMaxFallRate=-3`.
@@ -1619,12 +1618,13 @@ impl Default for GeneralRules {
             line_trail_color_override: [0; 3],
             flight_level: 500,
             display_cruise_height: 400, // Rules constructor665C3A
+            // Rules constructor 0x00665E2B..0x00665E81.
             hover_height: 120,
-            hover_bob: sim_from_f32(0.04),
-            hover_boost: sim_from_f32(1.5),
-            hover_acceleration: sim_from_f32(0.02),
-            hover_brake: sim_from_f32(0.03),
-            hover_dampen: sim_from_f32(0.4),
+            hover_bob: NativeF64Bits::from_bits(0x403e_0000_0000_0000),
+            hover_boost: NativeF64Bits::from_bits(0x3ff4_cccc_cccc_cccd),
+            hover_acceleration: NativeF64Bits::from_bits(0x3f9e_b851_eb85_1eb8),
+            hover_brake: NativeF64Bits::from_bits(0x3f9e_b851_eb85_1eb8),
+            hover_dampen: NativeF64Bits::from_bits(0x3fe9_9999_9999_999a),
             parachute_max_fall_rate: -3,
             paradrop_radius: 1024,
             parachute_shp: None,
@@ -2377,14 +2377,15 @@ impl GeneralRules {
                 .read_color_rgb("LineTrailColorOverride", defaults.line_trail_color_override),
             flight_level: general.read_int("FlightLevel", 500),
             display_cruise_height,
-            // Hover keys: %-aware ReadDouble (150% → 1.5) into double fields.
-            // The three time keys (bob/accel/brake) are in MINUTES; ×900 = ticks.
-            hover_height: general.read_int("HoverHeight", 120),
-            hover_bob: sim_from_f32(general.read_double("HoverBob", 0.04) as f32),
-            hover_boost: sim_from_f32(general.read_double("HoverBoost", 1.5) as f32),
-            hover_acceleration: sim_from_f32(general.read_double("HoverAcceleration", 0.02) as f32),
-            hover_brake: sim_from_f32(general.read_double("HoverBrake", 0.03) as f32),
-            hover_dampen: sim_from_f32(general.read_double("HoverDampen", 0.4) as f32),
+            // ReadGeneral 0x0066EDC5..0x0066EE83 reads these into their
+            // fields with the current value as default (%-aware ReadDouble).
+            hover_height: general.read_int("HoverHeight", defaults.hover_height),
+            hover_bob: general.read_double_bits("HoverBob", defaults.hover_bob),
+            hover_boost: general.read_double_bits("HoverBoost", defaults.hover_boost),
+            hover_acceleration: general
+                .read_double_bits("HoverAcceleration", defaults.hover_acceleration),
+            hover_brake: general.read_double_bits("HoverBrake", defaults.hover_brake),
+            hover_dampen: general.read_double_bits("HoverDampen", defaults.hover_dampen),
             parachute_max_fall_rate: general.read_int("ParachuteMaxFallRate", -3),
             paradrop_radius: general.read_int("ParadropRadius", 1024),
             parachute_shp: general.read_name("Parachute", 0x80).map(str::to_uppercase),

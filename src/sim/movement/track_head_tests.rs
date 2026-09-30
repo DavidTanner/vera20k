@@ -132,7 +132,7 @@ fn destination_change_preserves_the_committed_head() {
         head_to: Some(head),
         ..Default::default()
     });
-    crate::sim::movement::navcom::set_destination_internal_cell(&mut entity, (13, 8), None);
+    crate::sim::movement::navcom::set_destination_internal_cell(&mut entity, (13, 8), None, 0);
     assert_eq!(
         entity.drive_locomotion.as_ref().unwrap().head_to,
         Some(head)

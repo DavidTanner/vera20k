@@ -210,7 +210,9 @@ impl Simulation {
             return Ok(false);
         }
         let head = if head.is_some() {
-            self.trim_path_for_object_navcom(id);
+            if let Some(destination) = track_destination(actor) {
+                self.trim_path_for_object_navcom(id, destination);
+            }
             self.substrate
                 .entities
                 .get(id)
@@ -225,12 +227,13 @@ impl Simulation {
         }
     }
 
-    /// 0x4B2770..0x4B2813: while NavCom is a Unit or an Infantry, the path is
-    /// cut at the cell count of |Foot - destination| (Distance3D >> 8) when
-    /// that is below 24, so a chase re-plans as it closes in.
-    fn trim_path_for_object_navcom(&mut self, id: u64) {
+    /// 0x4B2770..0x4B2813 (Hover 0x005163EC..0x00516485): while NavCom is a
+    /// Unit or an Infantry, the path is cut at the cell count of
+    /// |Foot - destination| (Distance3D >> 8) when that is below 24, so a
+    /// chase re-plans as it closes in. Returns whether it cut.
+    pub(super) fn trim_path_for_object_navcom(&mut self, id: u64, destination: DriveCoord) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
-            return;
+            return false;
         };
         let object = match actor.navigation.nav_com {
             Some(
@@ -238,7 +241,7 @@ impl Simulation {
                 | NavTargetRef::Object { id: object }
                 | NavTargetRef::Building { id: object },
             ) => object,
-            _ => return,
+            _ => return false,
         };
         if !self.substrate.entities.get(object).is_some_and(|nav| {
             matches!(
@@ -246,11 +249,8 @@ impl Simulation {
                 EntityCategory::Unit | EntityCategory::Infantry
             )
         }) {
-            return;
+            return false;
         }
-        let Some(destination) = track_destination(actor) else {
-            return;
-        };
         let location = ground_pose::position_world_coord(&actor.position);
         let distance = crate::sim::cell_kernel::native_coord_distance(
             location.x.wrapping_sub(destination.x),
@@ -259,7 +259,7 @@ impl Simulation {
         );
         let cells = crate::util::lepton::lepton_to_cell(distance);
         if cells >= 24 {
-            return;
+            return false;
         }
         let queue = &mut self
             .substrate
@@ -272,6 +272,7 @@ impl Simulation {
         if let Some(word) = queue.directions.get_mut(slot) {
             *word = u8::MAX;
         }
+        true
     }
 
     /// 0x4B281C..0x4B2845 then track_path's request and continuations. A found
@@ -474,7 +475,7 @@ impl Simulation {
                 }
                 //4B3B03..4B3BE9: attack the non-allied blocking object, or
                 //the wall cell when the cell holds none.
-                self.track_override_blocker(call, cell);
+                self.override_movement_blocker_at(call.id, cell, call.rules, call.registry);
                 //4B3C67..4B3C81: code != 7 retires the selector.
                 if let Some(actor) = self.substrate.entities.get_mut(id) {
                     actor.navigation.path_runtime.clear_scold_latch();
@@ -1060,7 +1061,7 @@ impl Simulation {
     /// Foot constructor zeroes it; nothing clears it), read only by
     /// `FootClass::ComputeChecksum` (0x4DBD0C). Its persisted analogue is
     /// the hashed `RuntimeBridgeTransitionState::pending_mismatch`.
-    fn latch_foot_68b(&mut self, id: u64) {
+    pub(super) fn latch_foot_68b(&mut self, id: u64) {
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             actor.runtime_bridge_transition.pending_mismatch = true;
         }
@@ -1282,9 +1283,16 @@ impl Simulation {
         Ok(())
     }
 
-    /// Code 4/5 without a retry (0x4B3B03..0x4B3BE9): `Find_Blocking_Object`
-    /// then Override(Attack) on a non-allied object, else on a wall cell.
-    fn track_override_blocker(&mut self, call: &FreshCall<'_>, cell: (i16, i16)) {
+    /// Code 4/5 without a retry (Drive 0x4B3B03..0x4B3BE9, Hover
+    /// 0x00515B97..0x00515C9C): `Find_Blocking_Object` then Override(Attack)
+    /// on a non-allied object, else on a wall cell.
+    pub(super) fn override_movement_blocker_at(
+        &mut self,
+        id: u64,
+        cell: (i16, i16),
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
         if cell.0 < 0 || cell.1 < 0 {
             return;
         }
@@ -1292,7 +1300,7 @@ impl Simulation {
         match self.find_blocking_object(key) {
             Some(BlockingObject::Entity(blocker)) => {
                 let (Some(actor), Some(target)) = (
-                    self.substrate.entities.get(call.id),
+                    self.substrate.entities.get(id),
                     self.substrate.entities.get(blocker),
                 ) else {
                     return;
@@ -1305,7 +1313,7 @@ impl Simulation {
                 ) {
                     return;
                 }
-                self.track_override(call, TargetKind::Entity(blocker));
+                self.track_override(id, TargetKind::Entity(blocker), rules);
             }
             Some(BlockingObject::Terrain) => {
                 //See the terrain-blocker residual: no terrain target exists.
@@ -1314,24 +1322,24 @@ impl Simulation {
                 //4B3B94..4B3BE3: a wall overlay makes the Cell the target.
                 let wall = self
                     .track_overlay(cell)
-                    .and_then(|overlay| self.overlay_flags(call.registry, overlay))
+                    .and_then(|overlay| self.overlay_flags(registry, overlay))
                     .is_some_and(|(_, wall)| wall);
                 if wall {
-                    self.track_override(call, TargetKind::Cell(key.0, key.1));
+                    self.track_override(id, TargetKind::Cell(key.0, key.1), rules);
                 }
             }
         }
     }
 
     /// Foot::Override_Mission(Attack, target, NULL) at 0x4B3BE9.
-    fn track_override(&mut self, call: &FreshCall<'_>, target: TargetKind) {
+    fn track_override(&mut self, id: u64, target: TargetKind, rules: &RuleSet) {
         #[cfg(test)]
         if super::fresh_oracle_seam::substitute(
             super::fresh_oracle_seam::FreshCallRecord::Override { target },
         ) {
             return;
         }
-        self.mission_override_movement_blocker(call.id, target, call.rules);
+        self.mission_override_movement_blocker(id, target, rules);
     }
 
     /// `CellClass::Find_Blocking_Object 0x47C5A0` with the zero point: the

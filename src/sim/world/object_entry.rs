@@ -860,20 +860,7 @@ mod tests {
 }
 
 fn moving(e: &GameEntity) -> bool {
-    if let Some(moving) = crate::sim::movement::motion_query::is_moving(e) {
-        return moving;
-    }
-    match e.locomotor.as_ref().map(|l| l.kind) {
-        // OPEN Hover514C30 reads retained destination OR head XYZ. The current
-        // payload retains only its head; NavCom remains the previous adapter.
-        Some(LocomotorKind::Hover) => {
-            e.locomotor
-                .as_ref()
-                .is_some_and(|l| l.step_head().is_some())
-                || e.navigation.nav_com.is_some()
-        }
-        _ => e.movement_target.is_some(),
-    }
+    crate::sim::movement::motion_query::is_moving(e).unwrap_or(e.movement_target.is_some())
 }
 
 fn head_on(mover: &GameEntity, blocker: &GameEntity, frame: u32) -> bool {
