@@ -414,7 +414,14 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // prior frame hash and CE21_A562_A129_5C86; gameplay XYZ remains untouched.
 // The uncommitted control is preserved with source/binary identities. This
 // composition change establishes a Rust regression pin, not native world parity.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB80A_AAB9_5187_A8F9;
+// 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
+// AircraftTracker, which native Mark never touches, so a ground object keeps
+// its constructor-seeded enter order (its stable id) where the old lifecycle
+// Mark reset it to 0 on every Mark. Ceremony: this change with only that reset
+// restored printed the old value for all three replay pins (bridge, global,
+// slice 6), with the RNG pins above unchanged (the probe patch was not
+// committed). Old value: the commit that moved it.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xE8CE_CD4F_61DC_C735;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

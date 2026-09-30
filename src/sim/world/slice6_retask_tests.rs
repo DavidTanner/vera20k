@@ -199,7 +199,14 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // all819 frame rows, all three RNG states and ordered raw draw callers.
 // Incoming main preserves candidate state; its source-line changes remain
 // recorded. This Rust replay pin does not establish native whole-world parity.
-const SLICE6_BASELINE_HASH: u64 = 0x77B7FEF300222AB2;
+// 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
+// AircraftTracker, which native Mark never touches, so a ground object keeps
+// its constructor-seeded enter order (its stable id) where the old lifecycle
+// Mark reset it to 0 on every Mark. Ceremony: this change with only that reset
+// restored printed the old value for all three replay pins (bridge, global,
+// slice 6), with the RNG pins above unchanged (the probe patch was not
+// committed). Old value: the commit that moved it.
+const SLICE6_BASELINE_HASH: u64 = 0x1C2E_FDD2_3AD2_056E;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

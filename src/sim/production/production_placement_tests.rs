@@ -423,6 +423,7 @@ fn ground_occupant_placement_rules() -> RuleSet {
          Strength=100\n\
          Armor=flak\n\
          Locomotor={4A582744-9839-11D1-B709-00A024DDAFD1}\n\
+         Speed=4\n\
          [MTNK]\n\
          Strength=300\n\
          Armor=heavy\n\
