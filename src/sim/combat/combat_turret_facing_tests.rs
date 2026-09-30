@@ -824,8 +824,6 @@ fn a_building_barrel_turns_through_mission_attack_not_the_sweep() {
             e,
             &crate::sim::combat::TargetKind::Entity(2),
             &sim.substrate.entities,
-            Some(&rules),
-            &sim.interner,
         )
         .expect("a live target")
     };

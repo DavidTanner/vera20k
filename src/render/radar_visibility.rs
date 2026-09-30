@@ -29,39 +29,6 @@ pub(super) fn radar_owner_is_human_player(
     }
 }
 
-/// ObjectClass virtual `GetCoords` used by radar visibility and radar clicks.
-/// `BuildingClass::GetCoords @ 0x00447AC0` projects the stored foundation-origin
-/// coordinate to its geometric centre; mobiles inherit the raw Object result.
-pub(super) fn radar_object_get_coords_leptons(
-    entity: &crate::sim::game_entity::GameEntity,
-) -> (i32, i32) {
-    let (mut x, mut y) = radar_raw_coord_leptons(entity);
-    if entity.category == EntityCategory::Structure {
-        let (width, height) = crate::rules::foundation::foundation_dimensions(&entity.foundation);
-        x = x.wrapping_add(
-            i32::from(width)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::util::lepton::CELL_CENTER_LEPTON_I32),
-        );
-        y = y.wrapping_add(
-            i32::from(height)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::util::lepton::CELL_CENTER_LEPTON_I32),
-        );
-    }
-    (x, y)
-}
-
-fn radar_raw_coord_leptons(entity: &crate::sim::game_entity::GameEntity) -> (i32, i32) {
-    let x = i32::from(entity.position.rx)
-        .wrapping_mul(crate::util::lepton::LEPTONS_PER_CELL_I32)
-        .wrapping_add(entity.position.sub_x.to_num::<i32>());
-    let y = i32::from(entity.position.ry)
-        .wrapping_mul(crate::util::lepton::LEPTONS_PER_CELL_I32)
-        .wrapping_add(entity.position.sub_y.to_num::<i32>());
-    (x, y)
-}
-
 fn radar_packed_cell_from_leptons(x: i32, y: i32) -> (i32, i32) {
     // Coord2Cell uses signed division and then narrows to signed words.
     (
@@ -103,7 +70,8 @@ fn radar_fresh_mode_one_membership(
         // cannot be replaced by a rectangular or geometry-only approximation.
         return false;
     };
-    let (x, y) = radar_object_get_coords_leptons(entity);
+    // ObjectClass virtual `GetCoords`.
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     crate::sim::cell_rect::cell_is_in_playfield_leptons(
         (x, y, 0),
         Some(bounds),
@@ -115,7 +83,8 @@ fn radar_get_height_leptons(
     entity: &crate::sim::game_entity::GameEntity,
     resolved_terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> i32 {
-    let (x, y) = radar_object_get_coords_leptons(entity);
+    // ObjectClass virtual `GetCoords`.
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     let (rx, ry) = radar_packed_cell_from_leptons(x, y);
     let ground = resolved_terrain
         .and_then(|terrain| {
@@ -310,7 +279,7 @@ pub(super) fn build_radar_object_update(
 ) -> RadarObjectUpdate {
     let type_str = interner.map_or("", |i| i.resolve(entity.type_ref()));
     let object = rules.and_then(|rules| rules.object(type_str));
-    let (raw_x, raw_y) = radar_raw_coord_leptons(entity);
+    let [raw_x, raw_y] = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
     let origin = projection.native_surface.map_or_else(
         || {
             let (screen_x, screen_y) = super::locomotor_visual::screen_position(entity);
@@ -337,7 +306,7 @@ pub(super) fn build_radar_object_update(
     let owner_is_human_player = local_owner.is_none_or(|local_owner| {
         radar_owner_is_human_player(entity.owner(), local_owner, houses, game_mode_nonzero)
     });
-    let (coord_x, coord_y) = radar_object_get_coords_leptons(entity);
+    let [coord_x, coord_y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     let current_cell = radar_fog_cell_from_leptons(coord_x, coord_y);
     // The type-5 call at `0x0070DA95..0x0070DAD7` converts raw Object+0x9C,
     // not BuildingClass's centre-adjusted +0x324 coordinate.
@@ -517,44 +486,14 @@ mod tests {
             crate::sim::game_entity::GameEntity::test_default(1, "BLDG", "Enemy", 4, 5);
         entity.category = EntityCategory::Structure;
         entity.foundation = "3x2".to_string();
-        let raw = radar_raw_coord_leptons(&entity);
-        let visibility = radar_object_get_coords_leptons(&entity);
-        assert_eq!(radar_fog_cell_from_leptons(raw.0, raw.1), Some((4, 5)));
+        let raw = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
+        let visibility = crate::sim::movement::ground_pose::object_center_xy(&entity);
+        assert_eq!(radar_fog_cell_from_leptons(raw[0], raw[1]), Some((4, 5)));
         assert_ne!(
-            radar_fog_cell_from_leptons(visibility.0, visibility.1),
+            radar_fog_cell_from_leptons(visibility[0], visibility[1]),
             Some((4, 5)),
             "BuildingClass +0x324 may center its query, but 0x70DAD7 packs Object+0x9C"
         );
-    }
-
-    #[test]
-    fn radar_object_get_coords_centralizes_mobile_and_building_foundation_centres() {
-        let mut entity =
-            crate::sim::game_entity::GameEntity::test_default(1, "BLDG", "Enemy", 10, 20);
-        entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(200);
-        entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(33);
-        let raw = (10 * 256 + 200, 20 * 256 + 33);
-
-        assert_eq!(
-            radar_object_get_coords_leptons(&entity),
-            raw,
-            "mobile GetCoords is raw"
-        );
-        entity.category = EntityCategory::Structure;
-        for (foundation, expected) in [
-            ("1x1", raw),
-            ("2x2", (raw.0 + 128, raw.1 + 128)),
-            ("4x3", (raw.0 + 384, raw.1 + 256)),
-            ("", raw),
-            ("not-a-native-foundation", raw),
-        ] {
-            entity.foundation = foundation.to_string();
-            assert_eq!(
-                radar_object_get_coords_leptons(&entity),
-                expected,
-                "foundation {foundation:?}"
-            );
-        }
     }
 
     #[test]

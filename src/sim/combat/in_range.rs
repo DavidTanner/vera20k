@@ -513,7 +513,7 @@ fn resolve_target_coords_3d(
             let Some(t) = entities.get(id) else {
                 return Some((i64::MAX / 4, i64::MAX / 4, 0));
             };
-            let (rx, ry, sub_x, sub_y) = super::target_coords(t, Some(rules), interner);
+            let (rx, ry, sub_x, sub_y) = super::target_coords(t);
             let tx = rx as i64 * 256 + sub_x.to_num::<i64>();
             let ty = ry as i64 * 256 + sub_y.to_num::<i64>();
             // Virtual+48 supplies the target point before +50. The height
@@ -1541,7 +1541,9 @@ mod tests {
         let weapon = rules.weapon("GUN").expect("weapon");
 
         let attacker = ground_attacker(6, 1, 0, "ATKR");
-        let target = building_target(0, 0, "BLDG");
+        let mut target = building_target(0, 0, "BLDG");
+        // Construction stamps the type's `Foundation=4x2`.
+        target.foundation = "4x2".to_string();
         let mut entities = EntityStore::new();
         entities.insert(target);
         let interner = test_interner();

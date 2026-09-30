@@ -421,22 +421,17 @@ impl std::hash::Hash for AnimObject {
     }
 }
 
-/// The owner centre an attached anim's stored coordinate is relative to.
-fn anim_owner_centre(
-    owner: &crate::sim::game_entity::GameEntity,
-) -> crate::sim::components::DriveCoord {
-    crate::sim::movement::ground_pose::object_center_coord_with_foundation(owner, &owner.foundation)
-}
-
+/// The owner centre (its GetCoords) an attached anim's stored coordinate is
+/// relative to.
 fn anim_owner_world_coords(
     owner: &crate::sim::game_entity::GameEntity,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> AnimWorldCoord {
-    let centre = anim_owner_centre(owner);
+    let centre = crate::sim::movement::ground_pose::object_get_coords(owner, terrain);
     AnimWorldCoord {
         x: centre.x,
         y: centre.y,
-        z: crate::sim::movement::ground_pose::object_world_z_leptons(owner, terrain),
+        z: centre.z,
     }
 }
 
@@ -465,8 +460,8 @@ pub(crate) fn anim_own_sort_term(anim: &AnimObject) -> i32 {
 /// What an attached anim's GetYSort adds for its owner: the X + Y of the
 /// owner's centre ([`anim_owner_world_coords`], whose Z the key never reads).
 pub(crate) fn anim_owner_sort_term(owner: &crate::sim::game_entity::GameEntity) -> i32 {
-    let centre = anim_owner_centre(owner);
-    centre.x.wrapping_add(centre.y)
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(owner);
+    x.wrapping_add(y)
 }
 
 pub(crate) fn anim_world_coords(
@@ -1867,16 +1862,10 @@ impl Simulation {
         let mut bridge_state_changed = false;
         while let Some(target) = current {
             let center = match target {
-                CellObjectMember::Entity(id) => {
-                    self.substrate.entities.get(id).and_then(|entity| {
-                        let object_type = rules.object(self.interner.resolve(entity.type_ref()))?;
-                        let coord = crate::sim::movement::ground_pose::object_center_coord(
-                            entity,
-                            object_type,
-                        );
-                        Some((coord.x, coord.y))
-                    })
-                }
+                CellObjectMember::Entity(id) => self.substrate.entities.get(id).map(|entity| {
+                    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+                    (x, y)
+                }),
                 // Loaded Terrain objects retain their map-cell center. This
                 // contact gate uses XY only (GetCoords5F65A0); it does not
                 // substitute ground/deck height for the object's location.

@@ -478,7 +478,6 @@ impl Simulation {
         &self,
         cell: (u16, u16),
         layer: MovementLayer,
-        rules: &RuleSet,
     ) -> Option<u64> {
         crate::sim::cell_kernel::nearest_eligible_in_order(
             crate::sim::cell_kernel::CellQueryPoint { x: 0, y: 0 },
@@ -489,17 +488,11 @@ impl Simulation {
                 .flat_map(|list| list.iter_layer(layer))
                 .filter_map(|entry| self.substrate.entities.get(entry.entity_id))
                 .map(|entity| {
-                    let coord = self.object_type(entity.type_ref(), rules).map_or_else(
-                        || ground_pose::position_world_coord(&entity.position),
-                        |kind| ground_pose::object_center_coord(entity, kind),
-                    );
+                    let [x, y] = ground_pose::object_center_xy(entity);
                     (
                         entity.stable_id(),
                         true,
-                        crate::sim::cell_kernel::CellQueryPoint {
-                            x: coord.x,
-                            y: coord.y,
-                        },
+                        crate::sim::cell_kernel::CellQueryPoint { x, y },
                     )
                 }),
         )
@@ -543,7 +536,7 @@ impl Simulation {
             MovementLayer::Ground
         };
         let key = (cell.0 as u16, cell.1 as u16);
-        let Some(blocker) = self.nearest_cell_object(key, layer, rules) else {
+        let Some(blocker) = self.nearest_cell_object(key, layer) else {
             return Ok(false);
         };
         let allied = self.substrate.entities.get(blocker).is_some_and(|b| {

@@ -547,8 +547,6 @@ impl Simulation {
         let Some((rx, ry, _, _)) = crate::sim::combat::resolve_target_coords(
             &crate::sim::combat::TargetKind::Entity(target),
             &self.substrate.entities,
-            Some(rules),
-            &self.interner,
         ) else {
             return;
         };

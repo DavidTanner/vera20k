@@ -41,11 +41,10 @@ use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 ///
 /// `UnitClass::Mission_Harvest @ 0x0073E5E0` state 2 subtracts the candidate's
 /// `GetCoords` (vtable +0x48 = `BuildingClass::GetCoords @ 0x00447AC0`, the
-/// foundation centre — see `building_get_coords_xy`) from the miner's
-/// `GetCoords`, so the X/Y side is measured to the footprint centre, not the
-/// NW cell. Z: native uses the building's stored coordinate Z (`+0xA4`,
-/// unchanged by GetCoords), which is its NW/origin cell; Rust resolves the
-/// refinery's `object_coordinate_z` at that same NW cell.
+/// foundation centre, [`object_get_coords`]) from the miner's `GetCoords`, so
+/// the X/Y side is measured to the footprint centre, not the NW cell. Z:
+/// native uses the building's stored coordinate Z (`+0xA4`, unchanged by
+/// GetCoords), the floor at its Location.
 ///
 /// Distance, read from the disassembly at `0x0073EBB1..0x0073EC19` (HARV) and
 /// `0x0073EDE3..0x0073EE4B` (CMIN), identical in both: the three integer
@@ -58,7 +57,6 @@ use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 /// 12800 (close), 12802 far. Rust reproduces that exact sequence.
 fn return_exceeds_too_far_threshold(
     sim: &Simulation,
-    rules: &RuleSet,
     miner_sid: u64,
     refinery_sid: u64,
     threshold_cells: i32,
@@ -72,15 +70,9 @@ fn return_exceeds_too_far_threshold(
     let miner_x = i64::from(miner.position.rx) * 256 + miner.position.sub_x.to_num::<i64>();
     let miner_y = i64::from(miner.position.ry) * 256 + miner.position.sub_y.to_num::<i64>();
     // Both GetCoords (vt+0x48): the refinery's foundation centre
-    // (`0x00447AC0`) at its NW cell's Z. Same by-name lookup as
-    // `find_docking_bay`; a type the sim's interner never produced
-    // (foreign-interner fixtures) stays at its raw Location.
+    // (`0x00447AC0`) at its Location's Z.
     let terrain = sim.resolved_terrain.as_ref();
-    let refinery_type = sim
-        .interner
-        .try_resolve(refinery.type_ref())
-        .and_then(|name| rules.object_case_insensitive(name));
-    let refinery_coord = object_get_coords(refinery, refinery_type, terrain);
+    let refinery_coord = object_get_coords(refinery, terrain);
     let (refinery_x, refinery_y) = (i64::from(refinery_coord.x), i64::from(refinery_coord.y));
     let miner_z = i64::from(object_world_z_leptons(miner, terrain));
     let refinery_z = i64::from(refinery_coord.z);
@@ -111,26 +103,20 @@ mod gsi_04_03b_tests {
     use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::pathfinding::PathGrid;
 
-    fn empty_rules() -> RuleSet {
-        RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str("")).expect("empty rules")
-    }
-
     /// Mission_Harvest state 2 measures to `BuildingClass::GetCoords @
     /// 0x00447AC0` = the foundation centre. For a 4x3 refinery that is
     /// (+384, +256) leptons from the NW cell, which flips the 5-cell
     /// `HarvesterTooFarDistance` verdict on either side of the building.
     #[test]
     fn too_far_threshold_measures_to_the_foundation_centre() {
-        let rules = RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-            "[BuildingTypes]\n0=GAREFN\n[GAREFN]\nFoundation=4x3\nRefinery=yes\nDockUnload=yes\n",
-        ))
-        .expect("refinery rules");
         let mut sim = Simulation::new();
         let refinery_type = sim.interner.intern("GAREFN");
         let harv_type = sim.interner.intern("HARV");
         let mut refinery = GameEntity::test_default(2, "GAREFN", "Allies", 10, 10);
         refinery.type_ref = refinery_type;
         refinery.category = EntityCategory::Structure;
+        // Construction stamps the type's `Foundation=4x3`.
+        refinery.foundation = "4x3".to_string();
         sim.substrate.entities.insert(refinery);
 
         // East of the building: NW distance is sqrt(37) cells (far), centre
@@ -140,7 +126,7 @@ mod gsi_04_03b_tests {
         east.type_ref = harv_type;
         sim.substrate.entities.insert(east);
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &rules, 1, 2, 5),
+            return_exceeds_too_far_threshold(&sim, 1, 2, 5),
             Some(false),
             "east side: centre offset pulls a NW-far miner inside the threshold"
         );
@@ -151,15 +137,9 @@ mod gsi_04_03b_tests {
         west.type_ref = harv_type;
         sim.substrate.entities.insert(west);
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &rules, 3, 2, 5),
+            return_exceeds_too_far_threshold(&sim, 3, 2, 5),
             Some(true),
             "west side: centre offset pushes a NW-near miner beyond the threshold"
-        );
-
-        // Without a known foundation the offset is zero (1x1 fallback).
-        assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 3, 2, 5),
-            Some(false)
         );
     }
 
@@ -179,13 +159,13 @@ mod gsi_04_03b_tests {
         sim.substrate.entities.insert(miner);
 
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 5),
+            return_exceeds_too_far_threshold(&sim, 1, 2, 5),
             Some(false),
             "d = 1281 leptons: Sqrt_Approx yields 1280.9995, ftol 1280, close"
         );
         sim.substrate.entities.get_mut(1).unwrap().position.sub_x = SimFixed::from_num(2);
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 5),
+            return_exceeds_too_far_threshold(&sim, 1, 2, 5),
             Some(true),
             "d = 1282 leptons is the first far distance"
         );
@@ -214,21 +194,18 @@ mod gsi_04_03b_tests {
         sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(1, 1, vec![sloped_cell()]));
 
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 1),
+            return_exceeds_too_far_threshold(&sim, 1, 2, 1),
             Some(true),
             "255 horizontal leptons plus the slope Z delta exceeds one cell"
         );
 
         sim.substrate.entities.get_mut(1).unwrap().position.sub_x = SimFixed::from_num(0);
         sim.substrate.entities.get_mut(2).unwrap().position.sub_x = SimFixed::from_num(0);
-        assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 1),
-            Some(false)
-        );
+        assert_eq!(return_exceeds_too_far_threshold(&sim, 1, 2, 1), Some(false));
 
         sim.substrate.entities.get_mut(1).unwrap().on_bridge = true;
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 1),
+            return_exceeds_too_far_threshold(&sim, 1, 2, 1),
             Some(true),
             "OnBridge coordinate Z contributes the full deck offset"
         );
@@ -239,7 +216,7 @@ mod gsi_04_03b_tests {
         locomotor.altitude = SimFixed::from_num(300);
         miner.locomotor = Some(locomotor);
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 1),
+            return_exceeds_too_far_threshold(&sim, 1, 2, 1),
             Some(true),
             "locomotor altitude contributes to raw object-coordinate Z"
         );
@@ -262,14 +239,11 @@ mod gsi_04_03b_tests {
         // the slope contribution. With no grid to resolve, each object degrades
         // to level-only Z: dz = 0, so 255 horizontal leptons stay inside one
         // cell — and the decision is still made rather than refused.
-        assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 1),
-            Some(false)
-        );
+        assert_eq!(return_exceeds_too_far_threshold(&sim, 1, 2, 1), Some(false));
 
         sim.substrate.entities.get_mut(2).unwrap().position.z = 3;
         assert_eq!(
-            return_exceeds_too_far_threshold(&sim, &empty_rules(), 1, 2, 1),
+            return_exceeds_too_far_threshold(&sim, 1, 2, 1),
             Some(true),
             "the fallback Z is the stored level, not a dropped term"
         );
@@ -978,7 +952,7 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
         rules.general.harvester_too_far_distance
     };
     if let Some(bay) = narrow
-        && return_exceeds_too_far_threshold(sim, rules, id, bay, too_far) == Some(false)
+        && return_exceeds_too_far_threshold(sim, id, bay, too_far) == Some(false)
         && let Some(capacity) = refinery_dock_capacity_for_sid(sim, rules, bay)
         && miner_dock::hello(sim, id, bay, capacity) == ContactAdmission::Accepted
     {
@@ -991,7 +965,7 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
         return;
     };
     if !teleporter
-        && return_exceeds_too_far_threshold(sim, rules, id, bay, STAGING_MIN_CELLS) != Some(true)
+        && return_exceeds_too_far_threshold(sim, id, bay, STAGING_MIN_CELLS) != Some(true)
     {
         return;
     }
@@ -1152,7 +1126,7 @@ fn handle_going_to_idle(
         return false;
     }
     if let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
-        && let Some(exit) = building_nearby_passable_cell(sim, rules, refinery_sid)
+        && let Some(exit) = building_nearby_passable_cell(sim, refinery_sid)
     {
         issue_move_if_idle(sim, Some(rules), snap.entity_id, exit, snap.speed);
     }
@@ -1215,18 +1189,10 @@ fn refinery_building_in_cell(sim: &Simulation, rules: &RuleSet, cell: (u16, u16)
 /// `FUN_00703590`: `Find_Nearby_Passable_Cell` seeded at the building's
 /// `GetCoords` cell (`BuildingClass::GetCoords @ 0x00447AC0` = NW +
 /// `((W-1)*128, (H-1)*128)` leptons, cell = coord >> 8).
-fn building_nearby_passable_cell(
-    sim: &Simulation,
-    rules: &RuleSet,
-    building_sid: u64,
-) -> Option<(u16, u16)> {
+fn building_nearby_passable_cell(sim: &Simulation, building_sid: u64) -> Option<(u16, u16)> {
     let grid = sim.path_grid()?;
     let building = sim.substrate.entities.get(building_sid)?;
-    let coord = object_get_coords(
-        building,
-        sim.object_type(building.type_ref(), rules),
-        sim.resolved_terrain.as_ref(),
-    );
+    let coord = object_get_coords(building, sim.resolved_terrain.as_ref());
     let (x, y) = (i64::from(coord.x), i64::from(coord.y));
     super::exit_cell_search::find_nearby_passable_cell_with_index(
         (x >> 8) as i32,
@@ -1417,7 +1383,7 @@ fn find_docking_bay(
             }
             // `BuildingClass::GetCoords @ 0x00447AC0`: foundation centre, the
             // same point the state-2 too-far test measures to.
-            let centre = object_get_coords(entity, Some(obj), sim.resolved_terrain.as_ref());
+            let centre = object_get_coords(entity, sim.resolved_terrain.as_ref());
             let (centre_x, centre_y) = (i64::from(centre.x), i64::from(centre.y));
             let dx = miner_x - centre_x;
             let dy = miner_y - centre_y;
@@ -1900,6 +1866,8 @@ mod harvest_scan_dispatch_tests {
             false,
         );
         ge.lifecycle.in_limbo = false;
+        // Construction stamps the type's `Foundation=4x3`.
+        ge.foundation = "4x3".to_string();
         sim.substrate.entities.insert(ge);
         // Unlimbo's House+0x68 append.
         register_house(sim);

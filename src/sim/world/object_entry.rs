@@ -70,14 +70,10 @@ fn infantry_disguised_to(
     let Some(disguise) = entity.disguise.as_ref().filter(|state| state.disguised) else {
         return Ok(false);
     };
-    let object = live
-        .rules
-        .object(live.sim.interner.resolve(entity.type_ref()))
-        .ok_or("Infantry disguise query requires type")?;
-    let center = crate::sim::movement::ground_pose::object_center_coord(entity, object);
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     let cell = live
         .terrain()
-        .native_cell_identity(((center.x / 256) as i16, (center.y / 256) as i16));
+        .native_cell_identity(((x / 256) as i16, (y / 256) as i16));
     if friendly(live, entity.owner(), observer) {
         return Ok(false);
     }
@@ -201,14 +197,10 @@ fn infantry_target_admission(
     }
     //51C3F6 uses Building+48 (foundation center), not the approach+4C.
     //565730 runs even for NULL/nonmatching object NavCom, before +2B4.
-    let first_type = live
-        .rules
-        .object(live.sim.interner.resolve(first.type_ref()))
-        .ok_or("repair first-Building target has missing type")?;
-    let center = crate::sim::movement::ground_pose::object_center_coord(first, first_type);
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(first);
     let first_cell = live
         .terrain()
-        .native_cell_identity(((center.x / 256) as i16, (center.y / 256) as i16));
+        .native_cell_identity(((x / 256) as i16, (y / 256) as i16));
     if cell_target_is(first_cell) || attack_target_is(first_id) {
         return Ok(InfantryTargetAdmission::SkipCurrent);
     }
@@ -545,6 +537,10 @@ mod tests {
             entity.owner = sim.intern(owner);
             entity.type_ref = sim.intern(name);
             entity.category = category;
+            if category == EntityCategory::Structure {
+                // Construction stamps the type's `Foundation=2x2`.
+                entity.foundation = "2x2".to_string();
+            }
             entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(128);
             entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(128);
             sim.substrate.entities.insert(entity);
