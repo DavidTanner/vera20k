@@ -1297,8 +1297,6 @@ impl Simulation {
                 self.session.map_height,
             )
         });
-        let order = self.substrate.next_air_tracker_order.next();
-
         if category == EntityCategory::Structure {
             let (width, height) = crate::rules::foundation::foundation_dimensions(&foundation);
             let mut intersections = Vec::with_capacity(usize::from(width) * usize::from(height));
@@ -1375,7 +1373,7 @@ impl Simulation {
             match air_spatial_bucket {
                 Some(bucket) if entity.air_spatial_bucket != Some(bucket) => {
                     entity.air_spatial_bucket = Some(bucket);
-                    entity.air_spatial_enter_order = order;
+                    entity.air_spatial_enter_order = self.substrate.next_air_tracker_order.next();
                 }
                 Some(_) => {}
                 None => {

@@ -270,6 +270,7 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         );
         assert_eq!(sim.substrate.occupancy.count_on_layer(3, 3, start_layer), 0);
         assert_eq!(sim.substrate.occupancy.count_on_layer(3, 2, end_layer), 1);
+        let relinked_generation = sim.substrate.occupancy.generation();
 
         sim.substrate
             .entities
@@ -284,8 +285,8 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         assert_eq!(entity.position.exact_z_leptons, Some(416));
         assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 2);
         assert_eq!(
-            sim.substrate.occupancy.count_on_layer(3, 2, end_layer),
-            1,
+            sim.substrate.occupancy.generation(),
+            relinked_generation,
             "no duplicate cell entry at paid point"
         );
         assert_eq!(entity.locomotor.as_ref().unwrap().layer, end_layer);

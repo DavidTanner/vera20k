@@ -207,12 +207,12 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // change to this pin is the fold. Old value: the commit that moved it.
 // 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
 // #685): the fold drops bridge_occupancy and the ground cell enter order;
-// the enter-order counter (and so AirTracker order values) no longer
-// advances on ground entries; Foot+0x68B is write-1-only. Ceremony: the
+// the enter-order counter (and so AirTracker order values) advances only
+// for AirTracker entries; Foot+0x68B is write-1-only. Ceremony: the
 // parent and this change, each with those five inputs removed from the
 // hash, printed the same value, with the RNG pins above unchanged (the
 // probe patch was not committed). Old value: the commit that moved it.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE6E7_B589_6ADE_CC99;
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x9454_40E0_4D2B_22C6;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -472,7 +472,6 @@ struct CrossingFrame {
     cell: (u16, u16),
     z: u8,
     on_bridge: bool,
-    occupancy_deck: Option<u8>,
     terrain_level: i16,
     structural: bool,
 }
@@ -540,7 +539,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.on_bridge.then_some(entity.position.z),
             terrain_level: facts.signed_level(),
             structural: facts.has_structural_bridge(),
         });
@@ -570,12 +568,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         }
         previous = Some(frame.cell);
         println!(
-            "  tick {:4} cell {:?} z={} on_bridge={} occ_deck={:?} terrain={} deck={} expect_z={}",
+            "  tick {:4} cell {:?} z={} on_bridge={} terrain={} deck={} expect_z={}",
             frame.tick,
             frame.cell,
             frame.z,
             frame.on_bridge,
-            frame.occupancy_deck,
             frame.terrain_level,
             frame.structural,
             frame.expected_z(),
@@ -608,8 +605,8 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         deck_cells.len(),
     );
 
-    // 3. Every deck frame is at deck height, flagged on-bridge, and agrees with
-    //    its own BridgeOccupancy — never dropped to the gorge floor underneath.
+    // 3. Every deck frame is at deck height and flagged on-bridge — never
+    //    dropped to the gorge floor underneath.
     for frame in frames.iter().filter(|f| f.structural) {
         assert!(
             frame.on_bridge,
@@ -626,12 +623,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             i16::from(frame.z as i8),
             i16::from(GORGE_LEVEL as i8),
             "the tank dropped to the gorge floor under the span at {:?}: {frame:?}",
-            frame.cell
-        );
-        assert_eq!(
-            frame.occupancy_deck,
-            Some(frame.z),
-            "BridgeOccupancy.deck_level disagrees with position.z at {:?}: {frame:?}",
             frame.cell
         );
     }
@@ -657,10 +648,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     assert!(
         !last.on_bridge,
         "the tank is still flagged on_bridge on the far approach: {last:?}"
-    );
-    assert_eq!(
-        last.occupancy_deck, None,
-        "BridgeOccupancy survived the Exit transition: {last:?}"
     );
 
     let arrived = rec.substrate.entities.get(TANK_ID).unwrap();

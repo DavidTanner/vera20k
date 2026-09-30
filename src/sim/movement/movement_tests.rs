@@ -893,6 +893,9 @@ fn gsi_04_05_production_drive_observes_premark_clear_cross_and_finish() {
         crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
         "accepted Drive track must premark its head before moving the list"
     );
+    // The occupancy list generation counts list mutations; one Mark
+    // REMOVE/PUT relink is a remove and an add.
+    let arrival_generation = sim.substrate.occupancy.generation();
 
     let initial_point_index = sim
         .substrate
@@ -940,6 +943,11 @@ fn gsi_04_05_production_drive_observes_premark_clear_cross_and_finish() {
             .vehicle_bits(3, 2, MovementLayer::Ground),
         crate::sim::occupancy::VEHICLE_OCCUPATION_BIT
     );
+    assert_eq!(
+        sim.substrate.occupancy.generation(),
+        arrival_generation,
+        "premark and the paid-point clear do not relink the object list"
+    );
 
     let mut crossed = false;
     for frame in first_unpaid_frame..96 {
@@ -962,6 +970,11 @@ fn gsi_04_05_production_drive_observes_premark_clear_cross_and_finish() {
             .vehicle_bits(3, 2, MovementLayer::Ground),
         crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
         "AddContent crossing must re-mark the new current cell"
+    );
+    assert_eq!(
+        sim.substrate.occupancy.generation(),
+        arrival_generation + 2,
+        "the crossing relinks the object list exactly once"
     );
 
     let mut finished = sim
@@ -1091,6 +1104,15 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
     let mut restored: Option<Simulation> = None;
     let mut trace = Vec::new();
     for frame in 0..400 {
+        let before_generation = sim.substrate.occupancy.generation();
+        let before_path_index = sim
+            .substrate
+            .entities
+            .get(walker)
+            .unwrap()
+            .movement_target
+            .as_ref()
+            .map(|target| target.next_index);
         gsi_04_05_tick_production_movement(&mut sim, Some(&grid), frame);
         if let Some(loaded) = restored.as_mut() {
             gsi_04_05_tick_production_movement(loaded, Some(&grid), frame);
@@ -1161,6 +1183,15 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
                 restored = Some(loaded);
             }
             previous_cell = cell;
+        } else if sim.substrate.occupancy.generation() != before_generation {
+            // Walk's completed-head corridor 75BD70 performs Mark REMOVE/PUT
+            // even when the polar step already entered this cell.
+            assert_eq!(sim.substrate.occupancy.generation(), before_generation + 2);
+            let after_index = entity
+                .movement_target
+                .as_ref()
+                .map(|target| target.next_index);
+            assert!(after_index.is_none() || after_index > before_path_index);
         }
         trace.push((
             frame,
@@ -4764,7 +4795,7 @@ fn test_segment_exhaustion_repath_avoids_friendly_building_footprint() {
 // ============================================================================
 // Bridge on_bridge timing integration tests (Plan: 2026-05-11 G2 fix).
 // Pin: predicate fires at Ramp→Body exactly, clears at Ramp→Ground exactly,
-// no anticipatory BridgeOccupancy pre-claim.
+// no anticipatory on_bridge pre-claim.
 // ============================================================================
 
 use crate::map::houses::HouseAllianceMap;
@@ -5123,10 +5154,7 @@ fn on_bridge_clears_at_ramp_to_ground_only() {
         "after the next crossing: at ground"
     );
     assert!(!entity.on_bridge, "after Ramp→Ground: on_bridge must clear");
-    assert!(
-        !entity.on_bridge,
-        "after Exit: BridgeOccupancy must be None"
-    );
+    assert!(!entity.on_bridge, "after Exit: on_bridge must be false");
     let ground_cell = occupancy.get(3, 1).expect("ground occupancy");
     assert_eq!(ground_cell.count_on(MovementLayer::Ground), 1);
     assert_eq!(ground_cell.count_on(MovementLayer::Bridge), 0);
@@ -5135,7 +5163,7 @@ fn on_bridge_clears_at_ramp_to_ground_only() {
 #[test]
 fn no_bridge_lookahead_pre_claim() {
     // Regression: the deleted apply_bridge_lookahead_if_needed must not have crept
-    // back via another path. BridgeOccupancy must NOT be set before the unit
+    // back via another path. on_bridge must NOT be set before the unit
     // physically crosses onto a body cell.
     // ground (1,1) h=4 → ramp (2,1) raw h=4 bridge_walkable+transition → body
     // (3,1) raw h=0 bridge_walkable.
@@ -5199,7 +5227,7 @@ fn no_bridge_lookahead_pre_claim() {
     // First physical crossing: ground → ramp. Predicate NoChange
     // (src.bridge_walkable=false; entry
     // would need src_h-4 = dst_h: src=4, dst=4 → no. Exit needs src.bridge_walkable;
-    // it's false → no). BridgeOccupancy stays None.
+    // it's false → no). on_bridge stays false.
     tick_bridge_until_cell(
         &mut entities,
         &grid,
@@ -5217,7 +5245,7 @@ fn no_bridge_lookahead_pre_claim() {
     );
     assert!(
         !entity.on_bridge,
-        "regression: BridgeOccupancy must NOT be pre-claimed on the ramp"
+        "regression: on_bridge must NOT be pre-claimed on the ramp"
     );
     let ramp_cell = occupancy.get(2, 1).expect("ramp occupancy");
     assert_eq!(

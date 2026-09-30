@@ -4072,7 +4072,6 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
     let e = sim.substrate.entities.get(1).expect("spawned entity");
     assert_eq!(e.position.z, 1);
     assert!(!e.on_bridge);
-    assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Ground);
 }
@@ -4299,7 +4298,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
         .expect("surviving bridge unit");
     assert_eq!(e.position.z, 1);
     assert!(!e.on_bridge);
-    assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("locomotor");
     assert_eq!(loco.layer, MovementLayer::Ground);
     assert!(e.movement_target.is_none());
@@ -4358,7 +4356,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
     );
     assert_eq!(e.position.z, 0, "snapped to ground level");
     assert!(!e.on_bridge);
-    assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("locomotor");
     assert_eq!(loco.layer, MovementLayer::Ground);
     assert!(e.movement_target.is_none());
@@ -4412,7 +4409,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
     assert_eq!(e.health.current, 300, "DropIn never harms");
     assert_eq!(e.position.z, 0);
     assert!(!e.on_bridge);
-    assert!(!e.on_bridge);
 }
 
 /// Same DropIn correction over a terrain-object-blocked ground cell.
@@ -4462,7 +4458,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
         .expect("deck unit must SURVIVE over terrain-object-blocked ground");
     assert_eq!(e.health.current, 300, "DropIn never harms");
     assert_eq!(e.position.z, 0);
-    assert!(!e.on_bridge);
     assert!(!e.on_bridge);
 }
 
@@ -5060,7 +5055,7 @@ fn test_bridge_dispatcher_consumes_one_path_gate_draw_per_non_ion_event() {
 }
 
 #[test]
-fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
+fn test_water_mover_lookahead_does_not_set_on_bridge_under_bridge() {
     let rules = naval_bridge_test_rules();
     let mut sim = Simulation::new();
     let resolved = bridge_cell_with_ground_block(1, 0, 3, true, 0);

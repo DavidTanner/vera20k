@@ -1456,7 +1456,6 @@ mod tests {
             .expect("deck entity must SURVIVE collapse over water");
         assert_eq!(e.position.z, 0, "snapped to ground level");
         assert!(!e.on_bridge, "OnBridge cleared by DropIn");
-        assert!(!e.on_bridge, "on_bridge cleared");
         assert!(e.movement_target.is_none(), "movement halted on collapse");
         assert_eq!(e.health.current, 256, "DropIn never harms — no damage");
         let loco = e.locomotor.as_ref().expect("locomotor");

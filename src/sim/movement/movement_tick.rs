@@ -41,7 +41,7 @@ use crate::util::fixed_math::{
 use super::block_index::{HeldBlockSets, LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
 use super::locomotor::MovementLayer;
-use super::movement_bridge::apply_pending_bridge_render_state;
+use super::movement_bridge::apply_bridge_layer_state;
 use super::movement_occupancy::{
     DeferredBuildingEntrySkips, DeferredCellCheck, MoverBuildingEntryFacts,
     handle_deferred_occupancy,
@@ -1488,7 +1488,10 @@ fn advance_ordinary_mover(
                     true,
                 );
                 entity.position = before;
-                entity.runtime_bridge_transition = admission.runtime_bridge_transition;
+                // Foot+0x68B is write-1-only; a pass started from the earlier
+                // snapshot must not clear an admission latch.
+                entity.runtime_bridge_transition.pending_mismatch |=
+                    admission.runtime_bridge_transition.pending_mismatch;
                 if !admission.walk_head_admitted {
                     deferred_cell_check = admission.deferred_cell_check;
                     deferred_wall_override = admission.deferred_wall_override;
@@ -2004,7 +2007,10 @@ fn advance_ordinary_mover(
                         .as_ref()
                         .expect("only Walk can suspend a boundary")
                         .clone();
-                    entity.runtime_bridge_transition = crossing.runtime_bridge_transition;
+                    // Foot+0x68B is write-1-only; a pass started from the earlier
+                    // snapshot must not clear an admission latch.
+                    entity.runtime_bridge_transition.pending_mismatch |=
+                        crossing.runtime_bridge_transition.pending_mismatch;
                     *walk_boundary = Some((entity_id, coord));
                     return;
                 }
@@ -2014,14 +2020,17 @@ fn advance_ordinary_mover(
                 active_layer = crossing.active_layer;
                 debug_events.extend(crossing.debug_events);
                 aborted_for_stuck = crossing.aborted_for_stuck;
-                entity.runtime_bridge_transition = crossing.runtime_bridge_transition;
+                // Foot+0x68B is write-1-only; a pass started from the earlier
+                // snapshot must not clear an admission latch.
+                entity.runtime_bridge_transition.pending_mismatch |=
+                    crossing.runtime_bridge_transition.pending_mismatch;
 
                 // Apply bridge layer state BEFORE computing screen position, so that
                 // the render frame always sees consistent state.
                 if !aborted_for_stuck
                     && !matches!(deferred_cell_check, Some(DeferredCellCheck::Vehicle(_, _)))
                 {
-                    apply_pending_bridge_render_state(
+                    apply_bridge_layer_state(
                         &mut entity.locomotor,
                         &mut entity.on_bridge,
                         active_layer,

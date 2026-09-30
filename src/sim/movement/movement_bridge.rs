@@ -277,7 +277,7 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
 /// on_bridge state is NOT derivable from the A* layer, because on a ramp going up
 /// loco.layer=Bridge but on_bridge=false (predicate hasn't fired Enter yet), and on a
 /// ramp going down loco.layer=Ground but on_bridge=true.
-pub(super) fn apply_pending_bridge_render_state(
+pub(super) fn apply_bridge_layer_state(
     locomotor: &mut Option<LocomotorState>,
     on_bridge: &mut bool,
     active_layer: MovementLayer,
@@ -777,7 +777,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------
-    // Render-state apply tests (apply_pending_bridge_render_state)
+    // Render-state apply tests (apply_bridge_layer_state)
     // ------------------------------------------------------------------------
 
     use crate::rules::locomotor_type::LocomotorKind;
@@ -796,7 +796,7 @@ mod tests {
         // on_bridge must retain its prior value (does NOT become true just because layer is Bridge).
         let mut loco = make_loco(MovementLayer::Ground);
         let mut on_b = false;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
             &mut on_b,
             MovementLayer::Bridge,
@@ -813,7 +813,7 @@ mod tests {
         //   active_layer = Bridge, bridge_update = Unchanged, on_bridge = false (prior).
         let mut loco = make_loco(MovementLayer::Ground);
         let mut on_b = false;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
             &mut on_b,
             MovementLayer::Bridge,
@@ -829,7 +829,7 @@ mod tests {
         // returns false), but the predicate hasn't fired Exit yet. on_bridge stays true.
         let mut loco = make_loco(MovementLayer::Bridge);
         let mut on_b = true;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
             &mut on_b,
             MovementLayer::Ground,
@@ -843,7 +843,7 @@ mod tests {
     fn render_state_set_enters_the_bridge() {
         let mut loco = make_loco(MovementLayer::Bridge);
         let mut on_b = false;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
             &mut on_b,
             MovementLayer::Bridge,
@@ -856,7 +856,7 @@ mod tests {
     fn render_state_clear_leaves_the_bridge() {
         let mut loco = make_loco(MovementLayer::Ground);
         let mut on_b = true;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
             &mut on_b,
             MovementLayer::Ground,
