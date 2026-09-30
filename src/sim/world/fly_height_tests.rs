@@ -668,7 +668,6 @@ fn fly_retained_destination_drives_subcell_arrival_after_save_and_restore() {
 fn fly_destination_is_hashed_and_persisted_in_active_and_stashed_runtime() {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::movement::locomotion::piggyback;
-    use crate::sim::movement::locomotor::MovementLayer;
     let row = destination_vectors().remove(0);
     for stashed in [false, true] {
         let (mut sim, rules) = destination_fixture(&row);
@@ -690,7 +689,7 @@ fn fly_destination_is_hashed_and_persisted_in_active_and_stashed_runtime() {
                 .as_mut()
                 .unwrap();
             assert_eq!(
-                piggyback::begin(loco, LocomotorKind::Drive, MovementLayer::Ground, 0),
+                piggyback::begin(loco, LocomotorKind::Drive, 0),
                 piggyback::BeginOutcome::Installed
             );
         }
@@ -1014,7 +1013,7 @@ fn fly_phase_outer_health_power_and_life_gates_precede_nonlandable_override() {
 #[test]
 fn fly_landing_state_hashes_and_restores_active_and_stashed_instances() {
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::movement::{locomotion::piggyback, locomotor::MovementLayer};
+    use crate::sim::movement::locomotion::piggyback;
     for stashed in [false, true] {
         for field in ["moving", "landing_effect_latched", "airport_bound", "pitch"] {
             let row = destination_vectors().remove(0);
@@ -1043,7 +1042,7 @@ fn fly_landing_state_hashes_and_restores_active_and_stashed_instances() {
                         .as_mut()
                         .unwrap();
                     assert_eq!(
-                        piggyback::begin(loco, LocomotorKind::Drive, MovementLayer::Ground, 0),
+                        piggyback::begin(loco, LocomotorKind::Drive, 0),
                         piggyback::BeginOutcome::Installed
                     );
                 }

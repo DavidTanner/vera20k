@@ -196,7 +196,16 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // exact value, as this change does, with the RNG pins above unchanged
 // (the probe patch was not committed): the only change to this pin is
 // the fold. Old value: the commit that moved it.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x1C6A_DDB1_EE6E_5A25;
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request and drops the installed slot, which is the stash's own kind; the
+// stash drops its retired separators. Ceremony: the parent commit with only
+// that fold changed printed this exact value, as this change does, with the
+// RNG pins above unchanged (the probe patch was not committed): the only
+// change to this pin is the fold. Old value: the commit that moved it.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x2D09_7E2D_A151_0293;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
