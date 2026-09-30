@@ -407,7 +407,7 @@ fn gsi_13_06_draw_and_cadence_use_distinct_movement_predicates() {
         entity.foot_speed.set_speed_fraction(SIM_ZERO);
 
         assert!(
-            crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity),
+            crate::sim::movement::motion_query::is_moving(&entity) == Some(true),
             "slot-4 Is_Moving sees the class-owned destination"
         );
         assert!(
@@ -439,7 +439,7 @@ fn gsi_13_06_positive_fraction_below_get_current_speed_threshold_is_idle() {
         entity.foot_speed.set_speed_fraction(SimFixed::lit("0.03"));
 
         assert!(
-            crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity),
+            crate::sim::movement::motion_query::is_moving(&entity) == Some(true),
             "{name} slot +0x10 still sees its locomotor destination"
         );
         assert!(
@@ -492,7 +492,10 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
             }
             _ => unreachable!(),
         }
-        assert!(!crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity));
+        assert_eq!(
+            crate::sim::movement::motion_query::is_moving(&entity),
+            Some(false)
+        );
         assert!(!crate::sim::movement::ready_producer::is_moving_now_for(
             &entity,
             speed.rules(),
@@ -523,7 +526,7 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
             }
             _ => unreachable!(),
         }
-        assert!(crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity));
+        assert!(crate::sim::movement::motion_query::is_moving(&entity) == Some(true));
         assert!(crate::sim::movement::ready_producer::is_moving_now_for(
             &entity,
             speed.rules(),

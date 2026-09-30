@@ -111,21 +111,6 @@ pub(crate) fn is_moving_now_for(
     ready_state_for(entity, rules, binary_frame).is_some_and(LocomotorReadyState::is_moving_now)
 }
 
-/// UnitClass draw-time `ILocomotion::Is_Moving` answer for the two active-stock
-/// SHP vehicle families. This is deliberately separate from
-/// [`is_moving_now_for`]: drawing does not fold in hull rotation or applied
-/// owner speed.
-pub(crate) fn is_moving_for_unit_shp_draw(entity: &GameEntity) -> bool {
-    let Some(locomotor) = entity.locomotor.as_ref() else {
-        return false;
-    };
-    match locomotor.active_kind() {
-        LocomotorKind::Drive => super::track_head::motion_state(entity, TrackFamily::Drive).0,
-        LocomotorKind::Ship => super::track_head::motion_state(entity, TrackFamily::Ship).0,
-        _ => false,
-    }
-}
-
 /// Positive sign projection used by Walk's strict >0 query. The native
 /// fraction can take other values; only its sign affects this predicate.
 const F64_BITS_ONE: u64 = 0x3FF0_0000_0000_0000;

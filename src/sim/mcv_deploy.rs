@@ -353,11 +353,12 @@ pub(crate) fn mission_unload(
     let now = sim.session.binary_frame;
     match state {
         Some(0 | 1) => {
+            // The locomotor's Is_Moving (vt+0x10 at `0x0073DDBD`).
             let moving = sim
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(movement::ready_producer::is_moving_for_unit_shp_draw);
+                .is_some_and(|e| movement::motion_query::is_moving(e) == Some(true));
             if moving {
                 // 0x0073DE20..0x0073DE34: a queued mission other than Unload
                 // commences while the unit still drives.
