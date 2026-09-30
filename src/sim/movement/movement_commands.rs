@@ -624,9 +624,9 @@ pub(crate) fn issue_move_command_with_destination(
     // exact lepton position, so it continues from wherever it is.
     let (dir_x, dir_y, dir_len) = if head_not_yet_reached {
         // The first vector target is the kept curve's head itself — up to two
-        // cells out for a two-node curve — so use the Euclidean form (as in
-        // `issue_direct_move`) in case the curve is torn down early and the
-        // vector step has to cover the multi-cell delta.
+        // cells out for a two-node curve — so use the Euclidean form in case
+        // the curve is torn down early and the vector step has to cover the
+        // multi-cell delta.
         let dx = i32::from(start_rx) - i32::from(current_cell.0);
         let dy = i32::from(start_ry) - i32::from(current_cell.1);
         let dir_x = SimFixed::from_num(dx * 256);
