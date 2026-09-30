@@ -265,12 +265,7 @@ fn stop_command_retires_only_the_drive_admitted_by_its_existing_gate() {
         if head_ahead {
             entity.drive_locomotion.as_mut().unwrap().head_to = Some(DriveCoord::cell(9, 8, 731));
         }
-        assert!(sim.apply_command(
-            "Americans",
-            &Command::Stop { entity_id: 1 },
-            Some(&rules),
-            None,
-        ));
+        assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, Some(&rules),));
 
         let entity = sim.substrate.entities.get(1).unwrap();
         if head_ahead {

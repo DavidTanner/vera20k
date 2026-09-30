@@ -11,7 +11,6 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::movement::{self, parachute_descent, rocket_movement, teleport_movement};
-use crate::sim::pathfinding::PathGrid;
 
 /// Whether this Unit visit reaches FootClass's SHP body-counter cadence.
 ///
@@ -103,7 +102,6 @@ fn reenter_pending_pass(
     pending: &mut movement::movement_tick::PendingMovementPass,
     reentry: movement::movement_tick::MoverReentry,
     rules: Option<&RuleSet>,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     timing: movement::MovementConfig,
 ) {
@@ -111,7 +109,7 @@ fn reenter_pending_pass(
     pending.reenter_mover(
         reentry,
         &mut sim.substrate.entities,
-        current_grid.as_deref().or(path_grid),
+        current_grid.as_deref(),
         sim.zone_grid.as_ref(),
         sim.resolved_terrain.as_ref(),
         &sim.terrain_costs,
@@ -153,11 +151,11 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        grid: Option<&PathGrid>,
+        grid: Option<&crate::sim::pathfinding::PathGrid>,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
         self.install_fixture_path_grid(grid);
-        self.process_ground_locomotor_one(id, rules, grid, registry)
+        self.process_ground_locomotor_one(id, rules, registry)
             .map(|outcome| outcome.movement)
     }
 
@@ -168,17 +166,10 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
         let timing = movement::MovementConfig::from_rules(self.session.binary_frame, rules);
-        self.process_ground_locomotor_with_config(
-            stable_id,
-            rules,
-            path_grid,
-            overlay_registry,
-            timing,
-        )
+        self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
     }
 
     #[cfg(test)]
@@ -186,25 +177,17 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         timing: movement::MovementConfig,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
-        self.process_ground_locomotor_with_config(
-            stable_id,
-            rules,
-            path_grid,
-            overlay_registry,
-            timing,
-        )
-        .map(|outcome| outcome.movement)
+        self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
+            .map(|outcome| outcome.movement)
     }
 
     fn process_ground_locomotor_with_config(
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         timing: movement::MovementConfig,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
@@ -212,8 +195,8 @@ impl Simulation {
         let one = [stable_id];
         let mut outcome = GroundLocomotorOutcome::default();
         // Grid-less component fixtures keep the pass's empty-arrival cleanup;
-        // the pass searches with the Simulation grid or the caller's.
-        if path_grid.is_some() || sim.path_grid.is_some() {
+        // the pass searches with the canonical Simulation grid.
+        if sim.path_grid.is_some() {
             sim.complete_pending_track_order(stable_id, rules);
         }
         let movement_before = sim.substrate.entities.get(stable_id).map(|entity| {
@@ -249,7 +232,7 @@ impl Simulation {
             movement::movement_tick::begin_movement_with_grids_scoped(
                 &mut sim.substrate.entities,
                 Some(&one),
-                current_grid.as_deref().or(path_grid),
+                current_grid.as_deref(),
                 &sim.terrain_costs,
                 &sim.house_alliances,
                 &mut sim.substrate.occupancy,
@@ -313,7 +296,6 @@ impl Simulation {
                         &mut pending_movement,
                         movement::movement_tick::MoverReentry::FootPath(Box::new(request)),
                         rules,
-                        path_grid,
                         overlay_registry,
                         timing,
                     );
@@ -402,7 +384,6 @@ impl Simulation {
                 &mut pending_movement,
                 movement::movement_tick::MoverReentry::AfterTrackEnd(invocation.entity_id),
                 rules,
-                path_grid,
                 overlay_registry,
                 timing,
             );
@@ -435,7 +416,7 @@ impl Simulation {
                 &mut sim.substrate.cell_occupation,
                 sim.session.binary_frame,
                 sim.resolved_terrain.as_ref(),
-                sim.path_grid.as_deref().or(path_grid),
+                sim.path_grid.as_deref(),
                 &mut sim.interner,
                 rules,
                 &mut sim.sound_events,
@@ -468,7 +449,6 @@ impl Simulation {
     pub(super) fn advance_live_object_pass(
         &mut self,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<LiveObjectPassOutcome, super::FrameAdvanceError> {
         let miner_config = rules.map(crate::sim::miner::MinerConfig::from_rules);
@@ -479,7 +459,6 @@ impl Simulation {
             .copied()
             .collect::<BTreeSet<_>>();
         let object_ctx = techno_ai::ObjectAiCtx {
-            path_grid,
             overlay_registry,
             terrain_spawner_cells: Some(&terrain_spawner_cells),
             miner_config: miner_config.as_ref(),
@@ -506,7 +485,6 @@ impl Simulation {
         object_ctx: techno_ai::ObjectAiCtx<'_>,
     ) -> Result<ObjectTurnOutcome, super::FrameAdvanceError> {
         let sim = self;
-        let path_grid = object_ctx.path_grid;
         let overlay_registry = object_ctx.overlay_registry;
         let mut outcome = ObjectTurnOutcome::default();
         // UnitClass::AI / InfantryClass::AI give an active TubeMovement
@@ -567,7 +545,7 @@ impl Simulation {
         }
 
         if !tube_active_at_entry {
-            sim.refresh_high_flying_sight_before_process(stable_id, rules, path_grid);
+            sim.refresh_high_flying_sight_before_process(stable_id, rules);
         }
 
         let before_movement = sim.movement_sound_probe(stable_id);
@@ -593,7 +571,7 @@ impl Simulation {
         let ground = if sinking {
             GroundLocomotorOutcome::default()
         } else {
-            sim.process_ground_locomotor_one(stable_id, rules, path_grid, overlay_registry)?
+            sim.process_ground_locomotor_one(stable_id, rules, overlay_registry)?
         };
         let track_owned = ground.track_owned;
         let mut per_cell_ran = ground.per_cell_ran;

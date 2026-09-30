@@ -70,7 +70,6 @@ impl Simulation {
         let crates = if let Some(descriptor) = input.skirmish_session {
             let session = descriptor.session();
             let player_count = crate::sim::crates::human_player_count(self);
-            let initial_path = self.path_grid_snapshot();
             #[cfg(test)]
             {
                 skirmish_order[0] = Some(ScenarioPostMapStep::StartupCrates);
@@ -79,7 +78,6 @@ impl Simulation {
                 self,
                 input.rules,
                 input.overlay_registry,
-                initial_path.as_deref(),
                 player_count,
                 input.normal_lighting,
             );

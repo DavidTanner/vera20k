@@ -33,7 +33,6 @@ use crate::rules::particle_system_type::ParticleSystemBehavesLike;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::miner::MinerConfig;
 use crate::sim::mission::MissionType;
-use crate::sim::pathfinding::PathGrid;
 
 /// Non-rules world context the mission handler bodies dispatched from the
 /// host need (grids and per-tick config the spine already owns). Empty in
@@ -41,7 +40,6 @@ use crate::sim::pathfinding::PathGrid;
 /// way the legacy global phases did with `None` arguments.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct ObjectAiCtx<'a> {
-    pub(crate) path_grid: Option<&'a PathGrid>,
     pub(crate) overlay_registry: Option<&'a OverlayTypeRegistry>,
     pub(crate) terrain_spawner_cells: Option<&'a std::collections::BTreeSet<(u16, u16)>>,
     pub(crate) miner_config: Option<&'a MinerConfig>,
@@ -705,7 +703,6 @@ fn techno_ai_shell(
                         rules,
                         id,
                         factory_type,
-                        ctx.path_grid,
                         ctx.overlay_registry,
                     );
                 }
@@ -747,15 +744,10 @@ fn techno_ai_shell(
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
             {
-                crate::sim::transport_unload::dispatch_aircraft_unload(
-                    sim,
-                    id,
-                    rules,
-                    ctx.path_grid,
-                );
+                crate::sim::transport_unload::dispatch_aircraft_unload(sim, id, rules);
                 // The remaining aircraft missions dispatch here too, inside
                 // this slot and before Fly Process (FootClass::AI4DA530).
-                if crate::sim::aircraft::dispatch_aircraft_mission(sim, rules, id, ctx.path_grid) {
+                if crate::sim::aircraft::dispatch_aircraft_mission(sim, rules, id) {
                     sim.fire_requests.aircraft.insert(id);
                 }
             }
@@ -1536,7 +1528,6 @@ fn unit_techno_bracket(
                 sim,
                 rules,
                 config,
-                ctx.path_grid,
                 ctx.overlay_registry,
                 id,
             );

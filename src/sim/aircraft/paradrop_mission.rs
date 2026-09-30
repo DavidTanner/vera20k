@@ -18,7 +18,6 @@
 use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::AircraftMission;
 use crate::sim::intern::InternedId;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::sim::world::edge_cell::{Edge, find_passable_at_edge};
 
@@ -38,7 +37,6 @@ pub fn tick_approach(
     aircraft_id: u64,
     target_rx: u16,
     target_ry: u16,
-    path_grid: Option<&PathGrid>,
 ) -> ApproachOutcome {
     let aircraft = match sim.substrate.entities.get(aircraft_id) {
         Some(e) => e,
@@ -72,7 +70,7 @@ pub fn tick_approach(
     // Mission_Open only queues Mission_Rescue here; Drop_Payload owns the
     // successful-drop sound/reveal side effects.
     if dist_leptons <= radius {
-        let exit = compute_exit_cell(sim, aircraft.owner(), target_rx, target_ry, path_grid);
+        let exit = compute_exit_cell(sim, aircraft.owner(), target_rx, target_ry);
         return ApproachOutcome {
             new_mission: AircraftMission::ParaDropOverfly {
                 exit_rx: exit.0,
@@ -196,7 +194,6 @@ pub fn compute_exit_cell(
     owner: InternedId,
     target_rx: u16,
     target_ry: u16,
-    path_grid: Option<&PathGrid>,
 ) -> (u16, u16) {
     let waypoint_edge = sim.houses.get(&owner).map_or(0, |h| h.waypoint_edge);
     let opposite_idx = (waypoint_edge + 2) % 4;
@@ -206,7 +203,7 @@ pub fn compute_exit_cell(
     let map_h = sim.fog.height;
     let target = (target_rx, target_ry);
 
-    if let Some(grid) = path_grid {
+    if let Some(grid) = sim.path_grid() {
         if let Some(cell) = find_passable_at_edge(grid, map_w, map_h, exit_edge, target) {
             return cell;
         }
@@ -283,7 +280,7 @@ mod tests {
         let rules = paradrop_rules(1024);
         let (sim, aircraft_id) = sim_with_loaded_pdplane(10, 10, 4);
 
-        let outcome = tick_approach(&sim, &rules, aircraft_id, 14, 10, None);
+        let outcome = tick_approach(&sim, &rules, aircraft_id, 14, 10);
 
         match outcome.new_mission {
             AircraftMission::ParaDropOverfly {

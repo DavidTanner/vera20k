@@ -414,7 +414,6 @@ pub fn can_entity_enter_garrison(
     rules: &RuleSet,
     passenger_id: u64,
     building_id: u64,
-    path_grid: Option<&PathGrid>,
 ) -> bool {
     let Some(passenger) = sim.substrate.entities.get(passenger_id) else {
         return false;
@@ -439,7 +438,7 @@ pub fn can_entity_enter_garrison(
         cargo,
         rules,
         &sim.houses,
-        path_grid,
+        sim.path_grid(),
     )
 }
 
@@ -1822,9 +1821,10 @@ ConditionYellow=50%
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
         let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
         let grid = crate::sim::pathfinding::PathGrid::new(5, 5);
+        sim.install_fixture_path_grid(Some(&grid));
 
         assert!(
-            !can_entity_enter_garrison(&sim, &rules, pax, bldg, Some(&grid)),
+            !can_entity_enter_garrison(&sim, &rules, pax, bldg),
             "CanDock rejects buildings outside the playfield bounds"
         );
     }
@@ -1983,7 +1983,7 @@ ConditionYellow=50%
     fn test_last_occupant_emits_abandoned_event_with_pre_revert_owner() {
         let rules = garrison_test_rules();
         let mut sim = Simulation::new();
-        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
         let pax = place_inside_garrison(&mut sim, &rules, bldg, "E1", "Americans");
         sim.substrate.entities.get_mut(pax).unwrap().locomotor = Some(
@@ -2009,7 +2009,6 @@ ConditionYellow=50%
             "Americans",
             &Command::UnloadPassengers { transport_id: bldg },
             Some(&rules),
-            Some(&grid),
         ));
         assert_eq!(
             sim.substrate.entities.get(bldg).unwrap().mission.queued(),

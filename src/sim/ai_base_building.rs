@@ -76,7 +76,6 @@ use crate::sim::build_site::{Flush, can_place_building_at, flush_for_placement};
 use crate::sim::components::BuildingUp;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::production::has_factory;
 use crate::sim::world::{PlacementEvidence, Simulation};
 
@@ -225,7 +224,6 @@ pub(crate) fn update_production_choices(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
-    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) {
     let game_mode_nonzero = sim.session.game_mode_nonzero;
@@ -256,11 +254,11 @@ pub(crate) fn update_production_choices(
     };
     match mode {
         0 => {
-            choose_building(sim, rules, owner, path_grid, registry);
+            choose_building(sim, rules, owner, registry);
             choose_units(sim, &ALL);
         }
         1 => {
-            choose_building(sim, rules, owner, path_grid, registry);
+            choose_building(sim, rules, owner, registry);
             let choice = sim
                 .houses
                 .get(&owner)
@@ -289,7 +287,7 @@ pub(crate) fn update_production_choices(
                         .is_some_and(|ty| has_factory(sim, rules, owner, ty, true, true))
             });
             if none_chosen || unbuildable {
-                choose_building(sim, rules, owner, path_grid, registry);
+                choose_building(sim, rules, owner, registry);
             }
         }
         _ => {}
@@ -317,7 +315,6 @@ fn choose_building(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
-    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) {
     let Some(house) = sim.houses.get(&owner) else {
@@ -371,9 +368,8 @@ fn choose_building(
             }
             return;
         }
-        if !crate::sim::ai_base_defense::choose_next_production(
-            sim, rules, owner, index, path_grid, registry,
-        ) {
+        if !crate::sim::ai_base_defense::choose_next_production(sim, rules, owner, index, registry)
+        {
             // `0x004FE640..0x004FE6D2`: a WallTower node goes first, then
             // the node at its index.
             if wall_tower.is_some() {
@@ -490,7 +486,6 @@ pub(crate) fn exit_building(
     rules: &RuleSet,
     factory: u64,
     product: u64,
-    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) -> BuildingExit {
     let Some(owner) = sim.substrate.entities.get(factory).map(|yard| yard.owner()) else {
@@ -526,7 +521,7 @@ pub(crate) fn exit_building(
     let node = rules
         .building_type_index(&ty.id)
         .and_then(|index| find_node(sim, rules, owner, index, registry));
-    let site = building_site(sim, rules, owner, ty, node, path_grid, registry);
+    let site = building_site(sim, rules, owner, ty, node, registry);
     match flush_for_placement(sim, rules, registry, ty, site, owner) {
         Flush::Scattered => {
             // `0x00445237..0x004452C3`.
@@ -577,7 +572,6 @@ fn building_site(
     owner: InternedId,
     ty: &ObjectType,
     node: Option<usize>,
-    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) -> (i16, i16) {
     let node_cell = node
@@ -589,15 +583,7 @@ fn building_site(
             return cell;
         }
     }
-    let site = find_base_building_site(
-        sim,
-        rules,
-        owner,
-        ty,
-        SiteKey::Ordinary,
-        path_grid,
-        registry,
-    );
+    let site = find_base_building_site(sim, rules, owner, ty, SiteKey::Ordinary, registry);
     if let Some(index) = node
         && let Some(house) = sim.houses.get_mut(&owner)
     {

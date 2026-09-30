@@ -52,7 +52,6 @@ use crate::sim::cell_rect::{
     CellRect, CellRectOccupancyContext, check_occupancy_rect, get_cellclass_fallback,
 };
 use crate::sim::intern::InternedId;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::direction_tables::{CELL_DELTAS, dir_from_facing16, facing16_from_delta};
 
@@ -149,14 +148,11 @@ pub(crate) fn find_base_building_site(
     owner: InternedId,
     ty: &ObjectType,
     key: SiteKey,
-    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) -> (i16, i16) {
     if ty.naval {
-        return crate::sim::naval_base_placement::find_naval_base_placement(
-            sim, rules, owner, path_grid,
-        )
-        .map_or((0, 0), |(x, y)| (x as i16, y as i16));
+        return crate::sim::naval_base_placement::find_naval_base_placement(sim, rules, owner)
+            .map_or((0, 0), |(x, y)| (x as i16, y as i16));
     }
     let Some(house) = sim.houses.get(&owner) else {
         return (0, 0);

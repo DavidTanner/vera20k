@@ -137,10 +137,10 @@ fn aircraft_approach_matches_original_dispatch_and_restored_continuation() {
         for world in [&mut sim, &mut restored] {
             // GetFLH reads the headings before this visit changes SecondaryFacing.
             assert_flh(world, &rules, &row);
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             assert_facings(world, &row);
             let hash = world.state_hash();
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             assert_eq!(world.state_hash(), hash, "same-frame dispatch must wait");
             assert_reengagement(world, &row);
         }
@@ -160,7 +160,7 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
     input["target_marked"] = json!(false); // same supplied Foot membership as search corpus
     let (mut sim, rules) = fixture(&input);
     let rng = sim.scenario_rng.logical_state();
-    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(matches!(
         entity.aircraft_mission,
@@ -175,10 +175,10 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
     restored.scenario_rng = sim.scenario_rng.clone();
     for world in [&mut sim, &mut restored] {
         let before = world.state_hash();
-        crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(world, &rules);
         assert_eq!(world.state_hash(), before);
         world.session.binary_frame = 101;
-        crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(world, &rules);
         let entity = world.substrate.entities.get(1).unwrap();
         assert!(matches!(
             entity.aircraft_mission,

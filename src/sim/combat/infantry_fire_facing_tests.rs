@@ -519,14 +519,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
     let (mut sim, firer, target) = production_pair(&rules);
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let command = |sim: &mut Simulation, command: Command| {
-        let grid = sim.path_grid_snapshot();
-        assert!(sim.apply_command_with_overlays(
-            "Americans",
-            &command,
-            Some(&rules),
-            grid.as_deref(),
-            None,
-        ));
+        assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None,));
     };
     let frame = |sim: &mut Simulation| {
         let grid = sim.path_grid_snapshot();

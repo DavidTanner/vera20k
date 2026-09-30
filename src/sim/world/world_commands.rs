@@ -353,7 +353,6 @@ impl Simulation {
         x: i16,
         y: i16,
         rules: &RuleSet,
-        path_grid: Option<&PathGrid>,
         overlays: &crate::map::overlay_types::OverlayTypeRegistry,
     ) -> bool {
         // EventClass rejects only the exact packed null CellStruct. Every
@@ -402,9 +401,7 @@ impl Simulation {
         }
         let _discarded_actual_cost = rules.building_actual_cost(wall_type);
 
-        let mut tail_grid = path_grid
-            .cloned()
-            .or_else(|| self.path_grid.as_deref().cloned());
+        let mut tail_grid = self.path_grid.as_deref().cloned();
         let sold_navigation_changed = if let Some(grid) = self.overlay_grid.as_mut() {
             // gamemd-derived: `HouseClass::Sell_Building_At_Cell @ 0x004FCE80`
             // clears the wall identity itself (`+0x44 = -1` at `0x004FCFBC`,
@@ -632,9 +629,8 @@ impl Simulation {
         command_owner: &str,
         cmd: &Command,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
     ) -> bool {
-        self.apply_command_with_overlays(command_owner, cmd, rules, path_grid, None)
+        self.apply_command_with_overlays(command_owner, cmd, rules, None)
     }
 
     pub(crate) fn apply_command_with_overlays(
@@ -642,9 +638,12 @@ impl Simulation {
         command_owner: &str,
         cmd: &Command,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
+        // Each command reads the canonical grid current at its application;
+        // an earlier command in the same tail may have republished it.
+        let path_grid = self.path_grid_snapshot();
+        let path_grid = path_grid.as_deref();
         match cmd {
             Command::Select { entity_ids, .. } => self.apply_selection_snapshot(entity_ids, rules),
             Command::Move {
@@ -1357,7 +1356,7 @@ impl Simulation {
                 let (Some(rules), Some(overlays)) = (rules, overlay_registry) else {
                     return false;
                 };
-                self.sell_wall_at_cell(command_owner, *x, *y, rules, path_grid, overlays)
+                self.sell_wall_at_cell(command_owner, *x, *y, rules, overlays)
             }
             // Offline game-speed transitions are consumed at master-frame
             // ingress so early authoritative animation work sees the new rate.
@@ -2199,7 +2198,6 @@ impl Simulation {
                             *target_ry,
                             crate::sim::superweapon::paradrop::ParaDropKind::Generic,
                             *sw_type_id,
-                            path_grid,
                         )
                     }
                     crate::rules::superweapon_type::SuperWeaponKind::AmerParaDrop => {
@@ -2212,7 +2210,6 @@ impl Simulation {
                             *target_ry,
                             crate::sim::superweapon::paradrop::ParaDropKind::American,
                             *sw_type_id,
-                            path_grid,
                         )
                     }
                     other => {
@@ -2353,9 +2350,7 @@ impl Simulation {
                 if !has_occupant {
                     return false;
                 }
-                crate::sim::docking::bunker_link::release_normal(
-                    self, *bunker_id, rules, path_grid,
-                );
+                crate::sim::docking::bunker_link::release_normal(self, *bunker_id, rules);
                 true
             }
         }
@@ -3093,6 +3088,7 @@ mod tests {
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         sim.zone_grid =
             Some(crate::sim::pathfinding::zone_map::ZoneGrid::following_path_grid(&grid));
+        sim.install_fixture_path_grid(Some(&grid));
         crate::sim::movement::reset_path_search_used_zone_grid_marker();
 
         let applied = sim.apply_command(
@@ -3104,7 +3100,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
         );
 
         assert!(applied);
@@ -3124,6 +3119,7 @@ mod tests {
         let mut sim = Simulation::new();
         spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+        sim.install_fixture_path_grid(Some(&grid));
 
         assert!(sim.order_actor_admits(1));
         assert!(sim.apply_command(
@@ -3135,7 +3131,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
         ));
         assert!(
             sim.substrate
@@ -3171,7 +3166,6 @@ mod tests {
                 target_id: None,
             },
             Some(&rules),
-            None,
         ));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert!(
@@ -3192,6 +3186,7 @@ mod tests {
         // An ally: `can_attack_target_by_id` refuses it, so the order must bail.
         spawn_rule_backed_unit(&mut sim, 2, "AMCV", &rules);
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+        sim.install_fixture_path_grid(Some(&grid));
         assert!(sim.apply_command(
             "Americans",
             &Command::Move {
@@ -3201,7 +3196,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
         ));
         assert!(
             sim.substrate
@@ -3219,7 +3213,6 @@ mod tests {
                 target_id: Some(2),
             },
             Some(&rules),
-            Some(&grid),
         ));
         assert!(
             sim.substrate
@@ -3246,6 +3239,7 @@ mod tests {
             .lifecycle
             .in_limbo = true;
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+        sim.install_fixture_path_grid(Some(&grid));
 
         assert!(!sim.order_actor_admits(1));
         assert!(!sim.apply_command(
@@ -3257,7 +3251,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
         ));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert!(actor.movement_target.is_none());
@@ -3278,6 +3271,7 @@ mod tests {
             spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
             kill(sim.substrate.entities.get_mut(1).unwrap());
             let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+            sim.install_fixture_path_grid(Some(&grid));
 
             assert!(!sim.order_actor_admits(1));
             assert!(!sim.apply_command(
@@ -3289,7 +3283,6 @@ mod tests {
                     queue: false,
                 },
                 Some(&rules),
-                Some(&grid),
             ));
             assert!(
                 sim.substrate
@@ -3329,7 +3322,6 @@ mod tests {
                 target_id: 2,
             },
             Some(&rules),
-            None,
         ));
         let attacker = sim.substrate.entities.get(1).unwrap();
         assert!(attacker.attack_target.is_none());
@@ -3509,7 +3501,7 @@ mod tests {
             producer_ids: vec![3, 2, 2, 4, 5],
         };
 
-        assert!(sim.apply_command("Americans", &command, Some(&rules), None));
+        assert!(sim.apply_command("Americans", &command, Some(&rules)));
         let rally = |id| sim.substrate.entities.get(id).unwrap().rally_cell();
         assert_eq!(rally(2), Some((40, 41)));
         assert_eq!(rally(3), Some((40, 41)));
@@ -3553,7 +3545,6 @@ mod tests {
                 target_refinery_id: Some(3),
             },
             Some(&rules),
-            None,
         );
 
         assert!(applied);
@@ -3588,7 +3579,6 @@ mod tests {
                 target_refinery_id: None,
             },
             None,
-            None,
         );
 
         assert!(applied);
@@ -3622,7 +3612,6 @@ mod tests {
                 target_refinery_id: Some(2),
             },
             Some(&rules),
-            None,
         );
 
         assert!(!applied);
@@ -3721,7 +3710,6 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
         );
 
         assert!(applied);
@@ -3759,7 +3747,6 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
         );
 
         assert!(!applied);
@@ -3794,7 +3781,6 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
         );
 
         assert!(!applied, "cannot bunker into an enemy building");
@@ -3831,7 +3817,6 @@ mod tests {
             "Americans",
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
-            None,
         );
 
         assert!(applied);
@@ -3867,7 +3852,6 @@ mod tests {
             "Americans",
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
-            None,
         );
 
         assert!(!applied, "ejecting an empty bunker does nothing");
@@ -3906,7 +3890,6 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
         ));
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().bunker_link,
@@ -3954,7 +3937,6 @@ mod tests {
             "Americans",
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
-            None,
         ));
         assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
         let unit = sim.substrate.entities.get(1).unwrap();

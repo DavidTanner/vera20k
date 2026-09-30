@@ -402,12 +402,11 @@ impl Simulation {
         if answered_process::answer(id) {
             return Ok(false);
         }
-        let grid = self.path_grid_snapshot();
-        let grid = grid
-            .as_deref()
-            .ok_or_else(|| String::from("Scatter Process requires navigation"))?;
+        if self.path_grid().is_none() {
+            return Err(String::from("Scatter Process requires navigation"));
+        }
         let outcome = self
-            .process_ground_locomotor_one(id, Some(rules), Some(grid), registry)
+            .process_ground_locomotor_one(id, Some(rules), registry)
             .map_err(|error| format!("Scatter Process failed: {error:?}"))?;
         Ok(outcome.bridge_state_changed())
     }

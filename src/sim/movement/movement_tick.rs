@@ -2881,14 +2881,8 @@ fn tick_movement_with_grids_scoped(
             continue;
         }
         stats.merge(
-            sim.process_ground_locomotor_with_config_for_test(
-                id,
-                rules,
-                path_grid,
-                overlay_registry,
-                timing,
-            )
-            .expect("fixture reached an unsupported production movement receiver"),
+            sim.process_ground_locomotor_with_config_for_test(id, rules, overlay_registry, timing)
+                .expect("fixture reached an unsupported production movement receiver"),
         );
     }
     *entities = sim.substrate.entities;

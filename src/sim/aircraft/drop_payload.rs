@@ -23,7 +23,6 @@ use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::parachute_descent::begin_parachute_descent;
 use crate::sim::passenger::{DepartureFailure, DepartureRoute, PassengerRole, depart_cargo_head};
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
 };
@@ -88,14 +87,13 @@ pub enum DropResult {
 ///   - aircraft entity exists and has PassengerRole::Transport with non-empty cargo
 ///   - Rescue-equivalent mission cadence is ready for another Drop_Payload call
 ///
-/// `path_grid`: Some when threaded from advance_tick; None in headless tests
-/// (passability defaults to "always passable" in that case).
+/// Drop-cell passability reads the canonical path grid at the drop; a
+/// headless fixture without one or terrain defaults to "always passable".
 pub fn try_drop(
     sim: &mut Simulation,
     rules: &RuleSet,
     aircraft_id: u64,
     payload_count_pre_dec: u8,
-    path_grid: Option<&PathGrid>,
 ) -> DropResult {
     // 1. Snapshot aircraft state (release borrow before mutating).
     // Capture the aircraft's full lepton position (cell + sub-cell) so the
@@ -182,6 +180,8 @@ pub fn try_drop(
             // calls CellClass::IsClearToMove before virtual Unlimbo. Zone identity is
             // not threaded into this Rust caller, so only that unavailable comparison
             // remains omitted; terrain, bridge plane, and raw occupation are live.
+            let path_grid = sim.path_grid_snapshot();
+            let path_grid = path_grid.as_deref();
             let land_passable = sim
                 .resolved_terrain
                 .as_ref()
@@ -500,7 +500,7 @@ mod tests {
         insert_loaded_paradrop_pair(&mut sim, aircraft_id, passenger_id);
 
         assert_eq!(
-            try_drop(&mut sim, &rules, aircraft_id, 4, None),
+            try_drop(&mut sim, &rules, aircraft_id, 4),
             DropResult::Success
         );
         let parachute = sim.interner.get("PARACH").expect("type interned");
@@ -548,7 +548,7 @@ mod tests {
         let passenger_id = 2;
         insert_loaded_paradrop_pair(&mut sim, aircraft_id, passenger_id);
 
-        let result = try_drop(&mut sim, &rules, aircraft_id, 4, None);
+        let result = try_drop(&mut sim, &rules, aircraft_id, 4);
 
         assert_eq!(result, DropResult::Success);
         assert_eq!(
@@ -619,7 +619,7 @@ mod tests {
             assert!(matches!(sim.reveal(id), RevealOutcome::Revealed { .. }));
         }
 
-        let result = try_drop(&mut sim, &rules, aircraft_id, 4, None);
+        let result = try_drop(&mut sim, &rules, aircraft_id, 4);
 
         assert_eq!(result, DropResult::ImpassableRetry);
         assert!(
@@ -680,7 +680,7 @@ mod tests {
         peer.mark_live_contact_with(missing_passenger_id);
         sim.substrate.entities.insert(peer);
 
-        let result = try_drop(&mut sim, &rules, aircraft_id, 1, None);
+        let result = try_drop(&mut sim, &rules, aircraft_id, 1);
 
         assert_eq!(result, DropResult::AttachFailedRetry);
         assert!(
@@ -746,7 +746,7 @@ mod tests {
             .unwrap();
             let rng_before = sim.scenario_rng.state();
             assert_eq!(
-                try_drop(&mut sim, &rules, 1, 4, None),
+                try_drop(&mut sim, &rules, 1, 4),
                 DropResult::AttachFailedRetry
             );
             let aircraft = sim.substrate.entities.get(1).unwrap();
@@ -790,7 +790,7 @@ mod tests {
                     .unwrap()
                     .lifecycle
                     .cell_marked = false;
-                assert_eq!(try_drop(&mut sim, &rules, 1, 4, None), DropResult::Success);
+                assert_eq!(try_drop(&mut sim, &rules, 1, 4), DropResult::Success);
                 let cargo = sim
                     .substrate
                     .entities

@@ -259,7 +259,6 @@ fn a_refinery_order_mid_unload_redocks_and_pays() {
             target_refinery_id: Some(s.refinery),
         },
         Some(&s.rules),
-        None,
     ));
     let after_order = sample(&s, s.miner);
     assert!(!after_order.unloading && !after_order.tethered);
@@ -377,7 +376,6 @@ fn stop_on_the_pad_approach_parks_the_miner() {
         "Americans",
         &crate::sim::command::Command::Stop { entity_id: s.miner },
         Some(&s.rules),
-        None,
     ));
     for _ in 0..200 {
         frame(&mut s);

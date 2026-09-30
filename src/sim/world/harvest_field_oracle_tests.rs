@@ -412,11 +412,9 @@ fn search_for_tiberium_matches_the_original_search_and_move() {
         let input = &row["input"];
         let mut s = row_scene(input);
         compare_reach(&s, row, &context);
-        let grid = s.sim.path_grid.clone();
         let ok = crate::sim::miner::ore_scan::search_for_tiberium_and_move(
             &mut s.sim,
             &s.rules,
-            grid.as_deref(),
             Some(registry()),
             s.miner,
             input["range"].as_i64().unwrap() as i32,
@@ -459,13 +457,11 @@ fn mission_harvest_states_zero_and_one_match_the_original_dispatch() {
         let mut s = row_scene(input);
         compare_reach(&s, row, &context);
         let config = crate::sim::miner::MinerConfig::from_rules(&s.rules);
-        let grid = s.sim.path_grid.clone();
         let frame = s.sim.session.binary_frame;
         crate::sim::miner::dispatch_harvest_for_object(
             &mut s.sim,
             &s.rules,
             &config,
-            grid.as_deref(),
             Some(registry()),
             s.miner,
         );

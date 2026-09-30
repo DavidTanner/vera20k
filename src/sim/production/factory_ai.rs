@@ -68,7 +68,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_building::{self, BuildingExit};
 use crate::sim::ai_unit_choice::UnitChoiceKind;
 use crate::sim::intern::InternedId;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 
@@ -89,13 +88,12 @@ pub(crate) fn factory_ai(
     rules: &RuleSet,
     building: u64,
     factory_type: FactoryType,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) {
     let Some(owner) = sim.substrate.entities.get(building).map(|b| b.owner()) else {
         return;
     };
-    exit_finished_object(sim, rules, building, owner, path_grid, overlay_registry);
+    exit_finished_object(sim, rules, building, owner, overlay_registry);
 
     // `0x00450248..0x0045028C`.
     let Some(entity) = sim.substrate.entities.get(building) else {
@@ -127,7 +125,6 @@ fn exit_finished_object(
     rules: &RuleSet,
     building: u64,
     owner: InternedId,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) {
     let Some(object) = sim
@@ -149,7 +146,7 @@ fn exit_finished_object(
         return;
     };
     let exit = if product_type.category == ObjectCategory::Building {
-        ai_base_building::exit_building(sim, rules, building, product, path_grid, overlay_registry)
+        ai_base_building::exit_building(sim, rules, building, product, overlay_registry)
     } else {
         exit_unit(
             sim,
@@ -158,7 +155,6 @@ fn exit_finished_object(
             owner,
             product,
             product_type,
-            path_grid,
             overlay_registry,
         )
     };
@@ -207,7 +203,6 @@ fn exit_unit(
     owner: InternedId,
     product: u64,
     product_type: &ObjectType,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> BuildingExit {
     let Some(kind) = UnitChoiceKind::of(product_type.category) else {
@@ -244,7 +239,6 @@ fn exit_unit(
             producer,
             Some(&product_type.id),
             product_type.category,
-            path_grid,
             product_type.naval,
         ) else {
             return if waits {
@@ -263,7 +257,6 @@ fn exit_unit(
         product,
         selection,
         airfield,
-        path_grid,
         overlay_registry,
     );
     match delivered {

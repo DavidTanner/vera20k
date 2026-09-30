@@ -226,12 +226,8 @@ pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str
 }
 
 /// Advance production timers and spawn completed items.
-pub fn tick_production(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-) -> bool {
-    tick_production_with_overlay_registry(sim, rules, path_grid, None)
+pub fn tick_production(sim: &mut Simulation, rules: &RuleSet) -> bool {
+    tick_production_with_overlay_registry(sim, rules, None)
 }
 
 /// Advance production timers and spawn completed items with optional native
@@ -239,7 +235,6 @@ pub fn tick_production(
 pub fn tick_production_with_overlay_registry(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     // P5d: the registry is the queue-of-record + completion authority. Collect the
@@ -296,7 +291,6 @@ pub fn tick_production_with_overlay_registry(
                     &owner_str,
                     Some(&done_type_str),
                     cat,
-                    path_grid,
                     is_naval,
                 )
             });
@@ -327,7 +321,6 @@ pub fn tick_production_with_overlay_registry(
             stable_id,
             selection,
             airfield,
-            path_grid,
             overlay_registry,
         );
         if delivered.is_some() {
@@ -364,7 +357,6 @@ pub(super) fn deliver_produced_object(
     stable_id: u64,
     selection: ProductionSpawnSelection,
     airfield: Option<u64>,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<u64> {
     let (rx, ry) = selection.cell;
@@ -498,7 +490,8 @@ pub(super) fn deliver_produced_object(
                 &crate::sim::mission::authority::EntityReadyInputProvider,
             );
         }
-        if let (Some(grid), Some((tx, ty))) = (path_grid, rally) {
+        let path_grid = sim.path_grid_snapshot();
+        if let (Some(grid), Some((tx, ty))) = (path_grid.as_deref(), rally) {
             let obj = rules.object(type_name);
             // The rally move is an ordinary move order, so a unit that leaves
             // the factory already promoted (InitialVeteran, cloning) drives to

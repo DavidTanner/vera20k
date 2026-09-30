@@ -21,7 +21,6 @@ use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
 use crate::sim::movement::ground_pose;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_map::ZoneQueryCell;
 use crate::sim::world::Simulation;
 
@@ -83,7 +82,6 @@ fn tiberium_value(
 pub(crate) fn search_for_tiberium_and_move(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
     range: i32,
@@ -101,7 +99,8 @@ pub(crate) fn search_for_tiberium_and_move(
     if cell == own {
         return true;
     }
-    if let Some(grid) = path_grid {
+    let path_grid = sim.path_grid_snapshot();
+    if let Some(grid) = path_grid.as_deref() {
         let _ = super::miner_system::issue_stock_miner_drive_move(sim, rules, grid, id, cell);
     }
     false

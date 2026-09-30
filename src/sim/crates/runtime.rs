@@ -27,7 +27,6 @@ use crate::map::lighting::LightingProfileUnits;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::crate_rules::CrateRules;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
 use super::state::CRATE_SLOT_CAPACITY;
@@ -204,7 +203,6 @@ pub(crate) fn tick_crate_regeneration(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: &OverlayTypeRegistry,
-    path_grid: Option<&PathGrid>,
     lighting_profile: LightingProfileUnits,
 ) -> CrateRegeneration {
     let mut result = CrateRegeneration::default();
@@ -227,7 +225,6 @@ pub(crate) fn tick_crate_regeneration(
             sim,
             rules,
             overlay_registry,
-            path_grid,
             lighting_profile,
             ForcedPostPrecheckFailure::None,
         ) {
@@ -581,7 +578,7 @@ mod tests {
             };
             let rng_before = sim.scenario_rng.state();
 
-            let regen = tick_crate_regeneration(&mut sim, &rules, &registry, None, lighting());
+            let regen = tick_crate_regeneration(&mut sim, &rules, &registry, lighting());
 
             assert_eq!(regen, CrateRegeneration::default());
             assert_eq!(sim.crate_authority.slots()[0].cell_x, 8);
@@ -620,7 +617,7 @@ mod tests {
         };
         let untouched = sim.crate_authority.slots()[0];
 
-        let regen = tick_crate_regeneration(&mut sim, &rules, &registry, None, lighting());
+        let regen = tick_crate_regeneration(&mut sim, &rules, &registry, lighting());
 
         assert_eq!(regen.expired, 1, "only the due slot expires");
         assert_eq!(regen.accepted, 1, "one replacement placer call");
@@ -661,7 +658,7 @@ mod tests {
             };
         }
 
-        let regen = tick_crate_regeneration(&mut sim, &rules, &registry, None, lighting());
+        let regen = tick_crate_regeneration(&mut sim, &rules, &registry, lighting());
 
         assert_eq!(regen.expired, 3, "each due slot expires exactly once");
         assert_eq!(regen.accepted, 3);
@@ -705,7 +702,7 @@ mod tests {
             cell_y: 15,
         };
 
-        let regen = tick_crate_regeneration(&mut sim, &rules, &registry, None, lighting());
+        let regen = tick_crate_regeneration(&mut sim, &rules, &registry, lighting());
 
         assert_eq!(regen.expired, 1);
         assert_eq!(regen.visible, 1);
@@ -884,7 +881,7 @@ mod tests {
         };
 
         for _ in 0..3 {
-            let regen = tick_crate_regeneration(&mut sim, &rules, &registry, None, lighting());
+            let regen = tick_crate_regeneration(&mut sim, &rules, &registry, lighting());
             assert_eq!(
                 regen.expired, 1,
                 "the paused zero-duration slot expires on every pass"

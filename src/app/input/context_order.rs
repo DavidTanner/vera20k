@@ -834,7 +834,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                                     rules,
                                     sid,
                                     transport_id,
-                                    sim.path_grid(),
                                 )
                             })
                         })

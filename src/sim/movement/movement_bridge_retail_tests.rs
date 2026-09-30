@@ -699,7 +699,6 @@ fn diagnose_rejected_order(
             queue: false,
         },
         Some(&resources.rules),
-        Some(&grid),
     );
     println!("direct apply_command(Move) -> {applied}");
     println!(
@@ -725,10 +724,7 @@ fn issue_ordinary_move(
     entity_id: u64,
     target: (u16, u16),
 ) -> bool {
-    let grid = scenario
-        .sim()
-        .path_grid_snapshot()
-        .expect("navigation published");
+    assert!(scenario.sim().path_grid().is_some(), "navigation published");
     let SimRuntime {
         simulation,
         resources,
@@ -742,7 +738,6 @@ fn issue_ordinary_move(
             queue: false,
         },
         Some(&resources.rules),
-        Some(&grid),
     )
 }
 

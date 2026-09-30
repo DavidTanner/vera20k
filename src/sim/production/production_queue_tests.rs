@@ -487,6 +487,7 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
     let rules = naval_production_rules();
     let terrain = water_terrain(32, 32);
     let grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain.clone());
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 0,
@@ -541,7 +542,7 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
             .test_arm_ready(americans_display, ProductionCategory::Ship)
     );
 
-    let spawned = tick_production(&mut sim, &rules, Some(&grid));
+    let spawned = tick_production(&mut sim, &rules);
     assert!(spawned, "completed naval production should spawn the unit");
     assert_eq!(sim.scenario_rng.logical_state(), rng_before_delivery);
 
@@ -680,7 +681,7 @@ fn tick_production_advances_each_owner_queue() {
             .test_arm_ready(soviet_id, ProductionCategory::Infantry)
     );
 
-    let spawned = tick_production(&mut sim, &rules, None);
+    let spawned = tick_production(&mut sim, &rules);
     assert!(spawned, "At least one queue completion should spawn");
     assert!(
         sim.production.factory_shadow.is_empty(),
@@ -750,7 +751,7 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
             .test_arm_ready(americans_id, ProductionCategory::Vehicle)
     );
 
-    let spawned = tick_production(&mut sim, &rules, None);
+    let spawned = tick_production(&mut sim, &rules);
     assert!(spawned);
     assert!(
         sim.production.factory_shadow.is_empty(),
@@ -792,6 +793,7 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
     let rules = super::lifecycle_tests::manager_rules();
     let terrain = water_terrain(32, 32);
     let grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
 
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
@@ -831,7 +833,7 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
     let owned_before = sim.owned_object_counts(americans_id).1;
     let rng_before = sim.scenario_rng.clone();
     let allocated_before = sim.substrate.next_stable_object_id;
-    let spawned = tick_production(&mut sim, &rules, Some(&grid));
+    let spawned = tick_production(&mut sim, &rules);
     assert!(
         !spawned,
         "blocked completed vehicle should not spawn or advance"
@@ -880,7 +882,7 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
     assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
     assert_eq!(sim.interner.resolve(held.type_ref), "MTNK");
     for _ in 0..3 {
-        assert!(!tick_production(&mut sim, &rules, Some(&grid)));
+        assert!(!tick_production(&mut sim, &rules));
     }
     assert_eq!(
         super::lifecycle_tests::held_id(&sim, americans_id, ProductionCategory::Vehicle),
@@ -901,6 +903,7 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
     let rules = super::lifecycle_tests::manager_rules();
     let mut terrain = water_terrain(32, 32);
     let blocked_grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.install_fixture_path_grid(Some(&blocked_grid));
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 0,
         off_fc: -32,
@@ -947,7 +950,7 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
     let owned_before = sim.owned_object_counts(americans_id).1;
     let rng_before = sim.scenario_rng.clone();
     let allocated_before = sim.substrate.next_stable_object_id;
-    let blocked = tick_production(&mut sim, &rules, Some(&blocked_grid));
+    let blocked = tick_production(&mut sim, &rules);
     assert!(!blocked, "first delivery attempt should remain pending");
 
     assert_eq!(
@@ -966,8 +969,9 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
     }
     let clear_grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain);
+    sim.path_grid = Some(std::sync::Arc::new(clear_grid));
 
-    let spawned = tick_production(&mut sim, &rules, Some(&clear_grid));
+    let spawned = tick_production(&mut sim, &rules);
     assert!(
         spawned,
         "later successful delivery should consume the pending completed vehicle"
@@ -1169,7 +1173,7 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
             .factory_shadow
             .test_arm_ready(americans_id, ProductionCategory::Building)
     );
-    assert!(!tick_production(&mut sim, &rules, None));
+    assert!(!tick_production(&mut sim, &rules));
     assert_eq!(sim.production.ready_by_owner[&americans_id].len(), 1);
 
     let before_credits = credits_for_owner(&sim, "Americans");

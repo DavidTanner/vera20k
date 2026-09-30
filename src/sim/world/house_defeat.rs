@@ -70,7 +70,6 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
 use crate::sim::intern::InternedId;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 impl Simulation {
@@ -81,7 +80,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        self.house_rung(rules, None, registry, true);
+        self.house_rung(rules, registry, true);
     }
 
     /// The house rung's per-house steps in HouseClass::Array order: each
@@ -95,7 +94,6 @@ impl Simulation {
     pub(super) fn house_rung(
         &mut self,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
         defeat_pass: bool,
     ) {
@@ -137,7 +135,7 @@ impl Simulation {
             if let Some(rules) = rules {
                 crate::sim::house_strategy::update_strategy(self, rules, owner);
                 crate::sim::ai_base_building::update_production_choices(
-                    self, rules, owner, path_grid, registry,
+                    self, rules, owner, registry,
                 );
             }
         }
