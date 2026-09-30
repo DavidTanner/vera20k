@@ -448,7 +448,7 @@ pub(super) fn commit_miner_snapshot(sim: &mut Simulation, snap: &MinerSnapshot, 
 }
 
 /// The render-side flags that follow Unit+0x6D2 (never hashed): the
-/// HarvestOverlay (oregath.shp), which `UnitClass::DrawExtras @ 0x0073CEC0`
+/// HarvestOverlay (oregath.shp), which `UnitClass::Draw @ 0x0073CEC0`
 /// draws only with the locomotor at rest (presentation), and the voxel
 /// harvest cycle. RESIDUAL: the voxel HVA cycle keyed on this byte has no
 /// native source established (UNCHECKED).

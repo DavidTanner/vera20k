@@ -40,10 +40,10 @@
 //!   zero today — VERA's sale is synchronous, so no refinery is ever seen
 //!   mid-sell-down; the sale's RUN_AWAY broadcast carries the miner instead.
 //!
-//! A refinery sold (`BuildingClass::Sell`) or destroyed (the NowDead contact
-//! loop, `Simulation::building_now_dead_contacts`) under an unloading miner
-//! sends it RUN_AWAY (0x17): the latch drops and Harvest takes over
-//! (`radio::receive`, Unit `0x00737A98`).
+//! A refinery sold (`BuildingClass::Mission_Selling`) or destroyed (the
+//! NowDead contact loop, `Simulation::building_now_dead_contacts`) under an
+//! unloading miner sends it RUN_AWAY (0x17): the latch drops and Harvest takes
+//! over (`radio::receive`, Unit `0x00737A98`).
 //!
 //! ## Dependency rules
 //! - Part of sim/ — sim/radio, sim/mission, sim/movement, sim/world.

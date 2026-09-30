@@ -453,9 +453,9 @@ impl ProcessedRulesLayers {
 }
 
 /// One active-YR Type constructor family whose constructor calls
-/// `AbstractClass::AssignUniqueID @ 0x00410230`.
+/// `AbstractClass::Create_ID @ 0x00410230`.
 ///
-/// `ParticleTypeClass` is deliberately absent: its constructor has no Assign
+/// `ParticleTypeClass` is deliberately absent: its constructor has no Create_ID
 /// call. Script/Team/TaskForce/Trigger/Tag/Tiberium types are absent for the
 /// same reason. The family label records the native constructor, not the INI
 /// section spelling (`Countries` constructs `HouseType`, for example).

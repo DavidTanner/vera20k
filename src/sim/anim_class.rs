@@ -1358,7 +1358,7 @@ impl Simulation {
             anim.runtime.inactive = true;
             anim.start_sound_active = false;
         }
-        // Destroy4255D5 calls Release406060, leaving a one-shot Report
+        // UnInit4255D5 calls Release406060, leaving a one-shot Report
         // playing; StopAndClear405D40 would cut it off. Original execution:
         // tools/rules_oracle/bridge_child_sound.{py,json,md}.
         self.sound_events
@@ -1385,7 +1385,7 @@ impl Simulation {
     /// separate from an animation's ordinary deferred Destroy operation.
     pub(crate) fn scalar_delete_building_anim(&mut self, id: AnimId) {
         // Anim VT7E3354+20 ->426590 ->4228E0 releases sound handles but
-        // never reaches Destroy4255B0 or its StopSound playback. The slot was
+        // never reaches UnInit4255B0 or its StopSound playback. The slot was
         // cleared by the caller before these synchronous destructor effects.
         let sound_active = self.anim(id).is_some_and(|anim| anim.start_sound_active);
         self.clear_damage_fire_anim_reference(id);

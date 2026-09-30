@@ -111,7 +111,7 @@ pub(crate) enum TubeConstructionError {
 
 /// Execute the proved constructor boundary over raw source records.
 ///
-/// Allocation is checked first, `AssignUniqueID` is invoked second, and only
+/// Allocation is checked first, `Create_ID` is invoked second, and only
 /// then is the row tokenized. Returning an error stops the section immediately;
 /// there is no reject-and-continue arm in active-retail `gamemd.exe`.
 pub(crate) fn construct_raw_tube_section(

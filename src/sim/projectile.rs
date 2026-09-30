@@ -1229,7 +1229,7 @@ impl ProjectileStore {
     /// represented — `ROT >= 1` homing, the `ROT < 1` ballistic arm, and the
     /// `ROT < 1, Vertical` arm. An `Inviso` bullet is then placed on its
     /// target by [`Self::fire_inviso`] and detonates on its first AI.
-    // AbstractClass::AssignUniqueID @ 0x00410230 obtains this identity from
+    // AbstractClass::Create_ID @ 0x00410230 obtains this identity from
     // ScenarioClass::NextUniqueID @ 0x0068BCB0; the store never owns a second
     // allocator.
     #[cfg(test)]

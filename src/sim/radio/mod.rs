@@ -331,7 +331,7 @@ pub enum RadioMessage {
     /// Sent by a dock after the tether: a Unit turns to face 0x4000, then
     /// answers with [`RadioMessage::DockNow`] (`0x007376AD`).
     PrepareToDock = 0x16, // name inferred
-    /// Broadcast by a building being sold (`BuildingClass::Sell`,
+    /// Broadcast by a building being sold (`BuildingClass::Mission_Selling`,
     /// `0x0044AB5A..0x0044AB68`): a harvester mid-unload drops its latch and
     /// turns to Harvest (Unit `0x00737A98`); a Foot leaves or parks on Guard
     /// (`0x004D902B`).

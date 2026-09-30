@@ -520,7 +520,7 @@ mod tests {
         // `Process_Movement` @ 0x004B2630 writes `drive+0x50` unclamped on its
         // ordinary `drive+0x58 < 0x40` arm (`0x004B3E00`), so a 1.2 downhill
         // product survives on the locomotor-owned slot; the only native clamp is
-        // `TechnoClass::SetSpeedFraction` @ 0x004D3710, and every arm of
+        // `FootClass::SetSpeedFraction` @ 0x004D3710, and every arm of
         // `Process_Drive_Track` that writes the owner's fraction goes through
         // it, so that fraction never exceeds 1.
         let mut owner_speed = FootSpeedState::default();

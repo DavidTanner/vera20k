@@ -35,7 +35,7 @@ impl LogicVector {
     /// cell Mark transaction.
     ///
     /// gamemd-derived: active YR's unsorted LogicClass path calls
-    /// `DynamicVector__Insert @ 0x005519B0` with a zero sort argument, which
+    /// `LayerClass__Insert @ 0x005519B0` with a zero sort argument, which
     /// appends the new element at the current tail after capacity succeeds.
     pub(crate) fn try_push(&mut self, id: u64) -> Result<(), LogicInsertError> {
         #[cfg(test)]

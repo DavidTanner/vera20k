@@ -5,7 +5,7 @@
 //!   switches the byte: the player's REPAIR event toggles it
 //!   (`EventClass::Execute 0x004C6EFD`), the computer's auto-repair start
 //!   starts it (`0x00450708`) and each Selling visit stops it
-//!   (`BuildingClass::Sell 0x00449C41`).
+//!   (`BuildingClass::Mission_Selling 0x00449C41`).
 //! - [`update_repair_and_power`] (`BuildingClass::UpdateRepairAndPower @
 //!   0x00450630`) runs in each building's LogicVector visit, from
 //!   `BuildingClass::Update` (`0x004401B6`) after its Techno AI: a building a

@@ -26,10 +26,10 @@
 //!   visit (status 0: `Begin_Mode(0)`, the radio broadcast 0xB and
 //!   `[AudioVisual] Construction=`, retail `Dummy`) and completes on a later
 //!   visit that finds `+0x6DD` (radio 0xC and 3, `Begin_Mode(1)`,
-//!   `Grand_Opening`, Guard queued). `BuildingClass::Sell` plays stage 0, then
-//!   stage 1 (`Begin_Mode(0)`, `+0x6DD` cleared; a tethered building (`+0x418`)
-//!   waits in stage 1), then converts or sells on a stage-2 visit that finds
-//!   `+0x6DD`.
+//!   `Grand_Opening`, Guard queued). `BuildingClass::Mission_Selling` plays
+//!   stage 0, then stage 1 (`Begin_Mode(0)`, `+0x6DD` cleared; a tethered
+//!   building (`+0x418`) waits in stage 1), then converts or sells on a
+//!   stage-2 visit that finds `+0x6DD`.
 //! - A ready building commences its queued mission (`0x0043FF91`).
 //! - A queued BState applies (`0x0043FFB4..0x00440042`).
 //!
@@ -659,8 +659,8 @@ mod tests {
 
     /// An UndeploysInto sale of an idle building, with and without an
     /// ArchiveTarget, frame by frame through Update's pieces and
-    /// `BuildingClass::Sell`: Sell's stage, BState, the stage, `+0x6DD` and
-    /// the frame whose stage-2 visit finds `+0x6DD` (the conversion).
+    /// `BuildingClass::Mission_Selling`: its stage, BState, the stage, `+0x6DD`
+    /// and the frame whose stage-2 visit finds `+0x6DD` (the conversion).
     #[test]
     fn undeploy_sales_match_the_original_sell_visits() {
         let corpus = corpus();

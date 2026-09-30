@@ -6,7 +6,7 @@
 //! a Slave Miner refinery's relocation queues the mission itself,
 //! [`begin_selling`]): the building takes the Selling mission, and each
 //! later frame the building's LogicVector visit
-//! (`Simulation::visit_building_down`) runs `BuildingClass::Sell @
+//! (`Simulation::visit_building_down`) runs `BuildingClass::Mission_Selling @
 //! 0x00449C30` ([`BuildingDown`], `sim::building_construction`):
 //! - stage 0 ([`sell_stage_zero`]): an undeploy's `DeploySound=`, the bunker
 //!   release, RUN_AWAY to every contact and the damage fires put out;
@@ -1650,7 +1650,7 @@ mod tests {
             .count()
     }
 
-    /// `BuildingClass::Sell 0x00449CD1 MOV ECX,[EAX+0x408] ; TEST ; JNZ skip`:
+    /// `BuildingClass::Mission_Selling 0x00449CD1 MOV ECX,[EAX+0x408] ; TEST ; JNZ skip`:
     /// a type with `UndeploysInto=` never speaks.
     #[test]
     fn selling_announces_structure_sold_unless_the_type_undeploys() {

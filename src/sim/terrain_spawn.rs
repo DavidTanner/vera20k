@@ -724,7 +724,7 @@ fn construct_terrain_objects_inner(
             continue;
         };
         let type_ref = sim.interner.intern(&obj.name);
-        // TerrainClass construction reaches AbstractClass::AssignUniqueID
+        // TerrainClass construction reaches AbstractClass::Create_ID
         // @ 0x00410230, which draws from ScenarioClass::NextUniqueID
         // @ 0x0068BCB0 just like every other modeled runtime object.
         let stable_id = sim.allocate_stable_id();

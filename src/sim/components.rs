@@ -136,7 +136,7 @@ pub struct BuildingUp {
     pub first_frame: i32,
 }
 
-/// A building on the Selling mission (`BuildingClass::Sell @ 0x00449C30`,
+/// A building on the Selling mission (`BuildingClass::Mission_Selling @ 0x00449C30`,
 /// `sim::building_construction`; its visits `production::production_sell`):
 /// stage 0 and 1 visits, then the construction animation played again (drawn
 /// in reverse) until `+0x6DD`, when the building converts into its

@@ -7375,7 +7375,7 @@ fn test_undeploy_conyard_spawns_mcv() {
     // Retail GACNSTMK: 58 frames with shadows.
     rules.set_buildup_control_for_test("GACNST", [0, 29, 1]);
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
-    // A yard converts back only in a multiplayer game (`Sell 0x00449D08`).
+    // A yard converts back only in a multiplayer game (`Mission_Selling 0x00449D08`).
     sim.session.game_mode_nonzero = true;
     insert_house_with_counts(&mut sim, "Americans", 0, 0);
 

@@ -89,7 +89,7 @@
 //! - The online latch's readers VERA wires are Is_Operational, power drain,
 //!   radar, the refinery's and an absorber's CanEnter (`0x0043C422`) and the
 //!   depot probe (`0x0043C7FB`). Not wired:
-//!   - `TechnoTypeClass::FindFactory @ 0x005F7900` with its online argument
+//!   - `ObjectTypeClass::FindFactory @ 0x005F7900` with its online argument
 //!     (`(1,1,1)`): `HouseClass::Update_Factory_Queue @ 0x00509140` holds a
 //!     build that only offline factories could build (`0x0050924D`), and a
 //!     build promoted then starts on hold (`0x004FA45B`). VERA has neither

@@ -147,7 +147,7 @@ const LAUNCH_Z_OFFSET_LEPTONS: i32 = 10;
 
 /// Placeholder identity for a piece built inside the combat transaction.
 ///
-/// Native's `AbstractClass::AssignUniqueID` runs inside
+/// Native's `AbstractClass::Create_ID` runs inside
 /// `VoxelAnimClass::Constructor`, interleaved with the death's other object
 /// allocations. Combat here does not hold the shared allocator — it borrows the
 /// entity store out of the world — so the id is stamped when the world admits

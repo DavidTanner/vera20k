@@ -37,7 +37,7 @@
 //!   inside die with it.
 //! - Deploying a Slave Miner hands its manager to the refinery (SetOwner
 //!   `0x006AF580`, with the hand-off `0x006B0D10`); undeploying hands it back
-//!   at the conversion (`BuildingClass::Sell @ 0x0044A047`,
+//!   at the conversion (`BuildingClass::Mission_Selling @ 0x0044A047`,
 //!   `Simulation::finish_undeploy`). A refinery placed from production takes the same
 //!   hand-off (`0x006B0D60`) once its Unlimbo succeeds.
 //! - A Slave Miner hunts for a field: it sets out as it leaves its war
@@ -853,7 +853,7 @@ impl Simulation {
     /// own cell (`vt+0x1BC`, the CellClass at its Location) and queues
     /// Selling (`0x006B01E8`), which the building's ready check commences in
     /// the same Update (`0x0043FF91`: the idle control holds `+0x6DD`).
-    /// Selling's UndeploysInto arm (`BuildingClass::Sell @ 0x00449C30`)
+    /// Selling's UndeploysInto arm (`BuildingClass::Mission_Selling @ 0x00449C30`)
     /// packs it up into the Slave Miner that its manager, now in state 6,
     /// sends hunting: the conversion at its end
     /// ([`Simulation::finish_undeploy`]) hands the manager over and sends the

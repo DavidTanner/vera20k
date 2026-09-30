@@ -129,7 +129,7 @@ pub(crate) struct ObjectSubstrate {
     /// `VoxelAnimClass` registry — the flying VXL debris a death throws. Shares
     /// the global object-ID namespace and the LogicVector with entities and
     /// anims, exactly as native's `VoxelAnimClass::Constructor` does through
-    /// `AbstractClass::AssignUniqueID` and `ObjectClass::Unlimbo`.
+    /// `AbstractClass::Create_ID` and `ObjectClass::Unlimbo`.
     #[serde(default)]
     pub(crate) voxel_anims: VoxelAnimStore,
     /// ParticleSystemClass registry. Systems share the global object-ID

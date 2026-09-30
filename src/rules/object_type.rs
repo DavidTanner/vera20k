@@ -584,7 +584,7 @@ pub struct ObjectType {
     pub undeploy_sound: Option<String>,
     /// `PackupSound=` (BuildingType `+0xE70`, read at `0x00460786` through
     /// `VocClass::FindByName`): played at a human player's building as its
-    /// sale starts packing up (`BuildingClass::Sell` stage 1, `0x0044A85B`).
+    /// sale starts packing up (`BuildingClass::Mission_Selling` stage 1, `0x0044A85B`).
     /// No retail type sets it.
     pub packup_sound: Option<String>,
     /// `LeaveTransportSound=` — `TechnoTypeClass+0x568`. Read in
