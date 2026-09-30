@@ -177,7 +177,7 @@ impl Simulation {
         if entity.health.current != 0 || current_fly_height(entity, terrain) == 0 {
             return false;
         }
-        let location = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+        let location = crate::sim::movement::ground_pose::object_location(entity, terrain);
         // `0x004CD70C..0x004CD736`: the cell of the unchanged XY, divided
         // toward zero.
         let cell = ((location.x / 256) as i16, (location.y / 256) as i16);

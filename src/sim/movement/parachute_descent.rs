@@ -175,15 +175,16 @@ impl crate::sim::world::Simulation {
     ///   reset the rate, would start from a kept one, and VERA's DropIn grounds
     ///   a standing object instead (DRIFT at `drop_in_bridge_member`).
     ///
-    /// RESIDUAL: native resubmits the object to the display when its layer
-    /// (`vt+0x78`, read at `0x005F3F23` and `0x005F4001`) changes
-    /// (`0x004A9720` at `0x005F400E`), and removes a Limbo object from the
-    /// display (`0x005F3FA4` -> `0x005F4146`). Trigger: a falling Jumpjet
-    /// crossing its layer bounds, or an object in Limbo after its landing.
-    /// Effect: its display list entry keeps the old layer. Frequency: none
-    /// with retail `rulesmd.ini`, whose `[General]` paradrop lists
-    /// (`AmerParaDropInf=E1`, `AllyParaDropInf=E1`, `SovParaDropInf=E2`,
-    /// `YuriParaDropInf=INIT`) are Walk infantry, and VERA's bridge DropIn
+    /// RESIDUAL: every frame of the fall, native removes a Limbo object from
+    /// the display and returns before the FallRate update (`0x005F3FA4` ->
+    /// `0x005F4146`), and otherwise resubmits the object to the display when
+    /// its layer (`vt+0x78`, read at `0x005F3F23` and `0x005F4001`) changed
+    /// (`0x004A9720` at `0x005F400E`). Trigger: a falling Jumpjet crossing its
+    /// layer bounds, or an object Limboed while it falls. Effect: its display
+    /// list entry keeps the old layer. Frequency: none in retail play. VERA
+    /// drops only the paradrop superweapon's `[General]` lists, which retail
+    /// `rulesmd.ini` sets to Walk infantry (E1, E1, E2, INIT, read through
+    /// `RuleSet::from_ini`), though a map may override them. Its bridge DropIn
     /// grounds a standing Jumpjet at once. Risk: draw order.
     pub(crate) fn advance_fall(
         &mut self,
@@ -225,11 +226,15 @@ impl crate::sim::world::Simulation {
             }
             return false;
         }
-        // Descent does not displace the locomotor, so there is no piggyback
-        // to unwind here.
+        // SetHeight(0) (`0x005F3F7A`) runs before the falling byte clears
+        // (`0x005F3F86`). Descent does not displace the locomotor, so there
+        // is no piggyback to unwind here.
+        self.set_object_height(stable_id, 0, rules, registry);
+        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
+            return true;
+        };
         entity.parachute_state = None;
         entity.push_debug_event(self.session.tick as u32, DebugEventKind::SpecialMovementEnd);
-        self.set_object_height(stable_id, 0, rules, registry);
         true
     }
 }

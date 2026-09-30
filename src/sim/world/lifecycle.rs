@@ -1667,7 +1667,14 @@ impl Simulation {
 
         // Fly4CD600 dispatches owner Mark around movement (`0x004CDA36`)
         // independently of RTTI. Custom Fly Infantry/Unit must also leave
-        // their ground list.
+        // their ground list. RESIDUAL: native reaches that pair only while
+        // Is_Moving (`0x004CDA0B`; otherwise the epilogue at `0x004CE4A2`).
+        // VERA brackets every visit, and a landed Fly keeps its Air path
+        // layer. Trigger: a parked aircraft. Effect: at height 0 its Mark
+        // pair unlinks and prepends it and recalculates its cell twice; in
+        // flight the pair only toggles `+0x74`. Frequency: every frame of
+        // every parked aircraft. Risk: its cell's list order when another
+        // object shares the cell; the Fly host's Is_Moving gate is unported.
         if transact_fly {
             self.foot_mark_remove(stable_id, rules, registry);
         }
