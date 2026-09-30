@@ -1,6 +1,5 @@
 //! Hermetic stock-contract production oracles for miner outbound Drive commands.
 
-use crate::sim::movement::locomotion::LocomotorSlot;
 use crate::sim::movement::locomotion::piggyback::StashedLocomotor;
 
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -452,7 +451,7 @@ fn locomotor_tuple(
     entity_id: u64,
 ) -> (
     LocomotorKind,
-    LocomotorSlot,
+    LocomotorKind,
     Option<StashedLocomotor>,
     MovementLayer,
 ) {
@@ -464,7 +463,7 @@ fn locomotor_tuple(
         .expect("locomotor");
     (
         locomotor.kind,
-        locomotor.slot,
+        locomotor.effective_kind(),
         locomotor.piggyback.clone(),
         locomotor.layer,
     )
@@ -549,7 +548,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 // a Drive piggyback on top of it — that is what makes a stock
                 // chrono miner DRIVE to its first ore field instead of warping.
                 assert_eq!(locomotor.kind, LocomotorKind::Drive);
-                assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
+                assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
                 assert_eq!(
                     locomotor
                         .piggyback
@@ -559,7 +558,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                     LocomotorKind::Teleport,
                 );
             } else {
-                assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Drive));
+                assert_eq!(locomotor.effective_kind(), LocomotorKind::Drive);
                 assert_eq!(locomotor.piggyback, None);
             }
             assert!(entity.teleport_state.is_none());
@@ -597,7 +596,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
             if type_id == "CMIN" && entity.movement_target.is_some() {
                 let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
                 assert_eq!(locomotor.kind, LocomotorKind::Drive);
-                assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
+                assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
                 assert!(locomotor.piggyback.is_some());
             }
             if reached_harvest {
@@ -621,7 +620,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 entity.navigation,
                 entity.mission
             );
-            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
+            assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
             assert_eq!(locomotor.piggyback, None);
             assert!(
                 entity.drive_locomotion.is_none(),
@@ -1072,7 +1071,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
             Some(NavTargetRef::cell(target.0, target.1)),
         );
         assert_eq!(locomotor.kind, LocomotorKind::Drive);
-        assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
+        assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
         assert_eq!(
             locomotor
                 .piggyback
@@ -1095,7 +1094,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
         if entity.movement_target.is_some() {
             let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
             assert_eq!(locomotor.kind, LocomotorKind::Drive);
-            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
+            assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
             assert!(locomotor.piggyback.is_some());
         }
         if entity.miner_state().expect("miner") == MinerState::Harvest {
@@ -1111,7 +1110,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
                 entity.navigation,
                 entity.mission
             );
-            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
+            assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
             assert_eq!(locomotor.piggyback, None);
             assert_eq!(entity.navigation.nav_com, None);
             assert!(!entity.navigation.pending_arrival_clear);
@@ -1152,7 +1151,7 @@ fn production_cmin_unreachable_outbound_drive_returns_to_teleport() {
     advance(&mut sim, &oracle, &grid);
     let before = locomotor_tuple(&sim, entity_id);
     assert_eq!(before.0, LocomotorKind::Teleport);
-    assert_eq!(before.1, LocomotorSlot::new(LocomotorKind::Teleport));
+    assert_eq!(before.1, LocomotorKind::Teleport);
     assert_eq!(before.2, None);
     assert_eq!(
         sim.substrate
@@ -1337,7 +1336,7 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
                 entity.navigation,
                 entity.mission
             );
-            assert_eq!(locomotor.slot, LocomotorSlot::new(LocomotorKind::Teleport));
+            assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
             assert_eq!(locomotor.piggyback, None);
             assert!(
                 entity.drive_locomotion.is_none(),

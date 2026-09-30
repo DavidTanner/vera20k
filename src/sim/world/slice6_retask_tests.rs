@@ -162,7 +162,16 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // exact value, as this change does, with the RNG pins above unchanged
 // (the probe patch was not committed): the only change to this pin is
 // the fold. Old value: the commit that moved it.
-const SLICE6_BASELINE_HASH: u64 = 0x6701_D1B6_4062_FFB0;
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request and drops the installed slot, which is the stash's own kind; the
+// stash drops its retired separators. Ceremony: the parent commit with only
+// that fold changed printed this exact value, as this change does, with the
+// RNG pins above unchanged (the probe patch was not committed): the only
+// change to this pin is the fold. Old value: the commit that moved it.
+const SLICE6_BASELINE_HASH: u64 = 0x0C92_6C04_B3D2_2C82;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
