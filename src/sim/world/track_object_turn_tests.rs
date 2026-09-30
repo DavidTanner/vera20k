@@ -218,11 +218,11 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
         target.final_goal = Some((11, 10));
         let current = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
         assert_eq!(
-            crate::sim::pathfinding::terrain_speed::compute_cell_speed_modifier(
+            crate::sim::pathfinding::terrain_speed::fresh_track_speed_fraction(
                 entity.locomotor.as_ref().unwrap().speed_type,
-                kind,
                 (current.x, current.y),
                 (11, 10),
+                None,
                 sim.resolved_terrain.as_ref().unwrap(),
                 &sim.terrain_speed_config,
                 false,

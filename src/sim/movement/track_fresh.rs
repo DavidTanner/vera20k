@@ -57,6 +57,11 @@
 //!   path word with Find_Path's append form (`0x4B3F07`), which keeps the
 //!   queue and appends at most 24 - prefix words (`0x4D3E82`). VERA's route
 //!   install replaces the queue, so a train takes the ordinary request.
+//! - A tube word at the path head (`0x4B3298`, and `0x4B2F45` after a found
+//!   route) returns to a tube receiver VERA does not port. Trigger: a Drive
+//!   route whose Find_Path result holds a tube step. Effect: the Unit stalls
+//!   at the tube entrance instead of entering. Frequency: maps with tunnels.
+//!   Risk: tube travel for vehicles is missing until that receiver lands.
 
 use super::block_index::HeldBlockSets;
 use super::foot_path::{FindPathResult, FootPathOutcome, coord_cell};
@@ -334,7 +339,7 @@ impl Simulation {
     ) -> Result<bool, String> {
         let id = call.id;
         let rules = call.rules;
-        //4B3298: a tube word returns; the tube receiver owns it.
+        //4B3298: a tube word returns to the tube receiver (unported; see residual).
         if direction == TUBE_STEP_DIRECTION {
             return Ok(false);
         }

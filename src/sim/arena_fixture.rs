@@ -68,7 +68,8 @@ fn clear_ground(size: u16) -> crate::map::resolved_terrain::ResolvedTerrainGrid 
 /// Supply whatever native map input a component fixture lacks for a Foot
 /// Process that searches: map cells (clear 64x64 ground), zones and Map Size
 /// for those cells, generous LocalSize bounds, and the path grid. Inputs the
-/// fixture already installed are kept.
+/// fixture already installed are kept, including a zone grid built before a
+/// later terrain change; rebuild zones after editing cells.
 pub(crate) fn supply_native_map(sim: &mut Simulation) {
     let terrain = sim.resolved_terrain.get_or_insert_with(|| clear_ground(64));
     let (width, height) = (terrain.width(), terrain.height());
