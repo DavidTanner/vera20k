@@ -217,14 +217,16 @@ impl Simulation {
             LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk => self
                 .process_ground_locomotor_one(stable_id, rules, overlay_registry)
                 .map(LocomotorProcess::from_ground),
-            LocomotorKind::Hover => self
-                .process_hover_locomotor(stable_id, rules, overlay_registry)
-                .map(|hover| LocomotorProcess {
-                    admitted: true,
-                    bridge_state_changed: hover.bridge_state_changed,
-                    per_cell_ran: hover.per_cell_ran,
-                    ..LocomotorProcess::default()
-                }),
+            LocomotorKind::Hover => {
+                self.complete_pending_order(stable_id, rules, overlay_registry);
+                self.process_hover_locomotor(stable_id, rules, overlay_registry)
+                    .map(|hover| LocomotorProcess {
+                        admitted: true,
+                        bridge_state_changed: hover.bridge_state_changed,
+                        per_cell_ran: hover.per_cell_ran,
+                        ..LocomotorProcess::default()
+                    })
+            }
             LocomotorKind::Fly | LocomotorKind::Jumpjet => {
                 self.process_air_locomotor(stable_id, rules, overlay_registry)
             }
@@ -244,7 +246,7 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         let mut process = LocomotorProcess::admitted();
-        self.complete_pending_order(stable_id, rules);
+        self.complete_pending_order(stable_id, rules, overlay_registry);
         let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules, overlay_registry);
         if air.touched_down {
             process.bridge_state_changed |= self.per_cell_process(
@@ -294,7 +296,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
-        self.complete_pending_order(stable_id, rules);
+        self.complete_pending_order(stable_id, rules, overlay_registry);
         let sim = self;
         let mut process = LocomotorProcess::admitted();
         let teleport_armed = sim
@@ -482,11 +484,7 @@ impl Simulation {
         let sim = self;
         let one = [stable_id];
         let mut outcome = GroundLocomotorOutcome::default();
-        // Grid-less component fixtures keep the pass's empty-arrival cleanup;
-        // the pass searches with the canonical Simulation grid.
-        if sim.path_grid.is_some() {
-            sim.complete_pending_order(stable_id, rules);
-        }
+        sim.complete_pending_order(stable_id, rules, overlay_registry);
         let movement_before = sim
             .substrate
             .entities

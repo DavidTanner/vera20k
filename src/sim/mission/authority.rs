@@ -1218,21 +1218,20 @@ impl Simulation {
         debug_assert!(restored);
         effects.apply_target(self, &prepared, saved_target);
         if category != EntityCategory::Structure {
-            effects.apply_destination_mode_one(self, &prepared, saved_destination);
+            let setter_ran = effects.apply_destination_mode_one(self, &prepared, saved_destination);
             if saved_destination.is_some()
+                && !setter_ran
                 && let Some(entity) = self.substrate.entities.get_mut(receiver)
             {
                 // The original calls the class setter with the saved NavCom
-                // (`FootClass::Restore_Mission` `0x004D8F99`), whose Move_To
-                // the next locomotor step acts on — the stored path array is
-                // never archived, only the destination is. VERA finishes that
-                // setter at the object's next Process entry, which this flag
-                // arms: `complete_pending_order` for Drive, Ship, Teleport,
-                // Fly and Jumpjet, and the ground corridor's rebuild for Walk
-                // and Hover.
-                // Without it a restored object holds its order and never moves
-                // toward it, which is exactly the state a blocked-step Override
-                // leaves it in.
+                // (`FootClass::Restore_Mission` `0x004D8F99`: vt+0x480
+                // (Foot+5A8, 1)); the stored path array is never archived,
+                // only the destination is. A receiver without a represented
+                // class setter owes that call; `complete_pending_order`
+                // makes it at the object's next Process entry. Without it a
+                // restored object holds its order and never moves toward it,
+                // which is exactly the state a blocked-step Override leaves it
+                // in.
                 entity.navigation.pending_arrival_clear = true;
             }
         }

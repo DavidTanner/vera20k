@@ -493,185 +493,6 @@ fn apply_subcell_redirect(
     }
 }
 
-/// The deferred process-entry pass for Foots whose owner destination outlived
-/// their route. Drive/Ship are finished before their Process instead; every
-/// other locomotor keeps its route adapter below.
-#[allow(clippy::too_many_arguments)]
-fn process_pending_drive_arrivals(
-    entities: &mut EntityStore,
-    entity_order: &[u64],
-    ctx: PathfindingContext<'_>,
-    terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
-    held_block_sets: &HeldBlockSets,
-    interner: &crate::sim::intern::StringInterner,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    cell_occupation: &mut CellOccupationGrid,
-    timing: super::DestinationTiming,
-) {
-    let Some(grid) = ctx.path_grid else {
-        super::navcom::process_pending_empty_drive_arrivals_in_order(entities, entity_order);
-        return;
-    };
-    for &entity_id in entity_order {
-        // A slave's search admits its master's deposit Cells here too
-        // (`AStar_main_loop 0x00429A90` asks each neighbour's Can_Enter_Cell).
-        let deposit_cells = entities
-            .get(entity_id)
-            .filter(|entity| {
-                entity.navigation.pending_arrival_clear && entity.slave.owner().is_some()
-            })
-            .map_or([None, None], |_| {
-                crate::sim::slave_deposit::slave_deposit_cells(entities, entity_id, &|owner| {
-                    rules
-                        .and_then(|rules| rules.object(interner.resolve(owner.type_ref())))
-                        .map(|kind| {
-                            crate::rules::foundation::foundation_dimensions(&kind.foundation)
-                        })
-                })
-            });
-        let Some(entity) = entities.get_mut(entity_id) else {
-            continue;
-        };
-        if !entity.navigation.pending_arrival_clear {
-            continue;
-        }
-        if entity.movement_target.is_some()
-            || super::track_head::active_track_family(entity).is_some()
-        {
-            continue;
-        }
-        // Drive/Ship finish their deferred order before Process
-        // (`Simulation::complete_pending_order`).
-        if entity.locomotor.as_ref().is_some_and(|loco| {
-            matches!(
-                loco.active_kind(),
-                LocomotorKind::Drive | LocomotorKind::Ship
-            )
-        }) {
-            continue;
-        }
-        // Process-entry rebuild: an owner destination that survived the
-        // end-of-track resolution (off-destination finish, or a queued
-        // waypoint advanced at arrival) gets a fresh path toward it here —
-        // the drive locomotor's no-track process-entry position. Entities
-        // deferred with a non-cell owner target fall back to the queue
-        // advance, then to the owner-null clear.
-        let (rx, ry) = if let Some(NavTargetRef::Cell { rx, ry }) = entity.navigation.nav_com {
-            (rx, ry)
-        } else if let Some(NavTargetRef::Cell { rx, ry }) =
-            entity.navigation.nav_queue.first().copied()
-        {
-            entity.navigation.nav_queue.remove(0);
-            (rx, ry)
-        } else {
-            super::navcom::set_destination_internal_null(entity);
-            continue;
-        };
-        super::navcom::foot_stop_moving(entity);
-        super::navcom::set_destination_internal_cell(
-            entity,
-            (rx, ry),
-            ctx.resolved_terrain,
-            timing.binary_frame,
-        );
-        timing.accept(entity);
-
-        let current = (entity.position.rx, entity.position.ry);
-        let current_layer = entity.movement_layer_or_ground();
-        let Some(loco) = entity.locomotor.as_ref() else {
-            // VERA-internal retry policy: `set_destination_internal_cell`
-            // above cleared the deferred flag, so bailing out here would
-            // strand a live owner destination with no path, no movement, and
-            // no retry — a permanent dead-end (callers gate on
-            // `nav_com.is_some()`). Re-arm the flag so the next tick retries.
-            // The gamemd fallback on a failed process-entry repath is
-            // UNCHECKED.
-            entity.navigation.pending_arrival_clear = true;
-            continue;
-        };
-        let layered_pathing = supports_layered_bridge_pathing(loco, grid, entity.on_bridge);
-        let movement_zone = Some(loco.movement_zone);
-        let terrain_cost = terrain_costs.get(&loco.speed_type);
-        let (entity_blocks, entity_block_map) = held_block_sets
-            .get(&entity.owner())
-            .map(|lent| (Some(&lent.sets.0), Some(&lent.sets.1)))
-            .unwrap_or((None, None));
-        let mut occupied_blocks = entity_blocks.cloned().unwrap_or_default();
-        occupied_blocks
-            .extend(cell_occupation.occupied_cells_ignoring(MovementLayer::Ground, entity_id));
-        let occupied_blocks_ref = (!occupied_blocks.is_empty()).then_some(&occupied_blocks);
-        debug_assert!(
-            ctx.blocker_neighbor_counts.is_some(),
-            "path build on a pass that skipped the blocker plane; see pass_may_build_paths"
-        );
-        let Some((path, path_layers)) = find_move_path(
-            ctx,
-            layered_pathing,
-            current,
-            current_layer,
-            (rx, ry),
-            terrain_cost,
-            occupied_blocks_ref,
-            occupied_blocks_ref,
-            occupied_blocks_ref,
-            loco.movement_zone,
-            movement_zone,
-            entity_block_map,
-            // No `MoverSnapshot` on this path; see the constructor's note.
-            super::MoverPathFacts {
-                slave_deposit_cells: deposit_cells,
-                ..super::MoverPathFacts::from_entity_without_wall_arm(entity, 0)
-            },
-            ctx.playfield_bounds.is_none() || entity.in_playfield,
-        ) else {
-            // VERA-internal retry policy: pathfinding failed, so re-arm the
-            // deferred flag (cleared by `set_destination_internal_cell`
-            // above) and retry next tick toward the surviving owner
-            // destination instead of stranding it as a permanent dead-end.
-            // The gamemd fallback on a failed process-entry repath is
-            // UNCHECKED.
-            entity.navigation.pending_arrival_clear = true;
-            continue;
-        };
-        if path.len() < 2 {
-            // VERA-internal retry policy, same as the pathfinding-failure
-            // branch above; the gamemd equivalent is UNCHECKED.
-            entity.navigation.pending_arrival_clear = true;
-            continue;
-        }
-        let obj = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-        let speed = super::order_speed(entity, obj, rules);
-        let dx = path[1].0 as i32 - path[0].0 as i32;
-        let dy = path[1].1 as i32 - path[0].1 as i32;
-        let (move_dir_x, move_dir_y, move_dir_len) =
-            crate::util::lepton::cell_delta_to_lepton_dir(dx, dy);
-        let movement = MovementTarget {
-            path,
-            path_layers,
-            next_index: 1,
-            speed,
-            current_speed: speed,
-            accel_factor: obj.map_or(SIM_ZERO, |o| o.accel_factor),
-            decel_factor: obj.map_or(SIM_ZERO, |o| o.decel_factor),
-            slowdown_distance: obj.map_or(SIM_ZERO, |o| SimFixed::from_num(o.slowdown_distance)),
-            move_dir_x,
-            move_dir_y,
-            move_dir_len,
-            final_goal: Some((rx, ry)),
-            ..Default::default()
-        };
-        // This continuation rebuilds the route only. Ordinary ProcessMovement
-        // below owns admission, turn selection and the accepted claim.
-        // Successful core/search continuation, not a new Foot constructor.
-        entity
-            .navigation
-            .path_runtime
-            .start_movement(timing.binary_frame, 0);
-        entity.navigation.path_runtime.retries_left = PATH_STUCK_INIT;
-        entity.movement_target = Some(movement);
-    }
-}
-
 /// `Can_Enter_Cell` code for an allied body that is standing still in the cell.
 /// The one code the selection gate can produce that does NOT share the entry at
 /// 0x004B3607: `CMP EDX,0x6 / JNZ 0x004B3944` at 0x004B36F4 splits it out.
@@ -2351,7 +2172,6 @@ fn prepare_movement_pass(
     entities: &mut EntityStore,
     entity_order: &[u64],
     ctx: PathfindingContext<'_>,
-    terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     alliances: &HouseAllianceMap,
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
@@ -2406,12 +2226,6 @@ fn prepare_movement_pass(
             }
         }
     }
-    let ordinary_entry_order: Vec<u64> = entity_order
-        .iter()
-        .copied()
-        .filter(|entity_id| !tube_processed.contains(entity_id))
-        .collect();
-
     // Collect movers in live object order: ground/bridge entities with a movement_target.
     let mut movers: Vec<u64> = Vec::new();
     let mut mover_owners: BTreeSet<crate::sim::intern::InternedId> = BTreeSet::new();
@@ -2454,9 +2268,7 @@ fn prepare_movement_pass(
             (owner_id, lent)
         })
         .collect();
-    // Occupancy generation these snapshots reflect. Captured before
-    // process_pending_drive_arrivals so any move it makes advances the generation
-    // and forces the first consuming mover to rebuild. Each owner's snapshot is
+    // Occupancy generation these snapshots reflect. Each owner's snapshot is
     // lazily refreshed in the mover loop below whenever occupancy changed since it
     // was last built (gamemd processes movers in live object order).
     let block_set_build_gen = occupancy.generation();
@@ -2465,17 +2277,6 @@ fn prepare_movement_pass(
         .map(|&owner| (owner, block_set_build_gen))
         .collect();
 
-    process_pending_drive_arrivals(
-        entities,
-        &ordinary_entry_order,
-        ctx,
-        terrain_costs,
-        &held_block_sets,
-        interner,
-        rules,
-        cell_occupation,
-        super::DestinationTiming::from_rules(native_frame, rules),
-    );
     movers.clear();
     for &id in entity_order {
         if let Some(entity) = entities.get(id) {
@@ -3017,7 +2818,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
         entities,
         entity_order,
         ctx,
-        terrain_costs,
         alliances,
         occupancy,
         cell_occupation,
