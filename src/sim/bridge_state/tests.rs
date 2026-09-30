@@ -591,7 +591,9 @@ fn bridge_state_destroyable_flag_disabled() {
 // ---- MapClass::FindBridgeConnection_Predicate 0x00587410, overlay branch ----
 
 fn hut_terrain() -> ResolvedTerrainGrid {
-    crate::map::resolved_terrain::test_grid(16, 16, crate::map::resolved_terrain::test_flat_cell)
+    let mut grid = crate::map::resolved_terrain::test_grid(16, 16, crate::map::resolved_terrain::test_flat_cell);
+    grid.test_set_high_bridge_set_starts(Some(100), Some(200));
+    grid
 }
 
 fn seed_overlay_row(
@@ -614,7 +616,7 @@ fn hut_span_scan_rejects_an_intact_high_span() {
     seed_overlay_row(&mut state, 6, 0..14, 0xCD);
 
     assert!(
-        !crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&state, (6, 6)),
+        !crate::sim::world::bridge_orchestrator::hut_span_can_repair(&state, (6, 6)),
         "an intact span offers nothing to repair"
     );
 }
@@ -628,7 +630,7 @@ fn hut_span_scan_finds_a_collapsed_high_anchor_down_the_span() {
     seed_overlay_row(&mut state, 6, 11..12, 0xE7);
 
     assert!(
-        crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&state, (6, 6)),
+        crate::sim::world::bridge_orchestrator::hut_span_can_repair(&state, (6, 6)),
         "0xE7 is what DestroyBridgeWalker_NS_High writes on final collapse"
     );
 }
@@ -641,13 +643,13 @@ fn hut_span_scan_finds_a_collapsed_low_anchor() {
     seed_overlay_row(&mut state, 6, 8..9, 0x64);
 
     assert!(
-        crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&state, (6, 6)),
+        crate::sim::world::bridge_orchestrator::hut_span_can_repair(&state, (6, 6)),
         "0x64 is the low-side collapsed anchor"
     );
     let mut intact = hut_terrain();
     seed_overlay_row(&mut intact, 6, 0..10, 0x4A);
     assert!(
-        !crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&intact, (6, 6)),
+        !crate::sim::world::bridge_orchestrator::hut_span_can_repair(&intact, (6, 6)),
         "an intact low span offers nothing to repair"
     );
 }
@@ -662,7 +664,7 @@ fn hut_span_scan_stops_at_the_band_edge() {
     seed_overlay_row(&mut state, 6, 10..13, 0xE7);
 
     assert!(
-        !crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&state, (6, 6)),
+        !crate::sim::world::bridge_orchestrator::hut_span_can_repair(&state, (6, 6)),
         "an out-of-band cell ends the walk before the anchor"
     );
 }
@@ -671,7 +673,7 @@ fn hut_span_scan_stops_at_the_band_edge() {
 #[test]
 fn hut_span_scan_on_empty_state_is_false() {
     let state = hut_terrain();
-    assert!(!crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&state, (6, 6)));
+    assert!(!crate::sim::world::bridge_orchestrator::hut_span_can_repair(&state, (6, 6)));
 }
 
 /// 0x00587410's 5x5 loop has no break, so the cell it walks from is the LAST
@@ -687,7 +689,7 @@ fn hut_span_scan_walks_only_the_last_y_major_seed() {
     seed_overlay_row(&mut state, 8, 4..9, 0xCD);
 
     assert!(
-        !crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&state, (6, 6)),
+        !crate::sim::world::bridge_orchestrator::hut_span_can_repair(&state, (6, 6)),
         "scanning every cell and accepting any hit is more permissive than the binary"
     );
 
@@ -697,7 +699,7 @@ fn hut_span_scan_walks_only_the_last_y_major_seed() {
     seed_overlay_row(&mut reachable, 8, 4..12, 0xCD);
     seed_overlay_row(&mut reachable, 8, 12..13, 0xE7);
     assert!(
-        crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&reachable, (6, 6)),
+        crate::sim::world::bridge_orchestrator::hut_span_can_repair(&reachable, (6, 6)),
         "the surviving seed's own span is walked"
     );
 }
@@ -712,7 +714,7 @@ fn hut_span_scan_walks_ew_class_overlays_along_y() {
     }
     seed_overlay_row(&mut column, 13, 6..7, 0xE8);
     assert!(
-        crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&column, (6, 6)),
+        crate::sim::world::bridge_orchestrator::hut_span_can_repair(&column, (6, 6)),
         "an EW-class overlay is walked along Y"
     );
 
@@ -721,7 +723,7 @@ fn hut_span_scan_walks_ew_class_overlays_along_y() {
     seed_overlay_row(&mut row, 6, 4..14, 0xD6);
     seed_overlay_row(&mut row, 6, 14..15, 0xE8);
     assert!(
-        !crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&row, (6, 6)),
+        !crate::sim::world::bridge_orchestrator::hut_span_can_repair(&row, (6, 6)),
         "walking Y off a single row finds nothing, which is what proves the axis"
     );
 }
@@ -749,7 +751,7 @@ fn hut_span_scan_order_is_y_major_not_x_major() {
     seed_overlay_row(&mut state, 8, 6..7, 0xCD);
 
     assert!(
-        !crate::sim::world::bridge_orchestrator::hut_span_has_collapsed_anchor(&state, (6, 6)),
+        !crate::sim::world::bridge_orchestrator::hut_span_can_repair(&state, (6, 6)),
         "Y-major keeps (6, 8), which dead-ends; an X-major scan would keep          (8, 6) and wrongly answer true"
     );
 }

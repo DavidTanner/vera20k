@@ -238,6 +238,7 @@ mod tests {
     fn selector_rules(
         shipyards: &[&str],
         sections: &str,
+        art_sections: &str,
         build_tech: &str,
         adjacency: i32,
     ) -> RuleSet {
@@ -262,21 +263,25 @@ mod tests {
              [DISABLED_SW]\nType=MultiMissile\nDisableableFromShell=yes\n\
              [FIXED_SW]\nType=MultiMissile\nDisableableFromShell=no\n"
         );
-        RuleSet::from_ini(&IniFile::from_str(&text)).expect("selector rules")
+        RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(&text),
+            &IniFile::from_str(art_sections),
+        )
+        .expect("selector rules")
     }
 
     fn naval_integration_rules() -> RuleSet {
-        RuleSet::from_ini(&IniFile::from_str(
+        RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(
             "[General]\nShipyard=GAYARD\nAINavalYardAdjacency=0\n\
              [AI]\nBuildConst=gacnst\n\
              [Countries]\n0=Americans\n[Sides]\nAllied=Americans\n[Americans]\nSide=Allied\n\
              [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
              [BuildingTypes]\n0=GAYARD\n1=NAVAL\n2=LAND\n3=GACNST\n\
-             [GAYARD]\nFoundation=1x1\nOwner=Americans\n\
-             [NAVAL]\nFoundation=1x1\nNaval=yes\n\
-             [LAND]\nFoundation=1x1\n\
-             [GACNST]\nFoundation=1x1\nStrength=1000\nOwner=Americans\nConstructionYard=yes\n",
-        ))
+             [GAYARD]\nOwner=Americans\n\
+             [NAVAL]\nNaval=yes\n\
+             [LAND]\nName=Land Building\n\
+             [GACNST]\nStrength=1000\nOwner=Americans\nConstructionYard=yes\n",
+        ), &IniFile::from_str("[GAYARD]\nFoundation=1x1\n[NAVAL]\nFoundation=1x1\n[LAND]\nFoundation=1x1\n[GACNST]\nFoundation=1x1\n"))
         .expect("naval integration rules")
     }
 
@@ -306,7 +311,13 @@ mod tests {
 
     #[test]
     fn shipyard_selector_exact_gate_truth_table_and_source_fallthrough() {
-        let rules = selector_rules(&["YARD"], "[YARD]\nFoundation=4x4", "", 20);
+        let rules = selector_rules(
+            &["YARD"],
+            "[YARD]\nName=Yard",
+            "[YARD]\nFoundation=4x4",
+            "",
+            20,
+        );
         let (sim, owner) = selector_sim("Americans", 0, true);
         assert_eq!(
             selected_id(&rules, &sim, owner),
@@ -314,7 +325,13 @@ mod tests {
             "native zero-default Owner mask rejects"
         );
 
-        let rules = selector_rules(&["YARD"], "[YARD]\nFoundation=4x4\nOwner=Americans", "", 20);
+        let rules = selector_rules(
+            &["YARD"],
+            "[YARD]\nOwner=Americans",
+            "[YARD]\nFoundation=4x4",
+            "",
+            20,
+        );
         let (sim, owner) = selector_sim("Americans", 0, true);
         assert_eq!(
             selected_id(&rules, &sim, owner),
@@ -329,16 +346,17 @@ mod tests {
             ("AIBasePlanningSide=1", "signed side"),
         ];
         for (gate, label) in rejected {
-            let sections = format!("[YARD]\nFoundation=4x4\n{gate}");
-            let rules = selector_rules(&["YARD"], &sections, "", 20);
+            let sections = format!("[YARD]\n{gate}");
+            let rules = selector_rules(&["YARD"], &sections, "[YARD]\nFoundation=4x4", "", 20);
             let (sim, owner) = selector_sim("Americans", 0, true);
             assert_eq!(selected_id(&rules, &sim, owner), None, "{label}");
         }
 
         let rules = selector_rules(
             &["BAD", "GOOD"],
-            "[BAD]\nFoundation=2x2\nOwner=Russians\n\
-             [GOOD]\nFoundation=4x4\nOwner=AlliedAlias\nRequiredHouses=Americans\nForbiddenHouses=Russians\nAIBasePlanningSide=0",
+            "[BAD]\nOwner=Russians\n\
+             [GOOD]\nOwner=AlliedAlias\nRequiredHouses=Americans\nForbiddenHouses=Russians\nAIBasePlanningSide=0",
+            "[BAD]\nFoundation=2x2\n[GOOD]\nFoundation=4x4\n",
             "",
             20,
         );
@@ -347,8 +365,9 @@ mod tests {
 
         let enabled = selector_rules(
             &["YARD"],
-            "[YARD]\nFoundation=4x4\nOwner=Americans\nSuperWeapon=DISABLED_SW\n\
+            "[YARD]\nOwner=Americans\nSuperWeapon=DISABLED_SW\n\
              TechLevel=-1\nPrerequisite=MISSING\nBuildLimit=1\nCost=999999\nAIBuildThis=no",
+            "[YARD]\nFoundation=4x4\n",
             "",
             20,
         );
@@ -357,43 +376,44 @@ mod tests {
 
         let cases = [
             (
-                "[YARD]\nFoundation=4x4\nOwner=Americans",
+                "[YARD]\nOwner=Americans",
                 "",
                 Some("YARD"),
                 "absent primary",
             ),
             (
-                "[YARD]\nFoundation=4x4\nOwner=Americans\nSuperWeapon=DISABLED_SW",
+                "[YARD]\nOwner=Americans\nSuperWeapon=DISABLED_SW",
                 "YARD",
                 Some("YARD"),
                 "BuildTech exemption",
             ),
             (
-                "[YARD]\nFoundation=4x4\nOwner=Americans\nSuperWeapon=FIXED_SW",
+                "[YARD]\nOwner=Americans\nSuperWeapon=FIXED_SW",
                 "",
                 Some("YARD"),
                 "non-disableable primary",
             ),
             (
-                "[YARD]\nFoundation=4x4\nOwner=Americans\nSuperWeapon=DISABLED_SW",
+                "[YARD]\nOwner=Americans\nSuperWeapon=DISABLED_SW",
                 "",
                 None,
                 "disableable primary",
             ),
             (
-                "[YARD]\nFoundation=4x4\nOwner=Americans\nSuperWeapon2=DISABLED_SW",
+                "[YARD]\nOwner=Americans\nSuperWeapon2=DISABLED_SW",
                 "",
                 Some("YARD"),
                 "ignored SuperWeapon2",
             ),
         ];
         for (section, build_tech, expected, label) in cases {
-            let rules = selector_rules(&["YARD"], section, build_tech, 20);
+            let rules =
+                selector_rules(&["YARD"], section, "[YARD]\nFoundation=4x4", build_tech, 20);
             let (sim, owner) = selector_sim("Americans", 0, false);
             assert_eq!(selected_id(&rules, &sim, owner), expected, "{label}");
         }
 
-        let rules = selector_rules(&["YARD"], "[YARD]\nOwner=Russians", "", 20);
+        let rules = selector_rules(&["YARD"], "[YARD]\nOwner=Russians", "", "", 20);
         let (sim, owner) = selector_sim("Americans", 0, true);
         assert_eq!(selected_id(&rules, &sim, owner), None, "no fallback");
     }
@@ -402,9 +422,10 @@ mod tests {
     fn retail_side_order_resolves_each_four_by_four_shipyard_to_six_by_six() {
         let rules = selector_rules(
             &["GAYARD", "NAYARD", "YAYARD"],
-            "[GAYARD]\nFoundation=4x4\nOwner=Americans\n\
-             [NAYARD]\nFoundation=4x4\nOwner=Russians\n\
-             [YAYARD]\nFoundation=4x4\nOwner=YuriCountry",
+            "[GAYARD]\nOwner=Americans\n\
+             [NAYARD]\nOwner=Russians\n\
+             [YAYARD]\nOwner=YuriCountry",
+            "[GAYARD]\nFoundation=4x4\n[NAYARD]\nFoundation=4x4\n[YAYARD]\nFoundation=4x4\n",
             "",
             20,
         );
@@ -537,7 +558,7 @@ mod tests {
     }
 
     fn distance_rules(adjacency: i32) -> RuleSet {
-        selector_rules(&[], "", "", adjacency)
+        selector_rules(&[], "", "", "", adjacency)
     }
 
     fn live_yard(sim: &mut Simulation, id: u64, cell: (u16, u16), foundation: &str) {

@@ -6,14 +6,12 @@
 //! yields an empty catalog, and the placement phase then places nothing.
 
 use crate::map::rmg::phases::tech_buildings::TechType;
-use crate::rules::foundation::foundation_dimensions;
+use crate::rules::foundation::{FOUNDATION_TABLE, read_foundation};
 use crate::rules::ini_parser::IniFile;
 
 /// Section and key naming the neutral types the generator draws from.
 const AI_SECTION: &str = "AI";
 const NEUTRAL_TECH_BUILDINGS: &str = "NeutralTechBuildings";
-/// Art key owning every building footprint.
-const FOUNDATION: &str = "Foundation";
 
 /// Build the catalog from a merged rules INI and a merged art INI.
 ///
@@ -44,11 +42,9 @@ pub fn resolve(rules: &IniFile, art: &IniFile) -> Vec<TechType> {
 /// foundation table's default entry.
 fn footprint_for(art: &IniFile, name: &str) -> Vec<(i16, i16)> {
     // The art Foundation read (`0x00474DA0`, 0x20 bytes).
-    let value = art
-        .section(name)
-        .and_then(|section| section.read_name(FOUNDATION, 0x20))
-        .unwrap_or_default();
-    let (width, height) = foundation_dimensions(value);
+    let id = read_foundation(art.section_or_empty(name), 0);
+    let foundation = FOUNDATION_TABLE[usize::from(id)];
+    let (width, height) = (foundation.width, foundation.height);
     let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
     for dy in 0..height {
         for dx in 0..width {

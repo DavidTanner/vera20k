@@ -66,8 +66,9 @@ pub struct ArtEntry {
     /// default): the build-up SHP's name without its extension
     /// (`rules::buildup_asset_catalog`).
     pub buildup: Option<String>,
-    /// Building foundation footprint (e.g., "4x4", "2x2").
-    pub foundation: Option<String>,
+    /// Present ART Foundation resolved by native474DA0's fixed table.
+    /// Missing retains the caller's current index; a present unknown is0.
+    pub foundation: Option<u8>,
     /// Overlay type produced by this BuildingType's art (`ToOverlay=`).
     pub to_overlay: Option<String>,
     /// BibShape: separate SHP for the ground-level pad/bib under a building.
@@ -976,8 +977,11 @@ pub struct ResolvedObjectArt<'a> {
 /// Lookup table for art.ini rendering data.
 #[derive(Debug, Clone)]
 pub struct ArtRegistry {
-    /// image_id (uppercase) -> ArtEntry.
+    /// Exact ART section -> its sole metadata entry.
     entries: HashMap<String, ArtEntry>,
+    /// Derived uppercase lookup -> exact entry key for legacy visual consumers.
+    /// Rebuilt with entries; preserves their former last-wins folded lookup.
+    entry_names: HashMap<String, String>,
     /// section ID (uppercase) -> `CanHideThings=`. Missing sections default true.
     can_hide_things: HashMap<String, bool>,
     /// section ID (uppercase) -> `OccupyHeight=`, defaulting to art `Height=`.
@@ -1088,6 +1092,7 @@ impl ArtRegistry {
     /// Parse all sections from an art.ini IniFile into the registry.
     pub fn from_ini(ini: &IniFile) -> Self {
         let mut entries: HashMap<String, ArtEntry> = HashMap::new();
+        let mut entry_names: HashMap<String, String> = HashMap::new();
         let mut can_hide_things: HashMap<String, bool> = HashMap::new();
         let mut occupy_heights: HashMap<String, i32> = HashMap::new();
         let mut rates_ms: HashMap<String, u16> = HashMap::new();
@@ -1117,8 +1122,9 @@ impl ArtRegistry {
             let y_draw_offset: i32 = section.read_int("YDrawOffset", 0);
             let x_draw_offset: i32 = section.read_int("XDrawOffset", 0);
             let building_anims: Vec<BuildingAnimConfig> = parse_building_anims(section, ini);
-            let foundation: Option<String> =
-                section.read_name("Foundation", 0x20).map(str::to_owned);
+            let foundation = section
+                .is_present("Foundation")
+                .then(|| crate::rules::foundation::read_foundation(section, 0));
             let to_overlay: Option<String> =
                 section.read_name("ToOverlay", 0x80).map(str::to_owned);
             let bib_shape: Option<String> = section.read_name("BibShape", 0x40).map(str::to_owned);
@@ -1295,8 +1301,9 @@ impl ArtRegistry {
             rates_ms.insert(section_key.clone(), rate_ms);
             rates_logic_frames.insert(section_key.clone(), rate_logic_frames);
             anim_runtime_configs.insert(section_key.clone(), anim_runtime_config);
+            entry_names.insert(section_key, section_name.to_owned());
             entries.insert(
-                section_key,
+                section_name.to_owned(),
                 ArtEntry {
                     image,
                     cameo,
@@ -1373,6 +1380,7 @@ impl ArtRegistry {
         log::info!("ArtRegistry: {} entries loaded from art.ini", entries.len());
         ArtRegistry {
             entries,
+            entry_names,
             can_hide_things,
             occupy_heights,
             rates_ms,
@@ -1387,6 +1395,7 @@ impl ArtRegistry {
     pub fn empty() -> Self {
         ArtRegistry {
             entries: HashMap::new(),
+            entry_names: HashMap::new(),
             can_hide_things: HashMap::new(),
             occupy_heights: HashMap::new(),
             rates_ms: HashMap::new(),
@@ -1399,7 +1408,20 @@ impl ArtRegistry {
 
     /// Look up art entry for an image ID (case-insensitive).
     pub fn get(&self, image_id: &str) -> Option<&ArtEntry> {
-        self.entries.get(&image_id.to_uppercase())
+        self.entry_names
+            .get(&image_id.to_uppercase())
+            .and_then(|name| self.entries.get(name))
+    }
+
+    /// Native Foundation474DA0 uses exact section/key identity. The cached
+    /// present value came from that shared reader during construction; missing
+    /// retains its supplied current index. No visual case folding participates.
+    #[cfg(test)]
+    pub(crate) fn read_foundation(&self, section: &str, current: u8) -> u8 {
+        self.entries
+            .get(section)
+            .and_then(|entry| entry.foundation)
+            .unwrap_or(current)
     }
 
     /// Generic AnimType frame delay for an art section, from `Rate=`.
@@ -1657,7 +1679,7 @@ impl ArtRegistry {
 
     /// Number of entries in the registry.
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.entry_names.len()
     }
 
     /// Whether the registry is empty.
@@ -1821,7 +1843,9 @@ impl ArtRegistry {
 
     /// Iterate all entries with their canonical (uppercase) name keys.
     pub fn iter_entries(&self) -> impl Iterator<Item = (&str, &ArtEntry)> {
-        self.entries.iter().map(|(k, v)| (k.as_str(), v))
+        self.entry_names
+            .iter()
+            .map(|(key, name)| (key.as_str(), &self.entries[name]))
     }
 
     /// Every normal/damaged/garrisoned name reachable from an instantiated
@@ -1854,7 +1878,8 @@ impl ArtRegistry {
 
     /// Mutable lookup; case-insensitive on the key.
     pub fn get_mut(&mut self, image_id: &str) -> Option<&mut ArtEntry> {
-        self.entries.get_mut(&image_id.to_uppercase())
+        let name = self.entry_names.get(&image_id.to_uppercase())?;
+        self.entries.get_mut(name)
     }
 
     /// Eagerly populate `frame_width`/`frame_height` on entries whose anim has

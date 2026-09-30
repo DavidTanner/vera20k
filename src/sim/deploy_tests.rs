@@ -36,6 +36,11 @@ fn tick_n(sim: &mut Simulation, rules: &RuleSet, n: u32) {
     }
 }
 
+const MCV_ART: &str = "[GACNST]\nFoundation=4x3\n\
+    [GAPOWR]\nFoundation=1x1\n[YAREFN]\nFoundation=2x2\n\
+    [GAREFN]\nFoundation=2x2\n[GAPILE]\nFoundation=2x2\n\
+    [GAWEAP]\nFoundation=3x2\n[GAAIRC]\nFoundation=2x2\n[GATECH]\nFoundation=2x2\n";
+
 fn make_mcv_rules() -> RuleSet {
     let text = "\
 [InfantryTypes]
@@ -69,7 +74,6 @@ DeploysInto=YAREFN
 Name=Construction Yard
 Strength=1000
 Armor=wood
-Foundation=4x3
 ConstructionYard=yes
 UndeploysInto=AMCV
 
@@ -77,19 +81,18 @@ UndeploysInto=AMCV
 Name=Power Plant
 Strength=750
 Armor=wood
-Foundation=1x1
 
 [YAREFN]
 Name=Slave Miner Refinery
 Strength=1000
 Armor=wood
-Foundation=2x2
 
 [Clear]
 Buildable=yes
 ";
     let ini: IniFile = IniFile::from_str(text);
-    RuleSet::from_ini(&ini).expect("MCV test ruleset parse")
+    RuleSet::from_ini_with_fixed_art_for_test(&ini, &IniFile::from_str(MCV_ART))
+        .expect("MCV test ruleset parse")
 }
 
 fn make_recalc_mcv_rules(vector_values: &str) -> RuleSet {
@@ -112,17 +115,21 @@ fn make_recalc_mcv_rules(vector_values: &str) -> RuleSet {
          [AMCV]\nStrength=450\nSpeed=5\nDeploysInto=GACNST\n\
          [HARV]\nOwner=Americans\nStrength=100\nSpeed=5\n\
          [SMIN]\nOwner=Americans\nStrength=100\nSpeed=5\nDeploysInto=YAREFN\n\
-         [GACNST]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=1000\nFoundation=4x3\nConstructionYard=yes\n\
-         [GAPOWR]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=750\nFoundation=1x1\n\
-         [GAREFN]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=1000\nFoundation=2x2\n\
-         [GAPILE]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=500\nFoundation=2x2\n\
-         [GAWEAP]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=1000\nFoundation=3x2\n\
-         [GAAIRC]\nOwner=Americans\nAIBuildThis=no\nStrength=600\nFoundation=2x2\n\
-         [GATECH]\nOwner=Americans\nAIBuildThis=no\nStrength=500\nFoundation=2x2\n\
-         [YAREFN]\nOwner=Americans\nStrength=1000\nFoundation=2x2\n\
+         [GACNST]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=1000\nConstructionYard=yes\n\
+         [GAPOWR]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=750\n\
+         [GAREFN]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=1000\n\
+         [GAPILE]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=500\n\
+         [GAWEAP]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=1000\n\
+         [GAAIRC]\nOwner=Americans\nAIBuildThis=no\nStrength=600\n\
+         [GATECH]\nOwner=Americans\nAIBuildThis=no\nStrength=500\n\
+         [YAREFN]\nOwner=Americans\nStrength=1000\n\
          [Clear]\nBuildable=yes\n"
     );
-    RuleSet::from_ini(&IniFile::from_str(&text)).expect("Recalc deploy fixture")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(&text),
+        &IniFile::from_str(MCV_ART),
+    )
+    .expect("Recalc deploy fixture")
 }
 
 fn spawn_infantry(sim: &mut Simulation, type_str: &str, owner: &str, rx: u16, ry: u16) -> u64 {
@@ -423,14 +430,14 @@ Speed=5
 DeploysInto=GACNST
 [GACNST]
 Strength=1000
-Foundation=4x3
 ConstructionYard=yes
 DeployFacing=2
 [Clear]
 Buildable=yes
 ",
     );
-    let rules = RuleSet::from_ini(&ini).expect("rules");
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &IniFile::from_str(MCV_ART))
+        .expect("rules");
     assert_eq!(rules.object("GACNST").unwrap().deploy_facing, 0x40);
     let mut sim = deploy_sim(&rules);
     let mcv = sim
@@ -894,11 +901,11 @@ Strength=2000
 Speed=3
 [YAREFN]
 Strength=1000
-Foundation=2x2
 UndeploysInto=SMIN
 ",
     );
-    let rules = RuleSet::from_ini(&ini).expect("rules");
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &IniFile::from_str(MCV_ART))
+        .expect("rules");
     let mut sim = Simulation::new();
     add_house(&mut sim, "Americans", true);
     let refinery = sim

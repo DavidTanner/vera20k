@@ -82,7 +82,7 @@ fn slave_rules(input: &Value) -> String {
         "[InfantryTypes]\n0=SLAV\n\
          [SLAV]\nStrength=125\nStorage={}\nHarvestRate={}\nSpeed=4\nSlaved=yes\n\
          MovementZone=Infantry\nLocomotor={{4A582744-9839-11D1-B709-00A024DDAFD1}}\n\
-         [YAREFN]\nFoundation=2x2\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=0\n\
+         [YAREFN]\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=0\n\
          SlaveRegenRate={}\nSlaveReloadRate={}\nDeployFacing=0\nUndeploysInto=SMIN\n\
          [SMIN]\nStrength=2000\nSpeed=3\nROT=5\nEnslaves=SLAV\nSlavesNumber=0\nDeploysInto=YAREFN\n\
          ResourceGatherer=yes\nResourceDestination=yes\nMovementZone=Crusher\n\
@@ -167,12 +167,15 @@ impl SlaveScene {
 }
 
 pub(super) fn row_scene(input: &Value) -> SlaveScene {
-    row_scene_edited(input, |_| {})
+    row_scene_edited(input, |_, _| {})
 }
 
 /// [`row_scene`] on rules text that `edit` changes after the slave types are
 /// added.
-pub(super) fn row_scene_edited(input: &Value, edit: impl FnOnce(&mut String)) -> SlaveScene {
+pub(super) fn row_scene_edited(
+    input: &Value,
+    edit: impl FnOnce(&mut String, &mut IniFile),
+) -> SlaveScene {
     let mut input = input.clone();
     if input.get("ore").is_none() {
         input["ore"] = serde_json::json!([]);
@@ -187,11 +190,12 @@ pub(super) fn row_scene_edited(input: &Value, edit: impl FnOnce(&mut String)) ->
     if let Some(fields) = input.as_object_mut() {
         fields.remove("harvester");
     }
-    let mut scene = row_scene_with(&input, |text| {
+    let mut scene = row_scene_with(&input, |text, art| {
         *text = text.replacen("2=GAOREP\n", "2=GAOREP\n3=YAREFN\n", 1);
         *text = text.replacen("1=MTNK\n", "1=MTNK\n2=SMIN\n", 1);
         text.push_str(&slave_rules(&input));
-        edit(text);
+        art.merge(&IniFile::from_str("[YAREFN]\nFoundation=2x2\n"));
+        edit(text, art);
     });
     // The oracle's Rules+0x1780.. (ReadRange leptons), KickFrameDelay and
     // ApproachTargetResetMultiplier.

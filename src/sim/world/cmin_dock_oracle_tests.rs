@@ -94,11 +94,13 @@ pub(super) fn cmin_rules(input: &Value) -> (RuleSet, IniFile) {
         ));
     }
     let ini = IniFile::from_str(&text);
-    let mut rules = RuleSet::from_ini(&ini).unwrap();
-    let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
+    let art_ini = IniFile::from_str(
         "[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n[GAREFX]\nFoundation=4x3\nQueueingCell=4,1\n\
+         [GAOREP]\nFoundation=2x2\n\
          [WARPOUT]\nFlat=yes\nTranslucent=yes\nRate=120\n",
-    ));
+    );
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).unwrap();
+    let mut art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
     art.bind_anim_frame_count_for_test("WARPOUT", 13);
     rules.install_art_data(art);
     (rules, ini)

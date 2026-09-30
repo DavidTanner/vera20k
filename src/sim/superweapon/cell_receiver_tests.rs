@@ -16,11 +16,13 @@ fn fixture_with_extra(extra: &str) -> (Simulation, RuleSet) {
 fn terminal_art(die1_count: i32, die2_count: i32) -> IniFile {
     // Authored counts go through the same ART reader as the physical GI
     // records. The native action table, not a sprite-only delay, owns time.
-    IniFile::from_str(
+    let mut art = IniFile::from_str(
         &crate::rules::retail_ini_fixture::GI_ART_EXCERPT
             .replace("Die1=134,15,0", &format!("Die1=134,{die1_count},0"))
             .replace("Die2=149,15,0", &format!("Die2=149,{die2_count},0")),
-    )
+    );
+    art.merge(&IniFile::from_str("[BIG]\nFoundation=3x1\n"));
+    art
 }
 
 fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet) {

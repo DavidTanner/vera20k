@@ -15,14 +15,18 @@ const RULES: &str = "[InfantryTypes]\n0=E1\n\
      [General]\nGDIGateOne=GAGATE\n\
      [E1]\nStrength=125\nSpeed=4\n\
      [MTNK]\nStrength=400\nSpeed=6\n\
-     [GAPOWR]\nStrength=750\nFoundation=2x2\n\
-     [GAGATE]\nStrength=1000\nFoundation=1x1\nGate=yes\n\
-     [GAWALL]\nStrength=300\nFoundation=1x1\nWall=yes\n\
-     [GAFENCE]\nStrength=300\nFoundation=1x1\nLaserFence=yes\n\
-     [NAYARD]\nStrength=1500\nFoundation=2x2\nWaterBound=yes\nNaval=yes\n\
-     [GAPAVE]\nStrength=100\nFoundation=1x1\nPlaceAnywhere=yes\n\
-     [GAPLUG]\nStrength=100\nFoundation=1x1\n\
+     [GAPOWR]\nStrength=750\n\
+     [GAGATE]\nStrength=1000\nGate=yes\n\
+     [GAWALL]\nStrength=300\nWall=yes\n\
+     [GAFENCE]\nStrength=300\nLaserFence=yes\n\
+     [NAYARD]\nStrength=1500\nWaterBound=yes\nNaval=yes\n\
+     [GAPAVE]\nStrength=100\nPlaceAnywhere=yes\n\
+     [GAPLUG]\nStrength=100\n\
      [GASAND]\nWall=yes\n[CYCL]\n[GAWALL]\nWall=yes\n[TIB01]\nTiberium=yes\n";
+
+const ART: &str = "[GAPOWR]\nFoundation=2x2\n[GAGATE]\nFoundation=1x1\n\
+    [GAWALL]\nFoundation=1x1\nToOverlay=GAWALL\n[GAFENCE]\nFoundation=1x1\n\
+    [NAYARD]\nFoundation=2x2\n[GAPAVE]\nFoundation=1x1\n[GAPLUG]\nFoundation=1x1\n";
 
 const CLEAR_BUILDABLE: &str = "[Clear]\nBuildable=yes\nFloat=0%\n";
 
@@ -34,10 +38,10 @@ struct Arena {
 
 fn arena(land: &str) -> Arena {
     let ini = IniFile::from_str(&format!("{RULES}{land}"));
-    let mut rules = RuleSet::from_ini(&ini).expect("build-site rules");
-    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
-        "[GAWALL]\nToOverlay=GAWALL\n",
-    )));
+    let art = IniFile::from_str(ART);
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("build-site rules");
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     let registry = OverlayTypeRegistry::from_ini(&ini, None);
     let mut sim = Simulation::new();
     crate::sim::arena_fixture::flat_arena(&mut sim, &rules);

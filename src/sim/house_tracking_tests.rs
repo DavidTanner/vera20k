@@ -60,28 +60,26 @@ Strength=200
 DontScore=yes
 [BLDG]
 Strength=500
-Foundation=2x2
 [BLDGI]
 Strength=500
-Foundation=2x2
 Insignificant=yes
 [BLDGD]
 Strength=500
-Foundation=2x2
 DontScore=yes
 [B1X1]
 Strength=500
-Foundation=1x1
 UndeploysInto=TANK
 [BGAT]
 Strength=500
-Foundation=2x2
 UndeploysInto=HARV
 [BOTHER]
 Strength=500
-Foundation=2x2
 UndeploysInto=TANK
 ";
+
+const ART: &str = "[BLDG]\nFoundation=2x2\n[BLDGI]\nFoundation=2x2\n\
+    [BLDGD]\nFoundation=2x2\n[B1X1]\nFoundation=1x1\n\
+    [BGAT]\nFoundation=2x2\n[BOTHER]\nFoundation=2x2\n";
 
 #[derive(serde::Deserialize)]
 struct NativeTrackingCase {
@@ -129,7 +127,11 @@ fn native_tracking_corpus() {
     ))
     .unwrap();
     assert_eq!(cases.len(), 36);
-    let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).unwrap();
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(RULES),
+        &IniFile::from_str(ART),
+    )
+    .unwrap();
     let mut compared = 0;
     for case in cases {
         let name = case.input["name"].as_str().unwrap();
@@ -172,7 +174,11 @@ fn native_tracking_corpus() {
 }
 
 fn one_house() -> (Simulation, RuleSet, InternedId) {
-    let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).unwrap();
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(RULES),
+        &IniFile::from_str(ART),
+    )
+    .unwrap();
     let mut sim = Simulation::with_seed(3);
     let house = sim.interner.intern("Americans");
     sim.houses
@@ -317,7 +323,6 @@ Cost=1500
 [BLDG]
 Strength=500
 Cost=1000
-Foundation=2x2
 ";
 
 fn force_values_of(sim: &Simulation, house: InternedId) -> (i32, i32, i32) {
@@ -333,7 +338,11 @@ fn force_values_of(sim: &Simulation, house: InternedId) -> (i32, i32, i32) {
 /// `Spawns=` a unit; ChangeOwner prices it for each house in turn.
 #[test]
 fn force_values_follow_the_objects_on_the_map() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(VALUE_RULES)).unwrap();
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(VALUE_RULES),
+        &IniFile::from_str("[BLDG]\nFoundation=2x2\n"),
+    )
+    .unwrap();
     let mut sim = Simulation::with_seed(3);
     let [americans, russians] = ["Americans", "Russians"].map(|name| {
         let house = sim.interner.intern(name);

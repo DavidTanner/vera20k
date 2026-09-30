@@ -23,6 +23,7 @@ use crate::sim::components::{DriveCoord, FootPathQueue, NavTargetRef};
 use crate::sim::mission::MissionId;
 use crate::sim::movement::{FindPathResult, FootPathOutcome};
 use crate::sim::world::Simulation;
+use crate::sim::world::entry_test_fixture::fixture_with_rules_and_fixed_art;
 use serde_json::{Value, json};
 
 const UNITS: &str = "[VehicleTypes]\n0=DRV\n1=SHP\n\
@@ -429,9 +430,14 @@ fn ordered_attack_null_destination_stops_a_moving_tank_after_its_track() {
 fn depot_release_and_pad_entry_route_through_find_path() {
     let depot_rules = format!(
         "{UNITS}[BuildingTypes]\n1=DEPOT\n\
-         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n"
+         [DEPOT]\nStrength=800\nUnitRepair=yes\nNumberImpassableRows=1\n"
     );
-    let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
+    let (mut sim, rules, registry) = fixture_with_rules_and_fixed_art(
+        &depot_rules,
+        &crate::rules::ini_parser::IniFile::from_str(
+            "[CABHUT]\nFoundation=1x1\n[DEPOT]\nFoundation=3x3\n",
+        ),
+    );
     let owner = sim.interner.intern("Americans");
     let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 5000, 0);
     house.player_control = true;
@@ -527,10 +533,15 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
         "{}[TLP]\nStrength=300\nSpeed=6\nSpeedType=Track\nMovementZone=Normal\n\
          Teleporter=yes\nLocomotor={{4A582747-9839-11d1-B709-00A024DDAFD1}}\n\
          [BuildingTypes]\n1=DEPOT\n\
-         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n",
+         [DEPOT]\nStrength=800\nUnitRepair=yes\nNumberImpassableRows=1\n",
         UNITS.replace("1=SHP\n", "1=SHP\n2=TLP\n")
     );
-    let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
+    let (mut sim, rules, registry) = fixture_with_rules_and_fixed_art(
+        &depot_rules,
+        &crate::rules::ini_parser::IniFile::from_str(
+            "[CABHUT]\nFoundation=1x1\n[DEPOT]\nFoundation=3x3\n",
+        ),
+    );
     let owner = sim.interner.intern("Americans");
     let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 5000, 0);
     house.player_control = true;
@@ -593,7 +604,7 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
 fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
     let depot_rules = format!(
         "{UNITS}[BuildingTypes]\n1=DEPOT\n\
-         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n"
+         [DEPOT]\nStrength=800\nUnitRepair=yes\nNumberImpassableRows=1\n"
     );
     for (arrival, cells, late) in [
         ("east", [(21, 10), (22, 10), (23, 10)], 0),
@@ -603,7 +614,12 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
         ("late from the east", [(19, 10), (23, 10), (20, 10)], 90),
         ("late from the north-east", [(19, 10), (20, 8), (20, 10)], 9),
     ] {
-        let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
+        let (mut sim, rules, registry) = fixture_with_rules_and_fixed_art(
+            &depot_rules,
+            &crate::rules::ini_parser::IniFile::from_str(
+                "[CABHUT]\nFoundation=1x1\n[DEPOT]\nFoundation=3x3\n",
+            ),
+        );
         let owner = sim.interner.intern("Americans");
         let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 50_000, 0);
         house.player_control = true;
@@ -1284,10 +1300,15 @@ fn damaged_hover_unit_reaches_a_free_depot_pad() {
         "{}[HOV]\nStrength=300\nSpeed=6\nSpeedType=Hover\nMovementZone=Normal\n\
          Locomotor={{4A582742-9839-11d1-B709-00A024DDAFD1}}\n\
          [BuildingTypes]\n1=DEPOT\n\
-         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n",
+         [DEPOT]\nStrength=800\nUnitRepair=yes\nNumberImpassableRows=1\n",
         UNITS.replace("1=SHP\n", "1=SHP\n2=HOV\n")
     );
-    let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
+    let (mut sim, rules, registry) = fixture_with_rules_and_fixed_art(
+        &depot_rules,
+        &crate::rules::ini_parser::IniFile::from_str(
+            "[CABHUT]\nFoundation=1x1\n[DEPOT]\nFoundation=3x3\n",
+        ),
+    );
     let owner = sim.interner.intern("Americans");
     let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 5000, 0);
     house.player_control = true;

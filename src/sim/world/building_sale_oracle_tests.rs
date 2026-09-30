@@ -78,7 +78,7 @@ fn skipped(row: &Value) -> bool {
 /// RefundPercent, `SellSound=`, and the row's YAREFN keys: Cost, Crewed,
 /// Factory (a yard's `+0xEB8`), PackupSound, InfantryAbsorb, Foundation and
 /// a weapon for IsArmed.
-fn edit_rules(input: &Value, text: &mut String) {
+fn edit_rules(input: &Value, text: &mut String, art: &mut IniFile) {
     *text = text.replacen(
         "0=SLAV\n",
         "0=SLAV\n1=E1\n2=E2\n3=INIT\n4=CTECH\n5=ENGINEER\n",
@@ -111,7 +111,7 @@ fn edit_rules(input: &Value, text: &mut String) {
         keys.push_str("InfantryAbsorb=yes\n");
     }
     if input["foundation"] == 9 {
-        keys.push_str("Foundation=3x3Refinery\n");
+        art.merge(&IniFile::from_str("[YAREFN]\nFoundation=3x3Refinery\n"));
     }
     if input["armed"] == true {
         keys.push_str("Primary=OracleGun\n");
@@ -148,7 +148,7 @@ fn crew_scene(input: &Value) -> (SlaveScene, Vec<u64>) {
         "seed": seed,
         "human": input["human"].as_bool().unwrap_or(true),
     });
-    let mut s = row_scene_edited(&scene_input, |text| edit_rules(input, text));
+    let mut s = row_scene_edited(&scene_input, |text, art| edit_rules(input, text, art));
     let refinery = s.refinery;
     let rules = &s.scene.rules;
     let sim = &mut s.scene.sim;
@@ -533,14 +533,13 @@ fn the_computers_low_credit_sale_matches_the_original_admission() {
              [IQ]\nRepairSell={}\nSellBack={}\n[AudioVisual]\nConditionRed=25%\n\
              [InfantryTypes]\n[VehicleTypes]\n0=AMCV\n[AircraftTypes]\n\
              [BuildingTypes]\n0=YAREFN\n[AMCV]\nStrength=1000\n\
-             [YAREFN]\nStrength={}\nClickRepairable={}\nRepairable={}\nFoundation={}\n",
+             [YAREFN]\nStrength={}\nClickRepairable={}\nRepairable={}\n",
             int("credit_reserve"),
             int("repair_sell"),
             int("sell_back"),
             int("strength"),
             flag("click_repairable"),
             flag("repairable"),
-            if int("foundation") == 0 { "1x1" } else { "2x2" },
         );
         if input["undeploys"] == true {
             text.push_str("UndeploysInto=AMCV\n");
@@ -548,7 +547,12 @@ fn the_computers_low_credit_sale_matches_the_original_admission() {
         if input["yard"] == true {
             text.push_str("Factory=BuildingType\n");
         }
-        let mut rules = RuleSet::from_ini(&IniFile::from_str(&text)).unwrap();
+        let art = IniFile::from_str(&format!(
+            "[YAREFN]\nFoundation={}\n",
+            if int("foundation") == 0 { "1x1" } else { "2x2" },
+        ));
+        let mut rules =
+            RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&text), &art).unwrap();
         rules.set_buildup_control_for_test("YAREFN", [0, 25, 2]);
         let mut sim = crate::sim::world::Simulation::new();
         sim.session.game_mode_nonzero = int("game_mode") != 0;

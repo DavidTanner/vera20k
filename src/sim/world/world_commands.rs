@@ -1842,6 +1842,7 @@ impl Simulation {
                             b.position.rx,
                             b.position.ry,
                             b.owner(),
+                            obj.bridge_repair_hut,
                             crate::sim::movement::nav_target_coordinate(
                                 crate::sim::components::NavTargetRef::Building {
                                     id: *target_building_id,
@@ -1854,15 +1855,19 @@ impl Simulation {
                             .ok()?,
                         ))
                     });
-                let Some((trx, try_, target_owner, target_coord)) = target_info else {
+                let Some((trx, try_, target_owner, bridge_hut, target_coord)) = target_info else {
                     return false;
                 };
-                // Must be an enemy building.
-                if crate::map::houses::are_houses_friendly(
-                    &self.house_alliances,
-                    command_owner,
-                    self.interner.resolve(target_owner),
-                ) {
+                // Object51F190/Foot4D74E0 already resolved the action before
+                // the delayed Capture event. Hut repair admits every relation;
+                // do not re-query changing span state at this receiver.
+                if !bridge_hut
+                    && crate::map::houses::are_houses_friendly(
+                        &self.house_alliances,
+                        command_owner,
+                        self.interner.resolve(target_owner),
+                    )
+                {
                     return false;
                 }
                 // Native order admission (actor + Destination token).

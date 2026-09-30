@@ -61,8 +61,10 @@ fn rules(input: &Value) -> RuleSet {
         let c = coord(offset);
         art.push_str(&format!("DockingOffset{i}={},{},{}\n", c.x, c.y, c.z));
     }
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(&ini)).unwrap();
-    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(&art)));
+    let ini = IniFile::from_str(&ini);
+    let art = IniFile::from_str(&art);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     rules
 }
 
