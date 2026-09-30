@@ -63,7 +63,7 @@ impl Simulation {
         self.scenario_normal_lighting = input.normal_lighting;
         // Runtime rebuilds use this same sim-owned publication seam. Crate
         // placement below reads the newly published canonical grid.
-        let mut navigation_published = self.rebuild_dynamic_navigation(input.rules);
+        let navigation_published = self.rebuild_dynamic_navigation(input.rules);
 
         #[cfg(test)]
         let mut skirmish_order = [None; 3];
@@ -82,13 +82,8 @@ impl Simulation {
                 input.normal_lighting,
             );
             // Startup OverlayClass::Mark completes synchronously before native
-            // proceeds to AI credits. Rust derives BridgeRuntimeState's record
-            // vector earlier in the load funnel, so rebuild it from the
-            // now-final CellClass state and publish matching first-frame
-            // navigation without consuming OverlayGrid's dirty receipt.
-            if self.refresh_bridge_runtime_after_crate_mark() {
-                navigation_published = self.rebuild_dynamic_navigation(input.rules);
-            }
+            // proceeds to AI credits; the placement refreshed the bridge
+            // records and navigation from the now-final CellClass state.
             #[cfg(test)]
             {
                 skirmish_order[1] = Some(ScenarioPostMapStep::AiOpeningCredits);

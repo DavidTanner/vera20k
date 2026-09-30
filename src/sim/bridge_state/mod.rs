@@ -139,7 +139,7 @@ impl DamageState {
 /// draws no bridge sprite: no overlay, a terminal ordinary overlay, an
 /// undecodable state byte, or a destroyed structural cell.
 ///
-/// Ordinary low overlays carry their state in the identity. Every other
+/// Ordinary overlays carry their state and axis in the identity. Every other
 /// overlay (high anchors 0x18/0x19/0xED/0xEE, ordinary end pieces) reads the
 /// state byte, whose range also selects the axis (`<= 8` NS, else EW; the
 /// setters write only 0..=17). A destroyed cell is state 0 with the 0x100
@@ -150,8 +150,13 @@ impl DamageState {
 /// (constructor corpus cases8..11), and the anchor supplies their sprite.
 pub fn cell_render_state(facts: BridgeCellFacts) -> Option<(DamageState, Axis)> {
     let state = facts.state_byte;
-    let axis = if state <= 8 { Axis::NS } else { Axis::EW };
     let overlay = facts.overlay_id?;
+    // Ordinary overlays carry their axis in the identity (the ordinary
+    // selector's classification); every other overlay reads the byte range.
+    let axis = [ramp_repair::Family::Low, ramp_repair::Family::High]
+        .into_iter()
+        .find_map(|family| ordinary::axis(i32::from(overlay), family))
+        .unwrap_or(if state <= 8 { Axis::NS } else { Axis::EW });
     let render = match overlay {
         0x4A..=0x4D => DamageState::Healthy {
             variant: overlay - 0x4A,
