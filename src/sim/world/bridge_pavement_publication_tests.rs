@@ -32,7 +32,6 @@ fn retail_plain_pavement_native_entry_draw_selection_and_snapshot() {
         rules: &runtime.resources.rules,
         registry: Some(&runtime.resources.overlay_registry),
         collapsed: false,
-        family: Family::High,
     };
     assert!(
         live.sim
@@ -42,7 +41,7 @@ fn retail_plain_pavement_native_entry_draw_selection_and_snapshot() {
             .cell(66, 102)
             .is_none()
     );
-    live.perpendicular((67, 102), Axis::NS, Phase::DamageB, 6);
+    live.perpendicular((67, 102), Axis::NS, Phase::DamageB, 6, Family::High);
     let expected_radar: Vec<(u16, u16)> = original["trace"]
         .as_array()
         .unwrap()
@@ -149,7 +148,11 @@ fn retained_pavement_restore_preserves_damaged_radar_colors_and_validity() {
         };
         initial.test_set_damaged_radar_metadata(0, 0, damaged);
         let mut live = initial.clone();
-        assert_eq!(live.apply_native_pavement((0, 0), true), [(0, 0)]);
+        let native = live.native_cell_identity((0, 0));
+        live.write_pavement_flags(
+            native,
+            live.native_cell_flags(native) | crate::map::bridge_pavement::DAMAGED_PAVEMENT,
+        );
         let saved = DynamicTerrainCellState::capture(live.cell(0, 0).unwrap());
         assert!(initial.apply_dynamic_cell_state(0, 0, &saved));
         assert_eq!(initial.current_tile_radar_metadata(0, 0), Some(damaged));

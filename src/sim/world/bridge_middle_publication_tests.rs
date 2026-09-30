@@ -63,13 +63,13 @@ fn retail_middle_perpendicular_live_tiles_match_original_sequences() {
                 rules: &runtime.resources.rules,
                 registry: Some(&runtime.resources.overlay_registry),
                 collapsed: false,
-                family: Family::High,
             };
             live.perpendicular(
                 (input.0 as i16, input.1 as i16),
                 axis,
                 phase,
                 case["direction"].as_u64().unwrap() as u8,
+                Family::High,
             );
             calls += 1;
             let recalculated: std::collections::BTreeSet<_> = step["recalc"]

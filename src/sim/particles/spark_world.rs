@@ -441,8 +441,7 @@ pub(super) mod tests {
     use crate::rules::ini_parser::IniFile;
     use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::bridge_state::{
-        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, BridgeheadAnchorClass,
-        DamageState,
+        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
     };
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
@@ -558,7 +557,6 @@ pub(super) mod tests {
                 role: BridgeCellRole::Body,
                 anchor_span_id: Some(1),
                 overlay_byte: 0x18,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
             },
         );
         sim.bridge_state = Some(bridge);
@@ -956,7 +954,6 @@ pub(super) mod tests {
                 role: BridgeCellRole::Body,
                 anchor_span_id: Some(1),
                 overlay_byte: 0x18,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
             },
         );
         sim.bridge_state = Some(bridge);

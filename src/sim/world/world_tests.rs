@@ -1447,11 +1447,11 @@ fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
     );
 
     let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-    let _ = bridge_state.write_overlay_byte(2, 1, 0xE8);
-    bridge_state
+    let collapsed = bridge_state
         .cell_mut(2, 1)
-        .expect("bridge body runtime cell")
-        .damage_state = crate::sim::bridge_state::DamageState::Destroyed;
+        .expect("bridge body runtime cell");
+    collapsed.overlay_byte = 0xE8;
+    collapsed.damage_state = crate::sim::bridge_state::DamageState::Destroyed;
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let collapsed_grid = sim.path_grid().expect("collapsed navigation publication");
     assert!(

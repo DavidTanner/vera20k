@@ -2817,31 +2817,6 @@ impl Simulation {
         }
     }
 
-    /// Commit the allocated real-cell half of a runtime setter that already
-    /// executed synchronously through `CellClassBridgeFlagState`. Dummy
-    /// coordinate/flag effects are live at the native call point and must not
-    /// be replayed here.
-    pub(crate) fn apply_planned_bridge_flag_stamp_to_real_cells(
-        &mut self,
-        stamp: crate::map::bridge_facts::BridgeFlagStamp,
-    ) {
-        let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return;
-        };
-        if !terrain.bridge_flag_authority_matches_shape(&self.real_cell_bridge_flags_0x1180) {
-            self.real_cell_bridge_flags_0x1180 = terrain.capture_real_cell_bridge_flags_0x1180();
-        }
-        let updates = self
-            .resolved_terrain
-            .as_mut()
-            .expect("terrain presence checked before planned bridge setter projection")
-            .apply_planned_bridge_flag_stamp_to_real_cells(stamp);
-        for (index, flags) in updates {
-            self.real_cell_bridge_flags_0x1180
-                .set_allocated_cell(index, flags);
-        }
-    }
-
     /// Synthetic fixtures may assign a detached grid directly. Production
     /// construction binds both owners, but gameplay must still read the live
     /// handle attached to the actual CellClass table it queried.
