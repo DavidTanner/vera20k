@@ -770,7 +770,12 @@ impl Simulation {
             .ok_or("Find_Path FNPC requires original Map Size")?;
         let current = coord_cell(ground_pose::position_world_coord(&actor.position));
         let current = (i32::from(current.0), i32::from(current.1));
-        let required_zone_id = zones.get_zone_id_native(current, zone, actor.on_bridge);
+        let required_zone_id = zones.get_zone_id_native(
+            terrain,
+            (current.0 as u16, current.1 as u16),
+            zone,
+            actor.on_bridge,
+        );
         let cells = NativeCellQuery::canonical(terrain);
         let grid = self.path_grid_snapshot();
         Ok(find_nearby_passable_cell(
@@ -851,7 +856,8 @@ impl Simulation {
             .ok_or("EstimateZoneCost requires zone topology")?;
         let label = |cell: (i16, i16)| {
             zones.get_zone_id_native(
-                (i32::from(cell.0), i32::from(cell.1)),
+                terrain,
+                (cell.0 as u16, cell.1 as u16),
                 object.movement_zone,
                 false,
             )

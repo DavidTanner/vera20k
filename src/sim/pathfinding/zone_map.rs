@@ -105,7 +105,14 @@ impl ZoneMap {
         &mut self.zone_ids
     }
 
-    /// Look up the zone ID for a cell at the given layer.
+    /// Look up the zone ID for a cell at the given layer in the reduced
+    /// PathGrid zone labels, not native GetZoneID (that is
+    /// [`ZoneGrid::get_zone_id_native`]). The bridge layer reads a redirect
+    /// table built at zone rebuild, not the live cells. RESIDUAL (#904):
+    /// `ZoneGrid::can_reach` (miner routing, zone_search, move-order
+    /// recovery) still answers through it. Trigger: a structural cell with no
+    /// matching high record, or an inactive deck. Effect: its answer can
+    /// differ from GetZoneID's. Frequency: bridge cells only.
     ///
     /// For bridge-layer queries on a structural cell, returns the ground zone
     /// selected by the matching high-bridge record. Nonstructural cells a high
@@ -392,20 +399,25 @@ impl ZoneGrid {
         raw_row.get(cluster as usize).copied()
     }
 
-    ///56D230 result as consumed by42C900: missing structural high record is
-    /// DWORDFFFFFFFF, distinct from raw rowFFFF. Query current native cell
-    /// identity/flags rather than inferring structural presence from a cache.
-    pub(crate) fn get_path_zone_id_native(
+    /// `MapClass::GetZoneID @ 0x0056D230(cell, movementZone, checkBridge)`,
+    /// the one port. With `checkBridge` set on a cell carrying the bridge
+    /// flag `0x100`, it resolves the matching high `BridgeRecord` and answers
+    /// the ground endpoint's zone, walking an inactive deck from the live
+    /// cells; a missing record answers DWORD `0xFFFFFFFF`, distinct from the
+    /// raw row value `0xFFFF`. Otherwise it projects the cell's own base
+    /// cluster through the movement row. It reads the current native cell
+    /// identity and flags rather than a cache.
+    pub(crate) fn get_zone_id_native(
         &self,
         terrain: &ResolvedTerrainGrid,
         coord: (u16, u16),
         movement_zone: MovementZone,
         check_bridge: bool,
     ) -> Option<u32> {
-        self.get_path_zone_id_native_in_query(terrain, coord, movement_zone, check_bridge, None)
+        self.get_zone_id_native_in_query(terrain, coord, movement_zone, check_bridge, None)
     }
 
-    pub(crate) fn get_path_zone_id_native_in_query(
+    pub(crate) fn get_zone_id_native_in_query(
         &self,
         terrain: &ResolvedTerrainGrid,
         coord: (u16, u16),
@@ -542,7 +554,7 @@ impl ZoneGrid {
             return Some(true);
         }
         let target = destination.coord(cells);
-        let target_zone = self.get_path_zone_id_native_in_query(
+        let target_zone = self.get_zone_id_native_in_query(
             cells.terrain(),
             (target.0 as u16, target.1 as u16),
             movement_zone,
@@ -550,7 +562,7 @@ impl ZoneGrid {
             Some(cells),
         )?;
         let source = source.coord(cells);
-        let source_zone = self.get_path_zone_id_native_in_query(
+        let source_zone = self.get_zone_id_native_in_query(
             cells.terrain(),
             (source.0 as u16, source.1 as u16),
             movement_zone,
@@ -558,54 +570,6 @@ impl ZoneGrid {
             Some(cells),
         )?;
         Some(source_zone == target_zone)
-    }
-
-    /// `MapClass::GetZoneID @ 0x0056D230` with its third argument, the
-    /// bridge-resolution flag, honoured.
-    ///
-    /// Native takes `(CellStruct *cell, int movementZone, char checkBridge)`.
-    /// With `checkBridge` set and the cell carrying the bridge flag `0x100`, it
-    /// resolves the matching `BridgeRecord` and answers with the ground
-    /// endpoint's zone; otherwise it projects the cell's own base cluster
-    /// through the requested movement row. `checkBridge` clear skips the
-    /// record lookup entirely.
-    ///
-    /// Legacy cached16-bit consumers pass the source/destination bridge flag.
-    /// Missing-record DWORD and live inactive-walk parity remain unresolved
-    /// here;42C900 uses get_path_zone_id_native with current terrain instead:
-    /// - `TechnoClass::Greatest_Threat @ 0x006F8EBF`, a literal `1` for the
-    ///   scanner's own cell, and `TechnoClass::Evaluate_Candidate @
-    ///   0x006F7E95`, the candidate's `Object+0x8C` on-bridge byte.
-    pub(crate) fn get_zone_id_native(
-        &self,
-        coord: (i32, i32),
-        movement_zone: MovementZone,
-        check_bridge: bool,
-    ) -> Option<ZoneId> {
-        if !check_bridge {
-            return self.get_zone_id_nonbridge_native(coord, movement_zone);
-        }
-
-        let packed = (coord.0 as i16 as i32, coord.1 as i16 as i32);
-        if packed.0 >= 0
-            && packed.1 >= 0
-            && packed.0 < i32::from(self.width)
-            && packed.1 < i32::from(self.height)
-        {
-            let map = self.maps.get(&movement_zone)?;
-            let index = packed.1 as usize * usize::from(self.width) + packed.0 as usize;
-            if let Some(Some(endpoint)) = map
-                .bridge_redirect
-                .as_ref()
-                .and_then(|redirect| redirect.get(index))
-            {
-                return self.get_zone_id_nonbridge_native(
-                    (i32::from(endpoint.0), i32::from(endpoint.1)),
-                    movement_zone,
-                );
-            }
-        }
-        self.get_zone_id_nonbridge_native(packed, movement_zone)
     }
 
     /// The native projected endpoint can address padding or a linear alias.
