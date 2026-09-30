@@ -311,8 +311,12 @@ fn arm_enter_retry(sim: &mut Simulation, rules: &RuleSet, timer: &mut MissionTim
 }
 
 /// Drive the unit straight onto/off the pad (footprint cells are not grid
-/// walkable, so bypass the grid like the refinery pad entry does).
+/// walkable, so bypass the grid like the refinery pad entry does). A Chrono
+/// Miner on its Teleport drives here like any unit: the order's Unit setter
+/// runs its Teleporter arm, which installs a Drive over the Teleport
+/// (`0x007425E6..0x0074277E`; a depot is no `DockUnload=` contact).
 fn issue_pad_move(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
+    sim.unit_teleporter_arm(id, Some(target), rules);
     let speed = sim
         .resolve_move_info(id, Some(rules))
         .map(|info| info.speed)

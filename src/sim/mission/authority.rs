@@ -1253,9 +1253,9 @@ impl Simulation {
                 // the next locomotor step acts on — the stored path array is
                 // never archived, only the destination is. VERA finishes that
                 // setter at the object's next Process entry, which this flag
-                // arms: `complete_pending_track_order` for Drive and Ship, the
-                // ground corridor's rebuild for Walk and Hover, and
-                // `complete_pending_class_order` for Teleport, Fly and Jumpjet.
+                // arms: `complete_pending_order` for Drive, Ship, Teleport,
+                // Fly and Jumpjet, and the ground corridor's rebuild for Walk
+                // and Hover.
                 // Without it a restored object holds its order and never moves
                 // toward it, which is exactly the state a blocked-step Override
                 // leaves it in.

@@ -885,6 +885,13 @@ impl Simulation {
             return;
         };
 
+        // A mover whose active locomotor is Teleport takes its class setter.
+        if self
+            .teleport_destination(attacker_id, entry_cell, Some(rules))
+            .is_some()
+        {
+            return;
+        }
         let speed = self
             .resolve_move_info(attacker_id, Some(rules))
             .as_ref()
@@ -1284,7 +1291,9 @@ impl Simulation {
                 if entity.mission.current().known() == Some(MissionType::Sticky) {
                     actions.push(PursuitAction::DropTargetAndMovement { entity_id: id });
                 } else if entity.movement_target.is_none() {
-                    // Out of range, no current pursuit — issue a path.
+                    // Out of range, no current pursuit — issue a path. A
+                    // mover on Teleport warps to this cell (the target's
+                    // own): see `teleport_move_to`'s residual.
                     actions.push(PursuitAction::IssueMove {
                         entity_id: id,
                         goal: (trx, try_),

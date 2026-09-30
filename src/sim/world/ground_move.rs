@@ -127,7 +127,7 @@ impl Simulation {
     ///   queued waypoint replaces the order, and an object order warps to the
     ///   object's cell. Trigger: a queued or object order to a Chrono unit.
     ///   Frequency: uncommon.
-    pub(super) fn teleport_destination(
+    pub(crate) fn teleport_destination(
         &mut self,
         id: u64,
         cell: (u16, u16),

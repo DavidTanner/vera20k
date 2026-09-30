@@ -397,7 +397,6 @@ fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
                     id,
                     sim.session.tick,
                     None,
-                    None,
                 );
             }
         }

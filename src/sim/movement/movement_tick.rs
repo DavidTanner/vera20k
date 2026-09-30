@@ -542,7 +542,7 @@ fn process_pending_drive_arrivals(
             continue;
         }
         // Drive/Ship finish their deferred order before Process
-        // (`Simulation::complete_pending_track_order`).
+        // (`Simulation::complete_pending_order`).
         if entity.locomotor.as_ref().is_some_and(|loco| {
             matches!(
                 loco.active_kind(),

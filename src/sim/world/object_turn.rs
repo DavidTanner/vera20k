@@ -23,36 +23,58 @@ pub(super) fn shp_vehicle_counter_admitted(tube_active_at_entry: bool) -> bool {
     !tube_active_at_entry
 }
 
-/// The warp's two VocClass::PlayAt calls (`0x0071962C` at the old location,
-/// `0x00719710` at the new): the type's ChronoOutSound/ChronoInSound
-/// (TechnoType+0x578/+0x574), else `[AudioVisual]` (Rules+0x21C/+0x218), else
-/// silence.
-fn teleport_warp_sounds(
-    sim: &mut Simulation,
-    stable_id: u64,
-    departure: Option<(u16, u16)>,
-    rules: &RuleSet,
-) {
+/// The warp's two VocClass::PlayAt calls: ChronoOut (`0x0071962C`, at the old
+/// location) and ChronoIn (`0x00719710`, at the new).
+#[derive(Clone, Copy)]
+enum WarpSound {
+    Out,
+    In,
+}
+
+/// One warp sound at the owner's current cell: the type's
+/// ChronoOutSound/ChronoInSound (TechnoType+0x578/+0x574), else
+/// `[AudioVisual]` (Rules+0x21C/+0x218), else silence.
+fn teleport_warp_sound(sim: &mut Simulation, stable_id: u64, sound: WarpSound, rules: &RuleSet) {
     let Some(entity) = sim.substrate.entities.get(stable_id) else {
         return;
     };
-    let arrival = (entity.position.rx, entity.position.ry);
+    let (rx, ry) = (entity.position.rx, entity.position.ry);
     let object = sim.object_type(entity.type_ref(), rules);
-    let chrono_out = object
-        .and_then(|object| object.chrono_out_sound.clone())
-        .or_else(|| rules.general.chrono_out_sound.clone());
-    let chrono_in = object
-        .and_then(|object| object.chrono_in_sound.clone())
-        .or_else(|| rules.general.chrono_in_sound.clone());
-    for (name, (rx, ry)) in [
-        (chrono_out, departure.unwrap_or(arrival)),
-        (chrono_in, arrival),
-    ] {
-        if let Some(name) = name {
-            let sound_id = sim.interner.intern(&name);
-            sim.sound_events
-                .push(super::SimSoundEvent::ChronoTeleport { sound_id, rx, ry });
-        }
+    let name = match sound {
+        WarpSound::Out => object
+            .and_then(|object| object.chrono_out_sound.clone())
+            .or_else(|| rules.general.chrono_out_sound.clone()),
+        WarpSound::In => object
+            .and_then(|object| object.chrono_in_sound.clone())
+            .or_else(|| rules.general.chrono_in_sound.clone()),
+    };
+    if let Some(name) = name {
+        let sound_id = sim.interner.intern(&name);
+        sim.sound_events
+            .push(super::SimSoundEvent::ChronoTeleport { sound_id, rx, ry });
+    }
+}
+
+/// A Teleport Process `[General] WarpOut=` animation at the owner's cell,
+/// constructed inside the mover's own turn.
+fn teleport_warp_out(sim: &mut Simulation, stable_id: u64, rules: &RuleSet) {
+    let Some(entity) = sim.substrate.entities.get(stable_id) else {
+        return;
+    };
+    let descriptor = teleport_movement::warp_out_anim(
+        sim.interner.intern(&rules.general.warp_out.name),
+        entity.position.rx,
+        entity.position.ry,
+        entity.position.z,
+    );
+    let type_name = descriptor.type_name;
+    if let Err(error) = sim.spawn_anim_object(rules, descriptor) {
+        // An art type that never bound draws nothing natively either; see
+        // `spawn_combat_explosion_anim`.
+        log::debug!(
+            "teleport warp [{}] did not construct: {error}",
+            sim.interner.resolve(type_name)
+        );
     }
 }
 
@@ -199,7 +221,6 @@ impl Simulation {
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        cell_before_movement: Option<(u16, u16)>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         use crate::rules::locomotor_type::LocomotorKind;
         let (admitted, sinking) =
@@ -245,12 +266,9 @@ impl Simulation {
             LocomotorKind::Fly | LocomotorKind::Jumpjet => {
                 self.process_air_locomotor(stable_id, rules, overlay_registry)
             }
-            LocomotorKind::Teleport => self.process_teleport_locomotor(
-                stable_id,
-                rules,
-                overlay_registry,
-                cell_before_movement,
-            ),
+            LocomotorKind::Teleport => {
+                self.process_teleport_locomotor(stable_id, rules, overlay_registry)
+            }
             LocomotorKind::Rocket => Ok(self.process_rocket_locomotor(stable_id)),
         }
     }
@@ -264,7 +282,7 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         let mut process = LocomotorProcess::admitted();
-        self.complete_pending_class_order(stable_id, rules);
+        self.complete_pending_order(stable_id, rules);
         let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules);
         if air.touched_down {
             process.bridge_state_changed |= self.per_cell_process(
@@ -313,9 +331,8 @@ impl Simulation {
         stable_id: u64,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        cell_before_movement: Option<(u16, u16)>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
-        self.complete_pending_class_order(stable_id, rules);
+        self.complete_pending_order(stable_id, rules);
         let sim = self;
         let mut process = LocomotorProcess::admitted();
         let teleport_armed = sim
@@ -329,68 +346,44 @@ impl Simulation {
             teleport_movement::warp_destination_reached(entity, sim.resolved_terrain.as_ref())
         });
         let teleport_relocating = teleport_armed && !teleport_reached;
-        // Teleport Process 0x007195BF..0x007195CF: the warp step ejects a
-        // parasite (ExitUnit, no suppression) before the relocation.
-        if teleport_relocating
-            && let Some(rules) = rules
-            && let Some(eater) = sim
-                .substrate
-                .entities
-                .get(stable_id)
-                .and_then(|entity| entity.parasite_eating_me)
-        {
-            sim.parasite_exit_unit(eater, rules);
-        }
-        // `0x007195D4` Mark(UP) and `0x007196B8` Mark(DOWN) bracket the
-        // relocation: the cell lists, the raw occupation and the vehicle plane
-        // leave the old cell and join the new one on its OnBridge layer.
         if teleport_relocating {
+            // 0x007193C7: the Techno detach sweep drops the locks aimed at
+            // the owner; 0x00719442: the departure WarpOut at its Location.
+            teleport_movement::release_incoming_target_locks(
+                &mut sim.substrate.entities,
+                stable_id,
+            );
+            if let Some(rules) = rules {
+                teleport_warp_out(sim, stable_id, rules);
+            }
+            // 0x007195BF..0x007195CF: a parasite is ejected (ExitUnit, no
+            // suppression).
+            if let Some(rules) = rules
+                && let Some(eater) = sim
+                    .substrate
+                    .entities
+                    .get(stable_id)
+                    .and_then(|entity| entity.parasite_eating_me)
+            {
+                sim.parasite_exit_unit(eater, rules);
+            }
+            // `0x007195DB` Mark(UP) and `0x007196BF` Mark(DOWN) bracket the
+            // relocation: the cell lists, the raw occupation and the vehicle
+            // plane leave the old cell and join the new one on its OnBridge
+            // layer. ChronoOut plays at the old Location (`0x0071962C`).
             sim.foot_mark_remove(stable_id, rules, overlay_registry);
+            if let Some(rules) = rules {
+                teleport_warp_sound(sim, stable_id, WarpSound::Out, rules);
+            }
         }
-        if let Some(rules) = rules {
-            let warp_out_type = sim.interner.intern(&rules.general.warp_out.name);
-            let mut warp_spawns = Vec::new();
-            let mut teleport_visuals = teleport_movement::TeleportVisuals {
-                anim_spawns: &mut warp_spawns,
-                warp_out_type,
-            };
-            teleport_movement::process_teleport(
-                &mut sim.substrate.entities,
-                stable_id,
-                sim.session.tick,
-                sim.resolved_terrain.as_ref(),
-                Some(&mut teleport_visuals),
-            );
-            if teleport_relocating {
-                sim.foot_mark_put(stable_id, Some(rules), overlay_registry);
-            }
-            // RESIDUAL: the destination WarpOut is built here with the source
-            // one; native builds it after the arrival's Per_Cell_Process(2),
-            // Stop_Moving, crate pickup and NULL assign (`0x00719742`). Only
-            // an arrival step that draws RNG (a crush's death animation)
-            // could see the order.
-            for descriptor in warp_spawns {
-                let type_name = descriptor.type_name;
-                if let Err(error) = sim.spawn_anim_object(rules, descriptor) {
-                    // An art type that never bound draws nothing natively
-                    // either; see `spawn_combat_explosion_anim`.
-                    log::debug!(
-                        "teleport warp [{}] did not construct: {error}",
-                        sim.interner.resolve(type_name)
-                    );
-                }
-            }
-        } else {
-            teleport_movement::process_teleport(
-                &mut sim.substrate.entities,
-                stable_id,
-                sim.session.tick,
-                sim.resolved_terrain.as_ref(),
-                None,
-            );
-            if teleport_relocating {
-                sim.foot_mark_put(stable_id, None, overlay_registry);
-            }
+        teleport_movement::process_teleport(
+            &mut sim.substrate.entities,
+            stable_id,
+            sim.session.tick,
+            sim.resolved_terrain.as_ref(),
+        );
+        if teleport_relocating {
+            sim.foot_mark_put(stable_id, rules, overlay_registry);
         }
         // Teleport Process's warp step (`0x007192F0`), after the relocation.
         // Its `vt+0x480(NULL, 1)` is the owner's class setter: the Unit one,
@@ -412,8 +405,9 @@ impl Simulation {
             null_destination(sim);
         }
         if teleport_relocating {
+            // 0x00719710: ChronoIn at the new Location.
             if let Some(rules) = rules {
-                teleport_warp_sounds(sim, stable_id, cell_before_movement, rules);
+                teleport_warp_sound(sim, stable_id, WarpSound::In, rules);
             }
             // Relocation 0x0071971C calls vt+0x18C(2), including a same-cell
             // relocation; ordinary Fly motion has no such call.
@@ -432,6 +426,10 @@ impl Simulation {
             // contact gets a Drive here, which the FootClass::AI tail ends
             // again.
             null_destination(sim);
+            // 0x00719742..0x00719791: the arrival WarpOut at the Location.
+            if let Some(rules) = rules {
+                teleport_warp_out(sim, stable_id, rules);
+            }
         }
         Ok(process)
     }
@@ -487,70 +485,6 @@ impl Simulation {
             self.session.tick,
         );
         !falling(self)
-    }
-
-    /// A destination Rust deferred (`pending_arrival_clear`), finished before
-    /// a Teleport, Fly or Jumpjet Process, where natively its class setter
-    /// already ran. The one producer these locomotors meet is a mission
-    /// Restore, whose `Assign_Destination(saved, 1)` (`FootClass::Restore_Mission`
-    /// `0x004D8F8C..0x004D8F99`) `mission::authority` represents by NavCom
-    /// alone. Drive and Ship finish theirs in `complete_pending_track_order`;
-    /// Walk and Hover keep the ground corridor's rebuild.
-    /// - NavCom's cell, else the first queued cell, goes to the class setter
-    ///   as a fresh destination: the Teleport route
-    ///   ([`Self::teleport_destination`]) or the air setter
-    ///   ([`Self::issue_air_cell_destination`]). NavCom is cleared first, as
-    ///   the setter found it, so the Unit setter's unchanged-NavCom return
-    ///   cannot swallow it.
-    /// - With neither, the NULL clear.
-    ///
-    /// This keeps the retired rebuild's choice of cell. An object NavCom (an
-    /// Enter or follow target) falls to the queue or the clear, as it did.
-    fn complete_pending_class_order(&mut self, stable_id: u64, rules: Option<&RuleSet>) {
-        use crate::rules::locomotor_type::LocomotorKind;
-        use crate::sim::components::NavTargetRef;
-        let Some(rules) = rules else {
-            return;
-        };
-        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
-            return;
-        };
-        if !entity.navigation.pending_arrival_clear {
-            return;
-        }
-        entity.navigation.pending_arrival_clear = false;
-        let navigation = &mut entity.navigation;
-        let cell = match navigation.nav_com {
-            Some(NavTargetRef::Cell { rx, ry }) => Some((rx, ry)),
-            _ => match navigation.nav_queue.first().copied() {
-                Some(NavTargetRef::Cell { rx, ry }) => {
-                    navigation.nav_queue.remove(0);
-                    Some((rx, ry))
-                }
-                _ => None,
-            },
-        };
-        let Some(cell) = cell else {
-            movement::set_destination_internal_null(entity);
-            return;
-        };
-        entity.navigation.nav_com = None;
-        entity.navigation.nav_com_aux = None;
-        let kind = entity
-            .locomotor
-            .as_ref()
-            .map(|locomotor| locomotor.active_kind());
-        match kind {
-            Some(LocomotorKind::Teleport) => {
-                self.teleport_destination(stable_id, cell, Some(rules));
-            }
-            Some(LocomotorKind::Fly | LocomotorKind::Jumpjet) => {
-                if let Some(info) = self.resolve_move_info(stable_id, Some(rules)) {
-                    self.issue_air_cell_destination(stable_id, cell, info.speed, Some(rules));
-                }
-            }
-            _ => {}
-        }
     }
 }
 
@@ -623,7 +557,7 @@ impl Simulation {
         // Grid-less component fixtures keep the pass's empty-arrival cleanup;
         // the pass searches with the Simulation grid or the caller's.
         if path_grid.is_some() || sim.path_grid.is_some() {
-            sim.complete_pending_track_order(stable_id, rules);
+            sim.complete_pending_order(stable_id, rules);
         }
         let movement_before = sim.substrate.entities.get(stable_id).map(|entity| {
             (
@@ -1026,13 +960,7 @@ impl Simulation {
                 ..LocomotorProcess::from_ground(ground)
             }
         } else {
-            sim.process_active_locomotor(
-                stable_id,
-                rules,
-                path_grid,
-                overlay_registry,
-                cell_before_movement,
-            )?
+            sim.process_active_locomotor(stable_id, rules, path_grid, overlay_registry)?
         };
         let track_owned = process.track_owned;
         per_cell_ran |= process.per_cell_ran;
