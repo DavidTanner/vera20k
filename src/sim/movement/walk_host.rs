@@ -88,10 +88,7 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(());
         };
-        if !actor.lifecycle.object_alive
-            || actor.lifecycle.in_limbo
-            || actor.is_falling_down()
-        {
+        if !actor.lifecycle.object_alive || actor.lifecycle.in_limbo || actor.is_falling_down() {
             return Ok(());
         }
         let Some(loco) = actor
@@ -162,10 +159,17 @@ impl Simulation {
             return;
         };
         self.foot_mark_remove(id, rules, registry);
+        //75C12E: SetLocation (vt+0x1B4).
+        ground_pose::foot_set_location(
+            &mut self.substrate.entities,
+            id,
+            coord,
+            rules,
+            &self.interner,
+        );
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        put_walk_coords(&mut e.position, coord);
         let cell = (e.position.rx, e.position.ry);
         let active_layer = e
             .movement_target
@@ -235,7 +239,17 @@ impl Simulation {
             .unwrap_or(head);
         let old_head = e.locomotor.as_ref().and_then(|l| l.step_head());
         super::path_markers::consume_walk_path_replay(&mut e.navigation.path_replay);
-        put_walk_coords(&mut e.position, head);
+        //75BDC0: SetLocation (vt+0x1B4) at the completed head.
+        ground_pose::foot_set_location(
+            &mut self.substrate.entities,
+            id,
+            head,
+            rules,
+            &self.interner,
+        );
+        let Some(e) = self.substrate.entities.get_mut(id) else {
+            return Ok(false);
+        };
         e.navigation.path_replay.reference_cell =
             Some((e.position.rx as i16, e.position.ry as i16));
         if let Some(target) = e.movement_target.as_mut() {
@@ -307,12 +321,4 @@ impl Simulation {
         }
         Ok(changed)
     }
-}
-
-fn put_walk_coords(position: &mut crate::sim::components::Position, coord: DriveCoord) {
-    position.rx = (coord.x / 256) as u16;
-    position.ry = (coord.y / 256) as u16;
-    position.sub_x = crate::util::fixed_math::SimFixed::from_num(coord.x % 256);
-    position.sub_y = crate::util::fixed_math::SimFixed::from_num(coord.y % 256);
-    position.exact_z_leptons = Some(coord.z);
 }

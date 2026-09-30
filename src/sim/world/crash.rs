@@ -201,7 +201,13 @@ impl Simulation {
                 z: location.z.wrapping_sub(counter),
                 ..location
             };
-            self.foot_set_coords(id, dropped, rules);
+            crate::sim::movement::ground_pose::foot_set_location(
+                &mut self.substrate.entities,
+                id,
+                dropped,
+                rules,
+                &self.interner,
+            );
             self.mark_entity_put(id, context);
             self.submit_entity_display(id, rules, None);
         }
