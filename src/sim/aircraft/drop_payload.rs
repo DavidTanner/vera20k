@@ -183,6 +183,20 @@ pub fn try_drop(
             let drop_sub_x = SimFixed::from_num(drop_x_lep.rem_euclid(256));
             let drop_sub_y = SimFixed::from_num(drop_y_lep.rem_euclid(256));
 
+            // Paradrop refuses a structural bridge cell (`+0x140 & 0x100`)
+            // without the `0x200` flag (`0x005F597B..0x005F5996`).
+            if sim
+                .resolved_terrain
+                .as_ref()
+                .and_then(|terrain| terrain.cell(drop_rx, drop_ry))
+                .is_some_and(|cell| {
+                    cell.bridge_facts.has_structural_bridge()
+                        && !cell.bridge_facts.has_transition_flag()
+                })
+            {
+                return Err(DepartureFailure::Placement);
+            }
+
             // Native: ObjectClass::SpawnParachuted computes the landing plane and then
             // calls CellClass::IsClearToMove before virtual Unlimbo. Zone identity is
             // not threaded into this Rust caller, so only that unavailable comparison
@@ -258,8 +272,16 @@ pub fn try_drop(
             // limbo. Parachute attachment follows; Reveal is the success boundary.
             // Do NOT touch `loco.altitude` here: normal paradropped infantry keep
             // their base locomotor identity, and the fall's height is the
-            // Location Z. Paradrop sets OnBridge over a bridge (`0x005F5986`)
+            // Location Z. Paradrop sets OnBridge on the `0x100` flag
+            // (`0x005F5986`), the flag that makes IsClearToMove select the deck,
             // before Unlimbo's Mark, so GetHeight measures the fall to the deck.
+            // RESIDUAL: native sets it before its admission checks, never
+            // clears it, and restores nothing when the drop fails; this writes
+            // it once admitted. They differ only when a passenger's drop over a
+            // bridge cell failed and a later drop lands off the bridge: native
+            // keeps OnBridge set unless something clears it in between (not
+            // traced), so its fall would stop at deck height. Rare; risk: one
+            // paratrooper's height.
             if let Some(passenger) = sim.substrate.entities.get_mut(passenger_id) {
                 passenger.sub_cell = selected_sub_cell;
                 passenger.passenger_role = PassengerRole::None;
@@ -596,6 +618,51 @@ mod tests {
         );
         assert!(passenger.is_falling_down());
         assert_eq!(passenger.position.exact_z_leptons, Some(plane_z));
+    }
+
+    /// Over a structural bridge cell (`+0x140 & 0x100`) Paradrop sets OnBridge
+    /// (`0x005F5986`) and refuses the cell unless it also has the `0x200` flag
+    /// (`0x005F598D..0x005F5996`).
+    #[test]
+    fn a_drop_over_a_bridge_cell_needs_its_0x200_flag() {
+        use crate::map::bridge_facts::{BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION};
+        use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
+
+        let rules = drop_test_rules();
+        let drop = |flags: u32| {
+            let mut sim = Simulation::new();
+            let cells = (0..64u16)
+                .flat_map(|y| {
+                    (0..64u16).map(move |x| {
+                        let mut cell = test_flat_cell(x, y);
+                        if (x, y) == (51, 20) {
+                            cell.bridge_facts.raw_flags = flags;
+                            cell.has_bridge_deck = true;
+                            cell.bridge_deck_level = 4;
+                        }
+                        cell
+                    })
+                })
+                .collect();
+            sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(
+                64, 64, cells,
+            ));
+            insert_loaded_paradrop_pair(&mut sim, 1, 2);
+            let result = try_drop(&mut sim, &rules, 1, 4);
+            let passenger = sim.substrate.entities.get(2).unwrap();
+            (
+                result,
+                matches!(passenger.passenger_role, PassengerRole::Inside { .. }),
+                passenger.on_bridge,
+            )
+        };
+
+        let (result, inside, _) = drop(BRIDGE_FLAG_STRUCTURAL);
+        assert_eq!((result, inside), (DropResult::ImpassableRetry, true));
+        assert_eq!(
+            drop(BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_TRANSITION),
+            (DropResult::Success, false, true)
+        );
     }
 
     #[test]

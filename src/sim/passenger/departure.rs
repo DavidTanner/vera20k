@@ -136,7 +136,6 @@ fn restore_departure(
                         transport_id,
                         open_topped,
                     };
-                    passenger.on_bridge = prior_layer == MovementLayer::Bridge;
                     if let Some(locomotor) = passenger.locomotor.as_mut() {
                         locomotor.layer = prior_layer;
                     }

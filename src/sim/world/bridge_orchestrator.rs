@@ -1147,6 +1147,47 @@ mod tests {
         assert_eq!(cell.count_on(MovementLayer::Bridge), 0);
     }
 
+    /// DropIn (`0x005F4160`) writes no Location: an object falling onto the
+    /// deck keeps its Z when the deck goes, and falls on to the ground.
+    #[test]
+    fn drop_in_keeps_a_falling_objects_z_and_it_falls_to_the_ground() {
+        let mut sim = Simulation::new();
+        sim.resolved_terrain = Some(water_below_bridge_terrain(3));
+        let id = spawn_deck_unit(&mut sim);
+        let entity = sim.substrate.entities.get_mut(id).unwrap();
+        entity.position.exact_z_leptons = Some(1000);
+        entity.set_falling_down_for_test(true);
+        sim.substrate.occupancy.add(
+            5,
+            5,
+            id,
+            MovementLayer::Bridge,
+            None,
+            CellListInsertion::PrependNonBuilding,
+        );
+
+        drop_in_bridge_deck_entities(&mut sim, 5, 5);
+
+        let e = sim.substrate.entities.get(id).unwrap();
+        assert!(!e.on_bridge);
+        assert!(e.is_falling_down());
+        assert_eq!(e.position.exact_z_leptons, Some(1000));
+        let mut frames = 0;
+        while !sim.advance_fall(id, -8) {
+            frames += 1;
+            assert!(frames < 200, "the fall reaches the ground");
+        }
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .position
+                .exact_z_leptons,
+            Some(0)
+        );
+    }
+
     /// Bound synthetic explosion types for the hut-walker fixture.
     fn bridge_explosion_rules() -> crate::rules::ruleset::RuleSet {
         let ini = crate::rules::ini_parser::IniFile::from_str("");

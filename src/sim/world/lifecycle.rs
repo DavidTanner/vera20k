@@ -1798,8 +1798,11 @@ impl Simulation {
     /// is set, then clears it and re-enters through the multi-cell hooks.
     /// The fresh entry order also owns reconstruction after snapshot restore.
     ///
-    /// This preserves the existing Rust ground snap and locomotor reset.
-    /// Native falling/unchanged-Z, concrete raw occupation callbacks, and
+    /// This preserves the existing Rust ground snap and locomotor reset for an
+    /// object that is not falling. DropIn writes no Location, so an object
+    /// already falling onto the deck keeps its Z and falls on to the ground
+    /// ([`Simulation::advance_fall`]). Native falling/unchanged-Z for the
+    /// others, IsABomb (`+0x8F`), concrete raw occupation callbacks, and
     /// hidden-building occupation entry remain DRIFT. Add/RemoveContent skip Infantry raw callbacks;
     /// full Mark/Unmark would also discard reservations and building smudges.
     pub(super) fn drop_in_bridge_member(&mut self, stable_id: u64) {
@@ -1826,7 +1829,9 @@ impl Simulation {
             .expect("member remains represented");
         entity.on_bridge = false;
         entity.position.z = ground_level;
-        entity.position.exact_z_leptons = None;
+        if !entity.is_falling_down() {
+            entity.position.exact_z_leptons = None;
+        }
         entity.movement_target = None;
         if let Some(loco) = entity.locomotor.as_mut() {
             loco.layer = MovementLayer::Ground;

@@ -163,17 +163,23 @@ impl crate::sim::world::Simulation {
     ///   (`0x005F3F7A`) puts it on the ground or deck, and the falling byte
     ///   clears (`0x005F3F86`).
     /// - Otherwise a parachute's FallRate drops by one, no lower than
-    ///   `Rules+0x7B8` (`0x005F3FBC..0x005F3FFA`). Native updates it on the
-    ///   grounding frame too; VERA drops the state there, and no later fall
-    ///   starts from it.
+    ///   `Rules+0x7B8` (`0x005F3FBC..0x005F3FFA`). Native also updates it on
+    ///   the grounding frame and keeps it after the fall; VERA drops it with
+    ///   the falling state. Only DropIn's fall (`0x005F4160`), which does not
+    ///   reset the rate, would start from a kept one, and VERA's DropIn grounds
+    ///   a standing object instead (DRIFT at `drop_in_bridge_member`).
     ///
     /// RESIDUAL: while the object is on the map, native removes it from its
-    /// cells and marks it again around the Z write (`vt+0x124` at `0x005F3F46`
-    /// and `0x005F3F58`). When its display layer (`vt+0x78`) changes, native
-    /// also resubmits it (`0x004A9720` at `0x005F400E`). VERA does neither
-    /// here. Trigger: every falling frame. Effect: none unless Mark or the
-    /// layer depends on the height, which is unverified. Frequency: every
-    /// paradrop.
+    /// cell and marks it again around the Z write (`vt+0x124` at `0x005F3F46`
+    /// and `0x005F3F58`). FootClass::Mark (`0x004D3780`) re-adds it through
+    /// Place_Down (`0x005683C0`) and AddContent (`0x0047E8A0`), at the head of
+    /// its cell's list; VERA leaves it where Reveal put it. Trigger: another
+    /// object entering the cell during a fall. Effect: that cell's list order,
+    /// which first-object reads and list walks follow. Frequency: rare.
+    /// Native also resubmits the object when its display layer (`vt+0x78`)
+    /// changes (`0x004A9720` at `0x005F400E`). A ground mover's layer does not
+    /// read the height, so only a falling Jumpjet (a paradropped Rocketeer)
+    /// could change layer; VERA does not resubmit it.
     pub(crate) fn advance_fall(&mut self, stable_id: u64, max_fall_rate: i32) -> bool {
         let terrain = self.resolved_terrain.as_ref();
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
