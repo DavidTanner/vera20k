@@ -520,7 +520,7 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
             cursor: 0,
             reference_cell: Some((10, 10)),
         };
-        let saved_fraction = entity.foot_speed.applied_fraction;
+        let saved_fraction = entity.foot_speed.applied_fraction();
         let mut callbacks = 0;
         sim.run_track_points_observed(
             invocation,
@@ -543,7 +543,9 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
                         cursor: 0,
                         reference_cell: Some((6, 7)),
                     };
-                    entity.foot_speed.applied_fraction = SimFixed::from_num(0.25);
+                    entity
+                        .foot_speed
+                        .set_speed_fraction(SimFixed::from_num(0.25));
                     if retire_in_callback {
                         entity.lifecycle.in_limbo = true;
                     }
@@ -563,7 +565,10 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
                 entity.navigation.path_replay.remaining_directions(),
                 &[7, 3, 4]
             );
-            assert_eq!(entity.foot_speed.applied_fraction, SimFixed::from_num(0.25));
+            assert_eq!(
+                entity.foot_speed.applied_fraction(),
+                SimFixed::from_num(0.25)
+            );
             continue;
         }
         assert_eq!(head(entity, family), DriveCoord::cell(11, 9, 0));
@@ -575,7 +580,7 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
             entity.navigation.path_replay.remaining_directions(),
             &[3, 4]
         );
-        assert_eq!(entity.foot_speed.applied_fraction, saved_fraction);
+        assert_eq!(entity.foot_speed.applied_fraction(), saved_fraction);
     }
 }
 

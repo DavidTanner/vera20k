@@ -252,7 +252,7 @@ fn power_and_force_release(sim: &mut Simulation, building_id: u64, unit_id: u64)
     //45944A/45976F write this even after Force's null/limbo early return.
     // Re-resolve after its callback; never resurrect a removed receiver.
     if let Some(unit) = sim.substrate.entities.get_mut(unit_id) {
-        unit.foot_speed.applied_fraction = SIM_ONE;
+        unit.foot_speed.set_speed_fraction(SIM_ONE);
     }
     #[cfg(test)]
     release_tests::record(sim, building_id, unit_id, "speed");

@@ -482,7 +482,7 @@ fn actual_entry_turn_gate_precedes_speed_and_points_for_both_families() {
             setup_turn(&mut sim, kind, false, true, true);
             let entity = sim.substrate.entities.get_mut(1).unwrap();
             entity.drive_accelerates = false;
-            entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+            entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
             let (valid, latch, mut track) = retained(entity, kind);
             track.residual = 17;
             set_retained(entity, kind, valid, latch, track);
@@ -513,10 +513,10 @@ fn actual_entry_turn_gate_precedes_speed_and_points_for_both_families() {
                 "active Process must not sample the expired live timer"
             );
             if turret {
-                assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
+                assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::ONE);
                 assert!(track.cursor > 0, "admitted prefix must reach paid points");
             } else {
-                assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
+                assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
                 assert_eq!((track.cursor, track.residual), (0, 0));
                 assert_eq!(
                     super::super::ground_pose::position_world_coord(&entity.position),
@@ -561,7 +561,7 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 // Can_Enter_Cell; facing north, the other turns first.
                 entity.body_facing = FacingClass::new(if refused { 0x4000 } else { 0 }, 0);
                 entity.drive_accelerates = false;
-                entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+                entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
                 let speed_before = entity.foot_speed.clone();
                 entity.navigation.nav_com = Some(NavTargetRef::cell(10, 8));
                 entity.navigation.path_replay = FootPathQueue {

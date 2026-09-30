@@ -225,7 +225,7 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
                     entity.lifecycle.cell_marked = true;
                     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
                     entity.drive_accelerates = false;
-                    entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+                    entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
                     let track = TrackProgress {
                         turn_index: selector,
                         cursor: 0,
@@ -257,7 +257,7 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
                         .unwrap();
                     let entity = sim.substrate.entities.get(1).unwrap();
                     assert_eq!(
-                        entity.foot_speed.applied_fraction,
+                        entity.foot_speed.applied_fraction(),
                         SimFixed::lit(if valid && selector != -1 {
                             "0.75"
                         } else {

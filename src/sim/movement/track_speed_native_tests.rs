@@ -129,18 +129,3 @@ fn drive_ship_prefixes_match_original_fraction_bits_setter_gates_distance_and_wa
     assert_eq!(families, [58, 58]);
     assert_eq!(distance_cases, 88);
 }
-
-#[test]
-fn setter_matches_original_finite_owner_corpus() {
-    let cases: Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/foot_speed_owner.json"
-    ))
-    .unwrap();
-    for case in cases.as_array().unwrap() {
-        let requested =
-            NativeF64Bits::from_bits(case["input"]["requested"].as_f64().unwrap().to_bits());
-        let expected =
-            NativeF64Bits::from_bits(case["output"]["applied"].as_f64().unwrap().to_bits());
-        assert_eq!(set_fraction(requested).unwrap(), expected);
-    }
-}

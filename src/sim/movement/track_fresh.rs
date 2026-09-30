@@ -910,7 +910,9 @@ impl Simulation {
         self.track_retire_selector(id);
         self.clear_path_head(id);
         if let Some(actor) = self.substrate.entities.get_mut(id) {
-            actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
+            actor
+                .foot_speed
+                .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
         }
         Ok(false)
     }

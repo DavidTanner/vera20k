@@ -42,7 +42,7 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
             body.set(input["initial_facing"].as_u64().unwrap() as u16, 100);
         }
         entity.body_facing = body;
-        entity.foot_speed.applied_fraction = SimFixed::lit("0.5");
+        entity.foot_speed.set_speed_fraction(SimFixed::lit("0.5"));
         entity.navigation.path_runtime.path_blocked = true;
         let speed = input["speed"].as_i64().unwrap() as i32;
         advance(
@@ -69,7 +69,7 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         assert_eq!(crosses, row["crosses_cell"].as_bool().unwrap());
         let heading = entity.body_facing.current(100);
         assert_eq!(u64::from(heading), row["facing"].as_u64().unwrap());
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_ONE);
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_ONE);
         assert!(!entity.navigation.path_runtime.path_blocked);
     }
 }
@@ -98,7 +98,7 @@ fn idle_walk_scold_tails_match_original_through_ordinary_process() {
             // Supplied retained byte at the native tail boundary.
             state.animation_moving = true;
         }
-        actor.foot_speed.applied_fraction = initial_speed;
+        actor.foot_speed.set_speed_fraction(initial_speed);
         actor
             .navigation
             .path_runtime
@@ -115,7 +115,7 @@ fn idle_walk_scold_tails_match_original_through_ordinary_process() {
             "{row}"
         );
         assert_eq!(
-            actor.foot_speed.applied_fraction,
+            actor.foot_speed.applied_fraction(),
             SimFixed::from_num(row["speed_fraction"].as_f64().unwrap()),
             "{row}"
         );

@@ -368,7 +368,7 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
     // Loco+50 and Foot+578 are doubles; SimFixed holds 16 fraction bits.
     for (key, actual) in [
         ("target_speed", target),
-        ("applied_speed", e.foot_speed.applied_fraction),
+        ("applied_speed", e.foot_speed.applied_fraction()),
     ] {
         let expected = state[key].as_f64().unwrap();
         assert!(

@@ -252,7 +252,7 @@ fn jumpjet(locomotor: &LocomotorState) -> LocomotorReadyState {
 fn walk(entity: &GameEntity, locomotor: &LocomotorState) -> LocomotorReadyState {
     LocomotorReadyState::Walk {
         moving_byte: u8::from(locomotor.walk_is_moving().unwrap_or(false)),
-        applied_speed_bits: if entity.foot_speed.applied_fraction > SIM_ZERO {
+        applied_speed_bits: if entity.foot_speed.applied_fraction() > SIM_ZERO {
             F64_BITS_ONE
         } else {
             0
