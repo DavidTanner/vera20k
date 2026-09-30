@@ -660,22 +660,49 @@ impl Simulation {
         self.substrate.anims.get_mut(id)
     }
 
+    /// Map[coord] (`0x00565730`) for an anim's world XY, which truncates
+    /// toward zero and wraps by row: the real cell, or `None` for the shared
+    /// dummy cell off the map. Without resolved terrain, the truncated cell.
+    fn anim_map_cell(&self, x: i32, y: i32) -> Option<(u16, u16)> {
+        use crate::map::cell_index::NativeCellIdentity;
+        use crate::util::lepton::lepton_to_cell_packed;
+
+        let (rx, ry) = match self.resolved_terrain.as_ref() {
+            Some(terrain) => {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                let cell = cells.lookup_world(x, y);
+                let NativeCellIdentity::Real(_) = cell else {
+                    return None;
+                };
+                cells.coord(cell)
+            }
+            None => (lepton_to_cell_packed(x), lepton_to_cell_packed(y)),
+        };
+        Some((u16::try_from(rx).ok()?, u16::try_from(ry).ok()?))
+    }
+
+    /// `AnimClass::MarkCellOccupancy` (`0x00426270`) and `ClearCellOccupancy`
+    /// (`0x00426300`) for a MakeInfantry anim: the cell through Map[coord]
+    /// (`0x00565730`) and the floor at the anim's coordinate (`0x00578080`).
+    ///
+    /// RESIDUAL: off the map native marks and clears the shared dummy cell's
+    /// raw bits. VERA keeps those bits only for infantry writes, so an anim
+    /// there skips both. Trigger: a MakeInfantry anim whose coordinate
+    /// resolves to no real cell, which needs one past the map edge. Effect:
+    /// the dummy misses the anim's slot bit until the anim clears it; only a
+    /// later off-map infantry query reads it.
     fn apply_make_infantry_raw_occupation(
         &mut self,
         world: AnimWorldCoord,
         operation: AnimOccupationOperation,
     ) {
-        let cell_x = world.x >> 8;
-        let cell_y = world.y >> 8;
-        let (Ok(rx), Ok(ry)) = (u16::try_from(cell_x), u16::try_from(cell_y)) else {
-            // Native writes its shared dummy cell for out-of-map coordinates;
-            // that dummy is not part of Rust's serialized map substrate.
-            return;
-        };
         let mask = infantry_raw_occupation_mask(
             SimFixed::from_num(world.x & 0xff),
             SimFixed::from_num(world.y & 0xff),
         );
+        let Some((rx, ry)) = self.anim_map_cell(world.x, world.y) else {
+            return;
+        };
         let (ground_z, live_structural_bridge) = self
             .resolved_terrain
             .as_ref()
@@ -1843,10 +1870,10 @@ impl Simulation {
         {
             self.spawn_bounce_anim(rules, bounce_anim, coord, BOUNCE_CONTACT_DRAW_FLAGS, 0);
         }
-        let (Some(warhead_name), Ok(rx), Ok(ry)) = (
+        // Map[coord] (`0x004239E5`); VERA keeps no objects on the dummy cell.
+        let (Some(warhead_name), Some((rx, ry))) = (
             config.warhead.as_deref(),
-            u16::try_from(position.x >> 8),
-            u16::try_from(position.y >> 8),
+            self.anim_map_cell(position.x, position.y),
         ) else {
             return false;
         };
@@ -3629,6 +3656,40 @@ mod tests {
             assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(x, y), 0x01);
             assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(x, y), 0);
         }
+    }
+
+    /// Map[coord] (`0x00565730`) truncates toward zero and wraps by row. A
+    /// MakeInfantry anim less than a cell left of the map edge occupies cell
+    /// 0 of its row; a cell further left it wraps to slot 511 of the row
+    /// above, off this map, and past slot 511 it wraps to the next row.
+    #[test]
+    fn a_make_infantry_anim_left_of_the_map_edge_occupies_cell_zero() {
+        const SIZE: u16 = 8;
+        let mut sim = Simulation::new();
+        sim.resolved_terrain = Some(
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+                SIZE,
+                SIZE,
+                (0..SIZE)
+                    .flat_map(|y| {
+                        (0..SIZE).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
+                    })
+                    .collect(),
+            ),
+        );
+        // Sub-cell (128, 128) is slot 0.
+        let world = AnimWorldCoord {
+            x: -128,
+            y: 5 * 256 + 128,
+            z: 0,
+        };
+        sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Mark);
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 5), 0x01);
+        sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Clear);
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 5), 0);
+
+        assert_eq!(sim.anim_map_cell(-128 - 256, world.y), None);
+        assert_eq!(sim.anim_map_cell(512 * 256 + 128, world.y), Some((0, 6)));
     }
 
     /// `AnimClass::AnimClass @ 0x00421EA0`'s `RandomRate=` pick and `Bouncer=`
