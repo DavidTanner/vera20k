@@ -138,13 +138,6 @@ impl LivePublication<'_> {
                     ) {
                         return Err("live bridge Mark could not publish its real overlay".into());
                     }
-                    if let Some(runtime) = sim
-                        .bridge_state
-                        .as_mut()
-                        .and_then(|s| s.cell_mut(coord.0, coord.1))
-                    {
-                        runtime.overlay_byte = overlay;
-                    }
                     self.retain_real_write(Cell::Real(index));
                 }
                 Cell::Dummy => self

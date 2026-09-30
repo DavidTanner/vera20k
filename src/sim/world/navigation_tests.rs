@@ -177,6 +177,7 @@ fn recalc_keeps_marked_structure_over_partial_terrain_occupation_and_bridge_deck
     cell.has_bridge_deck = true;
     cell.bridge_walkable = true;
     cell.bridge_transition = true;
+    cell.bridge_facts.raw_flags |= crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
     crate::sim::world::navigation::NavigationCaches {
         terrain_costs: &mut sim.terrain_costs,
         zones: &mut sim.zone_grid,
@@ -185,7 +186,6 @@ fn recalc_keeps_marked_structure_over_partial_terrain_occupation_and_bridge_deck
     }
     .publish_recalculated_cell(
         terrain,
-        None,
         &sim.substrate.entities,
         &sim.interner,
         &rules,

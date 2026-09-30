@@ -92,26 +92,28 @@ fn bridge_damage_exact_height_runs_body_and_detaches_only_after_collapse() {
     hit.impact_z_leptons = 208;
     assert!(!apply_bridge_damage_events(&mut sim, &rules, &[hit]));
     assert_eq!(
-        sim.bridge_state
+        sim.resolved_terrain
             .as_ref()
             .unwrap()
             .cell(4, 4)
             .unwrap()
-            .damage_state,
-        DamageState::Healthy { variant: 0 }
+            .bridge_facts
+            .state_byte,
+        9
     );
     assert_eq!(sim.scenario_rng.logical_state(), before);
 
     hit.impact_z_leptons = 209;
     assert!(!apply_bridge_damage_events(&mut sim, &rules, &[hit]));
     assert_eq!(
-        sim.bridge_state
+        sim.resolved_terrain
             .as_ref()
             .unwrap()
             .cell(4, 4)
             .unwrap()
-            .damage_state,
-        DamageState::Damaged
+            .bridge_facts
+            .state_byte,
+        15
     );
     assert!(
         sim.substrate
@@ -293,7 +295,6 @@ fn bridge_publication_production_nonanchor_collapse_keeps_other_overlay_and_runs
     }
     let before = crate::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
     );
     for coord in [(4, 4), (3, 4), (2, 4), (5, 4)] {
         assert!(before.cell(coord.0, coord.1).unwrap().bridge_walkable);
@@ -344,14 +345,6 @@ fn bridge_publication_production_nonanchor_collapse_keeps_other_overlay_and_runs
             sim.dynamic_terrain_cells[&coord],
             DynamicTerrainCellState::capture(cell)
         );
-        assert!(
-            !sim.bridge_state
-                .as_ref()
-                .unwrap()
-                .cell(coord.0, coord.1)
-                .unwrap()
-                .deck_present
-        );
     }
     for coord in [(1, 4), (6, 4)] {
         let path = sim.path_grid().unwrap().cell(coord.0, coord.1).unwrap();
@@ -361,17 +354,14 @@ fn bridge_publication_production_nonanchor_collapse_keeps_other_overlay_and_runs
 }
 
 #[test]
-fn bridge_publication_retained_anchor_reads_legacy_live_overlay_identity() {
+fn bridge_publication_retained_anchor_reads_live_overlay_identity() {
     let rules = rules();
     let mut sim = world(&rules, 15);
-    // The existing bridgehead collapse writer clears runtime +44 while the
-    // high-surface map/overlay projection still retains its original identity.
-    sim.bridge_state
-        .as_mut()
-        .unwrap()
-        .cell_mut(4, 4)
-        .unwrap()
-        .overlay_byte = 0xff;
+    // A bridgehead collapse clears the anchor's +44 while OverlayGrid still
+    // retains the original high-surface identity; CellClass decides.
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    let anchor = terrain.native_cell_identity((4, 4));
+    terrain.clear_native_cell_overlay(anchor);
     let hit = event(&mut sim, (3, 4));
     assert!(!apply_bridge_damage_events_with_overlay_registry(
         &mut sim,
@@ -385,7 +375,7 @@ fn bridge_publication_retained_anchor_reads_legacy_live_overlay_identity() {
     assert_ne!(host.flags(anchor) & BRIDGE_FLAG_STRUCTURAL, 0);
     assert_eq!(
         host.terrain().cell(4, 4).unwrap().bridge_facts.overlay_id,
-        Some(25)
+        None
     );
 }
 
@@ -514,8 +504,8 @@ fn bridge_publication_reentrant_cleared_slot_cannot_reenter_through_old_topology
 fn bridge_publication_perpendicular_uses_raw_tile_instead_of_runtime_class() {
     let rules = rules();
     let mut sim = world(&rules, 9);
-    // Native572C90 gates on raw +38. A legacy Bridgehead runtime entry cannot
-    // turn this unrelated raw tile into a middle-family tile.
+    // Native572C90 gates on raw +38; nothing but the raw tile can make this
+    // unrelated cell a middle-family tile.
     sim.resolved_terrain
         .as_mut()
         .unwrap()
@@ -525,12 +515,6 @@ fn bridge_publication_perpendicular_uses_raw_tile_instead_of_runtime_class() {
                 b"[General]\nBridgeMiddle1=7\nBridgeMiddle2=12\n",
             ),
         );
-    let mut cell = super::super::tests::seed_bridge_cell(0);
-    cell.role = BridgeCellRole::Bridgehead;
-    sim.bridge_state
-        .as_mut()
-        .unwrap()
-        .test_seed_cell(4, 3, cell);
     let original_tile = sim
         .resolved_terrain
         .as_ref()

@@ -4800,7 +4800,7 @@ fn gsi_05_04_building_get_coords_uses_foundation_center_cell() {
 }
 
 #[test]
-fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
+fn gsi_04_01_cell_target_uses_live_structural_bit() {
     let mut sim = Simulation::new();
     sim.session.map_width = 16;
     sim.session.map_height = 16;
@@ -4848,24 +4848,11 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
         cell_target_coord(sim.resolved_terrain.as_ref(), 6, 7),
         center
     );
-    {
-        // Legacy runtime walkability drops while live bit100 stays set.
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        bridge_state.cell_mut(6, 7).unwrap().deck_present = false;
-        assert!(!bridge_state.is_bridge_walkable(6, 7));
-    }
-    assert_eq!(
-        cell_target_coord(sim.resolved_terrain.as_ref(), 6, 7),
-        center,
-        "CellClass target height follows live +0x100, not bridge runtime walkability"
-    );
-
     assert!(sim.object_ai_visit_one(projectile_id, None, ObjectAiCtx::default()));
 
-    // The actual Bullet visit consumes the live Cell target coordinate even
-    // though runtime bridge walkability is false. Being stationary at that
-    // target is not an admission: old height is 416, above both native tail
-    // gates (4677D3: <208; 467B68: <10).
+    // The actual Bullet visit consumes the live Cell target coordinate. Being
+    // stationary at that target is not an admission: old height is 416, above
+    // both native tail gates (4677D3: <208; 467B68: <10).
     assert!(sim.pending_projectile_detonations.is_empty());
     assert_eq!(sim.projectiles.get(projectile_id).unwrap().position, center);
 }
@@ -4911,9 +4898,10 @@ fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
     };
 
     assert!(
-        sim.bridge_state
+        sim.resolved_terrain
             .as_ref()
-            .is_some_and(|state| state.is_bridge_walkable(6, 7))
+            .and_then(|terrain| terrain.cell(6, 7))
+            .is_some_and(|cell| cell.bridge_facts.has_structural_bridge())
     );
     let result = sim.tick_combat_with_fatal_lifecycle(
         &rules,
@@ -6561,7 +6549,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     );
     let canonical_path = crate::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
     );
     for rx in 9..=12 {
         assert_eq!(

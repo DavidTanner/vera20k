@@ -22,13 +22,6 @@ impl LivePublication<'_> {
         };
         let resolved = &terrain.cells()[index];
         let coord = (resolved.rx, resolved.ry);
-        if let Some(runtime) = sim
-            .bridge_state
-            .as_mut()
-            .and_then(|state| state.cell_mut(coord.0, coord.1))
-        {
-            runtime.deck_level = resolved.bridge_deck_level;
-        }
         self.retain_real_write(cell);
         let sim = &mut self.sim;
         crate::sim::world::navigation::NavigationCaches {
@@ -39,7 +32,6 @@ impl LivePublication<'_> {
         }
         .publish_current_path_cell(
             sim.resolved_terrain.as_ref().unwrap(),
-            sim.bridge_state.as_ref(),
             &sim.substrate.entities,
             &sim.interner,
             self.rules,
@@ -239,14 +231,6 @@ impl IsoTileFloodHost for LiveTileFlood<'_, '_> {
         // Original47D2B0 publishes Map+68 class/height and Map+70 height
         // before returning to the next ordered repair callback. Publication
         // must survive a later presentation failure and must not rebuild IDs.
-        let deck_level = terrain.cells()[index].bridge_deck_level;
-        if let Some(runtime) = sim
-            .bridge_state
-            .as_mut()
-            .and_then(|state| state.cell_mut(coord.0, coord.1))
-        {
-            runtime.deck_level = deck_level;
-        }
         // Recalc owns the finalized pair; never leave a later reader on the
         // input overlay when native has removed it during this invocation.
         sim.overlay_grid.as_mut().unwrap().write_finalized_map_cell(
@@ -262,7 +246,6 @@ impl IsoTileFloodHost for LiveTileFlood<'_, '_> {
         }
         .publish_recalculated_cell(
             terrain,
-            sim.bridge_state.as_ref(),
             &sim.substrate.entities,
             &sim.interner,
             self.publication.rules,

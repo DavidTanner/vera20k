@@ -544,7 +544,7 @@ fn build_cell_overlay_instances(
         };
 
         // High-bridge bodies are emitted by `instances::bridges` reading
-        // `BridgeRuntimeCell` post-tick. Skip them here so they don't double-
+        // live CellClass fields post-tick. Skip them here so they don't double-
         // render via the static map overlay list.
         if !ordinary_overlay_accepts_identity(entry.overlay_id, static_name) {
             continue;

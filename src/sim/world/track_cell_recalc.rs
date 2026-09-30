@@ -64,13 +64,6 @@ impl Simulation {
                 return;
             }
         };
-        if let Some(runtime) = self
-            .bridge_state
-            .as_mut()
-            .and_then(|state| state.cell_mut(coord.0, coord.1))
-        {
-            runtime.deck_level = terrain.cells()[index].bridge_deck_level;
-        }
         self.overlay_grid
             .as_mut()
             .unwrap()
@@ -81,12 +74,8 @@ impl Simulation {
             path: &mut self.path_grid,
             playfield_bounds: self.playfield_bounds,
         })
-        .publish_recalculated_cell_with_presence(
-            terrain,
-            self.bridge_state.as_ref(),
-            coord,
-            structure_blocked,
-        ) {
+        .publish_recalculated_cell_with_presence(terrain, coord, structure_blocked)
+        {
             log::warn!("ordinary movement Recalc publication at {coord:?} failed: {error}");
         }
     }

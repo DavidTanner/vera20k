@@ -265,8 +265,8 @@ impl OverlayGrid {
     /// Seed from parsed map overlay entries.
     ///
     /// Bridge overlays are intentionally excluded: bridge body/bridgehead
-    /// overlay bytes are owned by `BridgeRuntimeState`, while this grid owns
-    /// mutable non-bridge overlay bytes such as ore and walls.
+    /// overlay bytes are owned by CellClass (`ResolvedTerrainGrid`), while this
+    /// grid owns mutable non-bridge overlay bytes such as ore and walls.
     pub fn from_overlay_entries(entries: &[OverlayEntry], width: u16, height: u16) -> Self {
         let mut grid = Self::new(width, height);
         for entry in entries {
@@ -2131,7 +2131,7 @@ mod tests {
         assert_eq!(
             grid.cell(1, 1).overlay_id,
             None,
-            "bridge overlay byte is owned by BridgeRuntimeState"
+            "bridge overlay byte is owned by CellClass"
         );
         assert_eq!(grid.cell(2, 1).overlay_id, Some(5));
     }

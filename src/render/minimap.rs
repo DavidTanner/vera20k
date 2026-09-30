@@ -34,25 +34,18 @@ use crate::sim::vision::FogState;
 use std::collections::{BTreeMap, HashMap};
 
 use super::current_radar_cell::CurrentRadarCellAuthority;
-use super::minimap_helpers::{
-    COLOR_SHROUD, MINIMAP_DEPTH, MINIMAP_HEIGHT, MINIMAP_WIDTH,
-    RadarSurfacePixel, cell_visibility_color, dim_color, set_pixel, surface_visibility_color,
-};
-use super::radar_tracker::{
-    RadarProjectionFacts, RetainedRadarTracker, radar_entity_owner_color,
-    radar_pixel_candidate_eligible,
-};
-use super::radar_visibility::build_radar_object_update;
-#[cfg(test)]
-use super::radar_tracker::RadarTrackerEntry;
-pub use super::minimap_helpers::{OverlayClassification, default_minimap_rect};
 pub(crate) use super::minimap_helpers::minimap_overlay_datum;
+use super::minimap_helpers::{
+    COLOR_SHROUD, MINIMAP_DEPTH, MINIMAP_HEIGHT, MINIMAP_WIDTH, RadarSurfacePixel,
+    cell_visibility_color, dim_color, set_pixel, surface_visibility_color,
+};
+pub use super::minimap_helpers::{OverlayClassification, default_minimap_rect};
 use super::minimap_helpers::{OverlayPixel, TerrainPixel};
+#[cfg(test)]
+use super::minimap_projection::minimap_screen_point_to_camera_top_left;
 use super::minimap_projection::{
     MinimapPlayfieldProjection, aperture_pixel, generated_primary_copy_frame,
 };
-#[cfg(test)]
-use super::minimap_projection::minimap_screen_point_to_camera_top_left;
 use super::native_radar_surface::NativeRadarSurfaceGeometry;
 use super::native_radar_terrain::NativeRadarTerrainSurface;
 use super::native_radar_viewport::NativeRadarViewportState;
@@ -60,6 +53,13 @@ use super::radar_events::{ClientRadarEvents, RadarEventSource};
 use super::radar_terrain_updates::{
     RadarTerrainUpdateLayers, stage_radar_terrain_dirty_generation,
 };
+#[cfg(test)]
+use super::radar_tracker::RadarTrackerEntry;
+use super::radar_tracker::{
+    RadarProjectionFacts, RetainedRadarTracker, radar_entity_owner_color,
+    radar_pixel_candidate_eligible,
+};
+use super::radar_visibility::build_radar_object_update;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MinimapCellRadarSource {
@@ -178,13 +178,12 @@ impl MinimapRenderer {
             None,
         );
 
-        let (map_texture_raw, map_texture) =
-            batch.create_updatable_texture(
-                gpu,
-                &projection.base_rgba,
-                MINIMAP_WIDTH,
-                MINIMAP_HEIGHT,
-            );
+        let (map_texture_raw, map_texture) = batch.create_updatable_texture(
+            gpu,
+            &projection.base_rgba,
+            MINIMAP_WIDTH,
+            MINIMAP_HEIGHT,
+        );
         let white_texture: BatchTexture = create_white_texture(gpu, batch);
         let rgba_scratch: Vec<u8> = vec![0u8; pixel_count];
 
@@ -373,7 +372,6 @@ impl MinimapRenderer {
         game_mode_nonzero: bool,
         rules: Option<&RuleSet>,
         interner: Option<&crate::sim::intern::StringInterner>,
-        bridge_state: Option<&crate::sim::bridge_state::BridgeRuntimeState>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         overlay_radar_colors: &HashMap<(u8, u8), [u8; 3]>,
@@ -381,7 +379,11 @@ impl MinimapRenderer {
         radar_terrain_dirty_cells: &[(u16, u16)],
         radar_terrain_dirty_generation: u64,
     ) -> Option<u64> {
-        let fog_generation = if full_visibility { 0 } else { fog.view_generation() };
+        let fog_generation = if full_visibility {
+            0
+        } else {
+            fog.view_generation()
+        };
         let visibility_owner = local_owner;
         if sim_tick == self.last_sim_tick
             && fog_generation == self.last_fog_generation
@@ -399,13 +401,7 @@ impl MinimapRenderer {
                 native_surface: self.native_radar_surface,
                 native_terrain: &mut self.native_radar_terrain,
             },
-            CurrentRadarCellAuthority::new(
-                resolved_terrain,
-                bridge_state,
-                overlay_grid,
-                overlay_registry,
-                rules,
-            ),
+            CurrentRadarCellAuthority::new(resolved_terrain, overlay_grid, overlay_registry, rules),
             self.structural_bridge_radar_color,
             overlay_radar_colors,
             radar_terrain_dirty_cells,
@@ -590,10 +586,9 @@ impl MinimapRenderer {
             };
             let color = radar_entity_owner_color(entity, interner, house_colors, ramps);
             if entry.x >= 0 && entry.y >= 0 {
-                if let Some((x, y)) = aperture_pixel(
-                    self.native_radar_surface,
-                    (entry.x as u32, entry.y as u32),
-                ) {
+                if let Some((x, y)) =
+                    aperture_pixel(self.native_radar_surface, (entry.x as u32, entry.y as u32))
+                {
                     set_pixel(rgba, size, x, y, color);
                 }
             }
@@ -613,8 +608,9 @@ impl MinimapRenderer {
             );
         }
 
-        let consumed_radar_terrain_generation = staged_radar_terrain_update
-            .finish_infallible(&mut self.last_radar_terrain_dirty_generation, || {
+        let consumed_radar_terrain_generation = staged_radar_terrain_update.finish_infallible(
+            &mut self.last_radar_terrain_dirty_generation,
+            || {
                 gpu.queue.write_texture(
                     wgpu::TexelCopyTextureInfo {
                         texture: &self.map_texture_raw,
@@ -634,7 +630,8 @@ impl MinimapRenderer {
                         depth_or_array_layers: 1,
                     },
                 );
-            });
+            },
+        );
         self.last_sim_tick = sim_tick;
         (self.last_fog_generation, self.last_visibility_owner) = (fog_generation, visibility_owner);
         consumed_radar_terrain_generation
@@ -702,8 +699,7 @@ impl MinimapRenderer {
                 surface.generated_size(),
             )
         });
-        self.radar_events
-            .admit(request, sim_tick, geometry, config)
+        self.radar_events.admit(request, sim_tick, geometry, config)
     }
 
     /// Spacebar review of the eight most recent accepted event cells.

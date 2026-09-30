@@ -35,7 +35,6 @@ fn export(scene: &HeadlessScenario, phase: &str) {
 fn assert_ground_surface(scene: &HeadlessScenario, collapsed: bool) {
     let sim = scene.sim();
     let terrain = sim.resolved_terrain.as_ref().unwrap();
-    let bridges = sim.bridge_state.as_ref().unwrap();
     for y in 58..=60 {
         for x in 114..=116 {
             let cell = terrain.cell(x, y).unwrap();
@@ -53,9 +52,6 @@ fn assert_ground_surface(scene: &HeadlessScenario, collapsed: bool) {
                 cell.bridge_facts.overlay_id,
                 "OverlayGrid must mirror the raw Cell identity"
             );
-            if let Some(runtime) = bridges.cell(x, y) {
-                assert_eq!(Some(runtime.overlay_byte), cell.bridge_facts.overlay_id);
-            }
             assert!(
                 !sim.path_grid.as_ref().unwrap().is_walkable_on_layer(
                     x,

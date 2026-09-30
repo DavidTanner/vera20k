@@ -63,7 +63,7 @@ impl Simulation {
         self.scenario_normal_lighting = input.normal_lighting;
         // Runtime rebuilds use this same sim-owned publication seam. Crate
         // placement below reads the newly published canonical grid.
-        let mut navigation_published = self.rebuild_dynamic_navigation(input.rules);
+        let navigation_published = self.rebuild_dynamic_navigation(input.rules);
 
         #[cfg(test)]
         let mut skirmish_order = [None; 3];
@@ -82,13 +82,8 @@ impl Simulation {
                 input.normal_lighting,
             );
             // Startup OverlayClass::Mark completes synchronously before native
-            // proceeds to AI credits. Rust's BridgeRuntimeState is a derived
-            // cache built earlier in the load funnel, so rebuild it from the
-            // now-final CellClass projection and publish matching first-frame
-            // navigation without consuming OverlayGrid's dirty receipt.
-            if self.refresh_bridge_runtime_after_crate_mark() {
-                navigation_published = self.rebuild_dynamic_navigation(input.rules);
-            }
+            // proceeds to AI credits; the placement refreshed the bridge
+            // records and navigation from the now-final CellClass state.
             #[cfg(test)]
             {
                 skirmish_order[1] = Some(ScenarioPostMapStep::AiOpeningCredits);
@@ -146,11 +141,11 @@ impl Simulation {
         }
     }
 
-    /// Rebuild the derived bridge runtime cache after a crate `OverlayClass::Mark`
+    /// Rebuild the derived bridge record vector after a crate `OverlayClass::Mark`
     /// batch. Native Mark mutates live CellClass state synchronously; Rust builds
     /// `BridgeRuntimeState` earlier in the load funnel, so both the startup batch
     /// and the per-tick regeneration rung refresh it from the now-final CellClass
-    /// projection.
+    /// state.
     pub(crate) fn refresh_bridge_runtime_after_crate_mark(&mut self) -> bool {
         let Some((destroyable, bridge_strength)) = self
             .bridge_state
@@ -852,12 +847,12 @@ mod tests {
             .next()
             .expect("one startup crate anchor");
         let bridge_cell = sim
-            .bridge_state
+            .resolved_terrain
             .as_ref()
-            .and_then(|state| state.cell(anchor.0, anchor.1))
-            .expect("startup high anchor reaches BridgeRuntimeState");
-        assert!(bridge_cell.deck_present);
-        assert_eq!(bridge_cell.overlay_byte, 0x18);
+            .and_then(|terrain| terrain.cell(anchor.0, anchor.1))
+            .expect("startup high anchor cell");
+        assert!(bridge_cell.bridge_facts.has_structural_bridge());
+        assert_eq!(bridge_cell.bridge_facts.overlay_id, Some(0x18));
         let path_cell = sim
             .path_grid()
             .and_then(|grid| grid.cell(anchor.0, anchor.1))

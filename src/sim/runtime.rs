@@ -127,10 +127,6 @@ impl<'a> SimView<'a> {
         self.simulation.resolved_terrain.as_ref()
     }
 
-    pub fn bridge_state(&self) -> Option<&'a crate::sim::bridge_state::BridgeRuntimeState> {
-        self.simulation.bridge_state.as_ref()
-    }
-
     pub(crate) fn overlay_grid(&self) -> Option<&'a crate::sim::overlay_grid::OverlayGrid> {
         self.simulation.overlay_grid.as_ref()
     }
