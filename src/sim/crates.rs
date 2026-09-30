@@ -232,23 +232,7 @@ fn place_scenario_start_crates_with_failure(
         // Mark mutates live CellClass land/zone/bridge state synchronously;
         // refresh Rust's derived bridge and path projections once after the
         // ordered crate batch, without introducing another RNG boundary.
-        if let (Some(bridge_state), Some(terrain), Some(bounds), Some(size_height)) = (
-            sim.bridge_state.as_ref(),
-            sim.resolved_terrain.as_ref(),
-            sim.playfield_bounds,
-            sim.playfield_size_height,
-        ) {
-            let destroyable = bridge_state.is_destroyable();
-            let bridge_strength = bridge_state.bridge_strength();
-            sim.bridge_state = Some(
-                crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
-                    terrain,
-                    destroyable,
-                    bridge_strength,
-                    (bounds.base, size_height),
-                ),
-            );
-        }
+        sim.refresh_bridge_runtime_after_crate_mark();
         let _ = sim.rebuild_dynamic_navigation(rules);
     }
     log::info!(

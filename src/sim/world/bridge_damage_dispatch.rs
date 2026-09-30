@@ -51,30 +51,9 @@ impl CellReader for LiveCells<'_> {
 
     fn fields(&self, cell: Self::Cell) -> CellFields {
         let terrain = self.terrain();
-        // Ordinary overlay writes are live CellClass authority. Structural
-        // head/state-machine writers still publish their retained runtime state
-        // through the existing adapter after returning.
+        // Every bridge writer publishes CellClass+44 synchronously.
         let overlay = match cell {
-            NativeCellIdentity::Real(index) => {
-                let cell = &terrain.cells()[index];
-                let overlay = cell.bridge_facts.overlay_id;
-                if overlay.is_some_and(|overlay| {
-                    crate::sim::bridge_state::ordinary::member(i32::from(overlay), Family::Low)
-                        || crate::sim::bridge_state::ordinary::member(
-                            i32::from(overlay),
-                            Family::High,
-                        )
-                }) {
-                    overlay
-                } else {
-                    self.sim
-                        .bridge_state
-                        .as_ref()
-                        .and_then(|state| state.cell(cell.rx, cell.ry))
-                        .map(|cell| cell.overlay_byte)
-                        .or(overlay)
-                }
-            }
+            NativeCellIdentity::Real(index) => terrain.cells()[index].bridge_facts.overlay_id,
             NativeCellIdentity::Dummy => terrain.shared_cell_dummy().overlay_fields().0,
         };
         CellFields {

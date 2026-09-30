@@ -755,7 +755,9 @@ use crate::sim::world::Simulation;
 // enter order; the enter-order counter serves only the AirTracker.
 // 260 -> 261: an entity no longer saves the ObjectClass falling byte; the
 // parachute descent it saves is IsFallingDown.
-const SNAPSHOT_VERSION: u32 = 261;
+// 261 -> 262: bridge cells no longer save a runtime copy of CellClass bridge
+// state (deck, damage state, axis, role, span, overlay); anchor spans are gone.
+const SNAPSHOT_VERSION: u32 = 262;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2169,8 +2171,8 @@ impl Simulation {
     /// The full row-major sweep is required because OverlayGrid's dirty queues
     /// are transient: a saved cell may have been cleared since map load, so an
     /// occupied-only replay would leave the original map overlay's passability
-    /// behind. Low-bridge state is reconciled afterward because its serialized
-    /// runtime cell is the final authority for the bridge surface.
+    /// behind. Bridge cell state needs no separate pass: CellClass is its only
+    /// owner and returns through the dynamic terrain cells above.
     pub(crate) fn restore_map_authority_after_snapshot_load(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
@@ -2280,10 +2282,6 @@ impl Simulation {
             }
         }
 
-        crate::sim::world::bridge_orchestrator::reconcile_low_bridge_surface_after_cache_load(
-            self,
-            overlay_registry,
-        );
         if !self.rebuild_dynamic_navigation(rules) {
             return Err(SnapshotRestoreError::MissingMapAuthorityComponent {
                 component: "ResolvedTerrainGrid",
@@ -3647,7 +3645,8 @@ mod tests {
         // 258 -> 259: no bridgehead anchor class.
         // 259 -> 260: no bridge_occupancy or ground enter order.
         // 260 -> 261: no falling byte beside the parachute descent.
-        assert_eq!(super::SNAPSHOT_VERSION, 261);
+        // 261 -> 262: no runtime copy of CellClass bridge cell state.
+        assert_eq!(super::SNAPSHOT_VERSION, 262);
     }
 
     #[test]
@@ -7944,10 +7943,7 @@ mod tests {
             "canonical post-load costs must ignore the stale caller cache"
         );
 
-        let path = PathGrid::from_resolved_terrain_with_bridges(
-            reconciled,
-            restored.bridge_state.as_ref(),
-        );
+        let path = PathGrid::from_resolved_terrain_with_bridges(reconciled);
         assert!(path.is_walkable(destroyed_cell.0, destroyed_cell.1));
         assert!(!path.is_walkable(damaged_cell.0, damaged_cell.1));
         assert!(!path.is_walkable(spawner_cell.0, spawner_cell.1));
@@ -8028,11 +8024,9 @@ mod tests {
 
         let path_a = PathGrid::from_resolved_terrain_with_bridges(
             a.resolved_terrain.as_ref().expect("terrain restored"),
-            a.bridge_state.as_ref(),
         );
         let path_b = PathGrid::from_resolved_terrain_with_bridges(
             b.resolved_terrain.as_ref().expect("terrain restored"),
-            b.bridge_state.as_ref(),
         );
         assert_eq!(path_a, path_b);
 

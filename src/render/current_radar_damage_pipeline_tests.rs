@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF};
+use crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF;
 use crate::map::entities::EntityCategory;
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::resolved_terrain::{RadarColorMetadata, ResolvedTerrainCell};
@@ -12,10 +12,7 @@ use crate::render::radar_terrain_updates::{
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::TerrainClass;
-use crate::sim::bridge_state::{
-    AnchorSpan, BridgeCellRole, BridgeDamageEvent, BridgeRuntimeCell, BridgeRuntimeState,
-    DamageState, Direction,
-};
+use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState};
 use crate::sim::command::Command;
 use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
@@ -52,18 +49,6 @@ fn cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         radar_right: [7, 8, 9],
         has_damaged_data: in_flood,
         ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-    }
-}
-
-fn bridge_cell(role: BridgeCellRole, span: Option<u16>, overlay_byte: u8) -> BridgeRuntimeCell {
-    BridgeRuntimeCell {
-        deck_present: true,
-        deck_level: 4,
-        damage_state: DamageState::Healthy { variant: 0 },
-        axis: Some(Axis::NS),
-        role,
-        anchor_span_id: span,
-        overlay_byte,
     }
 }
 
@@ -109,41 +94,18 @@ fn simulation_fixture() -> (Simulation, crate::map::terrain::TerrainGrid) {
             },
         );
     }
+    // Ordinary high 0xD1 identities on the perpendicular anchor and the
+    // repair start (CellClass+44).
+    for (rx, ry) in [FLOOD[0], REPAIR_START] {
+        terrain.cell_mut(rx, ry).unwrap().bridge_facts.overlay_id = Some(0xD1);
+    }
     let grid = build_terrain_grid_from_resolved(&terrain, None, None);
-    let mut bridge_state = BridgeRuntimeState::from_resolved_terrain_with_map_size(
+    let bridge_state = BridgeRuntimeState::from_resolved_terrain_with_map_size(
         &terrain,
         true,
         1500,
         (bounds().base, 40),
     );
-    bridge_state.test_seed_cell(
-        CENTER.0,
-        CENTER.1,
-        bridge_cell(BridgeCellRole::Anchor, Some(1), 24),
-    );
-    for &(rx, ry) in &FLOOD {
-        let overlay = if (rx, ry) == FLOOD[0] { 0xD1 } else { 0 };
-        bridge_state.test_seed_cell(rx, ry, bridge_cell(BridgeCellRole::Anchor, None, overlay));
-    }
-    bridge_state.test_seed_cell(
-        REPAIR_START.0,
-        REPAIR_START.1,
-        bridge_cell(BridgeCellRole::Anchor, None, 0xD1),
-    );
-    bridge_state.test_seed_anchor_span(AnchorSpan {
-        id: 1,
-        anchor: CENTER,
-        cells: [
-            Some(CENTER),
-            Some((25, 24)),
-            Some((25, 23)),
-            Some((25, 22)),
-            Some((25, 26)),
-            None,
-        ],
-        axis: Axis::NS,
-        direction: Direction::N,
-    });
 
     let mut sim = Simulation::new();
     sim.resolved_terrain = Some(terrain);
@@ -164,7 +126,6 @@ fn projection(
         Some(bounds()),
         Some(CurrentRadarCellAuthority::new(
             sim.resolved_terrain.as_ref(),
-            sim.bridge_state.as_ref(),
             sim.overlay_grid.as_ref(),
             None,
             None,
@@ -213,7 +174,6 @@ fn present_runtime_projection(
                 },
                 CurrentRadarCellAuthority::new(
                     view.resolved_terrain(),
-                    view.bridge_state(),
                     view.overlay_grid(),
                     Some(&runtime.resources.overlay_registry),
                     Some(&runtime.resources.rules),

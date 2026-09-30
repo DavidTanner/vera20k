@@ -96,17 +96,7 @@ pub(super) fn run_state_machine(
         }
     };
     let overlay = match anchor {
-        Cell::Real(index) => {
-            let cell = &terrain.cells()[index];
-            // The runtime overlay byte carries the host's +44 clears. Its
-            // erased sentinel must win over load-time terrain/OverlayGrid
-            // identities.
-            sim.bridge_state
-                .as_ref()
-                .and_then(|state| state.cell(cell.rx, cell.ry))
-                .map(|runtime| runtime.overlay_byte)
-                .or(cell.bridge_facts.overlay_id)
-        }
+        Cell::Real(index) => terrain.cells()[index].bridge_facts.overlay_id,
         Cell::Dummy => terrain.shared_cell_dummy().overlay_fields().0,
     };
     // Residual: ApplyDamageToCell 0x00587180 also admits a state machine by
@@ -212,67 +202,24 @@ impl BridgePublicationHost for LivePublication<'_> {
         self.terrain().native_cell_flags(cell)
     }
     fn state(&self, cell: Cell) -> u8 {
-        // Existing head/repair drivers still own their encoded runtime state.
-        // Read that authority until those writers migrate; the map's initial
-        // state byte alone would silently discard their completed transitions.
-        if let Some((x, y)) = self.real_coord(cell)
-            && let Some(runtime) = self.sim.bridge_state.as_ref().and_then(|s| s.cell(x, y))
-            && let Some(axis) = runtime.axis
-        {
-            runtime.damage_state.to_state_byte(axis)
-        } else {
-            self.terrain().native_cell_state(cell)
-        }
+        self.terrain().native_cell_state(cell)
     }
     fn write_flags(&mut self, cell: Cell, flags: u32) {
-        let structural_changed = (self.flags(cell) ^ flags) & BRIDGE_FLAG_STRUCTURAL != 0;
         self.sim
             .resolved_terrain
             .as_mut()
             .unwrap()
             .write_native_cell_flags(cell, flags);
-        if structural_changed
-            && let Some((x, y)) = self.real_coord(cell)
-            && let Some(runtime) = self
-                .sim
-                .bridge_state
-                .as_mut()
-                .and_then(|s| s.cell_mut(x, y))
-        {
-            runtime.deck_present = flags & BRIDGE_FLAG_STRUCTURAL != 0;
-        }
         self.retain_real_write(cell);
     }
     fn write_state(&mut self, cell: Cell, state: u8) {
-        if let Some((x, y)) = self.real_coord(cell) {
-            let flags = self.flags(cell);
-            if let Some(runtime) = self
-                .sim
-                .bridge_state
-                .as_mut()
-                .and_then(|s| s.cell_mut(x, y))
-            {
-                if state <= 17 {
-                    runtime.axis = Some(if state <= 8 { Axis::NS } else { Axis::EW });
-                }
-                runtime.damage_state = if state == 0 && flags & BRIDGE_FLAG_STRUCTURAL == 0 {
-                    DamageState::Destroyed
-                } else {
-                    DamageState::from_state_byte(state).unwrap_or(runtime.damage_state)
-                };
-            }
-            if let (Some(grid), Some(terrain)) = (
+        if let Some((x, y)) = self.real_coord(cell)
+            && let (Some(grid), Some(terrain)) = (
                 self.sim.overlay_grid.as_mut(),
                 self.sim.resolved_terrain.as_mut(),
-            ) {
-                grid.write_literal_bridge_state(terrain, x, y, state);
-            } else {
-                self.sim
-                    .resolved_terrain
-                    .as_mut()
-                    .unwrap()
-                    .write_native_cell_state(cell, state);
-            }
+            )
+        {
+            grid.write_literal_bridge_state(terrain, x, y, state);
         } else {
             self.sim
                 .resolved_terrain
@@ -299,14 +246,6 @@ impl BridgePublicationHost for LivePublication<'_> {
         if let Some((x, y)) = self.real_coord(cell) {
             if let Some(grid) = self.sim.overlay_grid.as_mut() {
                 grid.clear_literal_bridge_identity(x, y);
-            }
-            if let Some(runtime) = self
-                .sim
-                .bridge_state
-                .as_mut()
-                .and_then(|s| s.cell_mut(x, y))
-            {
-                runtime.overlay_byte = 0xff;
             }
         }
         self.retain_real_write(cell);

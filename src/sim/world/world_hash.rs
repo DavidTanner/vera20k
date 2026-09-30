@@ -991,25 +991,6 @@ impl Simulation {
             return;
         };
         1u8.hash(hasher);
-        let mut entries: Vec<_> = bridge_state.iter_cells().collect();
-        entries.sort_by_key(|((rx, ry), _)| (*rx, *ry));
-        for ((rx, ry), cell) in entries {
-            rx.hash(hasher);
-            ry.hash(hasher);
-            cell.deck_present.hash(hasher);
-            cell.damage_state.hash(hasher);
-            cell.deck_level.hash(hasher);
-            cell.axis.hash(hasher);
-            cell.role.hash(hasher);
-            cell.anchor_span_id.hash(hasher);
-            cell.overlay_byte.hash(hasher);
-        }
-        // Hash AnchorSpan registry (Task 7 added this field). BTreeMap iterates
-        // in sorted-key order, so iteration is deterministic.
-        for (id, span) in bridge_state.anchor_spans() {
-            id.hash(hasher);
-            span.hash(hasher);
-        }
         bridge_state.endpoint_records().len().hash(hasher);
         if let Some(size) = bridge_state.native_zone_source_size() {
             // Geometry affects signed/clamped bridge endpoint projection.
@@ -3810,64 +3791,17 @@ mod smudge_hash_tests {
 }
 
 #[cfg(test)]
-mod bridge_overlay_hash_tests {
+mod bridge_state_hash_tests {
     use super::Simulation;
-    use crate::sim::bridge_state::{
-        Axis, BridgeCellRole, BridgeEndpointRecord, BridgeRecordKind, BridgeRuntimeCell,
-        BridgeRuntimeState, DamageState,
-    };
-
-    fn make_bridge_state_with_overlay(byte: u8) -> BridgeRuntimeState {
-        let mut state = BridgeRuntimeState::default();
-        state.test_seed_cell(
-            2,
-            2,
-            BridgeRuntimeCell {
-                deck_present: true,
-                deck_level: 0,
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis: Some(Axis::NS),
-                role: BridgeCellRole::Anchor,
-                anchor_span_id: None,
-                overlay_byte: byte,
-            },
-        );
-        state
-    }
-
-    #[test]
-    fn overlay_byte_difference_changes_state_hash() {
-        let mut sim_a = Simulation::new();
-        let mut sim_b = Simulation::new();
-        sim_a.bridge_state = Some(make_bridge_state_with_overlay(0x18));
-        sim_b.bridge_state = Some(make_bridge_state_with_overlay(0xD2));
-        assert_ne!(
-            sim_a.state_hash(),
-            sim_b.state_hash(),
-            "overlay_byte must contribute to state hash",
-        );
-    }
-
-    #[test]
-    fn identical_overlay_bytes_hash_equal() {
-        let mut sim_a = Simulation::new();
-        let mut sim_b = Simulation::new();
-        sim_a.bridge_state = Some(make_bridge_state_with_overlay(0x18));
-        sim_b.bridge_state = Some(make_bridge_state_with_overlay(0x18));
-        assert_eq!(
-            sim_a.state_hash(),
-            sim_b.state_hash(),
-            "identical bridge states must hash equal",
-        );
-    }
+    use crate::sim::bridge_state::{BridgeEndpointRecord, BridgeRecordKind, BridgeRuntimeState};
 
     #[test]
     fn bridge_endpoint_record_kind_difference_changes_state_hash() {
         let mut sim_a = Simulation::new();
         let mut sim_b = Simulation::new();
 
-        let mut state_a = make_bridge_state_with_overlay(0x18);
-        let mut state_b = make_bridge_state_with_overlay(0x18);
+        let mut state_a = BridgeRuntimeState::default();
+        let mut state_b = BridgeRuntimeState::default();
         let mut record = BridgeEndpointRecord {
             endpoint_a: (1, 1),
             endpoint_b: (4, 1),

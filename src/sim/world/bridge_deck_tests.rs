@@ -1,7 +1,7 @@
 //! Structural fallout membership/restoration and concrete hut caller regressions.
 use super::{
     blow_up_bridge_cell_fallout,
-    tests::{seed_bridge_cell, water_below_bridge_terrain},
+    tests::{seed_bridge_overlay, water_below_bridge_terrain},
 };
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::{
@@ -22,11 +22,12 @@ fn structural_fallout_retires_effect_only_ground_victim() {
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
     sim.resolved_terrain = Some(water_below_bridge_terrain(4));
-    let mut bridge = BridgeRuntimeState::default();
-    for y in [3, 4, 5] {
-        bridge.test_seed_cell(4, y, seed_bridge_cell(0xD4));
-    }
-    sim.bridge_state = Some(bridge);
+    seed_bridge_overlay(
+        sim.resolved_terrain.as_mut().unwrap(),
+        &[(4, 3), (4, 4), (4, 5)],
+        0xD4,
+    );
+    sim.bridge_state = Some(BridgeRuntimeState::default());
     let owner = sim.interner.intern("Americans");
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 1000, 10));
@@ -91,11 +92,12 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
         cell.bridge_walkable = true;
         cell.bridge_deck_level = 4;
     }
-    let mut bridge = BridgeRuntimeState::default();
-    for y in [3, 4, 5] {
-        bridge.test_seed_cell(4, y, seed_bridge_cell(0xD4));
-    }
-    sim.bridge_state = Some(bridge);
+    seed_bridge_overlay(
+        sim.resolved_terrain.as_mut().unwrap(),
+        &[(4, 3), (4, 4), (4, 5)],
+        0xD4,
+    );
+    sim.bridge_state = Some(BridgeRuntimeState::default());
     let mut construct = |name: &str, x: u16, marked: bool| {
         let id = sim
             .construct_object_limbo_at_height(name, "Americans", x, 4, 0, 4, &rules)

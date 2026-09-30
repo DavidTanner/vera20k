@@ -20,15 +20,7 @@ fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
     let (tile_id, sub_tile) = terrain.presentation_tile(cell);
     assert_eq!((tile_id, sub_tile), (278, 7));
     assert!(!terrain.pavement_damaged_at(rx, ry));
-    assert!(
-        scenario
-            .sim()
-            .bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(rx, ry)
-            .is_none()
-    );
+    assert!(!cell.has_bridge_deck && !cell.bridge_facts.has_structural_bridge());
     let pristine = TileKey {
         tile_id,
         sub_tile,
