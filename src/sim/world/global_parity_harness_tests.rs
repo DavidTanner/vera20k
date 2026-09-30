@@ -405,15 +405,16 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // all819 frame rows, all three RNG states and ordered raw draw callers.
 // Incoming main preserves candidate state; its source-line changes remain
 // recorded. This Rust replay pin does not establish native whole-world parity.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xCE21_A562_A129_5C86;
-// 2026-09-30 a revealed building's Location Z (composition only; #692):
-// Reveal gives each building the exact Z BuildingType +0x6C (0x00464A70)
-// takes, the floor at its XY, and the object fold hashes an exact Z when one
-// is present. Ceremony: this change with only the Structure exact Z left out
-// of the fold printed the old value 0xC688_AB2A_C675_D7D8, with the RNG
-// pins above unchanged (the probe patch was not committed): the only change
-// to this pin is the fold.
-// Integrated latest-main composition awaits complete before/final attribution below.
+// Incoming main's BuildingType +0x6C (0x00464A70) floor coordinate is now
+// retained by Reveal, including zero. Complete before/final/control receipts
+// in foot_bridge_layer.main986.replay.json attribute all819 observed frames:
+// only GAWEAP/GAREFN exact Z changes None -> Some(0); every other actor field,
+// all three RNG states and ordered draw values match. Raw caller line changes
+// are retained. Omitting only Structure exact Z from the hash recovers every
+// prior frame hash and CE21_A562_A129_5C86; gameplay XYZ remains untouched.
+// The uncommitted control is preserved with source/binary identities. This
+// composition change establishes a Rust regression pin, not native world parity.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB80A_AAB9_5187_A8F9;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

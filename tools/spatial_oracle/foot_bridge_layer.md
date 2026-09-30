@@ -354,3 +354,46 @@ Rust integration checks remain separately bounded.
 The whole-bridge goal remains paused and open. Required broader map/path authority,
 collapse/Tags/huts, full arcing geometry, complete Building scheduling and native
 visibility/GPU comparisons are not closed by these response/action dependencies.
+
+## Incoming-main replay composition
+
+[The complete incoming-main receipt](foot_bridge_layer.main986.replay.json)
+retains all819 before/final/control observations. Its lossless comparison accounts
+for all2,734 field differences: two buildings retain exact floor Z=0 rather than
+None (1,202 fields), their hash views change (1,201 fields), and331 raw caller
+strings contain only twelve exact source-line replacements. The201 bridge rows
+are byte-identical. Every other actor, input, command, queue and object-store
+field, and all three full RNG states and ordered draw values, match.
+
+Original BuildingType `0x00464A70`, installed at type virtual+0x6C, copies input
+XY and returns original `Map578080` floor Z. Active Object Unlimbo dispatches that
+type virtual at `0x005F4F88`, then commits its result before Mark(PUT). The receipt
+retains pinned original-byte packets and explicit-program Ghidra readback. Ground
+arithmetic remains established by [the original ramp vectors](../ramp_height_vectors.json);
+this body/caller proof does not establish whole Building AI or native world parity.
+
+The uncommitted control excludes only Structure exact Z from the hash; it leaves
+gameplay XYZ untouched. All601 prior global hashes and600 frame-result hash views
+recover exactly, with all819 final/control gameplay and raw RNG fields identical.
+Thus the global Rust pin moves from `CE21A562A1295C86` to `B80AAAB95187A8F9`;
+bridge `4477C32418EDA27F` and Slice6 `77B7FEF300222AB2` stay unchanged. The receipt
+preserves complete source, installation/restoration and binary identities, actual
+old-pin failure logs, control logs and the comparison recipes. None is a native
+whole-world golden. The earlier full replay contexts remain unchanged in
+[the historical receipt](foot_bridge_layer.replay.json).
+
+The final strict-retail library run passes9,463 tests (211 ignored); lib clippy
+finishes with765 existing warnings. Field ownership is2,646 versus2,661 on
+integrated main. Final ordinary release label
+`bridge-response-runtime-20260930-stage267-main986` has binary SHA256
+`e3549a23bd935f463298665c3b891d99c9527c18fca4a7904a8c7a243fe98f11`.
+The same committed profiles revalidate Hills2400 (2,401 observations),
+AnyTown800 (801) and AnyTown1184 (1,185). Hills943/945 are on the high deck
+at Z624 and944/947 remain on ground Z208, all alive. AnyTown1383 fires with
+Doing4 from step912; hostile1386 ends at7HP and the yard remains1,000HP.
+Therefore yard damage→Rescue/home remains unobserved. GPU frames were inspected.
+Raw local evidence is retained at `logs/bridge-response-stage267-main986-validation`
+with receipt SHA256
+`4f21ae65fbd18f9a26ab55465497c137e9194bf2ba3d33ceecdb3e300c759554`;
+its receipt hashes every raw child output and input copy. These release checks
+validate connected production output; their native parity certification is NONE.

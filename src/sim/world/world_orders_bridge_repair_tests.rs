@@ -16,7 +16,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::command::Command;
-use crate::sim::components::{Health, PendingC4Detonation};
+use crate::sim::components::{Health, NavTargetRef, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::timer::CdTimer;
 
@@ -327,9 +327,9 @@ fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
                 .unwrap();
             if moving {
                 assert!(
-                    sim.set_infantry_cell_destination(
+                    sim.set_infantry_destination(
                         seal,
-                        (seal_at.0, seal_at.1 + 5),
+                        NavTargetRef::cell(seal_at.0, seal_at.1 + 5),
                         &rules,
                         Some(&registry)
                     )

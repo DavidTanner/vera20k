@@ -361,10 +361,12 @@ impl Simulation {
             i32::from(crate::util::lepton::lepton_to_cell_packed(current.x)),
             i32::from(crate::util::lepton::lepton_to_cell_packed(current.y)),
         );
-        let zone = zones.get_zone_id_native(
-            current_cell,
+        let zone = zones.get_zone_id_native_in_query(
+            terrain,
+            (current_cell.0 as u16, current_cell.1 as u16),
             crate::rules::locomotor_type::MovementZone::Normal,
             false,
+            Some(&native_cells),
         )?;
         //5002E5 packed arguments [Track1,zone,Normal0,bridge0,1,1,0,0,0,1,0,0].
         //GetZone has NO SpeedType parameter; the following FNPC always Track.
