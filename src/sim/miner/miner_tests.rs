@@ -15,6 +15,7 @@ use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, ResourceType};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+use crate::sim::movement::teleport_movement;
 use crate::sim::occupancy::CellListInsertion;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
@@ -382,13 +383,24 @@ fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
     for _ in 0..n {
         sim.session.total_sim_ms = sim.session.total_sim_ms.saturating_add(67);
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
-        crate::sim::movement::teleport_movement::tick_teleport_movement(
-            &mut sim.substrate.entities,
-            &[],
-            sim.session.tick,
-            None,
-            None,
-        );
+        // The object turn admits a Teleport Process for an owner whose active
+        // locomotor is Teleport.
+        for id in sim.substrate.entities.keys_sorted() {
+            if sim
+                .substrate
+                .entities
+                .get(id)
+                .is_some_and(teleport_movement::teleport_process_active)
+            {
+                teleport_movement::process_teleport(
+                    &mut sim.substrate.entities,
+                    id,
+                    sim.session.tick,
+                    None,
+                    None,
+                );
+            }
+        }
         super::miner_system::tick_miners(sim, rules, &config, Some(&grid));
         tick_stages(sim);
         // Also tick movement so issue_direct_move targets are consumed

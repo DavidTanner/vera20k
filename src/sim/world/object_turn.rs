@@ -317,7 +317,6 @@ impl Simulation {
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         self.complete_pending_class_order(stable_id, rules);
         let sim = self;
-        let one = [stable_id];
         let mut process = LocomotorProcess::admitted();
         let teleport_armed = sim
             .substrate
@@ -355,9 +354,9 @@ impl Simulation {
                 anim_spawns: &mut warp_spawns,
                 warp_out_type,
             };
-            teleport_movement::tick_teleport_movement(
+            teleport_movement::process_teleport(
                 &mut sim.substrate.entities,
-                &one,
+                stable_id,
                 sim.session.tick,
                 sim.resolved_terrain.as_ref(),
                 Some(&mut teleport_visuals),
@@ -382,9 +381,9 @@ impl Simulation {
                 }
             }
         } else {
-            teleport_movement::tick_teleport_movement(
+            teleport_movement::process_teleport(
                 &mut sim.substrate.entities,
-                &one,
+                stable_id,
                 sim.session.tick,
                 sim.resolved_terrain.as_ref(),
                 None,
@@ -441,13 +440,15 @@ impl Simulation {
     /// detonation request and a dead missile's explosion.
     fn process_rocket_locomotor(&mut self, stable_id: u64) -> LocomotorProcess {
         let mut process = LocomotorProcess::admitted();
-        let arrivals = rocket_movement::tick_rocket_movement(
-            &mut self.substrate.entities,
-            &[stable_id],
-            self.session.tick,
-        );
-        let arrived = !arrivals.is_empty();
-        self.pending_rocket_detonations.extend(arrivals);
+        let tick = self.session.tick;
+        let arrived = self
+            .substrate
+            .entities
+            .get_mut(stable_id)
+            .is_some_and(|entity| rocket_movement::process_rocket(entity, tick));
+        if arrived {
+            self.pending_rocket_detonations.push(stable_id);
+        }
         // `0x00662FA1..0x00662FD0`: after the flight step the Process moves
         // its owner's AircraftTracker entry (`0x004138C0`) to the new cell.
         self.sync_air_spatial_membership(stable_id);

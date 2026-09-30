@@ -224,3 +224,39 @@ fn a_ground_order_arms_the_warp() {
     let warp = mover.teleport_state.as_ref().expect("armed warp");
     assert_eq!((warp.target_rx, warp.target_ry), (12, 7));
 }
+
+/// A warp the Teleport armed waits while a Drive piggybacks over it: the
+/// object turn calls only the active locomotor's Process (`0x004DA877`), so
+/// the suspended Teleport runs once End_Piggyback hands it back.
+#[test]
+fn an_armed_warp_waits_while_a_drive_piggyback_is_active() {
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    let locomotor = sim
+        .substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .locomotor
+        .as_mut()
+        .unwrap();
+    assert!(locomotor.begin_piggyback(LocomotorKind::Drive, 0));
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+    let mover = sim.substrate.entities.get_mut(1).unwrap();
+    assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
+    assert_eq!(
+        mover.teleport_state.as_ref().map(|state| state.phase),
+        Some(TeleportPhase::Relocate)
+    );
+
+    let locomotor = mover.locomotor.as_mut().unwrap();
+    if locomotor.active_kind() == LocomotorKind::Drive {
+        assert!(locomotor.end_piggyback());
+    }
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+    let mover = sim.substrate.entities.get(1).unwrap();
+    assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
+}
