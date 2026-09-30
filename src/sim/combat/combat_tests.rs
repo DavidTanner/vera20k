@@ -1133,10 +1133,17 @@ fn considered_aircraft_infantry_is_air_only_while_high_flying() {
         );
 
         if altitude_leptons > 0 {
-            sim.substrate
+            // Airborne: its Location Z above the mapless ground, with the
+            // locomotor's altitude copy.
+            let rocketeer = sim
+                .substrate
                 .entities
                 .get_mut(target)
-                .and_then(|entity| entity.locomotor.as_mut())
+                .expect("target should exist");
+            rocketeer.position.exact_z_leptons = Some(altitude_leptons as i32);
+            rocketeer
+                .locomotor
+                .as_mut()
                 .expect("Rocketeer carries a locomotor")
                 .altitude = crate::util::fixed_math::SimFixed::from_num(altitude_leptons);
         }
@@ -7706,6 +7713,53 @@ fn gsi_04_07_damage_periodic_radiation_enters_direct_receiver_once() {
         result.consequences.effects().under_attack_events.is_empty(),
         "null source house cannot emit an enemy under-attack event"
     );
+}
+
+/// FootClass::AI skips the radiation application only for an object in the
+/// air: vt+0x54 (`0x004DA588`), IsInAir (`0x005F6B90`), a height of at least
+/// 208. A paratrooper falls through that line; a Hover unit stays below it.
+#[test]
+fn radiation_skips_only_objects_in_the_air() {
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::movement::parachute_descent::ParachuteDescentState;
+    use crate::util::fixed_math::SimFixed;
+
+    let rules = radiation_rules();
+    let mut sim = crate::sim::world::Simulation::new();
+    let mut spawn = |kind, rx| {
+        sim.spawn_object(kind, "Americans", rx, 5, 0, &rules)
+            .expect("victim spawns")
+    };
+    let high = spawn("E2", 5);
+    let low = spawn("E2", 6);
+    let hover = spawn("MTNK", 4);
+    for (id, height) in [(high, 208), (low, 207)] {
+        sim.substrate.entities.get_mut(id).unwrap().parachute_state = Some(ParachuteDescentState {
+            rate: -3,
+            altitude: SimFixed::from_num(height),
+        });
+    }
+    let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Hover);
+    locomotor.altitude = SimFixed::from_num(120);
+    sim.substrate.entities.get_mut(hover).unwrap().locomotor = Some(locomotor);
+    sim.radiation.apply_detonation(
+        crate::sim::radiation::RadDetonation {
+            rx: 5,
+            ry: 5,
+            rad_level: 500,
+            spread: 2,
+        },
+        0,
+        &rules.radiation,
+        None,
+    );
+
+    rad_combat_tick(&mut sim, &rules, 16);
+    let health = |id| sim.substrate.entities.get(id).unwrap().health.current;
+    assert_eq!(health(high), 300, "in the air at 208");
+    assert!(health(low) < 300, "not in the air below 208");
+    assert!(health(hover) < 300, "a hovering unit is not in the air");
 }
 
 #[test]

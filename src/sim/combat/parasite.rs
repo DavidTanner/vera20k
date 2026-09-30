@@ -753,12 +753,12 @@ impl Simulation {
         let Some(victim_entity) = self.substrate.entities.get(victim) else {
             return false;
         };
-        // Victim vtable +0x54 (IsInAir).
-        if crate::sim::movement::air_movement::current_fly_height(
+        // Victim vtable +0x54 (IsInAir, `0x0062AB52`).
+        if crate::sim::movement::air_movement::is_high_flying(
             victim_entity,
             self.resolved_terrain.as_ref(),
-        ) > 0
-        {
+            Some((rules, &self.interner)),
+        ) {
             return false;
         }
         let cell = (

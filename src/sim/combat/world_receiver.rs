@@ -5051,20 +5051,19 @@ pub(crate) fn tick_combat(
                         continue;
                     };
                     // Buildings never take radiation damage; corpses, limbo
-                    // (transported) and airborne units are exempt.
+                    // (transported) and objects in the air are exempt.
+                    // FootClass::AI asks vt+0x54, IsInAir (`0x004DA588`).
                     if entity.category == EntityCategory::Structure
                         || entity.dying
                         || !entity.is_alive()
                         || entity.immune_to_radiation
                         || entity.passenger_role.is_inside_transport()
+                        || crate::sim::movement::air_movement::is_high_flying(
+                            entity,
+                            world.resolved_terrain.as_ref(),
+                            Some((rules, &world.interner)),
+                        )
                     {
-                        continue;
-                    }
-                    let airborne = entity
-                        .locomotor
-                        .as_ref()
-                        .is_some_and(|loco| loco.altitude > SIM_ZERO);
-                    if airborne {
                         continue;
                     }
                     let level = rad.damaging_level(
