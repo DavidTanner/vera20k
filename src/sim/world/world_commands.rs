@@ -1442,9 +1442,9 @@ impl Simulation {
                     if !obj.unit_repair {
                         return None;
                     }
-                    Some((depot.position.rx, depot.position.ry, obj.foundation.clone()))
+                    Some(building_dock::depot_dock_cell(depot))
                 });
-                let Some((depot_rx, depot_ry, foundation)) = depot_info else {
+                let Some((dock_rx, dock_ry)) = depot_info else {
                     return false;
                 };
                 // Validate entity is a unit or infantry (not structure/aircraft).
@@ -1480,8 +1480,6 @@ impl Simulation {
                     Some(rules),
                 );
                 // Set dock state and issue move toward depot.
-                let (dock_rx, dock_ry) =
-                    building_dock::depot_dock_cell(depot_rx, depot_ry, &foundation);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     // Event4C7467 dispatches Assign_Target before the destination write.
                     represented_assign_target(e, None);

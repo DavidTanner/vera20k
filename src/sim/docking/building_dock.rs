@@ -62,8 +62,6 @@ use crate::sim::radio::RadioResponse;
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
 use crate::sim::world::Simulation;
 
-use crate::sim::production::foundation_dimensions;
-
 /// Dock state machine phase for a unit interacting with a repair depot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DockPhase {
@@ -194,14 +192,17 @@ fn repair_is_complete(hp: i32, strength: i32) -> bool {
     )
 }
 
-/// Compute the dock cell (center of foundation) for a building.
+/// The depot's dock cell: the cell of its `GetCoords`
+/// ([`ground_pose::object_center_xy`], `BuildingClass::GetCoords` 0x00447AC0,
+/// the foundation centre). `GetDockCoord` for `UnitRepair` with
+/// `NumberOfDocks == 1` adds `DockingOffset0`, which is not represented:
+/// GADEPT 3x3 has none, and NADEPT 4x3's `128,0,0` stays inside the same cell
+/// (origin + (2, 1)).
 ///
-/// `GetDockCoord` for `UnitRepair` with `NumberOfDocks == 1` is the building
-/// coord plus `DockingOffset0`: GADEPT 3x3 (no offset) ⇒ centre; NADEPT 4x3
-/// `DockingOffset0=128,0,0` ⇒ origin + (2, 1). Both equal `w/2, h/2`.
-pub fn depot_dock_cell(building_rx: u16, building_ry: u16, foundation: &str) -> (u16, u16) {
-    let (w, h) = foundation_dimensions(foundation);
-    (building_rx + w / 2, building_ry + h / 2)
+/// [`ground_pose::object_center_xy`]: crate::sim::movement::ground_pose::object_center_xy
+pub fn depot_dock_cell(depot: &crate::sim::game_entity::GameEntity) -> (u16, u16) {
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(depot);
+    (x.div_euclid(256) as u16, y.div_euclid(256) as u16)
 }
 
 /// The foundation exit list `Type+0xED4` (`0x0089D368 + foundation_id * 0x78`),
@@ -597,11 +598,13 @@ pub fn tick_building_docks(sim: &mut Simulation, rules: &RuleSet) {
                     depot.position.rx,
                     depot.position.ry,
                     obj.foundation.clone(),
+                    depot_dock_cell(depot),
                     obj.dock_contact_capacity() as usize,
                 ))
             });
 
-        let Some((depot_rx, depot_ry, foundation, dock_capacity)) = depot_info else {
+        let Some((depot_rx, depot_ry, foundation, (dock_rx, dock_ry), dock_capacity)) = depot_info
+        else {
             // Depot gone or invalid — abort docking.
             break_depot_contact(sim, snap.id, snap.dock_building_id);
             m.clear_dock = true;
@@ -625,7 +628,6 @@ pub fn tick_building_docks(sim: &mut Simulation, rules: &RuleSet) {
             continue;
         }
 
-        let (dock_rx, dock_ry) = depot_dock_cell(depot_rx, depot_ry, &foundation);
         let dist = cell_distance(snap.rx, snap.ry, dock_rx, dock_ry);
 
         match snap.phase {
@@ -816,28 +818,40 @@ mod tests {
     use crate::sim::occupancy::CellListInsertion;
     use crate::sim::pathfinding::PathGrid;
 
-    #[test]
-    fn dock_cell_for_3x3_foundation() {
-        let (rx, ry) = depot_dock_cell(10, 20, "3x3");
-        assert_eq!((rx, ry), (11, 21));
+    fn structure_at(rx: u16, ry: u16, foundation: &str) -> GameEntity {
+        let mut depot = GameEntity::new_at_frame_zero_for_test(
+            DEPOT,
+            rx,
+            ry,
+            0,
+            0,
+            Default::default(),
+            Health { current: 1000 },
+            Default::default(),
+            EntityCategory::Structure,
+            0,
+            5,
+            false,
+        );
+        depot.foundation = foundation.to_string();
+        depot
     }
 
     #[test]
-    fn dock_cell_for_4x3_foundation() {
-        // NADEPT: DockingOffset0=128,0,0 ⇒ origin + (2, 1).
-        assert_eq!(depot_dock_cell(10, 20, "4x3"), (12, 21));
-    }
-
-    #[test]
-    fn dock_cell_for_2x2_foundation() {
-        let (rx, ry) = depot_dock_cell(10, 20, "2x2");
-        assert_eq!((rx, ry), (11, 21));
-    }
-
-    #[test]
-    fn dock_cell_for_1x1_foundation() {
-        let (rx, ry) = depot_dock_cell(10, 20, "1x1");
-        assert_eq!((rx, ry), (10, 20));
+    fn dock_cell_is_the_cell_of_the_foundation_centre() {
+        // NADEPT 4x3: DockingOffset0=128,0,0 stays in origin + (2, 1).
+        for (foundation, cell) in [
+            ("3x3", (11, 21)),
+            ("4x3", (12, 21)),
+            ("2x2", (11, 21)),
+            ("1x1", (10, 20)),
+        ] {
+            assert_eq!(
+                depot_dock_cell(&structure_at(10, 20, foundation)),
+                cell,
+                "{foundation}"
+            );
+        }
     }
 
     #[test]
@@ -1086,6 +1100,7 @@ mod tests {
             DEPOT_RY,
             1000,
         );
+        sim.substrate.entities.get_mut(DEPOT).unwrap().foundation = "3x3".to_string();
         for y in DEPOT_RY..DEPOT_RY + 3 {
             for x in DEPOT_RX..DEPOT_RX + 3 {
                 sim.substrate.occupancy.add(
@@ -1486,7 +1501,7 @@ mod tests {
         e.movement_target = None;
         assert_eq!(e.navigation.nav_com, None, "the unit stopped");
         tick(&mut sim, &rules);
-        let pad = depot_dock_cell(DEPOT_RX, DEPOT_RY, "3x3");
+        let pad = depot_dock_cell(sim.substrate.entities.get(DEPOT).unwrap());
         let e = sim.substrate.entities.get(1).unwrap();
         assert_eq!(phase(&sim, 1), Some(DockPhase::EnterDock));
         assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(pad.0, pad.1)));
@@ -1508,7 +1523,7 @@ mod tests {
     fn repaired_unit_is_released_to_the_native_exit_cell_and_pad_is_vacated() {
         let (mut sim, rules) = setup(1);
         assert!(order_repair(&mut sim, &rules, 1));
-        let pad = depot_dock_cell(DEPOT_RX, DEPOT_RY, "3x3");
+        let pad = depot_dock_cell(sim.substrate.entities.get(DEPOT).unwrap());
         let mut reached_pad = false;
         let mut released = false;
         for _ in 0..2000 {
