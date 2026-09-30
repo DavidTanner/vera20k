@@ -20,6 +20,15 @@ fn rules() -> RuleSet {
 }
 
 fn world(rules: &RuleSet, anchor_state: u8) -> Simulation {
+    family_world(rules, anchor_state, 25, BridgeStampFamily::Nesw)
+}
+
+fn family_world(
+    rules: &RuleSet,
+    anchor_state: u8,
+    anchor_overlay: u8,
+    stamp: BridgeStampFamily,
+) -> Simulation {
     let cells = (0..9)
         .flat_map(|y| {
             (0..9).map(move |x| {
@@ -28,13 +37,10 @@ fn world(rules: &RuleSet, anchor_state: u8) -> Simulation {
         })
         .collect();
     let mut terrain = ResolvedTerrainGrid::from_cells(9, 9, cells);
-    terrain.apply_runtime_bridge_mark_stamp(
-        BridgeFlagStamp::new((4, 4), 6, true),
-        BridgeStampFamily::Nesw,
-    );
+    terrain.apply_runtime_bridge_mark_stamp(BridgeFlagStamp::new((4, 4), 6, true), stamp);
     let anchor = terrain.native_cell_identity((4, 4));
     terrain.write_native_cell_state(anchor, anchor_state);
-    terrain.cells[4 * 9 + 4].bridge_facts.overlay_id = Some(25);
+    terrain.cells[4 * 9 + 4].bridge_facts.overlay_id = Some(anchor_overlay);
     terrain.cells[4 * 9 + 3].bridge_facts.overlay_id = Some(42);
     let mut grid = OverlayGrid::new(9, 9);
     for y in 0..9 {
@@ -152,6 +158,50 @@ fn bridge_damage_exact_height_runs_body_and_detaches_only_after_collapse() {
     );
 }
 
+/// ProcessBridgeDamageStateMachine_Low 0x00571490 runs the same anchor
+/// switch as its concrete twin: damage writes +11E=15, the next hit
+/// collapses through 47E470 and clears bit100, and a body cell resolves its
+/// +2C anchor.
+#[test]
+fn wooden_body_damage_collapses_through_the_live_publication_host() {
+    let rules = rules();
+    let mut sim = family_world(&rules, 9, 0xed, BridgeStampFamily::Nwse);
+    let cell = sim
+        .resolved_terrain
+        .as_ref()
+        .unwrap()
+        .native_cell_identity((4, 4));
+    let body = sim
+        .resolved_terrain
+        .as_ref()
+        .unwrap()
+        .native_cell_identity((3, 4));
+    let flags = |sim: &Simulation, cell| {
+        sim.resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_flags(cell)
+    };
+    assert_ne!(flags(&sim, body) & 0x100, 0);
+    let hit = event(&mut sim, (3, 4));
+
+    assert!(!apply_bridge_damage_events(&mut sim, &rules, &[hit]));
+    assert_eq!(
+        sim.resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_state(cell),
+        15
+    );
+    assert_ne!(flags(&sim, cell) & 0x100, 0);
+
+    assert!(apply_bridge_damage_events(&mut sim, &rules, &[hit]));
+    let terrain = sim.resolved_terrain.as_ref().unwrap();
+    assert_eq!(terrain.native_cell_state(cell), 0);
+    assert_eq!(flags(&sim, cell) & 0x100, 0);
+    assert_eq!(flags(&sim, body) & 0x100, 0);
+}
+
 #[test]
 fn signed_bridge_strength_survives_reader_runtime_dispatch_and_snapshot() {
     let native: serde_json::Value = serde_json::from_str(include_str!(
@@ -207,13 +257,13 @@ fn signed_bridge_strength_survives_reader_runtime_dispatch_and_snapshot() {
     }
 }
 
-
 fn host<'a>(sim: &'a mut Simulation, rules: &'a RuleSet) -> LivePublication<'a> {
     LivePublication {
         sim,
         rules,
         registry: None,
         collapsed: false,
+        family: Family::High,
     }
 }
 
@@ -449,12 +499,15 @@ fn bridge_publication_perpendicular_uses_raw_tile_instead_of_runtime_class() {
     let mut sim = world(&rules, 9);
     // Native572C90 gates on raw +38. A legacy Bridgehead runtime entry cannot
     // turn this unrelated raw tile into a middle-family tile.
-    sim.resolved_terrain.as_mut().unwrap().test_set_high_bridge_rim_tiles(
-        crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
-            0,
-            b"[General]\nBridgeMiddle1=7\nBridgeMiddle2=12\n",
-        ),
-    );
+    sim.resolved_terrain
+        .as_mut()
+        .unwrap()
+        .test_set_high_bridge_rim_tiles(
+            crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
+                0,
+                b"[General]\nBridgeMiddle1=7\nBridgeMiddle2=12\n",
+            ),
+        );
     let mut cell = super::super::tests::seed_bridge_cell(0);
     cell.role = BridgeCellRole::Bridgehead;
     sim.bridge_state
@@ -471,12 +524,24 @@ fn bridge_publication_perpendicular_uses_raw_tile_instead_of_runtime_class() {
     let mut host = host(&mut sim, &rules);
     host.perpendicular((4, 4), Axis::EW, Phase::DamageB, 0);
     assert_eq!(
-        host.sim.bridge_state.as_ref().unwrap().cell(4, 3).unwrap().bridgehead_anchor_class,
+        host.sim
+            .bridge_state
+            .as_ref()
+            .unwrap()
+            .cell(4, 3)
+            .unwrap()
+            .bridgehead_anchor_class,
         crate::sim::bridge_state::BridgeheadAnchorClass::Variant0
     );
     host.perpendicular((4, 4), Axis::EW, Phase::DamageB, 0);
     assert_eq!(
-        host.sim.bridge_state.as_ref().unwrap().cell(4, 3).unwrap().bridgehead_anchor_class,
+        host.sim
+            .bridge_state
+            .as_ref()
+            .unwrap()
+            .cell(4, 3)
+            .unwrap()
+            .bridgehead_anchor_class,
         crate::sim::bridge_state::BridgeheadAnchorClass::Variant0
     );
     assert_eq!(

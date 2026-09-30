@@ -1,35 +1,46 @@
-//! Live host for the native high-rim selector and restart loop.
+//! Live host for the native bridge rim selector and restart loop.
 //!
 //! The original untagged575EE0 traversal remains mandatory even on a no-write
 //! refresh, because its GetCell calls can move the retained shared dummy.
 
 use super::*;
 use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
-use crate::sim::bridge_state::rim::{self, HighBridgeRimHost, RimCell, RimCoord};
+use crate::sim::bridge_state::rim::{self, HighBridgeRimHost, RimBounds, RimCell, RimCoord};
 
+/// UpdateAdjacentBridges_High 576770 or, for the wooden family, 571050.
 pub(super) fn update(publication: &mut LivePublication<'_>, input: RimCoord) {
-    let Some(tiles) = publication.terrain().high_bridge_rim_tiles() else {
+    let Some(tiles) = super::super::family_rim_tiles(publication.terrain(), publication.family)
+    else {
         // Synthetic grids without an active theater have no native tile keys.
         return;
     };
-    let size = publication
-        .sim
-        .playfield_bounds
-        .zip(publication.sim.playfield_size_height)
-        .map(|(bounds, height)| (bounds.base, height))
-        .or_else(|| {
-            publication
+    let bounds = match publication.family {
+        Family::High => {
+            let size = publication
                 .sim
-                .bridge_state
-                .as_ref()?
-                .native_zone_source_size()
-        });
-    let Some(size) = size else { return };
+                .playfield_bounds
+                .zip(publication.sim.playfield_size_height)
+                .map(|(bounds, height)| (bounds.base, height))
+                .or_else(|| {
+                    publication
+                        .sim
+                        .bridge_state
+                        .as_ref()?
+                        .native_zone_source_size()
+                });
+            let Some((width, height)) = size else { return };
+            RimBounds::Diamond { width, height }
+        }
+        Family::Low => RimBounds::Rect(NativeStartBounds::from_session(
+            publication.sim,
+            publication.terrain(),
+        )),
+    };
     rim::update_adjacent(
         &mut LiveRim {
             publication,
             tiles,
-            size,
+            bounds,
         },
         input,
     );
@@ -38,7 +49,7 @@ pub(super) fn update(publication: &mut LivePublication<'_>, input: RimCoord) {
 struct LiveRim<'a, 'world> {
     publication: &'a mut LivePublication<'world>,
     tiles: HighBridgeRimTiles,
-    size: (i32, i32),
+    bounds: RimBounds,
 }
 
 impl HighBridgeRimHost for LiveRim<'_, '_> {
@@ -47,8 +58,8 @@ impl HighBridgeRimHost for LiveRim<'_, '_> {
     fn tiles(&self) -> HighBridgeRimTiles {
         self.tiles
     }
-    fn map_size(&self) -> (i32, i32) {
-        self.size
+    fn bounds(&self) -> RimBounds {
+        self.bounds
     }
     fn cell(&mut self, coord: RimCoord) -> Cell {
         self.publication.lookup(coord)

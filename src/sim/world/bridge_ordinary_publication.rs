@@ -24,6 +24,7 @@ pub(crate) fn damage_ordinary(
         rules,
         registry,
         collapsed: false,
+        family,
     };
     let returned = ordinary_damage::damage(
         &mut LiveOrdinary {
@@ -51,8 +52,10 @@ pub(crate) fn repair_from_engineer(
         rules,
         registry,
         collapsed: false,
+        family: Family::High,
     };
     let (input, family) = engineer_repair_family(&mut live, engineer)?;
+    live.family = family;
     let mut host = LiveOrdinary {
         live: &mut live,
         changed: false,

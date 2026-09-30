@@ -194,9 +194,14 @@ impl<'a> BridgeDamageDrivers<'a> {
             self.collapsed |= result.collapsed;
             return result.returned;
         }
-        if matches!(path, DispatchPath::HighStateMachine)
-            && let Some((rules, registry)) = self.publication
-            && let Some(result) = live_publication::try_body(self.sim, rules, registry, input)
+        let family = if path == DispatchPath::HighStateMachine {
+            Family::High
+        } else {
+            Family::Low
+        };
+        if let Some((rules, registry)) = self.publication
+            && let Some(result) =
+                live_publication::try_body(self.sim, rules, registry, input, family)
         {
             self.collapsed |= result.collapsed;
             return result.returned;
