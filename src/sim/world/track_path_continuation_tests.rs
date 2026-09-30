@@ -1272,7 +1272,6 @@ fn queued_waypoint_arrival_returns_before_the_continuation() {
 /// so the unit parks beside the depot (observed at (15,8), pad (17,10)) and
 /// never docks. Ignored until the native Hover host lands (#689).
 #[test]
-#[ignore = "Hover Move_To is the legacy pass lane; needs the native Hover host (#689)"]
 fn damaged_hover_unit_reaches_a_free_depot_pad() {
     use crate::sim::docking::building_dock::DockPhase;
     let depot_rules = format!(
