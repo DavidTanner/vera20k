@@ -44,6 +44,41 @@ work includes composition, active flags, selected assets/frames, timing and outp
 a loaded asset or working helper does not prove the final result. Keep address,
 verified role and reproducible evidence together, naming uncertainty honestly.
 
+## Names and their sources
+
+Bulk passes append a dated, tagged paragraph to each plate they touch (data labels
+get a plate on the data address). The tag says where the name came from and what
+was checked:
+
+- `[2026-09-30 vtable functions]`: a function created at an RTTI vtable target
+  that had none; its extent is Ghidra's disassembly from that entry.
+- `[2026-09-30 RTTI names]`: a virtual method named from its slot. The class prefix
+  is the slot's owner, the first class in the MSVC RTTI hierarchy whose vtable
+  holds this body at that slot. The plate names the slot (including the interface
+  vtable of a secondary subobject) and the source of the method name: the COM
+  interface declaration, the other named overrides of that slot, YRpp's virtual
+  declaration order where its length matches the RTTI vtable (a lead), or the
+  deleting-destructor body (flag test, `operator delete` 0x7C8B3D on `this`,
+  `RET 4`). `vt_entry_<hex>` means the method is unidentified and gives the slot's
+  byte offset; `_adjustor<N>` marks a thunk that shifts `this` by N and jumps to the
+  implementation. Interface-slot names, wrong class prefixes and constructor names on
+  destructor slots were corrected, and the plate records the earlier name. A corrected
+  prefix keeps the earlier method name when the slot's method is unidentified; when
+  that earlier name's class is unrelated to the slot owner, the name was kept. Where
+  an older method name only disagrees with the slot, the name was kept and the plate
+  records the slot's method; most of these are synonyms, a few are open conflicts.
+- `[2026-09-30 YRpp names]`: a non-virtual function or global named from a YRpp
+  address binding. The plate states whether the body's `RET` matches YRpp's declared
+  arguments. The name stays a lead.
+- `[2026-09-30 destructor audit]`: a destructor an older pass had named
+  `__Constructor`, with the byte evidence.
+- `vtable__<Class>` and `vtable__<Class>__secondary_<offset>` label each vtable from
+  its RTTI complete object locator.
+
+A name without a dated paragraph predates these passes; judge it by its own plate or
+re-derive it. The scripts, plans and results of the 2026-09-30 passes are in the
+machine-local research folder listed in `LOCAL.md`.
+
 ## Preserve findings without polluting shared analysis
 
 During authorized reverse engineering, preserve proven identities and useful evidence
@@ -73,3 +108,17 @@ Tool behavior checked 2026-09-04 against the installed GhidraMCP 5.14.2 bridge
 (`connect_instance`, `check_tools`) and plugin (`CommentService`,
 `ProgramScriptService.saveCurrentProgram`). No connected instance was available
 for a live persistence test; repeat capability checks when working against one.
+
+Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
+
+- `get_plate_comment` and `set_plate_comment` work on functions only. For a data
+  address, read the plate with `audit_global` (`plate_comment`) and write it with
+  `batch_set_comments`, which rejects a first line shorter than four words.
+- `rename_data` rejects a global name without a `g_` prefix; `rename_or_label`
+  accepts a per-call `strict_mode` (`enforce`, `warn`, `off`).
+- `can_rename_at_address` omits the current name at undefined addresses;
+  `audit_global` reports it.
+- A thunk shows its target's name until it gets its own, so renaming the target
+  renames the thunk's display name. Rename thunks before their targets.
+- The `find_code_gaps` records carry the neighbouring function names; compare gap
+  positions and sizes, not the text, across renames.
