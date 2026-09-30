@@ -181,8 +181,8 @@ pub(crate) struct IsClearToMoveRequest {
     pub speed_type: SpeedType,
     pub movement_zone: MovementZone,
     /// `None` corresponds to native zone `-1` (no zone comparison).
-    pub requested_zone: Option<i16>,
-    pub actual_zone: i16,
+    pub requested_zone: Option<u32>,
+    pub actual_zone: u32,
     /// Native signed `CellClass+0x11B` base level.
     pub base_level: i16,
     /// Native `CellClass::Flags & 0x100` bridge gate.
@@ -232,8 +232,8 @@ pub(crate) struct LiveCellPassabilityQuery<'a> {
     pub target: (u16, u16),
     pub speed_type: SpeedType,
     pub movement_zone: MovementZone,
-    pub requested_zone: Option<i16>,
-    pub actual_zone: i16,
+    pub requested_zone: Option<u32>,
+    pub actual_zone: u32,
     pub requested_layer: Option<MovementLayer>,
     pub ignore_infantry: bool,
     pub ignore_vehicles: bool,

@@ -309,8 +309,8 @@ pub(super) fn resolve_reachable_move_goal(
     let Some(zone_map) = zone_grid.map_for(zone_mz) else {
         return Some(goal);
     };
-    let required_zone = zone_map.zone_at(start.0, start.1, start_layer);
-    if required_zone == ZONE_INVALID {
+    let reduced_zone = zone_map.zone_at(start.0, start.1, start_layer);
+    if reduced_zone == ZONE_INVALID {
         // The mover itself has no zone — a unit standing on a footprint cell, a
         // factory exit or an unmapped bridge cell. There is no zone to require,
         // so the order passes through unchanged rather than being refused.
@@ -329,7 +329,17 @@ pub(super) fn resolve_reachable_move_goal(
         raw_occupation: None,
         passability: PassabilityArgs {
             speed_type,
-            required_zone_id: Some(u32::from(required_zone)),
+            // The candidates' zones come from GetZoneID (`0x0056D230`) when
+            // terrain is present (cell_rect), so the required zone must too.
+            required_zone_id: match resolved_terrain {
+                Some(terrain) => zone_grid.get_zone_id_native(
+                    terrain,
+                    start,
+                    zone_mz,
+                    start_layer == MovementLayer::Bridge,
+                ),
+                None => Some(u32::from(reduced_zone)),
+            },
             movement_zone: zone_mz,
             bridge_aware_zone: goal_layer == MovementLayer::Bridge,
         },

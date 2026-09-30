@@ -1041,16 +1041,22 @@ pub(crate) fn greatest_threat(
             attacker.category,
             EntityCategory::Structure | EntityCategory::Aircraft
         ) {
-        zone_grid.zip(terrain).and_then(|(zones, terrain)| {
-            zones.get_zone_id_native(
-                terrain,
-                (attacker.pos_rx, attacker.pos_ry),
-                attacker_obj.movement_zone,
-                // `PUSH 0x1 @ 0x006F8E73` — the scanner's own cell is always
-                // asked with bridge resolution on, whatever layer it stands on.
-                true,
-            )
-        })
+        zone_grid
+            .zip(terrain)
+            .and_then(|(zones, terrain)| {
+                zones.get_zone_id_native(
+                    terrain,
+                    (attacker.pos_rx, attacker.pos_ry),
+                    attacker_obj.movement_zone,
+                    // `PUSH 0x1 @ 0x006F8E73` — the scanner's own cell is always
+                    // asked with bridge resolution on, whatever layer it stands on.
+                    true,
+                )
+            })
+            // Both consumers skip the gate for DWORD -1 (`CMP EBP,-0x1 ; JZ` at
+            // `0x006F7E36` and `0x006F898F`): a scanner on a structural cell
+            // with no matching high bridge record scans unfiltered.
+            .filter(|&zone| zone != u32::MAX)
     } else {
         None
     };
@@ -2636,6 +2642,30 @@ mod tests {
             ),
             Some(3),
             "the zone gate refuses the nearer target across the barrier and takes the reachable one"
+        );
+
+        // A scanner on a structural cell with no matching high bridge record
+        // gets DWORD -1 from GetZoneID, and both consumers skip the gate for
+        // -1 (`0x006F7E36`, `0x006F898F`): the nearer target wins again.
+        let mut zones = zones;
+        zones.1.cell_mut(2, 2).unwrap().bridge_facts.raw_flags =
+            crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+        assert_eq!(
+            zones
+                .0
+                .get_zone_id_native(&zones.1, (2, 2), MovementZone::Normal, true),
+            Some(u32::MAX)
+        );
+        assert_eq!(
+            pick_with_mask_and_zones(
+                &entities,
+                &rules,
+                1,
+                super::super::ScanMission::Hunt,
+                Some(&zones)
+            ),
+            Some(2),
+            "a -1 scanner zone scans unfiltered"
         );
     }
 

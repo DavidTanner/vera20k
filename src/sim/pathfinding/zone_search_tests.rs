@@ -1801,6 +1801,10 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         cell.bridge_deck_level = 4;
     }
     assert_eq!(
+        zones.get_zone_id_native(&terrain, (1, 0), MovementZone::Normal, true),
+        Some(2)
+    );
+    assert_eq!(
         route(&zones, &terrain).is_some(),
         expected_admission(2, 2),
         "flat goal Flags0x100 must select the redirected raw zone"

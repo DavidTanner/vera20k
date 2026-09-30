@@ -874,8 +874,9 @@ impl Simulation {
                 target,
                 speed_type,
                 movement_zone,
-                requested_zone: requested.map(|zone| zone as i16),
-                actual_zone: actual.map_or(-1, |zone| zone as i16),
+                // `0x004834A0` compares the full GetZoneID DWORDs.
+                requested_zone: requested,
+                actual_zone: actual.unwrap_or(u32::MAX),
                 requested_layer: None,
                 ignore_infantry: false,
                 ignore_vehicles: false,
