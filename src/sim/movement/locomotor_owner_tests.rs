@@ -9,7 +9,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::command::Command;
 use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, Health};
 use crate::sim::movement;
-use crate::sim::movement::locomotion::{LocomotorRuntimePayload, LocomotorSlot};
+use crate::sim::movement::locomotion::LocomotorRuntimePayload;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
@@ -240,11 +240,6 @@ fn refused_installation_and_absent_stash_do_not_retire_external_state() {
     for state in [
         None,
         Some(LocomotorState::for_test_kind(LocomotorKind::Drive)),
-        {
-            let mut incoherent = LocomotorState::for_test_kind(LocomotorKind::Drive);
-            incoherent.slot = LocomotorSlot::new(LocomotorKind::Teleport);
-            Some(incoherent)
-        },
     ] {
         let (mut sim, _) = fixture();
         let entity = sim.substrate.entities.get_mut(1).unwrap();
