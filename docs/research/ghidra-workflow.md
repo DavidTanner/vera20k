@@ -72,7 +72,11 @@ was checked:
 - `[2026-09-30 YRpp names]`: a non-virtual function or global named from a YRpp
   address binding. The plate states whether the body's `RET` matches YRpp's declared
   arguments. The name stays a lead. A global that already had its own name kept it;
-  its plate records YRpp's binding.
+  its plate records YRpp's binding. A later pass also replaced `vt_entry` placeholders
+  at YRpp-bound addresses when YRpp declares the method in that slot, and skipped
+  bindings whose YRpp name is itself a placeholder (`func_3C`, `sub_53E3C0`). Some YRpp
+  addresses are wrong: a few land in the middle of an instruction, and some are a few
+  bytes off. The plates of the functions involved say which.
 - `[2026-09-30 destructor audit]`: a destructor an older pass had named
   `__Constructor`, with the byte evidence.
 - `[2026-09-30 duplicate names]`: a name several functions shared, or a
