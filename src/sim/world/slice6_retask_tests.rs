@@ -216,9 +216,9 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Mark reset it to 0 on every Foot and Building Mark. Ceremony, rerun after
 // merging main: this change with only that reset restored printed the old
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
-// above unchanged (the probe patch was not committed). Old value: the commit
-// that moved it.
-const SLICE6_BASELINE_HASH: u64 = 0x3983_6E86_AD68_DCF0;
+// above unchanged (the probe patch was not committed). Previous:
+// 0x3983_6E86_AD68_DCF0.
+const SLICE6_BASELINE_HASH: u64 = 0x9703_A2A8_E0FF_2C81;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

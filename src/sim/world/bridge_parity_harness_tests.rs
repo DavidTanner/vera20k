@@ -235,9 +235,9 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // Mark reset it to 0 on every Foot and Building Mark. Ceremony, rerun after
 // merging main: this change with only that reset restored printed the old
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
-// above unchanged (the probe patch was not committed). Old value: the commit
-// that moved it.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x6670_93CF_F88F_7008;
+// above unchanged (the probe patch was not committed). Previous:
+// 0x6670_93CF_F88F_7008.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x14B8_172A_D6EA_A02C;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

@@ -418,9 +418,9 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // Mark reset it to 0 on every Foot and Building Mark. Ceremony, rerun after
 // merging main: this change with only that reset restored printed the old
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
-// above unchanged (the probe patch was not committed). Old value: the commit
-// that moved it.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x64B4_3781_2052_4AF1;
+// above unchanged (the probe patch was not committed). Previous:
+// 0x64B4_3781_2052_4AF1.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xF066_BF94_338B_683B;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
