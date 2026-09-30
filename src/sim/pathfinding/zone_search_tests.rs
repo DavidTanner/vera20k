@@ -6,7 +6,6 @@ use super::*;
 use crate::map::bridge_facts::{
     BRIDGE_FLAG_DIRECTION_ZERO, BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION,
 };
-use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::MovementZone;
@@ -20,15 +19,12 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::test_interner;
 use crate::sim::miner::miner_system::{issue_move_if_idle, issue_stock_miner_drive_move};
-use crate::sim::movement::{issue_move_command_with_layered, tick_movement_with_grids};
-use crate::sim::occupancy::{CellOccupationGrid, OccupancyGrid};
+use crate::sim::movement::issue_move_command_with_layered;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::production::{ProductionCategory, STARTING_CREDITS, tick_production};
-use crate::sim::rng::SimRng;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 fn grid_from_str(s: &str) -> PathGrid {
     let lines: Vec<&str> = s.trim().lines().map(|l| l.trim()).collect();
@@ -126,6 +122,17 @@ fn first_track_process_route(
         .and_then(|entity| entity.movement_target.as_ref())
         .expect("the order scheduled a Process");
     assert!(request.path.is_empty(), "the order installs no route");
+    // Its Foot precheck reads Map Size and the playfield; an unbounded
+    // fixture's Map Size is its cell grid, inside generous LocalSize bounds.
+    if sim.playfield_bounds.is_none() {
+        let terrain = sim.resolved_terrain.as_ref().expect("fixture map cells");
+        let (width, height) = (i32::from(terrain.width()), i32::from(terrain.height()));
+        sim.playfield_bounds = Some(PlayfieldBounds {
+            base: width,
+            ..rectangular_spawn_bounds(width.max(height))
+        });
+        sim.playfield_size_height = Some(height);
+    }
     sim.process_ground_locomotor_for_test(id, rules, Some(grid), None)
         .expect("the first Process completes");
     sim.substrate
@@ -643,7 +650,24 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
 
     let mut reduced_grid = PathGrid::new(5, 1);
     reduced_grid.set_blocked(2, 0, true);
-    let mut zone_grid = ZoneGrid::following_path_grid(&reduced_grid);
+    // Base rows with the native Map Size=(5,1) receipt, as the live map
+    // builds them: with a ground destination (second half), Map56D100
+    // reads its raw row through the Size-projected GetZoneID.
+    use crate::map::resolved_terrain::zone_class::{GROUND, IMPASSABLE};
+    let zone_terrain = super::super::zone_map_tests::terrain_from_zone_classes(
+        5,
+        1,
+        &[GROUND, GROUND, IMPASSABLE, GROUND, GROUND],
+        &[0; 5],
+    );
+    let mut zone_grid = ZoneGrid::build_with_native_bridge_geometry(
+        &reduced_grid,
+        &zone_terrain,
+        &[],
+        5,
+        1,
+        Some((5, 1)),
+    );
     zone_grid.set_hierarchy(linear_level0_hierarchy(vec![1, 3, 1, 4, 2], &[(1, 2)]));
     assert!(
         !zone_grid.can_reach(
@@ -659,7 +683,8 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
     let mut terrain = gsi_04_12_terrain(5, 1);
     for x in 1..=3 {
         let cell = terrain.cell_mut(x, 0).unwrap();
-        cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO;
+        cell.bridge_facts.raw_flags =
+            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO | BRIDGE_FLAG_TRANSITION;
         cell.has_bridge_deck = true;
         cell.bridge_walkable = true;
         cell.bridge_transition = true;
@@ -712,9 +737,13 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
             crate::sim::movement::DestinationTiming::new(0, 60),
         ));
     };
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=HTNK\n[HTNK]\nSpeed=4\n",
+    ))
+    .unwrap();
     let mut sim = make_sim(&terrain);
     order(&mut sim, &terrain);
-    let movement = first_track_process_route(&mut sim, 1, None, &astar_grid)
+    let movement = first_track_process_route(&mut sim, 1, Some(&rules), &astar_grid)
         .expect("the first Process should install the projected hierarchy route");
 
     assert_eq!(
@@ -737,7 +766,7 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
     let mut sim = make_sim(&terrain);
     order(&mut sim, &terrain);
     assert!(
-        first_track_process_route(&mut sim, 1, None, &astar_grid)
+        first_track_process_route(&mut sim, 1, Some(&rules), &astar_grid)
             .is_none_or(|movement| movement.path.is_empty()),
         "destination projection must be selected by the destination structural bit"
     );
@@ -1235,7 +1264,8 @@ fn gsi_04_12_attack_pursuit_entry_threads_exact_blocker_counts() {
     let mut terrain = gsi_04_12_terrain(5, 1);
     for x in 1..=3 {
         let cell = terrain.cell_mut(x, 0).unwrap();
-        cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO;
+        cell.bridge_facts.raw_flags =
+            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO | BRIDGE_FLAG_TRANSITION;
         cell.has_bridge_deck = true;
         cell.bridge_walkable = true;
         cell.bridge_transition = true;
@@ -1306,7 +1336,8 @@ fn gsi_04_12_phase_six_order_resume_threads_exact_blocker_counts() {
     let mut terrain = gsi_04_12_terrain(5, 1);
     for x in 1..=3 {
         let cell = terrain.cell_mut(x, 0).unwrap();
-        cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO;
+        cell.bridge_facts.raw_flags =
+            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO | BRIDGE_FLAG_TRANSITION;
         cell.has_bridge_deck = true;
         cell.bridge_walkable = true;
         cell.bridge_transition = true;
@@ -1389,7 +1420,8 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
     let mut terrain = gsi_04_12_terrain(5, 1);
     for x in 1..=3 {
         let cell = terrain.cell_mut(x, 0).unwrap();
-        cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO;
+        cell.bridge_facts.raw_flags =
+            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO | BRIDGE_FLAG_TRANSITION;
         cell.has_bridge_deck = true;
         cell.bridge_walkable = true;
         cell.bridge_transition = true;
@@ -1410,47 +1442,41 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
     mover.navigation.pending_arrival_clear = true;
     let blocker = gsi_04_12_cell_listed_entity(2, "MTNK", "Russians", 2, 0);
 
-    let mut entities = EntityStore::new();
-    entities.insert(mover);
-    entities.insert(blocker);
-    let mut interner = test_interner();
-    let mut occupancy = OccupancyGrid::new();
-    let mut cell_occupation = CellOccupationGrid::new();
-    let mut raw_cell_occupation = crate::sim::occupancy::RawCellOccupationGrid::new();
-    let mut rng = SimRng::new(0);
-    let terrain_speed_config = TerrainSpeedConfig::default();
-    let terrain_costs = BTreeMap::new();
-    let alliances = HouseAllianceMap::new();
-    let mut sound_events = Vec::new();
-    let mut lifecycle_requests = Vec::new();
-    let live_order = [1];
-
-    tick_movement_with_grids(
-        &mut entities,
-        Some(&live_order),
-        Some(&path_grid),
-        &terrain_costs,
-        &alliances,
-        &mut occupancy,
-        &mut cell_occupation,
-        &mut raw_cell_occupation,
-        &mut rng,
+    // The pending pass on the production Simulation host, with the fixture's
+    // explicit Map Size=(5,1) beside generous LocalSize bounds: the Drive
+    // Process's Find_Path precheck (Foot4D3810 -> Map56D100) reads both.
+    let mut sim = Simulation::new();
+    sim.interner = test_interner();
+    sim.substrate.entities.insert(mover);
+    sim.substrate.entities.insert(blocker);
+    sim.session.tick = 1;
+    sim.session.binary_frame = 1;
+    sim.path_grid = Some(std::sync::Arc::new(path_grid));
+    sim.zone_grid = Some(zone_grid);
+    sim.resolved_terrain = Some(terrain);
+    sim.playfield_bounds = Some(PlayfieldBounds {
+        base: 5,
+        ..rectangular_spawn_bounds(5)
+    });
+    sim.playfield_size_height = Some(1);
+    sim.process_ground_locomotor_with_config_for_test(
         1,
-        1,
-        Some(&zone_grid),
-        Some(&terrain),
-        None,
-        &terrain_speed_config,
-        SimFixed::from_num(0),
-        9,
-        60,
-        &mut interner,
         Some(&rules),
-        &mut sound_events,
-        &mut lifecycle_requests,
-    );
+        None,
+        crate::sim::movement::MovementConfig {
+            binary_frame: 1,
+            close_enough: SimFixed::from_num(0),
+            path_delay_ticks: 9,
+            blockage_path_delay_ticks: 60,
+        },
+    )
+    .expect("the pending Drive Process completes");
 
-    let continued = entities.get(1).expect("continued Drive mover");
+    let continued = sim
+        .substrate
+        .entities
+        .get(1)
+        .expect("continued Drive mover");
     assert_eq!(continued.navigation.nav_com, Some(NavTargetRef::cell(3, 0)));
     assert!(!continued.navigation.pending_arrival_clear);
     let movement = continued
@@ -1498,7 +1524,8 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         let mut terrain = gsi_04_12_terrain(5, 1);
         for x in 1..=3 {
             let cell = terrain.cell_mut(x, 0).unwrap();
-            cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO;
+            cell.bridge_facts.raw_flags =
+                BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO | BRIDGE_FLAG_TRANSITION;
             cell.has_bridge_deck = true;
             cell.bridge_walkable = true;
             cell.bridge_transition = true;

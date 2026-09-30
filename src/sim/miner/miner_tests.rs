@@ -366,6 +366,37 @@ fn ensure_scan_map_context(sim: &mut Simulation) {
     }
 }
 
+/// The map cells, zones and playfield a Drive/Ship Process reads.
+fn ensure_movement_inputs(sim: &mut Simulation, rules: &RuleSet) {
+    sim.resolved_terrain
+        .get_or_insert_with(|| crate::map::resolved_terrain::test_flat_ground_grid(64));
+    if sim.playfield_bounds.is_none() {
+        open_playfield(sim);
+    }
+    if sim.zone_grid.is_none() {
+        assert!(sim.rebuild_dynamic_navigation(rules));
+    } else if sim.path_grid.is_none() {
+        // A fixture's own zones stay; the grid follows its cells.
+        let grid = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
+        sim.install_fixture_path_grid(Some(&grid));
+    }
+}
+
+/// Every unit's ground locomotor Process, in live-object order.
+fn process_units(sim: &mut Simulation, rules: &RuleSet) {
+    for id in sim.substrate.entities.keys_sorted() {
+        if sim
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|e| e.category == EntityCategory::Unit)
+        {
+            sim.process_ground_locomotor_one(id, Some(rules), None)
+                .expect("unit Process");
+        }
+    }
+}
+
 /// Tick the miner system `n` times.
 ///
 /// Matches advance_tick ordering: teleport (Phase 2) → miners (Phase 7) →
@@ -385,8 +416,7 @@ fn tick_stages(sim: &mut Simulation) {
 
 fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
     let config = MinerConfig::default();
-    let grid = PathGrid::new(64, 64);
-    sim.install_fixture_path_grid(Some(&grid));
+    ensure_movement_inputs(sim, rules);
     for _ in 0..n {
         sim.session.total_sim_ms = sim.session.total_sim_ms.saturating_add(67);
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
@@ -409,13 +439,7 @@ fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
         }
         super::miner_system::tick_miners(sim, rules, &config);
         tick_stages(sim);
-        // Also tick movement so issue_direct_move targets are consumed
-        // (Linked/Departing wait for movement_target to be None).
-        crate::sim::movement::tick_movement(
-            &mut sim.substrate.entities,
-            &mut sim.interner,
-            &mut sim.pending_lifecycle_requests,
-        );
+        process_units(sim, rules);
         sim.session.tick += 1;
     }
 }
@@ -1429,18 +1453,13 @@ fn tick_miners_overlay_n(
     n: usize,
 ) {
     let config = MinerConfig::default();
-    let grid = PathGrid::new(64, 64);
-    sim.install_fixture_path_grid(Some(&grid));
+    ensure_movement_inputs(sim, rules);
     for _ in 0..n {
         sim.session.total_sim_ms = sim.session.total_sim_ms.saturating_add(67);
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
         super::miner_system::tick_miners_test_walk(sim, rules, &config, Some(registry));
         tick_stages(sim);
-        crate::sim::movement::tick_movement(
-            &mut sim.substrate.entities,
-            &mut sim.interner,
-            &mut sim.pending_lifecycle_requests,
-        );
+        process_units(sim, rules);
         sim.session.tick += 1;
     }
 }

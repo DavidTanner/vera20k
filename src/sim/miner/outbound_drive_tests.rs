@@ -449,14 +449,6 @@ fn assert_command_state(
         movement.speed,
         ra2_speed_to_leptons_per_second(object.speed),
     );
-    assert_eq!(movement.accel_factor, object.accel_factor);
-    assert_eq!(movement.decel_factor, object.decel_factor);
-    assert_eq!(
-        movement.slowdown_distance,
-        SimFixed::from_num(object.slowdown_distance),
-    );
-    assert!(!movement.ignore_terrain_cost);
-    assert!(!movement.bypass_grid);
     assert_eq!(
         entity.navigation.nav_com,
         Some(NavTargetRef::cell(target.0, target.1)),
@@ -797,12 +789,6 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
         Some(DriveCoord::cell(staging.0, staging.1, 0)),
     );
     assert_eq!(movement.speed, ra2_speed_to_leptons_per_second(harv.speed),);
-    assert_eq!(movement.accel_factor, harv.accel_factor);
-    assert_eq!(movement.decel_factor, harv.decel_factor);
-    assert_eq!(
-        movement.slowdown_distance,
-        SimFixed::from_num(harv.slowdown_distance),
-    );
     // The exact-facing precondition holds the hull on the spot until it reaches
     // the first path node's octant, and a frame spent rotating carries no speed
     // ramp — so the issuing tick leaves the drive fraction at zero and the ramp

@@ -3,7 +3,7 @@
 //! In particular Ship's current fresh admission adapter does not prove code2.
 
 use super::locomotor::{LocomotorState, MovementLayer};
-use super::{DestinationTiming, MovementConfig, issue_direct_move, issue_move_command};
+use super::{DestinationTiming, MovementConfig, issue_move_command};
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -105,7 +105,7 @@ fn accepted_direct_and_regular_orders_keep_signed_rules_delays_and_retry_word() 
         ] {
             let rules = rules("0.01", raw, kind == LocomotorKind::Walk);
             for frame in [123, u32::MAX, i32::MAX as u32] {
-                for command in 0..3 {
+                for command in 0..2 {
                     let mut sim = fixture(kind);
                     let entity = sim.substrate.entities.get_mut(1).unwrap();
                     let path_runtime = &mut entity.navigation.path_runtime;
@@ -116,14 +116,7 @@ fn accepted_direct_and_regular_orders_keep_signed_rules_delays_and_retry_word() 
                     let timing = DestinationTiming::from_rules(frame, Some(&rules));
                     match command {
                         0 => timing.accept(sim.substrate.entities.get_mut(1).unwrap()),
-                        1 => assert!(issue_direct_move(
-                            &mut sim.substrate.entities,
-                            1,
-                            (10, 8),
-                            SimFixed::from_num(165),
-                            timing,
-                        )),
-                        2 => assert!(issue_move_command(
+                        1 => assert!(issue_move_command(
                             &mut sim.substrate.entities,
                             &grid,
                             1,
@@ -167,7 +160,6 @@ fn install_stationary_path_request(sim: &mut Simulation) {
         next_index: 1,
         final_goal: Some((8, 6)),
         speed: SIM_ZERO,
-        current_speed: SIM_ZERO,
         ..Default::default()
     });
 }
@@ -337,7 +329,6 @@ fn paid_walk_progress_clears_only_blocked_latch_and_retains_timer_words() {
         next_index: 1,
         final_goal: Some((9, 8)),
         speed: SimFixed::from_num(165),
-        current_speed: SimFixed::from_num(165),
         move_dir_x: SimFixed::from_num(256),
         move_dir_y: SIM_ZERO,
         move_dir_len: SimFixed::from_num(256),

@@ -4,10 +4,9 @@
 //! current Foot XYZ. Chain4B1BC4/6A120A instead adds to the previous head.
 //! Original executable cases: tools/spatial_oracle/locomotor_head_coordinates.json.
 
-use super::drive_track::{self, DriveTrackPlan};
 use super::track_process::TrackFamily;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, Position, ShipLocomotionRuntime};
+use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::game_entity::GameEntity;
 use crate::util::direction_tables::lepton::LEPTON_DELTAS;
 
@@ -125,21 +124,6 @@ pub(crate) fn committed_track_head(entity: &GameEntity) -> Option<DriveCoord> {
         _ => return None,
     };
     (track.turn_index >= 0).then_some(head)
-}
-
-/// Validate the immutable raw table and form the accepted head from exact Foot
-/// XYZ, including noncentered subcells. Fresh progress is published separately.
-pub(super) fn begin_fresh(plan: &DriveTrackPlan, position: &Position) -> Option<DriveCoord> {
-    if drive_track::raw_track_points(plan.selection.raw_track_index).is_empty() {
-        return None;
-    }
-    let current = super::ground_pose::position_world_coord(position);
-    let from = (plan.selection.turn_track_index / 8) as u8;
-    let mut head = offset_head(current, from);
-    if plan.nodes == 2 {
-        head = offset_head(head, (plan.selection.turn_track_index % 8) as u8);
-    }
-    Some(head)
 }
 
 #[cfg(test)]

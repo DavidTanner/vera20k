@@ -74,18 +74,12 @@ impl Simulation {
         {
             return true;
         }
-        // A Rust route adapter (direct move, component fixture) keeps its
-        // pre-existing lane: none of the gates below reads its route.
-        let adapter = super::movement_tick::adapter_route_pending(entity);
         // Drive4B066C..4B06D2 / Ship69FD13..69FD79: a Cell NavCom naming the
         // current cell stops (or takes the next waypoint) and Process returns
         // before the turn observation, Process_Movement and Process_Track.
         if matches!(entity.navigation.nav_com, Some(NavTargetRef::Cell { rx, ry })
             if (rx, ry) == (entity.position.rx, entity.position.ry))
         {
-            if adapter {
-                return true;
-            }
             self.track_navcom_stop(id, rules);
             return false;
         }
@@ -116,9 +110,6 @@ impl Simulation {
             && !valid
             && destination.is_some_and(|dest| dest == current)
         {
-            if adapter {
-                return true;
-            }
             self.track_navcom_stop(id, rules);
             return false;
         }
@@ -144,7 +135,7 @@ impl Simulation {
                 return false;
             }
         }
-        adapter || self.track_movement_gates(id, rules)
+        self.track_movement_gates(id, rules)
     }
 
     /// Drive4B08D1..4B0A69 / Ship69FF98..6A0131: the outer Process gates

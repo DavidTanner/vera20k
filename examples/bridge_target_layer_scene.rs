@@ -339,13 +339,6 @@ fn main() {
             },
         );
         if let Some(actor) = scene.sim().entities().get(engineer) {
-            assert!(
-                !actor
-                    .movement_target
-                    .as_ref()
-                    .is_some_and(|route| route.adapter_route),
-                "Engineer entry must use production Foot/Walk navigation"
-            );
             if !saved_approach && (actor.position.rx, actor.position.ry) == (67, 75) {
                 save(&scene, &prefix, "engineer-approach");
                 saved_approach = true;

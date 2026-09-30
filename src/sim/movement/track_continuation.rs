@@ -172,10 +172,5 @@ impl Simulation {
         let speed = info.as_ref().map_or(SimFixed::lit("25"), |info| info.speed);
         let cell = ((destination.x / 256) as u16, (destination.y / 256) as u16);
         super::movement_commands::schedule_track_process(actor, cell, speed);
-        if let (Some(target), Some(info)) = (actor.movement_target.as_mut(), info) {
-            target.accel_factor = info.accel_factor;
-            target.decel_factor = info.decel_factor;
-            target.slowdown_distance = info.slowdown_distance;
-        }
     }
 }

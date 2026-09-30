@@ -40,7 +40,7 @@ use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::production;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed, ra2_speed_to_leptons_per_second};
+use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
 
 /// Read-only snapshot of entity + rules data needed for issuing movement commands.
 /// Captured once to avoid repeated entity lookups and type_ref clones.
@@ -56,9 +56,6 @@ pub(crate) struct MoveInfo {
     pub(crate) hover_attack: bool,
     pub(crate) is_harvester: bool,
     pub(crate) is_infantry: bool,
-    pub(crate) accel_factor: SimFixed,
-    pub(crate) decel_factor: SimFixed,
-    pub(crate) slowdown_distance: SimFixed,
     #[cfg(test)]
     pub(crate) movement_zone: MovementZone,
     pub(crate) position: (u16, u16),
@@ -558,9 +555,6 @@ impl Simulation {
             hover_attack,
             is_harvester: obj.map_or(false, |o| o.harvester),
             is_infantry: obj.map_or(false, |o| o.category == ObjectCategory::Infantry),
-            accel_factor: obj.map_or(SIM_ZERO, |o| o.accel_factor),
-            decel_factor: obj.map_or(SIM_ZERO, |o| o.decel_factor),
-            slowdown_distance: obj.map_or(SIM_ZERO, |o| SimFixed::from_num(o.slowdown_distance)),
             #[cfg(test)]
             movement_zone: obj.map_or(MovementZone::Normal, |o| o.movement_zone),
             position: (e.position.rx, e.position.ry),
@@ -700,17 +694,6 @@ impl Simulation {
                         rules,
                     )
                 };
-                // Stamp acceleration/deceleration parameters onto the newly created
-                // MovementTarget so the per-tick movement loop can ramp speed.
-                if result {
-                    if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                        if let Some(ref mut mt) = e.movement_target {
-                            mt.accel_factor = info.accel_factor;
-                            mt.decel_factor = info.decel_factor;
-                            mt.slowdown_distance = info.slowdown_distance;
-                        }
-                    }
-                }
                 result
             }
             Command::Stop { entity_id } => {
@@ -2914,10 +2897,8 @@ mod tests {
         let rules = amcv_move_rules();
         let mut sim = Simulation::new();
         spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
-        let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
-        sim.zone_grid =
-            Some(crate::sim::pathfinding::zone_map::ZoneGrid::following_path_grid(&grid));
-        sim.install_fixture_path_grid(Some(&grid));
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
+        let grid = (*sim.path_grid_snapshot().unwrap()).clone();
         crate::sim::movement::reset_path_search_used_zone_grid_marker();
 
         let applied = sim.apply_command(

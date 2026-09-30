@@ -2,17 +2,17 @@
 //!
 //! VERA-internal ownership boundary, gamemd equivalent UNCHECKED. Preserve the
 //! represented crossing order: fresh serialized list stamp, list relink,
-//! Drive current occupation, arrival claim and matching Infantry list repair.
+//! arrival claim and matching Infantry list repair.
 //! Geometry, path advancement, bridge rendering and look-ahead placement remain
 //! in their existing caller phases. Arrival consumes no RNG: WalkLocomotion
 //! ProcessMovement @ 0x0075BE0A reaches the NullCoord FindSubCellDest branch
 //! @ 0x0075C240; see the detailed arrival evidence beside the private claim.
 
 use crate::map::entities::EntityCategory;
-use crate::sim::components::{DriveLocomotionRuntime, Position};
+use crate::sim::components::Position;
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-use crate::sim::occupancy::{CellListInsertion, CellOccupationGrid, OccupancyGrid};
+use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
 
 use super::MovementTickStats;
 
@@ -28,11 +28,8 @@ pub(super) struct CellArrival<'a> {
     pub new_list_layer: MovementLayer,
     pub position: &'a Position,
     pub locomotor: &'a mut Option<LocomotorState>,
-    pub drive_locomotion: &'a mut Option<DriveLocomotionRuntime>,
-    pub foot_occupation_enabled: &'a mut bool,
     pub sub_cell: &'a mut Option<u8>,
     pub occupancy: &'a mut OccupancyGrid,
-    pub cell_occupation: &'a mut CellOccupationGrid,
     pub stats: &'a mut MovementTickStats,
     pub priority: bool,
 }
@@ -59,18 +56,6 @@ impl CellArrival<'_> {
             *self.sub_cell,
             CellListInsertion::from_category(self.category),
         );
-        if self.category == EntityCategory::Unit
-            && let Some(drive) = self.drive_locomotion.as_mut()
-        {
-            crate::sim::occupancy::mark_current_drive_occupation_after_crossing(
-                self.foot_occupation_enabled,
-                drive,
-                self.cell_occupation,
-                self.entity_id,
-                self.to,
-                self.new_list_layer,
-            );
-        }
     }
 
     fn finish(self, path_layer: MovementLayer) {
@@ -335,11 +320,8 @@ mod tests {
             new_list_layer: MovementLayer::Ground,
             position: &entity.position,
             locomotor: &mut entity.locomotor,
-            drive_locomotion: &mut entity.drive_locomotion,
-            foot_occupation_enabled: &mut entity.foot_occupation_enabled,
             sub_cell: &mut entity.sub_cell,
             occupancy: &mut substrate.occupancy,
-            cell_occupation: &mut substrate.cell_occupation,
             stats: &mut stats,
             priority: false,
         }

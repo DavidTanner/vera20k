@@ -171,18 +171,6 @@ pub struct MovementTarget {
     /// Maximum movement speed in leptons per second (from rules.ini Speed= value).
     /// 256 leptons = 1 cell. Fixed-point for deterministic multiplayer.
     pub speed: SimFixed,
-    /// The legacy pass lane's speed this frame (`movement_tick`): Hover's
-    /// throttled speed, else a ramp toward `speed` that brakes near the
-    /// destination, or `speed` itself without ramp data. It is not
-    /// GetCurrentSpeed, which the track and Walk steps and the readiness gate
-    /// query live (`movement::owner_current_speed`).
-    pub current_speed: SimFixed,
-    /// Fraction of max speed gained per tick during acceleration (AccelerationFactor=).
-    pub accel_factor: SimFixed,
-    /// Fraction of max speed lost per tick during braking (DeaccelerationFactor=).
-    pub decel_factor: SimFixed,
-    /// Lepton distance from destination at which braking begins (SlowdownDistance=).
-    pub slowdown_distance: SimFixed,
     /// Direction vector toward next cell in leptons: `dx_cells * 256`, `dy_cells * 256`.
     /// Recomputed when `next_index` advances. Cardinal = (±256, 0) or (0, ±256),
     /// diagonal = (±256, ±256).
@@ -210,25 +198,6 @@ pub struct MovementTarget {
     /// system auto-replans from the current position. `None` for short paths
     /// or test-only movement targets that don't need segmented replanning.
     pub final_goal: Option<(u16, u16)>,
-    /// When true, the movement tick skips terrain cost passability checks
-    /// for cell entry. Used by `issue_direct_move` to let harvesters walk
-    /// onto ore cells that are terrain-blocked for their SpeedType.
-    pub ignore_terrain_cost: bool,
-    /// When true, the movement tick skips PathGrid walkability checks for
-    /// cell entry. Used by dock-sequence direct moves where the harvester
-    /// must traverse the refinery foundation footprint (cells marked
-    /// blocked by `block_building_footprint`). Does NOT bypass entity
-    /// occupancy checks — other movers still collide.
-    #[serde(default)]
-    pub bypass_grid: bool,
-    /// A Rust route adapter owns this route (`issue_direct_move`, component
-    /// fixtures): its cells were never published to Foot+5E0 and it names no
-    /// locomotor destination, so a Drive/Ship Unit keeps the pass lane while it
-    /// is pending. Native routes (the setter's empty scheduling adapter and
-    /// Find_Path's install) leave it false, so emptying their Foot+5E0 head
-    /// never reroutes the Unit through the adapter lane.
-    #[serde(default)]
-    pub adapter_route: bool,
 }
 
 /// Native-like navigation target reference.
@@ -704,18 +673,11 @@ impl Default for MovementTarget {
             path_layers: Vec::new(),
             next_index: 0,
             speed: SIM_ZERO,
-            current_speed: SIM_ZERO,
-            accel_factor: SIM_ZERO,
-            decel_factor: SIM_ZERO,
-            slowdown_distance: SIM_ZERO,
             move_dir_x: SIM_ZERO,
             move_dir_y: SIM_ZERO,
             move_dir_len: SIM_ZERO,
             final_goal: None,
-            ignore_terrain_cost: false,
-            bypass_grid: false,
             wall_refusal_cell: None,
-            adapter_route: false,
         }
     }
 }
