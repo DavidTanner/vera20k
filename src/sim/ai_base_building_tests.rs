@@ -192,7 +192,7 @@ fn the_building_choice_handles_nodes_as_native() {
             .collect();
         let expected = expect_draws(&mut sim, &draws, 0, 99);
 
-        choose_building(&mut sim, &rules, owner, None, None);
+        choose_building(&mut sim, &rules, owner, None);
 
         let label = row["label"].as_str().unwrap();
         let house = &sim.houses[&owner];
@@ -401,10 +401,10 @@ const EXIT_RULES: &str = "[General]\nAIAlternateProductionCreditCutoff=2000\n\
 /// at (16, 16) with its foundation reserved, inside the fixture's
 /// `In_Bounds` diamond; the finished PLAIN waits in limbo. Returns the yard
 /// and the product.
-fn exit_fixture() -> (Simulation, RuleSet, InternedId, PathGrid, u64, u64) {
+fn exit_fixture() -> (Simulation, RuleSet, InternedId, u64, u64) {
     let rules = RuleSet::from_ini(&IniFile::from_str(EXIT_RULES)).unwrap();
     let mut sim = Simulation::new();
-    let path = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     sim.session.game_mode_nonzero = true;
     let owner = sim.interner.intern("AIHouse");
     let country = sim.interner.intern("Americans");
@@ -432,7 +432,7 @@ fn exit_fixture() -> (Simulation, RuleSet, InternedId, PathGrid, u64, u64) {
     let product = sim
         .construct_object_limbo_at_height("PLAIN", "AIHouse", 0, 0, 0, 0, &rules)
         .unwrap();
-    (sim, rules, owner, path, yard, product)
+    (sim, rules, owner, yard, product)
 }
 
 fn node_state(sim: &Simulation, owner: InternedId) -> Vec<((i16, i16), i32)> {
@@ -446,13 +446,13 @@ fn node_state(sim: &Simulation, owner: InternedId) -> Vec<((i16, i16), i32)> {
 
 #[test]
 fn a_computer_yard_places_its_building_on_the_node_cell() {
-    let (mut sim, rules, owner, path, yard, product) = exit_fixture();
+    let (mut sim, rules, owner, yard, product) = exit_fixture();
     let plain = rules.building_type_index("PLAIN").unwrap();
     let house = sim.houses.get_mut(&owner).unwrap();
     house.economy.credits = 100;
     house.ai_production.set_for_test(0, plain, true);
 
-    let exit = exit_building(&mut sim, &rules, yard, product, Some(&path), None);
+    let exit = exit_building(&mut sim, &rules, yard, product, None);
 
     assert_eq!(exit, BuildingExit::Placed);
     let building = sim.substrate.entities.get(product).unwrap();
@@ -472,13 +472,13 @@ fn a_computer_yard_places_its_building_on_the_node_cell() {
 
 #[test]
 fn a_unit_of_the_house_on_the_site_makes_the_yard_try_later() {
-    let (mut sim, rules, owner, path, yard, product) = exit_fixture();
+    let (mut sim, rules, owner, yard, product) = exit_fixture();
     let tank = sim
         .spawn_object("TANK", "AIHouse", 17, 17, 0, &rules)
         .unwrap();
 
     for count in 1..=2 {
-        let exit = exit_building(&mut sim, &rules, yard, product, Some(&path), None);
+        let exit = exit_building(&mut sim, &rules, yard, product, None);
         assert_eq!(exit, BuildingExit::TryLater);
         assert!(
             sim.substrate
@@ -493,14 +493,14 @@ fn a_unit_of_the_house_on_the_site_makes_the_yard_try_later() {
     assert!(sim.substrate.entities.get(tank).is_some());
     // The third failure passes MaximumBuildingPlacementFailures=2: the node
     // goes.
-    let exit = exit_building(&mut sim, &rules, yard, product, Some(&path), None);
+    let exit = exit_building(&mut sim, &rules, yard, product, None);
     assert_eq!(exit, BuildingExit::TryLater);
     assert!(node_state(&sim, owner).is_empty());
 }
 
 #[test]
 fn an_enemy_on_the_site_fails_the_exit_and_the_node_forgets_its_cell() {
-    let (mut sim, rules, owner, path, yard, product) = exit_fixture();
+    let (mut sim, rules, owner, yard, product) = exit_fixture();
     let enemy = sim.interner.intern("Enemy");
     sim.houses
         .insert(enemy, HouseState::new(enemy, 1, None, false, 10_000, 10));
@@ -508,7 +508,7 @@ fn an_enemy_on_the_site_fails_the_exit_and_the_node_forgets_its_cell() {
     sim.spawn_object("TANK", "Enemy", 16, 16, 0, &rules)
         .unwrap();
 
-    let exit = exit_building(&mut sim, &rules, yard, product, Some(&path), None);
+    let exit = exit_building(&mut sim, &rules, yard, product, None);
 
     assert_eq!(exit, BuildingExit::Failed);
     assert!(
@@ -524,10 +524,10 @@ fn an_enemy_on_the_site_fails_the_exit_and_the_node_forgets_its_cell() {
 
 #[test]
 fn a_human_yard_places_nothing() {
-    let (mut sim, rules, owner, path, yard, product) = exit_fixture();
+    let (mut sim, rules, owner, yard, product) = exit_fixture();
     sim.houses.get_mut(&owner).unwrap().is_human = true;
 
-    let exit = exit_building(&mut sim, &rules, yard, product, Some(&path), None);
+    let exit = exit_building(&mut sim, &rules, yard, product, None);
 
     assert_eq!(exit, BuildingExit::Failed);
     assert!(

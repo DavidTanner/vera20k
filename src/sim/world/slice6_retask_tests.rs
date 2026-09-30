@@ -171,7 +171,14 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // that fold changed printed this exact value, as this change does, with the
 // RNG pins above unchanged (the probe patch was not committed): the only
 // change to this pin is the fold. Old value: the commit that moved it.
-const SLICE6_BASELINE_HASH: u64 = 0x0C92_6C04_B3D2_2C82;
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) advances only
+// for AirTracker entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+const SLICE6_BASELINE_HASH: u64 = 0xA623_7110_AA05_F83C;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -450,6 +457,7 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
     let rules = slice6_rules();
     let grid = PathGrid::new(64, 64);
     let mut sim = Simulation::new();
+    sim.install_fixture_path_grid(Some(&grid));
     sim.spawn_from_map(
         &[unit("Americans", "MTNK", 3, 3, EntityCategory::Unit)],
         Some(&rules),
@@ -473,7 +481,6 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
             queue: false,
         },
         Some(&rules),
-        Some(&grid),
     );
     assert!(issued, "move command should issue");
 

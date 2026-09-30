@@ -8,7 +8,6 @@ use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
     RADIUS_HARD_CAP, find_nearby_passable_cell_with_options,
 };
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::{PlacementEvidence, Simulation};
 
 use super::production_tech::foundation_dimensions;
@@ -40,7 +39,6 @@ pub(crate) fn spawn_completed_refinery_free_units(
     sim: &mut Simulation,
     completed_building_ids: &[u64],
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let mut any_spawned = false;
@@ -80,7 +78,6 @@ pub(crate) fn spawn_completed_refinery_free_units(
             ry,
             width,
             height,
-            path_grid,
             overlay_registry,
         );
     }
@@ -98,7 +95,6 @@ fn try_spawn_refinery_free_unit(
     building_ry: u16,
     width: u16,
     height: u16,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if !rules.is_refinery_type(building_type_id) {
@@ -170,14 +166,9 @@ fn try_spawn_refinery_free_unit(
     // refused, and each search runs here — after the primary has failed — rather
     // than being precomputed, so it sees the occupancy the placement will meet.
     for options in FREE_UNIT_FALLBACK_ATTEMPTS {
-        let Some((fallback_rx, fallback_ry)) = find_free_unit_nearby_cell(
-            sim,
-            rules,
-            &free_unit_type,
-            search_seed,
-            path_grid,
-            options,
-        ) else {
+        let Some((fallback_rx, fallback_ry)) =
+            find_free_unit_nearby_cell(sim, rules, &free_unit_type, search_seed, options)
+        else {
             continue;
         };
         if try_place_free_unit(
@@ -303,7 +294,6 @@ fn find_free_unit_nearby_cell(
     rules: &RuleSet,
     free_unit_type: &str,
     seed: (u16, u16),
-    path_grid: Option<&PathGrid>,
     options: NearbySearchOptions,
 ) -> Option<(u16, u16)> {
     let free_unit = rules.object(free_unit_type)?;
@@ -352,7 +342,7 @@ fn find_free_unit_nearby_cell(
         // is the hard cap itself on any playable map.
         radius_cap: RADIUS_HARD_CAP,
         target_cell: None,
-        path_grid,
+        path_grid: sim.path_grid(),
         resolved_terrain: sim.resolved_terrain.as_ref(),
         overlay_grid: sim.overlay_grid.as_ref(),
         occupancy: Some(&sim.substrate.occupancy),

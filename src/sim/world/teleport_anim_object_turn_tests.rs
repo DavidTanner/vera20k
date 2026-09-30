@@ -311,14 +311,12 @@ fn a_restored_destination_warps_at_the_teleport_process_entry() {
 /// which arms the warp, not a route no Process follows.
 #[test]
 fn a_ground_order_arms_the_warp() {
-    use crate::sim::pathfinding::PathGrid;
     use crate::sim::world::GroundMove;
     let rules = rules(false);
     let mut sim = relocating_legionnaire((8, 9));
     sim.substrate.entities.get_mut(1).unwrap().teleport_state = None;
 
     let accepted = sim.issue_ground_move(
-        &PathGrid::new(32, 32),
         GroundMove {
             entity_id: 1,
             target: (12, 7),

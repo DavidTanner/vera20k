@@ -66,7 +66,6 @@
 
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
 use super::miner_system::{
@@ -83,7 +82,6 @@ pub(crate) fn dispatch_harvest_for_object(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &super::MinerConfig,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
 ) {
@@ -181,7 +179,7 @@ pub(crate) fn dispatch_harvest_for_object(
     let Some(mut snap) = build_miner_snapshot(sim, rules, id) else {
         return;
     };
-    harvest_mission_step(sim, rules, config, path_grid, overlay_registry, &mut snap);
+    harvest_mission_step(sim, rules, config, overlay_registry, &mut snap);
     commit_miner_snapshot(sim, &snap, now);
 }
 
@@ -189,7 +187,6 @@ fn harvest_mission_step(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &super::MinerConfig,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) {
@@ -208,5 +205,5 @@ fn harvest_mission_step(
         );
     }
 
-    process_miner(sim, rules, config, path_grid, overlay_registry, snap);
+    process_miner(sim, rules, config, overlay_registry, snap);
 }

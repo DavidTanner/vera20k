@@ -1139,7 +1139,7 @@ mod tests {
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
-    use crate::sim::components::{BridgeOccupancy, Health};
+    use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_intern;
     use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
@@ -1421,7 +1421,6 @@ mod tests {
             true,
         );
         entity.on_bridge = true;
-        entity.bridge_occupancy = Some(BridgeOccupancy { deck_level: 3 });
         entity.locomotor = Some(drive_loco_on_bridge());
         // Give it a short fake movement target so we can verify it gets
         // halted on collapse.
@@ -1457,7 +1456,6 @@ mod tests {
             .expect("deck entity must SURVIVE collapse over water");
         assert_eq!(e.position.z, 0, "snapped to ground level");
         assert!(!e.on_bridge, "OnBridge cleared by DropIn");
-        assert!(e.bridge_occupancy.is_none(), "bridge_occupancy cleared");
         assert!(e.movement_target.is_none(), "movement halted on collapse");
         assert_eq!(e.health.current, 256, "DropIn never harms — no damage");
         let loco = e.locomotor.as_ref().expect("locomotor");

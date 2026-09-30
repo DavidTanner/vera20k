@@ -25,7 +25,7 @@ impl Simulation {
             self.session.map_width,
             self.session.map_height,
         );
-        let order = self.substrate.next_occupancy_enter_order.next();
+        let order = self.substrate.next_air_tracker_order.next();
         let e = self.substrate.entities.get_mut(id).unwrap();
         e.air_spatial_bucket = Some(bucket);
         e.air_spatial_enter_order = order;

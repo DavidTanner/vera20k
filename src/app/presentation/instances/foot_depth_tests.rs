@@ -9,7 +9,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cloak_disguise::DisguiseRuntime;
-use crate::sim::components::{BridgeOccupancy, Health};
+use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::runtime::{SimResources, SimRuntime};
@@ -139,16 +139,14 @@ fn runtime_rules_and_live_cliff_edits_reach_depth_instead_of_the_load_template()
 }
 
 #[test]
-fn native_on_bridge_controls_the_cliff_gate_and_shp_surface_independently_of_occupancy() {
+fn native_on_bridge_controls_the_cliff_gate_and_shp_surface() {
     let mut runtime = runtime();
     let mut tank = entity(&mut runtime, "TANK", EntityCategory::Unit);
     set_live_level(&mut runtime, (3, 3), 4);
-    tank.bridge_occupancy = Some(BridgeOccupancy { deck_level: 4 });
     tank.on_bridge = false;
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), 19);
     assert_eq!(shp_z_adjust_in_runtime(Some(&runtime), &tank), 17.0);
 
-    tank.bridge_occupancy = None;
     tank.on_bridge = true;
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), -1);
     // Exactly on the native bridge surface: GetHeight()==0 still reaches Foot,
@@ -343,11 +341,6 @@ fn composite_split_uses_live_raw_bridge_terms_and_native_on_bridge() {
     assert!(
         evaluate(&runtime, &tank),
         "zero ZFudgeBridge must not disable the split"
-    );
-    tank.bridge_occupancy = Some(BridgeOccupancy { deck_level: 4 });
-    assert!(
-        evaluate(&runtime, &tank),
-        "native on_bridge, not derived occupancy"
     );
     tank.on_bridge = true;
     assert!(!evaluate(&runtime, &tank));

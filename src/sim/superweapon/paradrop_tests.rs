@@ -255,8 +255,7 @@ fn infantry_terminal_empty_custom_carrier_retires_after_failed_launch() {
         50,
         20,
         ParaDropKind::American,
-        sw,
-        Some(&path_grid)
+        sw
     ));
     let carrier = sim
         .substrate
@@ -288,7 +287,7 @@ fn mission_only_paradrop_marks_even_an_ordinary_landable_type() {
          Locomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n[E1]\nStrength=100\n",
     ))
     .unwrap();
-    let (mut sim, path_grid) = build_sim(&rules);
+    let (mut sim, _) = build_sim(&rules);
     let owner = sim.interner.intern("Americans");
     let sw = sim.interner.intern("SWTEST");
     assert!(launch(
@@ -298,8 +297,7 @@ fn mission_only_paradrop_marks_even_an_ordinary_landable_type() {
         50,
         20,
         ParaDropKind::American,
-        sw,
-        Some(&path_grid)
+        sw
     ));
     let id = find_pdplane(&sim).unwrap();
     assert!(sim.substrate.entities.get(id).unwrap().is_mission_only());
@@ -316,7 +314,7 @@ fn mission_only_paradrop_marks_even_an_ordinary_landable_type() {
 #[test]
 fn paradrop_launch_spawns_carrier_with_loaded_cargo() {
     let rules = make_paradrop_rules();
-    let (mut sim, path_grid) = build_sim(&rules);
+    let (mut sim, _) = build_sim(&rules);
     let owner = sim.interner.intern("Americans");
 
     // Target near the north edge of the map.
@@ -329,7 +327,6 @@ fn paradrop_launch_spawns_carrier_with_loaded_cargo() {
         20,
         ParaDropKind::American,
         sw_test,
-        Some(&path_grid),
     );
     assert!(ok, "launch should succeed with valid waypoint edge + cargo");
 
@@ -371,7 +368,7 @@ fn paradrop_launch_spawns_carrier_with_loaded_cargo() {
 fn paradrop_type_flight_level_reaches_spawned_carrier_and_survives_restore() {
     for configured in [-1, 2200] {
         let rules = make_paradrop_rules_with_flight_level(Some(configured));
-        let (mut sim, path_grid) = build_sim(&rules);
+        let (mut sim, _) = build_sim(&rules);
         let owner = sim.interner.intern("Americans");
         let sw_test = sim.interner.intern("SWTEST");
         assert!(launch(
@@ -382,7 +379,6 @@ fn paradrop_type_flight_level_reaches_spawned_carrier_and_survives_restore() {
             20,
             ParaDropKind::American,
             sw_test,
-            Some(&path_grid),
         ));
         let id = find_pdplane(&sim).unwrap();
         let expected = if configured == -1 { 1500 } else { configured };
@@ -403,7 +399,7 @@ fn paradrop_type_flight_level_reaches_spawned_carrier_and_survives_restore() {
 fn paradrop_multi_entry_resolves_each_edge_after_its_carrier_constructor() {
     let mut rules = make_paradrop_rules();
     rules.general.amer_paradrop_list = vec![("E1".to_string(), 1), ("E1".to_string(), 1)];
-    let (mut sim, path_grid) = build_sim(&rules);
+    let (mut sim, _) = build_sim(&rules);
     sim.scenario_rng = crate::sim::rng::SimRng::new(0x65E6_6000);
     let owner = sim.interner.intern("Americans");
     let bounds = sim.playfield_bounds.expect("playfield authority");
@@ -428,7 +424,6 @@ fn paradrop_multi_entry_resolves_each_edge_after_its_carrier_constructor() {
         20,
         ParaDropKind::American,
         sw_test,
-        Some(&path_grid),
     ));
     let mut actual_cells = sim
         .substrate
@@ -455,9 +450,10 @@ fn paradrop_multi_entry_resolves_each_edge_after_its_carrier_constructor() {
 #[test]
 fn paradrop_launch_ignores_blocked_ground_spawn_edge() {
     let rules = make_paradrop_rules();
-    let (mut sim, _path_grid) = build_sim(&rules);
+    let (mut sim, _) = build_sim(&rules);
     let owner = sim.interner.intern("Americans");
     let blocked_grid = PathGrid::test_all_blocked(200, 200);
+    sim.path_grid = Some(std::sync::Arc::new(blocked_grid));
 
     let sw_test = sim.interner.intern("SWTEST");
     let ok = launch(
@@ -468,7 +464,6 @@ fn paradrop_launch_ignores_blocked_ground_spawn_edge() {
         20,
         ParaDropKind::American,
         sw_test,
-        Some(&blocked_grid),
     );
 
     assert!(ok, "carrier edge helper should bypass ground passability");
@@ -489,7 +484,7 @@ fn paradrop_launch_ignores_blocked_ground_spawn_edge() {
 #[test]
 fn paradrop_launch_invalid_waypoint_edge_falls_back_to_north() {
     let rules = make_paradrop_rules();
-    let (mut sim, path_grid) = build_sim(&rules);
+    let (mut sim, _) = build_sim(&rules);
     let owner = sim.interner.intern("Americans");
     sim.houses.get_mut(&owner).unwrap().waypoint_edge = 255;
 
@@ -502,7 +497,6 @@ fn paradrop_launch_invalid_waypoint_edge_falls_back_to_north() {
         20,
         ParaDropKind::American,
         sw_test,
-        Some(&path_grid),
     );
 
     assert!(ok, "invalid waypoint edge should not abort standard launch");
@@ -523,7 +517,7 @@ fn paradrop_launch_invalid_waypoint_edge_falls_back_to_north() {
 #[test]
 fn paradrop_cargo_load_bypasses_pdplane_capacity_and_passenger_occupancy() {
     let rules = make_paradrop_rules_with_limited_pdplane_cargo();
-    let (mut sim, path_grid) = build_sim(&rules);
+    let (mut sim, _) = build_sim(&rules);
     let owner = sim.interner.intern("Americans");
 
     let sw_test = sim.interner.intern("SWTEST");
@@ -535,7 +529,6 @@ fn paradrop_cargo_load_bypasses_pdplane_capacity_and_passenger_occupancy() {
         20,
         ParaDropKind::American,
         sw_test,
-        Some(&path_grid),
     );
 
     assert!(ok, "launch should load the configured paradrop payload");
@@ -586,7 +579,6 @@ fn paradrop_full_pipeline_drops_infantry_until_cargo_empty() {
         20,
         ParaDropKind::American,
         sw_test,
-        Some(&path_grid),
     );
     assert!(ok, "launch should succeed");
 
@@ -652,7 +644,6 @@ fn paradrop_descent_ends_with_landed_infantry_and_carrier_despawned() {
         20,
         ParaDropKind::American,
         sw_test,
-        Some(&path_grid),
     );
 
     // Run for plenty of ticks to drain cargo + descent + carrier exit.
@@ -778,7 +769,6 @@ CellSpread=0
             crate::sim::house_state::HouseState::new(owner_id, 2, None, true, 10_000, 10);
         house.waypoint_edge = 2; // South
         sim.houses.insert(owner_id, house);
-        let path_grid = PathGrid::test_all_passable(200, 200);
 
         let sw_test = sim.interner.intern("SWTEST");
         launch(
@@ -789,7 +779,6 @@ CellSpread=0
             20,
             ParaDropKind::Generic,
             sw_test,
-            Some(&path_grid),
         );
 
         let pdplane_id = find_pdplane(&sim).expect("PDPLANE must exist");
@@ -836,7 +825,6 @@ CellSpread=0
             crate::sim::house_state::HouseState::new(owner_id, 1, None, true, 10_000, 10);
         house.waypoint_edge = 2;
         sim.houses.insert(owner_id, house);
-        let path_grid = PathGrid::test_all_passable(200, 200);
 
         let sw_test = sim.interner.intern("SWTEST");
         launch(
@@ -847,7 +835,6 @@ CellSpread=0
             20,
             ParaDropKind::Generic,
             sw_test,
-            Some(&path_grid),
         );
 
         let pdplane_id = find_pdplane(&sim).expect("PDPLANE must exist");
@@ -872,7 +859,6 @@ CellSpread=0
             crate::sim::house_state::HouseState::new(owner_id, 99, None, true, 10_000, 10);
         house.waypoint_edge = 2;
         sim.houses.insert(owner_id, house);
-        let path_grid = PathGrid::test_all_passable(200, 200);
 
         let sw_test = sim.interner.intern("SWTEST");
         launch(
@@ -883,7 +869,6 @@ CellSpread=0
             20,
             ParaDropKind::Generic,
             sw_test,
-            Some(&path_grid),
         );
 
         let pdplane_id = find_pdplane(&sim).expect("PDPLANE must exist");

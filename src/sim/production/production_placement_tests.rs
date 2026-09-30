@@ -594,7 +594,7 @@ fn completed_building_moves_into_ready_placement_pool() {
             .test_arm_ready(americans, ProductionCategory::Building)
     );
 
-    let spawned = tick_production(&mut sim, &rules, None);
+    let spawned = tick_production(&mut sim, &rules);
     assert!(!spawned, "completed building should wait for placement");
     let held = sim
         .production
@@ -613,7 +613,7 @@ fn completed_building_moves_into_ready_placement_pool() {
     let held_id = held.object.unwrap().entity_id.unwrap();
     let rng = sim.scenario_rng.logical_state();
     for _ in 0..3 {
-        assert!(!tick_production(&mut sim, &rules, None));
+        assert!(!tick_production(&mut sim, &rules));
     }
     // Record_Last_Built waits for the placement (`0x004FB4B7`).
     assert_eq!(sim.houses[&americans].stats.built, built_before);
@@ -2993,13 +2993,13 @@ fn blocked_active_war_factory_does_not_spawn_from_second_factory() {
     );
 
     grid.set_blocked(12, 11, true);
+    sim.install_fixture_path_grid(Some(&grid));
 
     let spawn = find_spawn_cell_for_owner(
         &mut sim,
         &rules,
         "Americans",
         ObjectCategory::Vehicle,
-        Some(&grid),
         false,
     );
 
@@ -3018,13 +3018,13 @@ fn stock_war_factory_initial_exit_has_no_nearest_cell_fallback() {
 
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
     grid.set_blocked(12, 11, true);
+    sim.install_fixture_path_grid(Some(&grid));
 
     let spawn = find_spawn_cell_for_owner(
         &mut sim,
         &rules,
         "Americans",
         ObjectCategory::Vehicle,
-        Some(&grid),
         false,
     );
 
@@ -3040,6 +3040,7 @@ fn stock_war_factory_clear_exitcoord_succeeds() {
     let mut sim = placement_sim();
     let rules = factory_rules();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
 
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
 
@@ -3048,7 +3049,6 @@ fn stock_war_factory_clear_exitcoord_succeeds() {
         &rules,
         "Americans",
         ObjectCategory::Vehicle,
-        Some(&grid),
         false,
     )
     .expect("clear ExitCoord should accept the stock war-factory spawn cell");
@@ -3065,6 +3065,7 @@ fn spawn_routing_prefers_active_producer_when_available() {
     let mut sim = placement_sim();
     let rules = factory_rules();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
 
     spawn_structure(&mut sim, 3, "Americans", "GAWEAP", 10, 10);
     spawn_structure(&mut sim, 5, "Americans", "GAWEAP", 30, 30);
@@ -3079,7 +3080,6 @@ fn spawn_routing_prefers_active_producer_when_available() {
         &rules,
         "Americans",
         ObjectCategory::Vehicle,
-        Some(&grid),
         false,
     )
     .expect("active producer should provide a valid exit");

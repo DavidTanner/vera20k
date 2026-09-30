@@ -265,12 +265,7 @@ fn stop_command_retires_only_the_drive_admitted_by_its_existing_gate() {
         if head_ahead {
             entity.drive_locomotion.as_mut().unwrap().head_to = Some(DriveCoord::cell(9, 8, 731));
         }
-        assert!(sim.apply_command(
-            "Americans",
-            &Command::Stop { entity_id: 1 },
-            Some(&rules),
-            None,
-        ));
+        assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, Some(&rules),));
 
         let entity = sim.substrate.entities.get(1).unwrap();
         if head_ahead {
@@ -315,12 +310,12 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         let mut grid = PathGrid::test_all_blocked(16, 16);
         grid.set_blocked(8, 8, false);
         grid.set_blocked(12, 8, false);
+        sim.path_grid = Some(std::sync::Arc::new(grid));
 
         assert!(
             !crate::sim::miner::miner_system::issue_stock_miner_drive_move(
                 &mut sim,
                 &rules,
-                &grid,
                 1,
                 (12, 8),
             )

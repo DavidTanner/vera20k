@@ -789,7 +789,6 @@ fn mission_harvest_states_two_and_three_match_the_original_dispatch() {
             &mut s.sim,
             &s.rules,
             &config,
-            None,
             Some(crate::sim::tiberium::test_support::overlay_registry()),
             s.miner,
         );

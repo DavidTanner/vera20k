@@ -25,10 +25,8 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
     ))));
     // The oracle's target mark is Object+0x74, which IsHighFlying reads.
     let marked = input["target_marked"].as_bool().unwrap_or(true);
-    let order = sim.substrate.next_occupancy_enter_order.next();
     let target = sim.substrate.entities.get_mut(2).unwrap();
     target.lifecycle.cell_marked = marked;
-    target.occupancy_enter_order = order;
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     let state = input["state"].as_u64().unwrap_or(3) as u8;
     entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: state });
@@ -139,10 +137,10 @@ fn aircraft_approach_matches_original_dispatch_and_restored_continuation() {
         for world in [&mut sim, &mut restored] {
             // GetFLH reads the headings before this visit changes SecondaryFacing.
             assert_flh(world, &rules, &row);
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             assert_facings(world, &row);
             let hash = world.state_hash();
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             assert_eq!(world.state_hash(), hash, "same-frame dispatch must wait");
             assert_reengagement(world, &row);
         }
@@ -162,7 +160,7 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
     input["target_marked"] = json!(false); // same supplied Foot membership as search corpus
     let (mut sim, rules) = fixture(&input);
     let rng = sim.scenario_rng.logical_state();
-    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(matches!(
         entity.aircraft_mission,
@@ -177,10 +175,10 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
     restored.scenario_rng = sim.scenario_rng.clone();
     for world in [&mut sim, &mut restored] {
         let before = world.state_hash();
-        crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(world, &rules);
         assert_eq!(world.state_hash(), before);
         world.session.binary_frame = 101;
-        crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(world, &rules);
         let entity = world.substrate.entities.get(1).unwrap();
         assert!(matches!(
             entity.aircraft_mission,

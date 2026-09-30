@@ -112,6 +112,7 @@ fn gsi_08_12_promotion_step_announces_each_crossing_once() {
 /// resulting path actually runs at.
 fn move_order_speed(sim: &mut Simulation, rules: &RuleSet, id: u64) -> SimFixed {
     let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
     let (rx, ry) = {
         let e = sim.substrate.entities.get(id).expect("mover");
         (e.position.rx, e.position.ry)
@@ -125,7 +126,6 @@ fn move_order_speed(sim: &mut Simulation, rules: &RuleSet, id: u64) -> SimFixed 
             queue: false,
         },
         Some(rules),
-        Some(&grid),
     );
     assert!(issued, "the ordinary move command must issue");
     sim.substrate

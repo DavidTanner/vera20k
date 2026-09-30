@@ -899,10 +899,7 @@ impl Simulation {
                 owner_blocks: true,
                 object_destination: None,
             };
-            Some(
-                self.path_grid_snapshot()
-                    .is_some_and(|grid| self.issue_ground_move(&grid, order, Some(rules))),
-            )
+            Some(self.issue_ground_move(order, Some(rules)))
         } else if jumpjet {
             Some(self.issue_air_cell_destination(id, cell, info.speed, Some(rules)))
         } else {

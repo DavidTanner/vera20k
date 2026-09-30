@@ -131,12 +131,11 @@ impl AircraftMission {
 pub fn tick_aircraft_missions(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
 ) -> std::collections::BTreeSet<u64> {
     let order = sim.substrate.logic.as_slice().to_vec();
     order
         .into_iter()
-        .filter(|&id| dispatch_aircraft_mission(sim, rules, id, path_grid))
+        .filter(|&id| dispatch_aircraft_mission(sim, rules, id))
         .collect()
 }
 
@@ -150,14 +149,7 @@ pub fn tick_aircraft_missions(
 /// run a Mission_Attack strike visit (states 4..9) for this aircraft this
 /// frame. RESIDUAL: that visit runs in VERA's combat phase after the live
 /// pass, like every other attacker's FireAt, so its draws do not interleave.
-///
-/// `path_grid`: Paradrop's Drop_Payload uses it for drop-cell passability.
-pub(crate) fn dispatch_aircraft_mission(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    id: u64,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-) -> bool {
+pub(crate) fn dispatch_aircraft_mission(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
     let Some(e) = sim.substrate.entities.get(id) else {
         return false;
     };
@@ -178,8 +170,8 @@ pub(crate) fn dispatch_aircraft_mission(
     {
         return false;
     }
-    match mission_step(sim, rules, id, &mission, path_grid) {
-        Some(m) => apply_mission_mutation(sim, rules, m, path_grid),
+    match mission_step(sim, rules, id, &mission) {
+        Some(m) => apply_mission_mutation(sim, rules, m),
         None => false,
     }
 }
@@ -210,7 +202,6 @@ fn mission_step(
     rules: &RuleSet,
     id: u64,
     mission: &AircraftMission,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
 ) -> Option<MissionMutation> {
     let now = sim.session.binary_frame;
     let mut m = MissionMutation {
@@ -520,8 +511,7 @@ fn mission_step(
             target_rx,
             target_ry,
         } => {
-            let outcome =
-                paradrop_mission::tick_approach(sim, rules, id, *target_rx, *target_ry, path_grid);
+            let outcome = paradrop_mission::tick_approach(sim, rules, id, *target_rx, *target_ry);
             m.new_mission = outcome.new_mission;
             m.move_to = outcome.move_to;
         }
@@ -633,12 +623,7 @@ fn enter_idle_mode(
 }
 
 /// Apply one handler decision. Returns the Mission_Attack fire request.
-fn apply_mission_mutation(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    m: MissionMutation,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-) -> bool {
+fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutation) -> bool {
     // No "Unit lost" here: `AircraftClass::Enter_Idle_Mode @ 0x004176F0`
     // handles the AirportBound-without-airfield case by calling the
     // `Crash` slot `+0x3DC` directly with no attacker (`0x004179FD`,
@@ -719,13 +704,7 @@ fn apply_mission_mutation(
     if m.paradrop_try_drop {
         let aircraft_id = m.id;
         let drop_interval = drop_payload::PARADROP_DROP_INTERVAL_FRAMES;
-        let result = drop_payload::try_drop(
-            sim,
-            rules,
-            aircraft_id,
-            m.paradrop_payload_count_pre,
-            path_grid,
-        );
+        let result = drop_payload::try_drop(sim, rules, aircraft_id, m.paradrop_payload_count_pre);
         let frame = sim.session.binary_frame as i32;
         if let Some(entity) = sim.substrate.entities.get_mut(aircraft_id) {
             if let Some(AircraftMission::ParaDropOverfly {

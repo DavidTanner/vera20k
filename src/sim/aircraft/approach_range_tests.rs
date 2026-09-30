@@ -151,7 +151,7 @@ fn selected_strafe_range_branch_matches_native_and_dispatches_when_in_range() {
         // This older native corpus stops before the out-of-range setter.
         // Complete state3 effects are compared in aircraft_approach_tests.
         if row["in_range"].as_bool().unwrap() {
-            crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
             assert_native_in_range_result(&sim, &row);
         }
     }
@@ -171,8 +171,8 @@ fn pending_approach_range_decision_survives_save_restore() {
         let mut restored = GameSnapshot::load(&saved).unwrap().sim;
         restored.restore_after_snapshot_load().unwrap();
         assert_eq!(sim.state_hash(), restored.state_hash());
-        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
-        crate::sim::aircraft::tick_aircraft_missions(&mut restored, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
+        crate::sim::aircraft::tick_aircraft_missions(&mut restored, &rules);
         assert_native_in_range_result(&restored, &row);
         assert_eq!(sim.state_hash(), restored.state_hash());
     }

@@ -59,6 +59,7 @@ mod tests {
         let grid = PathGrid::new(32, 32);
         for order in 0..4 {
             let mut sim = Simulation::with_seed(0);
+            sim.install_fixture_path_grid(Some(&grid));
             let id = sim
                 .spawn_object("TANK", "Americans", 4, 4, 64, &rules)
                 .unwrap();
@@ -86,7 +87,7 @@ mod tests {
                     target_id: None,
                 },
             };
-            assert!(sim.apply_command("Americans", &command, Some(&rules), Some(&grid)));
+            assert!(sim.apply_command("Americans", &command, Some(&rules)));
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             assert!(entity.attack_target.is_none(), "{command:?}");
             assert!(!entity.passively_acquired_target, "{command:?}");
@@ -179,13 +180,13 @@ mod tests {
                     },
                 };
                 // Rejected ownership cannot cancel a burst or passive provenance.
-                assert!(!sim.apply_command("Russians", &command, Some(&rules), None));
+                assert!(!sim.apply_command("Russians", &command, Some(&rules)));
                 let actor = sim.substrate.entities.get(id).unwrap();
                 assert_eq!(actor.attack_target.is_some(), had_target, "{command:?}");
                 assert!(actor.passively_acquired_target, "{command:?}");
                 assert_eq!(actor.weapon_burst.index(), 1, "{command:?}");
 
-                assert!(sim.apply_command("Americans", &command, Some(&rules), None));
+                assert!(sim.apply_command("Americans", &command, Some(&rules)));
                 let actor = sim.substrate.entities.get_mut(id).unwrap();
                 assert!(actor.attack_target.is_none(), "{command:?}");
                 assert!(!actor.passively_acquired_target, "{command:?}");

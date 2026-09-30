@@ -438,7 +438,6 @@ fn depot_repair_order_reaches_the_pad_through_find_path() {
         .spawn_object("DRV", "Americans", 10, 10, 0, &rules)
         .unwrap();
     sim.substrate.entities.get_mut(tank).unwrap().health.current = 150;
-    let grid = sim.path_grid.clone();
     assert!(sim.apply_command(
         "Americans",
         &crate::sim::command::Command::RepairAtDepot {
@@ -446,7 +445,6 @@ fn depot_repair_order_reaches_the_pad_through_find_path() {
             depot_id: depot,
         },
         Some(&rules),
-        grid.as_deref(),
     ));
     let mut docked = false;
     for _ in 0..400 {
@@ -507,7 +505,6 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
         .unwrap()
         .health
         .current = 150;
-    let grid = sim.path_grid.clone();
     assert!(sim.apply_command(
         "Americans",
         &crate::sim::command::Command::RepairAtDepot {
@@ -515,7 +512,6 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
             depot_id: depot,
         },
         Some(&rules),
-        grid.as_deref(),
     ));
     let mut serviced = false;
     let mut left = false;

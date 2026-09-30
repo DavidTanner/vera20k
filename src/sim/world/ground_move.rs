@@ -27,7 +27,6 @@ use crate::rules::locomotor_type::{LocomotorKind, SpeedType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::movement::{self, DestinationTiming};
-use crate::sim::pathfinding::PathGrid;
 use crate::util::fixed_math::SimFixed;
 
 /// One ground move order.
@@ -47,17 +46,18 @@ pub(crate) struct GroundMove {
 }
 
 impl Simulation {
-    /// Issue `order` with the kept block sets and blocker plane. Returns
-    /// whether the mover accepted the destination.
-    pub(crate) fn issue_ground_move(
-        &mut self,
-        grid: &PathGrid,
-        order: GroundMove,
-        rules: Option<&RuleSet>,
-    ) -> bool {
+    /// Issue `order` with the kept block sets and blocker plane, against the
+    /// canonical path grid. Returns whether the mover accepted the
+    /// destination; without a published grid nothing is issued. A mover on
+    /// Teleport takes its class setter ([`Self::teleport_destination`]).
+    pub(crate) fn issue_ground_move(&mut self, order: GroundMove, rules: Option<&RuleSet>) -> bool {
         if let Some(accepted) = self.teleport_destination(order.entity_id, order.target, rules) {
             return accepted;
         }
+        let Some(grid) = self.path_grid_snapshot() else {
+            return false;
+        };
+        let grid = grid.as_ref();
         let block_owner = order
             .owner_blocks
             .then(|| self.substrate.entities.get(order.entity_id))

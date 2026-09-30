@@ -10,7 +10,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::{Animation, SequenceKind};
-use crate::sim::components::{BridgeOccupancy, HarvestOverlay, Health, VoxelAnimation};
+use crate::sim::components::{HarvestOverlay, Health, VoxelAnimation};
 use crate::sim::game_entity::{GameEntity, TechnoConstructorInit};
 use crate::sim::miner::{Miner, MinerConfig, miner_kind_for_object};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
@@ -255,14 +255,13 @@ impl Simulation {
 
 fn install_authored_bridge(ge: &mut GameEntity, origin: ComponentOrigin) {
     if let ComponentOrigin::Authored {
-        bridge_deck: Some(deck_level),
+        bridge_deck: Some(_),
         ..
     } = origin
     {
         if let Some(loco) = &mut ge.locomotor {
             loco.layer = MovementLayer::Bridge;
         }
-        ge.bridge_occupancy = Some(BridgeOccupancy { deck_level });
         ge.on_bridge = true;
     }
 }

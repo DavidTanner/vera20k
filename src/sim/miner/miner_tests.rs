@@ -380,6 +380,7 @@ fn tick_stages(sim: &mut Simulation) {
 fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
     let config = MinerConfig::default();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
     for _ in 0..n {
         sim.session.total_sim_ms = sim.session.total_sim_ms.saturating_add(67);
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
@@ -400,7 +401,7 @@ fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
                 );
             }
         }
-        super::miner_system::tick_miners(sim, rules, &config, Some(&grid));
+        super::miner_system::tick_miners(sim, rules, &config);
         tick_stages(sim);
         // Also tick movement so issue_direct_move targets are consumed
         // (Linked/Departing wait for movement_target to be None).
@@ -669,6 +670,7 @@ fn chrono_miner_does_not_warp_outbound() {
     let rules = miner_rules();
     let config = MinerConfig::default();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
 
     // Chrono miner at the refinery exit cell, empty cargo, entering SearchOre.
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::Chrono, 14, 11);
@@ -684,7 +686,7 @@ fn chrono_miner_does_not_warp_outbound() {
         miner.cargo.clear();
     }
 
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     let entity = sim.substrate.entities.get(miner_id).expect("entity");
     assert!(
@@ -1422,16 +1424,11 @@ fn tick_miners_overlay_n(
 ) {
     let config = MinerConfig::default();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
     for _ in 0..n {
         sim.session.total_sim_ms = sim.session.total_sim_ms.saturating_add(67);
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
-        super::miner_system::tick_miners_test_walk(
-            sim,
-            rules,
-            &config,
-            Some(&grid),
-            Some(registry),
-        );
+        super::miner_system::tick_miners_test_walk(sim, rules, &config, Some(registry));
         tick_stages(sim);
         crate::sim::movement::tick_movement(
             &mut sim.substrate.entities,
@@ -2219,7 +2216,6 @@ fn harvest_order_mid_unload_drops_the_unload_latch_and_image() {
             target_ry: 30,
         },
         Some(&rules),
-        None,
     ));
 
     let entity = sim.substrate.entities.get(miner_id).unwrap();
@@ -2260,7 +2256,6 @@ fn stop_breaks_an_untethered_refinery_contact_and_is_ignored_once_entered() {
                 entity_id: miner_id
             },
             Some(&rules),
-            None,
         ));
 
         assert_eq!(
@@ -2315,6 +2310,7 @@ fn scan_skips_tree_blocked_ore_cell() {
     // (12, 10) is also reachable but farther, so without the tree the scan
     // would pick (10, 10).
     let grid = PathGrid::new(32, 32);
+    sim.install_fixture_path_grid(Some(&grid));
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 5, 10);
     place_ore(&mut sim, 10, 10, 1200);
     place_ore(&mut sim, 12, 10, 1200);
@@ -2332,7 +2328,7 @@ fn scan_skips_tree_blocked_ore_cell() {
     }
 
     let config = MinerConfig::default();
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     assert_eq!(
         nav_cell(&sim, miner_id),
@@ -2370,6 +2366,7 @@ fn scan_skips_cell_occupied_by_other_miner() {
     let rules = miner_rules();
 
     let grid = PathGrid::new(32, 32);
+    sim.install_fixture_path_grid(Some(&grid));
 
     // Miner A sits on ore at (10, 10). Miner B at (5, 10) is the scanner.
     let _miner_a = spawn_miner(&mut sim, 1, MinerKind::War, 10, 10);
@@ -2402,7 +2399,7 @@ fn scan_skips_cell_occupied_by_other_miner() {
     }
 
     let config = MinerConfig::default();
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     assert_eq!(
         nav_cell(&sim, miner_b),
@@ -2448,7 +2445,7 @@ fn scan_ring_0_allows_harvesters_own_cell() {
     }
 
     let config = MinerConfig::default();
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     let m = get_miner(&sim, miner_id);
     assert_eq!(

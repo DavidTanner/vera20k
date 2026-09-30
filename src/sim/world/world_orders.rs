@@ -16,7 +16,6 @@ use crate::sim::intern::InternedId;
 use crate::sim::mission::MissionType;
 use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
 
 /// Result of one `apply_c4_damage_to_building` call.
@@ -168,21 +167,19 @@ impl Simulation {
     /// coords stay on `OrderIntent` — the `mission` substrate has no goal field
     /// yet (Slice-8 follow-up); only the busy-signalling role moved off it.
     #[cfg(test)]
-    pub(crate) fn tick_order_intents_post_combat(
-        &mut self,
-        path_grid: Option<&PathGrid>,
-        rules: Option<&RuleSet>,
-    ) {
-        self.tick_order_intents_post_combat_except(path_grid, rules, &BTreeSet::new());
+    pub(crate) fn tick_order_intents_post_combat(&mut self, rules: Option<&RuleSet>) {
+        self.tick_order_intents_post_combat_except(rules, &BTreeSet::new());
     }
 
     pub(crate) fn tick_order_intents_post_combat_except(
         &mut self,
-        path_grid: Option<&PathGrid>,
         rules: Option<&RuleSet>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
-        let Some(grid) = path_grid else { return };
+        // Without a published grid no order resumes (air resumes included).
+        if self.path_grid().is_none() {
+            return;
+        }
         // Collect (stable_id, goal) for entities that need to resume movement.
         let keys: Vec<u64> = self.substrate.entities.keys_sorted();
         let mut resumes: Vec<(u64, u16, u16)> = Vec::new();
@@ -240,7 +237,6 @@ impl Simulation {
                     self.issue_air_cell_destination(stable_id, (goal_rx, goal_ry), speed, rules);
             } else {
                 let _ = self.issue_ground_move(
-                    grid,
                     GroundMove {
                         entity_id: stable_id,
                         target: (goal_rx, goal_ry),
@@ -1098,20 +1094,20 @@ impl Simulation {
     /// map, unleashed, the first time an enemy scouted past: nothing carries
     /// these units home because they have no `OrderIntent` to resume.
     #[cfg(test)]
-    pub(crate) fn tick_attack_pursuit(&mut self, rules: &RuleSet, path_grid: Option<&PathGrid>) {
-        self.tick_attack_pursuit_with_overlay_registry(rules, path_grid, None, &BTreeSet::new());
+    pub(crate) fn tick_attack_pursuit(&mut self, rules: &RuleSet) {
+        self.tick_attack_pursuit_with_overlay_registry(rules, None, &BTreeSet::new());
     }
 
     pub(crate) fn tick_attack_pursuit_with_overlay_registry(
         &mut self,
         rules: &RuleSet,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
-        let Some(grid) = path_grid else {
+        // Without a published grid pursuit decides nothing this tick.
+        if self.path_grid().is_none() {
             return;
-        };
+        }
 
         // Phase 1: collect pursuit decisions (read-only on entities).
         // Two action kinds: issue a new path, or clear an existing one.
@@ -1316,7 +1312,6 @@ impl Simulation {
                         continue;
                     };
                     let _issued = self.issue_ground_move(
-                        grid,
                         GroundMove {
                             entity_id,
                             target: goal,

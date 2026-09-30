@@ -69,7 +69,6 @@ fn launch_command(sim: &mut Simulation, rules: &RuleSet, name: &str, rx: u16, ry
             target_ry: ry,
         },
         Some(rules),
-        None,
         None
     ));
     assert!(
@@ -328,7 +327,7 @@ fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
         } else {
             AircraftMission::Idle
         });
-        tick_aircraft_missions(&mut sim, &rules, None);
+        tick_aircraft_missions(&mut sim, &rules);
         let entity = sim.substrate.entities.get(victim).unwrap();
         assert_eq!(
             entity.infantry_terminal,
@@ -1046,15 +1045,6 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         .unwrap()
         .snapshot_layer(MovementLayer::Ground);
     assert_eq!(ground, vec![tank, boomer]);
-    let rebuilt = crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
-    assert_eq!(
-        rebuilt
-            .get(5, 5)
-            .unwrap()
-            .snapshot_layer(MovementLayer::Ground),
-        ground,
-        "serialized re-entry order preserves the live list during restore"
-    );
     let twin = sim.substrate.entities.get(unmarked).unwrap();
     assert!(twin.on_bridge && twin.lifecycle.in_limbo && !twin.lifecycle.cell_marked);
     assert_eq!(

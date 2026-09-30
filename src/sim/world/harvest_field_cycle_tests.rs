@@ -222,12 +222,10 @@ fn until_first_bale(s: &mut Scene) {
 }
 
 fn order(s: &mut Scene, command: crate::sim::command::Command) {
-    let grid = s.sim.path_grid_snapshot();
     assert!(s.sim.apply_command_with_overlays(
         "Americans",
         &command,
         Some(&s.rules),
-        grid.as_deref(),
         Some(registry()),
     ));
 }
