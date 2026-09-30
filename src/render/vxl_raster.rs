@@ -109,7 +109,7 @@ fn voxel_camera_view() -> Mat4 {
     )
 }
 
-/// `BuildFacingRotationMatrix @ 0x0055A730`: signed step -8..23, native
+/// `LocomotionClass::Draw_Matrix @ 0x0055A730`: signed step -8..23, native
 /// double angle and float store before table trig. Share the established
 /// table with FLH rather than recomputing an approximately equal sine.
 fn voxel_body_facing(step: u8) -> Mat4 {

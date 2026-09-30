@@ -7,7 +7,7 @@
 //!   still on the map: absorbed passengers leave first (Phase A), then each
 //!   foundation cell gets one survivor roll followed by that cell's
 //!   scorch/crater mark (Phase B);
-//! - `BuildingClass::Sell`'s stage 1 (`0x0044A2EE`, driven by
+//! - `BuildingClass::Mission_Selling`'s stage 1 (`0x0044A2EE`, driven by
 //!   `production::production_sell`): absorbed passengers, then the survivor
 //!   count's crew, each on a random foundation cell;
 //! - the crew block of `UnitClass::ReceiveDamage` (`0x007381BC..0x0073838A`);

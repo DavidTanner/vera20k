@@ -260,7 +260,7 @@ pub struct Miner {
     /// Unit+0x6D2, set while Mission_Harvest works an ore cell: state 0's
     /// scan hit and state 1's hop write 1, state 0's entry and a failed
     /// Harvest_Ore_Tick write 0 (`0x0073E75B`, `0x0073E87D`, `0x0073E99A`,
-    /// `0x0073EB19`). `UnitClass::DrawExtras` (`0x0073CEC0`) draws OREGATH
+    /// `0x0073EB19`). `UnitClass::Draw` (`0x0073CEC0`) draws OREGATH
     /// from it while the locomotor is not moving.
     #[serde(default)]
     pub harvesting: bool,

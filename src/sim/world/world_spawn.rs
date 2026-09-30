@@ -1719,7 +1719,7 @@ impl Simulation {
             && production::sell_back(self, rules, stable_id, production::SellOrder::Undeploy)
     }
 
-    /// `BuildingClass::Sell`'s UndeploysInto conversion (`0x00449CEA`), on
+    /// `BuildingClass::Mission_Selling`'s UndeploysInto conversion (`0x00449CEA`), on
     /// the Selling mission's completing visit
     /// (`production::production_sell::sell_complete`). The unit is
     /// constructed at the building's undeploy cell with its

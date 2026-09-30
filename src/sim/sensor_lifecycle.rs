@@ -180,7 +180,7 @@ impl Simulation {
     /// stamped. `BuildingClass::RemoveDetectDisguiseAt @ 0x00455980` opens with
     /// `0045598A MOV EDX,[ECX+0x21C]` / `004559A1 MOV EAX,[EDX+0x30]`;
     /// `BuildingClass::RemoveSensorArrayAt @ 0x004556D0` and
-    /// `TechnoClass::RemoveSensorsAt @ 0x004DE940` open with the identical
+    /// `FootClass::RemoveSensorsAt @ 0x004DE940` open with the identical
     /// `*(int *)(param_1[0x87] + 0x30)` read, and so do both adds
     /// (`0x00455820`, `0x00455A80`). `TechnoClass::ChangeOwner @ 0x007014A0`
     /// overwrites that pointer (`param_1[0x87] = param_2`), so the live owner
@@ -527,7 +527,7 @@ mod tests {
 
         // Drift every live fact after the deposit. The cached center still
         // decides WHICH cells the removal walks, but the HOUSE is re-read live:
-        // `TechnoClass::RemoveSensorsAt @ 0x004DE940` opens with
+        // `FootClass::RemoveSensorsAt @ 0x004DE940` opens with
         // `*(int *)(param_1[0x87] + 0x30)`, the same read as the BuildingClass
         // pair. gamemd cannot reach this state for a Foot — only
         // `FootClass::ChangeOwner @ 0x004DBED0` moves `+0x21C`, and it dispatches

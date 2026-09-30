@@ -852,8 +852,8 @@ fn a_refinery_whose_ore_runs_out_packs_up_and_moves_to_the_next_field() {
             .resolve(sim.substrate.entities.get(holder).unwrap().type_ref());
         if kind == "SMIN" {
             if miner.is_none() {
-                // `BuildingClass::Sell 0x0044A091..0x0044A0AE`: the unit is
-                // sent to the refinery's archived cell, its own.
+                // `BuildingClass::Mission_Selling 0x0044A091..0x0044A0AE`: the
+                // unit is sent to the refinery's archived cell, its own.
                 let unit = sim.substrate.entities.get(holder).unwrap();
                 assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(12, 12)));
                 assert_eq!(unit.mission.queued().known(), Some(MissionType::Move));
@@ -943,7 +943,7 @@ fn retail_rules_feed_the_slave_refinery_relocation() {
     assert_eq!(miner.deploys_into.as_deref(), Some("YAREFN"));
 }
 
-/// `BuildingClass::Sell`'s conversion constructs the unit, lists the
+/// `BuildingClass::Mission_Selling`'s conversion constructs the unit, lists the
 /// building's attackers (`0x00449F23..0x00449FDC`), and Limbos the building,
 /// whose Detach_All clears their targets (an attacker with more than 10
 /// frames left on its passive scan re-arms it with a Scenario draw); after

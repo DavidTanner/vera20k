@@ -701,7 +701,7 @@ fn the_repair_step_keeps_signed_adds_and_the_live_strength() {
     }
 }
 
-/// Each Selling visit stops a repair first (`BuildingClass::Sell`'s
+/// Each Selling visit stops a repair first (`BuildingClass::Mission_Selling`'s
 /// `ToggleRepair(0)`, `0x00449C41`): on the refinery dock scene's second
 /// refinery, damaged and paid for, a repair running when its owner's sale
 /// order arrives keeps running through the order's frame and stops at the

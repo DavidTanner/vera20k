@@ -714,7 +714,7 @@ pub(super) fn dispatch_sim_sound_events(
                 }
             }
             SimSoundEvent::StructureSold { owner } => {
-                // `BuildingClass::Sell 0x00449CC1 MOV AL,[EBP+0x41A]`
+                // `BuildingClass::Mission_Selling 0x00449CC1 MOV AL,[EBP+0x41A]`
                 // (`0x0044AB22` on the upgrade path): only the local
                 // player's own building speaks; `EDX = -1`.
                 if !owner_is_local(&sim.interner, owner, local_owner_name) {

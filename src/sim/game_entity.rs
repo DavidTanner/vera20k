@@ -1558,7 +1558,7 @@ impl GameEntity {
             // through BOTH scanners on the same cadence.
             Some(MissionType::AreaGuard) => MissionType::AreaGuard,
             // A sale runs until the building converts or leaves
-            // (`BuildingClass::Sell`, `building_down`); Selling is one of the
+            // (`BuildingClass::Mission_Selling`, `building_down`); Selling is one of the
             // twelve missions that strip a scanner target, and the passive
             // block never admits it.
             Some(MissionType::Selling) => MissionType::Selling,

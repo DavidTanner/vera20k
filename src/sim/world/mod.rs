@@ -326,7 +326,7 @@ pub enum SimSoundEvent {
     GattlingLoopRelease { owner: u64 },
     /// `SoundEvent::Release @ 0x00406060` on an object's own sound handle
     /// (`FootClass+0x544` or `AnimClass+0x1A0`, keyed by object id). A one-shot
-    /// plays out; an uncounted loop stops repeating. Anim Destroy4255D5 and
+    /// plays out; an uncounted loop stops repeating. Anim UnInit4255D5 and
     /// scalar destructor4228E0 share this operation with Foot4D3677.
     ObjectSoundReleased { owner: u64 },
     /// Native Fly AuxSound1/AuxSound2 at the phase callback world coordinate.
@@ -508,7 +508,7 @@ pub enum SimSoundEvent {
         owner: InternedId,
         event: &'static str,
     },
-    /// `BuildingClass::Sell @ 0x00449C30`'s completing stage-2 visit
+    /// `BuildingClass::Mission_Selling @ 0x00449C30`'s completing stage-2 visit
     /// (`0x00449CC1..0x00449CE5`, once the pack-up animation has set
     /// `+0x6DD`): `TechnoClass+0x41A` (owner is the local player) and no
     /// `UndeploysInto=` (`Type+0x408`) — an undeploying building stays
@@ -3851,7 +3851,7 @@ impl Simulation {
 
     /// Shared identity source for every modeled runtime `AbstractClass` analogue.
     ///
-    /// `AbstractClass::AssignUniqueID @ 0x00410230` delegates to
+    /// `AbstractClass::Create_ID @ 0x00410230` delegates to
     /// `ScenarioClass::NextUniqueID @ 0x0068BCB0`; individual stores therefore
     /// must not own independent counters.
     pub(crate) fn allocate_stable_id(&mut self) -> u64 {
@@ -4229,7 +4229,7 @@ impl Simulation {
     /// Admit the `VoxelAnimClass` debris a death threw.
     ///
     /// gamemd-derived: `VoxelAnimClass::Constructor @ 0x007493B0` assigns the
-    /// shared unique id (`AbstractClass::AssignUniqueID`), appends to the
+    /// shared unique id (`AbstractClass::Create_ID`), appends to the
     /// VoxelAnim registry, then `ObjectClass::Unlimbo` reveals the piece into
     /// the LogicClass vector. The launch velocity and the physics body were
     /// already built inside the combat transaction, which consumed the draws in

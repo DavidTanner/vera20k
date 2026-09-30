@@ -901,7 +901,7 @@ impl FogState {
         self.cloaked_by_houses.get_mut(index)
     }
 
-    /// Native `TechnoClass::AddSensorsAt @ 0x004DE7B0`: outer-Y/inner-X strict
+    /// Native `FootClass::AddSensorsAt @ 0x004DE7B0`: outer-Y/inner-X strict
     /// circle and signed-word increment. Returned cells are the exact ordered
     /// boundary where native forces resident objects through virtual `+0x420`.
     /// RESIDUAL (GSI-12.06) — the deposit walk is right; everything around it is
@@ -939,7 +939,7 @@ impl FogState {
         touched
     }
 
-    /// Paired `TechnoClass::RemoveSensorsAt` @ `0x004DE940` decrement walk.
+    /// Paired `FootClass::RemoveSensorsAt` @ `0x004DE940` decrement walk.
     #[cfg(test)]
     pub fn sensors_remove_at(
         &mut self,
