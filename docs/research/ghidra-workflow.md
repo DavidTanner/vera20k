@@ -92,27 +92,47 @@ machine-local research folder listed in `LOCAL.md`.
 
 ## Function boundaries
 
-Two offline passes on 2026-09-30 changed function extents. Their plates name what
-was checked:
+Offline passes on 2026-09-30 changed function extents. Their plates name what was
+checked:
 
 - `[2026-09-30 DB repair]`: misdecoded bytes that overlapped real instructions were
   cleared. The function was created or its body was extended, and the plate gives the
-  old and new instruction counts. Decompiles made before the repair miss that code.
+  old and new instruction counts.
 - `[2026-09-30 recovered functions]`: a function created where real code had none.
-  The plate names the evidence. It can be an entry of the startup or exit
-  initializer tables (static initializers, which set globals' startup values), a call
-  or tail jump, or an address stored as a callback. It can also say that no reference
-  was found. Such functions are probably dead code: show that one runs before porting
-  it. Three functions were split out of bodies that had absorbed them, including one
-  that `AircraftClass__Mission_Move` tail-jumps to.
+  The plate names the evidence:
+  - an entry of the startup or exit initializer tables (static initializers, which set
+    globals' startup values);
+  - a call or tail jump;
+  - an address stored as a callback, such as the main window procedure 0x7775C0 and
+    the dialog procedures;
+  - or no reference at all. Such functions are probably dead code: show that one runs
+    before porting it.
+  
+  Three functions were split out of bodies that had absorbed them, including one that
+  `AircraftClass__Mission_Move` tail-jumps to.
+- `[2026-09-30 boundary repair]`: one of these changes.
+  - A body that stopped early was completed.
+  - A fragment was merged back into its function.
+  - A switch got its table and cases.
+  - A jump to another function's entry was marked as a tail call.
+  - A reference that pointed into the middle of an instruction was removed.
 
-The decompiler shows a plain jump to another function's entry as that function's
-code, inline. Tail jumps in recovered functions carry the flow override
-`CALL_RETURN`, which makes them show as calls. About 40 older jumps, mostly
-`_adjustor` thunks, do not. About 33,500 instructions still belong to no function.
-Most of them are bytes misdecoded from stray data values. A reference from such an
-instruction (a reader or writer "in no function") is not evidence until the site is
-decoded from a real boundary.
+The decompiler follows control flow past a function's body, so a completed body
+changes listings, cross-references and call graphs, but rarely the decompile. A switch
+the decompiler cannot recover is the exception. Its decompile warns "Could not recover
+jumptable" and "Treating indirect jump as call", and leaves out every case.
+`BuildingClass__Mission_Attack` had this problem until a jump-table override was added.
+
+The decompiler also shows a plain jump to another function's entry as that function's
+code, inline. Every such jump now carries the flow override `CALL_RETURN`, so it shows
+as a call. `_adjustor<N>` thunks therefore decompile as a bare call to their target,
+because the target has no prototype. The `this` shift is N.
+
+About 800 instructions still belong to no function. They are plausible code that
+nothing references, so a reference from one of them (a reader or writer "in no
+function") is not evidence until that code is shown to run. Some numbers in data
+tables were once typed as pointers into code. A data reference into the middle of a
+function is not proof of a code pointer until its source has been checked.
 
 ## Preserve findings without polluting shared analysis
 
