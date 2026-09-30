@@ -3306,12 +3306,14 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
         // This fixture relocates spawned ground objects onto the deck. The
         // native Cell-target range query reads the retained Object coordinate,
         // so update it through the same height owner as ground movement.
-        assert!(crate::sim::movement::ground_pose::commit_ground_height(
+        crate::sim::movement::ground_pose::set_height(
             &mut entity.position,
             true,
+            0,
             sim.resolved_terrain.as_ref(),
             None,
-        ));
+        );
+        assert_eq!(entity.position.exact_z_leptons, Some(624));
         sim.add_entity_occupancy(id);
     }
     assert!(crate::sim::combat::install_cell_attack_target_for_test(

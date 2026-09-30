@@ -397,3 +397,22 @@ with receipt SHA256
 `4f21ae65fbd18f9a26ab55465497c137e9194bf2ba3d33ceecdb3e300c759554`;
 its receipt hashes every raw child output and input copy. These release checks
 validate connected production output; their native parity certification is NONE.
+
+## Final main474 integration
+
+The same [replay receipt](foot_bridge_layer.main986.replay.json) adds complete
+main474/HEAD95d observations after integrating the shared Aircraft CanEnter and
+Object SetHeight owners. All819 actor/hash/state/RNG records agree with the
+preceding candidate. Only331 raw caller strings change, through seven exact
+source-line replacements; the201 bridge rows remain byte-identical. No pin
+changes or difference whitelist are needed. The existing original
+[ramp/SetHeight vectors](../ramp_height_vectors.json) establish `0x005F5FA0`
+and its ground evaluator; this merge calls that sole owner rather than
+recreating the removed ground-height wrapper. The Sonic bridge fixture uses
+SetHeight(0) between occupancy removal/re-addition; its level-two deck Z is624.
+
+The corrected final strict-retail library passes9,466 tests (211 ignored),
+clippy completes with765 repository warnings, and the field ratchet remains
+2,646 versus2,661 on main474. Complete source/build/execution and comparison
+receipts are preserved; original replay contexts remain intact. These results
+retain the previous bounds on native world and production Rescue coverage.
