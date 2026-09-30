@@ -1,18 +1,18 @@
 {
   "schema": "vera20k.engineer-bridge-production-validation.v1",
   "evidence_level": "Rust regression and retail production observation; native comparisons are the separately pinned oracle packets",
-  "source_note": "Final code candidate after the single critic fix and fixture migration; both labels have the same source hash and include README and earlier report documentation. This receipt was refreshed with final results afterward. Dirty status remains in preserved manifests. These are observed Rust outputs, never native parity goldens.",
+  "source_note": "Final committed code candidate9f7bdb6cfdde18c58271732a7af71d9adccfd0d5 integrates main940 SetLocation without conflicts after the single critic fix. Both labeled manifests identify the same code/source hash. This documentation-only receipt was refreshed after final validation. These are observed Rust outputs, never native parity goldens.",
   "builds": {
-    "engineer-hut-tests-criticfix-20260930": {
+    "engineer-hut-tests-main940-20260930": {
       "manifest": {
-        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-tests-criticfix-20260930/manifest.json",
-        "sha256": "3e450d4b8fb860b3fe7ea8c5da7679b54f34a5016db9f4fe02aae7db669c590d",
-        "byte_length": 5031
+        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-tests-main940-20260930/manifest.json",
+        "sha256": "82f7f7736c805379d23041beadb188a2bfb7cad3f0ffe4c759e0ffd6255b904f",
+        "byte_length": 1204
       },
       "source": {
-        "head": "a5ff4168b6de37d1f43ea461ce47076f406cb300",
+        "head": "9f7bdb6cfdde18c58271732a7af71d9adccfd0d5",
         "branch": "feature/bridge-consumer-continuation",
-        "source_sha256": "34483c6ca67b8596287b1501bf0690645fdb5bba3e3046ff684db4a62f3e6c19"
+        "source_sha256": "eac6d3c0b6fde9d23125a8aa6f7951d3b3739e993556ca5e773a85a6867c0537"
       },
       "command": [
         "cargo",
@@ -29,20 +29,20 @@
         {
           "source": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/owned-worktrees/ceb89bf4c8fa700f/debug/deps/vera20k-182f054d6e106fa6",
           "file": "0/vera20k-182f054d6e106fa6",
-          "sha256": "5d24b96a60c1c37f181fe89060c800d394d37c93e0611111de5bb3642ebba2e3"
+          "sha256": "47036848b89b2b4fa87ac5ae6e2ad35f2371225647492c2e059a3a4968e20c03"
         }
       ]
     },
-    "engineer-hut-release-criticfix-20260930": {
+    "engineer-hut-release-main940-20260930": {
       "manifest": {
-        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-criticfix-20260930/manifest.json",
-        "sha256": "c407719d5181f58dd455536b40e33762d26f833f110a9cef1927581d3fd8e496",
-        "byte_length": 5027
+        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-main940-20260930/manifest.json",
+        "sha256": "d4b09e523e0a52a37ef6e1842f9488e04aed4728c46e6c377e924056d7d1de95",
+        "byte_length": 1200
       },
       "source": {
-        "head": "a5ff4168b6de37d1f43ea461ce47076f406cb300",
+        "head": "9f7bdb6cfdde18c58271732a7af71d9adccfd0d5",
         "branch": "feature/bridge-consumer-continuation",
-        "source_sha256": "34483c6ca67b8596287b1501bf0690645fdb5bba3e3046ff684db4a62f3e6c19"
+        "source_sha256": "eac6d3c0b6fde9d23125a8aa6f7951d3b3739e993556ca5e773a85a6867c0537"
       },
       "command": [
         "cargo",
@@ -61,7 +61,7 @@
         {
           "source": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/owned-worktrees/ceb89bf4c8fa700f/release/vera20k",
           "file": "0/vera20k",
-          "sha256": "08cbeed4acac2a1c132cbfc3364baf91a1e03ac00fc7a6f6b33a87a9533ca9fd"
+          "sha256": "4721bcfe04688547f7ee3d171487d1443cf28e87117f2987f7ff6031f757b8e0"
         }
       ]
     }
@@ -89,69 +89,69 @@
         "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 9706 filtered out; finished in 0.02s"
       ]
     },
-    "criticfix2-full-lib.log": {
+    "main940-full-lib.log": {
       "log": {
-        "path": "target/bridge-hut-validation-20260930/criticfix2-full-lib.log",
-        "sha256": "acb8a8f19b6af53eac9be7c0b2f5e834c3793526eb19b95056570fb88caf435f",
-        "byte_length": 957748
+        "path": "target/bridge-hut-validation-20260930/main940-full-lib.log",
+        "sha256": "46eee7a30f63197f2b6d3b6e6ea683232ee7d246f9224fcee9a0fa19b1cd3a76",
+        "byte_length": 957438
       },
       "result_lines": [
-        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 34.04s",
-        "test result: ok. 9494 passed; 0 failed; 218 ignored; 0 measured; 0 filtered out; finished in 64.95s"
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s",
+        "test result: ok. 9497 passed; 0 failed; 218 ignored; 0 measured; 0 filtered out; finished in 64.69s"
       ]
     },
-    "criticfix2-clippy.log": {
+    "main940-clippy.log": {
       "log": {
-        "path": "target/bridge-hut-validation-20260930/criticfix2-clippy.log",
-        "sha256": "63b14f9efd86df843316db556ddeb5ab6dd4c6d6a5bbdf9b62ac3405f2ed75df",
-        "byte_length": 449394
+        "path": "target/bridge-hut-validation-20260930/main940-clippy.log",
+        "sha256": "4b756b8f9f70111aba277293b8498988a4a1da876be1ff75c7008c8685725069",
+        "byte_length": 449386
       },
       "result_lines": [
         "warning: `vera20k` (lib) generated 759 warnings (run `cargo clippy --fix --lib -p vera20k -- ` to apply 487 suggestions)",
-        "    Finished `dev` profile [optimized + debuginfo] target(s) in 7.69s"
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 8.28s"
       ]
     },
-    "criticfix2-input.log": {
+    "main940-input.log": {
       "log": {
-        "path": "target/bridge-hut-validation-20260930/criticfix2-input.log",
-        "sha256": "ad70c55ec83059cf74e3d977fe95625c83cb4c493f5de98590813dae812cfc0b",
+        "path": "target/bridge-hut-validation-20260930/main940-input.log",
+        "sha256": "786c79771bfacceba7609127fd6447dea75530492037665f302a9677996c1633",
         "byte_length": 1915
       },
       "result_lines": [
-        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s",
-        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9710 filtered out; finished in 2.57s"
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9713 filtered out; finished in 2.75s"
       ]
     },
-    "criticfix2-default-sim.log": {
+    "main940-default-sim.log": {
       "log": {
-        "path": "target/bridge-hut-validation-20260930/criticfix2-default-sim.log",
-        "sha256": "7f114c742da5813c30c39254d144a977b40436fa8eee319b3b43cd2e199a0453",
+        "path": "target/bridge-hut-validation-20260930/main940-default-sim.log",
+        "sha256": "16faae09c7fea627c0d8338e766f412544e603b2cde2f0b7450bb6ac88ebb863",
         "byte_length": 1982
       },
       "result_lines": [
         "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s",
-        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9710 filtered out; finished in 15.42s"
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9713 filtered out; finished in 15.44s"
       ]
     },
-    "criticfix2-gpu.log": {
+    "main940-gpu.log": {
       "log": {
-        "path": "target/bridge-hut-validation-20260930/criticfix2-gpu.log",
-        "sha256": "63c5560163906e071e9844904b0359dd81cc8231ca9b946e799add71ad49b4f9",
-        "byte_length": 2045
+        "path": "target/bridge-hut-validation-20260930/main940-gpu.log",
+        "sha256": "37729d7ecbc7882f364584802677950978a8be73c5596454a508c85321f5aedf",
+        "byte_length": 1910
       },
       "result_lines": [
         "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s",
-        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9710 filtered out; finished in 4.20s"
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9713 filtered out; finished in 4.18s"
       ]
     },
-    "criticfix2-release.log": {
+    "main940-release.log": {
       "log": {
-        "path": "target/bridge-hut-validation-20260930/criticfix2-release.log",
-        "sha256": "0ca6da90f09420da85b4601295fa51573473841dbc8fa3b708f78068ccf7f584",
-        "byte_length": 3673
+        "path": "target/bridge-hut-validation-20260930/main940-release.log",
+        "sha256": "3a80b1f77bf4a4f4eabc9788db42fc7c3a4b6df170517d22b44a60169379fe47",
+        "byte_length": 3805
       },
       "result_lines": [
-        "    Finished `release` profile [optimized] target(s) in 52.58s"
+        "    Finished `release` profile [optimized] target(s) in 54.19s"
       ]
     },
     "criticfix-native-caller.log": {
@@ -176,15 +176,15 @@
     }
   },
   "sim_field_ratchet": {
-    "base": "a5ff4168b6de37d1f43ea461ce47076f406cb300",
+    "base": "bbf1447c",
     "candidate": 2645,
     "base_count": 2645
   },
   "physical_witnesses": {
-    "criticfix-input": {
+    "main940-input": {
       "anytown-concrete-hut-input.json": {
         "identity": {
-          "path": "target/bridge-hut-validation-20260930/criticfix-input/anytown-concrete-hut-input.json",
+          "path": "target/bridge-hut-validation-20260930/main940-input/anytown-concrete-hut-input.json",
           "sha256": "2fd6ae51792ec467921a5b97242fc6f86ca4c52ca75b7df5b164142cf3c2f3b9",
           "byte_length": 20421
         },
@@ -278,7 +278,7 @@
       },
       "shrapnel-wood-hut-input.json": {
         "identity": {
-          "path": "target/bridge-hut-validation-20260930/criticfix-input/shrapnel-wood-hut-input.json",
+          "path": "target/bridge-hut-validation-20260930/main940-input/shrapnel-wood-hut-input.json",
           "sha256": "95a2b2cc1fbee2f35a7ea886060c919781a615af932a2e0420b2323c86759ec3",
           "byte_length": 30136
         },
@@ -405,10 +405,10 @@
         }
       }
     },
-    "criticfix-concrete-gpu": {
+    "main940-concrete-gpu": {
       "receipt.json": {
         "identity": {
-          "path": "target/bridge-hut-validation-20260930/criticfix-concrete-gpu/receipt.json",
+          "path": "target/bridge-hut-validation-20260930/main940-concrete-gpu/receipt.json",
           "sha256": "277b179da3f0df1a7a3fb87656877c4d3c0e095686ff12ea1c4146a036ee4585",
           "byte_length": 7383
         },
@@ -737,10 +737,10 @@
         }
       }
     },
-    "criticfix-wood-gpu": {
+    "main940-wood-gpu": {
       "receipt.json": {
         "identity": {
-          "path": "target/bridge-hut-validation-20260930/criticfix-wood-gpu/receipt.json",
+          "path": "target/bridge-hut-validation-20260930/main940-wood-gpu/receipt.json",
           "sha256": "b3b56eef56ccbe111f29560d22bf5f53797a23594203521ae732b2e7e2e32262",
           "byte_length": 25057
         },
@@ -1866,12 +1866,12 @@
     "child": {
       "cleanup_scope": "exact-child-pid-only",
       "exit_status": 0,
-      "pid": 54404,
+      "pid": 61819,
       "timed_out": false,
       "timeout_seconds": 180
     },
     "command": [
-      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-criticfix-20260930/0/vera20k",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-main940-20260930/0/vera20k",
       "--tactical-capture",
       "map-observe-v1",
       "--profile",
@@ -1879,10 +1879,10 @@
       "--contract",
       "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
       "--output",
-      "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/bridge-hut-validation-20260930/criticfix-release-observation/child-output"
+      "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/bridge-hut-validation-20260930/main940-release-observation/child-output"
     ],
     "errors": [],
-    "finished_at_utc": "2026-09-30T21:40:17.372457Z",
+    "finished_at_utc": "2026-09-30T21:55:08.021151Z",
     "inputs": {
       "config": {
         "byte_length": 612,
@@ -1895,9 +1895,9 @@
         "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
       },
       "executable": {
-        "byte_length": 31524576,
-        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-criticfix-20260930/0/vera20k",
-        "sha256": "08cbeed4acac2a1c132cbfc3364baf91a1e03ac00fc7a6f6b33a87a9533ca9fd"
+        "byte_length": 31464368,
+        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-main940-20260930/0/vera20k",
+        "sha256": "4721bcfe04688547f7ee3d171487d1443cf28e87117f2987f7ff6031f757b8e0"
       },
       "profile": {
         "byte_length": 2904,
@@ -1918,7 +1918,7 @@
     "native_comparator": "NONE",
     "parity_certification": "NONE",
     "schema_version": "vera20k.map-observation-run.v4",
-    "started_at_utc": "2026-09-30T21:40:08.490290Z",
+    "started_at_utc": "2026-09-30T21:54:59.305242Z",
     "status": "VALID",
     "working_directory": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k",
     "capture": {
@@ -1942,7 +1942,7 @@
       },
       "frame": {
         "byte_length": 1920000,
-        "path": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/bridge-hut-validation-20260930/criticfix-release-observation/child-output/frame.bgra",
+        "path": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/bridge-hut-validation-20260930/main940-release-observation/child-output/frame.bgra",
         "sha256": "5e555dc4e60a25edda1401c253f1fa66c3e5a9afb58afbbd181d0e670b5bfa5f"
       },
       "initial": {
@@ -1952,9 +1952,9 @@
         "total_simulation_ms": 0
       },
       "manifest": {
-        "byte_length": 49362,
-        "path": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/bridge-hut-validation-20260930/criticfix-release-observation/child-output/capture.json",
-        "sha256": "2d1c13b6ed926ff4ae4a6c0602619ee70b1489d94d891c0aa4a0b62f2dcc5e49"
+        "byte_length": 49360,
+        "path": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/bridge-hut-validation-20260930/main940-release-observation/child-output/capture.json",
+        "sha256": "fe0a5ded18f65cdd048159f83b5a3f24d85e21a1e1361341de181b5838209fb3"
       },
       "map_source": {
         "entry_id": -854728974,
@@ -2002,7 +2002,7 @@
       }
     },
     "observation_frame_count": 2,
-    "retained_bundle": "target/bridge-hut-validation-20260930/criticfix-release-observation"
+    "retained_bundle": "target/bridge-hut-validation-20260930/main940-release-observation"
   },
   "coverage_limits": [
     "Input target identity is supplied; OS mouse delivery, screen picking, AppState finish_order side effects and native Capture codec are excluded.",
@@ -2019,6 +2019,6 @@
     "correction": "Removed competing writer; sole native pass owner supplies Foundation. Same authored fixture ART now reaches construction before metadata binding.",
     "regression": "building_foundation_art_install_preserves_reached_retained_and_constructor_state",
     "red_result": "LATE expected1x1, actual4x4; focused test FAILED before correction",
-    "final_result": "focused native-owner and consumer checks pass; strict full suite9494pass, nofailures"
+    "final_result": "focused native-owner and consumer checks pass; final integrated strict full suite9497pass, nofailures"
   }
 }

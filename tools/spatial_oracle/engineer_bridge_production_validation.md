@@ -22,14 +22,14 @@ rows also run through RuleSet projection, installation and the Undeploy consumer
 
 The [saved receipt](engineer_bridge_production_validation.json) records the actual
 checks, physical inputs, output hashes and preserved test/release identities at
-main `a5ff4168b6de37d1f43ea461ce47076f406cb300` plus the uncommitted candidate.
-Both label manifests retain its complete source hash and dirty status. This
+commit `9f7bdb6cfdde18c58271732a7af71d9adccfd0d5` including main940 and the committed bridge candidate.
+Both label manifests retain its complete source hash and Git status. This
 documentation-only receipt was refreshed after final validation. The outputs are Rust observations,
 not native goldens.
 
 Validation on 2026-09-30 with retail INIs and `VERA20K_REQUIRE_RETAIL_INI=1`:
 
-- Full library suite: 9,494 passed, 0 failed, 218 ignored, 64.95 seconds.
+- Full library suite: 9,497 passed, 0 failed, 218 ignored, 64.69 seconds.
 - Library clippy: exit0, 759 warnings. Simulation field ratchet: 2645/2645.
 - Concrete/wood input witnesses: 2 passed; default simulation/snapshot witnesses:
   2 passed; GPU witnesses: 2 passed. Native caller and query `--check` both passed.
