@@ -16,7 +16,6 @@ fn record(value: &Value) -> BridgeEndpointRecord {
         endpoint_a: coord(&value[0]),
         endpoint_b: coord(&value[1]),
         active: value[2].as_bool().unwrap(),
-        group_id: 0,
         bridge_kind: if value[3] == 0 {
             BridgeRecordKind::High
         } else {
@@ -77,7 +76,6 @@ fn direct_repair_edges_match_original_all_theater_offsets_and_boundaries() {
             endpoint_a: coord(&input["a"]),
             endpoint_b: coord(&input["b"]),
             active: true,
-            group_id: 0,
             bridge_kind: BridgeRecordKind::High,
         };
         append_repaired_bridge_edges(
@@ -133,7 +131,6 @@ fn record_activation_matches_original_and_keeps_raw_connectivity_rows() {
                     endpoint_a: coord(&input["a"]),
                     endpoint_b: coord(&input["b"]),
                     active: false,
-                    group_id: 0,
                     bridge_kind: BridgeRecordKind::High,
                 }]
             });

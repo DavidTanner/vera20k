@@ -50,7 +50,6 @@ fn native_bridge_record_geometry_changes_rebuild_and_restore_navigation() {
     let record = BridgeEndpointRecord {
         endpoint_a: (5, 5),
         endpoint_b: (26, 0),
-        group_id: 0,
         active: true,
         bridge_kind: BridgeRecordKind::Low,
     };

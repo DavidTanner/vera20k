@@ -713,9 +713,7 @@ fn ready_repair_fixture(
                 y,
                 BridgeRuntimeCell {
                     deck_present: true,
-                    destroyable: true,
                     deck_level: 0,
-                    bridge_group_id: None,
                     damage_state: if overlay == 231 {
                         DamageState::Destroyed
                     } else {

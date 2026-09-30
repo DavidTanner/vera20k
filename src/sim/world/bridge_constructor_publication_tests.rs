@@ -249,9 +249,7 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
                 y,
                 BridgeRuntimeCell {
                     deck_present: false,
-                    destroyable: true,
                     deck_level: 10,
-                    bridge_group_id: None,
                     damage_state: DamageState::Destroyed,
                     axis: None,
                     role: BridgeCellRole::Body,

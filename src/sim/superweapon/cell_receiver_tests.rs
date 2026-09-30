@@ -323,7 +323,6 @@ fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
                 exit_rx: 5,
                 exit_ry: 5,
                 drop_cooldown: 0,
-                landing_state: 0,
                 payload_count: 0,
             }
         } else {
@@ -980,9 +979,7 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         5,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Damaged,
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1004,8 +1001,6 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         ],
         axis: Axis::NS,
         direction: Direction::N,
-        damage_state: DamageState::Damaged,
-        bridge_group_id: 1,
     });
     sim.bridge_state = Some(state);
     // Older deck recipient is visited only after the newer Infantry's callback.

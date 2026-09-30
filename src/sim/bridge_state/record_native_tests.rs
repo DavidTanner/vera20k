@@ -120,7 +120,7 @@ fn native_bridge_records_match_original_executable() {
                 .endpoint_records()
                 .iter()
                 .filter(|r| !r.is_high())
-                .all(|r| r.group_id == 0 && r.active),
+                .all(|r| r.active),
             "{name}: 56DA10 never matches a tube record"
         );
     }
