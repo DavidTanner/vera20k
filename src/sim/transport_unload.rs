@@ -29,7 +29,6 @@ use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{DockTeardown, MissionId, MissionType};
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::movement::ready_producer::is_moving_now_for;
 use crate::sim::passenger::{
     DepartureFailure, DepartureRoute, depart_cargo_head, reveal_unloaded_passenger,
 };
@@ -613,17 +612,9 @@ pub(crate) fn unit_mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64
     };
     match entity.mission.handler_state() {
         STATE_PICK_EXIT => {
-            // `ILocomotion::Is_Moving` (`0x0073D729`) → `return 10`.
-            if is_moving_now_for(
-                entity,
-                Some(crate::sim::movement::SpeedRules::new(
-                    rules,
-                    &sim.interner,
-                    &sim.type_handles,
-                )),
-                now,
-            ) || entity.movement_target.is_some()
-            {
+            // `ILocomotion::Is_Moving` (`0x0073D729`) → `return 10`. Neither
+            // an order nor Is_Moving_Now is that query.
+            if crate::sim::movement::motion_query::is_moving(entity) == Some(true) {
                 return WAIT_MOVING_FRAMES;
             }
             // No NavCom and the current cell's LandType is Water (`+0xEC == 2`,
@@ -795,7 +786,7 @@ pub(crate) fn dispatch_aircraft_unload(
             // jumpjet does not yet auto-land on Unload (recorded residual), so
             // the landed altitude gate is applied here as well; an airborne
             // Nighthawk keeps waiting rather than dropping its cargo mid-air.
-            if entity.movement_target.is_none()
+            if crate::sim::movement::motion_query::is_moving(entity) != Some(true)
                 && aircraft_landed(entity, sim.resolved_terrain.as_ref())
             {
                 if let Some(entity) = sim.substrate.entities.get_mut(id) {

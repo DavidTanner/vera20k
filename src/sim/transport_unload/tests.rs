@@ -841,6 +841,81 @@ fn descending_nighthawk_draws_no_scenario_rng_until_it_ejects() {
     );
 }
 
+/// `UnitClass::Mission_Unload` state 0 waits (`return 10`) only while the
+/// locomotor's Is_Moving (`0x0073D729`) is true. An order alone does not hold
+/// the unload; a Drive with a destination does, before it has any speed.
+#[test]
+fn unit_unload_waits_on_the_locomotors_is_moving_not_the_order() {
+    let run = |setup: &dyn Fn(&mut crate::sim::game_entity::GameEntity)| {
+        let mut fx = Fixture::new(|_, _| false);
+        let bfrt = fx.spawn("BFRT", 20, 20, 0x40);
+        fx.board(bfrt, 1);
+        setup(fx.sim.substrate.entities.get_mut(bfrt).expect("transport"));
+        let delay = super::unit_mission_unload(&mut fx.sim, &fx.rules, bfrt);
+        (delay, handler_state(&fx, bfrt))
+    };
+    let waiting = (super::WAIT_MOVING_FRAMES, super::STATE_PICK_EXIT);
+    assert_ne!(run(&|_| {}), waiting, "a standing transport unloads");
+    assert_ne!(
+        run(&|e| e.movement_target = Some(crate::sim::components::MovementTarget::default())),
+        waiting,
+        "an order alone does not hold the unload"
+    );
+    assert_eq!(
+        run(&|e| {
+            e.drive_locomotion
+                .get_or_insert_with(Default::default)
+                .destination = Some(crate::sim::components::DriveCoord::cell(25, 20, 0));
+            e.foot_speed.set_speed_fraction(SIM_ZERO);
+        }),
+        waiting,
+        "a Drive with a destination waits before it has any speed"
+    );
+}
+
+/// `AircraftClass::Mission_Unload` state 2 moves on to state 3 when the
+/// locomotor's Is_Moving (`0x0041549D`) is false; the order is not asked.
+#[test]
+fn landed_nighthawk_unload_asks_the_locomotor_not_the_order() {
+    let run = |setup: &dyn Fn(&mut crate::sim::game_entity::GameEntity)| {
+        let mut fx = Fixture::new(|_, _| false);
+        let shad = fx.spawn("SHAD", 20, 20, 0);
+        fx.board(shad, 2);
+        set_altitude(&mut fx, shad, 600);
+        assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, None);
+        fx.sim.session.binary_frame += 1;
+        assert_eq!(handler_state(&fx, shad), super::AIR_STATE_WAIT_STOP);
+        set_altitude(&mut fx, shad, 0);
+        setup(fx.sim.substrate.entities.get_mut(shad).expect("aircraft"));
+        // State 2 polls once its dispatch timer is due.
+        for _ in 0..120 {
+            super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, None);
+            fx.sim.session.binary_frame += 1;
+            if handler_state(&fx, shad) != super::AIR_STATE_WAIT_STOP {
+                break;
+            }
+        }
+        handler_state(&fx, shad)
+    };
+    assert_eq!(
+        run(&|e| e.movement_target = Some(crate::sim::components::MovementTarget::default())),
+        super::AIR_STATE_EJECT,
+        "an order alone does not hold a landed Nighthawk"
+    );
+    assert_eq!(
+        run(&|e| {
+            e.locomotor
+                .as_mut()
+                .and_then(|loco| loco.jumpjet_runtime_mut())
+                .expect("Jumpjet runtime")
+                .moving = true;
+        }),
+        super::AIR_STATE_WAIT_STOP,
+        "a moving Jumpjet keeps it waiting"
+    );
+}
+
 /// VERA-internal bounded escape (native `0x00415511`/`0x0041553E` loses the
 /// passenger): with the aircraft cell already holding three infantry, the
 /// first ejection fails, the passenger stays in the hold, the aircraft leaves
