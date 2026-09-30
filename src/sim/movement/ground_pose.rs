@@ -314,10 +314,10 @@ pub(crate) fn height_at_z(z: i32, ground: i32, on_bridge: bool) -> i32 {
 /// (`0x0075C1FB`) do. [`Simulation::set_object_height`] is the entry point for
 /// an object id.
 ///
-/// Without resolved terrain a PathGrid supplies the cell's level and slope.
-/// Without either (mapless fixtures), every lookup would be the Dummy cell,
-/// whose constructor ground is flat level 0. An unsupported slope leaves Z
-/// unchanged.
+/// Without resolved terrain, the headless movement hosts that pass their
+/// PathGrid take the cell's level and slope from it. Otherwise (mapless
+/// fixtures) every lookup would be the Dummy cell, whose constructor ground is
+/// flat level 0. An unsupported slope leaves Z unchanged.
 pub(crate) fn set_height(
     position: &mut Position,
     on_bridge: bool,
@@ -333,25 +333,30 @@ pub(crate) fn set_height(
 }
 
 impl Simulation {
-    /// [`set_height`] for an object id. It also keeps `LocomotorState.altitude`
-    /// equal to the requested height, for the readers that still take it as
-    /// the object's height (#692).
+    /// [`set_height`] for an object id. It samples terrain only, as GetHeight
+    /// ([`current_fly_height`]) does, so `SetHeight(GetHeight() + n)` round-trips
+    /// without a map too. It also keeps `LocomotorState.altitude` equal to the
+    /// requested height, for the readers that still take it as the object's
+    /// height (#692).
     ///
     /// RESIDUAL: native SetHeight on a marked object (`+0x74`) removes it from
     /// its cell before the write and marks it again after (vt+0x124,
-    /// `0x005F5FC2..0x005F6009`). For a Foot that is `FootClass::Mark`
-    /// (`0x004D3780`), which re-adds it at the head of its cell's list. VERA
-    /// writes Z only.
-    /// - Trigger: SetHeight on a marked owner: a paratrooper landing
-    ///   (`0x005F3F7A`, just after the falling block's own Mark(PUT) at
-    ///   `0x005F3F58`) and a Jumpjet's crash notice (`0x007461B9`,
-    ///   `0x00522B7D`/`0x00522B8B`).
-    /// - Effect: the landed paratrooper keeps its place in its cell's list.
-    ///   A Jumpjet wreck is not put into the lists of its cell before its
-    ///   death weapon or AirDeathFinish.
-    /// - Frequency: every paratrooper landing and Jumpjet crash.
-    /// - Risk: first-object reads and list walks in that cell.
+    /// `0x005F5FC2..0x005F6009`), through `FootClass::Mark` (`0x004D3780`) for
+    /// a Foot. VERA writes Z only.
+    /// - Trigger: a Jumpjet's crash notice (`0x007461B9`,
+    ///   `0x00522B7D`/`0x00522B8B`) and a Fly crash impact (`0x004CD7BF`),
+    ///   whose fall re-marks the wreck (`0x004CD783`). VERA's Fly wreck is
+    ///   unmarked there: its fall has no Mark pair, and the impact returns
+    ///   before the transaction marks it again. A paratrooper's landing
+    ///   (`0x005F3F7A`) runs it too, but as a no-op: the falling block has just
+    ///   re-added it (`0x005F3F58`).
+    /// - Effect: the wreck is not in its cell's lists for its death weapon,
+    ///   explosion or AirDeathFinish.
+    /// - Frequency: every Jumpjet and aircraft crash.
+    /// - Risk: list walks and first-object reads in that cell.
     /// - Blocked by two ports of `FootClass::Mark` that disagree (#922).
+    ///
+    /// [`current_fly_height`]: super::air_movement::current_fly_height
     pub(crate) fn set_object_height(&mut self, id: u64, height: i32) {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
@@ -361,7 +366,7 @@ impl Simulation {
             entity.on_bridge,
             height,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref(),
+            None,
         );
         if let Some(locomotor) = entity.locomotor.as_mut() {
             locomotor.altitude =

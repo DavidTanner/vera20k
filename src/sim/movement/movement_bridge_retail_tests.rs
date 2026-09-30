@@ -9,7 +9,7 @@
 //!
 //! The invariant asserted after every committed frame is the algebraic inverse
 //! of `ObjectClass::SetHeight` @ `0x005F5FA0` recorded by
-//! `ObjectClass::GetHeight` @ `0x005F5F30`:
+//! `ObjectClass::GetHeight` @ `0x005F5F40`:
 //!
 //! ```text
 //! position.z == GroundHeight(own cell) + (OnBridge ? 4 levels : 0)
@@ -194,7 +194,7 @@ struct TickRow {
 }
 
 impl TickRow {
-    /// `ObjectClass::GetHeight` @ `0x005F5F30` inverted: the only Z the native
+    /// `ObjectClass::GetHeight` @ `0x005F5F40` inverted: the only Z the native
     /// model can produce for this cell and this OnBridge state.
     fn expected_z(&self) -> i16 {
         i16::from(self.terrain_level as i8)
@@ -1467,7 +1467,7 @@ fn print_low_inventory(terrain: &ResolvedTerrainGrid, grid: &PathGrid, span: &Lo
 /// event anywhere on a low span; the crossing *is* the ground plane.
 ///
 /// So the correct invariant is the degenerate case of
-/// `ObjectClass::GetHeight @ 0x005F5F30` with OnBridge clear:
+/// `ObjectClass::GetHeight @ 0x005F5F40` with OnBridge clear:
 ///
 /// ```text
 /// position.z == GroundHeight(own cell)   and   OnBridge == false
@@ -3521,7 +3521,7 @@ impl UnderSpanRun {
     }
 }
 
-/// The under-span invariant: `ObjectClass::GetHeight` @ `0x005F5F30` with
+/// The under-span invariant: `ObjectClass::GetHeight` @ `0x005F5F40` with
 /// OnBridge clear, plus the two other places the deck term is stored.
 ///
 /// A mover under a span occupies the same cell as the deck above it, so the only

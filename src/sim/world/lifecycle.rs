@@ -1930,14 +1930,14 @@ impl Simulation {
             return;
         }
         // The split altitude becomes a height over the live ground, as SetHeight
-        // writes it.
+        // writes it. Terrain only, like GetHeight, which reads it back.
         let altitude = locomotor.altitude.to_num::<i32>();
         crate::sim::movement::ground_pose::set_height(
             &mut entity.position,
             entity.on_bridge,
             altitude,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref(),
+            None,
         );
     }
 

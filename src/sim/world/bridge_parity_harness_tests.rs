@@ -18,7 +18,7 @@
 //! The height invariant asserted on every deck frame is the one recorded on
 //! `resolve_cell_transition_bridge_state` in `sim::movement::movement_bridge`
 //! (`ObjectClass::SetHeight` @ `0x005F5FA0`, read back by
-//! `ObjectClass::GetHeight` @ `0x005F5F30`):
+//! `ObjectClass::GetHeight` @ `0x005F5F40`):
 //!
 //! ```text
 //! position.z == own cell's signed terrain level + (on_bridge ? 4 : 0)
