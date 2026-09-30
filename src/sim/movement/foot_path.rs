@@ -933,26 +933,10 @@ impl Simulation {
         if actor.is_mission_only() || actor.mission.effective().raw() == 4 {
             return Ok(true);
         }
-        if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
-            let team = self
-                .team_script_vm
-                .team(team_id)
-                .ok_or("missing attached Team")?;
-            let script = self
-                .team_script_vm
-                .script(team.script_id())
-                .ok_or("missing attached ScriptType")?;
-            //6EC300 returns false for every invalid cursor/non-action3,
-            //independently of unrepresented Team7F. It must not perform a
-            //waypoint lookup on these exits. Do not infer7F from completion,
-            //refusal, suspension or script presence.
-            if script
-                .actions
-                .get(team.cursor() as u32 as usize)
-                .is_some_and(|action| action.action_id == 3)
-            {
-                return Err("Foot edge admission requires retained Team7F and action3 waypoint state/effects".into());
-            }
+        //6EC300's waypoint read happens only for a formed team whose cursor
+        //names action 3; every other exit answers false without a lookup.
+        if self.team_script_vm.member_step_reads_waypoint(id) {
+            return Err("Foot edge admission requires the Team action3 waypoint read".into());
         }
         Ok(false)
     }
