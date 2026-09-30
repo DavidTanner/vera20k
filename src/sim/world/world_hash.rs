@@ -369,6 +369,7 @@ fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut 
         1u8.hash(hasher);
         infantry.firing_sequence_latch().hash(hasher);
         infantry.doing().hash(hasher);
+        infantry.pending_deploy().hash(hasher);
     } else if let Some(aircraft) = leaf.as_aircraft() {
         2u8.hash(hasher);
         aircraft.action_latch().hash(hasher);
@@ -460,14 +461,14 @@ impl Simulation {
             let shared_dummy_handle = self.effective_shared_cell_dummy();
             let shared_dummy = shared_dummy_handle.snapshot();
             let gap_flags = shared_dummy_handle.retained_bridge_flags() & 0xC00;
-            let bridge_keeps_dummy = (shared_dummy_handle.native_anchor()
+            let bridge_keeps_dummy = shared_dummy_handle.native_anchor()
                 == Some(crate::map::cell_index::NativeCellIdentity::Dummy)
                 || self.resolved_terrain.as_ref().is_some_and(|terrain| {
                     terrain.iter().any(|cell| {
                         cell.bridge_facts.native_anchor
                             == Some(crate::map::cell_index::NativeCellIdentity::Dummy)
                     })
-                }));
+                });
             {
                 let extra_flags = shared_dummy_handle.raw_flags()
                     & !crate::map::bridge_facts::RETAINED_CELLCLASS_BRIDGE_FLAG_MASK;
@@ -797,7 +798,7 @@ impl Simulation {
             // Tagged and folded only off their constructor values, so a house
             // without computer production hashes as earlier schemas did.
             let gatherers = house.tracking.resource_gatherers();
-            if (house.ai_production != Default::default() || gatherers != 0) {
+            if house.ai_production != Default::default() || gatherers != 0 {
                 b"ai-base-building-v1".hash(hasher);
                 house.ai_production.hash(hasher);
                 gatherers.hash(hasher);
@@ -1175,11 +1176,18 @@ impl Simulation {
                 // survivor roll and skips the engineer roll at death.
                 0x6e3_u32.hash(hasher);
             }
-            if (entity.techno_ctor_random_word != 0 || entity.structure_upgrade_link.is_some()) {
+            if entity.techno_ctor_random_word != 0 || entity.structure_upgrade_link.is_some() {
                 b"techno-constructor-v1".hash(hasher);
                 entity.techno_ctor_random_word.hash(hasher);
                 entity.structure_upgrade_link.hash(hasher);
             }
+            // One retained native+F8/+FC/+100/+108/+10C/+110 clock, shared
+            // by Infantry, harvest/unload and Building animation receivers.
+            b"techno-stage-v264".hash(hasher);
+            entity.native_stage().hash(hasher);
+            entity.native_crush_immunity().hash(hasher);
+            entity.building_up.hash(hasher);
+            entity.building_down.hash(hasher);
             entity.native_unique_id.hash(hasher);
             if let Some(manager) = entity.slave_manager.as_ref() {
                 b"slave-manager-v209".hash(hasher);
@@ -1265,7 +1273,11 @@ impl Simulation {
             if entity.building_has_engineer {
                 b"building-has-engineer-v1".hash(hasher);
             }
-            if let Some(animation) = entity.animation.as_ref() {
+            // Infantry gameplay reads its class-owned Doing/Stage fields.
+            // A restored presentation component is not a second state owner.
+            if entity.category != crate::map::entities::EntityCategory::Infantry
+                && let Some(animation) = entity.animation.as_ref()
+            {
                 b"entity-animation-v1".hash(hasher);
                 animation.sequence.hash(hasher);
                 animation.frame_index.hash(hasher);
@@ -1460,8 +1472,6 @@ impl Simulation {
                 1u8.hash(hasher);
 
                 attack.target.hash(hasher);
-
-                attack.pending_infantry_fire.hash(hasher);
             } else {
                 0u8.hash(hasher);
             }
@@ -1592,12 +1602,9 @@ impl Simulation {
                 }
                 miner.forced_return.hash(hasher);
                 if native_ore_field {
-                    // Unit+0x6D1/+0x6D2 and the +0xF8 StageClass.
+                    // Unit+0x6D1/+0x6D2; the shared Stage is folded above.
                     miner.unload_active.hash(hasher);
                     miner.harvesting.hash(hasher);
-                    miner.stage_value.hash(hasher);
-                    miner.stage_timer.hash(hasher);
-                    miner.stage_rate.hash(hasher);
                 }
                 if retired_dock_fold {
                     // dock_queued false, dock_phase Approach (discriminant 0),
@@ -3562,11 +3569,10 @@ mod infantry_hash_tests {
     use super::Simulation;
     use crate::map::entities::EntityCategory;
     use crate::sim::animation::{Animation, SequenceKind};
-    use crate::sim::combat::{AttackTarget, PendingInfantryFire};
     use crate::sim::components::Health;
     use crate::sim::game_entity::{GameEntity, InfantryRuntime};
 
-    fn infantry_entity(sim: &mut Simulation) -> GameEntity {
+    fn hash_entity(sim: &mut Simulation, category: EntityCategory) -> GameEntity {
         GameEntity::new_at_frame_zero_for_test(
             1,
             0,
@@ -3576,16 +3582,16 @@ mod infantry_hash_tests {
             sim.interner.intern("Allies"),
             Health { current: 100 },
             sim.interner.intern("E1"),
-            EntityCategory::Infantry,
+            category,
             0,
             5,
             false,
         )
     }
 
-    fn hash_with_animation(animation: Option<Animation>) -> u64 {
+    fn hash_with_animation(category: EntityCategory, animation: Option<Animation>) -> u64 {
         let mut sim = Simulation::new();
-        let mut entity = infantry_entity(&mut sim);
+        let mut entity = hash_entity(&mut sim, category);
         entity.animation = animation;
         sim.substrate.entities.insert(entity);
         sim.state_hash()
@@ -3593,34 +3599,50 @@ mod infantry_hash_tests {
 
     #[test]
     fn every_gameplay_read_animation_field_changes_state_hash() {
-        let absent = hash_with_animation(None);
+        let hash = |animation| hash_with_animation(EntityCategory::Unit, animation);
+        let absent = hash(None);
         let base = Animation::new(SequenceKind::Stand);
-        let base_hash = hash_with_animation(Some(base.clone()));
+        let base_hash = hash(Some(base.clone()));
         assert_ne!(absent, base_hash);
 
         let mut sequence = base.clone();
         sequence.sequence = SequenceKind::Attack;
-        assert_ne!(base_hash, hash_with_animation(Some(sequence)));
+        assert_ne!(base_hash, hash(Some(sequence)));
 
         let mut frame_index = base.clone();
         frame_index.frame_index = 1;
-        assert_ne!(base_hash, hash_with_animation(Some(frame_index)));
+        assert_ne!(base_hash, hash(Some(frame_index)));
 
         let mut elapsed_frames = base.clone();
         elapsed_frames.elapsed_frames = 1;
-        assert_ne!(base_hash, hash_with_animation(Some(elapsed_frames)));
+        assert_ne!(base_hash, hash(Some(elapsed_frames)));
 
         let mut finished = base;
         finished.finished = true;
-        assert_ne!(base_hash, hash_with_animation(Some(finished)));
+        assert_ne!(base_hash, hash(Some(finished)));
+    }
+
+    #[test]
+    fn infantry_presentation_animation_cannot_change_simulation_hash() {
+        // The class owns Doing/Stage. A retained presentation component after
+        // restore cannot become a second simulation clock through hashing.
+        let absent = hash_with_animation(EntityCategory::Infantry, None);
+        let mut animation = Animation::new(SequenceKind::Die1);
+        animation.frame_index = u16::MAX;
+        animation.elapsed_frames = u16::MAX;
+        animation.finished = true;
+        assert_eq!(
+            absent,
+            hash_with_animation(EntityCategory::Infantry, Some(animation))
+        );
     }
 
     #[test]
     fn infantry_fear_and_prone_change_hash() {
         let mut sim_a = Simulation::new();
         let mut sim_b = Simulation::new();
-        let mut a = infantry_entity(&mut sim_a);
-        let b = infantry_entity(&mut sim_b);
+        let mut a = hash_entity(&mut sim_a, EntityCategory::Infantry);
+        let b = hash_entity(&mut sim_b, EntityCategory::Infantry);
         a.infantry = Some(InfantryRuntime {
             fear_level: 10,
             is_prone: false,
@@ -3632,8 +3654,8 @@ mod infantry_hash_tests {
 
         let mut sim_a = Simulation::new();
         let mut sim_b = Simulation::new();
-        let mut a = infantry_entity(&mut sim_a);
-        let b = infantry_entity(&mut sim_b);
+        let mut a = hash_entity(&mut sim_a, EntityCategory::Infantry);
+        let b = hash_entity(&mut sim_b, EntityCategory::Infantry);
         a.infantry = Some(InfantryRuntime {
             fear_level: 0,
             is_prone: true,
@@ -3648,8 +3670,8 @@ mod infantry_hash_tests {
     fn infantry_cell_entry_blocked_changes_hash_only_when_set() {
         let mut sim_a = Simulation::new();
         let mut sim_b = Simulation::new();
-        let mut a = infantry_entity(&mut sim_a);
-        let b = infantry_entity(&mut sim_b);
+        let mut a = hash_entity(&mut sim_a, EntityCategory::Infantry);
+        let b = hash_entity(&mut sim_b, EntityCategory::Infantry);
         a.infantry = Some(InfantryRuntime {
             cell_entry_blocked: true,
             ..InfantryRuntime::new()
@@ -3659,7 +3681,7 @@ mod infantry_hash_tests {
         assert_ne!(sim_a.state_hash(), sim_b.state_hash());
         // A clear byte folds nothing: prior streams keep their pins.
         let mut sim_c = Simulation::new();
-        let c = infantry_entity(&mut sim_c);
+        let c = hash_entity(&mut sim_c, EntityCategory::Infantry);
         sim_c.substrate.entities.insert(c);
         assert_eq!(sim_b.state_hash(), sim_c.state_hash());
     }
@@ -3669,7 +3691,7 @@ mod infantry_hash_tests {
         use crate::sim::components::FootPathRuntime;
         use crate::sim::timer::CdTimer;
         let mut sim = Simulation::new();
-        let actor = infantry_entity(&mut sim);
+        let actor = hash_entity(&mut sim, EntityCategory::Infantry);
         sim.substrate.entities.insert(actor);
         let before = sim.state_hash();
         let mut retained = FootPathRuntime::at_frame(0);
@@ -3719,7 +3741,7 @@ mod infantry_hash_tests {
         // Native Scenario load reseeds its stream to zero. Isolate this
         // retained Foot state from that established load-time RNG change.
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
-        let actor = infantry_entity(&mut sim);
+        let actor = hash_entity(&mut sim, EntityCategory::Infantry);
         sim.substrate.entities.insert(actor);
         let clear_hash = sim.state_hash();
         sim.substrate
@@ -3829,7 +3851,7 @@ mod infantry_hash_tests {
         // retained-byte fixture at that same state so its full-hash assertion
         // isolates persistence, not the intentionally changed RNG future.
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
-        let actor = infantry_entity(&mut sim);
+        let actor = hash_entity(&mut sim, EntityCategory::Infantry);
         assert_eq!(actor.navigation.path_runtime.scold_latch_raw(), 0);
         sim.substrate.entities.insert(actor);
         let clear_hash = sim.state_hash();
@@ -3874,37 +3896,6 @@ mod infantry_hash_tests {
             assert!(!path.clear_scold_latch(), "a consumed latch stays clear");
             assert_eq!(restored.state_hash(), clear_hash);
         }
-    }
-
-    #[test]
-    fn pending_infantry_fire_changes_hash() {
-        let mut sim_a = Simulation::new();
-        let mut sim_b = Simulation::new();
-        let mut a = infantry_entity(&mut sim_a);
-        let mut b = infantry_entity(&mut sim_b);
-        a.attack_target = Some(AttackTarget::new(99));
-        b.attack_target = Some(AttackTarget::new(99));
-        sim_a.substrate.entities.insert(a);
-        sim_b.substrate.entities.insert(b);
-        assert_eq!(sim_a.state_hash(), sim_b.state_hash());
-
-        sim_a
-            .substrate
-            .entities
-            .get_mut(1)
-            .unwrap()
-            .attack_target
-            .as_mut()
-            .unwrap()
-            .pending_infantry_fire = Some(PendingInfantryFire {
-            sequence: SequenceKind::Attack,
-            fire_frame: 2,
-        });
-        assert_ne!(
-            sim_a.state_hash(),
-            sim_b.state_hash(),
-            "pending infantry fire state must affect state hash"
-        );
     }
 }
 

@@ -98,14 +98,6 @@ impl Simulation {
     /// (`0x0051D115..0x0051D148`). Then [`infantry_scatter_gates_admit`] on
     /// the Doing the action left. Nothing here draws RNG.
     ///
-    /// RESIDUAL: VERA's infantry deploy lives in `deploy_state`, not in the
-    /// Doing (#850), so the deploy arm never fires and a deploying or
-    /// deployed man is admitted as if standing. Trigger: a scatter reaching a
-    /// deployed infantryman, such as a friendly vehicle pushing through his
-    /// cell. Effect: he takes the scatter destination while still deployed,
-    /// instead of undeploying (forced and no-kidding) or staying (a human
-    /// owner's man on any other call). Frequency: whenever vehicles push
-    /// through deployed infantry. The retired adapter did the same.
     pub(super) fn infantry_scatter_admitted(
         &mut self,
         id: u64,

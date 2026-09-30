@@ -347,7 +347,9 @@ fn a_single_link_controller_releases_its_victim_first() {
     let released = sim.substrate.entities.get(first).unwrap();
     assert!(!released.mind_control.is_mind_controlled());
     assert!(released.mind_control.ring_anim.is_none());
-    assert!(sim.anim(ring).is_none_or(|anim| anim.runtime.inactive));
+    assert!(sim.anim(ring).is_none_or(|anim| {
+        !anim.in_logic_vector && sim.substrate.pending_delete.contains(&ring)
+    }));
     assert_eq!(voc_sounds(&sim), ["MindCleared"]);
     assert_eq!(victims(&sim, yuri), [second]);
     assert_eq!(owner(&sim, second), "YuriCountry");
@@ -1287,9 +1289,14 @@ fn a_building_mid_construction_cannot_be_captured() {
     let plant = spawn(&mut sim, &rules, "GAPOWR", "Americans", 14, 10);
     let now = sim.session.binary_frame;
     let _ = sim.mission_assign_exact(plant, MissionId::from_known(MissionType::Guard), now);
-    sim.substrate.entities.get_mut(plant).unwrap().building_up = Some(
-        crate::sim::components::BuildingUp::completing_in_ticks(27, 0),
-    );
+    sim.substrate
+        .entities
+        .get_mut(plant)
+        .unwrap()
+        .install_building_up(
+            crate::sim::components::BuildingUp::completing_in_ticks(27, 0),
+            0,
+        );
     assert!(!sim.can_capture(yuri, plant, &rules));
     sim.substrate.entities.get_mut(plant).unwrap().building_up = None;
     assert!(sim.can_capture(yuri, plant, &rules));

@@ -124,13 +124,16 @@ fn ready_and_place(
 
 fn set_ticks_until_completion(sim: &mut Simulation, stable_id: u64, ticks: u16) {
     let now = sim.session.binary_frame as i32;
-    let building_up = sim
+    let building = sim
         .substrate
         .entities
         .get_mut(stable_id)
-        .and_then(|entity| entity.building_up.as_mut())
         .expect("placed building should have BuildingUp");
-    *building_up = BuildingUp::completing_in_ticks(i32::from(ticks), now);
+    assert!(
+        building.building_up.is_some(),
+        "placed building should have BuildingUp"
+    );
+    building.install_building_up(BuildingUp::completing_in_ticks(i32::from(ticks), now), now);
 }
 
 #[test]
@@ -1363,7 +1366,7 @@ fn non_refinery_completion_has_no_free_unit_or_credit_side_effect() {
         .entities
         .get_mut(construction_yard_id)
         .expect("construction yard should exist")
-        .building_up = Some(BuildingUp::completing_in_ticks(1, 0));
+        .install_building_up(BuildingUp::completing_in_ticks(1, 0), 0);
     let credits_before = credits_for_owner(&sim, "Americans");
 
     let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
@@ -1510,7 +1513,14 @@ fn place_ready_building_rejects_blocked_or_overlapping_cells() {
 
 #[test]
 fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
-    let rules = ground_occupant_placement_rules();
+    let mut rules = ground_occupant_placement_rules();
+    // A retained death has real ART and a native sequence clock. An absent
+    // death record retires on the first class visit, before this command.
+    let death_art = IniFile::from_str("[E1]\nSequence=E1Sequence\n[E1Sequence]\nDie1=56,15,0\n");
+    rules.install_art_data(ArtRegistry::from_ini(&death_art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&death_art),
+    );
     let grid = PathGrid::new(64, 64);
 
     for blocker_type in ["MTNK", "E1"] {
@@ -1524,15 +1534,19 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
             "{blocker_type} must enter the authoritative Ground object list"
         );
 
-        // A dying infantry remains visible and marked until the app completes
-        // its death animation and calls UnInit. Native placement reads the cell
-        // object list, so this state must continue to block.
+        // A marked native death sequence continues to block until UnInit.
         if blocker_type == "E1" {
             sim.substrate
                 .entities
                 .get_mut(blocker_id)
-                .expect("spawned infantry")
-                .dying = true;
+                .unwrap()
+                .health
+                .current = 0;
+            sim.begin_infantry_death_sequence(
+                blocker_id,
+                crate::sim::world::InfantryDeathSequence::Die1,
+                &rules,
+            );
         }
 
         ready_building(&mut sim, &rules, "Americans", "GAPOWR");

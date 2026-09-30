@@ -4618,6 +4618,8 @@ impl RuleSet {
                 infantry_checked += 1;
                 if let Some(entry) = entry {
                     obj.crawls = entry.crawls;
+                    // Original ART5246BE..52473A owns four independent signed
+                    // fields; project them without narrowing or fallback.
                     obj.fire_up_frame = entry.fire_up;
                     obj.fire_prone_frame = entry.fire_prone;
                     obj.secondary_fire_frame = entry.secondary_fire;
@@ -7541,6 +7543,79 @@ Projectile=Invisible
         assert_eq!(obj.hidden_occupancy.occupy_height, 4);
         assert!(!rules.art_registry.can_hide_things("GAREFN"));
         assert_eq!(rules.art_registry.occupy_height("GAREFN"), 4);
+    }
+
+    #[test]
+    fn native_discharge_retail_gi_binding_retains_independent_zero_defaults() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/infantry_discharge_rules.json"
+        ))
+        .unwrap();
+        let physical = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["case"] == "physical_GI")
+            .unwrap();
+        let expected: [i32; 4] = serde_json::from_value(physical["after"].clone()).unwrap();
+        let Some((retail_rules, retail_art)) =
+            crate::rules::retail_ini_fixture::retail_rules_and_art()
+        else {
+            return;
+        };
+        let mut rules = RuleSet::from_ini(&retail_rules).expect("retail rules parse");
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&retail_art));
+        let infantry = rules.object("E1").expect("retail E1");
+        assert_eq!(infantry.image, "GI");
+        assert_eq!(
+            [
+                infantry.fire_up_frame,
+                infantry.fire_prone_frame,
+                infantry.secondary_fire_frame,
+                infantry.secondary_prone_frame,
+            ],
+            expected,
+            "original5246BE..52473A on physical ARTMD.INI[GI]"
+        );
+    }
+
+    #[test]
+    fn native_discharge_signed_art_fields_reach_infantry_type() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/infantry_discharge_rules.json"
+        ))
+        .unwrap();
+        let row = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["case"] == "all_independent")
+            .unwrap();
+        let expected: [i32; 4] = serde_json::from_value(row["after"].clone()).unwrap();
+        let mut layers = RulesLayerStack::new(IniFile::from_str(&make_test_rules()));
+        layers.push(
+            crate::rules::native_processing::RulesLayerKind::Scenario,
+            IniFile::from_str("[E1]\nImage=GI\n"),
+        );
+        let mut rules = RuleSet::from_rules_layers(&layers).expect("rules parse");
+        let mut art_text = "[GI]\nFixtureOnly=1\n".to_owned();
+        for (key, raw) in row["layers"][0].as_object().unwrap() {
+            art_text.push_str(&format!("{key}={}\n", raw.as_str().unwrap()));
+        }
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
+            &IniFile::from_str(&art_text),
+        ));
+        let infantry = rules.object("E1").expect("E1");
+        assert_eq!(
+            [
+                infantry.fire_up_frame,
+                infantry.fire_prone_frame,
+                infantry.secondary_fire_frame,
+                infantry.secondary_prone_frame,
+            ],
+            expected,
+            "original independent signed DWORDs survive ART projection"
+        );
     }
 
     #[test]

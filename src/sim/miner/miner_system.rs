@@ -598,7 +598,10 @@ pub(super) fn process_miner(
             snap.rx,
             snap.ry,
             snap.miner.cargo.len(),
-            snap.miner.stage_value,
+            sim.substrate
+                .entities
+                .get(snap.entity_id)
+                .map_or(0, |entity| entity.native_stage().value()),
         );
         snap.debug_events.push((state_before, state_after));
     }
@@ -666,7 +669,7 @@ fn harvest_looking(
     let range = super::ore_scan::scan_cells(rules.general.tiberium_long_scan);
     if super::ore_scan::search_for_tiberium_and_move(sim, rules, overlay_registry, id, range) {
         snap.miner.harvesting = true;
-        arm_stage(&mut snap.miner, sim.session.binary_frame, 2);
+        arm_stage(sim, snap.entity_id, sim.session.binary_frame, 2);
         snap.state = MinerState::Harvest;
         return;
     }
@@ -720,10 +723,10 @@ fn assign_archive_destination(
 }
 
 /// Arm the Unit+0xF8 StageClass: value 0, timer and rate `rate` from `now`.
-fn arm_stage(miner: &mut Miner, now: u32, rate: u32) {
-    miner.stage_value = 0;
-    miner.stage_rate = rate;
-    miner.stage_timer.arm(now, rate);
+fn arm_stage(sim: &mut Simulation, id: u64, now: u32, rate: u32) {
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.restart_native_stage(0, now as i32, rate as i32);
+    }
 }
 
 /// `HarvesterLoadRate=` as the StageClass rate (Rules+0x1520).
@@ -756,10 +759,20 @@ fn harvest_cutting(
     snap: &mut MinerSnapshot,
 ) {
     let now = sim.session.binary_frame;
-    if snap.miner.stage_rate == 0 {
-        arm_stage(&mut snap.miner, now, load_rate(rules));
+    if sim
+        .substrate
+        .entities
+        .get(snap.entity_id)
+        .is_some_and(|entity| entity.native_stage().rate() == 0)
+    {
+        arm_stage(sim, snap.entity_id, now, load_rate(rules));
     }
-    if snap.miner.stage_value < 9 {
+    if sim
+        .substrate
+        .entities
+        .get(snap.entity_id)
+        .is_none_or(|entity| entity.native_stage().value() < 9)
+    {
         return;
     }
     if harvest_ore_tick(sim, rules, config, overlay_registry, snap) {
@@ -854,9 +867,7 @@ fn harvest_ore_tick(
         || snap.miner.is_full()
         || !super::ore_scan::cell_is_tiberium_land(sim, overlay_registry, cell)
     {
-        snap.miner.stage_value = 0;
-        snap.miner.stage_rate = 0;
-        snap.miner.stage_timer.arm(now, 0);
+        arm_stage(sim, id, now, 0);
         return false;
     }
     let request = snap
@@ -882,7 +893,7 @@ fn harvest_ore_tick(
             resource_type,
             value,
         }));
-    arm_stage(&mut snap.miner, now, load_rate(rules));
+    arm_stage(sim, id, now, load_rate(rules));
     true
 }
 
@@ -1992,7 +2003,7 @@ mod harvest_scan_dispatch_tests {
             scenario_before,
             "the Rate epilogue's RandomRanged(0, 2) belongs to the scan dispatch"
         );
-        let base = rules.mission_control.rate_frames(MissionType::Harvest) as i32;
+        let base = rules.mission_control.rate_frames(MissionType::Harvest);
         let delay = entity.mission.dispatch_timer().delay();
         assert!(
             (base..=base + crate::sim::mission::authority::RATE_EPILOGUE_JITTER_MAX_FRAMES as i32)

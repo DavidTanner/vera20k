@@ -370,10 +370,20 @@ mod tests {
         aircraft.passenger_role = PassengerRole::Transport { cargo };
         sim.substrate.entities.insert(aircraft);
 
-        let mut passenger = GameEntity::test_default(passenger_id, "E1", "Americans", 50, 20);
-        passenger.owner = sim.interner.intern("Americans");
-        passenger.type_ref = sim.interner.intern("E1");
-        passenger.category = EntityCategory::Infantry;
+        let mut passenger = GameEntity::new_at_frame_zero_for_test(
+            passenger_id,
+            50,
+            20,
+            0,
+            0,
+            sim.interner.intern("Americans"),
+            crate::sim::components::Health { current: 100 },
+            sim.interner.intern("E1"),
+            EntityCategory::Infantry,
+            0,
+            0,
+            false,
+        );
         passenger.is_voxel = false;
         passenger.sub_cell = Some(2);
         passenger.passenger_role = PassengerRole::Inside {

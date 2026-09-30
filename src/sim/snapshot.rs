@@ -759,7 +759,11 @@ use crate::sim::world::Simulation;
 // stopped/cannot-fire latch and inherited Unit/Aircraft raw Foot68D.
 // 262 -> 263: bridge cells no longer save a runtime copy of CellClass bridge
 // state (deck, damage state, axis, role, span, overlay); anchor spans are gone.
-const SNAPSHOT_VERSION: u32 = 263;
+// 263 -> 264: each Techno saves its sole private native StageClass. Miner
+// and Building metadata no longer save competing stage/rate/timer copies.
+// Infantry retains the native pending-Deploy6E4 and Techno crush2A4 bytes;
+// its TarCom no longer saves a competing cached sequence/discharge frame.
+const SNAPSHOT_VERSION: u32 = 264;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3649,7 +3653,8 @@ mod tests {
         // 260 -> 261: no falling byte beside the parachute descent.
         // 261 -> 262: retained House radius, Foot688 and inherited Foot68D.
         // 262 -> 263: no runtime copy of CellClass bridge cell state.
-        assert_eq!(super::SNAPSHOT_VERSION, 263);
+        // 263 -> 264: shared native StageClass; no Miner/Building clock copies.
+        assert_eq!(super::SNAPSHOT_VERSION, 264);
     }
 
     #[test]

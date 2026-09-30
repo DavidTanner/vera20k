@@ -477,8 +477,10 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
         let doing = entity.mission_leaf.as_infantry().unwrap().doing();
         match (playing, doing) {
             (None, DO_IDLE1 | DO_IDLE2) => {
-                let kind = crate::rules::infantry_sequence::action_kind(doing);
-                assert_eq!(entity.animation.as_ref().map(|a| a.sequence), kind);
+                assert_eq!(
+                    entity.infantry_sprite_pose().map(|pose| pose.0),
+                    Some(doing)
+                );
                 playing = Some(doing);
             }
             (Some(action), DO_READY) => {
@@ -983,10 +985,15 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
         };
         let mut native_before = index_after(&output["kills"][0]);
         for (index, expected) in frames.iter().enumerate() {
+            // The native harness kills between visits, then increments its
+            // absolute frame before frame_step. advance_tick commits its
+            // frame after the visit; align inputs rather than retiming Stage.
+            sim.session.binary_frame = 1000 + index as u32;
             if second == Some(index) {
                 kill(&mut sim, &output["kills"][1], "second kill");
                 native_before = index_after(&output["kills"][1]);
             }
+            sim.session.binary_frame = 1001 + index as u32;
             let before = sim.scenario_rng.logical_view().index_a;
             sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let native_after = expected["scenario_rng"][0].as_i64().unwrap() as i32;
@@ -1014,7 +1021,7 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
                 "{at}: Doing"
             );
             assert_eq!(
-                i64::from(entity.animation.as_ref().unwrap().frame_index),
+                i64::from(entity.native_stage().value()),
                 expected["stage"].as_i64().unwrap(),
                 "{at}: stage"
             );

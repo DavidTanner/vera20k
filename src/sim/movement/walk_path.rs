@@ -30,6 +30,31 @@ pub(crate) fn failed_path_requested_action(doing: i32, prone: bool) -> i32 {
 }
 
 impl Simulation {
+    /// Walk Stop75ADA0: clear destination, and only with no paid head clear
+    /// both motion bytes then invoke the owner +54C before returning.
+    /// Original Stop/callback controls: infantry_deploy_action.json. This
+    /// dispatch also preserves Do_Action's zero-health synchronous re-entry.
+    pub(crate) fn walk_stop_moving(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+    ) -> Result<(), String> {
+        let actor = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .ok_or("Walk Stop receiver retired")?;
+        let invoke_callback = actor
+            .locomotor
+            .as_mut()
+            .ok_or("Walk Stop requires a locomotor")?
+            .stop_walk();
+        if invoke_callback {
+            self.infantry_pending_deploy_stop_callback(id, rules)?;
+        }
+        Ok(())
+    }
+
     /// Synchronous75AFC5 -> Foot4D3920. A successful result resumes this same
     /// Process invocation; a failed result owns its cleanup and must never
     /// enter the arrival finalizer (which would snap the actor's exact XYZ).
@@ -129,7 +154,7 @@ impl Simulation {
             .object_type(actor.type_ref(), rules)
             .ok_or("failed-path receiver requires the Infantry type")?;
         let facts = super::infantry_action::DoActionType {
-            type_id: object.id.clone(),
+            type_id: &object.id,
             movement_zone: object.movement_zone,
             crawls: object.crawls,
         };
@@ -195,10 +220,10 @@ impl Simulation {
         //the nearest passable cell (a Scenario draw for Infantry placement).
         let locomotor = actor
             .locomotor
-            .as_mut()
+            .as_ref()
             .ok_or("Stop_Driver requires a locomotor")?;
         if locomotor.jumpjet_runtime().is_none() {
-            locomotor.stop_walk();
+            self.walk_stop_moving(id, Some(rules))?;
         } else {
             self.jumpjet_stop_moving(id, Some(rules), registry);
         }
@@ -267,11 +292,12 @@ impl Simulation {
         //75B2BC..75B2DC: all failed-queue exits set speed0 then Stop;
         //Stop does not itself clear NavCom or retire the paid head.
         actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
-        actor
-            .locomotor
-            .as_mut()
-            .ok_or("failed Walk requires locomotor")?
-            .stop_walk();
+        self.walk_stop_moving(id, Some(rules))?;
+        let actor = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .ok_or("failed Walk actor retired during Stop callback")?;
         if actor
             .locomotor
             .as_ref()

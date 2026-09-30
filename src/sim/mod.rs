@@ -59,6 +59,7 @@ pub(crate) mod scenario_post_map;
 pub mod scenario_session; // app->sim launch descriptor (per-match seed pipeline)
 pub(crate) mod score;
 pub mod sensor_lifecycle;
+pub(crate) mod stage;
 pub mod temporal;
 pub mod timer; // signed frame-anchored countdown primitive
 pub(crate) mod touch_log; // which stored objects were handed out mutably, per reader

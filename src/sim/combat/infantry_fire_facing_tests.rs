@@ -91,22 +91,14 @@ fn infantry_fire_start_heading_matches_original_code_vectors() {
         firer.body_facing = body;
         firer.infantry.as_mut().unwrap().is_prone = row["prone"] == 1;
         if row["deployed"] == true {
-            firer.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
-            firer.animation = Some(Animation::new(SequenceKind::Deployed));
+            firer.mission_leaf.set_infantry_doing_verified(28).unwrap();
         }
         firer.attack_target = Some(AttackTarget::new(2));
         let result = visit(&mut store, &rules, 100);
         let firer = store.get(1).unwrap();
         let expected = row["facing"].as_u64().unwrap() as u16;
         assert_eq!(firer.body_facing.current(100), expected, "{}", row["name"]);
-        assert!(
-            firer
-                .attack_target
-                .as_ref()
-                .unwrap()
-                .pending_infantry_fire
-                .is_some()
-        );
+        assert!(firer.mission_leaf.foot_firing_sequence_latch() != 0);
         assert!(result.consequences.fire_events().is_empty());
         compared += 1;
     }
@@ -153,12 +145,7 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
         let firer = store.get(1).unwrap();
         let refused = row["refused"].as_bool().unwrap();
         assert_eq!(
-            firer
-                .attack_target
-                .as_ref()
-                .unwrap()
-                .pending_infantry_fire
-                .is_none(),
+            firer.mission_leaf.foot_firing_sequence_latch() == 0,
             refused,
             "{}",
             row["name"]
@@ -176,40 +163,23 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
 }
 
 #[test]
-fn infantry_speed_refusal_at_fire_frame_clears_pending_sequence() {
+fn infantry_speed_refusal_at_fire_frame_clears_firing_latch() {
     let rules = infantry_fire_frame_rules();
     let mut store = pair();
     store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
     visit(&mut store, &rules, 100);
     let body = store.get(1).unwrap().body_facing;
-    set_anim_frame(&mut store, 1, 2);
+    set_infantry_stage(&mut store, 1, 2);
     let firer = store.get_mut(1).unwrap();
-    assert!(
-        firer
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_some()
-    );
+    assert!(firer.mission_leaf.foot_firing_sequence_latch() != 0);
     // Isolate the live Foot predicate from the older movement-target shortcut.
     assert!(firer.movement_target.is_none());
     firer.foot_speed.applied_fraction = SimFixed::ONE;
     let result = visit(&mut store, &rules, 101);
     let firer = store.get(1).unwrap();
     assert!(result.consequences.fire_events().is_empty());
-    assert!(
-        firer
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_none()
-    );
-    assert_eq!(
-        firer.animation.as_ref().unwrap().sequence,
-        SequenceKind::Stand
-    );
+    assert!(firer.mission_leaf.foot_firing_sequence_latch() == 0);
+    assert_eq!(firer.infantry_sprite_pose(), Some((0, 0)));
     assert_eq!(firer.body_facing, body);
 }
 
@@ -240,6 +210,8 @@ fn rocketeer_pair() -> (EntityStore, RuleSet) {
     let mut store = EntityStore::new();
     let mut firer = make_infantry_entity(1, "JJ", 5, 5, 125);
     firer.body_facing = FacingClass::new(0x4000, 127);
+    // Object5F6B90 requires +74 as well as the height for the Hover remap.
+    firer.lifecycle.cell_marked = true;
     firer.position.exact_z_leptons = Some(500);
     let mut locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
         rules.object("JJ").unwrap(),
@@ -274,39 +246,26 @@ fn a_rocketeer_refused_at_its_fire_frame_hovers() {
             .doing()
     };
     assert_eq!(doing(&store), DO_FIRE_FLY);
-    assert_eq!(
-        store.get(1).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::FireFly
-    );
-    set_anim_frame(&mut store, 1, 2);
+    assert_eq!(store.get(1).unwrap().infantry_sprite_pose(), Some((26, 0)));
+    set_infantry_stage(&mut store, 1, 2);
     store.get_mut(1).unwrap().foot_speed.applied_fraction = SimFixed::ONE;
     let result = visit(&mut store, &rules, 101);
     assert!(result.consequences.fire_events().is_empty());
     let firer = store.get(1).unwrap();
-    assert!(
-        firer
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_none()
-    );
+    assert!(firer.mission_leaf.foot_firing_sequence_latch() == 0);
     assert_eq!(doing(&store), DO_HOVER);
-    assert_eq!(
-        firer.animation.as_ref().unwrap().sequence,
-        SequenceKind::Hover
-    );
+    assert_eq!(firer.infantry_sprite_pose(), Some((23, 0)));
 }
 
 #[test]
-fn pending_sequence_keeps_start_facing_when_target_moves() {
+fn firing_latch_keeps_start_facing_when_target_moves() {
     let rules = infantry_fire_frame_rules();
     let mut store = pair();
     store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
     visit(&mut store, &rules, 100);
     let facing = store.get(1).unwrap().body_facing;
     store.get_mut(2).unwrap().position.rx = 2;
-    set_anim_frame(&mut store, 1, 2);
+    set_infantry_stage(&mut store, 1, 2);
     let result = visit(&mut store, &rules, 101);
     assert_eq!(result.consequences.fire_events().len(), 1);
     assert_eq!(store.get(1).unwrap().body_facing, facing);
@@ -345,6 +304,15 @@ fn production_rules(fire_up: u32) -> RuleSet {
 fn production_pair(rules: &RuleSet) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(flat_level_zero_terrain(16, 16));
+    // This full-frame receiver can take damage before its own Infantry fear
+    // turn. Supply both live House owners instead of a null-house fixture.
+    for name in ["Americans", "Russians"] {
+        let owner = sim.interner.intern(name);
+        sim.houses.insert(
+            owner,
+            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+        );
+    }
     let firer = sim.spawn_object("E1", "Americans", 5, 5, 0, rules).unwrap();
     let target = sim.spawn_object("E2", "Russians", 8, 5, 0, rules).unwrap();
     assert!(install_entity_attack_target_for_test(
@@ -458,19 +426,12 @@ fn cell_and_building_fire_headings_match_original_coordinate_getters() {
 }
 
 #[test]
-fn production_pending_fire_restores_heading_and_reaches_emission() {
+fn production_firing_latch_restores_heading_and_reaches_emission() {
     let rules = production_rules(2);
     let (mut sim, firer, target) = production_pair(&rules);
     sim.advance_tick(&[], Some(&rules), None, None, 67);
     let entity = sim.substrate.entities.get(firer).unwrap();
-    assert!(
-        entity
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_some()
-    );
+    assert!(entity.mission_leaf.foot_firing_sequence_latch() != 0);
     let body = entity.body_facing;
     assert!(sim.fire_events.is_empty());
     let mut restored = restore_production_pair(&sim, &rules);
@@ -626,14 +587,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
                 step_heading,
                 "movement may correct toward its head; fire must not turn toward the enemy"
             );
-            assert!(
-                entity
-                    .attack_target
-                    .as_ref()
-                    .unwrap()
-                    .pending_infantry_fire
-                    .is_none()
-            );
+            assert!(entity.mission_leaf.foot_firing_sequence_latch() == 0);
             refused_frames += 1;
         } else if fired {
             assert!(

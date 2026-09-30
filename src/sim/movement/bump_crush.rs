@@ -592,14 +592,10 @@ pub(crate) fn object_is_crushable_by(omni_crusher: bool, target: CrushTarget) ->
 /// Prone has **no** write site at this offset anywhere in the binary, so lying
 /// down never confers crush immunity.
 fn deploy_crush_immune(entity: &GameEntity) -> bool {
-    if entity.category != EntityCategory::Infantry {
-        return false;
-    }
-    matches!(
-        entity.deploy_state,
-        Some(crate::sim::deploy::DeployPhase::Deployed)
-            | Some(crate::sim::deploy::DeployPhase::Undeploying { .. })
-    ) && !entity.deployed_crushable
+    // Native admission and kill-site readers consume the retained byte,
+    // not current Doing or the Unit deployment controller. Infantry's
+    // sequencer520B4E/520BAD owns its writes through GameEntity.
+    entity.native_crush_immunity() != 0
 }
 
 /// Collect entity IDs in a cell that the mover would crush on entry.
@@ -1476,13 +1472,13 @@ mod tests {
         gi.category = EntityCategory::Infantry;
         gi.crushable = true;
         gi.deployed_crushable = true;
-        gi.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
+        gi.set_infantry_deploy_crush_immunity(0);
         entities.insert(gi);
         let mut ggi = GameEntity::test_default(3, "GGI", "Soviet", 5, 5);
         ggi.category = EntityCategory::Infantry;
         ggi.crushable = true;
         ggi.deployed_crushable = false;
-        ggi.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
+        ggi.set_infantry_deploy_crush_immunity(1);
         entities.insert(ggi);
         let interner = crate::sim::intern::test_interner();
 
@@ -1647,7 +1643,7 @@ mod tests {
     fn test_collect_crush_victims_skips_deployed_uncrushable_infantry() {
         let mut store = EntityStore::new();
         let mut inf = infantry(1, 5, 5, 2);
-        inf.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
+        inf.set_infantry_deploy_crush_immunity(1);
         inf.deployed_crushable = false;
         store.insert(inf);
 
@@ -1669,7 +1665,7 @@ mod tests {
     fn test_collect_crush_victims_keeps_deployed_crushable_infantry_crushable() {
         let mut store = EntityStore::new();
         let mut inf = infantry(1, 5, 5, 2);
-        inf.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
+        inf.set_infantry_deploy_crush_immunity(0);
         inf.deployed_crushable = true;
         store.insert(inf);
 

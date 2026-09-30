@@ -75,43 +75,45 @@
 
 use crate::sim::components::{BuildingDown, BuildingUp, BuildupStage, ConstructionMission};
 use crate::sim::game_options::GameOptions;
-use crate::sim::timer::CdTimer;
+use crate::sim::stage::StageClass;
 
 /// UnitClass stage 0x17: an UndeploysInto sale with no ArchiveTarget completes
 /// here (`0x00451186..0x004511DF`).
 const ARCHIVE_LESS_UNDEPLOY_STAGE: i32 = 0x17;
 
 impl BuildupStage {
-    /// `Begin_Mode(0)`: the stage at the control's first frame, and the rate
-    /// and its timer from `now` (`0x00447780`; BState 0 takes the control's
-    /// rate unscaled).
-    pub fn begin(control: [i32; 3], now: i32) -> Self {
-        Self {
-            control,
-            stage: control[0],
-            rate: control[2],
-            timer: CdTimer::started(now, control[2]),
-        }
+    pub(crate) const fn begin(control: [i32; 3]) -> Self {
+        Self { control }
+    }
+
+    /// `Begin_Mode(0)` (`447A63..447AA7`): BState 0 uses the control's raw
+    /// rate and first frame, retaining the independent changed/increment state.
+    pub(crate) fn restart(&self, stage: &mut StageClass, now: i32) {
+        stage.restart(self.control[0], now, self.control[2]);
     }
 
     /// One `UpdateAnimation` frame under the Construction or Selling mission:
     /// the step, then whether `+0x6DD` is set this frame.
-    fn update(&mut self, now: i32, archive_less_sale: bool, options: &GameOptions) -> bool {
+    fn update(
+        &self,
+        stage: &mut StageClass,
+        now: i32,
+        archive_less_sale: bool,
+        options: &GameOptions,
+    ) -> bool {
         let [start, count, control_rate] = self.control;
-        let stepped = self.timer.expired(now) && self.rate != 0;
+        //4509DE..450A38 is the shared StageClass primitive, before the
+        //building control decisions. Techno6FABC2 skips it for Buildings.
+        let stepped = stage.advance(now);
         if !stepped {
-            return self.rate == 0;
+            return stage.rate() == 0;
         }
-        self.stage = self.stage.wrapping_add(1);
-        self.timer.start(now, self.rate);
         let end = start.wrapping_add(count);
-        let done = self.stage == end.wrapping_sub(1)
-            || (archive_less_sale && self.stage == ARCHIVE_LESS_UNDEPLOY_STAGE);
-        if end <= self.stage {
+        let done = stage.value() == end.wrapping_sub(1)
+            || (archive_less_sale && stage.value() == ARCHIVE_LESS_UNDEPLOY_STAGE);
+        if end <= stage.value() {
             let rate = options.speed_normalize(control_rate);
-            self.timer.start(now, rate);
-            self.rate = rate;
-            self.stage = start;
+            stage.restart(start, now, rate);
         }
         done
     }
@@ -133,7 +135,7 @@ impl BuildingUp {
     /// (`0x0044D6A0`).
     fn unlimboed(control: [i32; 3], now: i32) -> Self {
         Self {
-            anim: BuildupStage::begin(control, now),
+            anim: BuildupStage::begin(control),
             idle: false,
             idle_queued: false,
             mission: ConstructionMission::Queued,
@@ -175,8 +177,8 @@ impl BuildingUp {
 
     /// `Begin_Mode(0)`: BState 0 at once, the animation restarted, a queued
     /// BState dropped (`+0x538` back to -1). `+0x6DD` stays.
-    fn begin_construction(&mut self, now: i32) {
-        self.anim = BuildupStage::begin(self.anim.control, now);
+    fn begin_construction(&mut self, stage: &mut StageClass, now: i32) {
+        self.anim.restart(stage, now);
         self.idle = false;
         self.idle_queued = false;
     }
@@ -191,13 +193,23 @@ impl BuildingUp {
     }
 
     /// One frame of the building's Update (module doc, in its order).
-    pub(crate) fn frame(&mut self, now: i32, options: &GameOptions) -> ConstructionFrame {
+    pub(crate) fn frame(
+        &mut self,
+        stage: &mut StageClass,
+        now: i32,
+        options: &GameOptions,
+    ) -> ConstructionFrame {
         if now < self.first_frame {
             return ConstructionFrame::Building;
         }
         // UpdateAnimation: the idle control never steps and sets +0x6DD
         // (rate 0); Get_Mission is Construction, queued or current.
-        if self.idle || self.anim.update(now, false, options) {
+        let control = if self.idle {
+            BuildupStage::begin(crate::rules::buildup_asset_catalog::NO_BUILDUP)
+        } else {
+            self.anim
+        };
+        if control.update(stage, now, false, options) {
             self.done = true;
         }
         if self.idle {
@@ -206,7 +218,7 @@ impl BuildingUp {
         match self.mission {
             ConstructionMission::Due => {
                 // Status 0: Begin_Mode(0) again (0x00449B36).
-                self.begin_construction(now);
+                self.begin_construction(stage, now);
                 self.mission = ConstructionMission::Watching;
             }
             ConstructionMission::Watching if self.done => return ConstructionFrame::Complete,
@@ -215,6 +227,9 @@ impl BuildingUp {
         self.commence_if_ready();
         if std::mem::take(&mut self.idle_queued) {
             self.idle = true;
+            //Update's queued Begin_Mode(1) applies the stock idle control.
+            //It stops the live stage; the construction control stays metadata.
+            stage.restart(0, now, 0);
         }
         ConstructionFrame::Building
     }
@@ -226,9 +241,10 @@ impl BuildingUp {
     /// in that Update, such as UpdateRepairAndPower's Get_Mission
     /// (`0x00450659`), already sees Guard on the completion frame (the
     /// `route` rows' mission after the frame's pieces).
-    pub(crate) fn completes_at(&self, now: i32, options: &GameOptions) -> bool {
+    pub(crate) fn completes_at(&self, stage: &StageClass, now: i32, options: &GameOptions) -> bool {
         let mut next = *self;
-        next.frame(now, options) == ConstructionFrame::Complete
+        let mut stage = *stage;
+        next.frame(&mut stage, now, options) == ConstructionFrame::Complete
     }
 
     /// The frames from a human player's placement at frame 0
@@ -246,7 +262,10 @@ impl BuildingUp {
             .saturating_mul(control[2].max(1))
             .saturating_add(3);
         let mut building = Self::placed_by_player(control, 0);
-        (1..=limit).find(|&now| building.frame(now, options) == ConstructionFrame::Complete)
+        let mut stage = StageClass::constructed(0);
+        building.anim.restart(&mut stage, 0);
+        (1..=limit)
+            .find(|&now| building.frame(&mut stage, now, options) == ConstructionFrame::Complete)
     }
 
     /// A build-up whose Construction mission completes on the `ticks`-th
@@ -295,7 +314,7 @@ impl BuildingDown {
     /// frame after.
     pub(crate) fn commenced(control: [i32; 3], now: i32, undeploy_order: bool) -> Self {
         Self {
-            anim: BuildupStage::begin(control, now),
+            anim: BuildupStage::begin(control),
             commenced_frame: now,
             done: false,
             undeploy_order,
@@ -309,6 +328,7 @@ impl BuildingDown {
     /// the mission's handler state): 0, 1, or 2 (waiting).
     pub(crate) fn frame(
         &mut self,
+        stage: &mut StageClass,
         status: &mut u32,
         now: i32,
         archive_less_sale: bool,
@@ -320,7 +340,12 @@ impl BuildingDown {
         // Before stage 1's Begin_Mode(0) the building shows BState 1, whose
         // idle control never steps and sets +0x6DD every frame (rate 0,
         // 0x00451218); stages 0 and 1 clear it.
-        let anim_done = *status < 2 || self.anim.update(now, archive_less_sale, options);
+        let control = if *status < 2 {
+            BuildupStage::begin(crate::rules::buildup_asset_catalog::NO_BUILDUP)
+        } else {
+            self.anim
+        };
+        let anim_done = control.update(stage, now, archive_less_sale, options);
         if anim_done {
             self.done = true;
         }
@@ -339,9 +364,9 @@ impl BuildingDown {
 
     /// Stage 1's tail (`0x0044A8A2..0x0044A8B5`): stage 2, `Begin_Mode(0)`
     /// and `+0x6DD` cleared.
-    pub(crate) fn begin_stage_two(&mut self, status: &mut u32, now: i32) {
+    pub(crate) fn begin_stage_two(&mut self, stage: &mut StageClass, status: &mut u32, now: i32) {
         *status = 2;
-        self.anim = BuildupStage::begin(self.anim.control, now);
+        self.anim.restart(stage, now);
         self.done = false;
     }
 }
@@ -361,6 +386,10 @@ impl crate::sim::game_entity::GameEntity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::entities::EntityCategory;
+    use crate::sim::components::Health;
+    use crate::sim::game_entity::GameEntity;
+    use crate::sim::intern::test_intern;
     use serde_json::Value;
 
     fn corpus() -> Value {
@@ -381,6 +410,27 @@ mod tests {
         serde_json::from_value(input["control"].clone()).unwrap()
     }
 
+    /// Only the constructor clock and Building control receiver are exercised
+    /// here. Type controls and subsequent expected fields come from the saved
+    /// original rows, independently of this minimal actor's unrelated fields.
+    fn actor(origin: i32) -> GameEntity {
+        GameEntity::new_at_frame_for_test(
+            1,
+            0,
+            0,
+            0,
+            0,
+            test_intern("OracleOwner"),
+            Health { current: 100 },
+            test_intern("OracleBuilding"),
+            EntityCategory::Structure,
+            0,
+            0,
+            false,
+            origin as u32,
+        )
+    }
+
     /// `Begin_Mode(0)` then `UpdateAnimation` frame by frame: the stage, its
     /// timer and rate, and `+0x6DD`, under Construction and Selling (with the
     /// archive-less UndeploysInto sale's stage-0x17 completion) and past the
@@ -398,31 +448,33 @@ mod tests {
             let mission = input["mission"].as_str().unwrap_or("construction");
             let archive_less_sale =
                 mission == "selling" && input["undeploys"] == true && input["archive"] != true;
-            let mut anim = BuildupStage::begin(control(input), origin);
+            let anim = BuildupStage::begin(control(input));
+            let mut stage = StageClass::constructed(origin);
+            anim.restart(&mut stage, origin);
             let mut done = false;
             for frame in frames.iter().skip(1) {
                 let now = origin + frame["frame"].as_i64().unwrap() as i32;
                 // Only Construction and Selling gate the completion; the Guard
                 // row's fixture building answers vt+0x3FC false, which opens
                 // the same gate.
-                if anim.update(now, archive_less_sale, &options) {
+                if anim.update(&mut stage, now, archive_less_sale, &options) {
                     done = true;
                 }
                 let context = format!("{name} frame {}", frame["frame"]);
                 assert_eq!(
-                    i64::from(anim.stage),
+                    i64::from(stage.value()),
                     frame["stage"].as_i64().unwrap(),
                     "{context}: stage"
                 );
                 assert_eq!(
-                    i64::from(anim.rate),
+                    i64::from(stage.rate()),
                     frame["rate"].as_i64().unwrap(),
                     "{context}: rate"
                 );
                 assert_eq!(
                     [
-                        i64::from(anim.timer.start_frame()),
-                        i64::from(anim.timer.duration())
+                        i64::from(stage.timer().start_frame()),
+                        i64::from(stage.timer().duration())
                     ],
                     [
                         frame["timer"][0].as_i64().unwrap(),
@@ -458,23 +510,45 @@ mod tests {
             // after the rows' placement (no Update runs in the placement
             // frame here).
             let origin = frames[0]["timer"][0].as_i64().unwrap() as i32 - 1;
-            let mut building = BuildingUp::placed_by_computer(control(input), origin);
+            let mut actor = actor(origin);
+            actor.install_building_up(
+                BuildingUp::placed_by_computer(control(input), origin),
+                origin,
+            );
             for frame in frames {
                 let now = origin + frame["frame"].as_i64().unwrap() as i32;
-                let step = building.frame(now, &options(0));
                 let completed = frame["calls"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .any(|call| call[0] == "grand_opening");
                 let context = format!("{name} frame {}", frame["frame"]);
+                let before_clock = *actor.native_stage();
+                let before_control = actor.building_up;
+                assert_eq!(
+                    actor.construction_completes_at(now, &options(0)),
+                    completed,
+                    "{context}: repair/power completion preview"
+                );
+                assert_eq!(
+                    *actor.native_stage(),
+                    before_clock,
+                    "{context}: preview clock"
+                );
+                assert_eq!(
+                    actor.building_up, before_control,
+                    "{context}: preview control"
+                );
+                let step = actor.advance_building_up(now, &options(0));
+                let stage = actor.native_stage();
+                let building = actor.building_up.as_ref().unwrap();
                 assert_eq!(
                     step == ConstructionFrame::Complete,
                     completed,
                     "{context}: complete"
                 );
                 assert_eq!(
-                    i64::from(building.anim.stage),
+                    i64::from(stage.value()),
                     frame["stage"].as_i64().unwrap(),
                     "{context}: stage"
                 );
@@ -485,8 +559,8 @@ mod tests {
                 );
                 assert_eq!(
                     [
-                        i64::from(building.anim.timer.start_frame()),
-                        i64::from(building.anim.timer.duration())
+                        i64::from(stage.timer().start_frame()),
+                        i64::from(stage.timer().duration())
                     ],
                     [
                         frame["timer"][0].as_i64().unwrap(),
@@ -534,16 +608,19 @@ mod tests {
                 continue;
             }
             let name = input["name"].as_str().unwrap();
-            let mut building = match route {
+            let building = match route {
                 "player" => BuildingUp::placed_by_player(control(input), 0),
                 "computer" => BuildingUp::placed_by_computer(control(input), 0),
                 "deploy" => BuildingUp::deployed(control(input), 0),
                 other => panic!("route {other}"),
             };
+            let mut actor = actor(0);
+            actor.install_building_up(building, 0);
             let mut completed_at = None;
             for frame in row["frames"].as_array().unwrap() {
                 let now = int(frame, "frame") as i32;
-                let complete = building.frame(now, &options(0)) == ConstructionFrame::Complete;
+                let complete =
+                    actor.advance_building_up(now, &options(0)) == ConstructionFrame::Complete;
                 let context = format!("{name} frame {now}");
                 assert_eq!(
                     complete,
@@ -551,9 +628,19 @@ mod tests {
                     "{context}: complete"
                 );
                 if complete {
+                    // Mission-only rows above stop before this queued
+                    // Begin_Mode(1); the integrated route observes its tail.
+                    actor.finish_building_up(now);
+                    assert_eq!(
+                        i64::from(actor.native_stage().value()),
+                        int(frame, "stage"),
+                        "{context}: completed idle stage"
+                    );
                     completed_at = Some(now);
                     break;
                 }
+                let stage = actor.native_stage();
+                let building = actor.building_up.as_ref().unwrap();
                 assert_eq!(
                     i64::from(building.idle),
                     int(frame, "bstate"),
@@ -564,13 +651,11 @@ mod tests {
                     int(frame, "queued_bstate"),
                     "{context}: queued BState"
                 );
-                // The idle control's stage is its first frame.
-                let stage = if building.idle {
-                    0
-                } else {
-                    building.anim.stage
-                };
-                assert_eq!(i64::from(stage), int(frame, "stage"), "{context}: stage");
+                assert_eq!(
+                    i64::from(stage.value()),
+                    int(frame, "stage"),
+                    "{context}: stage"
+                );
                 assert_eq!(
                     u64::from(building.done),
                     frame["done"].as_u64().unwrap(),
@@ -605,13 +690,17 @@ mod tests {
     fn replay_sell_visits(row: &Value, archive_less_sale: bool, tethered: impl Fn(i32) -> bool) {
         let input = &row["input"];
         let name = input["name"].as_str().unwrap();
-        let mut down = BuildingDown::commenced(control(input), 0, false);
+        let mut actor = actor(0);
+        // The recorded sale begins on the live idle control, without a
+        // Begin_Mode(0) restart until the actual stage-one tail.
+        actor.install_building_down(BuildingDown::commenced(control(input), 0, false));
         let mut status = 0;
         let mut completed = false;
         for frame in row["frames"].as_array().unwrap() {
             let now = int(frame, "frame") as i32;
             let context = format!("{name} frame {now}");
-            let step = down.frame(&mut status, now, archive_less_sale, &options(0));
+            let step =
+                actor.advance_building_down(&mut status, now, archive_less_sale, &options(0));
             let calls = frame["calls"].as_array().unwrap();
             assert_eq!(
                 step == PackUpFrame::StageZero,
@@ -624,7 +713,7 @@ mod tests {
                 "{context}: stage 1"
             );
             if step == PackUpFrame::StageOne && !tethered(now) {
-                down.begin_stage_two(&mut status, now);
+                actor.begin_building_pack_up_stage_two(&mut status, now);
             }
             assert_eq!(
                 step == PackUpFrame::Complete,
@@ -646,8 +735,13 @@ mod tests {
                 int(frame, "bstate"),
                 "{context}: BState"
             );
-            let stage = if construction { down.anim.stage } else { 0 };
-            assert_eq!(i64::from(stage), int(frame, "stage"), "{context}: stage");
+            let stage = actor.native_stage();
+            let down = actor.building_down.as_ref().unwrap();
+            assert_eq!(
+                i64::from(stage.value()),
+                int(frame, "stage"),
+                "{context}: stage"
+            );
             assert_eq!(
                 u64::from(down.done),
                 frame["done"].as_u64().unwrap(),

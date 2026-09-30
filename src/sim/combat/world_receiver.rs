@@ -2278,8 +2278,6 @@ pub(crate) fn commit_projectiles(
     debug_assert!(emit.remove_attack.is_empty());
     debug_assert!(emit.fire_events.is_empty());
     debug_assert!(emit.ammo_deduct.is_empty());
-    debug_assert!(emit.pending_infantry_updates.is_empty());
-    debug_assert!(emit.animation_switches.is_empty());
     debug_assert!(emit.current_weapon_updates.is_empty());
     debug_assert!(emit.unit_facing.is_empty());
     debug_assert!(emit.spawn_target_updates.is_empty());
@@ -2405,7 +2403,7 @@ pub(super) fn resolve_attacker_fire(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     snap: &AttackerSnapshot,
-    fog: Option<&FogState>,
+    fog_enabled: bool,
     binary_frame: u32,
     _tick_ms: u32,
     has_active_wave: bool,
@@ -2417,7 +2415,7 @@ pub(super) fn resolve_attacker_fire(
         rules,
         overlay_registry,
         snap,
-        fog,
+        fog_enabled,
         binary_frame,
         _tick_ms,
         has_active_wave,
@@ -2453,7 +2451,7 @@ fn admit_attacker_fire<'r>(
     rules: &'r RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     snap: &AttackerSnapshot,
-    fog: Option<&FogState>,
+    fog_enabled: bool,
     binary_frame: u32,
     _tick_ms: u32,
     has_active_wave: bool,
@@ -2484,7 +2482,8 @@ fn admit_attacker_fire<'r>(
     // so a stale/missing target cannot retarget or clear the order while the
     // owner's exact Wave link remains live. GetFireError's T37/T46 (the live
     // Wave on either slot) keep the same protection for other layouts.
-    if has_active_wave
+    if snap.category == EntityCategory::Unit
+        && has_active_wave
         && combat_weapon::primary_for_tier(obj, snap.veterancy)
             .and_then(|weapon_id| rules.weapon(weapon_id))
             .is_some_and(|weapon| weapon.is_sonic)
@@ -2522,43 +2521,6 @@ fn admit_attacker_fire<'r>(
         }
     };
 
-    // Target facts for `What_Weapon_Should_I_Use`. Cell targets read the
-    // terrain cell; entity targets read the target's occupied cell, altitude,
-    // bridge and cloak state.
-    let target_facts = match snap.target {
-        TargetKind::Entity(target_id) => {
-            let Some((target_entity, target_obj)) =
-                world.substrate.entities.get(target_id).and_then(|t| {
-                    rules
-                        .object(world.interner.resolve(t.type_ref()))
-                        .map(|target_obj| (t, target_obj))
-                })
-            else {
-                if delayed_building_slot.is_none() {
-                    out.remove_attack.push(snap.stable_id);
-                }
-                return None;
-            };
-            let is_ally = combat_weapon::is_ally_by_object(
-                fog.map(|fog_state| &fog_state.alliances),
-                &mut world.interner,
-                snap.owner,
-                target_entity.owner(),
-            );
-            combat_weapon::techno_target_facts(
-                target_entity,
-                target_obj,
-                world.resolved_terrain.as_ref(),
-                is_ally,
-                rules,
-                &world.interner,
-            )
-        }
-        TargetKind::Cell(rx, ry) => {
-            combat_weapon::cell_target_facts(rx, ry, world.resolved_terrain.as_ref())
-        }
-    };
-
     // Weapon selection, none of which asks legality (GetFireError below, or
     // the building's own visit, does): a delayed building shot resolves the
     // slot it saved while arming, and a building's Mission_Attack shot the
@@ -2567,60 +2529,61 @@ fn admit_attacker_fire<'r>(
     // whose GetWeapon `0x004526F0` answers the occupant's weapon); everything
     // else runs the native selection ladder (`What_Weapon_Should_I_Use`
     // `0x006F3330`).
-    let (weapon_index, selected, is_garrison) = if let Some(saved_slot) = delayed_building_slot {
-        let index = match saved_slot {
-            WeaponSlot::Primary => 0,
-            WeaponSlot::Secondary => 1,
-        };
-        let selected = combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, index)?;
-        (selected.index, Some(selected), false)
-    } else if let Some(ref gs) = snap.garrison {
-        // An occupant without a weapon is refused by the visit's GetFireError
-        // (T21, CANT), whose drop tail lets the target go.
-        let selected = rules
-            .object(world.interner.resolve(gs.occupant_type_id))
-            .and_then(|occupant| {
-                combat_weapon::occupant_weapon(rules, occupant, gs.occupant_veterancy)
-            })
-            .and_then(|weapon| {
-                Some(combat_weapon::SelectedWeapon {
-                    weapon_id: &weapon.id,
-                    weapon,
-                    warhead: combat_weapon::warhead_of(rules, weapon)?,
-                    slot: WeaponSlot::Primary,
-                    index: 0,
+    let (mut weapon_index, mut selected, is_garrison) =
+        if let Some(saved_slot) = delayed_building_slot {
+            let index = match saved_slot {
+                WeaponSlot::Primary => 0,
+                WeaponSlot::Secondary => 1,
+            };
+            let selected = combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, index)?;
+            (selected.index, Some(selected), false)
+        } else if let Some(ref gs) = snap.garrison {
+            // An occupant without a weapon is refused by the visit's GetFireError
+            // (T21, CANT), whose drop tail lets the target go.
+            let selected = rules
+                .object(world.interner.resolve(gs.occupant_type_id))
+                .and_then(|occupant| {
+                    combat_weapon::occupant_weapon(rules, occupant, gs.occupant_veterancy)
                 })
-            })?;
-        (selected.index, Some(selected), true)
-    } else if let Some(weapon) = mission_building_weapon {
-        (
-            weapon,
-            combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, weapon),
-            false,
-        )
-    } else {
-        let attacker_facts = world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .map(|entity| combat_weapon::attacker_facts(entity, obj))
-            .unwrap_or_else(|| combat_weapon::attacker_facts_from_snapshot(snap, obj));
-        (
-            combat_weapon::what_weapon_should_i_use(
+                .and_then(|weapon| {
+                    Some(combat_weapon::SelectedWeapon {
+                        weapon_id: &weapon.id,
+                        weapon,
+                        warhead: combat_weapon::warhead_of(rules, weapon)?,
+                        slot: WeaponSlot::Primary,
+                        index: 0,
+                    })
+                })?;
+            (selected.index, Some(selected), true)
+        } else if let Some(weapon) = mission_building_weapon {
+            (
+                weapon,
+                combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, weapon),
+                false,
+            )
+        } else {
+            let attacker_facts = world
+                .substrate
+                .entities
+                .get(snap.stable_id)
+                .map(|entity| combat_weapon::attacker_facts(entity, obj))
+                .unwrap_or_else(|| combat_weapon::attacker_facts_from_snapshot(snap, obj));
+            let Some((index, selected)) = combat_weapon::select_weapon_against(
                 rules,
                 obj,
                 &attacker_facts,
-                Some(&target_facts),
-            ),
-            combat_weapon::resolve_selected_weapon(
-                rules,
-                obj,
-                &attacker_facts,
-                Some(&target_facts),
-            ),
-            false,
-        )
-    };
+                snap.owner,
+                Some(&snap.target),
+                &world.substrate.entities,
+                &world.interner,
+                world.resolved_terrain.as_ref(),
+                fog_enabled.then_some(&world.fog.alliances),
+            ) else {
+                out.remove_attack.push(snap.stable_id);
+                return None;
+            };
+            (index, selected, false)
+        };
     if delayed_building_slot.is_none()
         && let Some(selected) = selected.as_ref()
     {
@@ -2633,32 +2596,25 @@ fn admit_attacker_fire<'r>(
         ));
     }
 
-    let infantry_fire_sync =
-        snap.category == EntityCategory::Infantry && !is_garrison && snap.animation_frame.is_some();
-    let mut pending_at_fire_frame = false;
-    if infantry_fire_sync {
-        if let Some(pending) = snap.pending_infantry_fire {
-            if snap.has_movement || snap.animation_sequence != Some(pending.sequence) {
-                out.pending_infantry_updates.push((snap.stable_id, None));
-                // An infantryman whose Doing owns its sequence keeps the one
-                // its last action started.
-                if !world
-                    .substrate
-                    .entities
-                    .get(snap.stable_id)
-                    .is_some_and(crate::sim::movement::infantry_action::doing_owns_sequence)
-                {
-                    out.animation_switches.push((
-                        snap.stable_id,
-                        infantry_idle_sequence(snap.is_prone, snap.is_fully_deployed),
-                    ));
-                }
-                return None;
-            }
-            if snap.animation_frame != Some(pending.fire_frame) {
-                return None;
-            }
-            pending_at_fire_frame = true;
+    let infantry_fire = snap.category == EntityCategory::Infantry && !is_garrison;
+    let sequences = rules.animation_sequence(world.interner.resolve(snap.type_id));
+    let firing_at_entry = infantry_fire
+        && world
+            .substrate
+            .entities
+            .get(snap.stable_id)
+            .is_some_and(|entity| entity.mission_leaf.foot_firing_sequence_latch() != 0);
+    if firing_at_entry {
+        let entity = world.substrate.entities.get(snap.stable_id)?;
+        let prone = entity
+            .infantry
+            .as_ref()
+            .is_some_and(|infantry| infantry.is_prone);
+        //5206DE skips the first GetFireError.5209AF asks the second only
+        // at exact equality, including signed/out-of-range retained stages.
+        if entity.native_stage().value() != infantry_fire_frame(obj, sequences, weapon_index, prone)
+        {
+            return None;
         }
     }
 
@@ -2688,7 +2644,7 @@ fn admit_attacker_fire<'r>(
                 world,
                 rules,
                 overlay_registry,
-                fog,
+                fog: fog_enabled.then_some(&world.fog),
                 firer,
                 obj,
                 target: Some(snap.target),
@@ -2763,29 +2719,18 @@ fn admit_attacker_fire<'r>(
             _ => {}
         },
         EntityCategory::Infantry => {
-            if pending_at_fire_frame {
-                // Block 2 (`0x005209FD`): a refusal ends the fire action. An
-                // infantryman whose Doing owns its sequence takes the idle
-                // Do_Action itself (`0x00520A03..0x00520A51`).
+            if firing_at_entry {
                 if code != fire_error::FireError::Ok {
-                    out.pending_infantry_updates.push((snap.stable_id, None));
-                    if world
+                    world
                         .substrate
                         .entities
-                        .get(snap.stable_id)
-                        .is_some_and(crate::sim::movement::infantry_action::doing_owns_sequence)
-                    {
-                        world.infantry_fire_refused_action(snap.stable_id, rules);
-                    } else {
-                        out.animation_switches.push((
-                            snap.stable_id,
-                            infantry_idle_sequence(snap.is_prone, snap.is_fully_deployed),
-                        ));
-                    }
+                        .get_mut(snap.stable_id)?
+                        .mission_leaf
+                        .set_foot_firing_sequence(0);
+                    world.infantry_fire_refused_action(snap.stable_id, rules);
                 }
             } else {
                 match code {
-                    // `0x00520721`.
                     fire_error::FireError::Illegal => {
                         if heal_weapon_drops_target(
                             world,
@@ -2797,7 +2742,6 @@ fn admit_attacker_fire<'r>(
                             out.remove_attack.push(snap.stable_id);
                         }
                     }
-                    // `0x0052070F`.
                     fire_error::FireError::Cloaked => {
                         uncloak_to_fire(world, rules, obj, snap.stable_id, sound_enabled);
                     }
@@ -2821,84 +2765,137 @@ fn admit_attacker_fire<'r>(
     if code != fire_error::FireError::Ok {
         return None;
     }
-    // GetFireError passed T21, so the slot names a weapon.
-    let selected = selected?;
-
-    // InfantryClass::Fire_At_Target 00520904..00520925: after admission and
-    // starting the fire action, snap body +388 through DirectionToTarget.
-    // Pending actions skip this writer, even if the target moves before FireUp.
-    // Publish both the retained owner and the emission snapshot: FireUp=0 must
-    // use the new heading for this very shot's FLH and presentation event.
-    let mut firing_snapshot;
-    let snap = if snap.category == EntityCategory::Infantry && !pending_at_fire_frame {
-        let desired = crate::sim::movement::turret::facing_toward_lepton(
-            snap.pos_rx,
-            snap.pos_ry,
-            snap.sub_x,
-            snap.sub_y,
-            target_rx,
-            target_ry,
-            target_sub_x,
-            target_sub_y,
-        );
-        let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) else {
-            return None;
+    if infantry_fire && !firing_at_entry {
+        let actor = world.substrate.entities.get(snap.stable_id)?;
+        let fire_fly =
+            obj.jumpjet && crate::sim::movement::infantry_action::uses_jumpjet_locomotor(actor);
+        let requested = if fire_fly {
+            crate::sim::movement::infantry_action::DO_FIRE_FLY
+        } else {
+            infantry_fire_action(
+                sequences,
+                weapon_index,
+                actor
+                    .infantry
+                    .as_ref()
+                    .is_some_and(|infantry| infantry.is_prone),
+                actor.infantry_deploy_doing(),
+            )
         };
-        entity.body_facing.snap(desired, binary_frame);
-        firing_snapshot = snap.clone();
-        firing_snapshot.hull_facing = entity.body_facing;
+        //5208FE may refuse unchanged/noninterruptible/absent actions.520912
+        // raises+68D regardless of AL; the retained Doing/Stage still decides
+        // when this attempt can discharge.
+        if let Err(cause) = world.infantry_do_action(snap.stable_id, requested, false, rules) {
+            log::debug!("infantry {} firing Do_Action: {cause}", snap.stable_id);
+        }
+        let actor = world.substrate.entities.get_mut(snap.stable_id)?;
+        actor.mission_leaf.set_foot_firing_sequence(1);
+        actor.body_facing.snap(direction, binary_frame);
+        let target_is_navcom = crate::sim::movement::nav_targets_same_receiver(
+            actor.navigation.nav_com,
+            match snap.target {
+                TargetKind::Entity(id) => crate::sim::components::NavTargetRef::object(id),
+                TargetKind::Cell(rx, ry) => crate::sim::components::NavTargetRef::cell(rx, ry),
+            },
+        );
+        if target_is_navcom {
+            //52093C/520946: shared FootStop4DF0D0 then the concrete+500
+            // receiver. That receiver owns any DoAction/Walk Stop callback.
+            crate::sim::movement::foot_stop_moving(actor);
+            if let Err(cause) =
+                world.run_find_path_failed_receiver(snap.stable_id, rules, overlay_registry)
+            {
+                log::debug!("infantry {} firing Stop_Driver: {cause}", snap.stable_id);
+            }
+        }
+        let actor = world.substrate.entities.get(snap.stable_id)?;
+        let prone = actor
+            .infantry
+            .as_ref()
+            .is_some_and(|infantry| infantry.is_prone);
+        if actor.native_stage().value() != infantry_fire_frame(obj, sequences, weapon_index, prone)
+        {
+            return None;
+        }
+        //5209C7/5209DE reselect and query live state after action/facing/Stop,
+        // even when a frame-zero action can shoot in this same call.
+        // Both actor and target are live reads after the synchronous callbacks.
+        // Native5209BB/5209D2 reloads Target for SelectWeapon/GetFireError.
+        let target = actor.attack_target.as_ref().map(|attack| attack.target);
+        (weapon_index, selected) = combat_weapon::select_weapon_against(
+            rules,
+            obj,
+            &combat_weapon::attacker_facts(actor, obj),
+            actor.owner(),
+            target.as_ref(),
+            &world.substrate.entities,
+            &world.interner,
+            world.resolved_terrain.as_ref(),
+            fog_enabled.then_some(&world.fog.alliances),
+        )?;
+        let code = fire_error_world::FireSubject {
+            world,
+            rules,
+            overlay_registry,
+            fog: fog_enabled.then_some(&world.fog),
+            firer: actor,
+            obj,
+            target,
+            weapon_index,
+            garrison: None,
+        }
+        .fire_error(true);
+        *fire_error_out = Some(code);
+        if code != fire_error::FireError::Ok {
+            world
+                .substrate
+                .entities
+                .get_mut(snap.stable_id)?
+                .mission_leaf
+                .set_foot_firing_sequence(0);
+            world.infantry_fire_refused_action(snap.stable_id, rules);
+            return None;
+        }
+        if let Some(selected) = selected.as_ref() {
+            out.current_weapon_updates
+                .push((snap.stable_id, selected.index as u8));
+        }
+    }
+    // Keep emission's FLH/heading/prone snapshot in the native post-action
+    // window. Other classes retain their existing caller-owned snapshot.
+    let firing_snapshot;
+    let snap = if infantry_fire {
+        let actor = world.substrate.entities.get(snap.stable_id)?;
+        firing_snapshot = build_attacker_snapshot(
+            actor,
+            actor.attack_target.as_ref()?.target,
+            snap.garrison.clone(),
+        );
         &firing_snapshot
     } else {
         snap
     };
-
-    if infantry_fire_sync && !pending_at_fire_frame {
-        // The fire action `InfantryClass::Fire_At_Target` starts
-        // (`0x0052078F..0x00520904`): a `JumpJet=` type flown by the Jumpjet
-        // locomotor fires in FireFly (`0x00520827`), through Do_Action, and its
-        // FireUp frame still names the discharge (`0x0052095A`).
-        let fire_fly = obj.jumpjet
-            && world
-                .substrate
-                .entities
-                .get(snap.stable_id)
-                .is_some_and(crate::sim::movement::infantry_action::doing_owns_sequence);
-        let sequence = if fire_fly {
-            if let Err(cause) = world.infantry_do_action(
-                snap.stable_id,
-                crate::sim::movement::infantry_action::DO_FIRE_FLY,
-                false,
-                rules,
-            ) {
-                log::debug!("infantry {} FireFly: {cause}", snap.stable_id);
+    let selected = selected?;
+    let (target_coords, target_type_ref) = if infantry_fire {
+        match snap.target {
+            TargetKind::Entity(id) => {
+                let target = world.substrate.entities.get(id)?;
+                (target_coords(target), target.type_ref())
             }
-            crate::sim::animation::SequenceKind::FireFly
-        } else {
-            infantry_fire_sequence(obj, selected.slot, snap.is_prone, snap.is_fully_deployed)
-        };
-        let fire_frame =
-            infantry_fire_frame(obj, selected.slot, snap.is_prone, snap.is_fully_deployed);
-        out.animation_switches.push((snap.stable_id, sequence));
-        if fire_frame != 0 {
-            out.pending_infantry_updates.push((
-                snap.stable_id,
-                Some(PendingInfantryFire {
-                    sequence,
-                    fire_frame,
-                }),
-            ));
-            return None;
+            TargetKind::Cell(rx, ry) => (cell_center_coords(rx, ry), snap.type_id),
         }
-    }
-    if pending_at_fire_frame {
-        out.pending_infantry_updates.push((snap.stable_id, None));
-    }
+    } else {
+        (
+            (target_rx, target_ry, target_sub_x, target_sub_y),
+            target_type_ref,
+        )
+    };
 
     Some(AdmittedFire {
         snap: snap.clone(),
         obj,
         selected,
-        target_coords: (target_rx, target_ry, target_sub_x, target_sub_y),
+        target_coords,
         target_type_ref,
         is_garrison,
     })
@@ -3501,6 +3498,13 @@ pub(super) fn emit_admitted_fire(
     binary_frame: u32,
     out: &mut CombatEmit,
 ) {
+    // Infantry51DF70 clears68D for every direct FireAt caller, including
+    // Guard521432 and a launch subsequently refused by Techno6FDD50.
+    if shot.snap.category == EntityCategory::Infantry {
+        if let Some(actor) = world.substrate.entities.get_mut(shot.snap.stable_id) {
+            actor.mission_leaf.set_foot_firing_sequence(0);
+        }
+    }
     let AdmittedFire {
         snap,
         obj,
@@ -4104,13 +4108,10 @@ fn fireat_tail(
 fn shot_target(
     entity: &crate::sim::game_entity::GameEntity,
     building_shot: Option<super::BuildingShot>,
-) -> Option<(TargetKind, Option<super::PendingInfantryFire>)> {
+) -> Option<TargetKind> {
     match building_shot {
-        Some(shot) => Some((shot.target(), None)),
-        None => entity
-            .attack_target
-            .as_ref()
-            .map(|attack| (attack.target, attack.pending_infantry_fire)),
+        Some(shot) => Some(shot.target()),
+        None => entity.attack_target.as_ref().map(|attack| attack.target),
     }
 }
 
@@ -4307,6 +4308,113 @@ impl FireCommitBoundary {
     }
 }
 
+/// Call-local native trigger; neither variant stores a future shot.
+pub(crate) enum FireVisit {
+    /// Infantry51BF59 dispatches Fire_At_Target5206B0, including Stage admission.
+    InfantryTarget(u64),
+    /// A mission already checked GetFireError and calls FireAt directly.
+    Direct {
+        id: u64,
+        target: TargetKind,
+        weapon_index: i32,
+    },
+}
+
+/// One inline receiver transaction for both class and mission FireAt callers.
+/// All emission remains in the existing emit_admitted_fire owner.
+pub(crate) fn visit_fire(
+    world: &mut Simulation,
+    run: &mut ReceiverRun,
+    visit: FireVisit,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) -> CombatTickResult {
+    let mut emit = CombatEmit::default();
+    let mut pings = Vec::new();
+    let boundary = FireCommitBoundary::capture(&emit);
+    match visit {
+        FireVisit::InfantryTarget(id) => {
+            let actor = world.substrate.entities.get(id);
+            let target = actor.and_then(|actor| actor.attack_target.as_ref().map(|a| a.target));
+            if let (Some(actor), Some(target)) = (actor, target) {
+                let snap = build_attacker_snapshot(actor, target, None);
+                #[cfg(not(test))]
+                let fog_enabled = true;
+                #[cfg(test)]
+                let fog_enabled = world
+                    .receiver_fixture
+                    .as_ref()
+                    .is_none_or(|f| f.fog_enabled);
+                resolve_attacker_fire(
+                    world,
+                    rules,
+                    overlay_registry,
+                    &snap,
+                    fog_enabled,
+                    world.session.binary_frame,
+                    1,
+                    world.active_wave_links.contains_key(&id),
+                    &mut emit,
+                );
+            } else if let Some(actor) = world.substrate.entities.get_mut(id) {
+                //520AD2: absence of TarCom clears the raw firing latch.
+                actor.mission_leaf.set_foot_firing_sequence(0);
+            }
+        }
+        FireVisit::Direct {
+            id,
+            target,
+            weapon_index,
+        } => {
+            // These are the actual FireAt arguments, independently of TarCom.
+            // Legality and dispatch cadence belong to the calling mission.
+            let shot = world.substrate.entities.get(id).and_then(|actor| {
+                let obj = rules.object(world.interner.resolve(actor.type_ref()))?;
+                let selected = combat_weapon::resolve_weapon_index(
+                    rules,
+                    obj,
+                    actor.veterancy(),
+                    weapon_index,
+                )?;
+                let coords = resolve_target_coords(&target, &world.substrate.entities)?;
+                let type_ref = match target {
+                    TargetKind::Entity(target) => world.substrate.entities.get(target)?.type_ref(),
+                    TargetKind::Cell(..) => actor.type_ref(),
+                };
+                Some(AdmittedFire {
+                    snap: build_attacker_snapshot(actor, target, None),
+                    obj,
+                    selected,
+                    target_coords: coords,
+                    target_type_ref: type_ref,
+                    is_garrison: false,
+                })
+            });
+            if let Some(shot) = shot {
+                emit_admitted_fire(world, rules, shot, world.session.binary_frame, &mut emit);
+            }
+        }
+    }
+    boundary.commit(world, run, rules, overlay_registry, &mut emit, &mut pings);
+    for removed in emit.remove_attack.drain(..) {
+        world
+            .assign_target_represented(removed, None, Some(rules))
+            .expect("FireAt target receiver remains retained");
+    }
+    CombatTickResult {
+        #[cfg(test)]
+        fixture_anims: Vec::new(),
+        projectile_spawns: emit.projectile_spawns,
+        unit_facing: Vec::new(),
+        consequences: crate::sim::world::damage_consequences::DamageConsequences::live_fire(
+            emit.effects,
+            pings,
+            Vec::new(),
+            emit.fire_events,
+        ),
+    }
+}
+
 pub(crate) fn tick_combat(
     world: &mut Simulation,
     run: &mut ReceiverRun,
@@ -4391,69 +4499,8 @@ pub(crate) fn tick_combat(
 
     let keys: Vec<u64> = world.substrate.entities.keys_sorted();
 
-    // Deployed self-irradiator re-fire (Desolator): a deployed DeployFire unit
-    // whose deploy weapon emits radiation — and whose own type is radiation-
-    // immune — maintains the radiation field under its feet. When the site at
-    // its cell is missing or its effective level has decayed below a third of
-    // the weapon's RadLevel, the unit force-fires its deploy weapon at its own
-    // cell (the detonation re-arms the site, which closes the gate again).
-    // The synthesized self-target is cleared once the gate closes; targets the
-    // player set explicitly are never touched.
-    if let Some(rad) = radiation_enabled.then_some(&world.radiation) {
-        let mut set_self_target: Vec<u64> = Vec::new();
-        let mut clear_self_target: Vec<u64> = Vec::new();
-        for &id in &keys {
-            if fire_suppressed.contains(&id) {
-                continue;
-            }
-            let Some(entity) = world.substrate.entities.get(id) else {
-                continue;
-            };
-            if !entity.is_fully_deployed() || entity.dying || !entity.is_alive() {
-                continue;
-            }
-            let Some(obj) = rules.object(world.interner.resolve(entity.type_ref())) else {
-                continue;
-            };
-            if !obj.deploy_fire || !obj.immune_to_radiation {
-                continue;
-            }
-            let Some(weapon) = combat_weapon::deploy_fire_weapon_id(obj, entity.veterancy())
-                .and_then(|weapon_id| rules.weapon(weapon_id))
-            else {
-                continue;
-            };
-            if weapon.rad_level <= 0 {
-                continue;
-            }
-            let own_cell = (entity.position.rx, entity.position.ry);
-            let gate_open = rad.site_at(own_cell).is_none_or(|site| {
-                crate::sim::radiation::RadiationState::current_site_level(site)
-                    < weapon.rad_level / 3
-            });
-            let has_self_target = matches!(
-                entity.attack_target.as_ref().map(|attack| attack.target),
-                Some(TargetKind::Cell(rx, ry)) if (rx, ry) == own_cell
-            );
-            if gate_open && entity.attack_target.is_none() {
-                set_self_target.push(id);
-            } else if !gate_open && has_self_target {
-                clear_self_target.push(id);
-            }
-        }
-        for id in set_self_target {
-            if let Some(entity) = world.substrate.entities.get_mut(id) {
-                let (rx, ry) = (entity.position.rx, entity.position.ry);
-                entity.attack_target = Some(AttackTarget::for_cell(rx, ry));
-            }
-        }
-        for id in clear_self_target {
-            if let Some(entity) = world.substrate.entities.get_mut(id) {
-                entity.attack_target = None;
-                entity.passively_acquired_target = false;
-            }
-        }
-    }
+    // Infantry Guard521320 owns radiation self-fire inside its class visit.
+    // There is no late global target synthesizer after all Infantry firing.
 
     // Garrison auto-acquire: idle garrisoned buildings scan for hostile targets.
     // RESIDUAL G22 (`greatest_threat.rs`): native acquires for an occupied
@@ -4668,7 +4715,10 @@ pub(crate) fn tick_combat(
         {
             continue;
         }
-        if !attacker_reaches_fire(entity) {
+        // Every Infantry already fired at its own51BF59 slot. This also
+        // excludes newly born actors that never received an AI visit; the
+        // legacy batch cannot grant them an extra end-of-frame firing turn.
+        if entity.category == EntityCategory::Infantry || !attacker_reaches_fire(entity) {
             continue;
         }
         // Skip snapshot for entities blocked by locomotor state.
@@ -4689,8 +4739,7 @@ pub(crate) fn tick_combat(
             continue;
         }
         // A missing target does not acquire or drop another target.
-        let Some((attack_target, pending_infantry_fire)) = shot_target(entity, building_shot)
-        else {
+        let Some(attack_target) = shot_target(entity, building_shot) else {
             continue;
         };
         if blocked {
@@ -4732,7 +4781,7 @@ pub(crate) fn tick_combat(
 
         snapshots.push(AttackerSnapshot {
             building_shot,
-            ..build_attacker_snapshot(entity, attack_target, pending_infantry_fire, garrison)
+            ..build_attacker_snapshot(entity, attack_target, garrison)
         });
     }
     // Native combat resolves each object inline during the single live-object
@@ -4832,8 +4881,7 @@ pub(crate) fn tick_combat(
             continue;
         };
         let mut live_snap = snap.clone();
-        live_snap.target = live_attack.0;
-        live_snap.pending_infantry_fire = live_attack.1;
+        live_snap.target = live_attack;
 
         let n_remove = emit.remove_attack.len();
         let boundary = FireCommitBoundary::capture(&emit);
@@ -4855,7 +4903,7 @@ pub(crate) fn tick_combat(
                 rules,
                 overlay_registry,
                 &live_snap,
-                fog,
+                fog.is_some(),
                 binary_frame,
                 tick_ms,
                 active_wave_owners.contains(&live_snap.stable_id),
@@ -4987,8 +5035,6 @@ pub(crate) fn tick_combat(
         mut remove_attack,
         fire_events,
         ammo_deduct,
-        pending_infantry_updates,
-        animation_switches,
         current_weapon_updates: _,
         unit_facing,
         spawn_target_updates: _,
@@ -4997,23 +5043,6 @@ pub(crate) fn tick_combat(
 
     // Phase 3: the burst step and rearm were written in each shot's FireAt
     // emission.
-    for &(attacker_id, sequence) in &animation_switches {
-        if let Some(entity) = world.substrate.entities.get_mut(attacker_id) {
-            if entity.infantry_terminal.is_some() {
-                continue;
-            }
-            if let Some(ref mut anim) = entity.animation {
-                anim.switch_to(sequence);
-            }
-        }
-    }
-    for &(attacker_id, pending) in &pending_infantry_updates {
-        if let Some(entity) = world.substrate.entities.get_mut(attacker_id) {
-            if let Some(ref mut attack) = entity.attack_target {
-                attack.pending_infantry_fire = pending;
-            }
-        }
-    }
     // Phase 3b: deduct ammo from aircraft that completed a burst this tick.
     for &attacker_id in &ammo_deduct {
         if let Some(entity) = world.substrate.entities.get_mut(attacker_id) {

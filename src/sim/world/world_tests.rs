@@ -19,9 +19,6 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::particle_system_type::ParticleSystemTypeId;
 use crate::rules::particle_type::ParticleTypeId;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::animation::{
-    Animation, FacingSlots, LoopMode, SequenceDef, SequenceKind, SequenceSet,
-};
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState};
 use crate::sim::combat::AttackTarget;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -199,56 +196,40 @@ fn network_modal_does_not_execute_game_speed_ingress() {
 
 fn animation_boundary_fixture() -> (Simulation, RuleSet) {
     let mut sim = Simulation::with_seed(0xA11A_7100);
-    let owner = sim.interner.intern("Americans");
-    let type_ref = sim.interner.intern("E1");
-    let mut entity = GameEntity::new_at_frame_zero_for_test(
-        1,
-        4,
-        4,
-        0,
-        0,
-        owner,
-        crate::sim::components::Health { current: 100 },
-        type_ref,
-        EntityCategory::Infantry,
-        0,
-        0,
-        false,
-    );
-    entity.animation = Some(Animation::new(SequenceKind::Idle1));
-    entity.body_facing = FacingClass::new(0, 4);
-    sim.substrate.entities.insert(entity);
-
-    let idle = SequenceDef {
-        start_frame: 0,
-        frame_count: 1,
-        facings: 8,
-        facing_multiplier: 1,
-        frame_delay: 1,
-        normalized: false,
-        completion_facing: Some(128),
-        loop_mode: LoopMode::TransitionTo(SequenceKind::Stand),
-        facing_slots: FacingSlots::InfantryTable,
-    };
-    let stand = SequenceDef {
-        start_frame: 1,
-        frame_count: 1,
-        facings: 8,
-        facing_multiplier: 1,
-        frame_delay: 1,
-        normalized: false,
-        completion_facing: None,
-        loop_mode: LoopMode::Loop,
-        facing_slots: FacingSlots::InfantryTable,
-    };
-    let mut set = SequenceSet::new();
-    set.insert(SequenceKind::Idle1, idle);
-    set.insert(SequenceKind::Stand, stand);
     let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=E1\n\n[E1]\nStrength=100\n",
     ))
     .expect("animation fixture rules");
-    rules.replace_animation_sequences_for_test(BTreeMap::from([("E1".to_string(), set)]));
+    let art = IniFile::from_str(
+        "[E1]\nSequence=TestSequence\n\
+         [TestSequence]\nReady=1,1,1\nIdle1=0,1,0,S\n",
+    );
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    let id = sim
+        .spawn_object("E1", "Americans", 4, 4, 0, &rules)
+        .expect("living infantry");
+    assert_eq!(id, 1);
+    sim.substrate.entities.get_mut(id).unwrap().body_facing = FacingClass::new(0, 4);
+    assert!(
+        sim.infantry_do_action(
+            id,
+            crate::sim::movement::infantry_action::DO_IDLE1,
+            true,
+            &rules
+        )
+        .unwrap()
+    );
+    // Original520AE0 completes Idle1 at its record's signed count, then
+    // applies the facing hint and requests Ready. Supply that boundary;
+    // the ordinary object visit, not presentation animation, consumes it.
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(1);
     (sim, rules)
 }
 
@@ -316,10 +297,8 @@ fn master_frame_hash_observes_living_animation_completion_facing() {
 
     let entity = sim.substrate.entities.get(1).expect("living infantry");
     assert_eq!(entity.body_facing.destination(), 0x8000);
-    assert_eq!(
-        entity.animation.as_ref().expect("animation").sequence,
-        SequenceKind::Stand
-    );
+    assert_eq!(entity.infantry_sprite_pose(), Some((0, 0)));
+    assert_eq!(entity.mission_leaf.as_infantry().unwrap().doing(), 0);
     assert_eq!(result.state_hash, sim.state_hash());
 }
 
@@ -338,41 +317,16 @@ fn app_and_headless_frames_hash_identically_for_animation_progress() {
     assert_eq!(app_sim.state_hash(), headless_sim.state_hash());
     let app_entity = app_sim.substrate.entities.get(1).expect("app infantry");
     assert_eq!(app_entity.body_facing.destination(), 0x8000);
+    assert_eq!(app_entity.infantry_sprite_pose(), Some((0, 0)),);
     assert_eq!(
-        app_entity
-            .animation
-            .as_ref()
-            .expect("app animation")
-            .sequence,
-        SequenceKind::Stand,
-    );
-    assert_eq!(
-        app_sim
-            .substrate
-            .entities
-            .get(1)
-            .and_then(|entity| entity.animation.as_ref())
-            .map(|anim| {
-                (
-                    anim.sequence,
-                    anim.frame_index,
-                    anim.elapsed_frames,
-                    anim.finished,
-                )
-            }),
-        headless_sim
-            .substrate
-            .entities
-            .get(1)
-            .and_then(|entity| entity.animation.as_ref())
-            .map(|anim| {
-                (
-                    anim.sequence,
-                    anim.frame_index,
-                    anim.elapsed_frames,
-                    anim.finished,
-                )
-            }),
+        app_sim.substrate.entities.get(1).map(|entity| (
+            entity.mission_leaf.as_infantry().unwrap().doing(),
+            *entity.native_stage()
+        )),
+        headless_sim.substrate.entities.get(1).map(|entity| (
+            entity.mission_leaf.as_infantry().unwrap().doing(),
+            *entity.native_stage()
+        )),
     );
 }
 
@@ -559,32 +513,61 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
     let id = sim
         .spawn_object("E1", "Americans", 4, 4, 0, &rules)
         .expect("spawn infantry");
-    let entity = sim
-        .substrate
+    sim.substrate
         .entities
         .get_mut(id)
-        .expect("spawned infantry");
-    entity.dying = true;
-    entity.animation = Some(Animation {
-        sequence: SequenceKind::Die1,
-        frame_index: 0,
-        elapsed_frames: 0,
-        finished: false,
-    });
+        .expect("spawned infantry")
+        .health
+        .current = 0;
+    sim.begin_infantry_death_sequence(
+        id,
+        super::infantry_terminal::InfantryDeathSequence::Die1,
+        &rules,
+    );
+    let corpse = sim.substrate.entities.get(id).expect("Die1 receiver");
+    assert_eq!(corpse.mission_leaf.as_infantry().unwrap().doing(), 11);
+    assert_eq!(corpse.infantry_sprite_pose(), Some((11, 0)));
+    assert_eq!(
+        [
+            corpse.native_stage().timer().start_frame(),
+            corpse.native_stage().timer().duration(),
+            corpse.native_stage().rate(),
+        ],
+        [0, 1, 1],
+    );
+
+    // The visit at the DoAction restart frame cannot advance its absolute
+    // clock. Original stage_clock_receipt pins this repeated-frame gate.
+    let same_frame = sim.advance_tick(&[], Some(&rules), None, None, 67);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .infantry_sprite_pose(),
+        Some((11, 0)),
+    );
 
     let first = sim.advance_tick(&[], Some(&rules), None, None, 67);
     let after_first = sim
         .substrate
         .entities
         .get(id)
-        .and_then(|entity| entity.animation.as_ref())
         .expect("two-frame death survives its first visit");
-    assert_eq!(after_first.frame_index, 1);
-    assert!(!after_first.finished);
+    assert_eq!(after_first.infantry_sprite_pose(), Some((11, 1)),);
+    assert_eq!(after_first.mission_leaf.as_infantry().unwrap().doing(), 11);
+    assert_eq!(
+        [
+            after_first.native_stage().timer().start_frame(),
+            after_first.native_stage().timer().duration(),
+            after_first.native_stage().rate(),
+        ],
+        [1, 1, 1],
+    );
 
     let second = sim.advance_tick(&[], Some(&rules), None, None, 67);
 
-    assert!(first.frame_committed && second.frame_committed);
+    assert!(same_frame.frame_committed && first.frame_committed && second.frame_committed);
     assert!(
         sim.substrate.entities.get(id).is_none(),
         "the headless adapter must use RuleSet timing and drain the finished death",
@@ -593,7 +576,7 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
 }
 
 #[test]
-fn terminal_master_frame_does_not_advance_living_animation() {
+fn terminal_master_frame_visits_class_sequence_before_exit_without_frame_commit() {
     let (mut sim, rules) = animation_boundary_fixture();
     let owner = insert_house_with_counts(&mut sim, "Americans", 1, 1);
     let exit = CommandEnvelope::new(owner, 1, Command::ExitMatch);
@@ -602,16 +585,22 @@ fn terminal_master_frame_does_not_advance_living_animation() {
         .advance_master_frame(&[exit], Some(&rules), None, 67, TickLane::Ordinary, None)
         .expect("fixture frame must complete");
 
+    // Main_Tick's live Logic walk precedes EventClass's EXIT tail. Original
+    // Infantry520AE0 therefore completes this supplied Idle1 boundary before
+    // termination skips frame commit and the deferred-delete drain. The retired
+    // late presentation clock incorrectly made this class update conditional
+    // on successful frame commit.
     assert!(!result.frame_committed);
+    assert_eq!(result.executed_commands, 1);
     assert_eq!(sim.session.tick, 0);
     assert_eq!(sim.session.binary_frame, 0);
     let entity = sim.substrate.entities.get(1).expect("living infantry");
-    let animation = entity.animation.as_ref().expect("animation");
-    assert_eq!(animation.sequence, SequenceKind::Idle1);
-    assert_eq!(animation.frame_index, 0);
-    assert_eq!(animation.elapsed_frames, 0);
-    assert!(!animation.finished);
-    assert_eq!(entity.body_facing.destination(), 0);
+    assert_eq!(entity.mission_leaf.as_infantry().unwrap().doing(), 0);
+    assert_eq!(entity.infantry_sprite_pose(), Some((0, 0)));
+    assert_eq!(entity.native_stage().rate(), 0);
+    assert_eq!(entity.native_stage().timer().start_frame(), 0);
+    assert_eq!(entity.body_facing.destination(), 0x8000);
+    assert_eq!(result.state_hash, sim.state_hash());
 }
 
 #[test]
@@ -3061,6 +3050,15 @@ fn a_gi_on_guard_acquires_an_enemy_infantryman_and_fires_until_it_dies() {
     );
     install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
     sim.install_resolved_terrain_for_new_map(terrain);
+    // Both full-frame receivers can reach InfantryClass::AI's native fear
+    // owner after taking damage. A live map actor has its real House.
+    for name in ["Americans", "Russians"] {
+        let owner = sim.interner.intern(name);
+        sim.houses.insert(
+            owner,
+            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+        );
+    }
     let gi = sim
         .spawn_object("E1", "Americans", 2, 1, 64, &rules)
         .expect("GI");
@@ -3292,19 +3290,27 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
     }
     install_rectangular_test_playfield(&mut sim, 8, 1);
     sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(8, 1, cells));
+    // Stay inside Range=6 after the native Cell range query includes the
+    // 416-lepton height difference; this test covers the Wave receiver plane.
     let dolphin_id = sim
-        .spawn_object("DLPH", "Americans", 0, 0, 64, &rules)
+        .spawn_object("DLPH", "Americans", 1, 0, 64, &rules)
         .expect("bridge Dolphin");
     let receiver_id = sim
         .spawn_object("TARGET", "Russians", 5, 0, 0, &rules)
         .expect("bridge receiver");
     for id in [dolphin_id, receiver_id] {
         sim.remove_entity_occupancy(id);
-        sim.substrate
-            .entities
-            .get_mut(id)
-            .expect("live entity")
-            .on_bridge = true;
+        let entity = sim.substrate.entities.get_mut(id).expect("live entity");
+        entity.on_bridge = true;
+        // This fixture relocates spawned ground objects onto the deck. The
+        // native Cell-target range query reads the retained Object coordinate,
+        // so update it through the same height owner as ground movement.
+        assert!(crate::sim::movement::ground_pose::commit_ground_height(
+            &mut entity.position,
+            true,
+            sim.resolved_terrain.as_ref(),
+            None,
+        ));
         sim.add_entity_occupancy(id);
     }
     assert!(crate::sim::combat::install_cell_attack_target_for_test(

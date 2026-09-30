@@ -1,113 +1,57 @@
-//! Infantry deploy-fire state machine.
+//! Infantry deployment actions and the separate Unit deployment countdown.
 //!
-//! Models the sim-authoritative phase: Deploying → Deployed → Undeploying → None.
-//! The animation system reads `entity.deploy_state` and reflects the visual
-//! sequence (Deploy / Deployed / DeployedFire / Undeploy). `DeployedFire` is
-//! not a sim phase — it's a visual sub-state of `Deployed` driven by
-//! `attack_target.is_some()` (existing tick_animations auto-transition).
-//!
-//! This countdown is a local approximation. Retail completion is driven by the
-//! infantry sequence frame reaching the sequence length; the sim does not yet
-//! let animation frame completion promote the deploy phase directly.
-//!
-//! ## Dependency rules
-//! - Part of sim/ — depends on sim/entity_store, sim/game_entity.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! Infantry's Doing and shared Techno Stage own its sequence. The completion
+//! receiver applies the independent crush byte and passive-scan timer effects,
+//! including when its requested next action refuses. Unit deployment retains
+//! its existing controller; it does not advance an Infantry clock.
 
+use crate::map::entities::EntityCategory;
+use crate::rules::ruleset::RuleSet;
+use crate::sim::combat::{TargetKind, combat_weapon};
 use crate::sim::entity_store::EntityStore;
+use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::world::{SimSoundEvent, Simulation};
 
-/// Default deploy/undeploy duration in native frames when the per-type art.ini
-/// frame count cannot be resolved from this scope.
-///
-/// Matches the stock Guardian GI deploy frame count and is used only when
-/// per-type art sequence frame counts are unavailable.
-pub(crate) const DEPLOY_DEFAULT_TICKS: u16 = 15;
-
-/// Sim-authoritative deploy phase for an entity.
-///
-/// `None` on `GameEntity.deploy_state` means upright (default). Any `Some(_)`
-/// variant gates the Set_Destination early-return — deployed units silently
-/// ignore Move/AttackMove/Enter/etc. until explicitly undeployed.
+/// Existing Unit deployment control. Infantry uses Doing27..31 instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DeployPhase {
-    /// Deploy animation playing — sim ticks count down to Deployed.
     Deploying { ticks_remaining: u16 },
-    /// Stationary in deployed stance. Visual flips to DeployedFire when
-    /// `attack_target.is_some()` (existing tick_animations auto-transition).
     Deployed,
-    /// Undeploy animation playing — sim ticks count down to None.
     Undeploying { ticks_remaining: u16 },
 }
 
-/// Which deploy-machine phase to resolve frames for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeployPhaseKind {
-    Deploying,
-    Undeploying,
-}
-
-/// Convert SHP animation frames to the native-frame deploy countdown.
-pub(crate) fn frames_to_ticks(frames: u16) -> u16 {
-    frames
-}
-
-/// Resolve the number of sim ticks the deploy or undeploy phase should run.
-///
-/// Reads the per-type art-INI sequence frame count when available; falls
-/// back to `DEPLOY_DEFAULT_TICKS` when no art entry exists or the sequence
-/// doesn't define the requested phase.
-pub(crate) fn compute_anim_ticks(
-    art: Option<&crate::rules::art_data::ArtEntry>,
-    phase: DeployPhaseKind,
-) -> u16 {
-    let frames = art.and_then(|a| match phase {
-        DeployPhaseKind::Deploying => a.deploy_frames,
-        DeployPhaseKind::Undeploying => a.undeploy_frames,
-    });
-    frames.map(frames_to_ticks).unwrap_or(DEPLOY_DEFAULT_TICKS)
-}
-
-/// Advance every entity's `deploy_state` by one tick.
-///
-/// `Deploying { N }` → `Deploying { N-1 }` until N == 1, then promotes to
-/// `Deployed`. `Undeploying { N }` follows the same shape, ending at `None`.
-/// Command dispatch is a Main_Tick tail stage, after this object update. A
-/// freshly-entered phase therefore begins decrementing on the next gameplay
-/// frame.
+/// Advance only the existing Unit deployment countdown. The native Infantry
+/// sequencer520AE0 observes the object's shared Stage during its own AI visit.
 pub fn tick_deploy_state(entities: &mut EntityStore) {
-    let keys = entities.keys_sorted();
-    for id in keys {
-        // Only a deploy in progress changes. A deploy pauses while its object
-        // is warped (the frozen AI).
+    for id in entities.keys_sorted() {
         let Some(entity) = entities.get_mut_if(id, |entity| {
-            matches!(
-                entity.deploy_state,
-                Some(DeployPhase::Deploying { .. } | DeployPhase::Undeploying { .. })
-            ) && !entity.ai_frozen()
+            entity.category == EntityCategory::Unit
+                && matches!(
+                    entity.deploy_state,
+                    Some(DeployPhase::Deploying { .. } | DeployPhase::Undeploying { .. })
+                )
+                && !entity.ai_frozen()
         }) else {
             continue;
         };
         match entity.deploy_state {
-            Some(DeployPhase::Deploying { ticks_remaining }) => {
-                if ticks_remaining > 1 {
-                    entity.deploy_state = Some(DeployPhase::Deploying {
-                        ticks_remaining: ticks_remaining - 1,
-                    });
-                } else {
-                    entity.deploy_state = Some(DeployPhase::Deployed);
-                }
+            Some(DeployPhase::Deploying { ticks_remaining }) if ticks_remaining > 1 => {
+                entity.deploy_state = Some(DeployPhase::Deploying {
+                    ticks_remaining: ticks_remaining - 1,
+                });
             }
-            Some(DeployPhase::Undeploying { ticks_remaining }) => {
-                if ticks_remaining > 1 {
-                    entity.deploy_state = Some(DeployPhase::Undeploying {
-                        ticks_remaining: ticks_remaining - 1,
-                    });
-                } else {
-                    entity.deploy_state = None;
-                    // Undeploy complete: the locomotor is powered back on.
-                    if let Some(loco) = entity.locomotor.as_mut() {
-                        loco.power_on();
-                    }
+            Some(DeployPhase::Deploying { .. }) => {
+                entity.deploy_state = Some(DeployPhase::Deployed);
+            }
+            Some(DeployPhase::Undeploying { ticks_remaining }) if ticks_remaining > 1 => {
+                entity.deploy_state = Some(DeployPhase::Undeploying {
+                    ticks_remaining: ticks_remaining - 1,
+                });
+            }
+            Some(DeployPhase::Undeploying { .. }) => {
+                entity.deploy_state = None;
+                if let Some(locomotor) = entity.locomotor.as_mut() {
+                    locomotor.power_on();
                 }
             }
             Some(DeployPhase::Deployed) | None => {}
@@ -115,78 +59,198 @@ pub fn tick_deploy_state(entities: &mut EntityStore) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn frames_to_ticks_ggi_deploy() {
-        assert_eq!(frames_to_ticks(15), 15);
+impl Simulation {
+    /// Do_Action51D939..51D9CF requests DeploySound/UndeploySound after
+    /// admission and before Doing51D9D2 and the Stage restart. The action owner
+    /// calls this receiver only for an admitted, changed action.
+    pub(crate) fn emit_infantry_deploy_action_sound(
+        &mut self,
+        id: u64,
+        requested: i32,
+        rules: &RuleSet,
+    ) -> Result<(), String> {
+        if !matches!(requested, 27 | 31) {
+            return Ok(());
+        }
+        let actor = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("deployment sound receiver retired")?;
+        let object = self
+            .object_type(actor.type_ref(), rules)
+            .ok_or("deployment sound requires the Infantry type")?;
+        let sound = if requested == 27 {
+            object.deploy_sound.as_deref()
+        } else {
+            object.undeploy_sound.as_deref()
+        };
+        let Some(sound) = sound else {
+            return Ok(());
+        };
+        let (rx, ry) = (actor.position.rx, actor.position.ry);
+        let sound_id = self.interner.intern(sound);
+        self.sound_events.push(if requested == 27 {
+            SimSoundEvent::EntityDeployed {
+                deploy_sound_id: sound_id,
+                rx,
+                ry,
+            }
+        } else {
+            SimSoundEvent::EntityUndeployed {
+                undeploy_sound_id: sound_id,
+                rx,
+                ry,
+            }
+        });
+        Ok(())
     }
 
-    #[test]
-    fn frames_to_ticks_short_undeploy() {
-        assert_eq!(frames_to_ticks(2), 2);
+    /// Infantry vtable+54C = Stop callback521B40. Clear6E4 BEFORE calling
+    /// unforced Do_Action27: a zero-health action may re-enter Stop_Driver.
+    pub(crate) fn infantry_pending_deploy_stop_callback(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+    ) -> Result<(), String> {
+        let actor = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("pending deployment Stop receiver retired")?;
+        if !actor
+            .mission_leaf
+            .as_infantry()
+            .is_some_and(|leaf| leaf.pending_deploy() != 0)
+        {
+            return Ok(());
+        }
+        let rules = rules.ok_or("pending deployment Stop callback requires rules")?;
+        self.substrate
+            .entities
+            .get_mut(id)
+            .expect("same pending deployment receiver")
+            .mission_leaf
+            .take_infantry_pending_deploy();
+        self.infantry_do_action(id, 27, false, rules)?;
+        Ok(())
     }
 
-    #[test]
-    fn frames_to_ticks_zero() {
-        assert_eq!(frames_to_ticks(0), 0);
+    /// Admitted completion arms of DoType_Sequencer520AE0. Its owner tests
+    /// signed Stage/count before entering here. The suffix is independent of
+    /// Do_Action's return:27→28 then2A4/timer70F770;31→0 then2A4 only.
+    /// Original controls: tools/spatial_oracle/infantry_deploy_action.json.
+    pub(crate) fn infantry_deploy_completion(
+        &mut self,
+        id: u64,
+        completed_doing: i32,
+        rules: &RuleSet,
+    ) -> Result<(), String> {
+        let next = match completed_doing {
+            27 => 28,
+            31 => 0,
+            other => return Err(format!("deployment completion received Doing{other}")),
+        };
+        self.infantry_do_action(id, next, true, rules)?;
+        //520B3B/520B9A re-read the type AFTER the concrete action receiver.
+        let actor = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("deployment completion receiver retired")?;
+        let crushable = self
+            .object_type(actor.type_ref(), rules)
+            .ok_or("deployment completion requires the Infantry type")?
+            .deployed_crushable;
+        if !crushable {
+            self.substrate
+                .entities
+                .get_mut(id)
+                .expect("same deployment completion receiver")
+                .set_infantry_deploy_crush_immunity(u8::from(completed_doing == 27));
+        }
+        if completed_doing == 27 {
+            self.shorten_passive_scan_timer(id, false);
+        }
+        Ok(())
     }
 
-    #[test]
-    fn compute_anim_ticks_no_art_falls_back() {
-        assert_eq!(
-            compute_anim_ticks(None, DeployPhaseKind::Deploying),
-            DEPLOY_DEFAULT_TICKS
-        );
-        assert_eq!(
-            compute_anim_ticks(None, DeployPhaseKind::Undeploying),
-            DEPLOY_DEFAULT_TICKS
-        );
-    }
-
-    #[test]
-    fn compute_anim_ticks_uses_art_frames() {
-        let ini = crate::rules::ini_parser::IniFile::from_str(
-            "[GGI]\n\
-             Sequence=GuardianGISequence\n\
-             \n\
-             [GuardianGISequence]\n\
-             Deploy=300,15,0\n\
-             Undeploy=180,2,2\n",
-        );
-        let reg = crate::rules::art_data::ArtRegistry::from_ini(&ini);
-        let entry = reg.get("GGI").expect("entry");
-        assert_eq!(
-            compute_anim_ticks(Some(entry), DeployPhaseKind::Deploying),
-            15
-        );
-        assert_eq!(
-            compute_anim_ticks(Some(entry), DeployPhaseKind::Undeploying),
-            2
-        );
-    }
-
-    #[test]
-    fn compute_anim_ticks_missing_phase_falls_back() {
-        let ini = crate::rules::ini_parser::IniFile::from_str(
-            "[E1]\n\
-             Sequence=GISequence\n\
-             \n\
-             [GISequence]\n\
-             Deploy=100,8,0\n",
-        );
-        let reg = crate::rules::art_data::ArtRegistry::from_ini(&ini);
-        let entry = reg.get("E1").expect("entry");
-        // Deploy=8 frames; Undeploy missing -> fallback.
-        assert_eq!(
-            compute_anim_ticks(Some(entry), DeployPhaseKind::Deploying),
-            8
-        );
-        assert_eq!(
-            compute_anim_ticks(Some(entry), DeployPhaseKind::Undeploying),
-            DEPLOY_DEFAULT_TICKS
-        );
+    /// Original Infantry Mission_Unload51F6E0. Action admission does not gate
+    /// the subsequent weapon, direct Mission::Assign(Guard), or NULL class
+    /// destination effects. FootUnload4DA2B0→Mission5B2EF0 returns450.
+    pub(crate) fn infantry_mission_unload(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+    ) -> Result<i32, String> {
+        let actor = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("Infantry Unload receiver retired")?;
+        let object = self
+            .object_type(actor.type_ref(), rules)
+            .ok_or("Infantry Unload requires the type")?;
+        let doing = actor
+            .mission_leaf
+            .as_infantry()
+            .ok_or("Infantry Unload requires Infantry Doing")?
+            .doing();
+        if !object.deployer {
+            return Ok(450);
+        }
+        let mut delay = -1;
+        if (27..=30).contains(&doing) {
+            if object.undeploy_delay <= -1 {
+                self.infantry_do_action(id, 31, true, rules)?;
+            }
+        } else {
+            self.infantry_do_action(id, 27, true, rules)?;
+            //70E120 uses the SprayAttack slot70DD70, not GetCurrentWeapon
+            //70E1A0. The existing GetWeapon owner resolves the live tier.
+            let actor = self.substrate.entities.get(id).expect("same Unload actor");
+            let slot = if object.spray_attack { 0 } else { 1 };
+            let area_fire = combat_weapon::weapon_for_index(object, actor.veterancy(), slot)
+                .and_then(|(weapon, _)| rules.weapon(weapon))
+                .is_some_and(|weapon| weapon.area_fire);
+            if area_fire {
+                //5F3E50→410A40 compares native literal82557C "DESO".
+                if object.id.eq_ignore_ascii_case("DESO") {
+                    delay = rules
+                        .animation_sequence(&object.id)
+                        .and_then(|set| set.infantry_action(27))
+                        .ok_or("DESO Unload requires its native Deploy sequence record")?
+                        .frames_per_facing
+                        .wrapping_add(1);
+                } else {
+                    let coord = self.foot_navigation_coordinate(id)?;
+                    let requested = ((coord.x / 256) as i16, (coord.y / 256) as i16);
+                    let terrain = self
+                        .resolved_terrain
+                        .as_ref()
+                        .ok_or("AreaFire Unload requires map cells")?;
+                    let cell = terrain.native_cell_identity(requested);
+                    let at = terrain.native_cell_coord(cell);
+                    self.assign_target_represented(
+                        id,
+                        Some(TargetKind::Cell(at.0 as u16, at.1 as u16)),
+                        Some(rules),
+                    )
+                    .map_err(|cause| format!("AreaFire Unload target: {cause}"))?;
+                }
+            }
+            if object.undeploy_delay > -1 {
+                delay = object.undeploy_delay;
+            }
+        }
+        self.mission_assign_exact(
+            id,
+            MissionId::from_known(MissionType::Guard),
+            self.session.binary_frame,
+        )
+        .map_err(|cause| format!("Infantry Unload Guard: {cause}"))?;
+        self.assign_destination_represented(id, None, Some(rules), None)
+            .map_err(|cause| format!("Infantry Unload destination: {cause}"))?;
+        Ok(if delay > -1 { delay } else { 450 })
     }
 }

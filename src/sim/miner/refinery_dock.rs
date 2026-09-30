@@ -236,15 +236,8 @@ pub(crate) fn mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> 
         .as_ref()
         .is_some_and(|miner| miner.unload_active);
     if !unloading {
-        if let Some(miner) = sim
-            .substrate
-            .entities
-            .get_mut(id)
-            .and_then(|entity| entity.miner.as_mut())
-        {
-            miner.stage_value = 0;
-            miner.stage_rate = 1;
-            miner.stage_timer.arm(now, 1);
+        if let Some(entity) = sim.substrate.entities.get_mut(id) {
+            entity.restart_native_stage(0, now as i32, 1);
         }
         set_unload_latch(sim, rules, id, true);
         if let Some(building) = unload_building(sim, id) {
@@ -280,8 +273,7 @@ fn unload_dumping(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
         .substrate
         .entities
         .get(id)
-        .and_then(|entity| entity.miner.as_ref())
-        .map_or(0, |miner| miner.stage_value);
+        .map_or(0, |entity| entity.native_stage().value());
     // 0x0073E355..0x0073E374: `HarvesterDumpRate × 900 <= Value`. The
     // integer stage crosses at ceil(rate × 900) (`GeneralRules`).
     if stage >= i32::from(rules.general.harvester_dump_frames) {
@@ -294,13 +286,8 @@ fn unload_dumping(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
             .and_then(|miner| drain_first_slot(&mut miner.cargo));
         if let Some((value, bales)) = drained {
             pay_refinery_owner(sim, rules, building, value, bales);
-            if let Some(miner) = sim
-                .substrate
-                .entities
-                .get_mut(id)
-                .and_then(|entity| entity.miner.as_mut())
-            {
-                miner.stage_value = 0;
+            if let Some(entity) = sim.substrate.entities.get_mut(id) {
+                entity.set_native_stage_value(0);
             }
             sim.bale_events.push(BaleDepositEvent {
                 building_id: building,
@@ -366,27 +353,6 @@ fn unload_finishing(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
         }
     }
     epilogue(sim, rules, id)
-}
-
-/// The Unit+0xF8 StageClass tick of `TechnoClass::AI` (`0x006FABC4..
-/// 0x006FAC31`), after the mission dispatch: an expired timer with a nonzero
-/// rate adds the step (1) and restarts at the rate. Mission_Harvest state 1
-/// counts its cut gate and Mission_Unload its dumps on it.
-pub(crate) fn tick_stage(sim: &mut Simulation, id: u64) {
-    let now = sim.session.binary_frame;
-    let Some(miner) = sim
-        .substrate
-        .entities
-        .get_mut(id)
-        .and_then(|entity| entity.miner.as_mut())
-    else {
-        return;
-    };
-    if miner.stage_rate == 0 || !miner.stage_timer.due(now) {
-        return;
-    }
-    miner.stage_value = miner.stage_value.saturating_add(1);
-    miner.stage_timer.arm(now, miner.stage_rate);
 }
 
 /// Unit `Per_Cell_Process(2)` Enter arm at a Drive track end

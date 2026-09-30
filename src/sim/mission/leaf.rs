@@ -33,6 +33,11 @@ pub(crate) struct UnitMissionLeaf {
 pub(crate) struct InfantryMissionLeaf {
     firing_sequence_latch: u8,
     doing: i32,
+    /// Infantry+6E4: ctor517ABC clears it; Guard52167C and the
+    /// approach/deploy request producers set it after locomotor Stop.
+    /// Stop callback521B40 consumes it before requesting unforced Deploy27.
+    #[serde(default)]
+    pending_deploy: u8,
 }
 
 /// Aircraft policy and readiness bytes.
@@ -198,6 +203,22 @@ impl MissionLeafState {
         }
     }
 
+    /// Supplied native fixture state. The live undeployed AI Guard producer
+    /// remains recorded at mission_handlers; the Stop consumer is connected.
+    #[cfg(test)]
+    pub(crate) fn set_infantry_pending_deploy(&mut self, raw: u8) {
+        self.expect_infantry_mut().pending_deploy = raw;
+    }
+
+    /// Native521B52 clears the byte before the class Do_Action call, even
+    /// when that call refuses. A recursive Stop observes the consumed byte.
+    pub(crate) fn take_infantry_pending_deploy(&mut self) -> bool {
+        let leaf = self.expect_infantry_mut();
+        let pending = leaf.pending_deploy != 0;
+        leaf.pending_deploy = 0;
+        pending
+    }
+
     #[track_caller]
     fn expect_aircraft_mut(&mut self) -> &mut AircraftMissionLeaf {
         match self {
@@ -235,6 +256,7 @@ impl MissionLeafState {
         Self::Infantry(InfantryMissionLeaf {
             firing_sequence_latch,
             doing,
+            pending_deploy: 0,
         })
     }
 
@@ -291,6 +313,7 @@ impl InfantryMissionLeaf {
         Self {
             firing_sequence_latch: 0,
             doing: -1,
+            pending_deploy: 0,
         }
     }
 
@@ -300,6 +323,10 @@ impl InfantryMissionLeaf {
 
     pub(crate) const fn doing(&self) -> i32 {
         self.doing
+    }
+
+    pub(crate) const fn pending_deploy(&self) -> u8 {
+        self.pending_deploy
     }
 }
 

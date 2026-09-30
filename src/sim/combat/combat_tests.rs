@@ -9,7 +9,6 @@ use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::animation::{Animation, SequenceKind};
 use crate::sim::components::Health;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
@@ -82,7 +81,6 @@ fn sonic_active_wave_gate_precedes_target_resolution_and_all_shot_work() {
     let snap = build_attacker_snapshot(
         entities.get(1).expect("Dolphin"),
         TargetKind::Entity(999),
-        None,
         None,
     );
     let mut rng = SimRng::new(0x50_4e_49_43);
@@ -206,11 +204,19 @@ fn infantry_fire_frame_rules() -> RuleSet {
 [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n",
     );
     let mut rules = RuleSet::from_ini(&rules_ini).expect("infantry rules should parse");
+    // Supplied reader-built records make native action admission explicit.
+    // SecondaryFire/SecondaryProne are authored controls, not stock GI ART.
     let art_ini = IniFile::from_str(
-        "[GI]\nCrawls=yes\nFireUp=2\nFireProne=3\nSecondaryFire=4\nSecondaryProne=5\n",
+        "[GI]\nSequence=GISequence\nCrawls=yes\nFireUp=2\nFireProne=3\nSecondaryFire=4\nSecondaryProne=5\n\
+         [GISequence]\nReady=0,1,1\nGuard=0,1,1\nProne=86,1,6\nWalk=8,6,6\nFireUp=164,6,6\n\
+         FireProne=212,6,6\nDie1=56,15,0\nDeployed=292,1,0\nDeployedFire=292,6,0\n\
+         SecondaryFire=164,6,6\nSecondaryProne=212,6,6\n",
     );
     let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
     rules.install_art_data(art);
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini),
+    );
     rules
 }
 
@@ -222,7 +228,7 @@ fn guardian_gi_rules() -> RuleSet {
 [AircraftTypes]\n\n\
 [BuildingTypes]\n\n\
 [General]\nMissileROTVar=.25\n\n\
-[GGI]\nStrength=100\nArmor=none\nSpeed=4\nPrimary=M60\nSecondary=MissileLauncher\nDeployFire=yes\n\n\
+[GGI]\nStrength=100\nArmor=none\nSpeed=4\nImage=GGI\nPrimary=M60\nSecondary=MissileLauncher\nDeployFire=yes\n\n\
 [E2]\nStrength=125\nArmor=none\nSpeed=4\n\n\
 [ROCK]\nStrength=125\nArmor=none\nSpeed=8\nConsideredAircraft=yes\n\n\
 [HTNK]\nStrength=400\nArmor=heavy\nSpeed=5\n\n\
@@ -232,7 +238,18 @@ fn guardian_gi_rules() -> RuleSet {
 [SA]\nVerses=100%,80%,80%,50%,25%,25%,75%,50%,25%,100%,100%\n\n\
 [GUARDWH]\nVerses=20%,20%,20%,100%,50%,100%,10%,10%,10%,100%,100%\n",
     );
-    RuleSet::from_ini(&ini).expect("guardian GI rules should parse")
+    let mut rules = RuleSet::from_ini(&ini).expect("guardian GI rules should parse");
+    // Reader-built Deployed/DeployedFire records admit the real Do_Action.
+    // The discharge keys are deliberately absent: their native defaults are 0.
+    let art_ini = IniFile::from_str(
+        "[GGI]\nSequence=GGISequence\n\
+         [GGISequence]\nReady=0,1,1\nGuard=0,1,1\nDeployed=292,1,0\nDeployedFire=292,6,0\n",
+    );
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini),
+    );
+    rules
 }
 
 /// Point every fixture attacker at its own target.
@@ -745,7 +762,7 @@ fn make_infantry_entity(id: u64, type_ref: &str, rx: u16, ry: u16, hp: i32) -> G
     e.mission_leaf =
         crate::sim::mission::leaf::MissionLeafState::for_entity_category(EntityCategory::Infantry);
     e.is_voxel = false;
-    e.animation = Some(Animation::new(SequenceKind::Stand));
+    e.animation = None;
     e.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
     e
 }
@@ -959,7 +976,7 @@ fn lifecycle_authority_combat_leaves_transport_cargo_for_carrier_uninit() {
 
 #[test]
 fn lifecycle_authority_animated_combat_handoff_changes_only_dying_and_sequence() {
-    let rules = test_rules();
+    let rules = infantry_fire_frame_rules();
     let mut store = EntityStore::new();
 
     let mut dead = make_infantry_entity(1, "E1", 5, 5, 0);
@@ -984,10 +1001,9 @@ fn lifecycle_authority_animated_combat_handoff_changes_only_dying_and_sequence()
     let dead = store.get(1).unwrap();
     assert_eq!(dead.health.current, 0);
     assert!(dead.dying);
-    assert_eq!(
-        dead.animation.as_ref().unwrap().sequence,
-        SequenceKind::Die1
-    );
+    assert_eq!(dead.mission_leaf.as_infantry().unwrap().doing(), 11);
+    assert_eq!(dead.native_stage().value(), 0);
+    assert_eq!(dead.infantry_sprite_pose(), Some((11, 0)));
     assert!(dead.selected);
     assert!(dead.attack_target.is_some());
     assert!(dead.movement_target.is_some());
@@ -1060,14 +1076,9 @@ Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
     RuleSet::from_ini(&ini).expect("considered-aircraft combat rules should parse")
 }
 
-fn set_anim_frame(store: &mut EntityStore, id: u64, frame: u16) {
-    store
-        .get_mut(id)
-        .unwrap()
-        .animation
-        .as_mut()
-        .unwrap()
-        .frame_index = frame;
+/// A receiver-only visit does not advance the AI's absolute Stage clock.
+fn set_infantry_stage(store: &mut EntityStore, id: u64, stage: i32) {
+    store.get_mut(id).unwrap().set_native_stage_value(stage);
 }
 
 #[test]
@@ -5128,8 +5139,7 @@ fn deployed_guardian_gi_vs_rhino_at_six_cells_uses_missilelauncher() {
     let rules = guardian_gi_rules();
     let mut store = EntityStore::new();
     let mut ggi = make_infantry_entity(1, "GGI", 0, 0, 100);
-    ggi.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
-    ggi.animation = Some(Animation::new(SequenceKind::Deployed));
+    ggi.mission_leaf.set_infantry_doing_verified(28).unwrap();
     store.insert(ggi);
     store.insert(make_entity(2, "HTNK", 6, 0, 400));
     let mut interner = test_interner();
@@ -5160,8 +5170,7 @@ fn deployed_guardian_gi_vs_rocketeer_uses_missilelauncher() {
     let rules = guardian_gi_rules();
     let mut store = EntityStore::new();
     let mut ggi = make_infantry_entity(1, "GGI", 0, 0, 100);
-    ggi.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
-    ggi.animation = Some(Animation::new(SequenceKind::Deployed));
+    ggi.mission_leaf.set_infantry_doing_verified(28).unwrap();
     store.insert(ggi);
     store.insert(make_infantry_entity(2, "ROCK", 6, 0, 125));
     let mut interner = test_interner();
@@ -5241,20 +5250,13 @@ fn infantry_standing_fire_waits_for_fire_frame() {
 
     assert_eq!(store.get(2).unwrap().health.current, 125);
     assert!(result.consequences.fire_events().is_empty());
-    let attack = store.get(1).unwrap().attack_target.as_ref().unwrap();
-    assert_eq!(
-        attack.pending_infantry_fire.unwrap(),
-        PendingInfantryFire {
-            sequence: SequenceKind::Attack,
-            fire_frame: 2
-        }
-    );
-    assert_eq!(
-        store.get(1).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::Attack
-    );
+    let attacker = store.get(1).unwrap();
+    assert_eq!(attacker.mission_leaf.foot_firing_sequence_latch(), 1);
+    assert_eq!(attacker.mission_leaf.as_infantry().unwrap().doing(), 4);
+    assert_eq!(attacker.native_stage().value(), 0);
+    assert_eq!(attacker.infantry_sprite_pose(), Some((4, 0)));
 
-    set_anim_frame(&mut store, 1, 1);
+    set_infantry_stage(&mut store, 1, 1);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5268,7 +5270,7 @@ fn infantry_standing_fire_waits_for_fire_frame() {
     assert_eq!(store.get(2).unwrap().health.current, 125);
     assert!(result.consequences.fire_events().is_empty());
 
-    set_anim_frame(&mut store, 1, 2);
+    set_infantry_stage(&mut store, 1, 2);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5289,15 +5291,13 @@ fn infantry_standing_fire_waits_for_fire_frame() {
         Some("GIAttack")
     );
     assert!(!ev.occupied_building);
-    assert!(
+    assert_eq!(
         store
             .get(1)
             .unwrap()
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_none()
+            .mission_leaf
+            .foot_firing_sequence_latch(),
+        0
     );
 }
 
@@ -5307,7 +5307,10 @@ fn prone_infantry_uses_prone_fire_sequence_and_frame() {
     let mut store = EntityStore::new();
     let mut attacker = make_infantry_entity(1, "E1", 5, 5, 125);
     attacker.infantry.as_mut().unwrap().is_prone = true;
-    attacker.animation = Some(Animation::new(SequenceKind::Prone));
+    attacker
+        .mission_leaf
+        .set_infantry_doing_verified(2)
+        .unwrap();
     store.insert(attacker);
     store.insert(make_infantry_entity(2, "E2", 8, 5, 125));
     let mut interner = test_interner();
@@ -5324,18 +5327,15 @@ fn prone_infantry_uses_prone_fire_sequence_and_frame() {
         0,
         &mut main_rng,
     );
-    let attack = store.get(1).unwrap().attack_target.as_ref().unwrap();
     assert!(result.consequences.fire_events().is_empty());
-    assert_eq!(
-        attack.pending_infantry_fire.unwrap(),
-        PendingInfantryFire {
-            sequence: SequenceKind::FireProne,
-            fire_frame: 3
-        }
-    );
+    let attacker = store.get(1).unwrap();
+    assert_eq!(attacker.mission_leaf.foot_firing_sequence_latch(), 1);
+    assert_eq!(attacker.mission_leaf.as_infantry().unwrap().doing(), 8);
+    assert_eq!(attacker.infantry_sprite_pose(), Some((8, 0)));
+    assert!(attacker.infantry.as_ref().unwrap().is_prone);
     assert_eq!(store.get(2).unwrap().health.current, 125);
 
-    set_anim_frame(&mut store, 1, 2);
+    set_infantry_stage(&mut store, 1, 2);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5349,7 +5349,7 @@ fn prone_infantry_uses_prone_fire_sequence_and_frame() {
     assert_eq!(store.get(2).unwrap().health.current, 125);
     assert!(result.consequences.fire_events().is_empty());
 
-    set_anim_frame(&mut store, 1, 3);
+    set_infantry_stage(&mut store, 1, 3);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5362,6 +5362,10 @@ fn prone_infantry_uses_prone_fire_sequence_and_frame() {
     );
     assert_eq!(store.get(2).unwrap().health.current, 100);
     assert_eq!(result.consequences.fire_events().len(), 1);
+    let attacker = store.get(1).unwrap();
+    assert_eq!(attacker.mission_leaf.foot_firing_sequence_latch(), 0);
+    assert_eq!(attacker.infantry_sprite_pose(), Some((8, 3)));
+    assert!(attacker.infantry.as_ref().unwrap().is_prone);
     let ev = &result.consequences.fire_events()[0];
     assert_eq!(interner.resolve(ev.weapon_id), "M60");
     assert_eq!(ev.weapon_slot, WeaponSlot::Primary);
@@ -5376,8 +5380,10 @@ fn deployed_gi_uses_deployed_fire_visual_with_deploy_fire_weapon() {
     let rules = infantry_fire_frame_rules();
     let mut store = EntityStore::new();
     let mut attacker = make_infantry_entity(1, "E1", 5, 5, 125);
-    attacker.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
-    attacker.animation = Some(Animation::new(SequenceKind::Deployed));
+    attacker
+        .mission_leaf
+        .set_infantry_doing_verified(28)
+        .unwrap();
     store.insert(attacker);
     store.insert(make_entity(2, "MTNK", 8, 5, 300));
     let mut interner = test_interner();
@@ -5394,18 +5400,38 @@ fn deployed_gi_uses_deployed_fire_visual_with_deploy_fire_weapon() {
         0,
         &mut main_rng,
     );
-    let attack = store.get(1).unwrap().attack_target.as_ref().unwrap();
     assert!(result.consequences.fire_events().is_empty());
-    assert_eq!(
-        attack.pending_infantry_fire.unwrap(),
-        PendingInfantryFire {
-            sequence: SequenceKind::DeployedFire,
-            fire_frame: 5
-        }
-    );
+    let attacker = store.get(1).unwrap();
+    assert_eq!(attacker.mission_leaf.foot_firing_sequence_latch(), 1);
+    assert_eq!(attacker.mission_leaf.as_infantry().unwrap().doing(), 29);
+    assert_eq!(attacker.infantry_sprite_pose(), Some((29, 0)));
+    assert!(!attacker.infantry.as_ref().unwrap().is_prone);
     assert_eq!(store.get(2).unwrap().health.current, 300);
 
-    set_anim_frame(&mut store, 1, 5);
+    // This supplied GI has SecondaryFire=4 and a standing secondary record.
+    set_infantry_stage(&mut store, 1, 3);
+    let result = tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        1,
+        100,
+        0,
+        &mut main_rng,
+    );
+    assert!(result.consequences.fire_events().is_empty());
+    assert_eq!(store.get(2).unwrap().health.current, 300);
+    assert_eq!(
+        store
+            .get(1)
+            .unwrap()
+            .mission_leaf
+            .foot_firing_sequence_latch(),
+        1
+    );
+
+    set_infantry_stage(&mut store, 1, 4);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5422,6 +5448,9 @@ fn deployed_gi_uses_deployed_fire_visual_with_deploy_fire_weapon() {
         "deployed-fire should use the DeployFireWeapon secondary slot"
     );
     assert_eq!(result.consequences.fire_events().len(), 1);
+    let attacker = store.get(1).unwrap();
+    assert_eq!(attacker.mission_leaf.foot_firing_sequence_latch(), 0);
+    assert_eq!(attacker.infantry_sprite_pose(), Some((29, 4)));
     let ev = &result.consequences.fire_events()[0];
     assert_eq!(interner.resolve(ev.weapon_id), "Para");
     assert_eq!(ev.weapon_slot, WeaponSlot::Secondary);
@@ -5519,10 +5548,19 @@ fn delayed_infantry_fire_cancels_when_target_dies_before_fire_frame() {
         0,
         &mut main_rng,
     );
+    assert!(result.consequences.fire_events().is_empty());
+    assert_eq!(
+        store
+            .get(1)
+            .unwrap()
+            .mission_leaf
+            .foot_firing_sequence_latch(),
+        1
+    );
     store.get_mut(2).unwrap().health.current = 0;
-    set_anim_frame(&mut store, 1, 2);
+    set_infantry_stage(&mut store, 1, 2);
 
-    tick_combat(
+    let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
         &rules,
@@ -5533,6 +5571,14 @@ fn delayed_infantry_fire_cancels_when_target_dies_before_fire_frame() {
         &mut main_rng,
     );
 
+    assert_eq!(
+        store
+            .get(1)
+            .unwrap()
+            .mission_leaf
+            .foot_firing_sequence_latch(),
+        0
+    );
     assert_eq!(store.get(2).unwrap().health.current, 0);
     assert!(result.consequences.fire_events().is_empty());
     assert!(
@@ -8017,7 +8063,14 @@ fn buildings_take_no_rad_damage() {
 /// closed and it does not fire again.
 #[test]
 fn deployed_desolator_self_irradiates_and_refires_below_third() {
-    let rules = radiation_rules();
+    let mut rules = radiation_rules();
+    let art = IniFile::from_str(
+        "[DESO]\nSequence=DesoFixture\n[DesoFixture]\nDeployed=100,1,0\nDeployedFire=100,3,0\n",
+    );
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
     let mut sim = crate::sim::world::Simulation::new();
     // Infantry AreaFire compares actual Cell identities. Supply the map that
     // owns both the firer's ObjectGetCell result and its self-target Cell.
@@ -8035,25 +8088,48 @@ fn deployed_desolator_self_irradiates_and_refires_below_third() {
     let deso = sim
         .spawn_object("DESO", "Americans", 10, 10, 0, &rules)
         .expect("desolator spawns");
-    sim.substrate.entities.get_mut(deso).unwrap().deploy_state =
-        Some(crate::sim::deploy::DeployPhase::Deployed);
+    sim.substrate
+        .entities
+        .get_mut(deso)
+        .unwrap()
+        .mission_leaf
+        .set_infantry_doing_verified(28)
+        .unwrap();
+    // Supply each due Guard dispatch directly, as this phase-level fixture
+    // did before. FireAt now belongs to that native mission, not a late
+    // global target synthesizer. Its new Bullet takes the ordinary tail.
+    let guard_visit = |sim: &mut crate::sim::world::Simulation, frame| {
+        sim.session.binary_frame = frame;
+        let mission = &mut sim.substrate.entities.get_mut(deso).unwrap().mission;
+        mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_known(MissionType::Guard),
+            suspended: mission.suspended(),
+            queued: MissionId::NONE,
+            movement_bypass_latch: mission.movement_bypass_latch(),
+            handler_state: mission.handler_state(),
+            mission_start_frame: mission.mission_start_frame(),
+            ai_counter: mission.ai_counter(),
+            dispatch_timer: MissionDispatchTimer::at_frame(frame),
+        });
+        sim.fire_events.clear();
+        let first_tail = sim.substrate.next_stable_object_id;
+        sim.object_ai_visit_one(
+            deso,
+            Some(&rules),
+            crate::sim::world::ObjectAiCtx::default(),
+        );
+        sim.visit_combat_tail(first_tail, &rules, None);
+        sim.fire_events.clone()
+    };
 
     // Tick 1: gate open (no site) → self-targeted deploy-weapon shot.
-    let result = rad_combat_tick(&mut sim, &rules, 1);
+    let events = guard_visit(&mut sim, 1);
+    assert_eq!(events.len(), 1, "deployed self-irradiate fires");
     assert_eq!(
-        result.consequences.fire_events().len(),
-        1,
-        "deployed self-irradiate fires"
-    );
-    assert_eq!(
-        sim.interner
-            .resolve(result.consequences.fire_events()[0].weapon_id),
+        sim.interner.resolve(events[0].weapon_id),
         "RadEruptionWeapon"
     );
-    assert_eq!(
-        result.consequences.fire_events()[0].target,
-        TargetKind::Cell(10, 10)
-    );
+    assert_eq!(events[0].target, TargetKind::Cell(10, 10));
     let site = sim
         .radiation
         .site_at((10, 10))
@@ -8063,12 +8139,8 @@ fn deployed_desolator_self_irradiates_and_refires_below_third() {
 
     // Tick 2: gate closed (effective 500 ≥ 500/3) → no fire, self-target
     // cleared.
-    let result = rad_combat_tick(&mut sim, &rules, 2);
-    assert_eq!(
-        result.consequences.fire_events().len(),
-        0,
-        "gate closed after re-arm"
-    );
+    let events = guard_visit(&mut sim, 2);
+    assert_eq!(events.len(), 0, "gate closed after re-arm");
     assert!(
         sim.substrate
             .entities
@@ -8088,12 +8160,8 @@ fn deployed_desolator_self_irradiates_and_refires_below_third() {
     assert!(crate::sim::radiation::RadiationState::current_site_level(site) < 500 / 3);
 
     // Gate reopens → fires again and merges the site back up.
-    let result = rad_combat_tick(&mut sim, &rules, 341);
-    assert_eq!(
-        result.consequences.fire_events().len(),
-        1,
-        "gate reopens below one third"
-    );
+    let events = guard_visit(&mut sim, 341);
+    assert_eq!(events.len(), 1, "gate reopens below one third");
     let site = sim.radiation.site_at((10, 10)).expect("merged site");
     assert!(site.level > 500, "re-detonation merged effective + added");
 }

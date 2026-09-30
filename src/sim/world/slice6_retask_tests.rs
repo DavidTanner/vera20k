@@ -193,9 +193,13 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // parent and this change, each with those five inputs removed from the
 // hash, printed the same value, with the RNG pins above unchanged (the
 // probe patch was not committed). Old value: the commit that moved it.
-// The combined merge retains the owned pre-merge pin until its causal replay
-// comparison; the independent main pin cannot certify this combined state.
-const SLICE6_BASELINE_HASH: u64 = 0xC4FE_1B3B_28C0_1D17;
+// Snapshot264: private native Stage and Infantry Doing/sequence timing.
+// Complete before/candidate/final receipts in foot_bridge_layer.replay.json
+// (techno_stage264_followup) attribute every changed actor field and retain
+// all819 frame rows, all three RNG states and ordered raw draw callers.
+// Incoming main preserves candidate state; its source-line changes remain
+// recorded. This Rust replay pin does not establish native whole-world parity.
+const SLICE6_BASELINE_HASH: u64 = 0x77B7FEF300222AB2;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

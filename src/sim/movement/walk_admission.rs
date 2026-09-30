@@ -210,9 +210,12 @@ impl Simulation {
                     .get_mut(id)
                     .ok_or("retired Walk stop owner")?;
                 actor.foot_speed.applied_fraction = SIM_ZERO;
-                if let Some(loco) = actor.locomotor.as_mut() {
-                    loco.stop_walk();
-                }
+                self.walk_stop_moving(id, Some(rules))?;
+                let actor = self
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .ok_or("Walk stop owner retired during its callback")?;
                 //75BB84/75BB90: both override/Stop exits clear the byte.
                 actor.navigation.path_runtime.clear_scold_latch();
                 super::retain_committed_movement(actor);
@@ -437,9 +440,14 @@ impl Simulation {
                 .ok_or("retired Walk code6 owner")?;
             if let Some(loco) = actor.locomotor.as_mut() {
                 loco.set_step_head(None);
-                loco.stop_walk();
             }
-            actor.foot_speed.applied_fraction = SIM_ZERO;
+            self.walk_stop_moving(id, Some(rules))?;
+            self.substrate
+                .entities
+                .get_mut(id)
+                .ok_or("Walk code6 owner retired during its callback")?
+                .foot_speed
+                .applied_fraction = SIM_ZERO;
             self.set_walk_class_null_destination(id, rules);
             self.clear_walk_admission_path(id)?;
             if let Some(actor) = self.substrate.entities.get_mut(id) {

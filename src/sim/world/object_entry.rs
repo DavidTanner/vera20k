@@ -655,7 +655,6 @@ mod tests {
         sim.substrate.entities.get_mut(70).unwrap().attack_target =
             Some(crate::sim::combat::AttackTarget {
                 target: crate::sim::combat::TargetKind::Entity(71),
-                pending_infantry_fire: None,
             });
         // Raw blocker lookup stamps(60,60), then first Building+48 stamps
         //(62,62). Attack-target identity is deliberately evaluated last.
@@ -770,7 +769,6 @@ mod tests {
             .unwrap()
             .attack_target = Some(crate::sim::combat::AttackTarget {
             target: crate::sim::combat::TargetKind::Entity(hut),
-            pending_infantry_fire: None,
         });
         sim.resolved_terrain
             .as_ref()

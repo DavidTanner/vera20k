@@ -65,8 +65,15 @@ impl Simulation {
         if clear_head {
             actor.navigation.path_replay.clear_live_head();
         }
-        super::navcom::set_destination_internal_null(actor);
-        super::DestinationTiming::from_rules(self.session.binary_frame, rules).accept(actor);
+        super::navcom::publish_null_nav_com(actor);
+        self.walk_stop_moving(id, rules)
+            .unwrap_or_else(|cause| panic!("Walk NULL destination {id}: {cause}"));
+        super::DestinationTiming::from_rules(self.session.binary_frame, rules).accept(
+            self.substrate
+                .entities
+                .get_mut(id)
+                .expect("same setter actor"),
+        );
         true
     }
 
@@ -113,9 +120,9 @@ impl Simulation {
                 actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
                 if let Some(loco) = actor.locomotor.as_mut() {
                     loco.set_step_head(None);
-                    loco.stop_walk();
                 }
             }
+            self.walk_stop_moving(id, rules)?;
         } else if let Some(destination) = destination
             && let Some(target) = self
                 .substrate

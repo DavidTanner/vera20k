@@ -333,10 +333,10 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
         other => panic!("mission {other}"),
     };
     if input["mission"] == "construction" || input["queue"] == "construction" {
-        building.building_up = Some(BuildingUp::completing_in_ticks(
-            2,
+        building.install_building_up(
+            BuildingUp::completing_in_ticks(2, sim.session.binary_frame as i32),
             sim.session.binary_frame as i32,
-        ));
+        );
     }
     building.mission.apply_test_fixture(MissionTestFixture {
         current: mission("mission", "guard"),
@@ -494,13 +494,19 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
         let owner = sim.interner.get("AI").unwrap();
         let control: [i32; 3] = serde_json::from_value(input["control"].clone()).unwrap();
         let start = input["frame"].as_i64().unwrap() as i32;
-        sim.substrate.entities.get_mut(1).unwrap().building_up =
-            Some(match input["route"].as_str().unwrap() {
-                "deploy" => BuildingUp::deployed(control, start),
-                "computer" => BuildingUp::placed_by_computer(control, start),
-                "player" => BuildingUp::placed_by_player(control, start),
-                other => panic!("route {other}"),
-            });
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .install_building_up(
+                match input["route"].as_str().unwrap() {
+                    "deploy" => BuildingUp::deployed(control, start),
+                    "computer" => BuildingUp::placed_by_computer(control, start),
+                    "player" => BuildingUp::placed_by_player(control, start),
+                    other => panic!("route {other}"),
+                },
+                start,
+            );
         for frame in row["frames"].as_array().unwrap() {
             let now = frame["frame"].as_u64().unwrap();
             sim.session.binary_frame = now as u32;

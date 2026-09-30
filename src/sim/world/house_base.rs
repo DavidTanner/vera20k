@@ -428,9 +428,9 @@ impl Simulation {
                 };
                 buildings.push(ProjectionBuilding {
                     cost: self.cost_of(owner, object, rules),
-                    coord: crate::sim::movement::ground_pose::object_center_coord_with_foundation(
+                    coord: crate::sim::movement::ground_pose::object_get_coords(
                         entity,
-                        &entity.foundation,
+                        self.resolved_terrain.as_ref(),
                     ),
                 });
             }

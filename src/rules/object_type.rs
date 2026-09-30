@@ -846,14 +846,18 @@ pub struct ObjectType {
     pub fraidycat: bool,
     /// `Crawls=yes` from art.ini. Controls the prone movement speed branch.
     pub crawls: bool,
-    /// Primary standing infantry projectile/damage frame from art.ini `FireUp=`.
-    pub fire_up_frame: u8,
-    /// Primary prone infantry projectile/damage frame from art.ini `FireProne=`.
-    pub fire_prone_frame: u8,
-    /// Secondary standing infantry projectile/damage frame from art.ini `SecondaryFire=`.
-    pub secondary_fire_frame: u8,
-    /// Secondary prone/deploy infantry projectile/damage frame from art.ini `SecondaryProne=`.
-    pub secondary_prone_frame: u8,
+    /// InfantryType+E40 signed primary standing frame, art.ini `FireUp=`.
+    /// ART ReadInt5246D6 retains this field independently; constructor0.
+    pub fire_up_frame: i32,
+    /// InfantryType+E44 signed primary prone frame, art.ini `FireProne=`.
+    /// ART ReadInt5246F3 retains this field independently; constructor0.
+    pub fire_prone_frame: i32,
+    /// InfantryType+E48 signed secondary standing frame, art.ini `SecondaryFire=`.
+    /// ART ReadInt524710 retains this field independently; constructor0.
+    pub secondary_fire_frame: i32,
+    /// InfantryType+E4C signed secondary prone frame, art.ini `SecondaryProne=`.
+    /// ART ReadInt52472D retains this field independently; constructor0.
+    pub secondary_prone_frame: i32,
     /// Whether VeteranAbilities includes FEARLESS for this type.
     pub veteran_fearless: bool,
     /// Whether EliteAbilities includes FEARLESS for this type.

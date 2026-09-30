@@ -244,8 +244,6 @@ pub(crate) fn target_get_coords(
     target: crate::sim::combat::TargetKind,
     entities: &crate::sim::entity_store::EntityStore,
     terrain: Option<&ResolvedTerrainGrid>,
-    rules: &crate::rules::ruleset::RuleSet,
-    interner: &crate::sim::intern::StringInterner,
 ) -> Option<DriveCoord> {
     match target {
         crate::sim::combat::TargetKind::Cell(rx, ry) => {
@@ -253,8 +251,7 @@ pub(crate) fn target_get_coords(
         }
         crate::sim::combat::TargetKind::Entity(id) => {
             let entity = entities.get(id)?;
-            let object = rules.object(interner.resolve(entity.type_ref()))?;
-            Some(object_get_coords(entity, Some(object), terrain))
+            Some(object_get_coords(entity, terrain))
         }
     }
 }

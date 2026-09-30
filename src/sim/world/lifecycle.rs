@@ -2390,11 +2390,15 @@ impl Simulation {
     }
 
     pub(crate) fn reveal_anim(&mut self, stable_id: u64, rules: Option<&RuleSet>) -> bool {
-        if !self
-            .substrate
-            .anims
-            .get(stable_id)
-            .is_some_and(|anim| !anim.runtime.inactive)
+        // A physically retained Destroy/UnInit object has already left Logic
+        // and Display. Its independent19B byte can still be zero, so it cannot
+        // be resurrected through Reveal before the common deferred drain.
+        if self.substrate.pending_delete.contains(&stable_id)
+            || !self
+                .substrate
+                .anims
+                .get(stable_id)
+                .is_some_and(|anim| !anim.runtime.inactive)
         {
             return false;
         }
@@ -3158,26 +3162,49 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return;
         };
-        let jumpjet_infantry = crate::sim::movement::infantry_action::doing_owns_sequence(entity);
+        let jumpjet_infantry =
+            crate::sim::movement::infantry_action::uses_jumpjet_locomotor(entity);
+        let walking_infantry = entity.category == EntityCategory::Infantry
+            && entity.locomotor.as_ref().is_some_and(|locomotor| {
+                locomotor.kind == crate::rules::locomotor_type::LocomotorKind::Walk
+            });
         if matches!(
             entity.category,
             EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
         ) {
-            crate::sim::movement::stop_navigation_at_committed_head(entity);
-            if let (true, Some(rules)) = (jumpjet_infantry, context.rules) {
+            if walking_infantry {
+                //FootStun4D5660: class NULL destination, Path[0]=-1,
+                //then virtual Stop_Driver. Reuse Walk's callback owner on
+                //both Stops; clearing a raw locomotor cannot consume+6E4.
+                self.assign_null_destination(stable_id, context.rules);
+                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                    entity.clear_live_path_head();
+                }
+                if let Some(rules) = context.rules
+                    && let Err(cause) = self.infantry_stop_driver(stable_id, rules, None)
+                {
+                    log::debug!("infantry {stable_id} Stun Stop_Driver: {cause}");
+                }
+            } else if let (true, Some(rules)) = (jumpjet_infantry, context.rules) {
+                crate::sim::movement::stop_navigation_at_committed_head(entity);
                 self.jumpjet_null_destination(stable_id, Some(rules), None);
                 self.foot_null_setter_tail(stable_id, Some(rules));
                 if let Err(cause) = self.infantry_stop_driver(stable_id, rules, None) {
                     log::debug!("infantry {stable_id} Stun Stop_Driver: {cause}");
                 }
             } else {
+                crate::sim::movement::stop_navigation_at_committed_head(entity);
                 self.jumpjet_stun_stop(stable_id, context.rules);
             }
         }
-        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
-            return;
-        };
-        crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
+        if walking_infantry {
+            let _ = self.assign_target_represented(stable_id, None, context.rules);
+        } else if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
+        }
+        if walking_infantry {
+            self.assign_null_destination(stable_id, context.rules);
+        }
         if jumpjet_infantry {
             self.jumpjet_null_destination(stable_id, context.rules, None);
             self.foot_null_setter_tail(stable_id, context.rules);
@@ -3185,9 +3212,11 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return;
         };
-        crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
-            entity, None,
-        );
+        if !walking_infantry {
+            crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
+                entity, None,
+            );
+        }
         crate::sim::radio::broadcast_break(self, stable_id, None);
         crate::sim::spawn_manager::kill_all_spawns_with_context(self, stable_id, context);
         crate::sim::spawn_manager::clear_all_spawn_targets(self, stable_id);
@@ -3571,11 +3600,35 @@ impl Simulation {
         }
     }
 
+    /// Techno70F770 and the identical PointerExpired7079D1..7A28 arm
+    /// shorten the passive targeting timer (+180/+188), never weapon rearm.
+    /// The native priority bracket A8E7AC suppresses both the draw and write.
+    pub(crate) fn shorten_passive_scan_timer(&mut self, id: u64, priority_bracket: bool) -> bool {
+        let now = self.session.binary_frame;
+        if priority_bracket
+            || self
+                .substrate
+                .entities
+                .get(id)
+                .is_none_or(|entity| entity.passive_scan_timer.remaining(now) <= 10)
+        {
+            return false;
+        }
+        let delay = self.scenario_rng.next_range_u32_inclusive(4, 8);
+        self.substrate
+            .entities
+            .get_mut(id)
+            .expect("queried passive timer owner remains present")
+            .passive_scan_timer
+            .arm(now, delay);
+        true
+    }
+
     /// The broadcast passes over listeners that
     /// [`Self::entity_expiry_listener_acts`] rejects, so a field compared here
     /// must be tested there too.
     #[allow(clippy::too_many_arguments)]
-    fn notify_entity_pointer_expired(
+    pub(super) fn notify_entity_pointer_expired(
         &mut self,
         listener_id: u64,
         expired_id: u64,
@@ -3597,9 +3650,6 @@ impl Simulation {
             |target| matches!(target.target, TargetKind::Entity(id) if id == expired_id),
         );
         let listener_owner = listener.owner();
-        let passive_scan_remaining = listener
-            .passive_scan_timer
-            .remaining(self.session.binary_frame);
         let mission_is_suspended =
             listener.mission.suspended() != crate::sim::mission::MissionId::NONE;
         // What the radio and cargo clears below would change. A listener is
@@ -3641,17 +3691,12 @@ impl Simulation {
         // spends no Scenario draw. An already-expired timer (`elapsed >=
         // duration`) skips the block entirely, which `remaining()`'s clamp to 0
         // reproduces.
-        let passive_scan_delay = (clears_current_target && passive_scan_remaining > 10)
-            .then(|| self.scenario_rng.next_range_u32_inclusive(4, 8));
-        if (passive_scan_delay.is_some() || drops_contact || drops_passenger)
+        if clears_current_target {
+            self.shorten_passive_scan_timer(listener_id, false);
+        }
+        if (drops_contact || drops_passenger)
             && let Some(listener) = self.substrate.entities.get_mut(listener_id)
         {
-            if let Some(delay) = passive_scan_delay {
-                listener
-                    .passive_scan_timer
-                    .arm(self.session.binary_frame, delay);
-            }
-
             // `RadioClass::PointerExpired @ 0x0065AAC0` nulls matching sparse
             // slots in place, but ONLY on a nonzero control:
             //
@@ -4271,7 +4316,10 @@ impl Simulation {
             return !entity.lifecycle.object_alive;
         }
         if let Some(anim) = self.substrate.anims.get(stable_id) {
-            return anim.runtime.inactive;
+            // Every ordinary Anim retirement Conceals before queueing. Owner
+            // expiry425196 only sets19B and leaves Logic live until its own AI;
+            // that byte is not ObjectUnInit5F6625's readiness state.
+            return !anim.in_logic_vector;
         }
         if let Some(system) = self.substrate.particle_systems.get(stable_id) {
             return system.done_spawning && system.particles.is_empty();

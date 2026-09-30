@@ -185,7 +185,10 @@ fn deployed_infantry_skipped_by_pursuit() {
     // Deploy-fire infantry (e.g., GI in deployed state) cannot move.
     let mut gi = make_unit(1, "ENGI", "Americans", 5, 5, 75);
     gi.category = crate::map::entities::EntityCategory::Infantry;
-    gi.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
+    gi.mission_leaf = crate::sim::mission::MissionLeafState::for_entity_category(
+        crate::map::entities::EntityCategory::Infantry,
+    );
+    gi.mission_leaf.set_infantry_doing_verified(28).unwrap();
     gi.attack_target = Some(AttackTarget::new(2));
     let rhino = make_unit(2, "HTNK", "Soviet", 30, 5, 400);
     let mut sim = make_sim(vec![gi, rhino]);

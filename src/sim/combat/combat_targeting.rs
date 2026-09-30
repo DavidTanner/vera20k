@@ -85,12 +85,10 @@ pub(crate) struct AttackerSnapshot {
     pub sub_y: SimFixed,
     pub type_id: InternedId,
     pub veterancy: u16,
-    pub animation_sequence: Option<crate::sim::animation::SequenceKind>,
-    pub animation_frame: Option<u16>,
-    pub is_prone: bool,
+    /// Read-only native Infantry Doing identity; never a generic animation projection.
+    pub infantry_doing: Option<i32>,
     pub is_fully_deployed: bool,
     pub has_movement: bool,
-    pub pending_infantry_fire: Option<super::PendingInfantryFire>,
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
     /// Body FacingClass (`+0x388`), including infantry fire-start snaps and
     /// vehicle turns. Facing gates and emission read its full 16-bit value.
@@ -221,7 +219,7 @@ pub(crate) fn greatest_threat_for_entity(
     // Dummy target: no current target when acquiring fresh.
     let snapshot = AttackerSnapshot {
         scan_mission: mask,
-        ..super::build_attacker_snapshot(entity, super::TargetKind::Entity(0), None, None)
+        ..super::build_attacker_snapshot(entity, super::TargetKind::Entity(0), None)
     };
     acquire_best_target(
         entities,

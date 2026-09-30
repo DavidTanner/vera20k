@@ -800,7 +800,8 @@ mod slot_tests {
             assert!(!sim.anim(missing).unwrap().runtime.inactive);
             sim.session.binary_frame += 1;
             sim.visit_anim(missing, &rules, None);
-            assert!(sim.anim(missing).unwrap().runtime.inactive);
+            assert!(sim.substrate.pending_delete.contains(&missing));
+            assert!(!sim.anim(missing).unwrap().in_logic_vector);
             assert_eq!(
                 sim.entities().get(id).unwrap().building_anim_slots[5],
                 Some(missing)
@@ -867,7 +868,8 @@ mod slot_tests {
             sim.entities().get(id).unwrap().building_anim_slots[3],
             Some(anim)
         );
-        assert!(sim.anim(anim).unwrap().runtime.inactive);
+        assert!(sim.substrate.pending_delete.contains(&anim));
+        assert!(!sim.anim(anim).unwrap().in_logic_vector);
         sim.process_pending_delete();
         assert!(sim.anim(anim).is_none());
         assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[3], None);

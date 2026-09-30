@@ -4,13 +4,26 @@ use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::rules::terrain_rules::SpeedCostProfile;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::{command::Command, house_state::HouseState, production, world::Simulation};
-use std::collections::BTreeMap;
 
 fn fixture() -> (Simulation, RuleSet) {
     fixture_with_extra("")
 }
 
 fn fixture_with_extra(extra: &str) -> (Simulation, RuleSet) {
+    fixture_with_art(extra, Some(&terminal_art(3, 3)))
+}
+
+fn terminal_art(die1_count: i32, die2_count: i32) -> IniFile {
+    // Authored counts go through the same ART reader as the physical GI
+    // records. The native action table, not a sprite-only delay, owns time.
+    IniFile::from_str(
+        &crate::rules::retail_ini_fixture::GI_ART_EXCERPT
+            .replace("Die1=134,15,0", &format!("Die1=134,{die1_count},0"))
+            .replace("Die2=149,15,0", &format!("Die2=149,{die2_count},0")),
+    )
+}
+
+fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet) {
     let base = "[InfantryTypes]\n0=E1\n1=BRUTE\n2=BOOM\n[VehicleTypes]\n0=MTNK\n\
          [AircraftTypes]\n[BuildingTypes]\n0=GAPILE\n1=BIG\n\
          [SuperWeaponTypes]\n0=IC\n1=GM\n\
@@ -21,17 +34,37 @@ fn fixture_with_extra(extra: &str) -> (Simulation, RuleSet) {
          [Warheads]\n0=Super\n1=Mutate\n2=DeathWH\n\
          [Super]\nInfDeath=2\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [Mutate]\nInfDeath=9\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
-         [BOOM]\nStrength=100\nSpeed=4\nExplodes=yes\nDeathWeapon=DeathBoom\n\
+         [BOOM]\nImage=GI\nStrength=100\nSpeed=4\nExplodes=yes\nDeathWeapon=DeathBoom\n\
          [DeathBoom]\nDamage=400\nWarhead=DeathWH\n\
          [DeathWH]\nCellSpread=1\nPercentAtMax=1\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [BIG]\nStrength=1000\nFoundation=3x1\n\
-         [E1]\nStrength=100\nSpeed=4\nCost=200\nTechLevel=1\nOwner=Americans\n\
-         [BRUTE]\nStrength=200\nSpeed=4\n\
+         [E1]\nImage=GI\nStrength=100\nSpeed=4\nCost=200\nTechLevel=1\nOwner=Americans\n\
+         [BRUTE]\nImage=GI\nStrength=200\nSpeed=4\n\
          [MTNK]\nStrength=300\nSpeed=6\n\
          [GAPILE]\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\n";
     let mut ini = IniFile::from_str(base);
     ini.merge(&IniFile::from_str(extra));
-    let rules = RuleSet::from_ini(&ini).unwrap();
+    let mut rules = if let Some(art) = art {
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, art).unwrap()
+    } else {
+        RuleSet::from_ini(&ini).unwrap()
+    };
+    if let Some(art) = art {
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(art));
+        rules.bind_animation_sequences(
+            &crate::rules::infantry_sequence::parse_infantry_sequence_registry(art),
+        );
+        assert_eq!(
+            rules
+                .animation_sequence("E1")
+                .unwrap()
+                .infantry_action(0)
+                .unwrap()
+                .frames_per_facing,
+            1,
+            "the production catalog must resolve GISequence"
+        );
+    }
     assert!(!rules.general.mutate_explosion);
     assert_eq!(rules.general.mutate_warhead, "Mutate");
     let mut sim = Simulation::with_seed(23);
@@ -193,10 +226,8 @@ fn animated_mutation_victim_retires(explosion: bool) {
         .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
         .unwrap();
     let object = sim.substrate.entities.get(victim).unwrap();
-    assert_eq!(
-        object.animation.as_ref().unwrap().sequence,
-        crate::sim::animation::SequenceKind::Stand
-    );
+    assert_eq!(object.infantry_sprite_pose(), Some((-1, 0)));
+    assert!(object.animation.is_none(), "Doing owns the Infantry pose");
     assert!(object.lifecycle.cell_marked && object.in_logic_vector);
     launch_command(&mut sim, &rules, "GM", 5, 5);
     let replacements = marked_brutes(&sim);
@@ -225,15 +256,13 @@ fn marked_brutes(sim: &Simulation) -> Vec<u64> {
 }
 
 #[test]
-fn infantry_terminal_raw_mutation_retires_on_next_visit_with_or_without_animation() {
-    for animated in [false, true] {
-        let (mut sim, rules) = fixture();
+fn infantry_terminal_raw_mutation_retires_on_next_visit_with_or_without_art() {
+    for with_art in [false, true] {
+        let art = terminal_art(3, 3);
+        let (mut sim, rules) = fixture_with_art("", with_art.then_some(&art));
         let victim = sim
             .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
             .unwrap();
-        if !animated {
-            sim.substrate.entities.get_mut(victim).unwrap().animation = None;
-        }
         launch_command(&mut sim, &rules, "GM", 5, 5);
         let object = sim.substrate.entities.get(victim).unwrap();
         assert!(object.lifecycle.cell_marked && object.in_logic_vector);
@@ -256,18 +285,18 @@ fn infantry_terminal_raw_mutation_retires_on_next_visit_with_or_without_animatio
 }
 
 #[test]
-fn infantry_terminal_no_art_cleanup_follows_recursive_deaths() {
+fn infantry_terminal_effect_only_cleanup_follows_recursive_deaths() {
     use crate::sim::world::LifecycleTestEvent;
-    let (mut sim, rules) = fixture_with_extra("[DeathWH]\nCellSpread=2\n");
+    // InfDeath3's external-effect receiver UnInits inline. Missing sprite
+    // data is not a native substitute for selecting that death recipe.
+    let (mut sim, rules) =
+        fixture_with_extra("[Super]\nInfDeath=3\n[DeathWH]\nCellSpread=2\nInfDeath=3\n");
     let parent = sim
         .spawn_object_at_height("BOOM", "Americans", 5, 5, 0, 0, &rules)
         .unwrap();
     let child = sim
         .spawn_object_at_height("E1", "Americans", 7, 5, 0, 0, &rules)
         .unwrap();
-    for id in [parent, child] {
-        sim.substrate.entities.get_mut(id).unwrap().animation = None;
-    }
     launch_command(&mut sim, &rules, "IC", 5, 5);
     let uninit_order: Vec<_> = sim
         .lifecycle_test_events_for_test()
@@ -349,8 +378,13 @@ fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
 #[test]
 fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
     for inf_death in [2, 3] {
-        let (mut sim, mut rules) = fixture_with_extra(&format!(
-            "[VehicleTypes]\n1=TESLA\n[E1]\nPrimary=Rifle\nSight=8\n\
+        let mut art = terminal_art(3, 3);
+        // This control's first visit must discharge before the other shooter
+        // kills it. Author the native discharge key rather than a sprite frame.
+        art.merge(&IniFile::from_str("[GI]\nFireUp=0\n"));
+        let (mut sim, rules) = fixture_with_art(
+            &format!(
+                "[VehicleTypes]\n1=TESLA\n[E1]\nPrimary=Rifle\nSight=8\n\
          [TESLA]\nStrength=300\nSpeed=6\nSight=8\nPrimary=Coil\n\
          [Rifle]\nDamage=1\nROF=50\nRange=10\nProjectile=SlowShot\nSpeed=10\nWarhead=KILL\n\
          [SlowShot]\nImage=none\n\
@@ -359,18 +393,9 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
          [CombatDamage]\nDefaultSparkSystem=SparkSys\n[ParticleSystems]\n0=SparkSys\n\
          [SparkSys]\nBehavesLike=Spark\nHoldsWhat=Spark\nParticleCap=6\nSparkSpawnFrames=1\nLifetime=200\n\
          [Particles]\n0=Spark\n[Spark]\nBehavesLike=Spark\nMaxEC=500\n",
-        ));
-        let mut set = rules.animation_sequence("E1").unwrap().clone();
-        let mut def = set
-            .get(&crate::sim::animation::SequenceKind::Die2)
-            .unwrap()
-            .clone();
-        def.frame_count = 3;
-        def.frame_delay = 1;
-        def.normalized = false;
-        def.loop_mode = crate::sim::animation::LoopMode::HoldLast;
-        set.insert(crate::sim::animation::SequenceKind::Die2, def);
-        rules.replace_animation_sequences_for_test(BTreeMap::from([("E1".into(), set)]));
+            ),
+            Some(&art),
+        );
         let infantry = sim
             .spawn_object_at_height(
                 "E1",
@@ -431,8 +456,8 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
         if inf_death == 2 {
             let object = sim.substrate.entities.get(infantry).unwrap();
             assert_eq!(
-                object.animation.as_ref().unwrap().sequence,
-                crate::sim::animation::SequenceKind::Die2,
+                object.infantry_sprite_pose(),
+                Some((12, 0)),
                 "queued FireUp must not overwrite the terminal sequence"
             );
         } else {
@@ -462,31 +487,32 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
 
 #[test]
 fn infantry_terminal_receiver_sequences_finish_through_production_frames() {
-    use crate::sim::animation::{LoopMode, SequenceKind};
-    for (inf_death, sequence) in [(1, SequenceKind::Die1), (2, SequenceKind::Die2)] {
-        let (mut sim, mut rules) = fixture_with_extra(&format!("[Super]\nInfDeath={inf_death}\n"));
-        let mut set = rules.animation_sequence("E1").unwrap().clone();
-        let mut def = set.get(&sequence).unwrap().clone();
-        def.frame_count = 3;
-        def.frame_delay = 1;
-        def.normalized = false;
-        def.loop_mode = LoopMode::HoldLast;
-        set.insert(sequence, def);
-        rules.replace_animation_sequences_for_test(BTreeMap::from([("E1".to_string(), set)]));
+    // Original520BC6 compares the signed Stage with the raw death count;
+    // Techno6FABC4 advances only when its retained countdown expires.
+    for (inf_death, doing) in [(1, 11), (2, 12)] {
+        let (mut sim, rules) = fixture_with_extra(&format!("[Super]\nInfDeath={inf_death}\n"));
         let victim = sim
             .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
             .unwrap();
         launch_command(&mut sim, &rules, "IC", 5, 5);
         let object = sim.substrate.entities.get(victim).unwrap();
         assert!(object.dying && object.infantry_terminal.is_some());
-        assert_eq!(object.animation.as_ref().unwrap().sequence, sequence);
-        for frame in 1..=3 {
+        assert_eq!(object.infantry_sprite_pose(), Some((doing, 0)));
+        assert_eq!(object.native_stage().rate(), 1);
+        assert_eq!(object.native_stage().timer().start_frame(), 0);
+        assert_eq!(object.native_stage().timer().duration(), 1);
+        for frame in 0..=3 {
             sim.advance_tick(&[], Some(&rules), None, None, 100);
             assert_eq!(
                 sim.substrate.entities.contains(victim),
                 frame < 3,
                 "InfDeath={inf_death}, frame={frame}"
             );
+            if frame < 3 {
+                let object = sim.substrate.entities.get(victim).unwrap();
+                assert_eq!(object.infantry_sprite_pose(), Some((doing, frame)));
+                assert!(object.lifecycle.cell_marked && object.in_logic_vector);
+            }
         }
         assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
         assert!(!sim.live_object_order_snapshot().contains(&victim));
@@ -494,46 +520,66 @@ fn infantry_terminal_receiver_sequences_finish_through_production_frames() {
 }
 
 #[test]
-fn infantry_terminal_invalid_death_art_cannot_retain_a_live_logic_member() {
-    use crate::sim::animation::{LoopMode, SequenceKind, SequenceSet};
-    for invalid in 0..6 {
-        let (mut sim, mut rules) = fixture();
-        let mut set = rules.animation_sequence("E1").unwrap().clone();
-        let mut def = set.get(&SequenceKind::Die2).unwrap().clone();
-        match invalid {
-            0 => def.frame_count = 0,
-            1 => def.frame_delay = 0,
-            2 => def.loop_mode = LoopMode::Loop,
-            3 => def.loop_mode = LoopMode::TransitionTo(SequenceKind::Stand),
-            5 => {
-                def.frame_delay = 8192;
-                def.normalized = true;
-                sim.session.game_options.game_speed = 0;
-                assert_eq!(
-                    sim.session
-                        .game_options
-                        .normalized_anim_delay(def.frame_delay),
-                    0
-                );
-            }
-            _ => (),
-        }
-        set.insert(SequenceKind::Die2, def);
-        if invalid == 4 {
-            set = SequenceSet::new();
-        }
-        rules.replace_animation_sequences_for_test(BTreeMap::from([("E1".to_string(), set)]));
-        let victim = sim
-            .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
-            .unwrap();
-        launch_command(&mut sim, &rules, "IC", 5, 5);
-        sim.advance_tick(&[], Some(&rules), None, None, 100);
-        assert!(
-            sim.substrate.entities.get(victim).is_none(),
-            "invalid definition case {invalid}"
-        );
-        assert!(!sim.live_object_order_snapshot().contains(&victim));
-    }
+fn infantry_terminal_zero_count_death_request_retains_the_previous_action() {
+    let art = terminal_art(3, 0);
+    let (mut sim, rules) = fixture_with_art("", Some(&art));
+    let victim = sim
+        .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
+        .unwrap();
+    assert!(sim.infantry_do_action(victim, 0, true, &rules).unwrap());
+    let before = *sim.substrate.entities.get(victim).unwrap().native_stage();
+    launch_command(&mut sim, &rules, "IC", 5, 5);
+    let object = sim.substrate.entities.get(victim).unwrap();
+    //51D70F refuses a zero-count request. A sprite's loop or delay no
+    // longer invents immediate retirement for a refused class action.
+    assert_eq!(object.infantry_sprite_pose(), Some((0, before.value())));
+    assert_eq!(*object.native_stage(), before);
+    assert!(object.dying && object.lifecycle.cell_marked && object.in_logic_vector);
+}
+
+#[test]
+fn infantry_terminal_retained_zero_count_death_retires_at_the_native_boundary() {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/infantry_death_completion.json"
+    ))
+    .unwrap();
+    let native = rows
+        .iter()
+        .find(|row| {
+            row["input"]["doing"] == 11 && row["input"]["stage"] == 0 && row["input"]["count"] == 0
+        })
+        .unwrap();
+    assert!(
+        native["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["call"] == "uninit"),
+        "original520AE0 completes an already-retained Die1 at count0"
+    );
+    let art = terminal_art(0, 3);
+    let (mut sim, rules) = fixture_with_art("[Super]\nInfDeath=1\n", Some(&art));
+    let victim = sim
+        .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
+        .unwrap();
+    // The original corpus supplies this retained Doing/Stage. This is not
+    // a claim that Do_Action can admit a zero-count death from Ready.
+    let object = sim.substrate.entities.get_mut(victim).unwrap();
+    object.mission_leaf.set_infantry_doing_verified(11).unwrap();
+    object.set_native_stage_value(0);
+    launch_command(&mut sim, &rules, "IC", 5, 5);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(victim)
+            .unwrap()
+            .infantry_sprite_pose(),
+        Some((11, 0))
+    );
+    sim.advance_tick(&[], Some(&rules), None, None, 100);
+    assert!(!sim.substrate.entities.contains(victim));
+    assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
+    assert!(!sim.live_object_order_snapshot().contains(&victim));
 }
 
 #[test]
@@ -706,7 +752,6 @@ fn genetic_converter_explosion_command_admits_replacements_after_nested_damage()
 // Native ordinary death retains membership during action 0xC (0x00518635).
 #[test]
 fn iron_curtain_command_forces_authored_strength_and_attributes_retained_deaths() {
-    use crate::sim::animation::SequenceKind;
     use crate::sim::superweapon::invulnerability::{InvulnKind, apply_invulnerability};
     let (mut sim, rules) = fixture();
     let owner = sim.interner.intern("Americans");
@@ -751,10 +796,7 @@ fn iron_curtain_command_forces_authored_strength_and_attributes_retained_deaths(
         "forced C4 bypasses prior invulnerability"
     );
     assert!(dead.dying && dead.lifecycle.cell_marked && dead.in_logic_vector);
-    assert_eq!(
-        dead.animation.as_ref().unwrap().sequence,
-        SequenceKind::Die2
-    );
+    assert_eq!(dead.infantry_sprite_pose(), Some((12, 0)));
     assert_eq!(dead.killed_by, Some(owner));
     // The ordinary sequence still owns the object; the existing shared UnInit
     // terminal owns score publication. Verify the attributed receipt survives it.

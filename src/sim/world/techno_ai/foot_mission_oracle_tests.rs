@@ -21,7 +21,6 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::animation::{Animation, SequenceKind};
 use crate::sim::combat::combat_targeting::greatest_threat_for_entity;
 use crate::sim::combat::greatest_threat::{
     HOUSE_SELECTS_OWN_COEFFICIENTS, ThreatCoefficients, ThreatReference, calculate_threat_score,
@@ -101,7 +100,7 @@ pub(super) fn retail_rules() -> Option<RuleSet> {
 /// objects unread. Transport that declared raw-store/read boundary through
 /// the production INI/type readers; never rewrite private live type fields or
 /// select a range to make a handler result match.
-fn legacy_rules(array: &str) -> Option<RuleSet> {
+pub(super) fn legacy_rules(array: &str) -> Option<RuleSet> {
     let context = oracle()["weapon_reader_receipts"]["reader_contexts"][array]
         .as_str()
         .unwrap_or_else(|| panic!("native reader context missing for {array}"));
@@ -423,6 +422,33 @@ fn target_to_nav(target: TargetKind) -> NavTargetRef {
 }
 
 impl SuppliedFootFixture {
+    /// Transport a fresh native VM's constructor roles onto this fixture's
+    /// existing stable identities. Resolve every old binding before replacing
+    /// the table, so coincident pointer values cannot change a later role.
+    pub(super) fn remap_native_objects(&mut self, bindings: &[(&Value, &Value)]) {
+        let mapped = bindings
+            .iter()
+            .map(|(fresh, original)| {
+                let id = self.id(original).expect("native role is nonnull");
+                (
+                    fresh.as_str().expect("native pointer string").to_owned(),
+                    id,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            mapped.len(),
+            bindings.len(),
+            "native role pointers are distinct"
+        );
+        assert_eq!(
+            mapped.len(),
+            self.pointers.len(),
+            "transport every constructor role"
+        );
+        self.pointers = mapped;
+    }
+
     pub(super) fn id(&self, pointer: &Value) -> Option<u64> {
         let pointer = pointer.as_str().unwrap();
         if pointer == "0x0" {
@@ -655,10 +681,8 @@ impl SuppliedFootFixture {
                 });
                 let target = |pointer: &Value| supplied_target(&pointers, &cells, pointer);
                 entity.set_archive_target(target(&before["archive"]));
-                entity.attack_target = target(&before["target"]).map(|target| AttackTarget {
-                    target,
-                    pending_infantry_fire: None,
-                });
+                entity.attack_target =
+                    target(&before["target"]).map(|target| AttackTarget { target });
                 // The oracle writes raw NavCom without Move_To. A supplied
                 // nonnull NavCom therefore does not arm Walk's moving byte.
                 entity.navigation.nav_com = target(&before["nav"]).map(target_to_nav);
@@ -726,13 +750,17 @@ impl SuppliedFootFixture {
                         .mission_leaf
                         .set_infantry_doing_verified(signed(&before["doing"]))
                         .unwrap();
-                    let doing = signed(&before["doing"]);
-                    let mut animation = Animation::new(
-                        crate::rules::infantry_sequence::action_kind(doing)
-                            .unwrap_or(SequenceKind::Stand),
+                    let words = before["sequence_timer_words"].as_array();
+                    let word = |index| words.and_then(|w| w.get(index)).map_or(0, signed);
+                    entity.install_native_stage_fixture(
+                        crate::sim::stage::StageClass::from_native_fixture(
+                            before["frame_f8"].as_i64().unwrap_or(0) as i32,
+                            0,
+                            crate::sim::timer::CdTimer::from_raw(word(0), word(2)),
+                            word(3),
+                            1,
+                        ),
                     );
-                    animation.frame_index = before["frame_f8"].as_i64().unwrap_or(0) as u16;
-                    entity.animation = Some(animation);
                     if let Some(words) = before["primary_facing_words"].as_array() {
                         entity.body_facing.snap(signed(&words[0]) as u16, 1);
                     }
@@ -1144,7 +1172,7 @@ fn original_rules_key_controls_match_sequential_production_reads() {
 /// prefixes. These are native getter receipts, not values calculated by Rust.
 /// Other terrain and whole-map path/zone initialization remain outside this
 /// fixture; full home queries use the retail map fixture in a separate test.
-fn install_recorded_cell_coordinates(fixture: &mut SuppliedFootFixture) {
+pub(super) fn install_recorded_cell_coordinates(fixture: &mut SuppliedFootFixture) {
     let stride = oracle()["world"]["zone_storage"]["stride"]
         .as_u64()
         .unwrap() as u16;
@@ -1427,8 +1455,8 @@ fn assert_foot_projection(fixture: &SuppliedFootFixture, row: &Value) {
         );
         if expected["frame_f8"].is_number() {
             assert_eq!(
-                actor.animation.as_ref().unwrap().frame_index,
-                signed(&expected["frame_f8"]) as u16,
+                actor.native_stage().value(),
+                signed(&expected["frame_f8"]),
                 "{name}: action frame"
             );
         }
@@ -1906,13 +1934,11 @@ fn original_retail_foot_stray_and_empty_rescue_home_complete_destination_transac
                 cell_receivers.insert(event["resolved_cell"]["pointer"].as_str().unwrap());
             }
         }
-        let path = fixture.sim.path_grid().unwrap().clone();
         run_recorded_handler(
             &mut fixture,
             &rules,
             row,
             super::super::ObjectAiCtx {
-                path_grid: Some(&path),
                 overlay_registry: Some(&scene.runtime.resources.overlay_registry),
                 ..Default::default()
             },
@@ -1964,8 +1990,91 @@ fn original_initial_stationary_e1_action_enters_ready_without_rng() {
     assert_eq!(receipt["constructor"]["doing"], -1);
     assert_eq!(receipt["entry"], "0x00520AE0");
     assert_eq!(receipt["before"]["walk_moving"], 0);
-    assert!(!fixture.sim.infantry_action_turn(fixture.actor, &rules));
+    assert!(!fixture.sim.infantry_sequencer(fixture.actor, &rules));
     assert_foot_projection(&fixture, &row);
+}
+
+#[test]
+fn original_ground_fireup_stage_uses_absolute_native_frames() {
+    let Some(rules) = retail_rules() else {
+        return;
+    };
+    let base = oracle()["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["input"]["name"] == "E1_area_guard_post")
+        .unwrap();
+    let mut compared = 0;
+    for case in oracle()["ground_firing_receipt"]["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| {
+            case["input"]["expiry_after_completed_ai_calls"].is_null()
+                && !case["frames"].as_array().unwrap().is_empty()
+        })
+    {
+        let name = case["input"]["name"].as_str().unwrap();
+        let frames = case["frames"].as_array().unwrap();
+        let mut row = base.clone();
+        row["before"]["doing"] = json!(0);
+        row["before"]["frame_f8"] = json!(0);
+        let mut fixture = SuppliedFootFixture::new(&row, &rules);
+        fixture.sim.session.binary_frame = frames[0]["native_frame"].as_u64().unwrap() as u32;
+        fixture
+            .sim
+            .substrate
+            .entities
+            .get_mut(fixture.actor)
+            .unwrap()
+            .on_bridge = case["input"]["source_on_bridge"] != 0;
+        let rng = (
+            fixture.sim.scenario_rng.logical_state(),
+            fixture.sim.main_rng.logical_state(),
+            fixture.sim.mapgen_rng.logical_state(),
+        );
+        // Original whole51BAB0 observations transport only the stage boundary
+        // here: real DoAction51D6F0 starts FireUp after that visit's Techno step.
+        // This direct-owner regression excludes Mission cadence/firing/launch;
+        // it does not substitute a whole native AI or shot comparison.
+        assert!(
+            fixture
+                .sim
+                .infantry_do_action(fixture.actor, 4, false, &rules)
+                .unwrap()
+        );
+        for (index, frame) in frames.iter().enumerate() {
+            fixture.sim.session.binary_frame = frame["native_frame"].as_u64().unwrap() as u32;
+            if index != 0 {
+                fixture
+                    .sim
+                    .substrate
+                    .entities
+                    .get_mut(fixture.actor)
+                    .unwrap()
+                    .tick_native_stage(fixture.sim.session.binary_frame as i32);
+            }
+            let actor = fixture.sim.substrate.entities.get(fixture.actor).unwrap();
+            assert_eq!(
+                actor.native_stage().value(),
+                signed(&frame["after"]["frame_f8"]),
+                "{name}: native absolute frame {}",
+                fixture.sim.session.binary_frame
+            );
+        }
+        assert_eq!(
+            (
+                fixture.sim.scenario_rng.logical_state(),
+                fixture.sim.main_rng.logical_state(),
+                fixture.sim.mapgen_rng.logical_state(),
+            ),
+            rng,
+            "DoAction(random0) and the Stage primitive draw no RNG"
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 4);
 }
 
 #[test]
@@ -1980,29 +2089,257 @@ fn original_idle_completion_releases_doing_at_existing_completion_owner() {
         }
         let mut fixture = SuppliedFootFixture::new(row, &rules);
         let action = signed(&row["before"]["doing"]);
-        // The ordinary infantry animation cascade supplies this same hint
-        // before its shared completion receiver. This compares that owner
-        // boundary, not the unrepresented native absolute sequence clock.
-        let hint = rules
-            .animation_sequence("E1")
-            .unwrap()
-            .get(&crate::rules::infantry_sequence::action_kind(action).unwrap())
-            .unwrap()
-            .completion_facing;
-        if let Some(hint) = hint {
-            let actor = fixture
-                .sim
-                .substrate
-                .entities
-                .get_mut(fixture.actor)
-                .unwrap();
-            crate::sim::animation::snap_completion_facing(&mut actor.body_facing, hint, 1);
-        }
-        fixture
-            .sim
-            .infantry_action_completed(fixture.actor, action, &rules);
+        assert_eq!(action, signed(&row["input"]["idle_control"]["doing"]));
+        assert!(
+            matches!(action, 9 | 10),
+            "original Idle1/Idle2 action bytes"
+        );
+        // The supplied native +F8/Doing enter the production sequencer.
+        // It owns completion admission, facing and the new action together.
+        assert!(!fixture.sim.infantry_sequencer(fixture.actor, &rules));
         assert_foot_projection(&fixture, row);
         compared += 1;
     }
     assert_eq!(compared, 2);
+}
+
+fn native_clock_fixture(sample: &Value) -> crate::sim::stage::StageClass {
+    crate::sim::stage::StageClass::from_native_fixture(
+        signed(&sample["value"]),
+        sample["changed"].as_u64().unwrap() as u8,
+        crate::sim::timer::CdTimer::from_raw(
+            signed(&sample["timer"]["start"]),
+            signed(&sample["timer"]["duration"]),
+        ),
+        signed(&sample["rate"]),
+        signed(&sample["increment"]),
+    )
+}
+
+/// Original scalar instruction blocks only, with caller state declared by
+/// the corpus. This establishes numeric clock behavior, not whole class AI.
+#[test]
+fn native_stage_clock_matches_original_techno_and_building_blocks() {
+    let corpus = oracle();
+    let receipt = &corpus["stage_clock_receipt"];
+    assert_eq!(receipt["native_text_unchanged"], true);
+    assert_eq!(receipt["native_vtables_unchanged"], true);
+    let rows = receipt["clock_rows"].as_array().unwrap();
+    let mut visits = 0;
+    for row in rows {
+        let input = &row["input"];
+        let family = input["family"].as_str().unwrap();
+        let name = input["name"].as_str().unwrap();
+        assert!(matches!(family, "techno" | "building"));
+        let frames = row["frames"].as_array().unwrap();
+        let mut stage = native_clock_fixture(&frames[0]["before"]);
+        for frame in frames {
+            let at = format!("{family}/{name}: {}", frame["native_frame"]);
+            assert_eq!(
+                stage,
+                native_clock_fixture(&frame["before"]),
+                "{at}: prior state"
+            );
+            stage.advance(signed(&frame["native_frame"]));
+            assert_eq!(
+                stage,
+                native_clock_fixture(&frame["after"]),
+                "{at}: original clock outputs"
+            );
+            assert_eq!(
+                frame["rng_before"], frame["rng_after"],
+                "{at}: full three native RNG states"
+            );
+            assert!(
+                frame["callback_events"].as_array().unwrap().is_empty(),
+                "{at}: no replaced class callback"
+            );
+            visits += 1;
+        }
+    }
+    assert_eq!((rows.len(), visits), (36, 58));
+}
+
+/// Infantry51BC9F calls Foot4DA539/Techno6F9E50 even for a retained Die1
+/// sequence. This projects its shared clock against the executed scalar
+/// Stage block; it does not certify the remainder of the dying AI subset.
+#[test]
+fn dying_infantry_visits_shared_native_clock() {
+    let Some(rules) = retail_rules() else {
+        return;
+    };
+    let corpus = oracle();
+    let base = corpus["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["input"]["name"] == "E1_area_guard_post")
+        .unwrap();
+    let clock = corpus["stage_clock_receipt"]["clock_rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| {
+            row["input"]["family"] == "techno" && row["input"]["name"] == "running_repeated_and_gap"
+        })
+        .unwrap();
+    let frame = &clock["frames"][0];
+    let mut fixture = SuppliedFootFixture::new(base, &rules);
+    fixture.sim.session.binary_frame = signed(&frame["native_frame"]) as u32;
+    fixture.sim.begin_infantry_death_sequence(
+        fixture.actor,
+        crate::sim::world::infantry_terminal::InfantryDeathSequence::Die1,
+        &rules,
+    );
+    let actor = fixture
+        .sim
+        .substrate
+        .entities
+        .get_mut(fixture.actor)
+        .unwrap();
+    actor.health.current = 0;
+    actor.install_native_stage_fixture(native_clock_fixture(&frame["before"]));
+    fixture.sim.object_ai_visit_one(
+        fixture.actor,
+        Some(&rules),
+        super::super::ObjectAiCtx::default(),
+    );
+    assert_eq!(
+        *fixture
+            .sim
+            .substrate
+            .entities
+            .get(fixture.actor)
+            .unwrap()
+            .native_stage(),
+        native_clock_fixture(&frame["after"]),
+        "retained Die1 shares the executed Techno stage clock"
+    );
+}
+
+/// The production save envelope must retain the native clock's full signed
+/// state. Resuming each saved visit compares against the next original block
+/// execution, including paused, negative, wrapping and repeated-frame inputs.
+#[test]
+fn saved_native_stage_resumes_original_clock_and_changes_world_hash() {
+    use crate::sim::game_entity::GameEntity;
+    use crate::sim::snapshot::GameSnapshot;
+    let corpus = oracle();
+    let rows = corpus["stage_clock_receipt"]["clock_rows"]
+        .as_array()
+        .unwrap();
+    let mut compared = 0;
+    for row in rows {
+        let mut sim = Simulation::new();
+        assert_eq!(sim.allocate_stable_id(), 1);
+        let mut actor = GameEntity::test_default(1, "CLOCK", "Americans", 2, 2);
+        let frames = row["frames"].as_array().unwrap();
+        actor.install_native_stage_fixture(native_clock_fixture(&frames[0]["before"]));
+        sim.substrate.entities.insert(actor);
+        for frame in frames {
+            let name = row["input"]["name"].as_str().unwrap();
+            let at = format!("{name}: {}", frame["native_frame"]);
+            let before = native_clock_fixture(&frame["before"]);
+            let after = native_clock_fixture(&frame["after"]);
+            let before_hash = sim.state_hash();
+            let bytes = GameSnapshot::save_validated(&sim, 0, 0, &at, 0);
+            sim = GameSnapshot::load_validated(&bytes, 0, 0, &sim.session.map_name)
+                .unwrap()
+                .sim;
+            assert_eq!(
+                *sim.substrate.entities.get(1).unwrap().native_stage(),
+                before,
+                "{at}: every retained clock field survives the save"
+            );
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .tick_native_stage(signed(&frame["native_frame"]));
+            assert_eq!(
+                *sim.substrate.entities.get(1).unwrap().native_stage(),
+                after,
+                "{at}: resumed visit matches original execution"
+            );
+            assert_eq!(
+                sim.state_hash() == before_hash,
+                before == after,
+                "{at}: changing the native clock changes the world checksum"
+            );
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 58);
+}
+
+#[test]
+fn original_do_action_restart_preserves_independent_stage_fields() {
+    let Some(rules) = retail_rules() else {
+        return;
+    };
+    let corpus = oracle();
+    let base = corpus["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["input"]["name"] == "E1_area_guard_post")
+        .unwrap();
+    let rows = corpus["stage_clock_receipt"]["action_restart_rows"]
+        .as_array()
+        .unwrap();
+    for native in rows {
+        let name = native["input"]["name"].as_str().unwrap();
+        let mut row = base.clone();
+        row["before"]["doing"] = native["doing_before"].clone();
+        let mut fixture = SuppliedFootFixture::new(&row, &rules);
+        fixture.sim.session.binary_frame = signed(&native["input"]["native_frame"]) as u32;
+        fixture
+            .sim
+            .substrate
+            .entities
+            .get_mut(fixture.actor)
+            .unwrap()
+            .install_native_stage_fixture(native_clock_fixture(&native["before"]));
+        let before_rng = (
+            fixture.sim.scenario_rng.logical_state(),
+            fixture.sim.main_rng.logical_state(),
+            fixture.sim.mapgen_rng.logical_state(),
+        );
+        let args = &native["input"]["args"];
+        assert_eq!(args[2], 0, "{name}: original random-first-stage argument");
+        let accepted = fixture
+            .sim
+            .infantry_do_action(fixture.actor, signed(&args[0]), args[1] != 0, &rules)
+            .unwrap();
+        assert_eq!(
+            u8::from(accepted),
+            native["returned_al"].as_u64().unwrap() as u8,
+            "{name}: actual AL"
+        );
+        let actor = fixture.sim.substrate.entities.get(fixture.actor).unwrap();
+        assert_eq!(
+            actor.mission_leaf.as_infantry().unwrap().doing(),
+            signed(&native["doing_after"]),
+            "{name}: Doing"
+        );
+        assert_eq!(
+            *actor.native_stage(),
+            native_clock_fixture(&native["after"]),
+            "{name}: all retained clock fields"
+        );
+        assert_eq!(
+            native["rng_before"], native["rng_after"],
+            "{name}: original full RNG states"
+        );
+        assert_eq!(
+            (
+                fixture.sim.scenario_rng.logical_state(),
+                fixture.sim.main_rng.logical_state(),
+                fixture.sim.mapgen_rng.logical_state()
+            ),
+            before_rng,
+            "{name}: Rust action consumes no RNG"
+        );
+    }
+    assert_eq!(rows.len(), 2);
 }

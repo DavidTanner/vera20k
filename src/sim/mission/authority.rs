@@ -635,11 +635,8 @@ impl Simulation {
         rules: &RuleSet,
         mission: super::MissionType,
     ) -> i32 {
-        let base = rules
-            .mission_control
-            .rate_frames(mission)
-            .min(i32::MAX as u32) as i32;
-        base.saturating_add(
+        let base = rules.mission_control.rate_frames(mission);
+        base.wrapping_add(
             self.scenario_rng
                 .next_range_u32_inclusive(0, RATE_EPILOGUE_JITTER_MAX_FRAMES) as i32,
         )
@@ -1253,8 +1250,7 @@ mod tests {
     use super::super::leaf::MissionLeafState;
     use super::super::state::MissionTestFixture;
     use super::*;
-    use crate::sim::animation::SequenceKind;
-    use crate::sim::combat::{AttackTarget, PendingInfantryFire};
+    use crate::sim::combat::AttackTarget;
     use crate::sim::game_entity::GameEntity;
 
     const GUARD: MissionId = MissionId::from_raw(5);
@@ -1670,7 +1666,6 @@ mod tests {
     fn native_e1_override_callers_keep_target_action_and_destination_refusal_order() {
         use crate::rules::ini_parser::IniFile;
         use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
-        use crate::sim::animation::Animation;
         use crate::sim::components::{Health, MovementTarget};
         use crate::sim::house_state::HouseState;
         use crate::sim::movement::locomotor::LocomotorState;
@@ -1797,10 +1792,19 @@ mod tests {
                 actor.locomotor = Some(LocomotorState::for_test_kind(
                     crate::rules::locomotor_type::LocomotorKind::Walk,
                 ));
-                let mut animation =
-                    Animation::new(crate::rules::infantry_sequence::action_kind(doing).unwrap());
-                animation.frame_index = before["frame"].as_u64().unwrap() as u16;
-                actor.animation = Some(animation);
+                let signed = |value: &Value| value.as_i64().unwrap() as i32;
+                let words = &before["action_timer"];
+                // Supplied native raw entity backing in the existing oracle;
+                // FC/110 do not enter this setter comparison or its expected outputs.
+                actor.install_native_stage_fixture(
+                    crate::sim::stage::StageClass::from_native_fixture(
+                        signed(&before["frame"]),
+                        0,
+                        crate::sim::timer::CdTimer::from_raw(signed(&words[0]), signed(&words[2])),
+                        signed(&before["action_repeat"]),
+                        0,
+                    ),
+                );
                 sim.substrate.entities.insert(actor);
                 sim.substrate
                     .entities
@@ -1861,9 +1865,23 @@ mod tests {
                     "{name}",
                 );
                 assert_eq!(
-                    actor.animation.as_ref().unwrap().frame_index,
-                    after["frame"].as_u64().unwrap() as u16,
+                    actor.native_stage().value(),
+                    after["frame"].as_i64().unwrap() as i32,
                     "{name}",
+                );
+                let words = &after["action_timer"];
+                assert_eq!(
+                    (
+                        actor.native_stage().timer().start_frame(),
+                        actor.native_stage().timer().duration(),
+                        actor.native_stage().rate(),
+                    ),
+                    (
+                        signed(&words[0]),
+                        signed(&words[2]),
+                        signed(&after["action_repeat"]),
+                    ),
+                    "{name}: native retained action clock",
                 );
                 assert_eq!(
                     actor.navigation.nav_com.is_some(),
@@ -1960,13 +1978,9 @@ mod tests {
     #[test]
     fn foot_override_provider_order_includes_same_identity_target_dispatch() {
         let mut unit = entity(EntityCategory::Unit, GUARD);
-        let mut active_target = AttackTarget::new(7);
+        let active_target = AttackTarget::new(7);
         unit.rearm_timer = crate::sim::timer::CdTimer::started(0, 17);
         unit.weapon_burst.complete_shot(4);
-        active_target.pending_infantry_fire = Some(PendingInfantryFire {
-            sequence: SequenceKind::Attack,
-            fire_frame: 4,
-        });
         unit.attack_target = Some(active_target);
         unit.navigation.nav_com = Some(NavTargetRef::cell(1, 2));
         unit.navigation.pending_arrival_clear = true;
@@ -2028,13 +2042,7 @@ mod tests {
             sim.substrate.entities.get(1).unwrap().weapon_burst.index(),
             1
         );
-        assert_eq!(
-            installed.pending_infantry_fire,
-            Some(PendingInfantryFire {
-                sequence: SequenceKind::Attack,
-                fire_frame: 4,
-            })
-        );
+        assert_eq!(installed.target, TargetKind::Entity(7));
         assert!(
             !sim.substrate
                 .entities

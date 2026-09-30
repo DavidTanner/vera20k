@@ -166,7 +166,7 @@ pub(crate) use movement_path::{
     path_search_used_zone_grid_marker, reset_path_search_used_zone_grid_marker,
 };
 pub(crate) use navcom::{
-    foot_stop_moving, set_destination_internal_cell, target_cell_coord, track_stop_moving,
+    foot_stop_moving, nav_targets_same_receiver, set_destination_internal_cell, target_cell_coord, track_stop_moving,
 };
 // Legacy batch tick used by focused movement fixtures.
 #[cfg(test)]

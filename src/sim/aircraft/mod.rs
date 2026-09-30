@@ -646,7 +646,7 @@ fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutat
         if aircraft {
             sim.foot_crash(m.id, None, rules);
         } else {
-            let infantry_terminal = sim.begin_raw_infantry_death(m.id, None);
+            let infantry_terminal = sim.begin_raw_infantry_death(m.id);
             if !infantry_terminal && let Some(entity) = sim.substrate.entities.get_mut(m.id) {
                 entity.health.current = 0;
                 entity.dying = true;
@@ -752,7 +752,7 @@ fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutat
     // `AircraftClass::AI` (`0x00414F93` / `0x00414FD1`) is a bare `UnInit`
     // (`+0xF8`) with no `Death_Announcement` (`+0x3B8`).
     if m.paradrop_silent_despawn {
-        let infantry_terminal = sim.begin_raw_infantry_death(m.id, None);
+        let infantry_terminal = sim.begin_raw_infantry_death(m.id);
         if let Some(entity) = sim.substrate.entities.get_mut(m.id) {
             if !infantry_terminal {
                 entity.health.current = 0;

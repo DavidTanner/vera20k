@@ -314,12 +314,8 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
     let firer = world.substrate.entities.get(1).unwrap();
     let candidate = world.substrate.entities.get(2).unwrap();
     let interner = &world.interner;
-    let snapshot = super::super::build_attacker_snapshot(
-        firer,
-        super::super::TargetKind::Entity(2),
-        None,
-        None,
-    );
+    let snapshot =
+        super::super::build_attacker_snapshot(firer, super::super::TargetKind::Entity(2), None);
     let context = ScanContext {
         entities: &world.substrate.entities,
         los: Default::default(),

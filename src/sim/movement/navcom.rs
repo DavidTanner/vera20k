@@ -184,7 +184,7 @@ pub(crate) fn building_dock_cell(
 /// is retained; it does not make a different entity receiver. Valid Cells
 /// retain the existing coordinate identity; dummy/aliased Cell pointer
 /// retention is outside this ordinary object-reference slice.
-pub(super) fn nav_targets_same_receiver(left: Option<NavTargetRef>, right: NavTargetRef) -> bool {
+pub(crate) fn nav_targets_same_receiver(left: Option<NavTargetRef>, right: NavTargetRef) -> bool {
     match (left, right) {
         (
             Some(NavTargetRef::Cell {
@@ -296,11 +296,17 @@ pub(super) fn publish_nav_com(entity: &mut GameEntity, target: NavTargetRef) {
     entity.navigation.pending_arrival_clear = false;
 }
 
-/// Owner null destination path. Clears the owner and active Drive/Ship destination.
-pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
+/// Foot4D94C7/4D9510 NULL reference publication, before locomotor Stop.
+pub(super) fn publish_null_nav_com(entity: &mut GameEntity) {
     entity.navigation.nav_com_aux = None;
     entity.navigation.nav_com = None;
     entity.navigation.pending_arrival_clear = false;
+}
+
+/// Entity-local Drive/Ship destination path. World Walk receivers dispatch
+/// Stop75ADA0 and its concrete +54C callback through Simulation::walk_stop_moving.
+pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
+    publish_null_nav_com(entity);
 
     if is_drive_locomotor(entity) {
         drive_stop_moving(entity);

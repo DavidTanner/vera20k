@@ -6,10 +6,12 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::animation::{Animation, SequenceKind};
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::house_state::HouseState;
+use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::passenger::{PassengerCargo, PassengerRole};
 use crate::sim::rng::SimRng;
 use crate::sim::world::Simulation;
 use serde_json::Value;
@@ -41,7 +43,7 @@ fn target(label: &str) -> Option<TargetKind> {
 
 #[test]
 fn native_infantry_target_assignment_matches_58_ordinary_original_rows() {
-    compare_original_infantry_target_rows(false);
+    compare_original_infantry_target_rows(TargetConsumer::ClassSetter);
 }
 
 #[test]
@@ -49,10 +51,43 @@ fn ordered_attack_uses_the_class_setter_for_46_original_infantry_rows() {
     // Event4C7467 calls virtual+3C8 before its destination setter. Replay
     // eligible positive target rows through the production command consumer;
     // the class outputs remain the original51B1F0 execution, not Rust goldens.
-    compare_original_infantry_target_rows(true);
+    compare_original_infantry_target_rows(TargetConsumer::OrderedAttack);
 }
 
-fn compare_original_infantry_target_rows(via_command: bool) {
+#[test]
+fn reset_orders_to_guard_uses_class_setter_for_native_null_rows() {
+    // Original70F865 dispatches virtual+3C8 after the class destination clear.
+    // These are original51B1F0 outputs, not full ResetOrdersToGuard execution.
+    compare_original_infantry_target_rows(TargetConsumer::ResetGuard);
+}
+
+#[test]
+fn open_topped_passenger_target_clear_uses_class_setter_for_native_null_rows() {
+    // Original710550 walks the cargo head and calls each virtual+3C8 at71056C.
+    // The saved class receiver rows bound this caller comparison; native full
+    // boarding/cargo mutation and contained firing are separate mechanisms.
+    compare_original_infantry_target_rows(TargetConsumer::OpenToppedPassenger);
+}
+
+#[test]
+fn owner_change_uses_class_setter_for_native_null_rows() {
+    // Original7014DB/7014E9 run target/destination before the house swap,
+    // and70183B dispatches target NULL again on the new owner. The expected
+    // class outputs are executed native rows55/56. Full original ChangeOwner
+    // lifecycle/mission execution remains unproved by this corpus.
+    compare_original_infantry_target_rows(TargetConsumer::OwnerChange);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TargetConsumer {
+    ClassSetter,
+    OrderedAttack,
+    ResetGuard,
+    OpenToppedPassenger,
+    OwnerChange,
+}
+
+fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
     let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
         return;
     };
@@ -86,7 +121,7 @@ fn compare_original_infantry_target_rows(via_command: bool) {
             continue;
         }
         let input = &row["input"];
-        if via_command
+        if consumer == TargetConsumer::OrderedAttack
             && (input["health"].as_i64().unwrap() <= 0
                 || !matches!(
                     input["target"].as_str().unwrap(),
@@ -98,6 +133,15 @@ fn compare_original_infantry_target_rows(via_command: bool) {
             continue;
         }
         let name = input["name"].as_str().unwrap();
+        if matches!(
+            consumer,
+            TargetConsumer::ResetGuard
+                | TargetConsumer::OpenToppedPassenger
+                | TargetConsumer::OwnerChange
+        ) && !matches!(name, "target_clear" | "target_same_null")
+        {
+            continue;
+        }
         let rules = &rules[input["deploy_fire_raw"].as_str().unwrap()];
         let mut sim = Simulation::new();
         let house = sim.interner.intern("Receiver");
@@ -127,7 +171,7 @@ fn compare_original_infantry_target_rows(via_command: bool) {
             .mission_leaf
             .set_foot_firing_sequence(before["firing_latch"].as_u64().unwrap() as u8);
         actor.infantry.as_mut().unwrap().is_prone = before["prone"].as_u64().unwrap() != 0;
-        actor.set_object_is_falling_down_for_test(input["falling"].as_u64().unwrap() as u8);
+        actor.set_falling_down_for_test(input["falling"].as_u64().unwrap() != 0);
         actor.passively_acquired_target = before["passive"].as_u64().unwrap() != 0;
         actor.attack_target =
             target(before["target"].as_str().unwrap()).map(|target| match target {
@@ -136,12 +180,19 @@ fn compare_original_infantry_target_rows(via_command: bool) {
             });
         actor.navigation.path_replay.directions =
             vec![before["path_field"].as_i64().unwrap() as u8, 2, 3];
-        let kind =
-            crate::rules::infantry_sequence::action_kind(doing).unwrap_or(SequenceKind::Stand);
-        let mut animation = Animation::new(kind);
-        animation.frame_index = before["frame"].as_u64().unwrap() as u16;
-        animation.elapsed_frames = before["action_timer"][2].as_u64().unwrap() as u16;
-        actor.animation = Some(animation);
+        // Original51B1F0 observes the single signed +F8 and retained stage
+        // timer/rate. +104 is copied stack data; FC/increment are unobserved
+        // by this corpus and do not participate in the class setter.
+        actor.install_native_stage_fixture(crate::sim::stage::StageClass::from_native_fixture(
+            before["frame"].as_i64().unwrap() as i32,
+            0,
+            crate::sim::timer::CdTimer::from_raw(
+                before["action_timer"][0].as_i64().unwrap() as i32,
+                before["action_timer"][2].as_i64().unwrap() as i32,
+            ),
+            before["action_repeat"].as_i64().unwrap() as i32,
+            1,
+        ));
         sim.substrate.entities.insert(actor);
         for id in [2, 3] {
             let mut recipient = GameEntity::new_at_frame_zero_for_test(
@@ -158,7 +209,7 @@ fn compare_original_infantry_target_rows(via_command: bool) {
                 0,
                 true,
             );
-            if via_command {
+            if consumer == TargetConsumer::OrderedAttack {
                 // The event admits only out-of-limbo object tokens. This
                 // additional caller premise does not change the represented
                 // class setter's alive-target results.
@@ -178,7 +229,9 @@ fn compare_original_infantry_target_rows(via_command: bool) {
             row["rng_before"],
             "{name}"
         );
-        if via_command {
+        let main_before = sim.main_rng.logical_state();
+        let mapgen_before = sim.mapgen_rng.logical_state();
+        if consumer == TargetConsumer::OrderedAttack {
             assert!(sim.order_actor_admits(1), "{name}: actor admission");
             assert!(sim.order_object_token_admits(2), "{name}: target admission");
             assert!(
@@ -189,13 +242,77 @@ fn compare_original_infantry_target_rows(via_command: bool) {
                         target_id: 2,
                     },
                     Some(rules),
-                    None,
                 ),
                 "{name}"
             );
         } else {
-            sim.assign_target_represented(1, requested, Some(rules))
-                .unwrap();
+            match consumer {
+                TargetConsumer::ClassSetter => {
+                    sim.assign_target_represented(1, requested, Some(rules))
+                        .unwrap();
+                }
+                TargetConsumer::ResetGuard => {
+                    sim.substrate
+                        .entities
+                        .get_mut(1)
+                        .unwrap()
+                        .set_archive_target(Some(TargetKind::Entity(3)));
+                    sim.mission_assign_exact(
+                        1,
+                        MissionId::from_known(MissionType::Attack),
+                        sim.session.binary_frame,
+                    )
+                    .unwrap();
+                    sim.reset_orders_to_guard(1, rules);
+                    let actor = sim.substrate.entities.get(1).unwrap();
+                    assert_eq!(actor.archive_target(), None, "{name}: Guard archive");
+                    assert_eq!(
+                        actor.mission.current().known(),
+                        Some(MissionType::Guard),
+                        "{name}: native70F87B Guard assignment",
+                    );
+                }
+                TargetConsumer::OpenToppedPassenger => {
+                    let object = rules.object("BFRT").unwrap();
+                    assert!(object.open_topped);
+                    let mut cargo =
+                        PassengerCargo::new(object.passengers.max(0) as u32, object.size_limit);
+                    assert!(cargo.board(1, rules.object("E1").unwrap().size));
+                    let mut transport = GameEntity::new_at_frame_zero_for_test(
+                        4,
+                        10,
+                        10,
+                        0,
+                        0,
+                        house,
+                        Health {
+                            current: object.strength,
+                        },
+                        sim.interner.intern("BFRT"),
+                        EntityCategory::Unit,
+                        0,
+                        0,
+                        true,
+                    );
+                    transport.passenger_role = PassengerRole::Transport { cargo };
+                    sim.substrate.entities.insert(transport);
+                    sim.open_topped_passengers_take_target(4, requested, rules);
+                }
+                TargetConsumer::OwnerChange => {
+                    let new_owner = sim.interner.intern("NewOwner");
+                    for owner in [house, new_owner] {
+                        sim.houses
+                            .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
+                    }
+                    sim.change_owner_with_rules(1, new_owner, rules);
+                    assert_eq!(
+                        sim.substrate.entities.get(1).unwrap().owner(),
+                        new_owner,
+                        "{name}: Rust caller ownership transfer",
+                    );
+                }
+                TargetConsumer::OrderedAttack => unreachable!(),
+            }
         }
 
         let after = &row["after"];
@@ -227,9 +344,22 @@ fn compare_original_infantry_target_rows(via_command: bool) {
             "{name}",
         );
         assert_eq!(
-            actor.animation.as_ref().unwrap().frame_index,
-            after["frame"].as_u64().unwrap() as u16,
+            actor.native_stage().value(),
+            after["frame"].as_i64().unwrap() as i32,
             "{name}",
+        );
+        assert_eq!(
+            [
+                actor.native_stage().timer().start_frame(),
+                actor.native_stage().timer().duration(),
+                actor.native_stage().rate(),
+            ],
+            [
+                after["action_timer"][0].as_i64().unwrap() as i32,
+                after["action_timer"][2].as_i64().unwrap() as i32,
+                after["action_repeat"].as_i64().unwrap() as i32,
+            ],
+            "{name}: native stage timer/rate",
         );
         let head = actor
             .navigation
@@ -245,7 +375,22 @@ fn compare_original_infantry_target_rows(via_command: bool) {
             row["rng_after"],
             "{name}"
         );
+        assert_eq!(sim.main_rng.logical_state(), main_before, "{name}: Main");
+        assert_eq!(
+            sim.mapgen_rng.logical_state(),
+            mapgen_before,
+            "{name}: MapGen"
+        );
         compared += 1;
     }
-    assert_eq!(compared, if via_command { 46 } else { 58 });
+    assert_eq!(
+        compared,
+        match consumer {
+            TargetConsumer::ClassSetter => 58,
+            TargetConsumer::OrderedAttack => 46,
+            TargetConsumer::ResetGuard
+            | TargetConsumer::OpenToppedPassenger
+            | TargetConsumer::OwnerChange => 2,
+        }
+    );
 }

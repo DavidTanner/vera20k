@@ -1,4 +1,4 @@
-# Selected Foot missions and ground Infantry firing prefix
+# Selected Foot missions, ground Infantry firing, stage clocks and frame selection
 
 Run the existing mission owner with the separate mode:
 
@@ -6,12 +6,15 @@ Run the existing mission owner with the separate mode:
 source /Users/halvor/Documents/vera20k-dev/env.sh
 VERA20K_SHRAPNEL_INPUTS=/path/to/physical/shrapnel/extract \
 VERA20K_ANYTOWN_INPUTS=/path/to/physical/anytown/extract \
+VERA20K_FOOT_EMISSION_INPUTS=/path/to/physical/foot-emission/extract \
 python -m tools.spatial_oracle.anytown_damage.mission --foot-missions --check
 ```
 
 The input roots follow [the existing mission owner](mission.md) and
 [the Anytown attack setup](README.md). They must contain its physical INI, map, TMP and
-attack SHP dependencies, plus the physical GI SHP used by the Infantry reader.
+attack SHP dependencies. The additive emission receipt uses its separate physical
+GI/MGUN/PIFFPIFF root and extraction manifest, described below; the historical
+sparse roots retain their exact original asset coverage.
 The native image is SHA256
 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
 `--write` deliberately creates a new reference; it never derives outputs from
@@ -204,6 +207,45 @@ Seed0 turns through an additional facing draw to raw BAM40960. Seed11 consumes
 roll0 and performs no action or turn. Timer auxiliary words are raw stack values.
 Stock physical E1 idle9/10 rows take no Main RNG/audio branch; excluded sound
 sinks still prevent extending that observation to other sequences or types.
+
+**Idle GameOptions input, executed 2026-09-30.** On the pinned native SHA256
+`1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`, a fresh
+existing `FootMissions` retained stored speed0 at GameOptions receiver `A8EB60`
+after bootstrap, after
+`initialize_companion()` and after the physical `rules_reader_receipts()`.
+Replaying `E1_retail_idle_direct_seed1` reproduced the entire saved row exactly,
+including all three RNG streams. Original action10 has delay byte3; its call at
+`51DA07` executes `5FB2E0(this=A8EB60,3)` and returns5. The original delay3 row
+at `832D4C` is `[5,4,4,3,3,2,2,1]`, so stored speed0 gives5 and speed1 gives4.
+The resulting sequence timer/rate is `(start1,duration5,rate5)`.
+
+Zero is this oracle's retained supplied storage premise. Neither an Options
+constructor/settings read nor a retail configured speed0 is established here.
+A Rust comparison must transport speed0 for this idle context, rather than use
+its default speed1 or change the native results. The separate fresh emission
+owner explicitly supplies speed4; that input does not apply to this historical
+idle row. With the configured executable and physical input roots above, these
+calls reproduce the proof through the existing owner without writing evidence:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 - <<'PY'
+import json
+from pathlib import Path
+from tools.spatial_oracle.anytown_damage.foot_missions import FootMissions
+q = FootMissions()
+speeds = [q.m.read32(0xA8EB60)]
+q.initialize_companion(); speeds.append(q.m.read32(0xA8EB60))
+q.rules_reader_receipts(); speeds.append(q.m.read32(0xA8EB60))
+row = q.row('E1_retail_idle_direct_seed1', family='E1', mission=11,
+            status=0, seed=1, idle_expired=True,
+            idle_args=dict(entry='idle', doing=0))
+saved = json.loads(Path('tools/spatial_oracle/anytown_damage/foot_missions.json').read_bytes())
+expected = next(r for r in saved['retail_idle_rows'] if r['input']['name'] == row['input']['name'])
+calls = [e for e in row['events'] if e['kind'] == 'game_options_delay']
+print(speeds, row['after']['sequence_timer_words'], calls, row == expected)
+assert speeds == [0, 0, 0] and row == expected
+PY
+```
 
 Two rows enter original `520AE0` to follow Idle1/Idle2 completion. They first
 execute actual `51D6F0` action9/10 from the native Ready baseline and record
@@ -406,3 +448,255 @@ reference. All eight controls restore native writes, CPU/x87, observer state and
 all RNG before the next case. Original `.text`, class tables and actual Drive/Walk
 tables must remain byte-identical. Whole Logic order, other actors and the
 inherited runtime/presentation boundaries remain excluded.
+
+The additive `stage_clock_receipt` appends only after the entire prior payload,
+including `ground_firing_receipt`, retains its canonical9,101,254-byte identity:
+`f7662e010a04347bc900c3d97887de09aaa7e40a90726bd66e11e50b6c1c5434`.
+It reuses the restored original-constructor VM from that firing receipt. The
+220 rows, eight firing controls, earlier receipts and every earlier RNG value
+remain unchanged.
+
+Its36 `clock_rows` run eighteen declared input controls for each of two original
+instruction regions. Techno enters `6FABC4` with the original constructed E1
+receiver in ESI and explicit EBP0/ESP, then stops before `6FAC31`. Building
+enters `4509DE` on supplied zero-initialized scalar storage, executes original
+timer helper `426630`, and stops before `450A38`. The admitted Building branch
+jumps directly to `450A38`; `450A33` belongs to the refused branch and is not a
+common boundary. No Building constructor, vtable or downstream virtual receiver
+is executed by this scalar seam. Exact image/text/span identities and instruction
+bytes are recorded in metadata and per-frame traces.
+
+Each row declares `input` stage value, changed byte, timer start/raw auxiliary/
+duration, repeat rate, signed increment, absolute frame sequence, receiver,
+registers and caller stack premises. `frames` retain the original writes between
+successive calls, recording native before/after signed state, registers, ordered
+`instructions`, field writes, Building helper return, native stop and full three
+RNG states. The caller auxiliary is supplied at ESP+2C for Techno or ESP+18 for
+Building; the Building caller changed-local byte at ESP+E starts with canaryA5
+and records the original write. The middle timer word and stack-local byte are
+raw observations. They are not timer authorities.
+
+The controls include repeated absolute frames and an elapsed gap; a timer before
+and at expiry; zero and negative rates; paused timers with zero, positive and
+negative durations; zero and negative increments; signed stage addition wrap;
+elapsed-delta and absolute-frame wrap; and a frame preceding its supplied start.
+No Python stage/timer decision or expected gameplay value supplies the results.
+All native writes, CPU/x87, inherited observers and RNG are restored after each
+control; original `.text` and class vtable bytes remain unchanged.
+
+The58 native frame visits agree across the two regions. A repeated frame with a
+positive running duration leaves the value unchanged and clears changed; an
+elapsed gap advances once and restarts at the supplied current frame. A zero
+increment still sets changed1 and restarts the timer when admitted. Zero rate
+refuses advancement. A paused zero-duration timer can advance when its rate is
+nonzero, while paused positive or negative duration refuses. Negative rate can
+advance again on the same frame after restarting with negative duration. Signed
+addition and frame-delta wrap are retained as original instruction results.
+All three RNG streams remain unchanged throughout these scalar controls.
+
+The separate two `action_restart_rows` run original physical GI DoAction
+`51D6F0(4,0,0)` to produce FireUp4, then supply prior stage31, changedFC1,
+timer99/aux2468ACE0/duration9, rate9 and increment7 at absolute frame1337.
+Original `51D6F0(0,1,0)` exercises the forced Ready transition and its admitted
+clock writes. The separate same-FireUp request `51D6F0(4,1,0)` exercises native
+unchanged-action refusal at `51D90B/51D913` despite force1. Both record actual
+return, Doing, stage/timer fields, ordered writes, physical GI sequence bytes and
+full RNG before/after. No restart or refusal outcome is supplied after entry.
+The admitted Ready transition returns AL1, resets stage31 to0, sets timer start
+1337 and duration/rate0, and preserves changed1/increment7. The same-FireUp
+request returns AL0 without stage writes. All three RNG streams remain unchanged
+in both controls and their original action setups.
+
+These are scalar clock and full DoAction restart controls. They do not establish
+complete Building/Techno AI, first object initialization, whole Logic chronology,
+future ground animation rendering or persistence. Their uncommon retained
+stage/rate/timer/increment and caller contexts are explicit supplied inputs;
+native producers of those unusual states are outside this receipt.
+
+The additive `ground_emission_receipt` starts only after the entire prior
+10,896,182-byte canonical payload, including `stage_clock_receipt`, retains SHA256
+`e40988fa2524a3a11376a54add8a54014053252909db2e83128ae27e3c80fb3f`.
+It does not change any earlier row, receipt or RNG value. Four fresh instances of
+the existing `FootMissions` owner execute the declared accepted frame schedules:
+`1,2,3`, repeated `1,1,2,3`, gap `1,20,21`, and the supplied deck pose at `1,2,3`.
+
+This addition requires `VERA20K_FOOT_EMISSION_INPUTS` for a separate extracted
+asset root. The earlier sparse asset roots remain unchanged. This root contains
+`GI.SHP`, `MGUN-N.SHP`, `MGUN-NE.SHP`, `MGUN-E.SHP`, `MGUN-SE.SHP`, `MGUN-S.SHP`,
+`MGUN-SW.SHP`, `MGUN-W.SHP`, `MGUN-NW.SHP` and `PIFFPIFF.SHP`. Its parent contains
+`extraction_receipt.json`: the recorded tool `label`, `binary_sha256`,
+`manifest_sha256`, and ordered `rows` with `name` and original asset extractor
+`result.source_archive`/`result.entry_id`. It supplies extraction provenance,
+not a native gameplay value. All actual asset bytes are read and hashed again.
+The captured root is `/tmp/vera-e1-emission-retail-20260930/extract`; its manifest
+was produced by the existing repository `asset extract` command using the
+verified preserved build `audio-owner-after-20260928`. The asset executable SHA
+is `da347efe61bb1a79009aee2b70589fc54cd20915f2d54dc1b42731865dc1b`, and its
+recorded manifest SHA is
+`e6242d96051e5e24400b6469c7e1e94db28d6768d4fea52982cd635827bf772e`.
+The existing resolver is:
+
+```sh
+python -m tools.cargo_run --resolve asset --profile release \
+  --from-label audio-owner-after-20260928
+```
+
+The actual extraction commands use that verified executable, `extract <name>`,
+`--ra2-dir "$RA2_DIR"` and `--out /tmp/vera-e1-emission-retail-20260930`.
+The saved native input receipt records all ten entries from
+`ra2.mix -> conquer.mix`, their IDs, hashes, byte lengths and raw headers.
+Native readers retain GI744 frames, every directional MGUN6 frames, and
+PIFFPIFF12 frames. This extends the existing physical reader; no competing
+extractor or SHP/ART scalar reader is added.
+
+`ground_emission_receipt.inputs` records the original GI image, all nine actual
+AnimType `427D00` results and SHP loads, eight muzzle references and the two
+physical SA `PIFFPIFF` impact references. The existing `Sound` cache owner and
+original `7510D0`/`7514D0` read and bind `GIAttack`. Native M60 `Report` retains
+that fixture-relative index; sample-name lookup records `igiat1a/b/c`. All E1
+normal/elite Weapon, Projectile and Warhead readers run through the existing
+full closure. Every fresh VM must reproduce the same input receipt. The original
+file-buffer and INI-cache premises still exclude native archive/INI loading;
+GI sequence/image reading is original, but this is not a rendered-frame proof.
+
+Each `cases[]` row records explicit `input`, `initial`, optional supplied `poses`,
+`original_actor_prefix`, `command`, full `ai_visits`, `logic_suffix`, ordered
+`events`, `field_writes`, `final`, constructed identities and all three complete
+`rng_before`/`rng_after` states. Per-AI and per-suffix snapshots retain actual
+source Doing/F8/FC/firing/timers, target health/mission/target, and complete
+Logic/Display/Bullet/Anim/deferred memberships. Events read actual registers,
+callers and stack arguments, class damage-pointer changes, Bullet state and
+Anim constructor/AI state. The existing Anim constructor decoder supplies only
+memory readback; its separate stubbed constructor fixture is not called.
+Original `.text` and source/locomotor tables remain unchanged. The emitted
+Bullet and Anim tables are also compared directly with original retail-image
+bytes and checked again after retirement.
+
+Whole original `51BAB0` runs through `51DF60` and actual `6FDD50`, rather than
+stopping at the earlier prefix boundary. Original Infantry FLH `523250`,
+Bullet factory/create/construct/fire, Firestorm `5880A0`, cliff/wall `4CC100`,
+ROF `6FCFA0`, rearm and MGUN constructor/attachment execute and return. Source
+FireUp/firing begins on frame1; stage advances to1 on frame2; stage2 executes
+launch on frame3 (or frame21 for the gap). Original `51DF60` clears firing before
+base FireAt. Original per-source InfantryAI subsequently completes FireUp to
+Ready0. No return, sequence, weapon selection or firing result is supplied.
+
+After launch, the original dynamic Logic suffix `55B608..55B61B` runs with EDI
+`87F778`, ESP at the inherited stack, and supplied ESI equal to the recorded
+initial actor count4. Original Bullet/Anim registrations and list mutations
+supply the remaining order. Original `55DE73..55DE87` commits the frame, then
+full `725C70` drains deferred destruction. Whole source InfantryAI precedes
+subsequent suffix passes. The four preexisting actor AI visits and other global
+Logic phases are excluded, so this is a declared per-source and emitted-object
+continuation, not whole-match timing or ordinary full `advance_tick` parity.
+
+The three ground controls run full `4666E0` BulletAI through `4690B0`,
+`489280`, real Unit `737C90`, Foot `4D7330`, Techno `701900` and Object `5F5390`.
+Native incoming SA damage15 becomes3 in the shared damage pointer; MTNK health
+changes300 to297. Its original retaliation leaves Attack1 and targetE1.
+Original `48A4F0` selects PIFFPIFF and its actual constructor runs. During that
+first suffix, the Bullet at index4 removes itself, compacting MGUN-S to4; newly
+appended PIFFPIFF occupies5. The original loop increments to5 and visits it,
+so MGUN-S first receives AI on the next supplied pass. This order comes from
+the executable loop, not a Python event schedule. Fourteen suffix passes retire
+both actual effects and return Logic to its original four actors; Bullet,
+Anim and deferred arrays become empty through original cleanup/destructors.
+
+The supplied deck control adds416 to source/target XYZ and sets OnBridge and
+physical CellHasBridge after original ground Unlimbo. Its ground occupancy is
+retained and its upper head is empty. Original launch/impact/effects execute,
+but the original layer query applies no target damage: health remains300.
+That result establishes the declared layer-consumer continuation. It does not
+establish genuine native bridge placement, upper occupancy or damage to a
+properly registered deck object. Bridge destruction/collapse and target death
+are not triggered. Earlier target-expiry and opposite-layer refusal controls
+remain separately bounded by `ground_firing_receipt` and are unchanged.
+
+The actual GIAttack sound request reaches inherited `7509E0` with its name and
+position. This remains a recording boundary before playback, audio-device work
+and Main audio RNG. Main/MapGen remain unchanged within that boundary, while the
+captured Scenario advances from index5 to11 in each full-shot control. Full
+states and every original ranged/raw draw are recorded; this is not an audio
+RNG parity claim. Supplied Houses/counters, crop, heap/OS, radar/hierarchy and
+other inherited runtime boundaries remain explicit. No native text or gameplay
+vtable is changed, and no gameplay decision or outcome is substituted.
+
+The separate additive `draw_stage_modulo_receipt` executes only original
+`518E08..518E21`. Eight signed Stage controls cross ten count controls, including
+the physically read GI FireUp count6, for80 rows. Counts include negative
+extrema, -7/-1, zero, one,2/3,65537 and2147483647; stages include signed extrema,
+-65537/-1, zero/one,65535 and65536. Caller EAX/EBX/EBP/ESP, ECX/EDX canaries,
+stack marker and signed count slot are explicit supplied inputs. The original
+MOV reads the count; count<=1 clamps ECX to1; actual CDQ/IDIV produces the saved
+signed EAX quotient and EDX remainder. No Python expected value is calculated.
+For example, stage-2147483648/count3 yields remainder-2, while
+stage65536/count65537 retains remainder65536. All three full RNG streams and
+original text/vtable bytes remain unchanged. The seam stops before `518E21`:
+remaining facing/frame-index composition, SHP access and drawing are excluded.
+It therefore does not certify full renderer or pixel parity.
+
+## Original Infantry frame selection
+
+`infantry_frame_selection_receipt` is appended after the entire earlier payload,
+including the80 modulo controls, retains its17,535,932-byte canonical SHA256
+`54a2a1f2b554a404ed0e6530b4dc2bdea0f666584bf03f1ed8f873bb45a28e91`.
+A fresh existing `FootMissions` VM executes whole original `518D80` through its
+`518F88` return. The521-byte body has SHA256
+`60ee1cdafdd13ab060a3fc6fc80794476f42f943d933090b63d41ced74714608` in the
+pinned native image above. No partial-function seam or semantic stand-in is used.
+
+The receipt reads all42 actual GI records produced by the existing physical ART
+and original E1 type/sequence readers. It contains336 `physical_rows` covering
+every Doing0..41 at eight body facings and Stage7; Ready0 and Guard1 are distinct
+controls, even though their physical first-three record fields are both0,1,1.
+Forty `facing_rows` cover all32 native lookup indices and eight rounding/edge
+inputs. Its136 `scalar_rows` supply only signed Start/Count/Stride fields in the
+real selected bank and signed Stage, including count<=1, negative/extreme values,
+values aboveu16 and multiplication/addition wrap. They execute the original
+clamp/CDQ/IDIV, only-positive-Stride branch and DWORD IMUL/ADD. Outputs are read
+from native registers; Python computes no expected frame arithmetic.
+
+Each row has `input`, `before`, `native_observations`, `native_instructions`,
+`native_world_writes`, `output`, `callback_events` and all three complete
+`rng_before`/`rng_after` states. `input.record_override`, when present, gives
+the first three signed record fields; the remaining physical record bytes stay
+intact. `selected_action_bank` and `selected_record` observations identify the
+actual native Doing, selected type, record address and fields. `signed_division`,
+`facing_current_return`, `direction_index`, `direction_lookup`, `stride_product`,
+`stride_sum` and `frame_sum` expose actual intermediate results. Final
+`output.frame_u32` and `frame_i32` retain the same returned DWORD in both views.
+Original `4C9300` installs the explicit body-facing input; actual `4C93D0`
+reads the actor's `+388` facing. These controls retain that setter's duration0
+state and do not establish in-flight rotation.
+
+Four `default_rows` set Doing-1 and run the real physical-coordinate virtual
+and `Map5657A0`. They retain current XYZ `(22272,12544,416)` and concrete Cell
+`0x40003A00`, whose original land type is1. Ground1 with either supplied
+OnBridge0/1 chooses Ready0 and returns frame3 at BAM8000. Supplied Cell land2
+with OnBridge0 chooses Tread16 and returns frame0; land2/OnBridge1 chooses
+Ready0 and returns frame3. `map_cell_return` records the actual lookup result
+and land field. These are raw draw-input controls: no native water transition,
+bridge placement, layer production or occupancy relocation is claimed.
+
+Original observer gate `70EE30` executes and returns AL1 under the retained
+supplied House/current-player premise; the selected bank remains real E1.
+Actual E1 Type+D94 is0, so JumpJet CLSID/target-facing and alternate observer or
+disguise banks are excluded, along with invalid Doing outside-1/0..41.
+The row supplies the declared caller registers, return address and stack fill;
+the native function returns normally and preserves its callee-saved registers.
+Every input/native memory write and CPU/x87 context is restored, the actor/type/
+bank/Cell/Walk/global snapshots compare unchanged, and complete RNG, native text
+and actual class vtables remain identical. No inherited runtime callback or
+gameplay-result substitution is reached. This proves the selected native frame
+calculation inputs and outputs, not SHP drawing or renderer/pixel parity.
+
+Reproduce through the same owner and already extracted physical assets:
+
+```sh
+source /Users/halvor/Documents/vera20k-dev/env.sh
+VERA20K_SHRAPNEL_INPUTS=/tmp/vera20k-rescue-shrapnel-inputs-20260930 \
+VERA20K_ANYTOWN_INPUTS=/tmp/vera20k-rescue-anytown-inputs-20260930 \
+VERA20K_FOOT_EMISSION_INPUTS=/tmp/vera-e1-emission-retail-20260930/extract \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+python -m tools.spatial_oracle.anytown_damage.mission --foot-missions --check
+```

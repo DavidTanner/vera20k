@@ -10,8 +10,7 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::anim_class::{AnimObject, AnimRuntime, AnimWorldCoord};
-use crate::sim::animation::SequenceKind;
-use crate::sim::combat::{AttackTarget, PendingInfantryFire, TargetKind};
+use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::{
     C4PlantState, DriveLocomotionRuntime, DriveOccupationFootprint, Health, NavTargetRef,
 };
@@ -2825,7 +2824,6 @@ fn pointer_expiry_clears_live_target_and_navigation_refs() {
     let listener = sim.substrate.entities.get_mut(1).unwrap();
     listener.attack_target = Some(AttackTarget {
         target: TargetKind::Entity(2),
-        pending_infantry_fire: None,
     });
     listener.suspended_attack_target = Some(TargetKind::Entity(2));
     listener.navigation.suspended_nav_com = Some(NavTargetRef::Entity { id: 2 });
@@ -2991,9 +2989,7 @@ fn infantry_target_expiry_clears_firing_action_before_target() {
     // Original 51B20E drops the firing latch before its unforced Ready
     // request. FireUp (4) admits it; Die2 (12) refuses and retains its stage.
     // The corresponding class-target receipts pin this ordering without RNG.
-    for (doing, expected_doing, expected_sequence) in
-        [(4, 0, SequenceKind::Stand), (12, 12, SequenceKind::Die2)]
-    {
+    for (doing, expected_doing) in [(4, 0), (12, 12)] {
         let mut sim = Simulation::new();
         assert_eq!(
             sim.spawn_object_at_height("E1", "Americans", 2, 3, 0, 0, &rules),
@@ -3003,13 +2999,7 @@ fn infantry_target_expiry_clears_firing_action_before_target() {
         let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
         assert!(sim.infantry_do_action(1, doing, true, &rules).unwrap());
         let listener = sim.substrate.entities.get_mut(1).unwrap();
-        listener.attack_target = Some(AttackTarget {
-            target: TargetKind::Entity(2),
-            pending_infantry_fire: Some(PendingInfantryFire {
-                sequence: SequenceKind::Attack,
-                fire_frame: 2,
-            }),
-        });
+        listener.attack_target = Some(AttackTarget::new(2));
         listener.mission_leaf =
             crate::sim::mission::MissionLeafState::infantry_raw_for_test(1, doing);
         // Isolate the class action: the separate PointerExpired timer gate
@@ -3019,10 +3009,7 @@ fn infantry_target_expiry_clears_firing_action_before_target() {
         sim.uninit_with_rules(2, &rules);
         let listener = sim.substrate.entities.get(1).unwrap();
         assert!(listener.attack_target.is_none());
-        assert_eq!(
-            listener.animation.as_ref().unwrap().sequence,
-            expected_sequence
-        );
+        assert_eq!(listener.infantry_sprite_pose().unwrap().0, expected_doing);
         let leaf = listener.mission_leaf.as_infantry().unwrap();
         assert_eq!(leaf.firing_sequence_latch(), 0);
         assert_eq!(leaf.doing(), expected_doing);
@@ -5815,7 +5802,6 @@ fn gsi_01_05_terminal_wave_damages_once_before_single_current_removal() {
         .unwrap()
         .attack_target = Some(AttackTarget {
         target: TargetKind::Entity(victim_id),
-        pending_infantry_fire: None,
     });
     let mut wave = Wave::new_owned(
         0,
@@ -5899,7 +5885,6 @@ fn terminal_type_zero_wave_with_empty_recorded_vector_has_no_damage_area_tail() 
         firer.type_ref = sim.interner.intern("FIRER");
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Cell(4, 5),
-            pending_infantry_fire: None,
         });
     }
     let wave_id = sim.allocate_stable_id();
@@ -5980,7 +5965,6 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
         firer.set_veterancy_rank(200);
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(next_id),
-            pending_infantry_fire: None,
         });
     }
 
@@ -6100,7 +6084,6 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
             firer.type_ref = sim.interner.intern("FIRER");
             firer.attack_target = Some(AttackTarget {
                 target: TargetKind::Entity(building_id),
-                pending_infantry_fire: None,
             });
         }
         let wave_id = sim.allocate_stable_id();
@@ -6186,7 +6169,6 @@ fn wave_tail_consumes_wall_roll_before_mandatory_cliff_chance_roll() {
         firer.type_ref = sim.interner.intern("FIRER");
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Cell(4, 1),
-            pending_infantry_fire: None,
         });
     }
 
@@ -6402,7 +6384,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
         firer.type_ref = sim.interner.intern("FIRER");
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Cell(4, 1),
-            pending_infantry_fire: None,
         });
     }
     let mut cells = Vec::new();
@@ -6705,7 +6686,6 @@ fn gsi_01_05_wave_reselects_live_cell_list_after_fatal_receiver_unmark() {
         .unwrap()
         .attack_target = Some(AttackTarget {
         target: TargetKind::Entity(building_id),
-        pending_infantry_fire: None,
     });
     let mut wave = Wave::new_owned(
         0,

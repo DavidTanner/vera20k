@@ -175,7 +175,6 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     e.attack_target =
         (input["attack_target"] == true).then_some(crate::sim::combat::AttackTarget {
             target: TargetKind::Cell(11, 10),
-            pending_infantry_fire: None,
         });
     e.suspended_attack_target = None;
     e.navigation.path_replay.directions = vec![2, 3, 4, 5];
@@ -481,7 +480,8 @@ fn ordinary_and_recursive_walk_responses_match_original_decoder() {
         let result = result.and_then(|retry| {
             if input["continue_recursive"] == true {
                 let request = retry.ok_or("missing recursive Walk request")?;
-                let found = sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry))?;
+                let found =
+                    sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry))?;
                 if found {
                     let again = sim.run_walk_admission_request(
                         request.into_walk_admission_for_test(),

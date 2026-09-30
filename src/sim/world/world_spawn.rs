@@ -1581,10 +1581,13 @@ impl Simulation {
         destination.selected = was_selected;
         // Begin_Mode(0) at its Unlimbo, the Construction mission queued
         // (0x007396D5) and its ready byte set (0x0073984E).
-        destination.building_up = Some(BuildingUp::deployed(
-            rules.buildup_control(&yard_type),
+        destination.install_building_up(
+            BuildingUp::deployed(
+                rules.buildup_control(&yard_type),
+                self.session.binary_frame as i32,
+            ),
             self.session.binary_frame as i32,
-        ));
+        );
         let (new_sid, outcome) =
             self.unlimbo_after_constructor_managers(destination, Some(rules), registry);
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {

@@ -375,7 +375,11 @@ fn ensure_scan_map_context(sim: &mut Simulation) {
 /// the mission dispatch as the production host runs it.
 fn tick_stages(sim: &mut Simulation) {
     for id in sim.substrate.entities.keys_sorted() {
-        super::tick_stage(sim, id);
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .tick_native_stage(sim.session.binary_frame as i32);
     }
 }
 
@@ -834,7 +838,7 @@ fn wait_no_ore_queues_guard_when_the_wait_expires() {
     tick_miners_n(
         &mut sim,
         &rules,
-        (base + crate::sim::mission::authority::RATE_EPILOGUE_JITTER_MAX_FRAMES) as usize,
+        (base + crate::sim::mission::authority::RATE_EPILOGUE_JITTER_MAX_FRAMES as i32) as usize,
     );
     let m = get_miner(&sim, miner_id);
     assert_eq!(m.state, MinerState::WaitNoOre);
@@ -1443,6 +1447,14 @@ fn tick_miners_overlay_n(
 
 /// Mission_Harvest state 1 with the StageClass at 9 on the stock
 /// `HarvesterLoadRate` 2, so the next dispatch cuts.
+fn get_stage(sim: &Simulation, id: u64) -> &crate::sim::stage::StageClass {
+    sim.substrate
+        .entities
+        .get(id)
+        .expect("miner entity")
+        .native_stage()
+}
+
 fn arm_cutting(sim: &mut Simulation, id: u64) {
     let entity = sim.substrate.entities.get_mut(id).expect("miner entity");
     entity
@@ -1450,9 +1462,7 @@ fn arm_cutting(sim: &mut Simulation, id: u64) {
         .set_handler_state(MinerState::Harvest.cursor());
     let miner = entity.miner.as_mut().expect("miner component");
     miner.harvesting = true;
-    miner.stage_value = 9;
-    miner.stage_rate = 2;
-    miner.stage_timer.arm(0, 2);
+    entity.restart_native_stage(9, 0, 2);
 }
 
 /// Frames between two cuts: the stage re-arms at `HarvesterLoadRate` 2 and
@@ -1481,7 +1491,10 @@ fn harvester_takes_one_bale_per_gate_over_eleven_gates() {
         assert_eq!(miner.cargo.len(), 1, "first gate removes one level");
         assert_eq!(miner.state, MinerState::Harvest);
         assert_eq!(
-            (miner.stage_value, miner.stage_rate),
+            (
+                get_stage(&sim, miner_id).value(),
+                get_stage(&sim, miner_id).rate()
+            ),
             (0, 2),
             "success re-arms the StageClass at HarvesterLoadRate"
         );
@@ -1610,7 +1623,10 @@ fn harvester_clears_density_zero_overlay_without_bale_and_moves_on() {
             "gate {bale}: overlay present, one level lower"
         );
         assert_eq!(
-            (miner.stage_value, miner.stage_rate),
+            (
+                get_stage(&sim, miner_id).value(),
+                get_stage(&sim, miner_id).rate()
+            ),
             (0, 2),
             "gate {bale}: success re-arms the StageClass"
         );
@@ -1702,7 +1718,10 @@ fn harvester_caps_extraction_at_remaining_capacity() {
         "positive extraction remains a successful Harvest tick"
     );
     assert_eq!(
-        (miner.stage_value, miner.stage_rate),
+        (
+            get_stage(&sim, miner_id).value(),
+            get_stage(&sim, miner_id).rate()
+        ),
         (0, 2),
         "success re-arms the StageClass"
     );
@@ -1784,8 +1803,17 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         let miner = entity.miner.as_ref().expect("miner component");
         assert_eq!(miner.cargo.len(), 40);
         assert_eq!(entity.miner_state().unwrap(), MinerState::Harvest);
-        assert_eq!(miner.stage_timer.start_frame, fill_frame);
-        assert_eq!((miner.stage_value, miner.stage_rate), (0, 2));
+        assert_eq!(
+            entity.native_stage().timer().start_frame() as u32,
+            fill_frame
+        );
+        assert_eq!(
+            (
+                get_stage(&sim, miner_id).value(),
+                get_stage(&sim, miner_id).rate()
+            ),
+            (0, 2)
+        );
         assert_eq!(entity.archive_target(), None);
         assert_eq!(miner.reserved_refinery, None);
         assert!(entity.movement_target.is_none());
@@ -1812,7 +1840,8 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
             "F+18 remains pending"
         );
         assert_eq!(
-            miner.stage_value, 9,
+            entity.native_stage().value(),
+            9,
             "the ninth step lands after F+18's dispatch"
         );
         assert_eq!(entity.archive_target(), None);
@@ -1841,9 +1870,16 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         let miner = entity.miner.as_ref().expect("miner component");
         assert_eq!(full_gate_frame.wrapping_sub(fill_frame), GATE as u32);
         assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
-        assert_eq!(miner.stage_timer.start_frame, full_gate_frame);
-        assert_eq!(miner.stage_timer.duration, 0);
-        assert_eq!(miner.stage_rate, 0, "the full gate resets the StageClass");
+        assert_eq!(
+            entity.native_stage().timer().start_frame() as u32,
+            full_gate_frame
+        );
+        assert_eq!(entity.native_stage().timer().duration(), 0);
+        assert_eq!(
+            entity.native_stage().rate(),
+            0,
+            "the full gate resets the StageClass"
+        );
         assert_eq!(
             entity.archive_target(),
             Some(crate::sim::combat::TargetKind::Cell(31, 30))
@@ -1952,7 +1988,7 @@ fn purifier_under_construction_pays_no_bonus_until_complete() {
         .entities
         .get_mut(4)
         .expect("purifier 4")
-        .building_up = Some(BuildingUp::completing_in_ticks(1000, 0));
+        .install_building_up(BuildingUp::completing_in_ticks(1000, 0), 0);
     assert_eq!(
         super::miner_system::count_purifiers_for_owner(&sim, &rules, "Americans"),
         1,

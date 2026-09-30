@@ -218,9 +218,13 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // parent and this change, each with those five inputs removed from the
 // hash, printed the same value, with the RNG pins above unchanged (the
 // probe patch was not committed). Old value: the commit that moved it.
-// The combined merge retains the owned pre-merge pin until its causal replay
-// comparison; the independent main pin cannot certify this combined state.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xDCB5_B510_23C8_0E6B;
+// Snapshot264: private native Stage and Infantry Doing/sequence timing.
+// Complete before/candidate/final receipts in foot_bridge_layer.replay.json
+// (techno_stage264_followup) attribute every changed actor field and retain
+// all819 frame rows, all three RNG states and ordered raw draw callers.
+// Incoming main preserves candidate state; its source-line changes remain
+// recorded. This Rust replay pin does not establish native whole-world parity.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4477_C324_18ED_A27F;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

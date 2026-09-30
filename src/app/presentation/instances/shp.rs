@@ -100,6 +100,12 @@ pub(crate) fn build_shp_instances(
         state.rules().map(|rules| rules.art());
     let canopy_owners = super::overlays::parachute_canopy_owners(state, sim);
 
+    // Drawing borrows live map fields but uses its own small Dummy identity,
+    // so native-style misses cannot mutate lockstep simulation state.
+    let cells = sim
+        .resolved_terrain
+        .as_ref()
+        .map(crate::map::resolved_terrain::NativeCellQuery::isolated);
     let encounter_order = super::helpers::tactical_entity_encounter_order(sim);
     for stable_id in encounter_order {
         let Some(entity) = sim.entities().get(stable_id) else {
@@ -202,9 +208,10 @@ pub(crate) fn build_shp_instances(
             }
             let stage = if selling {
                 let end = anim.control[0].wrapping_add(anim.control[1]);
-                end.wrapping_sub(anim.stage).wrapping_sub(1)
+                end.wrapping_sub(entity.construction_stage_value())
+                    .wrapping_sub(1)
             } else {
-                anim.stage
+                entity.construction_stage_value()
             };
             let frame = stage.clamp(0, i32::from(total_make_frames) - 1) as u16;
             (frame, Some(make_key))
@@ -243,10 +250,18 @@ pub(crate) fn build_shp_instances(
                     };
                     (frame, None)
                 }
-                _ => (
-                    resolve_infantry_shp_frame(state, type_str, entity, sim.session.binary_frame),
-                    None,
-                ),
+                _ => {
+                    let Some(frame) = resolve_infantry_shp_frame(
+                        state,
+                        type_str,
+                        entity,
+                        sim.session.binary_frame,
+                        cells.as_ref(),
+                    ) else {
+                        continue;
+                    };
+                    (frame, None)
+                }
             }
         };
         let key: ShpSpriteKey = ShpSpriteKey {
@@ -736,7 +751,9 @@ fn emit_building_anims(
         else {
             continue;
         };
-        if instance.runtime.inactive || instance.draw_runtime.hidden {
+        // Building's retained slot reaches DrawIt422CA0..4238AF until physical
+        // release. That body gates on hidden19D, not19B or Logic membership.
+        if instance.draw_runtime.hidden {
             continue;
         }
         let anim_name = sim.interner.resolve(instance.type_id);
@@ -855,7 +872,8 @@ fn resolve_infantry_shp_frame(
     type_id: &str,
     entity: &crate::sim::game_entity::GameEntity,
     binary_frame: u32,
-) -> u16 {
+    cells: Option<&crate::map::resolved_terrain::NativeCellQuery<'_>>,
+) -> Option<u16> {
     let facing = entity.body_facing_byte(binary_frame);
     // Pass raw facing (not canonical) to resolve_shp_frame so the
     // facing-to-index division works correctly for any facing count
@@ -879,17 +897,63 @@ fn resolve_infantry_shp_frame(
             crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(entity),
         )
     {
-        return frame;
+        return Some(frame);
+    }
+    if let (Some((doing, stage)), Some(set)) = (entity.infantry_sprite_pose(), sequence_set) {
+        // Original518D93..518DC8: Doing-1 draws Tread16 only when the
+        // current CellClass+EC is Water2 and OnBridge is clear. This reads
+        // live map land; it does not depend on the separate Infantry6E8 byte.
+        let selected = if doing == -1 {
+            let water = cells.is_some_and(|cells| {
+                let cell = cells.lookup((entity.position.rx as i16, entity.position.ry as i16));
+                cells.land_type(cell) == 2
+            });
+            if water && !entity.on_bridge { 16 } else { 0 }
+        } else {
+            doing
+        };
+        let record = set.infantry_action(selected)?;
+        let facing = state
+            .rules()
+            .and_then(|rules| {
+                let sim = &state.match_state.sim_runtime.as_ref()?.simulation;
+                rules.object(sim.interner.resolve(entity.type_ref()))
+            })
+            .filter(|object| object.jumpjet && !object.jumpjet_turn)
+            .filter(|_| {
+                entity.locomotor.as_ref().is_some_and(|loco| {
+                    loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+                })
+            })
+            .and_then(|_| entity.attack_target.as_ref())
+            .and_then(|target| {
+                let sim = &state.match_state.sim_runtime.as_ref()?.simulation;
+                crate::sim::movement::turret::facing_toward_target(
+                    entity,
+                    &target.target,
+                    sim.entities(),
+                )
+            })
+            .map_or(facing, |direction| (direction >> 8) as u8);
+        // Native EAX remains signed. A negative/wide result cannot alias an
+        // unrelated valid frame in the u16 SHP atlas. This is an asset boundary,
+        // not evidence for native invalid-index shape-access behavior.
+        return u16::try_from(animation::resolve_shp_frame(record, facing, stage)).ok();
     }
     if let (Some(anim_state), Some(set)) = (entity.animation.as_ref(), sequence_set) {
         if let Some(def) = set.get(&anim_state.sequence) {
-            return animation::resolve_shp_frame(def, facing, anim_state.frame_index);
+            return u16::try_from(animation::resolve_shp_frame(
+                def,
+                facing,
+                i32::from(anim_state.frame_index),
+            ))
+            .ok();
         }
     }
     // Fallback when no sequence data was built for this type: the standing
     // block is frames 0..7, so the facing slot is the frame index. Uses the
     // same native facing table as the real path so the two cannot disagree.
-    animation::infantry_facing_slot(facing)
+    Some(animation::infantry_facing_slot(facing))
 }
 
 /// Completed `CanBeOccupied` body frame: native GetCurrentFrame 0x0043EF90.

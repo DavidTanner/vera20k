@@ -52,6 +52,36 @@ Cheer=364,8,0,E
 Panic=8,6,6
 ";
 
+/// Physical ARTMD [TRST]/[TerroristSequence] inputs for fatal receiver
+/// fixtures. These are reader inputs; native death goldens remain separate.
+pub(crate) const TRST_ART_EXCERPT: &str = "\
+[TRST]
+Sequence=TerroristSequence
+Crawls=no
+FireUp=1
+[TerroristSequence]
+Ready=0,1,1
+Guard=0,1,1
+Prone=0,1,1
+Walk=8,6,6
+Down=8,2,6
+Crawl=8,6,6
+Up=8,2,6
+Idle1=56,15,0,S
+Idle2=71,15,0,E
+Die1=86,15,0
+Die2=101,15,0
+Die3=0,1,1
+Die4=0,1,1
+Die5=0,1,1
+Paradrop=179,1,0
+Cheer=180,8,0,E
+FireUp=164,6,6
+FireProne=164,6,6
+Deploy=164,15,0
+Panic=8,6,6
+";
+
 /// Environment variable that turns a missing retail INI into a test failure.
 pub(crate) const REQUIRE_RETAIL_INI_ENV: &str = "VERA20K_REQUIRE_RETAIL_INI";
 
