@@ -2666,14 +2666,25 @@ fn admit_attacker_fire<'r>(
     match snap.category {
         // The table at `0x00737148`.
         EntityCategory::Unit => match code {
-            // Case 2 (`0x00736FB6..0x0073701C`): a turretless vehicle standing
-            // with no destination turns its hull toward the target at its own
-            // `ROT=` (`0x00737004`) and copies the hull's destination into the
-            // turret slot (`0x0073701C`); a moving one does not turn. A turret
-            // follows its target through the turret sweep.
+            // Case 2 (`0x00736F78..0x0073701C`): a turretless vehicle
+            // (`UnitType+0xE11`, which ReadINI sets to !`Turret=` at
+            // `0x00747759`) with no NavCom (`+0x5A4`, `0x00736FB6`) whose
+            // locomotor's Is_Moving (ILocomotion+0x10, `0x00736FE1`) is false
+            // turns its hull toward the target at its own `ROT=` (`0x00737004`)
+            // and copies the hull's destination into the turret slot
+            // (`0x0073701C`). A pending order is neither. A turret follows its
+            // target through the turret sweep.
             fire_error::FireError::Facing => {
                 if snap.barrel_facing.is_none()
-                    && !snap.has_movement
+                    && world
+                        .substrate
+                        .entities
+                        .get(snap.stable_id)
+                        .is_some_and(|firer| {
+                            firer.navigation.nav_com.is_none()
+                                && crate::sim::movement::motion_query::is_moving(firer)
+                                    != Some(true)
+                        })
                     && let Some(update) = out
                         .unit_facing
                         .iter_mut()
