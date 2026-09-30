@@ -57,12 +57,13 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::bounce::{BounceOutcome, BounceState};
 use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::intern::InternedId;
-use crate::sim::occupancy::{RawCellOccupationGrid, infantry_raw_occupation_mask};
+use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::{RawCellKey, RawCellOccupationGrid, infantry_raw_occupation_mask};
 use crate::sim::timer::CdTimer;
 use crate::sim::touch_log::{TouchLog, Touched};
 use crate::sim::world::{LifecycleOutput, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
-use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, ground_height_leptons};
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
 use crate::util::native_x87::{NativeF64Bits, NativeX87Error, X87Chop53};
 
 pub type AnimId = u64;
@@ -621,10 +622,15 @@ enum AnimOccupationOperation {
     Clear,
 }
 
+/// One MakeInfantry anim's Mark or Clear on its cell's raw planes. At or above
+/// the floor plus the deck (Anim `[0x0089A1B4]`), Mark takes the deck only
+/// while the cell keeps its structural bridge flag. Both write the anim's owner
+/// index, -1 (vtable `+0x38` = `0x00410490`, stored at `0x004262D0` /
+/// `0x004262F5`); Clear resets it once `0x1C` is clear (`0x0042634F` /
+/// `0x00426378`).
 fn apply_anim_raw_occupation(
     grid: &mut RawCellOccupationGrid,
-    rx: u16,
-    ry: u16,
+    key: RawCellKey,
     mask: u8,
     world_z: i32,
     ground_z: i32,
@@ -639,12 +645,13 @@ fn apply_anim_raw_occupation(
         // marked after structural bridge state disappeared.
         AnimOccupationOperation::Clear => reaches_deck,
     };
-    match (operation, use_deck) {
-        (AnimOccupationOperation::Mark, false) => grid.mark_ground(rx, ry, mask),
-        (AnimOccupationOperation::Mark, true) => grid.mark_deck(rx, ry, mask),
-        (AnimOccupationOperation::Clear, false) => grid.clear_ground(rx, ry, mask),
-        (AnimOccupationOperation::Clear, true) => grid.clear_deck(rx, ry, mask),
-    }
+    let layer = if use_deck {
+        MovementLayer::Bridge
+    } else {
+        MovementLayer::Ground
+    };
+    let put = operation == AnimOccupationOperation::Mark;
+    grid.write_occupant(key, layer, mask, None, put);
 }
 
 impl Simulation {
@@ -660,44 +667,74 @@ impl Simulation {
         self.substrate.anims.get_mut(id)
     }
 
+    /// Map[coord] (`0x00565730`) for an anim's world XY, which truncates
+    /// toward zero and wraps by row: the real cell, or `None` for the shared
+    /// dummy cell off the map. Without resolved terrain, the truncated cell.
+    fn anim_map_cell(&self, x: i32, y: i32) -> Option<(u16, u16)> {
+        use crate::map::cell_index::NativeCellIdentity;
+        use crate::util::lepton::lepton_to_cell_packed;
+
+        let (rx, ry) = match self.resolved_terrain.as_ref() {
+            Some(terrain) => {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                let cell = cells.lookup_world(x, y);
+                let NativeCellIdentity::Real(_) = cell else {
+                    return None;
+                };
+                cells.coord(cell)
+            }
+            None => (lepton_to_cell_packed(x), lepton_to_cell_packed(y)),
+        };
+        Some((u16::try_from(rx).ok()?, u16::try_from(ry).ok()?))
+    }
+
+    /// `AnimClass::MarkCellOccupancy` (`0x00426270`) and `ClearCellOccupancy`
+    /// (`0x00426300`) for a MakeInfantry anim at its raw Location: the sub-cell
+    /// (`0x004810A0`), the cell through Map[coord] (`0x00565730`), whose miss
+    /// is the shared dummy cell, and the floor there (`0x00578080`).
     fn apply_make_infantry_raw_occupation(
         &mut self,
-        world: AnimWorldCoord,
+        location: AnimWorldCoord,
         operation: AnimOccupationOperation,
     ) {
-        let cell_x = world.x >> 8;
-        let cell_y = world.y >> 8;
-        let (Ok(rx), Ok(ry)) = (u16::try_from(cell_x), u16::try_from(cell_y)) else {
-            // Native writes its shared dummy cell for out-of-map coordinates;
-            // that dummy is not part of Rust's serialized map substrate.
-            return;
-        };
         let mask = infantry_raw_occupation_mask(
-            SimFixed::from_num(world.x & 0xff),
-            SimFixed::from_num(world.y & 0xff),
+            SimFixed::from_num(location.x & 0xff),
+            SimFixed::from_num(location.y & 0xff),
         );
-        let (ground_z, live_structural_bridge) = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(rx, ry))
-            .and_then(|cell| {
-                ground_height_leptons(cell.level, cell.slope_type, world.x, world.y)
-                    .ok()
-                    .map(|ground_z| {
-                        // Anim7441B0 reads live Cell+140 bit100. A stamped
-                        // side cell needs no own overlay (constructor5FC380,
-                        // bridge_constructor.json cases8..11).
-                        let live_structural_bridge = cell.bridge_facts.has_structural_bridge();
-                        (ground_z, live_structural_bridge)
-                    })
-            })
-            .unwrap_or((0, false));
+        let (key, ground_z, live_structural_bridge) = match self.resolved_terrain.as_ref() {
+            Some(terrain) => {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                let cell = cells.lookup_world(location.x, location.y);
+                let point = crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                };
+                let ground_z =
+                    crate::sim::movement::ground_pose::query_ground_height(&cells, point)
+                        .unwrap_or(0);
+                // The mark reads live Cell+140 bit100. A stamped side cell needs
+                // no own overlay (constructor5FC380, bridge_constructor.json
+                // cases8..11).
+                let live_structural_bridge = cells.flags(cell) & 0x100 != 0;
+                (
+                    RawCellKey::from_native(terrain, cell),
+                    ground_z,
+                    live_structural_bridge,
+                )
+            }
+            None => {
+                let Some((rx, ry)) = self.anim_map_cell(location.x, location.y) else {
+                    return;
+                };
+                (RawCellKey::Real(rx, ry), 0, false)
+            }
+        };
         apply_anim_raw_occupation(
             &mut self.substrate.raw_cell_occupation,
-            rx,
-            ry,
+            key,
             mask,
-            world.z,
+            location.z,
             ground_z,
             live_structural_bridge,
             operation,
@@ -1036,26 +1073,47 @@ impl Simulation {
         removed
     }
 
-    /// `CellClass::Get_Tiberium_Value @ 0x00485020` of the cell under a world
-    /// coordinate. Native resolves the raw Location through
-    /// `MapClass::Get_CellClass_At_Coord @ 0x00565730` and reads the shared
-    /// dummy on a miss; VERA reads the grid cell for any coordinate inside the
-    /// rectangular grid and the dummy's overlay pair outside it (the
-    /// in-rectangle/outside-diamond difference is unreachable for retail art).
+    /// `CellClass::Get_Tiberium_Value @ 0x00485020` of the anim's cell. Native
+    /// finds it from the raw Location through Object vtable `+0x1BC`
+    /// (`0x005F6960`): two Map[coord] lookups (`0x00565730`), whose miss is the
+    /// shared dummy cell.
     fn anim_cell_tiberium_value(
         &self,
-        world_coord: AnimWorldCoord,
+        location: AnimWorldCoord,
         rules: &RuleSet,
         overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
     ) -> i32 {
-        let rx = u16::try_from(world_coord.x.div_euclid(LEPTONS_PER_CELL)).ok();
-        let ry = u16::try_from(world_coord.y.div_euclid(LEPTONS_PER_CELL)).ok();
-        let (overlay_id, overlay_data) = match (rx, ry, self.overlay_grid.as_ref()) {
-            (Some(rx), Some(ry), Some(grid)) if rx < grid.width() && ry < grid.height() => {
-                let cell = grid.cell(rx, ry);
-                (cell.overlay_id, cell.overlay_data)
+        let grid_fields = |(rx, ry): (u16, u16)| {
+            self.overlay_grid
+                .as_ref()
+                .filter(|grid| rx < grid.width() && ry < grid.height())
+                .map(|grid| {
+                    let cell = grid.cell(rx, ry);
+                    (cell.overlay_id, cell.overlay_data)
+                })
+        };
+        let (overlay_id, overlay_data) = match self.resolved_terrain.as_ref() {
+            Some(terrain) => {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                let point = crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                };
+                match crate::sim::movement::ground_pose::query_object_cell(&cells, point) {
+                    cell @ crate::map::cell_index::NativeCellIdentity::Real(_) => {
+                        let (rx, ry) = cells.coord(cell);
+                        grid_fields((rx as u16, ry as u16)).unwrap_or((None, 0))
+                    }
+                    crate::map::cell_index::NativeCellIdentity::Dummy => {
+                        cells.dummy().overlay_fields()
+                    }
+                }
             }
-            _ => self.effective_shared_cell_dummy().overlay_fields(),
+            None => self
+                .anim_map_cell(location.x, location.y)
+                .and_then(grid_fields)
+                .unwrap_or_else(|| self.effective_shared_cell_dummy().overlay_fields()),
         };
         crate::sim::ore_twinkle::tiberium_value(
             overlay_id,
@@ -1071,16 +1129,15 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
-        // `AnimClass::GetCoords @ 0x00422BE0`, not the stored field: an
-        // owner-attached anim stores an owner-relative delta.
-        let Some(world_coord) = self.anim_absolute_coord(id) else {
-            return false;
-        };
-        let Some((type_id, first_guard, inactive)) = self.anim(id).map(|anim| {
+        // HideIfNoOre and the MakeInfantry mark read the stored Location
+        // (`+0x9C`, `0x00423BD6..0x00423BFD`), not GetCoords: an owner-attached
+        // anim stores an owner-relative delta there.
+        let Some((type_id, first_guard, inactive, location)) = self.anim(id).map(|anim| {
             (
                 anim.type_id,
                 anim.runtime.first_ai_guard,
                 anim.runtime.inactive,
+                anim.world_coord,
             )
         }) else {
             return false;
@@ -1094,14 +1151,14 @@ impl Simulation {
         // `AnimClass::AI @ 0x00423AC0`, before the MakeInfantry `vtable+0xF0`
         // call, the bounce-landing block, and the trailer block: with
         // `AnimType+0x359 HideIfNoOre`, `AnimClass+0x19D` is rewritten every
-        // tick from the anim coordinate's cell — hidden when the cell is
-        // missing or `CellClass::Get_Tiberium_Value @ 0x00485020` is zero,
-        // visible otherwise. Only drawing is suppressed; the AI keeps running.
+        // tick from its Location's cell — hidden when
+        // `CellClass::Get_Tiberium_Value @ 0x00485020` is zero, visible
+        // otherwise. Only drawing is suppressed; the AI keeps running.
         // Registry-less callers (fixtures) keep the current flag.
         if config.hide_if_no_ore
             && let Some(overlay_registry) = overlay_registry
         {
-            let hidden = self.anim_cell_tiberium_value(world_coord, rules, overlay_registry) == 0;
+            let hidden = self.anim_cell_tiberium_value(location, rules, overlay_registry) == 0;
             if let Some(anim) = self.anim_mut_by_id(id) {
                 anim.draw_runtime.hidden = hidden;
             }
@@ -1111,7 +1168,7 @@ impl Simulation {
         // visibility, and frame-timer gates. Repeated visits OR the same raw
         // bit; there is deliberately no contributor count.
         if config.make_infantry != -1 {
-            self.apply_make_infantry_raw_occupation(world_coord, AnimOccupationOperation::Mark);
+            self.apply_make_infantry_raw_occupation(location, AnimOccupationOperation::Mark);
         }
         if inactive {
             self.destroy_anim(id, rules);
@@ -1260,11 +1317,14 @@ impl Simulation {
                 // owner, allocating the infantry, or attempting Unlimbo. The
                 // downstream factory/retry path belongs to the entity-runtime
                 // implementation item; this Phase-3 slice owns its preceding
-                // authoritative cell-byte transition.
-                self.apply_make_infantry_raw_occupation(
-                    world_coord,
-                    AnimOccupationOperation::Clear,
-                );
+                // authoritative cell-byte transition. Clear also reads the
+                // stored Location (`0x0042493E..0x00424963`).
+                if let Some(location) = self.anim(id).map(|anim| anim.world_coord) {
+                    self.apply_make_infantry_raw_occupation(
+                        location,
+                        AnimOccupationOperation::Clear,
+                    );
+                }
                 self.destroy_anim(id, rules);
             }
             VisitAction::Next(next) => self.switch_anim_type(id, &next, rules, overlay_registry),
@@ -1843,10 +1903,10 @@ impl Simulation {
         {
             self.spawn_bounce_anim(rules, bounce_anim, coord, BOUNCE_CONTACT_DRAW_FLAGS, 0);
         }
-        let (Some(warhead_name), Ok(rx), Ok(ry)) = (
+        // Map[coord] (`0x004239E5`); VERA keeps no objects on the dummy cell.
+        let (Some(warhead_name), Some((rx, ry))) = (
             config.warhead.as_deref(),
-            u16::try_from(position.x >> 8),
-            u16::try_from(position.y >> 8),
+            self.anim_map_cell(position.x, position.y),
         ) else {
             return false;
         };
@@ -1857,7 +1917,7 @@ impl Simulation {
         let warhead_ref = self.interner.intern(warhead_name);
         use crate::sim::combat::combat_aoe::AreaDamageReceiver;
         use crate::sim::occupancy::CellObjectMember;
-        let ground = crate::sim::movement::locomotor::MovementLayer::Ground;
+        let ground = MovementLayer::Ground;
         let mut current = self.cell_objects((rx, ry), ground).next();
         let mut bridge_state_changed = false;
         while let Some(target) = current {
@@ -3531,8 +3591,7 @@ mod tests {
 
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3543,8 +3602,7 @@ mod tests {
         assert_eq!(grid.deck_bits(7, 8), 0x10);
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3555,8 +3613,7 @@ mod tests {
 
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3566,8 +3623,7 @@ mod tests {
         assert_eq!(grid.ground_bits(7, 8), 0x10);
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3629,6 +3685,104 @@ mod tests {
             assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(x, y), 0x01);
             assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(x, y), 0);
         }
+    }
+
+    /// Map[coord] (`0x00565730`) truncates toward zero and wraps by row. A
+    /// MakeInfantry anim less than a cell left of the map edge occupies cell
+    /// 0 of its row; a cell further left it wraps to slot 511 of the row
+    /// above, off this map, and past slot 511 it wraps to the next row.
+    #[test]
+    fn a_make_infantry_anim_left_of_the_map_edge_occupies_cell_zero() {
+        const SIZE: u16 = 8;
+        let mut sim = Simulation::new();
+        sim.resolved_terrain = Some(
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+                SIZE,
+                SIZE,
+                (0..SIZE)
+                    .flat_map(|y| {
+                        (0..SIZE).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
+                    })
+                    .collect(),
+            ),
+        );
+        // Sub-cell (128, 128) is slot 0.
+        let world = AnimWorldCoord {
+            x: -128,
+            y: 5 * 256 + 128,
+            z: 0,
+        };
+        sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Mark);
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 5), 0x01);
+        sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Clear);
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 5), 0);
+
+        assert_eq!(sim.anim_map_cell(-128 - 256, world.y), None);
+        assert_eq!(sim.anim_map_cell(512 * 256 + 128, world.y), Some((0, 6)));
+    }
+
+    /// `AnimClass::MarkCellOccupancy` (`0x00426270`) stores the anim's owner
+    /// index, -1, beside the bit it sets (`0x004262D0`), and
+    /// `ClearCellOccupancy` (`0x00426300`) resets it only once `0x1C` is clear.
+    /// Off the map both write the shared dummy cell's planes.
+    #[test]
+    fn a_make_infantry_anim_writes_owner_minus_one_on_a_real_or_dummy_cell() {
+        const SIZE: u16 = 8;
+        let mut sim = Simulation::new();
+        sim.resolved_terrain = Some(
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+                SIZE,
+                SIZE,
+                (0..SIZE)
+                    .flat_map(|y| {
+                        (0..SIZE).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
+                    })
+                    .collect(),
+            ),
+        );
+        let house = InternedId::from_index(41);
+        let ground = MovementLayer::Ground;
+        // An infantryman in slot 2 leaves its house beside the ground byte;
+        // the anim at the centre marks slot 0.
+        sim.substrate
+            .raw_cell_occupation
+            .mark_ground_infantry(3, 3, 1 << 2, house);
+        let on_map = AnimWorldCoord {
+            x: 3 * 256 + 128,
+            y: 3 * 256 + 128,
+            z: 0,
+        };
+        sim.apply_make_infantry_raw_occupation(on_map, AnimOccupationOperation::Mark);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.ground_bits(3, 3), 0x05);
+        assert_eq!(raw.infantry_owner(3, 3, ground), None);
+        sim.apply_make_infantry_raw_occupation(on_map, AnimOccupationOperation::Clear);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.ground_bits(3, 3), 0x04);
+        assert_eq!(raw.infantry_owner(3, 3, ground), None);
+
+        // A cell left of column 0 wraps to slot 511 of the row above: the
+        // shared dummy on this map.
+        sim.substrate.raw_cell_occupation.write_occupant(
+            RawCellKey::Dummy,
+            ground,
+            1 << 3,
+            Some(house),
+            true,
+        );
+        let off_map = AnimWorldCoord {
+            x: -384,
+            y: 3 * 256 + 128,
+            z: 0,
+        };
+        sim.apply_make_infantry_raw_occupation(off_map, AnimOccupationOperation::Mark);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.bits_at(RawCellKey::Dummy, ground), 0x09);
+        assert_eq!(raw.owner_at(RawCellKey::Dummy, ground), None);
+        sim.apply_make_infantry_raw_occupation(off_map, AnimOccupationOperation::Clear);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.bits_at(RawCellKey::Dummy, ground), 0x08);
+        assert_eq!(raw.owner_at(RawCellKey::Dummy, ground), None);
     }
 
     /// `AnimClass::AnimClass @ 0x00421EA0`'s `RandomRate=` pick and `Bouncer=`

@@ -95,7 +95,7 @@ pub(crate) fn raw_at(
     } else {
         super::locomotor::MovementLayer::Ground
     };
-    raw.write_infantry(key, layer, mask, owner, put);
+    raw.write_occupant(key, layer, mask, Some(owner), put);
 }
 
 /// Successful fresh-head tail75BC2A..75BCBD. Facing+4C is75AE00 ->
