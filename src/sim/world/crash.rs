@@ -136,12 +136,13 @@ impl Simulation {
         true
     }
 
-    /// `FlyLocomotionClass::Process`'s fall block (`0x004CD67F..0x004CD7A4`)
-    /// for a dead Fly: above the ground its fall counter grows by one
+    /// The fall block (`0x004CD67F..0x004CD7A4`) of `0x004CD600`, which
+    /// `FlyLocomotionClass::Process` (`0x004CCB40`) calls every frame, for a
+    /// dead Fly: above the ground its fall counter grows by one
     /// (`advance_fall`) and it drops by the new counter, XY unchanged, when its
     /// cell passes `MapClass::In_Bounds` (`0x004CD748`); otherwise only the
     /// counter moves. Returns whether its height then reached zero, the
-    /// impact (`0x004CD7A4`); the rest of Process (the paid step and the
+    /// impact (`0x004CD7A4`); the rest of the function (the paid step and the
     /// height step) runs only when it did not.
     ///
     /// The drop leaves the display, runs Mark(UP), `FootClass::SetLocation`
@@ -214,8 +215,8 @@ impl Simulation {
         height <= 0
     }
 
-    /// The dead Fly's impact, `FlyLocomotionClass::Process 0x004CD7AA..
-    /// 0x004CD8A8`: out of the AircraftTracker (`0x004CD7B3`), `SetHeight(0)`
+    /// The dead Fly's impact, `0x004CD7AA..0x004CD8A8` in the same function:
+    /// out of the AircraftTracker (`0x004CD7B3`), `SetHeight(0)`
     /// (`0x004CD7BF`), `Fire_Death_Weapon(0)` (`0x004CD809`) with no
     /// `Explodes=` gate, the impact cue by the impact cell's LandType
     /// (`0x004CD818..0x004CD891`), then UnInit (`0x004CD89B`). The object's

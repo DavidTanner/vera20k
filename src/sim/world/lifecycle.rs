@@ -1654,9 +1654,10 @@ impl Simulation {
             });
         self.materialize_legacy_fly_coordinate(stable_id);
 
-        // Fly Process opens with a dead Fly's fall (`0x004CD67F`), which
-        // brackets its own drop with Mark; reaching the ground ends it in the
-        // impact, which the object turn commits.
+        // Fly4CD600, which Fly Process (`0x004CCB40`) calls every frame,
+        // opens with a dead Fly's fall (`0x004CD67F`), which brackets its own
+        // drop with Mark; reaching the ground ends it in the impact, which
+        // the object turn commits.
         if transact_fly && self.fly_crash_fall(stable_id, rules, registry) {
             return crate::sim::movement::air_movement::AirMovementTickStats {
                 arrivals: 0,
