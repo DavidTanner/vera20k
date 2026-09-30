@@ -1509,39 +1509,16 @@ pub fn is_cell_passable_for_mover(
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> bool {
-    is_cell_passable_for_mover_with_speed(
-        grid,
-        x,
-        y,
-        movement_zone,
-        None,
-        resolved_terrain,
-        None,
-        false,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn is_cell_passable_for_mover_with_speed(
-    grid: &PathGrid,
-    x: u16,
-    y: u16,
-    movement_zone: Option<MovementZone>,
-    speed_type: Option<SpeedType>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    terrain_costs: Option<&TerrainCostGrid>,
-    bypass_grid: bool,
-) -> bool {
     is_cell_passable_for_mover_on_layer_with_speed(
         grid,
         x,
         y,
         MovementLayer::Ground,
         movement_zone,
-        speed_type,
+        None,
         resolved_terrain,
-        terrain_costs,
-        bypass_grid,
+        None,
+        false,
     )
 }
 

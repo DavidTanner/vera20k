@@ -7,15 +7,18 @@
 
 use super::Simulation;
 
+use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
-use crate::rules::locomotor_type::LocomotorKind;
+use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
+use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::intern::InternedId;
-use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::movement::{self, group_destination};
-use crate::sim::pathfinding::PathGrid;
+use crate::sim::movement::group_destination;
+use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 
 impl Simulation {
     /// Queue one already-prepared command for future execution.
@@ -198,179 +201,120 @@ impl Simulation {
         }
     }
 
+    /// What `0x0064CDA0` reads once for each member it probes, before the
+    /// candidates: the target's height (`0x0064D2AA..0x0064D2DF`), and the
+    /// target's zone for the member type's MovementZone (`+0x5B4`, GetZoneID
+    /// `0x0056D230` with bridge resolution on, `0x0064D407..0x0064D42C`).
+    fn group_member_target(
+        &self,
+        rules: &RuleSet,
+        terrain: &ResolvedTerrainGrid,
+        zones: &ZoneGrid,
+        clicked_target: (i16, i16),
+        entity_id: u64,
+    ) -> GroupMemberTarget {
+        let entity = self
+            .substrate
+            .entities
+            .get(entity_id)
+            .expect("a group member stays live while its run is staged");
+        let movement_zone = rules
+            .object(self.interner.resolve(entity.type_ref()))
+            .map_or_else(Default::default, |object| object.movement_zone);
+        let cells = NativeCellQuery::canonical(terrain);
+        GroupMemberTarget {
+            entity_id,
+            movement_zone,
+            height: spread_height(terrain, cells.lookup(clicked_target)),
+            zone: zones.get_path_zone_id_native(
+                terrain,
+                (clicked_target.0 as u16, clicked_target.1 as u16),
+                movement_zone,
+                true,
+            ),
+        }
+    }
+
+    /// One candidate's gates for one member, as `0x0064CDA0` reads them:
+    /// - the candidate's cell (`0x0064D4D6`) and `IsCellInPlayfield(candidate,
+    ///   1)` (`0x0064D4E9`);
+    /// - its zone (`0x0056D230` with the cell's own bridge flag, `0x0064D51B`),
+    ///   compared with the target's as the native DWORD (`0x0064D537`);
+    /// - the member's own `Can_Enter_Cell` (`vt+0x1AC` at `0x0064D52F`) with
+    ///   no direction, the target's height and no source cell;
+    /// - the height band ([`within_spread_band`], `0x0064D53D..0x0064D592`).
+    ///
+    /// A `None` zone is an inactive-deck walk that native never finishes; it
+    /// compares equal only to another `None`. A member whose `Can_Enter_Cell`
+    /// VERA cannot read (a retired receiver, a missing type or overlay registry)
+    /// refuses the candidate with 7 and a warning; native has no such outcome.
+    #[allow(clippy::too_many_arguments)]
     fn group_destination_candidate_facts(
         &self,
-        grid: &PathGrid,
-        zone_grid: &ZoneGrid,
-        clicked_target: (i16, i16),
-        member: &group_destination::GroupDestinationMember,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        terrain: &ResolvedTerrainGrid,
+        zones: &ZoneGrid,
+        target: &GroupMemberTarget,
         candidate: (i16, i16),
     ) -> group_destination::CandidateFacts {
-        let signed_candidate = (i32::from(candidate.0), i32::from(candidate.1));
+        let cells = NativeCellQuery::canonical(terrain);
+        let cell = cells.lookup(candidate);
         if !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
-            signed_candidate,
+            (i32::from(candidate.0), i32::from(candidate.1)),
             self.playfield_bounds,
-            self.resolved_terrain.as_ref(),
+            Some(terrain),
         ) {
             return group_destination::CandidateFacts::outside_playfield();
         }
-        let (Ok(candidate_x), Ok(candidate_y)) =
-            (u16::try_from(candidate.0), u16::try_from(candidate.1))
-        else {
-            return group_destination::CandidateFacts::outside_playfield();
-        };
-        let target = (clicked_target.0 as u16, clicked_target.1 as u16);
-        let Some(entity) = self.substrate.entities.get(member.entity_id) else {
-            return group_destination::CandidateFacts {
-                in_playfield: true,
-                same_zone: false,
-                height_band_ok: false,
-                can_enter_code: 7,
-            };
-        };
-        let Some(target_cell) = grid.cell(target.0, target.1) else {
-            return group_destination::CandidateFacts {
-                in_playfield: true,
-                same_zone: false,
-                height_band_ok: false,
-                can_enter_code: 7,
-            };
-        };
-        let Some(candidate_cell) = grid.cell(candidate_x, candidate_y) else {
-            return group_destination::CandidateFacts {
-                in_playfield: true,
-                same_zone: false,
-                height_band_ok: false,
-                can_enter_code: 7,
-            };
-        };
-
-        let movement_zone = entity
-            .locomotor
-            .as_ref()
-            .map(|locomotor| locomotor.movement_zone)
-            .unwrap_or_default();
-        let speed_type = entity
-            .locomotor
-            .as_ref()
-            .map(|locomotor| locomotor.speed_type)
-            .unwrap_or_default();
-        let locomotor_kind = entity
-            .locomotor
-            .as_ref()
-            .map_or(LocomotorKind::Drive, |locomotor| locomotor.effective_kind());
-        let target_layer = if target_cell.has_structural_bridge() {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
-        let candidate_layer = if candidate_cell.has_structural_bridge() {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
-        let same_zone = zone_grid.map_for(movement_zone).is_some_and(|zones| {
-            zones.zone_at(target.0, target.1, target_layer)
-                == zones.zone_at(candidate_x, candidate_y, candidate_layer)
-        });
-
-        let target_height = target_cell.signed_level()
-            + if target_cell.has_structural_bridge() {
-                4
-            } else {
-                0
-            };
-        let candidate_height = candidate_cell.signed_level()
-            + if candidate_cell.has_structural_bridge() {
-                4
-            } else {
-                0
-            };
-        let height_band_ok = (candidate_height - target_height).abs() < 3;
-
-        // UnitClass::Can_Enter_Cell(candidate, -1, target_height, 0, 1)
-        // selects the bridge list when the candidate carries a structural deck
-        // separated from the requested path height.
-        let object_layer = if candidate_cell.has_structural_bridge()
-            && (target_height - candidate_cell.signed_level()).abs() >= 2
-        {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
-        let layers = crate::sim::pathfinding::can_enter_layer_context(
-            object_layer,
-            object_layer,
-            candidate_cell,
-            target_height,
+        let id = target.entity_id;
+        let bridge = terrain.native_cell_flags(cell) & BRIDGE_FLAG_STRUCTURAL != 0;
+        let zone = zones.get_path_zone_id_native(
+            terrain,
+            (candidate.0 as u16, candidate.1 as u16),
+            target.movement_zone,
+            bridge,
         );
-        let cost_grid = self.terrain_costs.get(&speed_type);
-        let terrain_passable = match layers.terrain_layer {
-            MovementLayer::Ground => {
-                crate::sim::pathfinding::is_cell_passable_for_mover_with_speed(
-                    grid,
-                    candidate_x,
-                    candidate_y,
-                    Some(movement_zone),
-                    Some(speed_type),
-                    self.resolved_terrain.as_ref(),
-                    cost_grid,
-                    false,
-                )
-            }
-            MovementLayer::Bridge => {
-                grid.is_walkable_on_layer(candidate_x, candidate_y, MovementLayer::Bridge)
-            }
-            MovementLayer::Air | MovementLayer::Underground => true,
-        };
-        let can_enter_code = if !terrain_passable {
-            7
+        let aircraft = self
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|entity| entity.category == EntityCategory::Aircraft);
+        let can_enter_code = if aircraft {
+            self.aircraft_can_enter(id, candidate)
         } else {
-            match crate::sim::pathfinding::cell_entry::check_terrain_with_layers(
-                (candidate_x, candidate_y),
-                layers,
-                entity.category,
-                Some(grid),
-                cost_grid,
-                &self.substrate.occupancy,
-            ) {
-                crate::sim::pathfinding::cell_entry::TerrainCheckResult::Clear => 0,
-                crate::sim::pathfinding::cell_entry::TerrainCheckResult::Impassable => 7,
-                crate::sim::pathfinding::cell_entry::TerrainCheckResult::NeedsBlockerCheck => {
-                    crate::sim::pathfinding::cell_entry::classify_occupied_cell_with_layers(
-                        (candidate_x, candidate_y),
-                        layers,
-                        member.entity_id,
-                        movement::bump_crush::CrushCapability::new(
-                            entity.regular_crusher,
-                            entity.omni_crusher,
-                        ),
-                        self.interner.resolve(entity.owner()),
-                        locomotor_kind,
-                        false,
-                        &self.substrate.occupancy,
-                        self.session.binary_frame,
-                        &self.substrate.entities,
-                        &self.house_alliances,
-                        &self.interner,
-                    )
-                    .yr_code()
-                }
-            }
+            let args = InfantryEntryArgs {
+                direction: -1,
+                height: target.height,
+                previous_cell: None,
+            };
+            self.foot_can_enter(id, cell, args, rules, registry)
+                .unwrap_or_else(|error| {
+                    log::warn!("group destination entry for {id}: {error}");
+                    7
+                })
         };
-
         group_destination::CandidateFacts {
             in_playfield: true,
-            same_zone,
-            height_band_ok,
+            same_zone: zone == target.zone,
+            height_band_ok: within_spread_band(target.height, spread_height(terrain, cell)),
             can_enter_code,
         }
     }
 
     /// Adjust consecutive same-target movement runs after their house's
     /// non-megamission scan, immediately before staged command execution.
-    pub(super) fn adjust_staged_megamission_destinations(&self, commands: &mut [CommandEnvelope]) {
-        let (Some(grid), Some(zone_grid)) = (self.path_grid(), self.zone_grid.as_ref()) else {
+    pub(super) fn adjust_staged_megamission_destinations(
+        &self,
+        commands: &mut [CommandEnvelope],
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let (Some(rules), Some(terrain), Some(zones)) = (
+            rules,
+            self.resolved_terrain.as_ref(),
+            self.zone_grid.as_ref(),
+        ) else {
             return;
         };
         let mut run_start = 0;
@@ -401,11 +345,8 @@ impl Simulation {
                     {
                         continue;
                     }
-                    let Some(coord_z) = self.resolved_terrain.as_ref().map(|terrain| {
-                        crate::sim::combat::in_range::range_object_z_leptons(entity, Some(terrain))
-                    }) else {
-                        continue;
-                    };
+                    let coord_z =
+                        crate::sim::combat::in_range::range_object_z_leptons(entity, Some(terrain));
                     members.push(group_destination::GroupDestinationMember {
                         command_index,
                         entity_id,
@@ -421,16 +362,27 @@ impl Simulation {
                         source_cell: (entity.position.rx as i16, entity.position.ry as i16),
                     });
                 }
+                let clicked_target = (key.1 as i16, key.2 as i16);
+                let mut member_target: Option<GroupMemberTarget> = None;
                 let assignments = group_destination::distribute_group_destinations(
-                    (key.1 as i16, key.2 as i16),
+                    clicked_target,
                     &members,
                     |member, candidate| {
+                        if member_target
+                            .as_ref()
+                            .is_none_or(|target| target.entity_id != member.entity_id)
+                        {
+                            member_target = Some(self.group_member_target(
+                                rules,
+                                terrain,
+                                zones,
+                                clicked_target,
+                                member.entity_id,
+                            ));
+                        }
+                        let target = member_target.as_ref().expect("read for this member");
                         self.group_destination_candidate_facts(
-                            grid,
-                            zone_grid,
-                            (key.1 as i16, key.2 as i16),
-                            member,
-                            candidate,
+                            rules, registry, terrain, zones, target, candidate,
                         )
                     },
                 );
@@ -556,7 +508,7 @@ impl Simulation {
                 })
                 .cloned()
                 .collect::<Vec<_>>();
-            self.adjust_staged_megamission_destinations(&mut staged);
+            self.adjust_staged_megamission_destinations(&mut staged, rules, overlay_registry);
             for command in &staged {
                 let (_, spawned, placed_owner) =
                     self.apply_one_due_command(command, rules, overlay_registry);
@@ -569,3 +521,35 @@ impl Simulation {
         (executed_commands, spawned_entities, placed_building_owners)
     }
 }
+
+/// The target facts `0x0064CDA0` reads once per probed member.
+struct GroupMemberTarget {
+    entity_id: u64,
+    movement_zone: MovementZone,
+    height: i32,
+    zone: Option<u32>,
+}
+
+/// The spread's height of a Cell: its signed level (`+0x11B`), plus
+/// `BRIDGE_DECK_HEIGHT_LEVELS` on the bridge flag (`+0x140 & 0x100`). The
+/// target's is EBX (`0x0064D2AA..0x0064D2DF`), which Can_Enter_Cell receives;
+/// a candidate's is measured against it (`0x0064D55F..0x0064D592`).
+/// Native executions: tools/spatial_oracle/group_spread_gates.{py,json,meta.json}.
+fn spread_height(terrain: &ResolvedTerrainGrid, cell: NativeCellIdentity) -> i32 {
+    let level = i32::from(terrain.native_cell_ground_fields(cell).0 as i8);
+    if terrain.native_cell_flags(cell) & BRIDGE_FLAG_STRUCTURAL != 0 {
+        level + BRIDGE_DECK_HEIGHT_LEVELS
+    } else {
+        level
+    }
+}
+
+/// A candidate more than two levels from the target's height ends the
+/// member's probes (`JG` at `0x0064D575` and `0x0064D592`).
+fn within_spread_band(target_height: i32, candidate_height: i32) -> bool {
+    (candidate_height - target_height).abs() <= 2
+}
+
+#[cfg(test)]
+#[path = "group_spread_gate_tests.rs"]
+mod group_spread_gate_tests;

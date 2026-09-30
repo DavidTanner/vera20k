@@ -212,37 +212,6 @@ pub fn cell_passable_for_infantry(occ: Option<&CellOccupancy>, layer: MovementLa
     allocate_sub_cell(occ, layer).is_some()
 }
 
-/// Find the first available sub-cell, accounting for both the (stale) occupancy
-/// map and sub-cells reserved by earlier movers this tick.
-///
-/// This prevents duplicate sub-cell assignment when multiple infantry enter
-/// the same cell within one simulation tick. Without this, the stale occupancy
-/// map shows the cell as empty for all movers, causing overlapping sub-cells
-/// and subsequent blocking/repath oscillation.
-pub fn allocate_sub_cell_with_reserved(
-    occ: Option<&CellOccupancy>,
-    layer: MovementLayer,
-    reserved: Option<&[u8]>,
-) -> Option<u8> {
-    // Vehicle/structure in cell blocks all sub-cells.
-    if let Some(o) = occ {
-        if o.has_blockers_on(layer) {
-            return None;
-        }
-    }
-    let infantry: Vec<(u64, u8)> = occ.map_or_else(Vec::new, |o| o.infantry(layer).collect());
-    let stale_count: usize = infantry.len();
-    let reserved_count: usize = reserved.map_or(0, |v| v.len());
-    if stale_count + reserved_count >= MAX_INFANTRY_PER_CELL {
-        return None;
-    }
-    FUNCTIONAL_SUB_CELLS.iter().copied().find(|&spot| {
-        let in_stale: bool = infantry.iter().any(|&(_, s)| s == spot);
-        let in_reserved: bool = reserved.is_some_and(|v| v.contains(&spot));
-        !in_stale && !in_reserved
-    })
-}
-
 /// `CellClass::PlaceInfantryInCell @ 0x00481180` with priority 0: the infantry
 /// spot for a request at `(sub_x, sub_y)` inside cell `(rx, ry)` on `layer`,
 /// read from the cell's native occupation bytes.
@@ -764,48 +733,6 @@ pub fn emit_crush_kill_sounds_at(
     }
 }
 
-/// Check whether a mover can enter a cell after crushing all occupants.
-///
-/// Returns `true` if the mover can crush everything in the cell (i.e. the cell
-/// would become empty after crush kills are applied).
-pub fn cell_passable_after_crush(
-    cell: (u16, u16),
-    occupancy: &OccupancyGrid,
-    layer: MovementLayer,
-    crush_capability: CrushCapability,
-    entities: &EntityStore,
-    ally_gate: CrushAllyGate<'_>,
-) -> bool {
-    let Some(occ) = occupancy.get(cell.0, cell.1) else {
-        return true; // empty cell
-    };
-    // Boolean crush passability is category-specific; it does not choose a
-    // first occupant from CellClass list order.
-    // All blockers must be crushable.
-    for eid in occ.blockers(layer) {
-        if let Some(e) = entities.get(eid) {
-            // An allied blocker is not crushable, so the cell is not passable
-            // by crushing it - native answers 6 or 2 here, not the crush latch.
-            if ally_gate.spares(e)
-                || !can_crush(crush_capability, CrushTarget::from_entity_without_frame(e))
-            {
-                return false;
-            }
-        }
-    }
-    // All infantry must be crushable.
-    for (eid, _) in occ.infantry(layer) {
-        if let Some(e) = entities.get(eid) {
-            if ally_gate.spares(e)
-                || !can_crush(crush_capability, CrushTarget::from_entity_without_frame(e))
-            {
-                return false;
-            }
-        }
-    }
-    true
-}
-
 /// The occupants a crusher fully inside the cell kills, in cell-list order:
 /// the `entering == 0` crush loop of `UnitClass::PerCellProcess`. The
 /// entering cell's unforced scatter is `Scatter_Objects`' dispatch walk
@@ -962,17 +889,6 @@ mod tests {
             )
             .is_empty(),
             "a crusher must not list its own infantry as a crush victim"
-        );
-        assert!(
-            !cell_passable_after_crush(
-                (5, 5),
-                &grid,
-                MovementLayer::Ground,
-                CrushCapability::new(true, false),
-                &store,
-                own,
-            ),
-            "and the cell is not passable by crushing what it may not crush"
         );
 
         // The same fixture with an enemy crusher still crushes, so the gate is
@@ -1822,58 +1738,6 @@ mod tests {
             "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[E1]\nSpeed=4\nFraidycat={fraidycat}\n[MTNK]\nSpeed=6\n[Move]\nRate=.016\n[Sleep]\nScatter=no\n"
         ));
         crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap()
-    }
-
-    // -- allocate_sub_cell_with_reserved tests --
-
-    #[test]
-    fn test_allocate_with_reserved_empty_cell_no_reservations() {
-        assert_eq!(
-            allocate_sub_cell_with_reserved(None, MovementLayer::Ground, None),
-            Some(2)
-        );
-    }
-
-    #[test]
-    fn test_allocate_with_reserved_skips_reserved_spot() {
-        let reserved: Vec<u8> = vec![2];
-        assert_eq!(
-            allocate_sub_cell_with_reserved(None, MovementLayer::Ground, Some(&reserved)),
-            Some(3)
-        );
-    }
-
-    #[test]
-    fn test_allocate_with_reserved_full_from_reservations() {
-        let reserved: Vec<u8> = vec![2, 3, 4];
-        assert_eq!(
-            allocate_sub_cell_with_reserved(None, MovementLayer::Ground, Some(&reserved)),
-            None
-        );
-    }
-
-    #[test]
-    fn test_allocate_with_reserved_full_mixed() {
-        let grid = make_occ(&[
-            (5, 5, 1, MovementLayer::Ground, Some(2)),
-            (5, 5, 2, MovementLayer::Ground, Some(3)),
-        ]);
-        let occ = grid.get(5, 5).unwrap();
-        let reserved: Vec<u8> = vec![4];
-        assert_eq!(
-            allocate_sub_cell_with_reserved(Some(occ), MovementLayer::Ground, Some(&reserved)),
-            None
-        );
-    }
-
-    #[test]
-    fn test_allocate_with_reserved_vehicle_blocks() {
-        let grid = make_occ(&[(5, 5, 99, MovementLayer::Ground, None)]);
-        let occ = grid.get(5, 5).unwrap();
-        assert_eq!(
-            allocate_sub_cell_with_reserved(Some(occ), MovementLayer::Ground, None),
-            None
-        );
     }
 
     // -- quadrant detection tests --

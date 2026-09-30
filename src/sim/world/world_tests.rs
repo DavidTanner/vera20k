@@ -8826,7 +8826,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
     // (a) What the group-destination distributor rewrites each command to.
     // Same &self read the tick performs, run before any tick mutates state.
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged);
+    sim.adjust_staged_megamission_destinations(&mut staged, Some(&rules), None);
     let assigned: Vec<(u64, (u16, u16))> = staged
         .iter()
         .filter_map(|c| match &c.payload {
@@ -8997,7 +8997,7 @@ fn repro_group_move_short_range_traces_every_tick() {
         .collect();
 
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged);
+    sim.adjust_staged_megamission_destinations(&mut staged, Some(&rules), None);
     println!("--- repro_group_move_short_range_traces_every_tick ---");
     println!("(a) distributor assignments:");
     for c in &staged {
@@ -9081,48 +9081,25 @@ fn repro_group_move_short_range_traces_every_tick() {
     watch.assert_no_reported_stacking("group_move_short_range");
 }
 
-/// What the one-per-cell predicate WOULD say for `mover` entering `cell`,
-/// evaluated read-only from live sim state. Used to show that the predicate
-/// exists and answers correctly while the runtime step never consults it.
-fn stacking_cell_entry_verdict(sim: &Simulation, mover: u64, rx: u16, ry: u16) -> String {
-    use crate::sim::movement::bump_crush::CrushCapability;
-    use crate::sim::pathfinding::cell_entry::{
-        CanEnterLayerContext, check_terrain_with_layers, classify_occupied_cell_with_layers,
+/// What the mover's own `Can_Enter_Cell` (`foot_can_enter`, with no direction
+/// or height) says for `mover` entering `cell`, evaluated read-only from live
+/// sim state.
+fn stacking_cell_entry_verdict(
+    sim: &Simulation,
+    rules: &RuleSet,
+    mover: u64,
+    rx: u16,
+    ry: u16,
+) -> String {
+    let Some(terrain) = sim.resolved_terrain.as_ref() else {
+        return "<no terrain>".to_string();
     };
-    let Some(e) = sim.substrate.entities.get(mover) else {
-        return "<gone>".to_string();
-    };
-    let layers = CanEnterLayerContext::single(MovementLayer::Ground);
-    let phase1 = check_terrain_with_layers(
-        (rx, ry),
-        layers,
-        e.category,
-        None,
-        None,
-        &sim.substrate.occupancy,
-    );
-    let owner = sim.interner.resolve(e.owner).to_string();
-    let phase2 = classify_occupied_cell_with_layers(
-        (rx, ry),
-        layers,
-        mover,
-        CrushCapability::new(false, false),
-        &owner,
-        e.locomotor
-            .as_ref()
-            .map(|l| l.kind)
-            .unwrap_or(crate::rules::locomotor_type::LocomotorKind::Drive),
-        false,
-        &sim.substrate.occupancy,
-        sim.session.binary_frame,
-        &sim.substrate.entities,
-        &sim.house_alliances,
-        &sim.interner,
-    );
-    format!(
-        "phase1={phase1:?} phase2={phase2:?} yr_code={}",
-        phase2.yr_code()
-    )
+    let cell = terrain.native_cell_identity((rx as i16, ry as i16));
+    let args = crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR;
+    match sim.foot_can_enter(mover, cell, args, rules, None) {
+        Ok(code) => format!("code={code}"),
+        Err(error) => format!("<{error}>"),
+    }
 }
 
 /// MINIMAL TWO-MOVER CASE â€” no group order at all.
@@ -9171,7 +9148,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     // Different targets => different formation keys => runs of length 1 =>
     // the group-destination distributor cannot touch either command.
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged);
+    sim.adjust_staged_megamission_destinations(&mut staged, Some(&rules), None);
     println!("--- repro_two_moving_vehicles_pass_through_each_other ---");
     for c in &staged {
         if let Command::Move {
@@ -9218,7 +9195,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
                         .collect::<Vec<_>>()
                         .join("\n        "),
                     members[1],
-                    stacking_cell_entry_verdict(&sim, members[1], cell.0, cell.1),
+                    stacking_cell_entry_verdict(&sim, &rules, members[1], cell.0, cell.1),
                 ));
             }
         }
@@ -10378,4 +10355,162 @@ fn attack_move_resume_lets_a_crusher_tank_through_a_sandbag_cell() {
         run(false).is_none(),
         "non-crusher is refused at the sandbag"
     );
+}
+
+/// One group Move order to (20, 20) for `ids`, as the staged run
+/// `0x0064CDA0` adjusts, and each member's adjusted target.
+fn group_spread(sim: &Simulation, rules: &RuleSet, ids: &[u64]) -> Vec<(u16, u16)> {
+    let mut staged = ids
+        .iter()
+        .map(|&id| {
+            cmd_envelope(
+                sim,
+                "Americans",
+                1,
+                Command::Move {
+                    entity_id: id,
+                    target_rx: 20,
+                    target_ry: 20,
+                    queue: false,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    sim.adjust_staged_megamission_destinations(&mut staged, Some(rules), None);
+    staged
+        .iter()
+        .map(|command| match command.payload {
+            Command::Move {
+                target_rx,
+                target_ry,
+                ..
+            } => (target_rx, target_ry),
+            _ => unreachable!("the run holds Move orders"),
+        })
+        .collect()
+}
+
+/// `0x0064CDA0` asks each member's own `Can_Enter_Cell` (`vt+0x1AC` at
+/// `0x0064D52F`) with no direction and the target's height (its level, plus
+/// 4 on a bridge). Two tanks side by side: the eastern one is the anchor and
+/// takes the target, and the western one probes west of it. After a refusal,
+/// an admitted candidate still yields the saved cell (`0x0064D5C5`), here
+/// the target.
+#[test]
+fn a_group_spread_asks_each_members_can_enter_cell_at_the_target_height() {
+    use crate::sim::movement::fresh_oracle_seam::{self, FreshCallRecord};
+    let Some((mut sim, rules, _)) = stacking_world(32) else {
+        return;
+    };
+    sim.resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(20, 20)
+        .unwrap()
+        .level = 2;
+    let west = sim
+        .spawn_object("MTNK", "Americans", 6, 6, 64, &rules)
+        .expect("tank spawns");
+    let east = sim
+        .spawn_object("MTNK", "Americans", 8, 6, 64, &rules)
+        .expect("tank spawns");
+
+    fresh_oracle_seam::install(vec![7, 0], Vec::new());
+    let targets = group_spread(&sim, &rules, &[west, east]);
+    let (records, unused) = fresh_oracle_seam::finish();
+
+    let asked = |cell, code| FreshCallRecord::CanEnter {
+        cell,
+        direction: -1,
+        height: 2,
+        code,
+    };
+    assert_eq!(records, [asked((19, 20), 7), asked((18, 20), 0)]);
+    assert_eq!(unused, 0);
+    assert_eq!(targets, [(20, 20), (20, 20)]);
+}
+
+/// An aircraft member answers through `AircraftClass::Can_Enter_Cell`
+/// (`0x004196B0`): in game mode 0, the current house's aircraft refuses a
+/// shrouded cell. The western Harrier's six probes are all shrouded until the
+/// area is revealed, so it keeps the target.
+#[test]
+fn a_group_spread_keeps_aircraft_out_of_shrouded_cells() {
+    for revealed in [false, true] {
+        let Some((mut sim, rules, _)) = stacking_world(32) else {
+            return;
+        };
+        let west = sim
+            .spawn_object("ORCA", "Americans", 6, 6, 64, &rules)
+            .expect("Harrier spawns");
+        let east = sim
+            .spawn_object("ORCA", "Americans", 8, 6, 64, &rules)
+            .expect("Harrier spawns");
+        for id in [west, east] {
+            let harrier = sim.substrate.entities.get_mut(id).unwrap();
+            harrier.discovery.owned_by_current_house = true;
+        }
+        let owner = sim.interner.intern("Americans");
+        sim.fog = crate::sim::vision::FogState {
+            width: 32,
+            height: 32,
+            ..Default::default()
+        };
+        if revealed {
+            crate::sim::vision::reveal_radius(&mut sim.fog, owner, 20, 20, 8);
+            assert!(sim.fog.is_ground_unshrouded(owner, 19, 20));
+        }
+
+        let targets = group_spread(&sim, &rules, &[west, east]);
+
+        let western = if revealed { (19, 20) } else { (20, 20) };
+        assert_eq!(targets, [western, (20, 20)], "revealed {revealed}");
+    }
+}
+
+/// Infantry members ask InfantryClass's own `Can_Enter_Cell`. A target with
+/// the bridge flag `0x100` gives the deck height (level 1 plus 4). With no
+/// bridge record behind the flag, the target's GetZoneID answers the DWORD -1,
+/// which no candidate shares. Every probe still asks `Can_Enter_Cell` first
+/// (`0x0064D52F`, before the zone compare at `0x0064D537`), and the member
+/// keeps the target.
+#[test]
+fn a_group_spread_asks_infantry_with_a_flagged_targets_deck_height() {
+    use crate::sim::movement::fresh_oracle_seam::{self, FreshCallRecord};
+    let Some((mut sim, rules, _)) = stacking_world(32) else {
+        return;
+    };
+    let target = sim
+        .resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(20, 20)
+        .unwrap();
+    target.level = 1;
+    target.bridge_facts.raw_flags |= crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+    let west = sim
+        .spawn_object("E1", "Americans", 6, 6, 0, &rules)
+        .expect("infantry spawns");
+    let east = sim
+        .spawn_object("E1", "Americans", 8, 6, 0, &rules)
+        .expect("infantry spawns");
+
+    fresh_oracle_seam::install(vec![0; 6], Vec::new());
+    let targets = group_spread(&sim, &rules, &[west, east]);
+    let (records, unused) = fresh_oracle_seam::finish();
+
+    assert_eq!(unused, 0, "six probes, one Can_Enter_Cell each");
+    for record in &records {
+        let FreshCallRecord::CanEnter {
+            cell,
+            direction,
+            height,
+            ..
+        } = record
+        else {
+            panic!("unexpected call {record:?}");
+        };
+        assert_eq!((cell.1, *direction, *height), (20, -1, 5), "{record:?}");
+    }
+    assert_eq!(targets, [(20, 20), (20, 20)]);
 }
