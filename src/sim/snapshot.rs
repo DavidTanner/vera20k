@@ -6876,20 +6876,20 @@ mod tests {
 
         let owner = live.intern("DummyOccupationOwner");
         let hash_before_raw = live.state_hash();
-        live.substrate.raw_cell_occupation.write_infantry(
+        live.substrate.raw_cell_occupation.write_occupant(
             RawCellKey::Dummy,
             MovementLayer::Ground,
             4,
-            owner,
+            Some(owner),
             true,
         );
         let ground_hash = live.state_hash();
         assert_ne!(hash_before_raw, ground_hash);
-        live.substrate.raw_cell_occupation.write_infantry(
+        live.substrate.raw_cell_occupation.write_occupant(
             RawCellKey::Dummy,
             MovementLayer::Bridge,
             8,
-            owner,
+            Some(owner),
             true,
         );
         assert_ne!(

@@ -204,6 +204,29 @@ struct RawCellOccupation {
     deck_infantry_owner: Option<InternedId>,
 }
 
+impl RawCellOccupation {
+    /// One plane of an object's Mark (`put`) or Clear: Mark ORs `mask` into
+    /// the byte and stores the object's owner index beside it; Clear removes
+    /// `mask` and resets the owner once functional sub-cells 2..4 (`0x1C`) are
+    /// clear. Bits 0/1 do not retain it.
+    fn write(&mut self, layer: MovementLayer, mask: u8, owner: Option<InternedId>, put: bool) {
+        let (bits, retained_owner) = match layer {
+            MovementLayer::Ground => (&mut self.ground, &mut self.ground_infantry_owner),
+            MovementLayer::Bridge => (&mut self.deck, &mut self.deck_infantry_owner),
+            MovementLayer::Air | MovementLayer::Underground => return,
+        };
+        if put {
+            *bits |= mask;
+            *retained_owner = owner;
+        } else {
+            *bits &= !mask;
+            if *bits & 0x1C == 0 {
+                *retained_owner = None;
+            }
+        }
+    }
+}
+
 /// Identity of the CellClass holding a raw byte. All missing map slots share
 /// one receiver; stamping its coordinate never changes this storage key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,42 +294,33 @@ impl RawCellOccupationGrid {
         }
     }
 
-    /// Infantry5217C0/521850 mutate the retained receiver after the ground
-    /// query. In particular, a later missing lookup does not allocate a cell.
-    pub(crate) fn write_infantry(
+    /// An object's Mark/Clear on the raw byte and owner index of the receiver
+    /// it retained after the ground query: `InfantryClass` (`0x005217C0` /
+    /// `0x00521850`) and `AnimClass` (`0x00426270` / `0x00426300`). In
+    /// particular, a later missing lookup does not allocate a cell. `owner` is
+    /// the object's vtable `+0x38` answer: an infantryman's house, `None` (-1)
+    /// for an anim (`0x00410490`).
+    pub(crate) fn write_occupant(
         &mut self,
         key: RawCellKey,
         layer: MovementLayer,
         mask: u8,
-        owner: InternedId,
+        owner: Option<InternedId>,
         put: bool,
     ) {
-        if let RawCellKey::Real(x, y) = key {
-            match (layer, put) {
-                (MovementLayer::Ground, true) => self.mark_ground_infantry(x, y, mask, owner),
-                (MovementLayer::Bridge, true) => self.mark_deck_infantry(x, y, mask, owner),
-                (MovementLayer::Ground, false) => self.clear_ground_infantry(x, y, mask),
-                (MovementLayer::Bridge, false) => self.clear_deck_infantry(x, y, mask),
-                _ => {}
+        match key {
+            RawCellKey::Real(x, y) if put => {
+                if mask != 0 && matches!(layer, MovementLayer::Ground | MovementLayer::Bridge) {
+                    self.cells
+                        .entry((x, y))
+                        .or_default()
+                        .write(layer, mask, owner, true);
+                }
             }
-            return;
-        }
-        let (bits, retained_owner) = match layer {
-            MovementLayer::Ground => (
-                &mut self.dummy.ground,
-                &mut self.dummy.ground_infantry_owner,
-            ),
-            MovementLayer::Bridge => (&mut self.dummy.deck, &mut self.dummy.deck_infantry_owner),
-            _ => return,
-        };
-        if put {
-            *bits |= mask;
-            *retained_owner = Some(owner);
-        } else {
-            *bits &= !mask;
-            if *bits & 0x1C == 0 {
-                *retained_owner = None;
+            RawCellKey::Real(x, y) => {
+                self.update_and_prune(x, y, |cell| cell.write(layer, mask, None, false));
             }
+            RawCellKey::Dummy => self.dummy.write(layer, mask, owner, put),
         }
     }
 
@@ -358,12 +372,8 @@ impl RawCellOccupationGrid {
     /// changes, matching native's retained House index. Repair CanEnter uses
     /// this raw slot even when no infantry object remains in the selected list.
     pub(crate) fn mark_ground_infantry(&mut self, rx: u16, ry: u16, mask: u8, owner: InternedId) {
-        if mask == 0 {
-            return;
-        }
-        let cell = self.cells.entry((rx, ry)).or_default();
-        cell.ground |= mask;
-        cell.ground_infantry_owner = Some(owner);
+        let key = RawCellKey::Real(rx, ry);
+        self.write_occupant(key, MovementLayer::Ground, mask, Some(owner), true);
     }
 
     /// Native: `InfantryClass::UnmarkCellOccupancy` @ `0x00521850` (vtable
@@ -371,12 +381,8 @@ impl RawCellOccupationGrid {
     /// once `byte & 0x1C == 0`, i.e. after functional sub-cells 2..4 are all
     /// clear. Bits 0/1 do not retain it.
     pub(crate) fn clear_ground_infantry(&mut self, rx: u16, ry: u16, mask: u8) {
-        self.update_and_prune(rx, ry, |cell| {
-            cell.ground &= !mask;
-            if cell.ground & 0x1C == 0 {
-                cell.ground_infantry_owner = None;
-            }
-        });
+        let key = RawCellKey::Real(rx, ry);
+        self.write_occupant(key, MovementLayer::Ground, mask, None, false);
     }
 
     /// The active bridge-avoidance consumer treats every nonzero ground byte as
@@ -422,21 +428,13 @@ impl RawCellOccupationGrid {
     }
 
     pub(crate) fn mark_deck_infantry(&mut self, rx: u16, ry: u16, mask: u8, owner: InternedId) {
-        if mask == 0 {
-            return;
-        }
-        let cell = self.cells.entry((rx, ry)).or_default();
-        cell.deck |= mask;
-        cell.deck_infantry_owner = Some(owner);
+        let key = RawCellKey::Real(rx, ry);
+        self.write_occupant(key, MovementLayer::Bridge, mask, Some(owner), true);
     }
 
     pub(crate) fn clear_deck_infantry(&mut self, rx: u16, ry: u16, mask: u8) {
-        self.update_and_prune(rx, ry, |cell| {
-            cell.deck &= !mask;
-            if cell.deck & 0x1C == 0 {
-                cell.deck_infantry_owner = None;
-            }
-        });
+        let key = RawCellKey::Real(rx, ry);
+        self.write_occupant(key, MovementLayer::Bridge, mask, None, false);
     }
 
     fn update_and_prune(&mut self, rx: u16, ry: u16, update: impl FnOnce(&mut RawCellOccupation)) {
