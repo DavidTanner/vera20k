@@ -835,6 +835,14 @@ pub(super) fn handle_deferred_occupancy(
             // A crusher's entering cell takes the unforced
             // `Scatter_Objects(null, 1, 0, deck)` (`0x0074177A`): each occupant
             // its dispatch gate admits is asked `Scatter(null, 1, 0)`.
+            //
+            // RESIDUAL: the queued calls run after this arm removes its crush
+            // victims below; native pre-scatters when entering the cell and
+            // crushes afterwards. Trigger: one pass that both crushes some
+            // occupants of the cell and scatters others. Effect: a survivor's
+            // FNPC sees the crushed occupants gone and may keep a cell native
+            // would leave. Frequency: tanks rolling through infantry groups
+            // where the crush spares an occupant.
             if crush_capability.can_crush_units() {
                 for blocker_id in super::scatter::scatter_objects_admitted(
                     &cell_occupants,
