@@ -788,10 +788,9 @@ pub(crate) fn dispatch_aircraft_unload(
             // Nighthawk keeps waiting rather than dropping its cargo mid-air.
             if crate::sim::movement::motion_query::is_moving(entity) != Some(true)
                 && aircraft_landed(entity, sim.resolved_terrain.as_ref())
+                && let Some(entity) = sim.substrate.entities.get_mut(id)
             {
-                if let Some(entity) = sim.substrate.entities.get_mut(id) {
-                    entity.mission.set_handler_state(AIR_STATE_EJECT);
-                }
+                entity.mission.set_handler_state(AIR_STATE_EJECT);
             }
             1
         }
