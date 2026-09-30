@@ -25,8 +25,14 @@ The executed original packet establishes:
   and consumes MapGen Next values 1229352179, 1781224790, 2424954917; every hut
   byte remains unchanged and no additional object is constructed.
 
-This is a separate composition, preserving the original no-Building paid
-golden. Huts join **after** the FV command; this does not establish ScenarioLoad
+This is a separate composition. Corrected original Drive CRT startup now
+precedes the FV constructor through the shared Paid owner. The complete literal
+hut gameplay projection remains identical: every hut byte, RNG word, callback,
+shot, impact and repair field above is unchanged. Raw FV timers/residuals and
+redundant frame-7 movement calls change as detailed in the [parent package](../README.md).
+The active source is `hut_joined_drive_crt.json.gz` and the active projection is
+`hut_drive_crt_vectors.json`. The prior packet and projection remain immutable
+superseded evidence; the same generator entrypoints target the corrected files. Huts join **after** the FV command; this does not establish ScenarioLoad
 population order. Other Buildings, Units, Infantry, initial ambient Anims, live
 Terrain AI, global Scenario/House phases and audio remain excluded. The source
 uses the inherited supplied human House; Neutral is the only fully constructed
@@ -64,6 +70,6 @@ publication owner and retains every executed state, RNG value and ordered trace.
 native fields without recomputing gameplay.
 
 `original_execution.meta.json` preserves the completed external fresh write
-and independent fresh check's original source identities. Current relocated
-source pins are separate in `hut_joined.meta.json`; `receipt.json` distinguishes
-fast packaging validation from the relocated native replay status.
+and independent fresh check's original source identities. Current corrected source pins are in `hut_joined_drive_crt.meta.json`.
+The previous `hut_joined.meta.json` and `receipt.json` remain historical records
+of the original relocation, not validation of corrected Drive startup.

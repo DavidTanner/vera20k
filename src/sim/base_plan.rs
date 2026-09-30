@@ -144,6 +144,32 @@ impl BasePlanState {
         }
         false
     }
+
+    /// `DynamicVector<BaseNodeClass>::InsertAfter @ 0x0050EB70`: `node` goes
+    /// right after node `index`. The vector grows by 10 (`0x0042E709`), so
+    /// the insert never fails.
+    pub(crate) fn insert_after(&mut self, index: usize, node: BasePlanNode) {
+        self.nodes.insert(index + 1, node);
+    }
+
+    /// The ordered shift-left removal every caller inlines (`DynamicVector`
+    /// `Delete` of one 16-byte node); nothing past the end.
+    pub(crate) fn remove(&mut self, index: usize) {
+        if index < self.nodes.len() {
+            self.nodes.remove(index);
+        }
+    }
+
+    /// `DynamicVector<BaseNodeClass>::FindIndex @ 0x0042F5E0`, then the
+    /// ordered removal: the first node whose type and both cell words equal
+    /// `copy`'s goes.
+    pub(crate) fn remove_equal(&mut self, copy: BasePlanNode) {
+        if let Some(index) = self.nodes.iter().position(|node| {
+            node.type_or_control == copy.type_or_control && node.packed_cell == copy.packed_cell
+        }) {
+            self.nodes.remove(index);
+        }
+    }
 }
 
 #[cfg(test)]

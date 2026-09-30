@@ -17,8 +17,8 @@
 //!
 //! The height invariant asserted on every deck frame is the one recorded on
 //! `resolve_cell_transition_bridge_state` in `sim::movement::movement_bridge`
-//! (`FootClass::Set_Height_On_Bridge` @ `0x005F5FA0`, read back by
-//! `ObjectClass::GetHeight` @ `0x005F5F30`):
+//! (`ObjectClass::SetHeight` @ `0x005F5FA0`, read back by
+//! `ObjectClass::GetHeight` @ `0x005F5F40`):
 //!
 //! ```text
 //! position.z == own cell's signed terrain level + (on_bridge ? 4 : 0)
@@ -34,7 +34,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 const BRIDGE_HARNESS_SEED: u64 = 0x0B21_D6E5_C0DE;
 const BRIDGE_HARNESS_TICKS: u64 = 200;
@@ -50,10 +50,9 @@ const APPROACH_LEVEL: u8 = 4;
 /// Terrain level of the gorge the span crosses — the riverbed the tank must
 /// never sit on while it is flagged on-bridge.
 const GORGE_LEVEL: u8 = 0;
-/// `FootClass::Set_Height_On_Bridge`'s deck term, in levels. Same number as
-/// `sim::movement::movement_occupancy::BRIDGE_DECK_LEVEL_DELTA`, which is
+/// `ObjectClass::SetHeight`'s deck term, in levels. Same number as
+/// `sim::movement::movement_occupancy::crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16`, which is
 /// `pub(super)` to the movement module and therefore not nameable from here.
-const DECK_LEVEL_DELTA: i16 = 4;
 
 /// Start cell: plain plateau ground, one step before the entry ramp.
 const APPROACH_A_X: u16 = 14;
@@ -77,133 +76,9 @@ const APPROACH_B_X: u16 = 25;
 /// letting a fixture that barely touches the span pass.
 const MIN_DISTINCT_DECK_CELLS: usize = 6;
 
-// Historical schema166 receipts: signed health cannot reconstruct the old
-// current/max fold. These values record provenance, not current projections.
-mod schema166_receipt {
-    /// Committed final-hash baseline for the recorded bridge crossing.
-    ///
-    /// **This is a Rust-vs-prior-Rust regression ratchet, NOT gamemd parity
-    /// evidence.** AGENTS.md is explicit that replay fixtures and Rust-derived
-    /// hashes are regression ratchets; only machine-derived goldens (binary
-    /// emulation, live capture, retail bytes) are parity references. What this
-    /// constant proves is that the committed crossing — path, per-tick positions,
-    /// `on_bridge`, `bridge_occupancy`, deck heights, and every other hashed field —
-    /// did not move without someone noticing.
-    ///
-    /// Captured from the first green run of this fixture. Re-baseline at most once
-    /// per behavior-bearing change, with a one-line documented reason, and only
-    /// after the coverage tripwires below still pass — a baseline over a tank that
-    /// stopped crossing is worthless.
-    ///
-    /// It has its own name on purpose: `GLOBAL_HARNESS_FINAL_HASH` and the other
-    /// committed goldens are shared, coordination-gated constants and are not
-    /// touched by this file.
-    /// Re-baselined for TechnoClass::TechnoClass @ 0x006F2B90: the two authored
-    /// Technos now consume and persist the raw Scenario words written at
-    /// 0x006F3254. Path nodes, visited cells, bridge tripwires, and record/replay
-    /// equality remain exact; this is a Rust regression ratchet, not parity evidence.
-    /// Re-baselined 2026-08-30 for GSI-04.03 Drive/Ship slope payload ownership.
-    /// The ordered path, all 12 visited cells, bridge height/occupation tripwires,
-    /// all three RNG streams, and tick-for-tick replay remain exact; only the
-    /// hash composition moved from retired body-rocking bytes to the locomotor.
-    /// Re-baselined 2026-08-30 for v107's Spark shared-dummy tag plus level/slope
-    /// folds. The path, bridge tripwires, and RNG streams remain byte-identical.
-    /// Re-baselined 2026-08-30 for v110's unconditional ordered BasePlan authority.
-    /// The dedicated pre-v110 probe below reproduces the prior baseline exactly;
-    /// path, bridge tripwires, RNG streams, and tick-for-tick replay remain exact.
-    /// Re-baselined 2026-09-01 for v114's unconditional raw 256-slot crate authority.
-    /// The dedicated pre-v114 probe reproduces the prior current baseline exactly;
-    /// the same crossing, tripwires, streams, and replay equality remain exact.
-    /// Re-baselined 2026-09-01 for v115's retained wall-neighbor count authority mode and
-    /// shared-dummy overlay identity/state folds. The dedicated pre-v115 probe reproduces the
-    /// prior current baseline exactly; this fixture builds a legacy `None`-count grid, so only
-    /// current-schema composition moved.
-    // Re-baselined 2026-09-02 for the native tiberium queue store (OQ-38, bridge transaction 3
-    // slice D): every class now carries the native entry array, float min-heap, capacity, and
-    // `native_rect`, rebuilds walk `CellIterator` order, and spread admission applies the
-    // `FirstObject` occupier gate. This is behavior-bearing on every fixture with ore, so the
-    // historical probes move as well; the RNG stream tuple and tick-for-tick record/replay
-    // equality remain exact.
-    // 2026-09-02 veterancy effects (GSI-08.12): `TechnoClass+0x13C` is now written by the
-    // first `AI_Update` promotion sample (-1 -> GetVeterancyLevel code), so every live
-    // object's hashed `veterancy_rank_cache` moved. Composition of the hash is unchanged
-    // and the RNG stream pins held (FINAL_STREAM_STATES), so no cadence or draw moved.
-    // Merge 2026-09-02: main's veterancy re-baseline and its queue-store re-baseline
-    // both moved these constants, so the three historical probes below are main's
-    // composed measurement, unchanged by this branch.
-    // 2026-09-08 ramp-height writer: final entity 1 gains exact Z Some(416).
-    // Clearing ONLY that field reproduces every parent (588f4079) hash probe; final
-    // entity/RNG comparison has no other differences. Route/deck and per-tick
-    // replay checks remain active. RAMP_UNIT_HEIGHT_GHIDRA_REPORT.md records scope.
-    const BRIDGE_HARNESS_PRE_BASE_PLAN_V110_HASH: u64 = 0xCAE2_8471_3B63_14DB;
-    const BRIDGE_HARNESS_PRE_CRATE_AUTHORITY_V114_HASH: u64 = 0x7BEE_3E9D_B148_B70A;
-    const BRIDGE_HARNESS_PRE_WALL_RUNTIME_V115_HASH: u64 = 0x3931_1CCA_29F3_5EE9;
-    // Re-baselined 2026-09-02 for v117's disguise-detect folds (FogState's
-    // `CellClass+0xAC[house]` counter plane and the cached `DetectDisguiseRange=`
-    // deposit radius). The dedicated pre-v117 probe reproduces main's committed
-    // current baseline exactly; this fixture stamps no disguise circle, so only
-    // current-schema composition moved.
-    const BRIDGE_HARNESS_PRE_DISGUISE_DETECT_V117_HASH: u64 = 0xCDA7_50B4_C529_175D;
-    // Baselined 2026-09-06 for the v135 credit-income folds (GSI-09.01): every
-    // entity folds its dead ProduceCash timer and two `None` drain-link halves.
-    // The dedicated pre-v135 probe reproduces the prior committed final exactly
-    // and every older probe plus the three RNG streams are unchanged, so this is
-    // composition-only (no derrick, DrainWeapon or capture in this fixture).
-    const BRIDGE_HARNESS_PRE_CREDIT_INCOME_V135_HASH: u64 = 0xC1FF_A576_23F4_E576;
-    const BRIDGE_HARNESS_PRE_INFANTRY_TERMINAL_V136_HASH: u64 = 0x3C96_2071_1743_915F;
-    // v136 adds the Infantry terminal-policy fold. The pre-v136 assertion below
-    // reproduces the ramp branch's current baseline exactly; older probes and RNG pins
-    // are unchanged. This is Rust hash-composition provenance, not native parity.
-    // 2026-09-08 integration of main 33f36d79 with ramp branch 5f41f2ea:
-    // the pre-v136 probe and all older probes pass, isolating this new current
-    // value to main's retained InfantryTerminal fold; route and replay checks hold.
-    // v142 adds retained shroud knowledge/admissions, Map240 and Foot sight clocks.
-    // The dedicated pre-v142 assertion below retains this fixture's prior current
-    // pin; older probes and existing replay/stream checks remain unchanged.
-    // Receipt: .local/shroud-current-sight-full-v1.log (composition-only candidates).
-    // 2026-09-13 ordinary TrackProcess host: reviewed current-cursor payment,
-    // residual and synchronous arrival timing; historical projections also include
-    // migrated Foot owners. See docs/research/TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md
-    // for baseline/candidate observations and native scope. These are Rust pins.
-    const BRIDGE_HARNESS_FINAL_HASH_PRE_CELL_MEMBERSHIP_V159: u64 = 0xBACE_D587_09DA_4C4B;
-    // Schema159 adds actual ordered Cell membership and exact Sight0 metadata.
-    // The immediately preceding composition is asserted below against the old
-    // current pin; all historical, replay/path and RNG tripwires remain intact.
-    // This is a Rust hash-composition ratchet, not a new native golden.
-    const BRIDGE_HARNESS_FINAL_HASH_PRE_FOOT_PATH_RUNTIME_V160: u64 = 0x8145_80FE_2764_0AFA;
-    // Schema160 moves the two Foot path timers, blocked latch and dword retry count
-    // into NavigationState::path_runtime and hashes that owner instead of the former
-    // positional MovementTarget fields. The immediately preceding composition is
-    // asserted below against the old current pin; every older probe, replay/path
-    // and RNG tripwire remains intact. Rust hash-composition ratchet, not a native golden.
-    // Re-pinned 2026-09-15 for the live bridge repair integration: raw infantry
-    // occupation owners are the mark-time House index (InfantryClass::
-    // MarkCellOccupancy 0x005217C0 -> Infantry virtual +0x38 -> House+0x30), no
-    // longer the Rust entity id, which re-encodes the raw occupation fold under
-    // every schema and moves every projection at once. Composition-only proof:
-    // the owner-excluded probe asserted below equals main 595e3a88's value for
-    // this fixture (receipt .local/harness-repin-20260915/owner-probe.txt).
-    const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xF199_544D_CF92_A3DA;
-    const RAW_OWNER_EXCLUDED_V161: u64 = 0xA076_0B34_D476_12F6;
-    const PRE_SUSTAINED_SIGHT_V142: u64 = 0x5FEF_1F84_890C_4984;
-}
-
 // Schema171: retained timers/track ownership and signed-health/hash composition.
 // All201 baseline/candidate positions and RNG states matched. See the PR415
 // section of docs/research/TRACK_PROCESS_REPLAY_REGRESSION_NOTES.md.
-const BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174: u64 = 11838927963457097324;
-// Schema174 removes folds instead of adding them: OreGrowthState's node-era
-// scanner cursor, candidate lists and sample counters, and ProductionState's
-// fallback ore overlay id. The pre-174 projection folds the values those fields
-// held IN THIS FIXTURE (zero, empty, None): its node-era scan never advanced,
-// and it never calls the spawner seeding, the one path that set the fallback
-// id. It is not a general reconstruction; a scenario finalized by the map
-// loader held Some(first TIB* id). The projection must still equal the previous
-// current pin, asserted below. Rust hash-composition ratchet, not a native golden.
-const BRIDGE_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181: u64 = 7192367217818587128;
-// v181 folds Foot+580, including default1.0. The pre-181 assertion below
-// reproduces the previous whole fixture hash; path and RNG pins are unchanged.
-const BRIDGE_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 3444561876719230631;
 // Snapshot182 adds ordered display vectors. The pre-182 projection below
 // must reproduce the previous whole-fixture hash, including all RNG/state.
 // Schema186 removes the always-None release-tail byte. No aircraft participate;
@@ -281,12 +156,75 @@ const BRIDGE_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 34445618767192306
 // composition only, as no rally is set here. Before(220) folds their empty
 // values and reproduces the prior current pin; every earlier projection,
 // per-tick replay and the RNG receipts are unchanged.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x9031_CA98_D595_398B;
-const BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x742C_838B_7E43_EECF;
-const BRIDGE_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB586_50E0_619A_A412;
-const BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0xD647_5869_EE05_41D7;
-const BRIDGE_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0xF2A5_29CE_BDD0_47F6;
-const BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 13377637447152312575;
+// 2026-09-28 one body facing (snapshot 237, composition only; #580): each
+// object's hash folds its body FacingClass (`+0x388`) in place of the retired
+// 8-bit facing mirror, turn target and optional turn interpolator, and a
+// building's `+0x388` moves from the turret slot into it, in every projection.
+// No schema can rebuild the mirror or the target, so this one step re-pins
+// every projection in this test. Ceremony: on origin/main 99935d1d and on this
+// change, a probe hash folding no facing, and one folding only each object's
+// body heading word at the hashed frame (the old tree's interpolator, else its
+// mirror), matched at all 200 ticks, RNG streams included (the probe patch was
+// not committed): every other fold and every object's heading are unchanged, so
+// the only change to these pins is the fold. Drive's never-written turn target
+// (`DriveTurnState`) left the fold in the same step: with its four default
+// fields folded back in their old place, this change reproduced every
+// facing-only pin (final 0x9FD9_D4EE_7F06_E1ED), RNG streams included. Old
+// values: the commit that moved them.
+// 2026-09-29 retired ground move phase (snapshot 244, composition only; #726):
+// the locomotor's VERA-only `GroundMovePhase` and its stashed twin leave the
+// object and piggyback folds in every projection; no schema can rebuild the
+// retired value, so this one step re-pins every projection in this test.
+// Ceremony: on the parent commit with only those two folds removed, and on
+// this change, a soft-assert probe of every pin in this test printed identical
+// values, and per-tick replay and the RNG receipts passed at all 200 ticks
+// (the probe patch was not committed): the only change to these pins is the
+// fold. Old values: the commit that moved them.
+// 2026-09-29 one locomotor enum (snapshot 248, composition only; #725):
+// LocomotorKind keeps only the eight installable classes, so the active kind,
+// the installed slot and the stash fold renumbered discriminants, and the
+// dormant Tunnel and DropPod states leave the object and payload folds, in
+// every projection. No schema rebuilds the old numbering, so this one step
+// re-pins every projection in this test. Ceremony: on the parent commit and on
+// this change, a probe printing every object's position, exact Z, health,
+// mission, NavCom, attack and movement targets, locomotor kind and layer and
+// all three RNG states matched at all 200 ticks (the probe patch was not
+// committed). Old values: the commit that moved them.
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+// 2026-09-30 native mission-site idle precedes the first Ready action; explicit
+// GI ART supplies its actual sequence records. Captured actor and full-stream
+// receipts in foot_bridge_layer.replay.json establish the changed inputs and
+// draw sites. All 200 per-frame replay hashes, route/height/layer/occupancy gates
+// and absolute RNG pins pass before this Rust regression hash is checked.
+// This is a Rust replay pin, not native whole-world parity evidence.
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request and drops the installed slot, which is the stash's own kind; the
+// stash drops its retired separators. Ceremony: the parent commit with only
+// that fold changed printed this exact value, as this change does, with the
+// RNG pins above unchanged (the probe patch was not committed): the only
+// change to this pin is the fold. Old value: the commit that moved it.
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) advances only
+// for AirTracker entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+// Snapshot264: private native Stage and Infantry Doing/sequence timing.
+// Complete before/candidate/final receipts in foot_bridge_layer.replay.json
+// (techno_stage264_followup) attribute every changed actor field and retain
+// all819 frame rows, all three RNG states and ordered raw draw callers.
+// Incoming main preserves candidate state; its source-line changes remain
+// recorded. This Rust replay pin does not establish native whole-world parity.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4477_C324_18ED_A27F;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -298,7 +236,7 @@ fn bridge_ini() -> IniFile {
          [VehicleTypes]\n0=MTNK\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n\n\
-         [E1]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
+         [E1]\nImage=GI\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
@@ -308,7 +246,16 @@ fn bridge_ini() -> IniFile {
 }
 
 fn bridge_rules() -> RuleSet {
-    RuleSet::from_ini(&bridge_ini()).expect("bridge harness rules should parse")
+    let ini = bridge_ini();
+    // Explicit authored GI inputs use the production fixed-ART reader and binder;
+    // zero-count constructor records do not admit native Ready/idle actions.
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    rules
 }
 
 /// Is `x` a gorge column — the low ground the span crosses?
@@ -410,84 +357,28 @@ fn bridge_resolved_terrain(
                 0
             };
             cells.push(ResolvedTerrainCell {
-                rx,
-                ry,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
                 level: path.ground_level,
-                filled_clear: false,
                 tileset_index: None,
-                land_type: 0,
-                yr_cell_land_type: 0,
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
                 speed_costs: clear_costs,
-                is_water: false,
-                is_cliff_like: false,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                height_in_pixels: 0,
-                variant: 0,
-                has_ramp: false,
-                canonical_ramp: None,
                 ground_walk_blocked: !path.ground_walkable,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
-                zone_type: 0,
                 base_ground_walk_blocked: !path.ground_walkable,
                 base_build_blocked: !path.ground_walkable,
-                base_land_type: 0,
-                base_yr_cell_land_type: 0,
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: clear_costs,
-                has_bridge_deck: path.bridge_walkable,
+                // Production bridgeheads carry no deck: only 0x100 cells do.
+                has_bridge_deck: path.bridge_walkable && flags & BRIDGE_FLAG_STRUCTURAL != 0,
                 bridge_walkable: path.bridge_walkable,
                 bridge_transition: path.transition,
                 bridge_deck_level: path.bridge_deck_level,
-                bridge_layer: None,
                 bridge_facts: BridgeCellFacts {
                     raw_flags: flags,
                     ..Default::default()
                 },
-                tube_index: None,
-                radar_left: [0; 3],
-                radar_right: [0; 3],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
             });
         }
     }
     ResolvedTerrainGrid::from_cells(GRID_W, GRID_H, cells)
-}
-
-/// Terrain heights matching the grid, so a spawned object starts at its cell's
-/// real level rather than 0.
-fn bridge_heights() -> BTreeMap<(u16, u16), u8> {
-    let mut heights = BTreeMap::new();
-    for y in 0..GRID_H {
-        for x in 0..GRID_W {
-            // Terrain only — the deck is not terrain, so the cells under the
-            // span carry the gorge floor here exactly like the rest of the gorge.
-            let level = if is_gorge_column(x) {
-                GORGE_LEVEL
-            } else {
-                APPROACH_LEVEL
-            };
-            heights.insert((x, y), level);
-        }
-    }
-    heights
 }
 
 fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> MapEntity {
@@ -513,7 +404,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 
 /// Spawn order fixes stable ids: 1 = the crossing tank, 2 = a far-away Soviet
 /// rifleman that exists only so neither house is defeated at once.
-fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet, heights: &BTreeMap<(u16, u16), u8>) {
+fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet) {
     sim.resolved_terrain = Some(bridge_resolved_terrain(&bridge_grid(), rules));
     // Storage dimensions are independent of the isometric Map Size diamond.
     // This narrow synthetic playfield retains the original route and distant
@@ -565,7 +456,6 @@ fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet, heights: &BTreeMa
             unit("Soviet", "E1", 58, 58, EntityCategory::Infantry), // 2
         ],
         Some(rules),
-        heights,
     );
     assert!(
         sim.substrate.entities.get(TANK_ID).is_some(),
@@ -604,7 +494,6 @@ struct CrossingFrame {
     cell: (u16, u16),
     z: u8,
     on_bridge: bool,
-    occupancy_deck: Option<u8>,
     terrain_level: i16,
     structural: bool,
 }
@@ -612,7 +501,12 @@ struct CrossingFrame {
 impl CrossingFrame {
     /// `position.z == own cell's signed terrain level + (on_bridge ? 4 : 0)`.
     fn expected_z(&self) -> i16 {
-        self.terrain_level + if self.on_bridge { DECK_LEVEL_DELTA } else { 0 }
+        self.terrain_level
+            + if self.on_bridge {
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
+            } else {
+                0
+            }
     }
 
     fn holds_invariant(&self) -> bool {
@@ -623,13 +517,12 @@ impl CrossingFrame {
 #[test]
 fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     let rules = bridge_rules();
-    let heights = bridge_heights();
     let grid = bridge_grid();
     let script = bridge_script();
 
     // ---- Record pass: drive the crossing through the live advance_tick path. ----
     let mut rec = Simulation::with_seed(BRIDGE_HARNESS_SEED);
-    seed_bridge_scenario(&mut rec, &rules, &heights);
+    seed_bridge_scenario(&mut rec, &rules);
     let mut log = ReplayLog::new(ReplayHeader {
         version: 1,
         pixel_conversion_bounds: rec.session.pixel_conversion_bounds,
@@ -646,7 +539,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         let result = rec.advance_tick(
             &due,
             Some(&rules),
-            &heights,
             Some(&grid),
             None,
             BRIDGE_HARNESS_TICK_MS,
@@ -669,7 +561,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
             terrain_level: facts.signed_level(),
             structural: facts.has_structural_bridge(),
         });
@@ -699,12 +590,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         }
         previous = Some(frame.cell);
         println!(
-            "  tick {:4} cell {:?} z={} on_bridge={} occ_deck={:?} terrain={} deck={} expect_z={}",
+            "  tick {:4} cell {:?} z={} on_bridge={} terrain={} deck={} expect_z={}",
             frame.tick,
             frame.cell,
             frame.z,
             frame.on_bridge,
-            frame.occupancy_deck,
             frame.terrain_level,
             frame.structural,
             frame.expected_z(),
@@ -737,8 +627,8 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         deck_cells.len(),
     );
 
-    // 3. Every deck frame is at deck height, flagged on-bridge, and agrees with
-    //    its own BridgeOccupancy — never dropped to the gorge floor underneath.
+    // 3. Every deck frame is at deck height and flagged on-bridge — never
+    //    dropped to the gorge floor underneath.
     for frame in frames.iter().filter(|f| f.structural) {
         assert!(
             frame.on_bridge,
@@ -747,20 +637,14 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         );
         assert_eq!(
             i16::from(frame.z as i8),
-            frame.terrain_level + DECK_LEVEL_DELTA,
-            "deck height broke at {:?}: z must be terrain + {DECK_LEVEL_DELTA}: {frame:?}",
+            frame.terrain_level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
+            "deck height broke at {:?}: z must be terrain + deck levels: {frame:?}",
             frame.cell
         );
         assert_ne!(
             i16::from(frame.z as i8),
             i16::from(GORGE_LEVEL as i8),
             "the tank dropped to the gorge floor under the span at {:?}: {frame:?}",
-            frame.cell
-        );
-        assert_eq!(
-            frame.occupancy_deck,
-            Some(frame.z),
-            "BridgeOccupancy.deck_level disagrees with position.z at {:?}: {frame:?}",
             frame.cell
         );
     }
@@ -786,10 +670,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     assert!(
         !last.on_bridge,
         "the tank is still flagged on_bridge on the far approach: {last:?}"
-    );
-    assert_eq!(
-        last.occupancy_deck, None,
-        "BridgeOccupancy survived the Exit transition: {last:?}"
     );
 
     let arrived = rec.substrate.entities.get(TANK_ID).unwrap();
@@ -817,12 +697,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
 
     // ---- Replay pass: fresh sim, real ReplayRunner, tick-for-tick equality. ----
     let mut rep = Simulation::with_seed(BRIDGE_HARNESS_SEED);
-    seed_bridge_scenario(&mut rep, &rules, &heights);
+    seed_bridge_scenario(&mut rep, &rules);
     let replayed = ReplayRunner::run_fixture_with_overlay_registry(
         &mut rep,
         &log,
         Some(&rules),
-        &heights,
         Some(&grid),
         None,
         BRIDGE_HARNESS_TICK_MS,
@@ -849,6 +728,10 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         rec.mapgen_rng.logical_state(),
         rep.mapgen_rng.logical_state()
     );
+    println!(
+        "[bridge parity] final_hash={:016X}",
+        replayed.last().unwrap()
+    );
     assert_eq!(
         (
             rep.scenario_rng.state(),
@@ -856,68 +739,15 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             rep.mapgen_rng.state()
         ),
         (
-            0x1E0D_2428_10B3_F39F,
+            // Native mission-site idle precedes first Ready; explicit GI ART
+            // supplies real action records. See foot_bridge_layer.replay.json.
+            0xBC80_136B_FB95_59C6,
             0x9C68_CC8B_9F2C_82ED,
             0x1CE8_1848_7043_6163
         ),
         "bridge absolute RNG states changed",
     );
     let final_hash = *replayed.last().expect("at least one tick replayed");
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(174)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_TIBERIUM_STATE_V174,
-        "the pre-174 composition must reproduce the previous current pin"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(181)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_CRATE_SPEED_V181,
-        "excluding only Foot+580 must preserve the pre-181 fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(182)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182,
-        "excluding only display vectors must preserve the pre-182 fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(186)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186,
-        "restoring only the absent release-tail fold must reproduce the prior fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(187)),
-        274424878741453394,
-        "schema187 only replaces zero remaining-shot fields with the retained index in this fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        11167769303923804794,
-        "v189 adds only the retained Techno+3D4 hash fold"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(190)),
-        8810378849024474892,
-        "v190 changes only the Foot neighbor-history hash composition in this fixture"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(202)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202,
-        "v202 only folds the object's rearm timer in place of the target's counters"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(208)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208,
-        "v208 only folds the crash latch, its AI edge and the Fly fall counter"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217,
-        "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
-    );
-    assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
-        "schema220 only drops the two empty rally copies from this fixture's hash"
-    );
     assert_eq!(
         final_hash, BRIDGE_HARNESS_FINAL_HASH,
         "committed bridge-harness baseline drifted. Do not paste the observed value \

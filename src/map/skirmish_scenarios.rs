@@ -4,11 +4,10 @@
 //! This module models that list. `scenario_sources::list_available_maps` supplies
 //! records only when the asset-backed scan finds none.
 
-use crate::map::scenario_menu::MapMenuEntry;
-use crate::map::briefing::BriefingSection;
 use crate::map::preview::{PreviewSection, PreviewSourceBounds};
+use crate::map::scenario_menu::MapMenuEntry;
 use crate::map::waypoints::Waypoint;
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::skirmish_modes::SkirmishGameMode;
 
 pub const RANDMAP_SED: &str = "RandMap.Sed";
@@ -21,6 +20,11 @@ pub const RANDOM_MAP_MAX_PLAYERS: u8 = 8;
 /// used to alias it, which capped the sentinel at 4 and made 5-8 player random
 /// maps unselectable.
 pub const RANDOM_MAP_GENERATED_START_QUOTA: u8 = 4;
+
+/// `GameMode=` copies: the loose map header's 0x100-byte ReadString and the
+/// PKT entry's CString read (`0x00528C00`, 0x3FE bytes).
+pub const MAP_GAME_MODE_CAPACITY: usize = 0x100;
+pub const PKT_GAME_MODE_CAPACITY: usize = 0x3FF;
 
 /// Player-count bounds the PKT-entry record constructor seeds before reading
 /// the PKT section, so an entry that omits either key keeps these.
@@ -49,7 +53,6 @@ pub struct SkirmishScenarioRecord {
     pub file_name: String,
     pub display_name: String,
     pub author: Option<String>,
-    pub briefing: BriefingSection,
     pub preview: PreviewSection,
     pub multiplayer_start_waypoints: Vec<Waypoint>,
     pub player_capacity: i32,
@@ -69,28 +72,24 @@ impl SkirmishScenarioRecord {
         ini: &IniFile,
     ) -> Self {
         let entry = crate::map::scenario_menu::read_map_menu_entry_from_ini(ini, file_name);
-        let basic = ini.section("Basic");
+        // `SessionClass__ParseMultiplayerMapHeader` (0x006994F0) reads these
+        // from the map's `[Basic]`: ReadInt over the caller's bounds, and
+        // ReadBool with a false default.
+        let basic = ini.section_or_empty("Basic");
         Self {
             source_ordinal,
             source,
             file_name: entry.file_name,
             display_name: entry.display_name,
             author: entry.author,
-            briefing: entry.briefing,
             preview: entry.preview,
             multiplayer_start_waypoints: entry.multiplayer_start_waypoints,
             player_capacity: entry.player_capacity,
             preview_source_bounds: entry.preview_source_bounds,
-            game_modes: parse_game_modes(ini),
-            min_players: basic
-                .and_then(|section| section.get_i32("MinPlayers"))
-                .and_then(valid_player_count),
-            max_players: basic
-                .and_then(|section| section.get_i32("MaxPlayers"))
-                .and_then(valid_player_count),
-            official: basic
-                .and_then(|section| section.get_bool("Official"))
-                .unwrap_or(false),
+            game_modes: read_game_modes(basic, MAP_GAME_MODE_CAPACITY),
+            min_players: valid_player_count(basic.read_int("MinPlayers", -1)),
+            max_players: valid_player_count(basic.read_int("MaxPlayers", -1)),
+            official: basic.read_bool("Official", false),
             kind: SkirmishScenarioKind::ConcreteMap,
         }
     }
@@ -132,7 +131,6 @@ impl SkirmishScenarioRecord {
             file_name: RANDMAP_SED.to_string(),
             display_name: display_name.into(),
             author: None,
-            briefing: BriefingSection::default(),
             preview: PreviewSection::default(),
             multiplayer_start_waypoints: Vec::new(),
             player_capacity,
@@ -152,7 +150,6 @@ impl SkirmishScenarioRecord {
             file_name: entry.file_name.clone(),
             display_name: entry.display_name.clone(),
             author: entry.author.clone(),
-            briefing: entry.briefing.clone(),
             preview: entry.preview.clone(),
             multiplayer_start_waypoints: entry.multiplayer_start_waypoints.clone(),
             player_capacity: entry.player_capacity,
@@ -170,7 +167,6 @@ impl SkirmishScenarioRecord {
             file_name: self.file_name.clone(),
             display_name: self.display_name.clone(),
             author: self.author.clone(),
-            briefing: self.briefing.clone(),
             preview: self.preview.clone(),
             multiplayer_start_waypoints: self.multiplayer_start_waypoints.clone(),
             player_capacity: self.player_capacity,
@@ -196,33 +192,18 @@ fn valid_player_count(value: i32) -> Option<u8> {
     (0..=u8::MAX as i32).contains(&value).then_some(value as u8)
 }
 
-/// Split one `GameMode=` value into filter tokens.
-///
-/// Retail writes the list with a space after each comma (`standard, meatgrind`),
-/// and the native tokenizer trims each token from both ends against a
-/// single-space charset, so the space is not significant.
-///
-/// Divergence, recorded not fixed: `str::trim` strips all Unicode whitespace
-/// where native strips spaces only, so a custom PKT that separates its modes
-/// with a tab would match here and not in gamemd. No stock entry uses anything
-/// but a space.
-pub fn parse_game_mode_list(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|mode| !mode.is_empty())
+/// Read a `GameMode=` filter list: both record constructors (`0x0069A980`
+/// for a loose map, `MPGameFileEntry__Constructor` for a PKT entry) split
+/// the copy with [`IniSection::read_trimmed_list`]. Retail writes the list
+/// with a space after each comma (`standard, meatgrind`). The key is
+/// `GameMode`, singular — the only spelling the binary contains.
+pub fn read_game_modes(section: &IniSection, capacity: usize) -> Vec<String> {
+    section
+        .read_trimmed_list("GameMode", capacity)
+        .unwrap_or_default()
+        .into_iter()
         .map(str::to_string)
         .collect()
-}
-
-/// Read the loose-map header's mode filter list. The key is `GameMode`,
-/// singular — the only spelling the binary contains — read from `[Basic]` of
-/// the map file itself. PKT-backed rows do not come through here.
-pub fn parse_game_modes(ini: &IniFile) -> Vec<String> {
-    ini.section("Basic")
-        .and_then(|section| section.get("GameMode"))
-        .map(parse_game_mode_list)
-        .unwrap_or_default()
 }
 
 /// The record fields the PKT-entry constructor reads out of the PKT's own
@@ -414,7 +395,7 @@ mod tests {
             &ini,
             PktEntryFields {
                 display_name: "Dustbowl".to_string(),
-                game_modes: parse_game_mode_list("standard, meatgrind"),
+                game_modes: vec!["standard".to_string(), "meatgrind".to_string()],
                 min_players: Some(2),
                 max_players: Some(2),
             },

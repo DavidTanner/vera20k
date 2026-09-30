@@ -81,24 +81,13 @@ impl SkirmishTrackbarBounds {
     /// Each missing key keeps its stock-default value.
     pub fn from_multiplayer_dialog_settings(ini: &IniFile) -> Self {
         let mut bounds = Self::default();
-        let Some(section) = ini.section("MultiplayerDialogSettings") else {
-            return bounds;
-        };
-        if let Some(value) = section.get_i32("MinMoney") {
-            bounds.credits_min = value;
-        }
-        if let Some(value) = section.get_i32("MaxMoney") {
-            bounds.credits_max = value;
-        }
-        if let Some(value) = section.get_i32("MoneyIncrement") {
-            bounds.credits_step = value;
-        }
-        if let Some(value) = section.get_i32("MinUnitCount") {
-            bounds.unit_count_min = value;
-        }
-        if let Some(value) = section.get_i32("MaxUnitCount") {
-            bounds.unit_count_max = value;
-        }
+        // ReadInt over each current bound (`0x00671ED7`-`0x00671F95`).
+        let section = ini.section_or_empty("MultiplayerDialogSettings");
+        bounds.credits_min = section.read_int("MinMoney", bounds.credits_min);
+        bounds.credits_max = section.read_int("MaxMoney", bounds.credits_max);
+        bounds.credits_step = section.read_int("MoneyIncrement", bounds.credits_step);
+        bounds.unit_count_min = section.read_int("MinUnitCount", bounds.unit_count_min);
+        bounds.unit_count_max = section.read_int("MaxUnitCount", bounds.unit_count_max);
         bounds
     }
 }

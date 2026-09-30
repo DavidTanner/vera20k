@@ -95,7 +95,7 @@ impl AuthoredOverlayLoadHost for SimulationAuthoredLoadHost<'_> {
 
     fn try_construct_overlay(
         &mut self,
-        overlay_id: u8,
+        _overlay_id: u8,
         cell: (u16, u16),
     ) -> Result<Option<Self::Handle>, Self::Error> {
         if self.sim.native_unique_ids.is_none() {
@@ -110,7 +110,7 @@ impl AuthoredOverlayLoadHost for SimulationAuthoredLoadHost<'_> {
                 .expect("native cursor checked above"),
         );
         objects
-            .construct_overlay(stable_id, overlay_id, cell, || cursor.next_id())
+            .construct_overlay(stable_id, cell, || cursor.next_id())
             .map(Some)
             .map_err(Into::into)
     }

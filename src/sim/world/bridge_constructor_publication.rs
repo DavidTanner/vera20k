@@ -45,12 +45,9 @@ impl LivePublication<'_> {
         let handle = self
             .sim
             .load_objects
-            .construct_overlay(
-                id,
-                overlay,
-                (requested.0 as u16, requested.1 as u16),
-                || self.sim.native_unique_ids.as_mut().unwrap().next_id(),
-            )
+            .construct_overlay(id, (requested.0 as u16, requested.1 as u16), || {
+                self.sim.native_unique_ids.as_mut().unwrap().next_id()
+            })
             .map_err(|error| error.to_string())?;
 
         // Startup5FC310 initializes EmptyCell to(0,0). This gate occurs AFTER
@@ -140,13 +137,6 @@ impl LivePublication<'_> {
                         state,
                     ) {
                         return Err("live bridge Mark could not publish its real overlay".into());
-                    }
-                    if let Some(runtime) = sim
-                        .bridge_state
-                        .as_mut()
-                        .and_then(|s| s.cell_mut(coord.0, coord.1))
-                    {
-                        runtime.overlay_byte = overlay;
                     }
                     self.retain_real_write(Cell::Real(index));
                 }

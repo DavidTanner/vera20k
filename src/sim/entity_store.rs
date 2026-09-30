@@ -54,8 +54,8 @@ impl Drop for EntityTurn<'_> {
 }
 
 /// Read access to the entities other than the one taking its turn. Lookup by
-/// id only: the owner and type indexes still list the absent entity, so they
-/// are not offered here.
+/// id only: the infantry registry still lists the absent entity, so it is
+/// not offered here.
 #[derive(Clone, Copy)]
 pub(crate) struct OtherEntities<'a> {
     store: &'a EntityStore,
@@ -79,12 +79,9 @@ impl<'a> OtherEntities<'a> {
 /// and O(log n) lookup. All iteration methods return entities in
 /// ascending stable_id order, which is critical for lockstep multiplayer.
 ///
-/// Maintains a secondary per-owner index (`by_owner`) so that queries like
-/// "all buildings owned by house X" are O(that house's entities) instead of
-/// O(total entities). The index is maintained **incrementally**: `insert`,
-/// `remove`, and `change_owner` keep it in sync, so `ids_for_owner()` is always
-/// current with no rebuild needed. `rebuild_owner_index()` exists only for the
-/// deserialize finalizer (the primary map is bulk-loaded, bypassing `insert`).
+/// A House's buildings in native order are its House+0x68 list
+/// (`HouseBaseState::buildings`); its per-type counts are its
+/// `HouseTracking`.
 #[derive(Debug)]
 pub struct EntityStore {
     /// Primary storage: stable_id -> GameEntity. Boxed: an entity is about 3 KB,
@@ -96,25 +93,6 @@ pub struct EntityStore {
     /// Uninit retains an entry; remove compacts it. Class/category is immutable
     /// while stored, like indexed identity (replace through remove/insert).
     infantry_registry: Vec<u64>,
-    /// Per-owner index: owner InternedId -> ascending-stable_id Vec of ids.
-    /// Maintained incrementally by `insert`/`remove`/`change_owner`. Emptied
-    /// owners are dropped from the map so a wiped-out house's `ids_for_owner`
-    /// returns `&[]`, identical to a fresh rebuild. Deterministic iteration via
-    /// BTreeMap key order + sorted Vecs.
-    by_owner: BTreeMap<crate::sim::intern::InternedId, Vec<u64>>,
-    /// Per-(owner, type) instance count over the stored entities — the O(1)
-    /// answer `HouseClass::CountOwnedInstances @ 0x0049FAE0` gives from its
-    /// per-house per-type counter array. Maintained incrementally next to
-    /// `by_owner` (`insert`/`remove`/`change_owner`) and rebuilt with it.
-    /// Counts every stored entity of the type, limbo and dying included; see
-    /// [`Self::count_owned_of_type`] for the native-vs-Rust window.
-    by_owner_type: BTreeMap<
-        (
-            crate::sim::intern::InternedId,
-            crate::sim::intern::InternedId,
-        ),
-        u32,
-    >,
     /// Which entities may have changed since each reader last took its log
     /// ([`Self::take_touched`]). Every route to a `&mut GameEntity` goes
     /// through the store, so an entity missing from a log has not changed.
@@ -182,8 +160,6 @@ impl Clone for EntityStore {
         Self {
             entities: self.entities.clone(),
             infantry_registry: self.infantry_registry.clone(),
-            by_owner: self.by_owner.clone(),
-            by_owner_type: self.by_owner_type.clone(),
             touched: TouchLogs::everything(),
         }
     }
@@ -206,25 +182,17 @@ impl EntityStore {
         Self {
             entities: BTreeMap::new(),
             infantry_registry: Vec::new(),
-            by_owner: BTreeMap::new(),
-            by_owner_type: BTreeMap::new(),
             touched: TouchLogs::everything(),
         }
     }
 
-    /// Insert an entity. Returns its stable_id. Maintains the `by_owner` index.
-    /// If an entity with the same id already existed (rare — stable_ids are
-    /// monotonic), its old owner entry is removed first.
+    /// Insert an entity, replacing one of the same id (rare — stable_ids are
+    /// monotonic). Returns its stable_id.
     pub fn insert(&mut self, entity: GameEntity) -> u64 {
         let id = entity.stable_id();
         self.touched.note(id, self.entities.len());
-        let owner = entity.owner();
-        let type_ref = entity.type_ref();
         let infantry = entity.category == crate::map::entities::EntityCategory::Infantry;
-        if let Some(old) = self.entities.insert(id, Box::new(entity)) {
-            self.index_remove(old.owner(), id);
-            self.type_count_remove(old.owner(), old.type_ref());
-        }
+        self.entities.insert(id, Box::new(entity));
         self.remove_infantry_index(id);
         if infantry {
             let index = self
@@ -232,47 +200,19 @@ impl EntityStore {
                 .partition_point(|&existing| existing < id);
             self.infantry_registry.insert(index, id);
         }
-        self.index_add(owner, id);
-        self.type_count_add(owner, type_ref);
         id
     }
 
     /// Remove an entity by stable_id. Returns the removed entity if it existed.
-    /// Maintains the `by_owner` index.
     pub fn remove(&mut self, stable_id: u64) -> Option<GameEntity> {
         let removed = self.entities.remove(&stable_id).map(|entity| *entity);
         if removed.is_some() {
             self.touched.note(stable_id, self.entities.len());
         }
-        if let Some(ref e) = removed {
-            self.index_remove(e.owner(), stable_id);
-            self.type_count_remove(e.owner(), e.type_ref());
+        if removed.is_some() {
             self.remove_infantry_index(stable_id);
         }
         removed
-    }
-
-    /// Stored instances of `type_ref` owned by `owner` — O(1).
-    ///
-    /// Native `HouseClass::CountOwnedInstances @ 0x0049FAE0` reads the
-    /// house's per-type counter array (`House+0x4`/`+0x8`, grown on demand
-    /// and zero-filled), which counts an object from Unlimbo until Limbo.
-    /// This count runs from `insert` until `remove` instead, so it differs
-    /// only at the edges: a stored-but-in-limbo entity counts here (native
-    /// excludes it; production structures sit in limbo only inside the spawn
-    /// call that reveals or discards them, so no dispatch observes the gap),
-    /// while a dying structure counts in both until it leaves the store /
-    /// Limbos. Storage-order/type-index details of the native array are not
-    /// modelled; only the `> 0` test and the count itself are consumed.
-    pub fn count_owned_of_type(
-        &self,
-        owner: crate::sim::intern::InternedId,
-        type_ref: crate::sim::intern::InternedId,
-    ) -> u32 {
-        self.by_owner_type
-            .get(&(owner, type_ref))
-            .copied()
-            .unwrap_or(0)
     }
 
     /// Clear all RadioClass-style live contacts involving `stable_id`.
@@ -411,94 +351,30 @@ impl EntityStore {
         self.entities.values_mut().map(Box::as_mut)
     }
 
-    /// Stable IDs owned by the given owner, in sorted order.
-    /// Returns an empty slice if the owner has no entities.
-    /// O(1) lookup + O(n) iteration where n = that owner's entity count.
-    pub fn ids_for_owner(&self, owner: crate::sim::intern::InternedId) -> &[u64] {
-        self.by_owner.get(&owner).map_or(&[], |ids| ids.as_slice())
-    }
-
-    /// Move an entity to a new owner: updates `entity.owner` AND the `by_owner`
-    /// index together. Index only — does NOT touch the houses' tracking
-    /// counts; `Simulation::change_owner`, the only production caller, moves
-    /// them.
+    /// Move an entity to a new owner. It does NOT touch the houses' tracking
+    /// or lists; `Simulation::change_owner`, the only production caller,
+    /// moves them.
     /// No-op if the entity is absent or already owned by `new_owner`.
     pub fn change_owner(&mut self, stable_id: u64, new_owner: crate::sim::intern::InternedId) {
         self.touched.note(stable_id, self.entities.len());
-        let (old_owner, type_ref) = match self.entities.get_mut(&stable_id) {
-            Some(e) if e.owner() != new_owner => {
-                let old = e.owner();
-                e.set_owner_from_store(new_owner, OwnerChangeAuthority(()));
-                (old, e.type_ref())
-            }
-            _ => return,
-        };
-        self.index_remove(old_owner, stable_id);
-        self.index_add(new_owner, stable_id);
-        self.type_count_remove(old_owner, type_ref);
-        self.type_count_add(new_owner, type_ref);
-    }
-
-    fn type_count_add(
-        &mut self,
-        owner: crate::sim::intern::InternedId,
-        type_ref: crate::sim::intern::InternedId,
-    ) {
-        *self.by_owner_type.entry((owner, type_ref)).or_insert(0) += 1;
-    }
-
-    /// Drop the entry when it reaches zero so the map matches a fresh rebuild.
-    fn type_count_remove(
-        &mut self,
-        owner: crate::sim::intern::InternedId,
-        type_ref: crate::sim::intern::InternedId,
-    ) {
-        if let Some(count) = self.by_owner_type.get_mut(&(owner, type_ref)) {
-            *count = count.saturating_sub(1);
-            if *count == 0 {
-                self.by_owner_type.remove(&(owner, type_ref));
-            }
+        if let Some(e) = self.entities.get_mut(&stable_id)
+            && e.owner() != new_owner
+        {
+            e.set_owner_from_store(new_owner, OwnerChangeAuthority(()));
         }
     }
 
-    /// Insert `id` into its owner bucket at the sorted (ascending) position.
-    fn index_add(&mut self, owner: crate::sim::intern::InternedId, id: u64) {
-        let v = self.by_owner.entry(owner).or_default();
-        let pos = v.partition_point(|&x| x < id);
-        v.insert(pos, id);
-    }
-
-    /// Remove `id` from its owner bucket; drop the bucket if it empties (so the
-    /// map matches a fresh rebuild, which never stores empty owners).
-    fn index_remove(&mut self, owner: crate::sim::intern::InternedId, id: u64) {
-        if let Some(v) = self.by_owner.get_mut(&owner) {
-            if let Ok(pos) = v.binary_search(&id) {
-                v.remove(pos);
-            }
-            if v.is_empty() {
-                self.by_owner.remove(&owner);
-            }
-        }
-    }
-
-    /// Rebuild the per-owner index from primary storage.
-    /// Owned by Deserialize; synthetic fixtures may also rebuild after raw setup.
-    pub(crate) fn rebuild_owner_index(&mut self) {
-        self.by_owner.clear();
-        self.by_owner_type.clear();
+    /// Rebuild the infantry registry from primary storage. Owned by
+    /// Deserialize; synthetic fixtures may also rebuild after raw setup.
+    pub(crate) fn rebuild_infantry_registry(&mut self) {
         self.infantry_registry.clear();
         for (&id, entity) in &self.entities {
             if entity.category == crate::map::entities::EntityCategory::Infantry {
                 self.infantry_registry.push(id);
             }
-            self.by_owner.entry(entity.owner()).or_default().push(id);
-            *self
-                .by_owner_type
-                .entry((entity.owner(), entity.type_ref()))
-                .or_insert(0) += 1;
         }
-        // BTreeMap iteration is already sorted by key; Vecs are sorted because
-        // entities BTreeMap iterates in ascending stable_id order.
+        // The entities BTreeMap iterates in ascending stable_id order, so the
+        // infantry registry comes out sorted.
     }
 }
 
@@ -514,11 +390,9 @@ impl<'de> serde::Deserialize<'de> for EntityStore {
         let mut store = Self {
             entities,
             infantry_registry: Vec::new(),
-            by_owner: BTreeMap::new(),
-            by_owner_type: BTreeMap::new(),
             touched: TouchLogs::everything(),
         };
-        store.rebuild_owner_index();
+        store.rebuild_infantry_registry();
         Ok(store)
     }
 }
@@ -578,8 +452,6 @@ mod tests {
         for id in [1, 2, 3] {
             store.insert(make_entity(id));
         }
-        let owner = store.get(2).unwrap().owner();
-        let type_ref = store.get(2).unwrap().type_ref();
         {
             let mut turn = store.take_turn(2).expect("entity 2 is stored");
             let (entity, others) = turn.split();
@@ -591,9 +463,6 @@ mod tests {
         }
         assert_eq!(store.get(2).unwrap().position.rx, 17);
         assert_eq!(store.len(), 3);
-        // Indexed identity never left the indexes.
-        assert_eq!(store.ids_for_owner(owner), [1, 2, 3]);
-        assert_eq!(store.count_owned_of_type(owner, type_ref), 3);
 
         fn leaves_early(store: &mut EntityStore) -> Option<()> {
             let mut turn = store.take_turn(3)?;
@@ -856,223 +725,16 @@ mod tests {
         if let (Some(attacker), Some(pos)) = (store.get_mut(1), target_pos) {
             // In real code: compute firing direction, apply cooldown, etc.
             assert_eq!(pos.rx, 30);
-            attacker.facing = 128; // face toward target
+            attacker.body_facing.snap(0x8000, 0); // face toward target
         }
 
-        assert_eq!(store.get(1).expect("should exist").facing, 128);
-    }
-
-    #[test]
-    fn test_per_owner_index() {
-        use crate::sim::intern::StringInterner;
-
-        let mut interner = StringInterner::new();
-        let americans = interner.intern("Americans");
-        let soviets = interner.intern("Russians");
-
-        let mut store = EntityStore::new();
-
-        let mut e1 = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
-        e1.owner = americans;
-        let mut e2 = GameEntity::test_default(2, "MTNK", "Americans", 6, 6);
-        e2.owner = americans;
-        let mut e3 = GameEntity::test_default(3, "RHNO", "Russians", 10, 10);
-        e3.owner = soviets;
-
-        store.insert(e1);
-        store.insert(e3);
-        store.insert(e2);
-        store.rebuild_owner_index();
-
-        // Americans should have [1, 2] sorted.
-        assert_eq!(store.ids_for_owner(americans), &[1, 2]);
-        // Russians should have [3].
-        assert_eq!(store.ids_for_owner(soviets), &[3]);
-
-        // Remove one American entity, rebuild.
-        store.remove(1);
-        store.rebuild_owner_index();
-        assert_eq!(store.ids_for_owner(americans), &[2]);
-        assert_eq!(store.ids_for_owner(soviets), &[3]);
-
-        // Remove all American entities, rebuild.
-        store.remove(2);
-        store.rebuild_owner_index();
-        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
-
-        // Unknown owner returns empty slice.
-        let unknown = interner.intern("Yuri");
-        assert_eq!(store.ids_for_owner(unknown), &[] as &[u64]);
-    }
-
-    #[test]
-    fn per_owner_type_count_tracks_insert_remove_change_owner_and_rebuild() {
-        use crate::sim::intern::StringInterner;
-        let mut interner = StringInterner::new();
-        let americans = interner.intern("Americans");
-        let soviets = interner.intern("Russians");
-        let refinery = interner.intern("GAREFN");
-        let tank = interner.intern("HTNK");
-        let mut store = EntityStore::new();
-
-        let mut e1 = GameEntity::test_default(1, "GAREFN", "Americans", 5, 5);
-        e1.owner = americans;
-        e1.type_ref = refinery;
-        let mut e2 = GameEntity::test_default(2, "GAREFN", "Americans", 6, 6);
-        e2.owner = americans;
-        e2.type_ref = refinery;
-        let mut e3 = GameEntity::test_default(3, "HTNK", "Americans", 7, 7);
-        e3.owner = americans;
-        e3.type_ref = tank;
-        store.insert(e1);
-        store.insert(e2);
-        store.insert(e3);
-        assert_eq!(store.count_owned_of_type(americans, refinery), 2);
-        assert_eq!(store.count_owned_of_type(americans, tank), 1);
-        assert_eq!(store.count_owned_of_type(soviets, refinery), 0);
-
-        store.change_owner(2, soviets);
-        assert_eq!(store.count_owned_of_type(americans, refinery), 1);
-        assert_eq!(store.count_owned_of_type(soviets, refinery), 1);
-
-        store.remove(1);
-        assert_eq!(store.count_owned_of_type(americans, refinery), 0);
-        assert!(!store.by_owner_type.contains_key(&(americans, refinery)));
-
-        // Re-inserting an existing id retires the old entry's count first.
-        let mut e2b = GameEntity::test_default(2, "HTNK", "Russians", 6, 6);
-        e2b.owner = soviets;
-        e2b.type_ref = tank;
-        store.insert(e2b);
-        assert_eq!(store.count_owned_of_type(soviets, refinery), 0);
-        assert_eq!(store.count_owned_of_type(soviets, tank), 1);
-
-        let before = store.by_owner_type.clone();
-        store.rebuild_owner_index();
         assert_eq!(
-            store.by_owner_type, before,
-            "rebuild reproduces the incremental map"
+            store
+                .get(1)
+                .expect("should exist")
+                .body_facing
+                .destination(),
+            0x8000
         );
-    }
-
-    #[test]
-    fn insert_indexes_immediately() {
-        use crate::sim::intern::StringInterner;
-        let mut interner = StringInterner::new();
-        let americans = interner.intern("Americans");
-        let mut store = EntityStore::new();
-        let mut e = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
-        e.owner = americans;
-        store.insert(e);
-        // No rebuild: the index is current right after insert.
-        assert_eq!(store.ids_for_owner(americans), &[1]);
-    }
-
-    #[test]
-    fn remove_deindexes_immediately() {
-        use crate::sim::intern::StringInterner;
-        let mut interner = StringInterner::new();
-        let americans = interner.intern("Americans");
-        let mut store = EntityStore::new();
-        let mut e = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
-        e.owner = americans;
-        store.insert(e);
-        store.remove(1);
-        // Bucket emptied → owner dropped, identical to a fresh rebuild.
-        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
-    }
-
-    #[test]
-    fn change_owner_moves_entry_immediately_and_is_idempotent() {
-        use crate::sim::intern::StringInterner;
-        let mut interner = StringInterner::new();
-        let americans = interner.intern("Americans");
-        let soviets = interner.intern("Russians");
-        let mut store = EntityStore::new();
-        let mut e = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
-        e.owner = americans;
-        store.insert(e);
-
-        store.change_owner(1, soviets);
-        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
-        assert_eq!(store.ids_for_owner(soviets), &[1]);
-        assert_eq!(store.get(1).unwrap().owner, soviets);
-
-        // Same-owner call is a no-op (no duplicate in the bucket).
-        store.change_owner(1, soviets);
-        assert_eq!(store.ids_for_owner(soviets), &[1]);
-
-        // Missing id is a no-op.
-        store.change_owner(999, americans);
-        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
-    }
-
-    #[test]
-    fn change_owner_preserves_sorted_order_in_both_buckets() {
-        use crate::sim::intern::StringInterner;
-        let mut interner = StringInterner::new();
-        let a = interner.intern("Americans");
-        let b = interner.intern("Russians");
-        let mut store = EntityStore::new();
-        for id in [10u64, 20, 30] {
-            let mut e = GameEntity::test_default(id, "HTNK", "Americans", 5, 5);
-            e.owner = a;
-            store.insert(e);
-        }
-        let mut e = GameEntity::test_default(15, "RHNO", "Russians", 6, 6);
-        e.owner = b;
-        store.insert(e);
-        // Move 20 from a→b; both buckets must stay ascending.
-        store.change_owner(20, b);
-        assert_eq!(store.ids_for_owner(a), &[10, 30]);
-        assert_eq!(store.ids_for_owner(b), &[15, 20]);
-    }
-
-    /// Acceptance: a store built purely by incremental ops has a `by_owner`
-    /// byte-identical to one produced by a full rebuild — proving
-    /// deserialize-rebuild ≡ incremental.
-    #[test]
-    fn incremental_index_matches_rebuild() {
-        use crate::sim::intern::StringInterner;
-        let mut interner = StringInterner::new();
-        let a = interner.intern("Americans");
-        let b = interner.intern("Russians");
-        let c = interner.intern("Yuri");
-        let mut store = EntityStore::new();
-        for (id, owner) in [(5u64, a), (1, b), (3, a), (2, c), (4, b)] {
-            let mut e = GameEntity::test_default(id, "HTNK", "Americans", 5, 5);
-            e.owner = owner;
-            store.insert(e);
-        }
-        store.change_owner(3, b); // a→b
-        store.change_owner(2, a); // c→a (empties c)
-        store.remove(5); // drops from a
-        let incremental = store.by_owner.clone();
-        store.rebuild_owner_index();
-        assert_eq!(incremental, store.by_owner);
-    }
-
-    #[test]
-    fn test_rebuild_owner_index() {
-        use crate::sim::intern::StringInterner;
-
-        let mut interner = StringInterner::new();
-        let americans = interner.intern("Americans");
-
-        let mut store = EntityStore::new();
-        let mut e1 = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
-        e1.owner = americans;
-        let mut e2 = GameEntity::test_default(2, "MTNK", "Americans", 6, 6);
-        e2.owner = americans;
-        store.insert(e1);
-        store.insert(e2);
-
-        // Manually clear the index to simulate deserialization state.
-        store.by_owner.clear();
-        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
-
-        // Rebuild should restore the index.
-        store.rebuild_owner_index();
-        assert_eq!(store.ids_for_owner(americans), &[1, 2]);
     }
 }

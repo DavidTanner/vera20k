@@ -8,7 +8,7 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::ground_pose::position_world_coord;
-use crate::sim::passenger::{BoardingPhase, PassengerRole};
+use crate::sim::passenger::PassengerRole;
 use crate::sim::world::{SimFrameOutput, TickLane};
 
 /// A loaded Battle Fortress on retail Dustbowl.
@@ -74,8 +74,7 @@ fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
             if !open {
                 return None;
             }
-            let bfrt =
-                sim.spawn_object("BFRT", "Americans", x, y, 0, rules, &resources.height_map)?;
+            let bfrt = sim.spawn_object("BFRT", "Americans", x, y, 0, rules)?;
             Some((bfrt, x, y))
         })
         .expect("open level ground for the fight");
@@ -84,9 +83,7 @@ fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
         (20..120_u16)
             .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
             .filter(|&(px, py)| px.abs_diff(x).max(py.abs_diff(y)) >= 16)
-            .find_map(|(px, py)| {
-                sim.spawn_object(plant, owner, px, py, 0, rules, &resources.height_map)
-            })
+            .find_map(|(px, py)| sim.spawn_object(plant, owner, px, py, 0, rules))
             .unwrap_or_else(|| panic!("room for {plant}"));
     }
     for (house, ally) in [
@@ -110,18 +107,16 @@ fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
                     if i < 3 { y + 1 } else { y - 1 },
                     0,
                     rules,
-                    &resources.height_map,
                 )
                 .expect("GI spawns");
             sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Boarding {
                 target_transport_id: bfrt,
-                phase: BoardingPhase::Entering,
             };
             id
         })
         .collect();
     sim.resolve_type_handles(rules);
-    crate::sim::passenger::tick_passenger_system(sim, rules);
+    crate::sim::passenger::tick_passenger_system(sim, rules, None);
     Fortress {
         scenario,
         bfrt,
@@ -148,15 +143,7 @@ fn spawn_enemy(fortress: &mut Fortress, kind: &str, cell: (u16, u16)) -> u64 {
         resources,
     } = &mut fortress.scenario.runtime;
     let id = sim
-        .spawn_object(
-            kind,
-            "Russians",
-            cell.0,
-            cell.1,
-            0,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object(kind, "Russians", cell.0, cell.1, 0, &resources.rules)
         .expect("enemy spawns");
     sim.resolve_type_handles(&resources.rules);
     id
@@ -262,7 +249,10 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
         });
         (
             ports,
-            super::object_world_z_leptons(transport, sim.resolved_terrain.as_ref()),
+            crate::sim::movement::ground_pose::object_world_z_leptons(
+                transport,
+                sim.resolved_terrain.as_ref(),
+            ),
         )
     };
     let mut first_volley = None;
@@ -549,15 +539,7 @@ fn retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put() {
             resources,
         } = &mut fortress.scenario.runtime;
         let id = sim
-            .spawn_object(
-                "E1",
-                "Americans",
-                x - 2,
-                y + 2,
-                0,
-                &resources.rules,
-                &resources.height_map,
-            )
+            .spawn_object("E1", "Americans", x - 2, y + 2, 0, &resources.rules)
             .expect("GI spawns");
         sim.resolve_type_handles(&resources.rules);
         id

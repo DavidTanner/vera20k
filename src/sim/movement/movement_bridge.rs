@@ -14,11 +14,9 @@
 //!
 //! See docs/plans/2026-05-11-bridge-locomotor-layer-correctness-design.md.
 
-use super::movement_occupancy::BRIDGE_DECK_LEVEL_DELTA;
-use crate::sim::components::{BridgeOccupancy, Position};
+use crate::sim::components::Position;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::pathfinding::PathGrid;
-use crate::util::fixed_math::SimFixed;
 
 /// Result of the gamemd on_bridge transition predicate at a cell boundary.
 ///
@@ -29,14 +27,10 @@ use crate::util::fixed_math::SimFixed;
 /// independently to match the original behavior exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BridgeTransition {
-    /// Unit just entered the bridge body deck. Sets on_bridge=true.
-    ///
-    /// `deck_level` is the predicate's own reading of the destination cell and is
-    /// NOT the height the mover receives — Z is recomputed from the terrain level
-    /// plus the post-transition flag, per `FootClass::Set_Height_On_Bridge`
-    /// 0x005F5FA0. The two agree on well-formed data and are allowed to disagree
-    /// on malformed data, where the native model wins.
-    Enter { deck_level: u8 },
+    /// Unit just entered the bridge body deck. Sets on_bridge=true. Z is
+    /// recomputed from the terrain level plus the post-transition flag, per
+    /// `ObjectClass::SetHeight` 0x005F5FA0.
+    Enter,
     /// Unit just exited the bridge structure. Sets on_bridge=false.
     Exit,
     /// No layer-state change at this transition.
@@ -44,14 +38,14 @@ pub(super) enum BridgeTransition {
 }
 
 /// Bridge state update produced by `resolve_cell_transition_bridge_state`.
-/// Drives `on_bridge` and `BridgeOccupancy` independently from `loco.layer`.
+/// Drives `on_bridge` independently from `loco.layer`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BridgeStateUpdate {
-    /// on_bridge = true; bridge_occupancy = Some(BridgeOccupancy { deck_level })
-    Set(u8),
-    /// on_bridge = false; bridge_occupancy = None
+    /// on_bridge = true
+    Set,
+    /// on_bridge = false
     Clear,
-    /// Leave on_bridge and bridge_occupancy unchanged
+    /// Leave on_bridge unchanged
     Unchanged,
 }
 
@@ -66,14 +60,7 @@ pub(crate) struct RuntimeBridgeTransitionState {
     pub pending_mismatch: bool,
 }
 
-/// Result supplied by the runtime-only bridge policy seam.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RuntimeBridgePolicyResult {
-    Continue,
-    Reject,
-}
-
-/// Evaluate the runtime bridge mismatch branch without borrowing A* policy.
+/// Latch Foot+0x68B when the candidate's bridge bit differs from the mover's.
 ///
 /// Original: each locomotor's `Process_Movement` compares
 /// candidate `CellClass+0x140 & 0x100` with Foot `+0x8C`, sets `+0x68B` on a
@@ -86,32 +73,24 @@ pub(crate) enum RuntimeBridgePolicyResult {
 /// `0x0075B662` (Walk), `0x00515513` (Hover) and `0x006A29E0` (Ship) — four
 /// sites carrying the whole sequence. `0x006A3C19` and `0x00736038` are bare
 /// `[+0x68B] = 1` stores in unrelated branches, not twins of this comparison.
-/// There is no
-/// `FootClass::EvaluateCellEnterabilityOrCost` in this program.
 ///
-/// **VERA-internal, gamemd equivalent UNCHECKED:** `pending_mismatch` is
-/// written on every call, so a matching tick clears it. Native `[foot+0x68B]`
-/// is write-1-only — initialised once in `FootClass::Constructor` @
-/// `0x004D33BA`, set at eleven locomotor sites, never cleared, and read by
-/// `FootClass::ComputeChecksum` @ `0x004DBAD0` (the read is at `0x004DBD0C`),
-/// so it is part of the sync
-/// checksum. Trigger: any tick where the candidate's bridge bit matches the
-/// mover's. Player effect: none today — the field has no reader outside tests
-/// and the only production caller passes a policy that never rejects.
-/// Frequency: zero while that holds. Downstream risk: a flip to authoritative
-/// would start from the wrong latch semantics and a wrong checksum input.
-pub(crate) fn evaluate_runtime_bridge_transition(
+/// `[foot+0x68B]` is write-1-only: zeroed once in `FootClass::Constructor` @
+/// `0x004D33BA`, never cleared, and read only by `FootClass::ComputeChecksum`
+/// @ `0x004DBAD0` (at `0x004DBD0C`).
+///
+/// Residual: the `+0x29C` return-path call after the latch is not made here.
+/// Trigger: a candidate on `advance_ordinary_mover`'s crossing step (the
+/// legacy pass, #689) whose bridge bit differs from `on_bridge`. Effect: the
+/// step continues instead of taking the locomotor's return path. Frequency:
+/// every such crossing by a mover still on that pass. Risk: it can cross a
+/// bridge-state boundary native would turn back from.
+pub(crate) fn latch_runtime_bridge_mismatch(
     state: &mut RuntimeBridgeTransitionState,
     candidate_bridge_bit: bool,
     current_bridge_state: bool,
-    policy: impl FnOnce() -> RuntimeBridgePolicyResult,
-) -> RuntimeBridgePolicyResult {
-    let mismatch = candidate_bridge_bit != current_bridge_state;
-    state.pending_mismatch = mismatch;
-    if mismatch {
-        policy()
-    } else {
-        RuntimeBridgePolicyResult::Continue
+) {
+    if candidate_bridge_bit != current_bridge_state {
+        state.pending_mismatch = true;
     }
 }
 
@@ -127,38 +106,16 @@ pub struct BridgeRuntimeOracleTick {
     pub on_bridge_before: bool,
     pub on_bridge_after: bool,
     pub bridge_update: String,
-    pub bridge_occupancy_before: Option<u8>,
-    pub bridge_occupancy_after: Option<u8>,
     pub visible_z_after: u8,
 }
 
 pub(super) fn projected_on_bridge(current: bool, update: BridgeStateUpdate) -> bool {
     match update {
-        BridgeStateUpdate::Set(_) => true,
+        BridgeStateUpdate::Set => true,
         BridgeStateUpdate::Clear => false,
         BridgeStateUpdate::Unchanged => current,
     }
 }
-
-/// Bridge vertical clearance in leptons.
-/// 416 == 104 * 4 — the verified Foot-role Z distance from water surface to bridge deck.
-///
-/// gamemd produces this number twice, independently, and both producers agree
-/// with the constant here:
-/// - `DriveLocomotionClass::ComputeBridgeZOffset` 0x004AF4A0 is a one-shot
-///   initializer computing `ftol(4 * g_DriveHeightStep + 0.5)` into
-///   `g_BridgeZOffset_Drive` 0x008A07C4, consumed by `Set_Destination`
-///   0x004AFDE2 and `Process_Drive_Track` 0x004B0FE7 / 0x004B18CC.
-/// - `FootClass::Set_Height_On_Bridge` 0x005F5FA0 adds
-///   `g_nFootOnBridgeDeckOffsetLeptons` (416) to its height argument whenever
-///   the object's `+0x8C` OnBridge byte is set, then writes
-///   `CellClass::GetGroundHeight(coords) + offset` into `+0xA4`, bracketing the
-///   write with vtable+0x124 REMOVE/PUT when `+0x74` IsMarked is set.
-/// Added to braking distance when a ship passes under a bridge cell.
-/// Same physical fact as `sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS`
-/// (a `SimFixed` literal cannot be const-derived from it; the equality is
-/// pinned by `bridge_z_offset_matches_deck_height` below).
-pub(super) const BRIDGE_Z_OFFSET: SimFixed = SimFixed::lit("416");
 
 /// The on_bridge cell-flag predicate at a cell-boundary crossing.
 ///
@@ -189,7 +146,7 @@ pub(super) const BRIDGE_Z_OFFSET: SimFixed = SimFixed::lit("416");
 /// `ObjectClass::ShouldBeOnBridge` 0x005F6A70 is NOT this predicate despite
 /// the name - it compares ground heights in leptons at the object's
 /// destination coordinate and feeds zone reachability queries. See
-/// `should_be_on_bridge_is_a_reachability_input_not_the_transition` for the
+/// the ShouldBeOnBridge residual note in this file's tests module for the
 /// evidence and the one place the two really do diverge.
 ///
 /// Height arithmetic uses signed i8 via `wrapping_sub` where the native
@@ -209,9 +166,7 @@ pub(super) fn compute_bridge_transition(
     let exit = !dst.has_structural_bridge() && src.has_structural_bridge();
 
     if entry {
-        return BridgeTransition::Enter {
-            deck_level: dst.bridge_deck_level_if_any().unwrap_or(dst.ground_level),
-        };
+        return BridgeTransition::Enter;
     }
     if exit {
         return BridgeTransition::Exit;
@@ -228,7 +183,7 @@ pub(super) fn compute_bridge_transition(
 ///
 /// Does NOT return a layer — the caller continues to use `next_layer` from A*'s
 /// `path_layers` for `loco.layer`. The predicate's role is independent: it drives
-/// `on_bridge` and `BridgeOccupancy` via the returned `BridgeStateUpdate`.
+/// `on_bridge` via the returned `BridgeStateUpdate`.
 ///
 /// Fallback: returns `Unchanged` (no position.z modification) when `path_grid` is
 /// `None` or either cell lookup is out-of-bounds. Out-of-bounds at the boundary
@@ -253,13 +208,13 @@ pub(super) fn resolve_cell_transition_bridge_state(
     // post-transition flag rather than carried out of the transition arm.
     let transition = compute_bridge_transition(src_cell, dst_cell);
     let update = match transition {
-        BridgeTransition::Enter { .. } => BridgeStateUpdate::Set(0),
+        BridgeTransition::Enter => BridgeStateUpdate::Set,
         BridgeTransition::Exit => BridgeStateUpdate::Clear,
         BridgeTransition::NoChange => BridgeStateUpdate::Unchanged,
     };
     let on_bridge_after = projected_on_bridge(on_bridge_before, update);
 
-    // `FootClass::Set_Height_On_Bridge` 0x005F5FA0:
+    // `ObjectClass::SetHeight` 0x005F5FA0:
     //   Location.Z = CellClass::GetGroundHeight(own cell) + arg
     //                + (OnBridge ? g_nFootOnBridgeDeckOffsetLeptons : 0)
     // The ground term (`CellClass::ComputeGroundHeightAtCoord` 0x0047B3A0) reads
@@ -271,20 +226,14 @@ pub(super) fn resolve_cell_transition_bridge_state(
     // that silently substituted ground level for the deck.
     let z = (dst_cell.signed_level()
         + if on_bridge_after {
-            BRIDGE_DECK_LEVEL_DELTA
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
         } else {
             0
         }) as u8;
     position.z = z;
     // Raw Object Z has a separate setter cadence. Paid Drive/Ship points and
     // Walk commits refresh it; a residual crossing retains it (0x4B253F).
-
-    // Carry the same number into BridgeOccupancy so the deck height has one
-    // source rather than two independently-derived ones.
-    match update {
-        BridgeStateUpdate::Set(_) => BridgeStateUpdate::Set(z),
-        other => other,
-    }
+    update
 }
 
 /// Diagnostic wrapper for a single boundary crossing. It computes the same
@@ -299,17 +248,11 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
     current_layer: MovementLayer,
     next_layer: MovementLayer,
     on_bridge_before: bool,
-    bridge_occupancy_before: Option<BridgeOccupancy>,
     tick: u64,
 ) -> (BridgeStateUpdate, BridgeRuntimeOracleTick) {
     let update =
         resolve_cell_transition_bridge_state(position, path_grid, src, dst, on_bridge_before);
     let on_bridge_after = projected_on_bridge(on_bridge_before, update);
-    let bridge_occupancy_after = match update {
-        BridgeStateUpdate::Set(deck_level) => Some(BridgeOccupancy { deck_level }),
-        BridgeStateUpdate::Clear => None,
-        BridgeStateUpdate::Unchanged => bridge_occupancy_before,
-    };
     let row = BridgeRuntimeOracleTick {
         tick,
         current_cell: src,
@@ -319,8 +262,6 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
         on_bridge_before,
         on_bridge_after,
         bridge_update: format!("{:?}", update),
-        bridge_occupancy_before: bridge_occupancy_before.map(|occ| occ.deck_level),
-        bridge_occupancy_after: bridge_occupancy_after.map(|occ| occ.deck_level),
         visible_z_after: position.z,
     };
     (update, row)
@@ -331,42 +272,32 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
 /// `loco.layer` follows `active_layer` (= A*'s path_layer for this step), which drives
 /// walkability and cell_entry occupancy lookup.
 ///
-/// `on_bridge` and `bridge_occupancy` are driven INDEPENDENTLY by `bridge_update` from
+/// `on_bridge` is driven INDEPENDENTLY by `bridge_update` from
 /// the cell-flag predicate. This is the load-bearing G2 parity fix: the runtime
 /// on_bridge state is NOT derivable from the A* layer, because on a ramp going up
 /// loco.layer=Bridge but on_bridge=false (predicate hasn't fired Enter yet), and on a
 /// ramp going down loco.layer=Ground but on_bridge=true.
-pub(super) fn apply_pending_bridge_render_state(
+pub(super) fn apply_bridge_layer_state(
     locomotor: &mut Option<LocomotorState>,
-    bridge_occupancy: &mut Option<BridgeOccupancy>,
     on_bridge: &mut bool,
     active_layer: MovementLayer,
     bridge_update: BridgeStateUpdate,
-    _diag_entity_id: u64,
 ) {
     if let Some(loco) = locomotor {
         loco.layer = active_layer;
     }
     match bridge_update {
-        BridgeStateUpdate::Set(deck_level) => {
-            *on_bridge = true;
-            *bridge_occupancy = Some(BridgeOccupancy { deck_level });
-        }
-        BridgeStateUpdate::Clear => {
-            *on_bridge = false;
-            *bridge_occupancy = None;
-        }
-        BridgeStateUpdate::Unchanged => {
-            // on_bridge and bridge_occupancy retain their previous values
-        }
+        BridgeStateUpdate::Set => *on_bridge = true,
+        BridgeStateUpdate::Clear => *on_bridge = false,
+        BridgeStateUpdate::Unchanged => {}
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::movement::locomotion::LocomotorSlot;
     use crate::sim::pathfinding::PathCell;
+    use crate::util::fixed_math::SimFixed;
 
     /// Construct a synthetic PathCell with the bridge fields we care about.
     fn cell(ground_level: u8, bridge_walkable: bool, transition: bool) -> PathCell {
@@ -393,7 +324,8 @@ mod tests {
     fn gsi_04_03b_water_mover_bridge_clearance_crosses_braking_boundary() {
         let planar_distance = SimFixed::from_num(100);
         let slowdown_distance = SimFixed::from_num(500);
-        let distance_under_bridge = planar_distance + BRIDGE_Z_OFFSET;
+        let distance_under_bridge =
+            planar_distance + SimFixed::from_num(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
 
         assert_eq!(distance_under_bridge, SimFixed::from_num(516));
         assert!(
@@ -413,7 +345,7 @@ mod tests {
         let src = cell(4, true, true);
         let dst = cell(0, true, false);
         match compute_bridge_transition(&src, &dst) {
-            BridgeTransition::Enter { deck_level } => assert_eq!(deck_level, 4),
+            BridgeTransition::Enter => {}
             other => panic!("expected Enter, got {:?}", other),
         }
     }
@@ -512,41 +444,27 @@ mod tests {
         let dst = cell(0, true, false);
         assert!(matches!(
             compute_bridge_transition(&src, &dst),
-            BridgeTransition::Enter { deck_level: 4 }
+            BridgeTransition::Enter
         ));
     }
 
     #[test]
     fn projected_on_bridge_applies_pending_update_without_mutation() {
-        assert!(projected_on_bridge(false, BridgeStateUpdate::Set(4)));
+        assert!(projected_on_bridge(false, BridgeStateUpdate::Set));
         assert!(!projected_on_bridge(true, BridgeStateUpdate::Clear));
         assert!(projected_on_bridge(true, BridgeStateUpdate::Unchanged));
         assert!(!projected_on_bridge(false, BridgeStateUpdate::Unchanged));
     }
 
     #[test]
-    fn runtime_bridge_mismatch_sets_pending_state_and_uses_policy_seam() {
+    fn runtime_bridge_mismatch_latches_and_a_match_never_clears() {
         let mut state = RuntimeBridgeTransitionState::default();
-        let outcome = evaluate_runtime_bridge_transition(&mut state, true, false, || {
-            RuntimeBridgePolicyResult::Reject
-        });
-
-        assert!(state.pending_mismatch);
-        assert_eq!(outcome, RuntimeBridgePolicyResult::Reject);
-    }
-
-    #[test]
-    fn matching_runtime_bridge_state_skips_policy_seam() {
-        let mut state = RuntimeBridgeTransitionState::default();
-        let mut policy_called = false;
-        let outcome = evaluate_runtime_bridge_transition(&mut state, true, true, || {
-            policy_called = true;
-            RuntimeBridgePolicyResult::Reject
-        });
-
+        latch_runtime_bridge_mismatch(&mut state, true, true);
         assert!(!state.pending_mismatch);
-        assert!(!policy_called);
-        assert_eq!(outcome, RuntimeBridgePolicyResult::Continue);
+        latch_runtime_bridge_mismatch(&mut state, true, false);
+        assert!(state.pending_mismatch);
+        latch_runtime_bridge_mismatch(&mut state, true, true);
+        assert!(state.pending_mismatch);
     }
 
     #[test]
@@ -566,7 +484,6 @@ mod tests {
 
     use crate::sim::components::Position;
     use crate::sim::pathfinding::PathGrid;
-    use crate::util::fixed_math::SimFixed;
 
     fn make_grid_with_cells(cells: &[(u16, u16, u8, bool, bool)]) -> PathGrid {
         let mut g = PathGrid::new(16, 16);
@@ -579,7 +496,7 @@ mod tests {
     // ------------------------------------------------------------------------
     // Full-span coarse bridge projection at each explicit cell transition.
     //
-    // `FootClass::Set_Height_On_Bridge` 0x005F5FA0 recomputes
+    // `ObjectClass::SetHeight` 0x005F5FA0 recomputes
     //   Location.Z = GroundHeight(own cell) + (OnBridge ? 4 levels : 0)
     // with no stored per-cell deck height and no second gate. These tests walk a
     // multi-cell span because a two-cell fixture is satisfied by the Enter
@@ -625,7 +542,7 @@ mod tests {
         let cell = grid.cell(pos.rx, pos.ry).expect("cell in bounds");
         let expected = (cell.signed_level()
             + if on_bridge {
-                BRIDGE_DECK_LEVEL_DELTA
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
             } else {
                 0
             }) as u8;
@@ -635,7 +552,7 @@ mod tests {
             "{step}: z must be terrain({}) + {} when on_bridge={on_bridge}",
             cell.signed_level(),
             if on_bridge {
-                BRIDGE_DECK_LEVEL_DELTA
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
             } else {
                 0
             }
@@ -657,12 +574,6 @@ mod tests {
             pos.rx = dst.0;
             pos.ry = dst.1;
             assert_native_height(grid, &pos, on_bridge, &format!("step {x}->{}", x + 1));
-            if let BridgeStateUpdate::Set(deck_level) = update {
-                assert_eq!(
-                    deck_level, pos.z,
-                    "BridgeOccupancy.deck_level must be the same number as position.z"
-                );
-            }
             trace.push((pos.z, on_bridge));
         }
         trace
@@ -675,7 +586,7 @@ mod tests {
 
         // Nine steps: onto the deck, seven deck-to-deck, then off onto the ramp.
         assert_eq!(trace.len(), 9);
-        let deck_z = RIVERBED_LEVEL + BRIDGE_DECK_LEVEL_DELTA as u8;
+        let deck_z = RIVERBED_LEVEL + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as u8;
         for (i, &(z, on_bridge)) in trace[..trace.len() - 1].iter().enumerate() {
             assert!(on_bridge, "deck step {i} must keep on_bridge set");
             assert_eq!(
@@ -706,7 +617,7 @@ mod tests {
         );
 
         let trace = drive_span(&grid);
-        let deck_z = RIVERBED_LEVEL + BRIDGE_DECK_LEVEL_DELTA as u8;
+        let deck_z = RIVERBED_LEVEL + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as u8;
         for (i, &(z, on_bridge)) in trace[..trace.len() - 1].iter().enumerate() {
             assert!(on_bridge, "deck step {i} must keep on_bridge set");
             assert_eq!(
@@ -740,10 +651,10 @@ mod tests {
             (ENTRY_RAMP_X + 1, SPAN_Y),
             false,
         );
-        assert!(matches!(update, BridgeStateUpdate::Set(_)));
+        assert!(matches!(update, BridgeStateUpdate::Set));
         assert_eq!(
             pos.z,
-            RIVERBED_LEVEL + BRIDGE_DECK_LEVEL_DELTA as u8,
+            RIVERBED_LEVEL + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as u8,
             "entry height is terrain + 4, never the stored deck field"
         );
     }
@@ -801,7 +712,7 @@ mod tests {
         ]);
         let mut p = pos_at(6, 5, 4);
         let update = resolve_cell_transition_bridge_state(&mut p, Some(&g), (5, 5), (6, 5), false);
-        assert_eq!(update, BridgeStateUpdate::Set(4));
+        assert_eq!(update, BridgeStateUpdate::Set);
         assert_eq!(
             p.z, 4,
             "Enter height is the destination terrain level (0) plus the deck delta"
@@ -820,15 +731,13 @@ mod tests {
             MovementLayer::Ground,
             MovementLayer::Bridge,
             false,
-            None,
             123,
         );
 
-        assert_eq!(update, BridgeStateUpdate::Set(4));
+        assert_eq!(update, BridgeStateUpdate::Set);
         assert_eq!(row.tick, 123);
         assert_eq!(row.next_path_layer, MovementLayer::Bridge);
         assert!(row.on_bridge_after);
-        assert_eq!(row.bridge_occupancy_after, Some(4));
         assert_eq!(row.visible_z_after, 4);
     }
 
@@ -868,45 +777,17 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------
-    // Render-state apply tests (apply_pending_bridge_render_state)
+    // Render-state apply tests (apply_bridge_layer_state)
     // ------------------------------------------------------------------------
 
-    use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::sim::movement::locomotor::GroundMovePhase;
-    use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
+    use crate::rules::locomotor_type::LocomotorKind;
 
     /// Build a minimal `LocomotorState` for tests. Lists all fields explicitly
     /// with sensible defaults — LocomotorState has no `Default` impl.
     fn make_loco(layer: MovementLayer) -> Option<LocomotorState> {
-        Some(LocomotorState {
-            kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
-            powered: true,
-            piggyback: None,
-            runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-                LocomotorKind::Drive,
-                0,
-            ),
-            layer,
-            phase: GroundMovePhase::Idle,
-
-            speed_multiplier: SIM_ONE,
-            speed_fraction: SIM_ONE,
-            fly_current_speed: SIM_ZERO,
-            altitude: SIM_ZERO,
-
-            balloon_hover: false,
-            hover_attack: false,
-            speed_type: SpeedType::Track,
-            movement_zone: MovementZone::Normal,
-            rot: 0,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
-            subcell_dest: None,
-            hover_throttle: crate::util::fixed_math::SIM_ZERO,
-            hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-            hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-        })
+        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
+        loco.layer = layer;
+        Some(loco)
     }
 
     #[test]
@@ -914,19 +795,15 @@ mod tests {
         // active_layer=Bridge but bridge_update=Unchanged.
         // on_bridge must retain its prior value (does NOT become true just because layer is Bridge).
         let mut loco = make_loco(MovementLayer::Ground);
-        let mut occ: Option<BridgeOccupancy> = None;
         let mut on_b = false;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Bridge,
             BridgeStateUpdate::Unchanged,
-            42,
         );
         assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Bridge);
         assert!(!on_b, "on_bridge must NOT be derived from active_layer");
-        assert!(occ.is_none(), "bridge_occupancy must be unchanged");
     }
 
     #[test]
@@ -935,15 +812,12 @@ mod tests {
         // predicate doesn't fire Enter until Ramp→Body next tick. So this tick:
         //   active_layer = Bridge, bridge_update = Unchanged, on_bridge = false (prior).
         let mut loco = make_loco(MovementLayer::Ground);
-        let mut occ: Option<BridgeOccupancy> = None;
         let mut on_b = false;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Bridge,
             BridgeStateUpdate::Unchanged,
-            42,
         );
         assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Bridge);
         assert!(!on_b, "on_bridge must stay false on the ramp tick going up");
@@ -954,151 +828,120 @@ mod tests {
         // Coming off a bridge: A*'s path puts the ramp on Ground layer (is_at_bridge_level
         // returns false), but the predicate hasn't fired Exit yet. on_bridge stays true.
         let mut loco = make_loco(MovementLayer::Bridge);
-        let mut occ = Some(BridgeOccupancy { deck_level: 4 });
         let mut on_b = true;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Ground,
             BridgeStateUpdate::Unchanged,
-            42,
         );
         assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Ground);
         assert!(on_b, "on_bridge must stay true on the ramp tick going down");
-        assert!(
-            occ.is_some(),
-            "bridge_occupancy must be unchanged on Unchanged"
-        );
     }
 
     #[test]
-    fn render_state_set_writes_occupancy() {
+    fn render_state_set_enters_the_bridge() {
         let mut loco = make_loco(MovementLayer::Bridge);
-        let mut occ: Option<BridgeOccupancy> = None;
         let mut on_b = false;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Bridge,
-            BridgeStateUpdate::Set(4),
-            42,
+            BridgeStateUpdate::Set,
         );
         assert!(on_b);
-        assert_eq!(occ.unwrap().deck_level, 4);
     }
 
     #[test]
-    fn render_state_clear_drops_occupancy() {
+    fn render_state_clear_leaves_the_bridge() {
         let mut loco = make_loco(MovementLayer::Ground);
-        let mut occ = Some(BridgeOccupancy { deck_level: 4 });
         let mut on_b = true;
-        apply_pending_bridge_render_state(
+        apply_bridge_layer_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Ground,
             BridgeStateUpdate::Clear,
-            42,
         );
         assert!(!on_b);
-        assert!(occ.is_none());
     }
 }
 
-#[cfg(test)]
-mod bridge_constant_tests {
-    use super::*;
-
-    /// Ship braking clearance and the deck snap height are the same physical
-    /// fact; if `LEPTONS_PER_LEVEL` is ever corrected, both must move.
-    #[test]
-    fn bridge_z_offset_matches_deck_height() {
-        assert_eq!(
-            BRIDGE_Z_OFFSET,
-            SimFixed::from_num(crate::sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS)
-        );
-    }
-
-    /// RESIDUAL - gamemd 0x005F6A70 `ObjectClass::ShouldBeOnBridge`, its
-    /// FootClass override 0x004DDC40, and the reachability queries they feed.
-    ///
-    /// Corrected 2026-08-19. An earlier note in this file claimed this
-    /// function was the native counterpart of `compute_bridge_transition` and
-    /// that the port diverged from it. That pairing was wrong, and acting on
-    /// it would have replaced a correct port. Slot +0xBC is genuinely
-    /// ShouldBeOnBridge, but nothing behind that slot writes the OnBridge byte:
-    ///
-    /// * The transition really is the locomotor block cited on
-    ///   `compute_bridge_transition` - the only `+0x8C = 1` stores on the
-    ///   ground-movement path are 0x0075C179 (Walk) and 0x004B1830 / 0x004B2586
-    ///   (Drive), each guarded by the level-equality and flag tests ported here.
-    /// * The boundary-time clear is `FootClass::PerCellProcess`'s own tail:
-    ///   `if (OnBridge && !(currentCell->+0x140 & 0x100)) vtable+0xEC`, where
-    ///   +0xEC is `ObjectClass::DropIn` 0x005F4160 and the byte it zeroes at
-    ///   `this+0x8C` is OnBridge.
-    /// * `ShouldBeOnBridge` takes its candidate coordinate from vtable+0x4C,
-    ///   which for a Foot is `FootClass::GetDestinationCoords` 0x004DBDF0 - the
-    ///   NavCom destination or tube exit, not the next cell. Its result is
-    ///   consumed as the source-side on-bridge argument of
-    ///   `MapClass::Can_Reach_Zone` 0x0056D100. Three call sites verified with
-    ///   the receiver read out of the disassembly - `FootClass::Locomotion_AI`
-    ///   0x005210E9, `WalkLocomotionClass::ProcessMovement` 0x0075B163 and
-    ///   `FootClass::PerCellProcess` 0x004D8BE6 - each pushing the result, then
-    ///   `TechnoType+0x5B4` as the MovementZone, into the same query. Further
-    ///   `[reg+0xBC]` sites on what is probably the same slot
-    ///   (`FootClass::CanReachDestination` 0x004D38F3,
-    ///   `TechnoClass::Set_Destination` 0x00741FE3,
-    ///   `FootClass::Is_Cell_Harvestable` 0x004DCF6F) have NOT had their
-    ///   receiver verified individually and are candidates only.
-    ///
-    /// What IS unported, and it is only this: gamemd answers those queries on
-    /// the layer `ShouldBeOnBridge` returns, which is the mover's OnBridge byte
-    /// *adjusted by where it is headed* -
-    ///
-    /// ```text
-    /// if (!OnBridge && (gh_location - gh_destination) > 3 * 104
-    ///     && (destinationCell->+0x140 & 0x100))   return 1;
-    /// if ( OnBridge && (gh_destination - gh_location) > 3 * 104) return 0;
-    /// return OnBridge;
-    /// ```
-    ///
-    /// where both terms are `CellClass::GetGroundHeight` 0x00578080 results in
-    /// leptons at exact coordinates, so they carry slope interpolation and are
-    /// terrain heights, not deck heights. `104` is `g_nFootLevelHeightLeptons`
-    /// 0x00AC13C8; its two derived globals, 2x for the flight threshold and 4x
-    /// for the 416-lepton deck offset, are already pinned in `util::lepton`.
-    /// VERA instead passes the mover's raw layer as `start_layer` and the goal
-    /// cell's own bridge flag as `goal_layer` (`movement_path::goal_zone_layer`,
-    /// `zone_map::ZoneGrid::can_reach`).
-    ///
-    /// Trigger: a reachability query by a ground unit whose destination ground
-    /// is four or more levels below its current ground and carries a bridge
-    /// flag, or four or more levels above it - i.e. ordering a unit that is not
-    /// yet on a bridge to a cell on the deck, or a unit on the deck to a cell
-    /// up on the bank.
-    ///
-    /// Effect: the zone id is looked up on the wrong layer, so a move order
-    /// across a bridge can be judged unreachable and substituted with a nearby
-    /// cell, or judged reachable and pathed on the wrong layer. It moves where
-    /// the unit ends up, not whether it renders on the deck.
-    ///
-    /// Frequency: `FootClass::Locomotion_AI` is a per-tick caller, so this is
-    /// per tick per moving ground unit whose destination sits four or more
-    /// levels off its current ground - not per order. On a bridged map with
-    /// traffic crossing, that is often. The retracted note put the cadence at
-    /// every cell crossing; the real one is lower than that but not by much,
-    /// and it lands on a different system.
-    ///
-    /// Blocker: the layer arguments are threaded through every move-order
-    /// caller as `MovementLayer`, and this needs the mover's location and its
-    /// destination coordinate at the same point, in leptons, to compute two
-    /// `GetGroundHeight`s. That is a signature change across the order path,
-    /// not a change here.
-    #[test]
-    #[ignore = "gamemd 0x005F6A70 adjusts the reachability on-bridge layer by destination ground height; VERA passes the raw mover layer"]
-    fn should_be_on_bridge_is_a_reachability_input_not_the_transition() {
-        panic!("unimplemented: destination-height on-bridge layer for Can_Reach_Zone 0x0056D100");
-    }
-}
+// Bridge reachability residual.
+//
+// RESIDUAL - gamemd 0x005F6A70 `ObjectClass::ShouldBeOnBridge`, its
+// FootClass override 0x004DDC40, and the reachability queries they feed.
+//
+// Corrected 2026-08-19. An earlier note in this file claimed this
+// function was the native counterpart of `compute_bridge_transition` and
+// that the port diverged from it. That pairing was wrong, and acting on
+// it would have replaced a correct port. Slot +0xBC is genuinely
+// ShouldBeOnBridge, but nothing behind that slot writes the OnBridge byte:
+//
+// * The transition really is the locomotor block cited on
+//   `compute_bridge_transition` - the only `+0x8C = 1` stores on the
+//   ground-movement path are 0x0075C179 (Walk) and 0x004B1830 / 0x004B2586
+//   (Drive), each guarded by the level-equality and flag tests ported here.
+// * The boundary-time clear is `FootClass::PerCellProcess`'s own tail:
+//   `if (OnBridge && !(currentCell->+0x140 & 0x100)) vtable+0xEC`, where
+//   +0xEC is `ObjectClass::DropIn` 0x005F4160 and the byte it zeroes at
+//   `this+0x8C` is OnBridge.
+// * `ShouldBeOnBridge` takes its candidate coordinate from vtable+0x4C,
+//   which for a Foot is `FootClass::GetDestinationCoords` 0x004DBDF0 - the
+//   NavCom destination or tube exit, not the next cell. Its result is
+//   consumed as the source-side on-bridge argument of
+//   `MapClass::Can_Reach_Zone` 0x0056D100. Three call sites verified with
+//   the receiver read out of the disassembly - `FootClass::Locomotion_AI`
+//   0x005210E9, `WalkLocomotionClass::ProcessMovement` 0x0075B163 and
+//   `FootClass::PerCellProcess` 0x004D8BE6 - each pushing the result, then
+//   `TechnoType+0x5B4` as the MovementZone, into the same query. Further
+//   `[reg+0xBC]` sites on what is probably the same slot
+//   (`FootClass::CanReachDestination` 0x004D38F3,
+//   `TechnoClass::Set_Destination` 0x00741FE3,
+//   `FootClass::Is_Cell_Harvestable` 0x004DCF6F) have NOT had their
+//   receiver verified individually and are candidates only.
+//
+// What IS unported, and it is only this: gamemd answers those queries on
+// the layer `ShouldBeOnBridge` returns, which is the mover's OnBridge byte
+// *adjusted by where it is headed* -
+//
+// ```text
+// if (!OnBridge && (gh_location - gh_destination) > 3 * 104
+//     && (destinationCell->+0x140 & 0x100))   return 1;
+// if ( OnBridge && (gh_destination - gh_location) > 3 * 104) return 0;
+// return OnBridge;
+// ```
+//
+// where both terms are `CellClass::GetGroundHeight` 0x00578080 results in
+// leptons at exact coordinates, so they carry slope interpolation and are
+// terrain heights, not deck heights. `104` is `g_nFootLevelHeightLeptons`
+// 0x00AC13C8; its two derived globals, 2x for the flight threshold and 4x
+// for the 416-lepton deck offset, are already pinned in `util::lepton`.
+// VERA instead passes the mover's raw layer as `start_layer` and the goal
+// cell's own bridge flag as `goal_layer` (`movement_path::goal_zone_layer`,
+// `zone_map::ZoneGrid::can_reach`).
+//
+// Trigger: a reachability query by a ground unit whose destination ground
+// is four or more levels below its current ground and carries a bridge
+// flag, or four or more levels above it - i.e. ordering a unit that is not
+// yet on a bridge to a cell on the deck, or a unit on the deck to a cell
+// up on the bank.
+//
+// Effect: the zone id is looked up on the wrong layer, so a move order
+// across a bridge can be judged unreachable and substituted with a nearby
+// cell, or judged reachable and pathed on the wrong layer. It moves where
+// the unit ends up, not whether it renders on the deck.
+//
+// Frequency: `FootClass::Locomotion_AI` is a per-tick caller, so this is
+// per tick per moving ground unit whose destination sits four or more
+// levels off its current ground - not per order. On a bridged map with
+// traffic crossing, that is often. The retracted note put the cadence at
+// every cell crossing; the real one is lower than that but not by much,
+// and it lands on a different system.
+//
+// Blocker: the layer arguments are threaded through every move-order
+// caller as `MovementLayer`, and this needs the mover's location and its
+// destination coordinate at the same point, in leptons, to compute two
+// `GetGroundHeight`s. That is a signature change across the order path,
+// not a change here.
+// Residual (formerly an ignored placeholder test): gamemd 0x005F6A70 adjusts the reachability on-bridge layer by destination ground height; VERA passes the raw mover layer.
+// Unimplemented: destination-height on-bridge layer for Can_Reach_Zone 0x0056D100.

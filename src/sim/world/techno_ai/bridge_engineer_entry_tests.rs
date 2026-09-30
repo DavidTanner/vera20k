@@ -112,7 +112,6 @@ fn capture_probe(
 ) -> Value {
     let actor = sim.entities().get(engineer).unwrap();
     let owner = sim.interner.resolve(actor.owner()).to_owned();
-    let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command_with_overlays(
         &owner,
         &Command::CaptureBuilding {
@@ -120,11 +119,8 @@ fn capture_probe(
             target_building_id: hut
         },
         Some(&resources.rules),
-        grid.as_deref(),
-        &resources.height_map,
         Some(&resources.overlay_registry),
     ));
-    drop(grid);
     let mut snapshot = zone_snapshot(sim, name);
     let actor = sim.entities().get(engineer).unwrap();
     let object = resources
@@ -189,15 +185,7 @@ fn retail_hills_engineer_cliff_start_is_rejected() {
     let owner_name = runtime.simulation.interner.resolve(owner).to_owned();
     let engineer = runtime
         .simulation
-        .spawn_object(
-            "ENGINEER",
-            &owner_name,
-            69,
-            74,
-            0,
-            &runtime.resources.rules,
-            &runtime.resources.height_map,
-        )
+        .spawn_object("ENGINEER", &owner_name, 69, 74, 0, &runtime.resources.rules)
         .unwrap();
     let bytes = GameSnapshot::save_validated(
         &runtime.simulation,
@@ -327,7 +315,6 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
             start.1,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .unwrap();
     let command = CommandEnvelope::new(
@@ -492,16 +479,12 @@ fn assert_repaired_hills_authorities(sim: &Simulation, engineer: u64, hut: u64) 
             .cell(64, 69)
             .unwrap()
             .bridge_walkable,
-        "repaired deck runtime{:?}, terrain{:?}, path{:?}",
-        bridges.cell(64, 69),
+        "repaired deck terrain{:?}, path{:?}",
         cell.bridge_facts,
         sim.path_grid().unwrap().cell(64, 69)
     );
     // Original constructor25 writes raw100/state9 on non-anchor side cells
     // while leaving their own overlay at -1; only the center carries25.
-    let runtime = bridges.cell(64, 69).unwrap();
-    assert!(runtime.deck_present);
-    assert_eq!(runtime.overlay_byte, u8::MAX);
     assert_eq!(cell.bridge_facts.overlay_id, None);
     assert!(
         sim.entities().get(engineer).is_none(),

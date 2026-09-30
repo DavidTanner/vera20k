@@ -486,8 +486,7 @@ mod tests {
     fn invulnerability_without_native_mode_remains_an_explicit_residual() {
         let mut entity = entity();
         entity.invulnerability = Some(InvulnerabilityState {
-            start_frame: 40,
-            duration_frames: 20,
+            timer: crate::sim::timer::CdTimer::started(40, 20),
             kind: InvulnKind::IronCurtain,
         });
         let state = DrawState::for_entity(&entity, 45, 3, ObserverDrawContext::default()).state;
@@ -500,8 +499,7 @@ mod tests {
     fn expired_invulnerability_keeps_normal_draw_state() {
         let mut entity = entity();
         entity.invulnerability = Some(InvulnerabilityState {
-            start_frame: 40,
-            duration_frames: 5,
+            timer: crate::sim::timer::CdTimer::started(40, 5),
             kind: InvulnKind::ForceShield,
         });
         let state = DrawState::for_entity(&entity, 45, 2, ObserverDrawContext::default()).state;

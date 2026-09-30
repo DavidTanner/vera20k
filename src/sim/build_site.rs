@@ -194,14 +194,15 @@ pub(crate) enum Flush {
 /// is heading elsewhere already (a NavCom other than its own cell,
 /// `0x0045EF9D..0x0045EFDF`), its cell is scattered
 /// (`CellClass::Scatter_Objects @ 0x00481670` with a null source, forced, on
-/// the ground list). The scan stops at the first blocker.
+/// the ground list). The scan stops at the first blocker. A receiver error
+/// (malformed live state) is logged and leaves that cell's occupants in place.
 pub(crate) fn flush_for_placement(
     sim: &mut Simulation,
     rules: &RuleSet,
+    registry: Option<&OverlayTypeRegistry>,
     ty: &ObjectType,
     origin: (i16, i16),
     house: InternedId,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
 ) -> Flush {
     if origin == (0, 0) {
         return Flush::Clear;
@@ -255,7 +256,9 @@ pub(crate) fn flush_for_placement(
         {
             continue;
         }
-        sim.scatter_cell_contacts(cell, false, true, rules, path_grid);
+        if let Err(cause) = sim.scatter_cell_contacts(cell, false, true, rules, registry) {
+            log::debug!("site cell {cell:?} did not scatter: {cause}");
+        }
     }
     if scattered {
         Flush::Scattered
@@ -315,7 +318,7 @@ fn objects_admit(
                     return None;
                 };
                 let cell = &terrain.cells()[index];
-                sim.nearest_cell_object((cell.rx, cell.ry), MovementLayer::Ground, rules)
+                sim.nearest_cell_object((cell.rx, cell.ry), MovementLayer::Ground)
                     .map(CellObjectMember::Entity)
             })
             .or_else(|| members.iter().find(|member| is_terrain(member)).copied());

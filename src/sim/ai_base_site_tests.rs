@@ -224,6 +224,22 @@ impl SiteWorld for Replay<'_> {
     }
 }
 
+/// The row's base centre, chosen by the house as the search reads it.
+fn origin(row: &Value) -> (i16, i16) {
+    let unsigned = |cell: (i16, i16)| (cell.0 as u16, cell.1 as u16);
+    let mut house = crate::sim::house_state::HouseState::new(
+        crate::sim::intern::InternedId::default(),
+        0,
+        None,
+        false,
+        0,
+        10,
+    );
+    house.alternate_base_center = unsigned(cell(&row["alternate"]));
+    house.base_center = Some(unsigned(cell(&row["base"])));
+    signed(house.base_origin())
+}
+
 /// Replays each search row with `key`; the number of failed searches.
 fn replay_searches(searches: &[Value], key: impl Fn(&Value) -> Option<CoverageGrid>) -> usize {
     let mut failed = 0;
@@ -237,8 +253,7 @@ fn replay_searches(searches: &[Value], key: impl Fn(&Value) -> Option<CoverageGr
         let grid = key(row);
         let search = SiteSearch {
             center: cell(&row["center"]),
-            alternate: cell(&row["alternate"]),
-            base: cell(&row["base"]),
+            origin: origin(row),
             perimeter: &perimeter,
             spacing: int(&row["spacing"]) as i32,
             width: int(&row["width"]) as i32,

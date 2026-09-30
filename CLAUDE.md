@@ -132,7 +132,10 @@ Simulation state and shared decisions have one authoritative owner. Before addin
 state or decision logic, find existing writers and name the owner in the PR. Extend
 or fix that owner instead of introducing competing state or duplicated decision
 logic. Keep authoritative state private to its owning module and expose mutations
-through the owner.
+through the owner. Never widen visibility to reach another owner's state or raw data;
+extend the owner instead. CI fails a change that raises the number of `src/sim`
+struct fields any simulation module can write (`pub`, `pub(crate)` and equivalents);
+check with `python tools/sim_field_ratchet.py --base origin/main`.
 
 Before porting a native function, search the code for its address (e.g. `703850`) and
 native name. Each native function has one Rust port; new callers call it instead of
@@ -224,11 +227,20 @@ Before fixing a bug whose expected behavior is established, first make a focused
 
 Run Cargo through `python -m tools.cargo_run -- <cargo arguments>` from the checkout.
 It waits for other builds and serializes cooperating worktrees; do not compete with or
-kill a compile. Use `--label <unique-name>` before `--` to preserve a build or
+kill a compile. Each run blocks every other session's Cargo until it finishes, so
+batch edits and run the narrowest command that answers your question.
+Use `--label <unique-name>` before `--` to preserve a build or
 `test --lib --no-run` executable with source and binary hashes. See the
 [tool index](tools/README.md) for cache locations and limits. Confirm fresh-worktree config/assets.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
 or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others' WIP.
+
+Don't poll: each check re-reads the whole session context. `cargo_run` already waits
+for other builds, so run no separate process checks. Wait for a long command or CI
+through one blocking call or the host's completion notice, not `sleep`/`until` loops
+or repeated status queries. When merging is authorized, enable auto-merge on the
+validated PR (`gh pr merge <number> --auto --merge`) and move on; GitHub merges it
+once every required check passes. Confirm it merged before publishing your next PR.
 
 ## Knowledge and guidance
 

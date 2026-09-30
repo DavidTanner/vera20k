@@ -142,7 +142,7 @@ pub fn draw_loading_screen(ctx: &egui::Context, map_name: &str) {
             ui.painter().rect_stroke(
                 overlay_rect,
                 18.0,
-                egui::Stroke::new(1.0, palette.line.gamma_multiply(0.85)),
+                egui::Stroke::new(1.0_f32, palette.line.gamma_multiply(0.85)),
                 egui::StrokeKind::Middle,
             );
 

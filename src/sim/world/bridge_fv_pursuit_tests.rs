@@ -32,7 +32,6 @@ fn spawn_fv(scene: &mut HeadlessScenario, xyz: [i32; 3]) -> u64 {
             (xyz[1] / 256) as u16,
             128,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("ordinary FV bank placement");
@@ -124,6 +123,19 @@ fn paid_snapshot(
     let actor = sim.substrate.entities.get(id).unwrap();
     let position = crate::sim::movement::ground_pose::position_world_coord(&actor.position);
     let dispatch = actor.mission.dispatch_timer();
+    // Constructor storage is lazy until the first Drive Process.
+    let constructor_drive = crate::sim::components::DriveLocomotionRuntime::default();
+    let drive = actor
+        .drive_locomotion
+        .as_ref()
+        .unwrap_or(&constructor_drive);
+    let path = &actor.navigation.path_runtime;
+    let track_state = json!({
+        "movement_timer":[path.movement_timer.start_frame(), path.movement_timer.duration()],
+        "blocked_timer":[path.blocked_timer.start_frame(), path.blocked_timer.duration()],
+        "residual":drive.track.residual,
+        "target_speed_fixed_bits":drive.target_speed_fraction.to_bits(),
+    });
     let cell = sim.resolved_terrain.as_ref().unwrap().cell(87, 54).unwrap();
     let bullets: Vec<_> = sim
         .projectiles
@@ -168,6 +180,7 @@ fn paid_snapshot(
         "nav_cell":nav(actor.navigation.nav_com),
         "drive_destination":coordinate(actor.drive_locomotion.as_ref().and_then(|d| d.destination)),
         "drive_head":coordinate(actor.drive_locomotion.as_ref().and_then(|d| d.head_to)),
+        "track_state":track_state,
         "target_present":actor.attack_target.is_some(),
         "live_bullet_positions":bullets.iter().map(|b|b["position"].clone()).collect::<Vec<_>>(),
         "bullets":bullets,"anims":anims,
@@ -270,7 +283,6 @@ fn command_paid_fv(
     let sim = &mut runtime.simulation;
     sim.session.binary_frame = 1;
     let owner = sim.resolve(sim.session.current_house.unwrap()).to_owned();
-    let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command_with_overlays(
         &owner,
         &Command::ForceAttackCell {
@@ -279,8 +291,6 @@ fn command_paid_fv(
             target_ry: 54,
         },
         Some(&runtime.resources.rules),
-        grid.as_deref(),
-        &runtime.resources.height_map,
         Some(&runtime.resources.overlay_registry),
     ));
     id
@@ -292,7 +302,7 @@ fn retail_fv_paid_pursuit_fire_impacts_and_cleanup_match_native() {
     let input = std::env::var_os("VERA20K_FV_PAID_INPUT").map_or_else(
         || {
             include_str!(
-                "../../../tools/spatial_oracle/fv_cell_attack/paid_conditional_vectors.json"
+                "../../../tools/spatial_oracle/fv_cell_attack/paid_conditional_v26_vectors.json"
             )
             .to_owned()
         },
@@ -334,13 +344,10 @@ fn retail_fv_paid_pursuit_fire_impacts_and_cleanup_match_native() {
                         let owner = sim
                             .resolve(sim.substrate.entities.get(id).unwrap().owner())
                             .to_owned();
-                        let grid = sim.path_grid_snapshot();
                         assert!(sim.apply_command_with_overlays(
                             &owner,
                             &Command::Stop { entity_id: id },
                             Some(&runtime.resources.rules),
-                            grid.as_deref(),
-                            &runtime.resources.height_map,
                             Some(&runtime.resources.overlay_registry),
                         ));
                     }
@@ -369,6 +376,18 @@ fn retail_fv_paid_pursuit_fire_impacts_and_cleanup_match_native() {
             }
             let actual = paid_snapshot(&scene, id, &ambient_anims);
             let mut expected = expected.clone();
+            // Keep the native double bits in the corpus. Compare the retained
+            // speed request at the production SimFixed precision; timers and
+            // residual remain exact native integers. This catches the CRT
+            // arrival defect (1.0 versus ~0.3) without demanding x87 storage.
+            let native_speed = f64::from_bits(
+                expected["track_state"]["target_speed_bits"]
+                    .as_u64()
+                    .unwrap(),
+            );
+            assert!(native_speed.is_finite() && (0.0..=1.0).contains(&native_speed));
+            expected["track_state"]["target_speed_fixed_bits"] =
+                json!(SimFixed::from_num(native_speed).to_bits());
             expected["live_bullet_positions"] = json!(
                 expected["bullets"]
                     .as_array()
@@ -483,7 +502,8 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
                 dispatch_timer: MissionDispatchTimer::from_raw(173, 0),
             });
             if let Some(value) = row["input"].get("retained_nav") {
-                assert!(sim.set_unit_cell_destination(id, cell(value), &rules, true));
+                let (rx, ry) = cell(value);
+                assert!(sim.set_unit_destination(id, NavTargetRef::cell(rx, ry), &rules, true));
             }
             if let Some(values) = row["input"].get("nav_queue") {
                 sim.substrate
@@ -537,14 +557,8 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
                 "{name} supplied mission state"
             );
             let target_before = actor.attack_target.as_ref().map(|attack| attack.target);
-            let grid = sim.path_grid_snapshot();
             let result = sim
-                .approach_unit_cell_target(
-                    id,
-                    &rules,
-                    grid.as_deref(),
-                    Some(&runtime.resources.overlay_registry),
-                )
+                .approach_unit_cell_target(id, &rules, Some(&runtime.resources.overlay_registry))
                 .unwrap();
             let actor = sim.substrate.entities.get(id).unwrap();
             assert_eq!(
@@ -662,7 +676,6 @@ fn retail_fv_approaches_a_firing_cell_before_its_first_paid_step() {
             (xyz[1] / 256) as u16,
             128,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("ordinary FV bank placement");

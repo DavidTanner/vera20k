@@ -45,6 +45,12 @@ For anything large, ask on Discord or in an issue first.
 
    Set `ra2_dir` in `config.toml` with forward slashes (`C:/Games/RA2`); TOML treats `\` as an
    escape. Always use `--release` to play. The log goes to `logs/ra2.log`.
+
+   VERA20k reads `config.toml` from the folder you launch it from, then from next to the
+   executable, and a relative `ra2_dir` is relative to that file. With no config it looks for
+   the game next to the executable. For a macOS `.app`, put the config in `Contents/MacOS/` so
+   launching from Finder works. If the game files can't load, startup shows the error and the
+   folder it searched.
 4. **Run the tests:** `cargo test -p vera20k --lib` (always `--lib`; plain `cargo test` also
    builds probes in `tests/` that need the game). Without the game, tests that need the retail
    INI files print `SKIPPED` and pass (`-- --show-output` shows them). To run them for real,

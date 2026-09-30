@@ -814,7 +814,7 @@ impl TacticalCaptureSession {
                 owner: sim.interner.resolve(entity.owner()).to_owned(),
                 type_id: sim.interner.resolve(entity.type_ref()).to_owned(),
                 cell: (entity.position.rx, entity.position.ry),
-                facing: entity.facing,
+                facing: entity.body_facing_byte(sim.session.binary_frame),
                 active: entity.is_active(),
                 dying: entity.dying,
                 building_up: entity.building_up.is_some(),

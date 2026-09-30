@@ -19,15 +19,16 @@ use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, MovementTarget,
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
+use crate::sim::movement::ScatterFlags;
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::movement::scatter::ScatterRequests;
 use crate::sim::occupancy::{
     CellListInsertion, CellOccupationGrid, OccupancyGrid, RawCellOccupationGrid,
     VEHICLE_OCCUPATION_BIT, infantry_raw_occupation_mask,
 };
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
-use crate::sim::world::EnterOrderCounter;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 use crate::util::lepton::{self, CELL_CENTER_LEPTON};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
@@ -247,11 +248,11 @@ pub(crate) fn tick_active_tube_object(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rules: Option<&RuleSet>,
     interner: &StringInterner,
     rng: &mut SimRng,
     native_frame: u32,
+    scatters: &mut ScatterRequests,
 ) -> bool {
     let Some(entity) = entities.get(entity_id) else {
         return false;
@@ -265,7 +266,9 @@ pub(crate) fn tick_active_tube_object(
     let category = entity.category;
     let speed = rules
         .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
-        .map_or(0, |object| native_type_speed(object.speed));
+        .map_or(0, |object| {
+            crate::util::fixed_math::ra2_speed_to_leptons_per_frame(object.speed)
+        });
     let budget = if category == EntityCategory::Unit {
         speed.wrapping_mul(3) / 2
     } else {
@@ -283,11 +286,9 @@ pub(crate) fn tick_active_tube_object(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
-            rules,
-            interner,
             rng,
             native_frame,
+            scatters,
         );
     }
 
@@ -322,11 +323,9 @@ pub(crate) fn tick_active_tube_object(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
-            rules,
-            interner,
             rng,
             native_frame,
+            scatters,
         );
     }
 
@@ -384,11 +383,9 @@ fn finalize_tube_object(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
-    rules: Option<&RuleSet>,
-    interner: &StringInterner,
     rng: &mut SimRng,
     native_frame: u32,
+    scatters: &mut ScatterRequests,
 ) -> bool {
     let Some(tube) = terrain.tube(state.tube_id) else {
         return true;
@@ -408,18 +405,7 @@ fn finalize_tube_object(
                 MovementLayer::Ground,
             );
         if !passable {
-            scatter_exit_blockers(
-                entities,
-                entity_id,
-                reached_cell,
-                path_grid,
-                Some(terrain),
-                occupancy,
-                rules,
-                interner,
-                rng,
-                crate::sim::movement::DestinationTiming::from_rules(native_frame, rules),
-            );
+            scatter_exit_blockers(entities, entity_id, reached_cell, occupancy, scatters);
             stop_blocked_mover(entities, entity_id);
             return true;
         }
@@ -449,18 +435,7 @@ fn finalize_tube_object(
             })
             .unwrap_or_default();
         if !blockers.is_empty() {
-            scatter_exit_blockers(
-                entities,
-                entity_id,
-                reached_cell,
-                path_grid,
-                Some(terrain),
-                occupancy,
-                rules,
-                interner,
-                rng,
-                crate::sim::movement::DestinationTiming::from_rules(native_frame, rules),
-            );
+            scatter_exit_blockers(entities, entity_id, reached_cell, occupancy, scatters);
             stop_blocked_mover(entities, entity_id);
             return true;
         }
@@ -488,14 +463,6 @@ fn finalize_tube_object(
                 entity.position.exact_z_leptons = None;
             }
         } else {
-            let object = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-            let speed = super::foot_speed::adjusted_speed(
-                entity,
-                object,
-                rules.map_or(1.0, |r| r.general.veteran_speed),
-            );
-            let owner_current_speed =
-                super::foot_speed::owner_current_speed_from_fraction(speed, SIM_ONE);
             entity.position.rx = tube.exit.0;
             entity.position.ry = tube.exit.1;
             entity.position.sub_x = CELL_CENTER_LEPTON;
@@ -505,13 +472,11 @@ fn finalize_tube_object(
                 entity.position.z = cell.level;
             }
             if let Some(drive) = entity.drive_locomotion.as_mut() {
-                drive.turn.first_movement_allowed = true;
                 drive.target_speed_fraction = SIM_ONE;
             }
             // Unit73604F writes the live Foot owner even if PerCell replaced
             // Drive. Exact post-callback timing remains part of the Process host.
-            entity.foot_speed.applied_fraction = SIM_ONE;
-            entity.foot_speed.cached_current_speed = owner_current_speed;
+            entity.foot_speed.set_speed_fraction(SIM_ONE);
         }
         entity.low_bridge_tube_state = None;
     }
@@ -521,7 +486,6 @@ fn finalize_tube_object(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
     );
 
     if category == EntityCategory::Unit {
@@ -536,7 +500,6 @@ fn put_after_tube(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
 ) {
     let Some(entity) = entities.get_mut(entity_id) else {
         return;
@@ -567,22 +530,19 @@ fn put_after_tube(
         }
         _ => {}
     }
-    entity.occupancy_enter_order = next_occupancy_enter_order.next();
     entity.lifecycle.cell_marked = true;
 }
 
-#[allow(clippy::too_many_arguments)]
+/// `UnitClass::TubeMovement`'s blocked exit (`0x00735F55`): `Scatter(null,
+/// 1, 1)` on each ground occupant that is a Unit or Infantry whose locomotor
+/// is not moving. The object turn runs the calls once the pass returns
+/// ([`ScatterRequests`]).
 fn scatter_exit_blockers(
-    entities: &mut EntityStore,
+    entities: &EntityStore,
     mover_id: u64,
     cell: (u16, u16),
-    path_grid: Option<&PathGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
     occupancy: &OccupancyGrid,
-    rules: Option<&RuleSet>,
-    interner: &StringInterner,
-    rng: &mut SimRng,
-    timing: crate::sim::movement::DestinationTiming,
+    scatters: &mut ScatterRequests,
 ) {
     let blockers: Vec<u64> = occupancy
         .get(cell.0, cell.1)
@@ -607,18 +567,7 @@ fn scatter_exit_blockers(
         {
             continue;
         }
-        bump_crush::scatter_blocker(
-            entities,
-            blocker_id,
-            path_grid,
-            resolved_terrain,
-            occupancy,
-            MovementLayer::Ground,
-            rng,
-            rules,
-            interner,
-            timing,
-        );
+        scatters.request(blocker_id, ScatterFlags::new(true, true));
     }
 }
 
@@ -629,15 +578,11 @@ fn locomotor_is_moving(entity: &GameEntity) -> bool {
 
 fn stop_blocked_mover(entities: &mut EntityStore, entity_id: u64) {
     if let Some(entity) = entities.get_mut(entity_id) {
-        if let Some(target) = entity.movement_target.as_mut() {
-            target.current_speed = SIM_ZERO;
-        }
         if let Some(drive) = entity.drive_locomotion.as_mut() {
             drive.target_speed_fraction = SIM_ZERO;
         }
         // Unit735F6A / Infantry51B8FC apply zero on the live Foot owner.
-        entity.foot_speed.applied_fraction = SIM_ZERO;
-        entity.foot_speed.cached_current_speed = 0;
+        entity.foot_speed.set_speed_fraction(SIM_ZERO);
     }
 }
 
@@ -658,20 +603,7 @@ fn update_unit_final_facing(
         return;
     };
     let q32 = tube.direction.wrapping_shl(13).wrapping_sub(0x6001) & 0xffff_e000_u32 as i32;
-    let q16 = q32 as u16;
-    entity.facing = (q16 >> 8) as u8;
-    entity.facing_target = None;
-    if let Some(body) = entity.body_facing.as_mut() {
-        body.snap(q16, native_frame);
-    }
-}
-
-fn native_type_speed(raw_speed: i32) -> i32 {
-    raw_speed
-        .max(0)
-        .wrapping_mul(256)
-        .wrapping_div(100)
-        .min(255)
+    entity.body_facing.snap(q32 as u16, native_frame);
 }
 
 fn live_z_step(terrain: &ResolvedTerrainGrid, tube: &TubeFact) -> Option<i32> {
@@ -802,9 +734,8 @@ fn ftol_add_f32_product(base: i32, factor: f32, amount: crate::util::native_x87:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::map::tube_facts::TubeSource;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::components::{DriveLocomotionRuntime, Health};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
@@ -836,21 +767,9 @@ mod tests {
                 Some(0),
                 CellListInsertion::PrependNonBuilding,
             );
-            let mut rng = SimRng::new(42);
-            let before_rng = rng.state();
-            scatter_exit_blockers(
-                &mut entities,
-                1,
-                (5, 5),
-                Some(&PathGrid::new(10, 10)),
-                None,
-                &occupancy,
-                None,
-                &StringInterner::default(),
-                &mut rng,
-                crate::sim::movement::DestinationTiming::new(0, 60),
-            );
-            assert_eq!(rng.state(), before_rng);
+            let mut scatters = ScatterRequests::default();
+            scatter_exit_blockers(&entities, 1, (5, 5), &occupancy, &mut scatters);
+            assert!(scatters.take().is_empty());
             assert_eq!(
                 serde_json::to_value(entities.get(2).unwrap()).unwrap(),
                 before
@@ -859,60 +778,9 @@ mod tests {
     }
 
     fn flat_cell(rx: u16, ry: u16, tube_index: Option<TubeId>) -> ResolvedTerrainCell {
-        let speed_costs = SpeedCostProfile::default();
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: true,
-            tileset_index: None,
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: true,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
             tube_index,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
         }
     }
 
@@ -1002,11 +870,9 @@ mod tests {
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
             entity.lifecycle.cell_marked = false;
             entity.position.rx = 2;
-            entity.foot_speed.applied_fraction = SimFixed::lit("0.625");
-            entity.foot_speed.cached_current_speed = 6;
+            entity.foot_speed.set_speed_fraction(SimFixed::lit("0.625"));
             entity.movement_target = Some(MovementTarget {
                 speed: SimFixed::from_num(150),
-                current_speed: SimFixed::from_num(100),
                 ..Default::default()
             });
             let state = LowBridgeTubeMovementState {
@@ -1041,11 +907,9 @@ mod tests {
                 &mut occupancy,
                 &mut CellOccupationGrid::new(),
                 &mut RawCellOccupationGrid::new(),
-                &mut EnterOrderCounter::new(),
-                None,
-                &StringInterner::default(),
                 &mut SimRng::new(7),
                 21,
+                &mut ScatterRequests::default(),
             ));
             let owner = entities.get(1).unwrap();
             assert!(owner.drive_locomotion.is_none());
@@ -1054,20 +918,17 @@ mod tests {
                 LocomotorKind::Teleport
             );
             assert_eq!(
-                owner.foot_speed.applied_fraction,
+                owner.foot_speed.applied_fraction(),
                 if blocked { SIM_ZERO } else { SIM_ONE }
             );
+            // GetCurrentSpeed follows the fraction; the rules-less getter
+            // reads the order's stamped 150 leptons/s.
             assert_eq!(
-                owner.foot_speed.cached_current_speed,
+                crate::sim::movement::owner_current_speed(owner, None, 1.0),
                 if blocked { 0 } else { 10 }
             );
             assert_eq!(owner.low_bridge_tube_state.is_some(), blocked);
-            if blocked {
-                assert_eq!(
-                    owner.movement_target.as_ref().unwrap().current_speed,
-                    SIM_ZERO
-                );
-            } else {
+            if !blocked {
                 assert!(owner.lifecycle.cell_marked);
                 assert_eq!(occupancy.count_on_layer(2, 0, MovementLayer::Ground), 1);
             }
@@ -1224,11 +1085,12 @@ mod tests {
 
     #[test]
     fn gsi_04_15_type_speed_budget_uses_native_scaled_field() {
-        assert_eq!(native_type_speed(-1), 0);
-        assert_eq!(native_type_speed(4), 10);
-        assert_eq!(native_type_speed(100), 255);
-        assert_eq!(native_type_speed(200), 255);
-        assert_eq!(native_type_speed(11) * 3 / 2, 42);
+        use crate::util::fixed_math::ra2_speed_to_leptons_per_frame;
+        assert_eq!(ra2_speed_to_leptons_per_frame(-1), 0);
+        assert_eq!(ra2_speed_to_leptons_per_frame(4), 10);
+        assert_eq!(ra2_speed_to_leptons_per_frame(100), 255);
+        assert_eq!(ra2_speed_to_leptons_per_frame(200), 255);
+        assert_eq!(ra2_speed_to_leptons_per_frame(11) * 3 / 2, 42);
     }
 
     #[test]
@@ -1249,7 +1111,7 @@ mod tests {
         entities.insert(entity);
         update_unit_final_facing(&mut entities, 1, &terrain, 0);
         // Exit has no tube index in this fixture: facing is preserved.
-        assert_eq!(entities.get(1).unwrap().facing, 0);
+        assert_eq!(entities.get(1).unwrap().body_facing_current(0), 0);
     }
 
     /// A step that reaches its target moves the unit through
@@ -1296,11 +1158,11 @@ mod tests {
             &mut OccupancyGrid::new(),
             &mut CellOccupationGrid::new(),
             &mut RawCellOccupationGrid::new(),
-            &mut EnterOrderCounter::new(),
             Some(&rules),
             &crate::sim::intern::test_interner(),
             &mut SimRng::new(7),
             21,
+            &mut ScatterRequests::default(),
         ));
         let [transport, rider] = [1, 2].map(|id| &entities.get(id).unwrap().position);
         let coord = |p: &Position| (position_world_x(p), position_world_y(p), p.exact_z_leptons);

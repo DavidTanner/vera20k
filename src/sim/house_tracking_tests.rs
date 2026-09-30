@@ -2,6 +2,7 @@
 //! `tools/spatial_oracle/house_tracking.json`, produced by running the
 //! original Add_Tracking and Remove_Tracking under Unicorn.
 
+use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::house_state::HouseState;
@@ -149,7 +150,7 @@ fn native_tracking_corpus() {
             .insert(house, HouseState::new(house, 0, None, true, 0, 10));
         let counts = |sim: &Simulation| {
             let tracking = &sim.houses[&house].tracking;
-            (tracking.buildings_for_test(), tracking.units_for_test())
+            (tracking.buildings(), tracking.units_for_test())
         };
         let before = counts(&sim);
         let id = sim
@@ -205,15 +206,15 @@ fn on_map_counts_follow_unlimbo_and_limbo() {
         (2, 1, 1),
         "the DontScore unit is added"
     );
-    assert_eq!(tracking.active_building_count(bldg), 1);
-    assert_eq!(tracking.active_building_count(bldgd), 0);
+    assert_eq!(tracking.active_count(EntityCategory::Structure, bldg), 1);
+    assert_eq!(tracking.active_count(EntityCategory::Structure, bldgd), 0);
 
     for id in ids {
         sim.uninit_with_rules(id, &rules);
     }
     let tracking = &sim.houses[&house].tracking;
     assert_eq!(tracking.active_for_test(), (1, 0, 0), "but not removed");
-    assert_eq!(tracking.active_building_count(bldg), 0);
+    assert_eq!(tracking.active_count(EntityCategory::Structure, bldg), 0);
 }
 
 /// TechnoClass::ChangeOwner moves the tracking (`0x007015DE`, `0x007015E6`)
@@ -261,18 +262,12 @@ fn discarding_a_constructed_object_releases_its_tracking() {
         .spawn_object_limbo_at_height("TANK", "Americans", 14, 10, 0, 0, &rules)
         .unwrap();
     let tracking = &sim.houses[&house].tracking;
-    assert_eq!(
-        (tracking.buildings_for_test(), tracking.units_for_test()),
-        (1, 1)
-    );
+    assert_eq!((tracking.buildings(), tracking.units_for_test()), (1, 1));
 
     assert!(sim.discard_constructed_limbo(building));
     assert!(sim.discard_constructed_limbo(unit));
     let tracking = &sim.houses[&house].tracking;
-    assert_eq!(
-        (tracking.buildings_for_test(), tracking.units_for_test()),
-        (0, 0)
-    );
+    assert_eq!((tracking.buildings(), tracking.units_for_test()), (0, 0));
     assert_eq!(tracking.active_for_test(), (0, 0, 0));
 }
 

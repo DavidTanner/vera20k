@@ -156,13 +156,7 @@ fn retail_aegis_raster_and_parent_waterline_match_original_ship_draw() {
     );
     assert!(rules.art().get(&object.image).unwrap().voxel);
     assert!(!object.has_turret);
-    let model = crate::render::unit_atlas::UnitModel::load(
-        &assets,
-        "AEGIS",
-        Some(rules),
-        Some(rules.art()),
-    )
-    .unwrap();
+    let model = crate::render::unit_atlas::UnitModel::load(&assets, "AEGIS", Some(rules)).unwrap();
     let vpl = crate::assets::vpl_file::VplFile::from_bytes(assets.get_ref("VOXELS.VPL").unwrap())
         .unwrap();
     for row in corpus["cases"].as_array().unwrap() {
@@ -173,6 +167,7 @@ fn retail_aegis_raster_and_parent_waterline_match_original_ship_draw() {
             layer: VxlLayer::Composite,
             frame: 0,
             slope_type: 0,
+            barrel_pitch: 0,
         };
         let (sprite, native_draw_bounds) = model.render(&key, Some(&vpl), None, &mut None).unwrap();
         let rect: [i32; 6] =

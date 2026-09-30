@@ -9,6 +9,7 @@ from tools.spatial_oracle.fv_cell_attack.publication import publication_projecti
 from unicorn.x86_const import *
 
 HERE=Path(__file__).resolve().parent
+OUTPUT=HERE/'hut_joined_drive_crt.json.gz'
 CTBHUT_SHA256='945216ab1eba7e34e6785fd54e916d096a6df4dee1df1052094e0b68f02630ff'
 
 def hut_asset():
@@ -145,8 +146,8 @@ def metadata():
   original_harness_sha256=historical['harness_sha256'],
   original_payload_sha256=historical['payload_sha256'],scope=historical['scope'],boundaries=boundaries,
   physical_asset_sha256={'CTBHUT.SHP':CTBHUT_SHA256},
-  publication_changes=['Copied lexical INI dictionaries/lines become SHA256 through the shared FV publication owner. Native states, instructions, numeric inputs, order, RNG and traces are unchanged.',
-   'Only asset-root selection, cache removal and publication/provenance plumbing differ from the executed original harness. Historical execution metadata is preserved separately from current replay source pins.'])
+  publication_changes=['Copied lexical INI dictionaries/lines become SHA256 through the shared FV publication owner. Original Drive CRT startup precedes construction; the historical image-zero packet remains preserved as superseded evidence.',
+   'Drive startup is the gameplay prerequisite correction; historical execution metadata remains separate from the current replay source pins.'])
 
 def checked_generate():
  initial=owner.sources();script_hash=owner.sha(Path(__file__).read_bytes())
@@ -162,8 +163,8 @@ def main():
  parser=argparse.ArgumentParser(description=__doc__)
  mode=parser.add_mutually_exclusive_group();mode.add_argument('--write',action='store_true');mode.add_argument('--check',action='store_true')
  parser.add_argument('--fresh-world',action='store_true',help='compatibility flag: physical worlds are always freshly executed')
- parser.add_argument('--output',type=Path,default=HERE/'hut_joined.json.gz');args=parser.parse_args()
- packet_io.finish_vectors(checked_generate,HERE/'hut_joined.json.gz',provenance=metadata,
+ parser.add_argument('--output',type=Path,default=OUTPUT);args=parser.parse_args()
+ packet_io.finish_vectors(checked_generate,OUTPUT,provenance=metadata,
   argv=['--write'if args.write else'--check','--output',str(args.output)],
   promotion_path=HERE/'promotion.json',projection=publication_projection)
 

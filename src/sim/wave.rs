@@ -331,12 +331,9 @@ impl Wave {
         }
 
         if self.wave_type != 3
-            && let (Some(owner), Some(target)) =
-                (context.owner_position, context.target_position)
-            && distance_3d_leptons(
-                [owner.x, owner.y, owner.z],
-                [target.x, target.y, target.z],
-            ) > MAX_TRACKING_DISTANCE_LEPTONS
+            && let (Some(owner), Some(target)) = (context.owner_position, context.target_position)
+            && distance_3d_leptons([owner.x, owner.y, owner.z], [target.x, target.y, target.z])
+                > MAX_TRACKING_DISTANCE_LEPTONS
         {
             self.active_geometry = false;
             self.decaying = true;
@@ -353,7 +350,7 @@ impl Wave {
                 self.source = owner;
                 self.target = target;
                 self.edge_geometry = legacy_nonmagnetic_edges(owner, target);
-                let yaw = crate::sim::movement::homing_movement::atan2_bam(
+                let yaw = crate::util::bam_trig::atan2_bam(
                     crate::util::fixed_math::SimFixed::from_num(target.y.wrapping_sub(owner.y)),
                     crate::util::fixed_math::SimFixed::from_num(target.x.wrapping_sub(owner.x)),
                 );
@@ -362,10 +359,8 @@ impl Wave {
         }
 
         self.fade_in = add_f32_step_to_f64(self.fade_in);
-        if X87Chop53::compare(
-            load_f32(f64_to_f32(self.fade_in)),
-            load_f32(SNAP_FADE_F32),
-        ) == X87Ordering::Greater
+        if X87Chop53::compare(load_f32(f64_to_f32(self.fade_in)), load_f32(SNAP_FADE_F32))
+            == X87Ordering::Greater
         {
             self.fade_in = NativeF64Bits::ONE;
         }
@@ -633,21 +628,31 @@ const PI_OVER_TWO_F64: NativeF64Bits = NativeF64Bits::from_bits(0x3ff9_21fb_5444
 const TAN_PI_OVER_EIGHT_F64: NativeF64Bits = NativeF64Bits::from_bits(0x3fda_8279_a061_eb64);
 const INV_TAN_PI_OVER_EIGHT_F64: NativeF64Bits = NativeF64Bits::from_bits(0x4003_504f_2e96_fc59);
 
+/// The geometry fields the wave reads, and (in tests) the intermediate values
+/// the machine fixtures compare.
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // machine-fixture diagnostics retained beside the behavior fields
 struct Type0NonmagneticGeometry {
     source: ProjectileCoord,
     target: ProjectileCoord,
     edges: WaveEdgeGeometry,
     direction_octant: i32,
+    #[cfg(test)]
     horizontal: i32,
+    #[cfg(test)]
     sqrt_bits: NativeF32Bits,
+    #[cfg(test)]
     acos_index: usize,
+    #[cfg(test)]
     angle_bits: NativeF32Bits,
+    #[cfg(test)]
     trig_units: i32,
+    #[cfg(test)]
     sin_index: usize,
+    #[cfg(test)]
     cos_index: usize,
+    #[cfg(test)]
     target_screen: (i32, i32),
+    #[cfg(test)]
     firer_b_screen: (i32, i32),
 }
 
@@ -808,6 +813,8 @@ fn type0_nonmagnetic_geometry_with_tables(
         sqrt_approx_f32(angle_squared).expect("type-0 Wave angle squared length is finite");
     let angle_length = load_f32(angle_length_bits);
 
+    // The index is kept for the machine fixtures only.
+    #[cfg_attr(not(test), expect(unused_variables))]
     let (acos_index, mut angle) = if horizontal == 0 {
         let entry = NativeF32Bits::from_bits(acos.entry(0).to_bits());
         (
@@ -887,14 +894,23 @@ fn type0_nonmagnetic_geometry_with_tables(
         target,
         edges,
         direction_octant: direction_from_projected(target_screen, firer_b_screen),
+        #[cfg(test)]
         horizontal,
+        #[cfg(test)]
         sqrt_bits,
+        #[cfg(test)]
         acos_index,
+        #[cfg(test)]
         angle_bits,
+        #[cfg(test)]
         trig_units,
+        #[cfg(test)]
         sin_index,
+        #[cfg(test)]
         cos_index,
+        #[cfg(test)]
         target_screen,
+        #[cfg(test)]
         firer_b_screen,
     }
 }
@@ -949,68 +965,12 @@ fn legacy_nonmagnetic_edges(source: ProjectileCoord, target: ProjectileCoord) ->
 mod tests {
     use super::*;
 
-    fn flat_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::ResolvedTerrainCell {
-        crate::map::resolved_terrain::ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: crate::rules::terrain_rules::TerrainClass::Clear,
-            speed_costs: crate::rules::terrain_rules::SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            height_in_pixels: 0,
-            variant: 0,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: crate::rules::terrain_rules::TerrainClass::Clear,
-            base_speed_costs: crate::rules::terrain_rules::SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     fn point(x: i32, y: i32, z: i32) -> ProjectileCoord {
@@ -1511,8 +1471,7 @@ mod tests {
             owner_current_target: Some(target_ref),
             target_position: Some(point(2173, 0, 0)),
         };
-        let mut at_limit =
-            Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2173, 0, 0));
+        let mut at_limit = Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2173, 0, 0));
         let _ = at_limit.advance(context_at_limit, None);
         assert!(at_limit.active_geometry);
 
@@ -1520,14 +1479,12 @@ mod tests {
             target_position: Some(point(2174, 0, 0)),
             ..context_at_limit
         };
-        let mut beyond =
-            Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
+        let mut beyond = Wave::new_owned(0, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
         let _ = beyond.advance(context_beyond, None);
         assert!(!beyond.active_geometry);
         assert!(beyond.decaying);
 
-        let mut magnetic =
-            Wave::new_owned(3, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
+        let mut magnetic = Wave::new_owned(3, 1, target_ref, point(0, 0, 0), point(2174, 0, 0));
         let _ = magnetic.advance(context_beyond, None);
         assert!(magnetic.active_geometry);
     }

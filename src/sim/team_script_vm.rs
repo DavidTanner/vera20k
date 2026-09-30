@@ -1,8 +1,26 @@
-//! Deterministic TeamClass/ScriptClass execution seam for YR 1.001.
+//! Computer teams (`TeamClass`) and their scripts (`ScriptClass`), with the
+//! TeamType, TaskForce, ScriptType and AI trigger definitions they are made
+//! from, resolved at the scenario boundary (`registry_install`).
 //!
-//! The data here is resolved at the scenario boundary rather than parsed from
-//! INI directly. `TeamClass::AI` is intentionally represented as raw action
-//! records: only native action bodies with closed evidence execute.
+//! The VM owns every live team, from its construction (`TeamTypeClass::
+//! Create_Team @ 0x006F09C0`, called by the computer's team creation in
+//! `sim::ai_team_creation`) to its destruction (`TeamClass::~TeamClass @
+//! 0x006E8DE0`), which feeds the team's outcome back into the weight of every
+//! AI trigger whose first TeamType it is; it also owns those AI triggers'
+//! running weights. It owns each team's member list (`+0x54`) and, derived
+//! from those, each member's team (`FootClass+0x5D4`).
+//!
+//! - `membership`: `Can_Add`, `Add_Member`, `Remove_Member` and `Recruit`,
+//!   with the destructor's member release and the base-defense suspension.
+//! - `team_ai`: each team's update (`TeamClass::AI @ 0x006E9140`) up to its
+//!   script step, with `Recalc`, `Calc_Center`, `Regroup`, the
+//!   under-strength retreat and a member's damage report.
+//! - `actions`: the script step and the ported script actions.
+//! - `orders`: the member virtuals team code calls.
+//!
+//! Each submodule lists its residuals. The TeamType's Tag (`+0xD0`, created
+//! by the constructor `0x006E4DE0`) is not ported; no retail TeamType names
+//! one.
 
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -11,13 +29,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::object_type::ObjectCategory;
-use crate::rules::ruleset::CountryIdx;
+use crate::rules::ruleset::{CountryIdx, GeneralRules};
 use crate::rules::team_ai_ini::TeamAiDefinitionSource;
-use crate::sim::command::CommandEnvelope;
 use crate::sim::intern::InternedId;
-use crate::util::native_x87::NativeF64Bits;
+use crate::sim::timer::CdTimer;
+use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
 
+mod actions;
+mod membership;
+mod orders;
 mod registry_install;
+mod team_ai;
 
 /// One resolved ScriptType action record.
 ///
@@ -41,9 +63,7 @@ pub struct TeamScriptDefinition {
 /// resolution. The ID alone is insufficient for custom rules that register
 /// the same name in multiple native type families. TaskForce entries and
 /// AITrigger token 6 both store this shape.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TeamMemberTypeIdentity {
     pub category: ObjectCategory,
     pub id: InternedId,
@@ -95,15 +115,66 @@ pub struct TeamTypeDefinition {
     pub transport_crossing_required: bool,
 }
 
-/// Lossless load metadata beside the narrow TeamType fields already consumed
-/// by live Team behavior.
+/// The TeamType's other INI fields, beside the definition, and where it was
+/// defined.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamTypeIniMetadata {
+    /// `Max=` (`+0xB8`, constructor -1): a house's team limit of this type;
+    /// negative is none.
     pub max_teams: i32,
+    /// `Autocreate=` (`+0xA9`). The computer's team creation also sets it on
+    /// every TeamType it picks (`0x006F0E51`); only recruitment reads it.
     pub autocreate: bool,
     pub are_team_members_recruitable: bool,
-    pub raw_fields: Vec<(String, String)>,
+    /// `Reinforce=` (`+0xAB`, ReadBool at `0x006F11FB`, constructor 0): a
+    /// formed team of the type recruits while it is not full (`0x006E9235`),
+    /// and the unit choosers count it as needing members until it fills
+    /// (`0x004FEC26`).
+    #[serde(default)]
+    reinforce: bool,
+    /// `Group=` (`+0x9C`, ReadInteger at `0x006F136C`, constructor -1): the
+    /// team's group, else its TaskForce's (`TeamTypeClass::Get_Group @
+    /// 0x006F1870`).
+    #[serde(default = "minus_one")]
+    group: i32,
+    /// `Recruiter=` (`+0xA8`, ReadBool at `0x006F1249`): recruitment passes
+    /// over the group filter.
+    #[serde(default)]
+    recruiter: bool,
+    /// `Annoyance=` (`+0xA6`, ReadBool at `0x006F1193`): a formed team
+    /// regroups when a member is hit (`0x006EB416`).
+    #[serde(default)]
+    annoyance: bool,
+    /// `GuardSlower=` (`+0xA7`, ReadBool at `0x006F11AD`): the centre counts
+    /// slow members twice (`0x006EB24F`).
+    #[serde(default)]
+    guard_slower: bool,
+    /// `TransportsReturnOnUnload=` (`+0xF4`, ReadBool at `0x006F13EE`): a
+    /// transport member keeps its ArchiveTarget as the script advances
+    /// (`0x006E9393`).
+    #[serde(default)]
+    transports_return_on_unload: bool,
+    /// `MindControlDecision=` (`+0xC0`, ReadInt at `0x006F1139`, constructor
+    /// 0 at `0x006F0781`): when not 0, the fate a member's mind control
+    /// gives its captives (`CaptureManagerClass::DecideUnitFate @
+    /// 0x00472586`), in place of the roll.
+    #[serde(default)]
+    mind_control_decision: i32,
+    /// `Droppod=` (`+0xB0`, ReadBool at `0x006F1215`, constructor 0 at
+    /// `0x006F0753`): a member still in limbo keeps `Coordinate_Attack`
+    /// busy (`0x006EB830..0x006EB847`).
+    #[serde(default)]
+    droppod: bool,
+    /// `OnlyTargetHouseEnemy=` (`+0xF7`, ReadBool at `0x006F13D4`,
+    /// constructor 0 at `0x006F07F7`): action 0's scan takes only the
+    /// house's current enemy's objects.
+    #[serde(default)]
+    only_target_house_enemy: bool,
     pub source: TeamAiDefinitionSource,
+}
+
+const fn minus_one() -> i32 {
+    -1
 }
 
 impl Default for TeamTypeIniMetadata {
@@ -112,7 +183,15 @@ impl Default for TeamTypeIniMetadata {
             max_teams: -1,
             autocreate: false,
             are_team_members_recruitable: true,
-            raw_fields: Vec::new(),
+            reinforce: false,
+            group: -1,
+            recruiter: false,
+            annoyance: false,
+            guard_slower: false,
+            transports_return_on_unload: false,
+            mind_control_decision: 0,
+            droppod: false,
+            only_target_house_enemy: false,
             source: TeamAiDefinitionSource::FixedAimd,
         }
     }
@@ -125,28 +204,154 @@ pub enum TeamAiTriggerOwner {
     Country(CountryIdx),
 }
 
-/// One resolved AITriggerType record. Selector semantics remain a later
-/// evidence-gated stage; this retains every field whose storage is proven by
-/// the active YR raw reader at `0x0041F580` plus the lossless 18-token source.
+/// One resolved AITriggerType record: every field the raw reader at
+/// `0x0041F580` stores, plus the lossless 18-token source. The computer's
+/// team creation (`sim::ai_team_creation`) reads it; its running weight is an
+/// [`AiTriggerTrackRecord`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamAiTriggerDefinition {
     pub id: InternedId,
     pub tokens: [String; 18],
     pub display_name: String,
+    /// `+0xA4`.
     pub enabled: bool,
+    /// `+0xDC`, the first TeamType.
     pub primary_team_type: Option<InternedId>,
+    /// `+0xA0`/`+0xA8`; `None` is mode 0, which never qualifies.
     pub owner: Option<TeamAiTriggerOwner>,
+    /// `+0xB0`, the house TechLevel it needs.
     pub threshold: i32,
+    /// `+0x98`.
     pub condition: i32,
+    /// `+0xD8`, the type the condition counts.
     pub object_type: Option<TeamMemberTypeIdentity>,
+    /// `+0xE4..`: the condition's amount (`+0xE4`) and comparator (`+0xE8`)
+    /// lead the 32 bytes.
     pub comparison_mask: [u8; 32],
+    /// The initial weight (`+0xB8`), its minimum (`+0xC0`) and maximum
+    /// (`+0xC8`).
     pub weights: [NativeF64Bits; 3],
-    pub storage_flag_d0: bool,
-    pub storage_i32_ac: i32,
+    /// `+0xD0`.
+    pub multiplayer: bool,
+    /// `+0xAC`.
+    pub side: i32,
     pub storage_flag_d1: bool,
+    /// `+0xE0`, the second TeamType.
     pub secondary_team_type: Option<InternedId>,
+    /// `+0xD2`, `+0xD3`, `+0xD4`.
     pub difficulty_enabled: [bool; 3],
     pub source: TeamAiDefinitionSource,
+}
+
+/// An AI trigger's running track record: its weight (`+0xB8`, which the
+/// raw reader writes and team destruction adjusts), and how many of its teams
+/// succeeded (`+0x104`) and ended (`+0x108`); both counts start at 0 in the
+/// constructor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct AiTriggerTrackRecord {
+    weight: NativeF64Bits,
+    successes: i32,
+    attempts: i32,
+}
+
+impl AiTriggerTrackRecord {
+    const fn new(weight: NativeF64Bits) -> Self {
+        Self {
+            weight,
+            successes: 0,
+            attempts: 0,
+        }
+    }
+
+    pub(crate) const fn weight(&self) -> NativeF64Bits {
+        self.weight
+    }
+
+    /// `AITriggerTypeClass::RegisterSuccess @ 0x0041FD60` (`succeeded`) or
+    /// `RegisterFailure @ 0x0041FE20`, both in PC53/chop:
+    /// - success: `w' = (SuccessWeightDelta + w) + max(0, n * (s/n - 0.5))`,
+    ///   then `s` and `n` grow by one;
+    /// - failure: `w' = (FailureWeightDelta + w) + min(0, n * ((s/n - 0.5) *
+    ///   TrackRecordCoefficient))`, then `n` grows by one;
+    ///
+    /// where `n` is the attempts and `s` the successes (the adjustment is 0
+    /// while `n <= 0`), and `w'` is stored as a double and clamped: below
+    /// `min` it becomes `min`, above `max` it becomes `max`
+    /// (`TEST AH,0x41`, so an unordered compare keeps it).
+    fn record(&mut self, succeeded: bool, bounds: [NativeF64Bits; 2], rules: &TeamRules) {
+        type X = X87Chop53;
+        let load = |bits: NativeF64Bits| {
+            X::load_f64(bits).expect("AI trigger weights and Rules deltas are finite")
+        };
+        let zero = X::load_i32(0);
+        let mut adjustment = zero;
+        if self.attempts > 0 {
+            let attempts = X::load_i32(self.attempts);
+            let ratio =
+                X::div(X::load_i32(self.successes), attempts).expect("attempts is positive");
+            let mut record = X::sub(ratio, load(NativeF64Bits::HALF));
+            if !succeeded {
+                record = X::mul(record, load(rules.track_record_coefficient));
+            }
+            let product = X::mul(attempts, record);
+            // `FCOM 0.0`: success keeps a product that is not below zero
+            // (`TEST AH,0x1`), failure one that is below or equal
+            // (`TEST AH,0x41`).
+            let keep = match X::compare(product, zero) {
+                X87Ordering::Less => !succeeded,
+                X87Ordering::Equal => true,
+                X87Ordering::Greater => succeeded,
+            };
+            if keep {
+                adjustment = product;
+            }
+        }
+        let delta = if succeeded {
+            rules.success_weight_delta
+        } else {
+            rules.failure_weight_delta
+        };
+        let weight = X::add(X::add(load(delta), load(self.weight)), adjustment);
+        self.weight = X::store_f64(weight).expect("an AI trigger weight stays finite");
+        let [minimum, maximum] = bounds;
+        if X::compare(load(self.weight), load(minimum)) == X87Ordering::Less {
+            self.weight = minimum;
+        }
+        if X::compare(load(self.weight), load(maximum)) == X87Ordering::Greater {
+            self.weight = maximum;
+        }
+        if succeeded {
+            self.successes = self.successes.wrapping_add(1);
+        }
+        self.attempts = self.attempts.wrapping_add(1);
+    }
+}
+
+/// What `TeamClass` reads beyond its own object: the game mode and the Rules
+/// keys of the empty-team dissolve and the AI trigger feedback.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TeamRules {
+    game_mode_nonzero: bool,
+    /// `[General] DissolveUnfilledTeamDelay=` (`Rules+0x1190`).
+    dissolve_unfilled_team_delay: i32,
+    /// `[General] AITriggerSuccessWeightDelta=` (`Rules+0xC0`).
+    success_weight_delta: NativeF64Bits,
+    /// `[General] AITriggerFailureWeightDelta=` (`Rules+0xC8`).
+    failure_weight_delta: NativeF64Bits,
+    /// `[General] AITriggerTrackRecordCoefficient=` (`Rules+0xD0`).
+    track_record_coefficient: NativeF64Bits,
+}
+
+impl TeamRules {
+    pub(crate) fn new(general: &GeneralRules, game_mode_nonzero: bool) -> Self {
+        Self {
+            game_mode_nonzero,
+            dissolve_unfilled_team_delay: general.dissolve_unfilled_team_delay,
+            success_weight_delta: general.ai_trigger_success_weight_delta,
+            failure_weight_delta: general.ai_trigger_failure_weight_delta,
+            track_record_coefficient: general.ai_trigger_track_record_coefficient,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,36 +405,56 @@ impl TeamAiInstallDiagnostic {
     }
 }
 
-/// A candidate member passed to TeamType/TaskForce admission.
+/// A candidate member passed to a test seam's TaskForce admission.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamScriptMember {
     pub entity_id: u64,
     pub member_type: TeamMemberTypeIdentity,
 }
 
-/// Action-19 side effect emitted in TeamClass member-list order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TeamScriptEffect {
-    PanicMember { entity_id: u64 },
-}
-
-/// Effects produced by one TeamClass update pass.
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct TeamScriptTick {
-    pub effects: Vec<TeamScriptEffect>,
-}
-
-/// A serializable refusal instead of an inferred ScriptType transition.
+/// The first unported action a team's script reached, kept for diagnostics.
+/// The team stays on it, running everything else `TeamClass::AI` does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TeamScriptRefusal {
-    MissingScript { script_id: InternedId },
-    MissingTeamType { team_type_id: InternedId },
-    MissingTaskForce { task_force_id: InternedId },
     UnsupportedAction { action_id: i32 },
-    OutOfRangeAction { action_id: i32 },
 }
 
-/// Persistent TeamClass execution state.
+/// One entry of a team's member list (`TeamClass+0x54`, linked through
+/// `FootClass+0x5D8`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TeamMember {
+    id: u64,
+    /// `FootClass+0x689`: the member has joined up. `Add_Member` sets it only
+    /// on a team's first member (`0x006EA554..0x006EA55C`); the forming step,
+    /// `Regroup` and the move routines set it once the member is within
+    /// `Stray=` of the team's centre. Only team code reads it, and the Foot
+    /// CRC; the byte outlives a removal natively, which nothing reads.
+    initiated: bool,
+}
+
+/// An `AbstractClass*` a team keeps: its centre (`+0x34`), mission target
+/// (`+0x3C`) or move target (`+0x40`). A cell is the `CellClass` at those
+/// coordinates; natively an out-of-map lookup gives the shared dummy cell,
+/// whose coordinates a later miss restamps (not represented: no ported path
+/// takes a team off the map).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TeamTarget {
+    Cell { x: i16, y: i16 },
+    Object(u64),
+}
+
+impl TeamTarget {
+    /// The target as a member's TarCom (`+0x2B4`) holds it.
+    pub(crate) const fn target_kind(self) -> crate::sim::combat::TargetKind {
+        match self {
+            Self::Cell { x, y } => crate::sim::combat::TargetKind::Cell(x as u16, y as u16),
+            Self::Object(id) => crate::sim::combat::TargetKind::Entity(id),
+        }
+    }
+}
+
+/// Persistent `TeamClass` state (constructor `0x006E8A90`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamScriptState {
     id: u64,
@@ -237,33 +462,78 @@ pub struct TeamScriptState {
     team_type_id: Option<InternedId>,
     task_force_id: Option<InternedId>,
     script_id: InternedId,
+    /// `ScriptClass+0x2C`, the current action; -1 before the first.
     cursor: i32,
+    /// `+0x80`, StepCompleted: the next update moves to the next action and
+    /// runs it (`0x006E9364..0x006E9440`).
     advance_pending: bool,
-    delay_remaining_frames: u32,
-    wait_condition_complete: bool,
-    /// Three independent TeamClass bytes written by `FUN_006EC250`. Neutral
-    /// displacement names avoid assigning broader semantics than the live
-    /// suspension transaction proves.
-    #[serde(default)]
-    reached_required_strength_78: bool,
-    response_latch_7d: bool,
-    response_latch_7e: bool,
-    response_latch_83: bool,
-    response_suspend_start_frame: i32,
-    response_suspend_duration_frames: i32,
-    members: Vec<u64>,
-    // Stable identity-aware admission summary. A vector keeps the ordered
-    // category-distinct keys JSON-serializable as well as snapshot-safe.
-    member_type_counts: Vec<(TeamMemberTypeIdentity, u32)>,
-    target: Option<u64>,
+    /// `+0x78`, IsHasBeen: the team has been at full strength.
+    has_been_full: bool,
+    /// `+0x7D`, IsAltered: its members changed, so the next update runs
+    /// `Recalc` (`0x006E917B`). Constructor set.
+    altered: bool,
+    /// `+0x7E`, set and cleared with `+0x7D`.
+    just_altered: bool,
+    /// `+0x83`, suspended by the base-defense response (`0x006EC250`) until
+    /// its timer (`+0x64`/`+0x6C`) runs out.
+    suspended: bool,
+    suspend_timer: CdTimer,
+    /// `+0x54`, head first: `Add_Member` prepends.
+    members: Vec<TeamMember>,
+    /// `+0x88`: the members counted against each TaskForce entry, which
+    /// `Add_Member` raises for the first entry of the member's type.
+    slot_counts: [i32; 6],
+    /// `+0x84`: the team succeeded (script action 49). Its destruction then
+    /// counts as its AI triggers' success.
     succeeded: bool,
-    completed: bool,
     refusal: Option<TeamScriptRefusal>,
+    /// `+0x50`, the construction frame: the unfilled-team dissolve clock and
+    /// the unit choosers' earliest team.
+    created_frame: i32,
+    /// `+0x7F`, IsMoving: the team has formed and runs its script.
+    formed: bool,
+    /// `+0x79`, IsFullStrength: it has as many members as its TaskForce.
+    full_strength: bool,
+    /// `+0x7A`, IsUnderStrength. Constructor set.
+    under_strength: bool,
+    /// `+0x7B`, IsReforming: it regroups before its script goes on.
+    reforming: bool,
+    /// `+0x82`, IsLeavingMap: its mission target is a cell off the playfield.
+    leaving_map: bool,
+    /// `+0x34`, Zone: the team's centre.
+    zone: Option<TeamTarget>,
+    /// `+0x38`, ClosestMember.
+    closest_member: Option<u64>,
+    /// `+0x3C`, the mission target; only `Assign_Mission_Target` writes it.
+    mission_target: Option<TeamTarget>,
+    /// `+0x40`, the target: `Coordinate_Move` moves the members to it,
+    /// `Coordinate_Attack` has them attack it.
+    focus: Option<TeamTarget>,
+    /// `+0x58`, script action 5's guard timer.
+    guard_timer: CdTimer,
+    /// `+0x81`: `Coordinate_Attack` found the leader unable to fire at the
+    /// target (`0x006EB5D2`); the next step runs the action afresh without
+    /// one (`0x006E940F..0x006E942F`).
+    #[serde(default)]
+    retarget: bool,
 }
 
 impl TeamScriptState {
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    /// `TeamClass::AI`'s empty-team test after the recruit loop
+    /// (`0x006E929B..0x006E92D8`): with no members (`+0x54`), a team that has
+    /// been full (`+0x78`) or, in a multiplayer game, one whose age
+    /// (`Frame - +0x50`, wrapping) is above `DissolveUnfilledTeamDelay=`
+    /// (signed) is destroyed.
+    fn dissolves(&self, rules: &TeamRules, current_frame: i32) -> bool {
+        self.members.is_empty()
+            && (self.has_been_full
+                || (rules.game_mode_nonzero
+                    && current_frame.wrapping_sub(self.created_frame)
+                        > rules.dissolve_unfilled_team_delay))
     }
 
     pub fn owner(&self) -> InternedId {
@@ -272,10 +542,6 @@ impl TeamScriptState {
 
     pub fn team_type_id(&self) -> Option<InternedId> {
         self.team_type_id
-    }
-
-    pub fn task_force_id(&self) -> Option<InternedId> {
-        self.task_force_id
     }
 
     pub fn script_id(&self) -> InternedId {
@@ -290,48 +556,59 @@ impl TeamScriptState {
         self.advance_pending
     }
 
-    #[cfg(test)]
-    pub fn wait_frames_remaining(&self) -> u32 {
-        self.delay_remaining_frames
+    /// The member ids in list order, head (the newest) first.
+    pub fn members(&self) -> impl Iterator<Item = u64> + '_ {
+        self.members.iter().map(|member| member.id)
     }
 
-    pub fn members(&self) -> &[u64] {
-        &self.members
+    pub fn member_count(&self) -> usize {
+        self.members.len()
     }
 
     #[cfg(test)]
     pub(crate) fn response_suspension_state(&self) -> (bool, bool, bool, i32, i32) {
         (
-            self.response_latch_7d,
-            self.response_latch_7e,
-            self.response_latch_83,
-            self.response_suspend_start_frame,
-            self.response_suspend_duration_frames,
+            self.altered,
+            self.just_altered,
+            self.suspended,
+            self.suspend_timer.start_frame(),
+            self.suspend_timer.duration(),
         )
-    }
-
-    pub fn member_type_counts(&self) -> &[(TeamMemberTypeIdentity, u32)] {
-        &self.member_type_counts
-    }
-
-    pub fn target(&self) -> Option<u64> {
-        self.target
     }
 
     pub fn succeeded(&self) -> bool {
         self.succeeded
     }
 
-    pub fn completed(&self) -> bool {
-        self.completed
-    }
-
     pub fn refusal(&self) -> Option<TeamScriptRefusal> {
         self.refusal
     }
+
+    pub fn formed(&self) -> bool {
+        self.formed
+    }
+
+    pub(crate) const fn created_frame(&self) -> i32 {
+        self.created_frame
+    }
+
+    /// The unit choosers' filter (`0x004FEC20..0x004FEC47`): a team still
+    /// wants members while its TeamType is `Reinforce=` and it is not full
+    /// (`+0x79`), or while it is neither forced (`+0x77`, which only
+    /// reinforcements set: none is ported) nor has been full (`+0x78`).
+    pub(crate) const fn wants_members(&self, reinforce: bool) -> bool {
+        (reinforce && !self.full_strength) || !self.has_been_full
+    }
+
+    /// The selector's cancel test (`0x006F0E05..0x006F0E11`): the team is
+    /// still forming (`!+0x7F`) or regrouping (`+0x7B`).
+    pub(crate) const fn is_forming(&self) -> bool {
+        !self.formed || self.reforming
+    }
 }
 
-/// Owns resolved TeamType/TaskForce/ScriptType definitions and live TeamClass cursors.
+/// Owns resolved TeamType/TaskForce/ScriptType definitions and live TeamClass
+/// state.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TeamScriptVm {
     scripts: BTreeMap<InternedId, TeamScriptDefinition>,
@@ -349,8 +626,30 @@ pub struct TeamScriptVm {
     ai_triggers: BTreeMap<InternedId, TeamAiTriggerDefinition>,
     #[serde(default)]
     ai_trigger_order: Vec<InternedId>,
+    /// Live teams by id, which increases with construction, so key order is
+    /// TeamClass::Array order.
     teams: BTreeMap<u64, TeamScriptState>,
     next_team_id: u64,
+    /// Each AI trigger's running weight and track record, set at its
+    /// registration.
+    #[serde(default)]
+    ai_trigger_records: BTreeMap<InternedId, AiTriggerTrackRecord>,
+    /// Each member's team (`FootClass+0x5D4`), derived from the teams' member
+    /// lists: only [`Self::link_member`] and [`Self::unlink_member`] (and the
+    /// head drop in [`Self::pointer_expired`]) change either, and it is saved
+    /// with them.
+    #[serde(default)]
+    member_team: BTreeMap<u64, u64>,
+    /// Each object's team to rejoin (`TechnoClass+0x434`): a
+    /// `RejoinTeamIfLimboed=` Foot's team as it LimboLaunches at an Infantry
+    /// target (`TechnoClass::Fire @ 0x006FF7A3..0x006FF7E9`), which its
+    /// parasite release re-adds it to (`0x0062A3AD..0x0062A3BC`,
+    /// `0x0062A74A..0x0062A759`). Like the field it outlives the rejoin, and a
+    /// jump outside a team keeps it; it goes with the team
+    /// (`TechnoClass::PointerExpired @ 0x00707BB2`) or the object's
+    /// destructor, not its Limbo or UnInit.
+    #[serde(default)]
+    rejoin_team: BTreeMap<u64, u64>,
 }
 
 impl TeamScriptVm {
@@ -380,354 +679,423 @@ impl TeamScriptVm {
         if !self.ai_triggers.contains_key(&definition.id) {
             self.ai_trigger_order.push(definition.id);
         }
+        // A re-read writes the weight (`0x0041F8AC`) and keeps the counts.
+        self.ai_trigger_records
+            .entry(definition.id)
+            .and_modify(|record| record.weight = definition.weights[0])
+            .or_insert_with(|| AiTriggerTrackRecord::new(definition.weights[0]));
         self.ai_triggers.insert(definition.id, definition);
     }
 
-    /// Install an already-admitted TeamClass member list.
+    /// `TeamTypeClass::Create_Team @ 0x006F09C0` with a house, as the
+    /// computer's team creation calls it (`0x004F8AAD`): refused while the
+    /// TeamType's `Max=` is not negative and already reached, in a
+    /// multiplayer game by `owner`'s teams of the type (`0x005095D0`), in a
+    /// campaign by every house's (`+0xDC`, signed). Otherwise a new team
+    /// (`TeamClass::TeamClass @ 0x006E8A90`) joins the end of the team list:
+    /// empty and forming (`+0x7F` clear; `+0x7A`, `+0x7D` and `+0x80` set,
+    /// the other bytes `+0x74..+0x84` clear), created at the current frame
+    /// (`+0x50`, and the timers `+0x58`/`+0x64` start there with no time),
+    /// its script (`0x006913C0`) before its first action.
     ///
-    /// This remains useful for scenario seams that do not yet instantiate
-    /// TaskForce-backed members. New callers should use `create_team_from_type`.
-    #[cfg(test)]
-    pub fn create_team(
+    /// RESIDUAL: the constructor's centre is the TeamType's `Waypoint=` cell
+    /// (`0x006E8D1A..0x006E8D58`); `Waypoint=` is not read, and no retail
+    /// AIMD TeamType sets one, so every team starts without a centre. The
+    /// TeamType's Tag (`+0xD0`, created by `0x006E4DE0`) is not ported either;
+    /// no retail TeamType names one.
+    pub(crate) fn construct_team(
         &mut self,
+        team_type_id: InternedId,
         owner: InternedId,
-        script_id: InternedId,
-        members: Vec<u64>,
-        target: Option<u64>,
+        game_mode_nonzero: bool,
         current_frame: i32,
-    ) -> u64 {
-        self.insert_team(
-            owner,
-            None,
-            None,
-            script_id,
-            members,
-            BTreeMap::new(),
-            target,
-            current_frame,
-        )
+    ) -> Option<u64> {
+        let team_type = *self.team_types.get(&team_type_id)?;
+        if self.at_max_teams(team_type_id, owner, !game_mode_nonzero) {
+            return None;
+        }
+        let id = self.next_team_id;
+        self.next_team_id = self.next_team_id.wrapping_add(1);
+        self.teams.insert(
+            id,
+            TeamScriptState::new(
+                id,
+                owner,
+                Some(team_type_id),
+                Some(team_type.task_force_id),
+                team_type.script_id,
+                current_frame,
+            ),
+        );
+        Some(id)
     }
 
-    /// Resolve the TeamType attachments and admit matching candidates in
-    /// TaskForce-entry order, preserving input order within each type.
-    #[cfg(test)]
-    pub fn create_team_from_type(
-        &mut self,
-        owner: InternedId,
-        team_type_id: InternedId,
-        candidates: &[TeamScriptMember],
-        target: Option<u64>,
-        current_frame: i32,
-    ) -> u64 {
-        let Some(team_type) = self.team_types.get(&team_type_id).copied() else {
-            return self.insert_refused_team(
-                owner,
-                team_type_id,
-                TeamScriptRefusal::MissingTeamType { team_type_id },
-                target,
-                current_frame,
-            );
+    /// The first half of `TeamClass::~TeamClass @ 0x006E8DE0`: every AI
+    /// trigger, in registry order, whose first TeamType is the team's records
+    /// the team's outcome (`+0x84`: success, else failure; see
+    /// [`AiTriggerTrackRecord::record`]). The destructor then removes the
+    /// members and the team (`membership::destroy_team`).
+    fn record_trigger_outcome(&mut self, team_id: u64, rules: &TeamRules) {
+        let Some(team) = self.teams.get(&team_id) else {
+            return;
         };
-        let Some(task_force) = self.task_forces.get(&team_type.task_force_id) else {
-            return self.insert_refused_team(
-                owner,
-                team_type_id,
-                TeamScriptRefusal::MissingTaskForce {
-                    task_force_id: team_type.task_force_id,
-                },
-                target,
-                current_frame,
-            );
+        let (Some(team_type_id), succeeded) = (team.team_type_id, team.succeeded) else {
+            return;
         };
-        if !self.scripts.contains_key(&team_type.script_id) {
-            return self.insert_refused_team(
-                owner,
-                team_type_id,
-                TeamScriptRefusal::MissingScript {
-                    script_id: team_type.script_id,
-                },
-                target,
-                current_frame,
-            );
-        }
-
-        let mut used = vec![false; candidates.len()];
-        let mut members = Vec::new();
-        let mut counts = BTreeMap::new();
-        for entry in &task_force.entries {
-            for _ in 0..entry.count.max(0) {
-                let Some((index, candidate)) =
-                    candidates.iter().enumerate().find(|(index, candidate)| {
-                        !used[*index] && candidate.member_type == entry.member_type
-                    })
-                else {
-                    break;
-                };
-                used[index] = true;
-                members.push(candidate.entity_id);
-                *counts.entry(entry.member_type).or_insert(0) += 1;
+        for trigger_id in &self.ai_trigger_order {
+            let Some(trigger) = self.ai_triggers.get(trigger_id) else {
+                continue;
+            };
+            if trigger.primary_team_type != Some(team_type_id) {
+                continue;
+            }
+            let bounds = [trigger.weights[1], trigger.weights[2]];
+            if let Some(record) = self.ai_trigger_records.get_mut(trigger_id) {
+                record.record(succeeded, bounds, rules);
             }
         }
+    }
 
-        self.insert_team(
-            owner,
-            Some(team_type_id),
-            Some(team_type.task_force_id),
-            team_type.script_id,
-            members,
-            counts,
-            target,
-            current_frame,
-        )
+    /// Live teams in TeamClass::Array order (their construction order).
+    pub(crate) fn teams_in_order(&self) -> impl Iterator<Item = &TeamScriptState> {
+        self.teams.values()
+    }
+
+    pub(crate) fn team_type_definition(&self, id: InternedId) -> Option<&TeamTypeDefinition> {
+        self.team_types.get(&id)
+    }
+
+    /// Whether the TeamType's `Max=` (`+0xB8`; -1, none, for a TeamType
+    /// without metadata), when not negative, is reached by `owner`'s teams of
+    /// the type (`0x005095D0`), or with `every_house` by every house's (the
+    /// campaign's `+0xDC`).
+    pub(crate) fn at_max_teams(
+        &self,
+        team_type_id: InternedId,
+        owner: InternedId,
+        every_house: bool,
+    ) -> bool {
+        let max_teams = self
+            .team_type_ini
+            .get(&team_type_id)
+            .map_or(-1, |metadata| metadata.max_teams);
+        max_teams >= 0
+            && self
+                .teams
+                .values()
+                .filter(|team| {
+                    team.team_type_id == Some(team_type_id) && (every_house || team.owner == owner)
+                })
+                .count() as i32
+                >= max_teams
+    }
+
+    /// The `MindControlDecision=` of team `team_id`'s TeamType.
+    pub(crate) fn mind_control_decision(&self, team_id: u64) -> Option<i32> {
+        let team_type_id = self.teams.get(&team_id)?.team_type_id?;
+        Some(self.team_type_ini.get(&team_type_id)?.mind_control_decision)
+    }
+
+    /// The TeamType's `Reinforce=` (`+0xAB`).
+    pub(crate) fn reinforce(&self, team_type_id: InternedId) -> bool {
+        self.team_type_ini
+            .get(&team_type_id)
+            .is_some_and(|metadata| metadata.reinforce)
+    }
+
+    /// The team creation's write of `Autocreate=` (`+0xA9`, `0x006F0E51`) on
+    /// a TeamType it picked.
+    pub(crate) fn mark_autocreate(&mut self, team_type_id: InternedId) {
+        if let Some(metadata) = self.team_type_ini.get_mut(&team_type_id) {
+            metadata.autocreate = true;
+        }
+    }
+
+    /// `TeamClass::Get_Needed_Types @ 0x006EF4D0`: the team's TaskForce
+    /// entries in order, each type `count` times, less the first remaining
+    /// one of each member's type (`vt+0x84`, read live by `member_type`), in
+    /// member-list order.
+    pub(crate) fn needed_types(
+        &self,
+        team: &TeamScriptState,
+        mut member_type: impl FnMut(u64) -> Option<TeamMemberTypeIdentity>,
+    ) -> Vec<TeamMemberTypeIdentity> {
+        let Some(task_force) = team
+            .task_force_id
+            .and_then(|task_force_id| self.task_forces.get(&task_force_id))
+        else {
+            return Vec::new();
+        };
+        let mut needed: Vec<TeamMemberTypeIdentity> = task_force
+            .entries
+            .iter()
+            .flat_map(|entry| {
+                std::iter::repeat_n(entry.member_type, usize::try_from(entry.count).unwrap_or(0))
+            })
+            .collect();
+        for member in &team.members {
+            let Some(member_type) = member_type(member.id) else {
+                continue;
+            };
+            if let Some(position) = needed.iter().position(|&needed| needed == member_type) {
+                needed.remove(position);
+            }
+        }
+        needed
+    }
+
+    /// The TaskForce of TeamType `team_type_id`, if it resolved.
+    pub(crate) fn task_force_of(
+        &self,
+        team_type_id: InternedId,
+    ) -> Option<&TeamTaskForceDefinition> {
+        let team_type = self.team_types.get(&team_type_id)?;
+        self.task_forces.get(&team_type.task_force_id)
+    }
+
+    /// The AI triggers in AITriggerTypeClass::Array order, with their running
+    /// weights.
+    pub(crate) fn ai_triggers_in_order(
+        &self,
+    ) -> impl Iterator<Item = (&TeamAiTriggerDefinition, AiTriggerTrackRecord)> {
+        self.ai_trigger_order.iter().filter_map(|id| {
+            let definition = self.ai_triggers.get(id)?;
+            let record = self
+                .ai_trigger_records
+                .get(id)
+                .copied()
+                .unwrap_or_else(|| AiTriggerTrackRecord::new(definition.weights[0]));
+            Some((definition, record))
+        })
     }
 
     pub fn team(&self, id: u64) -> Option<&TeamScriptState> {
         self.teams.get(&id)
     }
 
-    /// Resolve one entity's TeamClass pointer analogue in stable Team creation
-    /// order. A member can belong to at most one live TeamClass in native.
+    /// `entity_id`'s team (`FootClass+0x5D4`) and whether its TeamType is
+    /// `IsBaseDefense=` (`+0xF6`).
     pub(crate) fn team_for_member(&self, entity_id: u64) -> Option<(u64, bool)> {
-        self.teams.values().find_map(|team| {
-            team.members.contains(&entity_id).then(|| {
-                let is_base_defense = team
-                    .team_type_id
-                    .and_then(|id| self.team_types.get(&id))
-                    .is_some_and(|definition| definition.is_base_defense);
-                (team.id, is_base_defense)
+        let team_id = *self.member_team.get(&entity_id)?;
+        let is_base_defense = self
+            .teams
+            .get(&team_id)
+            .and_then(|team| team.team_type_id)
+            .and_then(|id| self.team_types.get(&id))
+            .is_some_and(|definition| definition.is_base_defense);
+        Some((team_id, is_base_defense))
+    }
+
+    /// `0x006EC300`'s exits before its waypoint read: `member`'s team has
+    /// formed (`+0x7F`), its script cursor names an action (`0x006915D0`,
+    /// unsigned `cursor < count`) and that action is 3. Only then does the
+    /// original read the action's waypoint and ask whether it lies outside
+    /// the playfield (mode 1). VERA has no waypoint table in the
+    /// simulation, so callers must treat `true` as an unported read.
+    pub(crate) fn member_step_reads_waypoint(&self, member: u64) -> bool {
+        let Some(team) = self
+            .member_team
+            .get(&member)
+            .and_then(|id| self.teams.get(id))
+        else {
+            return false;
+        };
+        team.formed()
+            && self.script(team.script_id()).is_some_and(|script| {
+                script
+                    .actions
+                    .get(team.cursor() as u32 as usize)
+                    .is_some_and(|action| action.action_id == 3)
             })
-        })
+    }
+
+    /// `TechnoClass::Fire @ 0x006FF7A3..0x006FF7E9`: `entity_id` remembers
+    /// its team to rejoin (`+0x434`); outside a team it keeps the one it has.
+    pub(crate) fn remember_team_to_rejoin(&mut self, entity_id: u64) {
+        if let Some(&team_id) = self.member_team.get(&entity_id) {
+            self.rejoin_team.insert(entity_id, team_id);
+        }
+    }
+
+    /// `entity_id`'s team to rejoin (`TechnoClass+0x434`), if any.
+    pub(crate) fn team_to_rejoin(&self, entity_id: u64) -> Option<u64> {
+        self.rejoin_team.get(&entity_id).copied()
+    }
+
+    /// `TechnoClass::PointerExpired @ 0x00707BB2..0x00707BBA` for every
+    /// object as team `team_id` goes: none keeps it to rejoin.
+    fn forget_team_to_rejoin(&mut self, team_id: u64) {
+        self.rejoin_team.retain(|_, team| *team != team_id);
+    }
+
+    /// The object's destructor: its team to rejoin goes with it.
+    pub(crate) fn object_deleted(&mut self, entity_id: u64) {
+        self.rejoin_team.remove(&entity_id);
     }
 
     /// The TeamType of the team `entity_id` belongs to (Foot `+0x5D4` then
     /// TeamClass `+0x24`), if any.
     pub(crate) fn member_team_type(&self, entity_id: u64) -> Option<&TeamTypeDefinition> {
-        let (team_id, _) = self.team_for_member(entity_id)?;
+        let team_id = *self.member_team.get(&entity_id)?;
         self.team_types
             .get(&self.teams.get(&team_id)?.team_type_id?)
     }
 
-    /// Native `FUN_006EC250`: visit TeamClass instances in creation order,
-    /// suspend those owned by `owner` whose signed TeamType priority is below
-    /// `suspend_priority`, remove every member in member-list order, set the
-    /// three response bytes, and arm the signed start/duration timer.
-    pub(crate) fn suspend_teams_for_base_defense(
-        &mut self,
+    /// The team's TaskForce entries, none for a team without a TeamType.
+    fn task_force_entries(&self, team: &TeamScriptState) -> &[TeamTaskForceEntry] {
+        team.task_force_id
+            .and_then(|id| self.task_forces.get(&id))
+            .map_or(&[], |task_force| task_force.entries.as_slice())
+    }
+
+    /// The TeamType's `Priority=`, 0 for a team without one.
+    fn priority(&self, team: &TeamScriptState) -> i32 {
+        team.team_type_id
+            .and_then(|id| self.team_types.get(&id))
+            .map_or(0, |definition| definition.priority)
+    }
+
+    /// `TeamTypeClass::Get_Group @ 0x006F1870`: the TeamType's `Group=`
+    /// unless -1, else its TaskForce's; -1 without either.
+    fn team_group(&self, team: &TeamScriptState) -> i32 {
+        let group = team
+            .team_type_id
+            .and_then(|id| self.team_type_ini.get(&id))
+            .map_or(-1, |metadata| metadata.group);
+        if group != -1 {
+            return group;
+        }
+        team.task_force_id
+            .and_then(|id| self.task_forces.get(&id))
+            .map_or(-1, |task_force| task_force.group)
+    }
+
+    /// Prepend `member` to `team_id`'s list (`0x006EA562..0x006EA56E`).
+    fn link_member(&mut self, team_id: u64, member: TeamMember) {
+        let Some(team) = self.teams.get_mut(&team_id) else {
+            return;
+        };
+        team.members.insert(0, member);
+        self.member_team.insert(member.id, team_id);
+    }
+
+    /// Unlink `entity_id` from `team_id`'s list, returning its record.
+    fn unlink_member(&mut self, team_id: u64, entity_id: u64) -> Option<TeamMember> {
+        let team = self.teams.get_mut(&team_id)?;
+        let position = team
+            .members
+            .iter()
+            .position(|member| member.id == entity_id)?;
+        let member = team.members.remove(position);
+        if self.member_team.get(&entity_id) == Some(&team_id) {
+            self.member_team.remove(&entity_id);
+        }
+        Some(member)
+    }
+
+    /// `TeamClass::PointerExpired @ 0x006EAE60` for every team, as the
+    /// pointer-expired broadcast (`0x007258D0`) reaches each through its
+    /// listener vector: a team forgets `expired` as its centre, closest
+    /// member, mission target and move target, and with `all` drops it from
+    /// the head of its list (a member leaves through `Remove_Member` first,
+    /// so only a list the removal missed has it there). The team's own
+    /// update is the only reader of what it clears, so the teams' place in
+    /// the listener order does not matter.
+    pub(crate) fn pointer_expired(&mut self, expired: u64, all: bool) {
+        let object = Some(TeamTarget::Object(expired));
+        for team in self.teams.values_mut() {
+            if all
+                && team
+                    .members
+                    .first()
+                    .is_some_and(|member| member.id == expired)
+            {
+                team.members.remove(0);
+                if self.member_team.get(&expired) == Some(&team.id) {
+                    self.member_team.remove(&expired);
+                }
+            }
+            if team.focus == object {
+                team.focus = None;
+            }
+            if team.mission_target == object {
+                team.mission_target = None;
+            }
+            if team.zone == object {
+                team.zone = None;
+            }
+            if team.closest_member == Some(expired) {
+                team.closest_member = None;
+            }
+        }
+    }
+}
+
+impl TeamScriptState {
+    /// `TeamClass::TeamClass @ 0x006E8A90`'s state (see
+    /// [`TeamScriptVm::construct_team`]).
+    fn new(
+        id: u64,
         owner: InternedId,
-        suspend_priority: i32,
+        team_type_id: Option<InternedId>,
+        task_force_id: Option<InternedId>,
+        script_id: InternedId,
         current_frame: i32,
-        duration_frames: i32,
-    ) -> Vec<u64> {
-        let team_types = &self.team_types;
-        let mut removed = Vec::new();
-        for team in self.teams.values_mut() {
-            let Some(definition) = team
-                .team_type_id
-                .and_then(|team_type_id| team_types.get(&team_type_id))
-            else {
-                continue;
-            };
-            if team.owner != owner || definition.priority >= suspend_priority {
-                continue;
-            }
-
-            removed.extend(team.members.drain(..));
-            team.member_type_counts.clear();
-            team.response_latch_7d = true;
-            team.response_latch_7e = true;
-            team.response_latch_83 = true;
-            team.response_suspend_start_frame = current_frame;
-            team.response_suspend_duration_frames = duration_frames;
+    ) -> Self {
+        Self {
+            id,
+            owner,
+            team_type_id,
+            task_force_id,
+            script_id,
+            cursor: -1,
+            advance_pending: true,
+            has_been_full: false,
+            altered: true,
+            just_altered: false,
+            suspended: false,
+            suspend_timer: CdTimer::started(current_frame, 0),
+            members: Vec::new(),
+            slot_counts: [0; 6],
+            succeeded: false,
+            refusal: None,
+            created_frame: current_frame,
+            formed: false,
+            full_strength: false,
+            under_strength: true,
+            reforming: false,
+            leaving_map: false,
+            zone: None,
+            closest_member: None,
+            mission_target: None,
+            focus: None,
+            guard_timer: CdTimer::started(current_frame, 0),
+            retarget: false,
         }
-        removed
     }
 
-    #[cfg(test)]
-    pub fn set_delay(&mut self, id: u64, remaining_frames: u32) -> bool {
-        let Some(team) = self.teams.get_mut(&id) else {
-            return false;
-        };
-        team.delay_remaining_frames = remaining_frames;
-        true
+    /// Whether any state the recruitment chain added is off its constructor
+    /// value (see [`TeamScriptVm::hash_state`]).
+    fn recruitment_state_moved(&self, current_frame: i32) -> bool {
+        !self.members.is_empty()
+            || self.slot_counts != [0; 6]
+            || self.full_strength
+            || !self.under_strength
+            || self.reforming
+            || self.leaving_map
+            || self.zone.is_some()
+            || self.closest_member.is_some()
+            || self.mission_target.is_some()
+            || self.focus.is_some()
+            || self.guard_timer.remaining(current_frame) != 0
     }
+}
 
-    #[cfg(test)]
-    pub fn set_wait_condition_complete(&mut self, id: u64, complete: bool) -> bool {
-        let Some(team) = self.teams.get_mut(&id) else {
-            return false;
-        };
-        team.wait_condition_complete = complete;
-        true
-    }
-
-    /// Execute one `TeamClass::AI` pass for every live team.
-    ///
-    /// `TeamClass::AI` stores completion in `+0x80`; the next update performs
-    /// the shared `ScriptClass::HasNextMission` cursor advance.
-    pub fn tick<F>(&mut self, current_frame: i32, owner_is_active: F) -> Vec<CommandEnvelope>
-    where
-        F: FnMut(InternedId) -> bool,
-    {
-        self.tick_effects(current_frame, owner_is_active);
-        Vec::new()
-    }
-
-    /// Execute one pass and return native-backed non-command effects.
-    ///
-    /// The current command rung has no panic command; callers that own member
-    /// mission application can consume these ordered effects directly.
-    pub fn tick_effects<F>(&mut self, current_frame: i32, mut owner_is_active: F) -> TeamScriptTick
-    where
-        F: FnMut(InternedId) -> bool,
-    {
-        let mut result = TeamScriptTick::default();
-        let mut deleted_teams = Vec::new();
-        let team_types = &self.team_types;
-        let task_forces = &self.task_forces;
-
-        for team in self.teams.values_mut() {
-            // gamemd-derived: TeamClass::AI @ 0x006E9140 checks the
-            // FUN_006EC250 base-defense timer before every other Team gate.
-            // Equality expires in this pass; only +0x83 clears here, so the
-            // represented script body may resume without a one-frame gap.
-            if team.response_latch_83 {
-                if response_suspend_remaining(
-                    team.response_suspend_start_frame,
-                    team.response_suspend_duration_frames,
-                    current_frame,
-                ) != 0
-                {
-                    continue;
-                }
-                team.response_latch_83 = false;
-            }
-
-            // TeamClass::AI @ 0x006E917B calls FUN_006EA3E0 whenever +0x7D
-            // remains set. A positive member count clears +0x7D/+0x7E and
-            // records +0x78 once the TaskForce's signed total is reached. An
-            // empty Team that has reached that state is deleted and returns 0;
-            // an empty +0x78==0 Team retains both latches and returns 1.
-            if team.response_latch_7d {
-                if team.members.is_empty() {
-                    if team.reached_required_strength_78 {
-                        deleted_teams.push(team.id);
-                        continue;
-                    }
-                } else {
-                    let required_count =
-                        team.team_type_id
-                            .and_then(|team_type_id| team_types.get(&team_type_id))
-                            .and_then(|team_type| task_forces.get(&team_type.task_force_id))
-                            .map(|task_force| {
-                                task_force.entries.iter().fold(0i32, |total, entry| {
-                                    total.wrapping_add(entry.count)
-                                })
-                            })
-                            .unwrap_or(team.members.len() as i32);
-                    if team.members.len() as i32 == required_count {
-                        team.reached_required_strength_78 = true;
-                    }
-                    team.response_latch_7e = false;
-                    team.response_latch_7d = false;
-                }
-            }
-
-            if team.completed || team.refusal.is_some() || !owner_is_active(team.owner) {
-                continue;
-            }
-
-            if team.advance_pending {
-                team.advance_pending = false;
-                team.cursor = team.cursor.wrapping_add(1);
-                if !script_action_at(self.scripts.get(&team.script_id), team.cursor).is_some() {
-                    team.completed = true;
-                }
-                continue;
-            }
-
-            if team.delay_remaining_frames > 0 {
-                team.delay_remaining_frames -= 1;
-                if team.delay_remaining_frames > 0 {
-                    continue;
-                }
-            }
-
-            let Some(script) = self.scripts.get(&team.script_id) else {
-                team.refusal = Some(TeamScriptRefusal::MissingScript {
-                    script_id: team.script_id,
-                });
-                log::warn!(
-                    "TeamClass::AI stopped team {}: missing ScriptType {}",
-                    team.id,
-                    team.script_id
-                );
-                continue;
-            };
-            let Some(action) = script_action_at(Some(script), team.cursor) else {
-                team.completed = true;
-                continue;
-            };
-
-            match action.action_id {
-                // TeamClass::AI default path for case 2: neither complete nor advance.
-                2 => {}
-                // TeamClass::AI cases 5 and 43 wait until their gate completes.
-                5 | 43 => {
-                    if team.wait_condition_complete {
-                        team.wait_condition_complete = false;
-                        team.advance_pending = true;
-                    }
-                }
-                // TeamClass::AI case 6 calls SetMission(argument - 2), then advances next update.
-                6 => {
-                    team.cursor = action.argument.wrapping_sub(2);
-                    team.advance_pending = true;
-                }
-                // TeamClass::AI case 19 invokes Foot's panic-family virtual in member-list order.
-                19 => {
-                    result.effects.extend(
-                        team.members
-                            .iter()
-                            .copied()
-                            .map(|entity_id| TeamScriptEffect::PanicMember { entity_id }),
-                    );
-                    team.advance_pending = true;
-                }
-                // TeamClass::AI case 24 takes the shared advance path.
-                24 => team.advance_pending = true,
-                // TeamClass::AI case 49 records success but its +0x84 byte is not CRC-covered.
-                49 => {
-                    team.succeeded = true;
-                    team.advance_pending = true;
-                }
-                0..=64 => {
-                    team.refusal = Some(TeamScriptRefusal::UnsupportedAction {
-                        action_id: action.action_id,
-                    });
-                    log::warn!(
-                        "TeamClass::AI stopped team {}: ScriptType action {} is not implemented",
-                        team.id,
-                        action.action_id
-                    );
-                }
-                action_id => {
-                    team.refusal = Some(TeamScriptRefusal::OutOfRangeAction { action_id });
-                    log::warn!(
-                        "TeamClass::AI stopped team {}: ScriptType action {} is outside 0..=64",
-                        team.id,
-                        action_id
-                    );
-                }
-            }
-        }
-
-        for team_id in deleted_teams {
-            self.teams.remove(&team_id);
-        }
-
-        result
-    }
-
+impl TeamScriptVm {
+    /// Folds each team's creation frame and forming byte, the AI triggers
+    /// whose track record left its registered state (tagged), and each team's
+    /// recruitment state once it leaves its constructor values plus the
+    /// objects' teams to rejoin (tagged).
     pub(crate) fn hash_state(&self, current_frame: i32, hasher: &mut impl Hasher) {
         // TeamClass::ComputeCRC observes live Team/Script state, not the VM's
         // source registry or allocator. Action-49's +0x84 success flag is not
@@ -741,111 +1109,187 @@ impl TeamScriptVm {
             team.owner.hash(hasher);
             team.cursor.hash(hasher);
             team.advance_pending.hash(hasher);
-            team.delay_remaining_frames.hash(hasher);
+            // The retired test-only wait counter, always 0.
+            0u32.hash(hasher);
             // gamemd-derived: TeamClass CRC callback at vtable +0x34,
             // raw body 0x006EC5A0..0x006EC720, feeds one normalized remaining
             // time for +0x64/+0x6C before the +0x78/+0x7D/+0x7E/+0x83
             // bytes. It skips +0x68 and never feeds raw start.
-            response_suspend_remaining(
-                team.response_suspend_start_frame,
-                team.response_suspend_duration_frames,
-                current_frame,
-            )
-            .hash(hasher);
-            team.reached_required_strength_78.hash(hasher);
-            team.response_latch_7d.hash(hasher);
-            team.response_latch_7e.hash(hasher);
-            team.response_latch_83.hash(hasher);
-            team.members.hash(hasher);
-            team.target.hash(hasher);
-            team.member_type_counts.hash(hasher);
+            team.suspend_timer.remaining(current_frame).hash(hasher);
+            team.has_been_full.hash(hasher);
+            team.altered.hash(hasher);
+            team.just_altered.hash(hasher);
+            team.suspended.hash(hasher);
+            team.members().collect::<Vec<u64>>().hash(hasher);
+            // The retired target and per-type counts, always empty.
+            None::<u64>.hash(hasher);
+            Vec::<(TeamMemberTypeIdentity, u32)>::new().hash(hasher);
+            team.created_frame.hash(hasher);
+            team.formed.hash(hasher);
+            if team.recruitment_state_moved(current_frame) {
+                b"team-recruitment-v1".hash(hasher);
+                team.members.hash(hasher);
+                team.slot_counts.hash(hasher);
+                team.full_strength.hash(hasher);
+                team.under_strength.hash(hasher);
+                team.reforming.hash(hasher);
+                team.leaving_map.hash(hasher);
+                team.zone.hash(hasher);
+                team.closest_member.hash(hasher);
+                team.mission_target.hash(hasher);
+                team.focus.hash(hasher);
+                team.guard_timer.remaining(current_frame).hash(hasher);
+            }
+        }
+        if self.teams.values().any(|team| team.retarget) {
+            b"team-retarget-v1".hash(hasher);
+            for (id, team) in &self.teams {
+                if team.retarget {
+                    id.hash(hasher);
+                }
+            }
+        }
+        if !self.rejoin_team.is_empty() {
+            b"team-rejoin-v1".hash(hasher);
+            self.rejoin_team.hash(hasher);
+        }
+        let changed: Vec<_> = self
+            .ai_trigger_order
+            .iter()
+            .filter_map(|id| {
+                let record = self.ai_trigger_records.get(id)?;
+                let initial = self.ai_triggers.get(id)?.weights[0];
+                (*record != AiTriggerTrackRecord::new(initial)).then_some((id, record))
+            })
+            .collect();
+        if !changed.is_empty() {
+            b"ai-trigger-records-v1".hash(hasher);
+            changed.hash(hasher);
         }
     }
 
+    /// A formed team without a TeamType, running `script_id` from its first
+    /// action (cursor 0, already stepped), whose members are `members` in
+    /// list order, all joined up.
     #[cfg(test)]
-    fn insert_refused_team(
+    pub fn create_team(
         &mut self,
         owner: InternedId,
-        team_type_id: InternedId,
-        refusal: TeamScriptRefusal,
-        target: Option<u64>,
-        current_frame: i32,
-    ) -> u64 {
-        let script_id = match refusal {
-            TeamScriptRefusal::MissingScript { script_id } => script_id,
-            _ => InternedId::from_index(0),
-        };
-        let id = self.insert_team(
-            owner,
-            Some(team_type_id),
-            None,
-            script_id,
-            Vec::new(),
-            BTreeMap::new(),
-            target,
-            current_frame,
-        );
-        self.teams.get_mut(&id).expect("inserted team").refusal = Some(refusal);
-        id
-    }
-
-    #[cfg(test)]
-    fn insert_team(
-        &mut self,
-        owner: InternedId,
-        team_type_id: Option<InternedId>,
-        task_force_id: Option<InternedId>,
         script_id: InternedId,
         members: Vec<u64>,
-        member_type_counts: BTreeMap<TeamMemberTypeIdentity, u32>,
-        target: Option<u64>,
         current_frame: i32,
     ) -> u64 {
         let id = self.next_team_id;
         self.next_team_id = self.next_team_id.wrapping_add(1);
-        self.teams.insert(
-            id,
-            TeamScriptState {
+        let mut team = TeamScriptState::new(id, owner, None, None, script_id, current_frame);
+        team.cursor = 0;
+        team.advance_pending = false;
+        team.altered = false;
+        team.formed = true;
+        team.has_been_full = true;
+        team.full_strength = true;
+        team.under_strength = false;
+        for &member in &members {
+            self.member_team.insert(member, id);
+        }
+        team.members = members
+            .into_iter()
+            .map(|id| TeamMember {
                 id,
-                owner,
-                team_type_id,
-                task_force_id,
-                script_id,
-                cursor: 0,
-                advance_pending: false,
-                delay_remaining_frames: 0,
-                wait_condition_complete: false,
-                reached_required_strength_78: false,
-                response_latch_7d: true,
-                response_latch_7e: false,
-                response_latch_83: false,
-                response_suspend_start_frame: current_frame,
-                response_suspend_duration_frames: 0,
-                members,
-                member_type_counts: member_type_counts.into_iter().collect(),
-                target,
-                succeeded: false,
-                completed: false,
-                refusal: None,
-            },
+                initiated: true,
+            })
+            .collect();
+        self.teams.insert(id, team);
+        id
+    }
+
+    /// A formed team of TeamType `team_type_id` whose members are
+    /// `candidates` admitted in TaskForce-entry order, preserving input order
+    /// within each type, listed in admission order and all initiated: the
+    /// state after it formed and ran into its first action (cursor 0).
+    #[cfg(test)]
+    pub fn create_team_from_type(
+        &mut self,
+        owner: InternedId,
+        team_type_id: InternedId,
+        candidates: &[TeamScriptMember],
+        current_frame: i32,
+    ) -> u64 {
+        let team_type = *self
+            .team_types
+            .get(&team_type_id)
+            .expect("the seam's TeamType is registered");
+        let task_force = self
+            .task_forces
+            .get(&team_type.task_force_id)
+            .expect("the seam's TaskForce is registered");
+        let mut used = vec![false; candidates.len()];
+        let mut members = Vec::new();
+        let mut slot_counts = [0; 6];
+        for (slot, entry) in task_force.entries.iter().enumerate() {
+            for _ in 0..entry.count.max(0) {
+                let Some((index, candidate)) =
+                    candidates.iter().enumerate().find(|(index, candidate)| {
+                        !used[*index] && candidate.member_type == entry.member_type
+                    })
+                else {
+                    break;
+                };
+                used[index] = true;
+                members.push(TeamMember {
+                    id: candidate.entity_id,
+                    initiated: true,
+                });
+                slot_counts[slot] += 1;
+            }
+        }
+        let full = members.len() as i32
+            == task_force
+                .entries
+                .iter()
+                .fold(0i32, |total, entry| total.wrapping_add(entry.count));
+        let id = self.next_team_id;
+        self.next_team_id = self.next_team_id.wrapping_add(1);
+        let mut team = TeamScriptState::new(
+            id,
+            owner,
+            Some(team_type_id),
+            Some(team_type.task_force_id),
+            team_type.script_id,
+            current_frame,
         );
+        team.cursor = 0;
+        team.advance_pending = false;
+        team.altered = false;
+        team.formed = true;
+        team.full_strength = full;
+        team.has_been_full = full;
+        team.under_strength = false;
+        team.slot_counts = slot_counts;
+        for member in &members {
+            self.member_team.insert(member.id, id);
+        }
+        team.members = members;
+        self.teams.insert(id, team);
         id
     }
 }
 
-/// Native signed/wrapping remaining time for the Team base-defense suspension.
-///
-/// gamemd-derived: `TeamClass::AI @ 0x006E9140` and the Team CRC callback at
-/// vtable `+0x34` (`0x006EC5A0`) share this exact `+0x64/+0x6C` calculation.
-fn response_suspend_remaining(start_frame: i32, duration_frames: i32, now: i32) -> i32 {
-    if start_frame == -1 {
-        return duration_frames;
-    }
-    let elapsed = now.wrapping_sub(start_frame);
-    if elapsed < duration_frames {
-        duration_frames.wrapping_sub(elapsed)
-    } else {
-        0
+/// An object's TechnoType identity (`vt+0x88`), as TaskForce entries name
+/// types.
+pub(crate) fn member_type_identity(
+    entity: &crate::sim::game_entity::GameEntity,
+) -> TeamMemberTypeIdentity {
+    use crate::map::entities::EntityCategory;
+    let category = match entity.category {
+        EntityCategory::Infantry => ObjectCategory::Infantry,
+        EntityCategory::Unit => ObjectCategory::Vehicle,
+        EntityCategory::Aircraft => ObjectCategory::Aircraft,
+        EntityCategory::Structure => ObjectCategory::Building,
+    };
+    TeamMemberTypeIdentity {
+        category,
+        id: entity.type_ref(),
     }
 }
 
@@ -857,26 +1301,18 @@ fn script_action_at(
     script?.actions.get(index).copied()
 }
 
-/// Puts `member` in a one-member team whose TeamType has `Suicide=suicide`
-/// and `Aggressive=aggressive`.
+/// Puts `members`, all of the first one's type, in a team of that many whose
+/// TeamType has `Suicide=suicide` and `Aggressive=aggressive`, and returns it.
 #[cfg(test)]
-pub(crate) fn join_one_member_team_for_test(
+pub(crate) fn join_team_for_test(
     sim: &mut crate::sim::world::Simulation,
-    member: u64,
+    members: &[u64],
     suicide: bool,
     aggressive: bool,
-) {
-    use crate::rules::object_type::ObjectCategory;
-    use crate::rules::team_ai_ini::TeamAiDefinitionSource;
-    use crate::sim::team_script_vm::{
-        TeamMemberTypeIdentity, TeamScriptDefinition, TeamScriptMember, TeamTaskForceDefinition,
-        TeamTaskForceEntry, TeamTypeDefinition,
-    };
-    let owner = sim.substrate.entities.get(member).unwrap().owner();
-    let member_type = TeamMemberTypeIdentity {
-        category: ObjectCategory::Vehicle,
-        id: sim.substrate.entities.get(member).unwrap().type_ref(),
-    };
+) -> u64 {
+    let first = sim.substrate.entities.get(members[0]).unwrap();
+    let owner = first.owner();
+    let member_type = member_type_identity(first);
     let script_id = sim.interner.intern("TEST_SCRIPT");
     let task_force_id = sim.interner.intern("TEST_TASK_FORCE");
     let team_type_id = sim.interner.intern("TEST_TEAM");
@@ -892,7 +1328,7 @@ pub(crate) fn join_one_member_team_for_test(
         group: -1,
         entries: vec![TeamTaskForceEntry {
             member_type,
-            count: 1,
+            count: i32::try_from(members.len()).unwrap(),
         }],
     });
     teams.register_team_type(TeamTypeDefinition {
@@ -903,21 +1339,24 @@ pub(crate) fn join_one_member_team_for_test(
         is_base_defense: false,
         suicide,
         aggressive,
-        combined_movement_zone: crate::rules::locomotor_type::MovementZone::Normal,
+        combined_movement_zone: MovementZone::Normal,
         base_zone_relation_enforced: true,
         transport_crossing_required: false,
     });
-    teams.create_team_from_type(
-        owner,
-        team_type_id,
-        &[TeamScriptMember {
-            entity_id: member,
+    let candidates: Vec<TeamScriptMember> = members
+        .iter()
+        .map(|&entity_id| TeamScriptMember {
+            entity_id,
             member_type,
-        }],
-        None,
-        0,
-    );
+        })
+        .collect();
+    teams.create_team_from_type(owner, team_type_id, &candidates, 0)
 }
+
+#[cfg(test)]
+mod oracle_tests;
+#[cfg(test)]
+mod recruit_oracle_tests;
 
 #[cfg(test)]
 mod tests {
@@ -935,155 +1374,47 @@ mod tests {
         }
     }
 
+    /// `0x006EC300` reaches its waypoint read only for a formed team
+    /// (`+0x7F`) whose cursor names action 3 (`0x006915D0`, unsigned).
+    #[test]
+    fn member_step_reads_waypoint_follows_the_original_exits() {
+        let mut vm = TeamScriptVm::default();
+        let script = InternedId::from_index(7);
+        vm.register_script(TeamScriptDefinition {
+            id: script,
+            source: TeamAiDefinitionSource::FixedAimd,
+            actions: vec![action(3, 0), action(2, 0)],
+        });
+        let owner = InternedId::from_index(1);
+        let team = vm.create_team(owner, script, vec![50], 0);
+        assert!(vm.member_step_reads_waypoint(50));
+        assert!(!vm.member_step_reads_waypoint(51), "not a team member");
+        vm.teams.get_mut(&team).unwrap().formed = false;
+        assert!(!vm.member_step_reads_waypoint(50), "a forming team exits");
+        vm.teams.get_mut(&team).unwrap().formed = true;
+        vm.teams.get_mut(&team).unwrap().cursor = 1;
+        assert!(!vm.member_step_reads_waypoint(50), "action 2 exits");
+        vm.teams.get_mut(&team).unwrap().cursor = -1;
+        assert!(
+            !vm.member_step_reads_waypoint(50),
+            "a negative cursor is a huge unsigned index"
+        );
+    }
+
     fn state_hash_at(vm: &TeamScriptVm, current_frame: i32) -> u64 {
         let mut hasher = DefaultHasher::new();
         vm.hash_state(current_frame, &mut hasher);
         hasher.finish()
     }
 
-    fn state_hash(vm: &TeamScriptVm) -> u64 {
-        state_hash_at(vm, 0)
-    }
-
-    #[test]
-    fn case_six_sets_argument_minus_two_then_advances_next_update() {
-        let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
-        let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(6, 2), action(2, 0)],
-        });
-        let team = vm.create_team(owner, script, vec![], None, 0);
-
-        vm.tick_effects(1, |_| true);
-        assert_eq!(vm.team(team).expect("team").cursor(), 0);
-        assert!(vm.team(team).expect("team").advance_pending());
-
-        vm.tick_effects(2, |_| true);
-        assert_eq!(vm.team(team).expect("team").cursor(), 1);
-        assert!(!vm.team(team).expect("team").advance_pending());
-    }
-
-    #[test]
-    fn wait_actions_gate_then_use_the_common_advance() {
-        let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
-        let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(5, 2), action(43, 0)],
-        });
-        let team = vm.create_team(owner, script, vec![], None, 0);
-
-        vm.tick_effects(10, |_| true);
-        assert_eq!(vm.team(team).expect("team").cursor(), 0);
-        assert!(!vm.team(team).expect("team").advance_pending());
-        assert!(vm.set_wait_condition_complete(team, true));
-        vm.tick_effects(11, |_| true);
-        assert!(vm.team(team).expect("team").advance_pending());
-        vm.tick_effects(12, |_| true);
-        assert_eq!(vm.team(team).expect("team").cursor(), 1);
-    }
-
-    #[test]
-    fn action_nineteen_preserves_member_order_and_defers_advance() {
-        let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
-        let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(19, 0), action(2, 0)],
-        });
-        let team = vm.create_team(owner, script, vec![9, 3, 7], None, 0);
-
-        let tick = vm.tick_effects(1, |_| true);
-        assert_eq!(
-            tick.effects,
-            vec![
-                TeamScriptEffect::PanicMember { entity_id: 9 },
-                TeamScriptEffect::PanicMember { entity_id: 3 },
-                TeamScriptEffect::PanicMember { entity_id: 7 },
-            ]
-        );
-        assert!(vm.team(team).expect("team").advance_pending());
-        vm.tick_effects(2, |_| true);
-        assert_eq!(vm.team(team).expect("team").cursor(), 1);
-    }
-
-    #[test]
-    fn success_flag_is_persisted_but_not_crc_projected() {
-        let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
-        let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(49, 0)],
-        });
-        let team = vm.create_team(owner, script, vec![], None, 0);
-        vm.tick_effects(1, |_| true);
-
-        let mut without_success = vm.clone();
-        without_success
-            .teams
-            .get_mut(&team)
-            .expect("team")
-            .succeeded = false;
-        assert_eq!(state_hash(&vm), state_hash(&without_success));
-        assert!(vm.team(team).expect("team").succeeded());
-    }
-
-    #[test]
-    fn unsupported_and_out_of_range_actions_never_advance() {
-        let owner = InternedId::from_index(1);
-        let supported = InternedId::from_index(2);
-        let out_of_range = InternedId::from_index(3);
-        let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: supported,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(0, 0)],
-        });
-        vm.register_script(TeamScriptDefinition {
-            id: out_of_range,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(65, 0)],
-        });
-        let first = vm.create_team(owner, supported, vec![], None, 0);
-        let second = vm.create_team(owner, out_of_range, vec![], None, 0);
-
-        vm.tick_effects(1, |_| true);
-        assert_eq!(
-            vm.team(first).expect("team").refusal(),
-            Some(TeamScriptRefusal::UnsupportedAction { action_id: 0 })
-        );
-        assert_eq!(
-            vm.team(second).expect("team").refusal(),
-            Some(TeamScriptRefusal::OutOfRangeAction { action_id: 65 })
-        );
-    }
-
-    #[test]
-    fn task_force_admission_uses_entry_then_candidate_order() {
-        let owner = InternedId::from_index(1);
+    /// A TeamType `team_type` of `entries` whose script is `[2,0]`.
+    fn register_team_type(
+        vm: &mut TeamScriptVm,
+        team_type: InternedId,
+        entries: Vec<TeamTaskForceEntry>,
+    ) {
         let script = InternedId::from_index(2);
         let task_force = InternedId::from_index(3);
-        let team_type = InternedId::from_index(4);
-        let tank = InternedId::from_index(5);
-        let infantry = InternedId::from_index(6);
-        let tank_identity = TeamMemberTypeIdentity {
-            category: ObjectCategory::Vehicle,
-            id: tank,
-        };
-        let infantry_identity = TeamMemberTypeIdentity {
-            category: ObjectCategory::Infantry,
-            id: infantry,
-        };
-        let mut vm = TeamScriptVm::default();
         vm.register_script(TeamScriptDefinition {
             id: script,
             source: TeamAiDefinitionSource::FixedAimd,
@@ -1093,16 +1424,7 @@ mod tests {
             id: task_force,
             source: TeamAiDefinitionSource::FixedAimd,
             group: -1,
-            entries: vec![
-                TeamTaskForceEntry {
-                    member_type: infantry_identity,
-                    count: 2,
-                },
-                TeamTaskForceEntry {
-                    member_type: tank_identity,
-                    count: 1,
-                },
-            ],
+            entries,
         });
         vm.register_team_type(TeamTypeDefinition {
             id: team_type,
@@ -1116,38 +1438,55 @@ mod tests {
             base_zone_relation_enforced: true,
             transport_crossing_required: false,
         });
-        let team = vm.create_team_from_type(
-            owner,
+    }
+
+    #[test]
+    fn task_force_admission_uses_entry_then_candidate_order() {
+        let owner = InternedId::from_index(1);
+        let team_type = InternedId::from_index(4);
+        let tank_identity = TeamMemberTypeIdentity {
+            category: ObjectCategory::Vehicle,
+            id: InternedId::from_index(5),
+        };
+        let infantry_identity = TeamMemberTypeIdentity {
+            category: ObjectCategory::Infantry,
+            id: InternedId::from_index(6),
+        };
+        let mut vm = TeamScriptVm::default();
+        register_team_type(
+            &mut vm,
             team_type,
-            &[
-                TeamScriptMember {
-                    entity_id: 10,
+            vec![
+                TeamTaskForceEntry {
+                    member_type: infantry_identity,
+                    count: 2,
+                },
+                TeamTaskForceEntry {
                     member_type: tank_identity,
-                },
-                TeamScriptMember {
-                    entity_id: 20,
-                    member_type: infantry_identity,
-                },
-                TeamScriptMember {
-                    entity_id: 30,
-                    member_type: infantry_identity,
+                    count: 1,
                 },
             ],
-            None,
-            0,
         );
+        let candidates = [
+            (10, tank_identity),
+            (20, infantry_identity),
+            (30, infantry_identity),
+        ]
+        .map(|(entity_id, member_type)| TeamScriptMember {
+            entity_id,
+            member_type,
+        });
+        let team = vm.create_team_from_type(owner, team_type, &candidates, 0);
 
         let state = vm.team(team).expect("team");
-        assert_eq!(state.members(), &[20, 30, 10]);
-        assert!(state.member_type_counts().contains(&(infantry_identity, 2)));
-        assert!(state.member_type_counts().contains(&(tank_identity, 1)));
+        assert_eq!(state.members().collect::<Vec<_>>(), [20, 30, 10]);
+        assert_eq!(state.slot_counts[..2], [2, 1]);
+        assert!(state.full_strength);
     }
 
     #[test]
     fn gsi_04_05_task_force_admission_distinguishes_duplicate_native_families() {
         let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
-        let task_force = InternedId::from_index(3);
         let team_type = InternedId::from_index(4);
         let duplicate_id = InternedId::from_index(5);
         let infantry_identity = TeamMemberTypeIdentity {
@@ -1159,324 +1498,45 @@ mod tests {
             id: duplicate_id,
         };
         let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(2, 0)],
-        });
-        vm.register_task_force(TeamTaskForceDefinition {
-            id: task_force,
-            source: TeamAiDefinitionSource::FixedAimd,
-            group: -1,
-            entries: vec![TeamTaskForceEntry {
+        register_team_type(
+            &mut vm,
+            team_type,
+            vec![TeamTaskForceEntry {
                 member_type: infantry_identity,
                 count: 1,
             }],
-        });
-        vm.register_team_type(TeamTypeDefinition {
-            id: team_type,
-            script_id: script,
-            task_force_id: task_force,
-            priority: 0,
-            is_base_defense: false,
-            suicide: false,
-            aggressive: false,
-            combined_movement_zone: MovementZone::Fly,
-            base_zone_relation_enforced: true,
-            transport_crossing_required: false,
-        });
-
-        let team = vm.create_team_from_type(
-            owner,
-            team_type,
-            &[
-                TeamScriptMember {
-                    entity_id: 10,
-                    member_type: vehicle_identity,
-                },
-                TeamScriptMember {
-                    entity_id: 20,
-                    member_type: infantry_identity,
-                },
-            ],
-            None,
-            0,
         );
+        let candidates =
+            [(10, vehicle_identity), (20, infantry_identity)].map(|(entity_id, member_type)| {
+                TeamScriptMember {
+                    entity_id,
+                    member_type,
+                }
+            });
+        let team = vm.create_team_from_type(owner, team_type, &candidates, 0);
 
         assert_eq!(
-            vm.team(team).unwrap().members(),
-            &[20],
+            vm.team(team).unwrap().members().collect::<Vec<_>>(),
+            [20],
             "same-name Unit candidate must not satisfy an Infantry pointer requirement"
         );
     }
 
     #[test]
-    fn gsi_04_05_base_defense_suspension_uses_signed_priority_and_ordered_removal() {
-        fn install(
-            vm: &mut TeamScriptVm,
-            owner: InternedId,
-            ordinal: u32,
-            priority: i32,
-            is_base_defense: bool,
-            members: &[u64],
-        ) -> u64 {
-            let script = InternedId::from_index(100);
-            let member_type = InternedId::from_index(101);
-            let member_identity = TeamMemberTypeIdentity {
-                category: ObjectCategory::Infantry,
-                id: member_type,
-            };
-            let task_force = InternedId::from_index(110 + ordinal);
-            let team_type = InternedId::from_index(120 + ordinal);
-            if !vm.scripts.contains_key(&script) {
-                vm.register_script(TeamScriptDefinition {
-                    id: script,
-                    source: TeamAiDefinitionSource::FixedAimd,
-                    actions: vec![action(2, 0)],
-                });
-            }
-            vm.register_task_force(TeamTaskForceDefinition {
-                id: task_force,
-                source: TeamAiDefinitionSource::FixedAimd,
-                group: -1,
-                entries: vec![TeamTaskForceEntry {
-                    member_type: member_identity,
-                    count: members.len() as i32,
-                }],
-            });
-            vm.register_team_type(TeamTypeDefinition {
-                id: team_type,
-                script_id: script,
-                task_force_id: task_force,
-                priority,
-                is_base_defense,
-                suicide: false,
-                aggressive: false,
-                combined_movement_zone: MovementZone::Fly,
-                base_zone_relation_enforced: !is_base_defense,
-                transport_crossing_required: false,
-            });
-            let candidates = members
-                .iter()
-                .copied()
-                .map(|entity_id| TeamScriptMember {
-                    entity_id,
-                    member_type: member_identity,
-                })
-                .collect::<Vec<_>>();
-            vm.create_team_from_type(owner, team_type, &candidates, None, 0)
-        }
-
-        let owner = InternedId::from_index(1);
-        let other_owner = InternedId::from_index(2);
-        let mut vm = TeamScriptVm::default();
-        let low = install(&mut vm, owner, 0, 0, false, &[10, 20]);
-        let high_base_defense = install(&mut vm, owner, 1, 1, true, &[30]);
-        let other = install(&mut vm, other_owner, 2, -7, false, &[40]);
-        assert_eq!(vm.team_for_member(30), Some((high_base_defense, true)));
-
-        let before = state_hash(&vm);
-        let removed = vm.suspend_teams_for_base_defense(owner, 1, -9, 1800);
-        assert_eq!(removed, vec![10, 20]);
-        assert!(vm.team(low).unwrap().members().is_empty());
-        assert!(vm.team(low).unwrap().member_type_counts().is_empty());
-        assert_eq!(
-            vm.team(low).unwrap().response_suspension_state(),
-            (true, true, true, -9, 1800)
-        );
-        assert_eq!(vm.team(high_base_defense).unwrap().members(), &[30]);
-        assert_eq!(vm.team(other).unwrap().members(), &[40]);
-        assert_eq!(vm.team_for_member(10), None);
-        assert_ne!(before, state_hash(&vm));
-
-        let restored: TeamScriptVm =
-            serde_json::from_str(&serde_json::to_string(&vm).unwrap()).unwrap();
-        assert_eq!(
-            restored.team(low).unwrap().response_suspension_state(),
-            (true, true, true, -9, 1800)
-        );
-        assert_eq!(state_hash(&restored), state_hash(&vm));
-    }
-
-    #[test]
-    fn gsi_04_05_response_suspend_remaining_matches_native_signed_boundaries() {
-        assert_eq!(response_suspend_remaining(100, 3, 100), 3);
-        assert_eq!(response_suspend_remaining(100, 3, 102), 1);
-        assert_eq!(response_suspend_remaining(100, 3, 103), 0);
-        assert_eq!(response_suspend_remaining(100, 0, 100), 0);
-        assert_eq!(response_suspend_remaining(100, -7, 100), 0);
-        assert_eq!(response_suspend_remaining(-1, 9, i32::MAX), 9);
-        assert_eq!(response_suspend_remaining(-1, -7, i32::MIN), -7);
-        assert_eq!(response_suspend_remaining(i32::MAX - 1, 5, i32::MIN), 3);
-    }
-
-    #[test]
     fn gsi_04_05_team_constructor_uses_native_response_latch_defaults() {
         let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
+        let team_type = InternedId::from_index(4);
         let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(2, 0)],
-        });
+        register_team_type(&mut vm, team_type, Vec::new());
 
-        let team = vm.create_team(owner, script, vec![], None, -19);
+        let team = vm.construct_team(team_type, owner, true, -19).unwrap();
         let state = vm.team(team).unwrap();
-        assert!(!state.reached_required_strength_78);
+        assert!(!state.has_been_full);
+        assert!(state.under_strength && state.advance_pending && !state.formed);
+        assert_eq!(state.cursor, -1);
         assert_eq!(
             state.response_suspension_state(),
             (true, false, false, -19, 0)
-        );
-    }
-
-    #[test]
-    fn gsi_04_05_suspension_blocks_before_other_gates_and_resumes_on_equality() {
-        let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
-        let task_force = InternedId::from_index(3);
-        let team_type = InternedId::from_index(4);
-        let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(24, 0), action(2, 0)],
-        });
-        vm.register_task_force(TeamTaskForceDefinition {
-            id: task_force,
-            source: TeamAiDefinitionSource::FixedAimd,
-            group: -1,
-            entries: vec![],
-        });
-        vm.register_team_type(TeamTypeDefinition {
-            id: team_type,
-            script_id: script,
-            task_force_id: task_force,
-            priority: 0,
-            is_base_defense: false,
-            suicide: false,
-            aggressive: false,
-            combined_movement_zone: MovementZone::Fly,
-            base_zone_relation_enforced: true,
-            transport_crossing_required: false,
-        });
-        let team = vm.create_team_from_type(owner, team_type, &[], None, 0);
-        vm.suspend_teams_for_base_defense(owner, 1, 100, 3);
-
-        for frame in [100, 101, 102] {
-            vm.tick_effects(frame, |_| {
-                panic!("native timer must precede later Team gates")
-            });
-            let state = vm.team(team).unwrap();
-            assert!(!state.advance_pending());
-            assert_eq!(
-                state.response_suspension_state(),
-                (true, true, true, 100, 3)
-            );
-        }
-
-        let encoded = serde_json::to_string(&vm).unwrap();
-        let mut restored: TeamScriptVm = serde_json::from_str(&encoded).unwrap();
-        restored.tick_effects(103, |_| true);
-        let state = restored.team(team).unwrap();
-        assert!(
-            state.advance_pending(),
-            "expiry resumes in the equality pass"
-        );
-        assert_eq!(
-            state.response_suspension_state(),
-            (true, true, false, 100, 3),
-            "timer clears only +0x83"
-        );
-    }
-
-    #[test]
-    fn gsi_04_05_rearming_restarts_the_full_response_delay() {
-        let owner = InternedId::from_index(1);
-        let script = InternedId::from_index(2);
-        let task_force = InternedId::from_index(3);
-        let team_type = InternedId::from_index(4);
-        let member_type = InternedId::from_index(5);
-        let member_identity = TeamMemberTypeIdentity {
-            category: ObjectCategory::Infantry,
-            id: member_type,
-        };
-        let mut vm = TeamScriptVm::default();
-        vm.register_script(TeamScriptDefinition {
-            id: script,
-            source: TeamAiDefinitionSource::FixedAimd,
-            actions: vec![action(24, 0)],
-        });
-        vm.register_task_force(TeamTaskForceDefinition {
-            id: task_force,
-            source: TeamAiDefinitionSource::FixedAimd,
-            group: -1,
-            entries: vec![TeamTaskForceEntry {
-                member_type: member_identity,
-                count: 1,
-            }],
-        });
-        vm.register_team_type(TeamTypeDefinition {
-            id: team_type,
-            script_id: script,
-            task_force_id: task_force,
-            priority: 0,
-            is_base_defense: false,
-            suicide: false,
-            aggressive: false,
-            combined_movement_zone: MovementZone::Fly,
-            base_zone_relation_enforced: true,
-            transport_crossing_required: false,
-        });
-        let team = vm.create_team_from_type(
-            owner,
-            team_type,
-            &[TeamScriptMember {
-                entity_id: 10,
-                member_type: member_identity,
-            }],
-            None,
-            99,
-        );
-
-        vm.tick_effects(99, |_| true);
-        let admitted = vm.team(team).unwrap();
-        assert!(admitted.reached_required_strength_78);
-        assert_eq!(
-            admitted.response_suspension_state(),
-            (false, false, false, 99, 0)
-        );
-
-        assert_eq!(
-            vm.suspend_teams_for_base_defense(owner, 1, 100, 5),
-            vec![10]
-        );
-        vm.tick_effects(103, |_| panic!("first delay remains active"));
-        assert!(
-            vm.suspend_teams_for_base_defense(owner, 1, 103, 5)
-                .is_empty()
-        );
-        let mut without_reached = vm.clone();
-        without_reached
-            .teams
-            .get_mut(&team)
-            .unwrap()
-            .reached_required_strength_78 = false;
-        assert_ne!(
-            state_hash_at(&vm, 103),
-            state_hash_at(&without_reached, 103),
-            "native CRC feeds +0x78"
-        );
-
-        let encoded = serde_json::to_string(&vm).unwrap();
-        let mut restored: TeamScriptVm = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(state_hash_at(&vm, 103), state_hash_at(&restored, 103));
-        restored.tick_effects(107, |_| panic!("rearmed delay remains active"));
-        restored.tick_effects(108, |_| true);
-
-        assert!(
-            restored.team(team).is_none(),
-            "empty +0x78 Team is deleted by the mandatory +0x7D helper at expiry"
         );
     }
 
@@ -1490,33 +1550,56 @@ mod tests {
             source: TeamAiDefinitionSource::FixedAimd,
             actions: vec![action(2, 0)],
         });
-        let team = first.create_team(owner, script, vec![], None, 0);
+        let team = first.create_team(owner, script, vec![], 0);
         let mut second = first.clone();
-
-        {
-            let state = first.teams.get_mut(&team).unwrap();
-            state.response_latch_7d = true;
-            state.response_latch_7e = true;
-            state.response_latch_83 = true;
-            state.response_suspend_start_frame = 90;
-            state.response_suspend_duration_frames = 20;
-        }
-        {
-            let state = second.teams.get_mut(&team).unwrap();
-            state.response_latch_7d = true;
-            state.response_latch_7e = true;
-            state.response_latch_83 = true;
-            state.response_suspend_start_frame = 95;
-            state.response_suspend_duration_frames = 15;
+        for (vm, timer) in [
+            (&mut first, CdTimer::started(90, 20)),
+            (&mut second, CdTimer::started(95, 15)),
+        ] {
+            let state = vm.teams.get_mut(&team).unwrap();
+            state.altered = true;
+            state.just_altered = true;
+            state.suspended = true;
+            state.suspend_timer = timer;
         }
 
         assert_eq!(state_hash_at(&first, 100), state_hash_at(&second, 100));
-        second
-            .teams
-            .get_mut(&team)
-            .unwrap()
-            .response_suspend_duration_frames = 16;
+        second.teams.get_mut(&team).unwrap().suspend_timer = CdTimer::started(95, 16);
         assert_ne!(state_hash_at(&first, 100), state_hash_at(&second, 100));
+    }
+
+    #[test]
+    fn recruitment_state_folds_once_it_leaves_the_constructor_values() {
+        let owner = InternedId::from_index(1);
+        let team_type = InternedId::from_index(4);
+        let mut vm = TeamScriptVm::default();
+        register_team_type(&mut vm, team_type, Vec::new());
+        let team = vm.construct_team(team_type, owner, true, 0).unwrap();
+        let constructed = state_hash_at(&vm, 0);
+
+        vm.teams.get_mut(&team).unwrap().zone = Some(TeamTarget::Cell { x: 3, y: 4 });
+        assert_ne!(state_hash_at(&vm, 0), constructed);
+    }
+
+    #[test]
+    fn member_index_follows_the_member_lists_through_a_save() {
+        let owner = InternedId::from_index(1);
+        let script = InternedId::from_index(2);
+        let mut vm = TeamScriptVm::default();
+        let first = vm.create_team(owner, script, vec![7, 9], 0);
+        let second = vm.create_team(owner, script, vec![11], 0);
+        assert_eq!(vm.team_for_member(9), Some((first, false)));
+
+        vm.pointer_expired(7, true);
+        assert_eq!(vm.team_for_member(7), None);
+        assert_eq!(vm.team(first).unwrap().members().collect::<Vec<_>>(), [9]);
+        vm.pointer_expired(9, false);
+        assert_eq!(vm.team_for_member(9), Some((first, false)));
+
+        let restored: TeamScriptVm =
+            serde_json::from_str(&serde_json::to_string(&vm).unwrap()).unwrap();
+        assert_eq!(restored.team_for_member(9), Some((first, false)));
+        assert_eq!(restored.team_for_member(11), Some((second, false)));
     }
 
     #[test]
@@ -1536,13 +1619,10 @@ mod tests {
              [TaskForces]\n0=TF1\n[TF1]\n0=-2,E1\nGroup=3\n\
              [AITriggerTypes]\nAT=Trigger,TT1,British,2,4,E1,{comparison},40,10,40,1,0,1,0,TT2,1,0,1\n"
         ));
-        let map = IniFile::from_str(
-            "[TaskForces]\n0=TF1\n[TF1]\n0=-2,E1\nGroup=9\n",
-        );
+        let map = IniFile::from_str("[TaskForces]\n0=TF1\n[TF1]\n0=-2,E1\nGroup=9\n");
         let registry = TeamAiIniRegistry::from_sources(&fixed, &map, true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty());
         assert_eq!(vm.registry_counts(), (1, 1, 2, 1));
@@ -1574,20 +1654,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["AT"]
         );
-        assert!(vm.teams.is_empty(), "definition ingress must not create Teams");
+        assert!(
+            vm.teams.is_empty(),
+            "definition ingress must not create Teams"
+        );
 
         let tt1 = interner.get("TT1").unwrap();
         let metadata = vm.team_type_ini(tt1).expect("TeamType metadata");
         assert_eq!(metadata.max_teams, -1);
         assert!(metadata.autocreate);
         assert!(metadata.are_team_members_recruitable);
-        assert_eq!(vm.task_forces[&interner.get("TF1").unwrap()].entries[0].count, -2);
+        assert_eq!(
+            vm.task_forces[&interner.get("TF1").unwrap()].entries[0].count,
+            -2
+        );
         assert_eq!(
             vm.task_forces[&interner.get("TF1").unwrap()].group,
             9,
             "map TaskForce re-read must preserve its signed Group in the resolved registry"
         );
-        assert_eq!(vm.scripts[&interner.get("S1").unwrap()].actions[0].action_id, -1);
+        assert_eq!(
+            vm.scripts[&interner.get("S1").unwrap()].actions[0].action_id,
+            -1
+        );
         assert_eq!(
             vm.scripts[&interner.get("S1").unwrap()].source,
             TeamAiDefinitionSource::FixedAimd
@@ -1624,8 +1713,8 @@ mod tests {
                 NativeF64Bits::from_bits(40.0_f64.to_bits()),
             ]
         );
-        assert!(trigger.storage_flag_d0);
-        assert_eq!(trigger.storage_i32_ac, 1);
+        assert!(trigger.multiplayer);
+        assert_eq!(trigger.side, 1);
         assert!(!trigger.storage_flag_d1);
         assert_eq!(trigger.secondary_team_type, interner.get("TT2"));
         assert_eq!(trigger.difficulty_enabled, [true, false, true]);
@@ -1639,7 +1728,13 @@ mod tests {
             restored.ai_trigger(interner.get("AT").unwrap()),
             vm.ai_trigger(interner.get("AT").unwrap())
         );
-        assert_eq!(restored.task_force(interner.get("TF1").unwrap()).unwrap().group, 9);
+        assert_eq!(
+            restored
+                .task_force(interner.get("TF1").unwrap())
+                .unwrap()
+                .group,
+            9
+        );
         assert_eq!(
             restored.scripts[&interner.get("S1").unwrap()].source,
             TeamAiDefinitionSource::FixedAimd
@@ -1686,8 +1781,7 @@ mod tests {
         ));
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let trigger = vm.ai_trigger(interner.get("AT").unwrap()).unwrap();
@@ -1713,8 +1807,7 @@ mod tests {
 
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), false);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(
             vm.ai_trigger(interner.get("AT").unwrap())
@@ -1770,8 +1863,7 @@ mod tests {
         );
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert_eq!(
             diagnostics,
@@ -1849,17 +1941,14 @@ mod tests {
         );
         let duplicate = definition("DUPLICATE");
         assert_eq!(duplicate.combined_movement_zone, MovementZone::Infantry);
-        let duplicate_task_force = vm
-            .task_force(interner.get("DUP_TF").unwrap())
-            .unwrap();
+        let duplicate_task_force = vm.task_force(interner.get("DUP_TF").unwrap()).unwrap();
         assert_eq!(duplicate_task_force.entries.len(), 1);
         let duplicate_identity = TeamMemberTypeIdentity {
             category: ObjectCategory::Infantry,
             id: interner.get("DUP").unwrap(),
         };
         assert_eq!(
-            duplicate_task_force.entries[0].member_type,
-            duplicate_identity,
+            duplicate_task_force.entries[0].member_type, duplicate_identity,
             "the first searched native family is retained instead of an ambiguous name"
         );
 
@@ -1942,8 +2031,7 @@ mod tests {
         );
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let team_type = &vm.team_types[&interner.get("TT").unwrap()];
@@ -1982,9 +2070,8 @@ mod tests {
             "[InfantryTypes]\n0=E1\n[E1]\nStrength=100\n",
         ))
         .expect("minimal rules");
-        let fixed = IniFile::from_str(
-            "[TaskForces]\n0=PARTIAL_TF\n[PARTIAL_TF]\n0=1,E1\n1=2,GHOST\n",
-        );
+        let fixed =
+            IniFile::from_str("[TaskForces]\n0=PARTIAL_TF\n[PARTIAL_TF]\n0=1,E1\n1=2,GHOST\n");
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
         let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
@@ -2108,9 +2195,8 @@ mod tests {
             "[InfantryTypes]\n0=E1\n[E1]\nStrength=100\n",
         ))
         .expect("minimal rules");
-        let fixed = IniFile::from_str(
-            "[TeamTypes]\n0=ONLY\n[ONLY]\nScript=NONE\nTaskForce=<NONE>\n",
-        );
+        let fixed =
+            IniFile::from_str("[TeamTypes]\n0=ONLY\n[ONLY]\nScript=NONE\nTaskForce=<NONE>\n");
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
         let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
@@ -2158,8 +2244,7 @@ mod tests {
         let rules = RuleSet::from_ini(&rules_ini).expect("load retail rules");
         let registry = TeamAiIniRegistry::from_sources(&aimd, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(vm.registry_counts(), (132, 88, 163, 165));
@@ -2256,8 +2341,8 @@ mod tests {
                 NativeF64Bits::from_bits(70.0_f64.to_bits()),
             ]
         );
-        assert!(anti_nuke.storage_flag_d0);
-        assert_eq!(anti_nuke.storage_i32_ac, 1);
+        assert!(anti_nuke.multiplayer);
+        assert_eq!(anti_nuke.side, 1);
         assert!(!anti_nuke.storage_flag_d1);
         assert_eq!(anti_nuke.difficulty_enabled, [false, true, true]);
         assert!(vm.teams.is_empty());
@@ -2272,9 +2357,7 @@ mod tests {
             .collect::<String>();
         assert_eq!(threshold_rows.lines().count(), 165);
         assert_eq!(
-            crate::util::sha256::sha256_hex(
-                threshold_rows.as_bytes()
-            ),
+            crate::util::sha256::sha256_hex(threshold_rows.as_bytes()),
             "76096bc2d9592ff4c1054c23a38660e74c3860afbc2882db5c6dcc2074da8aad",
             "every game-mode-nonzero retail AITrigger threshold must match the native oracle"
         );
@@ -2282,12 +2365,12 @@ mod tests {
         let zero_mode_registry =
             TeamAiIniRegistry::from_sources(&aimd, &IniFile::from_str(""), false);
         let mut zero_mode_interner = StringInterner::new();
-        let (zero_mode_vm, zero_mode_diagnostics) = TeamScriptVm::from_ini_registry(
-            &zero_mode_registry,
-            &mut zero_mode_interner,
-            &rules,
+        let (zero_mode_vm, zero_mode_diagnostics) =
+            TeamScriptVm::from_ini_registry(&zero_mode_registry, &mut zero_mode_interner, &rules);
+        assert!(
+            zero_mode_diagnostics.is_empty(),
+            "{zero_mode_diagnostics:?}"
         );
-        assert!(zero_mode_diagnostics.is_empty(), "{zero_mode_diagnostics:?}");
         let zero_mode_rows = zero_mode_vm
             .ai_trigger_order()
             .iter()
@@ -2302,9 +2385,7 @@ mod tests {
             .collect::<String>();
         assert_eq!(zero_mode_rows.lines().count(), 165);
         assert_eq!(
-            crate::util::sha256::sha256_hex(
-                zero_mode_rows.as_bytes()
-            ),
+            crate::util::sha256::sha256_hex(zero_mode_rows.as_bytes()),
             "3253b17c65d2006bf542c38a811ec68ef2847e588dc1f21165e7070af5d5e1f7",
             "every game-mode-zero retail AITrigger threshold must match the native oracle"
         );

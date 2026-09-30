@@ -110,6 +110,18 @@ impl SimRng {
         rng
     }
 
+    /// A stand-in with no table, left in a `Simulation` while a caller holds
+    /// its scenario stream outside so it can lend the rest of the world
+    /// immutably (the Jumpjet cruise host). A draw from it panics.
+    pub(crate) const fn vacant() -> Self {
+        Self {
+            disabled: 0,
+            index_a: 0,
+            index_b: 0,
+            state: Vec::new(),
+        }
+    }
+
     /// Adopt the exact post-RMG `g_MapGenRng` cursor without replaying draws.
     ///
     /// The two implementations intentionally keep separate draw code, but the
@@ -178,6 +190,16 @@ impl SimRng {
             index_b: self.index_b,
             words,
         }
+    }
+
+    /// The first seeded stream whose next `RandomRanged(low, high)` answers
+    /// `value`: how oracle replays make the Rust draw the native answer.
+    #[cfg(test)]
+    pub(crate) fn answering(low: i32, high: i32, value: i32) -> Self {
+        (0..)
+            .map(Self::new)
+            .find(|rng| rng.clone().next_range_i32_inclusive(low, high) == value)
+            .expect("some seed answers every in-range value")
     }
 
     /// Test/debug accessor for the secondary lag index. Used by the two-stream

@@ -61,8 +61,10 @@
 //!   so the unit refuses an order retail accepts. Frequency: a unit on Retreat
 //!   or linked to the remaining team predicate — uncommon in ordinary
 //!   skirmish, but not zero. Team6EC300 can perform mode1 waypoint lookups
-//!   before endpoint membership, changing shared dummy state. Its Team+7F and
-//!   action3 authority/order remain open; the current bool is supplied externally.
+//!   before endpoint membership, changing shared dummy state. Its exits before
+//!   the waypoint read are `TeamScriptVm::member_step_reads_waypoint`; the read
+//!   itself is unported (no waypoint table in the simulation), and the current
+//!   bool is supplied externally.
 //! - **Without blocker counts there is no hierarchy search.** Every
 //!   production search supplies blocker counts (`movement_tick`,
 //!   `world_commands`, the miner system, the production queue), and every
@@ -196,8 +198,8 @@ fn native_path_zone_equality(
 ) -> Option<bool> {
     let terrain = terrain?;
     Some(
-        zones.get_path_zone_id_native(terrain, start, movement, start_bridge)?
-            == zones.get_path_zone_id_native(terrain, goal, movement, goal_bridge)?,
+        zones.get_zone_id_native(terrain, start, movement, start_bridge)?
+            == zones.get_zone_id_native(terrain, goal, movement, goal_bridge)?,
     )
 }
 

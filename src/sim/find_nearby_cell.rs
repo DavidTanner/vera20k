@@ -29,7 +29,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::occupancy::{OccupancyGrid, RawCellOccupationGrid};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneId};
+use crate::sim::pathfinding::zone_map::ZoneGrid;
 
 /// Hard radius cap for the ring search.
 ///
@@ -67,11 +67,6 @@ pub(crate) const fn map_owned_radius_cap(size_width: i32, size_height: i32) -> u
 /// (`bridgeRise == 0`) that reads "at most one level from the seed"; for a bridge
 /// candidate it does not — see [`candidate_height_ok`].
 const MAX_SEED_LEVEL_DELTA_EXCLUSIVE: i16 = 2;
-/// Levels a bridge deck sits above the ground cell that carries it. When the
-/// candidate carries a bridge the height gate subtracts this from the SEED level —
-/// not from the candidate's — so it does NOT normalize a deck to ground; the
-/// arithmetic and what it actually admits are spelled out in [`candidate_height_ok`].
-const BRIDGE_LEVEL_RISE: i16 = 4;
 
 /// Candidate-cell origin plus centre (`0x80`) plus native's `0x600`-lepton
 /// south-east projection reach.
@@ -90,7 +85,8 @@ const PROJECTION_LEVEL_LEPTONS: i32 = 0x80;
 #[derive(Debug, Clone, Copy)]
 pub struct PassabilityArgs {
     pub speed_type: SpeedType,
-    pub required_zone_id: Option<ZoneId>,
+    /// The mover's `GetZoneID` DWORD (`0x0056D230`).
+    pub required_zone_id: Option<u32>,
     pub movement_zone: MovementZone,
     pub bridge_aware_zone: bool,
 }
@@ -146,7 +142,7 @@ pub struct NearbyQuery<'a> {
     pub native_cells: Option<&'a crate::map::resolved_terrain::NativeCellQuery<'a>>,
     /// Live CellClass occupation, including retained heads not in Cell lists.
     /// None preserves the older caller's explicit list-only projection.
-    pub raw_occupation: Option<&'a RawCellOccupationGrid>,
+    pub(crate) raw_occupation: Option<&'a RawCellOccupationGrid>,
     /// Per-candidate passability config.
     pub passability: PassabilityArgs,
     /// Top-left rectangle dimensions forwarded to passability and, when enabled,
@@ -181,12 +177,14 @@ pub struct NearbyQuery<'a> {
     pub playfield_bounds: Option<crate::sim::cell_rect::PlayfieldBounds>,
 }
 
-/// A surviving FNPC candidate. `direct` records only the ordinary collection-time
-/// projection used for per-ring early-stop; bridge-aware collection deliberately
-/// leaves it false, and final partition always projects again rather than reading it.
+/// A surviving FNPC candidate. `direct` (kept for tests) records only the
+/// ordinary collection-time projection used for per-ring early-stop;
+/// bridge-aware collection deliberately leaves it false, and final partition
+/// always projects again rather than reading it.
 #[derive(Debug, Clone, Copy)]
 struct Candidate {
     cell: (i32, i32),
+    #[cfg(test)]
     direct: bool,
 }
 
@@ -342,7 +340,7 @@ where
             candidate_is_bridge_cell(q, seed.0, seed.1)
         }
     {
-        level = level.wrapping_add(BRIDGE_LEVEL_RISE);
+        level = level.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16);
     }
     let seed_level = q.check_height.then_some(level);
 
@@ -363,6 +361,7 @@ where
             direct_found |= q.passability.bridge_aware_zone || direct;
             out.push(Candidate {
                 cell: (cx, cy),
+                #[cfg(test)]
                 direct,
             });
             // The candidate cap is checked after every accept, mid-ring — the
@@ -460,7 +459,11 @@ pub(crate) fn project_world_coordinate_with_lookup<F>(x: i32, y: i32, lookup: F)
 where
     F: FnMut(i32, i32) -> CellClassProjectionView,
 {
-    project_candidate_with_lookup(native_lepton_to_cell(x), native_lepton_to_cell(y), lookup)
+    project_candidate_with_lookup(
+        i32::from(crate::util::lepton::lepton_to_cell_packed(x)),
+        i32::from(crate::util::lepton::lepton_to_cell_packed(y)),
+        lookup,
+    )
 }
 
 /// Instruction-faithful projection kernel after world-to-cell conversion.
@@ -489,20 +492,24 @@ where
         probe_world_x = probe_world_x.wrapping_sub(PROJECTION_STEP_LEPTONS);
         probe_world_y = probe_world_y.wrapping_sub(PROJECTION_STEP_LEPTONS);
         let probe = (
-            native_lepton_to_cell(probe_world_x),
-            native_lepton_to_cell(probe_world_y),
+            i32::from(crate::util::lepton::lepton_to_cell_packed(probe_world_x)),
+            i32::from(crate::util::lepton::lepton_to_cell_packed(probe_world_y)),
         );
         let probe_view = lookup(probe.0, probe.1);
         let mut level_delta = probe_view.signed_level.wrapping_sub(candidate_level);
         if candidate_is_forward_side
             && probe_view.raw_flags_0x1180 & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL != 0
         {
-            level_delta = level_delta.wrapping_add(i32::from(BRIDGE_LEVEL_RISE));
+            level_delta = level_delta.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS);
         }
 
         let projection_shift = level_delta.wrapping_mul(PROJECTION_LEVEL_LEPTONS);
-        let projected_x = native_lepton_to_cell(probe_world_x.wrapping_sub(projection_shift));
-        let projected_y = native_lepton_to_cell(probe_world_y.wrapping_sub(projection_shift));
+        let projected_x = i32::from(crate::util::lepton::lepton_to_cell_packed(
+            probe_world_x.wrapping_sub(projection_shift),
+        ));
+        let projected_y = i32::from(crate::util::lepton::lepton_to_cell_packed(
+            probe_world_y.wrapping_sub(projection_shift),
+        ));
 
         if projected_x <= cx && projected_y <= cy {
             return probe;
@@ -511,12 +518,6 @@ where
             return (cx, cy);
         }
     }
-}
-
-/// Native signed divide-by-256 conversion followed by packed-short truncation.
-fn native_lepton_to_cell(leptons: i32) -> i32 {
-    let adjusted = leptons.wrapping_add((leptons >> 31) & 0xff);
-    (adjusted >> 8) as i16 as i32
 }
 
 /// Run the per-candidate predicates in engine order: the independent height-aware
@@ -555,12 +556,14 @@ fn candidate_passes(
             native_cells: q.native_cells,
             rect,
             speed_type: q.passability.speed_type,
-            // FNPC's entry turns a zone argument of 0xFFFF into -1, which
-            // disables the comparison (`0x0056DC43..0x0056DC60`).
+            // FNPC's entry turns a zone argument of 0xFFFF into -1
+            // (`0x0056DC43..0x0056DC60`, a full DWORD compare); a missing
+            // bridge record's 0xFFFFFFFF already is -1. Either disables the
+            // comparison.
             required_zone_id: q
                 .passability
                 .required_zone_id
-                .filter(|&zone| zone != 0xFFFF),
+                .filter(|&zone| zone != 0xFFFF && zone != u32::MAX),
             movement_zone: q.passability.movement_zone,
             required_height_or_level: None, // the search always passes -1 (L21)
             bridge_aware_zone: q.passability.bridge_aware_zone,
@@ -606,7 +609,7 @@ fn candidate_passes(
 }
 
 /// The caller's height gate: `abs(seedLevel - bridgeRise - candidateLevel) < 2`,
-/// where `bridgeRise` is [`BRIDGE_LEVEL_RISE`] when the candidate carries a bridge
+/// where `bridgeRise` is [`crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16`] when the candidate carries a bridge
 /// and 0 otherwise.
 ///
 /// For an ordinary candidate that is "stay within one level of the seed". For a
@@ -626,7 +629,7 @@ fn candidate_passes(
 /// bridge-aware and that seed is structural; collection retains that value.
 fn candidate_height_ok(q: &NearbyQuery<'_>, seed_level: i16, cx: i32, cy: i32) -> bool {
     let bridge_rise = if candidate_is_bridge_cell(q, cx, cy) {
-        BRIDGE_LEVEL_RISE
+        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
     } else {
         0
     };
@@ -695,77 +698,95 @@ fn cell_to_u16(cell: (i32, i32)) -> Option<(u16, u16)> {
     }
 }
 
+impl crate::sim::world::Simulation {
+    /// TechnoClass NearbyLocation `0x00703590`: FNPC seeded at the cell of
+    /// `anchor`'s coordinate (its vt+0x48; the object's own when `anchor` is
+    /// NULL) with the object's SpeedType (Winged read as Track), its
+    /// MovementZone, `GetZoneID(seed, MovementZone, OnBridge)` and OnBridge.
+    pub(crate) fn techno_nearby_location(
+        &self,
+        id: u64,
+        anchor: Option<u64>,
+        rules: &crate::rules::ruleset::RuleSet,
+    ) -> Option<(i16, i16)> {
+        let entity = self.substrate.entities.get(id)?;
+        let object = self.object_type(entity.type_ref(), rules)?;
+        let speed_type = if object.speed_type == SpeedType::Winged {
+            SpeedType::Track
+        } else {
+            object.speed_type
+        };
+        let seed = match anchor {
+            None => (i32::from(entity.position.rx), i32::from(entity.position.ry)),
+            Some(anchor) => {
+                let [x, y] = crate::sim::movement::ground_pose::object_center_xy(
+                    self.substrate.entities.get(anchor)?,
+                );
+                // 0x007035E8: `(c + (c >> 31 & 0xFF)) >> 8`, toward zero.
+                (x / 256, y / 256)
+            }
+        };
+        let zone = self
+            .zone_grid
+            .as_ref()
+            .zip(self.resolved_terrain.as_ref())
+            .and_then(|(zones, terrain)| {
+                zones.get_zone_id_native(
+                    terrain,
+                    (seed.0 as u16, seed.1 as u16),
+                    object.movement_zone,
+                    entity.on_bridge,
+                )
+            });
+        let (width, height) = self
+            .playfield_bounds
+            .zip(self.playfield_size_height)
+            .map(|(b, h)| (b.base, h))?;
+        let grid = self.path_grid_snapshot();
+        let cell = find_nearby_passable_cell(
+            seed,
+            &NearbyQuery {
+                native_cells: None,
+                raw_occupation: Some(&self.substrate.raw_cell_occupation),
+                passability: PassabilityArgs {
+                    speed_type,
+                    required_zone_id: zone,
+                    movement_zone: object.movement_zone,
+                    bridge_aware_zone: entity.on_bridge,
+                },
+                footprint: NearbyFootprint::SINGLE,
+                anchor_gate: NearbyAnchorGate::NativeHeightAware,
+                allow_bridge_cells: true,
+                check_height: false,
+                check_occupancy: false,
+                radius_cap: map_owned_radius_cap(width, height),
+                target_cell: None,
+                path_grid: grid.as_deref(),
+                resolved_terrain: self.resolved_terrain.as_ref(),
+                overlay_grid: self.overlay_grid.as_ref(),
+                occupancy: Some(&self.substrate.occupancy),
+                entities: Some(&self.substrate.entities),
+                zone_grid: self.zone_grid.as_ref(),
+                playfield_bounds: self.playfield_bounds,
+            },
+            self.session.binary_frame,
+        )?;
+        Some((cell.0 as i16, cell.1 as i16))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::bridge_facts::{
-        BRIDGE_FLAG_FORWARD_SIDE, BRIDGE_FLAG_STRUCTURAL, BridgeCellFacts,
-    };
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
-
-    fn terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
+    use crate::map::bridge_facts::{BRIDGE_FLAG_FORWARD_SIDE, BRIDGE_FLAG_STRUCTURAL};
+    use crate::map::resolved_terrain::{ResolvedTerrainGrid, zone_class};
 
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| terrain_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_clear_cell,
+        )
     }
 
     /// A grid whose every cell sits at the same raised terrain level — a plateau. The

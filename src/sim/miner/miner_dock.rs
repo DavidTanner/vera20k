@@ -62,6 +62,7 @@ pub(crate) fn hello(
 }
 
 /// Whether the refinery's Contacts[] list holds the miner.
+#[cfg(test)]
 pub(crate) fn has_contact(sim: &Simulation, refinery_sid: u64, miner_sid: u64) -> bool {
     sim.substrate
         .entities

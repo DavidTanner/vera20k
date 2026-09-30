@@ -5,7 +5,7 @@
 //!
 //! Dependency rules: depends on rules/, map/, sim/. Never render/ui/audio/net.
 
-use crate::sim::combat::inviso_scatter::{coord_to_cell_truncating, random_direction_coord};
+use crate::sim::combat::inviso_scatter::{RandomDirectionSnap, random_direction_coord};
 use crate::sim::rng::SimRng;
 use crate::sim::smudge_grid::SimCoord;
 
@@ -340,9 +340,15 @@ pub(crate) fn try_dispatch_building_survivor_smudges(
         let roll: u32 = rng.next_range_u32(100);
         let base_x = (cell_rx as i32) * 256 + 128;
         let base_y = (cell_ry as i32) * 256 + 128;
-        let (off_x, off_y) = random_direction_coord(rng, base_x, base_y, SURVIVOR_OFFSET_MAGNITUDE);
-        let snap_rx = coord_to_cell_truncating(off_x) as u16;
-        let snap_ry = coord_to_cell_truncating(off_y) as u16;
+        let (off_x, off_y) = random_direction_coord(
+            rng,
+            base_x,
+            base_y,
+            SURVIVOR_OFFSET_MAGNITUDE,
+            RandomDirectionSnap::Preserve,
+        );
+        let snap_rx = crate::util::lepton::lepton_to_cell(off_x) as u16;
+        let snap_ry = crate::util::lepton::lepton_to_cell(off_y) as u16;
         let coord = SimCoord {
             x: (snap_rx as i32) * 256 + 128,
             y: (snap_ry as i32) * 256 + 128,
@@ -682,74 +688,16 @@ mod dispatch_tests {
     }
 
     fn flat_terrain(w: u16, h: u16) -> ResolvedTerrainGrid {
-        let mut cells: Vec<ResolvedTerrainCell> = Vec::with_capacity((w * h) as usize);
-        for ry in 0..h {
-            for rx in 0..w {
-                cells.push(test_default_cell(rx, ry));
-            }
-        }
-        ResolvedTerrainGrid::from_cells(w, h, cells)
+        crate::map::resolved_terrain::test_grid(w, h, test_default_cell)
     }
 
     fn test_default_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        // Reuse Task 7's defaults via copy-paste; intentionally not extracted to
-        // a shared helper to keep tasks self-contained.
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: true,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: Default::default(),
             speed_costs: crate::rules::terrain_rules::SpeedCostProfile {
                 track: Some(100),
                 ..Default::default()
             },
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            accepts_smudge: true,
-            allows_tiberium: false,
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_unclassified_cell(rx, ry)
         }
     }
 
@@ -1117,6 +1065,7 @@ mod dispatch_tests {
                 4 * 256 + 128,
                 4 * 256 + 128,
                 SURVIVOR_OFFSET_MAGNITUDE,
+                RandomDirectionSnap::Preserve,
             );
             {
                 let mut tiberium = tiberium_ctx(

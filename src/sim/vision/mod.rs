@@ -224,20 +224,31 @@ fn iso_height_shift_cells(height_leptons: i32) -> i32 {
 
 /// Height above the map plane, in leptons, for one entity.
 ///
+/// Residual: this is not `ground_pose::object_world_z_leptons`. It ignores an
+/// exact coordinate and reads the stored level. Native See reads the object's
+/// coordinate Z, but VERA's sight records compare their origin every tick, so
+/// the exact Z (a Hover bob, a ramp step) would release and re-reveal the
+/// whole sight area each time and drift the hashed shroud counters. Native
+/// reveal cadence is unverified.
+///
 /// The engine keeps a single 3-D world coordinate per object and feeds its Z to
 /// both the reveal-centre shift and the line-of-sight viewer level, so terrain
-/// elevation and flight altitude are one quantity here too. The precedence
-/// between the three things that can hold an object up mirrors
-/// `render::locomotor_visual` exactly, so the shroud and the sprite cannot
-/// disagree about where the object is.
+/// elevation and flight altitude are one quantity here too. A falling object
+/// reads its Location Z, which the fall moves every frame anyway. Otherwise
+/// the precedence between the two things that can hold an object up mirrors
+/// `render::locomotor_visual`, so the shroud and the sprite cannot disagree
+/// about where the object is.
 fn entity_height_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::movement::locomotor::MovementLayer;
 
+    if entity.is_falling_down()
+        && let Some(z) = entity.position.exact_z_leptons
+    {
+        return z;
+    }
     let terrain: i32 = i32::from(entity.position.z) * LEPTONS_PER_HEIGHT_LEVEL;
-    let above_ground: i32 = if let Some(state) = entity.parachute_state.as_ref() {
-        state.altitude.to_num::<i32>()
-    } else if let Some(state) = entity.rocket_state.as_ref() {
+    let above_ground: i32 = if let Some(state) = entity.rocket_state.as_ref() {
         state.altitude.to_num::<i32>()
     } else {
         match entity.locomotor.as_ref() {
@@ -890,7 +901,7 @@ impl FogState {
         self.cloaked_by_houses.get_mut(index)
     }
 
-    /// Native `TechnoClass::AddSensorsAt @ 0x004DE7B0`: outer-Y/inner-X strict
+    /// Native `FootClass::AddSensorsAt @ 0x004DE7B0`: outer-Y/inner-X strict
     /// circle and signed-word increment. Returned cells are the exact ordered
     /// boundary where native forces resident objects through virtual `+0x420`.
     /// RESIDUAL (GSI-12.06) — the deposit walk is right; everything around it is
@@ -928,7 +939,7 @@ impl FogState {
         touched
     }
 
-    /// Paired `TechnoClass::RemoveSensorsAt` @ `0x004DE940` decrement walk.
+    /// Paired `FootClass::RemoveSensorsAt` @ `0x004DE940` decrement walk.
     #[cfg(test)]
     pub fn sensors_remove_at(
         &mut self,

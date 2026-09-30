@@ -43,7 +43,7 @@ fn mission_only_aircraft_reveal_matches_original_flag_histories() {
             !entity.is_mission_only(),
             "construction is not successful Unlimbo"
         );
-        entity.veterancy = input["veterancy"].as_u64().unwrap() as u16 * 100;
+        entity.set_veterancy_rank(input["veterancy"].as_u64().unwrap() as u16 * 100);
         if flag("previous") {
             entity.mark_mission_only();
         }
@@ -113,15 +113,10 @@ fn mission_only_has_its_own_hash_fold() {
         .construct_object_limbo_at_height("PLANE", "Americans", 10, 10, 0, 0, &rules)
         .unwrap();
     let before = sim.state_hash();
-    let old = sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(189));
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .mark_mission_only();
     assert_ne!(sim.state_hash(), before);
-    assert_eq!(
-        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(189)),
-        old
-    );
 }

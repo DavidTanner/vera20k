@@ -56,7 +56,6 @@ use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::block_index::HeldBlockSets;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::direction::DIRECTION_DELTAS;
 use crate::util::fixed_math::SimFixed;
@@ -74,6 +73,16 @@ fn track_unit(entity: &GameEntity) -> bool {
                 LocomotorKind::Drive | LocomotorKind::Ship
             )
         })
+}
+
+/// A Unit on a Hover locomotor. Its Move_To is the pass lane's command-time
+/// route (#689), the ground move a Move order takes for it.
+fn hover_unit(entity: &GameEntity) -> bool {
+    entity.category == EntityCategory::Unit
+        && entity
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| loco.active_kind() == LocomotorKind::Hover)
 }
 
 /// A Unit on a Jumpjet locomotor: its null destination reaches the Jumpjet's
@@ -129,10 +138,7 @@ pub(super) fn clear_track_head(entity: &mut GameEntity) {
 
 /// `((Current >> 12) + 1) >> 1 & 7` over the body FacingClass (0x4B2A88..94).
 fn facing_octant(entity: &GameEntity, frame: u32) -> u8 {
-    let facing = entity
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(entity.facing) << 8, |f| f.current(frame));
+    let facing = entity.body_facing_current(frame);
     ((((facing >> 12) + 1) >> 1) & 7) as u8
 }
 
@@ -143,7 +149,6 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<FootPathOutcome, String> {
         let rules = rules.ok_or("Drive/Ship path request requires rules")?;
@@ -157,7 +162,7 @@ impl Simulation {
             .navigation
             .path_runtime
             .start_movement(frame, rules.general.path_delay_ticks());
-        let found = self.foot_find_path(request, held, rules, fallback, registry)?;
+        let found = self.foot_find_path(request, held, rules, registry)?;
         self.continue_track_path_request(id, found, rules, registry)
     }
 
@@ -358,17 +363,17 @@ impl Simulation {
                 )
             });
             if !can_fire {
-                //4B2E9F sets the +688 scan latch (not represented; see
-                //combat::greatest_threat's residual). The Team retarget
-                //0x6EC3A0 has no production reach (no TeamClass instance).
-                if self.team_script_vm.team_for_member(id).is_some() {
-                    return Err(
-                        "Drive/Ship tail Team retarget (0x6EC3A0) is not represented".into(),
-                    );
+                //4B2E9F /6A24F2: set +688 before Scan_Limit, which invokes
+                //each member's class target setter and sets its latch too.
+                self.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .mark_stopped_cannot_fire();
+                if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
+                    self.team_scan_limit(team_id, rules, registry);
                 }
-                if let Some(actor) = self.substrate.entities.get_mut(id) {
-                    crate::sim::mission::concrete_effects::represented_assign_target(actor, None);
-                }
+                let _ = self.assign_target_represented(id, None, Some(rules));
             }
         }
         let actor = self
@@ -463,7 +468,7 @@ impl Simulation {
                 );
                 Ok(false)
             }
-            6 => self.answer_track_ally_cell(id, cell, rules),
+            6 => self.answer_track_ally_cell(id, cell, rules, registry),
             _ => Ok(false),
         }
     }
@@ -475,7 +480,6 @@ impl Simulation {
         &self,
         cell: (u16, u16),
         layer: MovementLayer,
-        rules: &RuleSet,
     ) -> Option<u64> {
         crate::sim::cell_kernel::nearest_eligible_in_order(
             crate::sim::cell_kernel::CellQueryPoint { x: 0, y: 0 },
@@ -486,17 +490,11 @@ impl Simulation {
                 .flat_map(|list| list.iter_layer(layer))
                 .filter_map(|entry| self.substrate.entities.get(entry.entity_id))
                 .map(|entity| {
-                    let coord = self.object_type(entity.type_ref(), rules).map_or_else(
-                        || ground_pose::position_world_coord(&entity.position),
-                        |kind| ground_pose::object_center_coord(entity, kind),
-                    );
+                    let [x, y] = ground_pose::object_center_xy(entity);
                     (
                         entity.stable_id(),
                         true,
-                        crate::sim::cell_kernel::CellQueryPoint {
-                            x: coord.x,
-                            y: coord.y,
-                        },
+                        crate::sim::cell_kernel::CellQueryPoint { x, y },
                     )
                 }),
         )
@@ -512,6 +510,7 @@ impl Simulation {
         id: u64,
         cell: (i32, i32),
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let terrain = self
             .resolved_terrain
@@ -539,7 +538,7 @@ impl Simulation {
             MovementLayer::Ground
         };
         let key = (cell.0 as u16, cell.1 as u16);
-        let Some(blocker) = self.nearest_cell_object(key, layer, rules) else {
+        let Some(blocker) = self.nearest_cell_object(key, layer) else {
             return Ok(false);
         };
         let allied = self.substrate.entities.get(blocker).is_some_and(|b| {
@@ -567,7 +566,7 @@ impl Simulation {
             return Ok(true);
         }
         //4B2D68..4B2DC0: the forced scatter of the refused cell.
-        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, None);
+        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, registry)?;
         Ok(false)
     }
 
@@ -640,39 +639,52 @@ impl Simulation {
         }
     }
 
-    /// A Drive/Ship order that Rust deferred (the `pending_arrival_clear`
-    /// flag), finished before the locomotor Process or, after a track end,
-    /// before the same-call continuation's gates (`track_continuation`),
-    /// where natively its setter already ran:
+    /// The one completion of a class-setter call Rust deferred (the
+    /// `pending_arrival_clear` flag), before the locomotor Process or, after a
+    /// track end, before the same-call continuation's gates
+    /// (`track_continuation`), where natively the setter already ran. Its
+    /// producers:
     /// - Enter_Idle_Mode took a NavQueue waypoint at an arrival (its true
-    ///   return ended that Process, 0x4B2273): +34 and a NavCom naming the
-    ///   same cell remain and only the scheduling adapter is missing; the
+    ///   return ended that Process, 0x4B2273);
+    /// - a mission restore represents `Assign_Destination(saved, 1)`
+    ///   (`FootClass::Restore_Mission`, call at 0x004D8F99) by NavCom alone
+    ///   (`mission::authority`).
+    ///
+    /// The destination is NavCom's live coordinate (an object's too), else the
+    /// first queued waypoint through the Foot setter, else the NULL clear. By
+    /// active locomotor:
+    /// - Drive and Ship: +34 may still hold an older order (a pursuit cell).
+    ///   A +34 naming NavCom's cell only lacks its scheduling adapter; the
     ///   no-queue arm (Drive 0x4B281C / Ship 0x6A1E75) requests the route,
-    ///   gated by Foot+640;
-    /// - a mission restore represents `Assign_Destination(saved, 1)` (Unit
-    ///   0x741970) by NavCom alone (`mission::authority`), while +34 may still
-    ///   hold an older order (a pursuit cell). Native NavCom and +34 never
-    ///   disagree after that setter, so a missing or disagreeing +34 completes
-    ///   the class setter toward NavCom's live coordinate. Before Process the
-    ///   Foot is then moving, as native, and the Guard/Unload tail
-    ///   (0x4B08D1) cannot strand it;
-    /// - with neither, the queued waypoint is taken through the Foot setter,
-    ///   else the NULL clear.
-    pub(crate) fn complete_pending_track_order(&mut self, id: u64, rules: Option<&RuleSet>) {
+    ///   gated by Foot+640. Native NavCom and +34 never disagree after the
+    ///   setter, so a missing or disagreeing +34 completes the class setter
+    ///   toward NavCom. Before Process the Foot is then moving, as native, and
+    ///   the Guard/Unload tail (0x4B08D1) cannot strand it.
+    /// - Teleport, Fly and Jumpjet: the class setter itself with the
+    ///   destination's cell (Teleport: `Simulation::teleport_destination`; the
+    ///   air setter `issue_air_cell_destination`). NavCom is cleared first, as
+    ///   the native setter finds it (the restore's NavCom is the override's
+    ///   order, not the saved one), so the Unit setter's unchanged-NavCom
+    ///   return cannot swallow the call.
+    ///
+    /// Walk and Hover keep the ground corridor's rebuild (#689).
+    pub(crate) fn complete_pending_order(&mut self, id: u64, rules: Option<&RuleSet>) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
-        let Some(kind) = actor
-            .locomotor
-            .as_ref()
-            .map(|loco| loco.active_kind())
-            .filter(|kind| matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship))
-        else {
+        let Some(kind) = actor.locomotor.as_ref().map(|loco| loco.active_kind()) else {
             return;
         };
+        let track = matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship);
+        let class = matches!(
+            kind,
+            LocomotorKind::Teleport | LocomotorKind::Fly | LocomotorKind::Jumpjet
+        );
         if !actor.navigation.pending_arrival_clear
-            || actor.movement_target.is_some()
-            || super::track_head::active_track_family(actor).is_some()
+            || !(track || (class && rules.is_some()))
+            || (track
+                && (actor.movement_target.is_some()
+                    || super::track_head::active_track_family(actor).is_some()))
         {
             return;
         }
@@ -698,13 +710,18 @@ impl Simulation {
         let cell = |coord: DriveCoord| ((coord.x / 256) as u16, (coord.y / 256) as u16);
         let retained = match kind {
             LocomotorKind::Drive => actor.drive_locomotion.as_ref().and_then(|d| d.destination),
-            _ => actor.ship_locomotion.as_ref().and_then(|s| s.destination),
+            LocomotorKind::Ship => actor.ship_locomotion.as_ref().and_then(|s| s.destination),
+            _ => None,
         };
         let agrees =
             |destination: DriveCoord| nav.is_none_or(|(_, coord)| cell(coord) == cell(destination));
         if let Some(destination) = retained.filter(|&destination| agrees(destination)) {
             super::movement_commands::schedule_track_process(actor, cell(destination), speed);
         } else if let Some((target, coord)) = nav {
+            if class {
+                self.finish_class_destination(id, kind, cell(coord), speed, rules);
+                return;
+            }
             let object = (!matches!(target, NavTargetRef::Cell { .. })).then_some((target, coord));
             super::movement_commands::prepare_track_destination(
                 actor,
@@ -718,6 +735,10 @@ impl Simulation {
             actor.navigation.nav_queue.first().copied()
         {
             actor.navigation.nav_queue.remove(0);
+            if class {
+                self.finish_class_destination(id, kind, (rx, ry), speed, rules);
+                return;
+            }
             super::navcom::set_destination_internal_cell(actor, (rx, ry), terrain);
             timing.accept(actor);
             super::movement_commands::schedule_track_process(actor, (rx, ry), speed);
@@ -729,6 +750,26 @@ impl Simulation {
             target.accel_factor = info.accel_factor;
             target.decel_factor = info.decel_factor;
             target.slowdown_distance = info.slowdown_distance;
+        }
+    }
+
+    /// [`Self::complete_pending_order`]'s class setter for a Teleport, Fly or
+    /// Jumpjet owner, called with NavCom cleared.
+    fn finish_class_destination(
+        &mut self,
+        id: u64,
+        kind: LocomotorKind,
+        cell: (u16, u16),
+        speed: SimFixed,
+        rules: Option<&RuleSet>,
+    ) {
+        if let Some(actor) = self.substrate.entities.get_mut(id) {
+            super::navcom::foot_stop_moving(actor);
+        }
+        if kind == LocomotorKind::Teleport {
+            self.teleport_destination(id, cell, rules);
+        } else {
+            self.issue_air_cell_destination(id, cell, speed, rules);
         }
     }
 
@@ -752,10 +793,28 @@ impl Simulation {
     /// release (0x62A78A, 0x62A3ED, 0x62AAB9) and the Temporal freeze. A
     /// Drive/Ship Unit takes Unit 0x741970(NULL, 1), whose locomotor Stop
     /// nulls +34, so a track end cannot resume the old order, and a Jumpjet
-    /// Unit takes it too, whose locomotor Stop re-targets the cell under it;
-    /// any other receiver keeps the represented NavCom write set.
+    /// Unit takes it too, whose locomotor Stop re-targets the cell under it.
+    /// Ordinary Walk Infantry uses51AA40, preserving human deploy refusal;
+    /// Walk Units use741970. Other receivers keep the represented NavCom writes.
     pub(crate) fn assign_null_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
-        if self.unit_setter_receiver(id, rules)
+        let walk_category = self.substrate.entities.get(id).and_then(|actor| {
+            actor
+                .locomotor
+                .as_ref()
+                .is_some_and(|loco| loco.kind == LocomotorKind::Walk)
+                .then_some(actor.category)
+        });
+        if walk_category == Some(EntityCategory::Infantry) {
+            //51AA40 may refuse a human deploy action before any NavCom,
+            //path or timer write. Keep the adapter too on that refusal;
+            //accepted WalkStop75ADA0 retains any committed physical head.
+            if self.set_walk_null_destination(id, rules)
+                && let Some(actor) = self.substrate.entities.get_mut(id)
+            {
+                super::retain_committed_movement(actor);
+            }
+        } else if walk_category == Some(EntityCategory::Unit)
+            || self.unit_setter_receiver(id, rules)
             || self.substrate.entities.get(id).is_some_and(jumpjet_unit)
         {
             self.set_unit_null_destination(id, rules);
@@ -766,9 +825,11 @@ impl Simulation {
         }
     }
 
-    /// Whether the Unit setter (`0x741970`) is represented for `id`: a
-    /// Drive/Ship receiver, or a `Teleporter=` Unit whatever its active
-    /// locomotor.
+    /// Whether the Unit setter (`0x741970`) is represented for `id` as the
+    /// team and harvest callers use it: a Drive/Ship receiver, or a
+    /// `Teleporter=` Unit whatever its active locomotor. Its cell arm
+    /// ([`Self::set_unit_destination`]) also reaches Hover and Jumpjet
+    /// Move_To.
     pub(crate) fn unit_setter_receiver(&self, id: u64, rules: Option<&RuleSet>) -> bool {
         self.substrate
             .entities
@@ -776,9 +837,10 @@ impl Simulation {
             .is_some_and(|actor| track_unit(actor) || teleporter_unit(self, actor, rules))
     }
 
-    /// Unit 0x741970(cell, clear_queue) from a class caller: radio MOVE_HERE (Foot
-    /// 0x004D91EB), Mission_Harvest's staging destination (0x0073EDB5) and
-    /// Mission_Enter's Teleporter re-assign (0x004D941D).
+    /// Unit 0x741970(target, clear_queue) from a class caller: the radio MOVE_HERE (Foot
+    /// 0x004D91EB), Mission_Harvest's staging destination (0x0073EDB5),
+    /// Mission_Enter's Teleporter re-assign (0x004D941D) and the Scatter
+    /// receiver's null arm (0x00744070).
     /// These callers pass true; Foot Approach's queued-cell arm passes false.
     /// - 0x741A80..0x741A9C: an unchanged NavCom returns before any write
     ///   unless the Techno+0x1F8 override is up; the call then clears it. So
@@ -786,18 +848,23 @@ impl Simulation {
     ///   (tools/spatial_oracle/track_destination.json `same_nav` rows).
     /// - A `Teleporter=` type runs its arm ([`Self::unit_teleporter_arm`]).
     /// - The Foot tail (0x4D94B0) writes NavCom and calls the active
-    ///   locomotor's Move_To — Drive/Ship ([`prepare_track_destination`]) or
-    ///   Teleport ([`teleport_move_to`]) — unless Foot+0x6AC skips it once.
+    ///   locomotor's Move_To — Drive/Ship ([`prepare_track_destination`]),
+    ///   Teleport ([`teleport_move_to`]), Jumpjet
+    ///   ([`Self::issue_air_cell_destination`], which writes the NavCom and
+    ///   the timers itself) or Hover — unless Foot+0x6AC skips it once.
+    ///   Hover's Move_To is the pass lane's route: the ground move a Move
+    ///   order takes, which publishes no NavCom (#689).
     ///
     /// Returns false for a receiver without a represented Move_To or a
-    /// refused destination.
+    /// refused destination. Hover and Jumpjet still use their existing Cell
+    /// adapters; their non-cell Move_To remains required bridge work.
     ///
     /// [`prepare_track_destination`]: super::movement_commands::prepare_track_destination
     /// [`teleport_move_to`]: super::teleport_movement::teleport_move_to
-    pub(crate) fn set_unit_cell_destination(
+    pub(crate) fn set_unit_destination(
         &mut self,
         id: u64,
-        cell: (u16, u16),
+        requested: NavTargetRef,
         rules: &RuleSet,
         clear_queue: bool,
     ) -> bool {
@@ -805,10 +872,14 @@ impl Simulation {
             return false;
         };
         let teleporter = teleporter_unit(self, actor, Some(rules));
-        if !(track_unit(actor) || teleporter) || !super::can_accept_destination(actor) {
+        let hover = hover_unit(actor);
+        let jumpjet = jumpjet_unit(actor);
+        if !(track_unit(actor) || teleporter || hover || jumpjet)
+            || !super::can_accept_destination(actor)
+        {
             return false;
         }
-        if actor.navigation.nav_com == Some(NavTargetRef::cell(cell.0, cell.1))
+        if super::navcom::nav_targets_same_receiver(actor.navigation.nav_com, requested)
             && !actor.setter_force_reassign
         {
             return true;
@@ -830,25 +901,68 @@ impl Simulation {
                 actor.navigation.nav_queue.clear();
             }
         }
-        let skip_move_to = teleporter && self.unit_teleporter_arm(id, Some(cell), rules);
+        // 7424B1..7424F0 casts the requested receiver to CellClass. A Foot
+        // or Building target is not a Cell even when it stands on a dock.
+        let requested_cell = match requested {
+            NavTargetRef::Cell { rx, ry } => Some((rx, ry)),
+            _ => None,
+        };
+        let skip_move_to = teleporter && self.unit_teleporter_arm(id, requested_cell, rules);
         if !self.begin_foot_destination(id, true) {
             return false;
         }
         let frame = self.session.binary_frame;
         let timing = super::DestinationTiming::from_rules(frame, Some(rules));
+        let coord = (!skip_move_to).then(|| {
+            super::navcom::nav_target_coordinate(
+                requested,
+                Some(id),
+                &self.substrate.entities,
+                self.resolved_terrain.as_ref(),
+                Some((rules, &self.interner)),
+            )
+            .unwrap_or_else(|cause| panic!("Unit destination for {id}: {cause}"))
+        });
+        let adapter_route = if skip_move_to {
+            None
+        } else if let Some(cell) = requested_cell.filter(|_| hover) {
+            let order = crate::sim::world::GroundMove {
+                entity_id: id,
+                target: cell,
+                speed: info.speed,
+                queue: false,
+                speed_type: Some(info.speed_type),
+                owner_blocks: true,
+                object_destination: None,
+            };
+            Some(self.issue_ground_move(order, Some(rules)))
+        } else if let Some(cell) = requested_cell.filter(|_| jumpjet) {
+            Some(self.issue_air_cell_destination(id, cell, info.speed, Some(rules)))
+        } else {
+            None
+        };
         let terrain = self.resolved_terrain.as_ref();
         let actor = self
             .substrate
             .entities
             .get_mut(id)
             .expect("same setter actor");
-        let accepted = if skip_move_to {
-            super::navcom::publish_nav_com(actor, NavTargetRef::cell(cell.0, cell.1));
+        let accepted = if let Some(accepted) = adapter_route {
+            if let Some(target) = actor.movement_target.as_mut().filter(|_| accepted) {
+                target.accel_factor = info.accel_factor;
+                target.decel_factor = info.decel_factor;
+                target.slowdown_distance = info.slowdown_distance;
+            }
+            accepted
+        } else if skip_move_to {
+            super::navcom::publish_nav_com(actor, requested);
             true
         } else {
             match actor.locomotor.as_ref().map(|loco| loco.active_kind()) {
                 Some(LocomotorKind::Drive | LocomotorKind::Ship) => {
-                    super::navcom::set_destination_internal_cell(actor, cell, terrain);
+                    let coord = coord.expect("accepted Move_To captures target +4C");
+                    let cell = ((coord.x / 256) as u16, (coord.y / 256) as u16);
+                    super::navcom::set_destination_internal_coord(actor, requested, coord, terrain);
                     super::movement_commands::prepare_destination_execution(
                         actor, cell, info.speed,
                     );
@@ -860,10 +974,10 @@ impl Simulation {
                     true
                 }
                 Some(LocomotorKind::Teleport) => {
-                    super::navcom::publish_nav_com(actor, NavTargetRef::cell(cell.0, cell.1));
+                    super::navcom::publish_nav_com(actor, requested);
                     super::teleport_movement::teleport_move_to(
                         actor,
-                        cell,
+                        requested_cell.expect("only a Cell target keeps the Teleport primary"),
                         &rules.general,
                         info.is_harvester,
                         frame,
@@ -879,7 +993,8 @@ impl Simulation {
     }
 
     /// The Teleporter arm of Unit Assign_Destination
-    /// (`0x007423CD..0x007427C0`) for a `Teleporter=` type. The Teleport
+    /// (`0x007423CD..0x007427C0`) for a `Teleporter=` type; any other receiver
+    /// is left alone. The Teleport
     /// primary stays in charge only for a Cell destination holding no Unit
     /// while radio slot 0 holds a `DockUnload=` building (any such cell, not
     /// only the pad: oracle row `contact_other_cell`); in the dock chain that
@@ -902,18 +1017,20 @@ impl Simulation {
     /// no producer in VERA and read clear; the Foot locomotor-swap byte
     /// (+0x6AD) is read.
     ///
-    /// RESIDUAL: the Drive install stashes the Teleport without a Stop, so a
-    /// warp the Teleport had armed waits natively until End_Piggyback hands
-    /// it back; VERA's warp request (`teleport_state`) lives on the entity,
-    /// so the next frame's Teleport step warps under the Drive. Trigger: a
-    /// non-pad re-assign between the arm and the same object's Process. The
-    /// dock chain arms and warps inside one FootClass::AI, so only an
-    /// outside setter call in between (none represented) reaches it.
-    fn unit_teleporter_arm(&mut self, id: u64, cell: Option<(u16, u16)>, rules: &RuleSet) -> bool {
+    /// The Drive install stashes the Teleport without a Stop, so a warp the
+    /// Teleport had armed waits until End_Piggyback hands it back: the
+    /// Teleport step runs only while Teleport is the active locomotor
+    /// (`teleport_movement::teleport_process_active`).
+    pub(crate) fn unit_teleporter_arm(
+        &mut self,
+        id: u64,
+        cell: Option<(u16, u16)>,
+        rules: &RuleSet,
+    ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        if actor.foot_locomotor_swap_active {
+        if !teleporter_unit(self, actor, Some(rules)) || actor.foot_locomotor_swap_active {
             return false;
         }
         let Some(active) = actor.locomotor.as_ref().map(|loco| loco.active_kind()) else {

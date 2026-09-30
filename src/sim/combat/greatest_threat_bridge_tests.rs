@@ -184,7 +184,9 @@ fn pick(
         None,
         super::super::line_of_fire::LineOfFireInputs::default(),
         None,
+        None,
     )
+    .target()
 }
 
 #[test]
@@ -312,12 +314,8 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
     let firer = world.substrate.entities.get(1).unwrap();
     let candidate = world.substrate.entities.get(2).unwrap();
     let interner = &world.interner;
-    let snapshot = super::super::build_attacker_snapshot(
-        firer,
-        super::super::TargetKind::Entity(2),
-        None,
-        None,
-    );
+    let snapshot =
+        super::super::build_attacker_snapshot(firer, super::super::TargetKind::Entity(2), None);
     let context = ScanContext {
         entities: &world.substrate.entities,
         los: Default::default(),
@@ -331,12 +329,20 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
         range: ScanRange::CanFireAt,
         coefficients: ThreatCoefficients::resolve(&rules, obj, true),
         zone_grid: None,
-        scanner_zone: None,
-        threat_reference: ThreatReference::NullCoord,
+        mask: 1,
+        scan_coord: [0, 0, 0],
+        standing: ScannerStanding::resolve(Some(&world), &snapshot),
+        attacks_allies: false,
+        scans_allies: false,
         fire_world: Some(&world),
     };
+    let walk = WalkArgs {
+        flags: 0x8042,
+        zone: None,
+        reference: ThreatReference::NullCoord,
+    };
     let rng_before = world.scenario_rng.native_state_hex();
-    assert_eq!(evaluate_candidate(&context, candidate), None);
+    assert_eq!(evaluate_candidate(&context, walk, candidate), None);
     let expected = &row["after"]["dummy_coord"];
     assert_eq!(
         dummy.snapshot().coord,

@@ -8,7 +8,7 @@ use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::movement::{
     DestinationTiming, air_movement, ground_pose, locomotor::MovementLayer,
 };
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::fixed_math::SIM_ZERO;
 
 impl Simulation {
     /// BeginTakeoff4CF9B9 adds only when no existing bucket is retained.
@@ -25,7 +25,7 @@ impl Simulation {
             self.session.map_width,
             self.session.map_height,
         );
-        let order = self.substrate.next_occupancy_enter_order.next();
+        let order = self.substrate.next_air_tracker_order.next();
         let e = self.substrate.entities.get_mut(id).unwrap();
         e.air_spatial_bucket = Some(bucket);
         e.air_spatial_enter_order = order;
@@ -46,9 +46,9 @@ impl Simulation {
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        air_movement::ensure_fly_facings(e);
+        air_movement::ensure_fly_secondary_facing(e);
         if air_movement::current_fly_height(e, self.resolved_terrain.as_ref()) == 0 {
-            e.body_facing.as_mut().unwrap().snap(
+            e.body_facing.snap(
                 e.barrel_facing.unwrap().destination(),
                 self.session.binary_frame,
             );
@@ -66,27 +66,6 @@ impl Simulation {
             let sound_id = self.interner.intern(sound);
             self.sound_events
                 .push(super::SimSoundEvent::AircraftPhase { sound_id, world });
-        }
-    }
-
-    /// `ObjectClass::SetHeight` (vtable `+0x1CC`): the Location's Z at
-    /// `height` above the floor, or above the deck for an object on a bridge.
-    pub(crate) fn set_object_height(&mut self, id: u64, height: i32) {
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return;
-        };
-        let xy = ground_pose::position_world_xy(&entity.position);
-        let ground =
-            ground_pose::ground_surface_z_at(xy, false, self.resolved_terrain.as_ref(), None)
-                .unwrap_or(0);
-        let entity = self.substrate.entities.get_mut(id).unwrap();
-        entity.position.exact_z_leptons = Some(
-            ground
-                .wrapping_add(height)
-                .wrapping_add(if entity.on_bridge { 416 } else { 0 }),
-        );
-        if let Some(loco) = entity.locomotor.as_mut() {
-            loco.altitude = SimFixed::from_num(height.clamp(-32768, 32767));
         }
     }
 
@@ -115,8 +94,8 @@ impl Simulation {
             terrain.native_cell_flags(cell) & 0x100 != 0
         });
         // Unlike takeoff,4CE8AF does not test the owner's OnBridge flag.
-        if bridge && height >= 416 {
-            height = height.wrapping_sub(416);
+        if bridge && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS {
+            height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         }
         let object = rules.and_then(|r| r.object(self.interner.resolve(entity.type_ref())));
         let dropship = object.is_some_and(|o| o.is_dropship);
@@ -134,7 +113,13 @@ impl Simulation {
         if dropship && height == 0 {
             entity.flight_attitude.settle();
         }
-        entity.locomotor.as_mut().unwrap().speed_fraction = SIM_ZERO;
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .fly_runtime_mut()
+            .unwrap()
+            .target_speed = SIM_ZERO;
         let entity = self.substrate.entities.get(id).unwrap();
         let base = crate::sim::aircraft::landing_base::landing_base(
             entity,
@@ -158,7 +143,8 @@ impl Simulation {
                     .contains(building)
             })
         } else {
-            self.fly_landing_destination_admitted(id, destination)
+            let cell = ((destination.x / 256) as i16, (destination.y / 256) as i16);
+            self.aircraft_can_enter(id, cell) == 0
         };
         if !admitted && !self.retry_fly_landing(id, rules) {
             return;
@@ -243,18 +229,23 @@ impl Simulation {
                 None,
             )
             .unwrap_or(0);
-            if coord.z >= ground.wrapping_add(416) {
+            if coord.z >= ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS) {
                 self.substrate.entities.get_mut(id).unwrap().on_bridge = true;
             }
         }
         self.set_object_height(id, base);
         self.aircraft_tracker_remove(id);
         let entity = self.substrate.entities.get_mut(id).unwrap();
-        let loco = entity.locomotor.as_mut().unwrap();
-        loco.fly_runtime_mut().unwrap().finish_landing();
-        entity.foot_speed.applied_fraction = SIM_ZERO;
-        loco.speed_fraction = SIM_ZERO;
-        loco.fly_current_speed = SIM_ZERO;
+        let fly = entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .fly_runtime_mut()
+            .unwrap();
+        fly.finish_landing();
+        fly.target_speed = SIM_ZERO;
+        fly.current_speed = SIM_ZERO;
+        entity.foot_speed.set_speed_fraction(SIM_ZERO);
         self.foot_neighbors_after_fly_landing(id);
         let entity = self.substrate.entities.get(id).unwrap();
         let destination = entity
@@ -316,47 +307,6 @@ impl Simulation {
         entity.navigation.pending_arrival_clear = false;
         entity.movement_target = None;
         DestinationTiming::from_rules(self.session.binary_frame, rules).accept(entity);
-    }
-
-    /// Aircraft4196B0: Winged passability always succeeds. The mode0 owned
-    /// aircraft arm reads native ground shroud knowledge, not current sight.
-    fn fly_landing_destination_admitted(&self, id: u64, dest: DriveCoord) -> bool {
-        let e = self.substrate.entities.get(id).unwrap();
-        let cell = ((dest.x / 256) as i16, (dest.y / 256) as i16);
-        if let Some(t) = &self.resolved_terrain {
-            t.native_cell_identity(cell);
-        }
-        if self.session.game_mode_nonzero
-            || !e.discovery.owned_by_current_house
-            || e.is_mission_only()
-        {
-            return true;
-        }
-        let xyz = crate::sim::movement::target_cell_coord(
-            cell.0 as u16,
-            cell.1 as u16,
-            self.resolved_terrain.as_ref(),
-        );
-        let q = xyz.z / 104;
-        let offset = q / 2 + i32::from(q & 1 != 0);
-        let projected = (
-            ((xyz.x / 256) as i16).wrapping_sub(offset as i16),
-            ((xyz.y / 256) as i16).wrapping_sub(offset as i16),
-        );
-        let visible = |c: (i16, i16)| {
-            let resolved = self.resolved_terrain.as_ref().map_or(c, |t| {
-                let identity = t.native_cell_identity(c);
-                t.native_cell_coord(identity)
-            });
-            (
-                self.fog
-                    .is_ground_unshrouded(e.owner(), resolved.0 as u16, resolved.1 as u16),
-                resolved,
-            )
-        };
-        let (first_visible, first_cell) = visible(projected);
-        first_visible
-            || q & 1 != 0 && visible((first_cell.0.wrapping_add(1), first_cell.1.wrapping_add(1))).0
     }
 
     /// Foot4DDC60: height-aware playfield, nearest ground-list Techno, then
@@ -577,7 +527,9 @@ impl Simulation {
             if let Some(terrain) = self.resolved_terrain.as_ref() {
                 let identity = terrain.native_cell_identity((cell.0 as i16, cell.1 as i16));
                 if terrain.native_cell_flags(identity) & 0x100 != 0 {
-                    coord.z = coord.z.wrapping_add(416);
+                    coord.z = coord
+                        .z
+                        .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 }
             }
             self.move_air_coordinate(id, coord, SIM_ZERO, None, Some(rules));
@@ -621,6 +573,7 @@ mod tests {
     };
     use crate::sim::snapshot::GameSnapshot;
     use crate::sim::world::lifecycle_tests::{insert_entity, install_common_raw_terrain};
+    use crate::util::fixed_math::SimFixed;
 
     fn fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         let input = &row["input"];
@@ -657,8 +610,7 @@ mod tests {
             .unwrap();
         cell.level = input["level"].as_u64().unwrap_or(0) as u8;
         cell.slope_type = input["slope"].as_u64().unwrap_or(0) as u8;
-        sim.overlay_grid =
-            Some(crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(128, 128));
+        sim.overlay_grid = Some(crate::sim::overlay_grid::OverlayGrid::new(128, 128));
         sim.overlay_grid
             .as_mut()
             .unwrap()
@@ -683,8 +635,9 @@ mod tests {
         ));
         let l = e.locomotor.as_mut().unwrap();
         *l.fly_runtime_mut().unwrap()=serde_json::from_value::<FlyRuntime>(serde_json::json!({"target_height":0,"taking_off":false,"landing":before["phase"][1]==1,"landing_effect_latched":before["phase"][2]==1,"airport_bound":input["airport_bound"].as_bool().unwrap_or(false),"moving":true,"destination":before["destination"]})).unwrap();
-        l.speed_fraction = SimFixed::lit("0.75");
-        l.fly_current_speed = SimFixed::lit("0.5");
+        let fly = l.fly_runtime_mut().unwrap();
+        fly.target_speed = SimFixed::lit("0.75");
+        fly.current_speed = SimFixed::lit("0.5");
         e.flight_attitude=serde_json::from_value::<FlightAttitude>(serde_json::json!({"pitch":SimFixed::from_num(input["owner_float_2e8"].as_f64().unwrap_or(0.0))})).unwrap();
         e.navigation.neighbor_state =
             serde_json::from_value(serde_json::json!({"cell": before["neighbor_cell"]})).unwrap();
@@ -744,14 +697,13 @@ mod tests {
             loco.powered = input["powered"].as_bool().unwrap_or(true);
             loco.set_fly_target_height(37);
             loco.fly_runtime_mut().unwrap().finish_destination();
-            for (slot, initial, target) in [
-                (&mut e.body_facing, 0x4000, 0xC000),
-                (&mut e.barrel_facing, 0x6000, 0x2000),
-            ] {
+            let facing = |initial, target| {
                 let mut facing = FacingClass::new(initial, 5);
                 facing.set(target, 90);
-                *slot = Some(facing);
-            }
+                facing
+            };
+            e.body_facing = facing(0x4000, 0xC000);
+            e.barrel_facing = Some(facing(0x6000, 0x2000));
             let rng = sim.scenario_rng.logical_state();
             if input["move"].as_bool().unwrap() {
                 sim.move_air_coordinate(
@@ -806,7 +758,7 @@ mod tests {
                 expected["state"]["destination"],
                 "{input}"
             );
-            for (facing, expected) in [e.body_facing.unwrap(), e.barrel_facing.unwrap()]
+            for (facing, expected) in [e.body_facing, e.barrel_facing.unwrap()]
                 .into_iter()
                 .zip(expected["facings"].as_array().unwrap())
             {
@@ -877,15 +829,16 @@ mod tests {
                 row["coordinate"],
                 "{input}"
             );
+            let cell = ((request.x / 256) as i16, (request.y / 256) as i16);
             assert_eq!(
-                sim.fly_landing_destination_admitted(1, request),
-                row["result"] == 0,
+                u64::from(sim.aircraft_can_enter(1, cell)),
+                row["result"].as_u64().unwrap(),
                 "{input}"
             );
             sim.fog.build_merged_for(owner, &sim.interner);
             assert_eq!(
-                sim.fly_landing_destination_admitted(1, request),
-                row["result"] == 0,
+                u64::from(sim.aircraft_can_enter(1, cell)),
+                row["result"].as_u64().unwrap(),
                 "{input}"
             );
         }
@@ -1047,8 +1000,8 @@ mod tests {
             );
             assert_eq!(
                 serde_json::json!([
-                    l.speed_fraction.to_num::<f64>(),
-                    l.fly_current_speed.to_num::<f64>()
+                    l.fly_runtime().unwrap().target_speed.to_num::<f64>(),
+                    l.fly_runtime().unwrap().current_speed.to_num::<f64>()
                 ]),
                 after["speeds"],
                 "{}",
@@ -1107,8 +1060,7 @@ mod tests {
                 .overlay_grid
                 .as_ref()
                 .unwrap()
-                .retained_neighbor_counts()
-                .unwrap();
+                .retained_neighbor_counts();
             for c in after["neighbors"].as_array().unwrap() {
                 assert_eq!(
                     u64::from(
@@ -1135,7 +1087,7 @@ mod tests {
             .find(|r| r["input"]["name"] == "height_301")
             .unwrap();
         let (mut sim, rules) = fixture(row);
-        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         let e = sim.substrate.entities.get(1).unwrap();
         assert!(e.air_spatial_bucket.is_some());
         assert!(
@@ -1158,7 +1110,7 @@ mod tests {
         for frame in 101..126 {
             for s in [&mut sim, &mut restored] {
                 s.session.binary_frame = frame;
-                s.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+                s.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
             }
             assert_eq!(sim.state_hash(), restored.state_hash(), "frame{frame}");
         }

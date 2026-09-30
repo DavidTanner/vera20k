@@ -132,7 +132,7 @@ fn prepare(sim: &mut Simulation, id: u64, input: &Value) {
         int("latch", 0) == 1,
     );
     if state["veterancy"].as_f64().unwrap_or(0.0) >= 2.0 {
-        entity.veterancy = RANK_ELITE_U16;
+        entity.set_veterancy_rank(RANK_ELITE_U16);
     }
     entity.last_fire_frame = int("last_fire_frame", -100);
     entity.turret_anim_frame = int("turret_count", 0) as i32;
@@ -405,7 +405,7 @@ fn a_retarget_after_the_visit_keeps_the_visits_shot() {
     let rules = rules(36, 50, true);
     let (mut sim, building, target) = fixture(&rules, "GAT", (8, 5));
     let other = sim
-        .spawn_object("SHED", "Russians", 5, 8, 0, &rules, &BTreeMap::new())
+        .spawn_object("SHED", "Russians", 5, 8, 0, &rules)
         .unwrap();
     aim_at(&mut sim, building, target);
     let (aimed, weapon) = attack_prelude(&mut sim, building, &rules).unwrap();
@@ -549,15 +549,14 @@ fn gattling_cadence_matches_the_original() {
         let rules = row_rules(input);
         let mut sim = Simulation::new();
         sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(16));
-        let heights = BTreeMap::new();
         let building = sim
-            .spawn_object("GAT", "Americans", 5, 5, 0, &rules, &heights)
+            .spawn_object("GAT", "Americans", 5, 5, 0, &rules)
             .unwrap();
         let target = sim
-            .spawn_object("SHED", "Russians", 8, 5, 0, &rules, &heights)
+            .spawn_object("SHED", "Russians", 8, 5, 0, &rules)
             .unwrap();
         let far = sim
-            .spawn_object("SHED", "Russians", 15, 5, 0, &rules, &heights)
+            .spawn_object("SHED", "Russians", 15, 5, 0, &rules)
             .unwrap();
         let events: BTreeMap<u64, Event> = input["events"]
             .as_array()
@@ -617,7 +616,7 @@ fn gattling_cadence_matches_the_original() {
             }
             sim.fire_events.clear();
             sim.sound_events.clear();
-            sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+            sim.advance_tick(&[], Some(&rules), None, None, 67);
             assert_eq!(u64::from(sim.session.binary_frame - start), k, "{name}");
 
             let entity = sim.substrate.entities.get(building).unwrap();

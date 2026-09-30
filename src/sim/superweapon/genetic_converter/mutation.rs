@@ -221,13 +221,11 @@ mod tests {
     use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::occupancy::CellListInsertion;
     use crate::sim::overlay_grid::OverlayGrid;
-    use crate::sim::rng::SimRng;
 
     #[test]
     fn mutate_explosion_bridge_target_mutates_only_bridge_layer() {
@@ -257,7 +255,7 @@ mod tests {
 
     #[test]
     fn gsi_04_07_damage_gsi_04_11_mutate_explosion_exact_boundary_and_death_transaction() {
-        fn run(victim_hp: i32) -> (Simulation, Vec<(u16, u16)>, usize, u64) {
+        fn run(victim_hp: i32) -> (Simulation, RuleSet, Vec<(u16, u16)>, u64, [u64; 2]) {
             let ini = IniFile::from_str(
                 "[InfantryTypes]\n0=BOOMER\n1=BRUTE\n\
                  [VehicleTypes]\n0=TANK\n\
@@ -267,7 +265,7 @@ mod tests {
                  [OverlayTypes]\n0=TESTWALL\n\
                  [General]\nMutateExplosion=yes\n\
                  [CombatDamage]\nMaxDamage=10000\nMutateExplosionWarhead=MutateExplosion\n\
-                 [BOOMER]\nStrength=10000\nArmor=none\nSpeed=4\nExplodes=yes\nDeathWeapon=DeathBoom\n\
+                 [BOOMER]\nImage=GI\nStrength=10000\nArmor=none\nSpeed=4\nExplodes=yes\nDeathWeapon=DeathBoom\n\
                  [TANK]\nStrength=10000\nArmor=heavy\nSpeed=4\nExplodes=yes\nDeathWeapon=DeathBoom\n\
                  [BRUTE]\nStrength=200\nArmor=none\nSpeed=4\n\
                  [DeathBoom]\nDamage=400\nWarhead=WallWH\n\
@@ -277,8 +275,17 @@ mod tests {
                  Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
                  [TESTWALL]\nWall=yes\nArmor=concrete\nStrength=400\n",
             );
-            let art = IniFile::from_str("[TESTWALL]\nDamageLevels=2\n");
-            let rules = RuleSet::from_ini(&ini).expect("mutation death transaction rules");
+            let art = IniFile::from_str(&format!(
+                "[TESTWALL]\nDamageLevels=2\n{}",
+                crate::rules::retail_ini_fixture::GI_ART_EXCERPT
+                    .replace("Die1=134,15,0", "Die1=134,3,0")
+            ));
+            let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+                .expect("mutation death transaction rules");
+            rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+            rules.bind_animation_sequences(
+                &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+            );
             let registry = OverlayTypeRegistry::from_ini(&ini, Some(&art));
             assert!(rules.warhead("MutateExplosion").is_some());
             assert!(rules.warhead("WallWH").is_some());
@@ -290,47 +297,75 @@ mod tests {
             }
 
             let mut sim = Simulation::with_seed(1);
+            sim.intern_rule_type_ids(&rules);
+            sim.resolve_type_handles(&rules);
+            sim.install_resolved_terrain_for_new_map(
+                crate::map::resolved_terrain::test_flat_ground_grid(12),
+            );
+            // Unit Unlimbo reaches the mandatory height-aware playfield
+            // predicate before its Clear/Track speed row. Supply both real
+            // fixture premises instead of bypassing concrete admission.
+            sim.playfield_bounds =
+                Some(crate::sim::superweapon::cell_receiver_tests::test_playfield_bounds());
             let owner = sim.interner.intern("Americans");
-            let soviet = sim.interner.intern("Soviet");
-            let mut infantry = GameEntity::test_default(10, "BOOMER", "Soviet", 5, 5);
-            infantry.owner = soviet;
-            infantry.type_ref = sim.interner.intern("BOOMER");
-            infantry.category = EntityCategory::Infantry;
-            infantry.mission_leaf =
-                crate::sim::mission::leaf::MissionLeafState::for_entity_category(
-                    EntityCategory::Infantry,
-                );
-            infantry.is_voxel = false;
-            infantry.health = Health { current: victim_hp };
-            sim.substrate.entities.insert(infantry);
-            let _ = sim.reveal(10);
-
-            let mut unit = GameEntity::test_default(20, "TANK", "Soviet", 6, 5);
-            unit.owner = soviet;
-            unit.type_ref = sim.interner.intern("TANK");
-            unit.health = Health { current: victim_hp };
-            sim.substrate.entities.insert(unit);
-            let _ = sim.reveal(20);
+            // Construct both concrete class runtimes before placing walls.
+            // A category-only synthetic Unit has no native Infantry clock,
+            // Doing, stance or Walk receiver to continue its retained death.
+            let infantry = sim
+                .spawn_object_at_height("BOOMER", "Soviet", 5, 5, 0, 0, &rules)
+                .unwrap();
+            let unit = sim
+                .spawn_object_at_height("TANK", "Soviet", 6, 5, 0, 0, &rules)
+                .unwrap();
+            for id in [infantry, unit] {
+                sim.substrate.entities.get_mut(id).unwrap().health.current = victim_hp;
+            }
 
             let mut overlays = OverlayGrid::new(12, 12);
             overlays.place_overlay(5, 5, 0, 0);
             overlays.place_overlay(6, 5, 0, 0);
             sim.overlay_grid = Some(overlays);
 
+            // Both real Techno constructors consume their native Scenario
+            // words. The damage transaction starts after that prefix.
+            let rng_before_damage = (
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            );
             let killed = apply_mutate_explosion(&mut sim, &rules, 5, 5, owner, Some(&registry));
-            let count = killed.len();
+            assert_eq!(
+                (
+                    sim.scenario_rng.logical_state(),
+                    sim.main_rng.logical_state(),
+                    sim.mapgen_rng.logical_state(),
+                ),
+                rng_before_damage,
+                "the exact-boundary damage/DeathWeapon transaction draws no RNG"
+            );
             let rng_state = sim.scenario_rng.state();
-            (sim, killed, count, rng_state)
+            (sim, rules, killed, rng_state, [infantry, unit])
         }
 
-        let (fatal, killed, count, fatal_rng) = run(MUTATE_AOE_DAMAGE);
-        for id in [10, 20] {
-            assert!(fatal.substrate.entities.get(id).is_some_and(|entity| {
-                entity.health.current == 0 && entity.dying && !entity.in_logic_vector
-            }));
-            assert!(!fatal.live_object_order_snapshot().contains(&id));
+        let (mut fatal, fatal_rules, killed, fatal_rng, [infantry, unit]) = run(MUTATE_AOE_DAMAGE);
+        for id in [infantry, unit] {
+            assert!(
+                fatal
+                    .substrate
+                    .entities
+                    .get(id)
+                    .is_some_and(|entity| { entity.health.current == 0 && entity.dying })
+            );
+            assert_eq!(
+                fatal.live_object_order_snapshot().contains(&id),
+                id == infantry,
+                "native Die1 retains Logic; the Unit UnInits inline"
+            );
         }
-        assert_eq!((killed, count), (vec![(5, 5)], 1));
+        let retained = fatal.substrate.entities.get(infantry).unwrap();
+        assert_eq!(retained.infantry_sprite_pose(), Some((11, 0)));
+        assert!(retained.lifecycle.cell_marked && retained.in_logic_vector);
+        assert_eq!(killed, vec![(5, 5)]);
         for cell in [(5, 5), (6, 5)] {
             assert_eq!(
                 fatal
@@ -344,14 +379,36 @@ mod tests {
         }
         assert_eq!(
             fatal.substrate.pending_delete,
-            vec![20, 10],
-            "concrete Unit UnInit is inline; the synthetic non-animated Infantry fixture drains later"
+            vec![unit],
+            "the Infantry death sequence still owns its retained lifetime"
         );
-        assert_eq!(fatal_rng, SimRng::new(1).state());
+        for native_frame in 0..=3 {
+            fatal.advance_tick(&[], Some(&fatal_rules), None, None, 100);
+            assert_eq!(
+                fatal.substrate.entities.contains(infantry),
+                native_frame < 3
+            );
+        }
+        assert!(!fatal.live_object_order_snapshot().contains(&infantry));
+        assert!(!fatal.substrate.occupancy.contains_entity(5, 5, infantry));
+        assert_eq!(
+            fatal
+                .lifecycle_test_events_for_test()
+                .iter()
+                .filter_map(|event| match event {
+                    crate::sim::world::LifecycleTestEvent::UninitClassPre { stable_id }
+                        if [unit, infantry].contains(stable_id) =>
+                        Some(*stable_id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            [unit, infantry],
+            "inline Unit cleanup precedes completed native Infantry Die1"
+        );
 
-        let (boundary, killed, count, boundary_rng) = run(MUTATE_AOE_DAMAGE + 1);
-        assert_eq!((killed, count), (Vec::new(), 0));
-        for (id, cell) in [(10, (5, 5)), (20, (6, 5))] {
+        let (boundary, _, killed, boundary_rng, [infantry, unit]) = run(MUTATE_AOE_DAMAGE + 1);
+        assert!(killed.is_empty());
+        for (id, cell) in [(infantry, (5, 5)), (unit, (6, 5))] {
             assert_eq!(
                 boundary
                     .overlay_grid
@@ -368,7 +425,10 @@ mod tests {
             );
         }
         assert!(boundary.substrate.pending_delete.is_empty());
-        assert_eq!(boundary_rng, SimRng::new(1).state());
+        assert_eq!(
+            boundary_rng, fatal_rng,
+            "both controls share the same constructor prefix"
+        );
     }
 
     /// A `JumpJet=` infantryman in the blast dies without mutating: its death
@@ -500,58 +560,7 @@ mod tests {
 
     fn test_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 }

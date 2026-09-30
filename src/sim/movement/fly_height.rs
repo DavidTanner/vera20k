@@ -7,6 +7,7 @@
 
 use super::locomotor::AirMovePhase;
 use crate::sim::components::DriveCoord;
+use crate::util::fixed_math::SimFixed;
 
 /// Constructor4CC9EE..4CC9FA clears target+38 and takeoff/landing+50/+51.
 /// Only this owner mutates those fields. Object coordinates own current Z.
@@ -39,6 +40,16 @@ pub struct FlyRuntime {
     /// only Process's fall block writes it (`0x004CD6C6`), never resetting it.
     #[serde(default)]
     fall_counter: i32,
+    /// Fly+40, the target speed fraction the ramp chases. The constructor
+    /// (`0x004CC9E5`) starts it at 0; Process's slowdown
+    /// (`air_movement::write_fly_target_speed`), the takeoff callback and the
+    /// landing write it.
+    #[serde(default)]
+    pub(crate) target_speed: SimFixed,
+    /// Fly+48, the current speed fraction, chasing `target_speed` by 0.1 a
+    /// frame (`0x004CE441..0x004CE495`).
+    #[serde(default)]
+    pub(crate) current_speed: SimFixed,
 }
 
 /// Techno-owned approach pitch. Native stores f32; the engine uses SimFixed.
@@ -329,14 +340,14 @@ impl FlyRuntime {
         } = input;
         // Object GetHeight5F5F40 subtracts ground and its current OnBridge
         // adjustment. Fly then independently normalizes an unattached deck.
-        let mut height =
-            world_z
-                .wrapping_sub(ground_z)
-                .wrapping_sub(if on_bridge { 416 } else { 0 });
+        let mut height = super::ground_pose::height_at_z(world_z, ground_z, on_bridge);
         let mut bridge_bonus = 0;
-        if !on_bridge && height >= 416 && structural_bridge {
-            height = height.wrapping_sub(416);
-            bridge_bonus = 416;
+        if !on_bridge
+            && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+            && structural_bridge
+        {
+            height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
+            bridge_bonus = crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
         }
         let mut output_z = world_z;
         if height < self.target_height && health > 0 {
@@ -349,11 +360,11 @@ impl FlyRuntime {
             };
             let step = self.target_height.wrapping_sub(height).min(rate);
             // SetHeight happens BEFORE OnBridge is cleared (4CDE9D/4CDEA6).
-            output_z = ground_z
-                .wrapping_add(height)
-                .wrapping_add(step)
-                .wrapping_add(bridge_bonus)
-                .wrapping_add(if on_bridge { 416 } else { 0 });
+            output_z = super::ground_pose::z_at_height(
+                ground_z,
+                height.wrapping_add(step).wrapping_add(bridge_bonus),
+                on_bridge,
+            );
             on_bridge = false;
         }
         // Native compares the original normalized height again. Health==0
@@ -383,17 +394,16 @@ impl FlyRuntime {
                     bridge_bonus = 0;
                 }
             }
-            output_z = ground_z
-                .wrapping_add(height)
-                .wrapping_add(bridge_bonus)
-                .wrapping_add(if on_bridge { 416 } else { 0 });
+            output_z = super::ground_pose::z_at_height(
+                ground_z,
+                height.wrapping_add(bridge_bonus),
+                on_bridge,
+            );
         }
         HeightOutput {
             world_z: output_z,
             on_bridge,
-            height: output_z
-                .wrapping_sub(ground_z)
-                .wrapping_sub(if on_bridge { 416 } else { 0 }),
+            height: super::ground_pose::height_at_z(output_z, ground_z, on_bridge),
         }
     }
 }

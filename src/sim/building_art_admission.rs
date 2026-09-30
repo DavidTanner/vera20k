@@ -104,7 +104,6 @@ mod tests {
     use super::*;
     use crate::map::entities::{EntityCategory, MapEntity};
     use crate::rules::{art_data::ArtRegistry, ini_parser::IniFile};
-    use std::collections::BTreeMap;
 
     fn fixture(extra: &str) -> (Simulation, RuleSet, u64) {
         let art = IniFile::from_str(
@@ -149,7 +148,6 @@ mod tests {
                     structure_ai_repairable: false,
                 }],
                 Some(&rules),
-                &BTreeMap::new()
             ),
             1
         );
@@ -158,7 +156,7 @@ mod tests {
     }
 
     fn tick(sim: &mut Simulation, rules: &RuleSet) {
-        sim.advance_tick(&[], Some(rules), &BTreeMap::new(), None, None, 33);
+        sim.advance_tick(&[], Some(rules), None, None, 33);
     }
 
     #[test]
@@ -225,9 +223,7 @@ mod tests {
             sim.entities().get(id).unwrap().building_anim_slots[3],
             Some(empty)
         );
-        let passenger = sim
-            .spawn_object("E1", "Neutral", 6, 6, 0, &rules, &BTreeMap::new())
-            .unwrap();
+        let passenger = sim.spawn_object("E1", "Neutral", 6, 6, 0, &rules).unwrap();
         sim.conceal(passenger);
         sim.entities_mut()
             .get_mut(passenger)

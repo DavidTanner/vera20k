@@ -199,14 +199,7 @@ fn attack(sim: &mut Simulation, attacker: u64, target: u64) {
 fn step(sim: &mut Simulation, rules: &RuleSet, grid: &crate::sim::pathfinding::PathGrid) -> i32 {
     let frame = sim.session.binary_frame as i32;
     let commands = sim.take_due_commands();
-    sim.advance_tick(
-        &commands,
-        Some(rules),
-        &std::collections::BTreeMap::new(),
-        Some(grid),
-        None,
-        33,
-    );
+    sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
     frame
 }
 
@@ -244,6 +237,8 @@ struct NativeBombCase {
     frame_index: Option<i64>,
     #[serde(default)]
     list: Option<serde_json::Value>,
+    #[serde(default)]
+    result: Option<serde_json::Value>,
 }
 
 fn native_bomb(fields: &serde_json::Value) -> Bomb {
@@ -266,7 +261,8 @@ fn native_bomb(fields: &serde_json::Value) -> Bomb {
 /// have no VERA state and are skipped. The DetonateAtCoord arm rows reduce to
 /// Attach's and Defuse's own gates (a non-Techno or missing target or firer
 /// reaches Attach as null) and are exercised end to end by the production
-/// tests below; the GetFireError rows are compared in `combat_weapon`.
+/// tests below; the GetFireError rows are compared by
+/// `native_fire_error_corpus`.
 #[test]
 fn native_bomb_corpus() {
     let cases: Vec<NativeBombCase> =
@@ -312,8 +308,65 @@ fn native_bomb_corpus() {
     }
     // 55 state-machine rows less the six VERA cannot hold (death bombs,
     // spent or carrier-less records); the GetFireError rows are compared by
-    // `combat_weapon::tests::bomb_fire_error_gates_match_native`.
+    // `native_fire_error_corpus`.
     assert_eq!(compared, 49);
+}
+
+/// The corpus's `fire_error` rows ran `TechnoClass::GetFireError`'s two bomb
+/// gates (`0x006FCB8D..0x006FCBCD`) alone: ILLEGAL (5), or on to the next
+/// gate. Here the one GetFireError port answers them in full, range unasked,
+/// for the weapon's own carrier at the planter's house (the Engineer's
+/// BombDisarm, the Ivan's IvanBomb, an omni-firing tank gun otherwise)
+/// against the row's Unit; a row that went on clears every later gate.
+#[test]
+fn native_fire_error_corpus() {
+    let rules = rules_from(&format!(
+        "{}[TankGun]\nDamage=90\nRange=5.75\nProjectile=Cannon\nWarhead=Super\nOmniFire=yes\n\
+         [Cannon]\nAG=yes\n",
+        RULES.replace("[LTNK]\n", "[LTNK]\nPrimary=TankGun\n")
+    ));
+    let cases: Vec<NativeBombCase> =
+        serde_json::from_str(include_str!("../../tools/spatial_oracle/bomb_class.json")).unwrap();
+    let mut compared = 0;
+    for case in cases
+        .iter()
+        .filter(|case| case.input["section"] == "fire_error")
+    {
+        let input = &case.input;
+        let name = input["name"].as_str().unwrap();
+        let flag = |key: &str| input[key].as_bool() == Some(true);
+        let NativeWorld { mut sim, ids, .. } = native_world(input, &rules);
+        let firer_type = if flag("bomb_disarm") {
+            "ENGINEER"
+        } else if flag("ivan_bomb") {
+            "IVAN"
+        } else {
+            "LTNK"
+        };
+        let firer = spawn(&mut sim, &rules, firer_type, "house0", 11, 11);
+        let code = crate::sim::combat::fire_error_world::FireSubject {
+            world: &sim,
+            rules: &rules,
+            overlay_registry: None,
+            fog: None,
+            firer: entity(&sim, firer),
+            obj: rules.object(firer_type).unwrap(),
+            target: Some(crate::sim::combat::TargetKind::Entity(ids[0])),
+            weapon_index: 0,
+            garrison: None,
+        }
+        .fire_error(false);
+        let expected = match case.result.as_ref().and_then(serde_json::Value::as_i64) {
+            Some(5) => crate::sim::combat::fire_error::FireError::Illegal,
+            _ => {
+                assert_eq!(case.result, Some(serde_json::json!("continue")), "{name}");
+                crate::sim::combat::fire_error::FireError::Ok
+            }
+        };
+        assert_eq!(code, expected, "{name}");
+        compared += 1;
+    }
+    assert_eq!(compared, 5);
 }
 
 /// A corpus case's world: house `n` is `house{n}`, each techno stands at its
@@ -638,8 +691,18 @@ fn a_crazy_ivan_bombs_a_tank() {
         "the shot deals nothing"
     );
 
+    // The idle Ivan may bomb the survivor again in the very frame the first
+    // bomb goes off, so the blast, not the bomb's absence, marks it.
     let went_off = run_until(&mut sim, &rules, &grid, 600, |sim| {
-        bomb(sim, tank).is_none()
+        let off = entity(sim, tank).health.current < 1000;
+        if !off {
+            assert_eq!(
+                bomb(sim, tank).map(|bomb| bomb.start_frame),
+                Some(planted.start_frame),
+                "an Ivan cannot bomb a bombed target"
+            );
+        }
+        off
     })
     .expect("the bomb goes off");
     assert_eq!(went_off, planted.start_frame + 451, "IvanTimedDelay + 1");
@@ -648,8 +711,9 @@ fn a_crazy_ivan_bombs_a_tank() {
         sim.substrate
             .entities
             .values()
+            .filter(|entity| entity.stable_id() != tank)
             .all(|entity| entity.bomb.is_none()),
-        "an Ivan cannot bomb a bombed target, and fires no second bomb"
+        "the Ivan fires no bomb elsewhere"
     );
 }
 
@@ -868,12 +932,14 @@ fn an_engineer_defuses_a_bomb() {
     assert_eq!(entity(&sim, tank).health.current, 1000, "no damage");
 }
 
-/// `TechnoClass::CanAcquireTarget` (`0x0070924D`): a human player's Engineer
-/// never picks its own target, so a bomb on an enemy beside it stays until it
-/// is ordered; a computer player's Engineer defuses one on its own, as native
-/// lets it.
+/// Neither player's Engineer defuses a bomb it was not ordered to.
+/// `TechnoClass::CanAcquireTarget` (`0x0070924D`) keeps a human player's
+/// from picking its own target. A computer player's scans, but its
+/// Infantry override asks for capturable buildings (`0x0051E147`, mask
+/// `0x200`) and `Greatest_Threat`'s Engineer rewrite (`0x006F8EFB`) drops
+/// infantry and vehicles, so the scan never offers it a bombed tank.
 #[test]
-fn only_a_computer_engineer_defuses_unordered() {
+fn no_engineer_defuses_unordered() {
     let rules = rules();
     let (mut sim, grid) = arena(30, &rules);
     let russian_tank = spawn(&mut sim, &rules, "HTNK", "Russians", 12, 10);
@@ -884,10 +950,13 @@ fn only_a_computer_engineer_defuses_unordered() {
     sim.bomb_attach(russian_ivan, Some(american_tank), &rules);
     spawn(&mut sim, &rules, "ENGINEER", "Americans", 12, 11);
     spawn(&mut sim, &rules, "ENGINEER", "Russians", 22, 11);
-    run_until(&mut sim, &rules, &grid, 300, |sim| {
-        bomb(sim, american_tank).is_none()
-    })
-    .expect("the computer's Engineer defuses the bomb on its enemy");
+    for _ in 0..300 {
+        step(&mut sim, &rules, &grid);
+    }
+    assert!(
+        bomb(&sim, american_tank).is_some(),
+        "the computer's Engineer waits for an order"
+    );
     assert!(
         bomb(&sim, russian_tank).is_some(),
         "the player's Engineer waits for an order"

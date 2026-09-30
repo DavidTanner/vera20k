@@ -1,37 +1,33 @@
 //! Infantry fear, prone stance, idle actions, and Crawls speed helpers.
 //!
-//! This module owns sim-authoritative infantry stance state. Animation reflects
-//! this state; combat and movement do not infer prone status from animation.
+//! This module owns Infantry fear decisions. Stance requests call the shared
+//! `InfantryClass::Do_Action` owner; only an accepted action changes prone and
+//! restarts the actor's retained stage. Combat and movement read that stance.
 //!
 //! ## Idle-action residuals
-//! The idle turn selects the right action, writes the turn-arm facing, and
-//! spends the right draws. Three things are still recorded rather than faked:
+//! Mission Guard, Hunt and AreaGuard call the object receiver at their native
+//! dispatch point. The receiver owns its admission, wait timer, Scenario draws
+//! and facing change; fidgets synchronously call the existing Do_Action owner.
+//! Remaining mechanisms are explicit:
 //!
-//! - **DEFERRED DRIFT — the facing snap at fidget completion.** Six of the
-//!   eleven roll outcomes are a fidget, and gamemd's sequencer snaps the man to
-//!   the direction named by the fourth INI token when that fidget finishes
-//!   (`[GISequence] Idle1=56,15,0,S`, `Idle2=71,15,0,E`). VERA plays the pose and
-//!   leaves him facing wherever he was. **Frequency: constant.** Every idle
-//!   infantryman fidgets every 67–270 frames, so on an ordinary screen holding a
-//!   dozen idle men this misses a facing change roughly every second, and the
-//!   drift is cumulative — gamemd's idle squads visibly settle toward S and E
-//!   while VERA's keep their spawn facing forever. Closing it needs the fourth
-//!   token carried into `SequenceDef`, which lives in `sim::animation`.
+//! - Infantry actions and completion use the single Doing/Stage owner in
+//!   `movement::infantry_action`; this fear receiver requests actions without
+//!   advancing or copying that clock.
 //! - **The one-in-three voice comment** on the second fidget. It draws from the
 //!   process-global stream, not the scenario one — its gate is local-player-only
 //!   and therefore client-dependent, which is exactly why it cannot sit on the
 //!   lockstep stream. Not drawn here, so it cannot disturb the scenario cursor.
 //!   Needs the audio seam. Frequency: roughly one idle turn in nine, audio only.
-//! - **The Fraidycat panic run** consumes its turn but does not flee. Infantry
-//!   scatter is a separate mechanism that does not exist yet. Frequency: only
-//!   AI-owned Fraidycat types (civilians) above fear 50 — city maps under fire.
+//! - Idle NULL-source Scatter (`51D0D0`) on roll8 for COW/AI Fraidycat still
+//!   returns a logged residual below. It can consume additional Scenario
+//!   draws and alter navigation before the mission's cadence draw. The fear
+//!   receiver calls the existing NULL Scatter owner; its complete Fraidycat
+//!   transaction remains separately bounded by that owner's evidence.
 //!
-//! The `Is_Moving` substitution used by both the fear gate and the idle gate is
-//! **UNCHECKED** and carries a sub-second residual in both directions on the
-//! tick a move order is issued or completed.
+//! The actor-local fear receiver executes at InfantryAI51BF0B after Process.
+//! It reads NavCom and the actual locomotor motion query independently.
 
 use crate::rules::object_type::ObjectType;
-use crate::sim::animation::SequenceKind;
 use crate::sim::game_entity::GameEntity;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
@@ -54,9 +50,9 @@ const VETERAN_LEVEL: u16 = 100;
 const ELITE_LEVEL: u16 = 200;
 
 pub fn has_veteran_fearless_ability(obj: &ObjectType, entity: &GameEntity) -> bool {
-    if entity.veterancy >= ELITE_LEVEL {
+    if entity.veterancy() >= ELITE_LEVEL {
         obj.veteran_fearless || obj.elite_fearless
-    } else if entity.veterancy >= VETERAN_LEVEL {
+    } else if entity.veterancy() >= VETERAN_LEVEL {
         obj.veteran_fearless
     } else {
         false
@@ -137,91 +133,131 @@ fn repeated_fear_add(
     add
 }
 
-/// Whether this infantryman is under way, in the sense the fear handler tests.
-///
-/// gamemd reads two separate things and takes either: the foot object's
-/// destination field, and the locomotor's `Is_Moving` slot — which for the Walk
-/// locomotor every infantryman carries is just its own moving byte, with none of
-/// the extra conjuncts the *readiness* slot (`Is_Moving_Now`) layers on. Both
-/// mean "this man has somewhere to be", so both map onto the two carriers VERA
-/// keeps for that: the NavCom and the live movement order.
-///
-/// The correspondence is traced but UNCHECKED — no gamemd-derived executable
-/// check compares the two.
-fn fear_prone_is_under_way(entity: &GameEntity) -> bool {
-    entity.navigation.nav_com.is_some() || entity.movement_target.is_some()
-}
-
-/// Decay fear one step and return the stance transition it forces, if any.
-///
-/// `player_controlled` is the owning house's player-control fact. gamemd refuses
-/// to drop a *player-controlled* infantryman prone while he is on his way
-/// somewhere — a squad walked through fire keeps walking instead of crawling —
-/// while an AI-owned one goes down regardless.
-pub fn tick_fear_decay_and_prone(
-    obj: &ObjectType,
-    entity: &mut GameEntity,
-    player_controlled: bool,
-) -> Option<SequenceKind> {
-    if !can_decay_fear(obj) {
-        return None;
-    }
-    // Sampled before the runtime borrow; gamemd reads both inside this handler.
-    let under_way = player_controlled && fear_prone_is_under_way(entity);
-    let dying = entity.dying;
-    let deploying = entity.deploy_state.is_some();
-    let Some(infantry) = entity.infantry.as_mut() else {
-        return None;
-    };
-    if infantry.fear_level > 0 {
-        infantry.fear_level -= 1;
-    }
-    if dying || deploying {
-        return None;
-    }
-
-    if !infantry.is_prone && infantry.fear_level >= PRONE_THRESHOLD {
-        // Player-control skip first, exactly as in gamemd: it precedes the
-        // Fraidycat test and leaves fear decaying without any stance change.
-        if under_way {
-            return None;
+impl crate::sim::world::Simulation {
+    /// Original `InfantryClass` fear receiver5200B0, called by InfantryAI at
+    /// 51BF0B after Foot Process and before FireAtTarget5206B0/sequencer520AE0.
+    /// Caller owns survival/warped admission. Returns the existing NULL Scatter
+    /// owner's immediate Process bridge-state-change result.
+    ///
+    /// `infantry_movement_action --fear` records original accepted/refused
+    /// Up/Down, actual House50B730/Walk75AB30 queries, scalar/clock writes and
+    /// three complete RNG states. The comparison covers ordinary unlimited-
+    /// ammo ground Infantry and supplied gate controls, not the whole AI.
+    pub(crate) fn infantry_fear_turn(
+        &mut self,
+        id: u64,
+        rules: &crate::rules::ruleset::RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<bool, String> {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return Ok(false);
+        };
+        if actor.category != crate::map::entities::EntityCategory::Infantry {
+            return Ok(false);
         }
-        if obj.crawls && !obj.fraidycat {
-            infantry.is_prone = true;
-            return Some(SequenceKind::Down);
-        }
-        return None;
-    }
-    if infantry.is_prone && infantry.fear_level < PRONE_THRESHOLD {
-        infantry.is_prone = false;
-        return Some(SequenceKind::Up);
-    }
-    None
-}
-
-/// InfantryAI51BF0B calls Fear5200B0 after Ready/Commence and before Fire.
-/// This live-object owner replaces the late whole-store stance sweep.
-pub(crate) fn tick_fear_for_entity(
-    entity: &mut GameEntity,
-    player_controlled: bool,
-    rules: &crate::rules::ruleset::RuleSet,
-    interner: &crate::sim::intern::StringInterner,
-) {
-    if entity.ai_frozen()
-        || entity
+        let infantry = actor
             .infantry
             .as_ref()
-            .is_none_or(|infantry| infantry.fear_level == 0 && !infantry.is_prone)
-    {
-        return;
-    }
-    let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
-        return;
-    };
-    if let Some(sequence) = tick_fear_decay_and_prone(obj, entity, player_controlled)
-        && let Some(anim) = entity.animation.as_mut()
-    {
-        anim.switch_to(sequence);
+            .ok_or("Infantry fear requires its class runtime")?;
+        let object = self
+            .object_type(actor.type_ref(), rules)
+            .ok_or("Infantry fear requires its native type")?;
+        let fraidycat = object.fraidycat;
+        if infantry.fear_level > 0 {
+            //5200CF: Fearless skips only the decrement, not stance requests.
+            if can_decay_fear(object) {
+                self.substrate
+                    .entities
+                    .get_mut(id)
+                    .expect("retained fear receiver")
+                    .infantry
+                    .as_mut()
+                    .expect("retained Infantry runtime")
+                    .fear_level -= 1;
+            }
+            // REQUIRED SEPARATE MECHANISM:5200E1..520105 reads live
+            // Techno+2FC after fear reaches0, calls the shared IsArmed701120
+            // if Ammo0, and refills from Type+684. Shared ground TechnoAmmo
+            // lifecycle is absent; immutable TypeAmmo cannot stand in for
+            // the live count. Stock E1's unlimited native Ammo-1 bypasses
+            // this arm. Saved zero-ammo controls retain the exact native
+            // prerequisite for migration of the existing AircraftAmmo owner.
+            let actor = self
+                .substrate
+                .entities
+                .get(id)
+                .expect("retained fear receiver");
+            let infantry = actor.infantry.as_ref().expect("retained Infantry runtime");
+            let fear = infantry.fear_level;
+            let prone = infantry.is_prone;
+            let doing = actor
+                .mission_leaf
+                .as_infantry()
+                .ok_or("Infantry fear requires its Doing leaf")?
+                .doing();
+            //520124..145/520165..17D: actual Doing27..30, independently
+            // of a deploy adapter. Undeploy31 still asks the class receiver,
+            // whose uninterruptible-action admission can refuse it.
+            if !matches!(doing, 27..=30) {
+                if prone && fear < PRONE_THRESHOLD {
+                    //520150..158: neither NavCom nor motion gates Up.
+                    let _accepted = self.infantry_do_action(id, 7, false, rules)?;
+                } else if !prone && fear >= PRONE_THRESHOLD {
+                    let human = self
+                        .houses
+                        .get(&actor.owner())
+                        .ok_or("Infantry fear requires its native House")?
+                        .is_controlled_by_human(self.session.game_mode_nonzero);
+                    //52018E..1BA: only a human owner tests these separate
+                    // inputs. A movement order is not IsMoving+10.
+                    let under_way = human
+                        && (actor.navigation.nav_com.is_some()
+                            || crate::sim::movement::motion_query::is_moving(actor)
+                                .ok_or("Infantry fear requires active IsMoving state")?);
+                    if !under_way && !fraidycat {
+                        //5201CE..1D6: Crawls and accepted/refused prone/clock
+                        // writes belong solely to Infantry51D6F0.
+                        let _accepted = self.infantry_do_action(id, 5, false, rules)?;
+                    }
+                }
+            }
+        }
+        //5201DC..254: this tail is outside the positive-fear/decay branch.
+        if !fraidycat {
+            return Ok(false);
+        }
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return Ok(false);
+        };
+        let fear = actor
+            .infantry
+            .as_ref()
+            .ok_or("Infantry panic requires its class runtime")?
+            .fear_level;
+        if fear <= PRONE_THRESHOLD {
+            return Ok(false);
+        }
+        let doing = actor
+            .mission_leaf
+            .as_infantry()
+            .ok_or("Infantry panic requires its Doing leaf")?
+            .doing();
+        if matches!(doing, 27..=30) || actor.is_falling_down() {
+            return Ok(false);
+        }
+        //520236 queries motion before52023D reads NavCom.
+        if crate::sim::movement::motion_query::is_moving(actor)
+            .ok_or("Infantry panic requires active IsMoving state")?
+            || actor.navigation.nav_com.is_some()
+        {
+            return Ok(false);
+        }
+        self.scatter_null(
+            id,
+            crate::sim::movement::ScatterFlags::new(true, false),
+            rules,
+            registry,
+        )
     }
 }
 
@@ -230,13 +266,11 @@ pub(crate) fn tick_fear_for_entity(
 // ---------------------------------------------------------------------------
 
 /// Lower end of the idle wait, in frames per unit of `IdleActionFrequency`.
-const IDLE_WAIT_FLOOR_FRAMES: i64 = 450;
-/// Width of the random part of the idle wait, in frames per unit of
-/// `IdleActionFrequency`. gamemd computes the ceiling as `frequency * 1800` and
-/// subtracts the floor, leaving this span to scale the random fraction by.
-const IDLE_WAIT_SPAN_FRAMES: i64 = 1800 - IDLE_WAIT_FLOOR_FRAMES;
+const IDLE_WAIT_FLOOR_FRAMES: i32 = 450;
+/// Upper end of the idle wait, in frames per unit of `IdleActionFrequency`.
+const IDLE_WAIT_CEILING_FRAMES: i32 = 1800;
 /// Inclusive top of the draw gamemd uses as the idle wait's random fraction,
-/// which it then divides by this same value to land in `0..=1`.
+/// scaled by the recorded native reciprocal at `0x007E3570`.
 const IDLE_WAIT_FRACTION_MAX: u32 = 0x7fff_fffe;
 /// Inclusive top of the idle action roll. Eleven outcomes, one of which (0) is
 /// the do-nothing arm — the reason infantry do not fidget on every timer expiry.
@@ -258,13 +292,13 @@ const IDLE_BIAS_THRESHOLD: u32 = 5;
 /// gamemd's eleven-way roll has four outcomes: nothing, the two fidget
 /// sequences, and a random facing change (which four of the eleven arms take).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IdleAction {
+enum IdleAction {
     /// Roll 0 — the turn is spent without doing anything.
     Nothing,
     /// Rolls 3, 4, 5 — the first fidget.
     Fidget1,
     /// Rolls 1, 2, 7 — the second fidget. gamemd also rolls a one-in-three
-    /// voice comment here for a human-owned man; that draw comes off the
+    /// voice comment here for a local-player-owned man; that draw comes off the
     /// process-global stream and is not modelled (see the module residual).
     Fidget2,
     /// Rolls 6, 8, 9, 10 — turn to a random facing.
@@ -273,26 +307,31 @@ pub enum IdleAction {
 
 /// The frames an infantryman waits before his next idle turn.
 ///
-/// gamemd draws a fraction and interpolates between `frequency * 450` and
-/// `frequency * 1800` frames, truncating toward zero. Stock `.15` therefore
-/// gives 67 to 270 frames — roughly four and a half to eighteen seconds.
-///
-/// Evaluated as one exact integer ratio rather than by scaling twice, so no
-/// intermediate rounding creeps in and no float enters the sim.
-fn idle_wait_frames(frequency_x1000: i64, fraction: u32) -> u32 {
-    // VERA-internal, gamemd equivalent UNCHECKED: gamemd multiplies doubles and
-    // has no non-positive guard here. Both this early return and the `.max(0)`
-    // below exist only because this arithmetic is integer and must not divide by
-    // zero or wrap negative. Unreachable at any stock frequency, which is
-    // positive in every shipped rules file.
-    if frequency_x1000 <= 0 {
-        return 0;
-    }
-    let denominator = 1000_i64 * i64::from(IDLE_WAIT_FRACTION_MAX);
-    let numerator = frequency_x1000
-        * (IDLE_WAIT_FLOOR_FRAMES * i64::from(IDLE_WAIT_FRACTION_MAX)
-            + IDLE_WAIT_SPAN_FRAMES * i64::from(fraction));
-    (numerator / denominator).max(0) as u32
+/// Infantry51CDD9..51CE26 stores the two products as doubles, reloads their
+/// difference, scales the signed draw by native7E3570, then consumes ftol's low
+/// DWORD. The timer controls subsequent Scenario draws: the old milliunit
+/// ratio changed this outcome for reader-admitted frequencies. Reuse the
+/// existing deterministic arithmetic owner instead of quantizing or clamping.
+/// Native execution: `anytown_damage/foot_missions` idle controls.
+fn idle_wait_frames(frequency: f64, fraction: u32) -> u32 {
+    use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
+    let frequency = X87::load_f64(NativeF64Bits::from_bits(frequency.to_bits()));
+    let ceiling = X87::load_f64(X87::store_f64_masked_chop(X87::mul(
+        frequency,
+        X87::load_i32(IDLE_WAIT_CEILING_FRAMES),
+    )));
+    let floor = X87::load_f64(X87::store_f64_masked_chop(X87::mul(
+        frequency,
+        X87::load_i32(IDLE_WAIT_FLOOR_FRAMES),
+    )));
+    let fraction = X87::mul(
+        X87::load_i32(fraction as i32),
+        X87::load_f64(crate::sim::rng::RANDOM_RANGED_UNIT_SCALE),
+    );
+    X87::ftol_i32_low_masked(X87::add(
+        X87::mul(X87::sub(ceiling, floor), fraction),
+        floor,
+    )) as u32
 }
 
 /// Turn one idle roll into the action it selects.
@@ -305,123 +344,158 @@ fn idle_action_for_roll(roll: u32) -> IdleAction {
     }
 }
 
-/// Whether this man is in a state that admits an idle turn at all.
-///
-/// gamemd asks the question in two places and this is both of them folded
-/// together: the guard/area-guard/hunt handlers only reach the idle call with no
-/// target, and the readiness predicate (`0x005216D0`) then requires an expired
-/// timer, a still locomotor, an upright stance, no live fire loop, and a
-/// current action of Ready, Guard or Tread (`0x00521722..0x00521752`). An
-/// infantryman whose Doing owns its sequence (`sim::movement::infantry_action`)
-/// is tested on its Doing and its Jumpjet's moving byte. For every other,
-/// Ready and Guard are one sequence here, and Tread is a water action nothing
-/// enters yet, so `Stand` is the whole admissible set.
-fn idle_action_ready(entity: &GameEntity, frame: u32) -> bool {
-    use crate::sim::mission::MissionType;
-
-    // A limboed man — garrisoned, or riding inside an IFV — is off the logic
-    // vector in gamemd and never reaches the feeder at all, so he must not
-    // spend a draw here either. A Battle Fortress rider is the exception: it
-    // stays on the logic vector on Guard (`SetInOpenTransport @ 0x00710470`),
-    // and neither `FootClass::Mission_Guard`'s idle call (`0x004D51A6`,
-    // `0x004D51D8`) nor the readiness predicate (`0x005216D0`) tests limbo.
-    //
-    // The `is_active` half is VERA-internal, gamemd equivalent UNCHECKED: a
-    // dying infantryman is already excluded natively because his current action
-    // is a Die sequence and the readiness gate admits only Ready/Guard/Tread.
-    // The `Stand` test at the bottom of this function reaches the same answer,
-    // so this is a second lock on the same door, not a behaviour change.
-    if (entity.lifecycle.in_limbo && !entity.passenger_role.in_open_transport())
-        || !entity.is_active()
-    {
-        return false;
-    }
-    // A man being warped never reaches his mission handler.
-    if entity.ai_frozen() {
-        return false;
-    }
-    if entity.deploy_state.is_some() || entity.attack_target.is_some() {
-        return false;
-    }
-    if !matches!(
-        entity.passive_acquire_mission(),
-        MissionType::Guard | MissionType::AreaGuard | MissionType::Hunt
-    ) {
-        return false;
-    }
+/// Infantry5216D0 calls the timer predicate7099E0, then actual ILocomotion+10
+/// before prone6DB, firing68D and Doing6C4. Caller mission/logic-vector
+/// admissions stay with those callers: neither NavCom nor animation nor a
+/// target is an idle receiver gate. Unsupported motion payloads are explicit
+/// errors; no adapter or sequence is substituted for their missing query.
+fn idle_action_ready(entity: &GameEntity, frame: u32) -> Result<bool, String> {
+    use crate::sim::movement::infantry_action::{DO_GUARD, DO_READY, DO_TREAD};
     let Some(infantry) = entity.infantry.as_ref() else {
-        return false;
+        return Ok(false);
     };
-    if infantry.is_prone || !infantry.idle_action_timer.due(frame) {
-        return false;
+    if !infantry.idle_action_timer.due(frame) {
+        return Ok(false);
     }
-    if fear_prone_is_under_way(entity) {
-        return false;
-    }
-    if crate::sim::movement::infantry_action::doing_owns_sequence(entity) {
-        use crate::sim::movement::infantry_action::{DO_GUARD, DO_READY, DO_TREAD};
-        let moving = entity
-            .locomotor
-            .as_ref()
-            .and_then(|locomotor| locomotor.jumpjet_runtime())
-            .is_some_and(|runtime| runtime.moving);
-        return !moving
-            && entity
-                .mission_leaf
-                .as_infantry()
-                .is_some_and(|leaf| matches!(leaf.doing(), DO_READY | DO_GUARD | DO_TREAD));
-    }
-    entity
-        .animation
-        .as_ref()
-        .is_some_and(|anim| anim.sequence == SequenceKind::Stand)
+    let moving = crate::sim::movement::motion_query::is_moving(entity)
+        .ok_or("Infantry idle action requires represented locomotor motion")?;
+    let leaf = entity
+        .mission_leaf
+        .as_infantry()
+        .ok_or("Infantry idle action requires native Doing")?;
+    Ok(!moving
+        && !infantry.is_prone
+        && leaf.firing_sequence_latch() == 0
+        && matches!(leaf.doing(), DO_READY | DO_GUARD | DO_TREAD))
 }
 
 /// Point an idle infantryman at one of the eight facings, with no turn animation.
 ///
 /// gamemd converts the `0..=7` draw to a facing byte of `index * 32` and pushes
-/// it through the facing object's snap setter — the same no-smoothing path spawn
-/// and deploy use, which is why an idle man appears to have simply turned rather
-/// than rotated. Infantry carry no `FacingClass` here, so the plain facing byte
-/// is the live carrier; the class is written too when a type happens to have one,
-/// because that is what the primary-facing read prefers.
+/// it through the body's snap setter (`+0x388` Set_Current, `0x0051CF34`/
+/// `0x0051D014`/`0x0051D092`) — the same no-smoothing path spawn and deploy
+/// use, which is why an idle man appears to have simply turned rather than
+/// rotated.
 fn set_idle_facing(entity: &mut GameEntity, facing_index: u8, frame: u32) {
     let facing_byte = facing_index.wrapping_mul(IDLE_FACING_STEP);
-    entity.facing = facing_byte;
-    if let Some(facing) = entity.body_facing.as_mut() {
-        facing.snap(u16::from(facing_byte) << 8, frame);
+    entity.body_facing.snap(u16::from(facing_byte) << 8, frame);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IdleTurn {
+    Refused,
+    Spent,
+    Fidget(i32),
+    NullSourceScatter,
+}
+
+/// Single Infantry51CDB0 decision body. The world receiver applies its class
+/// action immediately, before a mission caller can spend its cadence draw.
+fn select_idle_action(
+    entity: &mut GameEntity,
+    object: &ObjectType,
+    controlled_by_human: bool,
+    frequency: f64,
+    rng: &mut crate::sim::rng::SimRng,
+    frame: u32,
+) -> Result<IdleTurn, String> {
+    use crate::sim::movement::infantry_action::{DO_IDLE1, DO_IDLE2};
+    if !idle_action_ready(entity, frame)? {
+        return Ok(IdleTurn::Refused);
+    }
+    let wait = idle_wait_frames(
+        frequency,
+        rng.next_range_u32_inclusive(0, IDLE_WAIT_FRACTION_MAX),
+    );
+    let infantry = entity.infantry.as_mut().expect("admitted Infantry");
+    infantry.idle_action_timer.defer(frame, wait);
+    //51CE35..3E precede both the panic gate and every action/facing draw.
+    if object.fraidycat && !controlled_by_human && infantry.fear_level > IDLE_PANIC_FEAR {
+        return Ok(IdleTurn::NullSourceScatter);
+    }
+    let biased_type = object.id.eq_ignore_ascii_case(IDLE_BIASED_TYPE);
+    let mut roll = rng.next_range_u32_inclusive(0, IDLE_ROLL_MAX);
+    if biased_type && rng.next_range_u32_inclusive(0, IDLE_ROLL_MAX) < IDLE_BIAS_THRESHOLD {
+        roll = 8;
+    }
+    Ok(match idle_action_for_roll(roll) {
+        IdleAction::Fidget1 => IdleTurn::Fidget(DO_IDLE1),
+        IdleAction::Fidget2 => IdleTurn::Fidget(DO_IDLE2),
+        IdleAction::TurnInPlace => {
+            let index = rng.next_range_u32_inclusive(0, IDLE_FACING_MAX) as u8;
+            set_idle_facing(entity, index, frame);
+            if roll == 8 && (biased_type || (object.fraidycat && !controlled_by_human)) {
+                IdleTurn::NullSourceScatter
+            } else {
+                IdleTurn::Spent
+            }
+        }
+        IdleAction::Nothing => IdleTurn::Spent,
+    })
+}
+
+impl crate::sim::world::Simulation {
+    /// Infantry UpdateIdleAction51CDB0, called synchronously by the mission
+    /// handler. Returns its native admitted result even when Do_Action refuses.
+    /// Original E1 AreaGuard4D6F2B invokes this before cadence4D703A/65C7E0;
+    /// `anytown_damage/foot_missions` records the ordered native transaction.
+    pub(crate) fn infantry_idle_action(
+        &mut self,
+        id: u64,
+        rules: &crate::rules::ruleset::RuleSet,
+    ) -> Result<bool, String> {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return Ok(false);
+        };
+        // Guard/Hunt/AreaGuard dispatch the class virtual. Non-Infantry
+        // receivers inherit the false stub; they never resolve an Infantry
+        // type or touch its idle timer (Unit vtable+0x478 is 0x0041C040).
+        if actor.category != crate::map::entities::EntityCategory::Infantry {
+            return Ok(false);
+        }
+        let object = self
+            .object_type(actor.type_ref(), rules)
+            .ok_or("Infantry idle action requires its native type")?;
+        let controlled_by_human = self
+            .houses
+            .get(&actor.owner())
+            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        let turn = select_idle_action(
+            self.substrate
+                .entities
+                .get_mut(id)
+                .expect("retained Infantry"),
+            object,
+            controlled_by_human,
+            rules.general.idle_action_frequency,
+            &mut self.scenario_rng,
+            self.session.binary_frame,
+        )?;
+        match turn {
+            IdleTurn::Refused => return Ok(false),
+            IdleTurn::Fidget(action) => {
+                //51CEEA/51CF4C pass action9/10, force0, random-stage0 for
+                // every Infantry class, including ordinary ground E1.
+                let _accepted = self.infantry_do_action(id, action, false, rules)?;
+            }
+            IdleTurn::NullSourceScatter => {
+                // The existing damage Scatter owner accepts a real source;
+                // native idle passes NullCoordA8F200, forced1, no-Kick0. Its
+                // additional navigation/RNG path remains a separate mechanism.
+                log::debug!("infantry {id} idle NULL-source Scatter is not represented");
+            }
+            IdleTurn::Spent => {}
+        }
+        Ok(true)
     }
 }
 
-/// Run one idle turn for every eligible infantryman.
-///
-/// ## Visit order
-/// `order` is the logic vector — the active-object order gamemd dispatches
-/// through to reach the guard/hunt/area-guard handlers that own this call. It is
-/// deliberately not the entity store's key order: the store also holds limboed
-/// objects (garrison occupants, closed-transport passengers) that never reach
-/// the feeder natively and must not spend a draw.
-///
-/// This runs every tick where gamemd reaches it on the guard mission's own
-/// dispatch cadence. The wait timer is the real gate in both, so the residual is
-/// that a fidget can start a few ticks earlier here than it would there —
-/// invisible on its own, but it does mean the draw is taken a few ticks earlier
-/// too. Recorded; closing it means owning the mission dispatch point.
-///
-/// ## Draw order
-/// Each eligible man consumes, from the scenario stream, one draw to re-arm his
-/// wait; then — unless he panicked out first — one for the action roll; then one
-/// more for the facing when the roll lands on a turn arm. The biased type spends
-/// one extra sub-roll immediately *after* the action roll, before the arm is
-/// selected. That order is the whole determinism contract of this function.
-///
-/// ## Fidgets
-/// Native fidgets through `Do_Action(Idle1 or Idle2)`, unforced
-/// (`0x0051CEE0`, `0x0051CF42`). An infantryman whose Doing owns its sequence
-/// gets exactly that: its requests are returned, in visit order, for the caller
-/// to apply through the Do_Action owner (they draw nothing). Every other plays
-/// the pose, which its animation cascade ends.
-pub fn tick_idle_actions(
+/// Test compatibility for old logic-vector fixtures. Production mission
+/// callers use the synchronous object receiver above. This adapter keeps only
+/// outer AI/logic-vector gates and delegates every idle decision to its owner;
+/// returned fidgets require the real Do_Action receiver to enact them.
+#[cfg(test)]
+pub(crate) fn tick_idle_actions(
     entities: &mut crate::sim::entity_store::EntityStore,
     order: &[u64],
     houses: &std::collections::BTreeMap<
@@ -433,64 +507,35 @@ pub fn tick_idle_actions(
     rng: &mut crate::sim::rng::SimRng,
     frame: u32,
 ) -> Vec<(u64, i32)> {
-    use crate::sim::movement::infantry_action::{DO_IDLE1, DO_IDLE2, doing_owns_sequence};
     let mut fidgets = Vec::new();
     for &id in order {
-        let Some(entity) = entities.get_mut_if(id, |entity| {
-            entity.infantry.is_some() && idle_action_ready(entity, frame)
-        }) else {
+        let Some(entity) = entities.get_mut(id) else {
             continue;
         };
+        if (entity.lifecycle.in_limbo && !entity.passenger_role.in_open_transport())
+            || !entity.is_active()
+            || entity.ai_frozen()
+        {
+            continue;
+        }
         let type_name = interner.resolve(entity.type_ref());
         let Some(obj) = rules.object(type_name) else {
             continue;
         };
-        let biased_type = type_name.eq_ignore_ascii_case(IDLE_BIASED_TYPE);
-        let player_controlled = houses
+        let controlled_by_human = houses
             .get(&entity.owner())
-            .is_some_and(|house| house.is_human);
-
-        // The wait is re-armed first, before any decision — gamemd re-arms even
-        // on the turn it panics out, so a Fraidycat under fire does not retry
-        // every frame.
-        let wait = idle_wait_frames(
-            rules.general.idle_action_frequency_x1000,
-            rng.next_range_u32_inclusive(0, IDLE_WAIT_FRACTION_MAX),
-        );
-        let fear = entity
-            .infantry
-            .as_ref()
-            .map_or(0, |infantry| infantry.fear_level);
-        if let Some(infantry) = entity.infantry.as_mut() {
-            infantry.idle_action_timer.defer(frame, wait);
-        }
-
-        // A frightened AI-owned Fraidycat runs instead of fidgeting. VERA has no
-        // infantry scatter yet, so this arm only consumes its turn; the run
-        // itself is recorded as a residual.
-        if obj.fraidycat && !player_controlled && fear > IDLE_PANIC_FEAR {
-            continue;
-        }
-
-        let mut roll = rng.next_range_u32_inclusive(0, IDLE_ROLL_MAX);
-        if biased_type && rng.next_range_u32_inclusive(0, IDLE_ROLL_MAX) < IDLE_BIAS_THRESHOLD {
-            roll = 8;
-        }
-
-        let (sequence, action) = match idle_action_for_roll(roll) {
-            IdleAction::Fidget1 => (SequenceKind::Idle1, DO_IDLE1),
-            IdleAction::Fidget2 => (SequenceKind::Idle2, DO_IDLE2),
-            IdleAction::TurnInPlace => {
-                let index = rng.next_range_u32_inclusive(0, IDLE_FACING_MAX) as u8;
-                set_idle_facing(entity, index, frame);
-                continue;
-            }
-            IdleAction::Nothing => continue,
-        };
-        if doing_owns_sequence(entity) {
+            .is_some_and(|house| house.is_controlled_by_human(false));
+        if let IdleTurn::Fidget(action) = select_idle_action(
+            entity,
+            obj,
+            controlled_by_human,
+            rules.general.idle_action_frequency,
+            rng,
+            frame,
+        )
+        .expect("native idle fixture requires represented Infantry state")
+        {
             fidgets.push((id, action));
-        } else if let Some(anim) = entity.animation.as_mut() {
-            anim.switch_to(sequence);
         }
     }
     fidgets
@@ -537,9 +582,6 @@ mod tests {
         obj.crawls = crawls;
         obj
     }
-
-    /// Stand-in logic vector for the single-entity idle fixtures.
-    const ORDER: [u64; 1] = [1];
 
     fn infantry(hp: i32) -> GameEntity {
         use crate::sim::mission::state::MissionTestFixture;
@@ -653,65 +695,318 @@ mod tests {
         );
     }
 
+    fn fear_corpus() -> serde_json::Value {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/infantry_fear_action.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            native["native_sha256"],
+            "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+        );
+        assert_eq!(native["rows"].as_array().unwrap().len(), 46);
+        native
+    }
+
+    /// The same supplied prior-state controls as the native movement-action
+    /// VM, using production rules/ART readers for its synthetic key values.
+    /// These are class-receiver controls, not a native constructor/map load.
+    fn fear_fixture(row: &serde_json::Value) -> (crate::sim::world::Simulation, RuleSet) {
+        use crate::sim::components::{DriveCoord, NavTargetRef};
+        use crate::sim::house_state::HouseState;
+        use crate::sim::movement::locomotor::LocomotorState;
+        use crate::sim::rng::SimRng;
+        use crate::sim::stage::StageClass;
+        use crate::sim::timer::CdTimer;
+        use crate::sim::world::Simulation;
+
+        let input = &row["input"];
+        let before = &row["before"];
+        let yes_no = |key: &str, default: bool| {
+            if input[key].as_bool().unwrap_or(default) {
+                "yes"
+            } else {
+                "no"
+            }
+        };
+        let mut rules = rules_for(&format!(
+            "Locomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n\
+             Fearless={}\nFraidycat={}\n",
+            yes_no("fearless", false),
+            yes_no("fraidycat", false)
+        ));
+        let records: String = crate::rules::infantry_sequence::NATIVE_SEQUENCE_NAMES
+            .iter()
+            .enumerate()
+            .map(|(action, name)| {
+                let absent = input["absent"].as_bool().unwrap_or(false)
+                    && input["request"].as_u64() == Some(action as u64);
+                format!("{name}=0,{},0\n", if absent { 0 } else { 6 })
+            })
+            .collect();
+        let art = IniFile::from_str(&format!(
+            "[E1]\nSequence=FearFixture\nCrawls={}\n[FearFixture]\n{records}",
+            yes_no("crawls", true)
+        ));
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+        // Native fixture supplies Type+EBD directly. The production reader
+        // binds that Crawls byte from ART, not RULES, before Down51D77A.
+        assert_eq!(
+            rules.object("E1").unwrap().crawls,
+            input["crawls"].as_bool().unwrap_or(true),
+            "supplied native Crawls input: {}",
+            input["name"]
+        );
+        rules.bind_animation_sequences(
+            &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+        );
+        let mut sim = Simulation::with_seed(31);
+        sim.session.binary_frame = 100;
+        sim.session.game_mode_nonzero = input["game_mode_nonzero"].as_bool().unwrap_or(true);
+        sim.scenario_rng = SimRng::new(31);
+        sim.main_rng = SimRng::new(31);
+        sim.mapgen_rng = SimRng::new(31);
+        let owner = sim.interner.intern("FearOwner");
+        let mut house = HouseState::new(
+            owner,
+            0,
+            None,
+            input["human"].as_bool().unwrap_or(false),
+            0,
+            10,
+        );
+        house.player_control = input["player_control"].as_bool().unwrap_or(false);
+        sim.houses.insert(owner, house);
+        let mut actor = GameEntity::new_at_frame_zero_for_test(
+            1,
+            0,
+            0,
+            0,
+            0,
+            owner,
+            Health { current: 100 },
+            sim.interner.intern("E1"),
+            EntityCategory::Infantry,
+            0,
+            5,
+            false,
+        );
+        actor.lifecycle.in_limbo = false;
+        actor.set_falling_down_for_test(input["object_is_falling_down"].as_bool().unwrap_or(false));
+        actor
+            .mission_leaf
+            .set_infantry_doing_verified(before["doing"].as_i64().unwrap() as i32)
+            .unwrap();
+        actor.infantry = Some(InfantryRuntime::new());
+        let infantry = actor.infantry.as_mut().unwrap();
+        infantry.fear_level = before["fear"].as_u64().unwrap() as u16;
+        infantry.is_prone = before["prone"] != 0;
+        let mut loco = LocomotorState::from_object_type(rules.object("E1").unwrap(), 100);
+        if input["moving"].as_bool().unwrap_or(false) {
+            // Existing Walk MoveTo owns this retained moving byte; fear asks
+            // IsMoving rather than inferring it from this destination.
+            loco.set_walk_destination(Some(DriveCoord {
+                x: 2880,
+                y: 2624,
+                z: 0,
+            }));
+        }
+        actor.locomotor = Some(loco);
+        if input["nav"].as_bool().unwrap_or(false) {
+            actor.navigation.nav_com = Some(NavTargetRef::cell(4, 4));
+        }
+        actor.install_native_stage_fixture(StageClass::from_native_fixture(
+            before["stage"].as_i64().unwrap() as i32,
+            before["changed"].as_u64().unwrap() as u8,
+            CdTimer::from_raw(
+                before["timer_start"].as_i64().unwrap() as i32,
+                before["timer_duration"].as_i64().unwrap() as i32,
+            ),
+            before["rate"].as_i64().unwrap() as i32,
+            before["increment"].as_i64().unwrap() as i32,
+        ));
+        sim.substrate.entities.insert(actor);
+        (sim, rules)
+    }
+
+    fn assert_native_fear_state(sim: &crate::sim::world::Simulation, row: &serde_json::Value) {
+        use serde_json::json;
+        let expected = &row["after"];
+        let name = row["input"]["name"].as_str().unwrap();
+        let actor = sim.substrate.entities.get(1).unwrap();
+        let infantry = actor.infantry.as_ref().unwrap();
+        assert_eq!(
+            infantry.fear_level,
+            expected["fear"].as_u64().unwrap() as u16,
+            "{name}: fear"
+        );
+        assert_eq!(infantry.is_prone, expected["prone"] != 0, "{name}: prone");
+        assert_eq!(
+            actor.mission_leaf.as_infantry().unwrap().doing(),
+            expected["doing"].as_i64().unwrap() as i32,
+            "{name}: Doing"
+        );
+        assert_eq!(
+            serde_json::to_value(actor.native_stage()).unwrap(),
+            json!({
+                "value": expected["stage"], "changed": expected["changed"],
+                "timer": {"start_frame": expected["timer_start"], "duration": expected["timer_duration"]},
+                "rate": expected["rate"], "increment": expected["increment"],
+            }),
+            "{name}: retained native stage including refused actions"
+        );
+        assert_eq!(
+            crate::sim::movement::motion_query::is_moving(actor),
+            Some(expected["moving"] != 0),
+            "{name}: actual motion"
+        );
+        for (stream, rng) in [
+            ("scenario", &sim.scenario_rng),
+            ("main", &sim.main_rng),
+            ("mapgen", &sim.mapgen_rng),
+        ] {
+            assert_eq!(
+                rng.native_state_hex(),
+                row["rng_after"][stream].as_str().unwrap(),
+                "{name}: full {stream} state"
+            );
+        }
+    }
+
+    /// Fail-first witness: original5200B0 requests Up(7,0,0), but the shared
+    /// unchanged-action51D90B refusal retains prone and every clock field.
     #[test]
-    fn player_controlled_infantry_under_way_does_not_go_prone() {
-        use crate::sim::components::{MovementTarget, NavTargetRef};
+    fn native_fear_up_refusal_retains_prone() {
+        let native = fear_corpus();
+        let row = native["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["input"]["name"] == "up_same_refusal")
+            .unwrap();
+        let (mut sim, rules) = fear_fixture(row);
+        assert!(!sim.infantry_fear_turn(1, &rules, None).unwrap());
+        assert_native_fear_state(&sim, row);
+    }
 
-        let obj = infantry_obj("", true);
-
-        // A player-owned man with a destination keeps walking; fear still decays.
-        let mut walking = infantry(100);
-        walking.infantry.as_mut().unwrap().fear_level = 51;
-        walking.navigation.nav_com = Some(NavTargetRef::cell(4, 4));
-        assert_eq!(tick_fear_decay_and_prone(&obj, &mut walking, true), None);
-        let runtime = walking.infantry.unwrap();
-        assert_eq!(runtime.fear_level, 50);
-        assert!(!runtime.is_prone);
-
-        // Same for a live movement order rather than a NavCom.
-        let mut walking = infantry(100);
-        walking.infantry.as_mut().unwrap().fear_level = 51;
-        walking.movement_target = Some(MovementTarget::default());
-        assert_eq!(tick_fear_decay_and_prone(&obj, &mut walking, true), None);
-        assert!(!walking.infantry.unwrap().is_prone);
-
-        // The identical AI-owned man goes down — the gate is player-control only.
-        let mut ai = infantry(100);
-        ai.infantry.as_mut().unwrap().fear_level = 51;
-        ai.navigation.nav_com = Some(NavTargetRef::cell(4, 4));
-        assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut ai, false),
-            Some(SequenceKind::Down)
-        );
-        assert!(ai.infantry.unwrap().is_prone);
-
-        // And a player-owned man standing still still goes down.
-        let mut standing = infantry(100);
-        standing.infantry.as_mut().unwrap().fear_level = 51;
-        assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut standing, true),
-            Some(SequenceKind::Down)
-        );
-        assert!(standing.infantry.unwrap().is_prone);
+    /// Original5200B0 -> actual House50B730/Walk75AB30 ->51D6F0.42 full
+    /// unlimited-ammo controls compare scalar, Doing, prone, entire stage and
+    /// all three RNGs. The finite-ammo controls and the pre-Scatter boundary
+    /// stay native prerequisite evidence; no result is invented for them.
+    #[test]
+    fn native_fear_receiver_matches_action_admission_clock_and_full_rng() {
+        use crate::sim::rng::trace_draws;
+        let native = fear_corpus();
+        let mut compared = 0;
+        for row in native["rows"].as_array().unwrap() {
+            if row["input"]["ammo"] == 0 || row["returned"] == false {
+                continue;
+            }
+            let (mut sim, rules) = fear_fixture(row);
+            for (stream, rng) in [
+                ("scenario", &sim.scenario_rng),
+                ("main", &sim.main_rng),
+                ("mapgen", &sim.mapgen_rng),
+            ] {
+                assert_eq!(
+                    rng.native_state_hex(),
+                    row["rng_before"][stream].as_str().unwrap(),
+                    "supplied full {stream} state"
+                );
+            }
+            let (changed, draws) = trace_draws(|| sim.infantry_fear_turn(1, &rules, None).unwrap());
+            assert!(!changed);
+            assert!(
+                draws.is_empty(),
+                "{}: receiver draws no RNG",
+                row["input"]["name"]
+            );
+            assert_native_fear_state(&sim, row);
+            compared += 1;
+        }
+        assert_eq!(compared, 42);
     }
 
     #[test]
-    fn under_way_gate_never_blocks_standing_back_up() {
-        use crate::sim::components::NavTargetRef;
+    fn native_fear_down_uses_actual_walk_motion_not_movement_order() {
+        let native = fear_corpus();
+        let row = native["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["input"]["name"] == "human_stationary")
+            .unwrap();
+        let (mut sim, rules) = fear_fixture(row);
+        sim.substrate.entities.get_mut(1).unwrap().movement_target =
+            Some(crate::sim::components::MovementTarget::default());
+        assert!(!sim.infantry_fear_turn(1, &rules, None).unwrap());
+        assert_native_fear_state(&sim, row);
+    }
 
-        // The skip guards the Down branch only: a prone player-owned man ordered
-        // to move must still get his Up when fear falls below the threshold.
-        let obj = infantry_obj("", true);
-        let mut prone = infantry(100);
-        prone.infantry.as_mut().unwrap().fear_level = PRONE_THRESHOLD;
-        prone.infantry.as_mut().unwrap().is_prone = true;
-        prone.navigation.nav_com = Some(NavTargetRef::cell(4, 4));
-
+    /// Stock E1's Crawls/Fearless/Fraidycat/Ammo/Walk inputs come through
+    /// the production retail RULES/ART readers. For these receivers the Up/
+    /// Down record count participates only in the zero predicate51D70F;
+    /// physical GISequence's positive counts and the native supplied6 both
+    /// admit it. Sequence advancement and loader/producer equivalence are
+    /// not inferred from these class-receiver comparisons.
+    #[test]
+    fn native_retail_e1_fear_inputs_and_receiver_match_ordinary_controls() {
+        let Some(rules) = retail_e1_rules() else {
+            return;
+        };
+        let object = rules.object("E1").unwrap();
+        assert!(object.crawls);
+        assert!(!object.fearless);
+        assert!(!object.fraidycat);
+        assert_eq!(object.ammo, -1);
         assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut prone, true),
-            Some(SequenceKind::Up)
+            crate::sim::movement::locomotor::LocomotorState::from_object_type(object, 100)
+                .active_kind(),
+            crate::rules::locomotor_type::LocomotorKind::Walk
         );
-        assert!(!prone.infantry.unwrap().is_prone);
+        for action in [5, 7] {
+            assert!(
+                rules
+                    .animation_sequence("E1")
+                    .unwrap()
+                    .infantry_action(action)
+                    .unwrap()
+                    .frames_per_facing
+                    > 0
+            );
+        }
+        let native = fear_corpus();
+        let names = [
+            "zero_prone",
+            "down_threshold49",
+            "down_threshold50",
+            "down_threshold51",
+            "up_threshold51",
+            "up_threshold50",
+            "up_positive2",
+            "up_positive1",
+            "up_same_refusal",
+            "up_undeploy_refusal",
+            "down_undeploy_refusal",
+            "human_nav",
+            "human_moving",
+            "human_stationary",
+            "ai_nav_moving",
+            "player_control_campaign",
+            "player_control_skirmish",
+            "human_up_nav_moving",
+        ];
+        for name in names {
+            let row = native["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["input"]["name"] == name)
+                .unwrap();
+            let (mut sim, _synthetic_rules) = fear_fixture(row);
+            assert!(!sim.infantry_fear_turn(1, &rules, None).unwrap());
+            assert_native_fear_state(&sim, row);
+        }
     }
 
     #[test]
@@ -742,347 +1037,307 @@ mod tests {
         let rules = rules_for("VeteranAbilities=FEARLESS\n");
         let obj = rules.object("E1").unwrap();
         let mut e = infantry(90);
-        e.veterancy = 100;
+        e.set_veterancy_rank(100);
         apply_fear_from_damage(obj, &mut e, 1, true, 0.25, 0.5);
         assert_eq!(e.infantry.unwrap().fear_level, 0);
 
         let rules = rules_for("EliteAbilities=FEARLESS\n");
         let obj = rules.object("E1").unwrap();
         let mut e = infantry(90);
-        e.veterancy = 200;
+        e.set_veterancy_rank(200);
         apply_panic_force(obj, &mut e);
         assert_eq!(e.infantry.unwrap().fear_level, 0);
     }
 
-    #[test]
-    fn decay_thresholds_and_fearless_decay_gate() {
-        let obj = infantry_obj("", true);
-        let mut e = infantry(100);
-        e.infantry.as_mut().unwrap().fear_level = 50;
-        assert_eq!(tick_fear_decay_and_prone(&obj, &mut e, false), None);
-        assert!(!e.infantry.unwrap().is_prone);
-
-        let mut e = infantry(100);
-        e.infantry.as_mut().unwrap().fear_level = 51;
+    fn idle_corpus() -> serde_json::Value {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+        ))
+        .unwrap();
         assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut e, false),
-            Some(SequenceKind::Down)
+            native["native_sha256"],
+            "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
         );
-        assert!(e.infantry.unwrap().is_prone);
-
-        let mut e = infantry(100);
-        e.infantry.as_mut().unwrap().fear_level = 50;
-        e.infantry.as_mut().unwrap().is_prone = true;
-        assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut e, false),
-            Some(SequenceKind::Up)
-        );
-        assert!(!e.infantry.unwrap().is_prone);
-
-        let rules = rules_for("Fearless=yes\n");
-        let obj = rules.object("E1").unwrap();
-        let mut e = infantry(100);
-        e.infantry.as_mut().unwrap().fear_level = 100;
-        assert_eq!(tick_fear_decay_and_prone(obj, &mut e, false), None);
-        assert_eq!(e.infantry.unwrap().fear_level, 100);
-
-        let obj = infantry_obj("VeteranAbilities=FEARLESS\n", true);
-        let mut e = infantry(100);
-        e.veterancy = 100;
-        e.infantry.as_mut().unwrap().fear_level = 100;
-        assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut e, false),
-            Some(SequenceKind::Down)
-        );
-        assert_eq!(e.infantry.unwrap().fear_level, 99);
+        native
     }
 
-    #[test]
-    fn fraidycat_rejects_fear_driven_down() {
-        for crawls in [true, false] {
-            let obj = infantry_obj("Fraidycat=yes\n", crawls);
-            let mut e = infantry(100);
-            e.infantry.as_mut().unwrap().fear_level = MAX_FEAR;
-
-            assert_eq!(tick_fear_decay_and_prone(&obj, &mut e, false), None);
-            let infantry = e.infantry.unwrap();
-            assert_eq!(infantry.fear_level, MAX_FEAR - 1);
-            assert!(!infantry.is_prone);
-        }
+    fn native_rng_state(rng: &crate::sim::rng::SimRng) -> serde_json::Value {
+        let state = rng.logical_view();
+        serde_json::json!({
+            "disabled": state.disabled,
+            "index_a": state.index_a,
+            "index_b": state.index_b,
+            "state": state.words,
+        })
     }
 
-    #[test]
-    fn crawls_gate_only_blocks_down_not_recovery() {
-        let obj = infantry_obj("", false);
-        let mut standing = infantry(100);
-        standing.infantry.as_mut().unwrap().fear_level = 51;
-
-        assert_eq!(tick_fear_decay_and_prone(&obj, &mut standing, false), None);
-        let runtime = standing.infantry.unwrap();
-        assert_eq!(runtime.fear_level, 50);
-        assert!(!runtime.is_prone);
-
-        let obj = infantry_obj("", true);
-        let mut standing = infantry(100);
-        standing.infantry.as_mut().unwrap().fear_level = 51;
-
-        assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut standing, false),
-            Some(SequenceKind::Down)
+    fn retail_e1_rules() -> Option<RuleSet> {
+        use crate::rules::native_processing::RulesLayerStack;
+        let ini = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini")?;
+        let art = crate::rules::retail_ini_fixture::retail_ini("artmd.ini")?;
+        let layers = RulesLayerStack::new(ini);
+        let mut rules =
+            RuleSet::from_processed_rules(&layers.process_with_fixed_art(&art).unwrap()).unwrap();
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+        rules.bind_animation_sequences(
+            &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
         );
-        let runtime = standing.infantry.unwrap();
-        assert_eq!(runtime.fear_level, 50);
-        assert!(runtime.is_prone);
-
-        let obj = infantry_obj("", false);
-        let mut prone = infantry(100);
-        prone.infantry.as_mut().unwrap().fear_level = 50;
-        prone.infantry.as_mut().unwrap().is_prone = true;
-
-        assert_eq!(
-            tick_fear_decay_and_prone(&obj, &mut prone, false),
-            Some(SequenceKind::Up)
-        );
-        let runtime = prone.infantry.unwrap();
-        assert_eq!(runtime.fear_level, 49);
-        assert!(!runtime.is_prone);
+        Some(rules)
     }
 
+    /// Full original51CDB0 + actual75AB30 + original51D6F0 on the physical
+    /// E1/GISequence. Native reader66B3EA processes stock AudioVisual .15.
+    /// Supplied ready/action/nav/target/timer controls isolate receiver
+    /// admission; Guard/AreaGuard/Hunt caller admissions are separate tests.
+    /// Compares the observed signed Stage and timer start/duration/rate.
+    /// Native stack auxiliary words and unobserved FC/increment are excluded.
     #[test]
-    fn idle_wait_spans_the_native_window_at_stock_frequency() {
-        // Stock `IdleActionFrequency=.15` puts the wait between 450*.15 and
-        // 1800*.15 frames — 67 to 270, i.e. about four and a half to eighteen
-        // seconds between fidgets.
-        assert_eq!(idle_wait_frames(150, 0), 67);
-        assert_eq!(idle_wait_frames(150, IDLE_WAIT_FRACTION_MAX), 270);
-        assert_eq!(idle_wait_frames(150, IDLE_WAIT_FRACTION_MAX / 2), 168);
-        // A zeroed frequency disables the wait rather than dividing by zero.
-        assert_eq!(idle_wait_frames(0, IDLE_WAIT_FRACTION_MAX), 0);
-    }
+    fn native_e1_idle_receiver_matches_timer_action_facing_and_full_rng() {
+        use crate::sim::combat::AttackTarget;
+        use crate::sim::components::{DriveCoord, NavTargetRef};
+        use crate::sim::mission::MissionTimer;
+        use crate::sim::movement::locomotor::LocomotorState;
+        use crate::sim::rng::{SimRng, trace_draws};
+        use crate::sim::world::Simulation;
+        use serde_json::{Value, json};
 
-    #[test]
-    fn idle_roll_selects_the_native_arms() {
-        let expected = [
-            IdleAction::Nothing,
-            IdleAction::Fidget2,
-            IdleAction::Fidget2,
-            IdleAction::Fidget1,
-            IdleAction::Fidget1,
-            IdleAction::Fidget1,
-            IdleAction::TurnInPlace,
-            IdleAction::Fidget2,
-            IdleAction::TurnInPlace,
-            IdleAction::TurnInPlace,
-            IdleAction::TurnInPlace,
-        ];
-        for (roll, want) in expected.into_iter().enumerate() {
-            assert_eq!(idle_action_for_roll(roll as u32), want, "roll {roll}");
-        }
-    }
-
-    /// One standing infantryman, left alone, must eventually fidget.
-    ///
-    /// Reverting the idle turn leaves him on `Stand` forever, which is the whole
-    /// symptom: retail infantry shift about every several seconds and VERA's
-    /// stood like statues.
-    #[test]
-    fn an_idle_infantryman_enters_a_fidget_and_rearms_his_wait() {
-        use crate::sim::animation::Animation;
-        use crate::sim::entity_store::EntityStore;
-        use crate::sim::rng::SimRng;
-
-        let rules = rules_for("");
-        let houses = std::collections::BTreeMap::new();
-        let mut rng = SimRng::new(7);
-        let mut store = EntityStore::new();
-
-        let mut e = infantry(100);
-        e.animation = Some(Animation::new(SequenceKind::Stand));
-        store.insert(e);
-        // Snapshot the thread-local test interner only after the entity has
-        // interned its owner and type strings into it.
-        let interner = crate::sim::intern::test_interner();
-
-        // The first eligible turn always re-arms the wait, whichever arm it takes.
-        tick_idle_actions(&mut store, &ORDER, &houses, &rules, &interner, &mut rng, 0);
-        let armed = store.get(1).unwrap().infantry.unwrap().idle_action_timer;
-        assert!(
-            armed.duration >= 67 && armed.duration <= 270,
-            "wait {} outside the stock window",
-            armed.duration
-        );
-
-        // Run out enough turns that at least one lands on a fidget arm. Six of
-        // eleven arms are fidgets, so this is not a coin-flip test.
-        let mut frame = 0u32;
-        let mut fidgeted = false;
-        for _ in 0..64 {
-            let timer = store.get(1).unwrap().infantry.unwrap().idle_action_timer;
-            frame = timer.start_frame.saturating_add(timer.duration);
-            // Reset to Stand so each turn is eligible again, as it would be once
-            // the previous fidget played out.
-            store.get_mut(1).unwrap().animation = Some(Animation::new(SequenceKind::Stand));
-            tick_idle_actions(
-                &mut store, &ORDER, &houses, &rules, &interner, &mut rng, frame,
-            );
-            if matches!(
-                store.get(1).unwrap().animation.as_ref().unwrap().sequence,
-                SequenceKind::Idle1 | SequenceKind::Idle2
-            ) {
-                fidgeted = true;
-                break;
+        let Some(rules) = retail_e1_rules() else {
+            return;
+        };
+        let native = idle_corpus();
+        let signed = |value: &Value| value.as_i64().unwrap() as i32;
+        let mut compared = 0;
+        for row in native["retail_idle_rows"].as_array().unwrap() {
+            if row["input"]["idle_control"]["entry"] != "idle" {
+                continue;
             }
-        }
-        assert!(fidgeted, "no fidget in 64 idle turns (last frame {frame})");
-    }
-
-    #[test]
-    fn an_infantryman_who_is_busy_never_takes_an_idle_turn() {
-        use crate::sim::animation::Animation;
-        use crate::sim::components::NavTargetRef;
-        use crate::sim::entity_store::EntityStore;
-        use crate::sim::rng::SimRng;
-
-        let rules = rules_for("");
-        let houses = std::collections::BTreeMap::new();
-
-        // Each removes either the idle caller's admission or native readiness.
-        let busy: Vec<Box<dyn Fn(&mut GameEntity)>> = vec![
-            // Constructor state has not entered a mission that calls the idle leaf.
-            Box::new(|e: &mut GameEntity| e.mission = crate::sim::mission::MissionCom::at_frame(0)),
-            Box::new(|e: &mut GameEntity| e.navigation.nav_com = Some(NavTargetRef::cell(3, 3))),
-            Box::new(|e: &mut GameEntity| e.infantry.as_mut().unwrap().is_prone = true),
-            Box::new(|e: &mut GameEntity| e.dying = true),
-            Box::new(|e: &mut GameEntity| e.animation = Some(Animation::new(SequenceKind::Walk))),
-            // A garrison occupant or transport passenger: still in the store,
-            // off the logic vector, and must not spend a draw.
-            Box::new(|e: &mut GameEntity| e.lifecycle.in_limbo = true),
-        ];
-
-        for (index, make_busy) in busy.into_iter().enumerate() {
-            let mut rng = SimRng::new(7);
-            let before = rng.state();
-            let mut store = EntityStore::new();
-            let mut e = infantry(100);
-            e.animation = Some(Animation::new(SequenceKind::Stand));
-            assert!(idle_action_ready(&e, 0), "case {index}: eligible baseline");
-            make_busy(&mut e);
-            store.insert(e);
-            let interner = crate::sim::intern::test_interner();
-
-            tick_idle_actions(&mut store, &ORDER, &houses, &rules, &interner, &mut rng, 0);
+            let input = &row["input"];
+            let before = &row["before"];
+            let after = &row["after"];
+            let name = input["name"].as_str().unwrap();
+            let mut sim = Simulation::new();
+            sim.session.binary_frame = 1;
+            // The historical native idle VM retains GameOptions+A8EB60=0
+            // through bootstrap, companion and the physical Rules read.
+            // Original5FB2E0 maps action-delay3 to5 at this supplied index;
+            // an Options constructor/settings load is outside this receipt.
+            // Reproduction: foot_missions.md's idle Options input proof.
+            sim.session.game_options.game_speed = 0;
+            sim.scenario_rng = SimRng::new(input["scenario_seed"].as_u64().unwrap());
             assert_eq!(
-                rng.state(),
-                before,
-                "case {index} must not consume a scenario draw"
+                native_rng_state(&sim.scenario_rng),
+                row["rng_before"]["scenario"],
+                "{name} supplied RNG"
             );
+            let frequency_bits: String = rules
+                .general
+                .idle_action_frequency
+                .to_le_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
             assert_eq!(
-                store.get(1).unwrap().infantry.unwrap().idle_action_timer,
-                crate::sim::mission::MissionTimer::default(),
-                "case {index} must not re-arm the idle wait"
+                frequency_bits, input["idle_control"]["idle_action_frequency_bits"],
+                "{name} production reader"
             );
-        }
-    }
-
-    /// A Battle Fortress rider stays on the logic vector on Guard
-    /// (`SetInOpenTransport @ 0x00710470`), and neither the Guard handler's
-    /// idle call nor the readiness predicate (`0x005216D0`) tests limbo, so
-    /// it takes its idle turns inside, draws and all; a closed transport's
-    /// passenger does not.
-    #[test]
-    fn a_battle_fortress_rider_takes_its_idle_turns_inside() {
-        use crate::sim::animation::Animation;
-        use crate::sim::entity_store::EntityStore;
-        use crate::sim::passenger::PassengerRole;
-        use crate::sim::rng::SimRng;
-
-        let rules = rules_for("");
-        let houses = std::collections::BTreeMap::new();
-        for open_topped in [true, false] {
-            let mut rng = SimRng::new(7);
-            let before = rng.state();
-            let mut store = EntityStore::new();
-            let mut e = infantry(100);
-            e.animation = Some(Animation::new(SequenceKind::Stand));
-            e.lifecycle.in_limbo = true;
-            e.passenger_role = PassengerRole::Inside {
-                transport_id: 9,
-                open_topped,
-            };
-            store.insert(e);
-            let interner = crate::sim::intern::test_interner();
-
-            tick_idle_actions(&mut store, &ORDER, &houses, &rules, &interner, &mut rng, 0);
-            let armed = store.get(1).unwrap().infantry.unwrap().idle_action_timer;
-            assert_eq!(
-                rng.state() != before,
-                open_topped,
-                "open_topped {open_topped}"
+            let owner = sim.interner.intern("Americans");
+            let mut actor = GameEntity::new_at_frame_zero_for_test(
+                1,
+                (signed(&before["position"][0]) / 256) as u16,
+                (signed(&before["position"][1]) / 256) as u16,
+                4,
+                0,
+                owner,
+                Health { current: 100 },
+                sim.interner.intern("E1"),
+                EntityCategory::Infantry,
+                0,
+                0,
+                false,
             );
-            assert_eq!(
-                armed != crate::sim::mission::MissionTimer::default(),
-                open_topped,
-                "open_topped {open_topped}"
-            );
-        }
-    }
-
-    #[test]
-    fn idle_facing_lands_on_the_eight_compass_points() {
-        let mut e = infantry(100);
-        for index in 0..=7u8 {
-            set_idle_facing(&mut e, index, 0);
-            assert_eq!(e.facing, index * IDLE_FACING_STEP);
-        }
-        // N, E, S, W by RA2's facing convention — the whole point of the arm is
-        // that idle men end up pointing in real directions, not arbitrary bytes.
-        for (index, expected) in [(0u8, 0u8), (2, 64), (4, 128), (6, 192)] {
-            set_idle_facing(&mut e, index, 0);
-            assert_eq!(e.facing, expected);
-        }
-    }
-
-    /// The turn-in-place arm must actually move the man, not just spend a draw.
-    ///
-    /// Four of the eleven roll outcomes are this arm, so a run of idle turns
-    /// that never changes a facing means the writer was reverted.
-    #[test]
-    fn idle_turns_eventually_change_the_facing() {
-        use crate::sim::animation::Animation;
-        use crate::sim::entity_store::EntityStore;
-        use crate::sim::rng::SimRng;
-
-        let rules = rules_for("");
-        let houses = std::collections::BTreeMap::new();
-        let mut rng = SimRng::new(11);
-        let mut store = EntityStore::new();
-
-        let mut e = infantry(100);
-        e.animation = Some(Animation::new(SequenceKind::Stand));
-        e.facing = 200; // Not a multiple of 32, so any write is unambiguous.
-        // Anchor the wait at frame 0 rather than the unarmed sentinel, so the
-        // loop below can step to each expiry by plain addition.
-        e.infantry.as_mut().unwrap().idle_action_timer =
-            crate::sim::mission::MissionTimer::armed(0, 0);
-        store.insert(e);
-        let interner = crate::sim::intern::test_interner();
-
-        let mut turned = false;
-        for _ in 0..64 {
-            let timer = store.get(1).unwrap().infantry.unwrap().idle_action_timer;
-            let frame = timer.start_frame.saturating_add(timer.duration);
-            store.get_mut(1).unwrap().animation = Some(Animation::new(SequenceKind::Stand));
-            tick_idle_actions(
-                &mut store, &ORDER, &houses, &rules, &interner, &mut rng, frame,
-            );
-            let facing = store.get(1).unwrap().facing;
-            if facing != 200 {
-                assert_eq!(facing % IDLE_FACING_STEP, 0, "facing {facing} is off-grid");
-                turned = true;
-                break;
+            actor.lifecycle.in_limbo = false;
+            actor.position.sub_x = SimFixed::from_num(signed(&before["position"][0]) % 256);
+            actor.position.sub_y = SimFixed::from_num(signed(&before["position"][1]) % 256);
+            actor.position.exact_z_leptons = Some(signed(&before["position"][2]));
+            actor.on_bridge = before["on_bridge"] != 0;
+            let object = rules.object("E1").unwrap();
+            let mut loco = LocomotorState::from_object_type(object, 1);
+            if before["walk_moving"]["value"].as_u64().unwrap() != 0 {
+                // Existing native Move_To producer owns this retained byte;
+                // readiness queries it independently of NavCom and animation.
+                loco.set_walk_destination(Some(DriveCoord {
+                    x: 22400,
+                    y: 12544,
+                    z: 416,
+                }));
             }
+            actor.locomotor = Some(loco);
+            actor.infantry = Some(InfantryRuntime::new());
+            let infantry = actor.infantry.as_mut().unwrap();
+            infantry.is_prone = before["prone_6db"] != 0;
+            infantry.idle_action_timer = MissionTimer::armed(
+                signed(&before["idle_timer"][0]) as u32,
+                signed(&before["idle_timer"][2]) as u32,
+            );
+            let doing = signed(&before["doing"]);
+            actor
+                .mission_leaf
+                .set_infantry_doing_verified(doing)
+                .unwrap();
+            actor
+                .mission_leaf
+                .set_foot_firing_sequence(signed(&before["firing"]) as u8);
+            let words = &before["sequence_timer_words"];
+            actor.install_native_stage_fixture(crate::sim::stage::StageClass::from_native_fixture(
+                signed(&before["frame_f8"]),
+                0,
+                crate::sim::timer::CdTimer::from_raw(signed(&words[0]), signed(&words[2])),
+                signed(&words[3]),
+                1,
+            ));
+            actor
+                .body_facing
+                .snap(signed(&before["primary_facing_words"][0]) as u16, 1);
+            if before["target"] != "0x0" {
+                actor.attack_target = Some(AttackTarget::new(2));
+            }
+            if before["nav"] != "0x0" {
+                actor.navigation.nav_com = Some(NavTargetRef::cell(12, 10));
+            }
+            let target_before = actor.attack_target.as_ref().map(|target| target.target);
+            let nav_before = actor.navigation.nav_com;
+            sim.substrate.entities.insert(actor);
+            let (admitted, draws) = trace_draws(|| sim.infantry_idle_action(1, &rules).unwrap());
+            assert_eq!(admitted, row["returned_al"] != 0, "{name} return AL");
+            let actor = sim.substrate.entities.get(1).unwrap();
+            let leaf = actor.mission_leaf.as_infantry().unwrap();
+            assert_eq!(leaf.doing(), signed(&after["doing"]), "{name} Doing");
+            assert_eq!(
+                leaf.firing_sequence_latch(),
+                signed(&after["firing"]) as u8,
+                "{name} firing"
+            );
+            assert_eq!(
+                actor.infantry.unwrap().is_prone,
+                after["prone_6db"] != 0,
+                "{name} prone"
+            );
+            let timer = actor.infantry.unwrap().idle_action_timer;
+            assert_eq!(
+                json!([timer.start_frame as i32, timer.duration as i32]),
+                json!([after["idle_timer"][0], after["idle_timer"][2]]),
+                "{name} idle timer"
+            );
+            assert_eq!(
+                actor.native_stage().value(),
+                signed(&after["frame_f8"]),
+                "{name} frame reset/preservation"
+            );
+            let words = &after["sequence_timer_words"];
+            assert_eq!(
+                (
+                    actor.native_stage().timer().start_frame(),
+                    actor.native_stage().timer().duration(),
+                    actor.native_stage().rate(),
+                ),
+                (signed(&words[0]), signed(&words[2]), signed(&words[3])),
+                "{name} native action timer and rate"
+            );
+            assert_eq!(
+                actor.body_facing_current(1),
+                signed(&after["primary_facing_words"][0]) as u16,
+                "{name} facing"
+            );
+            assert_eq!(
+                actor.attack_target.as_ref().map(|target| target.target),
+                target_before,
+                "{name} target untouched"
+            );
+            assert_eq!(
+                actor.navigation.nav_com, nav_before,
+                "{name} NavCom untouched"
+            );
+            let native_words: Vec<_> = row["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["kind"] == "rng_raw")
+                .map(|event| event["value"].clone())
+                .collect();
+            let rust_words: Vec<_> = draws.iter().map(|event| event["value"].clone()).collect();
+            assert_eq!(
+                rust_words, native_words,
+                "{name} raw draw order including rejection"
+            );
+            assert_eq!(
+                native_rng_state(&sim.scenario_rng),
+                row["rng_after"]["scenario"],
+                "{name} full Scenario state"
+            );
+            compared += 1;
         }
-        assert!(turned, "no idle turn changed the facing in 64 turns");
+        assert_eq!(compared, 28, "all appended direct receiver controls");
+    }
+
+    /// The original82 E1 AreaGuard row consumed the constructor frequency,
+    /// before ReadAudioVisual. Keep that native boundary distinct from true
+    /// retail .15; both timer receipts exercise the same arithmetic owner.
+    #[test]
+    fn native_default_and_retail_idle_wait_use_their_recorded_doubles() {
+        let native = idle_corpus();
+        let bits = |hex: &str| {
+            let bytes: Vec<_> = hex
+                .as_bytes()
+                .chunks_exact(2)
+                .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+                .collect();
+            f64::from_le_bytes(bytes.try_into().unwrap())
+        };
+        let original = native["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["input"]["name"] == "E1_area_guard_post")
+            .unwrap();
+        let retail = native["retail_idle_rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["input"]["name"] == "E1_retail_idle_direct_seed31")
+            .unwrap();
+        let draw = |row: &serde_json::Value| {
+            row["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|event| event["kind"] == "rng" && event["caller"] == "0x51ce04")
+                .unwrap()["result_eax"]
+                .as_u64()
+                .unwrap() as u32
+        };
+        let constructor_frequency = native["rules_reader_receipts"]
+            ["handler_rules_before_physical"]["idle_action_frequency_bits"]
+            .as_str()
+            .unwrap();
+        assert_eq!(
+            idle_wait_frames(bits(constructor_frequency), draw(original)),
+            original["after"]["idle_timer"][2].as_u64().unwrap() as u32,
+        );
+        assert_eq!(
+            idle_wait_frames(
+                bits(
+                    retail["input"]["idle_control"]["idle_action_frequency_bits"]
+                        .as_str()
+                        .unwrap()
+                ),
+                draw(retail)
+            ),
+            retail["after"]["idle_timer"][2].as_u64().unwrap() as u32,
+        );
+        assert_ne!(
+            original["after"]["idle_timer"][2],
+            retail["after"]["idle_timer"][2]
+        );
     }
 
     #[test]

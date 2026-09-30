@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::ruleset::RadiationRules;
+use crate::sim::timer::CdTimer;
 use crate::util::lepton::{UnsupportedGroundSlope, ground_height_leptons};
 
 /// Leptons per cell edge (cell-center to cell-center step).
@@ -57,10 +58,10 @@ pub struct RadSite {
     /// drops below 1 (leaving residual cell levels in place — only the center
     /// marker is released).
     pub remaining: i32,
-    /// Frame the level-decay countdown last (re)started.
-    pub level_timer_start: u32,
-    /// Countdown length in frames (level_delay at activation).
-    pub level_timer_duration: i32,
+    /// The level-decay countdown (`RadSiteClass+0x28`/`+0x30`), restarted
+    /// with `RadLevelDelay=` at each activation and decay step
+    /// (`RadSiteClass::AI @ 0x0065B80E`).
+    pub level_timer: CdTimer,
 }
 
 /// The per-cell radiation field + site registry. Persisted and state-hashed.
@@ -270,8 +271,7 @@ impl RadiationState {
     fn activate_site(&mut self, center: (u16, u16), frame: u32, rules: &RadiationRules) {
         if let Some(site) = self.sites.get_mut(&center) {
             site.level_steps = site.duration / rules.level_delay;
-            site.level_timer_start = frame;
-            site.level_timer_duration = rules.level_delay;
+            site.level_timer = CdTimer::started(frame as i32, rules.level_delay);
         }
     }
 
@@ -326,8 +326,7 @@ impl RadiationState {
                         level_steps: 0,
                         duration,
                         remaining: duration,
-                        level_timer_start: frame,
-                        level_timer_duration: rules.level_delay,
+                        level_timer: CdTimer::started(frame as i32, rules.level_delay),
                     },
                 );
             }
@@ -378,16 +377,12 @@ impl RadiationState {
                     continue;
                 };
                 site.remaining -= 1;
-                let elapsed = frame.wrapping_sub(site.level_timer_start) as i64;
-                let expired =
-                    site.level_timer_duration <= 0 || elapsed >= site.level_timer_duration as i64;
-                (expired, site.remaining < 1)
+                (site.level_timer.expired(frame as i32), site.remaining < 1)
             };
             if expired {
                 self.decay_step(center, terrain);
                 if let Some(site) = self.sites.get_mut(&center) {
-                    site.level_timer_start = frame;
-                    site.level_timer_duration = rules.level_delay;
+                    site.level_timer = CdTimer::started(frame as i32, rules.level_delay);
                 }
             }
             if dead {
@@ -435,58 +430,12 @@ mod tests {
         slope_type: u8,
     ) -> crate::map::resolved_terrain::ResolvedTerrainCell {
         crate::map::resolved_terrain::ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
             level,
             filled_clear: true,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
             slope_type,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
             terrain_class: Default::default(),
-            speed_costs: Default::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: Default::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
             accepts_smudge: true,
-            allows_tiberium: false,
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 

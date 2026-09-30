@@ -5,7 +5,6 @@ use super::tests::spawn_structure;
 use super::{ProductionCategory, cancel_by_type_for_owner, enqueue_by_type, tick_production};
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::{intern::InternedId, rng::SimRng, world::Simulation};
-use std::collections::BTreeMap;
 
 pub(super) fn manager_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
@@ -13,10 +12,10 @@ pub(super) fn manager_rules() -> RuleSet {
          [VehicleTypes]\n0=MTNK\n1=SMIN\n\
          [AircraftTypes]\n0=HORN\n1=ORCA\n\
          [BuildingTypes]\n0=GAPILE\n1=GAWEAP\n2=GACNST\n3=YAREFN\n4=TECH\n5=GAAIRC\n6=GAPOWR\n\
-         [E1]\nName=GI\nCost=200\nStrength=100\nArmor=flak\nSpeed=4\nSight=5\nTechLevel=1\nOwner=Americans\n\
-         [SLAV]\nStrength=125\nSpeed=4\nStorage=4\n\
-         [MTNK]\nName=Tank\nCost=700\nStrength=300\nArmor=heavy\nSpeed=6\nSight=6\nTechLevel=1\nOwner=Americans\nSpawns=HORN\nSpawnsNumber=3\nSpawnRegenRate=600\nSpawnReloadRate=25\n\
-         [SMIN]\nCost=900\nStrength=2000\nSpeed=3\nTechLevel=1\nOwner=Americans\nPrerequisite=TECH\nEnslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\n\
+         [E1]\nName=GI\nCost=200\nStrength=100\nArmor=flak\nSpeed=4\nSight=5\nTechLevel=1\nOwner=Americans\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n\
+         [SLAV]\nStrength=125\nSpeed=4\nStorage=4\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n\
+         [MTNK]\nName=Tank\nCost=700\nStrength=300\nArmor=heavy\nSpeed=6\nSight=6\nTechLevel=1\nOwner=Americans\nSpawns=HORN\nSpawnsNumber=3\nSpawnRegenRate=600\nSpawnReloadRate=25\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
+         [SMIN]\nCost=900\nStrength=2000\nSpeed=3\nTechLevel=1\nOwner=Americans\nPrerequisite=TECH\nEnslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
          [HORN]\nStrength=75\nSpeed=14\nAmmo=1\n\
          [ORCA]\nCost=1000\nStrength=200\nSpeed=8\nTechLevel=1\nOwner=Americans\n\
          [GAPILE]\nFactory=InfantryType\n\
@@ -239,12 +238,8 @@ fn a_produced_slave_miner_hunts_instead_of_taking_the_rally_point() {
                 .test_arm_ready(owner, ProductionCategory::Vehicle)
         );
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
-        assert!(tick_production(
-            &mut sim,
-            &rules,
-            &BTreeMap::new(),
-            Some(&grid)
-        ));
+        sim.install_fixture_path_grid(Some(&grid));
+        assert!(tick_production(&mut sim, &rules));
         let entity = sim.substrate.entities.get(produced).unwrap();
         assert!(!entity.lifecycle.in_limbo, "{unit_type} delivered");
         assert_eq!(
@@ -275,7 +270,7 @@ fn a_produced_unit_takes_its_own_factorys_rally_point() {
             ry: rally.1,
             producer_ids: vec![factory],
         };
-        assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
+        assert!(sim.apply_command("Americans", &command, Some(&rules)));
     }
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
     let produced = held_id(&sim, owner, ProductionCategory::Infantry);
@@ -285,20 +280,13 @@ fn a_produced_unit_takes_its_own_factorys_rally_point() {
             .test_arm_ready(owner, ProductionCategory::Infantry)
     );
     let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
-    assert!(tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&grid)
-    ));
+    sim.install_fixture_path_grid(Some(&grid));
+    assert!(tick_production(&mut sim, &rules));
     let entity = sim.substrate.entities.get(produced).unwrap();
     assert!(!entity.lifecycle.in_limbo, "E1 delivered");
     assert_eq!(
-        entity
-            .movement_target
-            .as_ref()
-            .and_then(|target| target.path.last().copied()),
-        Some((30, 30)),
+        entity.navigation.nav_com,
+        Some(crate::sim::components::NavTargetRef::cell(30, 30)),
         "the barracks' rally, not the war factory's"
     );
 }
@@ -313,7 +301,7 @@ fn a_captured_factory_loses_its_rally_point() {
         ry: 12,
         producer_ids: vec![1],
     };
-    assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
+    assert!(sim.apply_command("Americans", &command, Some(&rules)));
     assert_eq!(
         sim.substrate.entities.get(1).unwrap().rally_cell(),
         Some((40, 12))
@@ -336,7 +324,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
             .factory_shadow
             .test_arm_ready(owner, ProductionCategory::Building)
     );
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules));
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
     let mut expected = sim.scenario_rng.clone();
     let credits = sim.houses[&owner].economy.credits;
@@ -400,7 +388,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
     let child_ids = children(&sim, parent);
     for _ in 0..40 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     let spent = {
         let factory = sim
@@ -417,7 +405,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     // The producing factory remains; only the active type loses its prerequisite.
     sim.substrate.entities.remove(4);
     let promotion_frame = sim.session.binary_frame;
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     assert_gone(&sim, parent, &child_ids);
     assert_eq!(sim.houses[&owner].economy.credits, before + spent);
     let successor = held_id(&sim, owner, ProductionCategory::Vehicle);
@@ -453,11 +441,11 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
             .progress
     };
     for _ in 1..rate {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(progress(&sim), 0);
     }
     assert_eq!(sim.houses[&owner].economy.credits, before + spent);
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     assert_eq!(progress(&sim), 1);
     assert!(sim.houses[&owner].economy.credits < before + spent);
 }
@@ -485,7 +473,7 @@ fn terminal_infantry_delivery_failure_refunds_and_promotes() {
         .set_buildings_for_test(0);
     let before = sim.houses[&owner].economy.credits;
     let mut expected = sim.scenario_rng.clone();
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules));
     assert!(!sim.substrate.entities.contains(held));
     assert_eq!(sim.houses[&owner].economy.credits, before + 200);
     let successor = held_id(&sim, owner, ProductionCategory::Infantry);
@@ -527,7 +515,7 @@ fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
         let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
         let child_ids = children(&sim, parent);
         for _ in 0..40 {
-            sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+            sim.advance_tick(&[], Some(&rules), None, None, 67);
         }
         let spent = {
             let factory = sim
@@ -543,7 +531,7 @@ fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
         let before = sim.houses[&owner].economy.credits;
         let allocated = sim.substrate.next_stable_object_id;
         let rng = sim.scenario_rng.logical_state();
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert_gone(&sim, parent, &child_ids);
         assert_eq!(sim.houses[&owner].economy.credits, before + spent);
         assert_eq!(sim.owned_object_counts(owner).1, 0);
@@ -588,7 +576,7 @@ fn missing_helipad_delivery_refunds_disposes_and_promotes_aircraft() {
     sim.substrate.entities.remove(5);
     let before = sim.houses[&owner].economy.credits;
     let mut expected = sim.scenario_rng.clone();
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules));
     assert!(!sim.substrate.entities.contains(parent));
     assert_eq!(sim.houses[&owner].economy.credits, before + 1000);
     let successor = held_id(&sim, owner, ProductionCategory::Aircraft);
@@ -620,9 +608,9 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
             .factory_shadow
             .test_arm_ready(owner, ProductionCategory::Building)
     );
-    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert!(!tick_production(&mut sim, &rules));
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
-    let tracked = sim.houses[&owner].tracking.buildings_for_test();
+    let tracked = sim.houses[&owner].tracking.buildings();
     let credits = sim.houses[&owner].economy.credits;
 
     // With a Construction Yard standing, the ready building waits.
@@ -632,10 +620,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     sim.substrate.entities.remove(3);
     super::revalidate_and_step_factories(&mut sim, &rules);
     assert!(!sim.substrate.entities.contains(held));
-    assert_eq!(
-        sim.houses[&owner].tracking.buildings_for_test(),
-        tracked - 1
-    );
+    assert_eq!(sim.houses[&owner].tracking.buildings(), tracked - 1);
     assert_eq!(sim.houses[&owner].economy.credits, credits + 800);
     assert!(
         sim.production
@@ -701,7 +686,7 @@ fn plant_world() -> (Simulation, RuleSet, InternedId) {
 }
 
 fn spawn_plant(sim: &mut Simulation, rules: &RuleSet) {
-    sim.spawn_object("NAINDP", "Russians", 20, 20, 0, rules, &BTreeMap::new())
+    sim.spawn_object("NAINDP", "Russians", 20, 20, 0, rules)
         .expect("the Industrial Plant unlimbos");
 }
 
@@ -721,7 +706,7 @@ fn a_build_starts_without_money_owing_its_cost_of() {
     assert_eq!(tank.cost, 675);
     assert!(enqueue_by_type(&mut sim, &rules, "Russians", "HTNK"));
     for _ in 0..30 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     let factory = sim
         .production
@@ -752,7 +737,7 @@ fn a_cancel_refunds_the_cost_of_at_cancel_time() {
         if progress(&mut sim).0 > 0 {
             break;
         }
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     // The first step pays 900 / 53.
     assert_eq!(progress(&mut sim), (1, 884));

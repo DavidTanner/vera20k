@@ -13,7 +13,8 @@
 //!   the mission selector vocabulary in rules/mission_data (the `MISSION=` column is
 //!   the same 32-name table the scenario reader resolves through).
 
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
+use crate::rules::ini_value::{crt_atoi, strtok};
 use crate::rules::mission_data::MissionType;
 
 /// Which category of game object this entity represents.
@@ -28,6 +29,19 @@ pub enum EntityCategory {
     Structure,
     /// Air units — rendered as VXL voxel models, drawn above ground.
     Aircraft,
+}
+
+impl From<crate::rules::object_type::ObjectCategory> for EntityCategory {
+    /// The class of object a type of each registry constructs.
+    fn from(category: crate::rules::object_type::ObjectCategory) -> Self {
+        use crate::rules::object_type::ObjectCategory;
+        match category {
+            ObjectCategory::Infantry => Self::Infantry,
+            ObjectCategory::Vehicle => Self::Unit,
+            ObjectCategory::Aircraft => Self::Aircraft,
+            ObjectCategory::Building => Self::Structure,
+        }
+    }
 }
 
 /// A single entity placement parsed from a map file.
@@ -150,17 +164,23 @@ pub fn parse_map_entities(ini: &IniFile) -> Vec<MapEntity> {
     entities
 }
 
+/// One object line as the scenario readers see it: `[Units]` (`0x00743270`),
+/// `[Aircraft]` (`0x0041B110`), `[Infantry]` (`0x0051FB00`) and `[Structures]`
+/// (`BuildingClass::ReadFromINI @ 0x0044F820`) each ReadString an entry into
+/// 0x80 bytes and walk it with `strtok(",")`, numeric fields through CRT
+/// `atoi`. Native reads past the last token as `atoi(NULL)`; Rust rejects a
+/// line shorter than its required columns instead.
+fn object_line_fields<'a>(section: &'a IniSection, key: &str) -> Vec<&'a str> {
+    section
+        .read_name(key, 0x80)
+        .map_or_else(Vec::new, |value| strtok(value, &[',']).collect())
+}
+
 /// Parse [Units] section: INDEX=OWNER,ID,HEALTH,X,Y,FACING,MISSION,TAG,...
 /// Minimum 6 fields needed (owner, id, health, x, y, facing).
-fn parse_units_section(
-    section: &crate::rules::ini_parser::IniSection,
-    entities: &mut Vec<MapEntity>,
-) {
+fn parse_units_section(section: &IniSection, entities: &mut Vec<MapEntity>) {
     for key in section.keys() {
-        let Some(value) = section.get(key) else {
-            continue;
-        };
-        let fields: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+        let fields = object_line_fields(section, key);
         if fields.len() < 6 {
             log::warn!(
                 "[Units] key {}: expected >= 6 fields, got {}",
@@ -178,15 +198,9 @@ fn parse_units_section(
 
 /// Parse [Infantry] section: INDEX=OWNER,ID,HEALTH,X,Y,SUB_CELL,MISSION,FACING,...
 /// Note: infantry has SUB_CELL at index 5 and FACING at index 7 (different from units).
-fn parse_infantry_section(
-    section: &crate::rules::ini_parser::IniSection,
-    entities: &mut Vec<MapEntity>,
-) {
+fn parse_infantry_section(section: &IniSection, entities: &mut Vec<MapEntity>) {
     for key in section.keys() {
-        let Some(value) = section.get(key) else {
-            continue;
-        };
-        let fields: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+        let fields = object_line_fields(section, key);
         if fields.len() < 8 {
             log::warn!(
                 "[Infantry] key {}: expected >= 8 fields, got {}",
@@ -197,28 +211,19 @@ fn parse_infantry_section(
         }
         let owner: String = fields[0].to_string();
         let type_id: String = fields[1].to_string();
-        // Malformed-token fallback is legacy Rust policy, not native CRT parity.
-        let health: i32 = fields[2].parse::<i32>().unwrap_or(256);
-        let Some(cell_x) = fields[3].parse::<u16>().ok() else {
+        let health: i32 = crt_atoi(fields[2]);
+        let Some(cell_x) = cell_coordinate(fields[3]) else {
             log::warn!("[Infantry] key {}: invalid X '{}'", key, fields[3]);
             continue;
         };
-        let Some(cell_y) = fields[4].parse::<u16>().ok() else {
+        let Some(cell_y) = cell_coordinate(fields[4]) else {
             log::warn!("[Infantry] key {}: invalid Y '{}'", key, fields[4]);
             continue;
         };
-        let sub_cell: u8 = fields[5].parse::<u8>().unwrap_or(0).min(4);
+        let sub_cell: u8 = u8::try_from(crt_atoi(fields[5])).unwrap_or(0).min(4);
         // Infantry facing is at field index 7 (after MISSION at index 6).
-        let facing: u8 = if fields.len() > 7 {
-            fields[7].parse::<u16>().unwrap_or(0).min(255) as u8
-        } else {
-            0
-        };
-        let veterancy: u16 = if fields.len() > 9 {
-            fields[9].parse::<u16>().unwrap_or(0)
-        } else {
-            0
-        };
+        let facing: u8 = facing_field(fields[7]);
+        let veterancy: u16 = veterancy_field(fields.get(9).copied());
 
         entities.push(MapEntity {
             owner,
@@ -230,10 +235,10 @@ fn parse_infantry_section(
             category: EntityCategory::Infantry,
             sub_cell,
             veterancy,
-            high: parse_boolish_field(fields.get(11).copied()),
+            high: atoi_flag(fields.get(11).copied()),
             mission: parse_mission_field(&fields),
-            recruitable_a: parse_recruitment_field(fields.get(12).copied()),
-            recruitable_b: parse_recruitment_field(fields.get(13).copied()),
+            recruitable_a: recruitment_flag(fields.get(12).copied()),
+            recruitable_b: recruitment_flag(fields.get(13).copied()),
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
             structure_ai_repairable: false,
@@ -243,15 +248,9 @@ fn parse_infantry_section(
 
 /// Parse [Structures] section: INDEX=OWNER,ID,HEALTH,X,Y,FACING,TAG,...
 /// Minimum 6 fields needed.
-fn parse_structures_section(
-    section: &crate::rules::ini_parser::IniSection,
-    entities: &mut Vec<MapEntity>,
-) {
+fn parse_structures_section(section: &IniSection, entities: &mut Vec<MapEntity>) {
     for key in section.keys() {
-        let Some(value) = section.get(key) else {
-            continue;
-        };
-        let fields: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+        let fields = object_line_fields(section, key);
         if fields.len() < 6 {
             log::warn!(
                 "[Structures] key {}: expected >= 6 fields, got {}",
@@ -264,27 +263,17 @@ fn parse_structures_section(
             continue;
         };
         entity.structure_upgrades = parse_structure_upgrades(&fields);
-        entity.structure_ai_sellable = fields
-            .get(7)
-            .is_some_and(|value| crate::rules::ini_value::atoi_lenient(value) != 0);
-        entity.structure_ai_repairable = fields
-            .get(15)
-            .is_some_and(|value| crate::rules::ini_value::atoi_lenient(value) != 0);
+        entity.structure_ai_sellable = atoi_flag(fields.get(7).copied());
+        entity.structure_ai_repairable = atoi_flag(fields.get(15).copied());
         entities.push(entity);
     }
 }
 
 /// Parse [Aircraft] section: INDEX=OWNER,ID,HEALTH,X,Y,FACING,MISSION,TAG,...
 /// Minimum 6 fields needed.
-fn parse_aircraft_section(
-    section: &crate::rules::ini_parser::IniSection,
-    entities: &mut Vec<MapEntity>,
-) {
+fn parse_aircraft_section(section: &IniSection, entities: &mut Vec<MapEntity>) {
     for key in section.keys() {
-        let Some(value) = section.get(key) else {
-            continue;
-        };
-        let fields: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+        let fields = object_line_fields(section, key);
         if fields.len() < 6 {
             log::warn!(
                 "[Aircraft] key {}: expected >= 6 fields, got {}",
@@ -302,41 +291,31 @@ fn parse_aircraft_section(
 
 /// Parse the common fields shared by Units, Structures, and Aircraft.
 ///
-/// Field layout: OWNER(0), ID(1), HEALTH(2), X(3), Y(4), FACING(5).
-/// Veterancy at index 8 for units/aircraft, index 9 for structures — we try both.
+/// Field layout: OWNER(0), ID(1), HEALTH(2), X(3), Y(4), FACING(5). Units
+/// continue MISSION(6), TAG(7), VETERANCY(8), GROUP(9), HIGH(10),
+/// FOLLOWS(11), RECRUIT_A(12), RECRUIT_B(13); aircraft have no HIGH or
+/// FOLLOWS column, so their recruitment bytes are fields 10 and 11
+/// (`0x0041B110`).
 fn parse_common_fields(fields: &[&str], category: EntityCategory, key: &str) -> Option<MapEntity> {
     let owner: String = fields[0].to_string();
     let type_id: String = fields[1].to_string();
-    // Malformed-token fallback is legacy Rust policy, not native CRT parity.
-    let health: i32 = fields[2].parse::<i32>().unwrap_or(256);
+    let health: i32 = crt_atoi(fields[2]);
 
-    let cell_x: u16 = match fields[3].parse::<u16>() {
-        Ok(v) => v,
-        Err(_) => {
-            log::warn!("[{:?}] key {}: invalid X '{}'", category, key, fields[3]);
-            return None;
-        }
+    let Some(cell_x) = cell_coordinate(fields[3]) else {
+        log::warn!("[{:?}] key {}: invalid X '{}'", category, key, fields[3]);
+        return None;
     };
-    let cell_y: u16 = match fields[4].parse::<u16>() {
-        Ok(v) => v,
-        Err(_) => {
-            log::warn!("[{:?}] key {}: invalid Y '{}'", category, key, fields[4]);
-            return None;
-        }
+    let Some(cell_y) = cell_coordinate(fields[4]) else {
+        log::warn!("[{:?}] key {}: invalid Y '{}'", category, key, fields[4]);
+        return None;
     };
 
-    let facing: u8 = fields[5].parse::<u16>().unwrap_or(0).min(255) as u8;
-
-    // Veterancy is at different indices depending on category.
-    let vet_index: usize = match category {
-        EntityCategory::Unit | EntityCategory::Aircraft => 8,
-        EntityCategory::Structure => 8, // structures don't really have veterancy, but parse defensively
-        EntityCategory::Infantry => 9,  // not used here (infantry has its own parser)
-    };
-    let veterancy: u16 = if fields.len() > vet_index {
-        fields[vet_index].parse::<u16>().unwrap_or(0)
-    } else {
-        0
+    let facing: u8 = facing_field(fields[5]);
+    // `[Structures]` field 8 is the AI-rebuild flag; a building line has no
+    // veterancy column.
+    let veterancy: u16 = match category {
+        EntityCategory::Structure => 0,
+        _ => veterancy_field(fields.get(8).copied()),
     };
 
     // `[Structures]` lines have no MISSION column — a building cannot be
@@ -344,6 +323,17 @@ fn parse_common_fields(fields: &[&str], category: EntityCategory, key: &str) -> 
     let mission: Option<MissionType> = match category {
         EntityCategory::Unit | EntityCategory::Aircraft => parse_mission_field(fields),
         EntityCategory::Structure | EntityCategory::Infantry => None,
+    };
+    let (recruitable_a, recruitable_b) = match category {
+        EntityCategory::Structure => (true, true),
+        EntityCategory::Aircraft => (
+            recruitment_flag(fields.get(10).copied()),
+            recruitment_flag(fields.get(11).copied()),
+        ),
+        EntityCategory::Unit | EntityCategory::Infantry => (
+            recruitment_flag(fields.get(12).copied()),
+            recruitment_flag(fields.get(13).copied()),
+        ),
     };
 
     Some(MapEntity {
@@ -356,13 +346,10 @@ fn parse_common_fields(fields: &[&str], category: EntityCategory, key: &str) -> 
         category,
         sub_cell: 0,
         veterancy,
-        high: matches!(category, EntityCategory::Unit)
-            && parse_atoi_bool_field(fields.get(10).copied()),
+        high: matches!(category, EntityCategory::Unit) && atoi_flag(fields.get(10).copied()),
         mission,
-        recruitable_a: matches!(category, EntityCategory::Structure)
-            || parse_recruitment_field(fields.get(12).copied()),
-        recruitable_b: matches!(category, EntityCategory::Structure)
-            || parse_recruitment_field(fields.get(13).copied()),
+        recruitable_a,
+        recruitable_b,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
         structure_ai_repairable: false,
@@ -376,15 +363,14 @@ fn parse_common_fields(fields: &[&str], category: EntityCategory, key: &str) -> 
 fn parse_structure_upgrades(fields: &[&str]) -> [Option<String>; 3] {
     let declared = fields
         .get(10)
-        .and_then(|value| value.parse::<i32>().ok())
-        .unwrap_or(0)
+        .map_or(0, |value| crt_atoi(value))
         .clamp(0, 3) as usize;
     std::array::from_fn(|slot| {
         if slot >= declared {
             return None;
         }
-        let value = fields.get(12 + slot)?.trim();
-        if value.is_empty() || value.eq_ignore_ascii_case("none") || value == "-1" {
+        let value = *fields.get(12 + slot)?;
+        if value.eq_ignore_ascii_case("none") || value == "-1" {
             None
         } else {
             Some(value.to_string())
@@ -392,27 +378,29 @@ fn parse_structure_upgrades(fields: &[&str]) -> [Option<String>; 3] {
     })
 }
 
-fn parse_atoi_bool_field(value: Option<&str>) -> bool {
-    value
-        .and_then(|value| value.trim().parse::<i32>().ok())
-        .is_some_and(|value| value != 0)
+/// A cell column: `atoi` narrowed to `short` as the readers do. A negative
+/// cell is off the map, where native's Unlimbo fails; Rust skips the line.
+fn cell_coordinate(token: &str) -> Option<u16> {
+    u16::try_from(crt_atoi(token) as i16).ok()
 }
 
-fn parse_boolish_field(value: Option<&str>) -> bool {
-    let Some(value) = value else { return false };
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
-    )
+/// The facing column's `atoi`, kept to the byte range the Rust entity holds.
+fn facing_field(token: &str) -> u8 {
+    crt_atoi(token).clamp(0, 255) as u8
 }
 
-fn parse_recruitment_field(value: Option<&str>) -> bool {
-    value.map_or(true, |value| {
-        matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        )
-    })
+fn veterancy_field(token: Option<&str>) -> u16 {
+    token.map_or(0, |token| u16::try_from(crt_atoi(token)).unwrap_or(0))
+}
+
+/// An optional `atoi != 0` column; absent is false.
+fn atoi_flag(token: Option<&str>) -> bool {
+    token.is_some_and(|token| crt_atoi(token) != 0)
+}
+
+/// A recruitment byte: `atoi != 0` when present, else the constructor's true.
+fn recruitment_flag(token: Option<&str>) -> bool {
+    token.is_none_or(|token| crt_atoi(token) != 0)
 }
 
 #[cfg(test)]
@@ -438,8 +426,8 @@ mod tests {
     fn test_parse_units() {
         let ini: IniFile = IniFile::from_str(
             "[Units]\n\
-             0=Americans,MTNK,256,30,40,64,Guard,None,0,-1,false,-1,true,false\n\
-             1=Soviet,HTNK,200,50,60,128,Guard,None,100,-1,false,-1,false,false\n",
+             0=Americans,MTNK,256,30,40,64,Guard,None,0,-1,0,-1,1,0\n\
+             1=Soviet,HTNK,200,50,60,128,Guard,None,100,-1,0,-1,0,0\n",
         );
         let entities: Vec<MapEntity> = parse_map_entities(&ini);
         assert_eq!(entities.len(), 2);
@@ -470,7 +458,7 @@ mod tests {
     fn test_parse_infantry() {
         let ini: IniFile = IniFile::from_str(
             "[Infantry]\n\
-             0=Soviet,E1,256,10,20,2,Guard,192,None,200,-1,false,true,false\n",
+             0=Soviet,E1,256,10,20,2,Guard,192,None,200,-1,0,1,0\n",
         );
         let entities: Vec<MapEntity> = parse_map_entities(&ini);
         assert_eq!(entities.len(), 1);
@@ -491,7 +479,7 @@ mod tests {
     fn test_parse_structures() {
         let ini: IniFile = IniFile::from_str(
             "[Structures]\n\
-             0=Americans,GAPOWR,256,15,25,0,None,true,false,true,0,0,None,None,None,false,true\n",
+             0=Americans,GAPOWR,256,15,25,0,None,1,0,1,0,0,None,None,None,0,1\n",
         );
         let entities: Vec<MapEntity> = parse_map_entities(&ini);
         assert_eq!(entities.len(), 1);
@@ -527,13 +515,15 @@ mod tests {
             .map(|entity| entity.structure_ai_repairable)
             .collect();
         assert_eq!(repairable, [true, true, false, false]);
+        // Field 8 (AI rebuild, 1 on line 1) is no veterancy.
+        assert!(entities.iter().all(|entity| entity.veterancy == 0));
     }
 
     #[test]
     fn techno_constructor_structure_upgrades_follow_declared_slot_prefix() {
         let ini = IniFile::from_str(
             "[Structures]\n\
-             0=Americans,GAPOWR,256,15,25,0,None,true,false,true,2,0,GAPOWRUP,None,IGNORED,false,true\n",
+             0=Americans,GAPOWR,256,15,25,0,None,1,0,1,2,0,GAPOWRUP,None,IGNORED,0,1\n",
         );
 
         let entities = parse_map_entities(&ini);
@@ -545,28 +535,36 @@ mod tests {
         );
     }
 
+    /// Aircraft lines have no HIGH/FOLLOWS columns: `0x0041B110` reads the
+    /// recruitment bytes from fields 10 and 11 (retail `mapsmd03.mix`
+    /// `[Aircraft]` lines end `0,-1,1,1`).
     #[test]
     fn test_parse_aircraft() {
         let ini: IniFile = IniFile::from_str(
             "[Aircraft]\n\
-             0=Soviet,DRON,256,50,50,0,Guard,None,0,-1,false,false\n",
+             0=Soviet,DRON,256,50,50,0,Guard,None,0,-1,1,1\n\
+             1=Soviet,DRON,256,51,50,0,Guard,None,0,-1,1,0\n\
+             2=Soviet,DRON,256,52,50,0,Guard,None,0,-1\n",
         );
         let entities: Vec<MapEntity> = parse_map_entities(&ini);
-        assert_eq!(entities.len(), 1);
+        assert_eq!(entities.len(), 3);
         assert_eq!(entities[0].type_id, "DRON");
         assert_eq!(entities[0].category, EntityCategory::Aircraft);
         assert!(!entities[0].high);
-        assert!(entities[0].recruitable_a);
-        assert!(entities[0].recruitable_b);
+        let recruitment: Vec<(bool, bool)> = entities
+            .iter()
+            .map(|entity| (entity.recruitable_a, entity.recruitable_b))
+            .collect();
+        assert_eq!(recruitment, [(true, true), (true, false), (true, true)]);
     }
 
     #[test]
     fn test_parse_high_for_units_and_infantry() {
         let ini: IniFile = IniFile::from_str(
             "[Units]\n\
-             0=Americans,MTNK,256,30,40,64,Guard,None,0,-1,1,-1,false,false\n\
+             0=Americans,MTNK,256,30,40,64,Guard,None,0,-1,1,-1,0,0\n\
              [Infantry]\n\
-             0=Soviet,E1,256,10,20,2,Guard,192,None,200,-1,true,false\n",
+             0=Soviet,E1,256,10,20,2,Guard,192,None,200,-1,1,0\n",
         );
         let entities: Vec<MapEntity> = parse_map_entities(&ini);
         assert_eq!(entities.len(), 2);
@@ -713,13 +711,13 @@ mod tests {
     fn map_entities_follow_native_loader_order_not_file_section_order() {
         let ini: IniFile = IniFile::from_str(
             "[Structures]\n\
-             0=Americans,GAPOWR,256,15,25,0,None,true,false,true,0,0,None,None,None,false,true\n\
+             0=Americans,GAPOWR,256,15,25,0,None,1,0,1,0,0,None,None,None,0,1\n\
              [Infantry]\n\
-             0=Soviet,E1,256,10,20,0,Guard,0,None,0,-1,false,true,false\n\
+             0=Soviet,E1,256,10,20,0,Guard,0,None,0,-1,0,1,0\n\
              [Aircraft]\n\
-             0=Soviet,DRON,256,50,50,0,Guard,None,0,-1,false,false\n\
+             0=Soviet,DRON,256,50,50,0,Guard,None,0,-1,1,1\n\
              [Units]\n\
-             0=Americans,MTNK,256,30,40,64,Guard,None,0,-1,false,-1,true,false\n",
+             0=Americans,MTNK,256,30,40,64,Guard,None,0,-1,0,-1,1,0\n",
         );
         let entities: Vec<MapEntity> = parse_map_entities(&ini);
         assert_eq!(entities.len(), 4);

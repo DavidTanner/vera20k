@@ -4,7 +4,7 @@
 use super::{ground_pose, locomotor::MovementLayer};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::{components::DriveCoord, pathfinding::PathGrid, world::Simulation};
+use crate::sim::{components::DriveCoord, world::Simulation};
 
 #[cfg(test)]
 #[path = "walk_completion_tests.rs"]
@@ -65,8 +65,15 @@ impl Simulation {
         if clear_head {
             actor.navigation.path_replay.clear_live_head();
         }
-        super::navcom::set_destination_internal_null(actor);
-        super::DestinationTiming::from_rules(self.session.binary_frame, rules).accept(actor);
+        super::navcom::publish_null_nav_com(actor);
+        self.walk_stop_moving(id, rules)
+            .unwrap_or_else(|cause| panic!("Walk NULL destination {id}: {cause}"));
+        super::DestinationTiming::from_rules(self.session.binary_frame, rules).accept(
+            self.substrate
+                .entities
+                .get_mut(id)
+                .expect("same setter actor"),
+        );
         true
     }
 
@@ -83,7 +90,7 @@ impl Simulation {
         };
         if !actor.lifecycle.object_alive
             || actor.lifecycle.in_limbo
-            || actor.object_is_falling_down != 0
+            || actor.is_falling_down()
         {
             return Ok(());
         }
@@ -110,12 +117,14 @@ impl Simulation {
             self.set_walk_null_destination(id, rules);
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 //75BF38 invokes Foot4D3710(0.0), independently of setter admission.
-                actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
+                actor
+                    .foot_speed
+                    .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
                 if let Some(loco) = actor.locomotor.as_mut() {
                     loco.set_step_head(None);
-                    loco.stop_walk();
                 }
             }
+            self.walk_stop_moving(id, rules)?;
         } else if let Some(destination) = destination
             && let Some(target) = self
                 .substrate
@@ -135,39 +144,6 @@ impl Simulation {
         Ok(())
     }
 
-    /// FootPerCell(mode2)4D882F..896E, reached after Infantry's own PerCell
-    /// work: the range stop ([`Self::foot_per_cell_range_stop`]) with the
-    /// Infantry null destination.
-    /// See tools/spatial_oracle/walk_percell_stop.{py,json,meta.json}.
-    fn finish_walk_pursuit_at_per_cell(
-        &mut self,
-        id: u64,
-        rules: &RuleSet,
-        registry: Option<&OverlayTypeRegistry>,
-    ) {
-        if !self.foot_per_cell_range_stop(id, rules, registry) {
-            return;
-        }
-        let accepts = self.set_walk_null_destination(id, Some(rules));
-        let actor = self
-            .substrate
-            .entities
-            .get_mut(id)
-            .expect("same PerCell actor");
-        if accepts {
-            // The proved null/non-Enter Infantry envelope reaches Foot4D94B0
-            // and Walk75ADA0. There is no paid head left at this call site.
-            // The setter already reset persistent Foot timers. Only the
-            // execution adapter is retired at this completion boundary.
-            if let Some(target) = actor.movement_target.as_mut() {
-                target.next_index = target.path.len();
-            }
-        }
-        // 4D896E executes even when the human Doing gate refuses +480.
-        // Keep the backing suffix/cursor/reference; this is one native DWORD.
-        actor.navigation.path_replay.clear_live_head();
-    }
-
     /// Walk75C117..75C1AE relinks current XYZ while retaining the paid head
     /// and Foot path entry. This corridor does not invoke PerCell.
     pub(crate) fn run_walk_boundary(
@@ -175,7 +151,6 @@ impl Simulation {
         id: u64,
         coord: DriveCoord,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) {
         let Some(old_cell) = self
@@ -186,7 +161,7 @@ impl Simulation {
         else {
             return;
         };
-        self.foot_mark_remove(id, rules, fallback, registry);
+        self.foot_mark_remove(id, rules, registry);
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return;
         };
@@ -207,24 +182,23 @@ impl Simulation {
         // flags after REMOVE, then SetHeight samples current resolved terrain.
         let update = super::movement_bridge::resolve_cell_transition_bridge_state(
             &mut e.position,
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
             old_cell,
             cell,
             e.on_bridge,
         );
-        super::movement_bridge::apply_pending_bridge_render_state(
+        super::movement_bridge::apply_bridge_layer_state(
             &mut e.locomotor,
-            &mut e.bridge_occupancy,
             &mut e.on_bridge,
             active_layer,
             update,
-            id,
         );
-        ground_pose::commit_ground_height(
+        ground_pose::set_height(
             &mut e.position,
             e.on_bridge,
+            0,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
         );
         // OccupancyGrid is a list projection, not an independent subcell
         // reservation chooser. The current coordinate supplies its slot.
@@ -235,7 +209,7 @@ impl Simulation {
             },
         ));
         e.navigation.path_runtime.path_blocked = false;
-        self.foot_mark_put(id, rules, fallback, registry);
+        self.foot_mark_put(id, rules, registry);
         //75C1EA: the boundary placement tail clears +68A after Mark(PUT).
         //This is not the post-PerCell dead/limbo/falling exit at75C1F1.
         if let Some(e) = self.substrate.entities.get_mut(id) {
@@ -248,10 +222,9 @@ impl Simulation {
         id: u64,
         head: DriveCoord,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, crate::sim::world::FrameAdvanceError> {
-        self.foot_mark_remove(id, rules, fallback, registry);
+        self.foot_mark_remove(id, rules, registry);
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return Ok(false);
         };
@@ -274,11 +247,12 @@ impl Simulation {
         }
         //Infantry+1CC=5F5FA0; marked is already false, so the SetHeight0
         //receiver samples current ground+OnBridge without nested Mark calls.
-        ground_pose::commit_ground_height(
+        ground_pose::set_height(
             &mut e.position,
             e.on_bridge,
+            0,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
         );
         let current = ground_pose::position_world_coord(&e.position);
         let owner = e.owner();
@@ -289,7 +263,7 @@ impl Simulation {
                 old,
                 false,
                 self.resolved_terrain.as_ref(),
-                self.path_grid.as_deref().or(fallback),
+                self.path_grid.as_deref(),
             );
         }
         if let Some(loco) = e.locomotor.as_mut() {
@@ -308,31 +282,14 @@ impl Simulation {
             current,
             true,
             self.resolved_terrain.as_ref(),
-            self.path_grid.as_deref().or(fallback),
+            self.path_grid.as_deref(),
         );
-        let changed = if let Some(rules) = rules {
-            self.infantry_per_cell_bridge_repair(id, rules, registry)?
-        } else {
-            false
-        };
-        let survives = self.substrate.entities.get(id).is_some_and(|e| {
-            e.lifecycle.object_alive && !e.lifecycle.in_limbo && e.object_is_falling_down == 0
-        });
-        if !survives {
+        //75BE3C: Per_Cell_Process(2); 75BE42..75BE69 then leaves at 75C1F1
+        //for a dead, limboed or falling owner.
+        let changed =
+            self.per_cell_process(id, super::per_cell::PerCellReason::Arrival, rules, registry)?;
+        if !self.track_survives(id) {
             return Ok(changed);
-        }
-        if let Some(rules) = rules {
-            self.refresh_unit_sensor_at_per_cell(id, rules);
-        }
-        self.foot_neighbors_at_per_cell(id);
-        if let Some(rules) = rules {
-            crate::sim::world::techno_ai_cloak::uncloak_on_sensor_neighbour_after_cell_entry(
-                self, id, rules,
-            );
-            // `0x006F5090`'s head lets a held Temporal target go.
-            self.temporal_release_if_warping(id);
-            self.promote_entity_playfield_membership_after_move(id);
-            self.finish_walk_pursuit_at_per_cell(id, rules, registry);
         }
         self.finish_walk_navigation(id, rules).map_err(|cause| {
             crate::sim::world::FrameAdvanceError {
@@ -342,7 +299,7 @@ impl Simulation {
                 cause,
             }
         })?;
-        self.foot_mark_put(id, rules, fallback, registry);
+        self.foot_mark_put(id, rules, registry);
         //75BF77 follows the final Mark(PUT). The earlier post-PerCell exits
         //jump to75C1F1 and must retain the byte on a surviving object.
         if let Some(e) = self.substrate.entities.get_mut(id) {

@@ -9,9 +9,9 @@ use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::overlay_grid::{
-    NavigationPublication, WallDamageTransactionHost, WallZoneRepairKind,
-    refresh_wall_connectivity_after_placement_with_host,
+    WallDamageTransactionHost, refresh_wall_connectivity_after_placement_with_host,
 };
+use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::world::{Simulation, SimulationWallRuntimeHost};
 
 /// Native regular-wall visit order: north, east, south, west.
@@ -227,16 +227,11 @@ fn stamp_wall_transaction(
         Some(&mut *host),
     );
     if let Some(terrain) = terrain.as_deref() {
-        host.navigation_step(terrain, (rx, ry), false, WallZoneRepairKind::MergeAdjacent);
+        host.navigation_step(terrain, (rx, ry), false, ZoneRepairKind::MergeAdjacent);
     }
     grid.set_wall_owner(rx, ry, owner);
     grid.add_retained_wall_neighbor_source(terrain.as_deref(), rx, ry);
-    if let Some(terrain) = terrain.as_deref_mut() {
-        grid.recalculate_runtime_cell(
-            terrain,
-            registry,
-            (rx, ry),
-            NavigationPublication::FrameBoundary,
-        );
+    if let Some(terrain) = terrain {
+        grid.recalculate_runtime_cell(terrain, registry, (rx, ry));
     }
 }

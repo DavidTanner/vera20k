@@ -16,28 +16,16 @@ pub(super) fn head_or_current(stored: Option<DriveCoord>, current: DriveCoord) -
         .unwrap_or(current)
 }
 
-/// Physical Object+9C projection. An exact producer write is total world Z.
-/// Legacy positions without one retain coarse ground and separate displacement;
-/// materialize that representation before changing the active locomotor.
+/// Physical Object+9C projection: retained XY and the object's world Z,
+/// without resampling changed terrain (an object without an exact coordinate
+/// uses its stored level plus its altitude source).
 pub(super) fn current_coordinate(entity: &GameEntity) -> DriveCoord {
-    let mut current = super::ground_pose::position_world_coord(&entity.position);
-    if entity.position.exact_z_leptons.is_some() {
-        return current;
+    let [x, y] = super::ground_pose::position_world_xy(&entity.position);
+    DriveCoord {
+        x,
+        y,
+        z: super::ground_pose::object_world_z_leptons(entity, None),
     }
-    if let Some(loco) = entity.locomotor.as_ref() {
-        let displacement = match loco.active_kind() {
-            LocomotorKind::Hover | LocomotorKind::Fly => loco.altitude.to_num::<i32>(),
-            // tick_rocket_movement advances the entity payload before copying
-            // it into the locomotor image. Read the writer, not the saved copy.
-            LocomotorKind::Rocket => entity
-                .rocket_state
-                .as_ref()
-                .map_or(0, |r| r.altitude.to_num::<i32>()),
-            _ => 0,
-        };
-        current.z = current.z.wrapping_add(displacement);
-    }
-    current
 }
 
 /// Publish the integer displacement of an existing altitude controller without
@@ -95,11 +83,11 @@ pub(super) fn navigation_coordinate(
     let current = current_coordinate(entity);
     match loco.active_kind() {
         LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk | LocomotorKind::Hover => {
-            // Installation and piggyback retain a fresh Drive/Ship payload
-            // lazily as None (locomotor_owner). That is the constructor's null
-            // Head_To, not a missing active locomotor. Foot4DBDF0 therefore
-            // reads current XYZ even before the first Process materializes it.
-            // Original null_head_current/both_null rows in the named corpus.
+            // The owner installs constructor-default Drive/Ship storage
+            // lazily as None. This is a null retained head, not a missing
+            // active locomotor. Original constructors 4AF540/69EC50 and
+            // null_head_current/both_null receipts pin the current fallback;
+            // see tools/spatial_oracle/foot_bridge_layer.{json,md}.
             Ok(head_or_current(stored_head(entity), current))
         }
         // Fly/Rocket/Teleport share +18/55ACA0: copy linked Object+9C.
@@ -110,9 +98,6 @@ pub(super) fn navigation_coordinate(
                 .ok_or("Jumpjet payload does not match active class")?;
             Ok(head_or_current(Some(state.coordinate(current)), current))
         }
-        other => Err(format!(
-            "Foot coordinate requires the {other:?} +18 receiver"
-        )),
     }
 }
 

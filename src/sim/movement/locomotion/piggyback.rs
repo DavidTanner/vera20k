@@ -27,38 +27,10 @@
 
 use std::ops::Deref;
 
-use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-use crate::util::fixed_math::SimFixed;
+use crate::rules::locomotor_type::LocomotorKind;
 
-use super::super::drop_pod_movement::DropPodState;
-use super::super::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
-use super::super::rocket_movement::RocketState;
+use super::super::locomotor::LocomotorState;
 use super::super::slope_transition::SlopeTransitionState;
-use super::super::teleport_movement::TeleportState;
-use super::super::tunnel_movement::TunnelState;
-
-/// Runtime state shared by every locomotor object, independent of its installed
-/// class identity. This is what moves as one object through the piggyback slot.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LocomotorCommonRuntime {
-    pub powered: bool,
-    pub phase: GroundMovePhase,
-    pub speed_multiplier: SimFixed,
-    pub speed_fraction: SimFixed,
-    pub fly_current_speed: SimFixed,
-    pub altitude: SimFixed,
-    pub balloon_hover: bool,
-    pub hover_attack: bool,
-    pub speed_type: SpeedType,
-    pub movement_zone: MovementZone,
-    pub rot: i32,
-    pub air_progress: SimFixed,
-    pub infantry_wobble_phase: f32,
-    pub subcell_dest: Option<(SimFixed, SimFixed)>,
-    pub hover_throttle: SimFixed,
-    pub hover_speed_request: SimFixed,
-    pub hover_bob_offset: SimFixed,
-}
 
 /// Walk MoveTo75ACB0 / Stop75ADA0 retain destination independently of the
 /// committed head. Both XYZ values belong to this complete locomotor instance.
@@ -79,21 +51,20 @@ pub struct WalkRuntime {
 /// Class-local state that travels with the locomotor object.
 ///
 /// Special process state is carried here rather than reconstructed from a phase
-/// byte when a complete locomotor is suspended or loaded.
+/// byte when a complete locomotor is suspended or loaded. Teleport and Rocket
+/// are the exceptions: their process state has one owner on the entity
+/// (`GameEntity::teleport_state`, `rocket_state`), and their variants only
+/// mark the class.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LocomotorRuntimePayload {
     Drive(SlopeTransitionState),
     Walk(WalkRuntime),
-    Teleport(Option<TeleportState>),
-    Tunnel(Option<TunnelState>),
-    Rocket(Option<RocketState>),
-    DropPod(Option<DropPodState>),
+    Teleport,
+    Rocket,
     Hover(Option<crate::sim::components::DriveCoord>),
-    Mech,
     Ship(SlopeTransitionState),
     Fly(super::super::fly_height::FlyRuntime),
     Jumpjet(super::super::jumpjet_movement::JumpjetRuntime),
-    Parachute,
 }
 
 impl LocomotorRuntimePayload {
@@ -103,154 +74,39 @@ impl LocomotorRuntimePayload {
                 Self::Drive(SlopeTransitionState::at_binary_frame(binary_frame))
             }
             LocomotorKind::Walk => Self::Walk(WalkRuntime::default()),
-            LocomotorKind::Teleport => Self::Teleport(None),
-            LocomotorKind::Tunnel => Self::Tunnel(None),
-            LocomotorKind::Rocket => Self::Rocket(None),
-            LocomotorKind::DropPod => Self::DropPod(None),
+            LocomotorKind::Teleport => Self::Teleport,
+            LocomotorKind::Rocket => Self::Rocket,
             LocomotorKind::Hover => Self::Hover(None),
-            LocomotorKind::Mech => Self::Mech,
             LocomotorKind::Ship => Self::Ship(SlopeTransitionState::at_binary_frame(binary_frame)),
             LocomotorKind::Fly => Self::Fly(Default::default()),
             LocomotorKind::Jumpjet => Self::Jumpjet(Default::default()),
-            LocomotorKind::Parachute => Self::Parachute,
         }
     }
 }
 
-/// One complete movable locomotor instance. Installed identity remains on the
-/// host `LocomotorState`; this object is the active or suspended implementation.
+/// The suspended locomotor: the complete object a BEGIN displaced, boxed as
+/// the one nested COM object the class `Save` persists.
+///
+/// It holds no stash of its own because BEGIN refuses when the displaced
+/// object has one. Native E_FAIL (`0x004AF8F4`) instead tests the receiving
+/// object's own slot, which a fresh object never fills; neither case arises,
+/// since the setter reuses an active Drive rather than BEGIN over it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LocomotorRuntime {
-    pub kind: LocomotorKind,
-    pub layer: MovementLayer,
-    pub common: LocomotorCommonRuntime,
-    pub payload: LocomotorRuntimePayload,
-}
-
-impl LocomotorRuntime {
-    /// Capture all active runtime-owned state without copying the host's
-    /// installed slot or piggyback pointer.
-    pub fn capture(state: &LocomotorState) -> Self {
-        Self {
-            kind: state.kind,
-            layer: state.layer,
-            common: LocomotorCommonRuntime {
-                powered: state.powered,
-                phase: state.phase,
-                speed_multiplier: state.speed_multiplier,
-                speed_fraction: state.speed_fraction,
-                fly_current_speed: state.fly_current_speed,
-                altitude: state.altitude,
-                balloon_hover: state.balloon_hover,
-                hover_attack: state.hover_attack,
-                speed_type: state.speed_type,
-                movement_zone: state.movement_zone,
-                rot: state.rot,
-                air_progress: state.air_progress,
-                infantry_wobble_phase: state.infantry_wobble_phase,
-                subcell_dest: state.subcell_dest,
-                hover_throttle: state.hover_throttle,
-                hover_speed_request: state.hover_speed_request,
-                hover_bob_offset: state.hover_bob_offset,
-            },
-            payload: state.runtime_payload.clone(),
-        }
-    }
-
-    /// Build an incoming runtime from the current host defaults. New callers
-    /// should prefer `begin_with_runtime` when they already own an instance.
-    ///
-    /// **VERA-internal, gamemd has no equivalent.** Every native BEGIN site
-    /// installs a *freshly constructed* COM object — `CoCreateInstance(CLSID)`
-    /// then `Link_To_Object(owner)` and nothing else — so the temporary starts
-    /// default-initialised and the displaced locomotor keeps all of its state
-    /// untouched in the stash. This clones the displaced runtime and resets only
-    /// `phase` and `payload`, so the temporary inherits
-    /// `altitude`, the hover throttle/speed/bob fields, `subcell_dest`, the two
-    /// speed fractions, `fly_current_speed` **and `powered`** — and [`install_into`] copies `powered` back on restore, so a
-    /// powered-off flag survives a swap in both directions, which native cannot
-    /// do.
-    ///
-    /// Trigger: every BEGIN. Player effect: none today — on a Chrono Miner,
-    /// which is the only stock unit that piggybacks, every carried field is
-    /// already zero or 1.0. Frequency: every Chrono Miner move order, with no
-    /// divergence. Downstream risk: the carried fields are deterministic state
-    /// and are hashed, so this becomes live the first time a hover, jumpjet or
-    /// air locomotor is piggybacked.
-    pub fn replacement_from(
-        state: &LocomotorState,
-        kind: LocomotorKind,
-        layer: MovementLayer,
-        binary_frame: u32,
-    ) -> Self {
-        let mut runtime = Self::capture(state);
-        runtime.kind = kind;
-        runtime.layer = layer;
-        runtime.common.phase = GroundMovePhase::Idle;
-        runtime.payload = LocomotorRuntimePayload::for_kind(kind, binary_frame);
-        runtime
-    }
-
-    fn install_into(self, state: &mut LocomotorState) {
-        state.kind = self.kind;
-        state.layer = self.layer;
-        state.powered = self.common.powered;
-        state.phase = self.common.phase;
-        state.speed_multiplier = self.common.speed_multiplier;
-        state.speed_fraction = self.common.speed_fraction;
-        state.fly_current_speed = self.common.fly_current_speed;
-        state.altitude = self.common.altitude;
-        state.balloon_hover = self.common.balloon_hover;
-        state.hover_attack = self.common.hover_attack;
-        state.speed_type = self.common.speed_type;
-        state.movement_zone = self.common.movement_zone;
-        state.rot = self.common.rot;
-        state.air_progress = self.common.air_progress;
-        state.infantry_wobble_phase = self.common.infantry_wobble_phase;
-        state.subcell_dest = self.common.subcell_dest;
-        state.hover_throttle = self.common.hover_throttle;
-        state.hover_speed_request = self.common.hover_speed_request;
-        state.hover_bob_offset = self.common.hover_bob_offset;
-        state.runtime_payload = self.payload;
-    }
-}
-
-/// A boxed suspended locomotor instance. The box corresponds to the single
-/// nested COM object persisted by WalkLocomotionClass::Save.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct StashedLocomotor(Box<LocomotorRuntime>);
-
-impl StashedLocomotor {
-    /// These legacy height fields mirror the linked owner's height, rather
-    /// than a native field belonging to the suspended interface. A real
-    /// SetHeight(0) coordinate writer invalidates their previous values.
-    pub(crate) fn owner_grounded(&mut self) {
-        if matches!(self.0.kind, LocomotorKind::Fly | LocomotorKind::Hover) {
-            self.0.common.altitude = crate::util::fixed_math::SIM_ZERO;
-        }
-        if let LocomotorRuntimePayload::Rocket(Some(rocket)) = &mut self.0.payload {
-            rocket.altitude = crate::util::fixed_math::SIM_ZERO;
-        }
-    }
-
-    pub fn capture(state: &LocomotorState) -> Self {
-        Self(Box::new(LocomotorRuntime::capture(state)))
-    }
-
-    pub fn from_runtime(runtime: LocomotorRuntime) -> Self {
-        Self(Box::new(runtime))
-    }
-
-    pub fn into_runtime(self) -> LocomotorRuntime {
-        *self.0
-    }
-}
+pub struct StashedLocomotor(Box<LocomotorState>);
 
 impl Deref for StashedLocomotor {
-    type Target = LocomotorRuntime;
+    type Target = LocomotorState;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl StashedLocomotor {
+    /// Nothing processes a suspended object; only fixtures write it.
+    #[cfg(test)]
+    pub(crate) fn suspended_mut_for_test(&mut self) -> &mut LocomotorState {
+        &mut self.0
     }
 }
 
@@ -272,43 +128,34 @@ pub enum EndOutcome {
     RefusedNull,
 }
 
-/// Stash the active complete runtime and install `incoming` as the new active
-/// locomotor. An occupied slot is an atomic E_FAIL-style refusal.
-pub fn begin_with_runtime(
-    state: &mut LocomotorState,
-    incoming: Option<LocomotorRuntime>,
-) -> BeginOutcome {
+/// Stash the active object and install `incoming` in its place. An occupied
+/// slot is an atomic E_FAIL-style refusal.
+fn begin_with(state: &mut LocomotorState, incoming: Option<LocomotorState>) -> BeginOutcome {
     let Some(incoming) = incoming else {
         return BeginOutcome::RefusedNull;
     };
     if state.piggyback.is_some() {
         return BeginOutcome::RefusedNested;
     }
-
-    state.piggyback = Some(StashedLocomotor::capture(state));
-    incoming.install_into(state);
+    let displaced = std::mem::replace(state, incoming);
+    state.piggyback = Some(StashedLocomotor(Box::new(displaced)));
     BeginOutcome::Installed
 }
 
-/// Compatibility adapter for callers that name only a replacement class. It
-/// still transfers one complete current runtime into the suspended slot.
-pub fn begin(
-    state: &mut LocomotorState,
-    kind: LocomotorKind,
-    layer: MovementLayer,
-    binary_frame: u32,
-) -> BeginOutcome {
-    let incoming = LocomotorRuntime::replacement_from(state, kind, layer, binary_frame);
-    begin_with_runtime(state, Some(incoming))
+/// BEGIN with a freshly constructed `kind` object
+/// ([`LocomotorState::fresh_linked`]), as every native BEGIN site installs one.
+pub fn begin(state: &mut LocomotorState, kind: LocomotorKind, binary_frame: u32) -> BeginOutcome {
+    let incoming = state.fresh_linked(kind, binary_frame);
+    begin_with(state, Some(incoming))
 }
 
-/// Transfer the suspended runtime into an explicit output location. The active
+/// Transfer the suspended object into an explicit output location. The active
 /// state is unchanged because native END transfers an interface; the caller
 /// decides when to install it.
 #[cfg(test)]
 pub fn end_into(
     state: &mut LocomotorState,
-    output: Option<&mut Option<LocomotorRuntime>>,
+    output: Option<&mut Option<LocomotorState>>,
 ) -> EndOutcome {
     let Some(output) = output else {
         return EndOutcome::RefusedNull;
@@ -316,166 +163,126 @@ pub fn end_into(
     let Some(stashed) = state.piggyback.take() else {
         return EndOutcome::Empty;
     };
-    *output = Some(stashed.into_runtime());
+    *output = Some(*stashed.0);
     EndOutcome::Restored
 }
 
-/// Transfer the suspended runtime back to the host and make it active.
-pub fn end(state: &mut LocomotorState) -> Option<StashedLocomotor> {
+/// Make the suspended object active again. Answers the displaced temporary,
+/// which the owner then releases.
+///
+/// The restored object keeps everything from its BEGIN except the layer,
+/// which is the Foot's: END (`0x004AF930`) does not move the Foot, and Drive
+/// and Teleport both answer Ground from `In_Which_Layer` (`0x004B4820`,
+/// `0x00719E20`), so a Foot that drove onto or off a bridge deck stays there.
+/// Its `altitude` is left as the object kept it; neither class reads one.
+pub fn end(state: &mut LocomotorState) -> Option<LocomotorState> {
     let stashed = state.piggyback.take()?;
-    let restored = stashed.clone();
-    stashed.into_runtime().install_into(state);
-    Some(restored)
+    let released = std::mem::replace(state, *stashed.0);
+    state.layer = released.layer;
+    Some(released)
 }
 
-/// The nested-runtime save marker used by the clean-room snapshot seam.
-/// Serde persists the following boxed runtime only when this returns one.
+/// The nested-object save marker used by the clean-room snapshot seam.
+/// Serde persists the following boxed object only when this returns one.
 #[cfg(test)]
 pub fn serialized_presence(state: &LocomotorState) -> u8 {
     u8::from(state.piggyback.is_some())
 }
 
-/// Inputs to the class-local `IsOKToEnd` gates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EndGateContext {
-    pub owner_moving: bool,
-    pub owner_teleporting: bool,
-    pub owner_deploying: bool,
-}
-
-/// Whether the active piggyback may be unwound now.
-///
-/// The movement and populated-slot checks are common. Walk's named-location
-/// gate additionally requires its local state and linked owner bytes clear;
-/// mapped here to an idle active phase and clear owner transition flags. Special
-/// locomotors stay conservative until their Process state machines supply their
-/// own completed phase to the caller.
-pub fn is_ok_to_end(state: &LocomotorState, context: EndGateContext) -> bool {
-    if context.owner_moving || state.piggyback.is_none() {
-        return false;
-    }
-
-    match state.kind {
-        LocomotorKind::Drive
-        | LocomotorKind::Walk
-        | LocomotorKind::Hover
-        | LocomotorKind::Mech
-        | LocomotorKind::Ship => {
-            state.phase == GroundMovePhase::Idle
-                && !context.owner_teleporting
-                && !context.owner_deploying
-        }
-        LocomotorKind::Jumpjet => {
-            // The Jumpjet's own state field; `AirMovePhase` is Fly's.
-            state
-                .jumpjet_runtime()
-                .is_none_or(|runtime| runtime.phase == super::super::jumpjet_flight::STATE_GROUND)
-                && !context.owner_teleporting
-                && !context.owner_deploying
-        }
-        // Neither native class exposes IPiggyback; it cannot finish a stash.
-        LocomotorKind::Fly | LocomotorKind::Parachute => false,
-        // `TeleportLocomotionClass::Is_Ok_To_End` is a real six-clause
-        // predicate, not a constant false: the locomotor's own warp-active byte
-        // must be clear, a runtime must be stashed, the owner's chrono-warp
-        // field must be clear, the pending warp phase must be zero and the
-        // owner must not be deploying. VERA carries the whole warp in
-        // `teleport_state`, so that one flag stands for the warp-active byte
-        // and the pending warp phase together. `+0x35` is a **locomotor** byte,
-        // not an owner one: `TeleportLocomotionClass::Is_Ok_To_End` @
-        // `0x00719F30` reads `*(char*)(this+0x1D)` where `this` is the
-        // IPiggyback sub-object at LocomotorBase+0x18. Only `+0x27C` is an
-        // owner field, and neither `+0x35` nor `+0x27C` has a Rust model —
-        // VERA-internal, gamemd equivalent UNCHECKED. The other two clauses do:
-        // `Is_Moving() == 0` is approximated by `context.owner_moving` and
-        // `owner+0x6AD` (`FootClass::bIsDeploying`) by `context.owner_deploying`. This is the clause that hands a chrono-warped unit back to
-        // its own locomotor when the warp finishes.
-        LocomotorKind::Teleport => !context.owner_teleporting && !context.owner_deploying,
-        // Tunnel (`0x00728A00`) and Rocket (`0x00661EC0`) have no `IPiggyback`
-        // vtable at all, so gamemd can never reach an END gate for them. (The
-        // earlier reason given here, that no stock `Locomotor=` key selects
-        // them, is wrong for Rocket: `[V3ROCKET]`, `[DMISL]` and `[CMISL]` all
-        // do.)
-        //
-        // **DropPod is different and this arm is VERA-internal for it.**
-        // `DropPodLocomotionClass::Constructor` @ `0x004B5AB0` installs the
-        // IPiggyback vtable at `0x007E8254`, `Begin_Piggyback` @ `0x004B63B0`
-        // is a full body, and `Is_Ok_To_End` @ `0x004B6440` is exactly this
-        // module's common prefix — `!Is_Moving() && slot != 0` — so `false` is
-        // the wrong answer for it. Trigger: a DropPod locomotor with a live
-        // piggyback. Player effect: none — zero stock users of the class.
-        // Frequency: zero in ordinary skirmish. Downstream risk: the arm is one
-        // line from correct once anything installs one.
-        LocomotorKind::Tunnel | LocomotorKind::Rocket | LocomotorKind::DropPod => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::movement::tunnel_movement::{TunnelPhase, TunnelState};
+    use crate::rules::locomotor_type::SpeedType;
+    use crate::sim::movement::locomotor::MovementLayer;
+    use crate::util::fixed_math::SimFixed;
 
     fn teleporter() -> LocomotorState {
         LocomotorState::for_test_kind(LocomotorKind::Teleport)
     }
 
     #[test]
-    fn begin_rejects_null_and_nested_runtime_without_mutation() {
+    fn begin_rejects_null_and_nested_object_without_mutation() {
         let mut state = teleporter();
-        assert_eq!(
-            begin_with_runtime(&mut state, None),
-            BeginOutcome::RefusedNull
-        );
+        assert_eq!(begin_with(&mut state, None), BeginOutcome::RefusedNull);
         let before = state.clone();
 
         assert_eq!(
-            begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
         let nested_before = state.clone();
         assert_eq!(
-            begin(&mut state, LocomotorKind::Ship, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Ship, 0),
             BeginOutcome::RefusedNested
         );
         assert_eq!(state.piggyback, nested_before.piggyback);
         assert_eq!(before.kind, LocomotorKind::Teleport);
     }
 
+    /// BEGIN installs a freshly constructed object and suspends the displaced
+    /// one whole; END restores that object and releases the temporary,
+    /// whatever happened to the temporary meanwhile.
     #[test]
-    fn begin_and_end_transfer_complete_runtime_without_touching_installed_slot() {
+    fn begin_and_end_transfer_the_complete_object() {
         let mut state = teleporter();
         state.altitude = SimFixed::from_num(123);
         state.hover_speed_request = SimFixed::from_num(1);
-        let installed = state.slot;
+        state.speed_type = SpeedType::Wheel;
+        state.power_off();
+        let before = state.clone();
 
         assert_eq!(
-            begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
         assert_eq!(state.kind, LocomotorKind::Drive);
-        assert_eq!(state.slot, installed);
-        assert_eq!(
-            state.piggyback.as_deref().expect("stash").common.altitude,
-            SimFixed::from_num(123)
-        );
+        assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
+        // LocomotionClass constructor 0x0055A6C0 raises Powered; the
+        // temporary shares only the type's data with the displaced object.
+        assert!(state.powered);
+        assert_eq!(state.altitude, SimFixed::ZERO);
+        assert_eq!(state.hover_speed_request, SimFixed::ZERO);
+        assert_eq!(state.speed_type, SpeedType::Wheel);
+        assert_eq!(state.piggyback.as_deref(), Some(&before));
 
-        let restored = end(&mut state).expect("suspended runtime");
-        assert_eq!(restored.kind, LocomotorKind::Teleport);
+        state.altitude = SimFixed::from_num(7);
+        let released = end(&mut state).expect("suspended object");
+        assert_eq!(released.kind, LocomotorKind::Drive);
+        assert_eq!(released.altitude, SimFixed::from_num(7));
+        assert_eq!(state, before);
+        assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
+    }
+
+    /// Neither swap moves the Foot: a Teleport on a bridge deck hands the
+    /// deck to its Drive, and a Drive that left the deck hands the ground
+    /// back (Drive and Teleport In_Which_Layer `0x004B4820` / `0x00719E20`
+    /// both answer Ground; `Bridge` is the Foot's OnBridge).
+    #[test]
+    fn begin_and_end_keep_the_foot_layer() {
+        let mut state = teleporter();
+        state.layer = MovementLayer::Bridge;
+
+        assert_eq!(
+            begin(&mut state, LocomotorKind::Drive, 0),
+            BeginOutcome::Installed
+        );
+        assert_eq!(state.layer, MovementLayer::Bridge);
+
+        state.layer = MovementLayer::Ground;
+        let released = end(&mut state).expect("suspended object");
+        assert_eq!(released.layer, MovementLayer::Ground);
         assert_eq!(state.kind, LocomotorKind::Teleport);
-        assert_eq!(state.altitude, SimFixed::from_num(123));
-        assert_eq!(state.slot, installed);
-        assert!(state.piggyback.is_none());
+        assert_eq!(state.layer, MovementLayer::Ground);
     }
 
     #[test]
     fn piggyback_restores_complete_typed_special_payload() {
-        let mut state = LocomotorState::for_test_kind(LocomotorKind::Tunnel);
-        state.runtime_payload = LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-            phase: TunnelPhase::UndergroundTravel,
-        }));
+        let head = crate::sim::components::DriveCoord::cell(4, 5, 0);
+        let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
+        state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
 
         assert_eq!(
-            begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0,),
+            begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
         assert_eq!(
@@ -483,45 +290,40 @@ mod tests {
             LocomotorRuntimePayload::for_kind(LocomotorKind::Drive, 0)
         );
         assert_eq!(
-            state.piggyback.as_deref().map(|runtime| &runtime.payload),
-            Some(&LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-                phase: TunnelPhase::UndergroundTravel,
-            })))
+            state
+                .piggyback
+                .as_deref()
+                .map(|stashed| &stashed.runtime_payload),
+            Some(&LocomotorRuntimePayload::Hover(Some(head)))
         );
 
         assert!(end(&mut state).is_some());
         assert_eq!(
             state.runtime_payload,
-            LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-                phase: TunnelPhase::UndergroundTravel,
-            }))
+            LocomotorRuntimePayload::Hover(Some(head))
         );
     }
 
     #[test]
     fn serde_round_trip_preserves_active_and_suspended_payloads() {
-        let mut state = LocomotorState::for_test_kind(LocomotorKind::Tunnel);
-        state.runtime_payload = LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-            phase: TunnelPhase::Digging,
-        }));
+        let head = crate::sim::components::DriveCoord::cell(6, 7, 0);
+        let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
+        state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
         assert_eq!(
-            begin(&mut state, LocomotorKind::DropPod, MovementLayer::Air, 0,),
+            begin(&mut state, LocomotorKind::Rocket, 0),
             BeginOutcome::Installed
         );
-        state.runtime_payload = LocomotorRuntimePayload::DropPod(None);
 
         let bytes = bincode::serialize(&state).expect("serialize locomotor");
         let loaded: LocomotorState = bincode::deserialize(&bytes).expect("load locomotor");
 
+        assert_eq!(loaded.runtime_payload, LocomotorRuntimePayload::Rocket);
         assert_eq!(
-            loaded.runtime_payload,
-            LocomotorRuntimePayload::DropPod(None)
-        );
-        assert_eq!(
-            loaded.piggyback.as_deref().map(|runtime| &runtime.payload),
-            Some(&LocomotorRuntimePayload::Tunnel(Some(TunnelState {
-                phase: TunnelPhase::Digging,
-            })))
+            loaded
+                .piggyback
+                .as_deref()
+                .map(|stashed| &stashed.runtime_payload),
+            Some(&LocomotorRuntimePayload::Hover(Some(head)))
         );
     }
 
@@ -532,63 +334,24 @@ mod tests {
         let mut output = None;
         assert_eq!(end_into(&mut state, Some(&mut output)), EndOutcome::Empty);
 
-        begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0);
+        begin(&mut state, LocomotorKind::Drive, 0);
         assert_eq!(
             end_into(&mut state, Some(&mut output)),
             EndOutcome::Restored
         );
         assert_eq!(state.kind, LocomotorKind::Drive);
         assert_eq!(
-            output.expect("transferred runtime").kind,
+            output.expect("transferred object").kind,
             LocomotorKind::Teleport
         );
         assert!(state.piggyback.is_none());
     }
 
     #[test]
-    fn ordinary_and_special_end_gates_are_distinct() {
-        let mut state = teleporter();
-        begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0);
-        let ready = EndGateContext {
-            owner_moving: false,
-            owner_teleporting: false,
-            owner_deploying: false,
-        };
-        assert!(is_ok_to_end(&state, ready));
-
-        // `TeleportLocomotionClass::Is_Ok_To_End` refuses while the warp is
-        // live and permits once it has finished — it is not a constant false.
-        state.kind = LocomotorKind::Teleport;
-        assert!(!is_ok_to_end(
-            &state,
-            EndGateContext {
-                owner_teleporting: true,
-                ..ready
-            }
-        ));
-        assert!(!is_ok_to_end(
-            &state,
-            EndGateContext {
-                owner_deploying: true,
-                ..ready
-            }
-        ));
-        assert!(is_ok_to_end(&state, ready));
-
-        // Classes no stock `Locomotor=` key selects stay conservative.
-        state.kind = LocomotorKind::Tunnel;
-        assert!(!is_ok_to_end(&state, ready));
-
-        state.kind = LocomotorKind::Drive;
-        state.phase = GroundMovePhase::Cruising;
-        assert!(!is_ok_to_end(&state, ready));
-    }
-
-    #[test]
-    fn serialized_presence_matches_the_single_suspended_runtime() {
+    fn serialized_presence_matches_the_single_suspended_object() {
         let mut state = teleporter();
         assert_eq!(serialized_presence(&state), 0);
-        begin(&mut state, LocomotorKind::Drive, MovementLayer::Ground, 0);
+        begin(&mut state, LocomotorKind::Drive, 0);
         assert_eq!(serialized_presence(&state), 1);
     }
 }

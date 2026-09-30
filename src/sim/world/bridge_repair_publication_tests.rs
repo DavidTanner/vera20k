@@ -37,10 +37,10 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
     for later_blocker in [false, true] {
         let (mut sim, rules, registry) = fixture();
         let master = sim
-            .spawn_object("CABHUT", "Americans", 16, 15, 0, &rules, &BTreeMap::new())
+            .spawn_object("CABHUT", "Americans", 16, 15, 0, &rules)
             .unwrap();
         let slave = sim
-            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
             .unwrap();
         // Supplied manager/deposit leg tests the real object-turn admission
         // continuation, not production slave AI or a stock hut manager.
@@ -106,8 +106,7 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
                 CellListInsertion::AppendBuilding,
             );
         }
-        let grid = sim.path_grid_snapshot();
-        sim.advance_live_object_pass(Some(&rules), grid.as_deref(), Some(&registry))
+        sim.advance_live_object_pass(Some(&rules), Some(&registry))
             .expect("fixture frame must complete");
         let e = sim.substrate.entities.get(slave).unwrap();
         let head = e.locomotor.as_ref().unwrap().step_head();
@@ -178,10 +177,10 @@ fn engineer_repair_damages_landed_fly_with_known_non_waypoint_team_script() {
 fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
     let (mut sim, rules, registry) = fixture();
     let hut = sim
-        .spawn_object("CABHUT", "Soviets", 16, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("CABHUT", "Soviets", 16, 15, 0, &rules)
         .unwrap();
     let engineer = sim
-        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
         .unwrap();
     assert!(sim.substrate.entities.get(engineer).is_some());
     assert_eq!(
@@ -196,7 +195,6 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
         crate::rules::locomotor_type::LocomotorKind::Walk
     );
     broken_strip(&mut sim);
-    let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command(
         "Americans",
         &Command::CaptureBuilding {
@@ -204,8 +202,6 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
             target_building_id: hut
         },
         Some(&rules),
-        grid.as_deref(),
-        &BTreeMap::new()
     ));
     assert_eq!(
         sim.substrate
@@ -259,7 +255,6 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
                     owner,
                     script_id,
                     vec![id],
-                    None,
                     sim.session.binary_frame as i32,
                 );
                 assert!(sim.team_script_vm.team_for_member(id).is_some());
@@ -267,14 +262,7 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
             aircraft = Some(id);
         }
         let grid = sim.path_grid_snapshot();
-        let result = sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            grid.as_deref(),
-            Some(&registry),
-            67,
-        );
+        let result = sim.advance_tick(&[], Some(&rules), grid.as_deref(), Some(&registry), 67);
         changed |= result.bridge_state_changed;
         if let Some(e) = sim.substrate.entities.get(engineer) {
             trace.push(format!(
@@ -389,7 +377,7 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
 
     let (mut sim, rules, registry) = fixture();
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
         .unwrap();
     let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command(
@@ -401,8 +389,6 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
             queue: false,
         },
         Some(&rules),
-        grid.as_deref(),
-        &BTreeMap::new(),
     ));
     drop(grid);
     let head = DriveCoord {
@@ -440,7 +426,7 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
         y: 15 * 256 + 64,
         z: 0,
     };
-    sim.run_walk_boundary(id, crossing, Some(&rules), None, Some(&registry));
+    sim.run_walk_boundary(id, crossing, Some(&rules), Some(&registry));
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(ground_pose::position_world_coord(&e.position), crossing);
     assert!(e.lifecycle.cell_marked && e.foot_occupation_enabled);
@@ -480,7 +466,7 @@ fn diagonal_walk_relinks_the_first_actual_side_cell_before_reaching_its_head() {
     use crate::util::fixed_math::SimFixed;
     let (mut sim, rules, registry) = fixture();
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
         .unwrap();
     {
         let e = sim.substrate.entities.get_mut(id).unwrap();
@@ -497,20 +483,11 @@ fn diagonal_walk_relinks_the_first_actual_side_cell_before_reaching_its_head() {
             queue: false,
         },
         Some(&rules),
-        grid.as_deref(),
-        &BTreeMap::new()
     ));
     drop(grid);
     for _ in 0..100 {
         let grid = sim.path_grid_snapshot();
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            grid.as_deref(),
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), grid.as_deref(), Some(&registry), 67);
         let e = sim.substrate.entities.get(id).unwrap();
         let xy = ground_pose::position_world_xy(&e.position);
         if xy[0] >= 16 * 256 {
@@ -539,7 +516,7 @@ fn refused_fresh_walk_head_restores_the_current_raw_occupation() {
     use crate::util::fixed_math::SimFixed;
     let (mut sim, rules, registry) = fixture();
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
         .unwrap();
     let owner = {
         let e = sim.substrate.entities.get_mut(id).unwrap();
@@ -567,19 +544,10 @@ fn refused_fresh_walk_head_restores_the_current_raw_occupation() {
             queue: false,
         },
         Some(&rules),
-        grid.as_deref(),
-        &BTreeMap::new()
     ));
     drop(grid);
     let grid = sim.path_grid_snapshot();
-    sim.advance_tick(
-        &[],
-        Some(&rules),
-        &BTreeMap::new(),
-        grid.as_deref(),
-        Some(&registry),
-        67,
-    );
+    sim.advance_tick(&[], Some(&rules), grid.as_deref(), Some(&registry), 67);
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!((e.position.rx, e.position.ry), (15, 15));
     assert_eq!(e.locomotor.as_ref().unwrap().step_head(), None);
@@ -612,7 +580,7 @@ fn production_fresh_head_and_raw_history_match_original_walk_producer() {
     for case in cases {
         let (mut sim, rules, registry) = fixture();
         let id = sim
-            .spawn_object("ENGINEER", "Americans", 9, 10, 0, &rules, &BTreeMap::new())
+            .spawn_object("ENGINEER", "Americans", 9, 10, 0, &rules)
             .unwrap();
         for x in [9, 10] {
             let c = sim
@@ -655,18 +623,9 @@ fn production_fresh_head_and_raw_history_match_original_walk_producer() {
                 queue: false,
             },
             Some(&rules),
-            grid.as_deref(),
-            &BTreeMap::new()
         ));
         drop(grid);
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         let output = &case["output"];
         let expected = DriveCoord {
             x: output["head"][0].as_i64().unwrap() as i32,
@@ -717,9 +676,6 @@ fn ready_repair_fixture(
     crate::map::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
-    use crate::sim::bridge_state::{
-        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeheadAnchorClass, DamageState,
-    };
     let (mut sim, rules, registry) = fixture();
     sim.mapgen_rng = Simulation::with_seed(0).mapgen_rng;
     let owner = sim.interner.intern("Americans");
@@ -727,7 +683,7 @@ fn ready_repair_fixture(
     house.player_control = true;
     sim.houses.insert(owner, house);
     let hut = sim
-        .spawn_object("CABHUT", "Soviets", 16, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("CABHUT", "Soviets", 16, 15, 0, &rules)
         .unwrap();
     if let Some(overlay) = overlay {
         for (x, y) in [(17, 14), (17, 15), (17, 16)] {
@@ -742,26 +698,6 @@ fn ready_repair_fixture(
                 .as_mut()
                 .unwrap()
                 .write_bridge_overlay_identity(x, y, overlay);
-            sim.bridge_state.as_mut().unwrap().test_seed_cell(
-                x,
-                y,
-                BridgeRuntimeCell {
-                    deck_present: true,
-                    destroyable: true,
-                    deck_level: 0,
-                    bridge_group_id: None,
-                    damage_state: if overlay == 231 {
-                        DamageState::Destroyed
-                    } else {
-                        DamageState::Healthy { variant: 0 }
-                    },
-                    axis: Some(Axis::NS),
-                    role: BridgeCellRole::Body,
-                    anchor_span_id: None,
-                    overlay_byte: overlay,
-                    bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-                },
-            );
         }
     }
     (sim, rules, registry, hut)
@@ -775,7 +711,7 @@ fn ready_engineer(
 ) -> u64 {
     use crate::sim::components::{DriveCoord, NavTargetRef};
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 15, 15, 0, rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 15, 15, 0, rules)
         .unwrap();
     assert!(crate::sim::movement::issue_direct_move(
         &mut sim.substrate.entities,
@@ -800,7 +736,7 @@ fn ready_engineer(
         .as_mut()
         .unwrap()
         .set_walk_destination(Some(head));
-    sim.run_walk_boundary(id, head, Some(rules), None, Some(registry));
+    sim.run_walk_boundary(id, head, Some(rules), Some(registry));
     sim.substrate
         .entities
         .get_mut(id)
@@ -817,7 +753,7 @@ fn repair_frame(
     rules: &RuleSet,
     registry: &crate::map::overlay_types::OverlayTypeRegistry,
 ) -> crate::sim::world::TickResult {
-    sim.advance_tick(&[], Some(rules), &BTreeMap::new(), None, Some(registry), 67)
+    sim.advance_tick(&[], Some(rules), None, Some(registry), 67)
 }
 
 /// One entry per repair announcement: whether it published the type-14 radar
@@ -844,14 +780,15 @@ fn engineer_enters_cabhut_repairs_bridge() {
     assert!(sim.substrate.entities.get(engineer).is_none());
     assert_eq!(repair_sounds(&sim), [true]);
     for (x, y) in [(17, 14), (17, 15), (17, 16)] {
-        let c = sim.bridge_state.as_ref().unwrap().cell(x, y).unwrap();
-        assert_eq!(c.overlay_byte, 0xce, "Seed0 native MapGen variant");
-        assert_eq!(
-            c.damage_state,
-            crate::sim::bridge_state::DamageState::Destroyed,
-            "native stale damage byte"
-        );
-        assert!(sim.bridge_state.as_ref().unwrap().is_bridge_walkable(x, y));
+        let facts = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(x, y)
+            .unwrap()
+            .bridge_facts;
+        assert_eq!(facts.overlay_id, Some(0xce), "Seed0 native MapGen variant");
+        assert!(crate::sim::bridge_state::cell_render_state(facts).is_some());
     }
 }
 
@@ -877,7 +814,7 @@ fn engineer_far_from_bridge_at_cabhut_no_mutation() {
 fn bridge_repair_preserves_unrelated_foundation_before_next_reader() {
     let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
     let unrelated = sim
-        .spawn_object("CABHUT", "Soviets", 13, 13, 0, &rules, &BTreeMap::new())
+        .spawn_object("CABHUT", "Soviets", 13, 13, 0, &rules)
         .unwrap();
     let engineer = ready_engineer(&mut sim, &rules, &registry, hut);
     assert!(sim.rebuild_dynamic_navigation(&rules));
@@ -891,7 +828,6 @@ fn bridge_repair_preserves_unrelated_foundation_before_next_reader() {
             engineer,
             crate::sim::components::DriveCoord::cell(16, 15, 0),
             Some(&rules),
-            None,
             Some(&registry)
         )
         .expect("fixture frame must complete")
@@ -911,7 +847,14 @@ fn bridge_repair_preserves_unrelated_foundation_before_next_reader() {
     assert_eq!(gameplay, (sim.scenario_rng.state(), sim.main_rng.state()));
     assert_eq!(sim.mapgen_rng.state(), mapgen.state());
     for (x, y) in [(17, 14), (17, 15), (17, 16)] {
-        assert!(sim.bridge_state.as_ref().unwrap().is_bridge_walkable(x, y));
+        let facts = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(x, y)
+            .unwrap()
+            .bridge_facts;
+        assert!(crate::sim::bridge_state::cell_render_state(facts).is_some());
     }
 }
 
@@ -947,7 +890,7 @@ fn nonconsecutive_engineer_finishes_its_head_without_repeating_cancelled_repair(
     let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
     let a = ready_engineer(&mut sim, &rules, &registry, hut);
     let separator = sim
-        .spawn_object("ENGINEER", "Americans", 19, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 19, 15, 0, &rules)
         .unwrap();
     let b = ready_engineer(&mut sim, &rules, &registry, hut);
     repair_frame(&mut sim, &rules, &registry);
@@ -983,7 +926,6 @@ fn later_repair_scatters_stationary_hut_occupant_and_processes_it_synchronously(
         last,
         DriveCoord::cell(16, 15, 0),
         Some(&rules),
-        None,
         Some(&registry),
     )
     .expect("hut evacuation finishes within the completion callback");
@@ -1032,7 +974,7 @@ fn hut_repair_scatters_a_jumpjet_occupant_through_its_air_destination_owner() {
     // occupant for Building 0x4576F0 (Map 0x565730, first Building 0x47C520),
     // exactly like a Walk infantryman standing there.
     let rocketeer = sim
-        .spawn_object("JUMPJET", "Americans", 16, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("JUMPJET", "Americans", 16, 15, 0, &rules)
         .unwrap();
     assert!(
         sim.substrate
@@ -1051,7 +993,6 @@ fn hut_repair_scatters_a_jumpjet_occupant_through_its_air_destination_owner() {
         engineer,
         DriveCoord::cell(16, 15, 0),
         Some(&rules),
-        None,
         Some(&registry),
     )
     .expect("a Jumpjet hut occupant scatters without stopping the frame");
@@ -1180,7 +1121,7 @@ fn repair_pointer_expiry_keeps_sensor_and_occupier_exceptions_and_current_nav_ga
 fn engineer_adjacent_to_cabhut_enters_before_repairing_and_dirtying_minimap() {
     let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
         .unwrap();
     let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command(
@@ -1190,8 +1131,6 @@ fn engineer_adjacent_to_cabhut_enters_before_repairing_and_dirtying_minimap() {
             target_building_id: hut
         },
         Some(&rules),
-        grid.as_deref(),
-        &BTreeMap::new()
     ));
     drop(grid);
     assert!(!repair_frame(&mut sim, &rules, &registry).bridge_state_changed);
@@ -1223,7 +1162,7 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
     for stop in [true, false] {
         let (mut sim, rules, registry) = fixture();
         let id = sim
-            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
             .unwrap();
         let grid = sim.path_grid_snapshot();
         assert!(sim.apply_command(
@@ -1235,8 +1174,6 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
                 queue: false,
             },
             Some(&rules),
-            grid.as_deref(),
-            &BTreeMap::new()
         ));
         drop(grid);
         let mut retained = None;
@@ -1272,13 +1209,7 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
                 queue: false,
             }
         };
-        assert!(sim.apply_command(
-            "Americans",
-            &order,
-            Some(&rules),
-            grid.as_deref(),
-            &BTreeMap::new()
-        ));
+        assert!(sim.apply_command("Americans", &order, Some(&rules),));
         drop(grid);
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(ground_pose::position_world_coord(&e.position), before);
@@ -1286,12 +1217,6 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
         assert_eq!(e.movement_target.as_ref().unwrap().next_index, 0);
         assert_eq!(e.navigation.nav_com.is_none(), stop);
         // Both instance-owned XYZ values survive the actual snapshot envelope.
-        // This synthetic map has no walls; retain its known zero contribution
-        // plane before exercising the production map-load restoration owners.
-        sim.overlay_grid
-            .as_mut()
-            .unwrap()
-            .retain_zero_wall_plane_for_tests();
         let map_terrain = sim.resolved_terrain.as_ref().unwrap().clone();
         let bytes = GameSnapshot::save(&sim, 0, 0, "walk retained order", 0);
         let mut replay = GameSnapshot::load(&bytes).unwrap().sim;
@@ -1378,7 +1303,7 @@ fn walk_completion_uses_retained_destination_and_exact_height_tolerance() {
         rules.general.blockage_path_delay_ticks = 65536;
         sim.session.binary_frame = 123;
         let id = sim
-            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+            .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
             .unwrap();
         let head = DriveCoord {
             x: 16 * 256 + 192,
@@ -1408,7 +1333,7 @@ fn walk_completion_uses_retained_destination_and_exact_height_tolerance() {
             final_goal: Some(((dest.x / 256) as u16, (dest.y / 256) as u16)),
             ..Default::default()
         });
-        sim.run_completed_walk_step(id, head, Some(&rules), None, Some(&registry))
+        sim.run_completed_walk_step(id, head, Some(&rules), Some(&registry))
             .expect("fixture frame must complete");
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(e.navigation.nav_com.is_some(), survives);
@@ -1458,10 +1383,10 @@ fn repair_receiver_failure_stops_runtime_before_consumption_or_frame_commit() {
     let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
     let engineer = ready_engineer(&mut sim, &rules, &registry, hut);
     let victim = sim
-        .spawn_object("ENGINEER", "Americans", 17, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 17, 15, 0, &rules)
         .unwrap();
     let later = sim
-        .spawn_object("ENGINEER", "Americans", 14, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 14, 15, 0, &rules)
         .unwrap();
     // An intentionally unavailable receiver input after the ordinary walker
     // has written its three overlays. This exercises failure delivery, not a
@@ -1546,13 +1471,12 @@ fn hut_queries_pending_uninit_and_active_tube_exit_before_other_gates() {
     use crate::map::tube_facts::{TubeFact, TubeId};
     use crate::sim::components::DriveCoord;
     use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
-    use std::collections::BTreeMap;
     let (mut sim, rules, registry) = fixture();
     let hut = sim
-        .spawn_object("CABHUT", "Americans", 16, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("CABHUT", "Americans", 16, 15, 0, &rules)
         .unwrap();
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 15, 15, 0, &rules)
         .unwrap();
     let rows: serde_json::Value = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/hut_scatter.json"
@@ -1612,7 +1536,7 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
     for ordered in [false, true] {
         let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
         let rocketeer = sim
-            .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules, &BTreeMap::new())
+            .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules)
             .unwrap();
         let current = crate::sim::movement::ground_pose::position_world_coord(
             &sim.substrate.entities.get(rocketeer).unwrap().position,
@@ -1642,8 +1566,6 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                     queue: false,
                 },
                 Some(&rules),
-                grid.as_deref(),
-                &BTreeMap::new(),
                 Some(&registry)
             ));
             drop(grid);
@@ -1682,7 +1604,7 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
             // `Process 0x0054AEC0` dispatches State 0 (`0x0054B980`), which is
             // what promotes a moving owner out of the ground state. The air
             // adapter no longer touches Jumpjets at all.
-            sim.tick_air_movement_with_cell_lists_one(rocketeer, None);
+            sim.tick_air_movement_with_cell_lists_one(rocketeer, None, None);
             assert_eq!(
                 sim.substrate
                     .entities
@@ -1712,10 +1634,6 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
         // Map assets are deliberately skipped by the snapshot envelope.
         // Supply the same map-load grid and run the production restore owners
         // before resuming repair; this fixture has no wall contributions.
-        sim.overlay_grid
-            .as_mut()
-            .unwrap()
-            .retain_zero_wall_plane_for_tests();
         let map_terrain = sim.resolved_terrain.as_ref().unwrap().clone();
         let saved = GameSnapshot::save(&sim, 0, 0, "jumpjet", 0);
         let mut restored = GameSnapshot::load(&saved).unwrap().sim;
@@ -1825,11 +1743,10 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
 fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::movement::locomotion::piggyback;
-    use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::{components::DriveCoord, snapshot::GameSnapshot};
     let (mut sim, rules, _) = fixture();
     let id = sim
-        .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules)
         .unwrap();
     let initial = sim.state_hash();
     sim.substrate
@@ -1891,7 +1808,7 @@ fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
         .as_mut()
         .unwrap();
     assert_eq!(
-        piggyback::begin(loco, LocomotorKind::Walk, MovementLayer::Ground, 0),
+        piggyback::begin(loco, LocomotorKind::Walk, 0),
         piggyback::BeginOutcome::Installed
     );
     let saved = GameSnapshot::save(&sim, 0, 0, "jumpjet stash", 0);
@@ -1931,7 +1848,7 @@ fn jumpjet_stop_command_keeps_native_moving_and_selected_coordinate() {
     use crate::util::fixed_math::SimFixed;
     let (mut sim, rules, registry, _) = ready_repair_fixture(None);
     let id = sim
-        .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules, &BTreeMap::new())
+        .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules)
         .unwrap();
     assert!(sim.issue_air_cell_destination(id, (20, 15), SimFixed::from_num(9), Some(&rules)));
     crate::sim::movement::air_movement::tick_air_movement(
@@ -1953,13 +1870,10 @@ fn jumpjet_stop_command_keeps_native_moving_and_selected_coordinate() {
         .jumpjet_runtime()
         .unwrap()
         .clone();
-    let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command_with_overlays(
         "Americans",
         &Command::Stop { entity_id: id },
         Some(&rules),
-        grid.as_deref(),
-        &BTreeMap::new(),
         Some(&registry)
     ));
     let state = sim
@@ -2001,7 +1915,7 @@ fn failed_jumpjet_stop_stock_fatal_receiver_precedes_cache_retirement() {
         let (mut sim, mut rules, registry) = fixture();
         rules.bridge_warheads.c4_name = "Super".into();
         let id = sim
-            .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules, &BTreeMap::new())
+            .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules)
             .unwrap();
         // Supplied failed-search terrain exercises the real FNPC receiver;
         // it is not a claim that every stock map can strand a Rocketeer.

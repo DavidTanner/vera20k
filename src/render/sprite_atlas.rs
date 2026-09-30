@@ -821,13 +821,14 @@ fn sprite_palette_for_key(
 }
 
 /// Every sprite key one object (type, house colour) can be drawn with: a
-/// structure's body frames, or an infantry-style sequence set.
+/// structure's body, source-bound raw Infantry records, or a generic layout.
 fn insert_object_keys(
     needed: &mut HashSet<ShpSpriteKey>,
     type_str: &str,
     category: EntityCategory,
     color_idx: HouseColorIndex,
     rules: Option<&RuleSet>,
+    infantry_frames: Option<&[u16]>,
 ) {
     let mut insert = |frame: u16| {
         needed.insert(ShpSpriteKey {
@@ -839,6 +840,15 @@ fn insert_object_keys(
         });
     };
     match category {
+        EntityCategory::Infantry => {
+            // Infantry518D80 indexes the full 42-record signed bank by Doing.
+            // The source-bound list was resolved once for this type, before
+            // expanding its house colours. No generic SequenceKind projection
+            // or invalid-frame standing fallback participates in this path.
+            for &frame in infantry_frames.unwrap_or_default() {
+                insert(frame);
+            }
+        }
         EntityCategory::Structure => {
             insert(0);
             // CanBeOccupied buildings need frames 0..3 for the occupancy +
@@ -909,8 +919,7 @@ fn insert_object_keys(
                             for frame_offset in 0..seq_def.frame_count {
                                 // Use facing=0 for all infantry keys — the absolute
                                 // frame index already encodes the facing direction.
-                                // This avoids cache key mismatches for non-8-facing
-                                // sequences (most RA2 infantry use 6 facings).
+                                // House variants share these absolute frame keys.
                                 insert(
                                     seq_def.start_frame
                                         + f_idx as u16 * seq_def.facing_multiplier
@@ -934,15 +943,65 @@ fn insert_object_keys(
     }
 }
 
+/// Frames an InfantryType's signed records can select in this actual SHP.
+///
+/// Infantry518E08..1F and518F3B..88 retain signed Stage and DWORD composition.
+/// Iterate the asset, never a potentially enormous/negative sequence count.
+/// For each facing, invert the composed base with wrapping subtraction and
+/// let the sole frame resolver admit the candidate Stage. Every signed native
+/// remainder is smaller than i32::MAX, so this candidate is unique even when
+/// composition wraps. All 8 native facing slots have a representative byte.
+fn infantry_asset_frames(
+    actions: &[crate::rules::infantry_sequence::InfantrySequenceEntry],
+    frame_count: u16,
+) -> Vec<u16> {
+    let mut bases = Vec::with_capacity(actions.len() * usize::from(INFANTRY_FACING_BUCKETS));
+    for action in actions {
+        let facings = if action.facings > 0 {
+            INFANTRY_FACING_BUCKETS
+        } else {
+            1
+        };
+        for slot in 0..facings {
+            let facing = slot * INFANTRY_FACING_STEP;
+            bases.push((
+                action,
+                facing,
+                crate::sim::animation::resolve_shp_frame(action, facing, 0),
+            ));
+        }
+    }
+    (0..frame_count)
+        .filter(|&frame| {
+            let frame = i32::from(frame);
+            bases.iter().any(|&(action, facing, base)| {
+                crate::sim::animation::resolve_shp_frame(action, facing, frame.wrapping_sub(base))
+                    == frame
+            })
+        })
+        .collect()
+}
+
 /// The keys of `new_objects`, each drawn as the category of the placed objects
-/// of its type; a deploy target not on the map yet is a structure.
+/// of its type; a deploy target not on the map yet is a structure. A selected
+/// Infantry disguise type can be absent from the placed set; its rules class
+/// still supplies the Infantry source and signed record bank.
+///
+/// Return decoded Infantry sources for the render pass to consume, so every
+/// type is decoded once and its frame membership is computed once per refresh,
+/// independently of the number of entities or house colours.
+#[allow(clippy::too_many_arguments)]
 fn insert_new_object_keys(
     needed: &mut HashSet<ShpSpriteKey>,
     new_objects: &HashSet<(String, HouseColorIndex)>,
     entities: &crate::sim::entity_store::EntityStore,
     interner: Option<&crate::sim::intern::StringInterner>,
+    asset_manager: &AssetManager,
+    theater_ext: &str,
+    theater_name: &str,
     rules: Option<&RuleSet>,
-) {
+    art: Option<&ArtRegistry>,
+) -> HashMap<String, Option<ShpSource>> {
     let categories: HashMap<&str, EntityCategory> = entities
         .values()
         .filter(|entity| !entity.is_voxel)
@@ -953,13 +1012,65 @@ fn insert_new_object_keys(
             )
         })
         .collect();
+    let mut sources = HashMap::new();
+    let mut frame_sets: HashMap<&str, Vec<u16>> = HashMap::new();
     for (type_str, color_idx) in new_objects {
         let category = categories
             .get(type_str.as_str())
             .copied()
-            .unwrap_or(EntityCategory::Structure);
-        insert_object_keys(needed, type_str, category, *color_idx, rules);
+            .unwrap_or_else(|| {
+                if rules
+                    .and_then(|rules| rules.object(type_str))
+                    .is_some_and(|object| {
+                        object.category == crate::rules::object_type::ObjectCategory::Infantry
+                    })
+                {
+                    EntityCategory::Infantry
+                } else {
+                    EntityCategory::Structure
+                }
+            });
+        let infantry_frames = if category == EntityCategory::Infantry {
+            let frames = frame_sets.entry(type_str.as_str()).or_insert_with(|| {
+                let source = load_shp_source(
+                    asset_manager,
+                    type_str,
+                    None,
+                    theater_ext,
+                    theater_name,
+                    rules,
+                    art,
+                );
+                let actions = rules
+                    .and_then(|rules| rules.animation_sequence(type_str))
+                    .and_then(|set| set.infantry_actions());
+                let frames = match (source.as_ref(), actions) {
+                    (Some(source), Some(actions)) => {
+                        // ShpFile's parser reads the u16 header count. Keep
+                        // admission unavailable if that invariant is absent.
+                        u16::try_from(source.shp.frames.len())
+                            .map(|count| infantry_asset_frames(actions, count))
+                            .unwrap_or_default()
+                    }
+                    _ => Vec::new(),
+                };
+                sources.insert(type_str.clone(), source);
+                frames
+            });
+            Some(frames.as_slice())
+        } else {
+            None
+        };
+        insert_object_keys(
+            needed,
+            type_str,
+            category,
+            *color_idx,
+            rules,
+            infantry_frames,
+        );
     }
+    sources
 }
 
 /// Groups keys by type, so each type's SHP is decoded once, in a stable order.
@@ -984,34 +1095,19 @@ fn projectile_shp_candidates(
     let Some(load) = &projectile.image_load else {
         return Vec::new();
     };
-    let image = &load.image;
     let theater = load.theater;
-    let mut image = image.to_ascii_uppercase().into_bytes();
-    if !theater
-        && load.new_theater
-        && image.len() >= 2
-        && matches!(image[0], b'G' | b'N' | b'C' | b'Y')
-        && matches!(image[1], b'A' | b'T')
-    {
-        image[1] = match theater_name.to_ascii_uppercase().as_str() {
-            "TEMPERATE" => b'T',
-            "SNOW" => b'A',
-            "URBAN" => b'U',
-            "DESERT" => b'D',
-            "LUNAR" => b'L',
-            "NEWURBAN" => b'N',
-            _ => image[1],
-        };
-    }
-    let mut file = String::from_utf8(image).expect("ASCII case conversion preserves UTF-8");
-    file.push('.');
-    file.push_str(if theater { theater_ext } else { "SHP" });
-    let mut candidates = vec![file.clone()];
-    if file.is_ascii() && file.len() >= 2 {
-        file.replace_range(1..2, "G");
-        if file != candidates[0] {
-            candidates.push(file);
-        }
+    let upper = load.image.to_ascii_uppercase();
+    let [substituted, generic] = crate::rules::art_data::theater_shp_names(&upper, theater_name);
+    let first = if !theater && load.new_theater {
+        substituted
+    } else {
+        upper
+    };
+    let ext = if theater { theater_ext } else { "SHP" };
+    let mut candidates = vec![format!("{first}.{ext}")];
+    let fallback = format!("{generic}.{ext}");
+    if fallback != candidates[0] {
+        candidates.push(fallback);
     }
     candidates
 }
@@ -1129,7 +1225,17 @@ pub fn build_sprite_atlas(
         .cloned()
         .collect();
     let mut needed: HashSet<ShpSpriteKey> = HashSet::new();
-    insert_new_object_keys(&mut needed, &new_objects, entities, interner, rules);
+    let mut infantry_sources = insert_new_object_keys(
+        &mut needed,
+        &new_objects,
+        entities,
+        interner,
+        asset_manager,
+        theater_ext,
+        theater_name,
+        rules,
+        art,
+    );
 
     // Frame counts and source files registered so far: a refresh extends the
     // atlas's own and replaces them only once it has succeeded.
@@ -1504,15 +1610,22 @@ pub fn build_sprite_atlas(
                     .get(&key.type_id.to_ascii_uppercase())
                     .map(String::as_str)
             };
-            let mut loaded = load_shp_source(
-                asset_manager,
-                &key.type_id,
-                file,
-                theater_ext,
-                theater_name,
-                rules,
-                art,
-            );
+            // The Infantry membership pass already decoded this exact source.
+            // Consume it here rather than decoding per colour or a second time.
+            let mut loaded = (!projectile)
+                .then(|| infantry_sources.remove(&key.type_id))
+                .flatten()
+                .unwrap_or_else(|| {
+                    load_shp_source(
+                        asset_manager,
+                        &key.type_id,
+                        file,
+                        theater_ext,
+                        theater_name,
+                        rules,
+                        art,
+                    )
+                });
             if projectile && let Some(loaded) = &mut loaded {
                 // BulletDraw468090 has no AnimType/Techno XDrawOffset consumer.
                 loaded.draw_offsets = (0, 0);
@@ -1743,9 +1856,17 @@ fn render_shp_frame(
     let shp = &source.shp;
     let found_name = source.found_name.as_str();
 
-    // Frame selection: use facing to pick among the first 8 frames (standing pose).
-    // If SHP has fewer frames, use frame 0.
-    if key.palette_context.is_projectile() && key.frame as usize >= shp.frames.len() {
+    // Source-bound Infantry preparation never registers an invalid frame.
+    // Reject an out-of-asset key here too; this adapter's absent sprite does
+    // not establish native invalid-index shape access, which the frame
+    // selection receipts stop before. Other generic classes retain their
+    // existing standing fallback.
+    let infantry = rules
+        .and_then(|rules| rules.object(&key.type_id))
+        .is_some_and(|object| {
+            object.category == crate::rules::object_type::ObjectCategory::Infantry
+        });
+    if (key.palette_context.is_projectile() || infantry) && key.frame as usize >= shp.frames.len() {
         return None;
     }
     let frame_idx: usize = if (key.frame as usize) < shp.frames.len() {

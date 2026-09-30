@@ -724,7 +724,7 @@ fn construct_terrain_objects_inner(
             continue;
         };
         let type_ref = sim.interner.intern(&obj.name);
-        // TerrainClass construction reaches AbstractClass::AssignUniqueID
+        // TerrainClass construction reaches AbstractClass::Create_ID
         // @ 0x00410230, which draws from ScenarioClass::NextUniqueID
         // @ 0x0068BCB0 just like every other modeled runtime object.
         let stable_id = sim.allocate_stable_id();
@@ -875,7 +875,7 @@ mod tests {
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::StringInterner;
@@ -889,58 +889,9 @@ mod tests {
 
     fn resolved_cell() -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx: 0,
-            ry: 0,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
             allows_tiberium: true,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
             base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(0, 0)
         }
     }
 
@@ -1233,16 +1184,8 @@ SpreadPercentage=.06
         assert_eq!(state.midpoint_frame, 11);
 
         let path_grid = PathGrid::test_all_passable(32, 32);
-        let height_map = BTreeMap::new();
         let advance = |sim: &mut Simulation| {
-            sim.advance_tick(
-                &[],
-                Some(&rules),
-                &height_map,
-                Some(&path_grid),
-                Some(&registry),
-                67,
-            )
+            sim.advance_tick(&[], Some(&rules), Some(&path_grid), Some(&registry), 67)
         };
 
         assert!(advance(&mut sim).frame_committed);
@@ -1614,10 +1557,6 @@ SpreadPercentage=.06
         let mut rules = RuleSet::from_ini(&ini).expect("rules");
         rules.set_terrain_spawner_frame_count_for_test("TIBTRE01", STOCK_FRAME_COUNT);
         let mut sim = Simulation::new();
-        let overlay_registry = OverlayTypeRegistry::from_ini(
-            &IniFile::from_str("[OverlayTypes]\n0=FILL0\n1=FILL1\n2=TIB1\n"),
-            None,
-        );
         let objs = vec![
             TerrainObject {
                 rx: 5,
@@ -1730,7 +1669,6 @@ SpreadPercentage=.06
         assert_eq!(sim.production.terrain_occupation_bits[&(10, 5)], 4);
 
         let grid = PathGrid::test_all_passable(64, 64);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         sim.queue_command(CommandEnvelope::new(
             owner_id,
             sim.session.tick + 1,
@@ -1748,7 +1686,7 @@ SpreadPercentage=.06
         let mut last_health = 200;
         for _ in 0..600 {
             let pending = sim.take_due_commands();
-            sim.advance_tick(&pending, Some(&rules), &height_map, Some(&grid), None, 100);
+            sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
             shots += sim.fire_events.len();
             targeted |= sim
                 .substrate

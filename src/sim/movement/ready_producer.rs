@@ -40,10 +40,11 @@
 //! its state is absent, and families without a faithful mapping return `None`
 //! rather than a guess.
 //!
-//! Drive/Ship share their coordinate query with cell-entry and tube consumers.
-//! Walk reads its retained byte/head and the shared Foot speed fraction.
-//! Original query comparisons are in locomotor_moving.json; other family
-//! adapters and the cached Drive/Ship owner speed still have recorded limits.
+//! Drive/Ship share their coordinate query with cell-entry and tube consumers
+//! and read the owner's live `GetCurrentSpeed`. Walk reads its retained
+//! byte/head and the shared Foot speed fraction. Original query comparisons
+//! are in locomotor_moving.json; other family adapters still have recorded
+//! limits.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/ movement and entity state only.
@@ -62,47 +63,52 @@ use super::track_process::TrackFamily;
 /// producer yet (the gate then keeps its conservative "not moving" answer).
 ///
 /// Called straight from the Mission readiness gate, once per gate evaluation.
+/// `rules` gives Drive/Ship the owner's type and `VeteranSpeed`; without it
+/// the speed getter falls back to the order's stamped speed.
 pub(crate) fn ready_state_for(
     entity: &GameEntity,
+    rules: Option<super::SpeedRules<'_>>,
     binary_frame: u32,
 ) -> Option<LocomotorReadyState> {
     let locomotor = entity.locomotor.as_ref()?;
     match locomotor.active_kind() {
-        LocomotorKind::Drive => Some(drive_family(entity, binary_frame, TrackFamily::Drive)),
-        LocomotorKind::Ship => Some(drive_family(entity, binary_frame, TrackFamily::Ship)),
+        LocomotorKind::Drive => Some(drive_family(
+            entity,
+            rules,
+            binary_frame,
+            TrackFamily::Drive,
+        )),
+        LocomotorKind::Ship => Some(drive_family(entity, rules, binary_frame, TrackFamily::Ship)),
         LocomotorKind::Teleport => Some(teleport(entity)),
         LocomotorKind::Jumpjet => Some(jumpjet(locomotor)),
         LocomotorKind::Walk => Some(walk(entity, locomotor)),
         LocomotorKind::Hover => Some(hover(entity, locomotor)),
-        // Catches six kinds: Fly, Rocket, Parachute, Tunnel, DropPod and Mech.
-        // None needs a producer, because nothing consumes one for them: our two
+        // Catches Fly and Rocket. Neither needs a producer, because nothing consumes one for them: our two
         // consumers of `is_moving_now` are the Unit and Infantry readiness
         // branches in `sim::mission::readiness`, aircraft readiness decides from
         // its mission plus two flags and never reads the locomotor, and
         // Rocket-locomotor objects are aircraft too, not vehicles or infantry.
         //
-        // Three things worth knowing before anyone "completes" this arm:
+        // Two things worth knowing before anyone "completes" this arm:
         //
         // - It is unreachable for the *readiness gate*, but the native slot
         //   itself is not dead. gamemd reads it every tick on every foot object
         //   for the sight/occupancy refresh and the move-sound state, and one
         //   aircraft weapon predicate is literally its negation. So the slot has
         //   consumers; the readiness answer just is not one of them.
-        // - These kinds do not agree on what the slot even is. Fly, Rocket and
-        //   Mech each override it with a real body — Mech's is Drive-shaped.
-        //   DropPod inherits the base thunk, which for an unspecialised
-        //   locomotor resolves to a constant false. Tunnel and Parachute have no
-        //   such slot at all; Parachute has no native locomotor class whatsoever.
-        // - Mech and DropPod are dormant TS in stock YR, and Tunnel is not the
-        //   low-bridge tube movement that *is* live.
-        _ => None,
+        // - Fly and Rocket each override the slot with a real body.
+        LocomotorKind::Fly | LocomotorKind::Rocket => None,
     }
 }
 
 /// Fresh post-Process moving-now answer for FootClass side effects such as
 /// MoveSound. Native dispatches this locomotor slot at each consumer.
-pub(crate) fn is_moving_now_for(entity: &GameEntity, binary_frame: u32) -> bool {
-    ready_state_for(entity, binary_frame).is_some_and(LocomotorReadyState::is_moving_now)
+pub(crate) fn is_moving_now_for(
+    entity: &GameEntity,
+    rules: Option<super::SpeedRules<'_>>,
+    binary_frame: u32,
+) -> bool {
+    ready_state_for(entity, rules, binary_frame).is_some_and(LocomotorReadyState::is_moving_now)
 }
 
 /// UnitClass draw-time `ILocomotion::Is_Moving` answer for the two active-stock
@@ -146,21 +152,27 @@ const F64_BITS_HALF: u64 = 0x3FE0_0000_0000_0000;
 /// model.
 fn drive_family(
     entity: &GameEntity,
+    rules: Option<super::SpeedRules<'_>>,
     binary_frame: u32,
     family: TrackFamily,
 ) -> LocomotorReadyState {
-    let turning_active = entity
-        .body_facing
-        .as_ref()
-        .is_some_and(|facing| facing.is_rotating(binary_frame));
+    let turning_active = entity.body_facing.is_rotating(binary_frame);
 
     let (slot_moving, head_to_nonnull) = super::track_head::motion_state(entity, family);
 
-    // Existing adapter caches the signed speed after two truncations, retaining
-    // the low-fraction DLPH/SQD frame where a positive fraction yields zero.
-    // OPEN host integration: native4AFC71 invokes the live getter here; a
-    // callback's speed/modifier changes must be observed without a stale cache.
-    let owner_speed = entity.foot_speed.cached_current_speed;
+    // `0x004AFC71` calls the owner's live GetCurrentSpeed (`0x004DB1A0`): the
+    // signed speed after two truncations, so a low positive fraction can
+    // still read zero. Native reaches the call only after the turn timer,
+    // Is_Moving and the head test (`0x004AFC35..0x004AFC6A`); elsewhere the
+    // predicate is already decided and the getter is not run.
+    let owner_speed = if !turning_active && slot_moving && head_to_nonnull {
+        match rules {
+            Some(rules) => rules.owner_current_speed(entity),
+            None => super::foot_speed::owner_current_speed(entity, None, 1.0),
+        }
+    } else {
+        0
+    };
 
     match family {
         TrackFamily::Drive => LocomotorReadyState::Drive {
@@ -235,12 +247,12 @@ fn jumpjet(locomotor: &LocomotorState) -> LocomotorReadyState {
 
 /// Walk75AB40 calls IsMoving75AB30, reads Foot+578 >0, then tests the
 /// retained step XYZ. The Walk owner now retains all three inputs; NavCom,
-/// MovementTarget and GroundMovePhase are not authorities for this query.
+/// MovementTarget is not an authority for this query.
 /// Project the fixed fraction's sign to 1/0 without a float conversion.
 fn walk(entity: &GameEntity, locomotor: &LocomotorState) -> LocomotorReadyState {
     LocomotorReadyState::Walk {
         moving_byte: u8::from(locomotor.walk_is_moving().unwrap_or(false)),
-        applied_speed_bits: if entity.foot_speed.applied_fraction > SIM_ZERO {
+        applied_speed_bits: if entity.foot_speed.applied_fraction() > SIM_ZERO {
             F64_BITS_ONE
         } else {
             0

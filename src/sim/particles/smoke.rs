@@ -17,7 +17,7 @@
 //! - Per-particle animation state machine + 25%-on-even-frame random drift.
 
 use super::wind::{SMOKE_WIND_DX, SMOKE_WIND_DY};
-use super::{Particle, ParticleSystem};
+use super::{Particle, ParticleSystem, make_particle};
 use crate::rules::particle_type::{ParticleType, ParticleTypeId};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::rng::SimRng;
@@ -92,13 +92,8 @@ pub(super) fn tick_system(sys: &mut ParticleSystem, sim: &mut Simulation, rules:
                         sys.coords.y + off_y,
                         sys.coords.z + 10,
                     );
-                    sys.particles.push(make_particle(
-                        holds,
-                        spawn_pos,
-                        spawn_pos,
-                        pt,
-                        sim.particle_rng(),
-                    ));
+                    sys.particles
+                        .push(make_particle(holds, spawn_pos, pt, sim.particle_rng()));
                 }
             }
         }
@@ -165,46 +160,10 @@ struct ChildSpec {
 }
 
 fn make_child(spec: ChildSpec, pt: &ParticleType, rng: &mut SimRng) -> Particle {
-    let mut p = make_particle(spec.next_id, spec.coords, spec.coords, pt, rng);
+    let mut p = make_particle(spec.next_id, spec.coords, pt, rng);
     p.velocity = spec.velocity;
     p.translucency = spec.translucency;
     p
-}
-
-fn make_particle(
-    type_id: ParticleTypeId,
-    coords: IVec3,
-    spawn_origin: IVec3,
-    pt: &ParticleType,
-    rng: &mut SimRng,
-) -> Particle {
-    let base = (pt.max_ec as u32).max(1);
-    let lifetime_extra = rng.next_raw_abs_modulo(base) as i16;
-    let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
-    Particle {
-        type_id,
-        coords,
-        previous_coords: spawn_origin,
-        origin: coords,
-        direction: [SIM_ZERO; 3],
-        velocity: pt.velocity,
-        lifetime_remaining,
-        damage_counter: pt.max_dc as i16,
-        state_ai_advance: pt.state_ai_advance,
-        animation_state: pt.start_state_ai,
-        translucency: pt.translucency,
-        hit_ground: false,
-        marked_for_deletion: false,
-        drift_x: 0,
-        drift_y: 0,
-        drift_z: 0,
-        current_color: [0; 3],
-        color_index: 0,
-        color_accumulator: SimFixed::from_num(0),
-        spark: None,
-        prev_delta: [SIM_ZERO; 3],
-        state_advance_counter: 0,
-    }
 }
 
 /// Symmetric random offset around `r`. With `r > 0`, draws a signed remainder
@@ -240,7 +199,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1D,
-            directionless: false,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,
@@ -283,7 +241,6 @@ mod tests {
         let mut parent = make_particle(
             ParticleTypeId(0),
             IVec3::new(1000, 2000, 0),
-            IVec3::ZERO,
             pt_a,
             sim.particle_rng(),
         );
@@ -391,7 +348,6 @@ mod tests {
         let mut p = make_particle(
             ParticleTypeId(0),
             IVec3::new(0, 0, 0),
-            IVec3::ZERO,
             pt,
             sim.particle_rng(),
         );

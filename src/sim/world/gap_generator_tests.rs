@@ -70,6 +70,8 @@ fn insert(sim: &mut Simulation, id: u64, owner: InternedId, name: &str, x: u16, 
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(id + 1);
     sim.substrate.entities.insert(entity);
     sim.add_entity_occupancy(id);
+    // Unlimbo's House+0x68 append, which the SpySat scan walks.
+    sim.append_house_base_building_for_test(id);
 }
 
 fn power(sim: &mut Simulation, rules: &RuleSet) {
@@ -102,7 +104,7 @@ fn damage(sim: &mut Simulation, rules: &RuleSet, id: u64, amount: i32) {
 }
 
 fn refresh(sim: &mut Simulation, rules: &RuleSet) {
-    sim.refresh_fog(None, &vision::VisionConfig::default(), Some(rules));
+    sim.refresh_fog(&vision::VisionConfig::default(), Some(rules));
 }
 
 #[test]
@@ -234,7 +236,7 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
             .unwrap()
             .phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
         live.set_logic_order_for_test(order);
-        live.advance_live_object_pass(Some(&rules), None, None)
+        live.advance_live_object_pass(Some(&rules), None)
             .expect("fixture frame must complete");
         assert_eq!(
             live.substrate
@@ -247,7 +249,7 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
         );
         live.reconcile_active_vision_structures(&rules);
         live.session.binary_frame = 240;
-        live.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        live.advance_tick(&[], Some(&rules), None, None, 67);
         let shrouded = case["observations"].as_array().unwrap().last().unwrap()["shrouded"] == 1;
         assert_eq!(
             !live.fog.is_cell_revealed(viewer, 12, 12),
@@ -272,7 +274,7 @@ fn gap_operational_first_visit_creates_viewers_and_house_is_passive() {
     insert(&mut sim, 1, owner, "GAGAP", 12, 12);
     assert!(sim.fog.by_owner.is_empty());
     sim.set_logic_order_for_test(vec![1]);
-    sim.advance_live_object_pass(Some(&rules), None, None)
+    sim.advance_live_object_pass(Some(&rules), None)
         .expect("fixture frame must complete");
     assert!(sim.fog.is_cell_gap_covered(viewer, 12, 12));
     let saved = sim.fog.gap_sources.clone();
@@ -280,7 +282,7 @@ fn gap_operational_first_visit_creates_viewers_and_house_is_passive() {
     refresh(&mut sim, &rules);
     sim.reconcile_active_vision_structures(&rules);
     assert_eq!(sim.fog.gap_sources, saved);
-    sim.advance_live_object_pass(Some(&rules), None, None)
+    sim.advance_live_object_pass(Some(&rules), None)
         .expect("fixture frame must complete");
     assert!(sim.fog.gap_sources[&viewer].is_empty());
 }

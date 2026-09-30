@@ -852,7 +852,7 @@ mod tests {
     use super::*;
     include!("bridge_base_native_tests.rs");
     use crate::map::resolved_terrain::ResolvedTerrainCell;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::bridge_state::{BridgeEndpointRecord, BridgeRecordKind};
     use crate::sim::movement::locomotor::MovementLayer;
 
@@ -886,58 +886,14 @@ mod tests {
         for ry in 0..height {
             for rx in 0..width {
                 let mut cell = ResolvedTerrainCell {
-                    rx,
-                    ry,
-                    source_tile_index: 0,
-                    source_sub_tile: 0,
-                    final_tile_index: 0,
-                    final_sub_tile: 0,
-                    is_wood_bridge_repair_tile: false,
-                    level: 0,
-                    filled_clear: false,
                     tileset_index: None,
                     land_type: LandType::Clear.as_index(),
                     yr_cell_land_type: LandType::Clear.as_index(),
-                    slope_type: 0,
-                    template_height: 0,
-                    render_offset_x: 0,
-                    render_offset_y: 0,
-                    terrain_class: TerrainClass::Clear,
-                    speed_costs: SpeedCostProfile::default(),
-                    is_water: false,
-                    is_cliff_like: false,
-                    is_rough: false,
-                    is_road: false,
-                    accepts_smudge: false,
-                    allows_tiberium: false,
-                    height_in_pixels: 0,
-                    variant: 0,
-                    has_ramp: false,
-                    canonical_ramp: None,
-                    ground_walk_blocked: false,
-                    terrain_object_blocks: false,
-                    terrain_object_occupation: None,
-                    overlay_blocks: false,
-                    overlay_zone_type: None,
-                    outside_playfield: false,
                     zone_type: zone_class::GROUND,
-                    base_ground_walk_blocked: false,
-                    base_build_blocked: false,
                     base_land_type: LandType::Clear.as_index(),
                     base_yr_cell_land_type: LandType::Clear.as_index(),
                     base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: SpeedCostProfile::default(),
-                    has_bridge_deck: false,
-                    bridge_walkable: false,
-                    bridge_transition: false,
-                    bridge_deck_level: 0,
-                    bridge_layer: None,
-                    bridge_facts: Default::default(),
-                    tube_index: None,
-                    radar_left: [0, 0, 0],
-                    radar_right: [0, 0, 0],
-                    has_damaged_data: false,
-                    bridgehead_anchor_class_at_load: None,
+                    ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
                 };
                 configure(&mut cell);
                 cells.push(cell);
@@ -980,7 +936,6 @@ mod tests {
         BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (4, 0),
-            group_id: 1,
             active: true,
             bridge_kind: kind,
         }
@@ -992,30 +947,28 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (2, 0),
                 endpoint_b: (2, 4),
-                group_id: 1,
                 active: false,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (1, 0),
                 endpoint_b: (1, 4),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
         ];
 
         assert_eq!(
-            find_high_bridge_record(&records, 0, (1, 2), 1).map(|record| record.group_id),
-            Some(1)
+            find_high_bridge_record(&records, 0, (1, 2), 1).map(|record| record.endpoint_a),
+            Some((2, 0))
         );
         assert_eq!(
-            find_high_bridge_record(&records, 0, (1, 2), 0).map(|record| record.group_id),
-            Some(2)
+            find_high_bridge_record(&records, 0, (1, 2), 0).map(|record| record.endpoint_a),
+            Some((1, 0))
         );
         assert_eq!(
-            find_high_bridge_record(&records, 1, (1, 2), 1).map(|record| record.group_id),
-            Some(2)
+            find_high_bridge_record(&records, 1, (1, 2), 1).map(|record| record.endpoint_a),
+            Some((1, 0))
         );
         assert!(find_high_bridge_record(&records, 2, (1, 2), 1).is_none());
         assert!(find_high_bridge_record(&records, 0, (1, 5), 1).is_none());
@@ -1027,14 +980,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (2, 4),
                 endpoint_b: (2, 0),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (4, 2),
                 endpoint_b: (0, 2),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1061,7 +1012,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (4, 0),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1100,14 +1050,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (0, 0),
                 endpoint_b: (3, 0),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (6, 0),
                 endpoint_b: (8, 0),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::Low,
             },
@@ -1149,7 +1097,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (5, 0),
-            group_id: 1,
             active: false,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1181,7 +1128,6 @@ mod tests {
         let vertical_record = [BridgeEndpointRecord {
             endpoint_a: (3, 1),
             endpoint_b: (3, 5),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1200,7 +1146,6 @@ mod tests {
         let horizontal_record = [BridgeEndpointRecord {
             endpoint_a: (1, 3),
             endpoint_b: (5, 3),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1221,7 +1166,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (3, 1),
             endpoint_b: (3, 4),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1246,7 +1190,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (0, 1),
             endpoint_b: (5, 1),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1275,7 +1218,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (1, 2),
             endpoint_b: (6, 2),
-            group_id: 1,
             active: false,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1350,7 +1292,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (2, 2),
             endpoint_b: (4, 2),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1385,21 +1326,18 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (2, 2),
                 endpoint_b: (6, 2),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (8, 2),
                 endpoint_b: (11, 2),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (2, 4),
                 endpoint_b: (6, 4),
-                group_id: 3,
                 active: false,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1454,7 +1392,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (2, 2),
             endpoint_b: (4, 2),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1488,14 +1425,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (0, 0),
                 endpoint_b: (2, 1),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (1, 1),
                 endpoint_b: (3, 3),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1544,14 +1479,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (1, 1),
                 endpoint_b: (3, 1),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (0, 1),
                 endpoint_b: (4, 1),
-                group_id: 2,
                 active: false,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1830,14 +1763,11 @@ mod tests {
         assert!(redirect.is_none());
     }
 
-    /// OPEN: accepted raw path tokens can address native process data outside
-    /// the proven direction/zero slots; missing Tube pairs may change routes.
-    /// See PHASE3_TUBE_HIERARCHY_20260910.md for trigger and bounded delivery.
-    #[test]
-    #[ignore = "429780 arbitrary raw direction-data and invalid registry reads remain unproved"]
-    fn tube_hierarchy_raw_process_memory_domain_is_unresolved() {
-        panic!("unresolved: raw process-memory reads accepted by7283C0 into429780");
-    }
+    // OPEN: accepted raw path tokens can address native process data outside
+    // the proven direction/zero slots; missing Tube pairs may change routes.
+    // See PHASE3_TUBE_HIERARCHY_20260910.md for trigger and bounded delivery.
+    // Residual (formerly an ignored placeholder test): 429780 arbitrary raw direction-data and invalid registry reads remain unproved.
+    // Unresolved: raw process-memory reads accepted by7283C0 into429780.
 
     /// `MapClass::RegisterBridgeOrTubeHierarchyPairs` 0x00582D70 enters its
     /// bridge branch on `CellClass::IsBridge` 0x00486750 **OR**
@@ -1854,7 +1784,6 @@ mod tests {
             let record = BridgeEndpointRecord {
                 endpoint_a: (0, 0),
                 endpoint_b: (3, 0),
-                group_id: 1,
                 active: true,
                 bridge_kind: kind,
             };

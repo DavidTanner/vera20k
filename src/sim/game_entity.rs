@@ -22,9 +22,9 @@ use crate::sim::cloak_disguise::{CloakRuntime, DisguiseRuntime};
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::{
-    BridgeOccupancy, BuildingDown, BuildingUp, C4PlantState, DriveLocomotionRuntime,
-    HarvestOverlay, Health, MovementTarget, NavigationState, OrderIntent, PendingC4Detonation,
-    Position, RockingState, ShipLocomotionRuntime, VoxelAnimation,
+    BuildingDown, BuildingUp, C4PlantState, DriveLocomotionRuntime, HarvestOverlay, Health,
+    MovementTarget, NavigationState, OrderIntent, PendingC4Detonation, Position, RockingState,
+    ShipLocomotionRuntime, VoxelAnimation,
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
 use crate::sim::deploy::DeployPhase;
@@ -33,15 +33,14 @@ use crate::sim::docking::building_dock::DockState;
 use crate::sim::intern::InternedId;
 use crate::sim::miner::Miner;
 use crate::sim::mission::{MissionCom, MissionLeafState, MissionTimer, MissionType};
-use crate::sim::movement::drop_pod_movement::DropPodState;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::rocket_movement::RocketState;
 use crate::sim::movement::teleport_movement::TeleportState;
 use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
-use crate::sim::movement::tunnel_movement::TunnelState;
 use crate::sim::passenger::PassengerRole;
 use crate::sim::radio::Contacts;
 use crate::sim::superweapon::invulnerability::InvulnerabilityState;
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::NativeF64Bits;
 
 /// Frames the passive target-scan timer is armed for at object construction.
@@ -97,6 +96,20 @@ fn default_foundation() -> String {
 /// freshly built object is already past the idle-turret dwell on frame 0.
 pub(crate) const NATIVE_LAST_FIRE_FRAME_INIT: i64 = -100;
 
+/// The barrel elevation's rate: the TechnoClass constructor passes 3
+/// (`PUSH 3` at `0x006F2EDE`) to `FacingClass(int) @ 0x004C91E0`.
+const BARREL_ELEVATION_ROT: i32 = 3;
+
+/// A level barrel: the draw pitches by `d32 - 8`, which is zero at `0x4000`.
+pub(crate) const BARREL_LEVEL: u16 = 0x4000;
+
+/// The elevation Unlimbo turns a barrel toward: level minus the low byte of
+/// `FireAngle=` shifted up a byte (`MOV CH, byte [Type+0x3D0]` at
+/// `0x006F6DD9`, `SUB` at `0x006F6DDF`), kept to a word.
+pub(crate) fn unlimbo_barrel_target(fire_angle: i32) -> u16 {
+    BARREL_LEVEL.wrapping_sub(u16::from(fire_angle as u8) << 8)
+}
+
 fn default_last_fire_frame() -> i64 {
     NATIVE_LAST_FIRE_FRAME_INIT
 }
@@ -115,8 +128,10 @@ pub(crate) struct BaseDefenseResponseState {
     pub(crate) recruitable_a: bool,
     pub(crate) recruitable_b: bool,
     archive_target: Option<TargetKind>,
-    pub(crate) cooldown_start_frame: i32,
-    pub(crate) cooldown_duration_frames: i32,
+    /// `TechnoClass+0x650`/`+0x658`: the attacker's call-for-help cooldown
+    /// (`TechnoClass::RespondToBaseAttack @ 0x00708171..0x00708192`, written
+    /// at `0x0070879E..0x007087A9`); the constructor leaves it at `-1`, 0.
+    pub(crate) cooldown: CdTimer,
 }
 
 impl Default for BaseDefenseResponseState {
@@ -125,8 +140,7 @@ impl Default for BaseDefenseResponseState {
             recruitable_a: true,
             recruitable_b: true,
             archive_target: None,
-            cooldown_start_frame: -1,
-            cooldown_duration_frames: 0,
+            cooldown: CdTimer::from_raw(-1, 0),
         }
     }
 }
@@ -348,13 +362,12 @@ pub(crate) struct GeneratedTechnoInit {
     pub native_unique_id: i32,
 }
 
-/// The three evidence-backed ways a live Techno obtains its persistent
+/// The two evidence-backed ways a live Techno obtains its persistent
 /// constructor word. Only `FreshScenario` is allowed to advance Scenario RNG.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TechnoConstructorInit {
     FreshScenario,
     PreconsumedGenerated(GeneratedTechnoInit),
-    Restored(u16),
 }
 
 /// Authored Building upgrades construct as distinct Technos, then Unlimbo at
@@ -402,25 +415,42 @@ pub struct GameEntity {
     /// Later report-selection consumers read this persistent value; placement
     /// failure never refunds the draw.
     pub techno_ctor_random_word: u16,
+    /// One native Techno stage clock. Class receivers mutate through this
+    /// owner; animation, miner and buildup components carry no competing copy.
+    stage: crate::sim::stage::StageClass,
     pub discovery: TechnoDiscoveryHistory,
     /// Authored structure-upgrade identity. `None` for ordinary Technos.
     pub structure_upgrade_link: Option<StructureUpgradeLink>,
     /// World position in isometric cell coordinates + cached screen position.
     pub position: Position,
-    /// Body facing direction (0–255, RA2 convention: 0=N, 64=E, 128=S, 192=W).
-    pub facing: u8,
-    /// Target body facing for gradual rotation (vehicles only).
-    /// When `Some`, the entity is rotating in place and should not advance position.
-    /// Infantry always turn instantly (RA2 behavior), so this stays `None` for them.
-    pub facing_target: Option<u8>,
-    /// Binary-frame hull FacingClass shared by movement and combat. Combat can
-    /// retain an arbitrary16-bit heading without a movement `facing_target`;
-    /// fresh Drive/Ship admission must use that full sample, not the `facing`
-    /// byte used for display. Movement's completed byte-target adapter still
-    /// retires this state; migrating all lifecycle writers to persistent native
-    /// Facing ownership remains required.
-    #[serde(default)]
-    pub body_facing: Option<crate::sim::movement::FacingClass>,
+    /// The body heading, `TechnoClass+0x388` (PrimaryFacing), and its only
+    /// copy: every class has one (the TechnoClass constructor builds it at
+    /// `0x006F2EEB`), a building included — its `+0x388` is what its turret
+    /// or its body aims. 16-bit DirStruct, 0 = north on screen, 0x4000 = east.
+    ///
+    /// Readers sample `current(frame)` (`FacingClass::Current @ 0x004C93D0`),
+    /// writers turn it (`Set @ 0x004C9220`) or snap it (`Set_Current @
+    /// 0x004C9300`). Its rate is written once, by the class constructor
+    /// ([`Self::set_body_facing_rot`]). The image's only other `+0x39C` write
+    /// is AircraftClass::AI's Carryall copy (`0x00415146..0x00415184`, the
+    /// carrier's `+0x3A0` over its cargo's `+0x388` and `+0x3A0`), gated on
+    /// AircraftType `+0xDFC` (`Carryall=`, read at `0x0041CCA2`). Retail sets
+    /// that key only on `[HIND]`, a VehicleType, so the copy is dormant and not
+    /// ported.
+    pub body_facing: crate::sim::movement::FacingClass,
+    /// The barrel elevation, `TechnoClass+0x370`, the first of the three
+    /// FacingClasses (the body is `+0x388`, the turret `+0x3A0`,
+    /// [`Self::barrel_facing`]). The TechnoClass constructor builds it at 0
+    /// turning at rate 3 (`0x006F2EDE..0x006F2EE6`, `0x004C91E0`), and
+    /// [`Self::unlimbo_barrel_elevation`] levels and aims it. `UnitClass::DrawVoxelBody`
+    /// pitches the barrel voxel by it (`0x0073BB77..0x0073BBAC`); nothing in
+    /// a unit's simulation reads it.
+    ///
+    /// The building writers (the constructor's `Set`s at `0x0043BA5E` and
+    /// `0x0043BACB`, Sell's `Set_Current` at `0x0044A08C`, Mission_Missile's
+    /// `Set`s at `0x0044CEE2` and `0x0044CF7A`, an MCV deploy's `Set_Current`
+    /// at `0x00739827`) and their readers are not ported.
+    barrel_elevation: crate::sim::movement::FacingClass,
     /// Persistent FootClass body-animation counter (`FootClass+0x538`).
     /// Unit SHP drawing takes the walk-frame remainder from this counter; it
     /// advances on absolute binary-frame cadence and never resets on a visual
@@ -481,13 +511,8 @@ pub struct GameEntity {
     /// Immutable non-null `UndeploysInto` fact used by successful Unlimbo fallback.
     #[serde(default)]
     pub base_plan_has_undeploy_target: bool,
-    /// Veterancy level: 0 = rookie, 100 = veteran, 200 = elite.
-    ///
-    /// A projection of [`Self::veterancy_raw`], refreshed wherever the raw
-    /// accumulator is written. Every existing reader — the damage multiplier,
-    /// the armour divisor, elite weapon selection, the chevron — consumes this.
-    pub veterancy: u16,
-    /// The running accumulator every rank is sampled from.
+    /// The running accumulator every rank is sampled from
+    /// ([`Self::veterancy`]).
     ///
     /// gamemd-derived: the `VeterancyClass` float on `TechnoClass`, fed by
     /// `Record_The_Kill @ 0x00702D40` through `VeterancyClass::Add @
@@ -506,6 +531,8 @@ pub struct GameEntity {
     /// Frames left on the newly-elite flash — `TechnoClass+0xF0`, seeded with
     /// `[AudioVisual] EliteFlashTimer=` at `0x006FA0DC` on the elite crossing.
     /// Presentation-only state; nothing in `sim/` reads it back.
+    /// RESIDUAL (GSI-08.12): no renderer reads it either, so a unit that just
+    /// turned elite does not flash.
     #[serde(default)]
     pub elite_flash_frames: u16,
     /// Mutable Techno instance armor multiplier. Native construction seeds
@@ -602,11 +629,6 @@ pub struct GameEntity {
     /// stand in for native-alive or `dying`.
     #[serde(default)]
     pub destruction_recorded: bool,
-    /// Monotonic order of the last successful insertion into a CellClass-style
-    /// object list. Serialized because `OccupancyGrid` is a rebuilt cache; this
-    /// is the authoritative fact needed to reconstruct its linked-list order.
-    #[serde(default)]
-    pub occupancy_enter_order: u64,
     /// Bucket membership in gamemd's independent 20 x 20 airborne-object
     /// spatial grid. Air movement updates this only on entry, exit, or a real
     /// bucket crossing; the ordinary cell-list insertion order is separate.
@@ -703,8 +725,9 @@ pub struct GameEntity {
     /// so does an MCV deploy for a computer house (`0x007397F4`).
     #[serde(default)]
     pub ai_repairable: bool,
-    /// Independent turret/barrel facing — only on entities with Turret=yes in rules.ini.
-    /// Timer-based 16-bit interpolator mirroring gamemd's BarrelFacing primitive.
+    /// The turret heading, `TechnoClass+0x3A0` (SecondaryFacing): a
+    /// `Turret=yes` unit's and every aircraft's. A building aims its
+    /// [`Self::body_facing`] instead.
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
     /// Turret rotation latch — `UnitClass+0x6AF`, written only by
     /// `UnitClass::Facing_Update @ 0x00736990` (cleared at `0x00736AD5`, re-set
@@ -774,9 +797,9 @@ pub struct GameEntity {
     /// RESIDUAL:
     /// - `AircraftClass::Mission_Guard` falls into the same Foot body
     ///   (`0x0041A92B`), but VERA's aircraft Guard is not a port of it.
-    /// - `CanDeploySlashUnload @ 0x00700D50` refuses a deployed infantryman's
-    ///   undeploy while it runs (`0x00700E02`; see
-    ///   `Command::ToggleInfantryDeploy`).
+    /// - `CanDeploySlashUnload @ 0x00700D50` reads it only for a type with
+    ///   `UndeployDelay > -1` (`0x00700DF9..0x00700E23`); that type refuses
+    ///   deployment while it runs. Stock GI/GGI keep the reader default-1.
     /// - The charge-turret frame (`IsChargeTurret=`, the Prism Tank) reads it
     ///   with the `+0x2F8` ROF copy (`0x006FA540`), which VERA does not keep
     ///   or draw.
@@ -851,8 +874,6 @@ pub struct GameEntity {
     /// Eight fixed AnimClass ownership slots at Building+0x5C8..+0x5E4.
     #[serde(default)]
     pub damage_fire_anim_ids: [Option<crate::sim::anim_class::AnimId>; 8],
-    /// Bridge deck occupancy marker.
-    pub bridge_occupancy: Option<BridgeOccupancy>,
     /// Persistent bridge layer flag — authoritative source for "is this entity on a bridge?"
     /// Mirrors original engine's FootClass+0x8C. Survives repath operations that reset
     /// locomotor.layer. Set during spawn, updated at cell-crossing bridge transitions.
@@ -893,10 +914,6 @@ pub struct GameEntity {
     pub disguise: Option<DisguiseRuntime>,
     /// Teleport movement state machine (warp out/in phases).
     pub teleport_state: Option<TeleportState>,
-    /// Dormant YR TunnelLocomotionClass process state. Its underground depth
-    /// lives in the typed runtime, because `Position::z` cannot represent -256.
-    #[serde(default)]
-    pub tunnel_state: Option<TunnelState>,
     /// Active low-bridge TubeClass movement. Active YR behaviour — not to be
     /// confused with the subterranean tunnel locomotor, which is Tiberian Sun
     /// legacy and was removed as unreachable in stock YR.
@@ -919,19 +936,10 @@ pub struct GameEntity {
     pub spawn_owner_id: Option<u64>,
     /// Rocket/missile flight state machine (launch/ascend/terminal/detonate).
     pub rocket_state: Option<RocketState>,
-    /// Distinct DropPodLocomotionClass descent state; never shares parachute
-    /// state or surface occupation while airborne.
-    #[serde(default)]
-    pub drop_pod_state: Option<DropPodState>,
-    /// Homing missile flight state. `Some` while this entity is an in-flight
-    /// homing projectile; `None` otherwise. Distinct from `rocket_state` —
-    /// ballistic-arc rockets keep using `rocket_state`; only `Ranged=yes`
-    /// projectiles attach a `HomingState`.
-    #[serde(default)]
-    pub homing_state: Option<crate::sim::movement::homing_movement::HomingState>,
     /// Parachute descent state. `Some` while a paradropped unit is descending
     /// under a parachute, `None` otherwise. Set by
-    /// `parachute_descent::begin_parachute_descent`, cleared on landing.
+    /// `parachute_descent::begin_parachute_descent`, cleared on landing. It
+    /// is also the object's IsFallingDown ([`Self::is_falling_down`]).
     #[serde(default)]
     pub parachute_state: Option<crate::sim::movement::parachute_descent::ParachuteDescentState>,
     /// Active IronCurtain or ForceShield invulnerability timer.
@@ -979,6 +987,11 @@ pub struct GameEntity {
     /// Defaults true; `DeployedCrushable=no` low-silhouette infantry blocks regular crush.
     #[serde(default = "default_true")]
     pub deployed_crushable: bool,
+    /// Techno+2A4, cleared by construction and retained independently of
+    /// Doing. Infantry520B4E/520BAD update it after their Do_Action request
+    /// even when the requested Deployed/Ready sequence refuses.
+    #[serde(default)]
+    native_crush_immunity: u8,
     /// Whether this entity can crush non-Crushable targets (OmniCrusher= in rules.ini).
     /// Only Battle Fortress has this in YR.
     pub omni_crusher: bool,
@@ -996,10 +1009,6 @@ pub struct GameEntity {
     /// Whether this entity ignores per-cell radiation damage (ImmuneToRadiation= in rules.ini).
     #[serde(default)]
     pub immune_to_radiation: bool,
-    /// Render-only depth bias used when this entity is under or near a bridge.
-    pub zfudge_bridge: i32,
-    /// Prevents the unit from taking under-bridge water routes.
-    pub too_big_to_fit_under_bridge: bool,
     /// Whether this entity is playing its death animation (health=0, not yet despawned).
     /// Dying entities are excluded from combat targeting, pathfinding, and selection.
     /// A dying object stays cell-marked until its terminal UnInit. Products
@@ -1041,12 +1050,6 @@ pub struct GameEntity {
     pub(crate) sinking: crate::sim::world::SinkingState,
 
     // --- Passenger/transport system ---
-    /// Original owner of a CanBeOccupied building, saved when the first garrison
-    /// occupant enters. Used to revert ownership when the last occupant exits.
-    /// Matches original engine's `CheckAutoSellOrCivilian` which transfers back
-    /// to the Civilian house — we store the actual pre-garrison owner instead of
-    /// hardcoding "Neutral".
-    pub garrison_original_owner: Option<InternedId>,
     /// Combined passenger/transport role — replaces separate passenger_cargo,
     /// transport_id, and boarding_state fields. See `PassengerRole` variants.
     pub passenger_role: PassengerRole,
@@ -1107,11 +1110,9 @@ pub struct GameEntity {
     /// bunker. Drives entry admission → install.
     #[serde(default)]
     pub bunker_runtime: Option<crate::sim::docking::bunker_install::BunkerRuntime>,
-    /// Active deploy-fire phase. `None` = upright (default). `Some(Deploying)` /
-    /// `Some(Deployed)` / `Some(Undeploying)` for the three machine states.
-    /// Hashed for lockstep determinism. Set by `Command::ToggleInfantryDeploy`,
-    /// advanced by `tick_deploy_state`. Animation reflects this; combat does not
-    /// read it (weapon pick is target-driven).
+    /// Distinct Unit deployment controller, advanced by tick_deploy_state.
+    /// Infantry deployment is its private MissionLeaf Doing and native Stage;
+    /// neither the Infantry command nor its AI writes this controller.
     #[serde(default)]
     pub deploy_state: Option<DeployPhase>,
     /// Unit+0x68C: runtime Deploy continuation, not the type's DeployToFire.
@@ -1148,6 +1149,11 @@ pub struct GameEntity {
     /// approach (`0x0074162D`, VERA's pursuit skip).
     #[serde(default)]
     pub passively_acquired_target: bool,
+    /// Foot+688, initialized false at4D33A8. A stopped object unable to fire
+    /// narrows its next scans through Foot::Greatest_Threat4D9920. This is
+    /// independent of Techno's passive-target byte+50C.
+    #[serde(default)]
+    foot_retarget_after_stop: bool,
     /// Category-specific bytes read by Mission readiness and Aircraft policy.
     pub(crate) mission_leaf: MissionLeafState,
     /// Target identity archived by the Techno Override wrapper.
@@ -1156,8 +1162,6 @@ pub struct GameEntity {
     /// bytes. Snapshot migration defaults reproduce Techno construction.
     #[serde(default)]
     pub(crate) base_defense_response: BaseDefenseResponseState,
-    /// ObjectClass falling-down byte read by Infantry readiness.
-    pub(crate) object_is_falling_down: u8,
     /// Sim-side model of gamemd's TechnoClass `+0x308` (`DamageSparkSystem`): the
     /// `session.tick` at which the live AI_Update damage-Spark particle system
     /// expires and the object may roll again. `0` = no live system (may roll;
@@ -1186,11 +1190,14 @@ pub struct GameEntity {
     pub transport_unload_keep_count: u32,
     /// `BuildingClass+0x6D0`/`+0x6D8` ProduceCash timer (oil derricks). Seeded
     /// to the constructor's dead state (`start = construction frame`,
-    /// `duration = 0`, `BuildingClass::Constructor @ 0x0043B92B`); armed only by
-    /// a capture from a `MultiplayPassive` house. Zero-duration on every
-    /// non-derrick object. Hashed (v135) and persisted.
+    /// `duration = 0`, `BuildingClass::Constructor @ 0x0043B92B..0x0043B937`);
+    /// only a capture from a `MultiplayPassive` house (`BuildingClass::
+    /// ChangeOwner @ 0x004482DB..0x004482F9`) and the re-arm in
+    /// `BuildingClass::Update @ 0x0043FD5B..0x0043FD86` give it a duration.
+    /// `+0x6D4`, the middle dword, is scratch the fire test never reads.
+    /// Zero-duration on every non-derrick object. Hashed (v135) and persisted.
     #[serde(default)]
-    pub produce_cash_timer: crate::sim::credit_income::ProduceCashTimer,
+    pub produce_cash_timer: crate::sim::timer::CdTimer,
     /// `TechnoClass+0x1CC DrainTarget`: the building this object is draining
     /// (Floating Disc). Set by `Fire_At`'s `DrainWeapon` arm, cleared by
     /// `UnitClass::AI`'s cell recheck, the ally check in `AI_Update`, and
@@ -1232,7 +1239,56 @@ pub struct GameEntity {
     pub debug_log: Option<DebugEventLog>,
 }
 
+mod construction_stage;
+
 impl GameEntity {
+    pub(crate) fn native_stage(&self) -> &crate::sim::stage::StageClass {
+        &self.stage
+    }
+
+    /// Read native Doing and shared +F8 for SHP drawing, including actions
+    /// absent from the generic sequence vocabulary. Presentation never advances
+    /// this clock or owns a writable copy of its progress. Doing-1 is retained;
+    /// the frame-selector caller owns its native default-action selection.
+    pub fn infantry_sprite_pose(&self) -> Option<(i32, i32)> {
+        if !crate::sim::movement::infantry_action::doing_owns_sequence(self) {
+            return None;
+        }
+        Some((self.mission_leaf.as_infantry()?.doing(), self.stage.value()))
+    }
+
+    /// Advance the common clock at this class's native scheduling point.
+    pub(crate) fn tick_native_stage(&mut self, now: i32) -> bool {
+        self.stage.advance(now)
+    }
+
+    /// Start a class action/control without altering independent FC/110 state.
+    pub(crate) fn restart_native_stage(&mut self, value: i32, now: i32, rate: i32) {
+        self.stage.restart(value, now, rate);
+    }
+
+    pub(crate) fn set_native_stage_value(&mut self, value: i32) {
+        self.stage.set_value(value);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_native_stage_fixture(&mut self, stage: crate::sim::stage::StageClass) {
+        self.stage = stage;
+    }
+
+    /// Invalidate the one live Foot path head and its Rust route cache.
+    /// Native callers write Foot+5E0=-1; retained suffix/reference words and
+    /// the destination remain intact. The adapter cannot keep consuming cells
+    /// after the authoritative head is gone.
+    pub(crate) fn clear_live_path_head(&mut self) {
+        self.navigation.path_replay.clear_live_head();
+        if let Some(target) = self.movement_target.as_mut() {
+            target.path.clear();
+            target.path_layers.clear();
+            target.next_index = 0;
+        }
+    }
+
     /// `TechnoClass::ArchiveTarget` (`Techno+0x218`): the base-defence
     /// responder's post, a harvester's archived ore cell and a factory's
     /// rally point share this one field, stored in
@@ -1280,7 +1336,7 @@ impl GameEntity {
         let Some(object) = rules.object(type_id) else {
             return;
         };
-        let camera = crate::sim::combat::combat_weapon::primary_for_tier(object, self.veterancy)
+        let camera = crate::sim::combat::combat_weapon::primary_for_tier(object, self.veterancy())
             .and_then(|id| rules.weapon(id))
             .is_some_and(|weapon| weapon.camera);
         if !object.selectable || !object.landable || camera {
@@ -1304,13 +1360,106 @@ impl GameEntity {
         self.type_ref
     }
 
-    /// The body FacingClass's Current (Foot `+0x388`, the value
-    /// `FacingClass::Current @ 0x004C93D0` returns); an object without a
-    /// retained FacingClass rests at its facing byte.
+    pub(crate) const fn foot_retarget_after_stop(&self) -> bool {
+        self.foot_retarget_after_stop
+    }
+
+    /// Drive4B2E9F / Ship6A24F2 / Hover51684D: the held target cannot
+    /// be fired at after stopping. Set before the team Scan_Limit/target clear;
+    /// Team6EC3BD also sets it after each member's class target clear.
+    pub(crate) fn mark_stopped_cannot_fire(&mut self) {
+        self.foot_retarget_after_stop = true;
+    }
+
+    /// FootGreatestThreat4D9951..55 clears only an empty completed base scan.
+    /// Class overrides which return before Foot leave the byte untouched.
+    pub(crate) fn finish_foot_threat_scan(&mut self, found: bool) {
+        if !found {
+            self.foot_retarget_after_stop = false;
+        }
+    }
+
+    /// Mission_Rescue4DE03E resets the latch before its direct mask0 scan.
+    pub(crate) fn clear_rescue_retarget_latch(&mut self) {
+        self.foot_retarget_after_stop = false;
+    }
+
+    /// Foot4D9931..33 changes AL only; all upper mask bits survive.
+    pub(crate) const fn coerce_foot_threat_mask(&self, mask: u32) -> u32 {
+        if self.foot_retarget_after_stop {
+            (mask & !2) | 1
+        } else {
+            mask
+        }
+    }
+
+    /// The body heading at `frame`: `FacingClass::Current @ 0x004C93D0` on
+    /// `+0x388`.
     pub(crate) fn body_facing_current(&self, frame: u32) -> u16 {
+        self.body_facing.current(frame)
+    }
+
+    /// The body heading's high byte at `frame`, the 8-bit direction a reader
+    /// that drops the DirStruct's low byte sees.
+    pub(crate) fn body_facing_byte(&self, frame: u32) -> u8 {
+        (self.body_facing.current(frame) >> 8) as u8
+    }
+
+    /// The body heading at `frame` as a rounded DirType byte,
+    /// `((raw >> 7) + 1) >> 1`: the conversion gamemd applies when it passes
+    /// `Current()` on as a direction argument (an Unlimbo's, a Do_Turn
+    /// comparison's), wrapping 0xFF80.. to 0.
+    pub(crate) fn body_facing_dir(&self, frame: u32) -> u8 {
+        (((u32::from(self.body_facing.current(frame)) >> 7) + 1) >> 1) as u8
+    }
+
+    /// The barrel elevation (`+0x370`); its readers sample `current(frame)`
+    /// (`FacingClass::Current @ 0x004C93D0`).
+    pub(crate) fn barrel_elevation(&self) -> &crate::sim::movement::FacingClass {
+        &self.barrel_elevation
+    }
+
+    /// Whether the barrel elevation still holds its constructor value, which
+    /// an object that never unlimboed keeps.
+    pub(crate) fn barrel_elevation_is_constructed(&self) -> bool {
+        self.barrel_elevation == crate::sim::movement::FacingClass::new(0, BARREL_ELEVATION_ROT)
+    }
+
+    /// `TechnoClass::Unlimbo`'s barrel writes, right after its body snap
+    /// (`0x006F6DAA`): the elevation snaps level (`Set_Current(0x4000)` at
+    /// `0x006F6DC3`), then turns toward the type's `FireAngle=` (`Set` at
+    /// `0x006F6DF5`, [`unlimbo_barrel_target`]).
+    pub(crate) fn unlimbo_barrel_elevation(&mut self, fire_angle: i32, frame: u32) {
+        self.barrel_elevation.snap(BARREL_LEVEL, frame);
+        self.barrel_elevation
+            .set(unlimbo_barrel_target(fire_angle), frame);
+    }
+
+    /// The class constructor's one rate write on `+0x388` (`Set_ROT @
+    /// 0x004C9680`): the constant 127 for infantry (`0x00517BC5`), `ROT=`
+    /// (`Type+0x71C`) for a unit (`0x00735579`), an aircraft (`0x00413FE7`)
+    /// and a building (`BuildingClass::Init` at `0x00442CA5`).
+    /// Veterancy level sampled from [`Self::veterancy_raw`]: 0 = rookie,
+    /// 100 = veteran, 200 = elite. The damage multiplier, the armour divisor,
+    /// elite weapon selection and the chevron read it.
+    pub fn veterancy(&self) -> u16 {
+        crate::sim::combat::veterancy::rank_u16(self.veterancy_raw)
+    }
+
+    /// Seed the accumulator at a rank's threshold (`SetVeteran @ 0x00750090`
+    /// writes 1.0f, `SetElite @ 0x007500B0` 2.0f; a rookie is 0.0f), as a
+    /// scenario-authored rank does.
+    pub fn set_veterancy_rank(&mut self, rank_u16: u16) {
+        self.veterancy_raw = crate::sim::combat::veterancy::raw_for_rank(rank_u16);
+    }
+
+    pub(crate) fn set_body_facing_rot(&mut self, type_rot: i32) {
         self.body_facing
-            .as_ref()
-            .map_or(u16::from(self.facing) << 8, |facing| facing.current(frame))
+            .set_rot(if self.category == EntityCategory::Infantry {
+                127
+            } else {
+                type_rot
+            });
     }
 
     pub(crate) fn set_owner_from_store(
@@ -1430,6 +1579,7 @@ impl GameEntity {
             stable_id,
             native_unique_id,
             techno_ctor_random_word,
+            stage: crate::sim::stage::StageClass::constructed(construction_frame as i32),
             discovery: TechnoDiscoveryHistory::default(),
             structure_upgrade_link: None,
             position: Position {
@@ -1440,9 +1590,9 @@ impl GameEntity {
                 sub_x: init_sub_x,
                 sub_y: init_sub_y,
             },
-            facing,
-            facing_target: None,
-            body_facing: None,
+            // The Unlimbo direction; the class constructor supplies the rate.
+            body_facing: crate::sim::movement::FacingClass::new(u16::from(facing) << 8, 0),
+            barrel_elevation: crate::sim::movement::FacingClass::new(0, BARREL_ELEVATION_ROT),
             body_frame_counter: 0,
             owner,
             health,
@@ -1460,7 +1610,6 @@ impl GameEntity {
             base_plan_type_index: -1,
             base_plan_is_defense: false,
             base_plan_has_undeploy_target: false,
-            veterancy,
             veterancy_raw: crate::sim::combat::veterancy::raw_for_rank(veterancy),
             veterancy_rank_cache: veterancy_rank_cache_default(),
             elite_flash_frames: 0,
@@ -1481,7 +1630,6 @@ impl GameEntity {
             dirty_rect_eligible: false,
             occupier: false,
             destruction_recorded: false,
-            occupancy_enter_order: stable_id,
             air_spatial_bucket: None,
             air_spatial_enter_order: stable_id,
             locomotor: None,
@@ -1528,7 +1676,6 @@ impl GameEntity {
             building_light: None,
             damage_fire_state_active: false,
             damage_fire_anim_ids: [None; 8],
-            bridge_occupancy: None,
             on_bridge: false,
             runtime_bridge_transition: Default::default(),
             animation: None,
@@ -1542,14 +1689,11 @@ impl GameEntity {
             sensor_deposit: None,
             disguise: None,
             teleport_state: None,
-            tunnel_state: None,
             low_bridge_tube_state: None,
             capture_manager: None,
             spawn_manager: None,
             spawn_owner_id: None,
             rocket_state: None,
-            drop_pod_state: None,
-            homing_state: None,
             parachute_state: None,
             invulnerability: None,
             mind_control: Default::default(),
@@ -1570,13 +1714,12 @@ impl GameEntity {
             },
             crushable: false,
             deployed_crushable: true,
+            native_crush_immunity: 0,
             omni_crusher: false,
             regular_crusher: false,
             drive_accelerates: true,
             omni_crush_resistant: false,
             immune_to_radiation: false,
-            zfudge_bridge: 0,
-            too_big_to_fit_under_bridge: false,
             dying: false,
             infantry_terminal: None,
             blocked_scatter_timer: 0,
@@ -1585,7 +1728,6 @@ impl GameEntity {
             crashing: false,
             crashing_seen: false,
             sinking: crate::sim::world::SinkingState::default(),
-            garrison_original_owner: None,
             passenger_role: PassengerRole::None,
             weapon_override: None,
             display_type_override: None,
@@ -1613,16 +1755,14 @@ impl GameEntity {
             // `TechnoClass::Constructor 0x006F3106`: `+0x4FC = Frame`.
             last_target_scan_frame: construction_frame,
             passively_acquired_target: false,
+            foot_retarget_after_stop: false,
             mission_leaf: MissionLeafState::for_entity_category(category),
             suspended_attack_target: None,
             base_defense_response: BaseDefenseResponseState::default(),
-            object_is_falling_down: 0,
             damage_particle_live_until: 0,
             damage_smoke_system_id: None,
             transport_unload_keep_count: 0,
-            produce_cash_timer: crate::sim::credit_income::ProduceCashTimer::constructed(
-                construction_frame,
-            ),
+            produce_cash_timer: crate::sim::timer::CdTimer::started(construction_frame as i32, 0),
             drain_target: None,
             draining_me: None,
             parasite: None,
@@ -1705,9 +1845,19 @@ impl GameEntity {
         )
     }
 
+    /// ObjectClass `+0x8D` IsFallingDown. `ObjectClass::Paradrop`
+    /// (`0x005F5940`) raises it at `0x005F5965`, and `ObjectClass::AI`
+    /// clears it when the fall grounds (`0x005F3F86`). The paradrop descent is
+    /// VERA's only fall, so its state is the one owner.
+    pub(crate) fn is_falling_down(&self) -> bool {
+        self.parachute_state.is_some()
+    }
+
+    /// Put a fixture into a fall where it is, with a FallRate of 0.
     #[cfg(test)]
-    pub(crate) fn set_object_is_falling_down_for_test(&mut self, raw: u8) {
-        self.object_is_falling_down = raw;
+    pub(crate) fn set_falling_down_for_test(&mut self, falling: bool) {
+        self.parachute_state = falling
+            .then_some(crate::sim::movement::parachute_descent::ParachuteDescentState { rate: 0 });
     }
 
     /// Record a debug event if the event log is active. No-op when `debug_log` is `None`.
@@ -1836,16 +1986,45 @@ impl GameEntity {
         self.is_active() && (self.health.current > 0 || self.crashing)
     }
 
-    /// Whether this entity is in any deploy phase (Deploying, Deployed, or Undeploying).
-    /// Used by the 7 movement-command handlers to silently ignore movement orders.
+    /// Infantry522510's Doing27..30 deployment predicate. Undeploy31 already
+    /// accepts destinations; Units retain their distinct deployment controller.
     pub fn is_deployed(&self) -> bool {
-        self.deploy_state.is_some()
+        if self.category == EntityCategory::Infantry {
+            self.infantry_deploy_doing()
+        } else {
+            self.deploy_state.is_some()
+        }
     }
 
     /// Whether this entity has finished deploying and is in the stationary
     /// Deployed phase (not transitioning).
     pub fn is_fully_deployed(&self) -> bool {
-        matches!(self.deploy_state, Some(DeployPhase::Deployed))
+        if self.category == EntityCategory::Infantry {
+            self.mission_leaf
+                .as_infantry()
+                .is_some_and(|leaf| (28..=30).contains(&leaf.doing()))
+        } else {
+            matches!(self.deploy_state, Some(DeployPhase::Deployed))
+        }
+    }
+
+    /// Infantry522510's deployment family, used by its weapon/mission and
+    /// destination consumers. Undeploy31 is outside this native predicate.
+    pub(crate) fn infantry_deploy_doing(&self) -> bool {
+        self.category == EntityCategory::Infantry
+            && self
+                .mission_leaf
+                .as_infantry()
+                .is_some_and(|leaf| (27..=30).contains(&leaf.doing()))
+    }
+
+    pub(crate) const fn native_crush_immunity(&self) -> u8 {
+        self.native_crush_immunity
+    }
+
+    pub(crate) fn set_infantry_deploy_crush_immunity(&mut self, raw: u8) {
+        assert_eq!(self.category, EntityCategory::Infantry);
+        self.native_crush_immunity = raw;
     }
 
     /// A building's current mission is Construction (0x12) or Selling
@@ -1887,10 +2066,10 @@ mod tests {
         assert_eq!(e.position.rx, 30);
         assert_eq!(e.position.ry, 40);
         assert_eq!(e.position.z, 0);
-        assert_eq!(e.facing, 0);
+        assert_eq!(e.body_facing_current(0), 0);
         assert_eq!(e.health.current, 100);
         assert_eq!(e.category, EntityCategory::Unit);
-        assert_eq!(e.veterancy, 0);
+        assert_eq!(e.veterancy(), 0);
         assert_eq!(e.vision_range, 5);
         assert!(e.is_voxel);
         assert!(!e.selected);
@@ -2160,7 +2339,6 @@ mod mission_shadow_tests {
         let mut e = GameEntity::test_default(1, "E1", "Americans", 3, 3);
         e.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(2),
-            pending_infantry_fire: None,
         });
         assert_eq!(e.derived_mission().0, MissionType::Attack);
     }

@@ -12,7 +12,6 @@ use crate::sim::cell_rect::{self, CellRect, CellRectPassabilityContext};
 use crate::sim::combat::{self, TargetKind, in_range};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::mission::{MissionType, concrete_effects::represented_assign_target};
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::direction_tables::{cell_delta_unchecked, facing16_between};
 use crate::util::native_trig::facing_step_world_xy;
@@ -63,7 +62,6 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        grid: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Option<(u16, u16)>, String> {
         let Some(actor) = self.substrate.entities.get(id) else {
@@ -150,7 +148,7 @@ impl Simulation {
         {
             let own = in_range::native_cell_own_coords(identity, &cells)
                 .ok_or("Approach target coordinate failed")?;
-            let nav = self.approach_nav_center(nav, rules, &cells)?;
+            let nav = self.approach_nav_center(nav, &cells)?;
             clear_nav = distance_3d_leptons(
                 [own.0 as i32, own.1 as i32, own.2 as i32],
                 [nav.x, nav.y, nav.z],
@@ -175,7 +173,7 @@ impl Simulation {
             return Ok(None);
         }
         if let Some(NavTargetRef::Cell { rx, ry }) = actor.navigation.nav_queue.first().copied() {
-            self.set_unit_cell_destination(id, (rx, ry), rules, false);
+            self.set_unit_destination(id, NavTargetRef::cell(rx, ry), rules, false);
             let queue = &mut self
                 .substrate
                 .entities
@@ -245,8 +243,7 @@ impl Simulation {
                     continue;
                 }
                 let mut candidate = radial;
-                let mut admitted =
-                    self.approach_cell_is_clear(id, candidate, rules, grid, &cells)?;
+                let mut admitted = self.approach_cell_is_clear(id, candidate, rules, &cells)?;
                 if !admitted {
                     for direction in 0..8 {
                         let (dx, dy) = cell_delta_unchecked(direction);
@@ -257,7 +254,7 @@ impl Simulation {
                         //4D643D..671E: cumulative neighbors, Z0, no new bounds
                         // or ground lookup. Destination setting resolves Z later.
                         if in_range(cell_centre(candidate))
-                            && self.approach_cell_is_clear(id, candidate, rules, grid, &cells)?
+                            && self.approach_cell_is_clear(id, candidate, rules, &cells)?
                         {
                             admitted = true;
                             retained_candidate = candidate;
@@ -306,7 +303,12 @@ impl Simulation {
             radius -= 256;
         }
         if let Some(cell) = chosen {
-            self.set_unit_cell_destination(id, (cell.0 as u16, cell.1 as u16), rules, true);
+            self.set_unit_destination(
+                id,
+                NavTargetRef::cell(cell.0 as u16, cell.1 as u16),
+                rules,
+                true,
+            );
             //4D68B8 and4D68C7 perform separate lookups for setter and return.
             self.resolved_terrain
                 .as_ref()
@@ -320,13 +322,13 @@ impl Simulation {
             .hunter_seeker
         {
             let cell = (target_cell.0 as u16, target_cell.1 as u16);
-            self.set_unit_cell_destination(id, cell, rules, true);
+            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true);
             return Ok(Some(cell));
         }
-        let fallback = self.approach_fallback(id, retained_candidate, rules, grid, &cells)?;
+        let fallback = self.approach_fallback(id, retained_candidate, rules, &cells)?;
         represented_assign_target(self.substrate.entities.get_mut(id).unwrap(), None);
         if let Some(cell) = fallback {
-            self.set_unit_cell_destination(id, cell, rules, true);
+            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true);
         } else {
             self.set_unit_null_destination(id, Some(rules));
         }
@@ -336,7 +338,6 @@ impl Simulation {
     fn approach_nav_center(
         &self,
         target: NavTargetRef,
-        rules: &RuleSet,
         cells: &NativeCellQuery<'_>,
     ) -> Result<DriveCoord, String> {
         let id = match target {
@@ -361,10 +362,10 @@ impl Simulation {
             .entities
             .get(id)
             .ok_or("retired Approach NavCom")?;
-        let object = self
-            .object_type(entity.type_ref(), rules)
-            .ok_or("NavCom type absent")?;
-        Ok(super::ground_pose::object_center_coord(entity, object))
+        Ok(super::ground_pose::object_get_coords(
+            entity,
+            Some(cells.terrain()),
+        ))
     }
 
     fn approach_cell_is_clear(
@@ -372,7 +373,6 @@ impl Simulation {
         id: u64,
         candidate: (i16, i16),
         rules: &RuleSet,
-        grid: Option<&PathGrid>,
         cells: &NativeCellQuery<'_>,
     ) -> Result<bool, String> {
         let actor = self
@@ -386,7 +386,7 @@ impl Simulation {
         let zones = self.zone_grid.as_ref().ok_or("Approach requires zones")?;
         let source = coord_cell(self.foot_navigation_coordinate(id)?);
         let zone = zones
-            .get_path_zone_id_native_in_query(
+            .get_zone_id_native_in_query(
                 cells.terrain(),
                 (source.0 as u16, source.1 as u16),
                 object.movement_zone,
@@ -404,12 +404,12 @@ impl Simulation {
                     height: 1,
                 },
                 speed_type: object.speed_type,
-                required_zone_id: (zone != u32::MAX).then_some(zone as u16),
+                required_zone_id: (zone != u32::MAX).then_some(zone),
                 movement_zone: object.movement_zone,
                 required_height_or_level: None,
                 bridge_aware_zone: true,
                 reject_any_overlay: false,
-                path_grid: grid,
+                path_grid: self.path_grid.as_deref(),
                 resolved_terrain: Some(cells.terrain()),
                 overlay_grid: self.overlay_grid.as_ref(),
                 occupancy: Some(&self.substrate.occupancy),
@@ -426,7 +426,6 @@ impl Simulation {
         id: u64,
         retained: (i16, i16),
         rules: &RuleSet,
-        grid: Option<&PathGrid>,
         cells: &NativeCellQuery<'_>,
     ) -> Result<Option<(u16, u16)>, String> {
         use crate::sim::find_nearby_cell::{
@@ -456,7 +455,7 @@ impl Simulation {
             .zone_grid
             .as_ref()
             .ok_or("Approach requires zones")?
-            .get_path_zone_id_native_in_query(
+            .get_zone_id_native_in_query(
                 cells.terrain(),
                 (source.0 as u16, source.1 as u16),
                 object.movement_zone,
@@ -475,7 +474,7 @@ impl Simulation {
                 raw_occupation: Some(&self.substrate.raw_cell_occupation),
                 passability: PassabilityArgs {
                     speed_type: object.speed_type,
-                    required_zone_id: (zone != u32::MAX).then_some(zone as u16),
+                    required_zone_id: (zone != u32::MAX).then_some(zone),
                     movement_zone: object.movement_zone,
                     bridge_aware_zone: bridge_aware,
                 },
@@ -486,7 +485,7 @@ impl Simulation {
                 check_occupancy: false,
                 radius_cap: map_owned_radius_cap(bounds.base, height),
                 target_cell: None,
-                path_grid: grid,
+                path_grid: self.path_grid.as_deref(),
                 resolved_terrain: Some(cells.terrain()),
                 overlay_grid: self.overlay_grid.as_ref(),
                 occupancy: Some(&self.substrate.occupancy),

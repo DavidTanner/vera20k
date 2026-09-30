@@ -9,7 +9,7 @@
 //! pre-converted to integer frames so no float ever reaches a tick path.
 //!
 //! ## Dependency rules
-//! - Part of rules/ and depends only on rules::ini_parser.
+//! - Part of rules/; parses INI values and uses the shared numeric conversion owner.
 //! - No dependency on sim/ or runtime scheduling.
 
 use crate::rules::ini_parser::IniFile;
@@ -271,61 +271,33 @@ const CONSTRUCTED_RATE_MINUTES: f64 = 0.016;
 
 /// Convert an INI rate (minutes between processings) to integer frames,
 /// modelling gamemd's `Math::ftol(Rate * 900)` truncate-toward-zero (the
-/// per-minute domain is non-negative, so `as u32` == floor == ftol here).
-#[inline]
-fn rate_to_frames(minutes: f64) -> u32 {
-    (minutes * FRAMES_PER_MINUTE) as u32
-}
-
-/// Read a `Rate=`/`AARate=` minutes value the way `CCINIClass::ReadDouble` does.
+/// signed result is retained through the dispatch timer).
 ///
-/// The native reader at 0x005283D0 is `sscanf(value, "%f", &tmp)` against the
-/// format string at 0x00825BD8 — a **4-byte float** — and only then widens the
-/// result to a double. Parsing straight to `f64` keeps precision the engine
-/// never had, and because the frames conversion truncates (`Math__ftol` under
-/// the control word 0x00822D80 = 0x0E7F, chop, 53-bit) that extra precision
-/// lands on the wrong side of an integer boundary for three stock cadences:
-/// `[Guard] Rate=.030` is 26 frames and not 27, `[Area Guard] Rate=.040` is 35
-/// and not 36, `[Repair] Rate=.08` is 71 and not 72. Guard is the mission every
-/// idle unit holds, and its dispatch also consumes a scenario-RNG draw, so the
-/// difference moves deterministic state and not just a cadence.
-///
-/// Width is not the only thing that differs. `sscanf("%f")` takes a LEADING
-/// number, so `Rate=.030x` reads as `.030`, and there is a percent arm
-/// (`strchr(value,'%')` at 0x0052856E, then `FMUL` by the 0.01 at 0x007E3808).
-/// `ini_value::parse_read_double` is the repo's verified reproduction of the
-/// reader, so this routes through it rather than re-deriving a partial copy —
-/// which also brings the ASCII `strtrim` the loader applies, in place of
-/// Unicode `str::trim`. No stock `Rate=`/`AARate=` value exercises anything but
-/// the width, but a mod INI can.
+/// The minutes come from `CCINIClass::ReadDouble`, whose `%f` scan widens a
+/// **float**: `[Guard] Rate=.030` reads as 0.029999999329447746 and truncates
+/// to 26 frames, not 27 (likewise `[Area Guard] .040` -> 35, `[Repair] .08` ->
+/// 71). Guard is the mission every idle unit holds and its dispatch consumes
+/// a scenario-RNG draw, so the width moves deterministic state.
 #[inline]
-fn parse_minutes(raw: &str) -> Option<f64> {
-    // Always `Some`: the key's presence is the caller's question, and this
-    // reader has no failure answer to give back.
-    //
-    // That is a deliberate VERA-internal choice, NOT a reproduction. On a failed
-    // `%f` the native reader does not preserve the default — it never tests
-    // sscanf's return value (the only `TEST EAX,EAX` on that path, 0x00528576,
-    // tests `strchr`), and the `FSTP double` at 0x00528569 overwrites the
-    // caller's default slot with whatever `FLD float [ESP+0x2C]` picked up. That
-    // source is the caller-pushed section-name argument slot: the section-name
-    // CRC on the cold path, or the section-name POINTER when the section is
-    // already cached — as it is for an `AARate` read straight after `Rate`.
-    // Either way gamemd answers a junk value with stale stack bits.
-    // `ini_value` deliberately declines to import that
-    // non-portable accident and returns a deterministic zero instead; a junk
-    // `Rate=` here yields 0 frames rather than the 14 it used to.
-    Some(crate::rules::ini_value::parse_read_double(raw))
+fn rate_to_frames(minutes: f64) -> i32 {
+    // DeployedGuard521484..5214B8 executes negative rates unchanged;
+    // infantry_deployed_guard.json pins Rate=-.1 through original ftol/RNG.
+    // ReadDouble widens f32, whose x900 product fits binary64 precision.
+    // Reuse the existing ftol owner for signed64-to-low32/invalid semantics.
+    use crate::util::native_x87::{MaskedX87Chop53, NativeF64Bits};
+    MaskedX87Chop53::ftol_i32_low_masked(MaskedX87Chop53::load_f64(NativeF64Bits::from_bits(
+        (minutes * FRAMES_PER_MINUTE).to_bits(),
+    )))
 }
 
 /// One mission's processing cadence and behaviour flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MissionControlEntry {
     /// Frames between normal processings (`Rate=` × 900, ftol-truncated).
-    pub rate_frames: u32,
+    pub rate_frames: i32,
     /// Frames between anti-aircraft processings (`AARate=`; copies `rate_frames`
     /// when the key is absent or zero).
-    pub aa_rate_frames: u32,
+    pub aa_rate_frames: i32,
     /// Weapons disabled → ignored as a target until it fires (`NoThreat=`, def no).
     ///
     /// **Parsed, no consumer.** Stock YR sets it on exactly two sections,
@@ -367,12 +339,11 @@ pub struct MissionControlEntry {
     pub retaliate: bool,
     /// Allowed to scatter from threats (`Scatter=`, def yes).
     ///
-    /// Verified consumers are the Infantry, Unit and aircraft scatter paths
-    /// plus the damage handler — all in `sim/movement` / `sim/combat` damage,
-    /// none of which read this table yet. `Scatter=no` covers Sleep, Sticky,
-    /// Attack, Capture, **Harvest**, Unload, Construction and Selling in stock
-    /// rules, so the live gap is on every miner in every match, not just on
-    /// Sticky.
+    /// The Infantry and Unit Scatter receivers read it unless their first
+    /// flag forces the call (`movement::scatter::mission_permits_scatter`);
+    /// the Aircraft receiver reads it too but is not dispatched (residual in
+    /// `movement::scatter`). `Scatter=no` covers Sleep, Sticky, Attack,
+    /// Capture, **Harvest**, Unload, Construction and Selling in stock rules.
     pub scatter: bool,
 }
 
@@ -411,32 +382,20 @@ impl MissionControl {
         for mission in MissionType::all() {
             let mut entry = MissionControlEntry::default();
             if let Some(section) = ini.section(mission.ini_section()) {
-                if let Some(v) = section.get_bool("NoThreat") {
-                    entry.no_threat = v;
-                }
-                if let Some(v) = section.get_bool("Zombie") {
-                    entry.zombie = v;
-                }
-                if let Some(v) = section.get_bool("Recruitable") {
-                    entry.recruitable = v;
-                }
-                if let Some(v) = section.get_bool("Paralyzed") {
-                    entry.paralyzed = v;
-                }
-                if let Some(v) = section.get_bool("Retaliate") {
-                    entry.retaliate = v;
-                }
-                if let Some(v) = section.get_bool("Scatter") {
-                    entry.scatter = v;
-                }
-                if let Some(rate) = section.get("Rate").and_then(parse_minutes) {
-                    entry.rate_frames = rate_to_frames(rate);
-                }
-                // AARate: present and non-zero overrides; absent or zero copies Rate.
-                match section.get("AARate").and_then(parse_minutes) {
-                    Some(aa) if aa != 0.0 => entry.aa_rate_frames = rate_to_frames(aa),
-                    _ => entry.aa_rate_frames = entry.rate_frames,
-                }
+                entry.no_threat = section.read_bool("NoThreat", entry.no_threat);
+                entry.zombie = section.read_bool("Zombie", entry.zombie);
+                entry.recruitable = section.read_bool("Recruitable", entry.recruitable);
+                entry.paralyzed = section.read_bool("Paralyzed", entry.paralyzed);
+                entry.retaliate = section.read_bool("Retaliate", entry.retaliate);
+                entry.scatter = section.read_bool("Scatter", entry.scatter);
+                // `0x005B38B4` reads Rate over the constructed value.
+                entry.rate_frames =
+                    rate_to_frames(section.read_double("Rate", CONSTRUCTED_RATE_MINUTES));
+                // AARate reads over 0 (`0x005B38DD`); zero copies Rate.
+                entry.aa_rate_frames = match section.read_double("AARate", 0.0) {
+                    0.0 => entry.rate_frames,
+                    aa => rate_to_frames(aa),
+                };
             } else {
                 entry.aa_rate_frames = entry.rate_frames;
             }
@@ -453,7 +412,7 @@ impl MissionControl {
 
     /// Processing cadence in frames for a mission (0 if unknown).
     #[inline]
-    pub fn rate_frames(&self, mission: MissionType) -> u32 {
+    pub fn rate_frames(&self, mission: MissionType) -> i32 {
         self.entries.get(&mission).map_or(0, |e| e.rate_frames)
     }
 
@@ -503,7 +462,7 @@ impl MissionControl {
     /// `sim::world::techno_ai::building_missions`; `Mission_Attack`'s read is
     /// its SAM arm, dormant with retail data.
     #[inline]
-    pub fn aa_rate_frames(&self, mission: MissionType) -> u32 {
+    pub fn aa_rate_frames(&self, mission: MissionType) -> i32 {
         self.entries.get(&mission).map_or(0, |e| e.aa_rate_frames)
     }
 
@@ -689,7 +648,7 @@ mod mission_control_tests {
         assert_eq!(rate_to_frames(1.0), 900);
         assert_eq!(rate_to_frames(0.016), 14); // 14.4 -> ftol 14 (stock, unchanged)
         // `rate_to_frames` takes a double, so these are the exact-decimal
-        // answers. The INI path never produces them: `parse_minutes` widens an
+        // answers. The INI path never produces them: `ReadDouble` widens an
         // f32 first, so `.030` arrives as 0.029999999329447746 and truncates to
         // 26. See `stock_rates_go_through_the_f32_widening` below.
         assert_eq!(rate_to_frames(0.030), 27);
@@ -718,7 +677,7 @@ mod mission_control_tests {
     #[test]
     fn stock_rates_go_through_the_f32_widening() {
         for (section, mission, widened, exact_f64) in [
-            ("Guard", MissionType::Guard, 26u32, 27u32),
+            ("Guard", MissionType::Guard, 26i32, 27i32),
             ("Area Guard", MissionType::AreaGuard, 35, 36),
             ("Repair", MissionType::Repair, 71, 72),
         ] {
@@ -742,7 +701,7 @@ mod mission_control_tests {
         // Values whose x900 lands the same side of the boundary in both widths.
         // Only `1` is exactly representable; the other three are inexact as f32
         // AND as f64, but not near enough to a boundary for the width to matter.
-        for (raw, frames) in [(".016", 14u32), (".032", 28), (".1", 90), ("1", 900)] {
+        for (raw, frames) in [(".016", 14i32), (".032", 28), (".1", 90), ("1", 900)] {
             let mc = MissionControl::from_ini(&ini(&format!("[Move]\nRate={raw}\n")));
             assert_eq!(mc.rate_frames(MissionType::Move), frames);
         }

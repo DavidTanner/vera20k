@@ -117,7 +117,7 @@ fn foot_iron_curtain(
     rules: &RuleSet,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     id: u64,
-    duration: u32,
+    duration: i32,
 ) {
     let Some(object) = sim
         .substrate

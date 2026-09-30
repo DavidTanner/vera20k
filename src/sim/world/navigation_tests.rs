@@ -1,6 +1,6 @@
 //! Production navigation reconstruction must respect Mark-owned cell presence.
 
-use super::{empty_heights, gsi_04_10_clear_terrain, make_test_entity};
+use super::{gsi_04_10_clear_terrain, make_test_entity};
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
@@ -9,7 +9,6 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::production::{ProductionCategory, enqueue_by_type};
 use crate::sim::snapshot::GameSnapshot;
 use crate::sim::world::{Simulation, TickLane};
-use std::collections::BTreeMap;
 
 #[test]
 fn native_bridge_record_geometry_changes_rebuild_and_restore_navigation() {
@@ -51,7 +50,6 @@ fn native_bridge_record_geometry_changes_rebuild_and_restore_navigation() {
     let record = BridgeEndpointRecord {
         endpoint_a: (5, 5),
         endpoint_b: (26, 0),
-        group_id: 0,
         active: true,
         bridge_kind: BridgeRecordKind::Low,
     };
@@ -179,6 +177,7 @@ fn recalc_keeps_marked_structure_over_partial_terrain_occupation_and_bridge_deck
     cell.has_bridge_deck = true;
     cell.bridge_walkable = true;
     cell.bridge_transition = true;
+    cell.bridge_facts.raw_flags |= crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
     crate::sim::world::navigation::NavigationCaches {
         terrain_costs: &mut sim.terrain_costs,
         zones: &mut sim.zone_grid,
@@ -187,7 +186,6 @@ fn recalc_keeps_marked_structure_over_partial_terrain_occupation_and_bridge_deck
     }
     .publish_recalculated_cell(
         terrain,
-        None,
         &sim.substrate.entities,
         &sim.interner,
         &rules,
@@ -272,8 +270,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     sim.production.ore_growth_config.spreads = false;
     let terrain = gsi_04_10_clear_terrain(16, 16);
     sim.install_resolved_terrain_for_new_map(terrain.clone());
-    let mut overlay_grid = OverlayGrid::from_overlay_entries(&[], 16, 16);
-    overlay_grid.retain_zero_wall_plane_for_tests();
+    let overlay_grid = OverlayGrid::from_overlay_entries(&[], 16, 16);
     sim.overlay_grid = Some(overlay_grid);
     sim.intern_rule_type_ids(&rules);
     let owner = sim.interner.intern("Americans");
@@ -285,10 +282,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     yard.cell_x = 6;
     yard.cell_y = 6;
     yard.structure_upgrades = [Some("UPGRADE".to_owned()), None, None];
-    assert_eq!(
-        sim.spawn_from_map(&[yard], Some(&rules), &empty_heights()),
-        2
-    );
+    assert_eq!(sim.spawn_from_map(&[yard], Some(&rules)), 2);
     sim.resolve_type_handles(&rules);
     let parent_id = sim
         .substrate
@@ -323,9 +317,8 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     assert!(sim.rebuild_dynamic_navigation(&rules));
     assert_only_marked_foundation(&sim);
     assert_retained_roles(&sim, parent_id, upgrade_id, held_id);
-    let before = sim.path_grid_snapshot().unwrap();
-    // A real dirty-overlay frame triggers the same canonical rebuild used by
-    // ordinary terrain mutation, independent of the held building's location.
+    // A real dirty-overlay frame publishes its Recalc cell through the
+    // navigation owner, independent of the held building's location.
     sim.overlay_grid
         .as_mut()
         .unwrap()
@@ -334,7 +327,6 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .advance_app_frame(
             &[],
             Some(&rules),
-            &BTreeMap::new(),
             Some(&overlays),
             67,
             TickLane::Ordinary,
@@ -346,10 +338,6 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         (output.overlay_updates[0].rx, output.overlay_updates[0].ry),
         (12, 12)
     );
-    assert!(!std::sync::Arc::ptr_eq(
-        &before,
-        &sim.path_grid_snapshot().unwrap()
-    ));
     assert_only_marked_foundation(&sim);
     assert_retained_roles(&sim, parent_id, upgrade_id, held_id);
 
@@ -394,4 +382,59 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     );
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert!(restored.path_grid_snapshot().unwrap().is_walkable(6, 6));
+}
+
+#[test]
+fn structure_changes_publish_footprint_cells_without_rebuilding_zones() {
+    use crate::rules::locomotor_type::MovementZone;
+    let (rules, overlays) = rules_and_overlays();
+    let mut sim = Simulation::with_seed(0x442048);
+    sim.install_resolved_terrain_for_new_map(gsi_04_10_clear_terrain(16, 16));
+    sim.overlay_grid = Some(OverlayGrid::new(16, 16));
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    let open = sim.path_grid_snapshot().unwrap();
+    let zone_storage = |sim: &Simulation| {
+        sim.zone_grid
+            .as_ref()
+            .and_then(|zones| zones.map_for(MovementZone::Normal))
+            .unwrap()
+            .zone_ids_slice()
+            .as_ptr() as usize
+    };
+    let zones_before = zone_storage(&sim);
+
+    let mut structure =
+        crate::sim::game_entity::GameEntity::test_default(9, "YARD", "Americans", 6, 6);
+    structure.category = EntityCategory::Structure;
+    structure.type_ref = sim.interner.intern("YARD");
+    structure.lifecycle.cell_marked = true;
+    sim.substrate.entities.insert(structure);
+    assert!(
+        sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false, true)
+            .is_empty()
+    );
+    let placed = sim.path_grid_snapshot().unwrap();
+    assert_only_marked_foundation(&sim);
+    assert_eq!(
+        zone_storage(&sim),
+        zones_before,
+        "structures do not change the terrain-class zone map"
+    );
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    assert_eq!(
+        *sim.path_grid_snapshot().unwrap(),
+        *placed,
+        "the footprint publication equals a full rebuild"
+    );
+
+    sim.substrate
+        .entities
+        .get_mut(9)
+        .unwrap()
+        .lifecycle
+        .cell_marked = false;
+    let zones_before = zone_storage(&sim);
+    sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false, true);
+    assert_eq!(*sim.path_grid_snapshot().unwrap(), *open);
+    assert_eq!(zone_storage(&sim), zones_before);
 }

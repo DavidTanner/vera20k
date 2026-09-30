@@ -208,9 +208,10 @@ fn has_any_override_building(sim: &Simulation, owner: &str, overrides: &[String]
     })
 }
 
-/// Interpret BuildLimit value. Returns None if no limit applies (0 = unlimited).
+/// Interpret BuildLimit value. Returns None if no limit applies (the
+/// constructor's `0x7FFFFFFF`, or 0).
 fn effective_build_limit(build_limit: i32) -> Option<u32> {
-    if build_limit == 0 {
+    if build_limit == 0 || build_limit == i32::MAX {
         return None;
     }
     Some(build_limit.unsigned_abs())
@@ -551,51 +552,23 @@ pub fn building_footprint_cells(
 /// is outside the base foundation.
 ///
 /// `NumberImpassableRows` is deliberately not applied here. That field is a
-/// live `UnitClass::Can_Enter_Cell` object-list skip, not static terrain data.
+/// live `UnitClass::Can_Enter_Cell` object-list skip (`0x0073F57C..5A2` radio
+/// contact, `0x0073F74B..774` UnitRepair/Bunker through `0x00458A00`), which
+/// the Unit Find_Path search reaches through `Simulation::foot_can_enter`; it
+/// is not static terrain data.
 pub fn building_movement_blocking_cells(
     base_foundation: &[(u16, u16)],
     has_bib: bool,
 ) -> Vec<(u16, u16)> {
-    building_movement_blocking_cells_for_state(base_foundation, 0, has_bib, -1, false, true, false)
-}
-
-/// Movement-blocking cells for an actual building object-list occupant.
-///
-/// `NumberImpassableRows` is only active in gamemd's live helper after a
-/// radio/contact or the UnitRepair/Bunker branch reaches that helper. Ordinary
-/// buildings outside those branches block their full base foundation, subject
-/// to the bib edge relaxation.
-pub fn building_movement_blocking_cells_for_state(
-    base_foundation: &[(u16, u16)],
-    foundation_origin_rx: u16,
-    has_bib: bool,
-    number_impassable_rows: i32,
-    is_bunker: bool,
-    bunker_occupied: bool,
-    number_rows_active: bool,
-) -> Vec<(u16, u16)> {
     use std::collections::BTreeSet;
+    if !has_bib {
+        return base_foundation.to_vec();
+    }
     let set: BTreeSet<(u16, u16)> = base_foundation.iter().copied().collect();
-    let apply_number_rows = number_rows_active && (!is_bunker || !bunker_occupied);
-    let impassable_row_limit = if apply_number_rows && number_impassable_rows >= 0 {
-        Some(foundation_origin_rx.saturating_add(number_impassable_rows as u16))
-    } else {
-        None
-    };
     base_foundation
         .iter()
         .copied()
-        .filter(|&(x, _)| match impassable_row_limit {
-            Some(limit_x) => x < limit_x,
-            None => true,
-        })
-        .filter(|&(x, y)| {
-            if !has_bib {
-                return true;
-            }
-            let east = x.checked_add(1).map(|nx| (nx, y));
-            east.is_some_and(|neighbor| set.contains(&neighbor))
-        })
+        .filter(|&(x, y)| x.checked_add(1).is_some_and(|nx| set.contains(&(nx, y))))
         .collect()
 }
 

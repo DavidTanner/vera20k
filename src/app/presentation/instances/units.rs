@@ -457,13 +457,16 @@ pub(crate) fn build_unit_instances(
             .and_then(|rules| rules.object(type_str))
             .is_some_and(|object| object.tilt_crash_jumpjet);
         let body = body_draw(entity, band, sim.session.binary_frame, tilt_crash_jumpjet);
+        // Sampled at the turret's frame, so the two sprites cannot disagree.
+        let body_facing = entity.body_facing_byte(sim.session.binary_frame);
         if let BodyDraw::CrashPose(tilt) = body {
             let key = UnitSpriteKey {
                 type_id: type_str.to_string(),
-                facing: canonical_unit_facing(entity.facing),
+                facing: canonical_unit_facing(body_facing),
                 layer: VxlLayer::Composite,
                 frame: anim_frame,
                 slope_type: stable_slope_for_key(slope_state),
+                barrel_pitch: 0,
             };
             emit_crash_pose_sprite(
                 state,
@@ -477,15 +480,20 @@ pub(crate) fn build_unit_instances(
                 palette_light,
                 draw_state,
             );
-        } else if let BodyDraw::Turret(turret_facing) = body {
+        } else if let BodyDraw::Turret {
+            turret: turret_facing,
+            barrel_elevation,
+        } = body
+        {
             // Turret unit: emit body, turret, and barrel as separate sprites.
             emit_turret_unit_sprites(
                 atlas,
                 art_reg,
                 entity,
                 type_str,
-                entity.facing,
+                body_facing,
                 turret_facing,
+                barrel_elevation,
                 hc,
                 center_x,
                 center_y,
@@ -506,10 +514,11 @@ pub(crate) fn build_unit_instances(
             // Non-turret unit: single composite sprite.
             let key: UnitSpriteKey = UnitSpriteKey {
                 type_id: type_str.to_string(),
-                facing: canonical_unit_facing(entity.facing),
+                facing: canonical_unit_facing(body_facing),
                 layer: VxlLayer::Composite,
                 frame: anim_frame,
                 slope_type: stable_slope_for_key(slope_state),
+                barrel_pitch: 0,
             };
             if let Some((entry, texture_source)) =
                 unit_entry_for_slope_state(state, atlas, &key, slope_state)
@@ -523,6 +532,7 @@ pub(crate) fn build_unit_instances(
                         atlas,
                         entity,
                         type_str,
+                        body_facing,
                         draw_state,
                         slope_state,
                         band,
@@ -535,6 +545,7 @@ pub(crate) fn build_unit_instances(
                         atlas,
                         entity,
                         type_str,
+                        body_facing,
                         center_x,
                         center_y,
                         depth,
@@ -572,6 +583,7 @@ pub(crate) fn build_unit_instances(
                         atlas,
                         entity,
                         type_str,
+                        body_facing,
                         center_x,
                         center_y,
                         depth,
@@ -587,21 +599,26 @@ pub(crate) fn build_unit_instances(
         // Emit harvest overlay (oregath.shp) if the miner is actively harvesting.
         // OREGATH is an SHP sprite from sprite_atlas, but remains an owned piece
         // of its harvester's Ground slot so atlas identity cannot re-sort it.
-        // `UnitClass::DrawExtras @ 0x0073CEC0` draws it from Unit+0x6D2 only
+        // `UnitClass::Draw @ 0x0073CEC0` draws it from Unit+0x6D2 only
         // while the locomotor is not moving now (`[loco+0x80]` at
         // `0x0073D114`: Drive `0x004AFC20`, rotating or moving with speed),
         // so a miner hopping to its next ore cell shows none. RESIDUAL:
         // native frames it from `(Unit+0x538 + frame) % 15`; this overlay
         // keeps its own counter.
-        let moving =
-            crate::sim::movement::ready_producer::is_moving_now_for(entity, display_binary_frame);
+        let moving = crate::sim::movement::ready_producer::is_moving_now_for(
+            entity,
+            state.rules().map(|rules| {
+                crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.type_handles)
+            }),
+            display_binary_frame,
+        );
         if let Some(ref ho) = entity.harvest_overlay
             && ho.visible
             && !moving
             && let Some((page, instance)) = emit_harvest_overlay(
                 state,
                 entity,
-                entity.facing,
+                body_facing,
                 ho,
                 center_x,
                 center_y,
@@ -636,8 +653,9 @@ enum BodyDraw {
     /// A tilted body at its locomotor arm's roll and pitch, on the per-frame
     /// pose page.
     CrashPose(crate::render::unit_atlas::CrashTilt),
-    /// Body, turret and barrel sprites, the turret at this facing.
-    Turret(u16),
+    /// Body, turret and barrel sprites: the turret facing (`+0x3A0`) and the
+    /// barrel elevation (`+0x370`), sampled at one frame.
+    Turret { turret: u16, barrel_elevation: u16 },
     /// One composite atlas sprite.
     Composite,
 }
@@ -656,7 +674,10 @@ fn body_draw(
         return BodyDraw::CrashPose(tilt);
     }
     match entity.barrel_facing.as_ref() {
-        Some(facing) => BodyDraw::Turret(facing.current(binary_frame)),
+        Some(facing) => BodyDraw::Turret {
+            turret: facing.current(binary_frame),
+            barrel_elevation: entity.barrel_elevation().current(binary_frame),
+        },
         None => BodyDraw::Composite,
     }
 }
@@ -712,13 +733,13 @@ fn emit_crash_pose_sprite(
     let Some(assets) = state.process_assets.manager() else {
         return;
     };
-    let Some(entry) = state.renderer.vxl_pose_frame_cache.borrow_mut().render(
-        assets,
-        state.rules(),
-        state.rules().map(|rules| rules.art()),
-        key,
-        tilt,
-    ) else {
+    let Some(entry) =
+        state
+            .renderer
+            .vxl_pose_frame_cache
+            .borrow_mut()
+            .render(assets, state.rules(), key, tilt)
+    else {
         return;
     };
     let depth_y = center_y + entry.offset_y + entry.pixel_size[1];
@@ -766,6 +787,24 @@ fn turret_screen_offset(
     )
 }
 
+/// Whether Drive/Ship `Draw_Matrix` gives `UnitClass::DrawVoxelBody` a turret
+/// image key. Its keyed arm needs a finished slope transition and both body
+/// tilt angles (`TechnoClass+0x328`, `+0x32C`) under 0.005
+/// (`0x004AFFB0..0x004AFFE8`, `[0x007E44E8]`); otherwise it keys -1
+/// (`0x004B0187`), and the turret and barrel draw uncached (`0x0073B74C`,
+/// `0x007067EF`). VERA's rocking angles approximate the native floats.
+fn turret_images_cached(
+    entity: &crate::sim::game_entity::GameEntity,
+    slope_state: UnitRenderSlopeState,
+) -> bool {
+    const TILT_GATE: crate::util::fixed_math::SimFixed =
+        crate::util::fixed_math::SimFixed::lit("0.005");
+    matches!(slope_state, UnitRenderSlopeState::Stable(_))
+        && entity.rocking.as_ref().is_none_or(|rocking| {
+            rocking.angle_sideways.abs() < TILT_GATE && rocking.angle_forwards.abs() < TILT_GATE
+        })
+}
+
 /// Return the native local draw order for a Unit's independently rendered
 /// turret and barrel pieces.
 ///
@@ -785,6 +824,8 @@ fn native_turret_barrel_order<T: Copy>(turret_facing: u16, turret: T, barrel: T)
 /// 2. Fall back to frame 0 if the requested frame doesn't exist (mismatched HVA counts).
 /// 3. Fall back to slope_type=0 if the tilted sprite isn't in the atlas yet
 ///    (unit just moved onto a ramp and the atlas hasn't rebuilt).
+/// 4. Fall back to a level barrel if the pitched one isn't in the atlas.
+///
 /// This prevents units from disappearing during atlas rebuilds.
 fn atlas_get_with_frame_fallback<'a>(
     atlas: &'a crate::render::unit_atlas::UnitAtlas,
@@ -817,8 +858,18 @@ fn atlas_get_with_frame_fallback<'a>(
                     frame: 0,
                     ..key.clone()
                 };
-                return atlas.get(&flat_frame0);
+                if let Some(entry) = atlas.get(&flat_frame0) {
+                    return Some(entry);
+                }
             }
+        }
+        // Fallback 4: the level barrel, through the same chain.
+        if key.barrel_pitch != 0 {
+            let level = UnitSpriteKey {
+                barrel_pitch: 0,
+                ..key.clone()
+            };
+            return atlas_get_with_frame_fallback(atlas, &level);
         }
         None
     })
@@ -870,6 +921,7 @@ fn transition_key_for_unit(
             to_slope,
             phase_num,
             phase_den,
+            barrel_pitch: key.barrel_pitch,
         }),
     }
 }
@@ -891,7 +943,6 @@ fn unit_entry_for_slope_state(
                     &state.renderer.batch_renderer,
                     asset_manager,
                     state.rules(),
-                    state.rules().map(|rules| rules.art()),
                     transition_key,
                 )
             {
@@ -914,6 +965,7 @@ fn prepare_unit_shadow(
     atlas: &crate::render::unit_atlas::UnitAtlas,
     entity: &crate::sim::game_entity::GameEntity,
     type_id: &str,
+    body_facing: u8,
     draw_state: DrawState,
     slope: UnitRenderSlopeState,
     band: EntityDrawBand,
@@ -924,10 +976,11 @@ fn prepare_unit_shadow(
     }
     let key = UnitSpriteKey {
         type_id: type_id.to_owned(),
-        facing: canonical_unit_facing(entity.facing),
+        facing: canonical_unit_facing(body_facing),
         layer: VxlLayer::Shadow,
         frame: 0,
         slope_type: 0,
+        barrel_pitch: 0,
     };
     atlas.prepare_native_shadow(&state.renderer.gpu.queue, &key, parts)
 }
@@ -975,6 +1028,7 @@ fn emit_unit_shadow_sprite(
     atlas: &crate::render::unit_atlas::UnitAtlas,
     entity: &crate::sim::game_entity::GameEntity,
     type_id: &str,
+    body_facing: u8,
     center_x: f32,
     center_y: f32,
     depth: f32,
@@ -995,10 +1049,11 @@ fn emit_unit_shadow_sprite(
     }
     let key = UnitSpriteKey {
         type_id: type_id.to_string(),
-        facing: canonical_unit_facing(entity.facing),
+        facing: canonical_unit_facing(body_facing),
         layer: VxlLayer::Shadow,
         frame: 0,
         slope_type: stable_slope_for_key(slope_state),
+        barrel_pitch: 0,
     };
     let lookup_key = shadow_lookup_key(key.clone(), native_shadow);
     let Some(entry) = atlas.get(&lookup_key).or_else(|| atlas.get(&key)).copied() else {
@@ -1177,6 +1232,7 @@ fn emit_turret_unit_sprites(
     type_id: &str,
     body_facing: u8,
     turret_facing: u16,
+    barrel_elevation: u16,
     _hc: HouseColorIndex,
     center_x: f32,
     center_y: f32,
@@ -1201,6 +1257,7 @@ fn emit_turret_unit_sprites(
         layer: VxlLayer::Body,
         frame: anim_frame,
         slope_type,
+        barrel_pitch: 0,
     };
     let turret_key = UnitSpriteKey {
         type_id: type_id.to_string(),
@@ -1208,13 +1265,15 @@ fn emit_turret_unit_sprites(
         layer: VxlLayer::Turret,
         frame: turret_frame,
         slope_type,
+        barrel_pitch: 0,
     };
-    let barrel_key = UnitSpriteKey {
+    let mut barrel_key = UnitSpriteKey {
         type_id: type_id.to_string(),
         facing: canonical_turret_facing(turret_facing),
         layer: VxlLayer::Barrel,
         frame: anim_frame,
         slope_type,
+        barrel_pitch: 0,
     };
 
     // Look up TurretOffset from art.ini and compute screen-space shift.
@@ -1225,6 +1284,36 @@ fn emit_turret_unit_sprites(
     // Use the same stable or quaternion-SLERP slope matrix as every hull,
     // turret, and barrel raster layer in this presentation phase.
     let (tur_ox, tur_oy) = turret_screen_offset(art_offset, body_facing, slope_state);
+
+    // The barrel pitches by its elevation's step (`d32 - 8`, `0x0073BB85..
+    // 0x0073BB96`). A pose the turret image is cached under draws the pitch its
+    // type cached there; an uncached pose draws the unit's own.
+    let drawn_pitch = crate::render::vxl_raster::voxel_facing_step_u16(barrel_elevation) as i8 - 8;
+    barrel_key.barrel_pitch = if turret_images_cached(entity, slope_state) {
+        state
+            .match_state
+            .match_presentation
+            .barrel_image_pitches
+            .borrow_mut()
+            .pitch(
+                &turret_key,
+                (art_offset != 0).then_some(canonical_unit_facing(body_facing)),
+                drawn_pitch,
+            )
+    } else {
+        drawn_pitch
+    };
+    let (barrel_ox, barrel_oy) = {
+        let (x, y) = crate::render::vxl_raster::barrel_pivot_screen_offset(
+            art_offset,
+            body_facing,
+            barrel_key.facing,
+            slope_type,
+            slope_blend_for_render_state(slope_state),
+            barrel_key.barrel_pitch,
+        );
+        (tur_ox + x, tur_oy + y)
+    };
 
     // All layers of a turreted unit share one depth so insertion order
     // (body, then turret/barrel) controls visual stacking via stable sort.
@@ -1242,20 +1331,28 @@ fn emit_turret_unit_sprites(
     // as ONE rect (`UnitClass vtable+0x55C = 0x0073B140`), so all three share
     // the entry-2 seed of the composite rect: its top and height ride
     // `zshape_origin` (the voxel shader's `z_rect`).
-    let turret_layers: Vec<_> = native_turret_barrel_order(turret_facing, &turret_key, &barrel_key)
-        .into_iter()
-        .filter_map(|key| unit_entry_for_slope_state(state, atlas, key, slope_state))
-        .collect();
+    let turret_layers: Vec<_> = native_turret_barrel_order(
+        turret_facing,
+        (&turret_key, [tur_ox, tur_oy]),
+        (&barrel_key, [barrel_ox, barrel_oy]),
+    )
+    .into_iter()
+    .filter_map(|(key, offset)| {
+        unit_entry_for_slope_state(state, atlas, key, slope_state)
+            .map(|(entry, source)| (entry, source, offset))
+    })
+    .collect();
     let native_shadow = body_entry_opt
         .is_some_and(|(_, source)| matches!(source, UnitTextureSource::Stable(_)))
         && turret_layers
             .iter()
-            .all(|(_, source)| matches!(source, UnitTextureSource::Stable(_)))
+            .all(|(_, source, _)| matches!(source, UnitTextureSource::Stable(_)))
         && prepare_unit_shadow(
             state,
             atlas,
             entity,
             type_id,
+            body_facing,
             draw_state,
             slope_state,
             band,
@@ -1265,7 +1362,7 @@ fn emit_turret_unit_sprites(
                 .chain(
                     turret_layers
                         .iter()
-                        .map(|(entry, _)| (*entry, [tur_ox, tur_oy])),
+                        .map(|(entry, _, offset)| (*entry, *offset)),
                 ),
         );
     if !native_shadow {
@@ -1275,6 +1372,7 @@ fn emit_turret_unit_sprites(
             atlas,
             entity,
             type_id,
+            body_facing,
             center_x,
             center_y,
             entity_depth,
@@ -1291,7 +1389,7 @@ fn emit_turret_unit_sprites(
             .chain(
                 turret_layers
                     .iter()
-                    .map(|(entry, _)| (*entry, [center_x + tur_ox, center_y + tur_oy])),
+                    .map(|(entry, _, [ox, oy])| (*entry, [center_x + ox, center_y + oy])),
             ),
     );
     let (composite_rect, split) =
@@ -1315,11 +1413,11 @@ fn emit_turret_unit_sprites(
         push_unit_sprite(texture_source, sprite, pieces);
     }
 
-    for (entry, texture_source) in turret_layers {
+    for (entry, texture_source, [ox, oy]) in turret_layers {
         let sprite = SpriteInstance {
             position: [
-                center_x + entry.offset_x + tur_ox,
-                center_y + entry.offset_y + tur_oy,
+                center_x + entry.offset_x + ox,
+                center_y + entry.offset_y + oy,
             ],
             size: entry.pixel_size,
             uv_origin: entry.uv_origin,
@@ -1342,6 +1440,7 @@ fn emit_turret_unit_sprites(
             atlas,
             entity,
             type_id,
+            body_facing,
             center_x,
             center_y,
             entity_depth,
@@ -1473,8 +1572,9 @@ mod tests {
     use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::snapshot::GameSnapshot;
     use crate::sim::spawn_manager::{
-        SpawnManagerMode, SpawnManagerState, SpawnSlot, SpawnSlotState, SpawnTimer,
+        SpawnManagerMode, SpawnManagerState, SpawnSlot, SpawnSlotState,
     };
+    use crate::sim::timer::CdTimer;
     use crate::sim::world::Simulation;
 
     #[test]
@@ -1487,6 +1587,7 @@ mod tests {
             layer: VxlLayer::Shadow,
             frame: 0,
             slope_type: 0,
+            barrel_pitch: 0,
         };
         for (kind, slope, expected_frame) in [
             (LocomotorKind::Drive, 0, 0),
@@ -1536,10 +1637,10 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 0, 0);
         entity.category = EntityCategory::Aircraft;
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
-        crate::sim::movement::air_movement::ensure_fly_facings(&mut entity);
+        crate::sim::movement::air_movement::ensure_fly_secondary_facing(&mut entity);
         assert!(matches!(
             body_draw(&entity, EntityDrawBand::Top, 0, false),
-            BodyDraw::Turret(_)
+            BodyDraw::Turret { .. }
         ));
         entity.crashing = true;
         entity.rocking = Some(crate::sim::components::RockingState {
@@ -1554,13 +1655,13 @@ mod tests {
         // Only the airborne (Top) Fly body is posed.
         assert!(matches!(
             body_draw(&entity, EntityDrawBand::Ground, 0, false),
-            BodyDraw::Turret(_)
+            BodyDraw::Turret { .. }
         ));
         // A Jumpjet tilts only for `TiltCrashJumpjet=`, then in any band.
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
         assert!(matches!(
             body_draw(&entity, EntityDrawBand::Top, 0, false),
-            BodyDraw::Turret(_)
+            BodyDraw::Turret { .. }
         ));
         assert_eq!(
             body_draw(&entity, EntityDrawBand::Ground, 0, true),
@@ -1574,7 +1675,7 @@ mod tests {
         });
         assert!(matches!(
             body_draw(&entity, EntityDrawBand::Top, 0, true),
-            BodyDraw::Turret(_)
+            BodyDraw::Turret { .. }
         ));
     }
 
@@ -1786,12 +1887,12 @@ mod tests {
                 .map(|(index, &state)| SpawnSlot {
                     spawn: (state != SpawnSlotState::Regenerating).then_some(index as u64 + 1),
                     state,
-                    timer: SpawnTimer::ready(),
+                    timer: CdTimer::default(),
                     is_missile_spawn: true,
                 })
                 .collect(),
-            update_timer: SpawnTimer::armed(10, 20),
-            reload_timer: SpawnTimer::ready(),
+            update_timer: CdTimer::started(10, 20),
+            reload_timer: CdTimer::default(),
             current_target: None,
             queued_target: None,
             mode: SpawnManagerMode::Idle,
@@ -1856,7 +1957,7 @@ mod tests {
     #[test]
     fn gsi_13_07_no_spawn_alt_selection_is_not_manager_timer_gated() {
         let mut manager = spawn_manager(&[SpawnSlotState::ReadyDocked]);
-        assert!(!manager.update_timer.due(10));
+        assert!(!manager.update_timer.expired(10));
         assert_eq!(no_spawn_alt_type_id("V3", true, Some(&manager)), None);
 
         manager.slots[0].state = SpawnSlotState::InFlight;

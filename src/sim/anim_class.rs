@@ -57,12 +57,13 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::bounce::{BounceOutcome, BounceState};
 use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::intern::InternedId;
-use crate::sim::occupancy::{RawCellOccupationGrid, infantry_raw_occupation_mask};
+use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::{RawCellKey, RawCellOccupationGrid, infantry_raw_occupation_mask};
 use crate::sim::timer::CdTimer;
 use crate::sim::touch_log::{TouchLog, Touched};
 use crate::sim::world::{LifecycleOutput, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
-use crate::util::lepton::{BRIDGE_HEIGHT_DELTA_LEPTONS, ground_height_leptons};
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
 use crate::util::native_x87::{NativeF64Bits, NativeX87Error, X87Chop53};
 
 pub type AnimId = u64;
@@ -167,12 +168,6 @@ const LEVEL_HEIGHT_LEPTONS: i32 = crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTO
 const TRAILER_DRAW_FLAGS: u32 = 0x600;
 const BUILDING_RENDER_ORIGIN_LEPTONS: i32 = 128;
 const DAMAGE_FIRE_SLOT_COUNT: usize = 8;
-// Retained with the verified multiplayer-feedback spawn seam until command
-// feedback owns its production call site.
-#[cfg(test)]
-const MULTIPLAYER_FEEDBACK_Z_ADJUST: i32 = -5000;
-#[cfg(test)]
-const SYNC_EXEMPT_NATIVE_UNIQUE_ID: i32 = -2;
 
 /// Pure YR `AnimClass_UpdateBouncePhysics` directional-frame projection.
 #[cfg(test)]
@@ -208,6 +203,8 @@ pub struct AnimDrawDetailInput {
 }
 
 /// `AnimClass__DrawIt` @ 0x00422fd8: visibility gates precede flag selection.
+/// The original422CA0..4238AF body never reads Anim+19B or Object+90;
+/// Display membership or a retained Building slot supplies the draw receiver.
 pub fn anim_draw_detail_visible(input: AnimDrawDetailInput) -> bool {
     !(input.frame_rate_below_minimum && input.type_detail_level > 1)
         && !input.hidden
@@ -296,6 +293,9 @@ pub struct AnimRuntime {
     pub loop_remaining: u8,
     pub first_ai_guard: bool,
     pub constructor_reverse: bool,
+    /// Native Anim+19B: request expiry on a later AI visit (owner expiry425196).
+    /// UnInit4255B0 preserves this byte. Pending deletion and retained Logic/
+    /// Display membership own retirement independently.
     pub inactive: bool,
     /// Anim+19E, pause/resume425260/425270. The absolute frame timer keeps running.
     #[serde(default)]
@@ -427,22 +427,17 @@ impl std::hash::Hash for AnimObject {
     }
 }
 
-/// The owner centre an attached anim's stored coordinate is relative to.
-fn anim_owner_centre(
-    owner: &crate::sim::game_entity::GameEntity,
-) -> crate::sim::components::DriveCoord {
-    crate::sim::movement::ground_pose::object_center_coord_with_foundation(owner, &owner.foundation)
-}
-
+/// The owner centre (its GetCoords) an attached anim's stored coordinate is
+/// relative to.
 fn anim_owner_world_coords(
     owner: &crate::sim::game_entity::GameEntity,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> AnimWorldCoord {
-    let centre = anim_owner_centre(owner);
+    let centre = crate::sim::movement::ground_pose::object_get_coords(owner, terrain);
     AnimWorldCoord {
         x: centre.x,
         y: centre.y,
-        z: crate::sim::combat::object_world_z_leptons(owner, terrain),
+        z: centre.z,
     }
 }
 
@@ -471,8 +466,8 @@ pub(crate) fn anim_own_sort_term(anim: &AnimObject) -> i32 {
 /// What an attached anim's GetYSort adds for its owner: the X + Y of the
 /// owner's centre ([`anim_owner_world_coords`], whose Z the key never reads).
 pub(crate) fn anim_owner_sort_term(owner: &crate::sim::game_entity::GameEntity) -> i32 {
-    let centre = anim_owner_centre(owner);
-    centre.x.wrapping_add(centre.y)
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(owner);
+    x.wrapping_add(y)
 }
 
 pub(crate) fn anim_world_coords(
@@ -632,17 +627,22 @@ enum AnimOccupationOperation {
     Clear,
 }
 
+/// One MakeInfantry anim's Mark or Clear on its cell's raw planes. At or above
+/// the floor plus the deck (Anim `[0x0089A1B4]`), Mark takes the deck only
+/// while the cell keeps its structural bridge flag. Both write the anim's owner
+/// index, -1 (vtable `+0x38` = `0x00410490`, stored at `0x004262D0` /
+/// `0x004262F5`); Clear resets it once `0x1C` is clear (`0x0042634F` /
+/// `0x00426378`).
 fn apply_anim_raw_occupation(
     grid: &mut RawCellOccupationGrid,
-    rx: u16,
-    ry: u16,
+    key: RawCellKey,
     mask: u8,
     world_z: i32,
     ground_z: i32,
     live_structural_bridge: bool,
     operation: AnimOccupationOperation,
 ) {
-    let reaches_deck = world_z >= ground_z.wrapping_add(BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+    let reaches_deck = world_z >= ground_z.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
     let use_deck = match operation {
         AnimOccupationOperation::Mark => reaches_deck && live_structural_bridge,
         // AnimClass::ClearCellOccupancy deliberately ignores Cell+0x140 bit
@@ -650,83 +650,96 @@ fn apply_anim_raw_occupation(
         // marked after structural bridge state disappeared.
         AnimOccupationOperation::Clear => reaches_deck,
     };
-    match (operation, use_deck) {
-        (AnimOccupationOperation::Mark, false) => grid.mark_ground(rx, ry, mask),
-        (AnimOccupationOperation::Mark, true) => grid.mark_deck(rx, ry, mask),
-        (AnimOccupationOperation::Clear, false) => grid.clear_ground(rx, ry, mask),
-        (AnimOccupationOperation::Clear, true) => grid.clear_deck(rx, ry, mask),
-    }
+    let layer = if use_deck {
+        MovementLayer::Bridge
+    } else {
+        MovementLayer::Ground
+    };
+    let put = operation == AnimOccupationOperation::Mark;
+    grid.write_occupant(key, layer, mask, None, put);
 }
 
 impl Simulation {
     pub fn anim(&self, id: AnimId) -> Option<&AnimObject> {
-        self.substrate
-            .anims
-            .get(id)
-            .or_else(|| self.substrate.multiplayer_feedback_anims.get(id))
+        self.substrate.anims.get(id)
     }
 
     pub fn anims(&self) -> impl Iterator<Item = (&AnimId, &AnimObject)> {
-        self.substrate
-            .anims
-            .iter()
-            .chain(self.substrate.multiplayer_feedback_anims.iter())
-    }
-
-    pub fn multiplayer_feedback_anims(&self) -> impl Iterator<Item = (&AnimId, &AnimObject)> {
-        self.substrate.multiplayer_feedback_anims.iter()
+        self.substrate.anims.iter()
     }
 
     fn anim_mut_by_id(&mut self, id: AnimId) -> Option<&mut AnimObject> {
-        if self.substrate.anims.contains_key(id) {
-            self.substrate.anims.get_mut(id)
-        } else {
-            self.substrate.multiplayer_feedback_anims.get_mut(id)
-        }
+        self.substrate.anims.get_mut(id)
     }
 
-    fn is_multiplayer_feedback_anim(&self, id: AnimId) -> bool {
-        self.substrate.multiplayer_feedback_anims.contains_key(id)
+    /// Map[coord] (`0x00565730`) for an anim's world XY, which truncates
+    /// toward zero and wraps by row: the real cell, or `None` for the shared
+    /// dummy cell off the map. Without resolved terrain, the truncated cell.
+    fn anim_map_cell(&self, x: i32, y: i32) -> Option<(u16, u16)> {
+        use crate::map::cell_index::NativeCellIdentity;
+        use crate::util::lepton::lepton_to_cell_packed;
+
+        let (rx, ry) = match self.resolved_terrain.as_ref() {
+            Some(terrain) => {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                let cell = cells.lookup_world(x, y);
+                let NativeCellIdentity::Real(_) = cell else {
+                    return None;
+                };
+                cells.coord(cell)
+            }
+            None => (lepton_to_cell_packed(x), lepton_to_cell_packed(y)),
+        };
+        Some((u16::try_from(rx).ok()?, u16::try_from(ry).ok()?))
     }
 
+    /// `AnimClass::MarkCellOccupancy` (`0x00426270`) and `ClearCellOccupancy`
+    /// (`0x00426300`) for a MakeInfantry anim at its raw Location: the sub-cell
+    /// (`0x004810A0`), the cell through Map[coord] (`0x00565730`), whose miss
+    /// is the shared dummy cell, and the floor there (`0x00578080`).
     fn apply_make_infantry_raw_occupation(
         &mut self,
-        world: AnimWorldCoord,
+        location: AnimWorldCoord,
         operation: AnimOccupationOperation,
     ) {
-        let cell_x = world.x >> 8;
-        let cell_y = world.y >> 8;
-        let (Ok(rx), Ok(ry)) = (u16::try_from(cell_x), u16::try_from(cell_y)) else {
-            // Native writes its shared dummy cell for out-of-map coordinates;
-            // that dummy is not part of Rust's serialized map substrate.
-            return;
-        };
         let mask = infantry_raw_occupation_mask(
-            SimFixed::from_num(world.x & 0xff),
-            SimFixed::from_num(world.y & 0xff),
+            SimFixed::from_num(location.x & 0xff),
+            SimFixed::from_num(location.y & 0xff),
         );
-        let (ground_z, live_structural_bridge) = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(rx, ry))
-            .and_then(|cell| {
-                ground_height_leptons(cell.level, cell.slope_type, world.x, world.y)
-                    .ok()
-                    .map(|ground_z| {
-                        // Anim7441B0 reads live Cell+140 bit100. A stamped
-                        // side cell needs no own overlay (constructor5FC380,
-                        // bridge_constructor.json cases8..11).
-                        let live_structural_bridge = cell.bridge_facts.has_structural_bridge();
-                        (ground_z, live_structural_bridge)
-                    })
-            })
-            .unwrap_or((0, false));
+        let (key, ground_z, live_structural_bridge) = match self.resolved_terrain.as_ref() {
+            Some(terrain) => {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                let cell = cells.lookup_world(location.x, location.y);
+                let point = crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                };
+                let ground_z =
+                    crate::sim::movement::ground_pose::query_ground_height(&cells, point)
+                        .unwrap_or(0);
+                // The mark reads live Cell+140 bit100. A stamped side cell needs
+                // no own overlay (constructor5FC380, bridge_constructor.json
+                // cases8..11).
+                let live_structural_bridge = cells.flags(cell) & 0x100 != 0;
+                (
+                    RawCellKey::from_native(terrain, cell),
+                    ground_z,
+                    live_structural_bridge,
+                )
+            }
+            None => {
+                let Some((rx, ry)) = self.anim_map_cell(location.x, location.y) else {
+                    return;
+                };
+                (RawCellKey::Real(rx, ry), 0, false)
+            }
+        };
         apply_anim_raw_occupation(
             &mut self.substrate.raw_cell_occupation,
-            rx,
-            ry,
+            key,
             mask,
-            world.z,
+            location.z,
             ground_z,
             live_structural_bridge,
             operation,
@@ -1065,108 +1078,47 @@ impl Simulation {
         removed
     }
 
-    // The move-feedback producer is not wired yet; keep the verified
-    // sync-exempt allocation path available for that activation slice.
-    #[cfg(test)]
-    pub(crate) fn spawn_multiplayer_feedback_anim_at_world(
-        &mut self,
-        rules: &RuleSet,
-        world_coord: AnimWorldCoord,
-    ) -> Result<AnimId, AnimSpawnError> {
-        let type_id = self.interner.intern(&rules.general.move_flash.name);
-        let type_name = self.interner.resolve(type_id).to_ascii_uppercase();
-        let config = rules
-            .art()
-            .anim_runtime_config(&type_name)
-            .cloned()
-            .ok_or(AnimSpawnError::MissingType(type_id))?;
-        let (effective_end, effective_loop_end) = effective_bounds(&type_name, &config)?;
-        let reverse = config.reverse;
-        let rate_reload = self.choose_anim_rate(&config);
-        let frame_timer =
-            CdTimer::started(self.session.binary_frame as i32, i32::from(rate_reload));
-        let stop_sound_id = config
-            .stop_sound
-            .as_deref()
-            .map(|sound| self.interner.intern(sound));
-        let stable_id = self.substrate.next_multiplayer_feedback_anim_id;
-        self.substrate.next_multiplayer_feedback_anim_id = stable_id.wrapping_add(1);
-        if self
-            .substrate
-            .multiplayer_feedback_anims
-            .contains_key(stable_id)
-        {
-            return Err(AnimSpawnError::DuplicateId(stable_id));
-        }
-
-        let object = AnimObject {
-            stable_id,
-            native_unique_id: SYNC_EXEMPT_NATIVE_UNIQUE_ID,
-            type_id,
-            world_coord,
-            draw_flags: TRAILER_DRAW_FLAGS,
-            z_adjust: MULTIPLAYER_FEEDBACK_Z_ADJUST,
-            remap_color: None,
-            effective_end,
-            effective_loop_end,
-            runtime: AnimRuntime {
-                current_frame: if reverse {
-                    effective_loop_end.wrapping_sub(1)
-                } else {
-                    0
-                },
-                frame_step: if reverse { -1 } else { 1 },
-                delay_remaining: 0,
-                rate_reload,
-                frame_timer,
-                loop_remaining: native_loop_remaining(config.loop_count, 1),
-                first_ai_guard: true,
-                constructor_reverse: false,
-                inactive: false,
-                paused: false,
-            },
-            draw_runtime: AnimDrawRuntime::default(),
-            use_cell_drawer: false,
-            terrain_attached: false,
-            in_logic_vector: false,
-            owner_entity: None,
-            building_slot: None,
-            damage_fire_slot: None,
-            start_sound_active: false,
-            stop_sound_id,
-            display: AnimDisplayState {
-                marked_on_map: false,
-                y_sort_adjust: config.y_sort_adjust,
-            },
-            bounce: None,
-        };
-        // The insert stays outside `debug_assert!`, which release builds drop.
-        let replaced = self.substrate.multiplayer_feedback_anims.insert(object);
-        debug_assert!(replaced.is_none());
-        self.anim_start(stable_id, &config, rules, None);
-        Ok(stable_id)
-    }
-
-    /// `CellClass::Get_Tiberium_Value @ 0x00485020` of the cell under a world
-    /// coordinate. Native resolves the raw Location through
-    /// `MapClass::Get_CellClass_At_Coord @ 0x00565730` and reads the shared
-    /// dummy on a miss; VERA reads the grid cell for any coordinate inside the
-    /// rectangular grid and the dummy's overlay pair outside it (the
-    /// in-rectangle/outside-diamond difference is unreachable for retail art).
+    /// `CellClass::Get_Tiberium_Value @ 0x00485020` of the anim's cell. Native
+    /// finds it from the raw Location through Object vtable `+0x1BC`
+    /// (`0x005F6960`): two Map[coord] lookups (`0x00565730`), whose miss is the
+    /// shared dummy cell.
     fn anim_cell_tiberium_value(
         &self,
-        world_coord: AnimWorldCoord,
+        location: AnimWorldCoord,
         rules: &RuleSet,
         overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
     ) -> i32 {
-        let rx = u16::try_from(world_coord.x.div_euclid(LEPTONS_PER_CELL)).ok();
-        let ry = u16::try_from(world_coord.y.div_euclid(LEPTONS_PER_CELL)).ok();
-        let (overlay_id, overlay_data) = match (rx, ry, self.overlay_grid.as_ref()) {
-            (Some(rx), Some(ry), Some(grid)) if rx < grid.width() && ry < grid.height() => {
-                let cell = grid.cell(rx, ry);
-                (cell.overlay_id, cell.overlay_data)
+        let grid_fields = |(rx, ry): (u16, u16)| {
+            self.overlay_grid
+                .as_ref()
+                .filter(|grid| rx < grid.width() && ry < grid.height())
+                .map(|grid| {
+                    let cell = grid.cell(rx, ry);
+                    (cell.overlay_id, cell.overlay_data)
+                })
+        };
+        let (overlay_id, overlay_data) = match self.resolved_terrain.as_ref() {
+            Some(terrain) => {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                let point = crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                };
+                match crate::sim::movement::ground_pose::query_object_cell(&cells, point) {
+                    cell @ crate::map::cell_index::NativeCellIdentity::Real(_) => {
+                        let (rx, ry) = cells.coord(cell);
+                        grid_fields((rx as u16, ry as u16)).unwrap_or((None, 0))
+                    }
+                    crate::map::cell_index::NativeCellIdentity::Dummy => {
+                        cells.dummy().overlay_fields()
+                    }
+                }
             }
-            _ => self.effective_shared_cell_dummy().overlay_fields(),
+            None => self
+                .anim_map_cell(location.x, location.y)
+                .and_then(grid_fields)
+                .unwrap_or_else(|| self.effective_shared_cell_dummy().overlay_fields()),
         };
         crate::sim::ore_twinkle::tiberium_value(
             overlay_id,
@@ -1176,36 +1128,21 @@ impl Simulation {
         )
     }
 
-    pub(crate) fn for_each_multiplayer_feedback_anim<F>(&mut self, mut body: F)
-    where
-        F: FnMut(&mut Simulation, AnimId),
-    {
-        let mut index = 0;
-        while index < self.substrate.multiplayer_feedback_anims.len() {
-            let Some(id) = self.substrate.multiplayer_feedback_anims.key_at(index) else {
-                break;
-            };
-            body(self, id);
-            index += 1;
-        }
-    }
-
     pub(crate) fn visit_anim(
         &mut self,
         id: AnimId,
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
-        // `AnimClass::GetCoords @ 0x00422BE0`, not the stored field: an
-        // owner-attached anim stores an owner-relative delta.
-        let Some(world_coord) = self.anim_absolute_coord(id) else {
-            return false;
-        };
-        let Some((type_id, first_guard, inactive)) = self.anim(id).map(|anim| {
+        // HideIfNoOre and the MakeInfantry mark read the stored Location
+        // (`+0x9C`, `0x00423BD6..0x00423BFD`), not GetCoords: an owner-attached
+        // anim stores an owner-relative delta there.
+        let Some((type_id, first_guard, inactive, location)) = self.anim(id).map(|anim| {
             (
                 anim.type_id,
                 anim.runtime.first_ai_guard,
                 anim.runtime.inactive,
+                anim.world_coord,
             )
         }) else {
             return false;
@@ -1219,14 +1156,14 @@ impl Simulation {
         // `AnimClass::AI @ 0x00423AC0`, before the MakeInfantry `vtable+0xF0`
         // call, the bounce-landing block, and the trailer block: with
         // `AnimType+0x359 HideIfNoOre`, `AnimClass+0x19D` is rewritten every
-        // tick from the anim coordinate's cell — hidden when the cell is
-        // missing or `CellClass::Get_Tiberium_Value @ 0x00485020` is zero,
-        // visible otherwise. Only drawing is suppressed; the AI keeps running.
+        // tick from its Location's cell — hidden when
+        // `CellClass::Get_Tiberium_Value @ 0x00485020` is zero, visible
+        // otherwise. Only drawing is suppressed; the AI keeps running.
         // Registry-less callers (fixtures) keep the current flag.
         if config.hide_if_no_ore
             && let Some(overlay_registry) = overlay_registry
         {
-            let hidden = self.anim_cell_tiberium_value(world_coord, rules, overlay_registry) == 0;
+            let hidden = self.anim_cell_tiberium_value(location, rules, overlay_registry) == 0;
             if let Some(anim) = self.anim_mut_by_id(id) {
                 anim.draw_runtime.hidden = hidden;
             }
@@ -1236,7 +1173,7 @@ impl Simulation {
         // visibility, and frame-timer gates. Repeated visits OR the same raw
         // bit; there is deliberately no contributor count.
         if config.make_infantry != -1 {
-            self.apply_make_infantry_raw_occupation(world_coord, AnimOccupationOperation::Mark);
+            self.apply_make_infantry_raw_occupation(location, AnimOccupationOperation::Mark);
         }
         if inactive {
             self.destroy_anim(id, rules);
@@ -1385,11 +1322,14 @@ impl Simulation {
                 // owner, allocating the infantry, or attempting Unlimbo. The
                 // downstream factory/retry path belongs to the entity-runtime
                 // implementation item; this Phase-3 slice owns its preceding
-                // authoritative cell-byte transition.
-                self.apply_make_infantry_raw_occupation(
-                    world_coord,
-                    AnimOccupationOperation::Clear,
-                );
+                // authoritative cell-byte transition. Clear also reads the
+                // stored Location (`0x0042493E..0x00424963`).
+                if let Some(location) = self.anim(id).map(|anim| anim.world_coord) {
+                    self.apply_make_infantry_raw_occupation(
+                        location,
+                        AnimOccupationOperation::Clear,
+                    );
+                }
                 self.destroy_anim(id, rules);
             }
             VisitAction::Next(next) => self.switch_anim_type(id, &next, rules, overlay_registry),
@@ -1402,15 +1342,7 @@ impl Simulation {
     }
 
     fn destroy_anim_with_context(&mut self, id: AnimId, rules: Option<&RuleSet>) {
-        let is_feedback = self.is_multiplayer_feedback_anim(id);
-        let already_queued = if is_feedback {
-            self.substrate
-                .multiplayer_feedback_pending_delete
-                .contains(&id)
-        } else {
-            self.substrate.pending_delete.contains(&id)
-        };
-        if already_queued {
+        if self.substrate.pending_delete.contains(&id) {
             return;
         }
         // `AnimClass::GetCoords @ 0x00422BE0` — the sound plays at the anim's
@@ -1428,10 +1360,15 @@ impl Simulation {
             self.detach_anim_from_owner(id, rules.expect("attached Anim Destroy requires Rules"));
         }
         if let Some(anim) = self.anim_mut_by_id(id) {
-            anim.runtime.inactive = true;
             anim.start_sound_active = false;
         }
-        // Destroy4255D5 calls Release406060, leaving a one-shot Report
+        // Original4255B0..425628 never writes19B; ObjectUnInit5F6625 clears
+        // ObjectAlive after expiry/Limbo, then queues this physical object.
+        // Executed MGUN/PIFF retirement receipts retain inactive0 while
+        // removing Logic/Display and adding deferred deletion:
+        // tools/spatial_oracle/anytown_damage/foot_missions.json,
+        // ground_emission_receipt.
+        // UnInit4255D5 calls Release406060, leaving a one-shot Report
         // playing; StopAndClear405D40 would cut it off. Original execution:
         // tools/rules_oracle/bridge_child_sound.{py,json,md}.
         self.sound_events
@@ -1446,15 +1383,11 @@ impl Simulation {
                 world,
             });
         }
-        if is_feedback {
-            self.substrate.multiplayer_feedback_pending_delete.push(id);
-        } else {
-            // Object::UnInit5F6616 broadcasts the Anim's expiry before Limbo;
-            // Building44EA1A..44EA4F then clears its matching damage-fire slot.
-            self.clear_damage_fire_anim_reference(id);
-            self.conceal_anim(id);
-            self.substrate.pending_delete.push(id);
-        }
+        // Object::UnInit5F6616 broadcasts the Anim's expiry before Limbo;
+        // Building44EA1A..44EA4F then clears its matching damage-fire slot.
+        self.clear_damage_fire_anim_reference(id);
+        self.conceal_anim(id);
+        self.substrate.pending_delete.push(id);
     }
 
     /// Building451A2C and ClearAnimSlot451E40 use scalar deletion: the old
@@ -1462,7 +1395,7 @@ impl Simulation {
     /// separate from an animation's ordinary deferred Destroy operation.
     pub(crate) fn scalar_delete_building_anim(&mut self, id: AnimId) {
         // Anim VT7E3354+20 ->426590 ->4228E0 releases sound handles but
-        // never reaches Destroy4255B0 or its StopSound playback. The slot was
+        // never reaches UnInit4255B0 or its StopSound playback. The slot was
         // cleared by the caller before these synchronous destructor effects.
         let sound_active = self.anim(id).is_some_and(|anim| anim.start_sound_active);
         self.clear_damage_fire_anim_reference(id);
@@ -1548,11 +1481,8 @@ impl Simulation {
     }
 
     /// Anim GetLayer424CB0: attached -> Ground; missing type -> Air; otherwise
-    /// the current type's layer. Feedback objects remain outside hashed Display.
+    /// the current type's layer.
     pub(crate) fn submit_anim_display(&mut self, id: AnimId, rules: Option<&RuleSet>) {
-        if self.is_multiplayer_feedback_anim(id) {
-            return;
-        }
         if let Some(layer) = self.anim_display_layer(id, rules) {
             self.submit_object_display(id, layer, rules);
         } else {
@@ -1645,9 +1575,9 @@ impl Simulation {
     /// Normal SetOwner(NULL) would instead convert and potentially resubmit.
     /// Native comparisons: tools/spatial_oracle/display_anim_owner.json.
     ///
-    /// Residual: `runtime.inactive` also represents deferred deletion. Native AI
-    /// checks +19B at42435F after looping-sound, bounce and visibility work;
-    /// `visit_anim` currently checks it earlier, after ore visibility/occupation.
+    /// Residual: native AI checks +19B at42435F after looping-sound, bounce and
+    /// visibility work; `visit_anim` currently checks it earlier, after ore
+    /// visibility/occupation.
     /// Owner expiry during combat therefore still needs that prefix audit when
     /// its missing effects land. Occupied-cell424358 and animated-tiberium424427
     /// writers of +19B remain unported. No claim of complete Anim AI parity.
@@ -1983,10 +1913,10 @@ impl Simulation {
         {
             self.spawn_bounce_anim(rules, bounce_anim, coord, BOUNCE_CONTACT_DRAW_FLAGS, 0);
         }
-        let (Some(warhead_name), Ok(rx), Ok(ry)) = (
+        // Map[coord] (`0x004239E5`); VERA keeps no objects on the dummy cell.
+        let (Some(warhead_name), Some((rx, ry))) = (
             config.warhead.as_deref(),
-            u16::try_from(position.x >> 8),
-            u16::try_from(position.y >> 8),
+            self.anim_map_cell(position.x, position.y),
         ) else {
             return false;
         };
@@ -1997,21 +1927,15 @@ impl Simulation {
         let warhead_ref = self.interner.intern(warhead_name);
         use crate::sim::combat::combat_aoe::AreaDamageReceiver;
         use crate::sim::occupancy::CellObjectMember;
-        let ground = crate::sim::movement::locomotor::MovementLayer::Ground;
+        let ground = MovementLayer::Ground;
         let mut current = self.cell_objects((rx, ry), ground).next();
         let mut bridge_state_changed = false;
         while let Some(target) = current {
             let center = match target {
-                CellObjectMember::Entity(id) => {
-                    self.substrate.entities.get(id).and_then(|entity| {
-                        let object_type = rules.object(self.interner.resolve(entity.type_ref()))?;
-                        let coord = crate::sim::movement::ground_pose::object_center_coord(
-                            entity,
-                            object_type,
-                        );
-                        Some((coord.x, coord.y))
-                    })
-                }
+                CellObjectMember::Entity(id) => self.substrate.entities.get(id).map(|entity| {
+                    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+                    (x, y)
+                }),
                 // Loaded Terrain objects retain their map-cell center. This
                 // contact gate uses XY only (GetCoords5F65A0); it does not
                 // substitute ground/deck height for the object's location.
@@ -2091,7 +2015,7 @@ impl Simulation {
             &self.effective_shared_cell_dummy(),
             crate::sim::projectile::ProjectileCoord::new(position.x, position.y, position.z),
         );
-        let above_deck = position.z >= ground.wrapping_add(BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        let above_deck = position.z >= ground.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
         if self.bounce_cell_is_water(position, rules) && !above_deck {
             let wake = rules.general.wake.name.clone();
             self.spawn_bounce_anim(rules, &wake, location, BOUNCE_CONTACT_DRAW_FLAGS, 0);
@@ -3677,8 +3601,7 @@ mod tests {
 
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3689,8 +3612,7 @@ mod tests {
         assert_eq!(grid.deck_bits(7, 8), 0x10);
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3701,8 +3623,7 @@ mod tests {
 
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3712,8 +3633,7 @@ mod tests {
         assert_eq!(grid.ground_bits(7, 8), 0x10);
         apply_anim_raw_occupation(
             &mut grid,
-            7,
-            8,
+            RawCellKey::Real(7, 8),
             0x10,
             416,
             0,
@@ -3775,6 +3695,104 @@ mod tests {
             assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(x, y), 0x01);
             assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(x, y), 0);
         }
+    }
+
+    /// Map[coord] (`0x00565730`) truncates toward zero and wraps by row. A
+    /// MakeInfantry anim less than a cell left of the map edge occupies cell
+    /// 0 of its row; a cell further left it wraps to slot 511 of the row
+    /// above, off this map, and past slot 511 it wraps to the next row.
+    #[test]
+    fn a_make_infantry_anim_left_of_the_map_edge_occupies_cell_zero() {
+        const SIZE: u16 = 8;
+        let mut sim = Simulation::new();
+        sim.resolved_terrain = Some(
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+                SIZE,
+                SIZE,
+                (0..SIZE)
+                    .flat_map(|y| {
+                        (0..SIZE).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
+                    })
+                    .collect(),
+            ),
+        );
+        // Sub-cell (128, 128) is slot 0.
+        let world = AnimWorldCoord {
+            x: -128,
+            y: 5 * 256 + 128,
+            z: 0,
+        };
+        sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Mark);
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 5), 0x01);
+        sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Clear);
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 5), 0);
+
+        assert_eq!(sim.anim_map_cell(-128 - 256, world.y), None);
+        assert_eq!(sim.anim_map_cell(512 * 256 + 128, world.y), Some((0, 6)));
+    }
+
+    /// `AnimClass::MarkCellOccupancy` (`0x00426270`) stores the anim's owner
+    /// index, -1, beside the bit it sets (`0x004262D0`), and
+    /// `ClearCellOccupancy` (`0x00426300`) resets it only once `0x1C` is clear.
+    /// Off the map both write the shared dummy cell's planes.
+    #[test]
+    fn a_make_infantry_anim_writes_owner_minus_one_on_a_real_or_dummy_cell() {
+        const SIZE: u16 = 8;
+        let mut sim = Simulation::new();
+        sim.resolved_terrain = Some(
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+                SIZE,
+                SIZE,
+                (0..SIZE)
+                    .flat_map(|y| {
+                        (0..SIZE).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
+                    })
+                    .collect(),
+            ),
+        );
+        let house = InternedId::from_index(41);
+        let ground = MovementLayer::Ground;
+        // An infantryman in slot 2 leaves its house beside the ground byte;
+        // the anim at the centre marks slot 0.
+        sim.substrate
+            .raw_cell_occupation
+            .mark_ground_infantry(3, 3, 1 << 2, house);
+        let on_map = AnimWorldCoord {
+            x: 3 * 256 + 128,
+            y: 3 * 256 + 128,
+            z: 0,
+        };
+        sim.apply_make_infantry_raw_occupation(on_map, AnimOccupationOperation::Mark);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.ground_bits(3, 3), 0x05);
+        assert_eq!(raw.infantry_owner(3, 3, ground), None);
+        sim.apply_make_infantry_raw_occupation(on_map, AnimOccupationOperation::Clear);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.ground_bits(3, 3), 0x04);
+        assert_eq!(raw.infantry_owner(3, 3, ground), None);
+
+        // A cell left of column 0 wraps to slot 511 of the row above: the
+        // shared dummy on this map.
+        sim.substrate.raw_cell_occupation.write_occupant(
+            RawCellKey::Dummy,
+            ground,
+            1 << 3,
+            Some(house),
+            true,
+        );
+        let off_map = AnimWorldCoord {
+            x: -384,
+            y: 3 * 256 + 128,
+            z: 0,
+        };
+        sim.apply_make_infantry_raw_occupation(off_map, AnimOccupationOperation::Mark);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.bits_at(RawCellKey::Dummy, ground), 0x09);
+        assert_eq!(raw.owner_at(RawCellKey::Dummy, ground), None);
+        sim.apply_make_infantry_raw_occupation(off_map, AnimOccupationOperation::Clear);
+        let raw = &sim.substrate.raw_cell_occupation;
+        assert_eq!(raw.bits_at(RawCellKey::Dummy, ground), 0x08);
+        assert_eq!(raw.owner_at(RawCellKey::Dummy, ground), None);
     }
 
     /// `AnimClass::AnimClass @ 0x00421EA0`'s `RandomRate=` pick and `Bouncer=`
@@ -4176,7 +4194,8 @@ mod tests {
         sim.session.binary_frame = 4;
         sim.visit_anim(id, &rules, None); // SECOND frame 2 -> destroy
         sim.destroy_anim(id, &rules);
-        assert!(sim.anim(id).unwrap().runtime.inactive);
+        assert!(!sim.anim(id).unwrap().runtime.inactive);
+        assert!(sim.substrate.pending_delete.contains(&id));
         assert!(!sim.live_object_order_snapshot().contains(&id));
         assert_eq!(
             sim.sound_events
@@ -4209,6 +4228,15 @@ mod tests {
             SimSoundEvent::ObjectSoundReleased { owner },
             SimSoundEvent::AnimationStopped { anim_id, stop_sound_id: Some(sound), world: at },
         ] if *owner == id && *anim_id == id && *sound == stop && *at == world));
+        // UnInit4255B0/UnInit5F65F0 retire the receiver without changing19B.
+        // The retained physical identity cannot be revealed before the drain.
+        assert!(!sim.anim(id).unwrap().runtime.inactive);
+        assert_eq!(sim.substrate.pending_delete, vec![id]);
+        assert!(!sim.anim(id).unwrap().in_logic_vector);
+        assert_eq!(sim.display_layers().layer_of(id), None);
+        assert!(!sim.reveal_anim(id, Some(&rules)));
+        sim.process_pending_delete();
+        assert!(sim.anim(id).is_none());
     }
 
     #[test]
@@ -4236,55 +4264,6 @@ mod tests {
         assert_eq!(sim.interner.resolve(child.type_id), "CHILD");
         assert!(!child.runtime.first_ai_guard);
         assert_eq!(child.runtime.current_frame, 0);
-    }
-
-    #[test]
-    fn multiplayer_feedback_uses_sync_exempt_registry_without_global_id_or_logic_membership() {
-        let rules = runtime_rules("[RING]\nRate=900\nEnd=1\nLoopCount=1\n", &[("RING", 1)]);
-        let mut sim = Simulation::new();
-        let next_global_id = sim.substrate.next_stable_object_id;
-        let id = sim
-            .spawn_multiplayer_feedback_anim_at_world(
-                &rules,
-                AnimWorldCoord {
-                    x: 512,
-                    y: 768,
-                    z: 32,
-                },
-            )
-            .unwrap();
-
-        assert_eq!(sim.substrate.next_stable_object_id, next_global_id);
-        assert!(!sim.substrate.anims.contains_key(id));
-        assert!(sim.live_object_order_snapshot().is_empty());
-        let anim = sim.anim(id).unwrap();
-        assert_eq!(anim.native_unique_id, SYNC_EXEMPT_NATIVE_UNIQUE_ID);
-        assert_eq!(anim.z_adjust, MULTIPLAYER_FEEDBACK_Z_ADJUST);
-        assert!(!anim.in_logic_vector);
-        let hash_with_feedback = sim.state_hash();
-        let feedback = sim.substrate.multiplayer_feedback_anims.remove(id).unwrap();
-        assert_eq!(sim.state_hash(), hash_with_feedback);
-        assert!(
-            sim.substrate
-                .multiplayer_feedback_anims
-                .insert(feedback)
-                .is_none()
-        );
-
-        sim.for_each_multiplayer_feedback_anim(|sim, id| {
-            sim.visit_anim(id, &rules, None);
-        });
-        assert!(!sim.anim(id).unwrap().runtime.first_ai_guard);
-        sim.session.binary_frame = 1;
-        sim.for_each_multiplayer_feedback_anim(|sim, id| {
-            sim.visit_anim(id, &rules, None);
-        });
-        assert!(sim.anim(id).unwrap().runtime.inactive);
-        assert_eq!(sim.substrate.multiplayer_feedback_pending_delete, vec![id]);
-
-        sim.process_pending_delete();
-        assert!(sim.anim(id).is_none());
-        assert!(sim.substrate.multiplayer_feedback_pending_delete.is_empty());
     }
 
     #[test]
@@ -4350,7 +4329,9 @@ mod tests {
             .unwrap()
             .damage_fire_anim_ids[0] = Some(anim_id);
         sim.rebuild_building_anim_slot_indices();
-        sim.anim_mut_by_id(anim_id).unwrap().runtime.inactive = true;
+        // Supply the common post-UnInit retirement state through its existing
+        // membership owner;19B remains the independent native expiry byte.
+        sim.conceal_anim(anim_id);
         sim.substrate.pending_delete.push(anim_id);
 
         sim.process_pending_delete();

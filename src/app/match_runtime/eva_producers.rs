@@ -36,7 +36,7 @@
 //!   OnHold ×2 / UnableToComply ×2 / Building|Training ×2 (app sidebar).
 //! - `BuildingClass::SetRallyPoint 0x00443A69` → `EVA_NewRallyPointEstablished`
 //!   (click handler; app rally order).
-//! - `BuildingClass::Sell 0x00449CE5` (state 2) / `0x0044AB36` (upgrade) →
+//! - `BuildingClass::Mission_Selling 0x00449CE5` (state 2) / `0x0044AB36` (upgrade) →
 //!   `EVA_StructureSold`; `BuildingClass::ToggleRepair 0x004470B7` →
 //!   `EVA_Repairing` (sim events).
 //! - `BuildingClass::ChangeOwner 0x00448428/0x0044848A` (+ `0x00448459`

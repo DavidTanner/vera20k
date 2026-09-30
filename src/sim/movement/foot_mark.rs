@@ -8,7 +8,6 @@ use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::occupancy::CellListInsertion;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
 impl Simulation {
@@ -18,7 +17,6 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) {
         let removed = self.substrate.entities.get_mut(id).and_then(|entity| {
@@ -40,7 +38,7 @@ impl Simulation {
                 .occupancy
                 .remove_on_layer(cell.0, cell.1, id, layer);
             // Foot enable and concrete raw receiver are live after unlink.
-            self.foot_mark_raw(id, false, fallback);
+            self.foot_mark_raw(id, false);
             self.recalculate_track_cell(cell, rules, registry);
         }
     }
@@ -49,10 +47,9 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        self.foot_mark_put_observed(id, rules, fallback, registry, &mut |_, _| {});
+        self.foot_mark_put_observed(id, rules, registry, &mut |_, _| {});
     }
 
     /// The receiver boundary is after the marked byte and list link, before
@@ -62,7 +59,6 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
         receive: &mut impl FnMut(&mut Simulation, u64),
     ) {
@@ -71,7 +67,6 @@ impl Simulation {
                 return None;
             }
             entity.lifecycle.cell_marked = true;
-            entity.occupancy_enter_order = self.substrate.next_occupancy_enter_order.next();
             let cell = (entity.position.rx, entity.position.ry);
             self.substrate.occupancy.add(
                 cell.0,
@@ -89,12 +84,12 @@ impl Simulation {
         });
         if let Some(cell) = entered {
             receive(self, id);
-            self.foot_mark_raw(id, true, fallback);
+            self.foot_mark_raw(id, true);
             self.recalculate_track_cell(cell, rules, registry);
         }
     }
 
-    fn foot_mark_raw(&mut self, id: u64, put: bool, fallback: Option<&PathGrid>) {
+    fn foot_mark_raw(&mut self, id: u64, put: bool) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
@@ -102,7 +97,7 @@ impl Simulation {
             return;
         }
         match entity.category {
-            EntityCategory::Unit => self.track_raw_mark(id, put, fallback),
+            EntityCategory::Unit => self.track_raw_mark(id, put),
             EntityCategory::Infantry => {
                 let owner = entity.owner();
                 let coord = ground_pose::position_world_coord(&entity.position);
@@ -112,7 +107,7 @@ impl Simulation {
                     coord,
                     put,
                     self.resolved_terrain.as_ref(),
-                    self.path_grid.as_deref().or(fallback),
+                    self.path_grid.as_deref(),
                 );
             }
             // The ground movement callers above are Unit/Infantry owners.

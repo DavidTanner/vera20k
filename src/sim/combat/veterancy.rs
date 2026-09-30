@@ -97,8 +97,8 @@ pub fn veterancy_level(raw: NativeF32Bits) -> i8 {
 ///
 /// A map or scenario can place an already-veteran or already-elite object;
 /// native seeds the float directly (`VeterancyStruct::SetVeteran @ 0x00750090`
-/// writes 1.0f, `SetElite @ 0x007500B0` writes 2.0f), so the projection and the
-/// accumulator agree from the first tick.
+/// writes 1.0f, `SetElite @ 0x007500B0` writes 2.0f), so the rank derived from
+/// the accumulator is right from the first tick.
 pub fn raw_for_rank(rank_u16: u16) -> NativeF32Bits {
     if rank_u16 >= RANK_ELITE_U16 {
         NativeF32Bits::from_bits(ELITE_THRESHOLD_BITS)
@@ -109,20 +109,17 @@ pub fn raw_for_rank(rank_u16: u16) -> NativeF32Bits {
     }
 }
 
-/// `VeterancyStruct::SetElite(1) @ 0x007500B0`: store 2.0f, refresh the
-/// projection. The rank cache is deliberately left alone — native does not
-/// touch `+0x13C` here, so the next `AI_Update` sample announces the crossing
+/// `VeterancyStruct::SetElite(1) @ 0x007500B0`: store 2.0f. The rank cache is
+/// deliberately left alone — native does not touch `+0x13C` here, so the next `AI_Update` sample announces the crossing
 /// (or, for a never-sampled object, caches silently).
 pub fn set_elite(entity: &mut GameEntity) {
     entity.veterancy_raw = NativeF32Bits::from_bits(ELITE_THRESHOLD_BITS);
-    entity.veterancy = RANK_ELITE_U16;
 }
 
 /// `VeterancyStruct::SetVeteran(1) @ 0x00750090`: store 1.0f.
 #[cfg(test)]
 pub fn set_veteran(entity: &mut GameEntity) {
     entity.veterancy_raw = NativeF32Bits::from_bits(VETERAN_THRESHOLD_BITS);
-    entity.veterancy = RANK_VETERAN_U16;
 }
 
 /// `TechnoClass::HasWeaponAbility @ 0x0070D0D0`, literally.
@@ -165,22 +162,6 @@ pub fn ftol_scale(value: i32, multiplier: f64) -> i32 {
         X::load_i32(value),
         X::load_f64(NativeF64Bits::from_bits(multiplier.to_bits())),
     ))
-}
-
-/// `ftol_scale` gated on `HasWeaponAbility`; the caller passes the rules
-/// multiplier that belongs to `ability`.
-pub fn scale_if_ability(
-    value: i32,
-    rank: VeterancyRank,
-    object: &ObjectType,
-    ability: Ability,
-    multiplier: f64,
-) -> i32 {
-    if has_weapon_ability(rank, object, ability) {
-        ftol_scale(value, multiplier)
-    } else {
-        value
-    }
 }
 
 /// `FootClass::GetCurrentSpeed @ 0x004DB1A0`, the FASTER arm.
@@ -249,10 +230,10 @@ pub fn locomotor_consults_current_speed(kind: Option<LocomotorKind>) -> bool {
 ///
 /// gamemd-derived: `ftol(typeSpeed * houseMult * [this+0x580])` produces the
 /// integer per-frame speed, then `HasWeaponAbility(0)` (`FASTER`) gates
-/// `ftol(speed * Rules.VeteranSpeed)`. Stage 3, the `[this+0x578]` locomotor
-/// fraction, is VERA's per-frame `MovementTarget::current_speed`, so this
-/// helper stops one stage short deliberately. The crate factor is live Foot
-/// state. The country/house factor remains an open getter dependency.
+/// `ftol(speed * Rules.VeteranSpeed)`. Stage 3 multiplies in the
+/// `[this+0x578]` fraction (`movement::owner_current_speed`), so this helper
+/// stops one stage short deliberately. The crate factor is live Foot state.
+/// The country/house factor remains an open getter dependency.
 ///
 /// Call this instead of `ra2_speed_to_leptons_per_second` wherever a type
 /// `Speed=` becomes an entity's movement speed — native reaches the FASTER
@@ -521,7 +502,6 @@ pub fn award_kill(
         veteran_ratio,
         veteran_cap,
     );
-    recipient.veterancy = rank_u16(recipient.veterancy_raw);
 }
 
 #[cfg(test)]
@@ -715,21 +695,6 @@ mod tests {
         assert_eq!(ftol_scale(50, f64::from(0.6f32)), 30);
         assert_eq!(ftol_scale(51, 0.6), 30);
         assert_eq!(ftol_scale(52, 0.6), 31);
-        let object = object_with(&[Ability::Rof], &[]);
-        assert_eq!(
-            scale_if_ability(50, VeterancyRank::Rookie, &object, Ability::Rof, 0.6),
-            50
-        );
-        assert_eq!(
-            scale_if_ability(
-                50,
-                VeterancyRank::Veteran,
-                &object,
-                Ability::Rof,
-                f64::from(0.6f32)
-            ),
-            30
-        );
     }
 
     /// `VeteranCombat=1.1` on the Grizzly's 65 damage: `ftol(71.5) = 71`.

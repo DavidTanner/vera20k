@@ -28,6 +28,7 @@ use crate::sim::tiberium::{
     NativeCellObjectView, NewTiberiumAdmission, PlaceTiberiumContext,
     TiberiumPlacementObjectContext, can_place_new_tiberium, place_tiberium,
 };
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
 
 /// The `1e-05` double at `0x007E3810` every tiberium percentage gate compares
@@ -172,8 +173,8 @@ pub struct NativeTiberiumState {
 /// Per-type native growth/spread scheduler state.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NativeTiberiumClassState {
-    pub growth_timer: NativeTiberiumTimer,
-    pub spread_timer: NativeTiberiumTimer,
+    pub growth_timer: CdTimer,
+    pub spread_timer: CdTimer,
     /// `TiberiumClass+0x110/+0x114/+0x118` growth queue store.
     pub growth: NativeTiberiumQueue,
     /// `TiberiumClass+0xF4/+0xF8/+0xFC` spread queue store.
@@ -409,13 +410,6 @@ fn native_processor_batch(heap_count: usize, percentage_bits: u64, min: u32, max
     scaled.clamp(i64::from(min), i64::from(max)) as u32
 }
 
-/// CDTimer-shaped fields used by native tiberium drivers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NativeTiberiumTimer {
-    pub start_frame: u32,
-    pub interval: u32,
-}
-
 /// Heap entry shell for native growth/spread queues.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeTiberiumQueueEntry {
@@ -490,21 +484,12 @@ impl NativeSpreadProcessStats {
 impl NativeTiberiumClassState {
     pub fn new_due(current_frame: u32, queue_capacity: u32) -> Self {
         Self {
-            growth_timer: NativeTiberiumTimer::due(current_frame),
-            spread_timer: NativeTiberiumTimer::due(current_frame),
+            growth_timer: CdTimer::started(current_frame as i32, 0),
+            spread_timer: CdTimer::started(current_frame as i32, 0),
             growth: NativeTiberiumQueue::with_capacity(queue_capacity),
             spread: NativeTiberiumQueue::with_capacity(queue_capacity),
             growth_bitmap: BTreeSet::new(),
             spread_bitmap: BTreeSet::new(),
-        }
-    }
-}
-
-impl NativeTiberiumTimer {
-    pub fn due(current_frame: u32) -> Self {
-        Self {
-            start_frame: current_frame,
-            interval: 0,
         }
     }
 }
@@ -735,7 +720,9 @@ impl OreGrowthState {
             .iter()
             .enumerate()
             .filter_map(|(idx, class)| {
-                native_timer_due(class.growth_timer, current_frame)
+                class
+                    .growth_timer
+                    .expired(current_frame as i32)
                     .then(|| u8::try_from(idx).ok().map(TiberiumTypeId))
                     .flatten()
             })
@@ -763,10 +750,10 @@ impl OreGrowthState {
                 tiberium_types.get(type_id),
             ) {
                 // `0x00722C9E..0x00722CE3`: see `native_growth_timer_reload`.
-                class.growth_timer = NativeTiberiumTimer {
-                    start_frame: current_frame,
-                    interval: native_growth_timer_reload(ty.growth, tiberium_grows_flag),
-                };
+                class.growth_timer = CdTimer::started(
+                    current_frame as i32,
+                    native_growth_timer_reload(ty.growth, tiberium_grows_flag) as i32,
+                );
             }
         }
         stats
@@ -1015,7 +1002,9 @@ impl OreGrowthState {
             .iter()
             .enumerate()
             .filter_map(|(idx, class)| {
-                native_timer_due(class.spread_timer, current_frame)
+                class
+                    .spread_timer
+                    .expired(current_frame as i32)
                     .then(|| u8::try_from(idx).ok().map(TiberiumTypeId))
                     .flatten()
             })
@@ -1047,10 +1036,7 @@ impl OreGrowthState {
                 // `SpreadDriver_AllTypes @ 0x00722205..0x00722227`: the raw
                 // `Spread=` int (`TiberiumClass+0x9C`) reloads the timer; no
                 // multiplier and no flag test on this driver.
-                class.spread_timer = NativeTiberiumTimer {
-                    start_frame: current_frame,
-                    interval: ty.spread,
-                };
+                class.spread_timer = CdTimer::started(current_frame as i32, ty.spread as i32);
             }
         }
         stats
@@ -1490,10 +1476,10 @@ impl OreGrowthState {
         self.native_rect.hash(hasher);
         self.native_tiberium.classes.len().hash(hasher);
         for class in &self.native_tiberium.classes {
-            class.growth_timer.start_frame.hash(hasher);
-            class.growth_timer.interval.hash(hasher);
-            class.spread_timer.start_frame.hash(hasher);
-            class.spread_timer.interval.hash(hasher);
+            class.growth_timer.start_frame().hash(hasher);
+            class.growth_timer.duration().hash(hasher);
+            class.spread_timer.start_frame().hash(hasher);
+            class.spread_timer.duration().hash(hasher);
             class.growth.hash_into(hasher);
             class.spread.hash_into(hasher);
             class.growth_bitmap.hash(hasher);
@@ -1559,10 +1545,6 @@ fn cell_is_flat(resolved_terrain: Option<&ResolvedTerrainGrid>, rx: u16, ry: u16
     resolved_terrain
         .and_then(|grid| grid.cell(rx, ry))
         .map_or(true, |cell| cell.slope_type == 0)
-}
-
-fn native_timer_due(timer: NativeTiberiumTimer, current_frame: u32) -> bool {
-    current_frame.wrapping_sub(timer.start_frame) >= timer.interval
 }
 
 fn priority_f32(entry: &NativeTiberiumQueueEntry) -> f32 {
@@ -1768,14 +1750,12 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::entities::EntityCategory;
     use crate::map::overlay::OverlayEntry;
     use crate::map::overlay_types::OverlayTypeRegistry;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
     use crate::rules::tiberium_type::{TiberiumTypeId, TiberiumTypeRegistry};
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
@@ -1790,68 +1770,10 @@ mod tests {
     }
 
     fn flat_clear_resolved_grid(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile::default();
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
-        for ry in 0..height {
-            for rx in 0..width {
-                cells.push(ResolvedTerrainCell {
-                    rx,
-                    ry,
-                    source_tile_index: 0,
-                    source_sub_tile: 0,
-                    final_tile_index: 0,
-                    final_sub_tile: 0,
-                    is_wood_bridge_repair_tile: false,
-                    level: 0,
-                    filled_clear: true,
-                    tileset_index: None,
-                    land_type,
-                    yr_cell_land_type: land_type,
-                    slope_type: 0,
-                    template_height: 0,
-                    render_offset_x: 0,
-                    render_offset_y: 0,
-                    terrain_class: TerrainClass::Clear,
-                    speed_costs,
-                    is_water: false,
-                    is_cliff_like: false,
-                    is_rough: false,
-                    is_road: false,
-                    accepts_smudge: true,
-                    allows_tiberium: true,
-                    height_in_pixels: 0,
-                    variant: 0,
-                    has_ramp: false,
-                    canonical_ramp: None,
-                    ground_walk_blocked: false,
-                    terrain_object_blocks: false,
-                    terrain_object_occupation: None,
-                    overlay_blocks: false,
-                    overlay_zone_type: None,
-                    outside_playfield: false,
-                    zone_type: zone_class::GROUND,
-                    base_ground_walk_blocked: false,
-                    base_build_blocked: false,
-                    base_land_type: land_type,
-                    base_yr_cell_land_type: land_type,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: speed_costs,
-                    has_bridge_deck: false,
-                    bridge_walkable: false,
-                    bridge_transition: false,
-                    bridge_deck_level: 0,
-                    bridge_layer: None,
-                    bridge_facts: BridgeCellFacts::default(),
-                    tube_index: None,
-                    radar_left: [0; 3],
-                    radar_right: [0; 3],
-                    has_damaged_data: false,
-                    bridgehead_anchor_class_at_load: None,
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(width, height, |rx, ry| ResolvedTerrainCell {
+            allows_tiberium: true,
+            ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
+        })
     }
 
     fn tiberium_rebuild_fixture() -> (IniFile, OverlayTypeRegistry, TiberiumTypeRegistry) {
@@ -1937,8 +1859,8 @@ SpreadPercentage=.06
         let native = state.native_tiberium_state();
         assert_eq!(native.classes.len(), 4);
         for class in &native.classes {
-            assert_eq!(class.growth_timer, NativeTiberiumTimer::due(1234));
-            assert_eq!(class.spread_timer, NativeTiberiumTimer::due(1234));
+            assert_eq!(class.growth_timer, CdTimer::started(1234, 0));
+            assert_eq!(class.spread_timer, CdTimer::started(1234, 0));
             assert!(class.growth.is_empty());
             assert!(class.spread.is_empty());
             assert!(class.growth_bitmap.is_empty());
@@ -1956,7 +1878,7 @@ SpreadPercentage=.06
 
         let mut changed = base.clone();
         let class = &mut changed.native_tiberium.classes[0];
-        class.growth_timer.interval = 2200;
+        class.growth_timer = CdTimer::started(class.growth_timer.start_frame(), 2200);
         class.growth.push(NativeTiberiumQueueEntry {
             rx: 4,
             ry: 7,
@@ -2220,8 +2142,8 @@ SpreadPercentage=.06
             assert!(class.spread.is_empty());
             assert!(class.growth_bitmap.is_empty());
             assert!(class.spread_bitmap.is_empty());
-            assert_eq!(class.growth_timer, NativeTiberiumTimer::due(2));
-            assert_eq!(class.spread_timer, NativeTiberiumTimer::due(2));
+            assert_eq!(class.growth_timer, CdTimer::started(2, 0));
+            assert_eq!(class.spread_timer, CdTimer::started(2, 0));
         }
     }
 
@@ -2523,7 +2445,7 @@ SpreadPercentage=.06
         let (_ini, overlay_registry, tiberium_types) = tiberium_rebuild_fixture();
         let riparius = TiberiumTypeId(0);
         assert_eq!(tiberium_types.get(riparius).unwrap().growth, 2200);
-        let mut run = |tiberium_grows_flag: bool| -> Vec<u32> {
+        let run = |tiberium_grows_flag: bool| -> Vec<u32> {
             let mut overlay_grid = OverlayGrid::new(8, 8);
             let mut state = make_state(8, 8);
             state.reset_native_tiberium_classes(tiberium_types.len(), 0);
@@ -2549,16 +2471,16 @@ SpreadPercentage=.06
                 );
                 let after = state.native_tiberium_state().classes[0].growth_timer;
                 if after != before || frame == 0 {
-                    assert_eq!(after.start_frame, frame);
+                    assert_eq!(after.start_frame(), frame as i32);
                     fired.push(frame);
                 }
             }
             let interval = state.native_tiberium_state().classes[0]
                 .growth_timer
-                .interval;
+                .duration();
             assert_eq!(
                 interval,
-                native_growth_timer_reload(2200, tiberium_grows_flag)
+                native_growth_timer_reload(2200, tiberium_grows_flag) as i32
             );
             fired
         };

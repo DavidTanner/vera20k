@@ -49,7 +49,11 @@ pub(crate) fn selected_head(
     DriveCoord {
         x: (input.x & !255).wrapping_add(x),
         y: (input.y & !255).wrapping_add(y),
-        z: input_ground_z.wrapping_add(if bridge { 416 } else { 0 }),
+        z: input_ground_z.wrapping_add(if bridge {
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+        } else {
+            0
+        }),
     }
 }
 
@@ -80,7 +84,8 @@ pub(crate) fn raw_at(
         },
         |(t, c)| t.native_cell_flags(c) & 0x100 != 0,
     );
-    let deck = coord.z >= ground.wrapping_add(416) && (!put || structural);
+    let deck = coord.z >= ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS)
+        && (!put || structural);
     let mask = infantry_raw_occupation_mask(
         SimFixed::from_num(coord.x % 256),
         SimFixed::from_num(coord.y % 256),
@@ -90,7 +95,7 @@ pub(crate) fn raw_at(
     } else {
         super::locomotor::MovementLayer::Ground
     };
-    raw.write_infantry(key, layer, mask, owner, put);
+    raw.write_occupant(key, layer, mask, Some(owner), put);
 }
 
 /// Successful fresh-head tail75BC2A..75BCBD. Facing+4C is75AE00 ->
@@ -116,19 +121,10 @@ pub(super) fn finish_fresh_head(
             head.x.wrapping_sub(current.x),
             head.y.wrapping_sub(current.y),
         );
-        // Class constructor owns ROT, even for a Unit using the Walk GUID.
-        let rot = if entity.category == crate::map::entities::EntityCategory::Infantry {
-            127 // Infantry ctor517BBD; Unit ctor735570 uses Type ROT.
-        } else {
-            loco.rot
-        };
+        entity.body_facing.snap(facing, native_frame);
         entity
-            .body_facing
-            .get_or_insert_with(|| super::FacingClass::new(0, rot))
-            .snap(facing, native_frame);
-        entity.facing = (facing >> 8) as u8;
-        entity.facing_target = None;
-        entity.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
+            .foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
         //75BC36's dead-owner exit bypasses75BCB2 and retains the exact byte.
         // Native controls: foot_scold_latch.json dead_fresh_head rows.
         entity.navigation.path_runtime.clear_scold_latch();
@@ -197,11 +193,14 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .set_step_head(Some(DriveCoord::cell(10, 10, 0)));
-            actor.foot_speed.applied_fraction = SimFixed::from_num(0.75);
+            actor
+                .foot_speed
+                .set_speed_fraction(SimFixed::from_num(0.75));
             actor
                 .navigation
                 .path_runtime
                 .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
+            let body_before = actor.body_facing;
             assert!(finish_fresh_head(&mut actor, 100));
             assert_eq!(
                 u64::from(actor.navigation.path_runtime.scold_latch_raw()),
@@ -212,10 +211,10 @@ mod tests {
                 Some(row["motion"] == 1)
             );
             assert_eq!(
-                actor.foot_speed.applied_fraction,
+                actor.foot_speed.applied_fraction(),
                 SimFixed::from_num(row["speed_fraction"].as_f64().unwrap())
             );
-            assert!(actor.body_facing.is_none());
+            assert_eq!(actor.body_facing, body_before, "a dead owner turns nothing");
             checked += 1;
         }
         assert_eq!(checked, 3);
@@ -521,13 +520,15 @@ mod tests {
             let input = &row["input"];
             let mut entity = GameEntity::test_default(1, "E1", "Owner", 9, 10);
             entity.category = crate::map::entities::EntityCategory::Infantry;
-            if !input["infantry_constructor_facing"]
+            if input["infantry_constructor_facing"]
                 .as_bool()
                 .unwrap_or(false)
             {
-                // Retain the older corpus's explicitly supplied rate0 owner;
-                // the new constructor rows exercise lazy Infantry rate127.
-                entity.body_facing = Some(super::super::FacingClass::new(0, 0));
+                // The Infantry constructor's rate 127 (`0x00517BC5`).
+                entity.set_body_facing_rot(0);
+            } else {
+                // Retain the older corpus's explicitly supplied rate0 owner.
+                entity.body_facing = super::super::FacingClass::new(0, 0);
             }
             entity.owner = InternedId::from_index(41);
             entity.position.sub_x = SimFixed::from_num(input["sub"][0].as_i64().unwrap());
@@ -612,11 +613,11 @@ mod tests {
                 Some(row["motion"] == 1)
             );
             assert_eq!(
-                serde_json::to_value(entity.body_facing.unwrap()).unwrap(),
+                serde_json::to_value(entity.body_facing).unwrap(),
                 row["facing"]
             );
             assert_eq!(
-                entity.foot_speed.applied_fraction,
+                entity.foot_speed.applied_fraction(),
                 SimFixed::from_num(row["speed_fraction"].as_f64().unwrap())
             );
             assert_eq!(entity.navigation.path_replay.directions, vec![2, 3, 4, 5]);
@@ -894,7 +895,11 @@ pub(super) fn prepare_step_head_at(
             DriveCoord {
                 x: input.x,
                 y: input.y,
-                z: ground.wrapping_add(if bridge { 416 } else { 0 }),
+                z: ground.wrapping_add(if bridge {
+                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+                } else {
+                    0
+                }),
             },
             None,
         )

@@ -3,8 +3,6 @@
 //! barrel's FLH, and the moving-target lead (`0x0070BCB0`). Skipped without
 //! the retail `ini/rulesmd.ini` and `ini/artmd.ini`.
 
-use std::collections::BTreeMap;
-
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::projectile::{ProjectileCoord, launch::fireat_launch_distance};
@@ -14,7 +12,6 @@ struct Duel {
     sim: Simulation,
     rules: RuleSet,
     grid: crate::sim::pathfinding::PathGrid,
-    hm: BTreeMap<(u16, u16), u8>,
     /// Projectiles alive before the latest tick.
     before: std::collections::BTreeSet<u64>,
 }
@@ -41,14 +38,13 @@ impl Duel {
             sim,
             rules,
             grid,
-            hm: BTreeMap::new(),
             before: std::collections::BTreeSet::new(),
         })
     }
 
     fn spawn(&mut self, kind: &str, owner: &str, rx: u16, ry: u16, facing: u8) -> u64 {
         self.sim
-            .spawn_object(kind, owner, rx, ry, facing, &self.rules, &self.hm)
+            .spawn_object(kind, owner, rx, ry, facing, &self.rules)
             .unwrap_or_else(|| panic!("spawn {kind}"))
     }
 
@@ -65,14 +61,8 @@ impl Duel {
         self.sim.fire_events.clear();
         self.before = self.sim.projectiles.iter().map(|(&id, _)| id).collect();
         let commands = self.sim.take_due_commands();
-        self.sim.advance_tick(
-            &commands,
-            Some(&self.rules),
-            &self.hm,
-            Some(&self.grid),
-            None,
-            67,
-        );
+        self.sim
+            .advance_tick(&commands, Some(&self.rules), Some(&self.grid), None, 67);
     }
 
     fn health(&self, id: u64) -> i32 {
@@ -88,7 +78,10 @@ impl Duel {
         ProjectileCoord::new(
             i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
             i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
-            crate::sim::combat::object_world_z_leptons(entity, self.sim.resolved_terrain.as_ref()),
+            crate::sim::movement::ground_pose::object_world_z_leptons(
+                entity,
+                self.sim.resolved_terrain.as_ref(),
+            ),
         )
     }
 

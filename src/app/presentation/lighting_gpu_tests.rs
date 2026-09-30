@@ -97,7 +97,7 @@ fn stock_lamp_loaded_by_scenario_changes_actual_terrain_pixels() {
         origin_x: 0.0,
         origin_y: 0.0,
         local_bounds: None,
-        anchor_variant_table: None,
+        bridge_middle_tiles: None,
     };
     let mut lighting = MatchLighting::default();
     lighting.install(
@@ -129,7 +129,6 @@ fn stock_lamp_loaded_by_scenario_changes_actual_terrain_pixels() {
         tile.width as f32,
         tile.height as f32,
         Some(&lookup),
-        None,
         None,
     )
     .normal
@@ -168,7 +167,6 @@ fn stock_lamp_loaded_by_scenario_changes_actual_terrain_pixels() {
         tile.width as f32,
         tile.height as f32,
         Some(&lookup),
-        None,
         None,
     )
     .normal

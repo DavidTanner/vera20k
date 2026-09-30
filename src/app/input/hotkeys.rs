@@ -204,8 +204,8 @@ impl HotkeyBindings {
                 let Some(command) = command_from_name(name) else {
                     continue;
                 };
-                let Some(encoded) = section
-                    .get_i32(name)
+                // Reload `0x00533D20`: ReadInt over 0 for each entry name.
+                let Some(encoded) = Some(section.read_int(name, 0))
                     .filter(|value| *value != 0)
                     .and_then(|value| u16::try_from(value).ok())
                 else {

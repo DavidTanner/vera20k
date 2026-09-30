@@ -581,7 +581,6 @@ pub(crate) fn spawn_test_units_for_local_owner(state: &mut AppState) {
                 spawn_cell.1,
                 64,
                 rules,
-                &resources.height_map,
                 &resources.overlay_registry,
             )
             .is_some()
@@ -722,7 +721,11 @@ fn preferred_local_owner_for_sim(
 pub(crate) fn collect_playable_owners(state: &AppState) -> Vec<String> {
     collect_playable_owners_from(
         &state.match_state.match_presentation.house_roster,
-        state.match_state.sim_runtime.as_ref().map(|rt| &rt.simulation),
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
     )
 }
 
@@ -919,7 +922,6 @@ pub(crate) fn is_playable_house_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{schedule_command_in_sim, sell_wall_command_for_cell};
-    use std::collections::BTreeMap;
 
     use crate::map::entities::EntityCategory;
     use crate::rules::ini_parser::IniFile;
@@ -998,7 +1000,7 @@ mod tests {
 
         let due = sim.take_due_commands();
         assert_eq!(due.len(), 1);
-        let result = sim.advance_tick(&due, None, &BTreeMap::new(), None, None, 33);
+        let result = sim.advance_tick(&due, None, None, None, 33);
         assert_eq!(result.executed_commands, 1);
         assert!(
             !result.frame_committed,
@@ -1048,7 +1050,7 @@ mod tests {
         );
 
         let due = sim.take_due_commands();
-        let result = sim.advance_tick(&due, None, &BTreeMap::new(), None, None, 33);
+        let result = sim.advance_tick(&due, None, None, None, 33);
         let local_outcome_exit_ready = sim.houses[&local]
             .outcome_state
             .is_some_and(|outcome| outcome.exit_ready);

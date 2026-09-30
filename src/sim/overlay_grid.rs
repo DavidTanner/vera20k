@@ -14,8 +14,9 @@ use crate::map::overlay_types::{
 };
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::intern::InternedId;
+use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
-use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::object_distance;
 use std::collections::BTreeSet;
 
 const MARK_MAX_SLOPE: u8 = 4;
@@ -24,22 +25,6 @@ const MARK_STEEP_SLOPE_EXCEPTION_ID: u8 = 0xB2;
 /// Universal pre-stamp slope gate shared by native-style Mark entry points.
 fn mark_rejects_steep_slope(slope_type: u8, overlay_id: u8) -> bool {
     slope_type > MARK_MAX_SLOPE && overlay_id != MARK_STEEP_SLOPE_EXCEPTION_ID
-}
-
-/// `FUN_005F6360`'s x87/LUT/ftol 3-D distance sequence.
-fn native_wall_owner_distance(dx: i32, dy: i32, dz: i32) -> i32 {
-    let x = X87Chop53::load_i32(dx);
-    let y = X87Chop53::load_i32(dy);
-    let z = X87Chop53::load_i32(dz);
-    let squared = X87Chop53::add(
-        X87Chop53::add(X87Chop53::mul(x, x), X87Chop53::mul(z, z)),
-        X87Chop53::mul(y, y),
-    );
-    let root_bits =
-        sqrt_approx_f32(squared).expect("map-space squared distance stays in finite f32 range");
-    let root =
-        X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    X87Chop53::ftol_i64(root).expect("map-space distance fits a signed integer") as i32
 }
 
 /// Building facts consumed by the one-shot map-wall owner reconstruction pass.
@@ -94,12 +79,10 @@ pub struct OverlayGrid {
     width: u16,
     height: u16,
     cells: Vec<OverlayCell>,
-    /// Retained wall and Foot contribution to CellClass+0x122. `Some`, even
-    /// when all zero, means the finalized authored plane was retained and final
-    /// wall identities must never be scanned as a substitute. `None` is the
-    /// temporary legacy-constructor compatibility mode.
-    #[serde(default)]
-    retained_neighbor_counts: Option<Vec<u8>>,
+    /// Retained wall and Foot contribution to CellClass+0x122, one byte per
+    /// cell. It is the sole wall authority, even when all zero: final wall
+    /// identities are never scanned as a substitute.
+    retained_neighbor_counts: Vec<u8>,
     #[serde(skip, default)]
     foot_neighbor_changes: crate::sim::cell_neighbors::NeighborCountChanges,
     /// Cells mutated this tick — drained by Simulation's end-of-frame finalizer
@@ -128,26 +111,12 @@ pub struct OverlayGrid {
     /// Not part of game state; never serialized.
     #[serde(skip, default)]
     removed_render_cells: Vec<(u16, u16)>,
-    /// A synchronous sim-side recalc already observed a passability change for
-    /// one of the dirty cells. The frame finalizer must preserve that first result
-    /// even though recalculating the now-current terrain returns `false`.
-    #[serde(skip, default)]
-    synchronous_passability_changed: bool,
-    /// Coordinates whose synchronous overlay recalc changed movement authority.
-    /// Drained by `World` before post-combat order readers rebuild paths/zones.
+    /// Coordinates whose synchronous overlay recalc changed movement authority,
+    /// in first-seen order. `Simulation` publishes each through the one-cell
+    /// navigation owner at its next path reader or the frame tail, whichever
+    /// comes first; zone IDs stay with the mutation owner's native helper.
     #[serde(skip, default)]
     synchronous_navigation_cells: Vec<(u16, u16)>,
-}
-
-/// Which existing world-reader boundary needs the synchronous projection.
-/// VERA-internal delivery policy, gamemd equivalent UNCHECKED. Native callback
-/// order remains with the mutation owner; these receipts do not run callbacks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NavigationPublication {
-    /// The owner already publishes inline, or its first reader is the frame tail.
-    FrameBoundary,
-    /// Publish the changed cell before the next path/zone reader as well.
-    NextPathReader,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -208,51 +177,26 @@ fn increment_wall_neighbor_plane(
 }
 
 impl OverlayGrid {
-    /// Create an empty grid with no overlays.
+    /// Create an empty grid with no overlays and an all-zero wall plane.
     pub fn new(width: u16, height: u16) -> Self {
         let count = width as usize * height as usize;
         Self {
             width,
             height,
             cells: vec![OverlayCell::default(); count],
-            retained_neighbor_counts: None,
+            retained_neighbor_counts: vec![0u8; count],
             foot_neighbor_changes: Default::default(),
             dirty_cells: Vec::new(),
             mutation_epoch: 0,
             wall_plane_epoch: 0,
-            synchronous_passability_changed: false,
             removed_render_cells: Vec::new(),
             synchronous_navigation_cells: Vec::new(),
         }
     }
 
-    /// Test-only stand-in for a production map-authority grid: an empty grid
-    /// that already retains its `CellClass+0x122` wall plane, as both
-    /// production constructors do. Fixtures that cross the snapshot
-    /// map-authority restore need this rather than the legacy `new`.
-    #[cfg(test)]
-    pub(crate) fn new_with_retained_wall_plane(width: u16, height: u16) -> Self {
-        let mut grid = Self::new(width, height);
-        grid.retained_neighbor_counts = Some(vec![0u8; usize::from(width) * usize::from(height)]);
-        grid
-    }
-
-    /// Attach an all-zero `CellClass+0x122` wall plane to a fixture grid that
-    /// was built through a legacy constructor but has to cross the snapshot
-    /// map-authority restore, which every production grid now satisfies.
-    #[cfg(test)]
-    pub(crate) fn retain_zero_wall_plane_for_tests(&mut self) {
-        self.mutation_epoch = self.mutation_epoch.wrapping_add(1);
-        self.wall_plane_epoch = self.wall_plane_epoch.wrapping_add(1);
-        self.retained_neighbor_counts = Some(vec![0u8; self.cells.len()]);
-    }
-
     #[cfg(test)]
     pub(crate) fn seed_neighbor_counts_for_tests(&mut self, value: u8) {
-        self.retained_neighbor_counts
-            .as_mut()
-            .expect("retained plane")
-            .fill(value);
+        self.retained_neighbor_counts.fill(value);
         self.wall_plane_epoch = self.wall_plane_epoch.wrapping_add(1);
     }
 
@@ -279,12 +223,11 @@ impl OverlayGrid {
             width,
             height,
             cells,
-            retained_neighbor_counts: Some(retained_neighbor_counts),
+            retained_neighbor_counts,
             foot_neighbor_changes: Default::default(),
             dirty_cells: Vec::new(),
             mutation_epoch: 0,
             wall_plane_epoch: 0,
-            synchronous_passability_changed: false,
             removed_render_cells: Vec::new(),
             synchronous_navigation_cells: Vec::new(),
         }
@@ -322,8 +265,8 @@ impl OverlayGrid {
     /// Seed from parsed map overlay entries.
     ///
     /// Bridge overlays are intentionally excluded: bridge body/bridgehead
-    /// overlay bytes are owned by `BridgeRuntimeState`, while this grid owns
-    /// mutable non-bridge overlay bytes such as ore and walls.
+    /// overlay bytes are owned by CellClass (`ResolvedTerrainGrid`), while this
+    /// grid owns mutable non-bridge overlay bytes such as ore and walls.
     pub fn from_overlay_entries(entries: &[OverlayEntry], width: u16, height: u16) -> Self {
         let mut grid = Self::new(width, height);
         for entry in entries {
@@ -448,7 +391,7 @@ impl OverlayGrid {
                 }
             }
         }
-        grid.retained_neighbor_counts = Some(wall_neighbor_counts);
+        grid.retained_neighbor_counts = wall_neighbor_counts;
         grid
     }
 
@@ -497,23 +440,19 @@ impl OverlayGrid {
     }
 
     /// The epoch under which the movement blocker plane's wall part is
-    /// current: the wall plane's own when one is retained, else (legacy
-    /// constructors, which scan wall identities instead) every mutation.
-    pub(crate) fn blocker_plane_epoch(&self) -> (bool, u64) {
-        match self.retained_neighbor_counts {
-            Some(_) => (true, self.wall_plane_epoch),
-            None => (false, self.mutation_epoch),
-        }
+    /// current: the wall plane's own.
+    pub(crate) fn blocker_plane_epoch(&self) -> u64 {
+        self.wall_plane_epoch
     }
 
-    /// Read the retained wall and Foot contribution plane. `Some(all-zero)` is
+    /// Read the retained wall and Foot contribution plane. All-zero is
     /// authoritative and must not fall back to a final-identity scan.
-    pub(crate) fn retained_neighbor_counts(&self) -> Option<&[u8]> {
-        self.retained_neighbor_counts.as_deref()
+    pub(crate) fn retained_neighbor_counts(&self) -> &[u8] {
+        &self.retained_neighbor_counts
     }
 
-    pub(crate) fn retained_neighbor_count_storage_len(&self) -> Option<usize> {
-        self.retained_neighbor_counts.as_ref().map(Vec::len)
+    pub(crate) fn retained_neighbor_count_storage_len(&self) -> usize {
+        self.retained_neighbor_counts.len()
     }
 
     pub(crate) fn foot_neighbor_revision(&self) -> u64 {
@@ -535,9 +474,7 @@ impl OverlayGrid {
         source: (i16, i16),
         add: bool,
     ) {
-        let Some(counts) = self.retained_neighbor_counts.as_mut() else {
-            return;
-        };
+        let counts = &mut self.retained_neighbor_counts;
         let terrain = terrain.expect("retained neighbor counts need native CellClass lookup");
         self.mutation_epoch = self.mutation_epoch.wrapping_add(1);
         for (dx, dy) in [
@@ -604,9 +541,7 @@ impl OverlayGrid {
         // 0x00481070..0x00481082; cleanup auto-removal's conditional decrement
         // uses the zone comparison returned by recalculate_runtime_cell below.
         let (width, height) = (self.width, self.height);
-        let Some(counts) = self.retained_neighbor_counts.as_mut() else {
-            return;
-        };
+        let counts = &mut self.retained_neighbor_counts;
         let terrain = resolved_terrain
             .expect("retained wall-neighbor authority requires resolved CellClass lookup state");
         assert_eq!(
@@ -868,13 +803,14 @@ impl OverlayGrid {
                     {
                         continue;
                     }
-                    let dx = wall_x.wrapping_sub(building.world_x);
-                    let dy = wall_y.wrapping_sub(building.world_y);
-                    let dz = wall_z.wrapping_sub(building.world_z);
-                    let raw = i64::from(native_wall_owner_distance(dx, dy, dz));
-                    let adjustment =
-                        64 * i64::from(building.foundation_width + building.foundation_height);
-                    let adjusted = raw.saturating_sub(adjustment).max(0);
+                    let adjusted = i64::from(object_distance(
+                        [wall_x, wall_y, wall_z],
+                        [building.world_x, building.world_y, building.world_z],
+                        Some((
+                            i32::from(building.foundation_width),
+                            i32::from(building.foundation_height),
+                        )),
+                    ));
                     if adjusted < best_distance {
                         best_distance = adjusted;
                         best_owner = Some(building.owner);
@@ -975,21 +911,10 @@ impl OverlayGrid {
         self.cells.len()
     }
 
-    /// Drain the list of cells mutated since last call. Simulation's frame
-    /// finalizer recalculates passability and may trigger a navigation rebuild.
-    ///
-    /// Drained at the first frame boundary with rules, resolved terrain, and an
-    /// overlay registry. Partial-input frames retain it so derived terrain and
-    /// navigation cannot miss the mutation.
-    #[cfg(test)]
-    pub fn take_dirty_cells(&mut self) -> Vec<(u16, u16)> {
-        self.take_dirty_cells_with_passability_signal().0
-    }
-
-    /// Recalculate one runtime mutation and retain its delivery obligations.
-    /// A later unchanged projection cannot erase an earlier change. The
-    /// next-reader receipt preserves first-seen order independently of the
-    /// presentation dirty list and the frame signal.
+    /// Recalculate one runtime mutation and queue its navigation receipt.
+    /// A later unchanged projection cannot erase an earlier change: the
+    /// receipt keeps first-seen order independently of the presentation
+    /// dirty list until `Simulation` publishes it.
     ///
     /// Zone comparison serves ordered wall cleanup: CellClass cleanup
     /// @ 0x00480630 runs Recalc @ 0x00480969, compares old/new zone at
@@ -1000,7 +925,6 @@ impl OverlayGrid {
         terrain: &mut ResolvedTerrainGrid,
         registry: &OverlayTypeRegistry,
         cell: (u16, u16),
-        publication: NavigationPublication,
     ) -> OverlayRecalcOutcome {
         self.mutation_epoch = self.mutation_epoch.wrapping_add(1);
         let old_zone = terrain.cell(cell.0, cell.1).map(|cell| cell.zone_type);
@@ -1009,11 +933,7 @@ impl OverlayGrid {
         let zone_changed = old_zone
             .zip(terrain.cell(cell.0, cell.1).map(|cell| cell.zone_type))
             .is_some_and(|(old, new)| old != new);
-        self.synchronous_passability_changed |= navigation_changed;
-        if navigation_changed
-            && publication == NavigationPublication::NextPathReader
-            && !self.synchronous_navigation_cells.contains(&cell)
-        {
+        if navigation_changed && !self.synchronous_navigation_cells.contains(&cell) {
             self.synchronous_navigation_cells.push(cell);
         }
         OverlayRecalcOutcome {
@@ -1028,13 +948,14 @@ impl OverlayGrid {
         std::mem::take(&mut self.synchronous_navigation_cells)
     }
 
-    /// Drain overlay dirtiness and any already-observed passability change as
-    /// one runtime-only result. Neither component is serialized or hashed.
-    pub(crate) fn take_dirty_cells_with_passability_signal(&mut self) -> (Vec<(u16, u16)>, bool) {
-        (
-            std::mem::take(&mut self.dirty_cells),
-            std::mem::take(&mut self.synchronous_passability_changed),
-        )
+    /// Drain the cells mutated since the last call. Simulation's frame
+    /// finalizer recalculates their attributes and publishes navigation.
+    ///
+    /// Drained at the first frame boundary with rules, resolved terrain, and an
+    /// overlay registry. Partial-input frames retain it so derived terrain and
+    /// navigation cannot miss the mutation. Runtime-only; never serialized.
+    pub(crate) fn take_dirty_cells(&mut self) -> Vec<(u16, u16)> {
+        std::mem::take(&mut self.dirty_cells)
     }
 }
 
@@ -1110,12 +1031,6 @@ pub struct WallMutation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WallZoneRepairKind {
-    AssignOrphaned,
-    MergeAdjacent,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WallDirtyStep {
     Tactical,
     Radar,
@@ -1140,7 +1055,7 @@ pub(crate) trait WallDamageTransactionHost {
         terrain: &ResolvedTerrainGrid,
         cell: (u16, u16),
         navigation_changed: bool,
-        repair: WallZoneRepairKind,
+        repair: ZoneRepairKind,
     );
 
     fn pointer_expired(&mut self, target: WallPointerTarget);
@@ -1306,7 +1221,18 @@ pub fn damage_wall_overlay(
     damage: i32,
     rng: &mut crate::sim::rng::SimRng,
 ) -> WallDamageResult {
-    damage_wall_overlay_with_terrain(overlay_grid, registry, None, rx, ry, damage, rng)
+    // Production always damages walls with its resolved CellClass grid; a
+    // flat clear one of the grid's size stands in.
+    let mut terrain = tests::clear_terrain_grid(overlay_grid.width(), overlay_grid.height());
+    damage_wall_overlay_with_terrain(
+        overlay_grid,
+        registry,
+        Some(&mut terrain),
+        rx,
+        ry,
+        damage,
+        rng,
+    )
 }
 
 /// Runtime-authoritative wall damage. Finalized grids require the resolved
@@ -1346,7 +1272,7 @@ pub(crate) fn damage_wall_overlay_with_runtime_host(
     mut host: Option<&mut dyn WallDamageTransactionHost>,
 ) -> WallDamageResult {
     assert!(
-        overlay_grid.retained_neighbor_counts().is_none() || resolved_terrain.is_some(),
+        resolved_terrain.is_some(),
         "retained wall-neighbor authority requires resolved terrain for wall damage"
     );
     let mut result = WallDamageResult::default();
@@ -1500,22 +1426,13 @@ fn damage_wall_recursive(
     if let NativeRuntimeOverlayCell::Real(rx, ry) = target
         && let Some(terrain) = resolved_terrain.as_deref_mut()
     {
-        let recalc = grid.recalculate_runtime_cell(
-            terrain,
-            registry,
-            (rx, ry),
-            if host.is_some() {
-                NavigationPublication::FrameBoundary
-            } else {
-                NavigationPublication::NextPathReader
-            },
-        );
+        let recalc = grid.recalculate_runtime_cell(terrain, registry, (rx, ry));
         if let Some(host) = host.as_deref_mut() {
             host.navigation_step(
                 terrain,
                 (rx, ry),
                 recalc.navigation_changed,
-                WallZoneRepairKind::AssignOrphaned,
+                ZoneRepairKind::AssignOrphaned,
             );
         }
     }
@@ -1839,7 +1756,7 @@ pub(crate) fn refresh_wall_connectivity_after_placement_with_host(
     mut host: Option<&mut dyn WallDamageTransactionHost>,
 ) {
     assert!(
-        grid.retained_neighbor_counts().is_none() || resolved_terrain.is_some(),
+        resolved_terrain.is_some(),
         "retained wall-neighbor authority requires resolved terrain for placement cleanup"
     );
     const CLEANUP_CROSS: [(i32, i32); 5] = [(0, -1), (1, 0), (0, 1), (-1, 0), (0, 0)];
@@ -1875,16 +1792,7 @@ pub(crate) fn refresh_wall_connectivity_after_placement_with_host(
             continue;
         };
         if was_wall && let Some(terrain) = resolved_terrain.as_deref_mut() {
-            let recalc = grid.recalculate_runtime_cell(
-                terrain,
-                registry,
-                (nx, ny),
-                if host.is_some() {
-                    NavigationPublication::FrameBoundary
-                } else {
-                    NavigationPublication::NextPathReader
-                },
-            );
+            let recalc = grid.recalculate_runtime_cell(terrain, registry, (nx, ny));
             if recalc.zone_changed
                 && let Some(host) = host.as_deref_mut()
             {
@@ -1893,9 +1801,9 @@ pub(crate) fn refresh_wall_connectivity_after_placement_with_host(
                     (nx, ny),
                     recalc.navigation_changed,
                     if result == RecomputeResult::Destroyed {
-                        WallZoneRepairKind::AssignOrphaned
+                        ZoneRepairKind::AssignOrphaned
                     } else {
-                        WallZoneRepairKind::MergeAdjacent
+                        ZoneRepairKind::MergeAdjacent
                     },
                 );
             }
@@ -2036,16 +1944,7 @@ fn cleanup_wall_neighbors_into(
             // removal's retained-count reversal is completed here only after
             // that Recalc proves the reduced zone changed.
             if let Some(terrain) = resolved_terrain.as_deref_mut() {
-                let recalc = grid.recalculate_runtime_cell(
-                    terrain,
-                    registry,
-                    (nx, ny),
-                    if host.is_some() {
-                        NavigationPublication::FrameBoundary
-                    } else {
-                        NavigationPublication::NextPathReader
-                    },
-                );
+                let recalc = grid.recalculate_runtime_cell(terrain, registry, (nx, ny));
                 if recalc.zone_changed
                     && let Some(host) = host.as_deref_mut()
                 {
@@ -2054,9 +1953,9 @@ fn cleanup_wall_neighbors_into(
                         (nx, ny),
                         recalc.navigation_changed,
                         if recomputed == RecomputeResult::Destroyed {
-                            WallZoneRepairKind::AssignOrphaned
+                            ZoneRepairKind::AssignOrphaned
                         } else {
-                            WallZoneRepairKind::MergeAdjacent
+                            ZoneRepairKind::MergeAdjacent
                         },
                     );
                 }
@@ -2142,7 +2041,7 @@ mod tests {
             (Some(0x18), 9)
         );
         assert!(grid.dirty_cells.is_empty());
-        assert_eq!(grid.retained_neighbor_counts(), Some(&[5, 8][..]));
+        assert_eq!(grid.retained_neighbor_counts(), &[5, 8][..]);
     }
 
     #[test]
@@ -2158,10 +2057,7 @@ mod tests {
         let restored: OverlayGrid =
             bincode::deserialize(&bytes).expect("deserialize overlay authority");
 
-        assert_eq!(
-            restored.retained_neighbor_counts(),
-            Some(&[0, 7, 255, 3][..])
-        );
+        assert_eq!(restored.retained_neighbor_counts(), &[0, 7, 255, 3][..]);
         assert_eq!(restored.cell(1, 0), grid.cell(1, 0));
     }
 
@@ -2235,7 +2131,7 @@ mod tests {
         assert_eq!(
             grid.cell(1, 1).overlay_id,
             None,
-            "bridge overlay byte is owned by BridgeRuntimeState"
+            "bridge overlay byte is owned by CellClass"
         );
         assert_eq!(grid.cell(2, 1).overlay_id, Some(5));
     }
@@ -2421,58 +2317,23 @@ mod tests {
             1,
             1,
             vec![ResolvedTerrainCell {
-                rx: 0,
-                ry: 0,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
                 filled_clear: true,
                 tileset_index: None,
                 land_type: base_land_type,
                 yr_cell_land_type: base_land_type,
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
                 terrain_class,
                 speed_costs,
                 is_water,
                 is_cliff_like: base_ground_walk_blocked,
-                is_rough: false,
-                is_road: false,
                 accepts_smudge: true,
-                allows_tiberium: false,
-                height_in_pixels: 0,
-                variant: 0,
-                has_ramp: false,
-                canonical_ramp: None,
                 ground_walk_blocked: base_ground_walk_blocked,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
                 zone_type: zone_class::GROUND,
                 base_ground_walk_blocked,
-                base_build_blocked: false,
                 base_land_type,
                 base_yr_cell_land_type: base_land_type,
                 base_terrain_class: terrain_class,
                 base_speed_costs: speed_costs,
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0; 3],
-                radar_right: [0; 3],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(0, 0)
             }],
         )
     }
@@ -2529,7 +2390,7 @@ mod tests {
         );
         assert_eq!(
             no_wall.retained_neighbor_counts(),
-            Some(&[0u8; 12][..]),
+            &[0u8; 12][..],
             "a stamped non-wall overlay still retains an all-zero plane"
         );
 
@@ -2547,9 +2408,7 @@ mod tests {
             true,
         );
         assert_eq!(walled.cell(1, 1).overlay_id, Some(2));
-        let plane = walled
-            .retained_neighbor_counts()
-            .expect("map-pack boundary retains the plane");
+        let plane = walled.retained_neighbor_counts();
         // Every neighbour of (1,1) took one increment; the anchor took none,
         // and (3, y) is two cells away.
         assert_eq!(
@@ -2593,7 +2452,7 @@ mod tests {
         );
         assert_eq!(
             grid.retained_neighbor_counts(),
-            Some(&[1u8, 1, 1, 1, 0, 0, 1, 1, 1][..]),
+            &[1u8, 1, 1, 1, 0, 0, 1, 1, 1][..],
             "the unallocated east neighbour resolves to the shared dummy"
         );
     }
@@ -2620,31 +2479,17 @@ mod tests {
         );
         assert_eq!(
             grid.retained_neighbor_counts(),
-            Some(&[0u8, 1, 1, 1][..]),
+            &[0u8, 1, 1, 1][..],
             "only the three in-grid neighbours took an increment"
         );
     }
 
     pub(super) fn clear_terrain_grid(width: u16, height: u16) -> ResolvedTerrainGrid {
-        use crate::rules::terrain_rules::{LandType, SpeedCostProfile};
-
-        let mut single = single_cell_terrain(
-            LandType::Clear.as_index(),
-            SpeedCostProfile::default(),
-            false,
-            false,
-        );
-        let template = single.cells.remove(0);
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
-        for ry in 0..height {
-            for rx in 0..width {
-                let mut cell = template.clone();
-                cell.rx = rx;
-                cell.ry = ry;
-                cells.push(cell);
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_loader_clear_cell,
+        )
     }
 
     fn gsi_04_07_placement_registry() -> OverlayTypeRegistry {
@@ -2994,7 +2839,6 @@ mod tests {
         );
         assert!(
             grid.retained_neighbor_counts()
-                .expect("retained authority")
                 .iter()
                 .all(|&count| count == 0),
             "direct and cleanup removals each reverse one retained source"
@@ -3034,7 +2878,7 @@ mod tests {
         assert_eq!(result.destroyed_cells, vec![(2, 2), (2, 1)]);
         assert_eq!(
             unchanged_zone_grid.retained_neighbor_counts(),
-            Some(retained_cleanup_plane.as_slice()),
+            retained_cleanup_plane.as_slice(),
             "cleanup removal retains its source when Recalc leaves zone type unchanged"
         );
     }
@@ -3048,16 +2892,13 @@ mod tests {
                 vec![(0, 0), (-1, 0), (-1, 0), (-1, 0)],
                 vec![7, 8, 9, 10],
             ));
-        let retained = grid
-            .retained_neighbor_counts()
-            .expect("retained authority")
-            .to_vec();
+        let retained = grid.retained_neighbor_counts().to_vec();
 
         assert_eq!(grid.clear_overlay(0, 0), Some(0));
         grid.place_overlay(1, 1, 3, 4);
         assert_eq!(
             grid.retained_neighbor_counts(),
-            Some(retained.as_slice()),
+            retained.as_slice(),
             "generic identity writers cannot infer or reverse historical wall sources"
         );
     }
@@ -3078,7 +2919,7 @@ mod tests {
             FinalizedOverlayPayload::from_cells_for_test(1, 1, vec![(0, 0)], vec![0]),
         );
         let mut rng = crate::sim::rng::SimRng::new(1);
-        let _ = damage_wall_overlay(&mut grid, &registry, 0, 0, -1, &mut rng);
+        let _ = damage_wall_overlay_with_terrain(&mut grid, &registry, None, 0, 0, -1, &mut rng);
     }
 
     #[test]
@@ -3165,8 +3006,8 @@ mod tests {
 
     #[test]
     fn gsi_04_07_placement_map_wall_owner_uses_native_lut_distance_tie() {
-        assert_eq!(native_wall_owner_distance(0, 3968, 1040), 4101);
-        assert_eq!(native_wall_owner_distance(0, 4096, 208), 4101);
+        assert_eq!(object_distance([0, 3968, 1040], [0, 0, 0], None), 4101);
+        assert_eq!(object_distance([0, 4096, 208], [0, 0, 0], None), 4101);
 
         let registry = gsi_04_07_placement_registry();
         let terrain = clear_terrain_grid(5, 5);
@@ -3692,7 +3533,7 @@ NoUseTileLandType=yes
     /// runtime ore placement bypassed RecalcAttributes-equivalent logic.
     #[test]
     fn gsi_04_04_tiberium_overlay_round_trip_updates_terrain_metadata() {
-        use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+        use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
         use crate::rules::ini_parser::IniFile;
         use crate::rules::terrain_rules::LandType;
         use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
@@ -3707,66 +3548,21 @@ NoUseTileLandType=yes
         // `resolved_terrain::build()` would produce on a clear-grass tile.
         let clear_lt = LandType::Clear.as_index();
         let base_speed = SpeedCostProfile::default();
-        let mut cells = Vec::with_capacity(100);
-        for ry in 0..10u16 {
-            for rx in 0..10u16 {
-                cells.push(ResolvedTerrainCell {
-                    rx,
-                    ry,
-                    source_tile_index: 0,
-                    source_sub_tile: 0,
-                    final_tile_index: 0,
-                    final_sub_tile: 0,
-                    is_wood_bridge_repair_tile: false,
-                    level: 0,
-                    filled_clear: true,
-                    tileset_index: None,
-                    land_type: clear_lt,
-                    yr_cell_land_type: clear_lt,
-                    slope_type: 0,
-                    template_height: 0,
-                    render_offset_x: 0,
-                    render_offset_y: 0,
-                    terrain_class: TerrainClass::Clear,
-                    speed_costs: base_speed,
-                    is_water: false,
-                    is_cliff_like: false,
-                    is_rough: false,
-                    is_road: false,
-                    accepts_smudge: true,
-                    allows_tiberium: false,
-                    height_in_pixels: 0,
-                    variant: 0,
-                    has_ramp: false,
-                    canonical_ramp: None,
-                    ground_walk_blocked: false,
-                    terrain_object_blocks: false,
-                    terrain_object_occupation: None,
-                    overlay_blocks: false,
-                    overlay_zone_type: None,
-                    outside_playfield: false,
-                    zone_type: zone_class::GROUND,
-                    base_ground_walk_blocked: false,
-                    base_build_blocked: false,
-                    base_land_type: clear_lt,
-                    base_yr_cell_land_type: clear_lt,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: base_speed,
-                    has_bridge_deck: false,
-                    bridge_walkable: false,
-                    bridge_transition: false,
-                    bridge_deck_level: 0,
-                    bridge_layer: None,
-                    bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                    tube_index: None,
-                    radar_left: [0; 3],
-                    radar_right: [0; 3],
-                    has_damaged_data: false,
-                    bridgehead_anchor_class_at_load: None,
-                });
-            }
-        }
-        let mut terrain = ResolvedTerrainGrid::from_cells(10, 10, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(10, 10, |rx, ry| ResolvedTerrainCell {
+                filled_clear: true,
+                tileset_index: None,
+                land_type: clear_lt,
+                yr_cell_land_type: clear_lt,
+                speed_costs: base_speed,
+                accepts_smudge: true,
+                zone_type: zone_class::GROUND,
+                base_land_type: clear_lt,
+                base_yr_cell_land_type: clear_lt,
+                base_terrain_class: TerrainClass::Clear,
+                base_speed_costs: base_speed,
+                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            });
 
         // Install a distinct Tiberium-mode speed profile so we can prove the
         // round-trip actually copies it (not the same default).
@@ -3826,7 +3622,7 @@ mod recompute_tests {
         Navigation {
             cell: (u16, u16),
             navigation_changed: bool,
-            repair: WallZoneRepairKind,
+            repair: ZoneRepairKind,
         },
         Pointer(WallPointerTarget),
     }
@@ -3846,7 +3642,7 @@ mod recompute_tests {
             _terrain: &ResolvedTerrainGrid,
             cell: (u16, u16),
             navigation_changed: bool,
-            repair: WallZoneRepairKind,
+            repair: ZoneRepairKind,
         ) {
             self.events.push(WallHostEvent::Navigation {
                 cell,
@@ -3998,7 +3794,6 @@ Strength=400
         assert!(
             cleanup
                 .retained_neighbor_counts()
-                .expect("retained authority")
                 .iter()
                 .all(|&count| count == 0),
             "direct and cleanup removals reverse both fixed-alias count sources"
@@ -4110,7 +3905,7 @@ Strength=400
             WallHostEvent::Navigation {
                 cell: (5, 5),
                 navigation_changed: false,
-                repair: WallZoneRepairKind::AssignOrphaned,
+                repair: ZoneRepairKind::AssignOrphaned,
             },
             WallHostEvent::Dirty(WallDirtyStep::Radar, (5, 5)),
         ];
@@ -4177,17 +3972,9 @@ Strength=400
     }
 
     #[test]
-    fn wall_radar_dirty_retains_legacy_edges_fixed_aliases_and_dummy_words() {
+    fn wall_radar_dirty_retains_fixed_aliases_and_dummy_words() {
         let registry = make_retail_stage_registry();
         let mut rng = crate::sim::rng::SimRng::new(0x407_512);
-
-        let mut edge = OverlayGrid::new(3, 3);
-        edge.place_overlay(0, 0, 0, 0);
-        let edge_result = damage_wall_overlay(&mut edge, &registry, 0, 0, -1, &mut rng);
-        assert_eq!(
-            edge_result.radar_dirty_cells,
-            vec![(0, 0), (1, 1), (0, 2), (0, 1), (2, 0), (1, 0)],
-        );
 
         let mut alias_terrain = super::tests::clear_terrain_grid(512, 2);
         let mut aliased_edge = OverlayGrid::new(512, 2);

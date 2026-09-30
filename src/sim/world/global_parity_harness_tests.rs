@@ -31,7 +31,6 @@ use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
-use std::collections::BTreeMap;
 use std::io::Write;
 
 /// Optional observations of the two bounded replay fixtures, never golden input.
@@ -121,36 +120,294 @@ pub(super) fn print_replay_summary(name: &str, sim: &Simulation) {
 const HARNESS_SEED: u64 = 0xC0FFEE_1234;
 const HARNESS_TICKS: u64 = 600;
 const HARNESS_TICK_MS: u32 = 67;
+const HARNESS_MAP_SIZE: u16 = 64;
+const HARNESS_CELL_SIDE: u16 = 2 * HARNESS_MAP_SIZE + 1;
+const HARNESS_COORD_SHIFT: u16 = HARNESS_MAP_SIZE / 2;
 /// AT-8: ticks at which the per-stream RNG cursors are compared record-vs-replay
 /// (after the tick at this index executes).
 const STREAM_CHECKPOINT_TICKS: &[u64] = &[149, 299, 449, 599];
 
-/// Rust regression receipts from `bridge-fv-host-v15` (600 committed frames),
-/// not native full-skirmish goldens. Record/replay checks every frame and all
-/// three streams at the checkpoints above; these absolute pins also catch a
-/// deterministic routing/cadence change in both passes.
-///
-/// The FV chain corrects IDLE/Stop (`0x004C74CB..0x004C76BB`: no ordinary
-/// mission write) and the passive gate (`0x006FA697`: literal committed mission).
-/// Stop now retains Attack and its dispatch timer; a cleared TarCom cannot scan
-/// before the real Guard transition. The original executed Stop and collapse
-/// cases are in `tools/spatial_oracle/fv_cell_attack/paid_conditional*.json`;
-/// source/coverage is in that package's README. The live Unit FireAt host also
-/// commits before later objects' AI (`0x007365E1`, `0x0055B613`).
-///
-/// The observed global fixture consumes 311 Scenario words after placement;
-/// the historical Scenario fingerprint corresponds to 319 from the same input.
-/// Main and MapGen are unchanged, and the 13-shot duel still leaves tank 6 at
-/// 12 HP. The old trace does not retain individual words, so this is a bounded
-/// causal account, not an attribution of every historical draw. Old hash-schema
-/// projections cannot reconstruct the former mission/timer behavior; they are
-/// retained in Git history rather than simulated by rewriting current state.
+/// Rust regression receipts, not native whole-skirmish goldens. Incoming-main
+/// integration v25 preserves all 600 record/replay frames and three-stream
+/// checkpoints. Saved main and candidate full hashes match through frame279.
+/// The first difference is the ROF word521608482: main's global combat tail
+/// emits at280, the native Unit own-slot owner (`7365E1`, Logic55B613) at281.
+/// Event IDLE (`4C74CB..4C76BB`) then retains Attack after299, suppressing
+/// main's frame300 passive draw1945012778 (`6FA697` reads committed mission).
+/// Downstream raw Scenario words by producer: mission203->200, idle31->33,
+/// scan69->73, ROF20->18 (bounded-RNG retries included). The entire323-word
+/// main sequence is a prefix of the324-word candidate sequence; Main/MapGen
+/// are unchanged. The13-shot duel leaves tank6 at12 HP. Target expiry588,
+/// Guard Commence595 and first passive scan596 pass the transition checks below.
+/// Original conditional native Stop/FV evidence and reproduction entry points:
+/// `tools/spatial_oracle/fv_cell_attack/README.md`. These fixture observations
+/// refresh a Rust regression pin; they do not establish native world parity.
 const FINAL_STREAM_STATES: (u64, u64, u64) = (
-    0x5591_C022_8E71_3E8F,
+    // MERGE 2026-08-03: both branches re-baselined these independently (dev:
+    // passive acquire + spawner; foundations: Move cadence + hashed runtime
+    // state). Neither side's values describe the merged tree; re-derived below
+    // from the merged tree's own output in the same merge commit.
+    // 2026-09-25 combat chain 1: Mission_Guard cadence draws from frame 0 and
+    // the tank duel from tick 281 (see GLOBAL_HARNESS_FINAL_HASH).
+    // 2026-09-25 combat chain 2: vehicle Guard cadence draws from frame 0.
+    // 2026-09-25 ore-field chain: the fixture's playfield and the harvester's
+    // native ore field (see GLOBAL_HARNESS_FINAL_HASH).
+    // 2026-09-25 ore-field review: the fixture's map cells (same place).
+    // 2026-09-30 native mission-site idle/initial Ready plus explicit GI ART:
+    // frame0 omits four old global idle-tail draws; first bound ART idle at
+    // frame14 precedes Guard cadence. Saved production-call receipts are in
+    // foot_bridge_layer.replay.json. Full Main/MapGen are unchanged.
+    0x5F1A_988D_BB0A_157F,
     0x39F3_258B_A550_EB7C,
     0x1CE8_1848_7043_6163,
 );
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xD29D_179C_FCC2_6586;
+
+// 2026-09-23 Drive/Ship Process path request (behavior, not composition):
+// Drive/Ship orders from every producer (player, pursuit, rally, miners) are
+// accepted by the Unit setter without an order-time A*, PowerOn or redirect.
+// This fixture has no native zone topology, so the first Process searches in
+// the legacy inline lane, not the Find_Path owner. The pins move with that
+// state; the RNG stream pins, per-tick replay equality and route tripwires in
+// this file are unchanged. The old values are in the commit that moved them.
+// 2026-09-23 Drive/Ship same-call track-end continuation (behavior): first
+// divergence from main is tick 30, tank 4's first track end, now continuing
+// into its next track in that Process (residual-only Process_Track(1)). The
+// scenario and main RNG streams match main over all 600 ticks. The
+// retained-destination check expects a live track instead of the removed
+// next-frame deferral. Old values: the commit that moved them.
+// Schema202 folds the object's rearm timer (TechnoClass+0x2EC, started at the
+// construction frame as the constructor does) in place of the AttackTarget
+// cooldown/burst-delay counters and the cloak copy: composition only.
+// Before(202) reproduces the v201 pin; per-tick replay, the RNG stream pins and
+// the route tripwires are unchanged.
+// 2026-09-25 combat chain 1 (behavior, snapshot 204), traced tick by tick
+// against 947c7044: from frame 0 three objects on Guard run Mission_Guard and
+// draw its RandomRanged(0, 2) cadence, and the infantry idle fidgets move with
+// them (Scenario stream only). Cells and health match until tick 281, when
+// tank 4's attack-move, which acquired tank 6 there before too, now fires on
+// it. 947c7044 never fired and at tick 292 swapped to infantryman 7; its fire
+// path carried a shroud gate and invented retargets, neither of which native
+// has, and this chain deletes both. Tank 6 retaliates and the duel ends with tank
+// 4 dead at tick 590. The main and mapgen streams are unchanged. Schema 204
+// adds the house ROF bias and bullet OnBridge folds. Old values: the commit
+// that moved them.
+// 2026-09-25 combat chain 2 (behavior, snapshot 205), traced against d02452cd:
+// the vehicles take their idle mission on Unlimbo (UnitClass::Enter_Idle_Mode
+// 0x00738970), so their Mission_Guard cadence draws from frame 0 and every
+// vehicle move starts one frame earlier. The duel shifts by a tick (tank 4
+// dies at 588 instead of 587; tank 6 still ends at 12 HP); main/mapgen streams
+// unchanged. With that hook disabled every old pin reproduces, so the other
+// chain-2 mechanisms (impact ladder, Middle, debris, veterancy) leave this
+// fixture untouched: it binds no anim art. Old values: the moving commit.
+// Schema206 drops the retired Chrono dock folds (home refinery, dock-queued
+// byte, dock phase, pivot facing) from the harvester's miner block and tags
+// Techno+0x1F8, which no object here raises: composition only. Before(206)
+// reproduces the v205 pin; the three RNG stream pins, per-tick replay and the
+// miner-engagement tripwire are unchanged.
+// 2026-09-25 ore-field chain (behavior, snapshot 207), two causes:
+// 1. The fixture now installs the map's playfield, as map load does: the
+//    native ore scan (`Is_Cell_Harvestable`) admits only playfield cells.
+//    On origin/main 474a71ca with only that change the harvester cuts 20
+//    bales by tick 599 and the duel ends with tank 4 alive at 12 HP and tank
+//    6 at 12 HP (final 0xFE28_0F62_91CC_4516; Scenario stream
+//    0x59F4_735D_FB94_7D28; main and mapgen unchanged).
+// 2. Mission_Harvest states 0/1 run natively: the harvester reaches its
+//    field, cuts one bale per StageClass gate and hops without a fresh wait,
+//    21 bales by tick 599; its Rate epilogue draws and a mined-out cell's
+//    spread-queue draws move the Scenario stream only. The duel is as in 1.
+// Schema 207 drops the retired target-cell and harvest-timer folds and adds
+// the StageClass and Unit+0x6D1/+0x6D2; Before(207) pins that projection.
+// Every older projection moves with the behavior. Old values: the moving commit.
+// 2026-09-25 ore-field review (fixture): the scenario stands on flat map
+// cells with its playfield installed before placement and a [Tiberium] land
+// row, as a map load leaves them. Unlimbo's Unit Can_Enter_Cell and the
+// harvester's ore scan (`Is_Cell_Harvestable` through the native-compared
+// `foot_can_enter`) read them; without map cells no ore cell is harvestable.
+// The harvester still reaches its field and cuts 21 bales by tick 599; the
+// duel's timing shifts and tank 4 takes its seventh hit and dies at tick
+// 586..590 (tank 6 ends at 12 HP). Only the Scenario stream moves. Every
+// projection moves with the scenario. Old values: the moving commit.
+// 2026-09-25 combat chain 3 (snapshot 208): schema 208 folds every object's
+// crash latch and its AI edge (Foot+0x425/+0x426) and a Fly's fall counter,
+// composition only (nothing here flies or crashes): Before(208) reproduces the
+// ore-field pin, and the RNG stream pins, per-tick replay and every older
+// projection are unchanged.
+// 2026-09-26 retired weapon identity (snapshot 212, composition only): the
+// entity hash no longer folds `current_weapon_ref`, the weapon id of the last
+// live selection, which has had no reader since combat chain 3 took the death
+// weapon from GetCurrentWeapon. No schema can rebuild that per-fire value, so
+// this one step re-pins every projection in this test, before_power included.
+// Ceremony: with only that fold line deleted from the previous tree, these
+// pins fail and nothing else in the lib suite moves; their `left` values are
+// pasted here, and the full retirement (field, constructor, selection write
+// and its interning, snapshot 212) reproduces every one. FINAL_STREAM_STATES,
+// POSITION_FINGERPRINT, per-tick record/replay equality and the duel's
+// outcome are unchanged: the only change to these pins is the removed fold.
+// Old values: the commit that moved them.
+// 2026-09-26 building sale (snapshot 213, composition only): schema 213 folds
+// each building's AI sale byte (`BuildingClass+0x6DC`). Before(213)
+// reproduces the retired-weapon pin; FINAL_STREAM_STATES, per-tick replay and
+// every older projection are unchanged.
+// 2026-09-26 building repair (snapshot 216, composition only): schema 216
+// folds each building's repair byte (`BuildingClass+0x6E8`) and AI repair
+// byte (`+0x6CB`) and each house's repair delay (`HouseClass+0x1C0`),
+// auto-repair latch (`+0x245`) and its timer (`+0x280`). Before(216)
+// reproduces the building-sale pin; FINAL_STREAM_STATES, per-tick replay and
+// every older projection are unchanged, so the chain moved no behavior here.
+// Schema217 composition only for this fixture: the native constructor cursor,
+// native object IDs and retained fallback-cell Land now enter the hash. The
+// repair diagnostic reproduced the prior current pin with Before(217), and
+// all earlier projections, replay/behavior checks and RNG receipts still passed.
+// These Rust regression receipts do not establish native gameplay parity.
+// Schema220 retires the two VERA rally copies (the house's `rally_point` and
+// each building's `rally_target`; the rally is the factory's ArchiveTarget):
+// composition only, as no rally is set here. Before(220) folds their empty
+// values and reproduces the prior current pin; every earlier projection,
+// per-tick replay and the RNG receipts are unchanged.
+// 2026-09-27 combat chain 11 (behavior, snapshot 221), traced tick by tick
+// against 11c2e2e9: the war factory and refinery (ids 1, 2) now queue Guard
+// at Unlimbo (0x0044D6A0) and commence it on their first Update; unarmed and
+// with HasStupidGuardMode's constructor true, each Guard dispatch returns
+// 100 frames and draws nothing. From tick 0 their MissionCom holds Guard and
+// a 100-frame dispatch timer (last armed at frame 500) where 11c2e2e9 held no
+// mission and a zero timer. Every other object's full state, the logic order
+// and all three RNG streams match 11c2e2e9 at all 600 ticks, and resetting
+// just those two fields of the two buildings at tick 599 reproduces every
+// old pin, Schema220's current pin and before_power included. Old values:
+// the commit that moved them.
+// 2026-09-27 combat chain 15 (snapshot 230, composition only): schema 230
+// folds every building's `+0x388` FacingClass (BuildingClass::Init's Set_ROT,
+// `0x00442CA5`); the war factory and refinery here are turretless, so they
+// carried none before. Before(230) reproduces the chain-11 pin, and the three
+// RNG stream pins, per-tick replay and every older projection are unchanged:
+// neither building is armed, so ReceiveDamage's retaliation block draws and
+// targets nothing here. Old values: the commit that moved them.
+// 2026-09-28 one body facing (snapshot 237, composition only; #580): each
+// object's hash folds its body FacingClass (`+0x388`) in place of the retired
+// 8-bit facing mirror, turn target and optional turn interpolator, and a
+// building's `+0x388` moves from the turret slot into it, in every projection.
+// No schema can rebuild the mirror or the target, so this one step re-pins
+// every projection in this test. Schema 230's building-facing gate went with
+// them: its projection now equals the current hash, and its pin is gone.
+// Ceremony: on origin/main 99935d1d and on this change, a probe hash folding no
+// facing, and one folding only each object's body heading word at the hashed
+// frame (the old tree's interpolator, else its mirror), matched at all 600
+// ticks, RNG streams included (the probe patch was not committed): every other
+// fold and every object's heading are unchanged, so the only change to these
+// pins is the fold. Drive's never-written turn target (`DriveTurnState`) left
+// the fold in the same step: with its four default fields folded back in their
+// old place, this change reproduced every facing-only pin (final
+// 0x6158_8E4E_3576_4D36), RNG streams included. Old values: the commit that
+// moved them.
+// 2026-09-28 houses in the fixture (#824): a harvester's Dock checks read its
+// house's tracked BuildingType counts (`+0x5500`), so `seed_scenario` now makes
+// the two owners' houses, as computer houses in no house order, before placing
+// objects. Every projection folds the houses, so this one step re-pins every
+// projection in this test, schema 239's too. Ceremony: on origin/main 58605c6e
+// and on this change, a probe printing every object's mission, queued mission,
+// NavCom, health, position and attack target and the RNG state matched at all
+// 600 ticks (the probe patch was not committed), and `FINAL_STREAM_STATES`
+// holds: the only change is the houses' state in the hash. A human house would
+// change behaviour (its AttackMove tank keeps moving when hit), and a `[Map]
+// Size=` would clip the threat scan to its diamond; neither is in this step.
+// Old values: the commit that moved them.
+// 2026-09-29 retired ground move phase (snapshot 244, composition only; #726):
+// the locomotor's VERA-only `GroundMovePhase` and its stashed twin leave the
+// object and piggyback folds in every projection; no schema can rebuild the
+// retired value, so this one step re-pins every projection in this test.
+// Ceremony: on the parent commit with only those two folds removed, and on
+// this change, a soft-assert probe of every pin in this test printed identical
+// values, and per-tick replay and the RNG receipts passed at all 600 ticks
+// (the probe patch was not committed): the only change to these pins is the
+// fold. Old values: the commit that moved them.
+// 2026-09-29 retired purifier count (snapshot 245, composition only; #705):
+// each house's retained OrePurifier count, which only the hash read, leaves the
+// house fold in every projection (none folds it back), so this one step
+// re-pins every projection it moved. Ceremony: on the parent
+// commit with only that fold removed, and on this change, a soft-assert probe
+// of every pin in this test printed identical values, and per-tick replay and
+// the RNG receipts passed at all 600 ticks (the probe patch was not committed):
+// the only change to these pins is the fold. Old values: the commit that moved
+// them.
+// 2026-09-29 one wall-plane mode (snapshot 247, composition only; #717):
+// `OverlayGrid::new` now retains an all-zero wall plane like every production
+// grid, so this fixture's grid folds the plane's tag, length and bytes where
+// it folded the retired plane-less tag. No schema folds the retired mode, so
+// this one step re-pins every projection it moved. Ceremony: on the parent
+// commit and on this change, a probe printing every object's position, exact
+// Z, health, mission, NavCom, attack and movement targets and all three RNG
+// states matched at all 600 ticks (the probe patch was not committed): the
+// fixture has no walls, and its Foot neighbour sources come from the
+// lifecycle writes instead of positions with the same result. Old values: the
+// commit that moved them.
+// 2026-09-29 one locomotor enum (snapshot 248, composition only; #725):
+// LocomotorKind keeps only the eight installable classes, so the active kind,
+// the installed slot and the stash fold renumbered discriminants, and the
+// dormant Tunnel and DropPod states leave the object and payload folds, in
+// every projection. No schema rebuilds the old numbering, so this one step
+// re-pins every projection in this test. Ceremony: on the parent commit and on
+// this change, a probe printing every object's position, exact Z, health,
+// mission, NavCom, attack and movement targets, locomotor kind and layer and
+// all three RNG states matched at all 600 ticks (the probe patch was not
+// committed). Old values: the commit that moved them.
+// 2026-09-29 garrison Unload chain (hashed state, not behavior): an idle
+// turretless building's UpdateAnimation now sets its ready byte +0x6DD every
+// frame (0x00451218), which the building leaf hash folds. With only that write
+// disabled the old pin reproduces exactly; the three RNG stream pins, per-tick
+// replay equality and every object's final mission are unchanged.
+// 2026-09-29 bridge query owner migration: the ore probe requires native Size
+// and zone authority, so this fixture now uses Size64x64, Local2,2,60,56, an
+// empty bridge-map receipt and a common +32,+32 coordinate translation. Its
+// former width-zero/absent-zone setup exercised a legacy movement lane. Under
+// this same completed fixture, parent ore/zone query code and the new shared
+// queries produced identical world hashes, serialized objects, all three RNG
+// fingerprints and 319 raw draws at all 600 ticks. Absolute stream pins and duel
+// outcomes remain unchanged. This hash move is fixture/context coverage, not a
+// native skirmish golden. Receipts: tools/spatial_oracle/foot_bridge_layer.replay.json.
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+// 2026-09-30: native class target/destination and Foot mission/idle owners,
+// retained House radius/Foot688/Infantry68D state, and explicit GI ART inputs.
+// The first Scenario change is localized by foot_bridge_layer.replay.json;
+// this remains a Rust regression pin, not a native whole-skirmish golden.
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request and drops the installed slot, which is the stash's own kind; the
+// stash drops its retired separators. Ceremony: the parent commit with only
+// that fold changed printed this exact value, as this change does, with the
+// RNG pins above unchanged (the probe patch was not committed): the only
+// change to this pin is the fold. Old value: the commit that moved it.
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) advances only
+// for AirTracker entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+// Snapshot264: private native Stage and Infantry Doing/sequence timing.
+// Complete before/candidate/final receipts in foot_bridge_layer.replay.json
+// (techno_stage264_followup) attribute every changed actor field and retain
+// all819 frame rows, all three RNG states and ordered raw draw callers.
+// Incoming main preserves candidate state; its source-line changes remain
+// recorded. This Rust replay pin does not establish native whole-world parity.
+// Incoming main's BuildingType +0x6C (0x00464A70) floor coordinate is now
+// retained by Reveal, including zero. Complete before/final/control receipts
+// in foot_bridge_layer.main986.replay.json attribute all819 observed frames:
+// only GAWEAP/GAREFN exact Z changes None -> Some(0); every other actor field,
+// all three RNG states and ordered draw values match. Raw caller line changes
+// are retained. Omitting only Structure exact Z from the hash recovers every
+// prior frame hash and CE21_A562_A129_5C86; gameplay XYZ remains untouched.
+// The uncommitted control is preserved with source/binary identities. This
+// composition change establishes a Rust regression pin, not native world parity.
+// v25 integration: native own-slot Fire, literal passive mission and Stop
+// retention change behavior; see the complete causal account above.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC9C5_B19A_6873_6EA8;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -193,7 +450,7 @@ fn harness_ini() -> IniFile {
          [Riparius]\nImage=1\nValue=25\n\n\
          [TIB01]\nTiberium=yes\n\n\
          [Tiberium]\nFoot=100%\nTrack=100%\nWheel=100%\n\n\
-         [E1]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
+         [E1]\nImage=GI\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [HARV]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=600\nArmor=heavy\nSpeed=5\nHarvester=yes\nStorage=28\nDock=GAREFN\n\n\
          [GAWEAP]\nStrength=1000\nArmor=wood\nFoundation=4x3\n\n\
@@ -207,7 +464,15 @@ fn harness_ini() -> IniFile {
 
 fn harness_rules() -> RuleSet {
     let ini = harness_ini();
-    RuleSet::from_ini(&ini).expect("harness rules should parse")
+    // Explicit authored GI inputs use the production fixed-ART reader and binder;
+    // zero-count constructor records do not admit native Ready/idle actions.
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    rules
 }
 
 fn harness_overlays() -> OverlayTypeRegistry {
@@ -238,53 +503,95 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 /// Build the recorded scenario into `sim`. Spawn order fixes stable ids
 /// 1..=7 (war factory, refinery, harvester, Allied tank, Allied infantry,
 /// Soviet tank, Soviet infantry).
-fn seed_scenario(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    heights: &BTreeMap<(u16, u16), u8>,
-    overlays: &OverlayTypeRegistry,
-) {
+fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRegistry) {
     // Flat map cells and the playfield, as a map load installs them before
     // placing objects: Unlimbo's Unit `Can_Enter_Cell` reads both, and the
     // harvester's ore scan (`FootClass::Is_Cell_Harvestable @ 0x004DCE80`)
     // admits only playfield cells of LandType 5.
-    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_flat_ground_grid(64));
-    sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
-        base: 0,
-        off_fc: -64,
-        off_100: -1,
-        off_104: 128,
-        off_108: 65,
+    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_flat_ground_grid(
+        HARNESS_CELL_SIDE,
+    ));
+    sim.install_playfield_from_map_header(&crate::map::map_file::MapHeader {
+        theater: "TEMPERATE".into(),
+        fill: "Clear".into(),
+        level: 0,
+        width: u32::from(HARNESS_MAP_SIZE),
+        height: u32::from(HARNESS_MAP_SIZE),
+        local_left: 2,
+        local_top: 2,
+        local_width: 60,
+        local_height: 56,
     });
-    sim.spawn_from_map(
-        &[
-            unit("Americans", "GAWEAP", 3, 3, EntityCategory::Structure), // 1
-            unit("Americans", "GAREFN", 3, 10, EntityCategory::Structure), // 2
-            unit("Americans", "HARV", 8, 12, EntityCategory::Unit),       // 3
-            unit("Americans", "MTNK", 10, 8, EntityCategory::Unit),       // 4
-            unit("Americans", "E1", 11, 9, EntityCategory::Infantry),     // 5
-            unit("Soviet", "MTNK", 40, 8, EntityCategory::Unit),          // 6
-            unit("Soviet", "E1", 41, 9, EntityCategory::Infantry),        // 7
-        ],
-        Some(rules),
-        heights,
+    sim.bridge_state = Some(
+        crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
+            sim.resolved_terrain.as_ref().unwrap(),
+            true,
+            rules.bridge_rules.strength,
+            (i32::from(HARNESS_MAP_SIZE), i32::from(HARNESS_MAP_SIZE)),
+        ),
     );
+    // The owners' houses exist before a map load places objects, so each
+    // object's constructor `Add_Tracking` counts it: the harvester's Dock
+    // checks read the house's tracked BuildingType counts (`+0x5500`). They
+    // are computer houses, which keep this run's behaviour: the damage
+    // response treated a house-less owner as a computer's (a human house's
+    // AttackMove tank keeps moving when hit), and the harvester branches that
+    // treat a missing house as human are not reached in these 600 ticks. They
+    // join no house order, so no house AI runs.
+    for (owner, side) in [("Americans", 0), ("Soviet", 1)] {
+        let id = sim.interner.intern(owner);
+        sim.houses.entry(id).or_insert_with(|| {
+            crate::sim::house_state::HouseState::new(id, side, None, false, 0, 10)
+        });
+    }
+    let mut authored = [
+        unit("Americans", "GAWEAP", 3, 3, EntityCategory::Structure), // 1
+        unit("Americans", "GAREFN", 3, 10, EntityCategory::Structure), // 2
+        unit("Americans", "HARV", 8, 12, EntityCategory::Unit),       // 3
+        unit("Americans", "MTNK", 10, 8, EntityCategory::Unit),       // 4
+        unit("Americans", "E1", 11, 9, EntityCategory::Infantry),     // 5
+        unit("Soviet", "MTNK", 40, 8, EntityCategory::Unit),          // 6
+        unit("Soviet", "E1", 41, 9, EntityCategory::Infantry),        // 7
+    ];
+    // Preserve relative scene geometry inside a valid native Size diamond.
+    // The former width-zero rectangle cannot contain both (3,3) and (41,9).
+    for entity in &mut authored {
+        entity.cell_x += HARNESS_COORD_SHIFT;
+        entity.cell_y += HARNESS_COORD_SHIFT;
+        assert!(sim.map_cell_in_bounds((entity.cell_x as i16, entity.cell_y as i16)));
+        assert!(
+            sim.playfield_bounds
+                .unwrap()
+                .contains_geometry_packed(i32::from(entity.cell_x), i32::from(entity.cell_y),)
+        );
+    }
+    sim.spawn_from_map(&authored, Some(rules));
     // Seed the native CellClass overlay authority near the harvester.
     let tib01 = overlays.id_for_name("TIB01").expect("harness TIB01");
-    let mut overlay_grid = OverlayGrid::new(64, 64);
+    let mut overlay_grid = OverlayGrid::new(HARNESS_CELL_SIDE, HARNESS_CELL_SIDE);
     let terrain = sim.resolved_terrain.as_mut().expect("installed above");
     for (rx, ry) in [(12, 13), (13, 13), (12, 14), (13, 14)] {
+        let (rx, ry) = (rx + HARNESS_COORD_SHIFT, ry + HARNESS_COORD_SHIFT);
         overlay_grid.place_overlay(rx, ry, tib01, 11);
         // RecalcAttributes: LandType 5 and its [Tiberium] speed row.
-        overlay_grid.recalculate_runtime_cell(
-            terrain,
-            overlays,
-            (rx, ry),
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        overlay_grid.recalculate_runtime_cell(terrain, overlays, (rx, ry));
     }
     overlay_grid.take_dirty_cells();
     sim.overlay_grid = Some(overlay_grid);
+    // Live Foot reachability consumes the same map authorities as a map load.
+    // The old ore-query copy silently skipped zones in this direct-spawn scene.
+    // This harness passes its PathGrid into each frame; retain that owner
+    // rather than installing a second grid while completing the zone fixture.
+    let path = PathGrid::new(HARNESS_CELL_SIDE, HARNESS_CELL_SIDE);
+    sim.zone_grid = Some(
+        crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_map_context(
+            &path,
+            sim.resolved_terrain.as_ref().unwrap(),
+            &[],
+            sim.map_size_diamond(),
+            sim.playfield_bounds,
+        ),
+    );
 }
 
 /// Scripted commands keyed by `execute_tick` (fires when tick+1 == execute_tick).
@@ -294,8 +601,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             2,
             Command::Move {
                 entity_id: 4,
-                target_rx: 24,
-                target_ry: 8,
+                target_rx: 24 + HARNESS_COORD_SHIFT,
+                target_ry: 8 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -303,8 +610,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             40,
             Command::AttackMove {
                 entity_id: 4,
-                target_rx: 38,
-                target_ry: 8,
+                target_rx: 38 + HARNESS_COORD_SHIFT,
+                target_ry: 8 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -312,8 +619,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             120,
             Command::Move {
                 entity_id: 6,
-                target_rx: 28,
-                target_ry: 10,
+                target_rx: 28 + HARNESS_COORD_SHIFT,
+                target_ry: 10 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -322,8 +629,8 @@ fn harness_script() -> Vec<(u64, Command)> {
             320,
             Command::Move {
                 entity_id: 4,
-                target_rx: 8,
-                target_ry: 8,
+                target_rx: 8 + HARNESS_COORD_SHIFT,
+                target_ry: 8 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
         ),
@@ -344,13 +651,12 @@ fn due_commands(sim: &Simulation, script: &[(u64, Command)], tick: u64) -> Vec<C
 fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     let rules = harness_rules();
     let overlays = harness_overlays();
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    let grid = PathGrid::new(64, 64);
+    let grid = PathGrid::new(HARNESS_CELL_SIDE, HARNESS_CELL_SIDE);
     let script = harness_script();
 
     // ---- Record pass: build a ReplayLog through the live advance_tick path. ----
     let mut rec = Simulation::with_seed(HARNESS_SEED);
-    seed_scenario(&mut rec, &rules, &heights, &overlays);
+    seed_scenario(&mut rec, &rules, &overlays);
     let mut diagnostic = replay_diagnostic_file("global");
     record_replay_diagnostic(&mut diagnostic, &rec, None, &[], &[]);
     let mut log = ReplayLog::new(ReplayHeader {
@@ -366,20 +672,28 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // field and cuts. (The full dock handshake is the dedicated miner-dock
     // suites' coverage.) This guards that miner-component creation + the
     // acquisition path stay wired and contribute to the hash.
-    let mut miner_engaged = false;
+    let mut miner_acquired_field = false;
+    let mut miner_moved = false;
+    let mut miner_cut_ore = false;
     // AT-8 stream pins: per-stream cursor fingerprints captured at checkpoint
     // ticks during record, re-asserted in replay. Total-hash equality can mask
     // a draw routed to the wrong stream when a compensating error exists;
     // per-stream checkpoints catch misrouting directly.
     let mut recorded_streams: Vec<(u64, u64, u64, u64)> = Vec::new();
     let mut first_uncommitted_frame = None;
+    let mut target_expired = None;
+    let mut guard_commenced = None;
+    let mut post_guard_scan = None;
     for tick in 0..HARNESS_TICKS {
         let due = due_commands(&rec, &script, tick);
+        let before_scan = {
+            let tank = rec.substrate.entities.get(6).expect("surviving tank");
+            (tank.last_target_scan_frame, tank.passive_scan_timer)
+        };
         let mut advance = || {
             rec.advance_tick(
                 &due,
                 Some(&rules),
-                &heights,
                 Some(&grid),
                 Some(&overlays),
                 HARNESS_TICK_MS,
@@ -422,40 +736,57 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
                 (0, 45)
             );
         }
-        // The surviving tank's target dies after its shot at frame 590. Its
-        // next Attack dispatch queues Guard at 592, but the passive slot still
-        // reads Attack. Unit's later Commence promotes Guard; scanning is 593.
-        if (590..=593).contains(&tick) {
+        // The fatal Bullet detaches TarCom after the Unit's own visit. The
+        // literal committed Attack gate cannot scan before a due Attack
+        // handler queues Guard and the later Unit Commence promotes it.
+        // Observe that transition rather than importing a pre-integration
+        // death frame: main's native Infantry cadence changes the duel's draws.
+        if rec.substrate.entities.get(4).is_none() {
             let tank = rec.substrate.entities.get(6).expect("surviving tank");
             assert!(tank.attack_target.is_none());
-            let expected_mission = if tick < 592 {
-                MissionType::Attack
-            } else {
-                MissionType::Guard
-            };
-            assert_eq!(
-                tank.mission.current(),
-                MissionId::from_known(expected_mission)
-            );
-            let expected_scan = if tick < 593 { (266, 28) } else { (593, 27) };
-            assert_eq!(tank.last_target_scan_frame, expected_scan.0);
-            assert_eq!(
-                (
-                    tank.passive_scan_timer.start_frame,
-                    tank.passive_scan_timer.duration
-                ),
-                expected_scan
-            );
+            let scan = (tank.last_target_scan_frame, tank.passive_scan_timer);
+            if target_expired.is_none() {
+                target_expired = Some(tick);
+                assert_eq!(scan, before_scan, "expiry itself cannot run a scanner");
+            }
+            match tank.mission.current().known() {
+                Some(MissionType::Attack) => {
+                    assert!(guard_commenced.is_none());
+                    assert_eq!(scan, before_scan, "committed Attack rejects passive scan");
+                }
+                Some(MissionType::Guard) => {
+                    if let Some(guard_frame) = guard_commenced {
+                        if tick == guard_frame + 1 {
+                            assert_eq!(tank.last_target_scan_frame, tick as u32);
+                            post_guard_scan = Some(tick);
+                        }
+                    } else {
+                        guard_commenced = Some(tick);
+                        assert_eq!(scan, before_scan, "passive slot precedes Unit Commence");
+                    }
+                }
+                mission => panic!("unexpected surviving-tank mission: {mission:?}"),
+            }
         }
 
         if !result.frame_committed {
             first_uncommitted_frame.get_or_insert(tick);
         }
 
-        if rec.substrate.entities.get(3).is_some_and(|h| {
-            h.miner.as_ref().is_some_and(|m| m.harvesting) || h.navigation.nav_com.is_some()
-        }) {
-            miner_engaged = true;
+        if let Some(harvester) = rec.substrate.entities.get(3) {
+            if let Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) =
+                harvester.navigation.nav_com
+            {
+                miner_acquired_field |= (12 + HARNESS_COORD_SHIFT..=13 + HARNESS_COORD_SHIFT)
+                    .contains(&rx)
+                    && (13 + HARNESS_COORD_SHIFT..=14 + HARNESS_COORD_SHIFT).contains(&ry);
+            }
+            miner_moved |= (harvester.position.rx, harvester.position.ry)
+                != (8 + HARNESS_COORD_SHIFT, 12 + HARNESS_COORD_SHIFT);
+            miner_cut_ore |= harvester
+                .miner
+                .as_ref()
+                .is_some_and(|miner| !miner.cargo.is_empty());
         }
         log.record_tick(tick, due, result.state_hash);
         if STREAM_CHECKPOINT_TICKS.contains(&tick) {
@@ -467,6 +798,15 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             ));
         }
     }
+    assert!(
+        target_expired.is_some(),
+        "the duel must detach the dead target"
+    );
+    assert!(
+        guard_commenced > target_expired,
+        "Guard follows target expiry"
+    );
+    assert_eq!(post_guard_scan, guard_commenced.map(|frame| frame + 1));
     // The movement pass keeps its owner block sets current from the entity
     // store's touch log. Anything that hands out every entity mutably each
     // frame (`values_mut`) would quietly turn that back into a whole-world
@@ -477,10 +817,8 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     );
     let world_reads = rec.movement_pass_cache.block_index_world_rebuilds();
     // The blocker plane follows the same log. It is rebuilt from the whole map
-    // only when the terrain epoch or the wall plane moves; this fixture's grid is
-    // a legacy one without a retained wall plane, so every overlay write
-    // counts, which this script does a couple of dozen times; a rebuild per
-    // moving object's turn would be thousands.
+    // only when the terrain epoch or the wall plane moves (or a reader misses
+    // Foot deltas); a rebuild per moving object's turn would be thousands.
     let plane_reads = rec.movement_pass_cache.blocker_plane_world_rebuilds();
     assert!(
         plane_reads <= 60,
@@ -491,9 +829,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         "the block index read every entity {world_reads} times; look for a new all-entity mutable walk"
     );
     assert!(
-        miner_engaged,
-        "the miner system must engage the harvester (head for or cut ore) — \
-         else miner-component creation or Mission_Harvest state 0 regressed"
+        miner_acquired_field && miner_moved && miner_cut_ore,
+        "the miner must acquire its field, move and cut ore: \
+         acquired={miner_acquired_field}, moved={miner_moved}, cut={miner_cut_ore}"
     );
 
     // ---- Replay pass: fresh sim, real ReplayRunner, assert tick-by-tick.
@@ -501,7 +839,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // convenience entry, chunked at the stream checkpoints so the per-stream
     // cursors can be pinned between chunks. ----
     let mut rep = Simulation::with_seed(HARNESS_SEED);
-    seed_scenario(&mut rep, &rules, &heights, &overlays);
+    seed_scenario(&mut rep, &rules, &overlays);
     let mut replayed: Vec<u64> = Vec::with_capacity(log.ticks.len());
     let mut replayed_streams: Vec<(u64, u64, u64, u64)> = Vec::new();
     let mut chunk_start = 0usize;
@@ -515,7 +853,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             &mut rep,
             &chunk,
             Some(&rules),
-            &heights,
             Some(&grid),
             Some(&overlays),
             HARNESS_TICK_MS,
@@ -537,7 +874,6 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             &mut rep,
             &tail,
             Some(&rules),
-            &heights,
             Some(&grid),
             Some(&overlays),
             HARNESS_TICK_MS,
@@ -607,7 +943,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // Tank 4 first fires at frame 281; tank 6 retaliates at 283. Stop clears
     // tank 4's target at 299 and Move is issued at 319. A later hit overrides
     // that Move with Attack. Six returned hits leave tank 6 at 12 HP; its
-    // seventh hit kills tank 4 at frame 590. These are Rust regression values,
+    // seventh hit kills tank 4 at frame 588. These are Rust regression values,
     // not a native execution of this synthetic whole-skirmish fixture.
     assert_eq!(rep.fire_events.len(), 13);
     assert_eq!(
@@ -657,12 +993,10 @@ const DENSE_ROWS: u16 = 10;
 fn dense_converging_setup() -> (
     Simulation,
     RuleSet,
-    BTreeMap<(u16, u16), u8>,
     PathGrid,
     Vec<(u64, crate::sim::intern::InternedId, Command)>,
 ) {
     let rules = harness_rules();
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     let mut sim = Simulation::with_seed(DENSE_SEED);
@@ -674,7 +1008,7 @@ fn dense_converging_setup() -> (
     for i in 0..DENSE_ROWS {
         roster.push(unit("Soviet", "MTNK", 40, 5 + i, EntityCategory::Unit)); // ids 11..=20
     }
-    sim.spawn_from_map(&roster, Some(&rules), &heights);
+    sim.spawn_from_map(&roster, Some(&rules));
 
     // Both columns converge on x=25, same row — they close together and arrive/stall
     // in formation. Each Move is under its OWN owner (the thin generic harness rejected
@@ -706,7 +1040,7 @@ fn dense_converging_setup() -> (
             },
         ));
     }
-    (sim, rules, heights, grid, script)
+    (sim, rules, grid, script)
 }
 
 /// S2 movement-neutrality tripwire: per-tick position fingerprint of the dense
@@ -766,9 +1100,10 @@ fn dense_converging_setup() -> (
 /// it carries no hash-schema component at all — and that is confirmed rather
 /// than assumed. With `occupation_handoff` still on the struct but every
 /// behaviour writer neutralised (the experiment written out at
-/// `GLOBAL_HARNESS_PRE_LIFECYCLE_V28_HASH`), this fixture returns to exactly its
-/// previous committed value `0x0FC6_3769_AADD_1F8A`. So its shift is 100%
-/// behaviour and 0% schema — the mirror image of the global harness above.
+/// `GLOBAL_HARNESS_PRE_LIFECYCLE_V28_HASH` in this file at 148327c3), this
+/// fixture returns to exactly its previous committed value
+/// `0x0FC6_3769_AADD_1F8A`. So its shift is 100% behaviour and 0% schema —
+/// the mirror image of the global harness above.
 ///
 /// What is still NOT separated: the individual contribution of the object-list
 /// arm, the mask arm and the handoff mark, which landed together and were
@@ -810,12 +1145,10 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         )))
         .unwrap();
         let mut sim = Simulation::with_seed(DENSE_SEED);
-        let heights = BTreeMap::new();
         let grid = PathGrid::new(64, 64);
         sim.spawn_from_map(
             &[unit("Americans", "MTNK", 40, 5, EntityCategory::Unit)],
             Some(&rules),
-            &heights,
         );
         let owner = sim.interner.get("Americans").unwrap();
         let native = rows
@@ -841,19 +1174,12 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
             } else {
                 Vec::new()
             };
-            sim.advance_tick(
-                &due,
-                Some(&rules),
-                &heights,
-                Some(&grid),
-                None,
-                HARNESS_TICK_MS,
-            );
+            sim.advance_tick(&due, Some(&rules), Some(&grid), None, HARNESS_TICK_MS);
         }
         let entity = sim.substrate.entities.get(1).unwrap();
         let call = &native["calls"][0];
         assert_eq!(
-            u64::from(entity.facing),
+            u64::from(entity.body_facing_byte(sim.session.binary_frame - 1)),
             call["sampled_after"].as_u64().unwrap() >> 8,
             "ROT={rot}: same-frame native sample"
         );
@@ -865,18 +1191,12 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         assert!(drive.head_to.is_none());
         if rot > 0 {
             assert_eq!(
-                u64::from(
-                    entity
-                        .body_facing
-                        .as_ref()
-                        .unwrap()
-                        .current(sim.session.binary_frame - 1)
-                ),
+                u64::from(entity.body_facing.current(sim.session.binary_frame - 1)),
                 call["sampled_after"].as_u64().unwrap(),
                 "full16-bit native sample, before the next binary frame"
             );
             assert_eq!(
-                entity.body_facing.as_ref().unwrap().timer_start_frame(),
+                entity.body_facing.timer_start_frame(),
                 Some(call["timer_start"].as_u64().unwrap() as u32)
             );
         }
@@ -892,14 +1212,7 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         restored.restore_after_snapshot_load().unwrap();
         for tick in 4..=35 {
             for world in [&mut sim, &mut restored] {
-                world.advance_tick(
-                    &[],
-                    Some(&rules),
-                    &heights,
-                    Some(&grid),
-                    None,
-                    HARNESS_TICK_MS,
-                );
+                world.advance_tick(&[], Some(&rules), Some(&grid), None, HARNESS_TICK_MS);
             }
             assert_eq!(
                 sim.state_hash(),
@@ -920,7 +1233,7 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
 #[test]
 fn s2_dense_scenario_position_fingerprint_stable() {
     use std::hash::{Hash, Hasher};
-    let (mut sim, rules, heights, grid, script) = dense_converging_setup();
+    let (mut sim, rules, grid, script) = dense_converging_setup();
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for tick in 0..DENSE_TICKS {
         let due: Vec<CommandEnvelope> = script
@@ -928,14 +1241,7 @@ fn s2_dense_scenario_position_fingerprint_stable() {
             .filter(|(t, _, _)| *t == tick + 1)
             .map(|(t, owner, c)| CommandEnvelope::new(*owner, *t, c.clone()))
             .collect();
-        let _ = sim.advance_tick(
-            &due,
-            Some(&rules),
-            &heights,
-            Some(&grid),
-            None,
-            HARNESS_TICK_MS,
-        );
+        let _ = sim.advance_tick(&due, Some(&rules), Some(&grid), None, HARNESS_TICK_MS);
         for (id, e) in sim.substrate.entities.iter_sorted() {
             (
                 id,

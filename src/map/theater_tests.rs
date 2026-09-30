@@ -569,98 +569,6 @@ fn general_reader_missing_bridge_middle_returns_none() {
     assert_eq!(super::read_general_u16(general, "BridgeMiddle2"), None);
 }
 
-fn bridge_piece_values(keys: super::TheaterBridgePieceKeys) -> [Option<u16>; 10] {
-    [
-        keys.bridge_top_left_1,
-        keys.bridge_top_left_2,
-        keys.bridge_bottom_right_1,
-        keys.bridge_bottom_right_2,
-        keys.bridge_top_right_1,
-        keys.bridge_top_right_2,
-        keys.bridge_bottom_left_1,
-        keys.bridge_bottom_left_2,
-        keys.bridge_middle_1,
-        keys.bridge_middle_2,
-    ]
-}
-
-fn loaded_bridge_piece_values(theater: &TheaterData) -> [Option<u16>; 10] {
-    [
-        theater.bridge_top_left_1,
-        theater.bridge_top_left_2,
-        theater.bridge_bottom_right_1,
-        theater.bridge_bottom_right_2,
-        theater.bridge_top_right_1,
-        theater.bridge_top_right_2,
-        theater.bridge_bottom_left_1,
-        theater.bridge_bottom_left_2,
-        theater.bridge_middle_1,
-        theater.bridge_middle_2,
-    ]
-}
-
-#[test]
-fn bridge_piece_parser_keeps_all_ten_keys_independent() {
-    let ini = "[General]\n\
-BridgeTopLeft1=11\n\
-BridgeTopLeft2=12\n\
-BridgeBottomRight1=13\n\
-BridgeBottomRight2=14\n\
-BridgeTopRight1=15\n\
-BridgeTopRight2=16\n\
-BridgeBottomLeft1=17\n\
-BridgeBottomLeft2=18\n\
-BridgeMiddle1=19\n\
-BridgeMiddle2=20\n";
-
-    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
-    let general = parsed.section("General");
-    assert_eq!(
-        bridge_piece_values(super::read_bridge_piece_keys(general)),
-        [
-            Some(11),
-            Some(12),
-            Some(13),
-            Some(14),
-            Some(15),
-            Some(16),
-            Some(17),
-            Some(18),
-            Some(19),
-            Some(20),
-        ]
-    );
-}
-
-#[test]
-fn bridge_piece_parser_preserves_native_absent_values() {
-    let ini = "[General]\n\
-BridgeTopLeft1=-1\n\
-BridgeBottomRight1=3\n\
-BridgeBottomRight2=-1\n\
-BridgeBottomLeft1=6\n\
-BridgeMiddle1=256\n\
-BridgeMiddle2=70000\n";
-
-    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
-    let general = parsed.section("General");
-    assert_eq!(
-        bridge_piece_values(super::read_bridge_piece_keys(general)),
-        [
-            None,
-            None,
-            Some(3),
-            None,
-            None,
-            None,
-            Some(6),
-            None,
-            Some(256),
-            None,
-        ]
-    );
-}
-
 fn native_general_corpus() -> serde_json::Value {
     serde_json::from_str(include_str!(
         "../../tools/rules_oracle/theater_general_reader.json"
@@ -746,6 +654,8 @@ fn general_helpers_match_original_reader_and_signed_repair_keys() {
             "TrackTunnels",
             "DirtTunnels",
             "DirtTrackTunnels",
+            "BridgeMiddle1",
+            "BridgeMiddle2",
         ] {
             assert_eq!(
                 read_general_u16(general, key),
@@ -762,9 +672,7 @@ fn general_helpers_match_original_reader_and_signed_repair_keys() {
             rim.middle,
         ]
         .concat();
-        let projected = bridge_piece_values(read_bridge_piece_keys(general));
-        // Compare the two consumer representations with the same original
-        // signed DWORDs; oversized/negative repair identities must survive.
+        // Oversized/negative repair identities must survive the signed read.
         for (index, key) in [
             "BridgeTopLeft1",
             "BridgeTopLeft2",
@@ -785,11 +693,6 @@ fn general_helpers_match_original_reader_and_signed_repair_keys() {
                 i64::from(signed_pieces[index]),
                 native,
                 "{name}: signed {key}"
-            );
-            assert_eq!(
-                projected[index],
-                u16::try_from(native).ok(),
-                "{name}: projected {key}"
             );
         }
     }
@@ -909,23 +812,12 @@ fn active_retail_automatic_shell_corpus_is_exact() {
             expected["sha256"].as_str().unwrap(),
             "{theater_name}: executed physical INI"
         );
-        let expected_bridge_pieces = [
-            "BridgeTopLeft1",
-            "BridgeTopLeft2",
-            "BridgeBottomRight1",
-            "BridgeBottomRight2",
-            "BridgeTopRight1",
-            "BridgeTopRight2",
-            "BridgeBottomLeft1",
-            "BridgeBottomLeft2",
-            "BridgeMiddle1",
-            "BridgeMiddle2",
-        ]
-        .map(|key| u16::try_from(expected["values"][key].as_i64().unwrap()).ok());
+        let expected_bridge_middles = ["BridgeMiddle1", "BridgeMiddle2"]
+            .map(|key| u16::try_from(expected["values"][key].as_i64().unwrap()).ok());
         assert_eq!(
-            loaded_bridge_piece_values(&theater),
-            expected_bridge_pieces,
-            "loaded {theater_name} bridge-piece keys"
+            [theater.bridge_middle_1, theater.bridge_middle_2],
+            expected_bridge_middles,
+            "loaded {theater_name} BridgeMiddle keys"
         );
 
         let mut candidate_tiles = BTreeSet::new();
@@ -1224,14 +1116,6 @@ fn bridge_railing_slope_starts_use_tileset_bounds() {
         wood_bridge_set: None,
         slope_set_pieces: Some(1),
         slope_set_pieces2: Some(2),
-        bridge_top_left_1: None,
-        bridge_top_left_2: None,
-        bridge_bottom_right_1: None,
-        bridge_bottom_right_2: None,
-        bridge_top_right_1: None,
-        bridge_top_right_2: None,
-        bridge_bottom_left_1: None,
-        bridge_bottom_left_2: None,
         bridge_middle_1: None,
         bridge_middle_2: None,
         tunnels: None,
@@ -1268,14 +1152,6 @@ fn synthetic_theater_with_bridge_keys(
         wood_bridge_set: None,
         slope_set_pieces: None,
         slope_set_pieces2: None,
-        bridge_top_left_1: Some(1),
-        bridge_top_left_2: Some(2),
-        bridge_bottom_right_1: Some(3),
-        bridge_bottom_right_2: Some(3),
-        bridge_top_right_1: Some(4),
-        bridge_top_right_2: Some(5),
-        bridge_bottom_left_1: Some(6),
-        bridge_bottom_left_2: Some(6),
         bridge_middle_1,
         bridge_middle_2,
         tunnels: None,
@@ -1289,209 +1165,48 @@ fn synthetic_theater_with_bridge_keys(
 }
 
 #[test]
-fn ramp_tile_table_matches_binary_height_predicates() {
-    use crate::map::bridge_facts::BridgeRampKind;
-
+fn bridge_middle_tiles_cover_every_variant_a_publication_writes() {
+    use super::BridgeMiddleTiles;
     let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-
-    assert_eq!(
-        table.match_relative_tile(4, 0x0C).map(|r| r.kind),
-        Some(BridgeRampKind::TopRight)
-    );
-    assert_eq!(table.match_relative_tile(4, 0x08).map(|r| r.kind), None);
-    assert_eq!(
-        table.match_relative_tile(1, 0x08).map(|r| r.kind),
-        Some(BridgeRampKind::TopLeft)
-    );
-    assert_eq!(
-        table.match_relative_tile(7, 0x04).map(|r| r.kind),
-        Some(BridgeRampKind::Middle1)
-    );
-    assert_eq!(
-        table.match_relative_tile(10, 0x04).map(|r| r.kind),
-        Some(BridgeRampKind::Middle1)
-    );
-    assert_eq!(table.match_relative_tile(11, 0x04), None);
-    assert_eq!(
-        table.match_relative_tile(12, 0x02).map(|r| r.kind),
-        Some(BridgeRampKind::Middle2)
-    );
+    let tiles = BridgeMiddleTiles::from_theater(&td).expect("tiles");
+    // BridgeSet starts at tile_id 0. NS: BS + M1 - 1 + {0..=4} = 6..=10;
+    // EW: 11..=15. Variant 4 is the collapsed middle.
+    assert_eq!(tiles.tile_ids, (6..=15).collect::<Vec<u16>>());
 }
 
 #[test]
-fn bottom_piece_keys_do_not_enter_the_ramp_classifier() {
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    assert_eq!(td.bridge_bottom_right_1, Some(3));
-    assert_eq!(td.bridge_bottom_right_2, Some(3));
-    assert_eq!(td.bridge_bottom_left_1, Some(6));
-    assert_eq!(td.bridge_bottom_left_2, Some(6));
-
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-    for (relative_tile, height) in [(3, 0x0c), (3, 0x08), (6, 0x0c), (6, 0x08)] {
-        assert_eq!(
-            table.match_relative_tile(relative_tile, height),
-            None,
-            "bottom pavement key {relative_tile} at height {height:#x}"
-        );
-    }
+fn bridge_middle_tiles_include_the_wooden_set() {
+    use super::BridgeMiddleTiles;
+    let mut td = synthetic_theater_with_bridge_keys(Some(2), Some(9));
+    td.bridge_set = None;
+    td.wood_bridge_set = Some(0);
+    let tiles = BridgeMiddleTiles::from_theater(&td).expect("tiles");
+    assert_eq!(tiles.tile_ids, [1, 2, 3, 4, 5, 8, 9, 10, 11, 12]);
 }
 
 #[test]
-fn ramp_tile_match_tile_id_uses_one_based_bridge_key() {
-    use crate::map::bridge_facts::BridgeRampKind;
-
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-
-    assert_eq!(
-        table.match_tile_id(103, 100, 20, 0x0C).map(|r| r.kind),
-        Some(BridgeRampKind::TopRight)
-    );
-    assert_eq!(
-        table
-            .match_tile_id(103, 100, 20, 0x0C)
-            .map(|r| r.relative_tile_index),
-        Some(4)
-    );
-}
-
-#[test]
-fn ramp_tile_match_tile_id_rejects_tile_before_bridge_set() {
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeRampTileTable::from_theater(&td).expect("ramp table");
-
-    assert_eq!(table.match_tile_id(99, 100, 20, 0x0C), None);
-}
-
-#[test]
-fn ramp_tile_match_tile_id_rejects_tile_at_bridge_set_end() {
-    let table = BridgeRampTileTable {
-        top_right_1: Some(4),
-        top_right_2: None,
-        top_left_1: None,
-        top_left_2: None,
-        middle_1: None,
-        middle_2: None,
-    };
-
-    assert_eq!(table.match_tile_id(120, 100, 20, 0x0C), None);
-    assert_eq!(table.match_tile_id(104, 100, 20, 0x0C), None);
-}
-
-#[test]
-fn variant_table_temperate_values() {
-    use super::BridgeAnchorVariantTable;
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeAnchorVariantTable::from_theater(&td).expect("table");
-    // BridgeSet starts at tile_id 0 (TilesInSet=20, first tileset). NS
-    // variants: BS + M1 + {-1, 0, 1, 2} = {6, 7, 8, 9}. EW: {11, 12, 13, 14}.
-    assert_eq!(table.ns, [6, 7, 8, 9]);
-    assert_eq!(table.ew, [11, 12, 13, 14]);
-}
-
-#[test]
-fn variant_table_returns_none_on_missing_middle_1() {
-    use super::BridgeAnchorVariantTable;
+fn bridge_middle_tiles_need_both_keys() {
+    use super::BridgeMiddleTiles;
     let td = synthetic_theater_with_bridge_keys(None, Some(12));
-    assert!(BridgeAnchorVariantTable::from_theater(&td).is_none());
-}
-
-#[test]
-fn variant_table_returns_none_on_missing_middle_2() {
-    use super::BridgeAnchorVariantTable;
+    assert!(BridgeMiddleTiles::from_theater(&td).is_none());
     let td = synthetic_theater_with_bridge_keys(Some(7), None);
-    assert!(BridgeAnchorVariantTable::from_theater(&td).is_none());
+    assert!(BridgeMiddleTiles::from_theater(&td).is_none());
 }
 
 #[test]
-fn variant_table_returns_none_on_zero_middle() {
-    use super::BridgeAnchorVariantTable;
+fn bridge_middle_tiles_skip_zero_keys_and_tiles_past_the_lookup() {
+    use super::BridgeMiddleTiles;
     let td = synthetic_theater_with_bridge_keys(Some(0), Some(12));
-    assert!(BridgeAnchorVariantTable::from_theater(&td).is_none());
-}
-
-#[test]
-fn variant_table_returns_none_on_out_of_bounds() {
-    use super::BridgeAnchorVariantTable;
-    // TilesInSet=20 → max tile_id 19. BridgeMiddle1=18 → 4th variant
-    // = 0+18-1+3 = 20 (OOB).
+    assert_eq!(
+        BridgeMiddleTiles::from_theater(&td).unwrap().tile_ids,
+        [11, 12, 13, 14, 15]
+    );
+    // TilesInSet=20: BridgeMiddle1=18 reaches 17..=21, of which 17..=19 exist.
     let td = synthetic_theater_with_bridge_keys(Some(18), Some(12));
-    assert!(BridgeAnchorVariantTable::from_theater(&td).is_none());
-}
-
-#[test]
-fn tile_id_for_variant0_returns_none() {
-    use super::BridgeAnchorVariantTable;
-    use crate::sim::bridge_state::{Axis, BridgeheadAnchorClass};
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeAnchorVariantTable::from_theater(&td).unwrap();
     assert_eq!(
-        table.tile_id_for(Axis::NS, BridgeheadAnchorClass::Variant0),
-        None
+        BridgeMiddleTiles::from_theater(&td).unwrap().tile_ids,
+        [17, 18, 19, 11, 12, 13, 14, 15]
     );
-    assert_eq!(
-        table.tile_id_for(Axis::EW, BridgeheadAnchorClass::Variant0),
-        None
-    );
-}
-
-#[test]
-fn tile_id_for_each_class_per_axis() {
-    use super::BridgeAnchorVariantTable;
-    use crate::sim::bridge_state::{Axis, BridgeheadAnchorClass};
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeAnchorVariantTable::from_theater(&td).unwrap();
-    assert_eq!(
-        table.tile_id_for(Axis::NS, BridgeheadAnchorClass::Variant1),
-        Some(7)
-    );
-    assert_eq!(
-        table.tile_id_for(Axis::NS, BridgeheadAnchorClass::Damaged),
-        Some(8)
-    );
-    assert_eq!(
-        table.tile_id_for(Axis::NS, BridgeheadAnchorClass::AboutToFall),
-        Some(9)
-    );
-    assert_eq!(
-        table.tile_id_for(Axis::EW, BridgeheadAnchorClass::AboutToFall),
-        Some(14)
-    );
-}
-
-#[test]
-fn match_tile_id_round_trip_all_variants() {
-    use super::BridgeAnchorVariantTable;
-    use crate::sim::bridge_state::{Axis, BridgeheadAnchorClass};
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeAnchorVariantTable::from_theater(&td).unwrap();
-    const CLASS_ORDER: [BridgeheadAnchorClass; 4] = [
-        BridgeheadAnchorClass::Variant0,
-        BridgeheadAnchorClass::Variant1,
-        BridgeheadAnchorClass::Damaged,
-        BridgeheadAnchorClass::AboutToFall,
-    ];
-    for (axis, expected_arr) in [(Axis::NS, &table.ns), (Axis::EW, &table.ew)] {
-        for (slot, &tid) in expected_arr.iter().enumerate() {
-            let (got_axis, got_class) = table.match_tile_id(tid).expect("matched");
-            assert_eq!(got_axis, axis);
-            assert_eq!(got_class, CLASS_ORDER[slot]);
-        }
-    }
-}
-
-#[test]
-fn match_tile_id_rejects_non_variant() {
-    use super::BridgeAnchorVariantTable;
-    let td = synthetic_theater_with_bridge_keys(Some(7), Some(12));
-    let table = BridgeAnchorVariantTable::from_theater(&td).unwrap();
-    // BS+5 (one before Variant0 NS), BS+10 (between NS and EW), BS+15
-    // (post-AboutToFall EW), 999 (outside BridgeSet).
-    assert_eq!(table.match_tile_id(5), None);
-    assert_eq!(table.match_tile_id(10), None);
-    assert_eq!(table.match_tile_id(15), None);
-    assert_eq!(table.match_tile_id(999), None);
 }
 
 /// Retail shape: the animation keys sit in the section named by `SetName`, not

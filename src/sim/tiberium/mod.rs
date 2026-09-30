@@ -475,12 +475,7 @@ pub fn reduce_tiberium(
         {
             // Retail recalculates cell attributes synchronously inside the full
             // removal boundary, before any later sim system can observe it.
-            grid.recalculate_runtime_cell(
-                terrain,
-                registry,
-                cell,
-                crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-            );
+            grid.recalculate_runtime_cell(terrain, registry, cell);
         }
     }
 
@@ -546,10 +541,10 @@ mod tests {
 
     use crate::map::overlay::{OverlayDataPack, OverlayEntry};
     use crate::map::overlay_types::OverlayTypeRegistry;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::LandType;
     use crate::rules::tiberium_type::TiberiumTypeRegistry;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::intern::StringInterner;
@@ -659,81 +654,14 @@ SpreadPercentage=.06
     }
 
     fn flat_clear_terrain() -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile::default();
-        ResolvedTerrainGrid::from_cells(
-            1,
-            1,
-            vec![ResolvedTerrainCell {
-                rx: 0,
-                ry: 0,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: true,
-                tileset_index: None,
-                land_type,
-                yr_cell_land_type: land_type,
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
-                speed_costs,
-                is_water: false,
-                is_cliff_like: false,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: true,
-                allows_tiberium: true,
-                height_in_pixels: 0,
-                variant: 0,
-                has_ramp: false,
-                canonical_ramp: None,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
-                zone_type: zone_class::GROUND,
-                base_ground_walk_blocked: false,
-                base_build_blocked: false,
-                base_land_type: land_type,
-                base_yr_cell_land_type: land_type,
-                base_terrain_class: TerrainClass::Clear,
-                base_speed_costs: speed_costs,
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0; 3],
-                radar_right: [0; 3],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
-            }],
-        )
+        flat_clear_terrain_grid(1, 1)
     }
 
     fn flat_clear_terrain_grid(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let mut seed = flat_clear_terrain();
-        let template = seed.cells.remove(0);
-        let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
-        for ry in 0..height {
-            for rx in 0..width {
-                let mut cell = template.clone();
-                cell.rx = rx;
-                cell.ry = ry;
-                cells.push(cell);
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(width, height, |rx, ry| ResolvedTerrainCell {
+            allows_tiberium: true,
+            ..crate::map::resolved_terrain::test_loader_clear_cell(rx, ry)
+        })
     }
 
     #[test]
@@ -886,7 +814,11 @@ SpreadPercentage=.06
 
     #[test]
     fn gsi_04_09_existing_growth_honors_threshold_clamp_and_tactical_only_dirty() {
-        for (growth_percentage, succeeds) in [(".000009", false), (".00001", true)] {
+        // ReadDouble scans a float: `.00001` widens to 9.99999974737875e-06,
+        // just under the 1e-05 gate; `.000011` clears it.
+        for (growth_percentage, succeeds) in
+            [(".000009", false), (".00001", false), (".000011", true)]
+        {
             let (overlay_registry, tiberium_types) =
                 native_tiberium_fixture_with_riparius_growth(growth_percentage);
             let tib01 = overlay_registry.id_for_name("TIB01").expect("TIB01");
@@ -1071,8 +1003,8 @@ SpreadPercentage=.06
             "unallocated native slot receives neither pack"
         );
         assert_eq!(
-            grid.take_dirty_cells_with_passability_signal(),
-            (Vec::new(), false),
+            grid.take_dirty_cells(),
+            Vec::new(),
             "map initialization creates no runtime mutation trace"
         );
 
@@ -1273,7 +1205,6 @@ SpreadPercentage=.06
     #[test]
     fn gsi_04_09_full_reduction_propagates_synchronous_path_refresh() {
         use crate::rules::locomotor_type::SpeedType;
-        use crate::sim::overlay_grid::NavigationPublication;
         use crate::sim::world::TickLane;
         use std::sync::Arc;
 
@@ -1333,66 +1264,55 @@ SpreadPercentage=.06
             sim.resolved_terrain.as_mut().unwrap(),
             &overlay_registry,
             (0, 0),
-            NavigationPublication::FrameBoundary,
         );
         assert!(!repeated.navigation_changed);
 
         let deferred = sim
-            .advance_app_frame(
-                &[],
-                Some(&rules),
-                &BTreeMap::new(),
-                None,
-                67,
-                TickLane::Ordinary,
-                None,
-            )
+            .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
             .expect("fixture frame must complete");
         assert!(deferred.overlay_updates.is_empty());
-        assert!(Arc::ptr_eq(&before, &sim.path_grid_snapshot().unwrap()));
         assert_eq!(
-            sim.overlay_grid
-                .as_ref()
-                .unwrap()
-                .clone()
-                .take_dirty_cells_with_passability_signal(),
-            (vec![(0, 0)], true),
-            "missing registry retains the first true result despite the false repeat"
+            sim.terrain_costs[&SpeedType::Foot].cost_at(0, 0),
+            37,
+            "the next path reader publishes the Recalc without an overlay registry"
         );
+        let published = sim.path_grid_snapshot().unwrap();
+        assert!(
+            Arc::ptr_eq(&before, &published),
+            "the walkable path cell is current; only its costs change"
+        );
+        let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
+        assert_eq!(
+            pending.take_dirty_cells(),
+            vec![(0, 0)],
+            "presentation dirtiness waits for the registry"
+        );
+        assert!(pending.take_synchronous_navigation_cells().is_empty());
 
         let first = sim
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &BTreeMap::new(),
                 Some(&overlay_registry),
                 67,
                 TickLane::Ordinary,
                 None,
             )
             .expect("fixture frame must complete");
-        assert_eq!(sim.terrain_costs[&SpeedType::Foot].cost_at(0, 0), 37);
         assert!(sim.zone_grid.is_some());
         assert!(
             first.overlay_updates.is_empty(),
             "erased tiberium has no overlay upsert"
         );
         assert_eq!(first.tick.state_hash, sim.state_hash());
-        let published = sim.path_grid_snapshot().unwrap();
-        assert!(!Arc::ptr_eq(&before, &published));
-        assert_eq!(
-            sim.overlay_grid
-                .as_ref()
-                .unwrap()
-                .clone()
-                .take_dirty_cells_with_passability_signal(),
-            (Vec::new(), false)
-        );
+        assert!(Arc::ptr_eq(&published, &sim.path_grid_snapshot().unwrap()));
+        let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
+        assert!(pending.take_dirty_cells().is_empty());
+        assert!(pending.take_synchronous_navigation_cells().is_empty());
         let second = sim
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &BTreeMap::new(),
                 Some(&overlay_registry),
                 67,
                 TickLane::Ordinary,
@@ -1588,5 +1508,4 @@ SpreadPercentage=.06
             "reseed consumes exactly one raw draw per accepted neighbor"
         );
     }
-
 }

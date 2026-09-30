@@ -118,7 +118,7 @@ pub fn draw_timeline(app: &mut BikPlayerApp, ctx: &egui::Context) {
                     egui::pos2(x, bar_rect.top()),
                     egui::pos2(x, bar_rect.bottom()),
                 ],
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 160, 0)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 160, 0)),
             );
         }
     });

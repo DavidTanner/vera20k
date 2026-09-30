@@ -16,10 +16,12 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
-use crate::sim::pathfinding::PathGrid;
+use crate::sim::movement::ground_pose;
+use crate::sim::pathfinding::zone_map::ZoneQueryCell;
 use crate::sim::world::Simulation;
 
 /// A `[General]` scan radius in leptons as Mission_Harvest hands it on:
@@ -80,7 +82,6 @@ fn tiberium_value(
 pub(crate) fn search_for_tiberium_and_move(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
     range: i32,
@@ -98,16 +99,7 @@ pub(crate) fn search_for_tiberium_and_move(
     if cell == own {
         return true;
     }
-    if let Some(grid) = path_grid {
-        let _ = super::miner_system::issue_stock_miner_drive_move_with_overlay_registry(
-            sim,
-            rules,
-            grid,
-            id,
-            cell,
-            overlay_registry,
-        );
-    }
+    let _ = super::miner_system::issue_stock_miner_drive_move(sim, rules, id, cell);
     false
 }
 
@@ -147,9 +139,8 @@ fn foot_scan_for_tiberium(
     if cell_is_tiberium_land(sim, overlay_registry, own) {
         return Some(own);
     }
-    let reach = harvest_reach(sim, rules, id)?;
     best_in_rings(sim, own, range, |sim, candidate| {
-        let cell = is_cell_harvestable(sim, rules, overlay_registry, id, reach, candidate)?;
+        let cell = is_cell_harvestable(sim, rules, overlay_registry, id, candidate)?;
         Some((cell, tiberium_value(sim, rules, overlay_registry, cell)))
     })
 }
@@ -169,8 +160,6 @@ fn techno_scan_for_tiberium(
     let (x, y, _, _) = crate::sim::combat::resolve_target_coords(
         &crate::sim::combat::TargetKind::Entity(id),
         &sim.substrate.entities,
-        Some(rules),
-        &sim.interner,
     )?;
     let own = (x, y);
     if cell_is_tiberium_land(sim, overlay_registry, own) {
@@ -228,7 +217,7 @@ fn best_in_rings(
 /// cell of the mover's `vt+0x4C` coordinate (`FootClass::GetDestination @
 /// 0x004DBDF0`: a tube's exit, else the locomotor's head-to, else the mover's
 /// own coordinate), its type's MovementZone (`TechnoType+0x5B4`) and its
-/// ShouldBeOnBridge answer (`vt+0xBC`, `0x004DDC40`: the OnBridge byte).
+/// ShouldBeOnBridge answer (`vt+0xBC`, `0x004DDC40` → `0x005F6A70`).
 /// Is_Cell_Harvestable passes no destination bridge and no fringe shortcut,
 /// the same shape as the base-defence response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -241,24 +230,30 @@ pub(crate) struct HarvestReach {
 pub(crate) fn harvest_reach(sim: &Simulation, rules: &RuleSet, id: u64) -> Option<HarvestReach> {
     let entity = sim.substrate.entities.get(id)?;
     // `CDQ; AND EDX,0xFF; ADD; SAR 8` (`0x004DCF3E..0x004DCF5D`).
-    let cell = |leptons: i32| leptons.wrapping_add((leptons >> 31) & 0xFF) >> 8;
-    let source = match sim.foot_navigation_coordinate(id) {
-        Ok(coord) => (cell(coord.x), cell(coord.y)),
-        // VERA builds a Drive's runtime on its first move: until then it
-        // holds no head-to, and Head_To_Coord answers the mover's own
-        // coordinate (`0x004AFD0B`).
-        Err(_) if entity.low_bridge_tube_state.is_none() => {
-            (i32::from(entity.position.rx), i32::from(entity.position.ry))
-        }
-        Err(_) => return None,
-    };
+    let cell = crate::util::lepton::lepton_to_cell_packed;
+    let navigation = sim.foot_navigation_coordinate(id).ok()?;
+    let source = (i32::from(cell(navigation.x)), i32::from(cell(navigation.y)));
+    let cells = NativeCellQuery::canonical(sim.resolved_terrain.as_ref()?);
+    // Original4DCF6F queries the source layer for each admitted probe. These
+    // ground lookups can stamp shared Dummy; caching OnBridge per scan loses
+    // both the head-height decision and the query order.
+    let current = ground_pose::position_world_coord(&entity.position);
+    let in_tube = entity.low_bridge_tube_state.is_some();
+    let source_on_bridge = ground_pose::navigation_should_be_on_bridge(
+        &cells,
+        if in_tube { current } else { navigation },
+        current,
+        entity.on_bridge,
+        in_tube,
+    )
+    .ok()?;
     Some(HarvestReach {
         source,
         movement_zone: sim
             .object_type(entity.type_ref(), rules)
             .map(|object| object.movement_zone)
             .filter(|&zone| zone != MovementZone::Invalid),
-        source_on_bridge: entity.on_bridge,
+        source_on_bridge,
     })
 }
 
@@ -268,8 +263,9 @@ pub(crate) fn harvest_reach(sim: &Simulation, rules: &RuleSet, id: u64) -> Optio
 /// Can_Enter_Cell answers MOVE_OK (`vt+0x1AC(cell, -1, -1, 0, 1)`,
 /// [`Simulation::foot_can_enter`]). Answers the cell.
 ///
-/// Every test is a pure query, so the cheap LandType test runs before the
-/// zone lookup; the answer is the native conjunction's.
+/// The zone and ground queries may stamp shared Dummy. Preserve native
+/// order: candidate playfield, source coordinate/layer, zone reach, LandType,
+/// then the class entry receiver.
 ///
 /// RESIDUAL: a campaign (GameMode 0) player-owned mover (`Techno+0x41A`)
 /// skips a shrouded cell (`0x004DCEA0..0x004DCF20`); not represented, so a
@@ -279,7 +275,6 @@ fn is_cell_harvestable(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
-    reach: HarvestReach,
     candidate: (i32, i32),
 ) -> Option<(u16, u16)> {
     let terrain = sim.resolved_terrain.as_ref();
@@ -290,34 +285,30 @@ fn is_cell_harvestable(
     ) {
         return None;
     }
-    let cell = (
-        u16::try_from(candidate.0).ok()?,
-        u16::try_from(candidate.1).ok()?,
-    );
-    if !cell_is_tiberium_land(sim, overlay_registry, cell) {
+    let reach = harvest_reach(sim, rules, id)?;
+    let cells = NativeCellQuery::canonical(sim.resolved_terrain.as_ref()?);
+    let bounds = sim.playfield_bounds?;
+    if !sim.zone_grid.as_ref()?.can_reach_native(
+        &cells,
+        ZoneQueryCell::Copied((reach.source.0 as i16, reach.source.1 as i16)),
+        ZoneQueryCell::Copied((candidate.0 as i16, candidate.1 as i16)),
+        reach.movement_zone.unwrap_or(MovementZone::Invalid),
+        reach.source_on_bridge,
+        false,
+        false,
+        bounds,
+        (bounds.base, sim.playfield_size_height?),
+    )? {
         return None;
     }
-    if let Some(zones) = sim.zone_grid.as_ref()
-        && !zones.can_reach_base_defense_response(
-            reach.movement_zone,
-            reach.source,
-            candidate,
-            reach.source_on_bridge,
-            crate::sim::cell_rect::cell_is_in_playfield_height_aware(
-                reach.source,
-                sim.playfield_bounds,
-                terrain,
-            ),
-            i32::from(sim.session.map_width),
-            i32::from(sim.session.map_height),
-        )
-    {
+    // Original4DCF9B resolves the packed candidate again before reading
+    // Cell+EC; even a LandType refusal must preserve this Dummy stamp.
+    let packed = (candidate.0 as i16, candidate.1 as i16);
+    let native_cell = cells.lookup(packed);
+    if cells.land_type(native_cell) != LandType::Tiberium.as_index() as i32 {
         return None;
     }
-    let native_cell = sim
-        .resolved_terrain
-        .as_ref()?
-        .native_cell_identity((cell.0 as i16, cell.1 as i16));
+    let cell = (packed.0 as u16, packed.1 as u16);
     let code = sim
         .foot_can_enter(
             id,
@@ -332,7 +323,7 @@ fn is_cell_harvestable(
 
 #[cfg(test)]
 mod tests {
-    use super::scan_cells;
+    use super::*;
 
     #[test]
     fn scan_radius_divides_leptons_toward_zero() {
@@ -340,5 +331,82 @@ mod tests {
         assert_eq!(scan_cells(1664), 6);
         assert_eq!(scan_cells(-1664), -6);
         assert_eq!(scan_cells(255), 0);
+    }
+
+    /// The original4DCF26..4DCF97 query seam, excluding the prior playfield
+    /// gate and later LandType/CanEnter. Expected arguments and reach verdicts
+    /// come from native execution, not from the Rust scan.
+    #[test]
+    fn native_bridge_harvest_reach_matches_all_seven_original_seams() {
+        use crate::rules::ini_parser::IniFile;
+        use crate::sim::movement::bridge_layer_oracle_tests as native;
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=MINER\n[MINER]\nStrength=100\nMovementZone=Normal\n",
+        ))
+        .unwrap();
+        let corpus = native::corpus();
+        let rows = corpus["harvest_seams"].as_array().unwrap();
+        assert_eq!(rows.len(), 7);
+        for row in rows {
+            let input = &row["input"];
+            let terrain = native::terrain(input);
+            let mut sim = Simulation::new();
+            sim.zone_grid = Some(native::zones(&terrain, row));
+            sim.resolved_terrain = Some(terrain);
+            sim.substrate
+                .entities
+                .insert(native::candidate(input, 1, "MINER"));
+            sim.interner = crate::sim::intern::test_interner();
+            let reach = harvest_reach(&sim, &rules, 1).unwrap();
+            assert_eq!(
+                serde_json::json!([reach.source.0, reach.source.1]),
+                row["output"]["source_cell"],
+                "{input}: source"
+            );
+            assert_eq!(
+                reach.source_on_bridge,
+                row["output"]["source_on_bridge"].as_bool().unwrap(),
+                "{input}: layer"
+            );
+            let terrain = sim.resolved_terrain.as_ref().unwrap();
+            native::assert_dummy(
+                terrain,
+                &row["output"]["dummy_at_reach"],
+                input["name"].as_str().unwrap(),
+            );
+            let cells = NativeCellQuery::canonical(terrain);
+            let target = &row["clicked_cell"];
+            let answer = sim
+                .zone_grid
+                .as_ref()
+                .unwrap()
+                .can_reach_native(
+                    &cells,
+                    ZoneQueryCell::Copied((reach.source.0 as i16, reach.source.1 as i16)),
+                    ZoneQueryCell::Copied((
+                        target[0].as_i64().unwrap() as i16,
+                        target[1].as_i64().unwrap() as i16,
+                    )),
+                    reach.movement_zone.unwrap_or(MovementZone::Invalid),
+                    reach.source_on_bridge,
+                    false,
+                    false,
+                    crate::map::playfield::PlayfieldBounds::from_normalized_local_size(
+                        8, 0, 0, 8, 8,
+                    ),
+                    (8, 8),
+                )
+                .unwrap();
+            assert_eq!(
+                answer,
+                row["output"]["reachable"].as_bool().unwrap(),
+                "{input}: raw zone verdict"
+            );
+            native::assert_dummy(
+                terrain,
+                &row["output"]["final_dummy"],
+                input["name"].as_str().unwrap(),
+            );
+        }
     }
 }

@@ -11,6 +11,7 @@ use crate::sim::components::{
 };
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId};
+use crate::sim::movement::PerCellReason;
 use crate::sim::movement::facing_class::FacingClass;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::pathfinding::PathGrid;
@@ -288,7 +289,7 @@ fn setup_turn(sim: &mut Simulation, kind: LocomotorKind, live: bool, latch: bool
     let mut facing = FacingClass::new(0, 1);
     facing.set(0x2000, 100);
     assert_eq!(facing.is_rotating(sim.session.binary_frame), live);
-    entity.body_facing = Some(facing);
+    entity.body_facing = facing;
     set_retained(
         entity,
         kind,
@@ -378,7 +379,7 @@ fn actual_turn_completion_reason_zero_does_not_promote_queued_mission() {
         assert_eq!(sim.substrate.entities.get(1).unwrap().mission, before);
         // Positive control: the same receiver with arrival reason2 must
         // promote this fixture, without dispatching the new mission handler.
-        sim.unit_track_per_cell(1, PerCellReason::Arrival, Some(&rules), None);
+        sim.unit_per_cell_process(1, PerCellReason::Arrival, Some(&rules), None);
         let mission = sim.substrate.entities.get(1).unwrap().mission;
         assert_eq!(mission.current().known(), Some(MissionType::Unload));
         assert_eq!(mission.queued(), MissionId::NONE);
@@ -481,8 +482,7 @@ fn actual_entry_turn_gate_precedes_speed_and_points_for_both_families() {
             setup_turn(&mut sim, kind, false, true, true);
             let entity = sim.substrate.entities.get_mut(1).unwrap();
             entity.drive_accelerates = false;
-            entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
-            entity.foot_speed.cached_current_speed = 123;
+            entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
             let (valid, latch, mut track) = retained(entity, kind);
             track.residual = 17;
             set_retained(entity, kind, valid, latch, track);
@@ -513,11 +513,10 @@ fn actual_entry_turn_gate_precedes_speed_and_points_for_both_families() {
                 "active Process must not sample the expired live timer"
             );
             if turret {
-                assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
+                assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::ONE);
                 assert!(track.cursor > 0, "admitted prefix must reach paid points");
             } else {
-                assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
-                assert_eq!(entity.foot_speed.cached_current_speed, 123);
+                assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
                 assert_eq!((track.cursor, track.residual), (0, 0));
                 assert_eq!(
                     super::super::ground_pose::position_world_coord(&entity.position),
@@ -558,12 +557,11 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 let mut sim = fixture(kind);
                 let entity = sim.substrate.entities.get_mut(1).unwrap();
                 entity.category = crate::map::entities::EntityCategory::Unit;
-                entity.facing = if refused { 64 } else { 0 };
-                entity.body_facing = None;
-                entity.facing_target = None;
+                // Facing the path's east octant, the refused mover reaches
+                // Can_Enter_Cell; facing north, the other turns first.
+                entity.body_facing = FacingClass::new(if refused { 0x4000 } else { 0 }, 0);
                 entity.drive_accelerates = false;
-                entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
-                entity.foot_speed.cached_current_speed = 123;
+                entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
                 let speed_before = entity.foot_speed.clone();
                 entity.navigation.nav_com = Some(NavTargetRef::cell(10, 8));
                 entity.navigation.path_replay = FootPathQueue {
@@ -681,7 +679,7 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                     0
                 );
                 if !refused {
-                    assert_eq!(entity.facing_target, Some(64));
+                    assert_eq!(entity.body_facing.destination(), 0x4000);
                     assert_eq!(
                         entity.navigation.path_replay.remaining_directions(),
                         &[2, 2]
@@ -736,7 +734,6 @@ fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_displa
             .unwrap()
             .snap(2, 100);
         entity.drive_accelerates = false;
-        entity.facing_target = None;
         entity.navigation.nav_com = Some(NavTargetRef::cell(8, 7));
         entity.navigation.path_replay = FootPathQueue {
             directions: vec![0, 0],
@@ -774,7 +771,6 @@ fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_displa
         );
         assert_eq!(entity.navigation.path_replay, before_queue);
         assert_eq!(retained(entity, kind), (false, true, before_track));
-        assert!(entity.facing_target.is_none());
         assert_eq!(
             super::super::slope_transition::state_for_entity(entity)
                 .unwrap()
@@ -866,8 +862,7 @@ fn actual_turn_and_arrival_crush_use_binary_frame_for_both_shield_kinds() {
                         victim.lifecycle.in_limbo = false;
                         victim.lifecycle.cell_marked = true;
                         victim.invulnerability = Some(InvulnerabilityState {
-                            start_frame: frame - age,
-                            duration_frames: 30,
+                            timer: crate::sim::timer::CdTimer::started((frame - age) as i32, 30),
                             kind: shield,
                         });
                         sim.substrate.entities.insert(victim);

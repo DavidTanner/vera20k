@@ -12,7 +12,7 @@
 > prompt from the user carrying explicit per-task authorization for its scoped edits.
 >
 > Ranking evidence (2026-08-17 scan): Rust provenance-comment citations per class,
-> phase order in `2026-07-30-clean-slate-system-implementation-order.md`, and the
+> phase order in the retired clean-slate phase plan (at `e83df3d`), and the
 > active goal stream (Phase 5 movement/shroud). Re-rank freely between tiers as the
 > goal stream moves; do not re-rank mid-tier.
 

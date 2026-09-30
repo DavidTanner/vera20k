@@ -131,9 +131,7 @@ mod tests {
         state.power_off();
 
         assert_eq!(state.kind, before.kind);
-        assert_eq!(state.slot, before.slot);
         assert_eq!(state.layer, before.layer);
-        assert_eq!(state.phase, before.phase);
         assert_eq!(state.altitude, before.altitude);
         assert_eq!(state.piggyback, before.piggyback);
     }

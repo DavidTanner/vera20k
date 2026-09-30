@@ -9,12 +9,12 @@ use anyhow::Result;
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::csf_file::CsfFile;
 use crate::assets::mix_archive::MixArchive;
-use crate::map::briefing::BriefingSection;
 use crate::map::preview::PreviewSection;
 use crate::map::scenario_menu::MapMenuEntry;
 use crate::map::scenario_menu::read_map_menu_entry_from_ini;
 use crate::map::skirmish_scenarios::{
-    PktEntryFields, SkirmishScenarioRecord, SkirmishScenarioSource, parse_game_mode_list,
+    PKT_DEFAULT_MAX_PLAYERS, PKT_DEFAULT_MIN_PLAYERS, PKT_GAME_MODE_CAPACITY, PktEntryFields,
+    SkirmishScenarioRecord, SkirmishScenarioSource, read_game_modes,
 };
 use crate::map::source::read_map_ini_for_metadata;
 use crate::map::waypoints::DEFAULT_SKIRMISH_PLAYER_CAPACITY;
@@ -309,32 +309,29 @@ fn append_pkt_records<F>(
     let Some(multimaps) = pkt.section("MultiMaps") else {
         return;
     };
-    for map_stem in multimaps.get_values() {
-        let map_stem = map_stem.trim();
-        if map_stem.is_empty() {
+    // `ScanMultiplayerMapFiles` 0x00699980: each entry through ReadString(0x40).
+    for key in multimaps.keys() {
+        let Some(map_stem) = multimaps.read_name(key, 0x40) else {
             continue;
-        }
+        };
         let file_name = format!("{map_stem}.MAP");
         let Some(map_ini) = map_ini(&file_name) else {
             continue;
         };
-        let entry_section = pkt.section(map_stem);
+        let entry_section = pkt.section_or_empty(map_stem);
         let display_name = pkt_display_name(pkt, map_stem, csf)
             .unwrap_or_else(|| display_name_from_basic_or_file(&map_ini, &file_name));
         let fields = PktEntryFields {
             display_name,
             // The mode filter, like the title and the player bounds, is a
             // property of the PKT entry; the map payload never carries it.
-            game_modes: entry_section
-                .and_then(|section| section.get("GameMode"))
-                .map(parse_game_mode_list)
-                .unwrap_or_default(),
-            min_players: entry_section
-                .and_then(|section| section.get_i32("MinPlayers"))
-                .and_then(pkt_player_count),
-            max_players: entry_section
-                .and_then(|section| section.get_i32("MaxPlayers"))
-                .and_then(pkt_player_count),
+            game_modes: read_game_modes(entry_section, PKT_GAME_MODE_CAPACITY),
+            min_players: pkt_player_count(
+                entry_section.read_int("MinPlayers", PKT_DEFAULT_MIN_PLAYERS.into()),
+            ),
+            max_players: pkt_player_count(
+                entry_section.read_int("MaxPlayers", PKT_DEFAULT_MAX_PLAYERS.into()),
+            ),
         };
         let mut record = SkirmishScenarioRecord::pkt_from_ini(
             records.len(),
@@ -362,24 +359,20 @@ fn pkt_player_count(value: i32) -> Option<u8> {
     u8::try_from(value).ok()
 }
 
+/// `MPGameFileEntry__Constructor`: `DescriptionText` is read into 0x2C bytes;
+/// otherwise `Description` is a string-table label (`0x00529160`, 0x3FF
+/// bytes). Native branches on `DescriptionText` being present and fetches
+/// even an empty label, and caps the fetched text at 0x2B units; Rust falls
+/// through to the next source instead.
 fn pkt_display_name(pkt: &IniFile, map_stem: &str, csf: Option<&CsfFile>) -> Option<String> {
     let section = pkt.section(map_stem)?;
-    if let Some(value) = section
-        .get("DescriptionText")
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
+    if let Some(value) = section.read_name("DescriptionText", 0x2C) {
         return Some(value.to_string());
     }
-
-    section
-        .get("Description")
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| {
-            csf.map(|csf| csf.text(value).into_owned())
-                .unwrap_or_else(|| value.to_string())
-        })
+    section.read_name("Description", 0x400).map(|label| {
+        csf.map(|csf| csf.text(label).into_owned())
+            .unwrap_or_else(|| label.to_string())
+    })
 }
 
 fn display_name_from_basic_or_file(ini: &IniFile, file_name: &str) -> String {
@@ -400,7 +393,6 @@ pub(crate) fn read_map_menu_entry(path: &Path, file_name: &str) -> MapMenuEntry 
         file_name: file_name.to_string(),
         display_name: file_name.to_string(),
         author: None,
-        briefing: BriefingSection::default(),
         preview: PreviewSection::default(),
         multiplayer_start_waypoints: Vec::new(),
         player_capacity: DEFAULT_SKIRMISH_PLAYER_CAPACITY,

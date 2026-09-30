@@ -18,6 +18,7 @@
 /// side by side is the reference this engine is compared against, and sharing
 /// the native name would make either process treat the other as a second copy
 /// of itself. VERA-internal deviation; the native gate's shape is unchanged.
+#[cfg(windows)]
 const INSTANCE_MUTEX_NAME: &str = "VERA20K-SINGLE-INSTANCE";
 
 /// Title of the window a running copy owns, used to find and raise it.
@@ -31,10 +32,12 @@ const INSTANCE_MUTEX_NAME: &str = "VERA20K-SINGLE-INSTANCE";
 /// window silently degrades the gate to "exit without raising anything" rather
 /// than failing a test. Closing that needs `App::initialize` to take the title
 /// from here.
+#[cfg(windows)]
 const MAIN_WINDOW_TITLE: &str = "RA2 Engine";
 
 /// `ERROR_ALREADY_EXISTS` — the only status native treats as "another copy owns
 /// the gate". Every other failure falls through into a normal launch.
+#[cfg(any(windows, test))]
 const ERROR_ALREADY_EXISTS: u32 = 0xb7;
 
 /// `SW_RESTORE` — un-minimises the existing window without changing its size.
@@ -73,6 +76,7 @@ impl Drop for InstanceGuard {
 /// Whether `GetLastError` after the create call means another copy owns the
 /// gate. Native compares against `ERROR_ALREADY_EXISTS` alone — any other
 /// status, including an outright create failure, proceeds into a normal launch.
+#[cfg(any(windows, test))]
 fn another_copy_owns_gate(last_error: u32) -> bool {
     last_error == ERROR_ALREADY_EXISTS
 }

@@ -588,7 +588,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             &owner,
             state.match_state.sandbox_full_visibility,
             Some(&resources.rules),
-            &resources.height_map,
+            &state.match_state.match_presentation.height_map,
             crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
         );
 
@@ -834,7 +834,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                                     rules,
                                     sid,
                                     transport_id,
-                                    sim.path_grid(),
                                 )
                             })
                         })
@@ -1109,7 +1108,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     world_y,
                     state.match_state.sandbox_full_visibility,
                     Some(&resources.rules),
-                    &resources.height_map,
+                    &state.match_state.match_presentation.height_map,
                     crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                 )
             } else {
@@ -1120,7 +1119,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     &owner,
                     state.match_state.sandbox_full_visibility,
                     Some(&resources.rules),
-                    &resources.height_map,
+                    &state.match_state.match_presentation.height_map,
                     crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                 )
             };
@@ -1276,6 +1275,20 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         },
                     }
                 };
+                if let Command::Attack {
+                    attacker_id,
+                    target_id,
+                } = payload
+                    && click_attack_refused(
+                        sim,
+                        &resources.rules,
+                        &resources.overlay_registry,
+                        attacker_id,
+                        target_id,
+                    )
+                {
+                    continue;
+                }
                 queued.push(CommandEnvelope::new(owner_id, execute_tick, payload));
             }
             if !queued.is_empty() {
@@ -1470,11 +1483,12 @@ fn bomb_order(attacker_id: u64, target_id: u64, friendly: bool) -> Command {
     }
 }
 
-/// A Crazy Ivan's action over a target it cannot bomb is never Attack: a
-/// target that already carries a bomb fails its `GetFireError` (0x006FCBAD),
-/// so the action is Select, and a force-fire or a `Bombable=no` target makes
-/// it NoIvanBomb (`InfantryClass::What_Action_OnObject`, 0x0051EB24), which
-/// `FootClass::ClickedAction_Object` (0x004D74E0) ignores.
+/// A Crazy Ivan's Attack over a target it cannot bomb becomes NoIvanBomb
+/// (`InfantryClass::What_Action_OnObject`, `0x0051EB24`: the target carries
+/// a bomb (`+0x38`) or is `Bombable=no`), which
+/// `FootClass::ClickedAction_Object` (0x004D74E0) ignores. An unforced click
+/// on a bombed target never gets that far: its GetFireError is ILLEGAL
+/// (`0x006FCBAD`), which [`click_attack_refused`] answers.
 fn ivan_cannot_bomb(
     sim: &crate::sim::world::Simulation,
     rules: &crate::rules::ruleset::RuleSet,
@@ -1493,6 +1507,31 @@ fn ivan_cannot_bomb(
                     .object(sim.interner.resolve(target.type_ref()))
                     .is_some_and(|o| o.bombable)
         })
+}
+
+/// `TechnoClass::What_Action_OnObject @ 0x00700548`: an unforced click on
+/// an object stays Attack only while the object's GetFireError for it
+/// ([`Simulation::selected_weapon_fire_error`]) is not ILLEGAL. Otherwise the action
+/// is None or Select (`0x0070056C`), and the object takes no order.
+///
+/// RESIDUAL: the Infiltrate arm (`0x007004A0..0x00700531`) keeps Attack
+/// despite ILLEGAL for an `Infiltrate=` infantryman over a building its flags
+/// admit. VERA issues capture and C4 through their own orders before this,
+/// and has no spy infiltration order; a spy's click on a building it cannot
+/// shoot gets no order here, where retail enters it.
+fn click_attack_refused(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
+    actor_id: u64,
+    target_id: u64,
+) -> bool {
+    sim.selected_weapon_fire_error(
+        rules,
+        actor_id,
+        crate::sim::combat::TargetKind::Entity(target_id),
+        Some(overlay_registry),
+    ) == crate::sim::combat::fire_error::FireError::Illegal
 }
 
 fn selected_rally_producer_ids(
@@ -1518,6 +1557,62 @@ mod tests {
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::world::Simulation;
+
+    /// `TechnoClass::What_Action_OnObject @ 0x00700548`: an unforced click
+    /// orders Attack only to the objects whose GetFireError for the target is
+    /// not ILLEGAL. Out of range is RANGE (T61, the last test), not ILLEGAL.
+    /// A Crazy Ivan's bombed target is ILLEGAL at any distance (T55,
+    /// `0x006FCBAD`, comes first).
+    #[test]
+    fn an_unforced_click_refuses_only_an_illegal_shot() {
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[InfantryTypes]\n0=IVAN\n1=GI\n[VehicleTypes]\n0=HTNK\n\
+                 [CombatDamage]\nIvanTimedDelay=450\n\
+                 [IVAN]\nStrength=125\nPrimary=IvanBomber\nIvan=yes\n\
+                 [GI]\nStrength=125\nPrimary=Pea\n\
+                 [HTNK]\nStrength=900\nArmor=heavy\nPrimary=120mm\n\
+                 [IvanBomber]\nRange=1.5\nProjectile=Invisible\nWarhead=IvanBomb\n\
+                 [Pea]\nDamage=10\nRange=5\nProjectile=Invisible\nWarhead=Soft\n\
+                 [120mm]\nDamage=90\nRange=5.75\nProjectile=Invisible\nWarhead=AP\n\
+                 [Invisible]\nInviso=yes\n\
+                 [IvanBomb]\nIvanBomb=yes\n\
+                 [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
+                 [Soft]\nVerses=100%,100%,100%,100%,100%,0%,100%,100%,100%,100%,100%\n",
+            ))
+            .unwrap();
+        let mut sim = Simulation::new();
+        sim.resolve_type_handles(&rules);
+        for house in ["Americans", "Soviets"] {
+            let id = sim.interner.intern(house);
+            sim.session.house_order.push(id);
+        }
+        let mut spawn = |kind: &str, owner: &str, rx: u16| {
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules).unwrap()
+        };
+        let tank = spawn("HTNK", "Americans", 3);
+        let gi = spawn("GI", "Americans", 4);
+        let ivan = spawn("IVAN", "Americans", 5);
+        let near = spawn("HTNK", "Soviets", 6);
+        let far = spawn("HTNK", "Soviets", 20);
+        let overlays = crate::rules::overlay_types::OverlayTypeRegistry::empty();
+        let refused = |sim: &Simulation, actor: u64, target: u64| {
+            click_attack_refused(sim, &rules, &overlays, actor, target)
+        };
+
+        assert!(refused(&sim, gi, near), "0% Verses against heavy armour");
+        assert!(!refused(&sim, tank, near));
+        assert!(!refused(&sim, tank, far), "out of range");
+        assert!(!refused(&sim, ivan, near));
+
+        sim.bomb_attach(ivan, Some(near), &rules);
+        sim.bomb_attach(ivan, Some(far), &rules);
+        assert!(refused(&sim, ivan, near), "a bombed target");
+        assert!(
+            refused(&sim, ivan, far),
+            "the bomb gate precedes the range test"
+        );
+    }
 
     /// The rally click names the local player's selected buildings that take
     /// a rally: not their power plant, not another house's factory, not units.
@@ -1840,23 +1935,21 @@ mod tests {
     /// while the Chrono Miner is refused for having no primary weapon.
     #[test]
     fn attack_move_eligibility_follows_the_primary_weapon() {
-        let mut rules = chord_rules();
+        let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let tank = sim
-            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules)
             .expect("tank");
         let war_miner = sim
-            .spawn_object("HARV", "Americans", 6, 5, 0, &rules, &height_map)
+            .spawn_object("HARV", "Americans", 6, 5, 0, &rules)
             .expect("armed miner");
         let chrono_miner = sim
-            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules, &height_map)
+            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules)
             .expect("unarmed miner");
         let arty = sim
-            .spawn_object("SECONLY", "Americans", 7, 5, 0, &rules, &height_map)
+            .spawn_object("SECONLY", "Americans", 7, 5, 0, &rules)
             .expect("secondary-only unit");
 
         assert!(entity_can_attack_move(&sim, Some(&rules), tank));
@@ -1883,14 +1976,12 @@ mod tests {
         let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let prism = sim
-            .spawn_object("SREF", "Americans", 7, 6, 0, &rules, &height_map)
+            .spawn_object("SREF", "Americans", 7, 6, 0, &rules)
             .expect("TurretCount type");
         let tank = sim
-            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules)
             .expect("tank");
 
         assert!(entity_can_attack_move(&sim, Some(&rules), prism));
@@ -1911,11 +2002,9 @@ mod tests {
         let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let nighthawk = sim
-            .spawn_object("SHAD", "Americans", 5, 6, 0, &rules, &height_map)
+            .spawn_object("SHAD", "Americans", 5, 6, 0, &rules)
             .expect("helicopter carrying PreventAttackMove=yes");
         assert!(!entity_can_attack_move(&sim, Some(&rules), nighthawk));
     }
@@ -1940,20 +2029,18 @@ mod tests {
     /// the first member that refuses.
     #[test]
     fn attack_move_chord_requires_every_selected_object() {
-        let mut rules = chord_rules();
+        let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: std::collections::BTreeMap<(u16, u16), u8> =
-            std::collections::BTreeMap::new();
 
         let tank = sim
-            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 5, 5, 0, &rules)
             .expect("tank");
         let war_miner = sim
-            .spawn_object("HARV", "Americans", 6, 5, 0, &rules, &height_map)
+            .spawn_object("HARV", "Americans", 6, 5, 0, &rules)
             .expect("armed miner");
         let chrono_miner = sim
-            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules, &height_map)
+            .spawn_object("CMIN", "Americans", 8, 5, 0, &rules)
             .expect("unarmed miner");
         let factory = insert_typed(&mut sim, 900, "GAWEAP", EntityCategory::Structure);
 
@@ -2039,15 +2126,13 @@ mod tests {
             .unwrap();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map = std::collections::BTreeMap::new();
         for house in ["Americans", "Soviets"] {
             let id = sim.interner.intern(house);
             sim.session.house_order.push(id);
         }
         let americans = sim.interner.get("Americans").unwrap();
         let mut spawn = |kind: &str, owner: &str, rx: u16| {
-            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
-                .unwrap()
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules).unwrap()
         };
         let gi = spawn("E1", "Americans", 5);
         let other_gi = spawn("E1", "Americans", 7);
@@ -2091,15 +2176,13 @@ mod tests {
             .unwrap();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map = std::collections::BTreeMap::new();
         for house in ["Americans", "Soviets"] {
             let id = sim.interner.intern(house);
             sim.session.house_order.push(id);
         }
         let americans = sim.interner.get("Americans").unwrap();
         let mut spawn = |kind: &str, owner: &str, rx: u16| {
-            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
-                .unwrap()
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules).unwrap()
         };
         let ivan = spawn("IVAN", "Americans", 5);
         let engineer = spawn("ENGINEER", "Americans", 7);

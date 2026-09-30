@@ -336,7 +336,6 @@ fn original_unit_fire_update_rows() {
     let defaults = &payload["defaults"];
     let rows = payload["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 64);
-    let hm = std::collections::BTreeMap::new();
     let mut compared = 0;
     for row in rows {
         let input = &row["input"];
@@ -368,7 +367,7 @@ fn original_unit_fire_update_rows() {
         let rules = unit_fire_rules(is_gattling, slot0);
         let mut sim = crate::sim::world::Simulation::new();
         let id = sim
-            .spawn_object("GTNK", "Americans", 10, 10, 0, &rules, &hm)
+            .spawn_object("GTNK", "Americans", 10, 10, 0, &rules)
             .expect("spawn GTNK");
         {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
@@ -489,7 +488,6 @@ struct Spin {
     sim: crate::sim::world::Simulation,
     rules: crate::rules::ruleset::RuleSet,
     grid: crate::sim::pathfinding::PathGrid,
-    hm: std::collections::BTreeMap<(u16, u16), u8>,
     tank: u64,
 }
 
@@ -497,7 +495,6 @@ impl Spin {
     /// The tank alone: nothing it could pick a target from.
     fn new() -> Self {
         let rules = spin_rules();
-        let hm = std::collections::BTreeMap::new();
         let mut sim = crate::sim::world::Simulation::new();
         for (name, side, human) in [("YuriCountry", 2, true), ("Americans", 0, false)] {
             let id = sim.interner.intern(name);
@@ -509,13 +506,12 @@ impl Spin {
         }
         let grid = crate::sim::arena_fixture::flat_arena(&mut sim, &rules);
         let tank = sim
-            .spawn_object("GTNK", "YuriCountry", 10, 10, 0, &rules, &hm)
+            .spawn_object("GTNK", "YuriCountry", 10, 10, 0, &rules)
             .expect("spawn GTNK");
         Self {
             sim,
             rules,
             grid,
-            hm,
             tank,
         }
     }
@@ -523,7 +519,7 @@ impl Spin {
     /// An enemy post (Americans) three cells east of the tank.
     fn spawn_post(&mut self) -> u64 {
         self.sim
-            .spawn_object("POST", "Americans", 13, 10, 0, &self.rules, &self.hm)
+            .spawn_object("POST", "Americans", 13, 10, 0, &self.rules)
             .expect("spawn POST")
     }
 
@@ -550,14 +546,8 @@ impl Spin {
         self.sim.fire_events.clear();
         self.sim.sound_events.clear();
         let commands = self.sim.take_due_commands();
-        self.sim.advance_tick(
-            &commands,
-            Some(&self.rules),
-            &self.hm,
-            Some(&self.grid),
-            None,
-            67,
-        );
+        self.sim
+            .advance_tick(&commands, Some(&self.rules), Some(&self.grid), None, 67);
         let fired = self
             .sim
             .fire_events
@@ -697,22 +687,21 @@ fn a_gattling_tank_winds_down_without_a_target() {
 /// (`0x0073A6FC..0x0073A70F`), and Limbo releases its loop.
 #[test]
 fn a_gattling_tank_boards_with_its_spin_reset() {
-    use crate::sim::passenger::{BoardingPhase, PassengerRole};
+    use crate::sim::passenger::PassengerRole;
     let mut spin = Spin::new();
     let hover = spin
         .sim
-        .spawn_object("HOVR", "YuriCountry", 11, 10, 0, &spin.rules, &spin.hm)
+        .spawn_object("HOVR", "YuriCountry", 11, 10, 0, &spin.rules)
         .expect("spawn HOVR");
     {
         let tank = spin.sim.substrate.entities.get_mut(spin.tank).unwrap();
         tank.gattling = GattlingState::from_fields(2, 600, true);
         tank.passenger_role = PassengerRole::Boarding {
             target_transport_id: hover,
-            phase: BoardingPhase::Entering,
         };
     }
     spin.sim.sound_events.clear();
-    crate::sim::passenger::tick_passenger_system(&mut spin.sim, &spin.rules);
+    crate::sim::passenger::tick_passenger_system(&mut spin.sim, &spin.rules, None);
     let tank = spin.sim.substrate.entities.get(spin.tank).unwrap();
     assert!(tank.passenger_role.is_inside_transport());
     assert_eq!((tank.gattling.stage(), tank.gattling.value()), (0, 0));

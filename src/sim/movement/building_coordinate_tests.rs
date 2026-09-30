@@ -180,8 +180,6 @@ fn building_navigation_capture_command_preserves_the_native_dock_coordinate() {
             target_building_id: 2,
         },
         Some(&rules),
-        None,
-        &Default::default(),
     );
     assert!(accepted);
     let engineer = sim.substrate.entities.get(1).unwrap();

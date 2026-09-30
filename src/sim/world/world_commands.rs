@@ -6,10 +6,11 @@
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::ground_move::GroundMove;
 use super::{SimSoundEvent, Simulation, SimulationWallRuntimeHost};
+use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
 #[cfg(test)]
 use crate::rules::locomotor_type::MovementZone;
@@ -26,22 +27,18 @@ use crate::sim::command::{
     SellWallAtCellRecord,
 };
 use crate::sim::components::OrderIntent;
-use crate::sim::docking::building_dock::{self, DockState};
-use crate::sim::mission::concrete_effects::represented_assign_target;
+use crate::sim::docking::building_dock;
 use crate::sim::mission::{DockTeardown, MissionType};
 use crate::sim::movement;
 use crate::sim::movement::jumpjet_movement;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::teleport_movement;
 use crate::sim::overlay_grid::{
-    NavigationPublication, OverlayRecalcOutcome, RecomputeResult, runtime_wall_cleanup_visit_at,
+    OverlayRecalcOutcome, RecomputeResult, runtime_wall_cleanup_visit_at,
 };
 use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids;
-use crate::sim::pathfinding::zone_incremental::{
-    PackedZoneCoord, ZoneRepairKind, repair_zone_cell,
-};
+use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::production;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed, ra2_speed_to_leptons_per_second};
 
@@ -57,7 +54,6 @@ pub(crate) struct MoveInfo {
     pub(crate) loco_layer: MovementLayer,
     pub(crate) speed_type: SpeedType,
     pub(crate) hover_attack: bool,
-    pub(crate) is_teleporter: bool,
     pub(crate) is_harvester: bool,
     pub(crate) is_infantry: bool,
     pub(crate) accel_factor: SimFixed,
@@ -298,16 +294,18 @@ impl Simulation {
         };
 
         if navigation_changed {
-            self.terrain_costs = build_canonical_terrain_cost_grids(terrain);
-            let resolved =
-                PathGrid::from_resolved_terrain_with_bridges(terrain, self.bridge_state.as_ref());
+            crate::sim::pathfinding::terrain_cost::refresh_canonical_terrain_costs_at(
+                &mut self.terrain_costs,
+                terrain,
+                (rx, ry),
+            );
             if tail_grid.as_ref().is_some_and(|tail| {
-                tail.width() != resolved.width() || tail.height() != resolved.height()
+                tail.width() != terrain.width() || tail.height() != terrain.height()
             }) {
                 *tail_grid = None;
             }
-            if let Some(tail) = tail_grid.as_mut() {
-                let _ = tail.replace_cell_from(&resolved, rx, ry);
+            if let (Some(tail), Some(cell)) = (tail_grid.as_mut(), terrain.cell(rx, ry)) {
+                let _ = tail.refresh_resolved_cell(cell, false);
             }
         }
 
@@ -331,24 +329,19 @@ impl Simulation {
         };
         #[cfg(not(test))]
         let _ = sold_cell;
-        let Some(zone_grid) = self.zone_grid.as_mut() else {
+        let Some(_zone_grid) = self.zone_grid.as_mut() else {
             return;
         };
-        let bridge_records = self
-            .bridge_state
-            .as_ref()
-            .map(|state| state.endpoint_records())
-            .unwrap_or(&[]);
         #[cfg(test)]
-        trace_wall_sell_zone_repair_step(zone_grid, tail_grid, sold_cell, repair_cell);
-        let _ = repair_zone_cell(
-            zone_grid,
-            PackedZoneCoord::new(repair_cell.0 as i16, repair_cell.1 as i16),
-            repair,
+        trace_wall_sell_zone_repair_step(_zone_grid, tail_grid, sold_cell, repair_cell);
+        super::repair_zone_after_recalc(
+            &mut self.zone_grid,
             tail_grid,
-            self.playfield_bounds,
             terrain,
-            bridge_records,
+            self.bridge_state.as_ref(),
+            self.playfield_bounds,
+            repair_cell,
+            repair,
         );
     }
 
@@ -358,7 +351,6 @@ impl Simulation {
         x: i16,
         y: i16,
         rules: &RuleSet,
-        path_grid: Option<&PathGrid>,
         overlays: &crate::map::overlay_types::OverlayTypeRegistry,
     ) -> bool {
         // EventClass rejects only the exact packed null CellStruct. Every
@@ -407,9 +399,7 @@ impl Simulation {
         }
         let _discarded_actual_cost = rules.building_actual_cost(wall_type);
 
-        let mut tail_grid = path_grid
-            .cloned()
-            .or_else(|| self.path_grid.as_deref().cloned());
+        let mut tail_grid = self.path_grid.as_deref().cloned();
         let sold_navigation_changed = if let Some(grid) = self.overlay_grid.as_mut() {
             // gamemd-derived: `HouseClass::Sell_Building_At_Cell @ 0x004FCE80`
             // clears the wall identity itself (`+0x44 = -1` at `0x004FCFBC`,
@@ -421,13 +411,8 @@ impl Simulation {
             // eight neighbour contributions permanently.
             grid.clear_overlay(rx, ry);
             if let Some(terrain) = self.resolved_terrain.as_mut() {
-                grid.recalculate_runtime_cell(
-                    terrain,
-                    overlays,
-                    (rx, ry),
-                    NavigationPublication::NextPathReader,
-                )
-                .navigation_changed
+                grid.recalculate_runtime_cell(terrain, overlays, (rx, ry))
+                    .navigation_changed
             } else {
                 false
             }
@@ -482,12 +467,9 @@ impl Simulation {
             };
             let result = visit.recomputed;
             let recalc = match (self.overlay_grid.as_mut(), self.resolved_terrain.as_mut()) {
-                (Some(grid), Some(terrain)) => grid.recalculate_runtime_cell(
-                    terrain,
-                    overlays,
-                    (nx, ny),
-                    NavigationPublication::NextPathReader,
-                ),
+                (Some(grid), Some(terrain)) => {
+                    grid.recalculate_runtime_cell(terrain, overlays, (nx, ny))
+                }
                 _ => OverlayRecalcOutcome::default(),
             };
             self.refresh_wall_sale_recalc_prefix(&mut tail_grid, nx, ny, recalc.navigation_changed);
@@ -562,24 +544,11 @@ impl Simulation {
         let loco_layer = e.movement_layer_or_ground();
         let speed_type = loco.map(|l| l.speed_type).unwrap_or(SpeedType::Track);
         let hover_attack = loco.map(|l| l.hover_attack).unwrap_or(false);
-        let loco_multiplier = loco
-            .map(|l| l.speed_multiplier)
-            .unwrap_or(SimFixed::from_num(1));
 
         let obj = rules.and_then(|r| self.object_type(e.type_ref(), r));
-        // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: every ordered move asks the
-        // getter for the speed, so the `FASTER` multiply belongs here, between
-        // the truncated type speed and the locomotor fraction — not only on the
-        // deferred repath. This is the resolver behind Move, AttackMove, Enter,
-        // C4, capture and bunker-entry, so skipping it ran every promoted unit
-        // at rookie speed.
-        let base_speed = crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-            e,
-            obj,
-            obj.map_or(4, |o| o.speed),
-            rules.map_or(1.0, |r| r.general.veteran_speed),
-        );
-        let speed = (base_speed * loco_multiplier).max(SimFixed::lit("25"));
+        // The resolver behind Move, AttackMove, Enter, C4, capture and
+        // bunker-entry.
+        let speed = crate::sim::movement::order_speed(e, obj, rules);
 
         Some(MoveInfo {
             speed,
@@ -587,7 +556,6 @@ impl Simulation {
             loco_layer,
             speed_type,
             hover_attack,
-            is_teleporter: obj.map_or(false, |o| o.teleporter),
             is_harvester: obj.map_or(false, |o| o.harvester),
             is_infantry: obj.map_or(false, |o| o.category == ObjectCategory::Infantry),
             accel_factor: obj.map_or(SIM_ZERO, |o| o.accel_factor),
@@ -612,10 +580,8 @@ impl Simulation {
         command_owner: &str,
         cmd: &Command,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
-        height_map: &BTreeMap<(u16, u16), u8>,
     ) -> bool {
-        self.apply_command_with_overlays(command_owner, cmd, rules, path_grid, height_map, None)
+        self.apply_command_with_overlays(command_owner, cmd, rules, None)
     }
 
     pub(crate) fn apply_command_with_overlays(
@@ -623,8 +589,6 @@ impl Simulation {
         command_owner: &str,
         cmd: &Command,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         match cmd {
@@ -661,11 +625,11 @@ impl Simulation {
                     rules,
                 );
                 // Clear attack and order intent.
+                let _ = self.assign_target_represented(*entity_id, None, rules);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     // Event MegaMission4C7467 calls Assign_Target before the
                     // destination setter. Its changed-null path6FCF5B also
                     // resets retained burst state; dropping Target alone cannot.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
@@ -675,27 +639,9 @@ impl Simulation {
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
                     return false;
                 };
-                // Chrono Miners (Teleporter=yes + Harvester=yes) drive for player
-                // commands; they warp only onto a refinery pad, through the Unit
-                // setter's Teleporter arm (`set_unit_cell_destination`). RESIDUAL:
-                // this Move does not run that setter (no arm, no +0x1F8 clear).
-                let use_teleport_move = !info.is_harvester
-                    && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
-
-                let general_rules = rules.map(|r| &r.general);
-                let result = if use_teleport_move {
-                    // Teleport locomotor or non-harvester Teleporter=yes: instant relocation.
-                    // `use_teleport_move` already excludes harvesters, so is_harvester=false.
-                    let default_general = crate::rules::ruleset::GeneralRules::default();
-                    teleport_movement::issue_teleport_command(
-                        &mut self.substrate.entities,
-                        *entity_id,
-                        (*target_rx, *target_ry),
-                        general_rules.unwrap_or(&default_general),
-                        false,
-                        self.session.binary_frame,
-                    )
-                } else if info.loco_layer == MovementLayer::Air {
+                // A Teleport mover takes its class setter inside
+                // `issue_ground_move` (`teleport_destination`).
+                let result = if info.loco_layer == MovementLayer::Air {
                     // Jumpjet infantry walk fallback: ≤3 cells + !HoverAttack → ground walk.
                     if info.loco_kind == Some(LocomotorKind::Jumpjet) && info.is_infantry {
                         let dx = (*target_rx as i32 - info.position.0 as i32).unsigned_abs();
@@ -706,9 +652,7 @@ impl Simulation {
                             true,
                             dist_cells,
                         ) {
-                            let Some(grid) = path_grid else { return false };
                             return self.issue_ground_move(
-                                grid,
                                 GroundMove {
                                     entity_id: *entity_id,
                                     target: (*target_rx, *target_ry),
@@ -718,7 +662,6 @@ impl Simulation {
                                     owner_blocks: true,
                                     object_destination: None,
                                 },
-                                overlay_registry,
                                 rules,
                             );
                         }
@@ -744,9 +687,7 @@ impl Simulation {
                     }
                     ok
                 } else {
-                    let Some(grid) = path_grid else { return false };
                     self.issue_ground_move(
-                        grid,
                         GroundMove {
                             entity_id: *entity_id,
                             target: (*target_rx, *target_ry),
@@ -756,7 +697,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         rules,
                     )
                 };
@@ -816,56 +756,66 @@ impl Simulation {
                         || e.navigation.nav_com.is_some()
                         || e.setter_force_reassign
                 });
+                let walking_infantry = self.substrate.entities.get(*entity_id).is_some_and(|e| {
+                    e.category == crate::map::entities::EntityCategory::Infantry
+                        && e.locomotor.as_ref().is_some_and(|l| {
+                            l.kind == crate::rules::locomotor_type::LocomotorKind::Walk
+                        })
+                });
+                if walking_infantry {
+                    //4C75ED dispatches the actual class NULL setter. Walk
+                    //75ADA0 must consume pending Deploy through owner+54C;
+                    //a paid head and the human deployment refusal survive.
+                    self.assign_null_destination(*entity_id, rules);
+                }
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    movement::stop_navigation_at_committed_head(e);
-                    // Event Stop4C75F8 invokes the same virtual target setter.
-                    represented_assign_target(e, None);
+                    if !walking_infantry {
+                        movement::stop_navigation_at_committed_head(e);
+                    }
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
                 }
-                if jumpjet_stops
+                if !walking_infantry
+                    && jumpjet_stops
                     && !self.jumpjet_null_destination(*entity_id, rules, overlay_registry)
                 {
                     return false;
                 }
-                if let Some(entity) = self.substrate.entities.get_mut(*entity_id) {
+                if !walking_infantry
+                    && let Some(entity) = self.substrate.entities.get_mut(*entity_id)
+                {
                     // Accepted null Foot setter4D96C2 follows locomotor Stop,
                     // including a no-op Stop, and preserves the retry counter.
                     movement::DestinationTiming::from_rules(self.session.binary_frame, rules)
                         .accept(entity);
                 }
-                // Cancel any special locomotor states in progress.
+                // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
+                // destination4C75ED, including the Infantry class effects.
+                let _ = self.assign_target_represented(*entity_id, None, rules);
+                // Event Stop's null destination reaches the active locomotor's
+                // Stop_Moving; a Teleport one drops only an armed warp.
+                //
                 // **VERA-internal: retail Stop leaves the installed locomotor
                 // alone.** This existing unwind policy uses the same END gate
-                // as FootAI4DAEC3 / SetDestination742587, after navigation is
-                // cleared but before teleport/layer cleanup. A live Drive head
-                // still refuses it. Keep that timing while centralizing the
-                // actual instance transfer/retirement in locomotor_owner.
+                // as FootAI4DAEC3 / SetDestination742587 (an active Drive's
+                // IsOKToEnd4AF970), after navigation is cleared. A live Drive
+                // head still refuses it.
+                // Keep that timing while centralizing the actual instance
+                // transfer/retirement in locomotor_owner.
                 // Trigger: Stop on a piggybacked Chrono Miner, a few times per
                 // ordinary Allied match; a premature unwind can change the next
                 // command's locomotor. Native Stop parity remains open. The
                 // production command's admitted/refused lifetime is covered by
                 // locomotor_owner_tests::stop_command_retires_only_the_drive_admitted_by_its_existing_gate.
                 let may_end = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    let gate = crate::sim::movement::locomotor_end_gate_context(e);
-                    e.locomotor.as_ref().is_some_and(|loco| {
-                        loco.is_overridden()
-                            && loco.can_restore_primary_from_piggyback(
-                                gate.owner_moving,
-                                gate.owner_teleporting,
-                                gate.owner_deploying,
-                            )
-                    })
+                    e.locomotor
+                        .as_ref()
+                        .is_some_and(|loco| loco.is_overridden())
+                        && crate::sim::movement::locomotor_owner::piggyback_end_admitted(e)
                 });
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    e.teleport_state = None;
-                    // Restore ground layer and base locomotor if overridden.
-                    if let Some(ref mut loco) = e.locomotor
-                        && loco.layer == MovementLayer::Underground
-                    {
-                        loco.layer = MovementLayer::Ground;
-                    }
+                    teleport_movement::teleport_stop_moving(e);
                     if may_end {
                         crate::sim::movement::locomotor_owner::restore_admitted_primary(e);
                     }
@@ -1071,31 +1021,13 @@ impl Simulation {
                     DockTeardown::IdleOnly,
                     rules,
                 );
-                if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    represented_assign_target(e, None);
-                }
+                let _ = self.assign_target_represented(*entity_id, None, rules);
 
                 // Snapshot speed, locomotor, and rules data in one lookup.
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
                     return false;
                 };
-                // Chrono Miners drive normally for player commands.
-                let use_teleport_move = !info.is_harvester
-                    && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
-
-                let default_general = crate::rules::ruleset::GeneralRules::default();
-                let general_rules_ref = rules.map(|r| &r.general).unwrap_or(&default_general);
-                let issued = if use_teleport_move {
-                    // `use_teleport_move` excludes harvesters, so is_harvester=false.
-                    teleport_movement::issue_teleport_command(
-                        &mut self.substrate.entities,
-                        *entity_id,
-                        (*target_rx, *target_ry),
-                        general_rules_ref,
-                        false,
-                        self.session.binary_frame,
-                    )
-                } else if info.loco_layer == MovementLayer::Air {
+                let issued = if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines.
                     let ok = self.issue_air_cell_destination(
                         *entity_id,
@@ -1115,9 +1047,7 @@ impl Simulation {
                     }
                     ok
                 } else {
-                    let Some(grid) = path_grid else { return false };
                     self.issue_ground_move(
-                        grid,
                         GroundMove {
                             entity_id: *entity_id,
                             target: (*target_rx, *target_ry),
@@ -1127,7 +1057,6 @@ impl Simulation {
                             owner_blocks: true,
                             object_destination: None,
                         },
-                        overlay_registry,
                         rules,
                     )
                 };
@@ -1167,100 +1096,48 @@ impl Simulation {
                 }
                 self.undeploy_building(*entity_id, rules)
             }
-            // RESIDUAL: native asks `CanDeploySlashUnload @ 0x00700D50`
-            // (vt+0x314) first, and its infantry arm refuses a deployed
-            // infantryman's undeploy while its rearm timer runs (`0x00700E02`),
-            // so a deployed GI in a firefight stands up only between shots. How
-            // the refused DEPLOY event is dropped or retried is not traced.
+            // The synchronized self-deploy order queues Unload; the concrete
+            // Infantry51F6E0 handler selects Doing27/31 on the object's visit.
+            // CanDeploy700D50's UI tube-neighborhood gate484AE0 is a separate
+            // required query; it is not invented by this event receiver.
             Command::ToggleInfantryDeploy { entity_id } => {
-                if !self.entity_owned_by_id(command_owner, *entity_id) {
+                if !self.entity_owned_by_id(command_owner, *entity_id)
+                    || !self.order_actor_admits(*entity_id)
+                {
                     return false;
                 }
                 let Some(rules) = rules else { return false };
-                // INI gate: only DeployFire=yes types respond.
-                let type_str = match self.substrate.entities.get(*entity_id) {
-                    Some(e) => self.interner.resolve(e.type_ref()).to_string(),
-                    None => return false,
-                };
-                let Some(obj) = rules.object(&type_str) else {
+                let Some(actor) = self.substrate.entities.get(*entity_id) else {
                     return false;
                 };
-                if !obj.deploy_fire {
+                if actor.category != EntityCategory::Infantry
+                    || !self
+                        .object_type(actor.type_ref(), rules)
+                        .is_some_and(|object| object.deployer)
+                {
                     return false;
                 }
-                let deploy_sound = obj.deploy_sound.clone();
-                let undeploy_sound = obj.undeploy_sound.clone();
-                // Per-type animation duration from artmd.ini sequence frame
-                // counts. Fall back to DEPLOY_DEFAULT_TICKS when the art
-                // section or sequence is missing.
-                let art_entry = rules.art().resolve_metadata_entry(&type_str, &obj.image);
-                let deploying_ticks = crate::sim::deploy::compute_anim_ticks(
-                    art_entry,
-                    crate::sim::deploy::DeployPhaseKind::Deploying,
+                self.queue_megamission_with_teardown(
+                    *entity_id,
+                    MissionType::Unload,
+                    DockTeardown::All,
+                    Some(rules),
                 );
-                let undeploying_ticks = crate::sim::deploy::compute_anim_ticks(
-                    art_entry,
-                    crate::sim::deploy::DeployPhaseKind::Undeploying,
-                );
-
-                let Some(entity) = self.substrate.entities.get_mut(*entity_id) else {
-                    return false;
-                };
-                let (rx, ry) = (entity.position.rx, entity.position.ry);
-                let new_phase: Option<crate::sim::deploy::DeployPhase>;
-                let mut emit_deploy_sound = false;
-                let mut emit_undeploy_sound = false;
-                match entity.deploy_state {
-                    None => {
-                        new_phase = Some(crate::sim::deploy::DeployPhase::Deploying {
-                            ticks_remaining: deploying_ticks,
-                        });
-                        emit_deploy_sound = true;
-                        // Deploy begins: the locomotor powers down for the
-                        // duration. Undeploy completing powers it back on.
-                        if let Some(loco) = entity.locomotor.as_mut() {
-                            loco.power_off();
-                        }
-                    }
-                    Some(crate::sim::deploy::DeployPhase::Deployed) => {
-                        new_phase = Some(crate::sim::deploy::DeployPhase::Undeploying {
-                            ticks_remaining: undeploying_ticks,
-                        });
-                        emit_undeploy_sound = true;
-                        // Belt-and-braces: clear any stale movement target.
-                        entity.movement_target = None;
-                    }
-                    Some(crate::sim::deploy::DeployPhase::Deploying { .. })
-                    | Some(crate::sim::deploy::DeployPhase::Undeploying { .. }) => {
-                        return false;
-                    }
+                // Event4C7448 clears ArchiveTarget before class target4C7467
+                // and destination4C747C. Foot4DA1C0's +5AC vector is distinct
+                // from NavQueue588/598 and has no represented producer here.
+                if let Some(actor) = self.substrate.entities.get_mut(*entity_id) {
+                    actor.set_archive_target(None);
                 }
-                // Sound plays BEFORE state field write — matches the original's
-                // Do_Action ordering (voc cue precedes the Doing-field mutation).
-                if emit_deploy_sound {
-                    if let Some(sound_name) = deploy_sound {
-                        let sound_id = self.interner.intern(&sound_name);
-                        self.sound_events
-                            .push(crate::sim::world::SimSoundEvent::EntityDeployed {
-                                deploy_sound_id: sound_id,
-                                rx,
-                                ry,
-                            });
-                    }
-                }
-                if emit_undeploy_sound {
-                    if let Some(sound_name) = undeploy_sound {
-                        let sound_id = self.interner.intern(&sound_name);
-                        self.sound_events.push(
-                            crate::sim::world::SimSoundEvent::EntityUndeployed {
-                                undeploy_sound_id: sound_id,
-                                rx,
-                                ry,
-                            },
-                        );
-                    }
-                }
-                entity.deploy_state = new_phase;
+                self.assign_target_represented(*entity_id, None, Some(rules))
+                    .unwrap_or_else(|cause| panic!("Infantry deploy target: {cause}"));
+                self.assign_destination_represented(
+                    *entity_id,
+                    None,
+                    Some(rules),
+                    overlay_registry,
+                )
+                .unwrap_or_else(|cause| panic!("Infantry deploy destination: {cause}"));
                 true
             }
             Command::SetRally {
@@ -1297,7 +1174,6 @@ impl Simulation {
                     &type_s,
                     *rx,
                     *ry,
-                    height_map,
                     overlay_registry,
                 );
                 if !placed {
@@ -1331,7 +1207,7 @@ impl Simulation {
                 let (Some(rules), Some(overlays)) = (rules, overlay_registry) else {
                     return false;
                 };
-                self.sell_wall_at_cell(command_owner, *x, *y, rules, path_grid, overlays)
+                self.sell_wall_at_cell(command_owner, *x, *y, rules, overlays)
             }
             // Offline game-speed transitions are consumed at master-frame
             // ingress so early authoritative animation work sees the new rate.
@@ -1481,28 +1357,24 @@ impl Simulation {
                     return false;
                 }
                 // Validate depot exists, is friendly, and has UnitRepair=yes.
-                let depot_info = self.substrate.entities.get(*depot_id).and_then(|depot| {
-                    if !command_owner.eq_ignore_ascii_case(self.interner.resolve(depot.owner())) {
-                        return None;
-                    }
-                    let obj = self.object_type(depot.type_ref(), rules)?;
-                    if !obj.unit_repair {
-                        return None;
-                    }
-                    Some((depot.position.rx, depot.position.ry, obj.foundation.clone()))
+                let depot_ok = self.substrate.entities.get(*depot_id).is_some_and(|depot| {
+                    command_owner.eq_ignore_ascii_case(self.interner.resolve(depot.owner()))
+                        && self
+                            .object_type(depot.type_ref(), rules)
+                            .is_some_and(|obj| obj.unit_repair)
                 });
-                let Some((depot_rx, depot_ry, foundation)) = depot_info else {
+                if !depot_ok {
                     return false;
-                };
-                // Validate entity is a unit or infantry (not structure/aircraft).
+                }
+                // A damaged vehicle: the player's click issues the order only
+                // for Units (`input::context_order`), and the depot's CAN_LOAD
+                // refuses any sender but a Unit or an Aircraft (Building
+                // Receive_Radio 0x0F, UnitRepair arm).
                 let entity_ok = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    matches!(
-                        e.category,
-                        crate::map::entities::EntityCategory::Unit
-                            | crate::map::entities::EntityCategory::Infantry
-                    ) && self
-                        .object_type(e.type_ref(), rules)
-                        .is_some_and(|object| e.health.current < object.strength)
+                    e.category == crate::map::entities::EntityCategory::Unit
+                        && self
+                            .object_type(e.type_ref(), rules)
+                            .is_some_and(|object| e.health.current < object.strength)
                         && !e.dying
                 });
                 if !entity_ok {
@@ -1526,41 +1398,13 @@ impl Simulation {
                     DockTeardown::Depot,
                     Some(rules),
                 );
-                // Set dock state and issue move toward depot.
-                let (dock_rx, dock_ry) =
-                    building_dock::depot_dock_cell(depot_rx, depot_ry, &foundation);
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*entity_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
-                    e.dock_state = Some(DockState::approach(*depot_id));
                 }
-                // Issue movement toward dock cell.
-                let info = self.resolve_move_info(*entity_id, Some(rules));
-                let speed = info
-                    .as_ref()
-                    .map(|i| i.speed)
-                    .unwrap_or(ra2_speed_to_leptons_per_second(4));
-                let speed_type = info
-                    .as_ref()
-                    .map(|i| i.speed_type)
-                    .unwrap_or(SpeedType::Track);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *entity_id,
-                            target: (dock_rx, dock_ry),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: None,
-                        },
-                        overlay_registry,
-                        Some(rules),
-                    );
-                }
+                // Event4C747C: the Unit class setter with the depot.
+                building_dock::order_onto_depot(self, rules, *entity_id, *depot_id);
                 true
             }
             Command::EnterTransport {
@@ -1599,7 +1443,7 @@ impl Simulation {
                         &cargo,
                         rules,
                         &self.houses,
-                        path_grid,
+                        self.path_grid(),
                     ) {
                         Some(())
                     } else {
@@ -1631,14 +1475,13 @@ impl Simulation {
                     Some(rules),
                 );
                 // Clear existing state on the passenger.
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*passenger_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*passenger_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.passenger_role = passenger::PassengerRole::Boarding {
                         target_transport_id: *transport_id,
-                        phase: passenger::BoardingPhase::Approach,
                     };
                 }
                 // Issue movement toward transport cell.
@@ -1651,22 +1494,18 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *passenger_id,
-                            target: (trx, try_),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: None,
-                        },
-                        overlay_registry,
-                        Some(rules),
-                    );
-                }
+                self.issue_ground_move(
+                    GroundMove {
+                        entity_id: *passenger_id,
+                        target: (trx, try_),
+                        speed,
+                        queue: false,
+                        speed_type: Some(speed_type),
+                        owner_blocks: true,
+                        object_destination: None,
+                    },
+                    Some(rules),
+                );
                 true
             }
             Command::UnloadPassengers { transport_id } => {
@@ -1689,10 +1528,18 @@ impl Simulation {
                     .map(|t| t.category);
                 match category {
                     Some(crate::map::entities::EntityCategory::Structure) => {
-                        // Garrison eviction stays on the per-tick order path.
-                        if let Some(e) = self.substrate.entities.get_mut(*transport_id) {
-                            e.order_intent = Some(OrderIntent::Unloading);
+                        // A garrison's Unload is its own mission
+                        // (`BuildingClass::Mission_Unload @ 0x0044D880`),
+                        // commenced at the building's ready checks.
+                        if !self.order_actor_admits(*transport_id) {
+                            return false;
                         }
+                        self.queue_megamission_with_teardown(
+                            *transport_id,
+                            MissionType::Unload,
+                            DockTeardown::All,
+                            rules,
+                        );
                         true
                     }
                     Some(crate::map::entities::EntityCategory::Unit)
@@ -1811,14 +1658,12 @@ impl Simulation {
                     // Clear in-progress movement so the miner re-paths.
                     e.movement_target = None;
                 }
-                if let (Some(rules), Some(grid)) = (rules, path_grid) {
-                    let _ = crate::sim::miner::miner_system::issue_stock_miner_drive_move_with_overlay_registry(
+                if let Some(rules) = rules {
+                    let _ = crate::sim::miner::miner_system::issue_stock_miner_drive_move(
                         self,
                         rules,
-                        grid,
                         *entity_id,
                         (*target_rx, *target_ry),
-                        overlay_registry,
                     );
                 }
                 true
@@ -1871,9 +1716,23 @@ impl Simulation {
                         ) {
                             return None;
                         }
-                        Some((b.position.rx, b.position.ry, b.owner()))
+                        Some((
+                            b.position.rx,
+                            b.position.ry,
+                            b.owner(),
+                            crate::sim::movement::nav_target_coordinate(
+                                crate::sim::components::NavTargetRef::Building {
+                                    id: *target_building_id,
+                                },
+                                Some(*attacker_id),
+                                &self.substrate.entities,
+                                self.resolved_terrain.as_ref(),
+                                Some((rules, &self.interner)),
+                            )
+                            .ok()?,
+                        ))
                     });
-                let Some((trx, try_, target_owner)) = target_info else {
+                let Some((trx, try_, target_owner, target_coord)) = target_info else {
                     return false;
                 };
                 // Enemy-only.
@@ -1898,9 +1757,9 @@ impl Simulation {
                     Some(rules),
                 );
                 // Clear conflicting state and set c4_plant.
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*attacker_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.capture_target = None;
@@ -1908,7 +1767,9 @@ impl Simulation {
                         target_building_id: *target_building_id,
                     });
                 }
-                // Issue movement toward the building's cell.
+                // Event4C747C: Set_Destination(target building, 1). The building is
+                // the NavCom, so the Infantry +1AC admits its footprint cells to a
+                // Sabotage C4 carrier (`0x0051C2D3..`) and the walk ends inside.
                 let info = self.resolve_move_info(*attacker_id, Some(rules));
                 let speed = info
                     .as_ref()
@@ -1918,22 +1779,23 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *attacker_id,
-                            target: (trx, try_),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: None,
-                        },
-                        overlay_registry,
-                        Some(rules),
-                    );
-                }
+                self.issue_ground_move(
+                    GroundMove {
+                        entity_id: *attacker_id,
+                        target: (trx, try_),
+                        speed,
+                        queue: false,
+                        speed_type: Some(speed_type),
+                        owner_blocks: true,
+                        object_destination: Some((
+                            crate::sim::components::NavTargetRef::Building {
+                                id: *target_building_id,
+                            },
+                            target_coord,
+                        )),
+                    },
+                    Some(rules),
+                );
                 true
             }
             Command::CaptureBuilding {
@@ -2017,9 +1879,9 @@ impl Simulation {
                     Some(rules),
                 );
                 // Clear conflicting state and set capture target.
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*engineer_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*engineer_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.capture_target = Some(*target_building_id);
@@ -2046,27 +1908,23 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *engineer_id,
-                            target: (trx, try_),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: Some((
-                                crate::sim::components::NavTargetRef::Building {
-                                    id: *target_building_id,
-                                },
-                                target_coord,
-                            )),
-                        },
-                        overlay_registry,
-                        Some(rules),
-                    );
-                }
+                self.issue_ground_move(
+                    GroundMove {
+                        entity_id: *engineer_id,
+                        target: (trx, try_),
+                        speed,
+                        queue: false,
+                        speed_type: Some(speed_type),
+                        owner_blocks: true,
+                        object_destination: Some((
+                            crate::sim::components::NavTargetRef::Building {
+                                id: *target_building_id,
+                            },
+                            target_coord,
+                        )),
+                    },
+                    Some(rules),
+                );
                 true
             }
             Command::LaunchSuperWeapon {
@@ -2171,7 +2029,6 @@ impl Simulation {
                             *target_ry,
                             crate::sim::superweapon::paradrop::ParaDropKind::Generic,
                             *sw_type_id,
-                            path_grid,
                         )
                     }
                     crate::rules::superweapon_type::SuperWeaponKind::AmerParaDrop => {
@@ -2184,7 +2041,6 @@ impl Simulation {
                             *target_ry,
                             crate::sim::superweapon::paradrop::ParaDropKind::American,
                             *sw_type_id,
-                            path_grid,
                         )
                     }
                     other => {
@@ -2270,9 +2126,9 @@ impl Simulation {
                     DockTeardown::None,
                     Some(rules),
                 );
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*unit_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*unit_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
@@ -2294,22 +2150,18 @@ impl Simulation {
                         .as_ref()
                         .map(|i| i.speed_type)
                         .unwrap_or(SpeedType::Track);
-                    if let Some(grid) = path_grid {
-                        self.issue_ground_move(
-                            grid,
-                            GroundMove {
-                                entity_id: *unit_id,
-                                target: (brx, bry),
-                                speed,
-                                queue: false,
-                                speed_type: Some(speed_type),
-                                owner_blocks: true,
-                                object_destination: None,
-                            },
-                            overlay_registry,
-                            Some(rules),
-                        );
-                    }
+                    self.issue_ground_move(
+                        GroundMove {
+                            entity_id: *unit_id,
+                            target: (brx, bry),
+                            speed,
+                            queue: false,
+                            speed_type: Some(speed_type),
+                            owner_blocks: true,
+                            object_destination: None,
+                        },
+                        Some(rules),
+                    );
                 }
                 true
             }
@@ -2326,9 +2178,7 @@ impl Simulation {
                 if !has_occupant {
                     return false;
                 }
-                crate::sim::docking::bunker_link::release_normal(
-                    self, *bunker_id, rules, path_grid,
-                );
+                crate::sim::docking::bunker_link::release_normal(self, *bunker_id, rules);
                 true
             }
         }
@@ -2627,8 +2477,9 @@ impl Simulation {
     ///   below, the Guard and HarvestCell arms and Stop's own copy
     ///   (0x004C769C-0x004C76AC) run it (`Simulation::reset_slave_manager`);
     ///   the other orders outside the funnel do not yet.
-    /// * **`TeamClass__Remove_Member` has no VERA equivalent.** Zero frequency
-    ///   today (no AI teams); wrong the moment AI teams exist.
+    /// * **`TeamClass__Remove_Member`** runs in the MEGAMISSION funnel
+    ///   (`queue_megamission_with_teardown`), so the arms outside it keep a
+    ///   team member in its team.
     pub(crate) fn order_actor_admits(&self, stable_id: u64) -> bool {
         self.substrate.entities.get(stable_id).is_some_and(|e| {
             e.lifecycle.object_alive && e.health.current > 0 && !e.lifecycle.in_limbo
@@ -2732,6 +2583,11 @@ impl Simulation {
     }
 
     /// Apply a Guard command: anchor at current position, optionally attack a target.
+    /// Residual: this command's object target still uses the legacy combat-target
+    /// and current-cell intent representation. Native AreaGuard4C7409..4C7430
+    /// clears Target and assigns that object as destination/archive. Every
+    /// object Guard order can therefore use the wrong post/bridge leash; its
+    /// complete command DTO/mission migration is a separate required route.
     fn apply_guard_command(
         &mut self,
         command_owner: &str,
@@ -2781,13 +2637,13 @@ impl Simulation {
         }
         match target_id.filter(|&tid| self.substrate.entities.contains(tid)) {
             Some(tid) => {
-                let issued = combat::issue_attack_command(
-                    &mut self.substrate.entities,
-                    entity_id,
-                    tid,
-                    rules,
-                    &self.interner,
-                );
+                let issued = self
+                    .assign_target_represented(
+                        entity_id,
+                        Some(combat::TargetKind::Entity(tid)),
+                        rules,
+                    )
+                    .is_ok();
                 if issued {
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.order_intent = Some(OrderIntent::Guard {
@@ -2799,8 +2655,8 @@ impl Simulation {
                 issued
             }
             None => {
+                let _ = self.assign_target_represented(entity_id, None, rules);
                 if let Some(e) = self.substrate.entities.get_mut(entity_id) {
-                    represented_assign_target(e, None);
                     e.order_intent = Some(OrderIntent::Guard {
                         anchor_rx,
                         anchor_ry,
@@ -2815,8 +2671,9 @@ impl Simulation {
     /// through BuildingClass::SetTarget (vt+0x3C8, `0x00443B90`), which
     /// refuses one it cannot reach; its queued Attack stands either way and
     /// Mission_Attack's null-target arm hands it back to Guard
-    /// (`techno_ai::building_missions`). Every other object takes it through
-    /// its fire and movement owners' setters.
+    /// (`techno_ai::building_missions`). Every class uses the same concrete
+    /// target authority; Infantry51B1F0 owns its action, DeployFire and path
+    /// effects before the Techno base.
     fn order_attack_target(
         &mut self,
         attacker_id: u64,
@@ -2826,27 +2683,8 @@ impl Simulation {
         let Some(attacker) = self.substrate.entities.get(attacker_id) else {
             return false;
         };
-        if attacker.category != crate::map::entities::EntityCategory::Structure {
-            return match target {
-                combat::TargetKind::Entity(target_id) => combat::issue_attack_command(
-                    &mut self.substrate.entities,
-                    attacker_id,
-                    target_id,
-                    rules,
-                    &self.interner,
-                ),
-                combat::TargetKind::Cell(rx, ry) => combat::issue_attack_cell_command(
-                    &mut self.substrate.entities,
-                    attacker_id,
-                    rx,
-                    ry,
-                    rules,
-                    &self.interner,
-                ),
-            };
-        }
         // The cell order's defensive refusal of an unarmed attacker
-        // (`issue_attack_cell_command`).
+        // (What_Action_OnCell7008BD's current-weapon test).
         if matches!(target, combat::TargetKind::Cell(..))
             && !rules
                 .and_then(|rules| rules.object(self.interner.resolve(attacker.type_ref())))
@@ -2854,8 +2692,10 @@ impl Simulation {
         {
             return false;
         }
-        let _ = self.assign_target_represented(attacker_id, Some(target), rules);
-        true
+        // Event4C7467 calls virtual+3C8, before4C747C's null destination.
+        // A class refusal still leaves the accepted queued mission in place.
+        self.assign_target_represented(attacker_id, Some(target), rules)
+            .is_ok()
     }
 }
 
@@ -3072,6 +2912,7 @@ mod tests {
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         sim.zone_grid =
             Some(crate::sim::pathfinding::zone_map::ZoneGrid::following_path_grid(&grid));
+        sim.install_fixture_path_grid(Some(&grid));
         crate::sim::movement::reset_path_search_used_zone_grid_marker();
 
         let applied = sim.apply_command(
@@ -3083,8 +2924,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3104,6 +2943,7 @@ mod tests {
         let mut sim = Simulation::new();
         spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+        sim.install_fixture_path_grid(Some(&grid));
 
         assert!(sim.order_actor_admits(1));
         assert!(sim.apply_command(
@@ -3115,8 +2955,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
-            &BTreeMap::new(),
         ));
         assert!(
             sim.substrate
@@ -3152,8 +2990,6 @@ mod tests {
                 target_id: None,
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         ));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert!(
@@ -3174,6 +3010,7 @@ mod tests {
         // An ally: `can_attack_target_by_id` refuses it, so the order must bail.
         spawn_rule_backed_unit(&mut sim, 2, "AMCV", &rules);
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+        sim.install_fixture_path_grid(Some(&grid));
         assert!(sim.apply_command(
             "Americans",
             &Command::Move {
@@ -3183,8 +3020,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
-            &BTreeMap::new(),
         ));
         assert!(
             sim.substrate
@@ -3202,8 +3037,6 @@ mod tests {
                 target_id: Some(2),
             },
             Some(&rules),
-            Some(&grid),
-            &BTreeMap::new(),
         ));
         assert!(
             sim.substrate
@@ -3230,6 +3063,7 @@ mod tests {
             .lifecycle
             .in_limbo = true;
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+        sim.install_fixture_path_grid(Some(&grid));
 
         assert!(!sim.order_actor_admits(1));
         assert!(!sim.apply_command(
@@ -3241,8 +3075,6 @@ mod tests {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
-            &BTreeMap::new(),
         ));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert!(actor.movement_target.is_none());
@@ -3263,6 +3095,7 @@ mod tests {
             spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
             kill(sim.substrate.entities.get_mut(1).unwrap());
             let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+            sim.install_fixture_path_grid(Some(&grid));
 
             assert!(!sim.order_actor_admits(1));
             assert!(!sim.apply_command(
@@ -3274,8 +3107,6 @@ mod tests {
                     queue: false,
                 },
                 Some(&rules),
-                Some(&grid),
-                &BTreeMap::new(),
             ));
             assert!(
                 sim.substrate
@@ -3315,8 +3146,6 @@ mod tests {
                 target_id: 2,
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         ));
         let attacker = sim.substrate.entities.get(1).unwrap();
         assert!(attacker.attack_target.is_none());
@@ -3496,7 +3325,7 @@ mod tests {
             producer_ids: vec![3, 2, 2, 4, 5],
         };
 
-        assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
+        assert!(sim.apply_command("Americans", &command, Some(&rules)));
         let rally = |id| sim.substrate.entities.get(id).unwrap().rally_cell();
         assert_eq!(rally(2), Some((40, 41)));
         assert_eq!(rally(3), Some((40, 41)));
@@ -3530,7 +3359,7 @@ mod tests {
             entity.display_type_override = Some(sim.interner.intern("HORV"));
             let miner = entity.miner.as_mut().unwrap();
             miner.unload_active = true;
-            miner.stage_rate = 1;
+            entity.restart_native_stage(0, now as i32, 1);
         }
 
         let applied = sim.apply_command(
@@ -3540,8 +3369,6 @@ mod tests {
                 target_refinery_id: Some(3),
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3576,8 +3403,6 @@ mod tests {
                 target_refinery_id: None,
             },
             None,
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3611,8 +3436,6 @@ mod tests {
                 target_refinery_id: Some(2),
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied);
@@ -3711,8 +3534,6 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3750,8 +3571,6 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied);
@@ -3786,8 +3605,6 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied, "cannot bunker into an enemy building");
@@ -3824,8 +3641,6 @@ mod tests {
             "Americans",
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(applied);
@@ -3861,8 +3676,6 @@ mod tests {
             "Americans",
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         );
 
         assert!(!applied, "ejecting an empty bunker does nothing");
@@ -3901,20 +3714,20 @@ mod tests {
                 bunker_id: 2,
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         ));
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().bunker_link,
             BunkerLink::Approaching(2)
         );
 
-        // 2) Drive the install machine to Occupied. Clear facing_target each tick
-        // to simulate the body turn completing (no movement subsystem here).
+        // 2) Drive the install machine to Occupied, completing each body turn
+        // it issues (no movement subsystem here).
         for _ in 0..6 {
             tick_bunker_install(&mut sim, &rules, None);
+            let frame = sim.session.binary_frame;
             if let Some(u) = sim.substrate.entities.get_mut(1) {
-                u.facing_target = None;
+                let destination = u.body_facing.destination();
+                u.body_facing.snap(destination, frame);
             }
         }
         let rt = sim
@@ -3948,8 +3761,6 @@ mod tests {
             "Americans",
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         ));
         assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
         let unit = sim.substrate.entities.get(1).unwrap();

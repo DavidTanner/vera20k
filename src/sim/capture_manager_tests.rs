@@ -250,7 +250,7 @@ fn capture_takes_the_target_and_records_its_house() {
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
     let health = sim.substrate.entities.get(gi).unwrap().health.current;
     let mut replay = sim.scenario_rng.clone();
-    assert!(sim.capture_unit(yuri, gi, &rules));
+    assert!(sim.capture_unit(yuri, gi, &rules, None));
     fate_draw(&mut replay);
 
     assert_eq!(owner(&sim, gi), "YuriCountry");
@@ -303,7 +303,7 @@ fn a_captured_buildings_ring_sits_height_levels_above_its_centre() {
     // Built: CanCapture refuses a building still in Construction.
     let now = sim.session.binary_frame;
     let _ = sim.mission_assign_exact(plant, MissionId::from_known(MissionType::Guard), now);
-    assert!(sim.capture_unit(yuri, plant, &rules));
+    assert!(sim.capture_unit(yuri, plant, &rules, None));
     let entity = sim.substrate.entities.get(plant).unwrap();
     let ring = entity.mind_control.ring_anim.expect("ring anim");
     let north_west = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
@@ -328,7 +328,7 @@ fn a_single_link_controller_releases_its_victim_first() {
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
     let first = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
     let second = spawn(&mut sim, &rules, "E1", "Americans", 12, 12);
-    assert!(sim.capture_unit(yuri, first, &rules));
+    assert!(sim.capture_unit(yuri, first, &rules, None));
     let ring = sim
         .substrate
         .entities
@@ -340,14 +340,16 @@ fn a_single_link_controller_releases_its_victim_first() {
     let mut replay = sim.scenario_rng.clone();
     sim.sound_events.clear();
 
-    assert!(sim.capture_unit(yuri, second, &rules));
+    assert!(sim.capture_unit(yuri, second, &rules, None));
     fate_draw(&mut replay);
 
     assert_eq!(owner(&sim, first), "Americans");
     let released = sim.substrate.entities.get(first).unwrap();
     assert!(!released.mind_control.is_mind_controlled());
     assert!(released.mind_control.ring_anim.is_none());
-    assert!(sim.anim(ring).is_none_or(|anim| anim.runtime.inactive));
+    assert!(sim.anim(ring).is_none_or(|anim| {
+        !anim.in_logic_vector && sim.substrate.pending_delete.contains(&ring)
+    }));
     assert_eq!(voc_sounds(&sim), ["MindCleared"]);
     assert_eq!(victims(&sim, yuri), [second]);
     assert_eq!(owner(&sim, second), "YuriCountry");
@@ -389,18 +391,18 @@ fn can_capture_gates() {
     );
     assert!(!sim.can_capture(yuri, tank, &rules), "Iron Curtain");
 
-    assert!(sim.capture_unit(tower, gi, &rules));
+    assert!(sim.capture_unit(tower, gi, &rules, None));
     assert!(!sim.can_capture(yuri, gi, &rules), "already controlled");
     // A single-link Yuri with a victim still admits another.
     let other = spawn(&mut sim, &rules, "E1", "Americans", 15, 11);
-    assert!(sim.capture_unit(yuri, other, &rules));
+    assert!(sim.capture_unit(yuri, other, &rules, None));
     let third = spawn(&mut sim, &rules, "E1", "Americans", 16, 11);
     assert!(sim.can_capture(yuri, third, &rules));
 
     // A finite manager at its limit is full.
     for x in 17..19 {
         let extra = spawn(&mut sim, &rules, "E1", "Americans", x, 11);
-        assert!(sim.capture_unit(tower, extra, &rules));
+        assert!(sim.capture_unit(tower, extra, &rules, None));
     }
     let manager = sim
         .substrate
@@ -419,34 +421,33 @@ fn can_capture_gates() {
     assert!(!sim.can_capture(yuri, seller, &rules), "Selling");
 }
 
-/// GetFireError's MindControl gate in the weapon ladder: Yuri's only weapon is
-/// illegal against an immune or own-house target and legal against an enemy.
+/// GetFireError's MindControl gate (T53, `0x006FCB24..0x006FCB50`) asks
+/// CanCapture: Yuri's only weapon is illegal against an immune target and
+/// legal against an enemy.
 #[test]
-fn the_weapon_ladder_refuses_an_uncapturable_target() {
+fn get_fire_error_refuses_an_uncapturable_target() {
+    use crate::sim::combat::fire_error::FireError;
     let rules = rules();
     let mut sim = sim(9);
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
     let dog = spawn(&mut sim, &rules, "DOG", "Americans", 12, 11);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 13, 11);
-    let yuri_entity = sim.substrate.entities.get(yuri).unwrap();
-    let yuri_obj = rules.object("YURI").unwrap();
-    let facts = crate::sim::combat::combat_weapon::attacker_facts(yuri_entity, yuri_obj);
-    let select = |target: u64| {
-        crate::sim::combat::combat_weapon::select_weapon_against(
-            &rules,
-            yuri_obj,
-            &facts,
-            yuri_entity.owner(),
-            &crate::sim::combat::TargetKind::Entity(target),
-            &sim.substrate.entities,
-            &sim.interner,
-            None,
-            None,
-        )
-        .is_some()
+    let code = |target: u64| {
+        crate::sim::combat::fire_error_world::FireSubject {
+            world: &sim,
+            rules: &rules,
+            overlay_registry: None,
+            fog: Some(&sim.fog),
+            firer: sim.substrate.entities.get(yuri).unwrap(),
+            obj: rules.object("YURI").unwrap(),
+            target: Some(crate::sim::combat::TargetKind::Entity(target)),
+            weapon_index: 0,
+            garrison: None,
+        }
+        .fire_error(false)
     };
-    assert!(!select(dog));
-    assert!(select(gi));
+    assert_eq!(code(dog), FireError::Illegal);
+    assert_ne!(code(gi), FireError::Illegal);
 }
 
 /// The controller's death frees every captive, newest node first, before its
@@ -459,8 +460,8 @@ fn the_controllers_death_frees_its_captives_newest_first() {
     let mind = spawn(&mut sim, &rules, "MIND", "YuriCountry", 10, 10);
     let human = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
     let computer = spawn(&mut sim, &rules, "E1", "Russians", 12, 12);
-    assert!(sim.capture_unit(mind, human, &rules));
-    assert!(sim.capture_unit(mind, computer, &rules));
+    assert!(sim.capture_unit(mind, human, &rules, None));
+    assert!(sim.capture_unit(mind, computer, &rules, None));
     let mut replay = sim.scenario_rng.clone();
     sim.sound_events.clear();
 
@@ -511,7 +512,7 @@ fn a_captives_death_drops_its_node_silently() {
     let mut sim = sim(13);
     let tower = spawn(&mut sim, &rules, "YAPSYT", "YuriCountry", 20, 20);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
-    assert!(sim.capture_unit(tower, gi, &rules));
+    assert!(sim.capture_unit(tower, gi, &rules, None));
     sim.sound_events.clear();
     sim.uninit_with_rules(gi, &rules);
     assert!(victims(&sim, tower).is_empty());
@@ -525,7 +526,7 @@ fn a_removed_foot_controller_frees_its_captives() {
     let mut sim = sim(15);
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
-    assert!(sim.capture_unit(yuri, gi, &rules));
+    assert!(sim.capture_unit(yuri, gi, &rules, None));
     sim.uninit_with_rules(yuri, &rules);
     assert_eq!(owner(&sim, gi), "Americans");
     assert!(
@@ -545,7 +546,7 @@ fn a_tower_going_offline_frees_its_captives() {
     let mut sim = sim(17);
     let tower = spawn(&mut sim, &rules, "YAPSYT", "YuriCountry", 20, 20);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
-    assert!(sim.capture_unit(tower, gi, &rules));
+    assert!(sim.capture_unit(tower, gi, &rules, None));
     sim.substrate
         .entities
         .get_mut(tower)
@@ -655,7 +656,7 @@ fn native_decide_unit_fate_corpus() {
         sim.scenario_rng = SimRng::new(seed);
         assert_ne!(queued_mission(&sim, unit), Some(MissionType::Hunt));
 
-        sim.decide_unit_fate(yuri, unit, rules);
+        sim.decide_unit_fate(yuri, unit, rules, None);
 
         let events = row["events"].as_array().unwrap();
         let has = |key: &str| events.iter().any(|event| event.get(key).is_some());
@@ -960,7 +961,7 @@ fn a_mastermind_overloads_above_three_captives() {
         captives.push(gi);
     }
     for &gi in &captives[..3] {
-        assert!(sim.capture_unit(mind, gi, &rules));
+        assert!(sim.capture_unit(mind, gi, &rules, None));
     }
     // 30 quiet frames, then a free check at three captives.
     let health = sim.substrate.entities.get(mind).unwrap().health.current;
@@ -974,7 +975,7 @@ fn a_mastermind_overloads_above_three_captives() {
         health
     );
 
-    assert!(sim.capture_unit(mind, captives[3], &rules));
+    assert!(sim.capture_unit(mind, captives[3], &rules, None));
     for _ in 0..30 {
         sim.capture_manager_update(mind, &rules, None);
     }
@@ -1014,7 +1015,7 @@ fn mind_control_state_round_trips_and_is_hashed() {
     let mut sim = sim(21);
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
-    assert!(sim.capture_unit(yuri, gi, &rules));
+    assert!(sim.capture_unit(yuri, gi, &rules, None));
     {
         let manager = sim
             .substrate
@@ -1109,14 +1110,7 @@ fn an_attack_order_captures_without_damage() {
     ));
     for _ in 0..90 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
         if sim
             .substrate
             .entities
@@ -1206,7 +1200,7 @@ fn a_controlled_mcv_cannot_deploy_and_a_controlled_yard_cannot_repack() {
     let mcv = spawn(&mut sim, &rules, "AMCV", "Americans", 12, 10);
     let free = spawn(&mut sim, &rules, "AMCV", "Americans", 12, 30);
     assert!(sim.deploy_mcv(free, &rules, None), "an MCV deploys here");
-    assert!(sim.capture_unit(yuri, mcv, &rules));
+    assert!(sim.capture_unit(yuri, mcv, &rules, None));
     sim.substrate
         .entities
         .get_mut(mcv)
@@ -1234,7 +1228,7 @@ fn a_controlled_mcv_cannot_deploy_and_a_controlled_yard_cannot_repack() {
         let now = sim.session.binary_frame;
         let _ = sim.mission_assign_exact(yard, MissionId::from_known(MissionType::Guard), now);
     }
-    assert!(sim.capture_unit(prime, stolen, &rules));
+    assert!(sim.capture_unit(prime, stolen, &rules, None));
     assert_eq!(owner(&sim, stolen), "Americans");
     assert!(!sim.can_undeploy_building_runtime(stolen, &rules));
     assert!(sim.can_undeploy_building_runtime(own, &rules));
@@ -1260,7 +1254,7 @@ fn selling_a_psychic_tower_frees_its_captives() {
             .building_last_operational
     );
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
-    assert!(sim.capture_unit(tower, gi, &rules));
+    assert!(sim.capture_unit(tower, gi, &rules, None));
     sim.sound_events.clear();
 
     assert!(crate::sim::production::sell_building_now_for_test(
@@ -1295,9 +1289,14 @@ fn a_building_mid_construction_cannot_be_captured() {
     let plant = spawn(&mut sim, &rules, "GAPOWR", "Americans", 14, 10);
     let now = sim.session.binary_frame;
     let _ = sim.mission_assign_exact(plant, MissionId::from_known(MissionType::Guard), now);
-    sim.substrate.entities.get_mut(plant).unwrap().building_up = Some(
-        crate::sim::components::BuildingUp::completing_in_ticks(27, 0),
-    );
+    sim.substrate
+        .entities
+        .get_mut(plant)
+        .unwrap()
+        .install_building_up(
+            crate::sim::components::BuildingUp::completing_in_ticks(27, 0),
+            0,
+        );
     assert!(!sim.can_capture(yuri, plant, &rules));
     sim.substrate.entities.get_mut(plant).unwrap().building_up = None;
     assert!(sim.can_capture(yuri, plant, &rules));
@@ -1316,7 +1315,7 @@ fn capture_and_release_drop_the_previous_order() {
         goal_rx: 30,
         goal_ry: 30,
     });
-    assert!(sim.capture_unit(yuri, gi, &rules));
+    assert!(sim.capture_unit(yuri, gi, &rules, None));
     assert!(
         sim.substrate
             .entities
@@ -1346,20 +1345,19 @@ fn capture_and_release_drop_the_previous_order() {
 /// PerCellProcess sites): it goes in as its original house's unit.
 #[test]
 fn a_captive_boarding_an_absorber_is_freed_first() {
-    use crate::sim::passenger::{BoardingPhase, PassengerRole};
+    use crate::sim::passenger::PassengerRole;
     let rules = rules();
     let mut sim = sim(35);
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
     let reactor = spawn(&mut sim, &rules, "BIOR", "YuriCountry", 14, 10);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 13, 10);
-    assert!(sim.capture_unit(yuri, gi, &rules));
+    assert!(sim.capture_unit(yuri, gi, &rules, None));
     sim.sound_events.clear();
     sim.substrate.entities.get_mut(gi).unwrap().passenger_role = PassengerRole::Boarding {
         target_transport_id: reactor,
-        phase: BoardingPhase::Entering,
     };
 
-    crate::sim::passenger::tick_passenger_system(&mut sim, &rules);
+    crate::sim::passenger::tick_passenger_system(&mut sim, &rules, None);
 
     let entity = sim.substrate.entities.get(gi).unwrap();
     assert!(!entity.mind_control.is_mind_controlled());
@@ -1397,7 +1395,7 @@ fn a_unit_transport_refuses_captives_and_their_controllers() {
     };
     assert!(admits(&sim, own));
     assert!(admits(&sim, yuri));
-    assert!(sim.capture_unit(yuri, gi, &rules));
+    assert!(sim.capture_unit(yuri, gi, &rules, None));
     assert!(!admits(&sim, gi), "a captive");
     assert!(!admits(&sim, yuri), "its controller");
 }
@@ -1433,14 +1431,7 @@ fn an_iron_curtained_target_refuses_the_capture_at_fire_time() {
     let mut dropped = false;
     for _ in 0..120 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
         let targeting = sim
             .substrate
             .entities
@@ -1474,7 +1465,7 @@ fn a_killing_overload_frees_the_captives_before_the_sparks() {
         .map(|x| spawn(&mut sim, &rules, "E1", "Russians", 12 + x, 10))
         .collect();
     for &gi in &captives {
-        assert!(sim.capture_unit(mind, gi, &rules));
+        assert!(sim.capture_unit(mind, gi, &rules, None));
     }
     // Row one (50 damage) at the first check, on a 50-health Mastermind.
     sim.substrate.entities.get_mut(mind).unwrap().health.current = 50;

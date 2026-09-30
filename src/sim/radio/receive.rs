@@ -18,6 +18,15 @@
 //!   (`0x0065A829`), is not kept.
 //! - Building OVER_OUT's `Begin_Mode(IDLE)` (`0x00447780`) queues the
 //!   building's IDLE BState (+0x538); VERA has no BState owner.
+//! - The bus carries no overlay registry, so RUN_AWAY's Scatter reaches an
+//!   Infantry receiver without one, and its overlay reads fail on any cell
+//!   holding an overlay (ore included); the error is logged. When
+//!   Find_Nearby_Passable_Cell found a cell, the draw and the setter have
+//!   already run: the man keeps that destination and walks at his next turn,
+//!   but loses the immediate Process. When the neighbour fallback runs
+//!   instead, he stays. Trigger: RUN_AWAY reaching an infantryman in radio
+//!   contact. Frequency: rare, radio contacts are mostly docked Units. A Unit
+//!   receiver reads no overlay.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/radio + sim/world. sim/ NEVER depends on
@@ -29,6 +38,7 @@ use crate::sim::components::NavTargetRef;
 use crate::sim::docking::bunker_install::BunkerState;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::movement::ScatterFlags;
 use crate::sim::radio::{RadioMessage, RadioPayload, RadioResponse, transmit};
 #[cfg(test)]
 use crate::sim::world::LifecycleTestEvent;
@@ -98,14 +108,128 @@ fn building_receive(
         }
         RadioMessage::CanDock => building_docking(sim, building, sender, rules),
         RadioMessage::DockNow => building_dock_now(sim, building, sender, payload, rules),
-        // 8, 0xB, 0xC, 0xD and 0xF (0x0043C2F8; the refinery scan evaluates
-        // CAN_LOAD directly) have no represented bus sender.
+        RadioMessage::CanEnter if is_repair_depot(sim, building, rules) => {
+            depot_can_load(sim, building, sender, rules)
+        }
+        // 8, 0xB, 0xC, 0xD and any other 0xF (0x0043C2F8; the refinery scan
+        // evaluates CAN_LOAD directly) have no represented bus sender.
         RadioMessage::RequestClearance
         | RadioMessage::DockApproach
         | RadioMessage::DockArrived
         | RadioMessage::AnimStop
         | RadioMessage::CanEnter => RadioResponse::None,
         _ => techno_receive(sim, building, sender, msg, payload, rules),
+    }
+}
+
+fn is_repair_depot(sim: &Simulation, building: u64, rules: Option<&RuleSet>) -> bool {
+    let (Some(building), Some(rules)) = (sim.substrate.entities.get(building), rules) else {
+        return false;
+    };
+    sim.object_type(building.type_ref(), rules)
+        .is_some_and(|object| object.unit_repair)
+}
+
+/// CAN_LOAD, `BuildingClass::Receive_Radio` case 0x0F (`0x0043CB25..`), for a
+/// `UnitRepair=` building, the pending entry's second question
+/// (`building_dock::try_pending_entry`). In order: a sender that is no ally
+/// gets 0; Construction or Selling, the construction BState (`+0x534` = 0),
+/// no free or own slot (the absorb exemption aside), a Naval mismatch for a
+/// sender not `MovementZone=Amphibious`, a `BalloonHover=` sender and an
+/// offline depot (`+0x660`) each get NEGATORY; then the UnitRepair arm: a
+/// sender that is neither Unit nor Aircraft gets NEGATORY, and so does one
+/// already standing on the depot (IsOccupied 0x23 answering ROGER);
+/// otherwise ROGER. The Techno receiver's message history is not kept.
+///
+/// The UnitAbsorb/InfantryAbsorb, Grinding and Bunker arms ahead of the
+/// UnitRepair one belong to other building types; a depot type carrying one
+/// of those keys answers static (0) here, as an unported arm.
+fn depot_can_load(
+    sim: &mut Simulation,
+    depot: u64,
+    sender: Option<u64>,
+    rules: Option<&RuleSet>,
+) -> RadioResponse {
+    let (Some(from), Some(rules)) = (sender, rules) else {
+        return RadioResponse::None;
+    };
+    let (Some(building), Some(unit)) = (
+        sim.substrate.entities.get(depot),
+        sim.substrate.entities.get(from),
+    ) else {
+        return RadioResponse::None;
+    };
+    let (Some(depot_type), Some(unit_type)) = (
+        sim.object_type(building.type_ref(), rules),
+        sim.object_type(unit.type_ref(), rules),
+    ) else {
+        return RadioResponse::None;
+    };
+    if !crate::sim::combat::combat_weapon::is_ally_by_object(
+        Some(&sim.fog.alliances),
+        &sim.interner,
+        building.owner(),
+        unit.owner(),
+    ) {
+        return RadioResponse::None;
+    }
+    let absorbs = depot_type.unit_absorb || depot_type.infantry_absorb;
+    let refused = matches!(
+        building.mission.current().known(),
+        Some(MissionType::Construction | MissionType::Selling)
+    ) || building.in_construction_bstate()
+        || (!building.radio_contacts.has_free_or(from) && !absorbs)
+        || (unit_type.movement_zone != crate::rules::locomotor_type::MovementZone::Amphibious
+            && depot_type.naval != unit_type.naval)
+        || unit_type.balloon_hover
+        || !building.building_online();
+    if refused {
+        return RadioResponse::Negatory;
+    }
+    if absorbs || depot_type.grinding || depot_type.bunker {
+        return RadioResponse::None;
+    }
+    if !matches!(
+        unit.category,
+        EntityCategory::Unit | EntityCategory::Aircraft
+    ) {
+        return RadioResponse::Negatory;
+    }
+    match transmit(
+        sim,
+        depot,
+        from,
+        RadioMessage::IsOccupied,
+        RadioPayload::default(),
+        Some(rules),
+    ) {
+        RadioResponse::Roger => RadioResponse::Negatory,
+        _ => RadioResponse::Roger,
+    }
+}
+
+/// IsOccupied (0x23), `FootClass::Receive_Radio @ 0x004D8FB0`: ROGER when
+/// the first building in the cell of the foot's coordinate is the sender,
+/// else NEGATORY.
+fn foot_is_occupied(sim: &Simulation, foot: u64, sender: Option<u64>) -> RadioResponse {
+    let Some(entity) = sim.substrate.entities.get(foot) else {
+        return RadioResponse::None;
+    };
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+    let building = u16::try_from(x / 256)
+        .ok()
+        .zip(u16::try_from(y / 256).ok())
+        .and_then(|(rx, ry)| {
+            sim.substrate.occupancy.first_building_on_layer(
+                rx,
+                ry,
+                crate::sim::movement::locomotor::MovementLayer::Ground,
+            )
+        });
+    if sender.is_some() && building == sender {
+        RadioResponse::Roger
+    } else {
+        RadioResponse::Negatory
     }
 }
 
@@ -177,6 +301,7 @@ fn building_docking(
                         &sim.substrate.entities,
                         building_id,
                         Some(from),
+                        sim.resolved_terrain.as_ref(),
                         rules,
                         &sim.interner,
                     )
@@ -357,15 +482,9 @@ fn unit_prepare_to_dock(
     let Some(entity) = sim.substrate.entities.get_mut(unit) else {
         return RadioResponse::Roger;
     };
-    if !entity.turret_rotation_latch {
-        let current = entity
-            .body_facing
-            .as_ref()
-            .map_or(u16::from(entity.facing) << 8, |body| body.current(frame));
-        if current != DOCK_FACING {
-            crate::sim::movement::drive_do_turn(entity, DOCK_FACING, frame);
-            return RadioResponse::Roger;
-        }
+    if !entity.turret_rotation_latch && entity.body_facing_current(frame) != DOCK_FACING {
+        crate::sim::movement::drive_do_turn(entity, DOCK_FACING, frame);
+        return RadioResponse::Roger;
     }
     if crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false) {
         return RadioResponse::Roger;
@@ -415,7 +534,9 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
         return;
     }
     crate::sim::miner::clear_unload_latch(sim, unit);
-    sim.scatter_null_source(unit, rules);
+    if let Err(cause) = sim.scatter_null(unit, ScatterFlags::new(true, false), rules, None) {
+        log::debug!("RUN_AWAY unit {unit} did not scatter: {cause}");
+    }
     let now = sim.session.binary_frame;
     let _ = sim.mission_queue_exact(
         unit,
@@ -468,10 +589,9 @@ fn foot_receive(
             foot_run_away(sim, foot, rules);
             techno_receive(sim, foot, sender, msg, payload, rules)
         }
-        // 0x11, 0x1C and 0x23 have no represented sender.
-        RadioMessage::IsUnitLinked | RadioMessage::RepairTick | RadioMessage::IsOccupied => {
-            RadioResponse::None
-        }
+        RadioMessage::IsOccupied => foot_is_occupied(sim, foot, sender),
+        // 0x11 and 0x1C have no represented sender.
+        RadioMessage::IsUnitLinked | RadioMessage::RepairTick => RadioResponse::None,
         _ => techno_receive(sim, foot, sender, msg, payload, rules),
     }
 }
@@ -520,7 +640,12 @@ fn foot_move_here(
     // 0x004D91E1..0x004D91EB: the class setter vt+0x480(*P, 1).
     match payload.cell {
         Some(cell) => {
-            sim.set_unit_cell_destination(foot, cell, rules, true);
+            sim.set_unit_destination(
+                foot,
+                crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+                rules,
+                true,
+            );
         }
         None => {
             sim.assign_null_destination(foot, Some(rules));
@@ -594,8 +719,9 @@ fn foot_run_away(sim: &mut Simulation, foot: u64, rules: Option<&RuleSet>) {
         .entities
         .get(foot)
         .is_some_and(|entity| !entity.turret_rotation_latch && entity.navigation.nav_com.is_none())
+        && let Err(cause) = sim.scatter_null(foot, ScatterFlags::new(true, true), rules, None)
     {
-        sim.scatter_null_source(foot, rules);
+        log::debug!("RUN_AWAY foot {foot} did not scatter: {cause}");
     }
 }
 

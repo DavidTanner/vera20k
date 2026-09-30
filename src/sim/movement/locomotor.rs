@@ -7,9 +7,8 @@
 
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::rules::object_type::ObjectType;
-use crate::sim::movement::locomotion::LocomotorSlot;
 use crate::sim::movement::locomotion::piggyback::{
-    self, EndGateContext, LocomotorRuntimePayload, StashedLocomotor,
+    self, LocomotorRuntimePayload, StashedLocomotor,
 };
 use crate::sim::movement::slope_transition::SlopeTransitionState;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -30,57 +29,6 @@ pub enum MovementLayer {
     Air,
     /// Burrowed underground (tunnel units).
     Underground,
-}
-
-/// Phase within a ground mover's movement cycle.
-///
-/// **VERA-internal, gamemd equivalent UNCHECKED.** The earlier claim here — a
-/// "7-state machine matching WalkLocomotionClass (+0x50)" — is refuted:
-/// `WalkLocomotionClass::Process` @ `0x0075AC80` toggles a byte at
-/// ILocomotion-frame `+0x31` and delegates to `ProcessMovement` @ `0x0075AEC0`,
-/// whose 1505 instructions contain no object-relative `+0x50` and no state
-/// switch; `DriveLocomotionClass::Process` @ `0x004B0500` branches on `+0x54`
-/// and `+0x5F` instead. The `+0x50` that does exist in that family is Drive's
-/// **piggyback slot**, in the *IPiggyback* frame at LocomotorBase+0x18
-/// (`Begin_Piggyback` @ `0x004AF8E0`; `Save` @ `0x004AF800` reaches the same
-/// slot as LocomotorBase `+0x68`) — a different frame from the ILocomotion one
-/// these phases would live in. The only numbered 0..=6 locomotor state machine
-/// in the binary is Jumpjet's, at *ILocomotion*-frame `+0x4C`, switched in
-/// `JumpjetLocomotionClass::Process` @ `0x0054AEC0`.
-///
-/// The variants below describe Drive behaviours — cruise speed, cell entry,
-/// crush, bridge — which Walk does not implement, so this is VERA's own
-/// ground-mover phasing. Trigger: every ground mover, every tick. Player
-/// effect: none identified; the phasing drives VERA's own step machine.
-/// Frequency: continuous. Downstream risk: it is the shape rows GSI-06.13 and
-/// GSI-06.14 will have to reconcile with the real `Process` bodies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum GroundMovePhase {
-    /// State 0: No movement order. Unit is stationary at a valid cell position.
-    /// Entry: set when speed reaches 0 and unit completes all movement at cell center.
-    Idle,
-    /// State 1: Post-paradrop landing. Speed set to 1.0, velocity zeroed.
-    /// Transitions to Accelerating when movement begins.
-    Landed,
-    /// State 2: Ramping up speed toward cruise. Entered when a new cell-to-cell
-    /// step begins — facing is updated and speed starts increasing.
-    Accelerating,
-    /// State 3: At cruise speed, following path. Entered from Accelerating when
-    /// unit reaches cruise speed, or from CellEntry after successful transition.
-    Cruising,
-    /// State 4: Core path-following tick with distance-based speed zones.
-    /// Handles approach deceleration and arrival detection (< 20 leptons).
-    PathFollow,
-    /// State 5: Cell-to-cell transition step. Handles obstacle detection,
-    /// crush logic, passability checks, and bridge-specific behaviors.
-    CellEntry,
-    /// State 6: Decelerating to halt. Target speed zeroed, deceleration in
-    /// UpdatePosition brings speed to 0, then transitions to Idle.
-    Stopping,
-    /// Blocked by another entity or impassable terrain. Waiting for repath.
-    /// Not a state in the original engine's +0x50 field, but tracked here
-    /// for diagnostics and UI feedback.
-    Blocked,
 }
 
 /// Derived view of Fly height versus target for legacy aircraft missions.
@@ -104,18 +52,18 @@ pub enum AirMovePhase {
 /// Runtime locomotor state attached to each movable ECS entity.
 ///
 /// Created from `ObjectType` at spawn time. The movement system reads this
-/// to decide how to process the entity's `MovementTarget` each tick.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// to decide how to process the entity's `MovementTarget` each tick. It is
+/// one complete locomotor object: a piggyback suspends the whole object in
+/// the new active object's `piggyback` slot and restores it, keeping only the
+/// Foot's layer (see [`piggyback::end`]).
+///
+/// `balloon_hover`, `hover_attack`, `speed_type` and `movement_zone` cache the
+/// Foot's type: set at construction, copied into a BEGIN's temporary and never
+/// written afterwards, so every object of one unit holds the same values.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocomotorState {
-    /// Which locomotor class is currently active.
+    /// Which locomotor class this object is.
     pub kind: LocomotorKind,
-    /// The locomotor class this unit was built with — the installed slot.
-    ///
-    /// Natively a unit holds exactly one locomotor interface, created once in
-    /// its class constructor from the type's `Locomotor=` CLSID; there is no
-    /// second slot and no re-selection. `kind` is the class *currently driving*
-    /// the unit, which differs from this only while a piggyback stash is active.
-    pub slot: LocomotorSlot,
     /// Whether this locomotor is powered.
     ///
     /// Natively a plain flag on the locomotor instance, set by `Power_On` /
@@ -124,32 +72,18 @@ pub struct LocomotorState {
     /// to on — an unpowered locomotor is a state something must actively put a
     /// unit into.
     pub powered: bool,
-    /// One boxed suspended locomotor runtime.
+    /// The suspended locomotor object, when a piggyback displaced it.
     ///
     /// For CMIN drive phases, `kind` becomes Drive and this stores the complete
-    /// primary Teleport runtime until the active Drive locomotor is ok to end.
+    /// primary Teleport object until the active Drive locomotor is ok to end.
     #[serde(default)]
     pub piggyback: Option<StashedLocomotor>,
-    /// Class-local state of the locomotor currently driving this entity.
-    /// Piggyback BEGIN/END transfers this value with the complete runtime.
+    /// Class-local state of this locomotor object.
     pub runtime_payload: LocomotorRuntimePayload,
-    /// Which spatial layer the unit currently occupies.
+    /// Which spatial layer the unit currently occupies: the Foot's position,
+    /// cached on the active object. `Bridge` is the Ground layer with the
+    /// Foot's OnBridge set.
     pub layer: MovementLayer,
-    /// Current movement phase (for ground movers).
-    pub phase: GroundMovePhase,
-    /// Speed multiplier applied on top of ObjectType.speed.
-    /// 1.0 for most units, 0.65 for Hover, etc.
-    pub speed_multiplier: SimFixed,
-    /// Fly target speed (`+0x40`), which `fly_current_speed` ramps toward.
-    /// Written by Fly Process's slowdown (`air_movement::
-    /// write_fly_target_speed`), the takeoff callback and the landing; the
-    /// Fly constructor (`0x004CC9E5`) starts it at 0. Only Fly reads it.
-    pub speed_fraction: SimFixed,
-    /// Actual flight speed fraction (0.0–1.0) for Fly aircraft.
-    /// Ramps toward `speed_fraction` (which acts as target) by +/-0.1 per tick,
-    /// matching the original engine's TargetSpeed/CurrentSpeed system.
-    /// A Jumpjet keeps its speeds in its own runtime (`JumpjetFlight`).
-    pub fly_current_speed: SimFixed,
     /// Bounded altitude cache for movement/presentation adapters. Fly's exact
     /// current height comes from Object Z and terrain; its target is in FlyRuntime.
     pub altitude: SimFixed,
@@ -163,25 +97,6 @@ pub struct LocomotorState {
     /// Pathfinder movement zone — determines crush capability and special routing.
     /// Cached from ObjectType at spawn to avoid per-tick RuleSet lookups.
     pub movement_zone: MovementZone,
-    /// Body rotation speed — ROT value from rules.ini (degrees/frame at 15fps).
-    /// Used for gradual hull turning before movement. 0 = instant turn.
-    /// Infantry always turn instantly regardless of this value (RA2 behavior).
-    pub rot: i32,
-    /// Air movement progress in cells (0.0 → 1.0 per cell step).
-    /// Air movement uses cell-based progress separately from the lepton
-    /// advancement used by ground movement. This field is only meaningful
-    /// for air-layer entities during horizontal flight.
-    pub air_progress: SimFixed,
-    /// Infantry lateral wobble phase (radians). Sine wave applied perpendicular
-    /// to facing direction during walking, creating natural visual sway/spacing.
-    /// **VERA-internal, gamemd equivalent UNCHECKED.** No `+0x88` operand
-    /// appears anywhere in `WalkLocomotionClass::ProcessMovement` @
-    /// `0x0075AEC0`. A double at object `+0x88` does exist — in
-    /// `JumpjetLocomotionClass`, applied by `Update_Coordinates_And_Altitude`
-    /// @ `0x0054D0F0` in states 2 and 3.
-    /// Render-only (f32) — does not affect simulation determinism.
-    #[serde(skip, default)]
-    pub infantry_wobble_phase: f32,
     /// Within-cell walk destination for infantry. Set when a sub-cell is allocated
     /// during cell entry. The locomotor walks the infantry toward this point after
     /// the path is exhausted.
@@ -220,77 +135,96 @@ impl LocomotorState {
     /// FlightLevel when takeoff is admitted, not during construction.
     pub fn from_object_type(obj: &ObjectType, binary_frame: u32) -> Self {
         let kind: LocomotorKind = obj.locomotor;
-        let sim_one: SimFixed = SimFixed::from_num(1);
+        let mut state = Self::constructed(
+            kind,
+            Self::spawn_layer(kind),
+            binary_frame,
+            obj.balloon_hover,
+            obj.hover_attack,
+            obj.speed_type,
+            obj.movement_zone,
+        );
+        // `Link_To_Object @ 0x0054AD30` copies the type's jumpjet block and
+        // builds the locomotor facing at its `JumpjetTurnRate=`.
+        if let LocomotorRuntimePayload::Jumpjet(runtime) = &mut state.runtime_payload {
+            runtime.link(&obj.jumpjet_params);
+        }
+        if let LocomotorRuntimePayload::Fly(runtime) = &mut state.runtime_payload {
+            runtime.link(
+                obj.category == crate::rules::object_type::ObjectCategory::Aircraft
+                    && obj.airport_bound,
+            );
+        }
+        state
+    }
 
-        let (layer, speed_multiplier): (MovementLayer, SimFixed) = match kind {
-            // Ground family — all use Ground layer
-            LocomotorKind::Drive => (MovementLayer::Ground, sim_one),
-            LocomotorKind::Walk => (MovementLayer::Ground, sim_one),
-            // Hover cruises at full base Speed (throttle 1.0 at cruise), NOT the
-            // old made-up 0.65x. The accel/brake throttle ramp + continuous XY
-            // integrator land in later M2 phases (see sim/movement/hover.rs).
-            LocomotorKind::Hover => (MovementLayer::Ground, sim_one),
-            LocomotorKind::Mech => (MovementLayer::Ground, sim_one),
-            LocomotorKind::Ship => (MovementLayer::Ground, sim_one),
-
-            // Air family — use Air layer with altitude state
-            LocomotorKind::Fly => (MovementLayer::Air, sim_one),
-            LocomotorKind::Jumpjet => (MovementLayer::Air, sim_one),
-            LocomotorKind::Rocket => (MovementLayer::Air, sim_one),
-
-            // Special — stubbed as ground for now
-            LocomotorKind::Teleport => (MovementLayer::Ground, sim_one),
-            // Inert TS variants — unconstructible, retained for discriminant
-            // stability only. See LocomotorKind::Tunnel.
-            LocomotorKind::Tunnel => (MovementLayer::Ground, sim_one),
-            LocomotorKind::DropPod => (MovementLayer::Air, sim_one),
-            LocomotorKind::Parachute => (MovementLayer::Air, sim_one),
-        };
-
+    /// A just-constructed `kind` object on `layer`, before its link: the
+    /// `LocomotionClass` constructor (`0x0055A6C0`) raises Powered and each
+    /// class constructor clears its own state
+    /// ([`LocomotorRuntimePayload::for_kind`]). The four type caches come
+    /// from the Foot's type.
+    fn constructed(
+        kind: LocomotorKind,
+        layer: MovementLayer,
+        binary_frame: u32,
+        balloon_hover: bool,
+        hover_attack: bool,
+        speed_type: SpeedType,
+        movement_zone: MovementZone,
+    ) -> Self {
         Self {
             kind,
-            slot: LocomotorSlot::from_kind(kind),
             powered: true,
             piggyback: None,
-            runtime_payload: {
-                // `Link_To_Object @ 0x0054AD30` copies the type's jumpjet block and
-                // builds the locomotor facing at its `JumpjetTurnRate=`.
-                let mut payload = LocomotorRuntimePayload::for_kind(kind, binary_frame);
-                if let LocomotorRuntimePayload::Jumpjet(runtime) = &mut payload {
-                    runtime.link(&obj.jumpjet_params);
-                }
-                if let LocomotorRuntimePayload::Fly(runtime) = &mut payload {
-                    runtime.link(
-                        obj.category == crate::rules::object_type::ObjectCategory::Aircraft
-                            && obj.airport_bound,
-                    );
-                }
-                payload
-            },
+            runtime_payload: LocomotorRuntimePayload::for_kind(kind, binary_frame),
             layer,
-            phase: GroundMovePhase::Idle,
-
-            speed_multiplier,
-            speed_fraction: if kind == LocomotorKind::Fly {
-                SIM_ZERO
-            } else {
-                sim_one
-            },
-            fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,
-
-            balloon_hover: obj.balloon_hover,
-            hover_attack: obj.hover_attack,
-            speed_type: obj.speed_type,
-            movement_zone: obj.movement_zone,
-            rot: obj.turret_rot,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
+            balloon_hover,
+            hover_attack,
+            speed_type,
+            movement_zone,
             subcell_dest: None,
             hover_throttle: SIM_ZERO,
             hover_speed_request: SIM_ZERO,
             hover_bob_offset: SIM_ZERO,
         }
+    }
+
+    /// The layer a unit's constructed locomotor starts on.
+    fn spawn_layer(kind: LocomotorKind) -> MovementLayer {
+        match kind {
+            LocomotorKind::Drive
+            | LocomotorKind::Walk
+            | LocomotorKind::Hover
+            | LocomotorKind::Ship
+            | LocomotorKind::Teleport => MovementLayer::Ground,
+            LocomotorKind::Fly | LocomotorKind::Jumpjet | LocomotorKind::Rocket => {
+                MovementLayer::Air
+            }
+        }
+    }
+
+    /// A freshly constructed `kind` object linked to the same Foot, as every
+    /// native BEGIN site installs one: the Unit setter allocates
+    /// (`0x0041C250`), constructs (Drive `0x004AF540` over the
+    /// `LocomotionClass` constructor `0x0055A6C0`) and links it
+    /// (`0x007426C9`) before BEGIN (`0x0074276F`).
+    /// - It keeps this object's type caches and the Foot's current layer. A
+    ///   BEGIN does not move the Foot, and both classes of the one production
+    ///   BEGIN, a Drive over a Teleport, answer Ground from `In_Which_Layer`
+    ///   (`0x004B4820`, `0x00719E20`).
+    /// - A Jumpjet or Fly temporary would also need its type's link block and
+    ///   its own layer answer. Nothing installs one.
+    pub(crate) fn fresh_linked(&self, kind: LocomotorKind, binary_frame: u32) -> Self {
+        Self::constructed(
+            kind,
+            self.layer,
+            binary_frame,
+            self.balloon_hover,
+            self.hover_attack,
+            self.speed_type,
+            self.movement_zone,
+        )
     }
 
     #[cfg(test)]
@@ -300,57 +234,23 @@ impl LocomotorState {
 
     #[cfg(test)]
     pub(crate) fn for_test_kind_at_frame(kind: LocomotorKind, binary_frame: u32) -> Self {
-        let (layer, speed_multiplier) = match kind {
-            LocomotorKind::Fly
-            | LocomotorKind::Jumpjet
-            | LocomotorKind::Rocket
-            | LocomotorKind::Parachute => (MovementLayer::Air, SimFixed::from_num(1)),
-            LocomotorKind::Hover => (MovementLayer::Ground, SimFixed::from_num(1)),
-            _ => (MovementLayer::Ground, SimFixed::from_num(1)),
-        };
-
-        Self {
+        Self::constructed(
             kind,
-            slot: LocomotorSlot::from_kind(kind),
-            powered: true,
-            piggyback: None,
-            runtime_payload: LocomotorRuntimePayload::for_kind(kind, binary_frame),
-            layer,
-            phase: GroundMovePhase::Idle,
-
-            speed_multiplier,
-            speed_fraction: if kind == LocomotorKind::Fly {
-                SIM_ZERO
-            } else {
-                SimFixed::from_num(1)
-            },
-            fly_current_speed: SIM_ZERO,
-            altitude: SIM_ZERO,
-
-            balloon_hover: false,
-            hover_attack: false,
-            speed_type: SpeedType::Track,
-            movement_zone: MovementZone::Normal,
-            rot: 5,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
-            subcell_dest: None,
-            hover_throttle: SIM_ZERO,
-            hover_speed_request: SIM_ZERO,
-            hover_bob_offset: SIM_ZERO,
-        }
+            Self::spawn_layer(kind),
+            binary_frame,
+            false,
+            false,
+            SpeedType::Track,
+            MovementZone::Normal,
+        )
     }
 
-    /// Whether this locomotor is in the ground family (Drive/Walk/Hover/Mech/Ship).
+    /// Whether this locomotor is in the ground family (Drive/Walk/Hover/Ship).
     #[cfg(test)]
     pub fn is_ground_mover(&self) -> bool {
         matches!(
             self.kind,
-            LocomotorKind::Drive
-                | LocomotorKind::Walk
-                | LocomotorKind::Hover
-                | LocomotorKind::Mech
-                | LocomotorKind::Ship
+            LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Hover | LocomotorKind::Ship
         )
     }
 
@@ -361,11 +261,6 @@ impl LocomotorState {
             self.kind,
             LocomotorKind::Fly | LocomotorKind::Jumpjet | LocomotorKind::Rocket
         )
-    }
-
-    /// Whether this unit is currently airborne (altitude > 0).
-    pub fn is_airborne(&self) -> bool {
-        self.altitude > SIM_ZERO
     }
 
     pub(crate) fn fly_runtime(&self) -> Option<&super::fly_height::FlyRuntime> {
@@ -520,15 +415,19 @@ impl LocomotorState {
         }
     }
 
-    /// Stop75ADA0 differs from null MoveTo: no-head Stop also clears +36.
-    pub(crate) fn stop_walk(&mut self) {
+    /// Stop75ADA0 differs from null MoveTo: no-head Stop also clears +36
+    /// and dispatches the owner's +54C callback. The world receiver performs
+    /// that dispatch before returning; this primitive returns its admission.
+    pub(crate) fn stop_walk(&mut self) -> bool {
         self.set_walk_destination(None);
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
             && state.head.is_none()
         {
             state.animation_moving = false;
+            return true;
         }
+        false
     }
 
     pub(crate) fn active_slope_transition(&self) -> Option<&SlopeTransitionState> {
@@ -547,72 +446,44 @@ impl LocomotorState {
         }
     }
 
-    /// The unit's identity for mission-level decisions: the installed class,
-    /// seen through any piggyback that is currently driving it.
+    /// The class this unit was built with: the bottom of the piggyback chain,
+    /// the object its class constructor created from the type's `Locomotor=`
+    /// CLSID. Natively a unit holds one locomotor interface and never
+    /// re-selects it; a piggyback only suspends it.
     ///
     /// A Chrono Miner driving out of a war factory on a piggybacked Drive still
     /// *is* a Teleport unit; `kind` answers "what is driving right now" and this
-    /// answers "what is this unit". Both are needed and must stay distinct.
+    /// answers "what is this unit".
     pub fn effective_kind(&self) -> LocomotorKind {
-        self.slot.into()
+        self.piggyback
+            .as_deref()
+            .map_or(self.kind, LocomotorState::effective_kind)
     }
 
-    /// Whether the primary locomotor is currently active and no piggyback is stored.
+    /// Whether the constructed locomotor is active, with nothing stashed.
     #[cfg(test)]
     pub fn is_primary_active(&self) -> bool {
-        self.kind == self.effective_kind() && self.piggyback.is_none()
+        self.piggyback.is_none()
     }
 
     /// Activate Drive over a stashed Teleport locomotor — the Chrono Miner
     /// bridge model: the unit stays a Teleport unit, Drive temporarily drives it
-    /// for destinations that need ground movement.
+    /// for destinations that need ground movement. The setter reuses a Drive
+    /// that is already active (`0x007425F8`).
     pub fn begin_drive_piggyback_for_teleporter(&mut self, binary_frame: u32) -> bool {
         if self.effective_kind() != LocomotorKind::Teleport {
             return false;
         }
-        if self.kind == LocomotorKind::Drive {
-            // WalkLocomotionClass::BeginPiggyback rejects nested/incoherent
-            // ownership; it never reconstructs a missing Teleport COM object.
-            return self.piggyback.is_some();
-        }
-        self.begin_piggyback(LocomotorKind::Drive, MovementLayer::Ground, binary_frame)
-    }
-
-    /// Return from an active piggyback to the stashed locomotor.
-    ///
-    /// The installed slot is deliberately NOT written here. Natively the
-    /// installed interface pointer never changes — a piggyback stashes and
-    /// restores around it — and the previous write was retained only until this
-    /// mechanism existed to retire it.
-    pub fn restore_primary_from_piggyback(&mut self) -> bool {
-        self.end_piggyback()
-    }
-
-    /// Whether the active piggyback can safely restore to the primary locomotor.
-    pub fn can_restore_primary_from_piggyback(
-        &self,
-        owner_moving: bool,
-        owner_teleporting: bool,
-        owner_deploying: bool,
-    ) -> bool {
-        self.is_ok_to_end_piggyback(EndGateContext {
-            owner_moving,
-            owner_teleporting,
-            owner_deploying,
-        })
+        self.kind == LocomotorKind::Drive
+            || self.begin_piggyback(LocomotorKind::Drive, binary_frame)
     }
 
     /// Begin a piggyback: stash the driving locomotor and install this one.
     ///
     /// Refuses, changing nothing, if a stash is already present — the native
     /// BEGIN returns `E_FAIL` in exactly that case.
-    pub fn begin_piggyback(
-        &mut self,
-        kind: LocomotorKind,
-        layer: MovementLayer,
-        binary_frame: u32,
-    ) -> bool {
-        piggyback::begin(self, kind, layer, binary_frame) == piggyback::BeginOutcome::Installed
+    pub fn begin_piggyback(&mut self, kind: LocomotorKind, binary_frame: u32) -> bool {
+        piggyback::begin(self, kind, binary_frame) == piggyback::BeginOutcome::Installed
     }
 
     /// End the active piggyback, restoring the stashed locomotor.
@@ -636,29 +507,6 @@ impl LocomotorState {
     /// Whether this locomotor is powered.
     pub fn is_powered(&self) -> bool {
         self.powered
-    }
-
-    /// Whether the active piggyback may be unwound now. The movement clause
-    /// dominates: a moving unit never unwinds.
-    ///
-    /// **Recorded gap, not closed — VERA has no single locomotor dispatch
-    /// point.** `FootClass::AI` @ `0x004DA530` makes exactly *one* `Process`
-    /// dispatch per object per frame (it also calls `Is_Moving_Now` `+0x80`
-    /// four times and `QueryInterface` around it), `ILocomotion::Process`
-    /// (Drive ILocomotion vtable
-    /// `0x007E7EB0`, slot `+0x40` = `DriveLocomotionClass::Process` @
-    /// `0x004B0500`), and the installed object alone decides which body runs —
-    /// there is no kind switch anywhere. VERA instead runs about ten
-    /// independent per-kind world passes each tick, every one self-gating on
-    /// `locomotor.kind` or on a per-kind state component, with the piggyback
-    /// restore last. Trigger: every object, every tick. Player effect: none
-    /// named — but inter-family ordering becomes a property of the tick's pass
-    /// order rather than of the installed locomotor. Frequency: continuous.
-    /// Downstream risk: this is why a piggyback can be installed by one pass and
-    /// observed by another in the same tick, and it is the shape rows GSI-06.13
-    /// and GSI-06.14 have to build on.
-    pub fn is_ok_to_end_piggyback(&self, context: EndGateContext) -> bool {
-        piggyback::is_ok_to_end(self, context)
     }
 }
 

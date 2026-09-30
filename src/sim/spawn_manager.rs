@@ -56,13 +56,14 @@ use crate::rules::missile_spawn::MissileFamily;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
 use crate::sim::intern::InternedId;
+use crate::sim::timer::CdTimer;
 use crate::sim::world::{Simulation, UninitContext};
 
 /// Frames the manager waits before its very first AI pass
 /// (`UpdateTimer.Duration = 0x14` at construction).
-const FIRST_UPDATE_DELAY_FRAMES: u32 = 20;
+const FIRST_UPDATE_DELAY_FRAMES: i32 = 20;
 /// Frames between AI passes once the manager has run at least once.
-const UPDATE_PERIOD_FRAMES: u32 = 10;
+const UPDATE_PERIOD_FRAMES: i32 = 10;
 /// Per-launch delay written to the manager's reload timer when the *parent*
 /// type does not set `MissileSpawn=`. No stock YR parent sets it, so this is
 /// the only branch reachable in stock play.
@@ -72,43 +73,6 @@ const LAUNCH_DELAY_FRAMES: u32 = 20;
 const LAUNCH_DELAY_FRAMES_MISSILE_PARENT: u32 = 9;
 /// Height difference (leptons) under which a returning child counts as docked.
 const DOCK_HEIGHT_EPSILON_LEPTONS: i32 = 0x14;
-
-/// Native `RateTimerClass` pair: an anchor frame plus a duration.
-///
-/// `start_frame == None` models the native `-1` sentinel ("never anchored"),
-/// in which case the timer is due only when its duration is zero. Otherwise the
-/// timer is due once `duration` frames have elapsed since the anchor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SpawnTimer {
-    pub start_frame: Option<u32>,
-    pub duration: u32,
-}
-
-impl SpawnTimer {
-    /// A timer that is already due (native `{ -1, 0 }`).
-    pub const fn ready() -> Self {
-        Self {
-            start_frame: None,
-            duration: 0,
-        }
-    }
-
-    /// Anchor at `frame` for `duration` frames.
-    pub const fn armed(frame: u32, duration: u32) -> Self {
-        Self {
-            start_frame: Some(frame),
-            duration,
-        }
-    }
-
-    /// Native expiry test: remaining time has reached zero.
-    pub fn due(self, now: u32) -> bool {
-        match self.start_frame {
-            None => self.duration == 0,
-            Some(start) => now.wrapping_sub(start) >= self.duration,
-        }
-    }
-}
 
 /// Per-slot state. Native uses 0..7 with no case 5; the gap is preserved by
 /// simply not having a variant for it.
@@ -137,7 +101,10 @@ pub struct SpawnSlot {
     /// Stable id of the child, or `None` while regenerating.
     pub spawn: Option<u64>,
     pub state: SpawnSlotState,
-    pub timer: SpawnTimer,
+    /// The slot's timer. A ready slot's is left paused with no time left
+    /// ([`CdTimer::default`]); native restarts it at the current frame with
+    /// none, which reads the same.
+    pub timer: CdTimer,
     /// Set when the pool's child type is one of the three hardcoded rocket
     /// families. Drives the launch stationary-gate and the kamikaze path.
     pub is_missile_spawn: bool,
@@ -171,9 +138,9 @@ pub struct SpawnManagerState {
     pub kamikaze_wait_frames: u32,
     pub slots: Vec<SpawnSlot>,
     /// Gates the whole AI pass (20 frames, then 10).
-    pub update_timer: SpawnTimer,
+    pub update_timer: CdTimer,
     /// Gates launches across the pool, not per slot.
-    pub reload_timer: SpawnTimer,
+    pub reload_timer: CdTimer,
     pub current_target: Option<TargetKind>,
     pub queued_target: Option<TargetKind>,
     pub mode: SpawnManagerMode,
@@ -289,7 +256,7 @@ pub fn init_spawn_manager(
             // world-owned constructor transaction can fill them. Native fills
             // them in the manager constructor.
             state: SpawnSlotState::Regenerating,
-            timer: SpawnTimer::ready(),
+            timer: CdTimer::default(),
             is_missile_spawn,
         })
         .collect();
@@ -303,8 +270,8 @@ pub fn init_spawn_manager(
             .map(|family| rules.missile_spawn.kamikaze_wait_frames(family))
             .unwrap_or(0),
         slots,
-        update_timer: SpawnTimer::armed(frame, FIRST_UPDATE_DELAY_FRAMES),
-        reload_timer: SpawnTimer::ready(),
+        update_timer: CdTimer::started(frame as i32, FIRST_UPDATE_DELAY_FRAMES),
+        reload_timer: CdTimer::default(),
         current_target: None,
         queued_target: None,
         mode: SpawnManagerMode::Idle,
@@ -370,10 +337,10 @@ fn tick_one_manager(
         let Some(manager) = entity.spawn_manager.as_mut() else {
             return;
         };
-        if !manager.update_timer.due(frame) {
+        if !manager.update_timer.expired(frame as i32) {
             return;
         }
-        manager.update_timer = SpawnTimer::armed(frame, UPDATE_PERIOD_FRAMES);
+        manager.update_timer = CdTimer::started(frame as i32, UPDATE_PERIOD_FRAMES);
     }
 
     // Reap children that no longer exist before the slot walk, so a slot whose
@@ -436,7 +403,7 @@ fn reap_expired_spawns(sim: &mut Simulation, owner_id: u64, frame: u32) {
         let slot = &mut manager.slots[index];
         slot.spawn = None;
         slot.state = SpawnSlotState::Regenerating;
-        slot.timer = SpawnTimer::armed(frame, regen_rate);
+        slot.timer = CdTimer::started(frame as i32, regen_rate as i32);
     }
 }
 
@@ -455,13 +422,13 @@ fn step_slot(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, slot_index: u
     match slot.state {
         SpawnSlotState::ReadyDocked => step_ready_docked(sim, rules, owner_id, slot_index, frame),
         SpawnSlotState::KamikazeWait => {
-            if slot.timer.due(frame) {
+            if slot.timer.expired(frame as i32) {
                 // The missile is on its own now; free the slot to regenerate.
                 let regen_rate = manager_field(sim, owner_id, |m| m.regen_rate).unwrap_or(0);
                 with_slot(sim, owner_id, slot_index, |slot| {
                     slot.spawn = None;
                     slot.state = SpawnSlotState::Regenerating;
-                    slot.timer = SpawnTimer::armed(frame, regen_rate);
+                    slot.timer = CdTimer::started(frame as i32, regen_rate as i32);
                 });
             }
         }
@@ -469,12 +436,12 @@ fn step_slot(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, slot_index: u
         SpawnSlotState::ReturningToDock => step_returning(sim, rules, owner_id, slot_index),
         SpawnSlotState::LandingAtDock => step_landing(sim, rules, owner_id, slot_index, frame),
         SpawnSlotState::Reloading => {
-            if slot.timer.due(frame) {
+            if slot.timer.expired(frame as i32) {
                 restore_docked_child(sim, rules, owner_id, slot_index);
             }
         }
         SpawnSlotState::Regenerating => {
-            if slot.timer.due(frame) {
+            if slot.timer.expired(frame as i32) {
                 regenerate_child(sim, rules, owner_id, slot_index);
             }
         }
@@ -497,7 +464,7 @@ fn step_ready_docked(
         .map(|m| {
             (
                 m.current_target,
-                m.reload_timer.due(frame),
+                m.reload_timer.expired(frame as i32),
                 m.mode,
                 m.slots[slot_index].is_missile_spawn,
                 m.slots[slot_index].spawn,
@@ -518,7 +485,8 @@ fn step_ready_docked(
     // Missile slots only launch from a fully stationary parent — the native
     // gate calls ILocomotor::Is_Moving and Is_Moving_Now on the owner. Aircraft
     // slots skip it, so Hornets launch from a moving Carrier.
-    if is_missile_slot && (owner.movement_target.is_some() || owner.facing_target.is_some()) {
+    if is_missile_slot && (owner.movement_target.is_some() || owner.body_facing.is_rotating(frame))
+    {
         return;
     }
     // A deployed parent does not launch (native reads owner+0x6AD).
@@ -530,8 +498,8 @@ fn step_ready_docked(
     let launch_rx = owner.position.rx;
     let launch_ry = owner.position.ry;
     let launch_z = owner.position.z;
-    let launch_facing = owner.facing;
-    let owner_veterancy = owner.veterancy;
+    let launch_facing = owner.body_facing_byte(frame);
+    let owner_veterancy = owner.veterancy();
     let parent_missile_spawn = rules
         .object(&owner_type)
         .map(|o| o.missile_spawn)
@@ -566,12 +534,13 @@ fn step_ready_docked(
         None
     };
 
-    // Place the child in the world at the launcher.
+    // Place the child in the world at the launcher; its Unlimbo snaps the
+    // body to the launch direction (`0x006F6DAA`).
     if let Some(child) = sim.substrate.entities.get_mut(child_id) {
         child.position.rx = launch_rx;
         child.position.ry = launch_ry;
         child.position.z = launch_z;
-        child.facing = launch_facing;
+        child.body_facing.snap(u16::from(launch_facing) << 8, frame);
     }
     let revealed = matches!(
         sim.reveal_entity_with_rules(child_id, rules),
@@ -602,7 +571,7 @@ fn step_ready_docked(
     }
 
     with_manager(sim, owner_id, |m| {
-        m.reload_timer = SpawnTimer::armed(frame, launch_delay);
+        m.reload_timer = CdTimer::started(frame as i32, launch_delay as i32);
         m.slots[slot_index].state = SpawnSlotState::InFlight;
     });
 }
@@ -707,7 +676,7 @@ fn step_landing(
         let reload_rate = manager_field(sim, owner_id, |m| m.reload_rate).unwrap_or(0);
         with_slot(sim, owner_id, slot_index, |slot| {
             slot.state = SpawnSlotState::Reloading;
-            slot.timer = SpawnTimer::armed(frame, reload_rate);
+            slot.timer = CdTimer::started(frame as i32, reload_rate as i32);
         });
     } else {
         recall_child_to_owner(sim, rules, owner_id, child_id);
@@ -739,7 +708,7 @@ fn restore_docked_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, sl
     }
     with_slot(sim, owner_id, slot_index, |slot| {
         slot.state = SpawnSlotState::ReadyDocked;
-        slot.timer = SpawnTimer::ready();
+        slot.timer = CdTimer::default();
     });
 }
 
@@ -757,7 +726,7 @@ fn regenerate_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, slot_i
                 owner.position.rx,
                 owner.position.ry,
                 owner.position.z,
-                owner.facing,
+                owner.body_facing_byte(sim.session.binary_frame),
             )
         })
     else {
@@ -778,7 +747,7 @@ fn regenerate_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, slot_i
         slot.spawn = Some(child_id);
         slot.is_missile_spawn = missile_family.is_some();
         slot.state = SpawnSlotState::ReadyDocked;
-        slot.timer = SpawnTimer::ready();
+        slot.timer = CdTimer::default();
     });
 }
 
@@ -801,9 +770,10 @@ fn step_manager_mode(
             };
             // gamemd-derived: `SpawnManagerClass::AI` @ 0x006B7230 mode 0
             // promotes +0x6C to +0x68, then Unit's vslot +0x3AC reaches
-            // `TechnoClass::CanFireAtTarget` @ 0x006F7780. A false result calls
-            // `ClearAllTargets` @ 0x006B7BB0 and returns before Launching.
-            let target_is_legal = sim.resolved_terrain.as_ref().is_some_and(|terrain| {
+            // `TechnoClass::CanFireAtTarget` @ 0x006F7780 (InRange with the
+            // selected weapon). A false result calls `ClearAllTargets` @
+            // 0x006B7BB0 and returns before Launching.
+            let can_fire_at = sim.resolved_terrain.as_ref().is_some_and(|terrain| {
                 crate::sim::combat::can_fire_at_target(
                     &sim.substrate.entities,
                     rules,
@@ -819,7 +789,7 @@ fn step_manager_mode(
                     },
                 )
             });
-            if !target_is_legal {
+            if !can_fire_at {
                 with_manager(sim, owner_id, SpawnManagerState::clear_all_targets);
                 return;
             }
@@ -887,7 +857,7 @@ fn step_manager_mode(
                     if is_missile_family {
                         with_slot(sim, owner_id, index, |slot| {
                             slot.state = SpawnSlotState::KamikazeWait;
-                            slot.timer = SpawnTimer::armed(frame, kamikaze_frames);
+                            slot.timer = CdTimer::started(frame as i32, kamikaze_frames as i32);
                         });
                     } else {
                         // No kamikaze window: the slot starts regenerating now.
@@ -896,7 +866,7 @@ fn step_manager_mode(
                         with_slot(sim, owner_id, index, |slot| {
                             slot.spawn = None;
                             slot.state = SpawnSlotState::Regenerating;
-                            slot.timer = SpawnTimer::armed(frame, regen_rate);
+                            slot.timer = CdTimer::started(frame as i32, regen_rate as i32);
                         });
                     }
                 } else {
@@ -1129,9 +1099,9 @@ fn child_air_speed(
     sim.substrate
         .entities
         .get(child_id)
-        .map(|c| sim.interner.resolve(c.type_ref()).to_string())
-        .and_then(|name| rules.object(&name))
-        .map(|obj| crate::util::fixed_math::ra2_speed_to_leptons_per_second(obj.speed.max(1)))
+        .map(|c| {
+            crate::sim::movement::order_speed(c, sim.object_type(c.type_ref(), rules), Some(rules))
+        })
         .unwrap_or(crate::util::fixed_math::SimFixed::from_num(8))
 }
 
@@ -1225,6 +1195,7 @@ fn launch_missile_child(
         (target_rx, target_ry),
         speed,
         Some(payload),
+        sim.session.binary_frame,
     );
 }
 
@@ -1448,7 +1419,7 @@ pub fn notify_pointer_expired(sim: &mut Simulation, listener_id: u64, expired_id
         with_slot(sim, listener_id, index, |slot| {
             slot.spawn = None;
             slot.state = SpawnSlotState::Regenerating;
-            slot.timer = SpawnTimer::armed(frame, regen_rate);
+            slot.timer = CdTimer::started(frame as i32, regen_rate as i32);
         });
     }
 }
@@ -1604,7 +1575,7 @@ pub(crate) fn kill_all_spawns_with_context(
         with_slot(sim, owner_id, index, |slot| {
             slot.spawn = None;
             slot.state = SpawnSlotState::Regenerating;
-            slot.timer = SpawnTimer::armed(frame, regen_duration);
+            slot.timer = CdTimer::started(frame as i32, regen_duration as i32);
         });
     }
 }

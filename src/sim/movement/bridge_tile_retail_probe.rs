@@ -155,7 +155,7 @@ fn retail_high_bridge_middle_tile_inputs() {
         "subtile": cell.final_sub_tile, "level": cell.level, "slope": cell.slope_type,
         "land": cell.yr_cell_land_type, "zone": cell.zone_type,
         "has_deck": cell.has_bridge_deck, "walkable": cell.bridge_walkable,
-        "runtime": bridges.cell(cell.rx, cell.ry)})
+        "bridge_facts": cell.bridge_facts})
         })
         .collect();
     assert!(

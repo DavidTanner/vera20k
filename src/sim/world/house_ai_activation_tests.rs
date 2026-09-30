@@ -1,7 +1,5 @@
 //! Focused House-tail integration tests for anger decay and AI activation.
 
-use std::collections::BTreeMap;
-
 use super::{HouseAiActivationOrderTestEvent, Simulation, TickLane};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
@@ -29,7 +27,7 @@ fn insert_house(
 
 fn advance(sim: &mut Simulation, rules: Option<&RuleSet>, lane: TickLane) {
     let result = sim
-        .advance_master_frame(&[], rules, &BTreeMap::new(), None, None, 67, lane, None)
+        .advance_master_frame(&[], rules, None, 67, lane, None)
         .expect("fixture frame must complete");
     assert!(result.frame_committed);
 }
@@ -69,15 +67,13 @@ fn house_ai_activation_forward_house_order_reaches_computer_and_passive_houses()
 }
 
 #[test]
-fn house_ai_activation_full_frame_order_is_production_then_activation_defeat_and_ai() {
+fn house_ai_activation_full_frame_order_is_production_then_activation_and_defeat() {
     let rules = activation_rules(5);
     let mut sim = Simulation::new();
     sim.session.game_mode_nonzero = true;
     sim.session.tick = 1;
     let owner = insert_house(&mut sim, "Computer1", false, 5);
     sim.session.house_order.push(owner);
-    sim.ai_players
-        .push(crate::sim::ai::AiPlayerState::new(owner));
 
     advance(&mut sim, Some(&rules), TickLane::Ordinary);
 
@@ -88,9 +84,8 @@ fn house_ai_activation_full_frame_order_is_production_then_activation_defeat_and
             HouseAiActivationOrderTestEvent::HouseAngerDecay(owner),
             HouseAiActivationOrderTestEvent::HouseActivation(owner),
             HouseAiActivationOrderTestEvent::DefeatProcessed,
-            HouseAiActivationOrderTestEvent::AiGenerated,
         ],
-        "moving activation across production, defeat, or actual tick_ai dispatch must fail"
+        "moving activation across production or defeat must fail"
     );
 }
 

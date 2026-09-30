@@ -26,6 +26,11 @@ impl Simulation {
     ) -> Option<crate::sim::anim_class::AnimWorldCoord> {
         let entity = self.substrate.entities.get(id)?;
         let raw = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+        // The same object Z the damage fires anchor to (`anim_owner_world_coords`).
+        let z = crate::sim::movement::ground_pose::object_world_z_leptons(
+            entity,
+            self.resolved_terrain.as_ref(),
+        );
         let (dx, dy) = self
             .session
             .pixel_conversion_bounds
@@ -33,7 +38,7 @@ impl Simulation {
         Some(crate::sim::anim_class::AnimWorldCoord {
             x: raw.x.wrapping_sub(128).wrapping_add(dx),
             y: raw.y.wrapping_sub(128).wrapping_add(dy),
-            z: raw.z,
+            z,
         })
     }
 
@@ -795,7 +800,8 @@ mod slot_tests {
             assert!(!sim.anim(missing).unwrap().runtime.inactive);
             sim.session.binary_frame += 1;
             sim.visit_anim(missing, &rules, None);
-            assert!(sim.anim(missing).unwrap().runtime.inactive);
+            assert!(sim.substrate.pending_delete.contains(&missing));
+            assert!(!sim.anim(missing).unwrap().in_logic_vector);
             assert_eq!(
                 sim.entities().get(id).unwrap().building_anim_slots[5],
                 Some(missing)
@@ -862,7 +868,8 @@ mod slot_tests {
             sim.entities().get(id).unwrap().building_anim_slots[3],
             Some(anim)
         );
-        assert!(sim.anim(anim).unwrap().runtime.inactive);
+        assert!(sim.substrate.pending_delete.contains(&anim));
+        assert!(!sim.anim(anim).unwrap().in_logic_vector);
         sim.process_pending_delete();
         assert!(sim.anim(anim).is_none());
         assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[3], None);
@@ -967,7 +974,7 @@ mod native_slot_tests {
             .iter()
             .filter(|row| row["input"]["source"] != "selfheal")
         {
-            let (mut sim, mut rules, id) = slot_test_fixture();
+            let (mut sim, _, id) = slot_test_fixture();
             let input = &row["input"];
             let mut text = String::from("[B]\nActiveAnim=OLD\n[OLD]\nLoopCount=-1\n");
             for slot in 0..21 {
@@ -985,7 +992,7 @@ mod native_slot_tests {
                     slot * 2 + 2
                 ));
             }
-            rules = RuleSet::from_ini_with_fixed_art_for_test(
+            let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
                 &IniFile::from_str(&registry),
                 &IniFile::from_str(&text),
             )

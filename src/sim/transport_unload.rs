@@ -27,14 +27,12 @@ use crate::sim::find_nearby_cell::{
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{DockTeardown, MissionId, MissionType};
-use crate::sim::movement::FacingClass;
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::ready_producer::is_moving_now_for;
 use crate::sim::passenger::{
     DepartureFailure, DepartureRoute, depart_cargo_head, reveal_unloaded_passenger,
 };
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::passability::LandType;
 use crate::sim::world::{GroundMove, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SIM_ZERO;
@@ -69,7 +67,8 @@ const STATE_EJECT: u32 = 3;
 const STATE_DONE: u32 = 4;
 
 /// Aircraft handler states on `aircraft+0xBC`. Native state 1 (written only
-/// at `0x0041541F`, inside the team arm) is EXCLUDED: VERA has no teams.
+/// at `0x0041541F`, inside the team arm) is not ported with the rest of that
+/// arm (the team residual on [`dispatch_aircraft_unload`]).
 const AIR_STATE_CHECK_LANDED: u32 = 0;
 const AIR_STATE_WAIT_STOP: u32 = 2;
 const AIR_STATE_EJECT: u32 = 3;
@@ -110,11 +109,11 @@ fn cell_from(base: (u16, u16), delta: (i32, i32)) -> Option<(u16, u16)> {
         .then_some((x as u16, y as u16))
 }
 
-fn cell_in_map(sim: &Simulation, path_grid: Option<&PathGrid>, cell: (u16, u16)) -> bool {
+fn cell_in_map(sim: &Simulation, cell: (u16, u16)) -> bool {
     if let Some(terrain) = sim.resolved_terrain.as_ref() {
         return terrain.cell(cell.0, cell.1).is_some();
     }
-    if let Some(grid) = path_grid {
+    if let Some(grid) = sim.path_grid() {
         return cell.0 < grid.width() && cell.1 < grid.height();
     }
     true
@@ -122,20 +121,13 @@ fn cell_in_map(sim: &Simulation, path_grid: Option<&PathGrid>, cell: (u16, u16))
 
 /// Terrain level of a cell for the reveal Z, or the transport's own Z.
 fn cell_level_or(sim: &Simulation, cell: (u16, u16), fallback: u8) -> u8 {
-    sim.resolved_terrain
-        .as_ref()
-        .and_then(|terrain| terrain.cell(cell.0, cell.1))
-        .map_or(fallback, |c| c.level)
+    sim.terrain_cell_level(cell.0, cell.1).unwrap_or(fallback)
 }
 
 /// The FNPC `allow_bridge_cells == 0` reject and the placement skip at
 /// `0x0073D9EB` (`CellClass+0x140 & 0x100`, the structural bridge flag).
-fn cell_has_structural_bridge(
-    sim: &Simulation,
-    path_grid: Option<&PathGrid>,
-    cell: (u16, u16),
-) -> bool {
-    path_grid
+fn cell_has_structural_bridge(sim: &Simulation, cell: (u16, u16)) -> bool {
+    sim.path_grid()
         .and_then(|grid| grid.cell(cell.0, cell.1))
         .is_some_and(|c| c.has_structural_bridge())
         || sim
@@ -147,12 +139,7 @@ fn cell_has_structural_bridge(
 
 /// Land passability of a cell for one speed type, from the resolved terrain
 /// speed table (a zero cost is impassable), falling back to the path grid.
-fn land_passable_for(
-    sim: &Simulation,
-    path_grid: Option<&PathGrid>,
-    cell: (u16, u16),
-    speed_type: SpeedType,
-) -> bool {
+fn land_passable_for(sim: &Simulation, cell: (u16, u16), speed_type: SpeedType) -> bool {
     match sim
         .resolved_terrain
         .as_ref()
@@ -162,7 +149,9 @@ fn land_passable_for(
             .speed_costs
             .cost_for_speed_type(speed_type)
             .is_none_or(|cost| cost > 0),
-        None => path_grid.is_none_or(|grid| grid.is_walkable(cell.0, cell.1)),
+        None => sim
+            .path_grid()
+            .is_none_or(|grid| grid.is_walkable(cell.0, cell.1)),
     }
 }
 
@@ -177,16 +166,11 @@ fn land_passable_for(
 /// VERA-internal: the Rust cell holds three infantry sub-cells, so "full" is
 /// the sub-cell allocator's refusal; every ground occupant is alliance-tested
 /// rather than only the nearest one.
-fn octant_cell_open(
-    sim: &Simulation,
-    path_grid: Option<&PathGrid>,
-    cell: (u16, u16),
-    transport_owner: &str,
-) -> bool {
-    if !cell_in_map(sim, path_grid, cell) {
+fn octant_cell_open(sim: &Simulation, cell: (u16, u16), transport_owner: &str) -> bool {
+    if !cell_in_map(sim, cell) {
         return false;
     }
-    if !land_passable_for(sim, path_grid, cell, SpeedType::Foot) {
+    if !land_passable_for(sim, cell, SpeedType::Foot) {
         return false;
     }
     let occupancy = sim.substrate.occupancy.get(cell.0, cell.1);
@@ -228,14 +212,11 @@ fn octant_cell_open(
 /// The `UnitType+0xC94` (`IsTrain=`) override that returns the current facing
 /// octant instead (`0x00740DC5`) is not represented: no stock YR unit sets
 /// the key and it is not parsed.
-fn pick_exit_octant(
-    sim: &Simulation,
-    path_grid: Option<&PathGrid>,
-    entity: &GameEntity,
-) -> Option<((u16, u16), usize)> {
+fn pick_exit_octant(sim: &Simulation, entity: &GameEntity) -> Option<((u16, u16), usize)> {
     let owner = sim.interner.resolve(entity.owner());
     let base = (entity.position.rx, entity.position.ry);
-    let facing16 = u16::from(entity.facing) << 8;
+    // `0x00740B9F..BAD`: the body's `Current()` (`+0x388`), full 16 bits.
+    let facing16 = entity.body_facing_current(sim.session.binary_frame);
     let rear16 = facing16.wrapping_add(0x7FFF);
     let rear8 = i32::from((((u32::from(rear16) >> 7) + 1) >> 1) as u8 as i8);
 
@@ -243,7 +224,7 @@ fn pick_exit_octant(
     let mut best_octant: usize = 0;
     for octant in 0..8usize {
         let open = cell_from(base, OCTANT_OFFSETS[octant])
-            .is_some_and(|cell| octant_cell_open(sim, path_grid, cell, owner));
+            .is_some_and(|cell| octant_cell_open(sim, cell, owner));
         let mut score: i32 = if open { 0x80 } else { -0x80 };
         let dir8 = i32::from(((octant as u32) << 5) as u8 as i8);
         score -= (dir8 - rear8).abs();
@@ -263,60 +244,18 @@ fn pick_exit_octant(
 }
 
 /// `Do_Turn(octant << 13)` on the transport's hull (`0x0073D86C`, locomotor
-/// slot `+0x4C`): arm the body `FacingClass` toward the 8-bit facing
-/// `octant * 32` at the unit's `ROT=`.
+/// slot `+0x4C`): arm the body `FacingClass` toward `octant << 13`.
 fn start_hull_turn(entity: &mut GameEntity, octant: usize, now: u32) {
-    let target8 = ((octant as u32) << 5) as u8;
-    let rot = entity.locomotor.as_ref().map_or(0, |loco| loco.rot);
-    entity.facing_target = Some(target8);
-    let mut body = FacingClass::new(u16::from(entity.facing) << 8, rot);
-    body.set(u16::from(target8) << 8, now);
-    entity.body_facing = Some(body);
+    entity.body_facing.set((octant as u16) << 13, now);
 }
 
-/// State 1's `+0x6AF == 0` read (`0x0073D892`): the hull turn has finished.
+/// State 1's wait, VERA-side: the hull turn has finished. Native state 1
+/// instead tests the `+0x6AF` turret rotation latch (`0x0073D892`), which
+/// Facing_Update sets only from a `Turret=` unit's `+0x3A0`
+/// (`0x00736ADC..0x00736B16`), so a turretless transport moves on while its
+/// hull still turns. Not yet ported.
 fn hull_turn_finished(entity: &GameEntity, now: u32) -> bool {
-    entity
-        .body_facing
-        .as_ref()
-        .is_none_or(|body| !body.is_rotating(now))
-}
-
-/// Per-tick `PrimaryFacing.Current()` refresh for a transport turning in
-/// place for its unload. The movement tick only rotates objects that hold a
-/// movement target, so the idle hull turn armed by [`start_hull_turn`] is
-/// advanced here from the same frame-anchored `FacingClass` gamemd reads.
-/// VERA-internal representation of a native pure-function read.
-pub(crate) fn refresh_idle_hull_turn(sim: &mut Simulation, id: u64, rules: &RuleSet) {
-    if !sim
-        .substrate
-        .entities
-        .get(id)
-        .is_some_and(|e| is_vehicle_transport_type(sim, e, rules))
-    {
-        return;
-    }
-    let now = sim.session.binary_frame;
-    let Some(entity) = sim.substrate.entities.get_mut(id) else {
-        return;
-    };
-    if entity.mission.current() != MissionId::from_known(MissionType::Unload)
-        || entity.mission.handler_state() != STATE_TURNING
-        || entity.movement_target.is_some()
-    {
-        return;
-    }
-    let Some(body) = entity.body_facing.as_ref() else {
-        return;
-    };
-    entity.facing = (body.current(now) >> 8) as u8;
-}
-
-fn finish_hull_turn(entity: &mut GameEntity) {
-    if let Some(target) = entity.facing_target.take() {
-        entity.facing = target;
-    }
-    entity.body_facing = None;
+    !entity.body_facing.is_rotating(now)
 }
 
 /// `ObjectClass::IsCellOccupied` (vtable `+0x1AC`) for the ejected passenger at
@@ -325,11 +264,11 @@ fn finish_hull_turn(entity: &mut GameEntity) {
 fn passenger_can_enter(
     sim: &Simulation,
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     passenger: &GameEntity,
     cell: (u16, u16),
 ) -> bool {
-    if !cell_in_map(sim, path_grid, cell) {
+    let path_grid = sim.path_grid();
+    if !cell_in_map(sim, cell) {
         return false;
     }
     let obj = sim.object_type(passenger.type_ref(), rules);
@@ -340,7 +279,7 @@ fn passenger_can_enter(
         .or_else(|| obj.map(|o| o.speed_type))
         .unwrap_or(SpeedType::Foot);
     let movement_zone = obj.map_or(MovementZone::Normal, |o| o.movement_zone);
-    let land_passable = land_passable_for(sim, path_grid, cell, speed_type);
+    let land_passable = land_passable_for(sim, cell, speed_type);
     if path_grid.is_none() && sim.resolved_terrain.is_none() {
         // Headless fixtures have no Cell substrate: only the occupancy verdict
         // is available.
@@ -379,7 +318,6 @@ fn passenger_can_enter(
 fn find_nearby_passable_for(
     sim: &Simulation,
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     mover: &GameEntity,
     seed: (u16, u16),
     speed_type_override: Option<SpeedType>,
@@ -407,7 +345,7 @@ fn find_nearby_passable_for(
         check_occupancy: false,
         radius_cap: RADIUS_HARD_CAP,
         target_cell: None,
-        path_grid,
+        path_grid: sim.path_grid(),
         resolved_terrain: sim.resolved_terrain.as_ref(),
         overlay_grid: sim.overlay_grid.as_ref(),
         occupancy: Some(&sim.substrate.occupancy),
@@ -426,22 +364,11 @@ fn find_nearby_passable_for(
 /// `Set_Destination(cell, 1)` for an object the handler wants driven — the
 /// production representation is the same pathed move `Command::Move` issues.
 /// Without a path grid (headless fixtures) nothing moves.
-fn issue_pathed_move(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    id: u64,
-    dest: (u16, u16),
-) {
-    let Some(grid) = path_grid else {
-        return;
-    };
+fn issue_pathed_move(sim: &mut Simulation, rules: &RuleSet, id: u64, dest: (u16, u16)) {
     let Some(info) = sim.resolve_move_info(id, Some(rules)) else {
         return;
     };
     let _ = sim.issue_ground_move(
-        grid,
         GroundMove {
             entity_id: id,
             target: dest,
@@ -451,7 +378,6 @@ fn issue_pathed_move(
             owner_blocks: true,
             object_destination: None,
         },
-        overlay_registry,
         Some(rules),
     );
 }
@@ -498,7 +424,9 @@ enum EjectOutcome {
 /// the FNPC placement cell for a vehicle passenger — and `LeaveTransportSound`
 /// plays at the transport (`0x0073DC28`..`0x0073DC67`). Any failure
 /// re-inserts the passenger with `AddPassenger` (`0x0073DC78`) and re-applies
-/// the gunner weapon (`0x0073DC96`).
+/// the gunner weapon (`0x0073DC96`). A transport in a team would add the
+/// passenger to it after `Set_Destination` (`0x0073DC0C..0x0073DC19`; the
+/// team residual on [`dispatch_aircraft_unload`]).
 ///
 /// Infantry `Unlimbo` (`InfantryClass::Unlimbo @ 0x0051DFF0`) runs
 /// `PlaceInfantryInCell` a second time from the already-adjusted sub-cell
@@ -511,20 +439,15 @@ enum EjectOutcome {
 /// The single draw here is therefore the whole native budget. The infantry
 /// placement writes only the coordinate (`0x0073DA83`), leaving the exit
 /// cell in `[ESP+0x14]` for the relaxed-pass destination.
-fn eject_head_passenger(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    transport_id: u64,
-) -> EjectOutcome {
+fn eject_head_passenger(sim: &mut Simulation, rules: &RuleSet, transport_id: u64) -> EjectOutcome {
     match depart_cargo_head(
         sim,
         rules,
         transport_id,
         DepartureRoute::Vehicle,
         |sim, pax_id| {
-            let (base, facing, transport_z, leave_sound) = {
+            let now = sim.session.binary_frame;
+            let (base, facing16, transport_z, leave_sound) = {
                 let transport = sim
                     .substrate
                     .entities
@@ -533,7 +456,8 @@ fn eject_head_passenger(
                 let obj = sim.object_type(transport.type_ref(), rules);
                 (
                     (transport.position.rx, transport.position.ry),
-                    transport.facing,
+                    // `0x0073D8E0..D8F4`: the hull's `Current()`, full 16 bits.
+                    transport.body_facing_current(now),
                     transport.position.z,
                     obj.and_then(|o| o.leave_transport_sound.clone()),
                 )
@@ -545,7 +469,6 @@ fn eject_head_passenger(
             };
             let passenger_is_infantry = passenger_snapshot.category == EntityCategory::Infantry;
 
-            let facing16 = u16::from(facing) << 8;
             let start =
                 ((((u32::from(facing16.wrapping_add(0x7FFF))) >> 12) + 1) >> 1) as usize & 7;
             let mut strict_pass = true;
@@ -565,8 +488,8 @@ fn eject_head_passenger(
                             .get(pax_id)
                             .expect("passenger resolved above");
                         (
-                            passenger_can_enter(sim, rules, path_grid, passenger, exit),
-                            passenger_can_enter(sim, rules, path_grid, passenger, beyond),
+                            passenger_can_enter(sim, rules, passenger, exit),
+                            passenger_can_enter(sim, rules, passenger, beyond),
                         )
                     }
                     _ => (false, false),
@@ -585,7 +508,7 @@ fn eject_head_passenger(
                     exit_cell.expect("accepted cell exists"),
                     beyond_cell.expect("accepted cell exists"),
                 );
-                if cell_has_structural_bridge(sim, path_grid, exit) {
+                if cell_has_structural_bridge(sim, exit) {
                     i += 1;
                     continue;
                 }
@@ -617,8 +540,8 @@ fn eject_head_passenger(
                     .entities
                     .get(pax_id)
                     .expect("passenger resolved above");
-                let cell = find_nearby_passable_for(sim, rules, path_grid, passenger, exit, None)
-                    .unwrap_or(exit);
+                let cell =
+                    find_nearby_passable_for(sim, rules, passenger, exit, None).unwrap_or(exit);
                 (cell, None)
             };
             if passenger_is_infantry && sub_cell.is_none() {
@@ -630,13 +553,23 @@ fn eject_head_passenger(
 
             if let Some(passenger) = sim.substrate.entities.get_mut(pax_id) {
                 passenger.sub_cell = sub_cell;
-                passenger.facing = ((octant as u32) << 5) as u8;
+                // `TechnoClass::Unlimbo` snaps the body to the drop direction
+                // (`+0x388` Set_Current, `0x006F6DAA`).
+                passenger.body_facing.snap((octant as u16) << 13, now);
                 if let Some(loco) = passenger.locomotor.as_mut() {
                     loco.layer = MovementLayer::Ground;
                 }
             }
             let z = cell_level_or(sim, place_cell, transport_z);
-            reveal_unloaded_passenger(sim, transport_id, pax_id, place_cell.0, place_cell.1, z)?;
+            reveal_unloaded_passenger(
+                sim,
+                rules,
+                transport_id,
+                pax_id,
+                place_cell.0,
+                place_cell.1,
+                z,
+            )?;
 
             // OpenTopped: `TechnoClass::ClearInOpenTransport` (`0x007104A0`) drops the
             // passenger's in-transport firing membership; VERA's open-topped registry
@@ -652,7 +585,7 @@ fn eject_head_passenger(
                 DockTeardown::None,
                 Some(rules),
             );
-            issue_pathed_move(sim, rules, path_grid, overlay_registry, pax_id, dest);
+            issue_pathed_move(sim, rules, pax_id, dest);
 
             if let Some(sound) = leave_sound {
                 let sound_id = sim.interner.intern(&sound);
@@ -673,13 +606,7 @@ fn eject_head_passenger(
 /// The `Passengers > 0` branch of `UnitClass::Mission_Unload @ 0x0073D630`.
 ///
 /// Returns the handler's dispatch delay; the caller writes the epilogue.
-pub(crate) fn unit_mission_unload(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    id: u64,
-) -> i32 {
+pub(crate) fn unit_mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return unload_epilogue(sim, rules, id);
@@ -687,7 +614,16 @@ pub(crate) fn unit_mission_unload(
     match entity.mission.handler_state() {
         STATE_PICK_EXIT => {
             // `ILocomotion::Is_Moving` (`0x0073D729`) → `return 10`.
-            if is_moving_now_for(entity, now) || entity.movement_target.is_some() {
+            if is_moving_now_for(
+                entity,
+                Some(crate::sim::movement::SpeedRules::new(
+                    rules,
+                    &sim.interner,
+                    &sim.type_handles,
+                )),
+                now,
+            ) || entity.movement_target.is_some()
+            {
                 return WAIT_MOVING_FRAMES;
             }
             // No NavCom and the current cell's LandType is Water (`+0xEC == 2`,
@@ -705,22 +641,17 @@ pub(crate) fn unit_mission_unload(
                 // the transport's own (hover) type, which is what makes a
                 // hover transport leave the water before it unloads.
                 let seed = (entity.position.rx, entity.position.ry);
-                if let Some(cell) = find_nearby_passable_for(
-                    sim,
-                    rules,
-                    path_grid,
-                    entity,
-                    seed,
-                    Some(SpeedType::Wheel),
-                ) {
+                if let Some(cell) =
+                    find_nearby_passable_for(sim, rules, entity, seed, Some(SpeedType::Wheel))
+                {
                     // `Set_Destination` only — the committed selector stays
                     // Unload and state 0 re-runs once the drive has ended.
-                    issue_pathed_move(sim, rules, path_grid, overlay_registry, id, cell);
+                    issue_pathed_move(sim, rules, id, cell);
                 }
                 return WAIT_MOVING_FRAMES;
             }
             let cargo = cargo_count(entity);
-            let pick = pick_exit_octant(sim, path_grid, entity);
+            let pick = pick_exit_octant(sim, entity);
             if let (true, Some((_exit_cell, face_octant))) = (cargo != 0, pick) {
                 // `FUN_0070DC60` → `Type+0x808 TurretCount > 0` (`0x00717880`):
                 // a turreted transport (the IFV) keeps its last passenger —
@@ -745,7 +676,6 @@ pub(crate) fn unit_mission_unload(
         STATE_TURNING => {
             if hull_turn_finished(entity, now) {
                 if let Some(entity) = sim.substrate.entities.get_mut(id) {
-                    finish_hull_turn(entity);
                     entity.mission.set_handler_state(STATE_EJECT);
                 }
                 return 1;
@@ -754,7 +684,7 @@ pub(crate) fn unit_mission_unload(
         }
         STATE_EJECT => {
             if cargo_count(entity) > entity.transport_unload_keep_count {
-                let _ = eject_head_passenger(sim, rules, path_grid, overlay_registry, id);
+                let _ = eject_head_passenger(sim, rules, id);
             } else if let Some(entity) = sim.substrate.entities.get_mut(id) {
                 entity.mission.set_handler_state(STATE_DONE);
             }
@@ -774,17 +704,21 @@ pub(crate) fn unit_mission_unload(
 
 /// Whether the aircraft is on the ground: `GetHeight() == 0` (vtable `+0x1C8`,
 /// `0x004151F0`) and the flight-altitude float `+0x2E8 == 0.0` (`0x00415200`).
-fn aircraft_landed(entity: &GameEntity) -> bool {
-    entity
-        .locomotor
-        .as_ref()
-        .is_none_or(|loco| loco.altitude == SIM_ZERO)
+fn aircraft_landed(
+    entity: &GameEntity,
+    terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
+) -> bool {
+    crate::sim::movement::air_movement::current_fly_height(entity, terrain) == 0
+        && entity
+            .locomotor
+            .as_ref()
+            .is_none_or(|loco| loco.altitude == SIM_ZERO)
 }
 
 /// The Aircraft Unload slot `0x004151E0` (Nighthawk and any other landed
 /// `Passengers > 0` aircraft). Timer-gated inside; writes its own epilogue.
 ///
-/// Team-less state graph (`+0x5A4 == NULL`, the only case VERA carries):
+/// Team-less state graph (`+0x5A4 == NULL`; the team arm is a residual below):
 ///
 /// - State 0 (`0x004151FB`): `GetHeight() == 0` (`0x004151FF`) and
 ///   `+0x2E8 == 0.0` (`0x0041520D`) → the team test at `0x00415228` jumps a
@@ -802,7 +736,7 @@ fn aircraft_landed(entity: &GameEntity) -> bool {
 ///   (`0x004154BB`..`0x004154C3`); its writer and meaning are UNCHECKED and
 ///   VERA does not represent it.
 /// - State 1 (`0x0041542A`): written only at `0x0041541F` inside the team
-///   arm — EXCLUDED, unreachable without teams.
+///   arm (residual below).
 /// - State 2 (`0x00415480`): locomotor `Is_Moving` (`+0x10`, `0x0041549D`)
 ///   false → state 3 (`0x004154A4`); `return 1` either way (`0x004154B1`),
 ///   NO epilogue draw while it polls.
@@ -813,13 +747,16 @@ fn aircraft_landed(entity: &GameEntity) -> bool {
 ///   re-enters, and — when that emptied the hold — goes idle in the same
 ///   dispatch; epilogue draw.
 /// - State 4 (`0x004155C0`): → 0, `return 1`.
-pub(crate) fn dispatch_aircraft_unload(
-    sim: &mut Simulation,
-    id: u64,
-    rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-) {
+///
+/// RESIDUAL: the arms for a transport in a team are not ported: state 0's
+/// destination compare and state 1 (`0x0041522A..0x0041524E`,
+/// `0x0041541F`), the team join of each passenger ejected
+/// (`0x0041556A..0x00415587`), and the unit's join (`Team->Add_Member(
+/// passenger, 0)` at `0x0073DC0C..0x0073DC19`). Trigger: a team's transport
+/// unloads. Only script actions 8, 14 and 43 load or unload one, and they
+/// are not ported (`team_script_vm::actions`), so no ported path reaches
+/// these arms; once they are, passengers would leave their team at unload.
+pub(crate) fn dispatch_aircraft_unload(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -834,8 +771,9 @@ pub(crate) fn dispatch_aircraft_unload(
     let delay = match entity.mission.handler_state() {
         AIR_STATE_CHECK_LANDED => {
             // Team-less: landed → 3 (`0x00415250`), otherwise → 2
-            // (`0x0041530C`). The destination compare is team-only.
-            let next = if aircraft_landed(entity) {
+            // (`0x0041530C`). The destination compare is team-only
+            // (residual above).
+            let next = if aircraft_landed(entity, sim.resolved_terrain.as_ref()) {
                 AIR_STATE_EJECT
             } else {
                 AIR_STATE_WAIT_STOP
@@ -852,7 +790,9 @@ pub(crate) fn dispatch_aircraft_unload(
             // jumpjet does not yet auto-land on Unload (recorded residual), so
             // the landed altitude gate is applied here as well; an airborne
             // Nighthawk keeps waiting rather than dropping its cargo mid-air.
-            if entity.movement_target.is_none() && aircraft_landed(entity) {
+            if entity.movement_target.is_none()
+                && aircraft_landed(entity, sim.resolved_terrain.as_ref())
+            {
                 if let Some(entity) = sim.substrate.entities.get_mut(id) {
                     entity.mission.set_handler_state(AIR_STATE_EJECT);
                 }
@@ -863,7 +803,7 @@ pub(crate) fn dispatch_aircraft_unload(
             if cargo_count(entity) == 0 {
                 aircraft_enter_idle_mode(sim, id);
             } else {
-                let ejected = eject_from_aircraft(sim, rules, path_grid, overlay_registry, id);
+                let ejected = eject_from_aircraft(sim, rules, id);
                 let hold_empty = sim
                     .substrate
                     .entities
@@ -962,13 +902,7 @@ const AIRCRAFT_EXIT_SCAN: [usize; 9] = [4, 5, 3, 7, 1, 0, 6, 2, 4];
 /// success: `Queue_Mission(Move)` (`0x00415C05`), `Set_Destination(scan
 /// cell, 1)` (`0x00415C21`), then the radio handshake described on
 /// [`aircraft_enter_idle_mode`]. No `LeaveTransportSound` on this path.
-fn eject_from_aircraft(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    aircraft_id: u64,
-) -> bool {
+fn eject_from_aircraft(sim: &mut Simulation, rules: &RuleSet, aircraft_id: u64) -> bool {
     depart_cargo_head(
         sim,
         rules,
@@ -999,14 +933,12 @@ fn eject_from_aircraft(
                     .entities
                     .get(pax_id)
                     .expect("passenger resolved above");
-                if candidate
-                    .is_some_and(|c| passenger_can_enter(sim, rules, path_grid, passenger, c))
-                {
+                if candidate.is_some_and(|c| passenger_can_enter(sim, rules, passenger, c)) {
                     index = i;
                     break;
                 }
             }
-            let facing = ((AIRCRAFT_EXIT_SCAN[index] & 7) as u32 * 32) as u8;
+            let facing = ((AIRCRAFT_EXIT_SCAN[index] & 7) as u16) << 13;
 
             let sub_cell = if is_infantry {
                 let occupancy = sim.substrate.occupancy.get(cell.0, cell.1);
@@ -1025,14 +957,16 @@ fn eject_from_aircraft(
             } else {
                 None
             };
+            let now = sim.session.binary_frame;
             if let Some(passenger) = sim.substrate.entities.get_mut(pax_id) {
                 passenger.sub_cell = sub_cell;
-                passenger.facing = facing;
+                // `Unlimbo`'s body snap (`0x006F6DAA`).
+                passenger.body_facing.snap(facing, now);
                 if let Some(loco) = passenger.locomotor.as_mut() {
                     loco.layer = MovementLayer::Ground;
                 }
             }
-            reveal_unloaded_passenger(sim, aircraft_id, pax_id, cell.0, cell.1, z)?;
+            reveal_unloaded_passenger(sim, rules, aircraft_id, pax_id, cell.0, cell.1, z)?;
             if let Some(passenger) = sim.substrate.entities.get_mut(pax_id) {
                 passenger.attack_target = None;
                 passenger.passively_acquired_target = false;
@@ -1045,7 +979,7 @@ fn eject_from_aircraft(
                 Some(rules),
             );
             if let Some(dest) = scan_cell {
-                issue_pathed_move(sim, rules, path_grid, overlay_registry, pax_id, dest);
+                issue_pathed_move(sim, rules, pax_id, dest);
             }
             Ok(())
         },

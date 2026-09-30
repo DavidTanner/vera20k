@@ -1,8 +1,9 @@
 //! Frame-anchored timer primitives used by Mission-related systems.
 //!
-//! `MissionTimer` keeps the public raw-bit fields used by docking, gates, and
-//! miners while delegating countdown semantics to the shared signed timer.
-//! `MissionDispatchTimer` remains a distinct Mission-dispatch comparison.
+//! Both read the shared signed timer ([`CdTimer`]) against the simulation's
+//! unsigned frame counter. `MissionTimer` keeps the public raw-bit fields used
+//! by docking, gates, and miners; `MissionDispatchTimer` is the Mission
+//! dispatch timer.
 use serde::{Deserialize, Serialize};
 
 use crate::sim::timer::CdTimer;
@@ -16,88 +17,61 @@ use crate::sim::timer::CdTimer;
 /// on this same anchor and is deliberately NOT due.
 pub const SENTINEL: u32 = u32::MAX;
 
-/// The unanchored start dword. `MissionClass::Mission_Dispatch` 0x005B3060
-/// tests it at 0x005B308C and, when it matches, **skips** the elapsed
-/// computation at 0x005B3091-0x005B309D entirely — it does not shortcut to
-/// "due". Control falls straight into the shared `TEST EAX,EAX / JNZ` at
-/// 0x005B309F with the raw delay still in EAX, so an unanchored timer is due
-/// only when its delay is also zero.
-const DISPATCH_UNANCHORED_START: i32 = -1;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MissionTimer {
     pub start_frame: u32,
     pub duration: u32,
 }
 
-/// Native Mission-dispatch timer state.
-///
-/// Both fields are signed dwords. The simulation's unsigned frame counter is
-/// reinterpreted as the same 32 raw bits before signed wrapping arithmetic.
+/// Native Mission-dispatch timer state: a [`CdTimer`] whose frame is the
+/// simulation's unsigned counter reinterpreted as the same 32 raw bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MissionDispatchTimer {
-    start_frame: i32,
-    delay: i32,
-}
+#[serde(transparent)]
+pub struct MissionDispatchTimer(CdTimer);
 
 impl MissionDispatchTimer {
     /// Construct a timer anchored at the supplied simulation frame and due
     /// immediately because its delay is zero.
     #[inline]
     pub const fn at_frame(frame: u32) -> Self {
-        Self {
-            start_frame: frame as i32,
-            delay: 0,
-        }
+        Self(CdTimer::started(frame as i32, 0))
     }
 
     /// Preserve raw native timer dwords without normalization.
     #[inline]
     pub const fn from_raw(start_frame: i32, delay: i32) -> Self {
-        Self { start_frame, delay }
+        Self(CdTimer::from_raw(start_frame, delay))
     }
 
     /// Return the raw signed start-frame dword.
     #[inline]
     pub const fn start_frame(self) -> i32 {
-        self.start_frame
+        self.0.start_frame()
     }
 
     /// Return the raw signed delay dword.
     #[inline]
     pub const fn delay(self) -> i32 {
-        self.delay
+        self.0.duration()
     }
 
-    /// Test native Mission-dispatch readiness.
-    ///
-    /// Elapsed time is a signed wrapping subtraction and the due boundary is
-    /// inclusive. An unanchored start does not force readiness — see
-    /// [`DISPATCH_UNANCHORED_START`].
+    /// Native Mission-dispatch readiness: the timer has expired.
+    /// `MissionClass::Mission_Dispatch` 0x005B3060 tests the start at
+    /// 0x005B308C and, on the unanchored `-1`, skips the elapsed computation
+    /// at 0x005B3091-0x005B309D, so the shared `TEST EAX,EAX / JNZ` at
+    /// 0x005B309F sees the raw delay: an unanchored timer is due only when
+    /// its delay is also zero.
     #[inline]
     pub fn due(self, now: u32) -> bool {
-        if self.start_frame == DISPATCH_UNANCHORED_START {
-            return self.delay == 0;
-        }
-        (now as i32).wrapping_sub(self.start_frame) >= self.delay
+        self.0.expired(now as i32)
     }
 
-    /// Return the signed wrapping remainder only while dispatch is pending.
-    ///
-    /// Native dispatch does not saturate this subtraction. On the unanchored
-    /// start the remainder is the raw delay dword, because the elapsed
-    /// subtraction never runs.
+    /// The signed wrapping remainder while dispatch is pending.
     #[cfg(test)]
     #[inline]
     pub fn remaining_if_pending(self, now: u32) -> Option<i32> {
-        if self.due(now) {
-            return None;
-        }
-        if self.start_frame == DISPATCH_UNANCHORED_START {
-            return Some(self.delay);
-        }
-        let elapsed = (now as i32).wrapping_sub(self.start_frame);
-        Some(self.delay.wrapping_sub(elapsed))
+        let remaining = self.0.remaining(now as i32);
+        (remaining != 0).then_some(remaining)
     }
 }
 

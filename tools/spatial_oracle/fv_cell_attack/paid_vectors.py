@@ -8,7 +8,8 @@ import hashlib,json,struct
 from tools.native_oracle import finish_vectors,provenance,_canonical
 from tools.spatial_oracle.shrapnel_repair.packet_io import read_result
 HERE=Path(__file__).resolve().parent
-SOURCE=HERE/'paid_world.json.gz'
+SOURCE=HERE/'paid_world_drive_crt.json.gz'
+OUTPUT=HERE/'paid_drive_crt_vectors.json'
 sha=lambda raw:hashlib.sha256(raw).hexdigest()
 
 def rng(raw):
@@ -21,8 +22,8 @@ def actor(value):
 def cell(value):
  return {**{k:v for k,v in value.items()if k!='ground_head'},'has_ground_object':value['ground_head']!=0}
 
-def generate():
- packet=read_result(SOURCE);cases=[]
+def project(packet):
+ cases=[]
  for case in packet['cases']:
   r=case['result'];assert r['failure'] is None
   identity=r['lifecycle'][0]['after']['native_id'];relative=lambda v:v-identity
@@ -55,8 +56,13 @@ def generate():
   effects=[dict(frame=e['frame'],name=e['anim'],pc=e['pc'],caller=e['return_pc'])for e in r['events']if e['kind']=='anim_ctor']
   cases.append(dict(stage=case['stage'],supplied_spawn=next(e for e in r['extra']if e['kind']=='spawn_coordinate_input'),rng_initialization=r['inputs']['rng_initialization'],options=r['inputs']['options_constructor'],physical_navigation=r['navigation_setup'],lifecycle=lifecycle,placement_calls=placements,frames=frames,order=order,shots=shots,impacts=impacts,effects=effects,rng_events=draws,initial_span=[cell(x)for x in r['states'][0]['span']],final_span=[cell(x)for x in r['last']['span']],final_rng={k:rng(v)for k,v in r['last']['rng'].items()},final_detached_trail_owners=[x['owner']for x in r['last']['line_trails']]))
  identity=json.loads((HERE/'promotion.json').read_bytes())['results']
- result=dict(schema=1,native_sha256=packet['native_sha256'],source_file_sha256=identity['paid_world.json']['frozen_source_sha256'],cases=cases)
- assert sha(_canonical(result))==identity['paid_vectors.json']['published_payload_sha256'],'Frozen native paid projection changed'
+ result=dict(schema=1,native_sha256=packet['native_sha256'],source_file_sha256=identity['paid_world_drive_crt.json']['frozen_source_sha256'],cases=cases)
+ return result
+
+def generate():
+ result=project(read_result(SOURCE))
+ identity=json.loads((HERE/'promotion.json').read_bytes())['results']
+ assert sha(_canonical(result))==identity['paid_drive_crt_vectors.json']['published_payload_sha256'],'Frozen native paid projection changed'
  return result
 
 def metadata():
@@ -64,4 +70,4 @@ def metadata():
  p.update(source_sha256=sha(SOURCE.read_bytes()),source_metadata_sha256=sha(SOURCE.with_suffix('').with_suffix('.meta.json').read_bytes()),projection_sha256=sha(Path(__file__).read_bytes()))
  return p
 
-if __name__=='__main__':finish_vectors(generate,HERE/'paid_vectors.json',provenance=metadata)
+if __name__=='__main__':finish_vectors(generate,OUTPUT,provenance=metadata)

@@ -31,10 +31,6 @@ pub enum SparkWorldError {
     UnavailableOverlayCell { rx: u16, ry: u16 },
     #[error("slope type {0} is outside the verified 0..=20 table")]
     UnsupportedSlope(u8),
-    #[error("structural bridge cell ({rx}, {ry}) has no live BridgeRuntimeState")]
-    MissingBridgeRuntimeState { rx: u16, ry: u16 },
-    #[error("structural bridge cell ({rx}, {ry}) has no live runtime cell")]
-    MissingBridgeRuntimeCell { rx: u16, ry: u16 },
     #[error("cell occupancy references missing entity {0}")]
     MissingOccupantEntity(u64),
     #[error("building entity {0} has no resolved ObjectType")]
@@ -235,21 +231,7 @@ impl<'a> SparkCollisionWorld<'a> {
             CellRef::Dummy { cell } => {
                 Ok(cell.snapshot().bridge_flags_0x1180 & BRIDGE_FLAG_STRUCTURAL != 0)
             }
-            CellRef::Real(cell) => {
-                if !cell.bridge_facts.has_structural_bridge() {
-                    return Ok(false);
-                }
-                let (rx, ry) = (cell.rx, cell.ry);
-                let state = self
-                    .sim
-                    .bridge_state
-                    .as_ref()
-                    .ok_or(SparkWorldError::MissingBridgeRuntimeState { rx, ry })?;
-                let runtime = state
-                    .cell(rx, ry)
-                    .ok_or(SparkWorldError::MissingBridgeRuntimeCell { rx, ry })?;
-                Ok(runtime.deck_present)
-            }
+            CellRef::Real(cell) => Ok(cell.bridge_facts.has_structural_bridge()),
         }
     }
 
@@ -436,14 +418,10 @@ pub(super) mod tests {
     use super::*;
     use glam::IVec3;
 
-    use crate::map::bridge_facts::{BRIDGE_FLAG_STRUCTURAL, BridgeCellFacts};
+    use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
-    use crate::sim::bridge_state::{
-        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, BridgeheadAnchorClass,
-        DamageState,
-    };
+    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
@@ -451,58 +429,9 @@ pub(super) mod tests {
 
     pub(in crate::sim::particles) fn terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
             tileset_index: None,
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
             base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -591,28 +520,10 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn live_bridge_fact_is_static_stamp_and_runtime_deck_state() {
+    fn live_bridge_fact_is_the_live_structural_flag() {
         let mut cell = terrain_cell(0, 0);
         cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL;
         let mut sim = one_cell_sim(cell);
-        let mut bridge = BridgeRuntimeState::default();
-        bridge.test_seed_cell(
-            0,
-            0,
-            BridgeRuntimeCell {
-                deck_present: true,
-                destroyable: true,
-                deck_level: 4,
-                bridge_group_id: Some(1),
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis: Some(Axis::NS),
-                role: BridgeCellRole::Body,
-                anchor_span_id: Some(1),
-                overlay_byte: 0x18,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-            },
-        );
-        sim.bridge_state = Some(bridge);
         let rules = empty_rules();
 
         let intact = SparkCollisionWorld::new(&sim, &rules)
@@ -622,12 +533,13 @@ pub(super) mod tests {
         assert!(!intact.old_has_structural_bridge);
         assert!(intact.candidate_has_structural_bridge);
 
-        sim.bridge_state
+        sim.resolved_terrain
             .as_mut()
             .unwrap()
             .cell_mut(0, 0)
             .unwrap()
-            .deck_present = false;
+            .bridge_facts
+            .raw_flags &= !BRIDGE_FLAG_STRUCTURAL;
         let collapsed = SparkCollisionWorld::new(&sim, &rules)
             .unwrap()
             .query(motion_at(0, 0))
@@ -995,24 +907,6 @@ pub(super) mod tests {
             CellListInsertion::AppendBuilding,
         );
         sim.overlay_grid = None;
-        let mut bridge = BridgeRuntimeState::default();
-        bridge.test_seed_cell(
-            0,
-            0,
-            BridgeRuntimeCell {
-                deck_present: true,
-                destroyable: true,
-                deck_level: 4,
-                bridge_group_id: Some(1),
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis: Some(Axis::NS),
-                role: BridgeCellRole::Body,
-                anchor_span_id: Some(1),
-                overlay_byte: 0x18,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-            },
-        );
-        sim.bridge_state = Some(bridge);
         let rules = empty_rules();
         let world = SparkCollisionWorld::new(&sim, &rules).unwrap();
         let motion = motion_between(IVec3::new(0, 0, 500), IVec3::new(0, 0, 100));

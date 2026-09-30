@@ -105,7 +105,14 @@ impl ZoneMap {
         &mut self.zone_ids
     }
 
-    /// Look up the zone ID for a cell at the given layer.
+    /// Look up the zone ID for a cell at the given layer in the reduced
+    /// PathGrid zone labels, not native GetZoneID (that is
+    /// [`ZoneGrid::get_zone_id_native`]). The bridge layer reads a redirect
+    /// table built at zone rebuild, not the live cells. RESIDUAL (#904):
+    /// `ZoneGrid::can_reach` (miner routing, zone_search, move-order
+    /// recovery) still answers through it. Trigger: a structural cell with no
+    /// matching high record, or an inactive deck. Effect: its answer can
+    /// differ from GetZoneID's. Frequency: bridge cells only.
     ///
     /// For bridge-layer queries on a structural cell, returns the ground zone
     /// selected by the matching high-bridge record. Nonstructural cells a high
@@ -392,20 +399,25 @@ impl ZoneGrid {
         raw_row.get(cluster as usize).copied()
     }
 
-    ///56D230 result as consumed by42C900: missing structural high record is
-    /// DWORDFFFFFFFF, distinct from raw rowFFFF. Query current native cell
-    /// identity/flags rather than inferring structural presence from a cache.
-    pub(crate) fn get_path_zone_id_native(
+    /// `MapClass::GetZoneID @ 0x0056D230(cell, movementZone, checkBridge)`,
+    /// the one port. With `checkBridge` set on a cell carrying the bridge
+    /// flag `0x100`, it resolves the matching high `BridgeRecord` and answers
+    /// the ground endpoint's zone, walking an inactive deck from the live
+    /// cells; a missing record answers DWORD `0xFFFFFFFF`, distinct from the
+    /// raw row value `0xFFFF`. Otherwise it projects the cell's own base
+    /// cluster through the movement row. It reads the current native cell
+    /// identity and flags rather than a cache.
+    pub(crate) fn get_zone_id_native(
         &self,
         terrain: &ResolvedTerrainGrid,
         coord: (u16, u16),
         movement_zone: MovementZone,
         check_bridge: bool,
     ) -> Option<u32> {
-        self.get_path_zone_id_native_in_query(terrain, coord, movement_zone, check_bridge, None)
+        self.get_zone_id_native_in_query(terrain, coord, movement_zone, check_bridge, None)
     }
 
-    pub(crate) fn get_path_zone_id_native_in_query(
+    pub(crate) fn get_zone_id_native_in_query(
         &self,
         terrain: &ResolvedTerrainGrid,
         coord: (u16, u16),
@@ -542,7 +554,7 @@ impl ZoneGrid {
             return Some(true);
         }
         let target = destination.coord(cells);
-        let target_zone = self.get_path_zone_id_native_in_query(
+        let target_zone = self.get_zone_id_native_in_query(
             cells.terrain(),
             (target.0 as u16, target.1 as u16),
             movement_zone,
@@ -550,7 +562,7 @@ impl ZoneGrid {
             Some(cells),
         )?;
         let source = source.coord(cells);
-        let source_zone = self.get_path_zone_id_native_in_query(
+        let source_zone = self.get_zone_id_native_in_query(
             cells.terrain(),
             (source.0 as u16, source.1 as u16),
             movement_zone,
@@ -558,90 +570,6 @@ impl ZoneGrid {
             Some(cells),
         )?;
         Some(source_zone == target_zone)
-    }
-
-    /// Exact `MapClass::Can_Reach_Zone @ 0x0056D100` surface as the
-    /// base-defence response consumes it.
-    ///
-    /// `None` is native MovementZone `-1`. The response passes the candidate
-    /// destination as source A, the protected victim destination as B, the
-    /// candidate's `ShouldBeOnBridge` for A, false for B, and disables the
-    /// second asymmetric B-fringe shortcut. Both raw invalid labels compare
-    /// equal exactly as native; no adjacency/super-zone widening is consulted.
-    pub(crate) fn can_reach_base_defense_response(
-        &self,
-        movement_zone: Option<MovementZone>,
-        source: (i32, i32),
-        destination: (i32, i32),
-        source_should_be_on_bridge: bool,
-        source_in_tactical_playfield: bool,
-        map_size_width: i32,
-        map_size_height: i32,
-    ) -> bool {
-        let Some(movement_zone) = movement_zone else {
-            return true;
-        };
-
-        if !source_in_tactical_playfield
-            && cell_is_in_native_map_diamond(source, map_size_width, map_size_height)
-        {
-            return true;
-        }
-
-        let source_zone =
-            self.get_zone_id_native(source, movement_zone, source_should_be_on_bridge);
-        let destination_zone = self.get_zone_id_native(destination, movement_zone, false);
-        source_zone.is_some() && source_zone == destination_zone
-    }
-
-    /// `MapClass::GetZoneID @ 0x0056D230` with its third argument, the
-    /// bridge-resolution flag, honoured.
-    ///
-    /// Native takes `(CellStruct *cell, int movementZone, char checkBridge)`.
-    /// With `checkBridge` set and the cell carrying the bridge flag `0x100`, it
-    /// resolves the matching `BridgeRecord` and answers with the ground
-    /// endpoint's zone; otherwise it projects the cell's own base cluster
-    /// through the requested movement row. `checkBridge` clear skips the
-    /// record lookup entirely.
-    ///
-    /// Legacy cached16-bit consumers pass the source/destination bridge flag.
-    /// Missing-record DWORD and live inactive-walk parity remain unresolved
-    /// here;42C900 uses get_path_zone_id_native with current terrain instead:
-    /// - `Can_Reach_Zone @ 0x0056D100` (base-defence response), the candidate's
-    ///   `ShouldBeOnBridge` for source A and `false` for B;
-    /// - `TechnoClass::Greatest_Threat @ 0x006F8EBF`, a literal `1` for the
-    ///   scanner's own cell, and `TechnoClass::Evaluate_Candidate @
-    ///   0x006F7E95`, the candidate's `Object+0x8C` on-bridge byte.
-    pub(crate) fn get_zone_id_native(
-        &self,
-        coord: (i32, i32),
-        movement_zone: MovementZone,
-        check_bridge: bool,
-    ) -> Option<ZoneId> {
-        if !check_bridge {
-            return self.get_zone_id_nonbridge_native(coord, movement_zone);
-        }
-
-        let packed = (coord.0 as i16 as i32, coord.1 as i16 as i32);
-        if packed.0 >= 0
-            && packed.1 >= 0
-            && packed.0 < i32::from(self.width)
-            && packed.1 < i32::from(self.height)
-        {
-            let map = self.maps.get(&movement_zone)?;
-            let index = packed.1 as usize * usize::from(self.width) + packed.0 as usize;
-            if let Some(Some(endpoint)) = map
-                .bridge_redirect
-                .as_ref()
-                .and_then(|redirect| redirect.get(index))
-            {
-                return self.get_zone_id_nonbridge_native(
-                    (i32::from(endpoint.0), i32::from(endpoint.1)),
-                    movement_zone,
-                );
-            }
-        }
-        self.get_zone_id_nonbridge_native(packed, movement_zone)
     }
 
     /// The native projected endpoint can address padding or a linear alias.
@@ -831,6 +759,18 @@ impl ZoneGrid {
         &mut self.base_topology
     }
 
+    /// Supplied raw Map+18 row premise in native query fixtures. This does
+    /// not claim to reproduce the topology producer or its cluster numbering.
+    #[cfg(test)]
+    pub(crate) fn test_supply_uniform_raw_zone_rows(&mut self, zone: ZoneId) {
+        for row in &mut self.base_topology.raw_zone_ids_by_row {
+            row.fill(zone);
+        }
+        for index in 0..self.base_topology.zone_ids.len() {
+            self.project_adopted_base_cell(index);
+        }
+    }
+
     pub(crate) fn base_and_hierarchy_mut(
         &mut self,
     ) -> (&zone_build::BaseZoneTopology, &mut ZoneHierarchy) {
@@ -899,9 +839,9 @@ impl ZoneGrid {
     /// O(1) reachability check: can a unit with this movement zone reach `to`
     /// from `from`?
     ///
-    /// `MapClass::Can_Reach_Zone` @ `0x0056D100` is a **pure equality compare**
-    /// of the two `GetZoneID` results — it consults no adjacency graph and no
-    /// connected-components structure — and so is this.
+    /// This derived-cache predicate compares layer labels for the existing
+    /// graph clients. It does not implement the ordered raw-zone and mutable
+    /// Dummy protocol of Map56D100; live native callers use can_reach_native.
     ///
     /// Not modelled, recorded: the native opens with `if (speed_type == -1)
     /// return true`, a sentinel arm no caller can reach through

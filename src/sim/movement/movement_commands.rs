@@ -9,7 +9,6 @@
 
 use std::collections::BTreeSet;
 
-use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::components::MovementTarget;
@@ -20,27 +19,23 @@ use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::pathfinding::{BlockerNeighborCounts, LayeredEntityBlockMap};
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
+use super::PathfindingContext;
 use super::movement_path::{
-    find_move_path, merge_path_blocks, resolve_reachable_move_goal, resolve_requested_move_goal,
+    find_move_path, resolve_reachable_move_goal, resolve_requested_move_goal,
     supports_layered_bridge_pathing,
 };
-use super::{PathfindingContext, facing_from_delta};
 use crate::rules::locomotor_type::MovementZone;
-use crate::sim::components::OrderIntent;
 use crate::sim::game_entity::GameEntity;
 
 /// Check if an entity can accept a new movement destination.
 ///
 /// Prevents destination changes during special states: dying, deploying,
-/// undeploying, falling, and unloading passengers.
+/// undeploying and falling.
 pub(crate) fn can_accept_destination(entity: &GameEntity) -> bool {
     if entity.dying {
         return false;
     }
     if entity.building_up.is_some() || entity.building_down.is_some() {
-        return false;
-    }
-    if matches!(entity.order_intent, Some(OrderIntent::Unloading)) {
         return false;
     }
     true
@@ -234,8 +229,9 @@ pub fn issue_move_command(
 
 /// Issue a direct move to a single cell without A* pathfinding.
 ///
-/// Used for scripted movement into/out of building footprints where the target
-/// cell is not pathfindable (e.g. refinery pad inside the foundation). Creates
+/// Used for scripted movement into a building footprint where the target
+/// cell is not pathfindable (C4 building entry) and for a Jumpjet
+/// infantryman's damage scatter. Creates
 /// a 2-cell `MovementTarget` `[start, target]` with a Euclidean direction
 /// vector that handles multi-cell deltas correctly. Each step bypasses A*;
 /// callers that also need to bypass `path_grid` walkability (e.g. foundation
@@ -264,7 +260,6 @@ pub fn issue_direct_move(
 
     let dx = target.0 as i32 - start.0 as i32;
     let dy = target.1 as i32 - start.1 as i32;
-    let new_facing = facing_from_delta(dx, dy);
     // Compute direction vector with EUCLIDEAN length so multi-cell deltas
     // (e.g. pad→exit_cell may be (-2, +1)) advance at the correct speed.
     // `cell_delta_to_lepton_dir` only handles unit deltas — for multi-cell
@@ -292,12 +287,6 @@ pub fn issue_direct_move(
         // Direct callers share Foot4D96C2's accepted destination tail.
         timing.accept(entity_mut);
         entity_mut.movement_target = Some(movement);
-        let has_rot = entity_mut.locomotor.as_ref().is_some_and(|l| l.rot > 0);
-        if entity_mut.category != EntityCategory::Infantry && has_rot {
-            entity_mut.facing_target = Some(new_facing);
-        } else {
-            entity_mut.facing = new_facing;
-        }
     }
     true
 }
@@ -432,7 +421,6 @@ pub(crate) fn issue_move_command_with_destination(
     // Derive movement_zone from the entity's locomotor — no parameter needed.
     let movement_zone: Option<MovementZone> = entity.locomotor.as_ref().map(|l| l.movement_zone);
     let speed_type = entity.locomotor.as_ref().map(|l| l.speed_type);
-    let too_big_to_fit_under_bridge = entity.too_big_to_fit_under_bridge;
     let layered_pathing = entity
         .locomotor
         .as_ref()
@@ -481,12 +469,7 @@ pub(crate) fn issue_move_command_with_destination(
     {
         loco.power_on();
     }
-    let mut merged_entity_blocks = merge_path_blocks(
-        entity_blocks,
-        resolved_terrain,
-        movement_zone,
-        too_big_to_fit_under_bridge,
-    );
+    let mut merged_entity_blocks = entity_blocks.cloned().unwrap_or_default();
     if let Some(occupation) = cell_occupation.as_deref() {
         merged_entity_blocks.extend(occupation.occupied_cells_ignoring(
             crate::sim::movement::locomotor::MovementLayer::Ground,
@@ -559,7 +542,6 @@ pub(crate) fn issue_move_command_with_destination(
                     merged_entity_blocks_ref,
                     zone_mz,
                     movement_zone,
-                    too_big_to_fit_under_bridge,
                     entity_block_map,
                     path_facts,
                     allow_zone_hierarchy,
@@ -612,7 +594,6 @@ pub(crate) fn issue_move_command_with_destination(
             merged_entity_blocks_ref,
             zone_mz,
             movement_zone,
-            too_big_to_fit_under_bridge,
             entity_block_map,
             path_facts,
             allow_zone_hierarchy,
@@ -693,15 +674,6 @@ pub(crate) fn issue_move_command_with_destination(
         path_desc,
     );
 
-    // Compute initial facing toward the first movement cell (path[1], since path[0] = start).
-    let mut new_facing: Option<u8> = None;
-    if path.len() >= 2 {
-        let next: (u16, u16) = path[1];
-        let dx: i32 = next.0 as i32 - start_rx as i32;
-        let dy: i32 = next.1 as i32 - start_ry as i32;
-        new_facing = Some(facing_from_delta(dx, dy));
-    }
-
     // A kept curve's head cell is a future node the body has not crossed into
     // yet: the queue cursor starts ON it so the coordinate crossing consumes
     // it, exactly as it would have consumed that node under the replaced path.
@@ -780,14 +752,6 @@ pub(crate) fn issue_move_command_with_destination(
             // the existing prepared physical path, without publishing it here.
             entity_mut.navigation.path_replay.clear_live_head();
         }
-        if !keep_in_flight_curve && let Some(f) = new_facing {
-            let has_rot = entity_mut.locomotor.as_ref().is_some_and(|l| l.rot > 0);
-            if entity_mut.category != EntityCategory::Infantry && has_rot {
-                entity_mut.facing_target = Some(f);
-            } else {
-                entity_mut.facing = f;
-            }
-        }
         // Unit's accepted setter reaches Foot4D96C2..9707 just as Walk's
         // does. Preserve +64C; this is not a Foot constructor.
         timing.accept(entity_mut);
@@ -806,7 +770,7 @@ pub(crate) fn issue_move_command_with_destination(
 /// destination: the first no-queue Process owns the request (Drive 4B28A3,
 /// Ship 6A1EF3). Native evidence: track_destination unit rows and
 /// track_order_path. The class preprocessing (the Teleporter arm, +1F8 and
-/// the Foot+0x6AC skip) belongs to `Simulation::set_unit_cell_destination`;
+/// the Foot+0x6AC skip) belongs to `Simulation::set_unit_destination`;
 /// this command-path adapter has none of it, nor the radio-building and
 /// deploy-byte arms.
 pub(crate) fn prepare_track_destination(
@@ -831,15 +795,18 @@ pub(crate) fn prepare_track_destination(
     prepare_destination_execution(entity, target, speed);
 }
 
-/// Accepted Cell destination -> Walk75ACB0, without searching or advancing
-/// Process. The class caller owns preceding admission; this accepted Cell
-/// path preserves Enter-without-contact's skipped path-head write.
+/// Accepted destination -> Walk75ACB0, without searching or advancing
+/// Process. The class caller owns preceding admission and its path-head
+/// write; the captured coordinate comes from the shared target +4C owner.
 /// No PathGrid is needed until the next ordinary Process (or the immediate
 /// Process specifically required by NULL-source Scatter51D478).
-pub(crate) fn prepare_walk_cell_destination(
+pub(crate) fn prepare_walk_destination(
     entities: &mut EntityStore,
     entity_id: u64,
-    target: (u16, u16),
+    destination: (
+        crate::sim::components::NavTargetRef,
+        crate::sim::components::DriveCoord,
+    ),
     speed: SimFixed,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     timing: crate::sim::movement::DestinationTiming,
@@ -854,10 +821,14 @@ pub(crate) fn prepare_walk_cell_destination(
     {
         return false;
     }
-    clear_destination_path_head(entity);
-    super::navcom::set_destination_internal_cell(entity, target, resolved_terrain);
+    let (reference, coord) = destination;
+    super::navcom::set_destination_internal_coord(entity, reference, coord, resolved_terrain);
     timing.accept(entity);
-    prepare_destination_execution(entity, target, speed);
+    prepare_destination_execution(
+        entity,
+        ((coord.x / 256) as u16, (coord.y / 256) as u16),
+        speed,
+    );
     true
 }
 
@@ -865,7 +836,7 @@ pub(crate) fn prepare_walk_cell_destination(
 /// without a radio contact skips: Infantry 51AC25..51AD17, Unit
 /// 741C4F..741C78 -> 741E88 (both the NULL and the non-NULL destination).
 /// NavQueue, suffix and reference survive.
-pub(super) fn clear_destination_path_head(entity: &mut GameEntity) {
+pub(crate) fn clear_destination_path_head(entity: &mut GameEntity) {
     if (entity.mission.effective().raw() != 7 && entity.mission.queued().raw() != 7)
         || !entity.radio_contacts.is_empty()
     {

@@ -52,7 +52,6 @@ use crate::sim::cell_rect::{
     CellRect, CellRectOccupancyContext, check_occupancy_rect, get_cellclass_fallback,
 };
 use crate::sim::intern::InternedId;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::direction_tables::{CELL_DELTAS, dir_from_facing16, facing16_from_delta};
 
@@ -123,9 +122,10 @@ impl SiteKey<'_> {
 pub(crate) struct SiteSearch<'a> {
     /// `HouseClass+0x5750`, the plan centre.
     pub center: (i16, i16),
-    /// `HouseClass+0x5494` and `+0x5490`, the answer without a plan centre.
-    pub alternate: (i16, i16),
-    pub base: (i16, i16),
+    /// The answer without a plan centre: the base centre
+    /// ([`HouseState::base_origin`](crate::sim::house_state::HouseState::base_origin),
+    /// `+0x5494` unless `(0, 0)`, else `+0x5490`).
+    pub origin: (i16, i16),
     /// `HouseClass+0x5724`, the base perimeter.
     pub perimeter: &'a [(i16, i16)],
     /// `[AI] AIBaseSpacing=` (`RulesClass+0x1460`).
@@ -148,14 +148,11 @@ pub(crate) fn find_base_building_site(
     owner: InternedId,
     ty: &ObjectType,
     key: SiteKey,
-    path_grid: Option<&PathGrid>,
     registry: Option<&OverlayTypeRegistry>,
 ) -> (i16, i16) {
     if ty.naval {
-        return crate::sim::naval_base_placement::find_naval_base_placement(
-            sim, rules, owner, path_grid,
-        )
-        .map_or((0, 0), |(x, y)| (x as i16, y as i16));
+        return crate::sim::naval_base_placement::find_naval_base_placement(sim, rules, owner)
+            .map_or((0, 0), |(x, y)| (x as i16, y as i16));
     }
     let Some(house) = sim.houses.get(&owner) else {
         return (0, 0);
@@ -172,8 +169,7 @@ pub(crate) fn find_base_building_site(
         &mut world,
         &SiteSearch {
             center: signed(house.base_plan_center),
-            alternate: signed(house.alternate_base_center),
-            base: house.base_center.map_or((0, 0), signed),
+            origin: signed(house.base_origin()),
             perimeter: &perimeter,
             spacing: rules.ai_base_spacing,
             width,
@@ -207,11 +203,7 @@ pub(crate) fn reserved_near(
 /// `world`.
 pub(crate) fn ordinary_site(world: &mut impl SiteWorld, search: &SiteSearch) -> (i16, i16) {
     if search.center == (0, 0) {
-        return if search.alternate != (0, 0) {
-            search.alternate
-        } else {
-            search.base
-        };
+        return search.origin;
     }
     let mut cells: Vec<(i32, (i16, i16))> = search
         .perimeter
@@ -447,7 +439,7 @@ impl SiteWorld for SimSiteWorld<'_> {
 }
 
 /// `BuildingTypeClass::Width @ 0x0045EC90` and `Height(0) @ 0x0045ECA0`.
-fn foundation_size(ty: &ObjectType) -> (i32, i32) {
+pub(crate) fn foundation_size(ty: &ObjectType) -> (i32, i32) {
     let (width, height) = crate::rules::foundation::foundation_dimensions(&ty.foundation);
     (i32::from(width), i32::from(height))
 }

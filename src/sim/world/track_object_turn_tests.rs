@@ -241,8 +241,8 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
             (state.target_speed_fraction, state.track, state.head_to)
         };
         assert_eq!(retained, SIM_HALF, "{kind:?}");
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_HALF, "{kind:?}");
-        assert_eq!(entity.foot_speed.cached_current_speed, 7, "{kind:?}");
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF, "{kind:?}");
+        assert_eq!(sim.current_speed_for_test(1, &rules), 7, "{kind:?}");
         assert_eq!((progress.cursor, progress.residual), (1, 7), "{kind:?}");
         assert_eq!(head, Some(DriveCoord::cell(10, 9, 0)), "{kind:?}");
     }
@@ -313,7 +313,7 @@ fn accepted_chain_runs_sensor_callback_and_consumes_more_paid_points_in_same_obj
     let selection = drive_track::select_drive_track(32, 64, false).unwrap();
     assert!(selection.entry_index > 0);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.facing = 32;
+    entity.body_facing.snap(0x2000, 0);
     entity.navigation.path_replay = FootPathQueue {
         directions: vec![2, 3],
         cursor: 0,
@@ -405,15 +405,9 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
                 sim.substrate.raw_cell_occupation.ground_bits(10, 9) & 0x20,
                 0
             );
-            sim.advance_live_object_turn(
-                1,
-                Some(&rules),
-                techno_ai::ObjectAiCtx {
-                    path_grid: Some(&grid),
-                    ..Default::default()
-                },
-            )
-            .expect("fixture object turn must complete");
+            sim.install_fixture_path_grid(Some(&grid));
+            sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+                .expect("fixture object turn must complete");
             let entity = sim.substrate.entities.get(1).unwrap();
             if kind == LocomotorKind::Drive {
                 let drive = entity.drive_locomotion.as_ref().unwrap();
@@ -423,21 +417,15 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
                 let ship = entity.ship_locomotion.as_ref().unwrap();
                 assert_eq!((ship.track.cursor, ship.track.residual), (0, 0));
             }
-            assert_eq!(entity.foot_speed.cached_current_speed, 0);
+            assert_eq!(sim.current_speed_for_test(1, &rules), 0);
             assert_eq!(
                 sim.substrate.raw_cell_occupation.ground_bits(10, 9) & 0x20,
                 0x20
             );
             sim.substrate.raw_cell_occupation.clear_ground(10, 9, 0x20);
-            sim.advance_live_object_turn(
-                1,
-                Some(&rules),
-                techno_ai::ObjectAiCtx {
-                    path_grid: Some(&grid),
-                    ..Default::default()
-                },
-            )
-            .expect("fixture object turn must complete");
+            sim.install_fixture_path_grid(Some(&grid));
+            sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+                .expect("fixture object turn must complete");
             assert_eq!(
                 sim.substrate.raw_cell_occupation.ground_bits(10, 9) & 0x20,
                 0,
@@ -455,7 +443,7 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
     let drive = entity.drive_locomotion.as_mut().unwrap();
     drive.destination = drive.head_to;
     drive.track.cursor = drive_track::raw_track_points(1).len() as i32;
-    entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+    entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
     assert_eq!(
@@ -464,18 +452,10 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
             .get(1)
             .unwrap()
             .foot_speed
-            .applied_fraction,
+            .applied_fraction(),
         SimFixed::from_num(0)
     );
-    assert_eq!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .foot_speed
-            .cached_current_speed,
-        0
-    );
+    assert_eq!(sim.current_speed_for_test(1, &rules), 0);
     let grid = crate::sim::pathfinding::PathGrid::new(32, 32);
     assert!(crate::sim::movement::issue_move_command(
         &mut sim.substrate.entities,
@@ -493,22 +473,16 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
     entity.drive_accelerates = true;
     entity.movement_target.as_mut().unwrap().accel_factor = SimFixed::from_num(0.03);
     // The first Process after the order requests the route from the grid.
-    sim.advance_live_object_turn(
-        1,
-        Some(&rules),
-        techno_ai::ObjectAiCtx {
-            path_grid: Some(&grid),
-            ..Default::default()
-        },
-    )
-    .expect("fixture object turn must complete");
+    sim.install_fixture_path_grid(Some(&grid));
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .expect("fixture object turn must complete");
     assert_eq!(
         sim.substrate
             .entities
             .get(1)
             .unwrap()
             .foot_speed
-            .applied_fraction,
+            .applied_fraction(),
         SimFixed::from_num(0.03)
     );
 }
@@ -535,10 +509,8 @@ fn ship_fresh_claim_survives_next_object_visit_and_snapshot_rebuild() {
         None,
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
-    let ctx = || techno_ai::ObjectAiCtx {
-        path_grid: Some(&grid),
-        ..Default::default()
-    };
+    sim.install_fixture_path_grid(Some(&grid));
+    let ctx = techno_ai::ObjectAiCtx::default;
     sim.advance_live_object_turn(1, Some(&rules), ctx())
         .expect("fixture object turn must complete");
     let mark = sim
@@ -628,7 +600,7 @@ fn bridge_terminal_uses_owner_height_to_reach_ground_navcom_target() {
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.on_bridge = true;
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
-    entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+    entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     let drive = entity.drive_locomotion.as_mut().unwrap();
     let deck = DriveCoord::cell(10, 9, 416);
     drive.head_to = Some(deck);
@@ -648,7 +620,7 @@ fn bridge_terminal_uses_owner_height_to_reach_ground_navcom_target() {
             .is_none()
     );
     assert!(entity.movement_target.is_none());
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::from_num(0));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::from_num(0));
 }
 
 #[test]
@@ -670,9 +642,7 @@ fn terminal_piggyback_end_is_synchronous_and_preserves_owner_speed() {
         ..Default::default()
     });
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
-    entity.locomotor.as_mut().unwrap().phase =
-        crate::sim::movement::locomotor::GroundMovePhase::Cruising;
-    entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+    entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -681,6 +651,6 @@ fn terminal_piggyback_end_is_synchronous_and_preserves_owner_speed() {
         LocomotorKind::Teleport
     );
     assert!(entity.drive_locomotion.is_none());
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::from_num(1));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::from_num(1));
     assert!(entity.navigation.nav_com.is_none());
 }

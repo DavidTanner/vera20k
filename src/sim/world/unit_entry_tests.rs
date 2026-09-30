@@ -226,7 +226,7 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 });
             let id = sim
                 .team_script_vm
-                .create_team(ours, script_id, vec![90], None, 100);
+                .create_team(ours, script_id, vec![90], 100);
             // Supplied retained Script cursor, independent of the unported
             // Team activation lifecycle. Non-action3 is false for either7F.
             let mut state = serde_json::to_value(&sim.team_script_vm).unwrap();
@@ -328,7 +328,7 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 if node["turn"].as_bool().unwrap_or(false) {
                     let mut facing = crate::sim::movement::FacingClass::new(0, 5);
                     facing.set(0x4000, 100);
-                    blocker.body_facing = Some(facing);
+                    blocker.body_facing = facing;
                 }
                 if node["gate"].as_bool().unwrap_or(false) {
                     let opened = node["open"].as_bool().unwrap_or(false);

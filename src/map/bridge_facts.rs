@@ -126,7 +126,10 @@ pub enum BridgeStampSlot {
 
 impl BridgeStampSlot {
     pub(crate) const fn writes_native_anchor(self) -> bool {
-        matches!(self, Self::Forward1 | Self::Forward2 | Self::Opposite | Self::ExtraDir6)
+        matches!(
+            self,
+            Self::Forward1 | Self::Forward2 | Self::Opposite | Self::ExtraDir6
+        )
     }
 }
 
@@ -240,21 +243,6 @@ pub struct BridgeAnchorRelation {
     pub direction: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum BridgeRampKind {
-    TopRight,
-    TopLeft,
-    Middle1,
-    Middle2,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct BridgeRampTile {
-    pub kind: BridgeRampKind,
-    pub relative_tile_index: u16,
-    pub height_byte: u8,
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default,
 )]
@@ -268,7 +256,6 @@ pub struct BridgeCellFacts {
     /// Literal CellClass+0x2C. Native47E040 preserves this on Anchor/Forward3;
     /// the derived self relation above must not replace a retained pointer.
     pub native_anchor: Option<crate::map::cell_index::NativeCellIdentity>,
-    pub ramp_tile: Option<BridgeRampTile>,
 }
 
 impl BridgeCellFacts {
@@ -719,37 +706,4 @@ pub enum Axis {
     /// Body cells stacked east–west (along X); ramps face north/south.
     /// State byte range 9–17.
     EW,
-}
-
-/// Per-cell anchor tile-class for bridgehead-adjacent cells.
-///
-/// Mirrors the four `IsoTileTypeIndex` slots used by the bridgehead state
-/// machine. Each value corresponds to a BridgeSet-relative tile_id offset
-/// (slot 0..3); the actual tile_ids are theater-portable via
-/// `BridgeMiddle1` / `BridgeMiddle2`.
-///
-/// - `Variant0` — pristine bridgehead (map-load default for cells with no
-///   author-damaged anchor placement).
-/// - `Variant1` — first DamageB intermediate. Reached only via neighbor
-///   `UpdateRamp_*_DamageB` progression on a Variant0 target.
-/// - `Damaged` — second DamageB intermediate. Reached only via neighbor
-///   `UpdateRamp_*_DamageB` progression on a Variant1 target. Also written
-///   by Collapse* paths advancing any non-AboutToFall variant.
-/// - `AboutToFall` — most-damaged variant. Two reach paths:
-///   1. **Direct hit on a bridgehead cell** — the bridgehead state machine
-///      writes the anchor straight to this slot (skipping Variant1/Damaged).
-///   2. **Map-load author-damaged anchor** — maps may place this tile_id
-///      directly; the renderer reflects it from frame 1.
-///
-/// Meaningful only when `BridgeRuntimeCell.role` is `Anchor` or
-/// `Bridgehead`; the renderer ignores it on other roles.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default,
-)]
-pub enum BridgeheadAnchorClass {
-    #[default]
-    Variant0,
-    Variant1,
-    Damaged,
-    AboutToFall,
 }

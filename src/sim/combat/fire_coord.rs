@@ -55,10 +55,9 @@ pub(crate) struct FireSource {
     /// Height level and exact Z, used only when the entity is no longer stored.
     pub level: u8,
     pub exact_z_leptons: Option<i32>,
-    pub facing: u8,
-    /// Retained body heading. Infantry's native fire-facing virtual +2A8
-    /// (004E0150) reads FacingClass +388; consumers quantize when required.
-    pub hull_facing: Option<crate::sim::movement::FacingClass>,
+    /// Body heading (`+0x388`). Infantry's native fire-facing virtual +2A8
+    /// (004E0150) reads it; consumers quantize when required.
+    pub hull_facing: crate::sim::movement::FacingClass,
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
     pub veterancy: u16,
     /// The firing occupant's port, when an occupied building fires.
@@ -81,10 +80,9 @@ impl FireSource {
             sub_y: entity.position.sub_y,
             level: entity.position.z,
             exact_z_leptons: entity.position.exact_z_leptons,
-            facing: entity.facing,
             hull_facing: entity.body_facing,
             barrel_facing: entity.barrel_facing,
-            veterancy: entity.veterancy,
+            veterancy: entity.veterancy(),
             garrison_fire_index: None,
             tar_com: entity.attack_target.as_ref().map(|attack| attack.target),
         }
@@ -102,7 +100,6 @@ impl From<&AttackerSnapshot> for FireSource {
             sub_y: snap.sub_y,
             level: snap.pos_z,
             exact_z_leptons: snap.pos_exact_z_leptons,
-            facing: snap.facing,
             hull_facing: snap.hull_facing,
             barrel_facing: snap.barrel_facing,
             veterancy: snap.veterancy,
@@ -241,7 +238,12 @@ fn fire_coordinate_base<'r>(
         .substrate
         .entities
         .get(snap.stable_id)
-        .map(|entity| super::object_world_z_leptons(entity, world.resolved_terrain.as_ref()))
+        .map(|entity| {
+            crate::sim::movement::ground_pose::object_world_z_leptons(
+                entity,
+                world.resolved_terrain.as_ref(),
+            )
+        })
         .or(snap.exact_z_leptons)
         .unwrap_or_else(|| i32::from(snap.level).wrapping_mul(LEPTONS_PER_LEVEL as i32));
     // The object coordinate every arm starts from, `vtable+0xAC`. For a
@@ -258,10 +260,7 @@ fn fire_coordinate_base<'r>(
     let source_x = (i32::from(snap.rx) * 256 + snap.sub_x.to_num::<i32>()).wrapping_sub(base_shift);
     let source_y = (i32::from(snap.ry) * 256 + snap.sub_y.to_num::<i32>()).wrapping_sub(base_shift);
 
-    let body_facing16 = snap.hull_facing.as_ref().map_or_else(
-        || crate::sim::movement::turret::body_facing_to_turret(snap.facing),
-        |body| body.current(binary_frame),
-    );
+    let body_facing16 = snap.hull_facing.current(binary_frame);
     let aim_facing16 = snap
         .barrel_facing
         .as_ref()
@@ -282,7 +281,7 @@ fn fire_coordinate_base<'r>(
 
     let art = firer_art(rules, obj);
     let (flh_facing16, fire_facing) = if snap.category == EntityCategory::Structure {
-        building_fire_facings(world, rules, snap, obj, art, aim_facing16)
+        building_fire_facings(world, snap, obj, art, aim_facing16)
     } else {
         (aim_facing16, aim_facing16)
     };
@@ -323,7 +322,6 @@ fn firer_art<'r>(rules: &'r RuleSet, obj: &ObjectType) -> Option<&'r ArtEntry> {
 /// A TarCom no longer stored reads as none: native detaches it.
 fn building_fire_facings(
     world: &Simulation,
-    rules: &RuleSet,
     snap: &FireSource,
     obj: &ObjectType,
     art: Option<&ArtEntry>,
@@ -332,10 +330,10 @@ fn building_fire_facings(
     let entities = &world.substrate.entities;
     let origin = entities
         .get(snap.stable_id)
-        .map(|building| coords_xy(super::target_coords(building, Some(rules), &world.interner)));
-    let target = snap.tar_com.and_then(|target| {
-        super::resolve_target_coords(&target, entities, Some(rules), &world.interner)
-    });
+        .map(|building| coords_xy(super::target_coords(building)));
+    let target = snap
+        .tar_com
+        .and_then(|target| super::resolve_target_coords(&target, entities));
     let (Some(origin), Some(target)) = (origin, target.map(coords_xy)) else {
         // `0x0044D7F4..0x0044D7FF`: `((current >> 7) + 1) >> 1` as the high byte.
         let rounded = ((((u32::from(current) >> 7) + 1) >> 1) & 0xFF) << 8;
@@ -369,13 +367,8 @@ pub(crate) fn building_direction_to(
     target: TargetKind,
 ) -> Option<u16> {
     let obj = world.object_type(building.type_ref(), rules)?;
-    let target = super::resolve_target_coords(
-        &target,
-        &world.substrate.entities,
-        Some(rules),
-        &world.interner,
-    )?;
-    let origin = coords_xy(super::target_coords(building, Some(rules), &world.interner));
+    let target = super::resolve_target_coords(&target, &world.substrate.entities)?;
+    let origin = coords_xy(super::target_coords(building));
     Some(facing16_between(
         aim_origin(origin, obj, firer_art(rules, obj)),
         coords_xy(target),
@@ -612,8 +605,7 @@ mod tests {
             sub_y: SimFixed::from_num(128),
             level: 2,
             exact_z_leptons: None,
-            facing: 0,
-            hull_facing: None,
+            hull_facing: crate::sim::movement::FacingClass::new(0, 0),
             barrel_facing: None,
             veterancy: 0,
             garrison_fire_index: None,
@@ -672,7 +664,7 @@ mod tests {
         let mut shooter = source(EntityCategory::Unit);
         shooter.ry = 20;
         shooter.exact_z_leptons = Some(800);
-        shooter.hull_facing = Some(crate::sim::movement::FacingClass::new(0, 0));
+        shooter.hull_facing = crate::sim::movement::FacingClass::new(0, 0);
         shooter.barrel_facing = Some(crate::sim::movement::FacingClass::new(0x3fff, 0));
         for row in native["cases"].as_array().unwrap() {
             world.session.binary_frame = row["supplied"]["binary_frame"].as_u64().unwrap() as u32;

@@ -15,7 +15,6 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
 /// Infantry 0x51DAF6..0x51DB44: the action the failed-path receiver requests
@@ -31,6 +30,31 @@ pub(crate) fn failed_path_requested_action(doing: i32, prone: bool) -> i32 {
 }
 
 impl Simulation {
+    /// Walk Stop75ADA0: clear destination, and only with no paid head clear
+    /// both motion bytes then invoke the owner +54C before returning.
+    /// Original Stop/callback controls: infantry_deploy_action.json. This
+    /// dispatch also preserves Do_Action's zero-health synchronous re-entry.
+    pub(crate) fn walk_stop_moving(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+    ) -> Result<(), String> {
+        let actor = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .ok_or("Walk Stop receiver retired")?;
+        let invoke_callback = actor
+            .locomotor
+            .as_mut()
+            .ok_or("Walk Stop requires a locomotor")?
+            .stop_walk();
+        if invoke_callback {
+            self.infantry_pending_deploy_stop_callback(id, rules)?;
+        }
+        Ok(())
+    }
+
     /// Synchronous75AFC5 -> Foot4D3920. A successful result resumes this same
     /// Process invocation; a failed result owns its cleanup and must never
     /// enter the arrival finalizer (which would snap the actor's exact XYZ).
@@ -39,7 +63,6 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let rules = rules.ok_or("Walk path request requires rules")?;
@@ -53,7 +76,7 @@ impl Simulation {
             .navigation
             .path_runtime
             .start_movement(frame, rules.general.path_delay_ticks());
-        match self.foot_find_path(request, held, rules, fallback, registry)? {
+        match self.foot_find_path(request, held, rules, registry)? {
             FindPathResult::Route => {
                 //75B2DF..E2 is the success caller's retry reset. Existing
                 //head production resumes at its ordinary shared owner.
@@ -131,7 +154,7 @@ impl Simulation {
             .object_type(actor.type_ref(), rules)
             .ok_or("failed-path receiver requires the Infantry type")?;
         let facts = super::infantry_action::DoActionType {
-            type_id: object.id.clone(),
+            type_id: &object.id,
             movement_zone: object.movement_zone,
             crawls: object.crawls,
         };
@@ -147,8 +170,9 @@ impl Simulation {
         let on_bridge = actor.on_bridge;
         let coord = ground_pose::position_world_coord(&actor.position);
         //0x51DB68..0x51DB7A: the 16-bit facing (+388) becomes an octant through
-        //`((facing >> 12) + 1) >> 1 & 7`; the stored 8-bit facing is its high byte.
-        let direction = (((i32::from(actor.facing) >> 4) + 1) >> 1) & 7;
+        //`((facing >> 12) + 1) >> 1 & 7`.
+        let facing = i32::from(actor.body_facing_current(self.session.binary_frame));
+        let direction = (((facing >> 12) + 1) >> 1) & 7;
         let requested = failed_path_requested_action(doing, prone);
         self.apply_infantry_do_action(id, requested, false, &facts, rules)?;
 
@@ -196,10 +220,10 @@ impl Simulation {
         //the nearest passable cell (a Scenario draw for Infantry placement).
         let locomotor = actor
             .locomotor
-            .as_mut()
+            .as_ref()
             .ok_or("Stop_Driver requires a locomotor")?;
         if locomotor.jumpjet_runtime().is_none() {
-            locomotor.stop_walk();
+            self.walk_stop_moving(id, Some(rules))?;
         } else {
             self.jumpjet_stop_moving(id, Some(rules), registry);
         }
@@ -267,12 +291,15 @@ impl Simulation {
             .ok_or("retired failed Walk actor")?;
         //75B2BC..75B2DC: all failed-queue exits set speed0 then Stop;
         //Stop does not itself clear NavCom or retire the paid head.
-        actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
         actor
-            .locomotor
-            .as_mut()
-            .ok_or("failed Walk requires locomotor")?
-            .stop_walk();
+            .foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
+        self.walk_stop_moving(id, Some(rules))?;
+        let actor = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .ok_or("failed Walk actor retired during Stop callback")?;
         if actor
             .locomotor
             .as_ref()

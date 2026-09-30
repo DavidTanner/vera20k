@@ -108,7 +108,6 @@ pub(crate) fn build_in_game_options_text_instances(
 
 /// Resolved visible control text, kept separate from font emission for testing.
 struct OptionsStaticDraw {
-    #[cfg_attr(not(test), allow(dead_code))]
     id: u16,
     rect: geom::RectPx,
     align: ShellAlign,

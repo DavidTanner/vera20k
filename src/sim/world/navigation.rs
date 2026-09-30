@@ -3,7 +3,7 @@
 //! The cache borrows never move gameplay authority out of Simulation. Resident
 //! world rebuilds and synchronous receiver rebuilds share the same policy.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::map::entities::EntityCategory;
@@ -12,54 +12,88 @@ use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::{TerrainCostGrid, build_canonical_terrain_cost_grids};
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 
-/// Cell marking owns structure presence; shared by full and touched-cell views.
+/// The cells one marked structure blocks for movement: its base foundation
+/// with the bib edge relaxed. Every structure-presence reader uses this rule.
+///
+/// Native: Techno enter/exit (0x005683C0 / 0x005687F0) call CellClass
+/// AddContent/RemoveContent (0x0047E8A0 / 0x0047EA90), which mark/clear
+/// occupation; see docs/research/bridges/02-cell-state-layering-zones/
+/// BRIDGE_OCCUPANCY_OBJECT_LISTS_GHIDRA_REPORT.md. Held factory objects and
+/// retained attached upgrades have no independent marked footprint. A dying
+/// structure still blocks until the lifecycle owner unmarks it.
+pub(super) fn marked_structure_movement_cells(
+    entity: &GameEntity,
+    interner: &StringInterner,
+    rules: &RuleSet,
+) -> Vec<(u16, u16)> {
+    if entity.category != EntityCategory::Structure || !entity.lifecycle.cell_marked {
+        return Vec::new();
+    }
+    let object_type = rules.object(interner.resolve(entity.type_ref()));
+    let foundation = object_type
+        .map(|object| object.foundation.as_str())
+        .unwrap_or("1x1");
+    let has_bib = object_type.is_some_and(|object| object.bib);
+    let foundation_cells = crate::sim::production::building_base_foundation_cells(
+        entity.position.rx,
+        entity.position.ry,
+        foundation,
+    );
+    crate::sim::production::building_movement_blocking_cells(&foundation_cells, has_bib)
+}
+
+/// Structure presence over every marked structure. Consumers are
+/// order-insensitive (cell blocks, sets and presence tests).
 fn visit_structure_movement_cells(
     entities: &EntityStore,
     interner: &StringInterner,
     rules: &RuleSet,
     mut visit: impl FnMut((u16, u16)),
 ) {
-    // Native: Techno enter/exit (0x005683C0 / 0x005687F0) call CellClass
-    // AddContent/RemoveContent (0x0047E8A0 / 0x0047EA90), which mark/clear
-    // occupation; see docs/research/bridges/02-cell-state-layering-zones/
-    // BRIDGE_OCCUPANCY_OBJECT_LISTS_GHIDRA_REPORT.md. Held factory objects
-    // and retained attached upgrades have no independent marked footprint.
-    // A dying structure still blocks until the lifecycle owner unmarks it.
-    let mut structures: Vec<(u16, u16, String)> = entities
-        .values()
-        .filter_map(|entity| {
-            (entity.category == EntityCategory::Structure && entity.lifecycle.cell_marked)
-                .then_some((
-                    entity.position.rx,
-                    entity.position.ry,
-                    interner.resolve(entity.type_ref()).to_string(),
-                ))
-        })
-        .collect();
-    structures.sort_by(|a, b| {
-        a.0.cmp(&b.0)
-            .then_with(|| a.1.cmp(&b.1))
-            .then_with(|| a.2.cmp(&b.2))
-    });
-    for (rx, ry, type_id) in structures {
-        let object_type = rules.object(&type_id);
-        let foundation = object_type
-            .map(|object| object.foundation.as_str())
-            .unwrap_or("1x1");
-        let has_bib = object_type.is_some_and(|object| object.bib);
-        let foundation_cells =
-            crate::sim::production::building_base_foundation_cells(rx, ry, foundation);
-        for cell in
-            crate::sim::production::building_movement_blocking_cells(&foundation_cells, has_bib)
-        {
+    for entity in entities.values() {
+        for cell in marked_structure_movement_cells(entity, interner, rules) {
             visit(cell);
         }
     }
+}
+
+/// Every cell a marked structure blocks for movement.
+pub(super) fn structure_movement_cells(
+    entities: &EntityStore,
+    interner: &StringInterner,
+    rules: &RuleSet,
+) -> BTreeSet<(u16, u16)> {
+    let mut cells = BTreeSet::new();
+    visit_structure_movement_cells(entities, interner, rules, |cell| {
+        cells.insert(cell);
+    });
+    cells
+}
+
+/// The requested cells a marked structure blocks, from one structure scan.
+pub(super) fn structure_blocked_among(
+    entities: &EntityStore,
+    interner: &StringInterner,
+    rules: &RuleSet,
+    cells: &[(u16, u16)],
+) -> BTreeSet<(u16, u16)> {
+    let mut blocked = BTreeSet::new();
+    if cells.is_empty() {
+        return blocked;
+    }
+    let requested: BTreeSet<(u16, u16)> = cells.iter().copied().collect();
+    visit_structure_movement_cells(entities, interner, rules, |marked| {
+        if requested.contains(&marked) {
+            blocked.insert(marked);
+        }
+    });
+    blocked
 }
 
 pub(super) struct NavigationCaches<'a> {
@@ -76,7 +110,6 @@ impl NavigationCaches<'_> {
     pub(super) fn publish_recalculated_cell_with_presence(
         &mut self,
         terrain: &ResolvedTerrainGrid,
-        bridges: Option<&BridgeRuntimeState>,
         coord: (u16, u16),
         structure_blocked: bool,
     ) -> Result<(), String> {
@@ -90,8 +123,8 @@ impl NavigationCaches<'_> {
             if path.width() != terrain.width() || path.height() != terrain.height() {
                 return Err("path dimensions differ from terrain".into());
             }
-            if !path.resolved_cell_is_current(cell, bridges, structure_blocked)
-                && !Arc::make_mut(path).refresh_resolved_cell(cell, bridges, structure_blocked)
+            if !path.resolved_cell_is_current(cell, structure_blocked)
+                && !Arc::make_mut(path).refresh_resolved_cell(cell, structure_blocked)
             {
                 return Err("current path cell could not be published".into());
             }
@@ -107,6 +140,7 @@ impl NavigationCaches<'_> {
         Ok(())
     }
 
+    /// Returns the structure cells it blocked, for the caller's derived cache.
     pub(super) fn rebuild_dynamic(
         &mut self,
         terrain: &ResolvedTerrainGrid,
@@ -114,15 +148,17 @@ impl NavigationCaches<'_> {
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
-    ) {
-        let mut grid = PathGrid::from_resolved_terrain_with_bridges(terrain, bridges);
+    ) -> BTreeSet<(u16, u16)> {
+        let mut grid = PathGrid::from_resolved_terrain_with_bridges(terrain);
         *self.terrain_costs = build_canonical_terrain_cost_grids(terrain);
 
-        visit_structure_movement_cells(entities, interner, rules, |(x, y)| {
+        let structure_cells = structure_movement_cells(entities, interner, rules);
+        for &(x, y) in &structure_cells {
             grid.block_structure_cell(x, y);
-        });
+        }
 
         self.rebuild_zones(&grid, terrain, bridges);
+        structure_cells
     }
 
     /// Publish the path/cost views of one completed47D2B0 Recalc before another
@@ -132,26 +168,27 @@ impl NavigationCaches<'_> {
     pub(super) fn publish_recalculated_cell(
         &mut self,
         terrain: &ResolvedTerrainGrid,
-        bridges: Option<&BridgeRuntimeState>,
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
         coord: (u16, u16),
     ) -> Result<(), String> {
-        let cell = terrain
-            .cell(coord.0, coord.1)
-            .ok_or("Recalc cell is outside terrain")?;
-        if let Some(zones) = self.zones.as_mut() {
-            zones.refresh_base_cell_attributes_at(terrain, coord.0, coord.1);
-        }
-        self.publish_current_path_cell(terrain, bridges, entities, interner, rules, coord)?;
-        for (&speed_type, costs) in self.terrain_costs.iter_mut() {
-            if costs.width() != terrain.width()
-                || costs.height() != terrain.height()
-                || !costs.refresh_resolved_cell(cell, speed_type)
-            {
-                return Err("Recalc terrain cost cell could not be published".into());
-            }
+        self.publish_recalculated_cells(terrain, entities, interner, rules, &[coord])
+    }
+
+    /// Batch form of [`Self::publish_recalculated_cell`]: one structure scan
+    /// supplies every cell's presence, then each cell publishes in order.
+    pub(super) fn publish_recalculated_cells(
+        &mut self,
+        terrain: &ResolvedTerrainGrid,
+        entities: &EntityStore,
+        interner: &StringInterner,
+        rules: &RuleSet,
+        cells: &[(u16, u16)],
+    ) -> Result<(), String> {
+        let blocked = structure_blocked_among(entities, interner, rules, cells);
+        for &coord in cells {
+            self.publish_recalculated_cell_with_presence(terrain, coord, blocked.contains(&coord))?;
         }
         Ok(())
     }
@@ -162,7 +199,6 @@ impl NavigationCaches<'_> {
     pub(super) fn publish_current_path_cell(
         &mut self,
         terrain: &ResolvedTerrainGrid,
-        bridges: Option<&BridgeRuntimeState>,
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
@@ -181,7 +217,7 @@ impl NavigationCaches<'_> {
             visit_structure_movement_cells(entities, interner, rules, |marked| {
                 structure_blocked |= marked == coord;
             });
-            if !Arc::make_mut(path).refresh_resolved_cell(cell, bridges, structure_blocked) {
+            if !Arc::make_mut(path).refresh_resolved_cell(cell, structure_blocked) {
                 return Err("current path cell could not be published".into());
             }
         }

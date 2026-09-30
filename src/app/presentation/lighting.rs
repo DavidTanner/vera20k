@@ -364,12 +364,12 @@ fn alternate_rgb(state: &ScenarioLightingState) -> Option<[i32; 3]> {
 
 /// Fully-derived render-facing lighting view. The simulation owns only the
 /// scenario controller and source inputs; the per-cell grid remains app state.
+#[derive(Debug, PartialEq)]
 pub(crate) struct DerivedLightingView {
     pub(crate) profile: LightingProfileUnits,
     pub(crate) alternate_rgb: Option<[i32; 3]>,
     pub(crate) point_lights: Vec<PointLight>,
     pub(crate) detail_level: u32,
-    pub(crate) fingerprint: u64,
 }
 
 /// Derive the complete visible lighting input from one committed world view.
@@ -379,7 +379,6 @@ pub(crate) fn derive_lighting_view(
     rules: Option<&RuleSet>,
     detail_level: u32,
 ) -> DerivedLightingView {
-    let mut fingerprint = LightingFingerprint::new();
     let profile = simulation.map_or_else(
         || lighting::normal_profile_units(lighting_config),
         |sim| {
@@ -388,13 +387,6 @@ pub(crate) fn derive_lighting_view(
                 crate::sim::scenario_session::ScenarioLightingProfile::Normal => state.normal,
                 crate::sim::scenario_session::ScenarioLightingProfile::Ion => state.ion,
             };
-            fingerprint.mix_i32(state.target_ambient);
-            fingerprint.mix_u64(match state.selected_profile {
-                crate::sim::scenario_session::ScenarioLightingProfile::Normal => 0,
-                crate::sim::scenario_session::ScenarioLightingProfile::Ion => 1,
-            });
-            fingerprint.mix_i32(state.transition_timer.start_frame());
-            fingerprint.mix_i32(state.transition_timer.duration());
             LightingProfileUnits {
                 ambient_percent: state.current_ambient,
                 red_percent: state.normal.red_percent,
@@ -405,16 +397,9 @@ pub(crate) fn derive_lighting_view(
             }
         },
     );
-    fingerprint.mix_profile(profile);
-    fingerprint.mix_u64(u64::from(detail_level));
     let alternate_rgb = simulation.and_then(|sim| alternate_rgb(&sim.session.lighting));
-    if let Some(rgb) = alternate_rgb {
-        for channel in rgb {
-            fingerprint.mix_i32(channel);
-        }
-    }
 
-    let building_lights = collect_live_building_lights(simulation, rules, detail_level);
+    let building_lights = collect_live_building_lights(simulation, detail_level);
     let radiation_lights = match (simulation, rules) {
         (Some(sim), Some(rules)) => {
             crate::app::presentation::radiation_light::collect_radiation_lights(sim, rules)
@@ -423,24 +408,14 @@ pub(crate) fn derive_lighting_view(
     };
 
     let mut point_lights = Vec::with_capacity(building_lights.len() + radiation_lights.len());
-    for (stable_id, light) in building_lights {
-        fingerprint.mix_u64(0x42);
-        fingerprint.mix_u64(stable_id);
-        fingerprint.mix_point_light(&light);
-        point_lights.push(light);
-    }
-    for light in radiation_lights {
-        fingerprint.mix_u64(0x52);
-        fingerprint.mix_point_light(&light);
-        point_lights.push(light);
-    }
+    point_lights.extend(building_lights);
+    point_lights.extend(radiation_lights);
 
     DerivedLightingView {
         alternate_rgb,
         profile,
         point_lights,
         detail_level: detail_level.min(2),
-        fingerprint: fingerprint.finish(),
     }
 }
 
@@ -476,67 +451,17 @@ pub(crate) fn rebuild_lighting_grid_from_sim(
 
 fn collect_live_building_lights(
     simulation: Option<&Simulation>,
-    _rules: Option<&RuleSet>,
     detail_level: u32,
-) -> Vec<(u64, PointLight)> {
+) -> Vec<PointLight> {
     let Some(sim) = simulation else {
         return Vec::new();
     };
     sim.lighting_sources
         .buildings
-        .iter()
-        .filter(|(_, source)| source.active && source.detail && detail_level >= 2)
-        .map(|(&id, source)| (id, source.clone()))
+        .values()
+        .filter(|source| source.active && source.detail && detail_level >= 2)
+        .cloned()
         .collect()
-}
-
-struct LightingFingerprint(u64);
-
-impl LightingFingerprint {
-    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const PRIME: u64 = 0x0000_0100_0000_01b3;
-
-    fn new() -> Self {
-        Self(Self::OFFSET)
-    }
-
-    fn mix_u64(&mut self, value: u64) {
-        for byte in value.to_le_bytes() {
-            self.0 ^= u64::from(byte);
-            self.0 = self.0.wrapping_mul(Self::PRIME);
-        }
-    }
-
-    fn mix_i32(&mut self, value: i32) {
-        self.mix_u64(u64::from(value as u32));
-    }
-
-    fn mix_profile(&mut self, profile: LightingProfileUnits) {
-        self.mix_i32(profile.ambient_percent);
-        self.mix_i32(profile.red_percent);
-        self.mix_i32(profile.green_percent);
-        self.mix_i32(profile.blue_percent);
-        self.mix_i32(profile.ground_units);
-        self.mix_i32(profile.level_units);
-    }
-
-    fn mix_point_light(&mut self, light: &PointLight) {
-        self.mix_u64(u64::from(light.rx));
-        self.mix_u64(u64::from(light.ry));
-        self.mix_i32(light.center_x);
-        self.mix_i32(light.center_y);
-        self.mix_i32(light.radius_leptons);
-        self.mix_i32(light.intensity);
-        for tint in light.tint {
-            self.mix_i32(tint);
-        }
-        self.mix_u64(u64::from(u8::from(light.active)));
-        self.mix_u64(u64::from(u8::from(light.detail)));
-    }
-
-    fn finish(self) -> u64 {
-        self.0
-    }
 }
 
 #[cfg(test)]

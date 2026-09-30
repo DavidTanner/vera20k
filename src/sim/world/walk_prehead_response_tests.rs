@@ -20,7 +20,6 @@ use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 const CELL: u64 = 0x2000_0000;
 const OTHER: u64 = 0x2002_1000;
@@ -73,7 +72,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     house.player_control = true;
     sim.houses.insert(owner, house);
     let id = sim
-        .spawn_object("ENGINEER", "Americans", 9, 10, 0, &rules, &BTreeMap::new())
+        .spawn_object("ENGINEER", "Americans", 9, 10, 0, &rules)
         .unwrap();
     let other = if input["obstacle"] == true || input.get("cloak").is_some() {
         Some(
@@ -88,7 +87,6 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
                 10,
                 0,
                 &rules,
-                &BTreeMap::new(),
             )
             .unwrap(),
         )
@@ -171,13 +169,12 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
         loco.begin_walk_motion();
     }
     loco.set_step_head(None);
-    e.foot_speed.applied_fraction = SIM_ZERO;
+    e.foot_speed.set_speed_fraction(SIM_ZERO);
     e.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
     e.navigation.suspended_nav_com = None;
     e.attack_target =
         (input["attack_target"] == true).then_some(crate::sim::combat::AttackTarget {
             target: TargetKind::Cell(11, 10),
-            pending_infantry_fire: None,
         });
     e.suspended_attack_target = None;
     e.navigation.path_replay.directions = vec![2, 3, 4, 5];
@@ -295,7 +292,7 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
         ),
         (
             "speed",
-            json!(e.foot_speed.applied_fraction.to_num::<f64>()),
+            json!(e.foot_speed.applied_fraction().to_num::<f64>()),
         ),
         ("blocked", json!(u8::from(p.path_blocked))),
         ("retries", json!(p.retries_left as i32)),
@@ -349,8 +346,8 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
         [
             c.state,
             c.depth as i32,
-            c.step_timer.start_frame,
-            c.step_timer.duration_frames,
+            c.step_timer.timer.start_frame(),
+            c.step_timer.timer.duration(),
             c.step_timer.speed,
             c.step_delta,
         ]
@@ -407,7 +404,7 @@ fn expected_calls(row: &Value, other: Option<u64>) -> Vec<FreshCallRecord> {
                     assert_eq!(event[2][2], 1);
                     FreshCallRecord::Scatter {
                         cell: (10, 10),
-                        forced: true,
+                        no_kidding: true,
                         deck: event[2][3] != 0,
                     }
                 }
@@ -484,13 +481,12 @@ fn ordinary_and_recursive_walk_responses_match_original_decoder() {
             if input["continue_recursive"] == true {
                 let request = retry.ok_or("missing recursive Walk request")?;
                 let found =
-                    sim.run_walk_path_request(&request, None, Some(&rules), None, Some(&registry))?;
+                    sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry))?;
                 if found {
                     let again = sim.run_walk_admission_request(
                         request.into_walk_admission_for_test(),
                         None,
                         Some(&rules),
-                        None,
                         Some(&registry),
                     )?;
                     assert!(again.is_none(), "recursive refusal recursed twice: {input}");
@@ -562,7 +558,7 @@ fn exhausted_walk_retry_emits_native_retained_scold_request() {
             )
             .unwrap()
             .unwrap();
-        let result = sim.run_walk_path_request(&request, None, Some(&rules), None, Some(&registry));
+        let result = sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry));
         let (_, unused) = fresh_oracle_seam::finish();
         assert!(!result.unwrap());
         assert_eq!(unused, 0);
@@ -582,7 +578,9 @@ fn exhausted_walk_retry_emits_native_retained_scold_request() {
             .sound_events
             .iter()
             .filter_map(|event| match event {
-                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => Some(sound_id.as_str()),
+                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => {
+                    Some(sound_id.as_str())
+                }
                 _ => None,
             })
             .collect();

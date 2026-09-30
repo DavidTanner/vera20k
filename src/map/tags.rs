@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_value::strtok;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MapTag {
@@ -16,7 +17,9 @@ pub struct MapTag {
 
 pub type TagMap = HashMap<String, MapTag>;
 
-/// Parse `[Tags]` into a tag-id keyed map.
+/// Parse `[Tags]` into a tag-id keyed map. TagType's INI read
+/// (`0x006E6080`) takes each entry as a 0x80-byte ReadString split by
+/// `strtok(",")`: repeat mode, name, trigger.
 pub fn parse_tags(ini: &IniFile) -> TagMap {
     let Some(section) = ini.section("Tags") else {
         return HashMap::new();
@@ -24,7 +27,7 @@ pub fn parse_tags(ini: &IniFile) -> TagMap {
 
     let mut tags: TagMap = HashMap::new();
     for key in section.keys() {
-        let Some(raw_value) = section.get(key) else {
+        let Some(raw_value) = section.read_name(key, 0x80) else {
             continue;
         };
         let id = key.trim();
@@ -32,10 +35,7 @@ pub fn parse_tags(ini: &IniFile) -> TagMap {
             continue;
         }
         let id = id.to_ascii_uppercase();
-        let fields: Vec<String> = raw_value
-            .split(',')
-            .map(|part| part.trim().to_string())
-            .collect();
+        let fields: Vec<String> = strtok(raw_value, &[',']).map(str::to_string).collect();
         tags.insert(id.clone(), MapTag { id, fields });
     }
 

@@ -74,9 +74,6 @@ pub(crate) const LAUNCH_LOCK_FRAMES: u32 = 0x14;
 /// arm the suppression timer with 50 frames before ExitUnit.
 pub(crate) const FORCED_RELEASE_SUPPRESSION_FRAMES: i32 = 50;
 
-/// Bridge deck height `DAT_00AC497C`, added to release coordinates on a deck.
-const BRIDGE_HEIGHT_LEPTONS: i32 = 4 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
-
 /// Retained ParasiteClass instance fields. The owner (`+0x24`) is the entity
 /// storing this value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -157,15 +154,6 @@ fn weapon_zero<'r>(
 ) -> Option<&'r crate::rules::weapon_type::WeaponType> {
     super::combat_weapon::weapon_for_index(object, veterancy, 0)
         .and_then(|(name, _)| rules.weapon(name))
-}
-
-/// Primary facing as the native 16-bit word (`FacingClass::Current`).
-fn facing_word(entity: &crate::sim::game_entity::GameEntity, frame: u32) -> u16 {
-    entity
-        .body_facing
-        .map_or(u16::from(entity.facing) << 8, |facing| {
-            facing.current(frame)
-        })
 }
 
 /// `((raw >> 12) + 1) >> 1 & 7`: the eight-way direction of a facing word.
@@ -319,6 +307,22 @@ impl Simulation {
         crate::sim::world::queue_foot_enter_idle_mode(self, owner, rules);
     }
 
+    /// A successful ExitUnit or PointerExpired release re-adds the owner to
+    /// its team to rejoin (`+0x434`, `Add_Member(owner, 0)` at `0x0062A759`
+    /// and `0x0062A3BC`), which asks `Can_Add`.
+    ///
+    /// RESIDUAL: the release paths carry no overlay registry, so the
+    /// `Calc_Center` a centreless team runs on the rejoin tests the closest
+    /// member's cell without overlays. Trigger: the dog's team lost its
+    /// centre (no joined member left) while it was away. Effect: that centre
+    /// can be the mean cell where an overlay would refuse it, until the next
+    /// `Calc_Center`.
+    fn parasite_rejoin_team(&mut self, owner: u64, rules: &RuleSet) {
+        if let Some(team) = self.team_script_vm.team_to_rejoin(owner) {
+            self.team_add_member(team, owner, false, rules, None);
+        }
+    }
+
     /// `+0x432` reselect memo, consumed only by successful releases
     /// (`0x0062A71C`, `0x0062A37F`) for the local player's house.
     fn parasite_reselect(&mut self, owner: u64) {
@@ -364,7 +368,7 @@ impl Simulation {
         if owner_uses_grapple(owner_object) {
             return;
         }
-        let Some(weapon) = weapon_zero(rules, owner_object, owner_entity.veterancy) else {
+        let Some(weapon) = weapon_zero(rules, owner_object, owner_entity.veterancy()) else {
             return;
         };
         let Some(warhead_name) = weapon.warhead.as_deref() else {
@@ -393,7 +397,7 @@ impl Simulation {
         victim_entity.paralysis_timer = CdTimer::started(frame as i32, paralyzes);
         let infantry = victim_entity.category == EntityCategory::Infantry;
         let location = ground_pose::position_world_coord(&victim_entity.position);
-        let raw = facing_word(victim_entity, frame);
+        let raw = victim_entity.body_facing_current(frame);
         let (amount, ignore_defenses) = if infantry {
             // 0x0062A0AF: an Infantry victim takes its own current Health,
             // ignoring defenses: one bite kills unless ReceiveDamage refuses.
@@ -477,11 +481,11 @@ impl Simulation {
             .as_deref()
             .is_some_and(|s| s.suppression.remaining(frame as i32) != 0);
         let (speed_type, movement_zone) = (owner_object.speed_type, owner_object.movement_zone);
-        let rof = weapon_zero(rules, owner_object, owner_entity.veterancy).map_or(0, |w| w.rof);
+        let rof = weapon_zero(rules, owner_object, owner_entity.veterancy()).map_or(0, |w| w.rof);
         let Some(victim_entity) = self.substrate.entities.get(victim) else {
             return;
         };
-        let raw = facing_word(victim_entity, frame);
+        let raw = victim_entity.body_facing_current(frame);
         let released = if dir8(raw) <= 2 {
             raw.wrapping_add(0x3FFF)
         } else {
@@ -515,7 +519,7 @@ impl Simulation {
         let cell = if self.cell_clear_for(requested, speed_type, movement_zone, rules) {
             Some(requested)
         } else {
-            self.techno_nearby_location(victim, rules)
+            self.techno_nearby_location(victim, None, rules)
         };
         let placed = cell.is_some_and(|cell| {
             self.parasite_can_place_at_victim(owner, victim, rules)
@@ -529,6 +533,7 @@ impl Simulation {
         });
         if placed {
             self.parasite_reselect(owner);
+            self.parasite_rejoin_team(owner, rules);
             self.parasite_released_owner_orders(owner, true, rules);
             if let Some(entity) = self.substrate.entities.get_mut(owner) {
                 entity.paralysis_timer = CdTimer::started(frame as i32, rof.wrapping_mul(3));
@@ -611,7 +616,7 @@ impl Simulation {
             .substrate
             .entities
             .get(victim)
-            .map_or(0, |v| facing_word(v, frame));
+            .map_or(0, |v| v.body_facing_current(frame));
         let coords = self.parasite_release_coords(owner, victim, rules);
         // 0x0062A2ED..0x0062A303: the 0xA8E7AC bracket around Unlimbo.
         let placed = coords.is_some_and(|coords| {
@@ -619,6 +624,7 @@ impl Simulation {
         });
         if placed {
             self.parasite_reselect(owner);
+            self.parasite_rejoin_team(owner, rules);
             self.parasite_released_owner_orders(owner, true, rules);
         } else {
             self.substrate
@@ -665,14 +671,16 @@ impl Simulation {
                 coords = cell_centre(cell);
                 coords.z = self.cell_ground_z(cell);
                 if victim_on_bridge {
-                    coords.z = coords.z.wrapping_add(BRIDGE_HEIGHT_LEPTONS);
+                    coords.z = coords
+                        .z
+                        .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 }
             }
             self.substrate.entities.get_mut(owner)?.on_bridge = victim_on_bridge;
             return Some(coords);
         }
         let frame = self.session.binary_frame;
-        let raw = facing_word(victim_entity, frame);
+        let raw = victim_entity.body_facing_current(frame);
         let victim_cell = (
             victim_entity.position.rx as i16,
             victim_entity.position.ry as i16,
@@ -717,14 +725,18 @@ impl Simulation {
         let bridge = self.cell_has_bridge(adjacent);
         let on_bridge = if victim_on_bridge {
             if bridge {
-                coords.z = coords.z.wrapping_add(BRIDGE_HEIGHT_LEPTONS);
+                coords.z = coords
+                    .z
+                    .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
             }
             bridge
         } else if bridge {
             // 0x0062AE63: only a deck below the victim's own height counts.
             let victim_z = self.cell_ground_z(victim_cell);
             if victim_z > coords.z {
-                coords.z = coords.z.wrapping_add(BRIDGE_HEIGHT_LEPTONS);
+                coords.z = coords
+                    .z
+                    .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 true
             } else {
                 false
@@ -741,12 +753,12 @@ impl Simulation {
         let Some(victim_entity) = self.substrate.entities.get(victim) else {
             return false;
         };
-        // Victim vtable +0x54 (IsInAir).
-        if crate::sim::movement::air_movement::current_fly_height(
+        // Victim vtable +0x54 (IsInAir, `0x0062AB52`).
+        if crate::sim::movement::air_movement::is_high_flying(
             victim_entity,
             self.resolved_terrain.as_ref(),
-        ) > 0
-        {
+            Some((rules, &self.interner)),
+        ) {
             return false;
         }
         let cell = (
@@ -802,8 +814,11 @@ impl Simulation {
             grid.cell(bridge_reference.0 as u16, bridge_reference.1 as u16)
                 .overlay_id
         });
-        let overlay_bridge = overlay.is_some_and(|id| (0x4A..0x64).contains(&id))
-            || overlay.is_some_and(|id| (0xCD..=0xE6).contains(&id));
+        let overlay_bridge = overlay.is_some_and(|id| {
+            use crate::sim::bridge_state::{ordinary, ramp_repair::Family};
+            ordinary::standing(i32::from(id), Family::Low)
+                || ordinary::standing(i32::from(id), Family::High)
+        });
         !(self.cell_has_bridge(bridge_reference) || overlay_bridge)
     }
 
@@ -845,13 +860,9 @@ impl Simulation {
         let Some(terrain_cell) = terrain.cell(target.0, target.1) else {
             return false;
         };
-        let requested =
-            zones.get_zone_id_native((i32::from(cell.0), i32::from(cell.1)), movement_zone, false);
-        let actual = zones.get_zone_id_native(
-            (i32::from(cell.0), i32::from(cell.1)),
-            movement_zone,
-            self.cell_has_bridge(cell),
-        );
+        let requested = zones.get_zone_id_native(terrain, target, movement_zone, false);
+        let actual =
+            zones.get_zone_id_native(terrain, target, movement_zone, self.cell_has_bridge(cell));
         let land = rules
             .terrain_rules
             .semantics_for_land_type(terrain_cell.yr_cell_land_type)
@@ -863,8 +874,9 @@ impl Simulation {
                 target,
                 speed_type,
                 movement_zone,
-                requested_zone: requested.map(|zone| zone as i16),
-                actual_zone: actual.map_or(-1, |zone| zone as i16),
+                // `0x004834A0` compares the full GetZoneID DWORDs.
+                requested_zone: requested,
+                actual_zone: actual.unwrap_or(u32::MAX),
                 requested_layer: None,
                 ignore_infantry: false,
                 ignore_vehicles: false,
@@ -875,62 +887,6 @@ impl Simulation {
             }),
             IsClearToMoveResult::Clear { .. } | IsClearToMoveResult::ClearWinged
         )
-    }
-
-    /// TechnoClass NearbyLocation `0x00703590` (argument 0): FNPC seeded at the
-    /// object's own cell with its SpeedType (Winged read as Track), its
-    /// MovementZone, `GetZoneID(cell, MovementZone, OnBridge)` and OnBridge.
-    fn techno_nearby_location(&self, id: u64, rules: &RuleSet) -> Option<(i16, i16)> {
-        use crate::rules::locomotor_type::SpeedType;
-        use crate::sim::find_nearby_cell::{
-            NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs,
-            find_nearby_passable_cell, map_owned_radius_cap,
-        };
-        let entity = self.substrate.entities.get(id)?;
-        let object = self.object_type(entity.type_ref(), rules)?;
-        let speed_type = if object.speed_type == SpeedType::Winged {
-            SpeedType::Track
-        } else {
-            object.speed_type
-        };
-        let seed = (i32::from(entity.position.rx), i32::from(entity.position.ry));
-        let zone = self.zone_grid.as_ref().and_then(|zones| {
-            zones.get_zone_id_native(seed, object.movement_zone, entity.on_bridge)
-        });
-        let (width, height) = self
-            .playfield_bounds
-            .zip(self.playfield_size_height)
-            .map(|(b, h)| (b.base, h))?;
-        let grid = self.path_grid_snapshot();
-        let cell = find_nearby_passable_cell(
-            seed,
-            &NearbyQuery {
-                native_cells: None,
-                raw_occupation: Some(&self.substrate.raw_cell_occupation),
-                passability: PassabilityArgs {
-                    speed_type,
-                    required_zone_id: zone,
-                    movement_zone: object.movement_zone,
-                    bridge_aware_zone: entity.on_bridge,
-                },
-                footprint: NearbyFootprint::SINGLE,
-                anchor_gate: NearbyAnchorGate::NativeHeightAware,
-                allow_bridge_cells: true,
-                check_height: false,
-                check_occupancy: false,
-                radius_cap: map_owned_radius_cap(width, height),
-                target_cell: None,
-                path_grid: grid.as_deref(),
-                resolved_terrain: self.resolved_terrain.as_ref(),
-                overlay_grid: self.overlay_grid.as_ref(),
-                occupancy: Some(&self.substrate.occupancy),
-                entities: Some(&self.substrate.entities),
-                zone_grid: self.zone_grid.as_ref(),
-                playfield_bounds: self.playfield_bounds,
-            },
-            self.session.binary_frame,
-        )?;
-        Some((cell.0 as i16, cell.1 as i16))
     }
 
     /// Unlimbo(coord, dir) for a released or returning owner. Infantry place
@@ -956,11 +912,7 @@ impl Simulation {
         // which the reveal adapter reads as `level + 4` with the owner's
         // OnBridge; cell-centre coordinates (ExitUnit, AttachTo refusal) are
         // ground, `CellClass::GetCoords @ 0x00486840`.
-        let ground_level = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(rx, ry))
-            .map_or(0, |cell| cell.level);
+        let ground_level = self.terrain_cell_level(rx, ry).unwrap_or(0);
         let coord_level =
             u8::try_from(coord.z.max(0) / crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
                 .unwrap_or(u8::MAX);
@@ -991,12 +943,8 @@ impl Simulation {
         };
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
             entity.sub_cell = sub_cell;
-            entity.facing = facing;
-            if let Some(body) = entity.body_facing.as_mut() {
-                body.snap(u16::from(facing) << 8, self.session.binary_frame);
-            }
         }
-        matches!(
+        let revealed = matches!(
             self.try_reveal_entity_with_context(
                 owner,
                 crate::sim::world::RevealRequest {
@@ -1013,7 +961,13 @@ impl Simulation {
                 crate::sim::world::UninitContext::with_rules(rules),
             ),
             crate::sim::world::RevealOutcome::Revealed { .. }
-        )
+        );
+        // Unlimbo's body snap (`0x006F6DAA`) follows a successful Reveal.
+        let frame = self.session.binary_frame;
+        if revealed && let Some(entity) = self.substrate.entities.get_mut(owner) {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
+        }
+        revealed
     }
 
     /// `TechnoClass::Fire @ 0x006FF749..0x006FF872`, the LimboLaunch block,
@@ -1049,17 +1003,19 @@ impl Simulation {
             && entity.selected
             && self.session.current_house == Some(entity.owner())
             && target_infantry;
-        // RESIDUAL: 0x006FF7A3..0x006FF7E9 stores the Team (+0x434) for
-        // RejoinTeamIfLimboed, and Limbo's Detach_All removes the member
-        // (0x006EA870). VERA has no Team membership owner, so a jumping AI
-        // dog or drone stays listed in its team while limboed and a
-        // RejoinTeamIfLimboed=no drone is never dropped from it.
         if reselect {
             self.substrate
                 .entities
                 .get_mut(firer)
                 .unwrap()
                 .limbo_reselect = true;
+        }
+        // 0x006FF7A3..0x006FF7E9: a RejoinTeamIfLimboed= Foot jumping an
+        // Infantry target remembers its team (+0x434) before the Limbo below
+        // takes it off the team (0x004D9744); its release re-adds it
+        // (`parasite_rejoin_team`).
+        if object.rejoin_team_if_limboed && target_infantry {
+            self.team_script_vm.remember_team_to_rejoin(firer);
         }
         self.techno_limbo_with_rules(firer, rules);
         let parasite = weapon

@@ -183,13 +183,11 @@ fn runtime_unit_crush_tail_matches_original_continuation_corpus() {
                 entity.lifecycle.in_limbo = false;
                 entity.invulnerability = match node["timer"].as_str() {
                     Some("active") => Some(InvulnerabilityState {
-                        start_frame: 90,
-                        duration_frames: 20,
+                        timer: crate::sim::timer::CdTimer::started(90, 20),
                         kind: InvulnKind::IronCurtain,
                     }),
                     Some("expired") => Some(InvulnerabilityState {
-                        start_frame: 90,
-                        duration_frames: 10,
+                        timer: crate::sim::timer::CdTimer::started(90, 10),
                         kind: InvulnKind::ForceShield,
                     }),
                     _ => None,

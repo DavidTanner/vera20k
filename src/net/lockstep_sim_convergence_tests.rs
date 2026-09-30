@@ -9,9 +9,7 @@
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::world::Simulation;
-use crate::sim::world::tests::{
-    empty_heights, gsi_04_07_wall_sell_rules, gsi_04_07_wall_sell_seed_houses,
-};
+use crate::sim::world::tests::{gsi_04_07_wall_sell_rules, gsi_04_07_wall_sell_seed_houses};
 
 #[test]
 fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
@@ -39,7 +37,6 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
             Command::SellWallAtCell { x: 1, y: 1 },
         )],
         Some(&semantic_rules),
-        &empty_heights(),
         None,
         Some(&semantic_overlays),
         67,
@@ -118,14 +115,7 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
     );
     assert_eq!(due_summary.executed, 1);
     assert_eq!(due.len(), 1);
-    raw.advance_tick(
-        &due,
-        Some(&raw_rules),
-        &empty_heights(),
-        None,
-        Some(&raw_overlays),
-        67,
-    );
+    raw.advance_tick(&due, Some(&raw_rules), None, Some(&raw_overlays), 67);
     assert_eq!(
         raw.overlay_grid.as_ref().unwrap().cell(1, 1).overlay_id,
         None
@@ -175,14 +165,7 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
             .decode_for_simulation(sim, sim.session.tick)
             .expect("registered receiver decodes");
         let receiver = sim.interner.resolve(envelope.owner).to_string();
-        sim.apply_command_with_overlays(
-            &receiver,
-            &envelope.payload,
-            Some(rules),
-            None,
-            &empty_heights(),
-            Some(overlays),
-        )
+        sim.apply_command_with_overlays(&receiver, &envelope.payload, Some(rules), Some(overlays))
     }
 
     let (rules, overlays) = gsi_04_07_wall_sell_rules(false, false);

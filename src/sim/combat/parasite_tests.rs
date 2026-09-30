@@ -11,7 +11,6 @@ use crate::sim::combat::{
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
-use std::collections::BTreeMap;
 
 const RULES: &str = "\
 [General]\nRepairPercent=15%\nRepairStep=8\n\
@@ -143,14 +142,9 @@ impl Arena {
 
     fn step(&mut self, rules: &RuleSet) {
         let commands = self.sim.take_due_commands();
-        let _ = self.sim.advance_tick(
-            &commands,
-            Some(rules),
-            &BTreeMap::new(),
-            Some(&self.grid),
-            None,
-            33,
-        );
+        let _ = self
+            .sim
+            .advance_tick(&commands, Some(rules), Some(&self.grid), None, 33);
     }
 
     fn frame(&self) -> u32 {
@@ -310,6 +304,78 @@ fn dog_bite_kills_the_infantry_and_releases_the_dog_where_it_stood() {
     assert_eq!(arena.frame(), death_frame);
 }
 
+/// A `RejoinTeamIfLimboed=` dog in a team of two jumps a GI eight cells
+/// away; the order is given before the team forms, since a player order
+/// takes a Foot off its team (`0x004C735D`). Returns the dog, its partner
+/// and the team.
+fn team_dog_jumps(rules: &RuleSet, arena: &mut Arena) -> (u64, u64, u64) {
+    let dog = arena.spawn(rules, "DOG", "Russians", (4, 10));
+    let partner = arena.spawn(rules, "DOG", "Russians", (4, 12));
+    let gi = arena.spawn(rules, "E1", "Americans", (12, 10));
+    arena.attack(dog, gi);
+    arena.step(rules);
+    arena.step(rules);
+    assert!(!arena.in_limbo(dog), "the dog has not jumped yet");
+    let team = crate::sim::team_script_vm::join_team_for_test(
+        &mut arena.sim,
+        &[dog, partner],
+        false,
+        false,
+    );
+    arena.until(rules, 300, |sim| {
+        sim.substrate
+            .entities
+            .get(dog)
+            .is_some_and(|d| d.lifecycle.in_limbo)
+    });
+    // TechnoClass::Fire 0x006FF7A3..0x006FF7E9 keeps the team (+0x434); the
+    // jump's Limbo takes the dog off it (0x004D9744).
+    assert_eq!(arena.sim.team_script_vm.team_for_member(dog), None);
+    assert_eq!(arena.sim.team_script_vm.team_to_rejoin(dog), Some(team));
+    (dog, partner, team)
+}
+
+#[test]
+fn a_team_dog_rejoins_its_team_when_its_kill_releases_it() {
+    let rules = rules();
+    let mut arena = Arena::new(&rules);
+    let (dog, _, team) = team_dog_jumps(&rules, &mut arena);
+    arena.until(&rules, 200, |sim| {
+        sim.substrate
+            .entities
+            .get(dog)
+            .is_some_and(|d| !d.lifecycle.in_limbo)
+    });
+    // PointerExpired's release re-adds it (0x0062A3AD..0x0062A3BC).
+    assert_eq!(
+        arena
+            .sim
+            .team_script_vm
+            .team_for_member(dog)
+            .map(|(id, _)| id),
+        Some(team)
+    );
+}
+
+#[test]
+fn a_dog_whose_team_died_while_it_was_away_stays_teamless() {
+    let rules = rules();
+    let mut arena = Arena::new(&rules);
+    let (dog, partner, team) = team_dog_jumps(&rules, &mut arena);
+    // The last member dies: the has-been-full team is destroyed, and
+    // TechnoClass::PointerExpired (0x00707BB2) forgets it.
+    arena.hit(&rules, partner, None, 1000, "Super");
+    arena.until(&rules, 200, |sim| {
+        sim.substrate
+            .entities
+            .get(dog)
+            .is_some_and(|d| !d.lifecycle.in_limbo)
+    });
+    assert!(arena.sim.team_script_vm.team(team).is_none());
+    assert_eq!(arena.sim.team_script_vm.team_to_rejoin(dog), None);
+    assert_eq!(arena.sim.team_script_vm.team_for_member(dog), None);
+}
+
 #[test]
 fn drone_bites_on_its_weapon_rate_until_the_host_dies_then_drops_off() {
     let rules = rules();
@@ -419,7 +485,14 @@ fn a_sonic_hit_ejects_the_drone_alive_beside_its_host_and_drops_the_shooter_targ
         .get_mut(drone)
         .unwrap()
         .set_archive_target(Some(TargetKind::Cell(3, 3)));
-    let host_facing = arena.sim.substrate.entities.get(tank).unwrap().facing;
+    let host_facing = arena
+        .sim
+        .substrate
+        .entities
+        .get(tank)
+        .unwrap()
+        .body_facing
+        .destination();
     arena.hit(&rules, tank, Some(dolphin), 4, "SonicWarhead");
 
     let frame = arena.frame();
@@ -427,7 +500,11 @@ fn a_sonic_hit_ejects_the_drone_alive_beside_its_host_and_drops_the_shooter_targ
     assert!(!released.lifecycle.in_limbo && released.lifecycle.object_alive);
     assert_eq!(released.health.current, 100);
     assert_eq!(host_facing, 0);
-    assert_eq!(released.facing, 64, "north host: released facing east");
+    assert_eq!(
+        released.body_facing.destination(),
+        0x4000,
+        "north host: released facing east"
+    );
     assert_eq!(released.paralysis_timer.remaining(frame as i32), 3 * 60);
     // ExitUnit 0x0062A771: Set_ArchiveTarget(NULL).
     assert_eq!(released.archive_target(), None);
@@ -499,13 +576,14 @@ fn a_teleport_warp_ejects_the_drone_before_the_host_relocates() {
     let drone = arena.spawn(&rules, "DRON", "Russians", (10, 10));
     let tank = arena.spawn(&rules, "MTNK", "Americans", (11, 10));
     arena.infect(&rules, drone, tank);
-    arena
-        .sim
-        .substrate
-        .entities
-        .get_mut(tank)
-        .unwrap()
-        .teleport_state = Some(crate::sim::movement::teleport_movement::TeleportState {
+    let host = arena.sim.substrate.entities.get_mut(tank).unwrap();
+    // A warping host runs Teleport as its active locomotor (the Chrono Miner).
+    host.locomotor = Some(
+        crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+            crate::rules::locomotor_type::LocomotorKind::Teleport,
+        ),
+    );
+    host.teleport_state = Some(crate::sim::movement::teleport_movement::TeleportState {
         phase: crate::sim::movement::teleport_movement::TeleportPhase::Relocate,
         target_rx: 20,
         target_ry: 20,
@@ -555,7 +633,7 @@ fn a_host_lost_in_flight_returns_the_drone_to_its_launch_cell() {
     });
     let returned = arena.sim.substrate.entities.get(drone).unwrap();
     assert_eq!(arena.cell(drone), (10, 10));
-    assert_eq!(returned.facing, 0);
+    assert_eq!(returned.body_facing.destination(), 0);
     assert!(!returned.is_paralyzed(arena.frame()));
     assert!(returned.parasite.as_deref().unwrap().victim().is_none());
     // The refusal (0x0062AA96..0x0062AAC9) never calls Set_ArchiveTarget.
@@ -833,4 +911,34 @@ fn a_parasite_order_on_an_iron_curtained_host_is_dropped() {
     });
     assert!(!arena.in_limbo(drone));
     assert_eq!(arena.eater_of(tank), None);
+}
+
+/// CanPlaceAtVictim (`0x0062AB40`) refuses only a victim in the air: it asks
+/// the victim's vt+0x54 (`0x0062AB52`), IsInAir (`0x005F6B90`), which needs a
+/// height of at least 208. A paratrooper still falling below that takes the
+/// drone at its own cell.
+#[test]
+fn a_parasite_is_placed_at_a_falling_victim_below_the_air_line() {
+    let rules = rules();
+    let mut arena = Arena::new(&rules);
+    let drone = arena.spawn(&rules, "DRON", "Russians", (10, 10));
+    let victim = arena.spawn(&rules, "E1", "Americans", (11, 10));
+    let mut place_at_height = |height: i32| {
+        arena
+            .sim
+            .substrate
+            .entities
+            .get_mut(victim)
+            .unwrap()
+            .position
+            .exact_z_leptons = Some(height);
+        arena
+            .sim
+            .parasite_can_place_at_victim(drone, victim, &rules)
+    };
+    assert!(
+        place_at_height(207),
+        "below 208 the victim is not in the air"
+    );
+    assert!(!place_at_height(208), "at 208 the victim is in the air");
 }

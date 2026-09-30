@@ -37,7 +37,7 @@
 //!   inside die with it.
 //! - Deploying a Slave Miner hands its manager to the refinery (SetOwner
 //!   `0x006AF580`, with the hand-off `0x006B0D10`); undeploying hands it back
-//!   at the conversion (`BuildingClass::Sell @ 0x0044A047`,
+//!   at the conversion (`BuildingClass::Mission_Selling @ 0x0044A047`,
 //!   `Simulation::finish_undeploy`). A refinery placed from production takes the same
 //!   hand-off (`0x006B0D60`) once its Unlimbo succeeds.
 //! - A Slave Miner hunts for a field: it sets out as it leaves its war
@@ -93,12 +93,8 @@
 //!   `UnitClass::What_Action` gives the Harvest action to a
 //!   ResourceGatherer/ResourceDestination type. The dispatch treats it as
 //!   the plain Unit it is natively (`techno_ai/mission_handlers.rs`).
-//! - Of `InfantryClass::DoType_Sequencer` (`0x00520AE0`) VERA runs only the
-//!   Cheer's end (`Simulation::infantry_action_completed`). A digging slave
-//!   keeps Doing 38 once its mission leaves Harvest, where retail's case 0x26
-//!   forces Ready after the Shovel sequence has played, and it walks home
-//!   without the Carry action (39, Do_Action's remap of Walk for a loaded
-//!   slave, `0x0051D739..0x0051D773`). Trigger: every slave carrying a load
+//! - A loaded slave walks home without Carry (39, Do_Action's remap of Walk
+//!   for a full slave load, `0x0051D739..0x0051D773`). Trigger: every slave carrying a load
 //!   home. Effect: the Doing value and the walk sequence shown; 0, 3, 38 and
 //!   39 are all interruptible, so readiness, Scatter and the fire error
 //!   answer alike. Frequency: every trip. Downstream: none beyond the Doing
@@ -436,7 +432,7 @@ impl Simulation {
                     object.slave_reload_rate,
                     self.interner.resolve(parent.owner()).to_string(),
                     (parent.position.rx, parent.position.ry),
-                    parent.facing,
+                    parent.body_facing_byte(self.session.binary_frame),
                     parent.position.z,
                 ))
             })
@@ -656,8 +652,8 @@ impl Simulation {
             ) else {
                 return false;
             };
-            // CDQ; AND EDX,0xFF; ADD; SAR 8, then 16-bit CellStruct subtraction.
-            let to_cell = |leptons: i32| (leptons.wrapping_add((leptons >> 31) & 0xFF) >> 8) as i16;
+            // The truncated cell, then 16-bit CellStruct subtraction.
+            let to_cell = crate::util::lepton::lepton_to_cell_packed;
             let dx = to_cell(coord.x).wrapping_sub(drop.0 as i16);
             let dy = to_cell(coord.y).wrapping_sub(drop.1 as i16);
             cell_distance(dx, dy) > rules.general.approach_target_reset_multiplier
@@ -853,7 +849,7 @@ impl Simulation {
     /// own cell (`vt+0x1BC`, the CellClass at its Location) and queues
     /// Selling (`0x006B01E8`), which the building's ready check commences in
     /// the same Update (`0x0043FF91`: the idle control holds `+0x6DD`).
-    /// Selling's UndeploysInto arm (`BuildingClass::Sell @ 0x00449C30`)
+    /// Selling's UndeploysInto arm (`BuildingClass::Mission_Selling @ 0x00449C30`)
     /// packs it up into the Slave Miner that its manager, now in state 6,
     /// sends hunting: the conversion at its end
     /// ([`Simulation::finish_undeploy`]) hands the manager over and sends the
@@ -876,7 +872,12 @@ impl Simulation {
     /// The Slave Miner's class setter (`vt+0x480(cell, 1)`, the Unit setter
     /// `0x00741970`) then `Queue_Mission(Move, 0)`.
     fn send_slave_master(&mut self, master: u64, cell: (u16, u16), rules: &RuleSet) {
-        if !self.set_unit_cell_destination(master, cell, rules, true) {
+        if !self.set_unit_destination(
+            master,
+            crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+            rules,
+            true,
+        ) {
             log::debug!("slave master {master} has no Unit setter for {cell:?}");
         }
         self.queue_slave_mission(master, MissionType::Move);
@@ -1029,9 +1030,8 @@ impl Simulation {
                 .ok()
             })
             .map(|coord| {
-                // `CDQ; AND EDX,0xFF; ADD; SAR 8` per axis (0x006B0E3E..).
-                let cell =
-                    |leptons: i32| (leptons.wrapping_add((leptons >> 31) & 0xFF) >> 8) as u16;
+                // The truncated cell per axis (0x006B0E3E..).
+                let cell = |leptons| crate::util::lepton::lepton_to_cell_packed(leptons) as u16;
                 (cell(coord.x), cell(coord.y))
             });
         let Some(field) = field else {
@@ -1079,7 +1079,7 @@ impl Simulation {
         let search = DeployCellSearch::new(owner_cell(owner), seed, foundation);
         let terrain = self.resolved_terrain.as_ref()?;
         let zone = self.zone_grid.as_ref().and_then(|zones| {
-            zones.get_path_zone_id_native(
+            zones.get_zone_id_native(
                 terrain,
                 (search.zone_cell.0 as u16, search.zone_cell.1 as u16),
                 search.zone_movement_zone,
@@ -1101,7 +1101,7 @@ impl Simulation {
                     speed_type: search.speed_type,
                     // A DWORD -1 disables the comparison; FNPC turns a raw
                     // 0xFFFF into -1 as well (`find_nearby_cell`).
-                    required_zone_id: u16::try_from(zone).ok(),
+                    required_zone_id: Some(zone),
                     movement_zone: search.movement_zone,
                     bridge_aware_zone: search.bridge_aware,
                 },
@@ -1189,7 +1189,12 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        match self.set_infantry_cell_destination(slave, cell, rules, registry) {
+        match self.set_infantry_destination(
+            slave,
+            crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+            rules,
+            registry,
+        ) {
             Ok(true) => {}
             Ok(false) => log::debug!("slave {slave} has no Walk setter for {cell:?}"),
             Err(cause) => log::debug!("slave {slave} could not be sent to {cell:?}: {cause}"),
@@ -1275,9 +1280,14 @@ impl Simulation {
             if !self.unlimbo_slave(slave, drop, (sub_x, sub_y), rules) {
                 continue;
             }
-            if let Some(source) = self.slave_owner_centre(master, rules)
-                && let Err(cause) =
-                    self.scatter_infantry_forced_from(slave, source, rules, registry)
+            if let Some(source) = self.slave_owner_centre(master)
+                && let Err(cause) = self.infantry_scatter_from(
+                    slave,
+                    source,
+                    crate::sim::movement::ScatterFlags::new(true, true),
+                    rules,
+                    registry,
+                )
             {
                 log::debug!("slave {slave} did not scatter: {cause}");
             }
@@ -1292,11 +1302,10 @@ impl Simulation {
 
     /// The owner's Center_Coord (`vt+0x48`), the point its slaves scatter
     /// away from.
-    fn slave_owner_centre(&self, master: u64, rules: &RuleSet) -> Option<(i32, i32)> {
+    fn slave_owner_centre(&self, master: u64) -> Option<(i32, i32)> {
         let owner = self.substrate.entities.get(master)?;
-        let object = self.object_type(owner.type_ref(), rules)?;
-        let centre = crate::sim::movement::ground_pose::object_center_coord(owner, object);
-        Some((centre.x, centre.y))
+        let [x, y] = crate::sim::movement::ground_pose::object_center_xy(owner);
+        Some((x, y))
     }
 
     /// `InfantryClass::Unlimbo @ 0x0051DFF0` at `(cell, request)` with facing
@@ -1325,15 +1334,13 @@ impl Simulation {
             return false;
         };
         let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(Some(spot));
-        let z = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(cell.0, cell.1))
-            .map_or(0, |terrain_cell| terrain_cell.level);
+        let z = self.terrain_cell_level(cell.0, cell.1).unwrap_or(0);
+        let now = self.session.binary_frame;
         if let Some(entity) = self.substrate.entities.get_mut(slave) {
             entity.sub_cell = Some(spot);
             entity.on_bridge = false;
-            entity.facing = 0;
+            // Unlimbo's body snap to the facing-0 request (`0x006F6DAA`).
+            entity.body_facing.snap(0, now);
         }
         let outcome = self.try_reveal_entity_with_context(
             slave,
@@ -1646,28 +1653,7 @@ impl Simulation {
 
     /// `InfantryClass vt+0x388(1)` (`0x00522C00`): Do_Action(0x20), the cheer.
     fn slave_cheers(&mut self, slave: u64, rules: &RuleSet) {
-        let before = self
-            .substrate
-            .entities
-            .get(slave)
-            .and_then(|entity| entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()));
         self.slave_do_action(slave, DO_CHEER, rules);
-        let after = self
-            .substrate
-            .entities
-            .get(slave)
-            .and_then(|entity| entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()));
-        // Do_Action restarts the sequence it installs.
-        if before != after
-            && after == Some(DO_CHEER)
-            && let Some(animation) = self
-                .substrate
-                .entities
-                .get_mut(slave)
-                .and_then(|entity| entity.animation.as_mut())
-        {
-            animation.switch_to(crate::sim::animation::SequenceKind::Cheer);
-        }
     }
 
     /// The hand-off (`0x006B0D10`, and `0x006B0D60`, the same body): an idle

@@ -7,7 +7,7 @@
 //!   still on the map: absorbed passengers leave first (Phase A), then each
 //!   foundation cell gets one survivor roll followed by that cell's
 //!   scorch/crater mark (Phase B);
-//! - `BuildingClass::Sell`'s stage 1 (`0x0044A2EE`, driven by
+//! - `BuildingClass::Mission_Selling`'s stage 1 (`0x0044A2EE`, driven by
 //!   `production::production_sell`): absorbed passengers, then the survivor
 //!   count's crew, each on a random foundation cell;
 //! - the crew block of `UnitClass::ReceiveDamage` (`0x007381BC..0x0073838A`);
@@ -116,15 +116,10 @@
 //!   Each escapee spends Scatter's RandomRanged(0,4) and then its immediate
 //!   Walk Process's draws (the head's RandomRanged(0,3) from the centre
 //!   spot); the priority placement and the kill paths draw nothing.
-//! - Scatter's FNPC failure arm (the eight-neighbour fallback and
-//!   QueueMission(Move) inside `InfantryClass::Scatter @ 0x0051D0D0`) is not
-//!   ported: the crewman stays where it landed, with its mission still
-//!   queued. Trigger: no passable cell at its height within the FNPC radius,
-//!   e.g. a building straddling a cliff ledge. Frequency: rare (buildings
-//!   stand on level ground). Risk: position only. Likewise a crewman on a
-//!   cell the path grid marks unwalkable loses its Scatter destination in the
-//!   immediate Process (the movement owner refuses a blocked start cell);
-//!   only seen with a building placed partly on such ground.
+//! - A crewman on a cell the path grid marks unwalkable loses its Scatter
+//!   destination in the immediate Process (the movement owner refuses a
+//!   blocked start cell); only seen with a building placed partly on such
+//!   ground.
 //! - House IsToDie (`+0x1F6`, set by `0x004FC980`): VERA has no resign
 //!   countdown, so it never suppresses the survivor roll. Frequency: only a
 //!   resigning house's buildings.
@@ -430,7 +425,7 @@ impl Simulation {
         });
         let mission = if enemy_planter.is_some() {
             MissionType::Attack
-        } else if self.house_is_human(owner) {
+        } else if self.owner_is_human(owner) {
             MissionType::Move
         } else {
             MissionType::Hunt
@@ -539,7 +534,10 @@ impl Simulation {
         };
         let owner = building.owner();
         let on_bridge = building.on_bridge;
-        let facing = building.facing;
+        // `0x00442F3C..0x00442F63`: the building's `+0x388` Current() as a
+        // rounded DirType is the Unlimbo direction.
+        let frame = self.session.binary_frame;
+        let facing = building.body_facing_dir(frame);
         let position = building.position.clone();
         let sub_cell =
             infantry.then(|| bump_crush::priority_sub_cell(position.sub_x, position.sub_y));
@@ -548,7 +546,6 @@ impl Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(passenger) {
             entity.passenger_role = crate::sim::passenger::PassengerRole::None;
             entity.on_bridge = on_bridge;
-            entity.facing = facing;
             entity.sub_cell = sub_cell;
         }
         let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(sub_cell);
@@ -575,10 +572,14 @@ impl Simulation {
             self.uninit_with_rules(passenger, rules);
             return;
         }
+        // Unlimbo's body snap (`0x006F6DAA`) follows the successful Reveal.
+        if let Some(entity) = self.substrate.entities.get_mut(passenger) {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
+        }
         if infantry {
             self.scatter_crew(rules, registry, passenger);
         }
-        if !self.house_is_human(owner) {
+        if !self.owner_is_human(owner) {
             self.queue_crew_mission(passenger, MissionType::Hunt);
         }
     }
@@ -667,7 +668,7 @@ impl Simulation {
         let health = self.scenario_rng.next_range_i32_inclusive(5, strength / 2);
         self.set_crew_health(id, health);
         self.scatter_crew(rules, registry, id);
-        let mission = if self.house_is_human(owner) {
+        let mission = if self.owner_is_human(owner) {
             MissionType::Guard
         } else {
             MissionType::Hunt
@@ -769,7 +770,7 @@ impl Simulation {
         let location = position_world_coord(&unit.position);
         // `0x007380C5..0x007380E6`: FacingClass::Current (`0x004C93D0`) as a
         // rounded DirType.
-        let facing = (((u32::from(unit.body_facing_current(frame)) >> 7) + 1) >> 1) as u8;
+        let facing = unit.body_facing_dir(frame);
         let open_topped = self
             .object_type(unit.type_ref(), rules)
             .is_some_and(|object| object.open_topped);
@@ -867,10 +868,13 @@ impl Simulation {
         }
         // `0x00738143..0x0073816E`: a computer passenger joins the unit's Team
         // (`TeamClass::Add_Member @ 0x006EA500`), or Hunts without one.
-        if !self.house_is_human(passenger_owner)
-            && self.team_script_vm.team_for_member(unit_id).is_none()
-        {
-            self.queue_crew_mission(passenger, MissionType::Hunt);
+        if !self.owner_is_human(passenger_owner) {
+            match self.team_script_vm.team_for_member(unit_id) {
+                Some((team_id, _)) => {
+                    self.team_add_member(team_id, passenger, false, rules, registry);
+                }
+                None => self.queue_crew_mission(passenger, MissionType::Hunt),
+            }
         }
         // `0x00738174..0x00738180`: Select (vtable `+0x14C`).
         if dying.selected_by_player
@@ -971,16 +975,9 @@ impl Simulation {
                 on_bridge,
             ),
         };
-        let frame = self.session.binary_frame;
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.sub_cell = sub_cell;
             entity.on_bridge = on_bridge;
-            if let Some(facing) = facing {
-                entity.facing = facing;
-                if let Some(body) = entity.body_facing.as_mut() {
-                    body.snap(u16::from(facing) << 8, frame);
-                }
-            }
         }
         let outcome = self.try_reveal_entity_with_context(
             id,
@@ -997,17 +994,23 @@ impl Simulation {
             },
             UninitContext::with_rules(rules),
         );
-        matches!(outcome, RevealOutcome::Revealed { .. })
+        let revealed = matches!(outcome, RevealOutcome::Revealed { .. });
+        // Unlimbo's body snap (`+0x388` Set_Current, `0x006F6DAA`) follows a
+        // successful Reveal.
+        let frame = self.session.binary_frame;
+        if revealed
+            && let Some(facing) = facing
+            && let Some(entity) = self.substrate.entities.get_mut(id)
+        {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
+        }
+        revealed
     }
 
     /// A survivor's placement in a foundation cell: its request
     /// (`0x80`, `0xA4`) on the cell's floor.
     fn survivor_unlimbo(&self, cell: (u16, u16)) -> CrewUnlimbo {
-        let z = self
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(cell.0, cell.1))
-            .map_or(0, |terrain_cell| terrain_cell.level);
+        let z = self.terrain_cell_level(cell.0, cell.1).unwrap_or(0);
         CrewUnlimbo::Place {
             cell,
             z,
@@ -1093,13 +1096,17 @@ impl Simulation {
         }
     }
 
-    /// `InfantryClass::Scatter(&EmptyCoord, 1, 0)` through the shared forced
-    /// arm. An arm VERA does not port yet leaves the crewman where it landed
-    /// (module residuals). The immediate Process's bridge-state flag, which
-    /// the hut caller propagates, is dropped: a crewman's first walk step does
-    /// not change bridge state.
+    /// `InfantryClass::Scatter(&EmptyCoord, 1, 0)`. A receiver error leaves
+    /// the crewman where it landed. The immediate Process's bridge-state
+    /// flag, which the hut caller propagates, is dropped: a crewman's first
+    /// walk step does not change bridge state.
     fn scatter_crew(&mut self, rules: &RuleSet, registry: Option<&OverlayTypeRegistry>, id: u64) {
-        if let Err(cause) = self.scatter_infantry_forced_from_empty(id, rules, registry) {
+        if let Err(cause) = self.scatter_null(
+            id,
+            crate::sim::movement::ScatterFlags::new(true, false),
+            rules,
+            registry,
+        ) {
             log::debug!("crew {id} did not scatter: {cause}");
         }
     }
@@ -1111,13 +1118,6 @@ impl Simulation {
                 MissionId::from_known(mission),
             );
         }
-    }
-
-    /// `HouseClass::IsControlledByHuman @ 0x0050B730`.
-    fn house_is_human(&self, owner: InternedId) -> bool {
-        self.houses
-            .get(&owner)
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero))
     }
 }
 

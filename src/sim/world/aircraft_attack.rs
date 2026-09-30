@@ -123,18 +123,13 @@ impl Simulation {
         let object = rules
             .object(self.interner.resolve(entity.type_ref()))
             .expect("aircraft type");
-        if combat_weapon::aircraft_strafes(rules, object, entity.veterancy) {
-            let weapon = combat_weapon::primary_for_tier(object, entity.veterancy)
+        if combat_weapon::aircraft_strafes(rules, object, entity.veterancy()) {
+            let weapon = combat_weapon::primary_for_tier(object, entity.veterancy())
                 .and_then(|name| rules.weapon(name))
                 .expect("strafe classifier's weapon");
-            let distance = crate::sim::combat::object_distance_to(
-                entity,
-                &target,
-                &self.substrate.entities,
-                rules,
-                &self.interner,
-            )
-            .expect("live aircraft Target");
+            let distance =
+                crate::sim::combat::object_distance_to(entity, &target, &self.substrate.entities)
+                    .expect("live aircraft Target");
             if distance < weapon.range_leptons {
                 return 4;
             }
@@ -143,8 +138,9 @@ impl Simulation {
             || entity
                 .locomotor
                 .as_ref()
+                .and_then(crate::sim::movement::locomotor::LocomotorState::fly_runtime)
                 .expect("Fly approach")
-                .fly_current_speed
+                .current_speed
                 == SIM_ZERO
         {
             // Fly IsMovingNow4CCAC0 reads actual speed+48, not request+34.
@@ -158,8 +154,6 @@ impl Simulation {
             entity,
             &attack_target(nav),
             &self.substrate.entities,
-            rules,
-            &self.interner,
         )
         .expect("live aircraft NavCom");
         let facing = if distance < 512 {
@@ -167,15 +161,13 @@ impl Simulation {
                 entity,
                 &target,
                 &self.substrate.entities,
-                Some(rules),
-                &self.interner,
             )
             .expect("live approach Target")
         } else {
             let object = rules
                 .object(self.interner.resolve(entity.type_ref()))
                 .unwrap();
-            let snap = crate::sim::combat::build_attacker_snapshot(entity, target, None, None);
+            let snap = crate::sim::combat::build_attacker_snapshot(entity, target, None);
             let origin = fire_coord::fire_coordinate(
                 self,
                 rules,
@@ -188,7 +180,7 @@ impl Simulation {
             //4181F6..41828E: Nav+48 and GetFLH(weapon0, additive zero XYZ).
             // Reuse the muzzle owner, including its documented tilt residual.
             let destination = self
-                .fire_location_center(nav, rules)
+                .fire_location_center(nav)
                 .expect("live approach NavCom");
             crate::util::direction_tables::facing16_between(
                 [origin.x, origin.y],
@@ -196,7 +188,7 @@ impl Simulation {
             )
         };
         let entity = self.substrate.entities.get_mut(id).unwrap();
-        air_movement::ensure_fly_facings(entity);
+        air_movement::ensure_fly_secondary_facing(entity);
         entity
             .barrel_facing
             .as_mut()

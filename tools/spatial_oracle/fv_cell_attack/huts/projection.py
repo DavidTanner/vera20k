@@ -6,6 +6,8 @@ from tools.spatial_oracle.shrapnel_repair.packet_io import read_result
 from tools.spatial_oracle.fv_cell_attack.paid_vectors import actor,cell,rng,sha
 
 HERE=Path(__file__).resolve().parent
+SOURCE=HERE/'hut_joined_drive_crt.json.gz'
+OUTPUT=HERE/'hut_drive_crt_vectors.json'
 
 def project(packet):
  assert packet['failure']is None
@@ -28,17 +30,17 @@ def project(packet):
  return dict(schema=1,native_sha256=packet['native_sha256'],boundary='Two actual physical CABHUT rows constructed after FV command at frame1; original live Logic, collapse callbacks, then admitted573540 repair. Full Scenario population/order and audio remain excluded.',structures=packet['inputs']['hut_structures'],csf_input=packet['inputs']['hut_csf_cache'],type_native_id=struct.unpack_from('<I',bytes.fromhex(packet['hut_type']),0x10)[0],neutral_house_native_id=struct.unpack_from('<I',bytes.fromhex(packet['house_bytes']),0x10)[0],before_join=snapshot(packet['before_join']),frames=[snapshot(s)for s in packet['states']],steps=steps,callbacks=callbacks,detach_order=detach,shots=shots,impacts=[{**{k:e[k]for k in('frame','position','damage','warhead')},'before':cell(e['before']),'after':cell(e['after'])}for e in packet['impacts']],effects=effects,rng_events=draws,repair=repair,initial_span=[cell(x)for x in packet['states'][0]['span']],initial_span_tags=packet['states'][0]['span_tags'],final_rng={k:rng(v)for k,v in packet['states'][-1]['rng'].items()},building_ai_visits=[{k:e[k]for k in('pc','frame','phase')}|{'native_id':identities[e['this']]}for e in packet['hut_events']if e['kind']=='building_ai'],tag_event_count=sum(e['kind']=='tag_event'for e in packet['hut_events']),hut_controller_count=sum(e['kind']in('hut_high_controller','hut_low_controller')for e in packet['hut_events']))
 
 def generate():
- result=project(read_result(HERE/'hut_joined.json.gz'))
- expected=json.loads((HERE/'promotion.json').read_bytes())['results']['hut_vectors.json']['published_payload_sha256']
+ result=project(read_result(SOURCE))
+ expected=json.loads((HERE/'promotion.json').read_bytes())['results']['hut_drive_crt_vectors.json']['published_payload_sha256']
  assert sha(_canonical(result))==expected,'Frozen literal native hut projection changed'
  return result
 
 def metadata():
- source=HERE/'hut_joined.json.gz'
+ source=SOURCE
  return dict(schema=1,source_sha256=sha(source.read_bytes()),
-  source_meta_sha256=sha((HERE/'hut_joined.meta.json').read_bytes()),
+  source_meta_sha256=sha((HERE/'hut_joined_drive_crt.meta.json').read_bytes()),
   projection_sha256=sha(Path(__file__).read_bytes()),
   shared_projection_sha256=sha(Path(__import__('tools.spatial_oracle.fv_cell_attack.paid_vectors',fromlist=['rng']).__file__).read_bytes()),
   scope='Literal native CABHUT composition projection; no gameplay algorithm.')
 
-if __name__=='__main__':finish_vectors(generate,HERE/'hut_vectors.json',provenance=metadata)
+if __name__=='__main__':finish_vectors(generate,OUTPUT,provenance=metadata)

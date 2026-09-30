@@ -4,6 +4,7 @@
 //! pair is the sole emptiness discriminator; accepted ghosts retain the same
 //! coordinate/timer state as visible crates.
 
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53};
 
 pub(crate) const CRATE_SLOT_CAPACITY: usize = 256;
@@ -32,6 +33,12 @@ impl Default for CrateSlot {
 impl CrateSlot {
     pub fn is_empty(self) -> bool {
         self.cell_x == 0 && self.cell_y == 0
+    }
+
+    /// The slot's timer: its start and duration words. The `aux` word between
+    /// them sits where a native timer keeps its unused pointer dword.
+    pub(crate) const fn timer(self) -> CdTimer {
+        CdTimer::from_raw(self.start_frame, self.duration)
     }
 }
 
@@ -244,12 +251,10 @@ mod tests {
     }
 
     #[test]
-    fn crate_authority_every_raw_word_changes_v114_hash_only() {
+    fn crate_authority_every_raw_word_changes_the_hash() {
         use crate::sim::world::Simulation;
 
-        let baseline = Simulation::new();
-        let baseline_current = baseline.state_hash();
-        let baseline_v113 = baseline.state_hash_without_crate_authority_v114();
+        let baseline_current = Simulation::new().state_hash();
         for slot in [
             CrateSlot {
                 start_frame: 8,
@@ -275,10 +280,6 @@ mod tests {
             let mut changed = Simulation::new();
             *changed.crate_authority.slot_mut(73) = slot;
             assert_ne!(baseline_current, changed.state_hash());
-            assert_eq!(
-                baseline_v113,
-                changed.state_hash_without_crate_authority_v114()
-            );
         }
     }
 

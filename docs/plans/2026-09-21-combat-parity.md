@@ -59,8 +59,8 @@ the building attack stem and the six building-mission oracles (Mission_Guard, Mi
 the dispatch, SetTarget, the BuildingClass::AI blocks, the retaliation gate) pass `--check` from
 the second folder and move with the building mechanism. Next, by player visibility: the building attack mission (with the Gattling
 Cannon's hooks), the source Scatter the aircraft shots and the infantry Incoming tail call, the
-remaining GetFireError consumers (weapon selection without legality, C19's auto-target drop,
-retaliation, base-defence and cursor peeks), Prism forwarding, the Slave Miner's
+remaining GetFireError consumers (C19's auto-target drop, the cursor's base-action gate), Prism
+forwarding, the Slave Miner's
 slave release at its death (`6B0AE0`), the other special warhead bodies (Magnetron and the rest),
 homing launch and steering through the native tables (HomingTrack `5B20F0`, the sidewinder sine),
 the ship sink, the Foot
@@ -663,7 +663,8 @@ Crazy Ivan bomb (`feature/combat-ivan-bomb`, snapshot 199, hash feature 199), ow
   state-machine rows (death-bomb, spent and carrier-less records have no VERA state; the arm rows
   reduce to Attach's and Defuse's gates), `native_update_all_corpus` 22 UpdateAll rows (countdown,
   BombVisible, loop coordinate; the purge and campaign rows excluded) and
-  `bomb_fire_error_gates_match_native` the 5 gate rows. Parity demonstrated within those inputs.
+  `native_fire_error_corpus` the 5 gate rows, through the one GetFireError port. Parity
+  demonstrated within those inputs.
   Reading only: the call sites, the tick slot, the draw, the cursors and clicks.
 - Tests: the corpora (with Attach's countdown); a production plant going off at start + 451 for
   450; the blast centered on an off-center carrier's Location, credited to the planter's house; a
@@ -801,13 +802,12 @@ owner):
   T15, balloon docking T18, drop-in falling T19, EMP T20, Fire's own particle systems T37/T46 (the
   IFV engineer's RepairBullet spark system among them), dormant keys T44/U1/U3/U4/U7/I3, B3, B7's
   upgrade turret, A1's paradrop payload, U6's building vehicle). Fixed answers: the target layer
-  (T39), the deploy cell (U4), Can_Fire (U13/I10). Two selection arms still filter before
-  GetFireError: the delayed building shot (no effect) and garrison fire by AA/AG (a garrison drops
-  a landed aircraft native would shoot). Consumers not yet driven by the code: C19 (the
-  auto-target drop on 5/8 and its RandomRanged draw), C18 cursor, C22/C23 base defence, C24
-  retaliation, the Unit case 6 spawn clear (`6B7BB0`), Gattling (the C14 and C8 tails), the
-  building drop arm's tail and the `+0x148` counts, aircraft states 5..10 (C2..C6), the SAM path
-  (C7), and weapon selection's own legality subset for pursuit and can-fire.
+  (T39), the deploy cell (U4), Can_Fire (U13/I10). Weapon selection, the base-defence peek
+  (C22/C23), retaliation (C24), garrisons and the click orders (What_Action `700542`) ask the one
+  port (#628). Consumers not yet driven by the code: C19 (the auto-target drop on 5/8 and its
+  RandomRanged draw), C18 cursor (its base-action gate for all but the Crazy Ivan), the Unit
+  case 6 spawn clear (`6B7BB0`), Gattling (the C14 and C8 tails), the building drop arm's tail
+  and the `+0x148` counts, aircraft states 5..10 (C2..C6) and the SAM path (C7).
 
 Aircraft attack loop (`feature/combat-aircraft-attack`, no schema change), owner
 `sim/aircraft/attack_mission.rs` (states 4..10 as pure functions over facts and a host) with

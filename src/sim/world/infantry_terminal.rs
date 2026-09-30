@@ -8,7 +8,7 @@
 use super::Simulation;
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::animation::{Animation, LoopMode, SequenceKind, advance_animation};
+use crate::sim::animation::SequenceKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum InfantryDeathSequence {
@@ -99,8 +99,8 @@ const INFANTRY_EXPLODE_INF_DEATH: u8 = 3;
 
 impl Simulation {
     /// Select the represented concrete recipe after recursive DeathWeapon
-    /// damage. Effects remain in the consuming postlude. Animation presence
-    /// gates legacy effects, never an indefinite lifetime wait.
+    /// damage. Effects remain in the consuming postlude; Do_Action owns the
+    /// class sequence admission and shared Stage independently of drawing.
     ///
     /// A `JumpJet=` type (`+0xD94`, `0x00518313`) builds InfantryExplode
     /// whatever the warhead, ahead of the InfDeath table. A `Crashable=` one
@@ -116,13 +116,12 @@ impl Simulation {
     /// the death arm's, and its death sequence or removal overwrites the Doing
     /// and cell-entry byte they write.
     ///
-    /// RESIDUAL (kill frame): VERA resolves the frame's shots in the combat
-    /// pass after every object's turn; native kills during the shooter's own
-    /// turn. Trigger: a shooter ahead of the Rocketeer in the Logic order.
-    /// Effect: native's crash latch engages in the kill's frame, VERA's one
-    /// frame later, so the whole fall and its removal come a frame late.
-    /// Frequency: about half of Rocketeer kills. Risk: the fall's Scenario
-    /// draws (its landing) move by a frame against other objects' draws.
+    /// Infantry fire and direct mission FireAt now commit in the shooter's
+    /// Logic visit. RESIDUAL (other firing lanes): a shot still delivered by
+    /// the frame-end combat pass after every object's turn can engage the
+    /// Rocketeer's crash latch one frame after native when that shooter was
+    /// ahead in Logic order. The fall and landing's Scenario draws then move
+    /// by a frame. Frequency follows kills through those deferred lanes.
     ///
     /// RESIDUAL (score): a second kill in the fall runs native `RecordKill @
     /// 0x00702D40` again, which books the loss, the kill and the points twice;
@@ -141,7 +140,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .is_some_and(crate::sim::movement::infantry_action::doing_owns_sequence)
+            .is_some_and(crate::sim::movement::infantry_action::uses_jumpjet_locomotor)
         {
             if let Err(cause) = self.infantry_stop_driver(id, rules, overlay_registry) {
                 log::debug!("infantry {id} death Stop_Driver: {cause}");
@@ -166,8 +165,10 @@ impl Simulation {
             .expect("fatal Infantry retained for postlude");
         debug_assert_eq!(entity.category, EntityCategory::Infantry);
         let position = entity.position.clone();
-        let world_z_leptons =
-            crate::sim::combat::object_world_z_leptons(entity, self.resolved_terrain.as_ref());
+        let world_z_leptons = crate::sim::movement::ground_pose::object_world_z_leptons(
+            entity,
+            self.resolved_terrain.as_ref(),
+        );
         let (jumpjet, crashable) = self
             .object_type(entity.type_ref(), rules)
             .map_or((false, false), |object| (object.jumpjet, object.crashable));
@@ -177,13 +178,8 @@ impl Simulation {
             } else {
                 ReceiverDeathRecipe::ExternalAnim(INFANTRY_EXPLODE_INF_DEATH)
             }
-        } else if entity.animation.is_none() {
-            // The no-art cleanup belongs to this concrete receiver's postlude,
-            // after any nested DeathWeapon receivers have finished.
-            immediate_uninit_ids.push(id);
-            ReceiverDeathRecipe::Cleanup
         } else if let Some(sequence) = InfantryDeathSequence::for_inf_death(inf_death) {
-            self.begin_infantry_death_sequence(id, sequence);
+            self.begin_infantry_death_sequence(id, sequence, rules);
             ReceiverDeathRecipe::Sequence
         } else if crate::sim::animation::inf_death_spawns_anim(inf_death) {
             ReceiverDeathRecipe::ExternalAnim(inf_death)
@@ -219,14 +215,14 @@ impl Simulation {
         {
             return false;
         }
-        self.begin_raw_infantry_death(id, None)
+        self.begin_raw_infantry_death(id)
     }
 
-    /// Complete the represented raw-kill handoff. Bridge fallout supplies its
-    /// C4 sequence selector; mutation and aircraft retirement supply no action.
+    /// Complete the represented raw-kill handoff. Mutation and aircraft
+    /// retirement supply no class action. Bridge fallout uses ReceiveDamage.
     /// No ReceiveDamage effects are introduced on these compatibility paths.
     /// Returns false for other categories, whose existing lifetime stays local.
-    pub(crate) fn begin_raw_infantry_death(&mut self, id: u64, inf_death: Option<u8>) -> bool {
+    pub(crate) fn begin_raw_infantry_death(&mut self, id: u64) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
@@ -241,15 +237,7 @@ impl Simulation {
         if !entity.lifecycle.object_alive {
             return true;
         }
-        let sequence = entity
-            .animation
-            .as_ref()
-            .and_then(|_| inf_death.and_then(InfantryDeathSequence::for_inf_death));
-        if let Some(sequence) = sequence {
-            self.begin_infantry_death_sequence(id, sequence);
-        } else {
-            entity.infantry_terminal = Some(InfantryTerminal::RetireNextVisit);
-        }
+        entity.infantry_terminal = Some(InfantryTerminal::RetireNextVisit);
         true
     }
 
@@ -260,7 +248,17 @@ impl Simulation {
         &mut self,
         id: u64,
         sequence: InfantryDeathSequence,
+        rules: &RuleSet,
     ) {
+        //ReceiveDamage51850F/5185DF/51863F dispatches DoAction(11/12,1,0).
+        // Its unchanged/absent-sequence refusal retains the whole Stage;
+        // otherwise the one class action owner performs every restart.
+        let action = i32::from(crate::rules::infantry_sequence::action_id(
+            sequence.animation(),
+        ));
+        if let Err(cause) = self.infantry_do_action(id, action, true, rules) {
+            log::debug!("infantry {id} death Do_Action: {cause}");
+        }
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };
@@ -269,27 +267,11 @@ impl Simulation {
         if entity.lifecycle.object_alive {
             entity.infantry_terminal = Some(InfantryTerminal::Sequence(sequence));
         }
-        // Do_Action's `+0x6C4` write (`0x0051D6F0`): the death Doing that
-        // Infantry GetFireError answers CANT for (`0x0051C8B8`).
-        if entity.mission_leaf.as_infantry().is_some() {
-            entity
-                .mission_leaf
-                .set_infantry_doing_verified(i32::from(crate::rules::infantry_sequence::action_id(
-                    sequence.animation(),
-                )))
-                .expect("a death Doing is in the verified table");
-        }
-        if entity
-            .animation
-            .as_ref()
-            .is_none_or(|animation| animation.sequence != sequence.animation())
-        {
-            entity.animation = Some(Animation::new(sequence.animation()));
-        }
     }
 
     /// Consume this object's terminal Logic visit, including eventual UnInit.
-    /// Returns false only when the object is outside this lifetime mechanism.
+    /// The ordinary sequencer owns every completed class action, including
+    /// corpse creation and UnInit; this host never advances a second clock.
     ///
     /// A Die1/Die2 corpse still runs its Techno AI subset each visit (see
     /// `techno_ai::dying_infantry_techno_ai`); when its sequence completes,
@@ -299,61 +281,34 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         ctx: super::techno_ai::ObjectAiCtx<'_>,
-    ) -> bool {
+    ) -> super::techno_ai::ObjectAiOutcome {
         let Some(entity) = self.substrate.entities.get(id) else {
-            return false;
+            return Default::default();
         };
         let Some(terminal) = entity.infantry_terminal else {
-            return false;
+            return Default::default();
         };
         debug_assert!(entity.dying && entity.category == EntityCategory::Infantry);
-        let finished = match terminal {
-            InfantryTerminal::RetireNextVisit => true,
-            InfantryTerminal::AwaitingConsequences => return true,
-            InfantryTerminal::Sequence(sequence) => {
+        let mut outcome = super::techno_ai::ObjectAiOutcome {
+            visited: true,
+            bridge_state_changed: false,
+        };
+        match terminal {
+            InfantryTerminal::AwaitingConsequences => return outcome,
+            InfantryTerminal::Sequence(_) => {
                 let Some(rules) = rules else {
-                    return true;
+                    return outcome;
                 };
                 super::techno_ai::dying_infantry_techno_ai(self, id, rules, ctx);
-                let Some(entity) = self.substrate.entities.get(id) else {
-                    return true;
-                };
-                let def = rules
-                    .animation_sequence(self.interner.resolve(entity.type_ref()))
-                    .and_then(|set| set.get(&sequence.animation()));
-                let animation = self
-                    .substrate
-                    .entities
-                    .get_mut(id)
-                    .unwrap()
-                    .animation
-                    .as_mut();
-                match (animation, def) {
-                    (Some(animation), Some(def))
-                        if animation.sequence == sequence.animation()
-                            && def.frame_count > 0
-                            && def.frame_delay > 0
-                            && (!def.normalized
-                                || self
-                                    .session
-                                    .game_options
-                                    .normalized_anim_delay(def.frame_delay)
-                                    > 0)
-                            && matches!(def.loop_mode, LoopMode::HoldLast) =>
-                    {
-                        advance_animation(animation, def, &self.session.game_options);
-                        animation.finished
-                    }
-                    // VERA-internal malformed/missing art fallback: never wait
-                    // indefinitely on a looping or non-progressing definition.
-                    _ => true,
+                match self.infantry_action_turn(id, rules, ctx.overlay_registry) {
+                    Ok(changed) => outcome.bridge_state_changed = changed,
+                    Err(cause) => log::debug!("infantry {id} terminal action turn: {cause}"),
                 }
+                return outcome;
             }
-        };
-        if finished {
-            if let (InfantryTerminal::Sequence(_), Some(rules)) = (terminal, rules) {
-                self.leave_dead_body(id, rules);
-            }
+            InfantryTerminal::RetireNextVisit => {}
+        }
+        {
             self.release_move_sound(id);
             if let Some(rules) = rules {
                 self.uninit_with_rules(id, rules);
@@ -361,7 +316,7 @@ impl Simulation {
                 self.uninit(id);
             }
         }
-        true
+        outcome
     }
 
     /// `InfantryClass 0x00520BC6..0x00520CA4`, a Die1..Die5 sequence's
@@ -373,7 +328,7 @@ impl Simulation {
     ///
     /// Native execution: `tools/spatial_oracle/infantry_death_completion.py`
     /// ([`dead_body_tests`]).
-    fn leave_dead_body(
+    pub(crate) fn leave_dead_body(
         &mut self,
         id: u64,
         rules: &RuleSet,

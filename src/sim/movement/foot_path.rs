@@ -30,40 +30,34 @@ use crate::sim::find_nearby_cell::{
 use crate::sim::mission::MissionId;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::concrete_effects::represented_assign_target;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneQueryCell};
 use crate::sim::world::Simulation;
 
-/// AStar429F54's live Infantry +1AC receiver. The fifth native argument is
-/// unused by Infantry51BF90; direction, signed path height and previous Cell
-/// reach the same decision owner used by Walk and bridge repair.
-struct InfantrySearchEntry<'a> {
-    sim: &'a Simulation,
-    id: u64,
-    rules: &'a RuleSet,
-    registry: Option<&'a OverlayTypeRegistry>,
+/// AStar429F54's live Foot +1AC receiver: Infantry 0x0051BF90 or Unit
+/// 0x0073F0A0, the one class port behind `Simulation::foot_can_enter`, with
+/// the mover's own facts resolved once per search. The fifth native argument
+/// is unused by both receivers; direction, signed path height and previous
+/// Cell reach the same decision owner used by Walk, Drive/Ship and bridge
+/// repair. The raw code drives admission and cost at 0x00429F5A..FED.
+struct FootSearchEntry<'a> {
+    terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
+    receiver: Result<crate::sim::world::FootEntryReceiver<'a>, String>,
 }
 
-impl crate::sim::pathfinding::SearchFootEntry for InfantrySearchEntry<'_> {
+impl crate::sim::pathfinding::SearchFootEntry for FootSearchEntry<'_> {
     fn classify(&self, query: crate::sim::pathfinding::SearchEntryQuery) -> Result<u8, String> {
-        let terrain = self
-            .sim
-            .resolved_terrain
-            .as_ref()
-            .ok_or("Foot search requires map cells")?;
+        let terrain = self.terrain.ok_or("Foot search requires map cells")?;
+        let receiver = self.receiver.as_ref().map_err(Clone::clone)?;
         let previous = terrain.native_cell_identity((query.from.0 as i16, query.from.1 as i16));
         let candidate =
             terrain.native_cell_identity((query.candidate.0 as i16, query.candidate.1 as i16));
-        self.sim.foot_can_enter(
-            self.id,
+        receiver.can_enter(
             candidate,
             InfantryEntryArgs {
                 direction: query.direction,
                 height: query.path_height,
                 previous_cell: Some(previous),
             },
-            self.rules,
-            self.registry,
         )
     }
 }
@@ -112,14 +106,11 @@ fn query_foot_zone(
         .ok_or_else(|| "Foot precheck requires native zone topology".into())
 }
 
-/// `ObjectClass::Get_Cell_Packed` 0x0041BEA0 and the inlined copies at
-/// 0x4D404A..0x4D409E: signed leptons to a cell with truncation toward zero.
-pub(super) fn lepton_to_cell(leptons: i32) -> i16 {
-    (leptons.wrapping_add((leptons >> 31) & 0xff) >> 8) as i16
-}
-
 pub(super) fn coord_cell(coord: DriveCoord) -> (i16, i16) {
-    (lepton_to_cell(coord.x), lepton_to_cell(coord.y))
+    (
+        crate::util::lepton::lepton_to_cell_packed(coord.x),
+        crate::util::lepton::lepton_to_cell_packed(coord.y),
+    )
 }
 
 /// `max(|dx|, |dy|)` over packed cell words, the shape at 0x4D3B7D..0x4D3BBD
@@ -225,10 +216,9 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<FootPathOutcome, String> {
-        self.run_walk_path_request(request, held, rules, fallback, registry)
+        self.run_walk_path_request(request, held, rules, registry)
             .map(|resumed| {
                 if resumed {
                     FootPathOutcome::Resume
@@ -246,7 +236,6 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<FindPathResult, String> {
         let id = request.entity_id;
@@ -289,7 +278,7 @@ impl Simulation {
             return Ok(FindPathResult::Failed);
         }
         let goal = self.find_path_admitted_goal(id, request.destination, rules, registry)?;
-        match self.search_foot_path(request, held, goal, rules, fallback, registry)? {
+        match self.search_foot_path(request, held, goal, rules, registry)? {
             Ok(true) => Ok(FindPathResult::Route),
             Ok(false) => Ok(FindPathResult::EmptyRoute),
             Err(refusal) => {
@@ -358,15 +347,14 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         goal: DriveCoord,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Result<bool, CoreRefusal>, String> {
         let id = request.entity_id;
         let frame = self.session.binary_frame;
-        if self.path_grid.is_none() && fallback.is_none() {
+        if self.path_grid.is_none() {
             return Err("Find_Path core requires PathGrid; no native failure inferred".into());
         }
-        self.foot_mark_remove(id, Some(rules), fallback, registry);
+        self.foot_mark_remove(id, Some(rules), registry);
         #[cfg(test)]
         self.export_bridge_engineer_entry_inputs(id, rules, "mark0");
         let owner = request.owner();
@@ -395,13 +383,12 @@ impl Simulation {
             )),
         };
         let snapshot = self.path_grid_snapshot();
-        let grid = snapshot.as_deref().or(fallback).expect("checked above");
+        let grid = snapshot.as_deref().expect("checked above");
         self.movement_pass_cache.blocker_plane(
             &mut self.substrate.entities,
             grid,
             self.resolved_terrain.as_ref(),
             self.overlay_grid.as_ref(),
-            registry,
             &self.interner,
             Some(rules),
         );
@@ -410,48 +397,56 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .filter(|actor| actor.category == EntityCategory::Infantry)
-            .map(|_| InfantrySearchEntry {
-                sim: self,
-                id,
-                rules,
-                registry,
+            .filter(|actor| {
+                matches!(
+                    actor.category,
+                    EntityCategory::Infantry | EntityCategory::Unit
+                )
+            })
+            .map(|_| FootSearchEntry {
+                terrain: self.resolved_terrain.as_ref(),
+                receiver: self.foot_entry_receiver(id, rules, registry),
             });
-        let searched = request.search(
-            goal,
-            &self.substrate.entities,
-            super::PathfindingContext {
-                wall_tables: Some(crate::sim::pathfinding::cell_entry::WallArmTables {
-                    overlay_grid: self.overlay_grid.as_ref(),
-                    overlay_registry: registry,
-                    alliances: Some(&self.house_alliances),
-                    interner: Some(&self.interner),
-                }),
-                path_grid: Some(grid),
-                zone_grid: self.zone_grid.as_ref(),
-                resolved_terrain: self.resolved_terrain.as_ref(),
-                playfield_bounds: self.playfield_bounds,
-                blocker_neighbor_counts: Some(counts),
-            },
-            &self.terrain_costs,
-            &lent.sets,
-            entry
-                .as_ref()
-                .map(|entry| entry as &dyn crate::sim::pathfinding::SearchFootEntry),
-        );
-        if let Some(lent) = borrowed {
-            self.movement_pass_cache.give_back(owner, lent);
-        }
+        //The track_fresh_response oracle substitutes the whole AStar core
+        //0x4CBBA0 for a CoreNull row, so no +1AC call happens inside it; the
+        //replay must not run the search that would consume those answers.
         #[cfg(test)]
-        let searched = if super::fresh_oracle_seam::take_core_null() {
+        let core_null = super::fresh_oracle_seam::take_core_null();
+        #[cfg(not(test))]
+        let core_null = false;
+        let searched = if core_null {
             Err(super::movement_path::MovePathFailure::Search(
                 crate::sim::pathfinding::zone_search::PathSearchFailure::CellSearchExhausted,
             ))
         } else {
-            searched
+            request.search(
+                goal,
+                &self.substrate.entities,
+                super::PathfindingContext {
+                    wall_tables: Some(crate::sim::pathfinding::cell_entry::WallArmTables {
+                        overlay_grid: self.overlay_grid.as_ref(),
+                        overlay_registry: registry,
+                        alliances: Some(&self.house_alliances),
+                        interner: Some(&self.interner),
+                    }),
+                    path_grid: Some(grid),
+                    zone_grid: self.zone_grid.as_ref(),
+                    resolved_terrain: self.resolved_terrain.as_ref(),
+                    playfield_bounds: self.playfield_bounds,
+                    blocker_neighbor_counts: Some(counts),
+                },
+                &self.terrain_costs,
+                &lent.sets,
+                entry
+                    .as_ref()
+                    .map(|entry| entry as &dyn crate::sim::pathfinding::SearchFootEntry),
+            )
         };
+        if let Some(lent) = borrowed {
+            self.movement_pass_cache.give_back(owner, lent);
+        }
         //4D3EAC restores Mark1 before inspecting the core result.
-        self.foot_mark_put(id, Some(rules), fallback, registry);
+        self.foot_mark_put(id, Some(rules), registry);
         if let Err(super::movement_path::MovePathFailure::Search(
             crate::sim::pathfinding::zone_search::PathSearchFailure::CellEntryUnavailable(cause),
         )) = &searched
@@ -537,21 +532,38 @@ impl Simulation {
                 return Ok(());
             }
         }
+        let (owner, category) = (actor.owner(), actor.category);
         if self.team_script_vm.team_for_member(id).is_some() {
-            //0x4D40DA..0x4D4134: locomotor +B4, TeamClass::Remove_Member
-            //0x6EA870, locomotor +B8. No Rust Team membership owner exists.
-            //Production creates no TeamClass instance yet (every create_team
-            //caller is a test), so this arm has no production reach.
-            return Err(
-                "Find_Path failed-path Team detachment (TeamClass::Remove_Member 0x6EA870) is not represented"
-                    .into(),
-            );
+            //0x4D40DA..0x4D4134: the actor leaves its team (Remove_Member
+            //0x6EA870, idle order included) between its locomotor's +B4 and
+            //+B8, which clear and set Drive+65 (0x4B4BE0/0x4B4BF0), so the
+            //idle mode's END test refuses a piggybacked Drive. Ship's pair
+            //(0x6A4210/0x6A4220) writes its own +65, which VERA's Ship END
+            //does not read; Walk's (0x4B6650/0x4B6660) are empty.
+            let drive_end = |sim: &mut Self, permitted: bool| {
+                if let Some(drive) = sim
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .filter(|actor| {
+                        actor
+                            .locomotor
+                            .as_ref()
+                            .is_some_and(|loco| loco.active_kind() == LocomotorKind::Drive)
+                    })
+                    .and_then(|actor| actor.drive_locomotion.as_mut())
+                {
+                    drive.end_permitted = permitted;
+                }
+            };
+            drive_end(self, false);
+            self.leave_team(id, false, Some(rules));
+            drive_end(self, true);
         }
-        let owner = actor.owner();
         //0x4D413A: the class SetDestination(NULL, true): Infantry 0x51AA40 ->
         //Foot 0x4D94B0 -> Walk 0x75ADA0, or Unit 0x741970 -> Foot 0x4D94B0 ->
         //Drive 0x4AFE00 / Ship 0x69F510.
-        if actor.category == EntityCategory::Unit {
+        if category == EntityCategory::Unit {
             self.set_unit_null_destination(id, Some(rules));
         } else {
             self.set_walk_null_destination(id, Some(rules));
@@ -646,20 +658,21 @@ impl Simulation {
                     .entities
                     .get(id)
                     .ok_or("retired Find_Path goal actor")?;
-                if self.team_script_vm.team_for_member(id).is_some() {
-                    return Err(
-                        "Find_Path CloseEnough for a Team member (0x6F03B0) is not represented"
-                            .into(),
-                    );
-                }
+                //0x4D3A30..0x4D3A57: a team member keeps a target within its
+                //team's stray (TeamClass::Get_Stray 0x6F03B0), anyone else
+                //within CloseEnough.
+                let keep_within = match self.team_script_vm.team_for_member(id) {
+                    Some((team_id, _)) => self.team_stray(team_id, rules),
+                    None => rules.general.close_enough,
+                };
                 //0x4D3944..0x4D3A2B: |+48 coordinate - target centre| with z.
                 let coord = ground_pose::position_world_coord(&actor.position);
                 let centre = cell_centre(target);
                 let distance =
                     native_xyz_distance(coord.x - centre.x, coord.y - centre.y, coord.z - centre.z);
-                //0x4D3A9B: dist <= CloseEnough keeps the target. IsTrain (+C94)
+                //0x4D3A9B: dist <= that distance keeps the target. IsTrain (+C94)
                 //is set by no retail TechnoType (no IsTrain=yes in rulesmd).
-                if distance <= rules.general.close_enough {
+                if distance <= keep_within {
                     return Ok(destination);
                 }
                 let Some(near) = self.find_path_nearby_cell(id, target, rules)? else {
@@ -768,7 +781,12 @@ impl Simulation {
             .ok_or("Find_Path FNPC requires original Map Size")?;
         let current = coord_cell(ground_pose::position_world_coord(&actor.position));
         let current = (i32::from(current.0), i32::from(current.1));
-        let required_zone_id = zones.get_zone_id_native(current, zone, actor.on_bridge);
+        let required_zone_id = zones.get_zone_id_native(
+            terrain,
+            (current.0 as u16, current.1 as u16),
+            zone,
+            actor.on_bridge,
+        );
         let cells = NativeCellQuery::canonical(terrain);
         let grid = self.path_grid_snapshot();
         Ok(find_nearby_passable_cell(
@@ -998,10 +1016,16 @@ impl Simulation {
             );
             return Ok(());
         }
-        if !super::prepare_walk_cell_destination(
+        super::movement_commands::clear_destination_path_head(actor);
+        let coord =
+            super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref());
+        if !super::prepare_walk_destination(
             &mut self.substrate.entities,
             id,
-            target,
+            (
+                crate::sim::components::NavTargetRef::cell(target.0, target.1),
+                coord,
+            ),
             move_info.speed,
             self.resolved_terrain.as_ref(),
             timing,
@@ -1030,26 +1054,10 @@ impl Simulation {
         if actor.is_mission_only() || actor.mission.effective().raw() == 4 {
             return Ok(true);
         }
-        if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
-            let team = self
-                .team_script_vm
-                .team(team_id)
-                .ok_or("missing attached Team")?;
-            let script = self
-                .team_script_vm
-                .script(team.script_id())
-                .ok_or("missing attached ScriptType")?;
-            //6EC300 returns false for every invalid cursor/non-action3,
-            //independently of unrepresented Team7F. It must not perform a
-            //waypoint lookup on these exits. Do not infer7F from completion,
-            //refusal, suspension or script presence.
-            if script
-                .actions
-                .get(team.cursor() as u32 as usize)
-                .is_some_and(|action| action.action_id == 3)
-            {
-                return Err("Foot edge admission requires retained Team7F and action3 waypoint state/effects".into());
-            }
+        //6EC300's waypoint read happens only for a formed team whose cursor
+        //names action 3; every other exit answers false without a lookup.
+        if self.team_script_vm.member_step_reads_waypoint(id) {
+            return Err("Foot edge admission requires the Team action3 waypoint read".into());
         }
         Ok(false)
     }
@@ -1140,11 +1148,11 @@ mod tests {
 
     #[test]
     fn signed_lepton_cell_conversion_truncates_toward_zero() {
-        assert_eq!(lepton_to_cell(2624), 10);
-        assert_eq!(lepton_to_cell(255), 0);
-        assert_eq!(lepton_to_cell(-1), 0);
-        assert_eq!(lepton_to_cell(-256), -1);
-        assert_eq!(lepton_to_cell(-257), -1);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(2624), 10);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(255), 0);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(-1), 0);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(-256), -1);
+        assert_eq!(crate::util::lepton::lepton_to_cell_packed(-257), -1);
     }
 
     #[test]

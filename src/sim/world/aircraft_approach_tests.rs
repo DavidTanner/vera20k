@@ -23,12 +23,10 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         elite[2],
         input["turret_offset"].as_i64().unwrap_or(0),
     ))));
-    sim.substrate
-        .entities
-        .get_mut(2)
-        .unwrap()
-        .lifecycle
-        .object_alive = input["target_marked"].as_bool().unwrap_or(true);
+    // The oracle's target mark is Object+0x74, which IsHighFlying reads.
+    let marked = input["target_marked"].as_bool().unwrap_or(true);
+    let target = sim.substrate.entities.get_mut(2).unwrap();
+    target.lifecycle.cell_marked = marked;
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     let state = input["state"].as_u64().unwrap_or(3) as u8;
     entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: state });
@@ -42,7 +40,8 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         )
     });
     let loco = entity.locomotor.as_mut().unwrap();
-    loco.fly_current_speed = SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0));
+    loco.fly_runtime_mut().unwrap().current_speed =
+        SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0));
     let mut fly = serde_json::to_value(loco.fly_runtime().unwrap()).unwrap();
     fly["moving"] = json!(input["moving"].as_bool().unwrap_or(true));
     *loco.fly_runtime_mut().unwrap() = serde_json::from_value(fly).unwrap();
@@ -50,14 +49,13 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         "index": input["burst_index"].as_i64().unwrap_or(0),
     }))
     .unwrap();
-    for (key, field) in [
-        ("primary", &mut entity.body_facing),
-        ("secondary", &mut entity.barrel_facing),
-    ] {
+    let facing = |key: &str| {
         let mut facing = FacingClass::new(0, 5);
         facing.snap(input[key].as_u64().unwrap_or(0) as u16, 100);
-        *field = Some(facing);
-    }
+        facing
+    };
+    entity.body_facing = facing("primary");
+    entity.barrel_facing = Some(facing("secondary"));
     (sim, rules)
 }
 
@@ -66,12 +64,8 @@ fn assert_flh(sim: &Simulation, rules: &RuleSet, row: &Value) {
         return;
     }
     let entity = sim.substrate.entities.get(1).unwrap();
-    let snapshot = build_attacker_snapshot(
-        entity,
-        entity.attack_target.as_ref().unwrap().target,
-        None,
-        None,
-    );
+    let snapshot =
+        build_attacker_snapshot(entity, entity.attack_target.as_ref().unwrap().target, None);
     let point = fire_coord::fire_coordinate(
         sim,
         rules,
@@ -103,11 +97,11 @@ fn assert_flh(sim: &Simulation, rules: &RuleSet, row: &Value) {
 
 fn assert_facings(sim: &Simulation, row: &Value) {
     let entity = sim.substrate.entities.get(1).unwrap();
-    for (index, facing) in [entity.body_facing, entity.barrel_facing]
+    for (index, facing) in [entity.body_facing, entity.barrel_facing.unwrap()]
         .into_iter()
         .enumerate()
     {
-        let value = serde_json::to_value(facing.unwrap()).unwrap();
+        let value = serde_json::to_value(facing).unwrap();
         assert_eq!(
             json!({
                 "destination": value["current"], "previous": value["prev"],
@@ -139,10 +133,10 @@ fn aircraft_approach_matches_original_dispatch_and_restored_continuation() {
         for world in [&mut sim, &mut restored] {
             // GetFLH reads the headings before this visit changes SecondaryFacing.
             assert_flh(world, &rules, &row);
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             assert_facings(world, &row);
             let hash = world.state_hash();
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             assert_eq!(world.state_hash(), hash, "same-frame dispatch must wait");
             assert_reengagement(world, &row);
         }
@@ -162,7 +156,7 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
     input["target_marked"] = json!(false); // same supplied Foot membership as search corpus
     let (mut sim, rules) = fixture(&input);
     let rng = sim.scenario_rng.logical_state();
-    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(matches!(
         entity.aircraft_mission,
@@ -177,10 +171,10 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
     restored.scenario_rng = sim.scenario_rng.clone();
     for world in [&mut sim, &mut restored] {
         let before = world.state_hash();
-        crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(world, &rules);
         assert_eq!(world.state_hash(), before);
         world.session.binary_frame = 101;
-        crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(world, &rules);
         let entity = world.substrate.entities.get(1).unwrap();
         assert!(matches!(
             entity.aircraft_mission,

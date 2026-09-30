@@ -25,7 +25,7 @@
 //! - Gravity (Z velocity = -2.0 - RulesClass.Gravity).
 
 use super::wind::{GAS_WIND_DX, GAS_WIND_DY};
-use super::{Particle, ParticleSystem};
+use super::{Particle, ParticleSystem, make_particle};
 use crate::rules::particle_type::{ParticleType, ParticleTypeId};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::rng::SimRng;
@@ -175,49 +175,13 @@ struct ChildSpec {
 }
 
 fn make_child(spec: ChildSpec, pt: &ParticleType, rng: &mut SimRng) -> Particle {
-    let mut p = make_particle(spec.next_id, spec.coords, spec.coords, pt, rng);
+    let mut p = make_particle(spec.next_id, spec.coords, pt, rng);
     p.velocity = spec.velocity;
     p.translucency = spec.translucency;
     p.drift_x = spec.drift_x;
     p.drift_y = spec.drift_y;
     p.drift_z = spec.drift_z;
     p
-}
-
-fn make_particle(
-    type_id: ParticleTypeId,
-    coords: IVec3,
-    spawn_origin: IVec3,
-    pt: &ParticleType,
-    rng: &mut SimRng,
-) -> Particle {
-    let base = (pt.max_ec as u32).max(1);
-    let lifetime_extra = rng.next_raw_abs_modulo(base) as i16;
-    let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
-    Particle {
-        type_id,
-        coords,
-        previous_coords: spawn_origin,
-        origin: coords,
-        direction: [SIM_ZERO; 3],
-        velocity: pt.velocity,
-        lifetime_remaining,
-        damage_counter: pt.max_dc as i16,
-        state_ai_advance: pt.state_ai_advance,
-        animation_state: pt.start_state_ai,
-        translucency: pt.translucency,
-        hit_ground: false,
-        marked_for_deletion: false,
-        drift_x: 0,
-        drift_y: 0,
-        drift_z: 0,
-        current_color: [0; 3],
-        color_index: 0,
-        color_accumulator: SimFixed::from_num(0),
-        spark: None,
-        prev_delta: [SIM_ZERO; 3],
-        state_advance_counter: 0,
-    }
 }
 
 #[cfg(test)]
@@ -240,7 +204,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0x1D,
-            directionless: false,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,
@@ -281,7 +244,6 @@ mod tests {
         let mut parent = make_particle(
             ParticleTypeId(0),
             IVec3::new(1000, 2000, 0),
-            IVec3::ZERO,
             pt_a,
             sim.particle_rng(),
         );
@@ -323,13 +285,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::ZERO,
-            IVec3::ZERO,
-            pt,
-            sim.particle_rng(),
-        );
+        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
         // make_particle initializes damage_counter = pt.max_dc.
         assert_eq!(p.damage_counter, 5);
         for _ in 0..5 {
@@ -357,13 +313,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::ZERO,
-            IVec3::ZERO,
-            pt,
-            sim.particle_rng(),
-        );
+        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
         move_gas_with_wind(&mut p, pt, 5, 3);
         assert_eq!(p.coords.x, 1, "GAS_WIND_DX[3] == 1");
         assert_eq!(p.coords.y, 2, "GAS_WIND_DY[3] == 2");

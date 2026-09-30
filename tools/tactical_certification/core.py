@@ -248,9 +248,11 @@ def _unique_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def parse_json_bytes(raw: bytes, label: str) -> Mapping[str, Any]:
-    if len(raw) > _JSON_LIMIT:
-        raise ValidationError(f"{label} exceeds {_JSON_LIMIT} bytes")
+def parse_json_bytes(raw: bytes, label: str, *, maximum_length: int = _JSON_LIMIT) -> Mapping[str, Any]:
+    if type(maximum_length) is not int or maximum_length < 1:
+        raise ValidationError("JSON maximum_length must be a positive integer")
+    if len(raw) > maximum_length:
+        raise ValidationError(f"{label} exceeds {maximum_length} bytes")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -271,9 +273,11 @@ def parse_json_bytes(raw: bytes, label: str) -> Mapping[str, Any]:
     return parsed
 
 
-def load_json_file(path: str | os.PathLike[str], label: str) -> tuple[FileSnapshot, Mapping[str, Any]]:
-    snapshot = require_regular_file(path, label, maximum_length=_JSON_LIMIT)
-    return snapshot, parse_json_bytes(snapshot.raw, label)
+def load_json_file(
+    path: str | os.PathLike[str], label: str, *, maximum_length: int = _JSON_LIMIT
+) -> tuple[FileSnapshot, Mapping[str, Any]]:
+    snapshot = require_regular_file(path, label, maximum_length=maximum_length)
+    return snapshot, parse_json_bytes(snapshot.raw, label, maximum_length=maximum_length)
 
 
 def require_object(value: Any, field: str) -> Mapping[str, Any]:
@@ -383,8 +387,16 @@ def canonical_json_bytes(value: Mapping[str, Any]) -> bytes:
     ).encode("utf-8")
 
 
-def write_json_exclusive(path: Path, value: Mapping[str, Any]) -> Path:
-    return write_bytes_exclusive(path, canonical_json_bytes(value))
+def write_json_exclusive(
+    path: Path, value: Mapping[str, Any], *, maximum_length: int | None = None
+) -> Path:
+    raw = canonical_json_bytes(value)
+    if maximum_length is not None:
+        if type(maximum_length) is not int or maximum_length < 1:
+            raise ValidationError("JSON maximum_length must be a positive integer")
+        if len(raw) > maximum_length:
+            raise ValidationError(f"JSON output exceeds {maximum_length} bytes")
+    return write_bytes_exclusive(path, raw)
 
 
 def contains_forbidden_verdict(value: Any) -> bool:

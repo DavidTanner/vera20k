@@ -20,17 +20,16 @@ pub fn parse_cell_tags(ini: &IniFile) -> CellTagMap {
     };
 
     let mut tags: CellTagMap = HashMap::new();
+    // `Read_Map_Section_And_IsoMapPacks @ 0x004AD1CF`: the tag a 0x80-byte
+    // ReadString, the cell `atoi` of the entry name. Rust skips a negative
+    // cell.
     for key in section.keys() {
-        let Ok(packed) = key.parse::<u32>() else {
+        let Ok(packed) = u32::try_from(crate::rules::ini_value::crt_atoi(key)) else {
             continue;
         };
-        let Some(tag_id) = section.get(key) else {
+        let Some(tag_id) = section.read_name(key, 0x80) else {
             continue;
         };
-        let tag_id = tag_id.trim();
-        if tag_id.is_empty() {
-            continue;
-        }
         let ry = (packed / 1000) as u16;
         let rx = (packed % 1000) as u16;
         tags.insert((rx, ry), tag_id.to_string());

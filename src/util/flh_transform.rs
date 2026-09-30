@@ -70,7 +70,7 @@ pub struct FlhFacings {
 ///    On ground that algebraically composes to `Rz(aim)`, but retail's sine table is
 ///    asymmetric, so composing two lookups leaves a residual of exactly two
 ///    table steps (0.088 degrees) against the single-rotation form — a whole
-///    lepton on a long barrel. `BuildFacingRotationMatrix @ 0x0055A730` uses the
+///    lepton on a long barrel. `LocomotionClass::Draw_Matrix @ 0x0055A730` uses the
 ///    same quantisation and the same `-(pi/16)` double, and on flat ground `B`
 ///    reduces to that pure Z rotation with no translation and no scale.
 /// 2. **`TurretOffset` is added between the two rotations**, so it rides the

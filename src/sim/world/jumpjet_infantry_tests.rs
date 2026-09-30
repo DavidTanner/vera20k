@@ -20,7 +20,7 @@ fn pose(sim: &super::Simulation, id: u64) -> Pose {
     let locomotor = entity.locomotor.as_ref().expect("locomotor");
     Pose {
         phase: locomotor.jumpjet_runtime().expect("Jumpjet").phase,
-        fraction: entity.foot_speed.applied_fraction.to_bits(),
+        fraction: entity.foot_speed.applied_fraction().to_bits(),
         doing: entity.mission_leaf.as_infantry().expect("Infantry").doing(),
         sequence: entity
             .animation
@@ -38,7 +38,8 @@ fn pose(sim: &super::Simulation, id: u64) -> Pose {
 /// them, so the only enemies are the ones each test places. Each side keeps a
 /// power plant out of the fight, so neither house is defeated under the Battle
 /// mode's ShortGame.
-fn retail_dustbowl_rocketeer() -> (crate::headless_scenario::HeadlessScenario, u64, u16, u16) {
+pub(super) fn retail_dustbowl_rocketeer()
+-> (crate::headless_scenario::HeadlessScenario, u64, u16, u16) {
     use crate::sim::house_state::HouseState;
 
     let dir = std::env::var("RA2_DIR")
@@ -85,25 +86,9 @@ fn retail_dustbowl_rocketeer() -> (crate::headless_scenario::HeadlessScenario, u
                 ("GAPOWR", "Americans", x - 4),
                 ("NAPOWR", "Russians", x + 15),
             ] {
-                sim.spawn_object(
-                    plant,
-                    owner,
-                    px,
-                    y - 1,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object(plant, owner, px, y - 1, 0, &resources.rules)?;
             }
-            let rocketeer = sim.spawn_object(
-                "JUMPJET",
-                "Americans",
-                x,
-                y,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
+            let rocketeer = sim.spawn_object("JUMPJET", "Americans", x, y, 64, &resources.rules)?;
             Some((rocketeer, x, y))
         })
         .expect("open level ground for the flight");
@@ -123,7 +108,7 @@ fn retail_dustbowl_rocketeer() -> (crate::headless_scenario::HeadlessScenario, u
 }
 
 /// One production frame of the retail runtime.
-fn retail_frame(
+pub(super) fn retail_frame(
     scenario: &mut crate::headless_scenario::HeadlessScenario,
     orders: Vec<crate::sim::command::CommandEnvelope>,
 ) -> super::SimFrameOutput {
@@ -203,15 +188,7 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
         resources,
     } = &mut scenario.runtime;
     let conscript = sim
-        .spawn_object(
-            "E2",
-            "Russians",
-            x + 16,
-            y,
-            192,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object("E2", "Russians", x + 16, y, 192, &resources.rules)
         .expect("conscript");
     sim.resolve_type_handles(&resources.rules);
     let attack = CommandEnvelope::new(
@@ -347,15 +324,7 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
     // A conscript three cells beyond the hold, the only enemy within its
     // 20mm's range.
     let conscript = sim
-        .spawn_object(
-            "E2",
-            "Russians",
-            x + 11,
-            y,
-            192,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object("E2", "Russians", x + 11, y, 192, &resources.rules)
         .expect("conscript");
     sim.resolve_type_handles(&resources.rules);
     let mut shots = Vec::new();
@@ -412,7 +381,6 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
 fn a_parked_rocketeer_scans_and_fires_on_move() {
     use crate::sim::command::{Command, CommandEnvelope};
     use crate::sim::mission::MissionType;
-    use std::collections::BTreeMap;
     let row = serde_json::json!({"doing": DO_HOVER, "fraction": 0.0, "armed": true,
         "owner": {"phase": 2, "moving": false}});
     let (mut sim, rules, shooter) = rocketeer_crash_fixture(&row);
@@ -434,7 +402,6 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
         sim.advance_tick(
             &std::mem::take(&mut orders),
             Some(&rules),
-            &BTreeMap::new(),
             Some(&grid),
             None,
             67,
@@ -470,7 +437,7 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
     let mut acquired = false;
     let mut fired = false;
     for _ in 0..120 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         let Some(entity) = sim.substrate.entities.get(1) else {
             break;
         };
@@ -495,14 +462,13 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
 #[test]
 fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     use crate::sim::movement::infantry_action::{DO_IDLE1, DO_IDLE2, DO_READY};
-    use std::collections::BTreeMap;
     let row = serde_json::json!({"doing": DO_READY, "fraction": 0.0, "height": 0,
         "owner": {"phase": 0, "moving": false}});
     let (mut sim, rules, _) = rocketeer_crash_fixture(&row);
     // The crash fixture's rules-free Reveal intentionally skips Techno
     // Unlimbo's idle selection (0x006F6E2A..0x006F6E4F). This live idle test
     // needs the committed Guard that the ordinary rules-bearing owner sets.
-    super::foot_unlimbo_idle_mode(&mut sim, 1, &rules);
+    super::techno_ai::foot_unlimbo_idle_mode(&mut sim, 1, &rules);
     assert_eq!(
         sim.substrate
             .entities
@@ -517,17 +483,22 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     let mut fidgets = Vec::new();
     let mut playing: Option<i32> = None;
     for _ in 0..3000 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         let entity = sim.substrate.entities.get(1).unwrap();
         let doing = entity.mission_leaf.as_infantry().unwrap().doing();
         match (playing, doing) {
             (None, DO_IDLE1 | DO_IDLE2) => {
-                let kind = crate::rules::infantry_sequence::action_kind(doing);
-                assert_eq!(entity.animation.as_ref().map(|a| a.sequence), kind);
+                assert_eq!(
+                    entity.infantry_sprite_pose().map(|pose| pose.0),
+                    Some(doing)
+                );
                 playing = Some(doing);
             }
             (Some(action), DO_READY) => {
-                fidgets.push((action, entity.facing));
+                fidgets.push((
+                    action,
+                    entity.body_facing_byte(sim.session.binary_frame - 1),
+                ));
                 playing = None;
             }
             _ => {}
@@ -593,15 +564,7 @@ fn retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body() {
         resources,
     } = &mut scenario.runtime;
     let flak = sim
-        .spawn_object(
-            "HTK",
-            "Russians",
-            x + 14,
-            y + 1,
-            192,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object("HTK", "Russians", x + 14, y + 1, 192, &resources.rules)
         .expect("Flak Track");
     sim.resolve_type_handles(&resources.rules);
     let russians = sim.interner.intern("Russians");
@@ -743,13 +706,9 @@ fn retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body() {
     }
 }
 
-/// A Rocketeer (the retail `[JUMPJET]` Jumpjet block and
-/// `[RocketeerSequence]`) and an area warhead to shoot it down with.
-fn rocketeer_crash_rules() -> crate::rules::ruleset::RuleSet {
-    rocketeer_rules_armed(false)
-}
-
-/// The crash corpus's rules; `armed` gives the Rocketeer the shooter's gun.
+/// The crash corpus's rules: a Rocketeer (the retail `[JUMPJET]` Jumpjet block
+/// and `[RocketeerSequence]`) and an area warhead to shoot it down with;
+/// `armed` gives the Rocketeer the shooter's gun.
 fn rocketeer_rules_armed(armed: bool) -> crate::rules::ruleset::RuleSet {
     use crate::rules::ini_parser::IniFile;
     let mut rules = crate::rules::ruleset::RuleSet::from_ini(&IniFile::from_str(&format!(
@@ -873,7 +832,7 @@ fn rocketeer_crash_fixture(
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.health.current = 125;
         entity.position.exact_z_leptons = Some(height);
-        entity.body_facing = Some(crate::sim::movement::FacingClass::new(0x4000, 127));
+        entity.body_facing = crate::sim::movement::FacingClass::new(0x4000, 127);
         entity
             .foot_speed
             .set_speed_fraction_native_bits(input["fraction"].as_f64().unwrap_or(0.0).to_bits());
@@ -971,7 +930,6 @@ fn scenario_draws(before: i32, after: i32) -> i32 {
 /// calls FootClass::AI at any Health, `0x0051BC9D`) but the oracle does not.
 #[test]
 fn a_shot_down_rocketeer_falls_like_the_native_crash() {
-    use std::collections::BTreeMap;
     let corpus: serde_json::Value = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/jumpjet_infantry_crash.json"
     ))
@@ -1038,12 +996,17 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
         };
         let mut native_before = index_after(&output["kills"][0]);
         for (index, expected) in frames.iter().enumerate() {
+            // The native harness kills between visits, then increments its
+            // absolute frame before frame_step. advance_tick commits its
+            // frame after the visit; align inputs rather than retiming Stage.
+            sim.session.binary_frame = 1000 + index as u32;
             if second == Some(index) {
                 kill(&mut sim, &output["kills"][1], "second kill");
                 native_before = index_after(&output["kills"][1]);
             }
+            sim.session.binary_frame = 1001 + index as u32;
             let before = sim.scenario_rng.logical_view().index_a;
-            sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let native_after = expected["scenario_rng"][0].as_i64().unwrap() as i32;
             let draws = (
                 scenario_draws(before, sim.scenario_rng.logical_view().index_a),
@@ -1069,7 +1032,7 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
                 "{at}: Doing"
             );
             assert_eq!(
-                i64::from(entity.animation.as_ref().unwrap().frame_index),
+                i64::from(entity.native_stage().value()),
                 expected["stage"].as_i64().unwrap(),
                 "{at}: stage"
             );

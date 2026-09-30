@@ -22,16 +22,12 @@ use crate::sim::world::Simulation;
 /// Side length of the overlay grid [`place_tiberium`] creates on demand.
 pub(crate) const TEST_GRID_SIZE: u16 = 64;
 
-/// A flat clear map whose every cell accepts tiberium: the terrain half of a
-/// `NewTiberiumAdmission`.
 pub(crate) fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
-    for ry in 0..height {
-        for rx in 0..width {
-            cells.push(crate::sim::deploy_tests::clear_terrain_cell(rx, ry));
-        }
-    }
-    ResolvedTerrainGrid::from_cells(width, height, cells)
+    crate::map::resolved_terrain::test_grid(
+        width,
+        height,
+        crate::map::resolved_terrain::test_tiberium_cell,
+    )
 }
 
 /// A world with no objects in it: the live-object half of a
@@ -161,12 +157,7 @@ pub(crate) fn place_tiberium_on_map(
     place_tiberium(sim, cell.0, cell.1, resource, bales);
     if let (Some(grid), Some(terrain)) = (sim.overlay_grid.as_mut(), sim.resolved_terrain.as_mut())
     {
-        grid.recalculate_runtime_cell(
-            terrain,
-            overlay_registry_with_land(),
-            cell,
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        grid.recalculate_runtime_cell(terrain, overlay_registry_with_land(), cell);
     }
 }
 
@@ -219,12 +210,7 @@ pub(crate) fn clear_tiberium(sim: &mut Simulation, cell: (u16, u16)) {
     if let Some(grid) = sim.overlay_grid.as_mut() {
         grid.clear_overlay(cell.0, cell.1);
         if let Some(terrain) = sim.resolved_terrain.as_mut() {
-            grid.recalculate_runtime_cell(
-                terrain,
-                overlay_registry_with_land(),
-                cell,
-                crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-            );
+            grid.recalculate_runtime_cell(terrain, overlay_registry_with_land(), cell);
         }
     }
 }

@@ -108,6 +108,7 @@ fn radar_dirty_ack_rearms_same_wall_removal() {
     let cell = (4, 5);
     let mut sim = Simulation::new();
     sim.overlay_grid = Some(OverlayGrid::new(16, 16));
+    sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(16, 16));
 
     for expected_generation in [13, 26] {
         sim.overlay_grid
@@ -141,10 +142,7 @@ fn radar_dirty_ack_rearms_same_wall_removal() {
                 (5, 5),
             ],
         );
-        assert_eq!(
-            sim.radar_terrain_dirty_generation,
-            expected_generation
-        );
+        assert_eq!(sim.radar_terrain_dirty_generation, expected_generation);
         assert!(sim.acknowledge_radar_terrain_dirty(expected_generation));
     }
 }
@@ -157,10 +155,8 @@ fn radar_dirty_wall_partial_damage_marks_nothing() {
     let registry = OverlayTypeRegistry::from_ini(&ini, Some(&ini));
     let mut sim = Simulation::new();
     sim.overlay_grid = Some(OverlayGrid::new(16, 16));
-    sim.overlay_grid
-        .as_mut()
-        .unwrap()
-        .place_overlay(4, 5, 2, 0);
+    sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(16, 16));
+    sim.overlay_grid.as_mut().unwrap().place_overlay(4, 5, 2, 0);
     let _ = sim.overlay_grid.as_mut().unwrap().take_dirty_cells();
     sim.apply_wall_damage_events(
         &[WallDamageEvent {
@@ -170,7 +166,10 @@ fn radar_dirty_wall_partial_damage_marks_nothing() {
         }],
         &registry,
     );
-    assert_eq!(sim.overlay_grid.as_ref().unwrap().cell(4, 5).overlay_data, 0x10);
+    assert_eq!(
+        sim.overlay_grid.as_ref().unwrap().cell(4, 5).overlay_data,
+        0x10
+    );
     assert!(sim.radar_terrain_dirty_cells.is_empty());
     assert_eq!(sim.radar_terrain_dirty_generation, 0);
     assert_eq!(sim.tactical_dirty_cells, vec![(4, 5)]);

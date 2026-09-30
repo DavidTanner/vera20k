@@ -13,6 +13,7 @@ use crate::map::playfield::local_to_packed_cell;
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::economy::Economy;
 use crate::sim::intern::InternedId;
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
 
 /// Native per-house AI difficulty index stored by `HouseClass`.
@@ -81,53 +82,6 @@ impl Default for CountryCostMults {
     }
 }
 
-/// Native `TimerStruct {Start, TimerPtr, Duration}` as `HouseClass::Update`
-/// reads its EVA advice timers (`+0x57D4` funds, `+0x57BC` speak).
-///
-/// Expiry test from `0x004F8B3C..0x004F8B63`: `Start == -1` → expired iff
-/// `Duration == 0`; otherwise expired iff `now - Start >= Duration`. Re-arm
-/// (`0x004F8BD0..0x004F8BE1`) stores `Start = now`, `Duration = value`.
-/// `HouseClass::Constructor 0x004F5D2F/0x004F5D35` starts both timers at the
-/// construction frame with `Duration = 1` (`0x004F5CD0 MOV EAX,1`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct HouseFrameTimer {
-    /// Frame the timer was armed at; `-1` is the native "never started".
-    pub start_frame: i64,
-    /// Armed duration in frames.
-    pub duration: i32,
-}
-
-impl Default for HouseFrameTimer {
-    fn default() -> Self {
-        Self::at_construction(0)
-    }
-}
-
-impl HouseFrameTimer {
-    /// The constructor state: armed at `frame` for one frame.
-    pub const fn at_construction(frame: i64) -> Self {
-        Self {
-            start_frame: frame,
-            duration: 1,
-        }
-    }
-
-    /// `0x004F8B4E..0x004F8B63`.
-    pub const fn expired(&self, now: i64) -> bool {
-        if self.start_frame == -1 {
-            self.duration == 0
-        } else {
-            now - self.start_frame >= self.duration as i64
-        }
-    }
-
-    /// `0x004F8BD0..0x004F8BE1`: `Start = now`, `Duration = duration`.
-    pub const fn arm(&mut self, now: i64, duration: i32) {
-        self.start_frame = now;
-        self.duration = duration;
-    }
-}
-
 /// Accepted native HouseClass match result whose SavourDelay still owns the
 /// scenario's deterministic frame lifetime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -155,9 +109,8 @@ pub struct HouseOutcomeState {
 /// - `House+0x249`: persistent All-To-Hunt candidate-bias latch;
 /// - `House+0x54D8`: signed frame of the last Building damage admission.
 ///
-/// The live Strategy scheduler and its independent timers do not belong in
-/// this value. This is only the state consumed by the post-superweapon
-/// emergency block at `HouseClass__AI_Building_Strategy @ 0x004FD7A0`.
+/// The emergency block of `HouseClass::AI_Building_Strategy @ 0x004FD7A0`
+/// (`sim::house_strategy`) steps the mode; All_To_Hunt sets the latch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct HouseStrategyEmergencyState {
     pub(crate) mode: i32,
@@ -169,6 +122,19 @@ pub struct HouseStrategyEmergencyState {
 
 const fn last_attacker_house_index_default() -> i32 {
     -1
+}
+
+/// [`HouseState::strategy_timer`]'s constructor value: started at frame 0
+/// with no delay, so expired.
+pub(crate) const fn strategy_timer_at_construction() -> CdTimer {
+    CdTimer::started(0, 0)
+}
+
+/// [`HouseState::eva_funds_timer`]'s constructor value
+/// (`HouseClass::Constructor 0x004F5D2F`, the duration from `0x004F5CD0 MOV
+/// EAX,1`): started at the construction frame, 0, for one frame.
+pub(crate) const fn eva_funds_timer_at_construction() -> CdTimer {
+    CdTimer::started(0, 1)
 }
 
 impl Default for HouseStrategyEmergencyState {
@@ -210,7 +176,6 @@ impl HouseStrategyEmergencyState {
     }
 
     /// Called only after the exact All-To-Hunt reverse scan completes.
-    #[cfg(test)]
     pub(crate) fn set_all_to_hunt_bias(&mut self) {
         self.all_to_hunt_bias = true;
     }
@@ -398,6 +363,8 @@ pub struct HouseState {
     pub(crate) tracking: crate::sim::house_tracking::HouseTracking,
     /// Historical House4FD150 primary base cell; updates at native building
     /// lifecycle boundaries rather than when a consumer requests a destination.
+    /// The existing House base owner publishes this with its private radius;
+    /// launch/deploy's explicit House50E000 writes retain that radius.
     pub base_center: Option<(u16, u16)>,
     #[serde(default)]
     pub(crate) base_projection: crate::sim::world::HouseBaseState,
@@ -478,6 +445,17 @@ pub struct HouseState {
     /// Snapshot/hash authority for the Strategy emergency-state block.
     #[serde(default)]
     pub strategy_emergency: HouseStrategyEmergencyState,
+    /// `HouseClass+0x5634`/`+0x563C`, the timer that runs Strategy
+    /// (`sim::house_strategy::update_strategy`). The constructor starts it at
+    /// the construction frame, which is frame 0, with no delay
+    /// (`0x004F5B9D..0x004F5BA8`). Persisted and hashed (schema v234).
+    #[serde(default = "strategy_timer_at_construction")]
+    pub(crate) strategy_timer: CdTimer,
+    /// The team timer and `RatioAITriggerTeam=` (`HouseClass+0x5798`/`+0x57A0`,
+    /// `+0x565C`), owned by `sim::ai_team_creation`. Persisted and hashed
+    /// (schema v238).
+    #[serde(default)]
+    pub(crate) team_creation: crate::sim::ai_team_creation::HouseTeamCreation,
     /// Native House bytes `+0x1EE`, `+0x1EF`, `+0x1F2`, and `+0x1F3`. All four
     /// persist, while Production, AutocreateAllowed, and AITriggersActive
     /// directly enter House CRC.
@@ -488,6 +466,11 @@ pub struct HouseState {
     /// `sim::ai_base_building`. Persisted and hashed (schema v232).
     #[serde(default)]
     pub(crate) ai_production: crate::sim::ai_base_building::HouseAiProduction,
+    /// The computer's Unit, Infantry and Aircraft choices (`HouseClass+0x5650`,
+    /// `+0x5654`, `+0x5658`), owned by `sim::ai_unit_choice`. Persisted and
+    /// hashed (schema v238).
+    #[serde(default)]
+    pub(crate) ai_unit_choices: crate::sim::ai_unit_choice::HouseAiUnitChoices,
     /// Native `HouseClass+0x242`: "a harvester of this house found no ore".
     ///
     /// Exhaustive instruction census (`search_instructions` operand `+0x242]`,
@@ -512,11 +495,13 @@ pub struct HouseState {
     #[serde(default)]
     pub harvester_no_ore: bool,
     /// Native `HouseClass+0x57D4`: the `EVA_InsufficientFunds` nag timer
-    /// (`HouseClass::Update 0x004F8B3C..0x004F8C53`). Only the local player's
-    /// house reaches that block natively; here every human house runs it and
-    /// the app keeps the local filter. Persisted and hashed (schema v133).
-    #[serde(default)]
-    pub eva_funds_timer: HouseFrameTimer,
+    /// (`HouseClass::Update 0x004F8B3C..0x004F8C53`: the expiry test
+    /// `0x004F8B4E..0x004F8B63`, the restart `0x004F8BD0..0x004F8BE1`). Only
+    /// the local player's house reaches that block natively; here every human
+    /// house runs it and the app keeps the local filter. Persisted and hashed
+    /// (schema v133).
+    #[serde(default = "eva_funds_timer_at_construction")]
+    pub eva_funds_timer: CdTimer,
     /// Native `[0x00A8F040]`, the `EVA_LowPower` one-shot guard
     /// (`0x004F8D02` test, `0x004F8D61` set, `0x004F8DAB` clear). It is a
     /// process global gated behind `this == PlayerPtr`, so one flag per human
@@ -540,7 +525,7 @@ pub struct HouseState {
     /// human controls arms it (`0x00450764..0x00450779`), and the latch holds
     /// until it expires. The constructor starts it at the construction frame
     /// with no time left. Persisted and hashed (schema v216).
-    pub(crate) repair_latch_timer: HouseFrameTimer,
+    pub(crate) repair_latch_timer: CdTimer,
 }
 
 impl HouseState {
@@ -562,24 +547,29 @@ impl HouseState {
     }
 
     /// `HouseClass::SetDifficulty @ 0x004F6EC0`, for the fields VERA keeps:
-    /// the difficulty index (`+0x184`), the ROF bias (`+0x1A8`) and the
-    /// repair delay (`+0x1C0`). Outside a campaign the bias is the difficulty
-    /// row's `ROF=` times the country's (`FLD; FMUL; FSTP qword`,
-    /// `0x004F6F6C..0x004F6F79`); in a campaign it is the row's value alone
-    /// (`0x004F7072..0x004F707B`). Both copy the row's `RepairDelay=`
-    /// unchanged (`0x004F6FA5`, `0x004F70AC`).
+    /// the difficulty index (`+0x184`), the ROF bias (`+0x1A8`), the repair
+    /// delay (`+0x1C0`) and the team timer. Outside a campaign the bias is
+    /// the difficulty row's `ROF=` times the country's (`FLD; FMUL; FSTP
+    /// qword`, `0x004F6F6C..0x004F6F79`); in a campaign it is the row's value
+    /// alone (`0x004F7072..0x004F707B`). Both copy the row's `RepairDelay=`
+    /// unchanged (`0x004F6FA5`, `0x004F70AC`). The team timer restarts at
+    /// `frame` for the difficulty's `TeamDelays=` plus 175 frames for each
+    /// house before this one (`array_index`, `+0x30`; wrapping,
+    /// `0x004F70F0..0x004F712D`).
     pub(crate) fn set_difficulty(
         &mut self,
         difficulty: HouseDifficulty,
-        difficulty_rof: &[f64; 3],
-        difficulty_repair_delay: &[f64; 3],
+        general: &crate::rules::ruleset::GeneralRules,
         country_rof: f64,
         game_mode_nonzero: bool,
+        array_index: i32,
+        frame: i32,
     ) {
         use crate::util::native_x87::MaskedX87Chop53 as X;
         self.difficulty = difficulty;
-        self.repair_delay = difficulty_repair_delay[difficulty.table_index()];
-        let row = NativeF64Bits::from_bits(difficulty_rof[difficulty.table_index()].to_bits());
+        self.repair_delay = general.difficulty_repair_delay[difficulty.table_index()];
+        let row =
+            NativeF64Bits::from_bits(general.difficulty_rof[difficulty.table_index()].to_bits());
         self.rof_bias = HouseRofBias(if game_mode_nonzero {
             X::store_f64_masked_chop(X::mul(
                 X::load_f64(row),
@@ -588,11 +578,25 @@ impl HouseState {
         } else {
             row
         });
+        let team_delay = self
+            .difficulty_value(&general.team_delays)
+            .wrapping_add(array_index.wrapping_mul(175));
+        self.team_creation.restart(frame, team_delay);
     }
 
     /// The house's ROF multiplier (`HouseClass+0x1A8`).
     pub(crate) const fn rof_bias(&self) -> NativeF64Bits {
         self.rof_bias.0
+    }
+
+    /// The house's entry of a per-difficulty Rules vector, indexed by
+    /// `+0x184` (hardest first). Native reads past a short vector's end;
+    /// VERA reads 0 there (retail vectors hold three entries).
+    pub(crate) fn difficulty_value(&self, values: &[i32]) -> i32 {
+        values
+            .get(self.difficulty.table_index())
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Active offline EventClass house-scan eligibility.
@@ -609,10 +613,22 @@ impl HouseState {
         self.is_human || (!game_mode_nonzero && self.player_control)
     }
 
+    /// The cell the house bases itself around: the alternate base centre
+    /// (`+0x5494`) unless it is the empty cell `(0, 0)` (`0xA8EF98`, zeroed
+    /// by its static initializer `0x004F50A0`), else the primary (`+0x5490`,
+    /// `(0, 0)` while unset); `(0, 0)` is none.
+    pub(crate) fn base_origin(&self) -> (u16, u16) {
+        if self.alternate_base_center != (0, 0) {
+            self.alternate_base_center
+        } else {
+            self.base_center.unwrap_or((0, 0))
+        }
+    }
+
     /// `HouseClass::Update 0x004F9302..0x004F9338`: the auto-repair latch
     /// releases once its timer has expired.
     pub(crate) fn release_repair_latch(&mut self, frame: u32) {
-        if self.repair_start_latch && self.repair_latch_timer.expired(i64::from(frame as i32)) {
+        if self.repair_start_latch && self.repair_latch_timer.expired(frame as i32) {
             self.repair_start_latch = false;
         }
     }
@@ -741,17 +757,17 @@ impl HouseState {
                 ..Economy::default()
             },
             strategy_emergency: HouseStrategyEmergencyState::default(),
+            strategy_timer: strategy_timer_at_construction(),
+            team_creation: Default::default(),
             ai_activation: HouseAiActivationLatches::default(),
             ai_production: Default::default(),
+            ai_unit_choices: Default::default(),
             harvester_no_ore: false,
-            eva_funds_timer: HouseFrameTimer::default(),
+            eva_funds_timer: eva_funds_timer_at_construction(),
             eva_low_power_guard: false,
             repair_delay: 0.0,
             repair_start_latch: false,
-            repair_latch_timer: HouseFrameTimer {
-                start_frame: 0,
-                duration: 0,
-            },
+            repair_latch_timer: CdTimer::started(0, 0),
         }
     }
 }
@@ -1218,8 +1234,8 @@ mod difficulty_tests {
 
     /// `tools/spatial_oracle/house_difficulty.py` runs the original
     /// `HouseClass::SetDifficulty @ 0x004F6EC0` over difficulty, GameMode,
-    /// country `ROF=` and row `ROF=` values; every row replays through
-    /// [`HouseState::set_difficulty`].
+    /// country `ROF=`, row `ROF=` values and house indexes; every row replays
+    /// through [`HouseState::set_difficulty`].
     #[test]
     fn set_difficulty_matches_the_original() {
         let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
@@ -1235,13 +1251,20 @@ mod difficulty_tests {
             let row_rof: [f64; 3] = std::array::from_fn(|index| bits(&input["row_rof"][index]));
             let difficulty =
                 HouseDifficulty::from_native(input["difficulty"].as_i64().unwrap() as i32).unwrap();
+            let general = crate::rules::ruleset::GeneralRules {
+                difficulty_rof: row_rof,
+                difficulty_repair_delay: [0.02; 3],
+                team_delays: vec![11, 22, 33],
+                ..Default::default()
+            };
             let mut house = HouseState::new(Default::default(), 0, None, false, 0, 10);
             house.set_difficulty(
                 difficulty,
-                &row_rof,
-                &[0.02; 3],
+                &general,
                 bits(&input["country_rof"]),
                 input["mode"].as_i64().unwrap() != 0,
+                input["array_index"].as_i64().unwrap() as i32,
+                100,
             );
             assert_eq!(
                 i64::from(house.difficulty as i32),
@@ -1251,6 +1274,12 @@ mod difficulty_tests {
             assert_eq!(
                 format!("{:016x}", house.rof_bias().bits()),
                 row["rof_bias"].as_str().unwrap(),
+                "{input}"
+            );
+            let team_timer = house.team_creation.timer();
+            assert_eq!(
+                [team_timer.start_frame(), team_timer.duration()],
+                [0, 1].map(|slot| row["team_timer"][slot].as_i64().unwrap() as i32),
                 "{input}"
             );
         }

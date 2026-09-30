@@ -12,12 +12,6 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::MissionType;
 use crate::sim::world::Simulation;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PerCellReason {
-    TurnComplete,
-    Arrival,
-}
-
 pub(super) fn sample(latched: &mut bool, rotating: bool) -> bool {
     let completed = *latched && !rotating;
     *latched = rotating;
@@ -128,26 +122,24 @@ impl Simulation {
             self.track_navcom_stop(id, rules);
             return false;
         }
-        let rotating = entity
-            .body_facing
-            .as_ref()
-            .is_some_and(|f| f.is_rotating(frame));
+        let rotating = entity.body_facing.is_rotating(frame);
         let completed = sample(latched, rotating);
-        if let Some(body) = entity.body_facing.as_ref() {
-            entity.facing = (body.current(frame) >> 8) as u8;
-        }
         // Drive4B0788 ->4B078C..893 / Ship69FE35: live rotation
         // returns through the Process tail, never fresh ProcessMovement.
-        // A display-facing target is not required for the native timer to own
-        // this visit. The common resting-speed tail remains to be migrated.
+        // The common resting-speed tail remains to be migrated.
         if rotating {
             return false;
         }
         if completed {
-            self.unit_track_per_cell(id, PerCellReason::TurnComplete, rules, registry);
+            self.unit_per_cell_process(
+                id,
+                super::per_cell::PerCellReason::TurnComplete,
+                rules,
+                registry,
+            );
             // Native reloads these three bytes after the synchronous callback.
             if !self.substrate.entities.get(id).is_some_and(|e| {
-                e.lifecycle.object_alive && !e.lifecycle.in_limbo && e.object_is_falling_down == 0
+                e.lifecycle.object_alive && !e.lifecycle.in_limbo && !e.is_falling_down()
             }) {
                 return false;
             }

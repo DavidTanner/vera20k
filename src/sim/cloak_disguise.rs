@@ -2,12 +2,24 @@
 
 use crate::sim::intern::InternedId;
 use crate::sim::rng::SimRng;
+use crate::sim::timer::CdTimer;
 
+/// The cloak progress stage's timer (`TechnoClass+0x22C`/`+0x234`) and its
+/// rate (`+0x238`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CloakStepTimer {
-    pub start_frame: i32,
+    pub timer: CdTimer,
     pub speed: i32,
-    pub duration_frames: i32,
+}
+
+impl CloakStepTimer {
+    /// Started at `now` with `speed` as its rate and its first delay.
+    const fn started(now: i32, speed: i32) -> Self {
+        Self {
+            timer: CdTimer::started(now, speed),
+            speed,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -37,8 +49,7 @@ pub struct CloakRuntime {
     /// `ftol([Rules+0x1410] * 900.0)` — `[General] CloakDelay` in minutes ×
     /// 900 frames — into `+0x248`. `CanAutoCloak @ 0x006FBDC0` reads it as its
     /// LAST timer gate (`param_1[0x90]`/`[0x92]`).
-    pub recloak_delay_start: i32,
-    pub recloak_delay_frames: i32,
+    pub recloak_delay: CdTimer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -94,13 +105,8 @@ impl CloakRuntime {
             late_visible: false,
             force_visible_call: false,
             step_delta: 0,
-            step_timer: CloakStepTimer {
-                start_frame: current_frame,
-                speed: 0,
-                duration_frames: 0,
-            },
-            recloak_delay_start: current_frame,
-            recloak_delay_frames: 0,
+            step_timer: CloakStepTimer::started(current_frame, 0),
+            recloak_delay: CdTimer::started(current_frame, 0),
         }
     }
 
@@ -111,24 +117,8 @@ impl CloakRuntime {
         self.visual_phase = Some(CloakVisualPhase::FullyCloaked);
     }
 
-    fn timer_remaining(start: i32, duration: i32, now: i32) -> i32 {
-        if duration <= 0 {
-            return 0;
-        }
-        if start == -1 {
-            return duration;
-        }
-        duration.saturating_sub(now.wrapping_sub(start)).max(0)
-    }
-
     fn advance_due_step(&mut self, now: i32) {
-        if self.step_timer.speed == 0
-            || Self::timer_remaining(
-                self.step_timer.start_frame,
-                self.step_timer.duration_frames,
-                now,
-            ) != 0
-        {
+        if self.step_timer.speed == 0 || !self.step_timer.timer.expired(now) {
             return;
         }
         self.depth = if self.step_delta < 0 {
@@ -136,8 +126,7 @@ impl CloakRuntime {
         } else {
             self.depth.wrapping_add(self.step_delta as u32)
         };
-        self.step_timer.start_frame = now;
-        self.step_timer.duration_frames = self.step_timer.speed;
+        self.step_timer.timer.start(now, self.step_timer.speed);
     }
 
     /// `GetVisualState @ 0x00703860` transition ladder. For the non-negative
@@ -189,12 +178,9 @@ impl CloakRuntime {
         self.advance_due_step(facts.current_frame);
         match self.state {
             1 => {
+                // `0x006FBA57`: a zero rate restarts at rate 1.
                 if self.step_timer.speed == 0 {
-                    self.step_timer = CloakStepTimer {
-                        start_frame: 1,
-                        speed: 1,
-                        duration_frames: 1,
-                    };
+                    self.step_timer = CloakStepTimer::started(facts.current_frame, 1);
                 }
                 match self.transition_visual_state() {
                     2 if !facts.health_above_red => {
@@ -214,11 +200,7 @@ impl CloakRuntime {
                         self.visual_phase = Some(CloakVisualPhase::FullyCloaked);
                         self.depth = 0;
                         self.step_delta = 0;
-                        self.step_timer = CloakStepTimer {
-                            start_frame: facts.current_frame,
-                            speed: 0,
-                            duration_frames: 0,
-                        };
+                        self.step_timer = CloakStepTimer::started(facts.current_frame, 0);
                         result.transitioned = true;
                         result.completed_cloak = true;
                     }
@@ -236,13 +218,9 @@ impl CloakRuntime {
                     self.visual_phase = None;
                     self.depth = 0;
                     self.step_delta = 0;
-                    self.step_timer = CloakStepTimer {
-                        start_frame: facts.current_frame,
-                        speed: 0,
-                        duration_frames: 0,
-                    };
-                    self.recloak_delay_start = facts.current_frame;
-                    self.recloak_delay_frames = facts.cloak_delay_frames;
+                    self.step_timer = CloakStepTimer::started(facts.current_frame, 0);
+                    self.recloak_delay =
+                        CdTimer::started(facts.current_frame, facts.cloak_delay_frames);
                     result.transitioned = true;
                 }
                 1 if facts.can_auto_cloak => {
@@ -263,9 +241,8 @@ impl CloakRuntime {
     /// rearm countdown (`+0x2EC`, `param_1[0xbb]`/`[0xbd]`, checked right after
     /// the `CloakState == 2` early-out, so a sub that just fired stays surfaced
     /// for its whole `ROF=`), then the CloakDelay above.
-    pub fn recloak_delay_expired(&self, now: i32, rearm_timer: crate::sim::timer::CdTimer) -> bool {
-        rearm_timer.remaining(now) == 0
-            && Self::timer_remaining(self.recloak_delay_start, self.recloak_delay_frames, now) == 0
+    pub fn recloak_delay_expired(&self, now: i32, rearm_timer: CdTimer) -> bool {
+        rearm_timer.expired(now) && self.recloak_delay.expired(now)
     }
 
     /// `CloakState == 2` — fully cloaked. The only state the native target
@@ -418,11 +395,33 @@ pub(crate) mod transitions;
 #[cfg(test)]
 use transitions::{StartCloakingResult, StartUncloakingResult};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+/// The re-disguise block, `TechnoClass+0x1E0`/`+0x1E8`, whose middle dword
+/// (`+0x1E4`) holds a packed cell. `UnitClass::UpdateDisguise` reads it
+/// (`0x00746A13`) and re-disguises only once it has expired.
+///
+/// RESIDUAL: its writers are not ported: `ReceiveDamage` (`0x0070201A`: the
+/// current frame and twice the damage, after dropping the disguise) and
+/// `UpdateDisguise` (`0x00746AE7`: the current frame and `Rules+0x1014`, with
+/// a neighbouring cell). Trigger: a disguised Mirage Tank that is damaged or
+/// finds an enemy beside it, in most Allied games. Effect: it disguises again
+/// on its next idle update rather than after the block, and that update's
+/// disguise draw (`RandomRanged`) lands on the Scenario stream where native
+/// draws nothing. The constructor starts the timer at
+/// the construction frame with no time left (`0x006F2CBE..0x006F2CCA`); VERA
+/// starts it at frame 0, which reads the same.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DisguiseRevealTuple {
-    pub start_frame: i32,
+    pub timer: CdTimer,
     pub neighbor_cell_packed: i32,
-    pub duration_frames: i32,
+}
+
+impl Default for DisguiseRevealTuple {
+    fn default() -> Self {
+        Self {
+            timer: CdTimer::started(0, 0),
+            neighbor_cell_packed: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -460,29 +459,9 @@ impl DisguiseRuntime {
         self.disguised_as_house = None;
     }
 
-    pub fn raw_reveal_remaining(&self, current_frame: u32) -> i32 {
-        if self.reveal.start_frame == -1 {
-            return self.reveal.duration_frames;
-        }
-        let elapsed = (current_frame as i64 - self.reveal.start_frame as i64).max(0);
-        (self.reveal.duration_frames as i64 - elapsed).max(0) as i32
-    }
-
-    pub fn arm_idle_reveal(&mut self, frame: u32, packed_cell: i32, duration: i32) {
-        self.reveal = DisguiseRevealTuple {
-            start_frame: frame as i32,
-            neighbor_cell_packed: packed_cell,
-            duration_frames: duration,
-        };
-    }
-
-    /// `TechnoClass::ReceiveDamage @ 0x00701900` reveal tuple writer.
-    pub fn arm_damage_reveal(&mut self, frame: u32, packed_cell: i32, applied_damage: i32) {
-        self.reveal = DisguiseRevealTuple {
-            start_frame: frame as i32,
-            neighbor_cell_packed: packed_cell,
-            duration_frames: applied_damage.wrapping_shl(1),
-        };
+    /// Whether the re-disguise block is still running.
+    pub fn reveal_blocks(&self, current_frame: u32) -> bool {
+        !self.reveal.timer.expired(current_frame as i32)
     }
 }
 
@@ -540,7 +519,25 @@ mod tests {
             state.tick(facts(frame, false, false), &mut rng);
         }
         assert_eq!(state.state, 0);
-        assert_eq!(state.recloak_delay_frames, 18);
+        assert_eq!(state.recloak_delay.duration(), 18);
+    }
+
+    #[test]
+    fn a_zero_rate_cloak_stage_restarts_at_the_current_frame() {
+        let mut cloak = CloakRuntime::new(0, 9);
+        cloak.state = 1;
+        cloak.visual_phase = Some(CloakVisualPhase::Cloaking);
+        let facts = CloakTickFacts {
+            current_frame: 50,
+            state_zero_head_allows: true,
+            can_auto_cloak: true,
+            should_uncloak: false,
+            health_above_red: true,
+            cloaking_speed: 0,
+            cloak_delay_frames: 0,
+        };
+        cloak.tick(facts, &mut SimRng::new(1));
+        assert_eq!(cloak.step_timer, CloakStepTimer::started(50, 1));
     }
 
     fn seed_with_first_roll(mut accept: impl FnMut(u32) -> bool) -> u64 {
@@ -590,11 +587,7 @@ mod tests {
         cloak.visual_phase = Some(CloakVisualPhase::Cloaking);
         cloak.depth = 3; // trunc(3/9*256)=85 => active visual state 2.
         cloak.step_delta = 1;
-        cloak.step_timer = CloakStepTimer {
-            start_frame: 0,
-            speed: 1,
-            duration_frames: 1,
-        };
+        cloak.step_timer = CloakStepTimer::started(0, 1);
         let result = cloak.tick(facts(0), &mut actual);
         assert!(result.consumed_scenario_rng && result.transitioned);
         assert_eq!(cloak.state, 3);
@@ -607,11 +600,7 @@ mod tests {
         cloak.visual_phase = Some(CloakVisualPhase::Cloaking);
         cloak.depth = 3;
         cloak.step_delta = 1;
-        cloak.step_timer = CloakStepTimer {
-            start_frame: 0,
-            speed: 1,
-            duration_frames: 1,
-        };
+        cloak.step_timer = CloakStepTimer::started(0, 1);
         let result = cloak.tick(facts(0), &mut actual);
         assert!(result.consumed_scenario_rng && !result.transitioned);
         assert_eq!(
@@ -644,16 +633,13 @@ mod tests {
     #[test]
     fn reveal_tuple_and_choice_vectors() {
         let mut state = DisguiseRuntime::default();
+        assert!(!state.reveal_blocks(0));
         state.reveal = DisguiseRevealTuple {
-            start_frame: 100,
+            timer: CdTimer::started(100, 10),
             neighbor_cell_packed: 4660,
-            duration_frames: 10,
         };
-        assert_eq!(state.raw_reveal_remaining(105), 5);
-        assert_eq!(state.raw_reveal_remaining(110), 0);
-        state.reveal.start_frame = -1;
-        state.reveal.duration_frames = 9;
-        assert_eq!(state.raw_reveal_remaining(500), 9);
+        assert!(state.reveal_blocks(109));
+        assert!(!state.reveal_blocks(110));
         assert_eq!(
             choose_default_mirage_disguise(&[Some(7), Some(11), Some(13)], 99),
             Some(13)

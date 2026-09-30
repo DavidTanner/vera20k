@@ -35,9 +35,9 @@ fn physical_rules(assets: &AssetManager, anim_palette_control: bool) -> RuleSet 
     }
     let cannon = original.section("Cannon").expect("physical Cannon section");
     let mtnk = original.section("MTNK").unwrap();
-    let weapon_name = mtnk.get("Primary").unwrap();
+    let weapon_name = mtnk.get_for_test("Primary").unwrap();
     let weapon = original.section(weapon_name).unwrap();
-    let projectile_name = weapon.get("Projectile").unwrap();
+    let projectile_name = weapon.get_for_test("Projectile").unwrap();
     assert_eq!((weapon_name, projectile_name), ("105mm", "Cannon"));
     // Narrow only the registry and irrelevant Techno/weapon fields. Every
     // ordinary Cannon input comes from physical RULESMD and fixed ART.
@@ -45,7 +45,7 @@ fn physical_rules(assets: &AssetManager, anim_palette_control: bool) -> RuleSet 
         "[VehicleTypes]\n0=MTNK\n[MTNK]\nPrimary={weapon_name}\n[{weapon_name}]\nProjectile={projectile_name}\n[Cannon]\n"
     );
     for key in cannon.keys() {
-        text.push_str(&format!("{key}={}\n", cannon.get(key).unwrap()));
+        text.push_str(&format!("{key}={}\n", cannon.get_for_test(key).unwrap()));
     }
     let mut rules =
         RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&text), &original_art)
@@ -447,10 +447,14 @@ fn retail_ifv_dragon_all_frames_and_flight_match_original_shape_pixels() {
     let assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let original = IniFile::from_bytes(assets.get_ref("rulesmd.ini").unwrap()).unwrap();
     let art = IniFile::from_bytes(assets.get_ref("artmd.ini").unwrap()).unwrap();
-    let weapon_name = original.section("FV").unwrap().get("Weapon1").unwrap();
+    let weapon_name = original
+        .section("FV")
+        .unwrap()
+        .get_for_test("Weapon1")
+        .unwrap();
     assert_eq!(weapon_name, "HoverMissile");
     let weapon = original.section(weapon_name).unwrap();
-    let type_id = weapon.get("Projectile").unwrap();
+    let type_id = weapon.get_for_test("Projectile").unwrap();
     assert_eq!(type_id, "AAHeatSeeker2");
     // The selected weapon/type were established by the independent full native
     // IFV launch fixture. Keep only this atlas dependency in the registry, with
@@ -461,7 +465,7 @@ fn retail_ifv_dragon_all_frames_and_flight_match_original_shape_pixels() {
     );
     let section = original.section(type_id).unwrap();
     for key in section.keys() {
-        text.push_str(&format!("{key}={}\n", section.get(key).unwrap()));
+        text.push_str(&format!("{key}={}\n", section.get_for_test(key).unwrap()));
     }
     let mut rules =
         RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&text), &art).unwrap();

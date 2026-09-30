@@ -431,6 +431,13 @@ pub(crate) fn pump_audio_service(state: &mut AppState, now_ms: u64) {
 /// uninitialized mode the pump treats conservatively as non-advancing. This type
 /// is read ONLY by the app loop, never by `sim/` (the layering rule).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "VERA launches only offline skirmish (`current_session_mode`); the other game modes gamemd writes are kept for the modal pump and command bar"
+    )
+)]
 pub enum SessionMode {
     /// Campaign / single-player. The modal pump freezes the world.
     Campaign,
@@ -1230,7 +1237,6 @@ pub(crate) fn refresh_entity_atlases(state: &mut AppState) {
             sim.entities(),
             asset_manager,
             bound_rules,
-            bound_rules.map(|rules| rules.art()),
             existing,
             Some(&sim.interner),
         ) {
@@ -1488,19 +1494,14 @@ mod tests {
         ExactStepError, ExactStepReceipt, upsert_overlay_entries, validate_exact_step_receipt,
         world_point_to_cell,
     };
-    use crate::map::entities::EntityCategory;
     use crate::map::overlay::OverlayEntry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
     use crate::rules::locomotor_type::SpeedType;
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
-    use crate::sim::combat::TargetKind;
-    use crate::sim::combat::combat_weapon::WeaponSlot;
-    use crate::sim::intern::{InternedId, StringInterner, test_intern};
+    use crate::sim::intern::StringInterner;
     use crate::sim::terrain_object::{
         TerrainObjectState, mark_terrain_occupation, unmark_terrain_occupation,
     };
-    use crate::sim::world::{FireOriginSnapshot, SimFireEvent};
-    use crate::util::fixed_math::SimFixed;
     use std::collections::BTreeMap;
 
     fn entry(rx: u16, ry: u16, overlay_id: u8, frame: u8) -> OverlayEntry {
@@ -1532,58 +1533,16 @@ mod tests {
             1,
             1,
             vec![ResolvedTerrainCell {
-                rx: 0,
-                ry: 0,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: false,
                 tileset_index: None,
                 land_type: LandType::Clear.as_index(),
                 yr_cell_land_type: LandType::Clear.as_index(),
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
                 speed_costs,
-                is_water: false,
-                is_cliff_like: false,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                height_in_pixels: 0,
-                variant: 0,
-                has_ramp: false,
-                canonical_ramp: None,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
                 zone_type: zone_class::GROUND,
-                base_ground_walk_blocked: false,
-                base_build_blocked: false,
                 base_land_type: LandType::Clear.as_index(),
                 base_yr_cell_land_type: LandType::Clear.as_index(),
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: speed_costs,
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0; 3],
-                radar_right: [0; 3],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(0, 0)
             }],
         );
         let mut sim = crate::sim::world::Simulation::new();
@@ -1978,7 +1937,6 @@ mod modal_pump_tests {
     #[test]
     fn pumped_world_tick_freezes_offline_and_advances_on_network() {
         use crate::sim::world::Simulation;
-        use std::collections::BTreeMap;
 
         // C2 acceptance with a real headless World: drive `advance_tick` exactly
         // when the pump decision is true, and assert `session.tick` motion.
@@ -1987,12 +1945,11 @@ mod modal_pump_tests {
         let pumped_world_delta = |mode: SessionMode| -> u64 {
             let mut sim = Simulation::new();
             let start = sim.session.tick;
-            let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
             for _ in 0..FRAMES {
                 if modal_pump_should_advance_sim(mode, false, false) {
                     // `tick_ms` does not affect the asserted tick delta; a literal
                     // matches the sim-test style and avoids the const dependency.
-                    sim.advance_tick(&[], None, &height_map, None, None, 33);
+                    sim.advance_tick(&[], None, None, None, 33);
                 }
             }
             sim.session.tick - start

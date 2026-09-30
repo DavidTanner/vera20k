@@ -41,17 +41,32 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         if input["initial_duration"] != 0 {
             body.set(input["initial_facing"].as_u64().unwrap() as u16, 100);
         }
-        entity.body_facing = Some(body);
-        entity.facing = (body.current(100) >> 8) as u8;
-        entity.foot_speed.applied_fraction = SimFixed::lit("0.5");
+        entity.body_facing = body;
+        entity.foot_speed.set_speed_fraction(SimFixed::lit("0.5"));
         entity.navigation.path_runtime.path_blocked = true;
         let speed = input["speed"].as_i64().unwrap() as i32;
+        // The corpus stops before the same-cell SetCoords/SetHeight
+        // (`0x0075C20F`, `0x0075C21C`), so it records the proposal's Z. Stand
+        // the walker on flat ground at its own height so SetHeight(0) keeps it.
+        let level = (current.z / 104) as u8;
+        let terrain = crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+            12,
+            12,
+            (0..12)
+                .flat_map(|y| {
+                    (0..12).map(move |x| crate::map::resolved_terrain::ResolvedTerrainCell {
+                        level,
+                        ..crate::map::resolved_terrain::test_flat_cell(x, y)
+                    })
+                })
+                .collect(),
+        );
         advance(
             &mut entity,
             SimFixed::from_num(speed * 15),
             None,
             100,
-            None,
+            Some(&terrain),
             None,
         );
         let proposed = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
@@ -68,11 +83,9 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         );
         let crosses = (proposed.x / 256, proposed.y / 256) != (current.x / 256, current.y / 256);
         assert_eq!(crosses, row["crosses_cell"].as_bool().unwrap());
-        let heading = entity.body_facing.unwrap().current(100);
+        let heading = entity.body_facing.current(100);
         assert_eq!(u64::from(heading), row["facing"].as_u64().unwrap());
-        assert_eq!(entity.facing, (heading >> 8) as u8);
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_ONE);
-        assert_eq!(entity.foot_speed.cached_current_speed, speed);
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_ONE);
         assert!(!entity.navigation.path_runtime.path_blocked);
     }
 }
@@ -101,7 +114,7 @@ fn idle_walk_scold_tails_match_original_through_ordinary_process() {
             // Supplied retained byte at the native tail boundary.
             state.animation_moving = true;
         }
-        actor.foot_speed.applied_fraction = initial_speed;
+        actor.foot_speed.set_speed_fraction(initial_speed);
         actor
             .navigation
             .path_runtime
@@ -118,7 +131,7 @@ fn idle_walk_scold_tails_match_original_through_ordinary_process() {
             "{row}"
         );
         assert_eq!(
-            actor.foot_speed.applied_fraction,
+            actor.foot_speed.applied_fraction(),
             SimFixed::from_num(row["speed_fraction"].as_f64().unwrap()),
             "{row}"
         );

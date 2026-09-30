@@ -1,8 +1,6 @@
 //! Production integration tests — end-to-end tests for build completion, unit spawning,
 //! harvester auto-creation, and sell/undeploy flows through the full production pipeline.
 
-use std::collections::BTreeMap;
-
 use super::production_spawn::{
     find_spawn_selection_for_owner, find_spawn_selection_for_owner_with_type,
     mark_war_factory_spawn_contact,
@@ -271,22 +269,8 @@ pub(super) fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
     for y in 0..height {
         for x in 0..width {
             cells.push(ResolvedTerrainCell {
-                rx: x,
-                ry: y,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: false,
-                tileset_index: Some(0),
                 land_type: 2,
                 yr_cell_land_type: 2,
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
                 terrain_class: crate::rules::terrain_rules::TerrainClass::Water,
                 speed_costs: crate::rules::terrain_rules::SpeedCostProfile {
                     float: Some(100),
@@ -294,24 +278,7 @@ pub(super) fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
                     ..crate::rules::terrain_rules::SpeedCostProfile::default()
                 },
                 is_water: true,
-                is_cliff_like: false,
-                height_in_pixels: 0,
-                variant: 0,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                has_ramp: false,
-                canonical_ramp: None,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
                 zone_type: crate::map::resolved_terrain::zone_class::WATER,
-                base_ground_walk_blocked: false,
-                base_build_blocked: false,
                 base_land_type: 2,
                 base_yr_cell_land_type: 2,
                 base_terrain_class: crate::rules::terrain_rules::TerrainClass::Water,
@@ -320,17 +287,7 @@ pub(super) fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
                     hover: Some(100),
                     ..crate::rules::terrain_rules::SpeedCostProfile::default()
                 },
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                tube_index: None,
-                radar_left: [0, 0, 0],
-                radar_right: [0, 0, 0],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(x, y)
             });
         }
     }
@@ -578,6 +535,27 @@ pub(super) fn spawn_structure(
     }
 }
 
+/// Give a [`spawn_structure`] fixture the foundation construction copies from
+/// its type's `Foundation=` (`stamp_building_cell_profile`), which its
+/// GetCoords reads. Its occupancy stays on the north-west cell.
+pub(super) fn stamp_type_foundation(sim: &mut Simulation, rules: &RuleSet, sid: u64) {
+    let entity = sim
+        .substrate
+        .entities
+        .get(sid)
+        .expect("a spawned structure");
+    let foundation = rules
+        .object(sim.interner.resolve(entity.type_ref()))
+        .expect("the structure's type")
+        .foundation
+        .clone();
+    sim.substrate
+        .entities
+        .get_mut(sid)
+        .expect("a spawned structure")
+        .foundation = foundation;
+}
+
 /// P5d: arm a registry factory's queue-of-record directly (replaces the retired
 /// `queues_by_owner` insert of a `BuildQueueItem`). Interns owner/type, resolves cost from
 /// `rules`, and calls the registry `enqueue` (create-the-active-build, or append to the FIFO
@@ -714,7 +692,6 @@ fn exit_coord_parsed_and_used_for_spawn() {
         &rules,
         "Americans",
         ObjectCategory::Vehicle,
-        None,
         false,
     )
     .expect("should find spawn cell");
@@ -729,7 +706,6 @@ fn exit_coord_parsed_and_used_for_spawn() {
 fn war_factory_spawn_contact_is_marked_per_produced_mover() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
 
     let selection = find_spawn_selection_for_owner(
@@ -737,7 +713,6 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
         &rules,
         "Americans",
         ObjectCategory::Vehicle,
-        None,
         false,
     )
     .expect("war factory should provide a spawn selection");
@@ -752,11 +727,10 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
             selection.cell.1,
             64,
             &rules,
-            &height_map,
         )
         .expect("produced tank should spawn");
     let unrelated = sim
-        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules)
         .expect("unrelated tank should spawn");
 
     assert!(mark_war_factory_spawn_contact(
@@ -805,7 +779,6 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
 fn war_factory_exit_contact_held_while_on_footprint() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
     // Spawn the produced tank ON the factory's occupancy cell. `spawn_structure`
     // registers the test structure at a single occupancy cell (its origin 20,20 —
@@ -813,7 +786,7 @@ fn war_factory_exit_contact_held_while_on_footprint() {
     // Structure occupant under it. (Real production occupies the full footprint via
     // entity_occupancy_cells; the test helper is the single-cell simplification.)
     let produced = sim
-        .spawn_object("MTNK", "Americans", 20, 20, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 20, 20, 64, &rules)
         .expect("produced tank should spawn");
     assert!(mark_war_factory_spawn_contact(
         &mut sim, &rules, 10, produced
@@ -838,11 +811,10 @@ fn war_factory_exit_contact_held_while_on_footprint() {
 fn war_factory_exit_contact_breaks_when_unit_clears_footprint() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
     // Spawn the produced tank on a clear cell well away from the foundation.
     let produced = sim
-        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules)
         .expect("produced tank should spawn");
     assert!(mark_war_factory_spawn_contact(
         &mut sim, &rules, 10, produced
@@ -873,10 +845,9 @@ fn war_factory_exit_break_ignores_non_weapons_factory_producer() {
     // in for any non-WeaponsFactory-land producer.
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     spawn_structure(&mut sim, 10, "Americans", "GAPILE", 20, 20);
     let mover = sim
-        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules, &height_map)
+        .spawn_object("MTNK", "Americans", 30, 30, 64, &rules)
         .expect("mover should spawn");
     // Manually emulate a non-WF dock-entered link (as the refinery bus would set).
     let m = sim.substrate.entities.get_mut(mover).unwrap();
@@ -907,12 +878,12 @@ fn infantry_spawn_uses_foundation_center_cell() {
     // building->GetCoord() lepton lands in.
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
     let spawn = find_spawn_cell_for_owner(
         &mut sim,
         &rules,
         "Americans",
         ObjectCategory::Infantry,
-        None,
         false,
     )
     .expect("infantry spawn from GAPILE should succeed");
@@ -933,12 +904,12 @@ fn infantry_spawn_ignores_exit_coord() {
     // have zero effect.
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "MYBARR", 10, 10);
+    stamp_type_foundation(&mut sim, &rules, 1);
     let spawn = find_spawn_cell_for_owner(
         &mut sim,
         &rules,
         "Americans",
         ObjectCategory::Infantry,
-        None,
         false,
     )
     .expect("infantry spawn from MYBARR should succeed");
@@ -959,6 +930,7 @@ fn infantry_spawn_succeeds_when_center_cell_blocked() {
     // hard-blocked by building cells. Infantry succeed.
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
     // Also occupy the foundation-center cell explicitly to make the test
     // robust against future changes to spawn_structure's occupancy footprint.
     sim.substrate.occupancy.add(
@@ -974,7 +946,6 @@ fn infantry_spawn_succeeds_when_center_cell_blocked() {
         &rules,
         "Americans",
         ObjectCategory::Infantry,
-        None,
         false,
     )
     .expect("infantry spawn should succeed even with building bit on center cell");
@@ -991,6 +962,7 @@ fn naval_factory_spawn_uses_water_exit_cells() {
     let mut sim = Simulation::new();
     let terrain = water_terrain(32, 32);
     let grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 32,
@@ -1002,15 +974,10 @@ fn naval_factory_spawn_uses_water_exit_cells() {
     sim.playfield_size_height = Some(32);
 
     spawn_structure(&mut sim, 1, "Americans", "GAYARD", 20, 20);
-    let spawn = find_spawn_cell_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        ObjectCategory::Vehicle,
-        Some(&grid),
-        true,
-    )
-    .expect("naval factory should find a water exit cell");
+    stamp_type_foundation(&mut sim, &rules, 1);
+    let spawn =
+        find_spawn_cell_for_owner(&mut sim, &rules, "Americans", ObjectCategory::Vehicle, true)
+            .expect("naval factory should find a water exit cell");
 
     assert_eq!(
         spawn,
@@ -1040,6 +1007,7 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     land_exit.yr_cell_land_type = crate::rules::terrain_rules::LandType::Clear.as_index();
     land_exit.terrain_class = crate::rules::terrain_rules::TerrainClass::Clear;
     let grid = PathGrid::test_all_passable(40, 40);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 40,
@@ -1055,6 +1023,8 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     // The older/lower stable-id land factory must never win the Ship slot.
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 4, 4);
     spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
+    stamp_type_foundation(&mut sim, &rules, 2);
     let vehicle_candidates = super::producer_candidates_for_owner_category(
         &sim.substrate.entities,
         &rules,
@@ -1092,7 +1062,6 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
         "Americans",
         Some("MTNK"),
         ObjectCategory::Vehicle,
-        Some(&grid),
         false,
     )
     .expect("land Vehicle binds GAWEAP");
@@ -1102,7 +1071,6 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
         "Americans",
         Some("DEST"),
         ObjectCategory::Vehicle,
-        Some(&grid),
         true,
     )
     .expect("naval Unit binds GAYARD");
@@ -1156,12 +1124,7 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
             .is_some()
     );
 
-    assert!(super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&grid),
-    ));
+    assert!(super::production_queue::tick_production(&mut sim, &rules,));
     let destroyer = sim
         .substrate
         .entities
@@ -1213,6 +1176,7 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
         cell.base_speed_costs.float = Some(100);
     }
     let grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 40,
@@ -1255,8 +1219,7 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    let spawned =
-        super::production_queue::tick_production(&mut sim, &rules, &BTreeMap::new(), Some(&grid));
+    let spawned = super::production_queue::tick_production(&mut sim, &rules);
     assert!(
         !spawned,
         "nonzero Unit CanEnter result rejects the one attempt"
@@ -1317,6 +1280,7 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     assert_eq!(retained_dummy.snapshot().coord, (-7, 5));
 
     let grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 40,
@@ -1335,6 +1299,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     );
     spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
+    stamp_type_foundation(&mut sim, &rules, 2);
     arm_build_via(
         &mut sim,
         &rules,
@@ -1359,12 +1325,7 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     let entity_count_before = sim.substrate.entities.len();
     let owned_units_before = sim.owned_object_counts(americans).1;
 
-    assert!(!super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&grid),
-    ));
+    assert!(!super::production_queue::tick_production(&mut sim, &rules,));
     assert_eq!(
         retained_dummy.snapshot().coord,
         (0, 0),
@@ -1390,12 +1351,7 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     sim.production.factory_shadow =
         bincode::deserialize(&registry_bytes).expect("restore refused completed factory");
 
-    assert!(!super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&grid),
-    ));
+    assert!(!super::production_queue::tick_production(&mut sim, &rules,));
     let retried_id = sim
         .production
         .factory_shadow
@@ -1440,12 +1396,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
         cell.base_speed_costs.float = Some(100);
     }
     let success_grid = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
-    assert!(super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&success_grid),
-    ));
+    sim.path_grid = Some(std::sync::Arc::new(success_grid));
+    assert!(super::production_queue::tick_production(&mut sim, &rules,));
     let delivered = sim.substrate.entities.get(held_id).unwrap();
     assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo);
     assert_eq!(
@@ -1477,12 +1429,7 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
             .factory_shadow
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
-    assert!(super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&success_grid),
-    ));
+    assert!(super::production_queue::tick_production(&mut sim, &rules,));
     assert_eq!(
         sim.houses[&americans].stats.built, 2,
         "the promoted object's delivery records it"
@@ -1495,6 +1442,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     let mut sim = Simulation::new();
     let terrain = water_terrain(40, 40);
     let grid = PathGrid::from_resolved_terrain(&terrain);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 40,
@@ -1531,12 +1479,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    assert!(super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&grid)
-    ));
+    assert!(super::production_queue::tick_production(&mut sim, &rules));
     let produced = sim
         .substrate
         .entities
@@ -1639,12 +1582,7 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    assert!(super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        None,
-    ));
+    assert!(super::production_queue::tick_production(&mut sim, &rules,));
     let produced = sim
         .substrate
         .entities
@@ -1682,6 +1620,7 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
     // distant rally lies outside the deliberately truncated path grid; the
     // Ship setter publishes it without a search.
     let grid = PathGrid::test_all_passable(15, 15);
+    sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
         base: 40,
@@ -1717,12 +1656,7 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    assert!(super::production_queue::tick_production(
-        &mut sim,
-        &rules,
-        &BTreeMap::new(),
-        Some(&grid),
-    ));
+    assert!(super::production_queue::tick_production(&mut sim, &rules,));
     let produced = sim
         .substrate
         .entities
@@ -1779,7 +1713,6 @@ fn custom_exit_coord_modded_factory() {
         &rules,
         "Americans",
         ObjectCategory::Vehicle,
-        None,
         false,
     )
     .expect("should find spawn cell");
@@ -1795,11 +1728,10 @@ fn custom_exit_coord_modded_factory() {
 fn harvester_moves_to_ore_and_back_with_path_grid() {
     let mut sim = Simulation::new();
     let rules = build_catalog_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let grid = PathGrid::new(64, 64);
 
     let harvester_sid = sim
-        .spawn_object("HARV", "Americans", 10, 10, 64, &rules, &height_map)
+        .spawn_object("HARV", "Americans", 10, 10, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "Americans", "GAREFN", 8, 10);
     // Whole-multiple of the ore base (120) so the cell drains cleanly. The
@@ -1817,7 +1749,7 @@ fn harvester_moves_to_ore_and_back_with_path_grid() {
     // Run enough ticks for a full harvest cycle: search → move to ore →
     // harvest bales → return to refinery → dock → unload.
     for _ in 0..3000 {
-        let _ = sim.advance_tick(&[], Some(&rules), &height_map, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
         let pos = sim
             .substrate
             .entities

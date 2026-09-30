@@ -58,58 +58,16 @@ fn gsi_04_12_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
     let cells = (0..height)
         .flat_map(|ry| {
             (0..width).map(move |rx| ResolvedTerrainCell {
-                rx,
-                ry,
-                source_tile_index: 0,
-                source_sub_tile: 0,
-                final_tile_index: 0,
-                final_sub_tile: 0,
-                is_wood_bridge_repair_tile: false,
-                level: 0,
-                filled_clear: false,
                 tileset_index: None,
                 land_type: LandType::Clear.as_index(),
                 yr_cell_land_type: LandType::Clear.as_index(),
-                slope_type: 0,
-                template_height: 0,
-                render_offset_x: 0,
-                render_offset_y: 0,
-                terrain_class: TerrainClass::Clear,
                 speed_costs,
-                is_water: false,
-                is_cliff_like: false,
-                is_rough: false,
-                is_road: false,
-                accepts_smudge: false,
-                allows_tiberium: false,
-                height_in_pixels: 0,
-                variant: 0,
-                has_ramp: false,
-                canonical_ramp: None,
-                ground_walk_blocked: false,
-                terrain_object_blocks: false,
-                terrain_object_occupation: None,
-                overlay_blocks: false,
-                overlay_zone_type: None,
-                outside_playfield: false,
                 zone_type: zone_class::GROUND,
-                base_ground_walk_blocked: false,
-                base_build_blocked: false,
                 base_land_type: LandType::Clear.as_index(),
                 base_yr_cell_land_type: LandType::Clear.as_index(),
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: speed_costs,
-                has_bridge_deck: false,
-                bridge_walkable: false,
-                bridge_transition: false,
-                bridge_deck_level: 0,
-                bridge_layer: None,
-                bridge_facts: Default::default(),
-                tube_index: None,
-                radar_left: [0, 0, 0],
-                radar_right: [0, 0, 0],
-                has_damaged_data: false,
-                bridgehead_anchor_class_at_load: None,
+                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
             })
         })
         .collect();
@@ -320,7 +278,6 @@ fn playfield_hierarchy_bridge_projection_tracks_intact_and_destroyed_records() {
     let record = BridgeEndpointRecord {
         endpoint_a: (6, 6),
         endpoint_b: (8, 6),
-        group_id: 1,
         active: true,
         bridge_kind: BridgeRecordKind::High,
     };
@@ -828,7 +785,6 @@ fn caller_count_bridge_detour(
         &[BridgeEndpointRecord {
             endpoint_a: (1, 2),
             endpoint_b: (5, 2),
-            group_id: 0,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }],
@@ -847,19 +803,19 @@ fn caller_count_bridge_detour(
         ((1, 0), (5, 0))
     };
     let native_start = zones
-        .get_path_zone_id_native(&terrain, start, mz, false)
+        .get_zone_id_native(&terrain, start, mz, false)
         .expect("caller fixture retains native topology");
     assert!(
         (2..u32::from(u16::MAX)).contains(&native_start),
         "the native precheck must use a valid ground row, not equal invalid labels"
     );
     assert_eq!(
-        zones.get_path_zone_id_native(&terrain, goal, mz, false),
+        zones.get_zone_id_native(&terrain, goal, mz, false),
         Some(native_start),
         "the top-row shortcut connects the native source and destination"
     );
     assert_eq!(
-        zones.get_path_zone_id_native(&terrain, (3, 2), mz, true),
+        zones.get_zone_id_native(&terrain, (3, 2), mz, true),
         Some(native_start),
         "the bridge deck resolves through the same reachable ground component"
     );
@@ -922,8 +878,6 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     // omitted counts instead select the distinct ordinary ground shortcut.
     let (path_grid, zone_grid, terrain) = caller_count_bridge_detour(MovementZone::Normal, false);
 
-    let mut height_map = BTreeMap::new();
-    height_map.insert((1, 0), 4);
     let mut sim = Simulation::new();
     // Explicit fixture Map Size=(6,4) beside the generous LocalSize bounds;
     // Foot's production precheck consumes both header dimensions.
@@ -935,9 +889,9 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
     let factory = sim
-        .spawn_object("GAWEAP", "Americans", 0, 0, 0, &rules, &height_map)
+        .spawn_object("GAWEAP", "Americans", 0, 0, 0, &rules)
         .expect("war factory should spawn");
-    sim.spawn_object("MTNK", "Russians", 0, 2, 0, &rules, &height_map)
+    sim.spawn_object("MTNK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
 
     let owner = sim.interner.intern("Americans");
@@ -973,8 +927,9 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
             .test_arm_ready(owner, ProductionCategory::Vehicle)
     );
 
+    sim.install_fixture_path_grid(Some(&path_grid));
     assert!(
-        tick_production(&mut sim, &rules, &height_map, Some(&path_grid)),
+        tick_production(&mut sim, &rules),
         "ready ground-unit production should deliver through the real completion entry"
     );
 
@@ -992,7 +947,6 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     );
     assert_eq!(locomotor.movement_zone, MovementZone::Normal);
     assert!(!produced.on_bridge);
-    assert!(!produced.too_big_to_fit_under_bridge);
     let produced_id = produced.stable_id();
     let movement = first_track_process_route(&mut sim, produced_id, Some(&rules), &path_grid)
         .expect("completed MTNK should receive the hierarchy-backed rally route");
@@ -1032,9 +986,6 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
     // occupying the route.
     let (path_grid, zone_grid, terrain) = caller_count_bridge_detour(MovementZone::Normal, true);
 
-    let mut height_map = BTreeMap::new();
-    height_map.insert((1, 0), 4);
-    height_map.insert((5, 0), 4);
     let mut sim = Simulation::new();
     sim.playfield_bounds = Some(PlayfieldBounds {
         base: 6,
@@ -1044,15 +995,20 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
     let refinery_id = sim
-        .spawn_object("REFN", "Americans", 0, 0, 0, &rules, &height_map)
+        .spawn_object("REFN", "Americans", 0, 0, 0, &rules)
         .expect("refinery should spawn");
     let miner_id = sim
-        .spawn_object("HARV", "Americans", 5, 0, 0, &rules, &height_map)
+        .spawn_object("HARV", "Americans", 5, 0, 0, &rules)
         .expect("harvester should spawn");
-    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules, &height_map)
+    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
     assert!(sim.substrate.entities.get(refinery_id).is_some());
-    assert!(sim.set_unit_cell_destination(miner_id, (1, 0), &rules, true));
+    assert!(sim.set_unit_destination(
+        miner_id,
+        crate::sim::components::NavTargetRef::cell(1, 0),
+        &rules,
+        true
+    ));
 
     let movement = first_track_process_route(&mut sim, miner_id, Some(&rules), &path_grid)
         .expect("the dock leg's first Process should install the hierarchy-backed route");
@@ -1081,9 +1037,6 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
 
     let (path_grid, zone_grid, terrain) = caller_count_bridge_detour(MovementZone::Infantry, false);
 
-    let mut height_map = BTreeMap::new();
-    height_map.insert((1, 0), 4);
-    height_map.insert((5, 0), 4);
     let mut sim = Simulation::new();
     // Explicit fixture Map Size=(6,4), separate from the generous LocalSize
     // bounds. Foot's production precheck consumes both header dimensions.
@@ -1095,14 +1048,15 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
     let engineer_id = sim
-        .spawn_object("ENGINEER", "Americans", 1, 0, 0, &rules, &height_map)
+        .spawn_object("ENGINEER", "Americans", 1, 0, 0, &rules)
         .expect("engineer should spawn");
     let target_id = sim
-        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules, &height_map)
+        .spawn_object("TARGET", "Russians", 5, 0, 0, &rules)
         .expect("capture target should spawn");
-    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules, &height_map)
+    sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
 
+    sim.install_fixture_path_grid(Some(&path_grid));
     assert!(sim.apply_command(
         "Americans",
         &crate::sim::command::Command::CaptureBuilding {
@@ -1110,8 +1064,6 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
             target_building_id: target_id,
         },
         Some(&rules),
-        Some(&path_grid),
-        &height_map,
     ));
 
     let engineer = sim.substrate.entities.get(engineer_id).unwrap();
@@ -1308,7 +1260,8 @@ fn gsi_04_12_attack_pursuit_entry_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
 
-    sim.tick_attack_pursuit(&rules, Some(&path_grid));
+    sim.install_fixture_path_grid(Some(&path_grid));
+    sim.tick_attack_pursuit(&rules);
 
     let movement = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
         .expect("real out-of-range pursuit should reach the projected hierarchy route");
@@ -1381,7 +1334,8 @@ fn gsi_04_12_phase_six_order_resume_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
 
-    sim.tick_order_intents_post_combat(Some(&path_grid), Some(&rules));
+    sim.install_fixture_path_grid(Some(&path_grid));
+    sim.tick_order_intents_post_combat(Some(&rules));
 
     let movement = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
         .expect("real Phase-6 resume should reach the projected hierarchy route");
@@ -1461,7 +1415,6 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
     let mut occupancy = OccupancyGrid::new();
     let mut cell_occupation = CellOccupationGrid::new();
     let mut raw_cell_occupation = crate::sim::occupancy::RawCellOccupationGrid::new();
-    let mut enter_order = crate::sim::world::EnterOrderCounter::new();
     let mut rng = SimRng::new(0);
     let terrain_speed_config = TerrainSpeedConfig::default();
     let terrain_costs = BTreeMap::new();
@@ -1479,7 +1432,6 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         &mut occupancy,
         &mut cell_occupation,
         &mut raw_cell_occupation,
-        &mut enter_order,
         &mut rng,
         1,
         1,
@@ -1569,6 +1521,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         sim.substrate.entities.insert(blocker);
         sim.resolved_terrain = Some(terrain);
         sim.zone_grid = Some(zone_grid);
+        sim.install_fixture_path_grid(Some(&path_grid));
         sim
     };
 
@@ -1576,7 +1529,6 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     assert!(issue_stock_miner_drive_move(
         &mut ore_trip,
         &rules,
-        &path_grid,
         1,
         (3, 0),
     ));
@@ -1590,11 +1542,9 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     issue_move_if_idle(
         &mut refinery_return,
         Some(&rules),
-        &path_grid,
         1,
         (3, 0),
         SimFixed::from_num(128),
-        None,
     );
     assert_eq!(
         first_track_process_route(&mut refinery_return, 1, Some(&rules), &path_grid)
@@ -1767,7 +1717,6 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         &[BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (1, 0),
-            group_id: 0,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }],
@@ -1811,12 +1760,12 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         )
     };
     assert_eq!(
-        zones.get_zone_id_native((0, 0), MovementZone::Normal, false),
+        zones.get_zone_id_native(&terrain, (0, 0), MovementZone::Normal, false),
         Some(1)
     );
     assert_eq!(
-        zones.get_zone_id_native((1, 0), MovementZone::Normal, false),
-        Some(u16::MAX)
+        zones.get_zone_id_native(&terrain, (1, 0), MovementZone::Normal, false),
+        Some(u32::from(u16::MAX))
     );
     assert_eq!(
         zones
@@ -1857,7 +1806,7 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         cell.bridge_deck_level = 4;
     }
     assert_eq!(
-        zones.get_zone_id_native((1, 0), MovementZone::Normal, true),
+        zones.get_zone_id_native(&terrain, (1, 0), MovementZone::Normal, true),
         Some(2)
     );
     assert_eq!(
@@ -1920,7 +1869,6 @@ fn tube_hierarchy_dword_zone_query_matches_original_executable() {
             .map(|r| BridgeEndpointRecord {
                 endpoint_a: coord(&r[0]),
                 endpoint_b: coord(&r[1]),
-                group_id: 0,
                 active: r[2].as_bool().unwrap(),
                 bridge_kind: if r[3] == 0 {
                     BridgeRecordKind::High
@@ -1958,12 +1906,7 @@ fn tube_hierarchy_dword_zone_query_matches_original_executable() {
         }
         dummy.stamp_coord(1234, -2345);
         assert_eq!(
-            zones.get_path_zone_id_native(
-                &terrain,
-                query,
-                MovementZone::Normal,
-                case["check"] == 1
-            ),
+            zones.get_zone_id_native(&terrain, query, MovementZone::Normal, case["check"] == 1),
             Some(case["result"].as_u64().unwrap() as u32),
             "{}",
             case["name"]
@@ -2018,11 +1961,11 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
     zones.set_hierarchy(level0_hierarchy(vec![1; 256], 16, 16, &[]));
     let counts = BlockerNeighborCounts::new(16, 16);
     assert_eq!(
-        zones.get_path_zone_id_native(&terrain, (5, 7), MovementZone::Normal, true),
+        zones.get_zone_id_native(&terrain, (5, 7), MovementZone::Normal, true),
         Some(u32::MAX)
     );
     assert_ne!(
-        zones.get_path_zone_id_native(&terrain, (4, 7), MovementZone::Normal, false),
+        zones.get_zone_id_native(&terrain, (4, 7), MovementZone::Normal, false),
         Some(u32::MAX)
     );
     assert!(
@@ -2121,7 +2064,6 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                 endpoint_a: coord(&r[0]),
                 endpoint_b: coord(&r[1]),
                 active: r[2].as_bool().unwrap(),
-                group_id: 0,
                 bridge_kind: BridgeRecordKind::High,
             })
             .collect();

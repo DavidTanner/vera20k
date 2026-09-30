@@ -110,7 +110,7 @@ impl CrateRulesAccumulator {
             ("CrateImg", &mut self.0.crate_img),
             ("WaterCrateImg", &mut self.0.water_crate_img),
         ] {
-            if section.get(key).is_none() {
+            if !section.is_present(key) {
                 continue;
             }
             // Every ReadString call in this body is given capacity 0x80, so
@@ -128,7 +128,7 @@ impl CrateRulesAccumulator {
             let value = section.read_string(key, "", 0x80);
             *target = (!is_native_none_type_name(&value)).then(|| value.to_ascii_uppercase());
         }
-        if section.get("HealCrateSound").is_some() {
+        if section.is_present("HealCrateSound") {
             // `if ((read == 0) || (index = VocClass__FindByName(), index == -1))
             //  { index = previous; }` — a failed lookup RETAINS the live index
             // rather than clearing it, so a no-type sentinel must not null the
@@ -138,29 +138,29 @@ impl CrateRulesAccumulator {
                 self.0.heal_crate_sound = Some(value.to_ascii_uppercase());
             }
         }
-        if section.get("CrateMinimum").is_some() {
+        if section.is_present("CrateMinimum") {
             self.0.minimum = section.read_int("CrateMinimum", self.0.minimum);
         }
-        if section.get("CrateMaximum").is_some() {
+        if section.is_present("CrateMaximum") {
             self.0.maximum = section.read_int("CrateMaximum", self.0.maximum);
         }
         // `CrateRadius` is stored in leptons; the stock `3.0` is three cells.
         // ReadRange owns the absent-key and `-1` sentinel cases itself, so this
         // needs no presence guard of its own.
         self.0.radius = section.read_range("CrateRadius", self.0.radius);
-        if section.get("CrateRegen").is_some() {
+        if section.is_present("CrateRegen") {
             self.0.regen = NativeF64Bits::from_bits(
                 section
                     .read_double("CrateRegen", f64::from_bits(self.0.regen.bits()))
                     .to_bits(),
             );
         }
-        if section.get("UnitCrateType").is_some() {
+        if section.is_present("UnitCrateType") {
             let value = section.read_string("UnitCrateType", "", 0x80);
             self.0.unit_crate_type =
                 (!is_native_none_type_name(&value)).then(|| value.to_ascii_uppercase());
         }
-        if section.get("SoloCrateMoney").is_some() {
+        if section.is_present("SoloCrateMoney") {
             self.0.solo_crate_money = section.read_int("SoloCrateMoney", self.0.solo_crate_money);
         }
         for (key, target) in [
@@ -168,7 +168,7 @@ impl CrateRulesAccumulator {
             ("WoodCrate", &mut self.0.wood_crate),
             ("WaterCrate", &mut self.0.water_crate),
         ] {
-            if section.get(key).is_none() {
+            if !section.is_present(key) {
                 continue;
             }
             // `FUN_004759F0` reads the string, then `Powerup_From_Name` maps it

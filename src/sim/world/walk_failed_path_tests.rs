@@ -10,7 +10,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::mission::MissionId;
 use crate::sim::world::Simulation;
-use std::collections::BTreeMap;
 
 fn human_house(sim: &mut Simulation) {
     let owner = sim.interner.intern("Americans");
@@ -21,15 +20,7 @@ fn human_house(sim: &mut Simulation) {
 
 fn engineer_at(sim: &mut Simulation, rules: &RuleSet, cell: (u16, u16)) -> u64 {
     let id = sim
-        .spawn_object(
-            "ENGINEER",
-            "Americans",
-            cell.0,
-            cell.1,
-            0,
-            rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("ENGINEER", "Americans", cell.0, cell.1, 0, rules)
         .unwrap();
     sim.mission_assign_exact(
         id,
@@ -43,10 +34,16 @@ fn engineer_at(sim: &mut Simulation, rules: &RuleSet, cell: (u16, u16)) -> u64 {
 /// Infantry 0x51AA40(cell, true) through the shared Walk setter owner.
 fn order_walk(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
     let speed = sim.resolve_move_info(id, Some(rules)).unwrap().speed;
-    assert!(crate::sim::movement::prepare_walk_cell_destination(
+    let coord =
+        crate::sim::movement::target_cell_coord(target.0, target.1, sim.resolved_terrain.as_ref());
+    crate::sim::movement::clear_destination_path_head(sim.substrate.entities.get_mut(id).unwrap());
+    assert!(crate::sim::movement::prepare_walk_destination(
         &mut sim.substrate.entities,
         id,
-        target,
+        (
+            crate::sim::components::NavTargetRef::cell(target.0, target.1),
+            coord
+        ),
         speed,
         sim.resolved_terrain.as_ref(),
         crate::sim::movement::DestinationTiming::new(
@@ -72,7 +69,6 @@ pub(super) fn enclose(sim: &mut Simulation, rules: &RuleSet, centre: (u16, u16))
                 (i32::from(centre.1) + dy) as u16,
                 0,
                 rules,
-                &BTreeMap::new(),
             )
             .unwrap();
         }
@@ -97,14 +93,7 @@ fn far_failure_stops_walk_clears_target_and_queues_guard_for_a_human_house() {
     let guard = MissionId::from_known(MissionType::Guard);
     let mut frames = 0;
     for _ in 0..30 {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         frames += 1;
         let mission = sim.substrate.entities.get(id).unwrap().mission;
         if mission.queued() == guard || mission.current() == guard {
@@ -144,19 +133,12 @@ fn far_failure_stops_walk_clears_target_and_queues_guard_for_a_human_house() {
 fn building_target_redirects_to_a_nearby_cell_and_the_walk_completes_there() {
     let (mut sim, rules, registry) = fixture();
     human_house(&mut sim);
-    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules, &BTreeMap::new())
+    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules)
         .unwrap();
     let id = engineer_at(&mut sim, &rules, (10, 10));
     order_walk(&mut sim, &rules, id, (13, 10));
     for _ in 0..400 {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         let e = sim.substrate.entities.get(id).unwrap();
         if e.movement_target.is_none() && e.locomotor.as_ref().unwrap().walk_destination().is_none()
         {
@@ -190,7 +172,7 @@ fn obstructed_target_beyond_close_enough_redirects_only_when_the_nearby_cell_is_
     // actor's House); FNPC's raw-occupation admission then skips the seed
     // itself. The supplied answer stands in for that occupant, and a Building
     // keeps FNPC off the seed cell the same way.
-    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules, &BTreeMap::new())
+    sim.spawn_object("CABHUT", "Soviets", 13, 10, 0, &rules)
         .unwrap();
     // 0x4D3A9B: 768 leptons > CloseEnough 576 enters the code-6 arm. FNPC from
     // the target picks the passable cell nearest the actor, which lies 256
@@ -296,15 +278,79 @@ fn receiver_writes_the_ready_action_only_when_do_action_admits_it() {
     assert_eq!(doing, if has_ready { 0 } else { -1 });
 }
 
+/// A Jumpjet man's damage Scatter takes Foot's setter (`0x004D94B0`): the
+/// NavCom, then the Jumpjet Move_To, then Foot's timer tail. It is not a
+/// grid-bypassing direct move.
+#[test]
+fn jumpjet_infantry_damage_scatter_takes_the_foot_air_setter() {
+    use crate::sim::combat::{EntityDamageEvent, world_receiver};
+    use crate::sim::components::NavTargetRef;
+    let (mut sim, rules, registry) = super::tests::fixture_with_rules(
+        "[JUMPJET]\nFraidycat=yes\n[Guard]\nScatter=yes\n[CombatDamage]\nPlayerScatter=yes\n",
+    );
+    let victim = sim
+        .spawn_object("JUMPJET", "Americans", 10, 10, 0, &rules)
+        .unwrap();
+    let attacker = engineer_at(&mut sim, &rules, (8, 10));
+    sim.mission_assign_exact(
+        victim,
+        MissionId::from_known(MissionType::Guard),
+        sim.session.binary_frame,
+    )
+    .unwrap();
+    sim.substrate
+        .entities
+        .get_mut(victim)
+        .unwrap()
+        .mission_leaf
+        .set_infantry_doing_verified(-1)
+        .unwrap();
+    let attacker_house = sim.substrate.entities.get(attacker).unwrap().owner();
+    let warhead = sim.interner.intern("SA");
+    let event = EntityDamageEvent::area(victim, 10, 0, attacker, Some(attacker_house), warhead);
+    world_receiver::commit_entities(
+        &mut sim,
+        &mut world_receiver::ReceiverRun::default(),
+        &[event],
+        None,
+        &rules,
+        Some(&registry),
+    );
+    let e = sim.substrate.entities.get(victim).unwrap();
+    assert!(e.health.current < 125);
+    assert!(
+        matches!(e.navigation.nav_com, Some(NavTargetRef::Cell { .. })),
+        "Scatter published the cell NavCom"
+    );
+    let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
+    assert!(state.moving, "Jumpjet Move_To accepted the scatter cell");
+    assert!(
+        !e.movement_target
+            .as_ref()
+            .is_some_and(|target| target.adapter_route || target.bypass_grid),
+        "no direct-move adapter route"
+    );
+    assert_eq!(e.mission.queued(), MissionId::from_known(MissionType::Move));
+}
+
 #[test]
 fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     use crate::sim::combat::{EntityDamageEvent, world_receiver};
     use crate::sim::components::NavTargetRef;
     use crate::sim::movement::ground_pose::position_world_coord;
     let (mut sim, rules, registry) = super::tests::fixture_with_rules(
-        "[ENGINEER]\nFraidycat=yes\n[Guard]\nScatter=yes\n[CombatDamage]\nPlayerScatter=yes\n",
+        "[General]\nFixtureOnly=1\n[ENGINEER]\nFraidycat=yes\n[Guard]\nScatter=yes\n[CombatDamage]\nPlayerScatter=yes\n",
     );
     assert!(rules.object("ENGINEER").unwrap().fraidycat);
+    assert!(
+        rules.general.player_scatter,
+        "human Scatter input was parsed"
+    );
+    let owner = sim.interner.intern("Americans");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+    );
     let victim = engineer_at(&mut sim, &rules, (10, 10));
     let attacker = engineer_at(&mut sim, &rules, (8, 10));
     sim.mission_assign_exact(
@@ -316,7 +362,7 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     let e = sim.substrate.entities.get_mut(victim).unwrap();
     e.mission_leaf.set_infantry_doing_verified(-1).unwrap();
     let before = position_world_coord(&e.position);
-    let facing = e.facing;
+    let facing = e.body_facing;
     let attacker_house = sim.substrate.entities.get(attacker).unwrap().owner();
     let warhead = sim.interner.intern("SA");
     let event = EntityDamageEvent::area(victim, 10, 0, attacker, Some(attacker_house), warhead);
@@ -330,7 +376,7 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     );
     let e = sim.substrate.entities.get(victim).unwrap();
     assert_eq!(e.health.current, 65);
-    assert_eq!(e.facing, facing, "Scatter setter does not snap facing");
+    assert_eq!(e.body_facing, facing, "Scatter setter does not snap facing");
     assert_eq!(
         position_world_coord(&e.position),
         before,
@@ -349,41 +395,32 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     );
     assert_eq!(e.locomotor.as_ref().unwrap().step_head(), None);
     assert_eq!(e.mission.queued(), MissionId::from_known(MissionType::Move));
+    assert_eq!(e.infantry.as_ref().unwrap().fear_level, 300);
+    // Isolate the damage-created destination's ordinary Walk continuation.
+    // The independently native-compared5200B0 panic tail can issue another
+    // NULL Scatter immediately on arrival while this Fraidycat's fear>50.
+    sim.substrate
+        .entities
+        .get_mut(victim)
+        .unwrap()
+        .infantry
+        .as_mut()
+        .unwrap()
+        .fear_level = 0;
     // The same production tick host that handles normal orders must consume
     // the damage-created request. The native corpus proves the first FindPath
     // boundary; this regression continues through our real search/head/step.
-    sim.advance_tick(
-        &[],
-        Some(&rules),
-        &BTreeMap::new(),
-        None,
-        Some(&registry),
-        67,
-    );
+    sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
     let e = sim.substrate.entities.get(victim).unwrap();
     assert_eq!(position_world_coord(&e.position), before);
     assert!(e.locomotor.as_ref().unwrap().step_head().is_some());
-    sim.advance_tick(
-        &[],
-        Some(&rules),
-        &BTreeMap::new(),
-        None,
-        Some(&registry),
-        67,
-    );
+    sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
     assert_ne!(
         position_world_coord(&sim.substrate.entities.get(victim).unwrap().position),
         before
     );
     for _ in 0..200 {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            None,
-            Some(&registry),
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         if sim
             .substrate
             .entities

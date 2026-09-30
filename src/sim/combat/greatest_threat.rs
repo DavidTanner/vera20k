@@ -15,9 +15,11 @@
 //!    [`super::threat_range`]. A zero radius means "no cutoff of the scan's
 //!    own", and the *walk* is then bounded by
 //!    `wider weapon range + 1 + AirRangeBonus` cells (`0x006F90C8..0x006F9148`).
-//! 2. Airborne pre-pass. An attacker with an AA projectile sweeps the airborne
-//!    bucket grid first (`0x006F9169`), evaluating **every** aircraft in reach.
-//!    Aircraft are therefore scored before any ground cell and win ties.
+//! 2. Airborne pre-pass. A mask with the AA bit (`4`) sweeps the airborne
+//!    bucket grid first (`0x006F91A7`), evaluating **every** airborne object in
+//!    reach — aircraft and jumpjets — with the Unit and Infantry class bits
+//!    added (`0x006F91C2`). They are therefore scored before any ground cell
+//!    and win ties; a mask of exactly 5 walks no rings after it.
 //! 3. Ring walk. `for r in 0..radius`: a row pass over `(cx-r..=cx+r, cy-r)`
 //!    then `(…, cy+r)`, then a column pass over `(cx-r, cy+1-r..cy+r-1)` then
 //!    `(cx+r, …)`. At `r == 0` the centre cell is visited twice — that is the
@@ -66,9 +68,9 @@
 //!   the retired nearest-first key, and still carries the invented
 //!   friendly and `FogState::is_cell_visible` gates that this scan no
 //!   longer has — so "the fog gate is gone" is true of passive acquisition and
-//!   not of the garrison path. It is a separate caller with its own
-//!   `OccupyWeapon` selection ladder; folding it into this walk is follow-up
-//!   work. Native reaches an occupied building through this walk: the
+//!   not of the garrison path. It is a separate caller that ranks with the
+//!   occupant's weapon ([`super::combat_weapon::occupant_weapon`]) and asks
+//!   GetFireError of its pick; folding it into this walk is follow-up work. Native reaches an occupied building through this walk: the
 //!   IsOccupied arm at `0x006F917F..0x006F91A3` sets the ring bound to
 //!   `HalfFoundation + OccupyWeaponRange + 1` cells, the candidate gate is
 //!   In_Range's IsOccupied arm (`0x006F727E..0x006F729F`), and GetWeapon
@@ -80,12 +82,15 @@
 //! - The `DistributedFire=` candidate/history assignment (`0x00709550`) is
 //!   not represented here. It is reachable for human-owned stock AEGIS;
 //!   its complete collection, firing-history and detach owners remain pending.
-//!   Separately, the omitted AI ore-cell fallback (`0x006F8C10`) returns 0
-//!   for a human-controlled house.
-//! - The ordinary class-mask AA bit (`Weapon772A90`) gates the airborne
-//!   prepass through the resolved native slot choice. The complete mask,
-//!   including Infantry special mission/type rewrites and AG class bits,
-//!   remains unrepresented; per-target weapon selection is still separate.
+//! - The ring walk's wall fallback (`0x006F8C10`, per ring cell, read not
+//!   executed) is not ported: for a computer house it can return a cell
+//!   holding a `Wall=` overlay that the scanner's `Wall=` warhead and AG
+//!   projectile can hit, gated by a per-difficulty Rules byte (`+0x1581 +
+//!   difficulty * 0x50`, identity UNCHECKED), as the scan's cell target
+//!   (`0x006F9B55..0x006F9B5F`). Trigger: a computer unit on Guard or Area
+//!   Guard whose rings reach a wall. Effect: it does not shoot the wall.
+//! - The threat mask (the callsite literal, the class overrides and the
+//!   flags word) is [`super::threat_mask`]'s; its residuals are listed there.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/ and sim/ only.
@@ -95,9 +100,11 @@ use std::collections::BTreeMap;
 
 use super::combat_targeting::AttackerSnapshot;
 use super::combat_weapon::{
-    attacker_facts, attacker_facts_from_snapshot, is_ally_by_object, is_armed, passive_scan_has_aa,
+    AttackerFacts, attacker_facts, attacker_facts_from_snapshot, is_ally_by_object, is_armed,
+    is_armed_from_facts, passive_scan_class_bits, primary_warhead_spares_medium_and_wood,
     resolve_selected_weapon, techno_target_facts,
 };
+use super::threat_mask::{self, InfantryScanner};
 use super::threat_range::{ScanRange, max_weapon_range, scan_range};
 use super::{armor_index, is_within_range_leptons, lepton_distance_sq_raw};
 use crate::map::cell_index::NativeCellIdentity;
@@ -109,11 +116,11 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::intern::StringInterner;
+use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::OccupancyGrid;
-use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneId};
+use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::vision::FogState;
 use crate::util::fixed_math::SimFixed;
 use crate::util::native_x87::{
@@ -130,7 +137,7 @@ const THREAT_SCORE_BASE: f64 = 100_000.0;
 /// — a `float` `0.02` widened to double, so the comparison is against
 /// `0.019999999552965164` and an authored `Verses=2%` (exactly `0.02` as a
 /// double) is *above* it and passes.
-const VERSES_FLOOR: f64 = 0.02f32 as f64;
+pub(crate) const VERSES_FLOOR: f64 = 0.02f32 as f64;
 /// The five weights of `TechnoClass::Calculate_Threat_Score @ 0x0070CD10`, in
 /// the order the native body loads them.
 #[derive(Debug, Clone, Copy)]
@@ -228,6 +235,26 @@ fn spill_threat_double(value: MaskedX87Value) -> MaskedX87Value {
     ScoreX87::load_f64(ScoreX87::store_f64_masked_chop(value))
 }
 
+/// Term C (`0x0070CEDC..0x0070CEF9`): the candidate type's
+/// `SpecialThreatValue=` (`TechnoTypeClass+0x2C0`) weighted and added; then
+/// `enemy_bonus`, `EnemyHouseThreatBonus=` when the scorer house's enemy
+/// owns the candidate (`0x0070CEFD..0x0070CF19`).
+fn special_threat_terms(
+    score: MaskedX87Value,
+    coefficient: MaskedX87Value,
+    special_threat_value: f64,
+    enemy_bonus: Option<f64>,
+) -> MaskedX87Value {
+    let score = spill_threat_double(ScoreX87::add(
+        ScoreX87::mul(coefficient, load_threat_double(special_threat_value)),
+        score,
+    ));
+    match enemy_bonus {
+        Some(bonus) => spill_threat_double(ScoreX87::add(score, load_threat_double(bonus))),
+        None => score,
+    }
+}
+
 fn threat_coord(entity: &GameEntity, terrain: Option<&ResolvedTerrainGrid>) -> (i32, i32, i32) {
     let x = i32::from(entity.position.rx)
         .wrapping_mul(LEPTONS_PER_CELL)
@@ -235,20 +262,7 @@ fn threat_coord(entity: &GameEntity, terrain: Option<&ResolvedTerrainGrid>) -> (
     let y = i32::from(entity.position.ry)
         .wrapping_mul(LEPTONS_PER_CELL)
         .wrapping_add(entity.position.sub_y.to_num::<i32>());
-    let z = terrain
-        .and_then(|terrain| super::in_range::effective_z_leptons(entity, terrain))
-        .and_then(|z| i32::try_from(z).ok())
-        .unwrap_or_else(|| {
-            i32::from(entity.position.z)
-                .wrapping_mul(crate::util::lepton::LEPTONS_PER_LEVEL as i32)
-                .wrapping_add(
-                    entity
-                        .locomotor
-                        .as_ref()
-                        .map(|locomotor| locomotor.altitude.to_num::<i32>())
-                        .unwrap_or(0),
-                )
-        });
+    let z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain);
     (x, y, z)
 }
 
@@ -276,46 +290,12 @@ pub(crate) enum ThreatReference {
     /// `CDQ ; AND EDX,0xff ; ADD EAX,EDX ; SAR EAX,0x8` at
     /// `0x0070D094`-`0x0070D09D`.
     NullCoord,
-    /// A real coordinate supplied by the caller, which in the whole reachable
-    /// set is the **scanner's own `ObjectClass+0x9C` Coords**:
-    /// `FootClass::Mission_Hunt` copies its three words to a local and passes
-    /// the pointer (`LEA ECX,[ESI+0x9c] @ 0x004D536D`, three dwords to
-    /// `[ESP+0x14..0x1C]`, `LEA EAX,[ESP+0x14]` / `PUSH EAX @ 0x004D538B`),
-    /// `Retaliate_And_Scan` forwards it as `Greatest_Threat`'s arg2, and the
-    /// flat walk alone pushes it as `Evaluate_Candidate`'s arg7
-    /// (`MOV EBP,[ESP+0x74] @ 0x006F9C76`, `PUSH EBP @ 0x006F9D64`), which
-    /// becomes this parameter at `0x006F86FE`-`0x006F8706`.
-    ///
-    /// This branch measures the supplied point to the candidate's `vt+0x48`
-    /// and then **jumps straight to the join** — `JMP 0x0070D0A0 @ 0x0070D021`,
-    /// with no `SAR EAX,0x8` anywhere on the path — so its distance stays in
-    /// **LEPTONS** while the range it is compared against was shifted to cells
-    /// at `0x0070CF99`.
-    ///
-    /// Because `Mission_Hunt`'s copy and `GetCoords` read the same three
-    /// fields, the reference *point* is identical to the `NullCoord` branch's;
-    /// only the scale differs. Modelled as the scorer's own coordinate here for
-    /// that reason.
-    ///
-    /// **The name is narrower than the native branch, deliberately.** The
-    /// coordinate is chosen a level up, at `Greatest_Threat`, whose gate
-    /// `TEST AL,0x3 ; JZ 0x006F9B6E @ 0x006F8FE0` sends *any* mask with the low
-    /// two bits clear down the flat walk — and `search_instructions
-    /// CALL "+ 0x3c4]"` finds fourteen callsites, not one.
-    /// `FootClass::Mission_Rescue @ 0x004DE056` passes mask 0 with
-    /// `param_1[0x86]`'s coords, i.e. the **ArchiveTarget**
-    /// (`TechnoClass+0x218`) rather than the scanner's own position, and two
-    /// further flat-walk sites (`0x00414B24` mask `0x40`, `0x00414B64` mask 0)
-    /// sit in an undefined body with three more passing a register mask,
-    /// unsettled.
-    ///
-    /// So this variant is exact for every path VERA runs today — Hunt is the
-    /// only production caller that reaches the flat walk — but it is NOT a
-    /// general "supplied coordinate" model, and a second caller cannot simply
-    /// reuse it. Wiring Rescue (VERA already has a paradrop analogue in
-    /// `sim::aircraft::paradrop_mission`) needs an arbitrary-point sibling
-    /// carrying the ArchiveTarget, not this one.
-    ScannerCoords,
+    /// `Greatest_Threat`'s actual coordinate argument, forwarded by the flat
+    /// walk at6F9D64. Hunt supplies Object coords; Rescue supplies ArchiveTarget
+    /// coords (4DE056). The distance remains in leptons (70D021), while the
+    /// weapon range remains in cells. An exact [0,0,0] value takes NullCoord's
+    /// object-distance/cell branch; [0,0,1] is a real coordinate.
+    Coords([i32; 3]),
 }
 
 /// `TechnoClass::Calculate_Threat_Score @ 0x0070CD10`. The distance term's
@@ -325,11 +305,9 @@ pub(crate) enum ThreatReference {
 /// intermediate is written back to the `[ESP+0x10]` double between terms, and
 /// only the final `beyond*E + acc + 100000` is evaluated on the x87 stack.
 ///
-/// Not modelled: the `Rules.EnemyHouseThreatBonus` term at `0x0070CF13`, which
-/// is added when the scorer house's `+0x5600` "current enemy" index names the
-/// candidate's owner. `+0x5600` is written only by `HouseClass::UpdateAngerNodes
-/// @ 0x00504842`, an AI-strategy routine VERA does not run, so the term is
-/// unreachable until an AI house ships. Recorded, not approximated.
+/// `scorer_enemy_house` is the scorer house's current enemy (`+0x5600`,
+/// written by `HouseClass::UpdateAngerNodes @ 0x00504842`); a candidate it
+/// owns earns `[General] EnemyHouseThreatBonus=` (`0x0070CEE6..0x0070CF19`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn calculate_threat_score(
     entities: &EntityStore,
@@ -341,6 +319,7 @@ pub(crate) fn calculate_threat_score(
     alliances: Option<&HouseAllianceMap>,
     coefficients: ThreatCoefficients,
     reference: ThreatReference,
+    scorer_enemy_house: Option<InternedId>,
 ) -> Option<MaskedX87Value> {
     let scorer = entities.get(scorer_id)?;
     let candidate = entities.get(candidate_id)?;
@@ -383,14 +362,13 @@ pub(crate) fn calculate_threat_score(
         score = spill_threat_double(term);
     }
 
-    // C: candidate type SpecialThreatValue (`TechnoTypeClass+0x2C0`).
-    score = spill_threat_double(ScoreX87::add(
-        ScoreX87::mul(
-            coeff_c,
-            load_threat_double(candidate_type.special_threat_value),
-        ),
+    score = special_threat_terms(
         score,
-    ));
+        coeff_c,
+        candidate_type.special_threat_value,
+        (scorer_enemy_house == Some(candidate.owner()))
+            .then_some(rules.general.enemy_house_threat_bonus),
+    );
 
     // A: the scorer's selected weapon against the candidate. Retain the
     // selected weapon for the native range term below.
@@ -431,7 +409,12 @@ pub(crate) fn calculate_threat_score(
     // stock `[General] TargetDistanceCoefficientDefault=-10` against the
     // `100000` base at `0x0070D0C4`, anything past roughly 39 cells drives the
     // score negative and `Evaluate_Candidate`'s tail clamps it to 1.
-    let scorer_coord = threat_coord(scorer, terrain);
+    let (scorer_coord, null_coord) = match reference {
+        ThreatReference::NullCoord | ThreatReference::Coords([0, 0, 0]) => {
+            (threat_coord(scorer, terrain), true)
+        }
+        ThreatReference::Coords([x, y, z]) => ((x, y, z), false),
+    };
     let candidate_coord = threat_coord(candidate, terrain);
     let dx = X87Chop53::load_i32(scorer_coord.0.wrapping_sub(candidate_coord.0));
     let dy = X87Chop53::load_i32(scorer_coord.1.wrapping_sub(candidate_coord.1));
@@ -442,13 +425,12 @@ pub(crate) fn calculate_threat_score(
     );
     let distance_root = X87Chop53::load_f32(sqrt_approx_f32(distance_sq).ok()?).ok()?;
     let distance_leptons = X87Chop53::ftol_i32_low_masked(distance_root);
-    let distance = match reference {
+    let distance = if null_coord {
         // `CDQ ; AND EDX,0xff ; ADD EAX,EDX ; SAR EAX,0x8` at `0x0070D094`.
-        ThreatReference::NullCoord => {
-            crate::util::direction_tables::lepton_to_cell(distance_leptons)
-        }
+        crate::util::lepton::lepton_to_cell(distance_leptons)
+    } else {
         // `JMP 0x0070D0A0 @ 0x0070D021` — the shift is on the other branch.
-        ThreatReference::ScannerCoords => distance_leptons,
+        distance_leptons
     };
     let range_cells = selected_scorer_weapon.as_ref().map_or_else(
         || {
@@ -541,17 +523,11 @@ fn is_early_return_ring(ring: i32, radius: i32) -> bool {
 /// without `GuardRange=` on such a type (an IFV's gunner slot among them).
 /// Effect: the ring walk stops at a different ring. Frequency: every such
 /// scan. Risk: a candidate the native walk reaches is missed, or the reverse.
-fn scan_radius_cells(
-    rules: &RuleSet,
-    obj: &ObjectType,
-    veterancy: u16,
-    range: ScanRange,
-    cargo_range: Option<i32>,
-) -> i32 {
+fn scan_radius_cells(obj: &ObjectType, range: ScanRange, weapon_ranges: [i32; 2]) -> i32 {
     match range {
         ScanRange::Hard(cells) => cells.to_num::<i32>(),
         ScanRange::CanFireAt => {
-            let weapon_cells = max_weapon_range(rules, obj, veterancy, cargo_range).to_num::<i32>();
+            let weapon_cells = max_weapon_range(weapon_ranges).to_num::<i32>();
             let air_bonus_cells = obj.air_range_bonus.map_or(0, |bonus| bonus.to_num::<i32>());
             weapon_cells + 1 + air_bonus_cells
         }
@@ -649,35 +625,23 @@ struct ScanContext<'a> {
     range: ScanRange,
     coefficients: ThreatCoefficients,
     zone_grid: Option<&'a ZoneGrid>,
-    /// `[ESP+0x3C]` in `Greatest_Threat` — the scanner's own movement-zone
-    /// component id, or `None` for native's `-1` "gate off".
-    ///
-    /// Native seeds the slot with `-1` (`OR EBP,0xffffffff @ 0x006F8DFF`,
-    /// `MOV [ESP+0x3c],EBP @ 0x006F8E15`) and overwrites it at `0x006F8EC4`
-    /// with `MapClass::GetZoneID(my cell, myType->MovementZone, 1)` when the
-    /// mask has bit0 CLEAR (`TEST BL,0x1 ; JNZ 0x006F8EC8` at
-    /// `0x006F8E48`) and `What_Am_I()` is neither `6` (Building) nor `2`
-    /// (Aircraft) — the two classes with no movement zone (`CMP EAX,0x6 ; JZ`
-    /// at `0x006F8E54`, `CMP EAX,0x2 ; JZ` at `0x006F8E60`).
-    ///
-    /// It reaches [`evaluate_candidate`] as `Evaluate_Candidate`'s **arg6**
-    /// only on the mask-0 flat walk (`PUSH ECX @ 0x006F9D69`); every ring-walk
-    /// callsite fills the same slot with the literal `-1`
-    /// (`PUSH -0x1 @ 0x006F92A3`, `@ 0x006F9C21`), so the gate is a property of
-    /// the flat walk, not of the shared candidate ladder.
-    scanner_zone: Option<ZoneId>,
-    /// `Evaluate_Candidate`'s **arg7**, the coordinate
-    /// `Calculate_Threat_Score` measures its distance term from — and, through
-    /// the sentinel test at `0x0070CFA0`-`0x0070CFBC`, the term's SCALE.
-    ///
-    /// Like [`Self::scanner_zone`] this is a property of the walk and not of
-    /// the shared candidate ladder, and the two walks disagree in the same
-    /// direction: the flat walk forwards `Greatest_Threat`'s own arg2
-    /// (`PUSH EBP @ 0x006F9D64`, loaded `MOV EBP,[ESP+0x74] @ 0x006F9C76`),
-    /// which for `Mission_Hunt` is a copy of the hunter's Coords, while the
-    /// ring walk and the aircraft pre-walk push the `NullCoord` sentinel
-    /// (`PUSH 0xb0ea90` at `0x006F929A` and `0x006F9C18`).
-    threat_reference: ThreatReference,
+    /// `Greatest_Threat`'s mask after the scanner's override and the
+    /// preamble ([`scanner_mask`]).
+    mask: u32,
+    /// Actual Greatest_Threat arg2, used as the ring center and forwarded to
+    /// Calculate_Threat_Score only by the flat Techno walk.
+    scan_coord: [i32; 3],
+    standing: ScannerStanding<'a>,
+    /// The flat walks and the ring walk's air pre-pass skip an allied
+    /// candidate (`Is_Ally_ByObject @ 0x004F9A90`) unless the scanner is
+    /// `AttackFriendlies=` (TechnoType
+    /// `+0x6C0`; no retail type sets it and VERA does not read it), berserk
+    /// (`+0x298`) or riding a mind-controlled `OpenTopped=` transport
+    /// (`[ESP+0x13]`, `0x006F8FA8..0x006F8FD7`)...
+    attacks_allies: bool,
+    /// ...and, in the Techno walk, unless it is a healer or a computer
+    /// house's `Engineer=` infantryman (`0x006F9C9B..0x006F9CE7`).
+    scans_allies: bool,
     /// The world GetFireError reads for Evaluate_Candidate's probe
     /// (`0x006F7CE8`). Every production caller supplies it; `None` only in
     /// unit tests of the walk and the score, which then skip the probe.
@@ -701,10 +665,189 @@ impl ScanContext<'_> {
             )
         })
     }
+
+    /// The walks' house gates: `OnlyTargetHouseEnemy` (arg3) admits only the
+    /// objects of the owner's current enemy, and none without one
+    /// (`0x006F9D1C..0x006F9D3B`); mask `0x4000` (a healer's) admits only
+    /// allied ones (`HouseClass::IsAlliedWith @ 0x004F9A50`,
+    /// `0x006F9D3D..0x006F9D5A`).
+    fn house_gates_admit(&self, candidate: &GameEntity) -> bool {
+        if self.attacker.scan_mission.only_target_house_enemy()
+            && self.standing.enemy() != Some(candidate.owner())
+        {
+            return false;
+        }
+        self.mask & 0x4000 == 0 || self.is_ally(candidate)
+    }
+
+    fn attacks_allies(&self) -> bool {
+        self.attacks_allies
+    }
+
+    fn scans_allies(&self) -> bool {
+        self.scans_allies
+    }
+
+    /// The candidate's owner is `MultiplayPassive` (HouseType `+0x1A6`).
+    fn owner_is_passive(&self, candidate: &GameEntity) -> bool {
+        self.fire_world
+            .and_then(|world| world.houses.get(&candidate.owner()))
+            .is_some_and(|house| house.multiplay_passive)
+    }
+
+    /// The exception both passive-house gates share (`0x006F8292..0x006F835E`,
+    /// `0x006F83B1..0x006F847D`): outside the campaign, a computer house's
+    /// infantryman outside a base-defence team may take a building it would
+    /// capture as an engineer (`NeedsEngineer=` `+0x1552`, another owner) or
+    /// enter as an occupier (`Occupier=` `+0xEB4`, `0x00457CE0`).
+    fn passive_building_exception(
+        &self,
+        candidate: &GameEntity,
+        candidate_obj: &ObjectType,
+    ) -> bool {
+        if self.standing.human
+            || !self.standing.game_mode_nonzero
+            || candidate.category != EntityCategory::Structure
+            || self.attacker.category != EntityCategory::Infantry
+            || self.standing.team == Some(true)
+        {
+            return false;
+        }
+        let capture = candidate_obj.needs_engineer
+            && self.attacker_obj.engineer
+            && candidate.owner() != self.attacker.owner;
+        capture
+            || (self.attacker_obj.occupier
+                && self.fire_world.is_some_and(|world| {
+                    let (Some(scanner), Some(cargo)) = (
+                        self.entities.get(self.attacker.stable_id),
+                        candidate.passenger_role.cargo(),
+                    ) else {
+                        return false;
+                    };
+                    crate::sim::passenger::can_dock_occupier_garrison(
+                        scanner,
+                        candidate,
+                        self.attacker_obj,
+                        candidate_obj,
+                        cargo,
+                        self.rules,
+                        &world.houses,
+                        None,
+                    )
+                }))
+    }
+}
+
+/// What one walk passes `Evaluate_Candidate` besides the candidate: the
+/// flags word (arg2), the zone (arg6) and the coordinate (arg7).
+#[derive(Debug, Clone, Copy)]
+struct WalkArgs {
+    /// The flags word ([`threat_mask::flags_for`]), which the flat walk and
+    /// the ring walk widen with `4` before their Techno/cell walks when the
+    /// mask has `0x10` (`0x006F9C56..0x006F9C63`, `0x006F938B..0x006F9393`);
+    /// the ring walk's air pre-pass adds `0x8002` (`0x006F91C2`).
+    flags: u32,
+    /// `[ESP+0x3C]` in `Greatest_Threat` — the scanner's own movement-zone
+    /// component id, or `None` for native's `-1` "gate off".
+    ///
+    /// Native seeds the slot with `-1` (`OR EBP,0xffffffff @ 0x006F8DFF`,
+    /// `MOV [ESP+0x3c],EBP @ 0x006F8E15`) and overwrites it at `0x006F8EC4`
+    /// with `MapClass::GetZoneID(my cell, myType->MovementZone, 1)` when the
+    /// mask has bit0 CLEAR (`TEST BL,0x1 ; JNZ 0x006F8EC8` at
+    /// `0x006F8E48`) and `What_Am_I()` is neither `6` (Building) nor `2`
+    /// (Aircraft) — the two classes with no movement zone (`CMP EAX,0x6 ; JZ`
+    /// at `0x006F8E54`, `CMP EAX,0x2 ; JZ` at `0x006F8E60`).
+    ///
+    /// It reaches [`evaluate_candidate`] as `Evaluate_Candidate`'s **arg6**
+    /// only on the mask-0 flat walk (`PUSH ECX @ 0x006F9D69`); every ring-walk
+    /// callsite fills the same slot with the literal `-1`
+    /// (`PUSH -0x1 @ 0x006F92A3`, `@ 0x006F9C21`), so the gate is a property of
+    /// the flat walk, not of the shared candidate ladder.
+    zone: Option<u32>,
+    /// `Evaluate_Candidate`'s **arg7**, the coordinate
+    /// `Calculate_Threat_Score` measures its distance term from — and, through
+    /// the sentinel test at `0x0070CFA0`-`0x0070CFBC`, the term's SCALE.
+    ///
+    /// Like [`Self::zone`] this is a property of the walk and not of
+    /// the shared candidate ladder, and the two walks disagree in the same
+    /// direction: the flat walk forwards `Greatest_Threat`'s own arg2
+    /// (`PUSH EBP @ 0x006F9D64`, loaded `MOV EBP,[ESP+0x74] @ 0x006F9C76`),
+    /// which for `Mission_Hunt` is a copy of the hunter's Coords, while the
+    /// ring walk and the aircraft pre-walk push the `NullCoord` sentinel
+    /// (`PUSH 0xb0ea90` at `0x006F929A` and `0x006F9C18`).
+    reference: ThreatReference,
+}
+
+/// The scanner's house and team, as `Greatest_Threat`'s gates read them.
+#[derive(Debug, Clone, Copy)]
+struct ScannerStanding<'a> {
+    /// The owner (`+0x21C`); `None` without a world.
+    house: Option<&'a crate::sim::house_state::HouseState>,
+    /// `HouseClass::IsControlledByHuman @ 0x0050B730` of the owner.
+    human: bool,
+    /// `GameMode != 0` (`[0x00A8B238]`): every mode but the campaign.
+    game_mode_nonzero: bool,
+    /// A Foot in a team (`+0x14 & 4`, `FootClass+0x5D4`), and whether its
+    /// TeamType is `IsBaseDefense=` (`+0xF6`).
+    team: Option<bool>,
+}
+
+impl<'a> ScannerStanding<'a> {
+    /// With no world (unit tests of the walk and the score) the scanner is a
+    /// human player's outside any team, the case those fixtures describe.
+    fn resolve(
+        world: Option<&'a crate::sim::world::Simulation>,
+        attacker: &AttackerSnapshot,
+    ) -> Self {
+        let Some(world) = world else {
+            return Self {
+                house: None,
+                human: true,
+                game_mode_nonzero: true,
+                team: None,
+            };
+        };
+        let house = world.houses.get(&attacker.owner);
+        Self {
+            house,
+            human: house
+                .is_none_or(|house| house.is_controlled_by_human(world.session.game_mode_nonzero)),
+            game_mode_nonzero: world.session.game_mode_nonzero,
+            team: (attacker.category != EntityCategory::Structure)
+                .then(|| world.team_script_vm.team_for_member(attacker.stable_id))
+                .flatten()
+                .map(|(_, is_base_defense)| is_base_defense),
+        }
+    }
+
+    /// The owner's current enemy (`House+0x5600`).
+    fn enemy(&self) -> Option<InternedId> {
+        self.house.and_then(|house| house.enemy_house)
+    }
+}
+
+/// Result of the concrete Greatest_Threat dispatch. World callers use the
+/// entry fact to apply Foot4D9955's latch write without clearing it when an
+/// Infantry class gate returned before reaching Foot4D9920.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ThreatScanOutcome {
+    target: Option<u64>,
+    foot_wrapper_entered: bool,
+}
+
+impl ThreatScanOutcome {
+    pub(crate) const fn target(self) -> Option<u64> {
+        self.target
+    }
+
+    pub(crate) const fn foot_wrapper_entered(self) -> bool {
+        self.foot_wrapper_entered
+    }
 }
 
 /// `TechnoClass::Greatest_Threat @ 0x006F8DF0` — the scan a passive object runs
-/// to choose a target. Returns the winning candidate's stable id.
+/// to choose a target. Returns its winner and whether Foot was reached.
 ///
 /// `scan_range_override` replaces the mission-derived radius with a hard cutoff;
 /// it exists for garrisoned buildings, whose reach is foundation-derived.
@@ -716,10 +859,11 @@ impl ScanContext<'_> {
 /// body does with it is
 /// `MOV AL,[ESP+0x70] ; TEST AL,0x3 ; JZ 0x006F9B6E` at `0x006F8FDC`-
 /// `0x006F8FE2`. With bit0 or bit1 set the function runs the radius block, the
-/// airborne pre-pass (`0x006F9169`) and the expanding-ring cell walk. With
-/// **neither** set — mask 0, which only `FootClass::Mission_Hunt @ 0x004D5373`
-/// pushes — the jump lands past all three, and the scan that actually runs is
-/// the flat walk over the global object array; see [`global_list_scan`].
+/// airborne pre-pass (`0x006F91A7`) and the expanding-ring cell walk. With
+/// **neither** set — Hunt's mask 0 (`FootClass::Mission_Hunt @ 0x004D5373`)
+/// or a team's quarry mask (`0x006ED15E`) — the jump lands past all three, and
+/// the scan that actually runs is the flat walk over the global object array;
+/// see [`global_list_scan`].
 ///
 /// Modelling that as a wider *radius* would be wrong twice over: the ring walk
 /// does not enumerate every object (one candidate per cell, and it stops at the
@@ -744,61 +888,19 @@ impl ScanContext<'_> {
 ///   `(mask & ~2) | 1` — mask 0 becomes mask 1, so the RING walk runs — while
 ///   `FootClass+0x688` is set, and clears that byte at `0x004D9955` only when
 ///   the coerced scan **returned 0** (`TEST EAX,EAX ; JNZ 0x004D995B` at
-///   `0x004D9951` jumps past the store otherwise). Not modelled; residual
-///   below.
+///   `0x004D9951` jumps past the store otherwise).
 ///
-/// RESIDUAL — the `FootClass+0x688` "arrived but cannot fire" retarget latch.
-///
-/// `MOV AL,[ESI+0x688] ; TEST AL,AL ; MOV EAX,[ESP+0x8] ; JZ 0x004D9935 ;
-/// AND AL,0xfd ; OR AL,0x1` at `0x004D9923`-`0x004D9933`, then the base call at
-/// `0x004D9942` and `MOV [ESI+0x688],AL @ 0x004D9955` clearing the byte when
-/// the base returned 0. `UnitClass @ 0x00743190` (`CALL @ 0x0074325C`) and the
-/// Infantry override (`CALL @ 0x0051E39F`) both chain through it, so it covers
-/// every ground attacker.
-///
-/// The byte is written `1` in the locomotor "movement finished" tail under
-/// three conditions, read this session at
-/// `DriveLocomotionClass::Process_Movement @ 0x004B2E7B`-`0x004B2EA2` and
-/// instruction-for-instruction at the infantry twin `FUN_005164D0 @
-/// 0x00516828`-`0x0051684D`: the locomotor's `vt+0x10` says not moving,
-/// `TechnoClass+0x2B4` — the Target, written by `TechnoClass::Assign_Target @
-/// 0x006FCF3E` — is non-null, and `vt+0x3AC` = `TechnoClass::CanFireAtTarget @
-/// 0x006F7780` says the attacker cannot fire at it.
-/// `ShipLocomotionClass::Process_Movement @ 0x006A24F2`, `FUN_0069B170 @
-/// 0x0069B4D4` and `TechnoClass::Clear_Convoy_Chain @ 0x006EC3BD` write the
-/// same `1`; `FootClass::Mission_Rescue @ 0x004DE03E` clears it.
-/// - Trigger: a ground attacker finishes a move still holding a target it
-///   cannot fire on, and then scans after that target goes away.
-/// - Player effect: for one scan cadence a hunting unit looks only as far as
-///   plain Guard reaches instead of over the whole map, and an Area Guard unit
-///   uses the plain-Guard radius instead of the doubled one — so it takes a
-///   nearer target, or none, one cadence sooner than VERA does.
-/// - Frequency: the *set* is common — any unit that drives up to something it
-///   cannot shoot. The clear is narrower than "the next scan", though: it is
-///   conditional on that scan returning **nothing**. `TEST EAX,EAX ;
-///   JNZ 0x004D995B` at `0x004D9951` jumps past the store when the coerced
-///   scan found a target, so the byte survives, and nothing clears it on a
-///   mission change — the only other clears in the image are
-///   `FootClass::Mission_Rescue @ 0x004DE03E` and `FUN_0069B170 @ 0x0069B17D`,
-///   while `FootClass::ComputeChecksum @ 0x004DBCE2` reads it, so it is
-///   durable sim state. So the honest ceiling is "until the first coerced scan
-///   comes back empty", not one cadence: a latched hunter that keeps finding
-///   targets inside the coerced ring walk stays coerced for as long as it keeps
-///   finding them.
-///
-///   The load-bearing conclusion is unchanged, because the case where the flat
-///   walk matters is the case that clears the latch: with nothing inside plain
-///   Guard reach the coerced ring scan returns nothing, the byte is cleared,
-///   and the next cadence runs the flat walk. The mask-0 flat walk stays the
-///   ordinary Hunt scan, so the zone gate and the lepton-scale distance term
-///   above are both on the common path.
-/// - Downstream risk: closing it needs a persistent per-entity latch written by
-///   the locomotor arrival path, i.e. a new snapshot field plus a
-///   `SNAPSHOT_VERSION` bump and a movement-side write. Target choice only — no
-///   RNG is drawn on either path.
+/// The Foot override changes the mask before the range, zone and topology
+/// decisions. World dispatch applies its empty-result latch write only when
+/// the concrete class reached Foot. Drive/Ship stopped-target tails and
+/// Team6EC3A0 write the same private, persisted byte; Rescue clears it before
+/// its direct scan. Hover5164D0 still requires its native path/arrival
+/// continuation; the generic Hover finalizer cannot substitute for it.
+/// 69B170 writes Session+688, not Foot state.
 ///
 /// `zone_grid` supplies `MapClass`'s per-movement-zone connectivity for the
-/// mask-0 gate; see [`ScanContext::scanner_zone`].
+/// flat walk's gate ([`WalkArgs::zone`]) and the ring walk's per-cell gate
+/// ([`scan_cell_for_target`]).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn greatest_threat(
     entities: &EntityStore,
@@ -814,59 +916,119 @@ pub(crate) fn greatest_threat(
     zone_grid: Option<&ZoneGrid>,
     los: crate::sim::combat::line_of_fire::LineOfFireInputs<'_>,
     fire_world: Option<&crate::sim::world::Simulation>,
-) -> Option<u64> {
-    // GetWeaponRange's cargo minimum for an open-topped scanner (`0x007012C0`).
-    let cargo_range = entities.get(attacker.stable_id).and_then(|entity| {
-        super::combat_weapon::open_topped_cargo_range(
-            entity,
-            attacker_obj,
-            entities,
-            rules,
-            interner,
+    scan_coord: Option<[i32; 3]>,
+) -> ThreatScanOutcome {
+    let scan_coord = scan_coord.unwrap_or_else(|| {
+        entities.get(attacker.stable_id).map_or_else(
+            || {
+                [
+                    i32::from(attacker.pos_rx) * 256 + attacker.sub_x.to_num::<i32>(),
+                    i32::from(attacker.pos_ry) * 256 + attacker.sub_y.to_num::<i32>(),
+                    attacker
+                        .pos_exact_z_leptons
+                        .unwrap_or(i32::from(attacker.pos_z) * 104),
+                ]
+            },
+            |entity| {
+                let (x, y, z) = threat_coord(entity, terrain);
+                [x, y, z]
+            },
         )
     });
+    let facts = entities.get(attacker.stable_id).map_or_else(
+        || attacker_facts_from_snapshot(attacker, attacker_obj),
+        |entity| attacker_facts(entity, attacker_obj),
+    );
+    let garrison = attacker.garrison.as_ref().map(|occupant| {
+        (
+            interner.resolve(occupant.occupant_type_id),
+            occupant.occupant_veterancy,
+        )
+    });
+    let standing = ScannerStanding::resolve(fire_world, attacker);
+    // `0x006F3970(-1) < 0` (`0x006F8ED7`, `0x006F8F13`, `0x006F9C9F`).
+    let healer = matches!(
+        attacker.category,
+        EntityCategory::Infantry | EntityCategory::Unit
+    ) && entities.get(attacker.stable_id).is_some_and(|entity| {
+        super::combat_weapon::weapon_damage_value(entity, attacker_obj, rules) < 0
+    });
+    let Some((mask, foot_wrapper_entered)) = scanner_mask(
+        rules,
+        attacker,
+        attacker_obj,
+        facts,
+        garrison,
+        standing.human,
+        healer,
+        entities.get(attacker.stable_id),
+    ) else {
+        return ThreatScanOutcome::default();
+    };
+    let result = |target| ThreatScanOutcome {
+        target,
+        foot_wrapper_entered,
+    };
+    // Only a radius path without GuardRange needs the live range readers:
+    // Threat_Range707ED0 or the zero-radius walk bound6F90DE. Mask0 and a
+    // retained GuardRange bypass them. Do not duplicate GetWeaponRange's
+    // rank/cargo logic in the scanner.
+    let weapon_ranges = if mask & 3 != 0
+        && attacker_obj
+            .guard_range
+            .is_none_or(|range| range.to_bits() == 0)
+    {
+        let Some(entity) = entities.get(attacker.stable_id) else {
+            return result(None);
+        };
+        std::array::from_fn(|index| {
+            super::combat_weapon::weapon_range(
+                entity,
+                attacker_obj,
+                index as i32,
+                entities,
+                rules,
+                interner,
+            )
+        })
+    } else {
+        [0, 0]
+    };
     let range = match scan_range_override {
         Some(cells) => ScanRange::Hard(cells),
-        None => scan_range(
-            rules,
-            attacker_obj,
-            attacker.veterancy,
-            attacker.scan_mission,
-            cargo_range,
-        ),
+        None => scan_range(attacker_obj, mask, weapon_ranges),
     };
+    let flags = threat_mask::flags_for(mask);
 
+    // `TEST AL,0x3 ; JZ 0x006F9B6E @ 0x006F8FE0`: a mask without bit 0 or 1
+    // takes the flat walk; every other mask walks the rings.
+    let flat = mask & 3 == 0;
     // `MOV [ESP+0x3c],EAX @ 0x006F8EC4`, guarded by `TEST BL,0x1 ; JNZ` at
     // `0x006F8E48` and the two `What_Am_I()` skips at `0x006F8E54` /
-    // `0x006F8E60`.
-    //
-    // RESIDUAL — the ring walk's own use of the same slot. Native computes it
-    // for every mask with bit0 clear, which includes Area Guard's mask 2, and
-    // the ring path threads it into `Scan_Cell_For_Target @ 0x006F8960`
-    // (`MOV ECX,[ESP+0x3c] @ 0x006F941B`, `PUSH ECX @ 0x006F9427` — arg7 of the
-    // seven pushes before `CALL @ 0x006F9440`), which is a different argument
-    // from the `Evaluate_Candidate` arg6 the flat walk fills, and one
-    // `scan_cell_for_target` below does not take. Trigger: any Guard or Area
-    // Guard ring scan whose cells span more than one movement-zone component —
-    // a defender beside water, a cliff edge, a bridge. Player effect: at most
-    // which occupant of a cell that cell offers. Frequency: UNCHECKED — the
-    // argument's role inside `0x006F8960` was not decompiled. Downstream risk:
-    // none here; it belongs with the ring walk's own port. So the slot is
-    // filled only on the branch that reads it in this module.
-    let scanner_zone = if matches!(range, ScanRange::NoCutoff)
+    // `0x006F8E60`. The flat walk hands it to `Evaluate_Candidate` (G12), the
+    // ring walk to `Scan_Cell_For_Target` (`PUSH ECX @ 0x006F9427`), so an Area
+    // Guard ring scan (mask 2) skips cells outside the scanner's zone.
+    let scanner_zone = if mask & 1 == 0
         && !matches!(
             attacker.category,
             EntityCategory::Structure | EntityCategory::Aircraft
         ) {
-        zone_grid.and_then(|zones| {
-            zones.get_zone_id_native(
-                (i32::from(attacker.pos_rx), i32::from(attacker.pos_ry)),
-                attacker_obj.movement_zone,
-                // `PUSH 0x1 @ 0x006F8E73` — the scanner's own cell is always
-                // asked with bridge resolution on, whatever layer it stands on.
-                true,
-            )
-        })
+        zone_grid
+            .zip(terrain)
+            .and_then(|(zones, terrain)| {
+                zones.get_zone_id_native(
+                    terrain,
+                    (attacker.pos_rx, attacker.pos_ry),
+                    attacker_obj.movement_zone,
+                    // `PUSH 0x1 @ 0x006F8E73` — the scanner's own cell is always
+                    // asked with bridge resolution on, whatever layer it stands on.
+                    true,
+                )
+            })
+            // Both consumers skip the gate for DWORD -1 (`CMP EBP,-0x1 ; JZ` at
+            // `0x006F7E36` and `0x006F898F`): a scanner on a structural cell
+            // with no matching high bridge record scans unfiltered.
+            .filter(|&zone| zone != u32::MAX)
     } else {
         None
     };
@@ -888,42 +1050,36 @@ pub(crate) fn greatest_threat(
             HOUSE_SELECTS_OWN_COEFFICIENTS,
         ),
         zone_grid,
-        scanner_zone,
-        // `PUSH EBP @ 0x006F9D64` on the flat walk against `PUSH 0xb0ea90` at
-        // `0x006F929A` / `0x006F9C18` on the two ring-shaped walks.
-        threat_reference: if matches!(range, ScanRange::NoCutoff) {
-            ThreatReference::ScannerCoords
-        } else {
-            ThreatReference::NullCoord
-        },
+        mask,
+        scan_coord,
+        standing,
+        attacks_allies: entities
+            .get(attacker.stable_id)
+            .is_some_and(|scanner| attacks_allies(entities, rules, interner, scanner)),
+        scans_allies: healer
+            || (attacker.category == EntityCategory::Infantry
+                && !standing.human
+                && attacker_obj.engineer),
         fire_world,
     };
 
-    // `TEST AL,0x3 ; JZ 0x006F9B6E`. Mask 0 takes the flat topology; every
-    // other mask falls through into the radius block below.
-    if matches!(range, ScanRange::NoCutoff) {
-        return global_list_scan(&ctx);
+    if flat {
+        return result(global_list_scan(&ctx, flags, scanner_zone));
     }
 
-    let radius = scan_radius_cells(rules, attacker_obj, attacker.veterancy, range, cargo_range);
+    let radius = scan_radius_cells(attacker_obj, range, weapon_ranges);
     if radius <= 0 {
         // `for (r = 0; r < radius; r++)` never executes.
-        return None;
+        return result(None);
     }
 
-    let cx = i32::from(attacker.pos_rx);
-    let cy = i32::from(attacker.pos_ry);
-    let facts = entities.get(attacker.stable_id).map_or_else(
-        || attacker_facts_from_snapshot(attacker, attacker_obj),
-        |entity| attacker_facts(entity, attacker_obj),
-    );
-    let garrison = attacker.garrison.as_ref().map(|occupant| {
-        (
-            interner.resolve(occupant.occupant_type_id),
-            occupant.occupant_veterancy,
-        )
-    });
-    let scan_air = passive_scan_has_aa(rules, attacker_obj, facts, garrison);
+    //6F9148..6F9179: arg2 is converted with signed /256 then packed to
+    // CellStruct, independently of the scanner's own movement-zone query.
+    let cx = i32::from((scan_coord[0] / 256) as i16);
+    let cy = i32::from((scan_coord[1] / 256) as i16);
+    // `AND EBX,0x4 @ 0x006F8F3A` gates the whole airborne pre-pass
+    // (`TEST EBX,EBX @ 0x006F91A7`).
+    let scan_air = mask & 4 != 0;
     let index = ScanIndex::build(
         entities,
         occupancy,
@@ -937,9 +1093,16 @@ pub(crate) fn greatest_threat(
     // lowest an accepted candidate can carry, and itself a rejection) can never
     // displace nothing.
     let mut best_score: i32 = -1;
+    let mut walk = WalkArgs {
+        flags,
+        // `PUSH -0x1 @ 0x006F92A3`: the ring callsites pass no zone.
+        zone: None,
+        // `PUSH 0xb0ea90 @ 0x006F929A`.
+        reference: ThreatReference::NullCoord,
+    };
 
-    // Airborne prepass: the ordinary wrapper's resolved AA bit gates the
-    // entire pass (6F8F3A -> 6F91A7), independently of target weapon selection.
+    // Airborne prepass: the mask's AA bit gates the entire pass
+    // (6F8F3A -> 6F91A7), independently of target weapon selection.
     // Actual AirTracker registration alone does not grant eligibility:
     // 6F9251 requires Object+74, then6F925C rejects live +78 Ground(2).
     // Ground and Bridge selected-list layers both denote that native Ground.
@@ -957,6 +1120,12 @@ pub(crate) fn greatest_threat(
         // AirTracker, even when its airborne buckets contain no candidates.
         terrain.native_cell_identity((cx as i16, cy as i16));
     }
+    // `OR EBX,0x8002 @ 0x006F91C2`: airborne infantry and units pass the
+    // class gate whatever the mask.
+    let air_walk = WalkArgs {
+        flags: flags | 0x8002,
+        ..walk
+    };
     for ring in 0..if scan_air { radius } else { 0 } {
         for (x, y) in ring_cells(cx, cy, ring) {
             let (Ok(rx), Ok(ry)) = (u16::try_from(x), u16::try_from(y)) else {
@@ -972,14 +1141,17 @@ pub(crate) fn greatest_threat(
                 let Some(candidate) = entities.get(candidate_id) else {
                     continue;
                 };
-                if !candidate.lifecycle.cell_marked
+                // `0x006F91FB..0x006F9267`: the ally test spares the same
+                // scanners as the flat walk's aircraft walk.
+                if (ctx.is_ally(candidate) && !ctx.attacks_allies())
+                    || !ctx.house_gates_admit(candidate)
+                    || !candidate.lifecycle.cell_marked
                     || crate::sim::occupancy::cell_list_layer_for_entity(candidate, terrain)
                         .is_some()
-                    || ctx.is_ally(candidate)
                 {
                     continue;
                 }
-                let Some(score) = evaluate_candidate(&ctx, candidate) else {
+                let Some(score) = evaluate_candidate(&ctx, air_walk, candidate) else {
                     continue;
                 };
                 if score > best_score {
@@ -988,6 +1160,15 @@ pub(crate) fn greatest_threat(
                 }
             }
         }
+    }
+
+    // `0x006F938B..0x006F9393`, then `XOR EAX,5 ; JZ 0x006F9DA1`: an AA-only
+    // mask (a Guard scanner whose weapons are AA-only) walks no rings.
+    if mask & 0x10 != 0 {
+        walk.flags |= 4;
+    }
+    if mask == 5 {
+        return result(best);
     }
 
     for ring in 0..radius {
@@ -1001,13 +1182,16 @@ pub(crate) fn greatest_threat(
             {
                 continue;
             }
-            let Some(candidate_id) = scan_cell_for_target(&ctx, &index, coord) else {
+            let Some(candidate_id) = scan_cell_for_target(&ctx, &index, coord, scanner_zone) else {
                 continue;
             };
             let Some(candidate) = entities.get(candidate_id) else {
                 continue;
             };
-            let Some(score) = evaluate_candidate(&ctx, candidate) else {
+            // `0x006F9459..0x006F9497`, after `Scan_Cell_For_Target`.
+            let Some(score) = evaluate_candidate(&ctx, walk, candidate)
+                .filter(|_| ctx.house_gates_admit(candidate))
+            else {
                 continue;
             };
             if score > best_score {
@@ -1016,24 +1200,101 @@ pub(crate) fn greatest_threat(
             }
         }
         if best.is_some() && is_early_return_ring(ring, radius) {
-            return best;
+            return result(best);
         }
     }
-    best
+    result(best)
 }
 
-/// The mask-0 scan: `Greatest_Threat`'s flat walk over the global object array,
-/// `0x006F9C67`-`0x006F9D9B`.
+/// Berserk (`+0x298`), or riding an `OpenTopped=` transport (`+0x11C`,
+/// TechnoType `+0x5E4`) that is mind-controlled (`+0x2C0`).
+fn attacks_allies(
+    entities: &EntityStore,
+    rules: &RuleSet,
+    interner: &StringInterner,
+    scanner: &GameEntity,
+) -> bool {
+    scanner.berserk.active
+        || scanner
+            .passenger_role
+            .inside_transport_id()
+            .and_then(|transport| entities.get(transport))
+            .is_some_and(|transport| {
+                transport.mind_control.controller().is_some()
+                    && rules
+                        .object(interner.resolve(transport.type_ref()))
+                        .is_some_and(|obj| obj.open_topped)
+            })
+}
+
+/// `Greatest_Threat`'s mask: the caller's literal through the scanner's
+/// `+0x3C4` override ([`threat_mask`]), then the preamble's class rewrites
+/// (`0x006F8EC8..0x006F8F25`). `None` is an override's `return 0`.
+fn scanner_mask(
+    rules: &RuleSet,
+    attacker: &AttackerSnapshot,
+    attacker_obj: &ObjectType,
+    facts: AttackerFacts,
+    garrison: Option<(&str, u16)>,
+    human: bool,
+    healer: bool,
+    scanner: Option<&GameEntity>,
+) -> Option<(u32, bool)> {
+    let literal = attacker.scan_mission.literal_mask();
+    let class_bits = || passive_scan_class_bits(rules, attacker_obj, facts, garrison);
+    let mask = match attacker.category {
+        EntityCategory::Unit => threat_mask::unit_override(literal, class_bits),
+        EntityCategory::Infantry => threat_mask::infantry_override(
+            literal,
+            InfantryScanner {
+                human,
+                engineer: attacker_obj.engineer,
+                armed: is_armed_from_facts(attacker_obj, facts),
+                infiltrate: attacker_obj.infiltrate,
+                vehicle_thief: attacker_obj.vehicle_thief,
+                c4: attacker_obj.c4
+                    || super::veterancy::has_weapon_ability(
+                        super::veterancy::rank_from_u16(attacker.veterancy),
+                        attacker_obj,
+                        crate::rules::object_type::Ability::C4,
+                    ),
+                class_bits,
+                primary_warhead_spares_medium_and_wood: || {
+                    primary_warhead_spares_medium_and_wood(rules, attacker_obj, attacker.veterancy)
+                },
+            },
+        )?,
+        EntityCategory::Structure => threat_mask::building_override(literal, class_bits()),
+        EntityCategory::Aircraft => literal,
+    };
+    // Aircraft inherits Foot's+3C4: original7E2668 contains4D9920.
+    let foot_wrapper_entered = matches!(
+        attacker.category,
+        EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
+    );
+    let mask = if foot_wrapper_entered {
+        scanner.map_or(mask, |scanner| scanner.coerce_foot_threat_mask(mask))
+    } else {
+        mask
+    };
+    Some((
+        threat_mask::preamble_rewrite(mask, attacker.category, healer, attacker_obj.engineer),
+        foot_wrapper_entered,
+    ))
+}
+
+/// The flat scan: `Greatest_Threat`'s walks over the global object arrays,
+/// `0x006F9B6E`-`0x006F9DA1`, for a mask without bit 0 or 1 — Hunt's `0` and
+/// every team quarry.
 ///
-/// This is where a hunting object's mask lands. Verified from the disassembly
-/// this session:
-///
-/// - `0x006F9B6E` `MOV AL,[ESP+0x14] ; TEST AL,0x4 ; JZ 0x006F9C56` — the
-///   derived flags word is built from the mask alone
-///   (`0x006F8F29`-`0x006F8F72`, seeded `XOR EDI,EDI`), so for mask 0 it is
-///   zero and the FIRST global walk (the `0x00A8E394` list) is skipped.
-/// - `0x006F9C56` `TEST byte ptr [ESP+0x70],0x10 ; JZ 0x006F9C67` — mask 0
-///   falls into the **unconditional** second walk.
+/// - `0x006F9B6E` `MOV AL,[ESP+0x14] ; TEST AL,0x4 ; JZ 0x006F9C56`: with the
+///   flags word's Aircraft bit (an AA weapon), the aircraft array
+///   (`0x00A8E394`, count `0x00A8E3A0`) is walked first, each through the
+///   ally, `OnlyTargetHouseEnemy` and `0x4000` gates, with no zone and the
+///   `NullCoord` sentinel (`0x006F9C18..0x006F9C2B`).
+/// - `0x006F9C56` `TEST byte ptr [ESP+0x70],0x10`: a mask with `0x10` adds
+///   the Aircraft bit for the second walk (`0x006F9C5D..0x006F9C63`), which is
+///   **unconditional**.
 /// - `0x006F9C67` `MOV EAX,[0x00A8EC88]` (the element count),
 ///   `XOR EBX,EBX ; TEST EAX,EAX ; JLE 0x006F9DA1`, then
 ///   `MOV EDX,[0x00A8EC7C] ; MOV EDI,[EDX + EBX*0x4]` — a plain indexed walk of
@@ -1064,7 +1325,7 @@ pub(crate) fn greatest_threat(
 /// `CMP EAX,EBP ; JNZ 0x006F894F` at `0x006F7E7E`-`0x006F7E9C`). So a hunting
 /// object considers only what its own movement zone can reach from where it
 /// stands — it does not walk at something across water or up a cliff. That
-/// gate is carried here by [`ScanContext::scanner_zone`].
+/// gate is carried here by [`WalkArgs::zone`].
 ///
 /// arg6 is not the only argument the two walks disagree on. **arg7 differs
 /// too, and it decides the SCALE of the score's distance term.** The flat walk
@@ -1078,24 +1339,23 @@ pub(crate) fn greatest_threat(
 /// (`JMP 0x0070D0A0 @ 0x0070D021` against `SAR EAX,0x8 @ 0x0070D09D`). With
 /// stock `TargetDistanceCoefficientDefault=-10` that makes a hunting object
 /// overwhelmingly nearest-first where a ring scanner barely weighs distance at
-/// all. Carried here by [`ScanContext::threat_reference`].
+/// all. Carried here by [`WalkArgs::reference`].
 ///
-/// There is no airborne pre-pass and no band early return on this path: both
-/// sit at `0x006F9169` and `0x006F94D0`, below the mask-0 jump target, so a
-/// hunting object simply sees every object once. Aircraft are reached here like
-/// anything else, because the global array holds them too.
+/// There is no band early return on this path (`0x006F94D0` sits below the
+/// jump target), so each walk sees every object once. A landed aircraft is
+/// Ground-layer and can be scored by both walks, at the two scales.
 ///
-/// DRIFT — enumeration order. Native walks the array in registration order;
-/// [`EntityStore`] is a `BTreeMap`, so this walks in `stable_id` order. The
-/// keep is strictly-greater in both, so the order is observable only when two
-/// candidates score *exactly* equal, where the winner can differ.
-/// - Trigger: a hunting object with two equally-scored enemies in view.
-/// - Player effect: which of two interchangeable targets it walks to.
-/// - Frequency: rare — the score folds health, distance and armour
-///   effectiveness, so exact ties need near-identical candidates.
-/// - Downstream risk: none beyond target choice; no RNG is drawn here.
+/// Native Techno construction appends at6F31BD..6F31D2; its destructor
+/// removes by ordered compaction through63F000 (6F463B), never swap-last.
+/// Production world constructors allocate monotonically increasing stable
+/// identities, so sorted EntityStore iteration preserves that construction
+/// order while keeping dead/limbo objects registered until destruction.
+/// Logic and Display order are independent owners. Native foot_missions
+/// registers six objects with original constructors/Unlimbo and records an
+/// equal-score keep of the earlier Techno entry; supplied-ID fixtures must
+/// use constructor ordinals if they claim the same registration premise.
 ///
-/// COST — this walks every live entity once per Hunt scan, which is the shape
+/// COST — this walks every live entity once per flat scan, which is the shape
 /// native has (`[0x00A8EC88]` is the global object count) and is bounded by the
 /// object count rather than by the map. The ring path borrows maintained Cell
 /// lists, while its airborne pre-pass still builds a temporary index. A hunting
@@ -1103,18 +1363,69 @@ pub(crate) fn greatest_threat(
 /// no target and its `NormalTargetingDelay` timer has expired, so at charter
 /// scale the cost is one N-pass per hunting object per cadence — not per tick,
 /// and not per ring.
-fn global_list_scan(ctx: &ScanContext<'_>) -> Option<u64> {
+fn global_list_scan(ctx: &ScanContext<'_>, flags: u32, zone: Option<u32>) -> Option<u64> {
     let mut best: Option<u64> = None;
     // `local_50 = -1` on the ring path; the same strictly-greater keep, so a
     // score of 0 (itself a rejection) can never displace nothing.
     let mut best_score: i32 = -1;
-    for candidate in ctx.entities.values() {
-        let Some(score) = evaluate_candidate(ctx, candidate) else {
-            continue;
-        };
+    let mut keep = |candidate: &GameEntity, score: i32| {
         if score > best_score {
             best_score = score;
             best = Some(candidate.stable_id());
+        }
+    };
+    let mut walk = WalkArgs {
+        flags,
+        zone: None,
+        reference: ThreatReference::NullCoord,
+    };
+    if flags & 4 != 0 {
+        // `0x006F9B99..0x006F9BD2`: the aircraft walk's ally test spares
+        // only the `AttackFriendlies=`, berserk and mind-controlled-transport
+        // scanners.
+        for candidate in ctx
+            .entities
+            .values()
+            .filter(|candidate| candidate.category == EntityCategory::Aircraft)
+        {
+            if (ctx.is_ally(candidate) && !ctx.attacks_allies())
+                || !ctx.house_gates_admit(candidate)
+            {
+                continue;
+            }
+            if let Some(score) = evaluate_candidate(ctx, walk, candidate) {
+                keep(candidate, score);
+            }
+        }
+    }
+    if ctx.mask & 0x10 != 0 {
+        walk.flags |= 4;
+    }
+    walk.zone = zone;
+    // `MOV EBP,[ESP+0x74] @ 0x006F9C76`, `PUSH EBP @ 0x006F9D64`.
+    walk.reference = ThreatReference::Coords(ctx.scan_coord);
+    for candidate in ctx.entities.values() {
+        // `0x006F9C92..0x006F9D0D`: a healer and a computer engineer also
+        // look at allies.
+        if ctx.is_ally(candidate) && !ctx.attacks_allies() && !ctx.scans_allies() {
+            continue;
+        }
+        // `CMP [EDI+0x94],0x2 ; JNZ @ 0x006F9D13`: only objects the display
+        // last submitted to its Ground layer. Airborne aircraft are left to
+        // the aircraft walk; an airborne jumpjet is in neither walk, as
+        // native. VERA-internal: with no world (walk unit tests) there is no
+        // display and the gate is off.
+        if let Some(world) = ctx.fire_world
+            && world.display_layers().layer_of(candidate.stable_id())
+                != Some(crate::sim::world::display_layers::DisplayLayer::GROUND)
+        {
+            continue;
+        }
+        if !ctx.house_gates_admit(candidate) {
+            continue;
+        }
+        if let Some(score) = evaluate_candidate(ctx, walk, candidate) {
+            keep(candidate, score);
         }
     }
     best
@@ -1130,16 +1441,38 @@ fn global_list_scan(ctx: &ScanContext<'_>) -> Option<u64> {
 /// a cell holding three enemy infantry offers only the list head — if the gate
 /// then rejects that one, the other two are never seen.
 ///
-/// Not modelled: the unarmed-attacker arm (`0x006F89EE`, an unarmed object
-/// picks a WOUNDED ALLY, which is how a medic-like type finds its patient) and
-/// the two infantry specials at `0x006F8A96`. VERA's acquisition entry requires
-/// an armed attacker upstream, and neither infantry flag (`InfantryType+0x6D8`,
-/// `+0xEC3`) is parsed.
+/// A cell outside the scanner's zone offers nothing; see [`greatest_threat`].
+///
+/// Not modelled: the ally arms (`0x006F8A30..0x006F8B49`). A healer takes the
+/// first damaged ally instead of the first hostile, and a berserk or
+/// `AttackFriendlies=` scanner, a passenger of a mind-controlled `OpenTopped=`
+/// transport, an `InfantryClass+0x6D8` infantryman or an Area Guard computer
+/// engineer may take an ally; see the G10 residual in [`evaluate_candidate`].
 fn scan_cell_for_target(
     ctx: &ScanContext<'_>,
     index: &ScanIndex<'_>,
     coord: (i16, i16),
+    zone: Option<u32>,
 ) -> Option<u64> {
+    // `0x006F898F..0x006F89B4`: a cell outside the scanner's zone offers
+    // nothing (`MapClass::GetZoneID @ 0x0056D230`, bridge resolution on).
+    if let Some(zone) = zone
+        && ctx
+            .zone_grid
+            .zip(ctx.terrain)
+            .is_some_and(|(zones, terrain)| {
+                zones
+                    .get_zone_id_native(
+                        terrain,
+                        (coord.0 as u16, coord.1 as u16),
+                        ctx.attacker_obj.movement_zone,
+                        true,
+                    )
+                    .is_some_and(|cell_zone| cell_zone != zone)
+            })
+    {
+        return None;
+    }
     // ScanCell6F8984 calls Map5657A0 even for an empty list. Its retained
     // Cell pointer selects E8 then E4; do not index occupancy by the requested
     // coordinate when fixed-stride lookup resolves an alias instead.
@@ -1175,11 +1508,14 @@ fn scan_cell_for_target(
 /// order, followed by the score.
 ///
 /// Returns the candidate's integer threat score, or `None` for a rejection.
-/// Gate labels below are the ones used in the mapping of this function; the
-/// AI-only flag branches (`G22`, `G23`, `G26`, `P2`–`P7`) are not represented
-/// because no flag bit that reaches them is ever set on the passive path, where
-/// the flag word is `1 | {AA 0x4, AG 0xB8}`.
-fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i32> {
+/// Gate labels below are the ones used in the mapping of this function. The
+/// mask ([`ScanContext::mask`]) and the walk's flags word decide the class
+/// gate and the quarry gates; see [`threat_mask`].
+fn evaluate_candidate(
+    ctx: &ScanContext<'_>,
+    walk: WalkArgs,
+    candidate: &GameEntity,
+) -> Option<i32> {
     // G1/G2/G4 — select the weapon this attacker would use against this
     // candidate, then refuse the candidate when that weapon's Verses against
     // its armor is at or below the `0.02f` floor. Resolve the native selection
@@ -1216,10 +1552,11 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
     // (6F7CDB..6F7CF1). Its native cell getters can move the shared dummy even
     // when a later eligibility gate rejects this candidate. It is not a pure
     // predicate that can be deferred until after those gates or G27.
-    // The mask0x18200 bypass (capture/occupiable/tech buildings) has no caller
-    // represented by this scan. Native's null-weapon continuation remains a
-    // separate gap in the early selection ladder.
-    if let Some(world) = ctx.fire_world
+    // A mask with `0x18200` (Capturable, occupants, NeedsEngineer) skips it
+    // (`0x006F7CD7`). Native's null-weapon continuation remains a separate
+    // gap in the early selection ladder.
+    if ctx.mask & 0x18200 == 0
+        && let Some(world) = ctx.fire_world
         && probe_is_illegal(ctx, world, candidate, selected.index)
     {
         return None;
@@ -1265,9 +1602,20 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         return None;
     }
 
-    // G10/G11 — the ally arm and the self test. The cell walk already stopped
-    // on the first hostile, but the airborne pre-pass and the retarget callers
-    // arrive here directly.
+    // G10/G11 — the ally arm and the self test.
+    //
+    // RESIDUAL — G10's exceptions (`0x006F7EA2..0x006F8001`) and the cell
+    // walk's ally arms ([`scan_cell_for_target`]) are not ported, so every ally
+    // is rejected here. Natively a healer takes a damaged ally, a computer
+    // engineer a damaged own building, and a berserk or `AttackFriendlies=`
+    // scanner, or a passenger of a mind-controlled `OpenTopped=` transport,
+    // takes allies as it takes enemies. Trigger: an idle medic or mechanic
+    // beside a wounded ally; a unit a Chaos Drone gassed. Effect: no automatic
+    // healing, and a berserk unit attacks only enemies. Frequency: common
+    // wherever medics, mechanics or Chaos Drones play. Downstream: target
+    // choice only; until this lands the walks' ally exceptions
+    // ([`ScanContext::attacks_allies`], [`ScanContext::scans_allies`]) change
+    // nothing.
     if candidate.stable_id() == ctx.attacker.stable_id || ctx.is_ally(candidate) {
         return None;
     }
@@ -1300,13 +1648,11 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
     // with no map. Trigger: unit tests and any map whose resolved terrain is
     // not square. Player effect in production: none — `rebuild_zone_grid_full`
     // always builds from resolved terrain. Frequency: nil in a real match.
-    if let Some(scanner_zone) = ctx.scanner_zone {
-        let candidate_zone = ctx.zone_grid.and_then(|zones| {
+    if let Some(scanner_zone) = walk.zone {
+        let candidate_zone = ctx.zone_grid.zip(ctx.terrain).and_then(|(zones, terrain)| {
             zones.get_zone_id_native(
-                (
-                    i32::from(candidate.position.rx),
-                    i32::from(candidate.position.ry),
-                ),
+                terrain,
+                (candidate.position.rx, candidate.position.ry),
                 ctx.attacker_obj.movement_zone,
                 candidate.on_bridge,
             )
@@ -1378,18 +1724,41 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         return None;
     }
 
-    // G19 — `Insignificant=` at `0x006F8451`. Native only reaches the reject
-    // for a non-Building candidate, or a Building owned by a `MultiplayPassive`
-    // house; a player-owned Insignificant Building (every wall segment) falls
-    // through here and is refused by G24 instead. VERA has no per-house
-    // `MultiplayPassive` view at this site, so the Building arm is left out and
-    // only the non-Building one is applied — which is the arm that matters:
-    // stock authors `Insignificant=yes` on 26 civilian vehicles (cars, buses,
-    // taxis) and 22 civilian infantry types (civilians, the cow). Without it a
-    // Grizzly on Guard opens fire on passing traffic.
+    // `0x006F81FA..0x006F8214`: an `InvisibleInGame=` building (`+0x1701`).
+    let building = candidate.category == EntityCategory::Structure;
+    if building && candidate_obj.invisible_in_game {
+        return None;
+    }
+
+    // The class gate, `0x006F821A..0x006F824A`.
+    if !threat_mask::admits_class(
+        walk.flags,
+        candidate.category,
+        vehicle_like(ctx, candidate, candidate_obj),
+    ) {
+        return None;
+    }
+
+    // `LegalTarget=` (`+0x231`) at `0x006F8260`: every retail techno leaves
+    // it at its `yes` default; VERA does not read it for technos.
+
+    // `0x006F826E..0x006F835E`: outside the campaign, a `MultiplayPassive`
+    // house's objects are off limits but for the building exception.
+    let passive_owner = ctx.standing.game_mode_nonzero && ctx.owner_is_passive(candidate);
+    if passive_owner && !ctx.passive_building_exception(candidate, candidate_obj) {
+        return None;
+    }
+
+    // G19 — `Insignificant=` (`+0x232`), `0x006F8364..0x006F847D`, on an
+    // object not mind-controlled: a building passes unless its owner is
+    // `MultiplayPassive`, and the rest take the passive-house exception,
+    // which only a building meets. Stock authors `Insignificant=yes` on 26
+    // civilian vehicles (cars, buses, taxis), 22 civilian infantry types
+    // (civilians, the cow) and every wall.
     if candidate_obj.insignificant
-        && candidate.category != EntityCategory::Structure
         && !candidate.mind_control.is_mind_controlled()
+        && (!building || ctx.owner_is_passive(candidate))
+        && !ctx.passive_building_exception(candidate, candidate_obj)
     {
         return None;
     }
@@ -1434,6 +1803,16 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         return None;
     }
 
+    // `0x006F8551..0x006F8589`: mask `0x100` refuses every candidate, and
+    // mask `0x200` (a computer engineer's) takes only `Capturable=`
+    // buildings (`+0x1572`).
+    if ctx.mask & 0x100 != 0 {
+        return None;
+    }
+    if ctx.mask & 0x200 != 0 && !(building && candidate_obj.capturable) {
+        return None;
+    }
+
     // G24 — the human-attacker building gate at `0x006F85AB..0x006F8601`, the
     // one and only consumer of `ThreatPosed=` inside acquisition.
     //
@@ -1468,10 +1847,10 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
     // `0x0070E1A0` is not overridden: `get_xrefs_to` shows it in all six Techno
     // vtable `+0x3F4` slots.
     //
-    // This predicate represents the human-controlled arm. The AI-team bypass
-    // (`TechnoClass+0x14 & 4` and a non-null `FootClass+0x5D4` Team) and the
-    // distinct computer-owner continuation remain unrepresented here. Their
-    // reachability cannot be inferred from this human-player implementation.
+    // The gate is skipped for a Foot in a team (`TechnoClass+0x14 & 4` and a
+    // non-null `FootClass+0x5D4`, `0x006F858F..0x006F85A9`) and for a
+    // computer house's object (`0x006F85AB..0x006F85B8`): the computer's
+    // units shoot power plants, refineries and walls.
     //
     // RESIDUAL — the reject is unconditional here, where native falls through to
     // `0x006F860C` when the attacker's `vtable+0x330` byte (stored at
@@ -1487,11 +1866,25 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
     // this scan. Frequency: n/a. Downstream risk: wiring the AI's engineer
     // repair in must carry the whole `0x006F860C` arm, not just this
     // fall-through.
-    if candidate.category == EntityCategory::Structure
-        && !is_one_by_one_undeployable(candidate_obj)
+    if ctx.standing.team.is_none()
+        && ctx.standing.human
+        && building
+        && !candidate_obj.is_1x1_with_undeploy()
         && (!is_armed(candidate, candidate_obj)
-            || live_threat_posed(ctx.rules, candidate, candidate_obj) == 0)
+            || super::threat_posed::live_threat_posed(
+                candidate,
+                Some(candidate_obj),
+                ctx.entities,
+                ctx.rules,
+                ctx.interner,
+            ) == 0)
     {
+        return None;
+    }
+
+    // `0x006F866D..0x006F867C`: mask `0x40` takes only types with
+    // `Storage=` (`+0x800`).
+    if ctx.mask & 0x40 != 0 && candidate_obj.storage == 0 {
         return None;
     }
 
@@ -1510,9 +1903,8 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         return None;
     }
 
-    // G28/P9 — truncate first, then Normal VHPScan, then final acceptance.
-    // Native's additional house/target/zone modifiers at6F875F..6F8928 remain
-    // unrepresented; they belong after this VHP transform and before finish_score.
+    // G28/P9 — truncate first, then Normal VHPScan, then the house and
+    // quarry terms, then final acceptance.
     let score = calculate_threat_score(
         ctx.entities,
         ctx.attacker.stable_id,
@@ -1522,7 +1914,8 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         ctx.terrain,
         ctx.alliances(),
         ctx.coefficients,
-        ctx.threat_reference,
+        walk.reference,
+        ctx.standing.enemy(),
     )?;
     let score = truncate_score(score);
     let score = adjust_vhp_score(
@@ -1531,7 +1924,117 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         candidate_obj.strength,
         score,
     );
+    let all_to_hunt = ctx.standing.house.is_some_and(|house| {
+        crate::sim::house_strategy::all_to_hunt_score_override(house, candidate.owner()).is_some()
+    });
+    let score = quarry_terms(
+        ctx.mask,
+        score,
+        all_to_hunt,
+        QuarryFacts {
+            building,
+            power_bonus: candidate_obj.power.max(0),
+            max_occupants: candidate_obj.max_number_occupants as i32,
+            needs_engineer: candidate_obj.needs_engineer,
+            factory: candidate_obj.factory.is_some(),
+            can_be_occupied: candidate_obj.can_be_occupied,
+            occupants: candidate
+                .passenger_role
+                .cargo()
+                .map_or(0, |cargo| cargo.count() as i32),
+            armed: is_armed(candidate, candidate_obj),
+        },
+    )?;
+    // `0x006F88BF..0x006F8924`: the ThreatAvoidance factor is 1.0 unless the
+    // scanner's current weapon is `Supress=` (`Weapon+0x146`), which no
+    // retail weapon is; VERA does not read the key.
     finish_score(score)
+}
+
+/// What `Evaluate_Candidate`'s quarry terms read of a candidate.
+#[derive(Debug, Clone, Copy, Default)]
+struct QuarryFacts {
+    building: bool,
+    /// BuildingType `+0xEE0`: `Power=` when positive (`0x00461060..0x0046109A`).
+    power_bonus: i32,
+    /// `MaxNumberOccupants=` (`+0x1580`).
+    max_occupants: i32,
+    /// `NeedsEngineer=` (`+0x1552`).
+    needs_engineer: bool,
+    /// `Factory=` names a type (`+0xEB8`).
+    factory: bool,
+    /// `CanBeOccupied=` (`+0x157B`).
+    can_be_occupied: bool,
+    /// The occupant count (`vt+0x408`, `0x004581F0`).
+    occupants: i32,
+    /// GetCurrentWeapon (`vt+0x3F4`) has a WeaponType.
+    armed: bool,
+}
+
+/// `Evaluate_Candidate @ 0x006F875F..0x006F88B9`, after the VHP transform:
+/// under the owner's All-To-Hunt bias a candidate its current enemy does
+/// not own scores 1; then the quarry's building terms. `None` rejects; a
+/// score of 0 is rejected by [`finish_score`].
+fn quarry_terms(mask: u32, score: i32, all_to_hunt: bool, facts: QuarryFacts) -> Option<i32> {
+    let mut score = score;
+    if all_to_hunt {
+        score = 1;
+    }
+    // Quarry 9, power plants.
+    if mask & 0x800 != 0 && facts.building {
+        score = if facts.power_bonus > 0 {
+            score.wrapping_add(facts.power_bonus.wrapping_mul(1000))
+        } else {
+            0
+        };
+    }
+    // Quarry 10, occupiable buildings.
+    if mask & 0x8000 != 0 {
+        if !facts.building || facts.max_occupants <= 0 {
+            return None;
+        }
+        score = score.wrapping_add(facts.max_occupants.wrapping_mul(1000));
+    }
+    // Quarry 11, tech buildings.
+    if mask & 0x10000 != 0 {
+        if !facts.building || !facts.needs_engineer {
+            return None;
+        }
+        score = score.wrapping_add(1000);
+    }
+    // Quarry 6, factories.
+    if mask & 0x1000 != 0 && facts.building && !facts.factory {
+        score = 0;
+    }
+    // Quarry 7, base defences: an occupiable building with occupants, or
+    // an armed one.
+    if mask & 0x2000 != 0 {
+        let admitted = if facts.building && facts.can_be_occupied {
+            facts.occupants != 0
+        } else {
+            facts.armed && facts.building
+        };
+        if !admitted {
+            return None;
+        }
+    }
+    Some(score)
+}
+
+/// `vt+0x80` as the class gate asks it: a 1x1 building with `UndeploysInto=`
+/// (`0x00457620` → `0x00465D40`) or an aircraft low enough to count as on
+/// the floor (`0x0041B910` → vt+0x50). Infantry answer false (`0x004263B0`);
+/// a unit never gets here, its own bit decides.
+fn vehicle_like(ctx: &ScanContext<'_>, candidate: &GameEntity, obj: &ObjectType) -> bool {
+    match candidate.category {
+        EntityCategory::Structure => obj.is_1x1_with_undeploy(),
+        EntityCategory::Aircraft => crate::sim::movement::air_movement::is_low_flying(
+            candidate,
+            ctx.terrain,
+            Some((ctx.rules, ctx.interner)),
+        ),
+        EntityCategory::Unit | EntityCategory::Infantry => false,
+    }
 }
 
 /// EvaluateCandidate6F8682..6F86FE: both complete Map565730 lookups precede
@@ -1564,7 +2067,6 @@ fn probe_is_illegal(
     let Some(firer) = world.substrate.entities.get(ctx.attacker.stable_id) else {
         return false;
     };
-    let target = super::TargetKind::Entity(candidate.stable_id());
     super::fire_error_world::FireSubject {
         world,
         rules: ctx.rules,
@@ -1572,58 +2074,27 @@ fn probe_is_illegal(
         fog: ctx.fog,
         firer,
         obj: ctx.attacker_obj,
-        target: Some(target),
+        target: Some(super::TargetKind::Entity(candidate.stable_id())),
         weapon_index,
         garrison: super::fire_error_world::garrison_weapon(
             world,
             ctx.rules,
             firer,
             ctx.attacker_obj,
-            target,
         ),
     }
     .fire_error(false)
         == super::fire_error::FireError::Illegal
 }
 
-/// `BuildingTypeClass::Is1x1WithUndeploy @ 0x00465D40` (reached through the
-/// candidate's vtable `+0x80`): a one-cell building that carries an
-/// `UndeploysInto=` vehicle. Such a building is a legal passive target for a
-/// human attacker regardless of its `ThreatPosed`, because it is really a
-/// parked unit.
-fn is_one_by_one_undeployable(obj: &ObjectType) -> bool {
-    let (width, height) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
-    width == 1 && height == 1 && obj.undeploys_into.is_some()
-}
-
-/// `TechnoClass::Get_ThreatPosed @ 0x00708B40` (vtable `+0x2C0`).
-///
-/// A garrisoned building's threat is `occupants * [General] ThreatPerOccupant`
-/// (`RulesClass+0x0DF4`) instead of its own type value; everything else reports
-/// `TechnoTypeClass+0x670` directly. The mind-control substitution at
-/// `TechnoClass+0x2E4` is not represented — VERA reads the candidate's own type
-/// either way.
-fn live_threat_posed(rules: &RuleSet, candidate: &GameEntity, obj: &ObjectType) -> i32 {
-    if candidate.category == EntityCategory::Structure {
-        let occupants = candidate
-            .passenger_role
-            .cargo()
-            .map_or(0, |cargo| cargo.count());
-        if occupants > 0 {
-            return occupants as i32 * rules.general.threat_per_occupant;
-        }
-    }
-    obj.threat_posed
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::locomotor_type::MovementZone;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::TerrainClass;
+    use crate::sim::combat::threat_posed::live_threat_posed;
     use crate::sim::intern::test_interner;
 
     /// A skirmish-shaped fixture: one gun tank, the two civilian object classes
@@ -1747,7 +2218,9 @@ mod tests {
                 None,
                 crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
                 None,
+                None,
             )
+            .target()
         };
         assert_eq!(acquire(&occupancy), Some(2));
         assert_eq!(acquire(&OccupancyGrid::rebuild(&entities)), Some(3));
@@ -1853,7 +2326,9 @@ mod tests {
                         None,
                         crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
                         Some(sim),
+                        None,
                     )
+                    .target()
                 };
                 assert_eq!(
                     acquire(&sim),
@@ -1906,6 +2381,75 @@ mod tests {
     }
 
     #[test]
+    fn air_prepass_admits_airborne_infantry_to_an_aa_only_scanner() {
+        // An AA-only Guard scanner's mask is 5 and its flags word only the
+        // Aircraft bit; `OR EBX,0x8002 @ 0x006F91C2` lets the pre-pass take
+        // a jumpjet infantryman anyway.
+        use crate::rules::locomotor_type::LocomotorKind;
+        use crate::sim::movement::locomotor::LocomotorState;
+        use crate::sim::world::Simulation;
+
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=TANK\n[InfantryTypes]\n0=JUMPJET\n\
+             [TANK]\nStrength=300\nPrimary=FLAK\n[JUMPJET]\nStrength=100\n\
+             [WeaponTypes]\n0=FLAK\n[FLAK]\nDamage=100\nRange=5\nProjectile=SHOT\nWarhead=WH\n\
+             [SHOT]\nAA=yes\nAG=no\n\
+             [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::with_seed(0);
+        sim.session.map_width = 30;
+        sim.session.map_height = 30;
+        place(
+            &mut sim.substrate.entities,
+            1,
+            "TANK",
+            "Americans",
+            5,
+            5,
+            EntityCategory::Unit,
+        );
+        place(
+            &mut sim.substrate.entities,
+            2,
+            "JUMPJET",
+            "Soviet",
+            6,
+            5,
+            EntityCategory::Infantry,
+        );
+        sim.interner = test_interner();
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
+        locomotor.layer = MovementLayer::Air;
+        locomotor.altitude = SimFixed::from_num(200);
+        sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
+        sim.add_entity_occupancy(1);
+        // Registered with the AirTracker, as an airborne jumpjet is.
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .air_spatial_bucket = Some(6 + 5 * 20);
+        let target = super::super::acquire_best_target_for_entity(
+            &sim.substrate.entities,
+            &sim.substrate.occupancy,
+            &rules,
+            &sim.interner,
+            1,
+            None,
+            None,
+            false,
+            super::super::ScanMission::Guard,
+            None,
+            crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
+            Some(&sim),
+            None,
+        )
+        .target();
+        assert_eq!(target, Some(2));
+    }
+
+    #[test]
     fn air_prepass_mask_uses_resolved_ifv_slot_elite_fallback_and_gattling_pair() {
         use super::super::combat_weapon::WeaponOverride;
         let rules = RuleSet::from_ini(&IniFile::from_str(
@@ -1925,10 +2469,10 @@ mod tests {
         ] {
             let obj = rules.object(kind).unwrap();
             let mut entity = GameEntity::test_default(1, kind, "Americans", 5, 5);
-            entity.veterancy = veterancy;
+            entity.set_veterancy_rank(veterancy);
             entity.weapon_override = Some(WeaponOverride::IfvSlot(slot));
             assert_eq!(
-                passive_scan_has_aa(&rules, obj, attacker_facts(&entity, obj), None),
+                passive_scan_class_bits(&rules, obj, attacker_facts(&entity, obj), None) & 4 != 0,
                 expected,
                 "{kind} slot{slot} veterancy{veterancy}"
             );
@@ -1952,7 +2496,7 @@ mod tests {
         rules: &RuleSet,
         attacker: u64,
         mask: super::super::ScanMission,
-        zones: Option<&ZoneGrid>,
+        zones: Option<&(ZoneGrid, ResolvedTerrainGrid)>,
     ) -> Option<u64> {
         let interner = test_interner();
         super::super::acquire_best_target_for_entity(
@@ -1962,52 +2506,22 @@ mod tests {
             &interner,
             attacker,
             None,
-            None,
+            zones.map(|(_, terrain)| terrain),
             false,
             mask,
-            zones,
+            zones.map(|(zones, _)| zones),
             crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
             None,
+            None,
         )
+        .target()
     }
 
     /// One clear ground cell.
     fn zone_test_cell(rx: u16, ry: u16, impassable: bool) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
             is_cliff_like: impassable,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
             ground_walk_blocked: impassable,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
             zone_type: if impassable {
                 zone_class::IMPASSABLE
             } else {
@@ -2015,33 +2529,20 @@ mod tests {
             },
             base_ground_walk_blocked: impassable,
             base_build_blocked: impassable,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
             base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: SpeedCostProfile::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
     /// A square map cut in two by one impassable column, so that
     /// `MovementZone::Normal` has two disconnected components.
-    fn split_zone_grid(side: u16, barrier_rx: u16) -> ZoneGrid {
-        let cells = (0..side)
-            .flat_map(|ry| (0..side).map(move |rx| zone_test_cell(rx, ry, rx == barrier_rx)))
-            .collect();
-        let terrain = ResolvedTerrainGrid::from_cells(side, side, cells);
+    fn split_zone_grid(side: u16, barrier_rx: u16) -> (ZoneGrid, ResolvedTerrainGrid) {
+        let terrain = crate::map::resolved_terrain::test_grid(side, side, |rx, ry| {
+            zone_test_cell(rx, ry, rx == barrier_rx)
+        });
         let path_grid = crate::sim::pathfinding::PathGrid::from_resolved_terrain(&terrain);
-        ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], side, side)
+        let zones = ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], side, side);
+        (zones, terrain)
     }
 
     /// The mask-0 walk is movement-zone filtered, and the ring walk is not.
@@ -2064,9 +2565,11 @@ mod tests {
         let rules = scan_rules();
         let zones = split_zone_grid(12, 5);
         let near_side = zones
+            .0
             .get_zone_id_nonbridge_native((2, 2), MovementZone::Normal)
             .expect("attacker cell resolves a Normal zone id");
         let far_side = zones
+            .0
             .get_zone_id_nonbridge_native((8, 2), MovementZone::Normal)
             .expect("across-the-barrier cell resolves a Normal zone id");
         assert_ne!(
@@ -2119,12 +2622,37 @@ mod tests {
             Some(3),
             "the zone gate refuses the nearer target across the barrier and takes the reachable one"
         );
+
+        // A scanner on a structural cell with no matching high bridge record
+        // gets DWORD -1 from GetZoneID, and both consumers skip the gate for
+        // -1 (`0x006F7E36`, `0x006F898F`): the nearer target wins again.
+        let mut zones = zones;
+        zones.1.cell_mut(2, 2).unwrap().bridge_facts.raw_flags =
+            crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+        assert_eq!(
+            zones
+                .0
+                .get_zone_id_native(&zones.1, (2, 2), MovementZone::Normal, true),
+            Some(u32::MAX)
+        );
+        assert_eq!(
+            pick_with_mask_and_zones(
+                &entities,
+                &rules,
+                1,
+                super::super::ScanMission::Hunt,
+                Some(&zones)
+            ),
+            Some(2),
+            "a -1 scanner zone scans unfiltered"
+        );
     }
 
-    /// The gate belongs to the flat walk alone. Same fixture, one enemy, and it
-    /// is on the far side of the barrier and inside plain Guard's ring bound:
-    /// mask 1 still takes it, because the ring callsite pushes `-1` into arg6
-    /// (`PUSH -0x1 @ 0x006F92A3`) and the reject at `0x006F7E45` is skipped.
+    /// `Evaluate_Candidate`'s gate belongs to the flat walk alone. Same
+    /// fixture, one enemy, and it is on the far side of the barrier and inside
+    /// plain Guard's ring bound: mask 1 still takes it, because the ring
+    /// callsite pushes `-1` into arg6 (`PUSH -0x1 @ 0x006F92A3`) and mask 1's
+    /// bit 0 leaves the scanner's zone uncomputed (`0x006F8E48`).
     #[test]
     fn gsi_07_20_the_ring_walk_ignores_the_zone_gate_the_flat_walk_applies() {
         let rules = scan_rules();
@@ -2172,6 +2700,45 @@ mod tests {
             None,
             "mask 0 supplies the zone and refuses the same candidate"
         );
+    }
+
+    /// Area Guard's mask 2 has bit 0 clear, so the ring walk carries the
+    /// scanner's zone into `Scan_Cell_For_Target`, where a cell outside it
+    /// offers nothing (`0x006F898F..0x006F89B4`).
+    #[test]
+    fn area_guard_rings_skip_cells_outside_the_scanner_zone() {
+        let rules = scan_rules();
+        let zones = split_zone_grid(12, 5);
+        let mut entities = EntityStore::new();
+        place(
+            &mut entities,
+            1,
+            "GRIZZLY",
+            "Americans",
+            4,
+            2,
+            EntityCategory::Unit,
+        );
+        place(
+            &mut entities,
+            2,
+            "SCOUT",
+            "Soviets",
+            6,
+            2,
+            EntityCategory::Unit,
+        );
+        let area_guard = |zones| {
+            pick_with_mask_and_zones(
+                &entities,
+                &rules,
+                1,
+                super::super::ScanMission::AreaGuard,
+                zones,
+            )
+        };
+        assert_eq!(area_guard(None), Some(2));
+        assert_eq!(area_guard(Some(&zones)), None);
     }
 
     /// A 20-cell-range attacker with one long weapon, a plain enemy and an
@@ -2289,6 +2856,7 @@ mod tests {
                     None,
                     coefficients,
                     reference,
+                    None,
                 )
                 .expect("scored"),
             ))
@@ -2300,11 +2868,13 @@ mod tests {
             score(3, ThreatReference::NullCoord),
             score(2, ThreatReference::NullCoord)
         );
+        let (x, y, z) = threat_coord(entities.get(1).unwrap(), None);
+        let hunt_reference = ThreatReference::Coords([x, y, z]);
         assert!(
-            score(2, ThreatReference::ScannerCoords) > score(3, ThreatReference::ScannerCoords),
+            score(2, hunt_reference) > score(3, hunt_reference),
             "on the lepton scale the ordering flips: {} vs {}",
-            score(2, ThreatReference::ScannerCoords),
-            score(3, ThreatReference::ScannerCoords)
+            score(2, hunt_reference),
+            score(3, hunt_reference)
         );
     }
 
@@ -2755,18 +3325,81 @@ mod tests {
         assert_eq!(byte_clear.target_distance, -1.0);
     }
 
-    /// `TechnoClass::Get_ThreatPosed @ 0x00708B40`: a garrisoned building's
-    /// threat comes from its occupants, not its own type value, which is how a
-    /// civilian house full of GIs becomes a target for units that would ignore
-    /// the empty one.
+    /// The shared native threat getter preserves an empty building's type.
     #[test]
-    fn gsi_08_01_threat_per_occupant_replaces_the_type_value() {
+    fn empty_building_preserves_the_native_type_threat() {
         let rules = scan_rules();
         let obj = rules.object("POWER").expect("POWER");
         let mut building = GameEntity::test_default(1, "POWER", "Russians", 5, 5);
         building.category = EntityCategory::Structure;
-        assert_eq!(live_threat_posed(&rules, &building, obj), 0);
+        assert_eq!(
+            live_threat_posed(
+                &building,
+                Some(obj),
+                &EntityStore::new(),
+                &rules,
+                &test_interner()
+            ),
+            0,
+        );
         assert_eq!(rules.general.threat_per_occupant, 10);
+    }
+
+    /// Original708B40 reads the installed tank's type threat when the
+    /// building is empty. Building+2E4 is the reciprocal tank-bunker link.
+    /// Executed branches: spatial_oracle/base_defense_response.json.
+    #[test]
+    fn native_base_response_threat_uses_the_empty_bunkers_installed_tank() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[BuildingTypes]\n0=BUNKER\n[VehicleTypes]\n0=TANK\n\
+             [BUNKER]\nStrength=100\nThreatPosed=31\n\
+             [TANK]\nStrength=100\nThreatPosed=7\n",
+        ))
+        .unwrap();
+        let mut building = GameEntity::test_default(1, "BUNKER", "Owner", 5, 5);
+        building.category = EntityCategory::Structure;
+        building.bunker_occupant = Some(2);
+        let tank = GameEntity::test_default(2, "TANK", "Owner", 5, 5);
+        let mut entities = EntityStore::new();
+        entities.insert(building);
+        entities.insert(tank);
+        assert_eq!(
+            live_threat_posed(
+                entities.get(1).unwrap(),
+                rules.object("BUNKER"),
+                &entities,
+                &rules,
+                &test_interner(),
+            ),
+            7,
+        );
+    }
+
+    /// The native signed IMUL wraps, including the occupied-building arm.
+    #[test]
+    fn native_base_response_occupied_threat_wraps_the_signed_product() {
+        use crate::sim::passenger::{PassengerCargo, PassengerRole};
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nThreatPerOccupant=2147483647\n\
+             [BuildingTypes]\n0=B\n[B]\nStrength=100\nThreatPosed=31\n",
+        ))
+        .unwrap();
+        let mut building = GameEntity::test_default(1, "B", "Owner", 5, 5);
+        building.category = EntityCategory::Structure;
+        let mut cargo = PassengerCargo::new(2, 1);
+        assert!(cargo.board(2, 1));
+        assert!(cargo.board(3, 1));
+        building.passenger_role = PassengerRole::Transport { cargo };
+        assert_eq!(
+            live_threat_posed(
+                &building,
+                rules.object("B"),
+                &EntityStore::new(),
+                &rules,
+                &test_interner(),
+            ),
+            -2,
+        );
     }
 
     /// The literal loop order of `Greatest_Threat`'s ring walk, including the
@@ -2947,7 +3580,7 @@ mod tests {
             assert_eq!(pick(&entities, &rules, 1), None, "{score}/2 rejects");
             let interner = test_interner();
             let raw = super::super::combat_targeting::calculate_ai_threat_score(
-                &entities, 1, 2, &rules, &interner, None, None,
+                &entities, 1, 2, &rules, &interner, None, None, None,
             )
             .unwrap();
             assert_eq!(truncate_score(raw), score, "raw70CD10 remains unchanged");
@@ -2976,3 +3609,7 @@ mod health_tests;
 #[cfg(test)]
 #[path = "greatest_threat_bridge_tests.rs"]
 mod bridge_tests;
+
+#[cfg(test)]
+#[path = "greatest_threat_mask_oracle_tests.rs"]
+mod mask_oracle_tests;

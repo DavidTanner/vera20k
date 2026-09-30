@@ -25,7 +25,6 @@ use crate::sim::pathfinding::cell_entry::{
 };
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::{BridgeTraversalInput, PathGrid};
-use crate::sim::rng::SimRng;
 
 use super::{
     MovementConfig, MovementTickStats, MoverSnapshot, PATH_STUCK_INIT, PathfindingContext,
@@ -35,16 +34,6 @@ use super::{
 pub(super) type LiveBuildingEntrySkipMap = BTreeMap<(u16, u16), BTreeSet<u64>>;
 
 const RUNTIME_CAN_ENTER_ARG5: i32 = 1;
-/// Deck height above the cell's own terrain, in level indices.
-///
-/// `FootClass::Set_Height_On_Bridge` @ `0x005F5FA0` adds
-/// `g_nFootOnBridgeDeckOffsetLeptons` `[0x00AC13BC]` to its height argument when
-/// and only when the object's `+0x8C` OnBridge byte is set. That global is a
-/// one-shot initializer computing `4 * LevelStep` at `0x005F3860`
-/// (`LEA ECX,[EAX*4]` @ `0x005F3866`), so in level-index space the delta is 4.
-/// `movement_bridge` shares this constant so the height model has exactly one
-/// definition.
-pub(super) const BRIDGE_DECK_LEVEL_DELTA: i16 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DeferredCellCheck {
@@ -87,17 +76,7 @@ pub(super) struct RuntimeCanEnterCellEvaluation {
 pub(super) fn runtime_can_enter_direction(current_cell: (u16, u16), target_cell: (u16, u16)) -> i8 {
     let dx = (target_cell.0 as i32 - current_cell.0 as i32).signum();
     let dy = (target_cell.1 as i32 - current_cell.1 as i32).signum();
-    match (dx, dy) {
-        (0, -1) => 0,
-        (1, -1) => 1,
-        (1, 0) => 2,
-        (1, 1) => 3,
-        (0, 1) => 4,
-        (-1, 1) => 5,
-        (-1, 0) => 6,
-        (-1, -1) => 7,
-        _ => -1,
-    }
+    crate::util::direction::direction_from_delta(dx, dy).map_or(-1, |direction| direction as i8)
 }
 
 pub(super) fn runtime_current_effective_height(
@@ -111,7 +90,7 @@ pub(super) fn runtime_current_effective_height(
         .map_or(fallback_z as i16, |cell| {
             cell.signed_level()
                 + if on_bridge {
-                    BRIDGE_DECK_LEVEL_DELTA
+                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
                 } else {
                     0
                 }
@@ -154,19 +133,11 @@ pub(super) fn evaluate_runtime_can_enter_cell_with_transition(
             bridge_traversal_allowed: true,
         };
     };
-    let runtime_policy = super::movement_bridge::evaluate_runtime_bridge_transition(
+    super::movement_bridge::latch_runtime_bridge_mismatch(
         bridge_state,
         candidate.has_structural_bridge(),
         current_on_bridge,
-        || super::movement_bridge::RuntimeBridgePolicyResult::Continue,
     );
-    if runtime_policy == super::movement_bridge::RuntimeBridgePolicyResult::Reject {
-        return RuntimeCanEnterCellEvaluation {
-            args,
-            layers: base,
-            bridge_traversal_allowed: false,
-        };
-    }
     let explicit_parent = args
         .parent_current_cell
         .and_then(|coord| grid.cell(coord.0, coord.1).map(|cell| (cell, coord)));
@@ -640,13 +611,11 @@ pub(super) fn handle_deferred_occupancy(
     raw_cell_occupation: &RawCellOccupationGrid,
     live_building_entry_skips: DeferredBuildingEntrySkips<'_>,
     alliances: &HouseAllianceMap,
-    path_grid: Option<&PathGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    rng: &mut SimRng,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     crush_kills: &mut Vec<PendingCrushKill>,
-    already_scattered: &mut BTreeSet<u64>,
+    scatters: &mut super::scatter::ScatterRequests,
     sim_tick: u64,
     interner: &crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
@@ -800,14 +769,13 @@ pub(super) fn handle_deferred_occupancy(
                     snap_motion_to_cell_center(&mut entity.position);
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
                         &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
-                        &mut entity.facing,
                         body_facing,
                         &snap.locomotor,
                         &mut entity.drive_locomotion,
@@ -823,9 +791,7 @@ pub(super) fn handle_deferred_occupancy(
                         entity_cost_grid,
                         mover_entity_blocks,
                         mover_entity_block_map,
-                        snap.too_big_to_fit_under_bridge,
                         mcfg,
-                        rng,
                         sim_tick,
                         PATH_STUCK_INIT,
                         super::MoverPathFacts::from_snapshot(snap, 0),
@@ -842,14 +808,12 @@ pub(super) fn handle_deferred_occupancy(
         CellEntryResult::Crushable { victims } => {
             let crusher_cell = (i32::from(nx), i32::from(ny));
             let crusher_lepton = (i32::from(nx) * 256 + 128, i32::from(ny) * 256 + 128);
-            let eligibility = bump_crush::ScatterEligibility::from_rules(rules);
             // The entering-cell scatter walks the whole selected cell list, not
             // just the crushable subset, and it runs before any kill filter.
             let cell_occupants = occupancy
                 .get(nx, ny)
                 .map_or_else(Vec::new, |occ| occ.snapshot_layer(object_list_layer));
-            let victims = match bump_crush::classify_drive_crush_phase(
-                bump_crush::DriveCrushPhase::FullyInCell,
+            let victims = bump_crush::select_crush_victims(
                 &victims,
                 entities,
                 entity_id,
@@ -857,54 +821,35 @@ pub(super) fn handle_deferred_occupancy(
                 interner,
                 crusher_lepton,
                 crush_capability,
-                eligibility,
                 mcfg.binary_frame,
-                rules,
-                houses,
-            ) {
-                bump_crush::DriveCrushOutcome::Kill { victims } => victims,
-                _ => Vec::new(),
-            };
+            );
             let kill_set: BTreeSet<u64> = victims.iter().copied().collect();
-            if let bump_crush::DriveCrushOutcome::Scatter { blockers } =
-                bump_crush::classify_drive_crush_phase(
-                    bump_crush::DriveCrushPhase::EnteringCell,
+            // A crusher's entering cell takes the unforced
+            // `Scatter_Objects(null, 1, 0, deck)` (`0x0074177A`): each occupant
+            // its dispatch gate admits is asked `Scatter(null, 1, 0)`.
+            //
+            // RESIDUAL: the queued calls run after this arm removes its crush
+            // victims below; native pre-scatters when entering the cell and
+            // crushes afterwards. Trigger: one pass that both crushes some
+            // occupants of the cell and scatters others. Effect: a survivor's
+            // FNPC sees the crushed occupants gone and may keep a cell native
+            // would leave. Frequency: tanks rolling through infantry groups
+            // where the crush spares an occupant.
+            if crush_capability.can_crush_units() {
+                for blocker_id in super::scatter::scatter_objects_admitted(
                     &cell_occupants,
-                    entities,
-                    entity_id,
-                    alliances,
-                    interner,
-                    crusher_lepton,
-                    crush_capability,
-                    eligibility,
-                    mcfg.binary_frame,
+                    Some(entity_id),
+                    false,
                     rules,
+                    entities,
                     houses,
-                )
-            {
-                for blocker_id in blockers {
+                    interner,
+                ) {
                     if kill_set.contains(&blocker_id) {
                         continue;
                     }
-                    if !already_scattered.contains(&blocker_id)
-                        && bump_crush::scatter_blocker(
-                            entities,
-                            blocker_id,
-                            path_grid,
-                            resolved_terrain,
-                            occupancy,
-                            object_list_layer,
-                            rng,
-                            rules,
-                            interner,
-                            crate::sim::movement::DestinationTiming::new(
-                                mcfg.binary_frame,
-                                mcfg.blockage_path_delay_ticks,
-                            ),
-                        )
-                    {
-                        already_scattered.insert(blocker_id);
-                        stats.scatter_successes = stats.scatter_successes.saturating_add(1);
+                    if scatters.request(blocker_id, super::ScatterFlags::new(true, false)) {
+                        stats.scatter_requests = stats.scatter_requests.saturating_add(1);
                     }
                 }
             }
@@ -960,34 +905,18 @@ pub(super) fn handle_deferred_occupancy(
             let blocker_is_structure = entities
                 .get(blocker_id)
                 .is_some_and(|blocker| blocker.category == EntityCategory::Structure);
-            // Scatter the stationary friendly blocker out of the way.
-            // Matches original engine: CellClass::Scatter_Objects with force=1
-            // tells the BLOCKER to move, not the mover. The blocker receives a
-            // movement command to walk to an adjacent cell.
-            let mut scattered = false;
-            if !blocker_is_structure && !already_scattered.contains(&blocker_id) {
-                scattered = bump_crush::scatter_blocker(
-                    entities,
-                    blocker_id,
-                    path_grid,
-                    resolved_terrain,
-                    occupancy,
-                    object_list_layer,
-                    rng,
-                    rules,
-                    interner,
-                    crate::sim::movement::DestinationTiming::new(
-                        mcfg.binary_frame,
-                        mcfg.blockage_path_delay_ticks,
-                    ),
-                );
-                if scattered {
-                    already_scattered.insert(blocker_id);
-                    stats.scatter_successes = stats.scatter_successes.saturating_add(1);
-                }
+            // Code 6 calls `Scatter_Objects(null, 1, 1, deck)` on the refused
+            // cell (Drive 0x004B393A, Hover 0x0051597D, Walk 0x0075B891) and
+            // reads no result from it: the wait below follows the call
+            // whatever the receivers do. This lane asks only the refusing
+            // occupant.
+            let scattered = !blocker_is_structure
+                && scatters.request(blocker_id, super::ScatterFlags::new(true, true));
+            if scattered {
+                stats.scatter_requests = stats.scatter_requests.saturating_add(1);
             }
-            // Mover waits — blocker is walking away. If scatter failed,
-            // fall through to handle_blocked_tick for repath.
+            // The mover waits while the blocker walks away. An allied building
+            // (code 7) or a blocker this pass already asked repaths instead.
             if let Some(mut turn) = entities.take_turn(entity_id) {
                 let (entity, others) = turn.split();
                 let marker_context =
@@ -996,7 +925,7 @@ pub(super) fn handle_deferred_occupancy(
                     snap_motion_to_cell_center(&mut entity.position);
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     if scattered {
                         // Blocker is walking away. The original writes its
@@ -1019,7 +948,6 @@ pub(super) fn handle_deferred_occupancy(
                             &mut entity.navigation.path_replay,
                             target,
                             &mut entity.navigation.path_runtime,
-                            &mut entity.facing,
                             body_facing,
                             &snap.locomotor,
                             &mut entity.drive_locomotion,
@@ -1035,9 +963,7 @@ pub(super) fn handle_deferred_occupancy(
                             entity_cost_grid,
                             mover_entity_blocks,
                             mover_entity_block_map,
-                            snap.too_big_to_fit_under_bridge,
                             mcfg,
-                            rng,
                             sim_tick,
                             PATH_STUCK_INIT,
                             super::MoverPathFacts::from_snapshot(snap, 0),
@@ -1193,14 +1119,13 @@ pub(super) fn handle_deferred_occupancy(
                     entity.attack_target = Some(AttackTarget::new(blocker_id));
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
                         &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
-                        &mut entity.facing,
                         body_facing,
                         &snap.locomotor,
                         &mut entity.drive_locomotion,
@@ -1216,9 +1141,7 @@ pub(super) fn handle_deferred_occupancy(
                         entity_cost_grid,
                         mover_entity_blocks,
                         mover_entity_block_map,
-                        snap.too_big_to_fit_under_bridge,
                         mcfg,
-                        rng,
                         sim_tick,
                         PATH_STUCK_INIT,
                         super::MoverPathFacts::from_snapshot(snap, 0),
@@ -1304,14 +1227,13 @@ pub(super) fn handle_deferred_occupancy(
                     let effective_marker_context =
                         deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
                     let cur_pos = (entity.position.rx, entity.position.ry);
-                    let body_facing = entity.body_facing;
+                    let body_facing = entity.body_facing.current(mcfg.binary_frame);
                     if let Some(ref mut target) = entity.movement_target {
                         let mut aborted_for_stuck = false;
                         let evts = handle_blocked_tick(
                             &mut entity.navigation.path_replay,
                             target,
                             &mut entity.navigation.path_runtime,
-                            &mut entity.facing,
                             body_facing,
                             &snap.locomotor,
                             &mut entity.drive_locomotion,
@@ -1327,9 +1249,7 @@ pub(super) fn handle_deferred_occupancy(
                             entity_cost_grid,
                             mover_entity_blocks,
                             mover_entity_block_map,
-                            snap.too_big_to_fit_under_bridge,
                             mcfg,
-                            rng,
                             sim_tick,
                             PATH_STUCK_INIT,
                             super::MoverPathFacts::from_snapshot(snap, 0),
@@ -1357,14 +1277,13 @@ pub(super) fn handle_deferred_occupancy(
                     snap_motion_to_cell_center(&mut entity.position);
                 }
                 let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing;
+                let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
                         &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
-                        &mut entity.facing,
                         body_facing,
                         &snap.locomotor,
                         &mut entity.drive_locomotion,
@@ -1380,9 +1299,7 @@ pub(super) fn handle_deferred_occupancy(
                         entity_cost_grid,
                         mover_entity_blocks,
                         mover_entity_block_map,
-                        snap.too_big_to_fit_under_bridge,
                         mcfg,
-                        rng,
                         sim_tick,
                         PATH_STUCK_INIT,
                         super::MoverPathFacts::from_snapshot(snap, 0),
@@ -1469,7 +1386,6 @@ mod tests {
 
         let mut mover = GameEntity::test_default(1, "MOVER", "Americans", 5, 5);
         mover.category = EntityCategory::Unit;
-        mover.facing = 0;
         entities.insert(mover);
 
         let mut blocker = GameEntity::test_default(2, "PEER", "Americans", 5, 4);
@@ -1513,10 +1429,9 @@ mod tests {
             grid: &grid,
             terrain: None,
             playfield_bounds: Some(playfield),
-            native_frame: 0,
         };
 
-        let stale_search = stale_context.build(&occupancy, 1, (5, 5), 0, None, false, 1);
+        let stale_search = stale_context.build(&occupancy, 1, (5, 5), 0, false, 1);
         assert_eq!(
             stale_search.effective_urgency, 0,
             "the old one-direction path cannot satisfy the Unit peer gate"
@@ -1538,7 +1453,7 @@ mod tests {
             &interner,
         );
         let refreshed_context = bridge_marker_context_with_peers(stale_context, &refreshed_peers);
-        let refreshed_search = refreshed_context.build(&occupancy, 1, (5, 5), 0, None, false, 1);
+        let refreshed_search = refreshed_context.build(&occupancy, 1, (5, 5), 0, false, 1);
 
         assert_eq!(refreshed_search.effective_urgency, 1);
         assert!(refreshed_search.overlay.contains((4, 4)));

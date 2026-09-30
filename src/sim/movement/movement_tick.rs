@@ -33,7 +33,6 @@ use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::type_handle_table::TypeHandleTable;
-use crate::sim::world::EnterOrderCounter;
 use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, fixed_distance, isqrt_i64,
     native_movement_frame_fraction,
@@ -41,8 +40,8 @@ use crate::util::fixed_math::{
 
 use super::block_index::{HeldBlockSets, LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
-use super::locomotor::{GroundMovePhase, MovementLayer};
-use super::movement_bridge::{BRIDGE_Z_OFFSET, apply_pending_bridge_render_state};
+use super::locomotor::MovementLayer;
+use super::movement_bridge::apply_bridge_layer_state;
 use super::movement_occupancy::{
     DeferredBuildingEntrySkips, DeferredCellCheck, MoverBuildingEntryFacts,
     handle_deferred_occupancy,
@@ -118,11 +117,9 @@ pub(super) fn snapshot_mover(
         is_armed,
         warhead_wall,
         warhead_wood,
-        too_big_to_fit_under_bridge: e.too_big_to_fit_under_bridge,
         on_bridge: e.on_bridge,
         runtime_bridge_transition: e.runtime_bridge_transition,
         locomotor: e.locomotor.clone(),
-        rot: e.locomotor.as_ref().map(|l| l.rot).unwrap_or(0),
         bypass_grid: e
             .movement_target
             .as_ref()
@@ -243,9 +240,6 @@ fn handle_path_exhaustion(
     ship_locomotion: &mut Option<crate::sim::components::ShipLocomotionRuntime>,
     active_ordinary_track: bool,
     position: &super::super::components::Position,
-    category: EntityCategory,
-    facing: &mut u8,
-    facing_target: &mut Option<u8>,
     _entity_id: u64,
     active_layer: MovementLayer,
     snap: &MoverSnapshot,
@@ -341,7 +335,6 @@ fn handle_path_exhaustion(
                 mover_entity_blocks,
                 seg_zone_mz,
                 Some(snap.movement_zone),
-                snap.too_big_to_fit_under_bridge,
                 mover_entity_block_map,
                 // urgency=0: proactive segment repath, no block escalation.
                 // One crush authority for every search; see `CrushCapability::of`.
@@ -439,25 +432,10 @@ fn handle_path_exhaustion(
                         target.path_layers.len(),
                         "path/path_layers desync after segment repath"
                     );
-                    // Update facing toward next cell.
-                    let new_face: u8 = facing_from_delta(dx, dy);
-                    if locomotor.as_ref().is_some_and(|loco| {
-                        matches!(
-                            loco.kind,
-                            LocomotorKind::Walk | LocomotorKind::Drive | LocomotorKind::Ship
-                        )
-                    }) {
-                        // Walk75BC97 changes facing only after successful head
-                        // selection. finish_fresh_head owns that ordered call.
-                        // Drive4B3408/Ship6A2A57 owns the fresh turn after
-                        // repath too. An eager byte snap bypasses its return.
-                    } else if category == EntityCategory::Infantry
-                        || super::FacingClass::rate_from_rot(snap.rot) <= 0
-                    {
-                        *facing = new_face;
-                    } else {
-                        *facing_target = Some(new_face);
-                    }
+                    // A repath writes no facing. Walk75BC97 turns only after
+                    // successful head selection (finish_fresh_head owns that
+                    // ordered call), and Drive4B3408/Ship6A2A57 own the fresh
+                    // turn after repath.
                     // Continue processing this entity on the new segment.
                     let mut debug_events = Vec::new();
                     debug_events.push((
@@ -563,7 +541,7 @@ fn process_pending_drive_arrivals(
             continue;
         }
         // Drive/Ship finish their deferred order before Process
-        // (`Simulation::complete_pending_track_order`).
+        // (`Simulation::complete_pending_order`).
         if entity.locomotor.as_ref().is_some_and(|loco| {
             matches!(
                 loco.active_kind(),
@@ -633,7 +611,6 @@ fn process_pending_drive_arrivals(
             occupied_blocks_ref,
             loco.movement_zone,
             movement_zone,
-            entity.too_big_to_fit_under_bridge,
             entity_block_map,
             // No `MoverSnapshot` on this path; see the constructor's note.
             super::MoverPathFacts {
@@ -658,18 +635,7 @@ fn process_pending_drive_arrivals(
             continue;
         }
         let obj = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-        let speed_multiplier = loco.speed_multiplier;
-        // `FootClass::GetCurrentSpeed @ 0x004DB1A0`: the FASTER multiply sits
-        // on the truncated per-frame type speed, before the locomotor's own
-        // fraction — see `veterancy::veteran_speed_leptons_per_second`.
-        let veteran_speed = rules.map_or(1.0, |r| r.general.veteran_speed);
-        let speed = (crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
-            entity,
-            obj,
-            obj.map_or(4, |o| o.speed),
-            veteran_speed,
-        ) * speed_multiplier)
-            .max(SimFixed::lit("25"));
+        let speed = super::order_speed(entity, obj, rules);
         let dx = path[1].0 as i32 - path[0].0 as i32;
         let dy = path[1].1 as i32 - path[0].1 as i32;
         let (move_dir_x, move_dir_y, move_dir_len) =
@@ -726,7 +692,6 @@ fn handle_deferred_drive_selection_block(
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     mover_entity_block_map: Option<&crate::sim::pathfinding::LayeredEntityBlockMap>,
     occupancy: &OccupancyGrid,
-    rng: &mut SimRng,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     sim_tick: u64,
@@ -739,7 +704,7 @@ fn handle_deferred_drive_selection_block(
     let (entity, others) = turn.split();
     let marker_context = deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
     let cur_pos = (entity.position.rx, entity.position.ry);
-    let body_facing = entity.body_facing;
+    let body_facing = entity.body_facing.current(mcfg.binary_frame);
     let Some(ref mut target) = entity.movement_target else {
         return Vec::new();
     };
@@ -748,7 +713,6 @@ fn handle_deferred_drive_selection_block(
         &mut entity.navigation.path_replay,
         target,
         &mut entity.navigation.path_runtime,
-        &mut entity.facing,
         body_facing,
         &snap.locomotor,
         &mut entity.drive_locomotion,
@@ -764,9 +728,7 @@ fn handle_deferred_drive_selection_block(
         entity_cost_grid,
         mover_entity_blocks,
         mover_entity_block_map,
-        snap.too_big_to_fit_under_bridge,
         mcfg,
-        rng,
         sim_tick,
         PATH_STUCK_INIT,
         super::MoverPathFacts::from_snapshot(snap, 0),
@@ -856,8 +818,8 @@ pub(crate) struct FootPathRequest {
 }
 
 /// Whether a Rust route adapter, not the retained locomotor state, owns this
-/// visit: `issue_direct_move` (docking pads, grid-less scatter) and component
-/// fixtures mark their MovementTarget ([`MovementTarget::adapter_route`]);
+/// visit: `issue_direct_move` (C4 building entry, a Jumpjet infantryman's
+/// damage scatter) and component fixtures mark their MovementTarget ([`MovementTarget::adapter_route`]);
 /// the pass finalizer retires it, including an exhausted route. Native routes
 /// keep their cells in both Foot+5E0 and the adapter cache (Find_Path 4D3E98
 /// copy and `install_route`); the NavCom trim and Find_Path's head clear empty
@@ -970,7 +932,6 @@ impl FootPathRequest {
             Some(&blocks.0),
             snap.movement_zone,
             Some(snap.movement_zone),
-            snap.too_big_to_fit_under_bridge,
             Some(&blocks.1),
             None,
             // One crush authority for every search; see `CrushCapability::of`.
@@ -1031,7 +992,7 @@ struct MovementPassEffects {
     stats: MovementTickStats,
     finished_entities: Vec<u64>,
     crush_kills: Vec<PendingCrushKill>,
-    already_scattered: BTreeSet<u64>,
+    scatters: super::scatter::ScatterRequests,
     native_track: Option<super::track_process::TrackInvocation>,
     walk_per_cell: Option<(u64, crate::sim::components::DriveCoord)>,
     walk_boundary: Option<(u64, crate::sim::components::DriveCoord)>,
@@ -1086,7 +1047,6 @@ fn advance_ordinary_mover(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -1115,7 +1075,7 @@ fn advance_ordinary_mover(
         stats,
         finished_entities,
         crush_kills,
-        already_scattered,
+        scatters,
         native_track,
         walk_per_cell,
         walk_boundary,
@@ -1307,7 +1267,6 @@ fn advance_ordinary_mover(
         grid,
         terrain: resolved_terrain,
         playfield_bounds,
-        native_frame,
     });
 
     let mut aborted_for_stuck: bool = false;
@@ -1325,7 +1284,6 @@ fn advance_ordinary_mover(
     // The mover is lifted out of the store for each scope below, so it can be
     // mutated while the other entities are read live. The scopes end before the
     // deferred handlers, which need the whole store mutably.
-    let marker_body_facing = entities.get(entity_id).and_then(|e| e.body_facing);
     'mover: {
         {
             let Some(mut turn) = entities.take_turn(entity_id) else {
@@ -1375,9 +1333,6 @@ fn advance_ordinary_mover(
                         &mut entity.ship_locomotion,
                         active_retained_track,
                         &entity.position,
-                        entity.category,
-                        &mut entity.facing,
-                        &mut entity.facing_target,
                         entity_id,
                         active_layer,
                         &snap,
@@ -1504,9 +1459,7 @@ fn advance_ordinary_mover(
                     target,
                     &mut entity.navigation.path_runtime,
                     &mut entity.position,
-                    &mut entity.facing,
-                    &mut entity.facing_target,
-                    marker_body_facing,
+                    &entity.body_facing,
                     &mut entity.locomotor,
                     &mut entity.drive_locomotion,
                     &mut entity.ship_locomotion,
@@ -1523,8 +1476,6 @@ fn advance_ordinary_mover(
                     &deferred_entry_skips.reading(others),
                     occupancy,
                     cell_occupation,
-                    &mut entity.occupancy_enter_order,
-                    next_occupancy_enter_order,
                     stats,
                     finished_entities,
                     rng,
@@ -1537,7 +1488,10 @@ fn advance_ordinary_mover(
                     true,
                 );
                 entity.position = before;
-                entity.runtime_bridge_transition = admission.runtime_bridge_transition;
+                // Foot+0x68B is write-1-only; a pass started from the earlier
+                // snapshot must not clear an admission latch.
+                entity.runtime_bridge_transition.pending_mismatch |=
+                    admission.runtime_bridge_transition.pending_mismatch;
                 if !admission.walk_head_admitted {
                     deferred_cell_check = admission.deferred_cell_check;
                     deferred_wall_override = admission.deferred_wall_override;
@@ -1570,13 +1524,11 @@ fn advance_ordinary_mover(
                 raw_cell_occupation,
                 deferred_entry_skips,
                 alliances,
-                path_grid,
                 resolved_terrain,
-                rng,
                 stats,
                 finished_entities,
                 crush_kills,
-                already_scattered,
+                scatters,
                 sim_tick,
                 interner,
                 rules,
@@ -1620,7 +1572,8 @@ fn advance_ordinary_mover(
                 return;
             };
             let (entity, others) = turn.split();
-            let head_on_mover = movement_step::MoverHeadOnContext::from_entity(entity);
+            let head_on_mover =
+                movement_step::MoverHeadOnContext::from_entity(entity, native_frame);
             let Some(target) = entity.movement_target.as_mut() else {
                 return;
             };
@@ -1641,29 +1594,18 @@ fn advance_ordinary_mover(
             if snap.category != EntityCategory::Infantry {
                 if uses_hover_locomotor {
                     hover_stall = movement_step::hover_steer(
-                        &mut entity.facing,
-                        &mut entity.facing_target,
                         &mut entity.body_facing,
                         &entity.position,
                         target,
-                        snap.rot,
                         native_frame,
                     );
                 } else {
                     match movement_step::handle_vehicle_rotation(
-                        &mut entity.facing,
-                        &mut entity.facing_target,
                         &mut entity.body_facing,
-                        &mut entity.position,
-                        &mut entity.locomotor,
-                        snap.rot,
+                        None,
                         native_frame,
-                        sim_tick,
                     ) {
-                        movement_step::RotationResult::StillRotating { debug_events: evts } => {
-                            debug_events.extend(evts);
-                            return;
-                        }
+                        movement_step::RotationResult::StillRotating => return,
                         movement_step::RotationResult::ReadyToMove => {}
                     }
                 }
@@ -1686,7 +1628,9 @@ fn advance_ordinary_mover(
             // consumed above. Other ground locomotors have a unity modifier.
             let cell_speed_mod = SIM_ONE;
             if uses_drive_locomotor || uses_ship_locomotor {
-                // Speed was calculated once by the shared track owner.
+                // A Unit's Drive/Ship leaves through `prepare_native_track`
+                // below; its track step queries GetCurrentSpeed live and
+                // writes nothing here.
             } else if uses_hover_locomotor {
                 // Hover throttle (the hover locomotor's SpeedUpdate model, see
                 // sim/movement/hover.rs): a [0,1] fraction of base Speed ramped
@@ -1772,7 +1716,8 @@ fn advance_ordinary_mover(
                         path_grid.and_then(|pg| pg.cell(entity.position.rx, entity.position.ry))
                     {
                         if cell.bridge_deck_level_if_any().is_some() {
-                            dist += BRIDGE_Z_OFFSET;
+                            dist +=
+                                SimFixed::from_num(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                         }
                     }
                 }
@@ -1799,6 +1744,9 @@ fn advance_ordinary_mover(
                 // No ramping data — constant speed fallback.
                 target.current_speed = target.speed;
             }
+            // Drive/Ship never move by this value: a Unit's leaves through
+            // `prepare_native_track` below, and no step writes `current_speed`
+            // for another class's Drive/Ship (#689).
             let mut effective_speed: SimFixed = if uses_drive_locomotor || uses_ship_locomotor {
                 target.current_speed
             } else {
@@ -1858,13 +1806,7 @@ fn advance_ordinary_mover(
                 &mut entity.navigation.path_replay,
                 target,
                 &entity.position,
-                entity
-                    .body_facing
-                    .as_ref()
-                    .map_or(u16::from(entity.facing) << 8, |facing| {
-                        facing.current(native_frame)
-                    }),
-                &mut entity.facing_target,
+                entity.body_facing.current(native_frame),
                 &mut entity.drive_locomotion,
                 &mut entity.ship_locomotion,
                 &entity.locomotor,
@@ -1906,27 +1848,18 @@ fn advance_ordinary_mover(
                         *native_track = Some(invocation);
                         return;
                     }
-                    movement_step::NativeTrackPreparation::TurnFirst(invocation) => {
+                    movement_step::NativeTrackPreparation::TurnFirst(invocation, desired) => {
                         // Drive4B343B/Ship6A2A8A calls Do_Turn immediately,
                         // then returns before admission even for ROT=0. The
                         // earlier rotation sample cannot consume this new
                         // request. Use the same rotation owner now, preserving
                         // its native-frame anchor and same-frame publication.
                         // Native evidence: drive_fresh_turn.json.
-                        if let movement_step::RotationResult::StillRotating { debug_events: evts } =
-                            movement_step::handle_vehicle_rotation(
-                                &mut entity.facing,
-                                &mut entity.facing_target,
-                                &mut entity.body_facing,
-                                &mut entity.position,
-                                &mut entity.locomotor,
-                                snap.rot,
-                                native_frame,
-                                sim_tick,
-                            )
-                        {
-                            debug_events.extend(evts);
-                        }
+                        movement_step::handle_vehicle_rotation(
+                            &mut entity.body_facing,
+                            Some(u16::from(desired) << 8),
+                            native_frame,
+                        );
                         *native_track = Some(invocation);
                         movement_step::AdvanceResult::DriveTrackActive
                     }
@@ -1961,22 +1894,14 @@ fn advance_ordinary_mover(
                     resolved_terrain,
                     path_grid,
                 );
-                movement_step::advance_infantry_wobble(
-                    &mut entity.locomotor,
-                    entity.category,
-                    entity_id,
-                    dt,
-                );
                 movement_step::AdvanceResult::ReadyForCrossings
             } else {
                 movement_step::advance_lepton_position(
                     target,
                     &mut entity.position,
                     &mut entity.locomotor,
-                    entity.category,
                     effective_speed,
                     dt,
-                    entity_id,
                 )
             };
             let target = entity
@@ -2049,9 +1974,7 @@ fn advance_ordinary_mover(
                     target,
                     &mut entity.navigation.path_runtime,
                     &mut entity.position,
-                    &mut entity.facing,
-                    &mut entity.facing_target,
-                    marker_body_facing,
+                    &entity.body_facing,
                     &mut entity.locomotor,
                     &mut entity.drive_locomotion,
                     &mut entity.ship_locomotion,
@@ -2068,8 +1991,6 @@ fn advance_ordinary_mover(
                     &deferred_entry_skips.reading(others),
                     occupancy,
                     cell_occupation,
-                    &mut entity.occupancy_enter_order,
-                    next_occupancy_enter_order,
                     stats,
                     finished_entities,
                     rng,
@@ -2086,7 +2007,10 @@ fn advance_ordinary_mover(
                         .as_ref()
                         .expect("only Walk can suspend a boundary")
                         .clone();
-                    entity.runtime_bridge_transition = crossing.runtime_bridge_transition;
+                    // Foot+0x68B is write-1-only; a pass started from the earlier
+                    // snapshot must not clear an admission latch.
+                    entity.runtime_bridge_transition.pending_mismatch |=
+                        crossing.runtime_bridge_transition.pending_mismatch;
                     *walk_boundary = Some((entity_id, coord));
                     return;
                 }
@@ -2096,23 +2020,21 @@ fn advance_ordinary_mover(
                 active_layer = crossing.active_layer;
                 debug_events.extend(crossing.debug_events);
                 aborted_for_stuck = crossing.aborted_for_stuck;
-                entity.runtime_bridge_transition = crossing.runtime_bridge_transition;
+                // Foot+0x68B is write-1-only; a pass started from the earlier
+                // snapshot must not clear an admission latch.
+                entity.runtime_bridge_transition.pending_mismatch |=
+                    crossing.runtime_bridge_transition.pending_mismatch;
 
                 // Apply bridge layer state BEFORE computing screen position, so that
-                // the render frame always sees consistent state. Without this, there's
-                // a one-frame window where the unit is in the bridge cell but
-                // bridge_occupancy is still None, causing the renderer to use ground
-                // height interpolation and briefly dip the unit to water level.
+                // the render frame always sees consistent state.
                 if !aborted_for_stuck
                     && !matches!(deferred_cell_check, Some(DeferredCellCheck::Vehicle(_, _)))
                 {
-                    apply_pending_bridge_render_state(
+                    apply_bridge_layer_state(
                         &mut entity.locomotor,
-                        &mut entity.bridge_occupancy,
                         &mut entity.on_bridge,
                         active_layer,
                         pending_bridge_update,
-                        entity_id,
                     );
                 }
 
@@ -2120,25 +2042,6 @@ fn advance_ordinary_mover(
                 // change was a workaround for the broken reactive heuristic. The
                 // cell-flag predicate now makes the layer transition at the cell
                 // boundary exactly, never anticipatorily — see movement_bridge.rs.)
-
-                // DIAGNOSTIC: detect unexpected z-drop on bridge cells.
-                // If bridge_occupancy is set but z is at ground level, something
-                // cleared z without clearing bridge_occupancy (or vice versa).
-                if let Some(ref bocc) = entity.bridge_occupancy {
-                    if entity.position.z + 2 < bocc.deck_level {
-                        log::error!(
-                            "BRIDGE_DIAG entity={}: Z BELOW DECK! z={} deck={} \
-                     cell=({},{}) layer={:?} bridge_occ={:?}",
-                            entity_id,
-                            entity.position.z,
-                            bocc.deck_level,
-                            entity.position.rx,
-                            entity.position.ry,
-                            active_layer,
-                            entity.bridge_occupancy,
-                        );
-                    }
-                }
 
                 // Update screen position from lepton coordinates every tick.
 
@@ -2214,7 +2117,6 @@ fn advance_ordinary_mover(
                 mover_entity_blocks,
                 mover_entity_block_map,
                 occupancy,
-                rng,
                 stats,
                 finished_entities,
                 sim_tick,
@@ -2280,13 +2182,11 @@ fn advance_ordinary_mover(
             raw_cell_occupation,
             deferred_entry_skips,
             alliances,
-            path_grid,
             resolved_terrain,
-            rng,
             stats,
             finished_entities,
             crush_kills,
-            already_scattered,
+            scatters,
             sim_tick,
             interner,
             rules,
@@ -2308,8 +2208,8 @@ fn advance_ordinary_mover(
         // centre, and restores after the deferred response where native sets
         // the enable before the next-step admission and any scatter it
         // triggers (no reader of the flag or plane sits in that window today:
-        // `scatter_blocker` picks from `OccupancyGrid` cell lists). The next
-        // translating frame clears it again.
+        // the Scatter calls the response queues run after this restore). The
+        // next translating frame clears it again.
         if let Some(entity) = entities.get_mut(entity_id)
             && entity.category == EntityCategory::Unit
             && !entity.foot_occupation_enabled
@@ -2347,9 +2247,10 @@ fn advance_ordinary_mover(
                 )
             })
         {
-            super::ground_pose::commit_ground_height(
+            super::ground_pose::set_height(
                 &mut entity.position,
                 entity.on_bridge,
+                0,
                 resolved_terrain,
                 path_grid,
             );
@@ -2371,7 +2272,7 @@ fn advance_ordinary_mover(
 /// The base contains retained wall/Foot bytes and derived terrain occupation.
 /// Wall/terrain edits rebuild under their epochs. Foot writes replay the owner's
 /// bounded cell-delta journal, rebuilding only if the reader fell behind. The
-/// entity touch log maintains building contributions (and legacy fixture mobiles).
+/// entity touch log maintains building contributions (and, in fixtures without an overlay grid, mobiles).
 /// Debug checks compare against a fresh sum. No cache data is saved or hashed.
 #[derive(Default)]
 pub(crate) struct MovementPassCache {
@@ -2399,16 +2300,12 @@ struct BlockerPlaneEntry {
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct BlockerPlaneKey {
     terrain_epoch: Option<u64>,
-    overlay_epoch: Option<(bool, u64)>,
+    overlay_epoch: Option<u64>,
     width: u16,
     height: u16,
     /// A building's foundation size comes from its type. By address, never
     /// dereferenced.
     rules: Option<usize>,
-    /// The overlay registry a grid without a retained wall plane rebuilds its
-    /// walls from (`bump_crush::blocker_plane_base`); `None` when the plane
-    /// does not read it. By address, never dereferenced.
-    wall_registry: Option<usize>,
 }
 
 impl MovementPassCache {
@@ -2455,7 +2352,6 @@ impl MovementPassCache {
         grid: &PathGrid,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         interner: &crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> &crate::sim::pathfinding::BlockerNeighborCounts {
@@ -2467,7 +2363,6 @@ impl MovementPassCache {
             grid,
             resolved_terrain,
             overlay_grid,
-            overlay_registry,
             interner,
             rules,
         )
@@ -2519,7 +2414,6 @@ impl MovementPassCache {
         grid: &PathGrid,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         interner: &crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> &'a crate::sim::pathfinding::BlockerNeighborCounts {
@@ -2529,13 +2423,8 @@ impl MovementPassCache {
             width: grid.width(),
             height: grid.height(),
             rules: rules.map(|rules| std::ptr::from_ref(rules) as usize),
-            wall_registry: overlay_grid
-                .filter(|grid| grid.retained_neighbor_counts().is_none())
-                .and(overlay_registry)
-                .map(|registry| std::ptr::from_ref(registry) as usize),
         };
-        let retained_foot =
-            overlay_grid.is_some_and(|grid| grid.retained_neighbor_counts().is_some());
+        let retained_foot = overlay_grid.is_some();
         match blocker.entry.as_mut().filter(|entry| {
             entry.key == key
                 && !touched.everything
@@ -2576,7 +2465,6 @@ impl MovementPassCache {
                     grid.height(),
                     resolved_terrain,
                     overlay_grid,
-                    overlay_registry,
                 );
                 let mut sources = BTreeMap::new();
                 for entity in entities.values() {
@@ -2613,7 +2501,6 @@ impl MovementPassCache {
                         grid.height(),
                         resolved_terrain,
                         overlay_grid,
-                        overlay_registry,
                         interner,
                         rules,
                     ),
@@ -2672,13 +2559,13 @@ fn prepare_movement_pass(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     native_frame: u32,
     interner: &mut crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     stats: &mut MovementTickStats,
     block_index: &mut OwnerBlockIndex,
+    scatters: &mut super::scatter::ScatterRequests,
 ) -> Result<PreparedMovementPass, String> {
     let path_grid = ctx.path_grid;
     let resolved_terrain = ctx.resolved_terrain;
@@ -2712,11 +2599,11 @@ fn prepare_movement_pass(
                 occupancy,
                 cell_occupation,
                 raw_cell_occupation,
-                next_occupancy_enter_order,
                 rules,
                 interner,
                 rng,
                 native_frame,
+                scatters,
             ) {
                 tube_processed.insert(entity_id);
                 stats.movers_total = stats.movers_total.saturating_add(1);
@@ -2829,7 +2716,6 @@ pub(crate) fn tick_movement_with_grids(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -2854,7 +2740,6 @@ pub(crate) fn tick_movement_with_grids(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
         rng,
         sim_tick,
         native_frame,
@@ -2885,7 +2770,6 @@ pub(crate) fn tick_movement_object_with_grids(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -2912,7 +2796,6 @@ pub(crate) fn tick_movement_object_with_grids(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
         rng,
         sim_tick,
         native_frame,
@@ -2943,7 +2826,6 @@ fn tick_movement_with_grids_scoped(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -2968,7 +2850,6 @@ fn tick_movement_with_grids_scoped(
     sim.substrate.occupancy = std::mem::take(occupancy);
     sim.substrate.cell_occupation = std::mem::take(cell_occupation);
     sim.substrate.raw_cell_occupation = std::mem::take(raw_cell_occupation);
-    sim.substrate.next_occupancy_enter_order = *next_occupancy_enter_order;
     sim.interner = std::mem::take(interner);
     sim.scenario_rng = rng.clone();
     sim.session.tick = sim_tick;
@@ -3001,21 +2882,14 @@ fn tick_movement_with_grids_scoped(
             continue;
         }
         stats.merge(
-            sim.process_ground_locomotor_with_config_for_test(
-                id,
-                rules,
-                path_grid,
-                overlay_registry,
-                timing,
-            )
-            .expect("fixture reached an unsupported production movement receiver"),
+            sim.process_ground_locomotor_with_config_for_test(id, rules, overlay_registry, timing)
+                .expect("fixture reached an unsupported production movement receiver"),
         );
     }
     *entities = sim.substrate.entities;
     *occupancy = sim.substrate.occupancy;
     *cell_occupation = sim.substrate.cell_occupation;
     *raw_cell_occupation = sim.substrate.raw_cell_occupation;
-    *next_occupancy_enter_order = sim.substrate.next_occupancy_enter_order;
     *interner = sim.interner;
     *rng = sim.scenario_rng;
     sound_events.append(&mut sim.sound_events);
@@ -3048,6 +2922,11 @@ impl PendingMovementPass {
         self.effects.walk_admission_request.take()
     }
 
+    /// The Scatter calls this pass's steps queued since the last take.
+    pub(crate) fn take_scatter_requests(&mut self) -> Vec<(u64, super::ScatterFlags)> {
+        self.effects.scatters.take()
+    }
+
     pub(crate) fn request_foot_path(&mut self, request: FootPathRequest) {
         debug_assert!(self.effects.foot_path_request.is_none());
         self.effects.foot_path_request = Some(request);
@@ -3073,40 +2952,44 @@ impl PendingMovementPass {
         self.effects.native_track = Some(invocation);
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Re-enter this pass for the same mover of its Process (see
+    /// `MoverReentry`), reading the Simulation's current grids and state.
     pub(crate) fn reenter_mover(
         &mut self,
+        sim: &mut crate::sim::world::Simulation,
         reentry: MoverReentry,
-        entities: &mut EntityStore,
-        path_grid: Option<&PathGrid>,
-        zone_grid: Option<&ZoneGrid>,
-        terrain: Option<&ResolvedTerrainGrid>,
-        terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
-        alliances: &HouseAllianceMap,
-        occupancy: &mut OccupancyGrid,
-        cell_occupation: &mut CellOccupationGrid,
-        raw_cell_occupation: &mut RawCellOccupationGrid,
-        next_occupancy_enter_order: &mut EnterOrderCounter,
-        rng: &mut SimRng,
-        sim_tick: u64,
-        native_frame: u32,
-        overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        playfield_bounds: Option<PlayfieldBounds>,
-        terrain_speed_config: &TerrainSpeedConfig,
-        close_enough: SimFixed,
-        path_delay_ticks: i32,
-        blockage_path_delay_ticks: i32,
-        interner: &mut crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        type_handles: Option<&TypeHandleTable>,
-        caches: &mut MovementPassCache,
-        houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        timing: MovementConfig,
     ) {
+        let path_grid = sim.path_grid.as_deref();
+        let zone_grid = sim.zone_grid.as_ref();
+        let terrain = sim.resolved_terrain.as_ref();
+        let terrain_costs = &sim.terrain_costs;
+        let alliances = &sim.house_alliances;
+        let entities = &mut sim.substrate.entities;
+        let occupancy = &mut sim.substrate.occupancy;
+        let cell_occupation = &mut sim.substrate.cell_occupation;
+        let raw_cell_occupation = &mut sim.substrate.raw_cell_occupation;
+        let rng = &mut sim.scenario_rng;
+        let sim_tick = sim.session.tick;
+        let native_frame = sim.session.binary_frame;
+        let overlay_grid = sim.overlay_grid.as_ref();
+        let playfield_bounds = sim.playfield_bounds;
+        let terrain_speed_config = &sim.terrain_speed_config;
+        let MovementConfig {
+            close_enough,
+            path_delay_ticks,
+            blockage_path_delay_ticks,
+            ..
+        } = timing;
+        let interner = &mut sim.interner;
+        let type_handles = Some(&sim.type_handles);
+        let houses = &sim.houses;
         let MovementPassCache {
             blocker: blocker_cache,
             block_index,
-        } = caches;
+        } = &mut sim.movement_pass_cache;
         // The search between Mark0 and Mark1, or the ended track, moved the
         // actor's own occupancy; the kept plane follows it through the touch
         // log.
@@ -3119,7 +3002,6 @@ impl PendingMovementPass {
                 grid,
                 terrain,
                 overlay_grid,
-                overlay_registry,
                 interner,
                 rules,
             )
@@ -3166,7 +3048,6 @@ impl PendingMovementPass {
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
             rng,
             sim_tick,
             native_frame,
@@ -3201,7 +3082,7 @@ impl PendingMovementPass {
         let complete = entities.get(id).is_some_and(|e| {
             e.lifecycle.object_alive
                 && !e.lifecycle.in_limbo
-                && e.object_is_falling_down == 0
+                && !e.is_falling_down()
                 && e.locomotor
                     .as_ref()
                     .is_some_and(|loco| loco.walk_destination().is_none())
@@ -3258,7 +3139,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -3311,7 +3191,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
                     grid,
                     resolved_terrain,
                     overlay_grid,
-                    overlay_registry,
                     interner,
                     rules,
                 )
@@ -3342,6 +3221,7 @@ pub(crate) fn begin_movement_with_grids_scoped(
         blockage_path_delay_ticks,
     };
     let dt = native_movement_frame_fraction();
+    let mut scatters = super::scatter::ScatterRequests::default();
     let mut prepared = prepare_movement_pass(
         entities,
         entity_order,
@@ -3351,17 +3231,18 @@ pub(crate) fn begin_movement_with_grids_scoped(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
         rng,
         native_frame,
         interner,
         rules,
         &mut stats,
         block_index,
+        &mut scatters,
     )?;
 
     let mut effects = MovementPassEffects {
         stats,
+        scatters,
         ..Default::default()
     };
     for entity_id in std::mem::take(&mut prepared.movers) {
@@ -3375,7 +3256,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
             rng,
             sim_tick,
             native_frame,
@@ -3405,7 +3285,6 @@ pub(crate) fn finish_movement_pass(
     houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
     alliances: &HouseAllianceMap,
     cell_occupation: &mut CellOccupationGrid,
-    sim_tick: u64,
     native_frame: u32,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     path_grid: Option<&PathGrid>,
@@ -3487,7 +3366,6 @@ pub(crate) fn finish_movement_pass(
         entities,
         &finished_entities,
         &crush_kills,
-        sim_tick,
         resolved_terrain,
         cell_occupation,
         path_grid,
@@ -3497,7 +3375,6 @@ pub(crate) fn finish_movement_pass(
         .copied()
         .filter(|entity_id| !tube_processed.contains(entity_id))
         .collect();
-    update_locomotor_phases(entities, &ordinary_tail_order, &crush_kills, sim_tick);
 
     // Hover vertical controller — every hover unit, moving OR parked (idle
     // units still float at cruise height and bob). Runs after the XY stage so
@@ -3592,8 +3469,6 @@ pub(crate) fn finish_movement_pass(
 // Post-loop helpers — extracted from tick_movement_with_grids
 // ---------------------------------------------------------------------------
 
-/// Remove movement targets from finished entities, reset sub-cell to final
-/// position, and transition locomotor to Idle.
 fn contains_crush_victim(crush_kills: &[PendingCrushKill], stable_id: u64) -> bool {
     // The mover loop consults this before the deferred kill list is sorted.
     // Preserve native live-order visibility with a linear membership check;
@@ -3601,11 +3476,12 @@ fn contains_crush_victim(crush_kills: &[PendingCrushKill], stable_id: u64) -> bo
     crush_kills.iter().any(|kill| kill.victim_id == stable_id)
 }
 
+/// Remove movement targets from finished entities and reset sub-cell to
+/// final position.
 fn finalize_finished_entities(
     entities: &mut EntityStore,
     finished: &[u64],
     crush_kills: &[PendingCrushKill],
-    sim_tick: u64,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     cell_occupation: &mut CellOccupationGrid,
     path_grid: Option<&PathGrid>,
@@ -3676,100 +3552,23 @@ fn finalize_finished_entities(
                         | crate::rules::locomotor_type::LocomotorKind::Walk
                 )
             }) {
-                super::ground_pose::commit_ground_height(
+                super::ground_pose::set_height(
                     &mut entity.position,
                     entity.on_bridge,
+                    0,
                     resolved_terrain,
                     path_grid,
                 );
             }
             super::navcom::finish_drive_navigation(entity, resolved_terrain);
+            // The body's +388 survives arrival: a turn still running ends on
+            // the frame clock.
             entity.movement_target = None;
-            if !entity
-                .locomotor
-                .as_ref()
-                .is_some_and(|l| l.kind == LocomotorKind::Walk)
-            {
-                entity.body_facing = None; // legacy steering/turn interpolator cleanup
-            } // Walk's retained FacingClass survives arrival, as native +388 does.
-            let old_phase = entity.locomotor.as_ref().map(|l| l.phase);
             if let Some(ref mut loco) = entity.locomotor {
-                loco.phase = GroundMovePhase::Idle;
-                loco.infantry_wobble_phase = 0.0;
                 loco.subcell_dest = None;
                 // Full stop zeroes the hover throttle (the hover locomotor's
                 // arrival cleanup) so the next order spins up from rest.
                 loco.hover_throttle = crate::util::fixed_math::SIM_ZERO;
-            }
-            if let Some(old) = old_phase {
-                if old != GroundMovePhase::Idle {
-                    entity.push_debug_event(
-                        sim_tick as u32,
-                        DebugEventKind::PhaseChange {
-                            from: format!("{:?}", old),
-                            to: "Idle".into(),
-                            reason: "movement complete".into(),
-                        },
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Update locomotor phases for all active movers — 7-state mapping.
-/// Maps the current movement state to the appropriate WalkLocomotionClass state.
-fn update_locomotor_phases(
-    entities: &mut EntityStore,
-    entity_order: &[u64],
-    crush_kills: &[PendingCrushKill],
-    sim_tick: u64,
-) {
-    for &id in entity_order {
-        if contains_crush_victim(crush_kills, id) {
-            continue;
-        }
-        if let Some(entity) = entities.get_mut(id) {
-            // Compute new phase and capture old phase in a scoped block to release
-            // borrows before calling push_debug_event.
-            let phase_change: Option<(GroundMovePhase, GroundMovePhase, &'static str)> = {
-                if let (Some(target), Some(loco)) = (&entity.movement_target, &mut entity.locomotor)
-                {
-                    let old_phase = loco.phase;
-                    let (new_phase, reason) = if entity.navigation.path_runtime.path_blocked {
-                        (GroundMovePhase::Blocked, "cell blocked")
-                    } else if target.current_speed <= SIM_ZERO {
-                        // Speed is zero but path remains — stopping or waiting to start.
-                        (GroundMovePhase::Stopping, "decelerating to stop")
-                    } else if target.current_speed < target.speed * MIN_BRAKE_FRACTION {
-                        // Below 30% of max speed — still accelerating from rest.
-                        (GroundMovePhase::Accelerating, "reached cruise speed")
-                    } else if target.current_speed >= target.speed {
-                        // At or above max speed — cruising.
-                        (GroundMovePhase::Cruising, "reached cruise speed")
-                    } else {
-                        // Between 30% and max — path following with speed ramping.
-                        (GroundMovePhase::PathFollow, "approaching next cell")
-                    };
-                    loco.phase = new_phase;
-                    if old_phase != new_phase {
-                        Some((old_phase, new_phase, reason))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            };
-            if let Some((old, new, reason)) = phase_change {
-                entity.push_debug_event(
-                    sim_tick as u32,
-                    DebugEventKind::PhaseChange {
-                        from: format!("{:?}", old),
-                        to: format!("{:?}", new),
-                        reason: reason.into(),
-                    },
-                );
             }
         }
     }
@@ -3845,8 +3644,7 @@ mod pass_cache_tests {
                 })
                 .collect(),
         );
-        let mut overlays =
-            crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(5, 5);
+        let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(5, 5);
         let mut entities = EntityStore::new();
         let mut unit = GameEntity::test_default(7, "MTNK", "Americans", 2, 2);
         unit.lifecycle.cell_marked = true;
@@ -3861,7 +3659,6 @@ mod pass_cache_tests {
                     &grid,
                     Some(&terrain),
                     Some(&overlays),
-                    None,
                     &interner,
                     None
                 )
@@ -3877,7 +3674,6 @@ mod pass_cache_tests {
                     &grid,
                     Some(&terrain),
                     Some(&overlays),
-                    None,
                     &interner,
                     None
                 )
@@ -3892,7 +3688,6 @@ mod pass_cache_tests {
             &grid,
             Some(&terrain),
             Some(&overlays),
-            None,
             &interner,
             None,
         );
@@ -3911,7 +3706,6 @@ mod pass_cache_tests {
             5,
             Some(&terrain),
             Some(&overlays),
-            None,
             &interner,
             None,
         );
@@ -3921,7 +3715,6 @@ mod pass_cache_tests {
                 &grid,
                 Some(&terrain),
                 Some(&overlays),
-                None,
                 &interner,
                 None
             ),
@@ -3952,7 +3745,7 @@ mod pass_cache_tests {
         let mut cache = MovementPassCache::default();
 
         let before = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(
             before.count_at(1, 1),
@@ -3961,14 +3754,14 @@ mod pass_cache_tests {
         );
         // Nothing touched: kept (and cross-checked in debug builds).
         let again = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(again, before);
 
         // Death sequence: the object stays on the grid.
         entities.get_mut(7).unwrap().dying = true;
         let after = cache
-            .blocker_plane(&mut entities, &grid, None, None, None, &interner, None)
+            .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
         assert_eq!(
             after.count_at(1, 1),
@@ -3991,21 +3784,12 @@ mod pass_cache_tests {
         let grid = PathGrid::new(5, 5);
         let mut entities = EntityStore::new();
         let interner = test_interner();
-        let mut overlays =
-            crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(5, 5);
+        let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(5, 5);
         let mut cache = MovementPassCache::default();
         let mut plane = |cache: &mut MovementPassCache,
                          overlays: &crate::sim::overlay_grid::OverlayGrid| {
             cache
-                .blocker_plane(
-                    &mut entities,
-                    &grid,
-                    None,
-                    Some(overlays),
-                    None,
-                    &interner,
-                    None,
-                )
+                .blocker_plane(&mut entities, &grid, None, Some(overlays), &interner, None)
                 .clone()
         };
         let before = plane(&mut cache, &overlays);
@@ -4019,7 +3803,7 @@ mod pass_cache_tests {
         assert_eq!(plane(&mut cache, &overlays), before);
         assert_eq!(cache.blocker_plane_world_rebuilds(), 1);
 
-        overlays.retain_zero_wall_plane_for_tests();
+        overlays.seed_neighbor_counts_for_tests(0);
         let _ = plane(&mut cache, &overlays);
         assert_eq!(cache.blocker_plane_world_rebuilds(), 2);
     }
@@ -4086,21 +3870,12 @@ Foundation=2x2
             }
             if step % 3 == 0 {
                 let kept = cache
-                    .blocker_plane(
-                        &mut entities,
-                        &grid,
-                        None,
-                        None,
-                        None,
-                        &interner,
-                        Some(&rules),
-                    )
+                    .blocker_plane(&mut entities, &grid, None, None, &interner, Some(&rules))
                     .clone();
                 let built = bump_crush::build_blocker_neighbor_counts_with_overlays(
                     &entities,
                     12,
                     12,
-                    None,
                     None,
                     None,
                     &interner,

@@ -25,14 +25,8 @@ use crate::sim::occupancy::{
 use crate::sim::particles::ParticleSystemStore;
 use crate::sim::voxel_anim::VoxelAnimStore;
 
-const FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID: u64 = 1 << 63;
-
-const fn first_multiplayer_feedback_anim_id() -> u64 {
-    FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID
-}
-
-/// Monotonic source for rebuilt CellClass-style object-list (enter) order. Each
-/// entity stores the last value assigned when it entered a cell list; this counter
+/// Monotonic source for the AirTracker's registration order. Each airborne
+/// entity stores the value assigned when it entered its bucket; this counter
 /// hands out the next one. The sole mutator is `next()` — callers cannot mis-increment
 /// or skip the saturating semantics. Serialized + hashed at its `ObjectSubstrate` field
 /// (a `#[serde(transparent)]` + derived-`Hash` newtype is byte- and hash-identical to the
@@ -55,8 +49,8 @@ impl EnterOrderCounter {
         order
     }
 
-    /// Next value that will be handed out. Snapshot restoration uses this to
-    /// reject a counter that could reuse an already-restored cell-entry order.
+    /// Next value that will be handed out.
+    #[cfg(test)]
     pub(crate) const fn current(self) -> u64 {
         self.0
     }
@@ -88,9 +82,9 @@ pub(crate) struct ObjectSubstrate {
     /// draws the next value; a stale reference degrades to `None` rather than
     /// aliasing a reused slot.
     pub(crate) next_stable_object_id: u64,
-    /// Monotonic source for CellClass-style object-list (enter) order and the
-    /// independently ordered AirTracker. See `EnterOrderCounter`.
-    pub(crate) next_occupancy_enter_order: EnterOrderCounter,
+    /// Monotonic source for the independently ordered AirTracker. Cell lists
+    /// keep their own insertion order. See `EnterOrderCounter`.
+    pub(crate) next_air_tracker_order: EnterOrderCounter,
     /// LogicClass active-object vector — the authority on AI visitation order.
     /// Tail-append on reveal, compacting-remove on conceal. Serialized verbatim.
     #[serde(default)]
@@ -125,7 +119,7 @@ pub(crate) struct ObjectSubstrate {
     /// including the single shared dummy CellClass mask.
     #[serde(default)]
     pub(crate) base_reservations: CellReservationGrid,
-    /// Plain-struct entity storage (`BTreeMap<u64, GameEntity>` + by_owner index).
+    /// Plain-struct entity storage (`BTreeMap<u64, GameEntity>` + infantry registry).
     /// The authoritative object store — serialized verbatim (NOT skipped).
     pub(crate) entities: EntityStore,
     /// Separate AnimClass registry sharing the global object ID namespace and
@@ -135,18 +129,9 @@ pub(crate) struct ObjectSubstrate {
     /// `VoxelAnimClass` registry — the flying VXL debris a death throws. Shares
     /// the global object-ID namespace and the LogicVector with entities and
     /// anims, exactly as native's `VoxelAnimClass::Constructor` does through
-    /// `AbstractClass::AssignUniqueID` and `ObjectClass::Unlimbo`.
+    /// `AbstractClass::Create_ID` and `ObjectClass::Unlimbo`.
     #[serde(default)]
     pub(crate) voxel_anims: VoxelAnimStore,
-    /// Multiplayer click-feedback animations use a separate, sync-exempt
-    /// registry and never enter the ordinary LogicVector.
-    #[serde(skip)]
-    pub(crate) multiplayer_feedback_anims: AnimStore,
-    // Reserved for the verified sync-exempt feedback spawn path, which is not wired yet.
-    #[serde(skip, default = "first_multiplayer_feedback_anim_id")]
-    pub(crate) next_multiplayer_feedback_anim_id: u64,
-    #[serde(skip)]
-    pub(crate) multiplayer_feedback_pending_delete: Vec<u64>,
     /// ParticleSystemClass registry. Systems share the global object-ID
     /// namespace and LogicVector; individual particles remain container-owned.
     #[serde(default)]
@@ -166,7 +151,7 @@ impl ObjectSubstrate {
     pub(crate) fn new() -> Self {
         Self {
             next_stable_object_id: 1,
-            next_occupancy_enter_order: EnterOrderCounter::new(),
+            next_air_tracker_order: EnterOrderCounter::new(),
             logic: LogicVector::new(),
             display: Default::default(),
             occupancy: OccupancyGrid::new(),
@@ -178,9 +163,6 @@ impl ObjectSubstrate {
             entities: EntityStore::new(),
             anims: AnimStore::default(),
             voxel_anims: VoxelAnimStore::default(),
-            multiplayer_feedback_anims: AnimStore::default(),
-            next_multiplayer_feedback_anim_id: FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID,
-            multiplayer_feedback_pending_delete: Vec::new(),
             particle_systems: ParticleSystemStore::default(),
             pending_delete: Vec::new(),
         }
@@ -206,21 +188,6 @@ impl ObjectSubstrate {
             });
         }
 
-        let highest_order = self
-            .entities
-            .values()
-            .filter(|entity| entity.lifecycle.cell_marked)
-            .map(|entity| entity.occupancy_enter_order)
-            .max()
-            .unwrap_or(0);
-        let next_order = self.next_occupancy_enter_order.current();
-        if next_order <= highest_order {
-            return Err(SnapshotRestoreError::OccupancyOrderCounterBehind {
-                next_order,
-                highest_order,
-            });
-        }
-
         let mut seen_logic = std::collections::BTreeSet::new();
         for &object_id in self.display.ordered_ids() {
             if !identities.contains_key(&object_id) {
@@ -239,20 +206,15 @@ impl ObjectSubstrate {
     }
 
     // State-hash folds over substrate-owned occupation state (F13).
-    // Called from `state_hash_with_schema` at fixed positions; the fold
+    // Called from `state_hash` at fixed positions; the fold
     // order and byte layout are part of the hash contract.
 
     /// Fold the authoritative sparse raw occupation bytes without conflating
     /// coordinates or the ground/deck planes. Empty raw state contributes no
     /// bytes, preserving established hashes while every modeled zero remains
     /// represented canonically by the absence of a sparse entry.
-    pub(crate) fn fold_raw_cell_occupation(
-        &self,
-        hasher: &mut impl std::hash::Hasher,
-        include_process_dummy: bool,
-        include_infantry_owners: bool,
-    ) {
-        if include_process_dummy && let Some(dummy) = self.raw_cell_occupation.dummy_for_hash() {
+    pub(crate) fn fold_raw_cell_occupation(&self, hasher: &mut impl std::hash::Hasher) {
+        if let Some(dummy) = self.raw_cell_occupation.dummy_for_hash() {
             b"raw-dummy-occupation-v1".hash(hasher);
             dummy.hash(hasher);
         }
@@ -271,10 +233,8 @@ impl ObjectSubstrate {
             ground.hash(hasher);
             1u8.hash(hasher); // deck-plane tag
             deck.hash(hasher);
-            if include_infantry_owners {
-                ground_owner.hash(hasher);
-                deck_owner.hash(hasher);
-            }
+            ground_owner.hash(hasher);
+            deck_owner.hash(hasher);
         }
     }
 

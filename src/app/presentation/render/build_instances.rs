@@ -158,11 +158,6 @@ pub(super) fn build_world_instances(state: &mut AppState, sw: f32, sh: f32) -> W
         // Terrain draws regardless of shroud — the native tile walk has no
         // explored gate (`CellOverlay_TileDraw @ 0x00480350`); the flat shroud
         // curtain blacks out unexplored ground in the multiply pass.
-        let bridge_state = state
-            .match_state
-            .sim_runtime
-            .as_ref()
-            .and_then(|rt| rt.view().bridge_state());
         crate::render::terrain_instances::build_visible_instances(
             grid,
             Some(state.match_state.match_presentation.lighting.grid()),
@@ -171,7 +166,6 @@ pub(super) fn build_world_instances(state: &mut AppState, sw: f32, sh: f32) -> W
             sw,
             sh,
             uv_fn,
-            bridge_state,
             state
                 .match_state
                 .sim_runtime
@@ -212,7 +206,7 @@ pub(super) fn build_world_instances(state: &mut AppState, sw: f32, sh: f32) -> W
         &display_order,
     );
     // Bridge body, shadow, and railing emission live in instances::bridges
-    // (Phase D). Read from BridgeRuntimeCell post-tick (NOT OverlayGrid).
+    // (Phase D). Read live CellClass bridge fields post-tick (NOT OverlayGrid).
     let mut bridge_body: Vec<SpriteInstance> = Vec::new();
     let mut bridge_body_shadow: Vec<SpriteInstance> = Vec::new();
     let mut bridge_railing: Vec<SpriteInstance> = Vec::new();
@@ -555,7 +549,6 @@ pub(super) fn update_minimap(state: &mut AppState, local_owner: &Option<String>)
                     view.session().game_mode_nonzero,
                     Some(&runtime.resources.rules),
                     Some(view.interner()),
-                    view.bridge_state(),
                     view.overlay_grid(),
                     Some(&runtime.resources.overlay_registry),
                     &presentation.overlay_radar_colors,

@@ -23,7 +23,7 @@ fn stock_world(rules: &RuleSet, input: &Value) -> Simulation {
         .collect();
     let mut terrain = ResolvedTerrainGrid::from_cells(512, height, cells);
     let mut allocated = Vec::new();
-    let mut grid = OverlayGrid::new_with_retained_wall_plane(512, height);
+    let mut grid = OverlayGrid::new(512, height);
     for row in rows {
         let (x, y, tile, subtile, flags, overlay, state, anchor, level, land): (
             u16,
@@ -117,14 +117,16 @@ fn bridge_rim_stock_damage_events_match_original_body_perpendicular_and_cleanup(
         for hit in case["hits"].as_array().unwrap() {
             let coord = serde_json::from_value(hit["input"].clone()).unwrap();
             let mut damage = event(&mut sim, coord);
-            damage.impact_z_leptons = 416 + 104 * i32::from(
-                sim.resolved_terrain
-                    .as_ref()
-                    .unwrap()
-                    .cell(coord.0, coord.1)
-                    .unwrap()
-                    .level,
-            );
+            damage.impact_z_leptons = 416
+                + 104
+                    * i32::from(
+                        sim.resolved_terrain
+                            .as_ref()
+                            .unwrap()
+                            .cell(coord.0, coord.1)
+                            .unwrap()
+                            .level,
+                    );
             sim.radar_terrain_dirty_cells.clear();
             let collapsed =
                 apply_bridge_damage_events_with_overlay_registry(&mut sim, &rules, &[damage], None);
@@ -186,12 +188,13 @@ fn bridge_rim_stock_damage_events_match_original_body_perpendicular_and_cleanup(
                             .bridge_walkable
                     );
                     assert!(
-                        !sim.bridge_state
+                        !sim.resolved_terrain
                             .as_ref()
                             .unwrap()
                             .cell(coord.0, coord.1)
                             .unwrap()
-                            .deck_present
+                            .bridge_facts
+                            .has_structural_bridge()
                     );
                 }
             }
@@ -217,14 +220,16 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
         .enumerate()
     {
         let mut damage = event(&mut sim, coord);
-        damage.impact_z_leptons = 416 + 104 * i32::from(
-            sim.resolved_terrain
-                .as_ref()
-                .unwrap()
-                .cell(coord.0, coord.1)
-                .unwrap()
-                .level,
-        );
+        damage.impact_z_leptons = 416
+            + 104
+                * i32::from(
+                    sim.resolved_terrain
+                        .as_ref()
+                        .unwrap()
+                        .cell(coord.0, coord.1)
+                        .unwrap()
+                        .level,
+                );
         apply_bridge_damage_events_with_overlay_registry(&mut sim, &rules, &[damage], None);
         let alive = sim
             .substrate
@@ -242,11 +247,7 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
         .unwrap()
         .sim;
     restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(
-        pristine,
-        Default::default(),
-        &rules,
-    );
+    restored.rebuild_caches_after_load(pristine, Default::default(), &rules);
     restored
         .restore_map_authority_after_snapshot_load(
             &rules,
@@ -266,12 +267,13 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
             );
             assert!(
                 !restored
-                    .bridge_state
+                    .resolved_terrain
                     .as_ref()
                     .unwrap()
                     .cell(x, y)
                     .unwrap()
-                    .deck_present
+                    .bridge_facts
+                    .has_structural_bridge()
             );
         }
     }

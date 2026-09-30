@@ -35,11 +35,7 @@ impl CloakRuntime {
         self.visual_phase = Some(CloakVisualPhase::Cloaking);
         self.depth = 0;
         self.step_delta = 1;
-        self.step_timer = CloakStepTimer {
-            start_frame: now,
-            speed,
-            duration_frames: speed,
-        };
+        self.step_timer = CloakStepTimer::started(now, speed);
         StartCloakingResult {
             transitioned: true,
             play_sound: !suppress_sound,
@@ -65,11 +61,7 @@ impl CloakRuntime {
         self.visual_phase = Some(CloakVisualPhase::Uncloaking);
         self.depth = self.cloaking_stages.saturating_sub(1);
         self.step_delta = -1;
-        self.step_timer = CloakStepTimer {
-            start_frame: now,
-            speed,
-            duration_frames: speed,
-        };
+        self.step_timer = CloakStepTimer::started(now, speed);
         StartUncloakingResult {
             transitioned: true,
             play_sound: !suppress_sound,

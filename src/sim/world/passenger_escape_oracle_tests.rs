@@ -47,7 +47,6 @@ use crate::sim::world::{
 };
 use crate::util::fixed_math::SimFixed;
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 /// The passengers' type is the oracle's unarmed InfantryType (Strength 125,
 /// MovementZone Infantry, SpeedType Foot, Walk); the transport's flags are
@@ -171,7 +170,6 @@ fn scene(input: &Value) -> Scene {
     sim.session.game_mode_nonzero = true;
     sim.session.binary_frame = input["frame"].as_u64().unwrap_or(200) as u32;
     let frame = sim.session.binary_frame;
-    let heights = BTreeMap::new();
 
     // The transport: in limbo at its coordinate, as its Mark(UP) leaves it.
     let (x, y) = input.get("cell").map_or((15, 15), cell);
@@ -202,11 +200,10 @@ fn scene(input: &Value) -> Scene {
         unit.position.z = if on_bridge { 4 } else { 0 };
         unit.position.exact_z_leptons = Some(floor + if on_bridge { 416 } else { 0 } + height);
         unit.on_bridge = on_bridge;
-        unit.facing = (facing >> 8) as u8;
         // The Unit's FacingClass (`+0x388`), settled on the row's facing.
         let mut body = crate::sim::movement::FacingClass::new(facing, 0);
         body.snap(facing, frame);
-        unit.body_facing = Some(body);
+        unit.body_facing = body;
         if input["gunner"] == true {
             unit.weapon_override = Some(WeaponOverride::IfvSlot(0));
         }
@@ -217,7 +214,7 @@ fn scene(input: &Value) -> Scene {
         }
     }
     let attacker = sim
-        .spawn_object("APC", "Foreign", 28, 28, 0, &rules, &heights)
+        .spawn_object("APC", "Foreign", 28, 28, 0, &rules)
         .expect("attacker");
 
     // The passengers board through the production Limbo, last first.
@@ -233,7 +230,7 @@ fn scene(input: &Value) -> Scene {
             "Americans"
         };
         let id = sim
-            .spawn_object("E1", owner, 18 + index as u16, 12, 0, &rules, &heights)
+            .spawn_object("E1", owner, 18 + index as u16, 12, 0, &rules)
             .expect("passenger");
         passengers.push(id);
     }
@@ -304,7 +301,7 @@ fn scene(input: &Value) -> Scene {
     if input["team"] == true {
         let script = sim.interner.intern("ESCAPE");
         sim.team_script_vm
-            .create_team(americans, script, vec![transport], None, 0);
+            .create_team(americans, script, vec![transport], 0);
     }
     // The oracle seeds the Scenario stream 31 and draws nothing before the
     // block.
@@ -354,9 +351,9 @@ fn compare(row: &Value) {
         selected_by_player: input["selected"] == true,
     };
     // The oracle answers the Walk Process slot (`0x0075AC80`) as not moving.
-    super::bridge_hut_scatter::answered_process::install();
+    crate::sim::movement::answered_process::install();
     sim.release_dying_unit_passengers(&rules, None, transport, dying);
-    let processed = super::bridge_hut_scatter::answered_process::finish();
+    let processed = crate::sim::movement::answered_process::finish();
     let expected_processed: Vec<u64> = events
         .iter()
         .filter(|event| event[0] == "process")
@@ -479,7 +476,7 @@ fn compare(row: &Value) {
         );
         let unlimbo = of("unlimbo").expect("an escapee Unlimboes");
         assert_eq!(
-            u64::from(entity.facing),
+            u64::from(entity.body_facing.destination() >> 8),
             unlimbo[3].as_u64().unwrap(),
             "{context}: Unlimbo facing"
         );

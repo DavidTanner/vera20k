@@ -176,7 +176,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &test_standard_launch_rules(),
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -308,7 +307,6 @@ mod tests {
                 local_height: 64,
             },
             basic: crate::map::basic::BasicSection::default(),
-            briefing: crate::map::briefing::BriefingSection::default(),
             preview: crate::map::preview::PreviewSection::default(),
             cells: Vec::new(),
             iso_map_pack_lookups: Vec::new(),
@@ -444,10 +442,6 @@ mod tests {
         ]
     }
 
-    fn test_height_map() -> BTreeMap<(u16, u16), u8> {
-        BTreeMap::new()
-    }
-
     fn entity_position_for_owner(sim: &Simulation, owner: &str) -> Option<(u16, u16)> {
         sim.entities().values().find_map(|entity| {
             (sim.interner.resolve(entity.owner) == owner)
@@ -456,75 +450,24 @@ mod tests {
     }
 
     fn test_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
-        for ry in 0..height {
-            for rx in 0..width {
-                cells.push(test_terrain_cell(rx, ry, Some(100)));
-            }
-        }
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(width, height, |rx, ry| {
+            test_terrain_cell(rx, ry, Some(100))
+        })
     }
 
     fn test_terrain_cell(rx: u16, ry: u16, track_cost: Option<u8>) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
             speed_costs: SpeedCostProfile {
                 track: track_cost,
                 ..Default::default()
             },
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
             zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: SpeedCostProfile {
                 track: track_cost,
                 ..Default::default()
             },
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -537,7 +480,7 @@ mod tests {
                     country: None,
                     side: None,
                     player_control: None,
-                    iq: None,
+                    iq: 0,
                     allies: Vec::new(),
                     base_plan: Default::default(),
                 },
@@ -547,7 +490,7 @@ mod tests {
                     country: Some("Americans".to_string()),
                     side: Some("Allies".to_string()),
                     player_control: Some(true),
-                    iq: None,
+                    iq: 0,
                     allies: Vec::new(),
                     base_plan: Default::default(),
                 },
@@ -930,7 +873,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &test_standard_launch_rules(),
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
             &projection,
@@ -1039,7 +981,6 @@ mod tests {
                 structure_ai_repairable: false,
             }],
             Some(&rules),
-            &BTreeMap::new(),
         );
 
         assert_eq!(spawned, 1);
@@ -1047,7 +988,7 @@ mod tests {
             .interner
             .get("Player")
             .expect("pre-created player house");
-        assert_eq!(sim.houses[&player].tracking.buildings_for_test(), 1);
+        assert_eq!(sim.houses[&player].tracking.buildings(), 1);
         assert_eq!(
             sim.substrate.base_reservations.raw_mask(None, 28, 38),
             1,
@@ -1354,7 +1295,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1463,7 +1403,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
             &projection,
@@ -1622,7 +1561,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1669,7 +1607,6 @@ mod tests {
                 &map,
                 &roster,
                 &rules,
-                &test_height_map(),
                 &terrain,
                 &launch_descriptor(&session),
             );
@@ -1743,7 +1680,7 @@ mod tests {
                 country: Some("Russians".to_string()),
                 side: Some("Soviet".to_string()),
                 player_control: Some(true),
-                iq: None,
+                iq: 0,
                 allies: Vec::new(),
                 base_plan: Default::default(),
             }],
@@ -1841,7 +1778,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1904,7 +1840,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1917,7 +1852,7 @@ mod tests {
         // is the 2.0f accumulator, not just the rank projection — a unit
         // seeded only in the projection would demote on its first kill.
         assert!(sim.entities().values().all(|entity| {
-            entity.veterancy == 200 && entity.veterancy_raw.bits() == 0x4000_0000
+            entity.veterancy() == 200 && entity.veterancy_raw.bits() == 0x4000_0000
         }));
         assert!(sim.entities().values().all(|entity| {
             let expected = if sim.interner.resolve(entity.owner) == "Player" {
@@ -1945,7 +1880,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -1974,7 +1908,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2002,16 +1935,8 @@ mod tests {
             &rules,
             &launch_descriptor(&session),
         );
-        sim.spawn_object(
-            "AMCV",
-            "Neutral",
-            45,
-            45,
-            STARTING_MCV_FACING,
-            &rules,
-            &test_height_map(),
-        )
-        .expect("blocker");
+        sim.spawn_object("AMCV", "Neutral", 45, 45, STARTING_MCV_FACING, &rules)
+            .expect("blocker");
         let mut expected_rng = sim.scenario_rng.clone();
         // gamemd-derived: TechnoClass::TechnoClass @ 0x006F2B90 consumes and
         // stores one raw Scenario word at 0x006F3254 before placement.
@@ -2027,7 +1952,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2079,16 +2003,8 @@ mod tests {
             &rules,
             &descriptor,
         );
-        sim.spawn_object(
-            "AMCV",
-            "Neutral",
-            100,
-            75,
-            STARTING_MCV_FACING,
-            &rules,
-            &test_height_map(),
-        )
-        .expect("authored start blocker");
+        sim.spawn_object("AMCV", "Neutral", 100, 75, STARTING_MCV_FACING, &rules)
+            .expect("authored start blocker");
         let mut expected_rng = sim.scenario_rng.clone();
         // TechnoClass::TechnoClass @ 0x006F2B90 consumes its raw Scenario
         // word at 0x006F3254 before Try_Unlimbo chooses a fallback spoke.
@@ -2105,7 +2021,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &descriptor,
         );
@@ -2235,16 +2150,8 @@ mod tests {
             }
         }
 
-        let spawned = seed_starting_extra_units(
-            &mut sim,
-            slots,
-            &rules,
-            &test_height_map(),
-            &terrain,
-            bounds,
-            1,
-            false,
-        );
+        let spawned =
+            seed_starting_extra_units(&mut sim, slots, &rules, &terrain, bounds, 1, false);
 
         assert_eq!(spawned, 0);
         assert!(sim.entities().is_empty());
@@ -2270,7 +2177,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2330,7 +2236,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2365,7 +2270,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &rules,
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );
@@ -2424,7 +2328,6 @@ mod tests {
             &map,
             &roster_with_neutral_and_playable(),
             &test_standard_launch_rules(),
-            &test_height_map(),
             &terrain,
             &launch_descriptor(&session),
         );

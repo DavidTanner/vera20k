@@ -2,15 +2,12 @@
 //!
 //! Extracted from production_placement.rs for file-size limits.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
     RADIUS_HARD_CAP, find_nearby_passable_cell_with_options,
 };
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::{PlacementEvidence, Simulation};
 
 use super::production_tech::foundation_dimensions;
@@ -42,8 +39,6 @@ pub(crate) fn spawn_completed_refinery_free_units(
     sim: &mut Simulation,
     completed_building_ids: &[u64],
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let mut any_spawned = false;
@@ -83,8 +78,6 @@ pub(crate) fn spawn_completed_refinery_free_units(
             ry,
             width,
             height,
-            path_grid,
-            height_map,
             overlay_registry,
         );
     }
@@ -102,8 +95,6 @@ fn try_spawn_refinery_free_unit(
     building_ry: u16,
     width: u16,
     height: u16,
-    path_grid: Option<&PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if !rules.is_refinery_type(building_type_id) {
@@ -126,10 +117,7 @@ fn try_spawn_refinery_free_unit(
     // the primary target; it is overwritten by whichever attempt commits, and the
     // object is not on the map until one does.
     let (initial_rx, initial_ry) = primary.unwrap_or(search_seed);
-    let initial_z = height_map
-        .get(&(initial_rx, initial_ry))
-        .copied()
-        .unwrap_or(0);
+    let initial_z = sim.terrain_cell_level(initial_rx, initial_ry).unwrap_or(0);
     let Some(free_unit_id) = sim.spawn_object_limbo_at_height(
         &free_unit_type,
         owner,
@@ -159,7 +147,6 @@ fn try_spawn_refinery_free_unit(
             FREE_UNIT_FACING_PRIMARY,
             rules,
             building_id,
-            height_map,
             overlay_registry,
         )
     {
@@ -179,14 +166,9 @@ fn try_spawn_refinery_free_unit(
     // refused, and each search runs here — after the primary has failed — rather
     // than being precomputed, so it sees the occupancy the placement will meet.
     for options in FREE_UNIT_FALLBACK_ATTEMPTS {
-        let Some((fallback_rx, fallback_ry)) = find_free_unit_nearby_cell(
-            sim,
-            rules,
-            &free_unit_type,
-            search_seed,
-            path_grid,
-            options,
-        ) else {
+        let Some((fallback_rx, fallback_ry)) =
+            find_free_unit_nearby_cell(sim, rules, &free_unit_type, search_seed, options)
+        else {
             continue;
         };
         if try_place_free_unit(
@@ -197,7 +179,6 @@ fn try_spawn_refinery_free_unit(
             FREE_UNIT_FACING_FALLBACK,
             rules,
             building_id,
-            height_map,
             overlay_registry,
         ) {
             log::info!(
@@ -233,7 +214,6 @@ fn try_place_free_unit(
     facing: u8,
     rules: &RuleSet,
     producer_id: u64,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     // BuildingClass::OnConstructionComplete @ 0x00445F80 invokes the newly
@@ -250,7 +230,7 @@ fn try_place_free_unit(
         rx,
         ry,
         facing,
-        height_map.get(&(rx, ry)).copied().unwrap_or(0),
+        sim.terrain_cell_level(rx, ry).unwrap_or(0),
         PlacementEvidence::EvaluateMark,
         rules,
         overlay_registry,
@@ -314,7 +294,6 @@ fn find_free_unit_nearby_cell(
     rules: &RuleSet,
     free_unit_type: &str,
     seed: (u16, u16),
-    path_grid: Option<&PathGrid>,
     options: NearbySearchOptions,
 ) -> Option<(u16, u16)> {
     let free_unit = rules.object(free_unit_type)?;
@@ -363,7 +342,7 @@ fn find_free_unit_nearby_cell(
         // is the hard cap itself on any playable map.
         radius_cap: RADIUS_HARD_CAP,
         target_cell: None,
-        path_grid,
+        path_grid: sim.path_grid(),
         resolved_terrain: sim.resolved_terrain.as_ref(),
         overlay_grid: sim.overlay_grid.as_ref(),
         occupancy: Some(&sim.substrate.occupancy),

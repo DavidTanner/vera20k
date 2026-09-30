@@ -2,6 +2,7 @@
 //! `AnimClass` instances constructed inside the mover's own object turn.
 
 use super::*;
+use crate::map::entities::EntityCategory;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -12,7 +13,9 @@ use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
 fn rules(bind_warp_art: bool) -> RuleSet {
     let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[General]\nWarpOut=WARPOUT\n\n[InfantryTypes]\n0=CLEG\n\n\
-         [CLEG]\nStrength=100\nSpeed=4\nSensorsSight=1\n",
+         [VehicleTypes]\n0=CMON\n\n\
+         [CLEG]\nStrength=100\nSpeed=4\nSensorsSight=1\n\n\
+         [CMON]\nStrength=100\nSpeed=4\nSensorsSight=1\n",
     ))
     .unwrap();
     let mut art = ArtRegistry::from_ini(&IniFile::from_str(
@@ -25,14 +28,45 @@ fn rules(bind_warp_art: bool) -> RuleSet {
     rules
 }
 
+/// An infantryman on Teleport with a warp armed from cell 5,5.
 fn relocating_legionnaire(target: (u16, u16)) -> Simulation {
+    relocating_owner(EntityCategory::Infantry, "CLEG", target)
+}
+
+/// A Unit on Teleport without `Teleporter=` (the retail CMON and SMON) with a
+/// warp armed from cell 5,5.
+fn relocating_chrono_unit(target: (u16, u16)) -> Simulation {
+    relocating_owner(EntityCategory::Unit, "CMON", target)
+}
+
+fn relocating_owner(category: EntityCategory, type_name: &str, target: (u16, u16)) -> Simulation {
     let mut sim = Simulation::with_seed(0);
     sim.fog.width = 32;
     sim.fog.height = 32;
-    let mut entity = GameEntity::test_default(1, "CLEG", "Americans", 5, 5);
-    entity.owner = sim.intern("Americans");
-    entity.type_ref = sim.intern("CLEG");
-    entity.position.z = 2;
+    // Construct the actual class. Reclassifying a Unit test default leaves
+    // Infantry's required fear/action runtime absent from its real AI turn.
+    let mut entity = GameEntity::new_at_frame_zero_for_test(
+        1,
+        5,
+        5,
+        2,
+        0,
+        sim.intern("Americans"),
+        crate::sim::components::Health { current: 100 },
+        sim.intern(type_name),
+        category,
+        0,
+        5,
+        category == EntityCategory::Unit,
+    );
+    // Preserve this fixture's original centre pose: the target coordinate is
+    // also the centre. An Infantry constructor starts in slot2, so name the
+    // supplied centre premise rather than accidentally changing the old test.
+    if category == EntityCategory::Infantry {
+        entity.position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
+        entity.position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
+        entity.sub_cell = Some(0);
+    }
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
     entity.teleport_state = Some(TeleportState {
         phase: TeleportPhase::Relocate,
@@ -113,7 +147,7 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
             .flat_map(|y| (0..32).map(move |x| test_flat_cell(x, y)))
             .collect(),
     ));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(32, 32));
+    sim.overlay_grid = Some(OverlayGrid::new(32, 32));
     // This fixture's original reveal preceded its map installation. Establish
     // that admitted Unlimbo's counters before executing the real object turn.
     sim.foot_neighbors_after_unlimbo(1, Some(&rules));
@@ -123,8 +157,7 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
         .overlay_grid
         .as_ref()
         .unwrap()
-        .retained_neighbor_counts()
-        .unwrap();
+        .retained_neighbor_counts();
     assert_eq!(plane.iter().map(|v| u32::from(*v)).sum::<u32>(), 8);
     assert_eq!(plane[4 * 32 + 4], 0, "released origin neighbors");
     assert_eq!(
@@ -138,9 +171,220 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
             .as_ref()
             .unwrap()
             .retained_neighbor_counts()
-            .unwrap()
             .iter()
             .all(|v| *v == 0),
         "Limbo removes the destination source saved by Teleport's callback"
     );
+}
+
+/// The cell's raw occupation bits on the Ground layer (`CellClass+0x3F`).
+fn raw_bits(sim: &Simulation, cell: (u16, u16)) -> u8 {
+    use crate::sim::movement::locomotor::MovementLayer;
+    use crate::sim::occupancy::RawCellKey;
+    sim.substrate
+        .raw_cell_occupation
+        .bits_at(RawCellKey::Real(cell.0, cell.1), MovementLayer::Ground)
+}
+
+/// Teleport Process brackets the relocation with Mark(UP) (`0x007195DB`) and
+/// Mark(DOWN) (`0x007196BF`): a Unit's cell list entry, raw vehicle bit and
+/// vehicle plane leave the origin and mark the destination in the warp's own
+/// turn.
+#[test]
+fn warp_moves_a_units_occupation_through_the_mark_pair() {
+    use crate::sim::movement::locomotor::MovementLayer;
+    use crate::sim::occupancy::VEHICLE_OCCUPATION_BIT;
+    let rules = rules(false);
+    let mut sim = relocating_chrono_unit((8, 9));
+    let occupied = |sim: &Simulation, cell: (u16, u16)| {
+        sim.substrate
+            .cell_occupation
+            .vehicle_bits(cell.0, cell.1, MovementLayer::Ground)
+            & VEHICLE_OCCUPATION_BIT
+            != 0
+    };
+    assert!(occupied(&sim, (5, 5)));
+    assert_ne!(raw_bits(&sim, (5, 5)) & 0x20, 0);
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    assert!(!occupied(&sim, (5, 5)), "the origin is released");
+    assert!(occupied(&sim, (8, 9)), "the destination is marked");
+    assert_eq!(raw_bits(&sim, (5, 5)) & 0x20, 0);
+    assert_ne!(raw_bits(&sim, (8, 9)) & 0x20, 0);
+    assert!(!sim.substrate.occupancy.contains_entity(5, 5, 1));
+    assert!(sim.substrate.occupancy.contains_entity(8, 9, 1));
+}
+
+/// The same Mark pair moves an infantryman's cell list entry and his raw
+/// sub-cell bits.
+#[test]
+fn warp_moves_an_infantrymans_occupation_through_the_mark_pair() {
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    let origin_bits = raw_bits(&sim, (5, 5));
+    assert_ne!(origin_bits, 0);
+    assert_eq!(raw_bits(&sim, (8, 9)), 0);
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    assert_eq!(raw_bits(&sim, (5, 5)), 0, "the origin is released");
+    assert_eq!(raw_bits(&sim, (8, 9)), origin_bits, "the same sub-cell");
+    assert!(!sim.substrate.occupancy.contains_entity(5, 5, 1));
+    assert!(sim.substrate.occupancy.contains_entity(8, 9, 1));
+}
+
+/// Only the relocating frame builds the two WarpOut animations: a turn in
+/// the chrono delay that follows builds none.
+#[test]
+fn a_chrono_delay_turn_builds_no_warp_anim() {
+    let rules = rules(true);
+    let mut sim = relocating_legionnaire((8, 9));
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .teleport_state
+        .as_mut()
+        .unwrap()
+        .being_warped_ticks = 5;
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+    assert_eq!(sim.substrate.anims.len(), 2);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .teleport_state
+            .as_ref()
+            .map(|state| state.phase),
+        Some(TeleportPhase::ChronoDelay)
+    );
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+    assert_eq!(sim.substrate.anims.len(), 2);
+}
+
+/// The warp's first step is the Techno detach sweep (`0x007193C7`): an
+/// attacker's lock on the owner is dropped in the owner's warp turn.
+#[test]
+fn the_warp_drops_attack_locks_on_its_owner() {
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    let mut attacker = GameEntity::test_default(2, "CMON", "Russians", 4, 5);
+    attacker.attack_target = Some(crate::sim::combat::AttackTarget::new(1));
+    sim.substrate.entities.insert(attacker);
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    assert_eq!(
+        (
+            sim.substrate.entities.get(1).unwrap().position.rx,
+            sim.substrate.entities.get(1).unwrap().position.ry
+        ),
+        (8, 9)
+    );
+    assert!(
+        sim.substrate
+            .entities
+            .get(2)
+            .unwrap()
+            .attack_target
+            .is_none()
+    );
+}
+
+/// A mission Restore represents `Assign_Destination(saved, 1)` by NavCom and
+/// the deferred flag. The Teleport Process entry finishes it through the
+/// Infantry setter, so the man warps (`FootClass::Restore_Mission`
+/// `0x004D8F99`, then `0x0051AA40` and Teleport Move_To `0x00718100`); no
+/// route is built.
+#[test]
+fn a_restored_destination_warps_at_the_teleport_process_entry() {
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::mission::concrete_effects::represented_assign_destination_mode_one;
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    let mover = sim.substrate.entities.get_mut(1).unwrap();
+    mover.teleport_state = None;
+    represented_assign_destination_mode_one(mover, Some(NavTargetRef::cell(8, 9)));
+    mover.navigation.pending_arrival_clear = true;
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    let mover = sim.substrate.entities.get(1).unwrap();
+    assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
+    assert!(!mover.navigation.pending_arrival_clear);
+    assert!(mover.movement_target.is_none());
+}
+
+/// A ground order to an infantryman on Teleport reaches the Infantry setter,
+/// which arms the warp, not a route no Process follows.
+#[test]
+fn a_ground_order_arms_the_warp() {
+    use crate::sim::world::GroundMove;
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    sim.substrate.entities.get_mut(1).unwrap().teleport_state = None;
+
+    let accepted = sim.issue_ground_move(
+        GroundMove {
+            entity_id: 1,
+            target: (12, 7),
+            speed: crate::util::fixed_math::SimFixed::from_num(4),
+            queue: false,
+            speed_type: None,
+            owner_blocks: true,
+            object_destination: None,
+        },
+        Some(&rules),
+    );
+
+    assert!(accepted);
+    let mover = sim.substrate.entities.get(1).unwrap();
+    assert!(mover.movement_target.is_none());
+    let warp = mover.teleport_state.as_ref().expect("armed warp");
+    assert_eq!((warp.target_rx, warp.target_ry), (12, 7));
+}
+
+/// A warp the Teleport armed waits while a Drive piggybacks over it: the
+/// object turn calls only the active locomotor's Process (`0x004DA877`), so
+/// the suspended Teleport runs once End_Piggyback hands it back.
+#[test]
+fn an_armed_warp_waits_while_a_drive_piggyback_is_active() {
+    let rules = rules(false);
+    let mut sim = relocating_chrono_unit((8, 9));
+    let locomotor = sim
+        .substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .locomotor
+        .as_mut()
+        .unwrap();
+    assert!(locomotor.begin_piggyback(LocomotorKind::Drive, 0));
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+    let mover = sim.substrate.entities.get_mut(1).unwrap();
+    assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
+    assert_eq!(
+        mover.teleport_state.as_ref().map(|state| state.phase),
+        Some(TeleportPhase::Relocate)
+    );
+
+    let locomotor = mover.locomotor.as_mut().unwrap();
+    if locomotor.active_kind() == LocomotorKind::Drive {
+        assert!(locomotor.end_piggyback());
+    }
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+    let mover = sim.substrate.entities.get(1).unwrap();
+    assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
 }

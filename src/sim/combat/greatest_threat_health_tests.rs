@@ -101,6 +101,7 @@ fn actual_scorer_consumes_live_signed_strength_and_masked_zero_division() {
                 target_distance: -10.0,
             },
             ThreatReference::NullCoord,
+            None,
         )
         .unwrap();
         assert_eq!(

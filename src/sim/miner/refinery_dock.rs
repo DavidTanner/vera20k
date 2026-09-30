@@ -40,10 +40,10 @@
 //!   zero today — VERA's sale is synchronous, so no refinery is ever seen
 //!   mid-sell-down; the sale's RUN_AWAY broadcast carries the miner instead.
 //!
-//! A refinery sold (`BuildingClass::Sell`) or destroyed (the NowDead contact
-//! loop, `Simulation::building_now_dead_contacts`) under an unloading miner
-//! sends it RUN_AWAY (0x17): the latch drops and Harvest takes over
-//! (`radio::receive`, Unit `0x00737A98`).
+//! A refinery sold (`BuildingClass::Mission_Selling`) or destroyed (the
+//! NowDead contact loop, `Simulation::building_now_dead_contacts`) under an
+//! unloading miner sends it RUN_AWAY (0x17): the latch drops and Harvest takes
+//! over (`radio::receive`, Unit `0x00737A98`).
 //!
 //! ## Dependency rules
 //! - Part of sim/ — sim/radio, sim/mission, sim/movement, sim/world.
@@ -157,7 +157,12 @@ fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
     let _ = crate::sim::movement::locomotor_owner::try_restore_primary(entity);
     let queue = entity.navigation.nav_queue.clone();
     if let NavTargetRef::Cell { rx, ry } = queue[0] {
-        sim.set_unit_cell_destination(id, (rx, ry), rules, true);
+        sim.set_unit_destination(
+            id,
+            crate::sim::components::NavTargetRef::cell(rx, ry),
+            rules,
+            true,
+        );
     }
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.navigation.nav_queue = queue[1..].to_vec();
@@ -188,7 +193,12 @@ fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64) {
     }
     match nav {
         Some(NavTargetRef::Cell { rx, ry }) => {
-            sim.set_unit_cell_destination(id, (rx, ry), rules, true);
+            sim.set_unit_destination(
+                id,
+                crate::sim::components::NavTargetRef::cell(rx, ry),
+                rules,
+                true,
+            );
         }
         _ => {
             sim.set_unit_null_destination(id, Some(rules));
@@ -213,10 +223,7 @@ pub(crate) fn mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> 
     }
     // B 0x0073DF56: the hull must sit in the 8-bit East window
     // (raw 0x3F80..=0x407F); otherwise turn (unless the turret is mid-swing).
-    let raw = entity
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(entity.facing) << 8, |body| body.current(now));
+    let raw = entity.body_facing_current(now);
     if (((u32::from(raw) >> 7) + 1) & 0x1FE) != 0x80 {
         if !entity.turret_rotation_latch
             && let Some(entity) = sim.substrate.entities.get_mut(id)
@@ -231,15 +238,8 @@ pub(crate) fn mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> 
         .as_ref()
         .is_some_and(|miner| miner.unload_active);
     if !unloading {
-        if let Some(miner) = sim
-            .substrate
-            .entities
-            .get_mut(id)
-            .and_then(|entity| entity.miner.as_mut())
-        {
-            miner.stage_value = 0;
-            miner.stage_rate = 1;
-            miner.stage_timer.arm(now, 1);
+        if let Some(entity) = sim.substrate.entities.get_mut(id) {
+            entity.restart_native_stage(0, now as i32, 1);
         }
         set_unload_latch(sim, rules, id, true);
         if let Some(building) = unload_building(sim, id) {
@@ -275,8 +275,7 @@ fn unload_dumping(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
         .substrate
         .entities
         .get(id)
-        .and_then(|entity| entity.miner.as_ref())
-        .map_or(0, |miner| miner.stage_value);
+        .map_or(0, |entity| entity.native_stage().value());
     // 0x0073E355..0x0073E374: `HarvesterDumpRate × 900 <= Value`. The
     // integer stage crosses at ceil(rate × 900) (`GeneralRules`).
     if stage >= i32::from(rules.general.harvester_dump_frames) {
@@ -289,13 +288,8 @@ fn unload_dumping(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
             .and_then(|miner| drain_first_slot(&mut miner.cargo));
         if let Some((value, bales)) = drained {
             pay_refinery_owner(sim, rules, building, value, bales);
-            if let Some(miner) = sim
-                .substrate
-                .entities
-                .get_mut(id)
-                .and_then(|entity| entity.miner.as_mut())
-            {
-                miner.stage_value = 0;
+            if let Some(entity) = sim.substrate.entities.get_mut(id) {
+                entity.set_native_stage_value(0);
             }
             sim.bale_events.push(BaleDepositEvent {
                 building_id: building,
@@ -361,27 +355,6 @@ fn unload_finishing(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
         }
     }
     epilogue(sim, rules, id)
-}
-
-/// The Unit+0xF8 StageClass tick of `TechnoClass::AI` (`0x006FABC4..
-/// 0x006FAC31`), after the mission dispatch: an expired timer with a nonzero
-/// rate adds the step (1) and restarts at the rate. Mission_Harvest state 1
-/// counts its cut gate and Mission_Unload its dumps on it.
-pub(crate) fn tick_stage(sim: &mut Simulation, id: u64) {
-    let now = sim.session.binary_frame;
-    let Some(miner) = sim
-        .substrate
-        .entities
-        .get_mut(id)
-        .and_then(|entity| entity.miner.as_mut())
-    else {
-        return;
-    };
-    if miner.stage_rate == 0 || !miner.stage_timer.due(now) {
-        return;
-    }
-    miner.stage_value = miner.stage_value.saturating_add(1);
-    miner.stage_timer.arm(now, miner.stage_rate);
 }
 
 /// Unit `Per_Cell_Process(2)` Enter arm at a Drive track end

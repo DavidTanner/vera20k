@@ -20,7 +20,6 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
     use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::sim::components::MovementTarget;
     use crate::sim::movement::{FacingClass, ground_pose, locomotor::MovementLayer, walk_head};
-    use std::collections::BTreeMap;
 
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\nSpeed=4\n\
@@ -39,7 +38,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
             .collect(),
     ));
     let id = sim
-        .spawn_object("E1", "Americans", 6, 5, 0, &rules, &BTreeMap::new())
+        .spawn_object("E1", "Americans", 6, 5, 0, &rules)
         .unwrap();
     let head = DriveCoord {
         x: 6 * 256 + 192,
@@ -50,8 +49,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.position.sub_x = SimFixed::from_num(184);
     actor.position.sub_y = SimFixed::from_num(64);
-    actor.body_facing = Some(body);
-    actor.facing = 0x3F;
+    actor.body_facing = body;
     actor.navigation.nav_com = Some(NavTargetRef::cell(6, 6));
     actor.navigation.path_replay = FootPathQueue {
         directions: vec![2, 4],
@@ -71,20 +69,19 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
 
     // Exercise real world completion, including Mark/PerCell and navigation.
     // Original75BD70..75BF82 has no movement-turn call;75BC97 owns the next one.
-    sim.run_completed_walk_step(id, head, Some(&rules), None, None)
+    sim.run_completed_walk_step(id, head, Some(&rules), None)
         .unwrap();
     let actor = sim.substrate.entities.get(id).unwrap();
     assert_eq!(ground_pose::position_world_coord(&actor.position), head);
     assert_eq!(actor.movement_target.as_ref().unwrap().next_index, 2);
     assert_eq!(actor.navigation.path_replay.remaining_directions(), &[4]);
     assert_eq!(actor.locomotor.as_ref().unwrap().step_head(), None);
-    assert_eq!(actor.body_facing, Some(body));
     assert_eq!(
-        actor.facing, 0x3F,
+        actor.body_facing, body,
         "completion must not anticipate the corner"
     );
 
-    // A refused head can keep the actor waiting; it must keep both headings.
+    // A refused head can keep the actor waiting; it must keep its heading.
     for blocked in [true, false] {
         if blocked {
             sim.substrate.raw_cell_occupation.mark_ground(6, 6, 0x20);
@@ -104,8 +101,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
         );
         assert_eq!(accepted, !blocked);
         let actor = sim.substrate.entities.get_mut(id).unwrap();
-        assert_eq!(actor.body_facing, Some(body));
-        assert_eq!(actor.facing, 0x3F);
+        assert_eq!(actor.body_facing, body);
         if accepted {
             let next = actor.locomotor.as_ref().unwrap().step_head().unwrap();
             let desired = crate::util::direction_tables::facing16_from_delta(
@@ -114,8 +110,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
             );
             assert!(walk_head::finish_fresh_head(actor, 101));
             assert_ne!(desired, body.current(101));
-            assert_eq!(actor.body_facing.unwrap().current(101), desired);
-            assert_eq!(actor.facing, (desired >> 8) as u8);
+            assert_eq!(actor.body_facing.current(101), desired);
         }
     }
 }
@@ -158,7 +153,7 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
         actor.lifecycle.object_alive = input["alive"] == 1;
         actor.lifecycle.in_limbo = input["limbo"] == 1;
-        actor.object_is_falling_down = input["falling"].as_u64().unwrap() as u8;
+        actor.set_falling_down_for_test(input["falling"].as_u64().unwrap() != 0);
         // Keep signed/aliased full XYZ in the existing physical coordinate owner.
         // The query must compare the native truncated low16 cell words.
         let current = coord(&input["current"]);
@@ -206,7 +201,7 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         actor.navigation.path_runtime.start_blocked(40, 6);
         actor.navigation.path_runtime.retries_left = input["retries"].as_u64().unwrap() as u32;
         actor.navigation.path_runtime.set_scold_latch_for_test(255);
-        actor.foot_speed.applied_fraction = SimFixed::lit("0.75");
+        actor.foot_speed.set_speed_fraction(SimFixed::lit("0.75"));
         let owner = actor.owner();
         sim.houses.insert(
             owner,
@@ -288,7 +283,7 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
             "{input}"
         );
         assert_eq!(
-            actor.foot_speed.applied_fraction,
+            actor.foot_speed.applied_fraction(),
             SimFixed::from_num(row["speed"].as_f64().unwrap()),
             "{input}"
         );
@@ -325,7 +320,7 @@ fn paid_walk_world_scold_tails_match_original_boundaries() {
             .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
         actor.lifecycle.object_alive = case != "dead_post_percell";
         actor.lifecycle.in_limbo = case == "limbo_post_percell";
-        actor.object_is_falling_down = u8::from(case == "falling_post_percell");
+        actor.set_falling_down_for_test(case == "falling_post_percell");
         let head = DriveCoord::cell(10, 10, 0);
         actor.locomotor.as_mut().unwrap().set_step_head(Some(head));
         sim.substrate.entities.insert(actor);
@@ -333,11 +328,10 @@ fn paid_walk_world_scold_tails_match_original_boundaries() {
             "arrival_mark" => {
                 // The native golden supplies the final Mark callback. Here
                 // the real completion owner runs Mark/PerCell through it.
-                sim.run_completed_walk_step(1, head, None, None, None)
-                    .unwrap();
+                sim.run_completed_walk_step(1, head, None, None).unwrap();
                 assert!(sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
             }
-            "common_return" => sim.run_walk_boundary(1, head, None, None, None),
+            "common_return" => sim.run_walk_boundary(1, head, None, None),
             _ => {
                 // Supplied post-PerCell liveness is the native corpus boundary;
                 // these rows do not claim to execute a death/limbo producer.

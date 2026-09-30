@@ -90,7 +90,7 @@ fn accessor(
     let section = ini.section(section).unwrap_or(&empty);
     let default = options.default.as_deref().unwrap_or("");
     Ok(match options.reader.as_deref() {
-        Some("raw") => json!(section.get(key)),
+        Some("raw") => json!(raw_value(section, key)),
         Some("int") => json!(section.read_int(key, cli_i32(default)?)),
         Some("bool") => {
             let default = default
@@ -129,12 +129,19 @@ fn accessor(
     })
 }
 
+/// The stored text, shown as it is: the tool's raw view, not a reader.
+fn raw_value<'a>(section: &'a IniSection, key: &str) -> Option<&'a str> {
+    section
+        .raw_entries()
+        .find_map(|(entry, value)| (entry == key).then_some(value))
+}
+
 fn presence(ini: &IniFile, section: &str, key: &str) -> Value {
     let selected = ini.section(section);
     json!({
         "section_present": selected.is_some(),
-        "key_present": selected.and_then(|s| s.get(key)).is_some(),
-        "raw_value": selected.and_then(|s| s.get(key)),
+        "key_present": selected.is_some_and(|s| s.is_present(key)),
+        "raw_value": selected.and_then(|s| raw_value(s, key)),
     })
 }
 

@@ -8,7 +8,10 @@ Sections, each executed in a fresh emulator per case:
 - economy: HouseClass::AI_EconomyStateMachine 0x509700 (mode step, the
   RandomRanged(0,1) draw at 0x509863 and its stream).
 - chooser: HouseClass::AI_Choose_Building 0x4FE3E0 with the native node
-  vector (vtable 0x7E38B0) and the native advanced-plant admission 0x505360.
+  vector (vtable 0x7E38B0), the native advanced-plant admission 0x505360 and
+  the native walls 0x50C340.
+- walls: HouseClass::AI_BuildWalls 0x50C340 alone, over every foundation of
+  the native Width/Height tables and the wall type, search and insert cases.
 - placement_delay: BuildingClass::Factory_AI's retry wait 0x4501CB..0x4501E7.
 - key / sort / direction: the ordinary key 0x505F80, the retail qsort
   0x7C8B48 with comparator 0x5108F0, and the away-from-base direction block
@@ -19,9 +22,9 @@ Sections, each executed in a fresh emulator per case:
   and placement test with the answer the model gave.
 
 Substitutions are listed in the provenance sidecar. Nothing here executes
-Find_Node's cell/building queries, walls, ChooseNextProduction, the perimeter
-scan, CellRect::CheckOccupancy or CanPlaceAt; their answers are supplied and
-recorded.
+Find_Node's cell/building queries, Get_Node_Building 0x42E820,
+ChooseNextProduction, the perimeter scan, CellRect::CheckOccupancy or
+CanPlaceAt; their answers are supplied and recorded.
 """
 from pathlib import Path
 import random
@@ -41,6 +44,8 @@ FAKE, FAKE_SIZE = 0x50000000, 0x00800000
 STUBS = 0x60000000
 
 HOUSE = FAKE
+HOUSE_TYPE = FAKE + 0x2F000
+NODE_BUILDINGS = FAKE + 0x80000
 RULES = FAKE + 0x20000
 SCENARIO = FAKE + 0x22000
 MONEY_VTABLE = FAKE + 0x23000
@@ -270,21 +275,58 @@ CHOOSER_TYPES = [
     ('PLAIN', False, 0),
 ]
 TYPE_INDEX = {name: index for index, (name, _, _) in enumerate(CHOOSER_TYPES)}
+# The walls' types, after the economy's (13 and 14 in the Rust fixture): a
+# wall of every side and a 2x2 ProtectWithWall= building.
+CHOOSER_WALL = 13
+CHOOSER_GUARDED = 14
 NODE_ITEMS = HEAP + 0x300000
 NODE_CAPACITY = 32
 THRESHOLDS = (30, 50, 70)
 
 
-def write_nodes(emu, nodes):
+def write_nodes(emu, nodes, capacity=NODE_CAPACITY):
+    """Nodes are (type, x, y) or (type, x, y, filled)."""
     base = HOUSE + 0x5704
     emu.write32(base, NODE_VTABLE)
     emu.write32(base + 4, NODE_ITEMS)
-    emu.write32(base + 8, NODE_CAPACITY)
+    emu.write32(base + 8, capacity)
     emu.uc.mem_write(base + 0xC, bytes([1, 1]))
     emu.write32(base + 0x10, len(nodes))
     emu.write32(base + 0x14, 10)
-    for slot, (ty, x, y) in enumerate(nodes):
-        emu.uc.mem_write(NODE_ITEMS + 16 * slot, struct.pack('<ihhII', ty, x, y, 0, 0))
+    for slot, (ty, x, y, *filled) in enumerate(nodes):
+        emu.uc.mem_write(NODE_ITEMS + 16 * slot,
+                         struct.pack('<ihhII', ty, x, y, int(bool(filled and filled[0])), 0))
+
+
+def node_buildings_hook(emu, objects):
+    """Get_Node_Building 0x42E820 (BaseClass thiscall, RET 4) answers the
+    building object placed for a node index, or none."""
+    def stub(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != HOUSE + 0x5700:
+            raise OracleError('Get_Node_Building on the wrong base')
+        which = e.read_i32(e.uc.reg_read(UC_X86_REG_ESP) + 4)
+        e.events.append(['building', which])
+        return objects.get(which, 0)
+    emu.hook(0x42E820, stub, 4)
+
+
+def place_node_buildings(emu, nodes, node_buildings):
+    """A building object of each listed node's type at its Location
+    (+0x9C, leptons); returns them by node index."""
+    objects = {}
+    for slot, (node, (x, y)) in enumerate(sorted(node_buildings.items())):
+        building = NODE_BUILDINGS + slot * 0x800
+        emu.write32(building + 0x520, TYPES + nodes[node][0] * TYPE_SIZE)
+        emu.write32(building + 0x9C, x)
+        emu.write32(building + 0xA0, y)
+        emu.write32(building + 0xA4, 0)
+        objects[node] = building
+    return objects
+
+
+def at(x, y, dx=128, dy=128):
+    """The Location of a building whose top-left cell is (x, y)."""
+    return (x * 256 + dx, y * 256 + dy)
 
 
 def read_nodes(emu):
@@ -299,7 +341,7 @@ def read_nodes(emu):
 
 def chooser_row(label, nodes, *, choice=-1, yards=1, naval_allowed=True, difficulty=1,
                 output=100, drain=0, side=0, blackout=0, drained_source=False,
-                advanced_prereqs=(), buildings=0, draw=0):
+                advanced_prereqs=(), buildings=0, draw=0, node_buildings=None):
     emu = Emu()
     emu.write32(GAME_MODE, 1)
     emu.write32(FRAME, 1000)
@@ -360,7 +402,23 @@ def chooser_row(label, nodes, *, choice=-1, yards=1, naval_allowed=True, difficu
                          (0x8A8, 'TPOWER')):
         emu.write32(RULES + offset, TYPES + TYPE_INDEX[name] * TYPE_SIZE)
     emu.write32(HOUSE + 0x5748, 0)
+    for index, side_value, protect in ((CHOOSER_WALL, -1, False), (CHOOSER_GUARDED, -1, True)):
+        ty = TYPES + index * TYPE_SIZE
+        emu.write32(type_items + 4 * index, ty)
+        emu.write32(ty + 0xDF8, index)
+        emu.write32(ty + 0x6D0, side_value)
+        emu.uc.mem_write(ty + 0x1765, bytes([int(protect)]))
+        emu.write32(ty + 0xEF0, 3)
+        emu.write32(ty + 0x16FC, 0xFFFFFFFF)
+    walls = LISTS + 0x1400
+    emu.write32(RULES + 0xA54, walls)
+    emu.write32(RULES + 0xA60, 1)
+    emu.write32(walls, TYPES + CHOOSER_WALL * TYPE_SIZE)
+    emu.write32(HOUSE + 0x34, HOUSE_TYPE)
+    emu.write32(HOUSE_TYPE + 0xBC, 0)
     write_nodes(emu, nodes)
+    node_buildings = node_buildings or {}
+    node_buildings_hook(emu, place_node_buildings(emu, nodes, node_buildings))
 
     def find_node(e):
         wanted = e.read_i32(e.uc.reg_read(UC_X86_REG_ESP) + 4)
@@ -384,7 +442,7 @@ def chooser_row(label, nodes, *, choice=-1, yards=1, naval_allowed=True, difficu
         return stub
 
     emu.hook(0x42EB20, find_node, 4)
-    emu.hook(0x50C340, record('walls', 1), 4)
+    emu.mark(0x50C340, ['walls'])
     emu.hook(0x506EF0, record('choose_next_production', 1), 8)
     emu.hook(0x5082C0, record('perimeter', 0), 0)
     emu.draws([draw])
@@ -394,6 +452,7 @@ def chooser_row(label, nodes, *, choice=-1, yards=1, naval_allowed=True, difficu
                 threshold=THRESHOLDS[difficulty], output=output, drain=drain, side=side,
                 blackout=blackout, drained_source=drained_source,
                 advanced_prereqs=list(advanced_prereqs), buildings=buildings, draw=draw,
+                node_buildings=[[node, x, y] for node, (x, y) in sorted(node_buildings.items())],
                 result=result, choice_after=emu.read_i32(HOUSE + 0x564C),
                 nodes_after=read_nodes(emu), events=emu.events)
 
@@ -437,6 +496,162 @@ def chooser():
     rows.append(chooser_row('blackout', drainer, output=100, drain=60, blackout=5))
     rows.append(chooser_row('drained source', drainer, output=100, drain=60,
                             drained_source=True))
+    guarded = (CHOOSER_GUARDED, 10, 12, 1)
+    for draw in (0, THRESHOLDS[1] - 1, THRESHOLDS[1], 99):
+        rows.append(chooser_row('walls around a guarded building',
+                                [guarded, (-1, 0, 0), (t['PLAIN'], 0, 0)],
+                                node_buildings={0: at(10, 12)}, draw=draw))
+    for difficulty in (0, 2):
+        for draw in (THRESHOLDS[difficulty] - 1, THRESHOLDS[difficulty]):
+            rows.append(chooser_row('walls at another difficulty',
+                                    [guarded, (-1, 0, 0)], node_buildings={0: at(10, 12)},
+                                    difficulty=difficulty, draw=draw))
+    # The wall node lies away from every building, so Find_Node's replan
+    # test (0x50CAD0, not modelled by the stub) would not take it either.
+    rows.append(chooser_row('walls, the guarded building already walled',
+                            [guarded, (CHOOSER_WALL, 20, 5, 1), (-1, 0, 0)],
+                            node_buildings={0: at(10, 12)}))
+    rows.append(chooser_row('walls, no building on the node', [guarded, (-1, 0, 0)]))
+    rows.append(chooser_row('walls for a wall tower node',
+                            [guarded, (t['WALLTOWER'], 0, 0), (-1, 0, 0), (t['PLAIN'], 0, 0)],
+                            node_buildings={0: at(10, 12)}))
+    return rows
+
+
+# ---------------------------------------------------------------- walls
+
+# The wall rows' BuildingTypes, by array index: name, AIBasePlanningSide
+# (+0x6D0), ProtectWithWall (+0x1765), foundation (+0xEF0), Bib (+0x1570).
+WALL_TYPES = ([('GAWALL', 0, False, 0, False), ('NAWALL', 1, False, 0, False),
+               ('YAWALL', 2, False, 0, False), ('ANYWALL', -1, False, 0, False),
+               ('PLAIN', -1, False, 3, False)]
+              + [(f'GUARD{foundation}', -1, True, foundation, foundation % 2 == 1)
+                 for foundation in range(22)])
+WALL_INDEX = {name: index for index, (name, *_rest) in enumerate(WALL_TYPES)}
+WALL_ORDER = ('GAWALL', 'NAWALL', 'YAWALL')
+FOUNDATION_WIDTHS = 0x8192B8
+FOUNDATION_HEIGHTS = 0x819310
+
+
+def wall_types():
+    """The rows' types with the native Width/Height tables' size of their
+    foundation."""
+    emu = Emu()
+    return [[name, side, protect, foundation, bib,
+             emu.read_i32(FOUNDATION_WIDTHS + 4 * foundation),
+             emu.read_i32(FOUNDATION_HEIGHTS + 4 * foundation)]
+            for name, side, protect, foundation, bib in WALL_TYPES]
+
+
+def walls_row(label, nodes, index, *, side=0, walls=WALL_ORDER, node_buildings=None,
+              capacity=NODE_CAPACITY):
+    emu = Emu()
+    type_items = LISTS
+    emu.write32(BUILDING_TYPES, type_items)
+    for type_index, (_name, plan_side, protect, foundation, bib) in enumerate(WALL_TYPES):
+        ty = TYPES + type_index * TYPE_SIZE
+        emu.write32(type_items + 4 * type_index, ty)
+        emu.write32(ty + 0xDF8, type_index)
+        emu.write32(ty + 0x6D0, plan_side)
+        emu.uc.mem_write(ty + 0x1765, bytes([int(protect)]))
+        emu.write32(ty + 0xEF0, foundation)
+        emu.uc.mem_write(ty + 0x1570, bytes([int(bib)]))
+    items = LISTS + 0x1400
+    emu.write32(RULES + 0xA54, items)
+    emu.write32(RULES + 0xA60, len(walls))
+    for slot, name in enumerate(walls):
+        emu.write32(items + 4 * slot, TYPES + WALL_INDEX[name] * TYPE_SIZE)
+    emu.write32(HOUSE + 0x34, HOUSE_TYPE)
+    emu.write32(HOUSE_TYPE + 0xBC, side)
+    nodes = [(WALL_INDEX[ty] if isinstance(ty, str) else ty, x, y) for ty, x, y in nodes]
+    write_nodes(emu, nodes, capacity)
+    node_buildings = node_buildings or {}
+    node_buildings_hook(emu, place_node_buildings(emu, nodes, node_buildings))
+    result = emu.invoke(0x50C340, ecx=HOUSE, args=[index]) & 0xFF
+    return dict(label=label, nodes=[list(node) for node in nodes], index=index, side=side,
+                walls=[WALL_INDEX[name] for name in walls],
+                node_buildings=[[node, x, y] for node, (x, y) in sorted(node_buildings.items())],
+                capacity=capacity, result=result, nodes_after=read_nodes(emu),
+                events=emu.events)
+
+
+def walls():
+    rows = [walls_row('no node before', [(-1, 0, 0)], 0),
+            walls_row('index 0 with a guarded node', [('GUARD3', 20, 20), (-1, 0, 0)], 0,
+                      node_buildings={0: at(20, 20)})]
+    for foundation in range(22):
+        rows.append(walls_row(f'foundation {foundation}',
+                              [(f'GUARD{foundation}', 20, 20), (-1, 0, 0)], 1,
+                              node_buildings={0: at(20, 20)}))
+    fillers = [('PLAIN', 2 + 3 * slot, 40) for slot in range(10)]
+    rows.append(walls_row('the vector grows',
+                          fillers + [('GUARD20', 20, 20), (-1, 0, 0), ('PLAIN', 1, 1)], 11,
+                          node_buildings={10: at(20, 20)}))
+    rows.append(walls_row('a full vector grows',
+                          fillers + [('GUARD3', 20, 20), (-1, 0, 0)], 11,
+                          node_buildings={10: at(20, 20)}, capacity=12))
+    rows.append(walls_row('not protected', [('PLAIN', 20, 20), (-1, 0, 0)], 1,
+                          node_buildings={0: at(20, 20)}))
+    rows.append(walls_row('no building on the node', [('GUARD3', 20, 20), (-1, 0, 0)], 1))
+    already = [('GUARD3', 20, 20), ('GAWALL', 19, 19), (-1, 0, 0)]
+    for side in (0, 1):
+        rows.append(walls_row(f'next node a wall, side {side}', already, 2, side=side,
+                              node_buildings={0: at(20, 20)}))
+    rows.append(walls_row('the nearest guarded node',
+                          [('GUARD3', 10, 10), ('PLAIN', 14, 14), ('GUARD5', 20, 20),
+                           (-1, 0, 0)], 3,
+                          node_buildings={0: at(10, 10), 1: at(14, 14), 2: at(20, 20)}))
+    rows.append(walls_row('the nearest already walled, an earlier one',
+                          [('GUARD3', 10, 10), ('PLAIN', 14, 14), ('GUARD5', 20, 20),
+                           ('GAWALL', 19, 19), (-1, 0, 0)], 4,
+                          node_buildings={0: at(10, 10), 1: at(14, 14), 2: at(20, 20)}))
+    rows.append(walls_row('nodes after the sentinel stay',
+                          [('GUARD3', 10, 10), (-1, 0, 0), ('PLAIN', 30, 30), (-2, 0, 0)], 1,
+                          node_buildings={0: at(10, 10)}))
+    for side in (0, 1, 2, 3, -1):
+        rows.append(walls_row(f'side {side}', [('GUARD3', 20, 20), (-1, 0, 0)], 1, side=side,
+                              node_buildings={0: at(20, 20)}))
+    no_wall = [('GUARD3', 20, 20), ('PLAIN', 22, 22), (-1, 0, 0)]
+    rows.append(walls_row('no wall for the side: the next node is -1',
+                          [('GUARD3', 20, 20), (-1, 0, 0)], 1, side=3,
+                          node_buildings={0: at(20, 20)}))
+    rows.append(walls_row('no wall for the side: -1 walls', no_wall, 2, side=3,
+                          node_buildings={0: at(20, 20)}))
+    rows.append(walls_row('no walls listed', no_wall, 2, walls=(),
+                          node_buildings={0: at(20, 20)}))
+    for order in (('ANYWALL', 'GAWALL'), ('GAWALL', 'ANYWALL'), ('YAWALL', 'NAWALL'),
+                  ('NAWALL', 'NAWALL', 'GAWALL')):
+        for side in (0, 1):
+            rows.append(walls_row(f'wall list {order}, side {side}',
+                                  [('GUARD3', 20, 20), (-1, 0, 0)], 1, side=side,
+                                  walls=order, node_buildings={0: at(20, 20)}))
+    for cell in ((0, 0), (0, 7), (7, 0), (1, 1)):
+        rows.append(walls_row(f'building at {cell}', [('GUARD4', *cell), (-1, 0, 0)], 1,
+                              node_buildings={0: at(*cell)}))
+    for offset in ((0, 0), (255, 255), (1, 254)):
+        rows.append(walls_row(f'Location offset {offset}', [('GUARD3', 20, 20), (-1, 0, 0)], 1,
+                              node_buildings={0: at(20, 20, *offset)}))
+    generator = random.Random(0x50C340)
+    names = [name for name, *_rest in WALL_TYPES]
+    for case in range(30):
+        count = generator.randrange(2, 12)
+        nodes = []
+        for _slot in range(count):
+            roll = generator.random()
+            if roll < 0.15:
+                nodes.append((generator.choice((-1, -2)), 0, 0))
+            else:
+                nodes.append((generator.choice(names), generator.randrange(2, 60),
+                              generator.randrange(2, 60)))
+        index = generator.randrange(0, count)
+        node_buildings = {slot: at(x, y, generator.randrange(256), generator.randrange(256))
+                          for slot, (ty, x, y) in enumerate(nodes)
+                          if isinstance(ty, str) and slot < index and generator.random() < 0.8}
+        walls_list = tuple(generator.sample(('GAWALL', 'NAWALL', 'YAWALL', 'ANYWALL'),
+                                            generator.randrange(0, 4)))
+        rows.append(walls_row(f'random {case}', nodes, index,
+                              side=generator.choice((0, 1, 2, 3)), walls=walls_list,
+                              node_buildings=node_buildings))
     return rows
 
 
@@ -807,6 +1022,7 @@ def site():
 
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'economy': economy(), 'chooser': chooser(),
+            'wall_types': wall_types(), 'walls': walls(),
             'placement_delay': placement_delay(), 'direction': direction(), 'key': key(),
             'sort': sort(), 'reserved_near': reserved_near(), 'site': site()}
 
@@ -814,18 +1030,21 @@ def generate():
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
         scope=('computer base building: EconomyStateMachine mode steps and draws, '
-               'AI_Choose_Building node handling and draws, Factory_AI retry wait, the '
+               'AI_Choose_Building node handling and draws with the walls, AI_BuildWalls, '
+               'Factory_AI retry wait, the '
                'ordinary site key, qsort order, away direction, reserved-near bounds and '
                'whole FindBaseBuildingSite searches on synthetic 64x64 maps'),
         assumptions=['fresh emulator per case; fixture House/Rules/Type layouts from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop), the process word ftol callers assume',
                      'skirmish unless a row says game_mode 0'],
         substitutions=['money interface vt+0x18, GetItemCount 0x49FAE0 and RandomRanged 0x65C7E0 answer from the row',
-                       'Find_Node 0x42EB20 answers the first unfilled node (no building stands on any node)',
-                       'walls 0x50C340 and ChooseNextProduction 0x506EF0 fail; the perimeter scan 0x5082C0 does nothing',
+                       'Find_Node 0x42EB20 answers the first unfilled node',
+                       'Get_Node_Building 0x42E820 answers the building object a row places for a node index',
+                       'ChooseNextProduction 0x506EF0 fails; the perimeter scan 0x5082C0 does nothing',
                        'operator new/delete and atexit are fixture stubs',
                        'MapClass::operator[] 0x5657A0 answers synthetic cells; CheckOccupancy 0x586780 and CanPlaceAt vt+0xA8 answer a blocked-cell/unplaceable-site model'],
         entry_points={'EconomyStateMachine': 0x509700, 'AI_Choose_Building': 0x4FE3E0,
+                      'AI_BuildWalls': 0x50C340,
                       'Factory_AI_retry_wait': 0x4501CB, 'ordinary_key': 0x505F80,
                       'qsort': 0x7C8B48, 'site_comparator': 0x5108F0,
                       'away_direction': 0x5065E6, 'reserved_near': 0x50B760,

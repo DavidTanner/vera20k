@@ -134,9 +134,7 @@
 //! ## Dependency rules
 //! - Part of sim/; sim/ never depends on render/, ui/, sidebar/, audio/, net/.
 
-use super::target_scan::{
-    can_fire_at, fire_error_with_overlay, select_weapon, weapon_at_index_for,
-};
+use super::target_scan::{can_fire_at, fire_error_with_overlay, select_weapon, weapon_at_index};
 use super::{ObjectAiCtx, mission_handlers_run};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
@@ -165,6 +163,36 @@ const ACTIVE_ANIM_SLOT: u8 = 3;
 const SPECIAL_ANIM_SLOT: u8 = 10;
 
 /// One of Update's two ready checks (module doc).
+/// `BuildingClass::UpdateAnimation` (`0x004509D0`, called unconditionally at
+/// `0x0043FE22`) for a building idle in BState 1, whose control (`{0, 1, 0}`)
+/// has rate 0 and never steps: without a turret (HasTurret `0x004527D0`:
+/// `Turret=`, Type `+0xCA1`, or a turreted upgrade, which retail never has)
+/// the no-step frame sets `+0x6DD` whatever the mission (`0x0045114F` ->
+/// `0x00451175` -> `0x00451205` -> `0x00451218`). A turreted building sets it
+/// only under Construction or Selling, and a build-up's or sale's frames
+/// belong to `sim::building_construction`. The animation's other effects
+/// (anim stages, damage-state art) have their own owners.
+pub(super) fn idle_animation_ready_latch(sim: &mut Simulation, id: u64, rules: Option<&RuleSet>) {
+    let Some(rules) = rules else {
+        return;
+    };
+    let Some(entity) = sim.substrate.entities.get(id) else {
+        return;
+    };
+    if entity.mission_leaf.as_building().is_none()
+        || entity.building_up.is_some()
+        || entity.building_down.is_some()
+        || sim
+            .object_type(entity.type_ref(), rules)
+            .is_none_or(|object| object.has_turret)
+    {
+        return;
+    }
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.mission_leaf.set_building_ready_latch(1);
+    }
+}
+
 pub(super) fn ready_commence(sim: &mut Simulation, id: u64) {
     if sim
         .substrate
@@ -211,12 +239,15 @@ pub(super) fn dispatch(
             mission_guard(sim, id, rules)
         }
         Some(MissionType::Attack) => mission_attack(sim, id, rules, ctx),
-        // BuildingClass's own Unload (`0x0044D880`), Construction
-        // (`0x00449A50`), Repair (`0x0044B780`), Missile (`0x0044C980`) and
-        // Open (`0x0044E440`) keep their existing owners.
+        Some(MissionType::Unload) => match mission_unload(sim, id, rules, ctx) {
+            Some(delay) => delay,
+            None => return,
+        },
+        // BuildingClass's own Construction (`0x00449A50`), Repair
+        // (`0x0044B780`), Missile (`0x0044C980`) and Open (`0x0044E440`) keep
+        // their existing owners.
         Some(
-            MissionType::Unload
-            | MissionType::Construction
+            MissionType::Construction
             | MissionType::Repair
             | MissionType::Missile
             | MissionType::Open,
@@ -228,6 +259,48 @@ pub(super) fn dispatch(
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission.write_dispatch_epilogue(now as i32, delay);
     }
+}
+
+/// `BuildingClass::Mission_Unload` (`0x0044D880`). A building with
+/// occupants (`vt+0x408`) first hands every one to `SellBuilding(0, 0)`
+/// (`0x0044D89C`). An absorber holding passengers (`InfantryAbsorb=` /
+/// `UnitAbsorb=`, Type `+0x16AE`/`+0x16AF`, Passengers `+0x114`) and a
+/// `WeaponsFactory=` (`+0x16BD`) then take their own arms, which keep their
+/// existing owners (None). Every other building queues Guard
+/// (`vt+0x1E8(5, 0)` at `0x0044E379`) and returns 1.
+///
+/// Residual: a gap generator (`+0xCD1` and `+0xCD3`) first re-toggles its
+/// gap (`0x0044E2BE..0x0044E365`: vt+0x418, `+0x26C`, vt+0x350), not ported;
+/// its Guard tail is. No retail gap generator takes an Unload order (the app
+/// offers Unload only to `CanBeOccupied=` types).
+fn mission_unload(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    ctx: ObjectAiCtx<'_>,
+) -> Option<i32> {
+    crate::sim::production::sell_building_occupants(sim, rules, ctx.overlay_registry, id);
+    let entity = sim.substrate.entities.get(id)?;
+    let object = sim.object_type(entity.type_ref(), rules)?;
+    let holds_passengers = entity
+        .passenger_role
+        .cargo()
+        .is_some_and(|cargo| !cargo.is_empty());
+    if ((object.infantry_absorb || object.unit_absorb) && holds_passengers)
+        || object.weapons_factory
+    {
+        return None;
+    }
+    let now = sim.session.binary_frame;
+    let readiness = LiveReadyInputProvider { rules };
+    let _ = sim.mission_queue_exact(
+        id,
+        MissionId::from_known(MissionType::Guard),
+        0,
+        now,
+        &readiness,
+    );
+    Some(1)
 }
 
 /// `Queue_Mission(mission, false)` then Commence, as both handlers switch
@@ -242,8 +315,8 @@ fn queue_and_commence(sim: &mut Simulation, id: u64, mission: MissionType, rules
 /// `ftol(rate x 900) + RandomRanged(0, 2)` on the Scenario stream, the rate
 /// being the MissionControl entry of the building's current mission
 /// (`0x005B3A00`).
-fn rate_delay(sim: &mut Simulation, frames: u32, multiplier: i32) -> i32 {
-    let base = frames.min(i32::MAX as u32) as i32;
+fn rate_delay(sim: &mut Simulation, frames: i32, multiplier: i32) -> i32 {
+    let base = frames;
     let jitter = sim.scenario_rng.next_range_u32_inclusive(0, 2) as i32;
     base.wrapping_mul(multiplier).wrapping_add(jitter)
 }
@@ -804,13 +877,8 @@ fn support_multiplier(modifier: i32, count: i32) -> i32 {
 /// whose projectile is not `AA=` (BulletType `+0x2A4`). BuildingClass::SetTarget
 /// admits every target when it has not (`0x00443BC0..0x00443BED`), and
 /// ReceiveDamage's retaliation block stops (`0x004429B4..0x004429E5`).
-pub(super) fn building_weapon0_aims(
-    sim: &Simulation,
-    rules: &RuleSet,
-    id: u64,
-    target: TargetKind,
-) -> bool {
-    weapon_at_index_for(sim, rules, id, Some(target), 0).is_some_and(|weapon| {
+pub(super) fn building_weapon0_aims(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
+    weapon_at_index(sim, rules, id, 0).is_some_and(|weapon| {
         !weapon
             .projectile
             .as_deref()
@@ -833,56 +901,37 @@ fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: Ta
     let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
         return false;
     };
-    let (Some(barrel), true) = (
-        entity.barrel_facing,
-        obj.has_turret && obj.turret_anim_is_voxel,
-    ) else {
+    if !(obj.has_turret && obj.turret_anim_is_voxel) {
         return false;
-    };
+    }
     let Some(direction) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return false;
     };
-    let delta = i32::from(barrel.current(now).wrapping_sub(direction) as i16);
+    let delta = i32::from(entity.body_facing_current(now).wrapping_sub(direction) as i16);
     let rot_step = i32::from(((obj.turret_rot as u8 as u16) << 8) as i16).abs();
     if obj.turret_rot != 0 && delta.abs() > rot_step {
         return false;
     }
-    if let Some(barrel) = sim
-        .substrate
-        .entities
-        .get_mut(id)
-        .and_then(|entity| entity.barrel_facing.as_mut())
-    {
-        barrel.snap(direction, now);
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.body_facing.snap(direction, now);
     }
     true
 }
 
 /// `+0x388.Set_Desired(vt+0x4E8(Target))` (`0x0044B16F`, `0x0044B1A8`,
-/// `0x0044B1FF`; [`fire_coord::building_direction_to`]), at the type's `ROT=`:
-/// the turret of a `Turret=yes` type, the body of any other.
+/// `0x0044B1FF`; [`fire_coord::building_direction_to`]), at the `ROT=` rate
+/// `BuildingClass::Init` gave it: the turret of a `Turret=yes` type, the body
+/// of any other.
 fn aim_turret(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind) {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
-    let Some(rot) = rules
-        .object(sim.interner.resolve(entity.type_ref()))
-        .map(|obj| obj.turret_rot)
-    else {
-        return;
-    };
     let Some(desired) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return;
     };
-    if let Some(barrel) = sim
-        .substrate
-        .entities
-        .get_mut(id)
-        .and_then(|entity| entity.barrel_facing.as_mut())
-    {
-        barrel.set_rot(rot);
-        barrel.set(desired, now);
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.body_facing.set(desired, now);
     }
 }
 
@@ -985,7 +1034,7 @@ impl Simulation {
         let Some(target) = requested else {
             return true;
         };
-        if !building_weapon0_aims(self, rules, id, target) {
+        if !building_weapon0_aims(self, rules, id) {
             return true;
         }
         let weapon = select_weapon(self, rules, id, Some(target));

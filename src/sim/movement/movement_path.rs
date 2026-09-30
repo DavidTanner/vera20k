@@ -22,8 +22,6 @@ use crate::sim::pathfinding::zone_search;
 use crate::sim::pathfinding::{
     MAX_PATH_SEGMENT_STEPS, PathGrid, SearchMarkerOverlay, truncate_layered_path,
 };
-use crate::sim::rng::SimRng;
-use crate::util::fixed_math::facing_from_delta_int as facing_from_delta;
 
 use super::{MovementConfig, MoverPathFacts, PathfindingContext};
 
@@ -40,19 +38,6 @@ pub(crate) fn path_search_used_zone_grid_marker() -> bool {
 #[cfg(test)]
 thread_local! {
     static PATH_SEARCH_USED_ZONE_GRID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-pub(super) fn merge_path_blocks(
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    _resolved_terrain: Option<&ResolvedTerrainGrid>,
-    _movement_zone: Option<MovementZone>,
-    _too_big_to_fit_under_bridge: bool,
-) -> BTreeSet<(u16, u16)> {
-    // gamemd does not gate movement on TooBigToFitUnderBridge — the flag at
-    // TechnoTypeClass+0xE16 is read only in the draw pipeline (sprite Z fudge
-    // for units on bridge edge cells). UnitClass::Can_Enter_Cell never touches
-    // it. See TOO_BIG_TO_FIT_UNDER_BRIDGE_GHIDRA_REPORT.md.
-    entity_blocks.cloned().unwrap_or_default()
 }
 
 /// Ring radius the blocked-goal fallback searches for a reachable substitute.
@@ -80,8 +65,8 @@ const NEAREST_REACHABLE_SEARCH_RADIUS: u16 = 10;
 /// Stock YR gives the Hover CLSID to `[LCRF]`, `[ROBO]`, `[SAPC]` and `[YHVR]`
 /// — the Robot Tank and all three amphibious transports. (`ROBO` also carries
 /// `TooBigToFitUnderBridge=true`, but that flag gates nothing in movement:
-/// `merge_path_blocks` above records it as draw-pipeline-only, its parameter is
-/// unused, and `Can_Enter_Cell` never reads it. It is not why a Robot Tank
+/// it is draw-pipeline-only (see `ObjectType::too_big_to_fit_under_bridge`)
+/// and `Can_Enter_Cell` never reads it. It is not why a Robot Tank
 /// could not use a span, and it did not stop one driving under one either.)
 ///
 /// **What the one native gate on this path actually does.** VERIFIED 2026-08-27
@@ -134,13 +119,10 @@ const NEAREST_REACHABLE_SEARCH_RADIUS: u16 = 10;
 /// that the downstream legality path is locomotor-agnostic, not re-read at this
 /// callsite, and not the gate. Do not cite them as if they resolved `+0x2CC`.
 ///
-/// The remaining `Drive | Walk | Mech | Hover` list stays VERA-internal. Of
-/// `LocomotorKind`'s twelve variants the other eight — Ship, Fly, Teleport,
-/// Jumpjet, Rocket, Tunnel, DropPod and Parachute — are excluded because
+/// The remaining `Drive | Walk | Hover` list stays VERA-internal. The other
+/// five kinds — Ship, Fly, Teleport, Jumpjet and Rocket — are excluded because
 /// admitting them is a separate question with its own blast radius, not because
-/// the gate above excludes them; it excludes nothing by kind. `Mech` is a dead
-/// arm: its CLSID is deliberately absent from `INSTALLED_CLSID_KIND_TABLE`
-/// (`locomotor_type.rs`), so no stock type reaches it.
+/// the gate above excludes them; it excludes nothing by kind.
 pub(super) fn supports_layered_bridge_pathing(
     loco: &LocomotorState,
     grid: &PathGrid,
@@ -151,7 +133,7 @@ pub(super) fn supports_layered_bridge_pathing(
     }
     matches!(
         loco.kind,
-        LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Mech | LocomotorKind::Hover
+        LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Hover
     ) || on_bridge
 }
 
@@ -327,8 +309,8 @@ pub(super) fn resolve_reachable_move_goal(
     let Some(zone_map) = zone_grid.map_for(zone_mz) else {
         return Some(goal);
     };
-    let required_zone = zone_map.zone_at(start.0, start.1, start_layer);
-    if required_zone == ZONE_INVALID {
+    let reduced_zone = zone_map.zone_at(start.0, start.1, start_layer);
+    if reduced_zone == ZONE_INVALID {
         // The mover itself has no zone — a unit standing on a footprint cell, a
         // factory exit or an unmapped bridge cell. There is no zone to require,
         // so the order passes through unchanged rather than being refused.
@@ -347,7 +329,17 @@ pub(super) fn resolve_reachable_move_goal(
         raw_occupation: None,
         passability: PassabilityArgs {
             speed_type,
-            required_zone_id: Some(required_zone),
+            // The candidates' zones come from GetZoneID (`0x0056D230`) when
+            // terrain is present (cell_rect), so the required zone must too.
+            required_zone_id: match resolved_terrain {
+                Some(terrain) => zone_grid.get_zone_id_native(
+                    terrain,
+                    start,
+                    zone_mz,
+                    start_layer == MovementLayer::Bridge,
+                ),
+                None => Some(u32::from(reduced_zone)),
+            },
             movement_zone: zone_mz,
             bridge_aware_zone: goal_layer == MovementLayer::Bridge,
         },
@@ -382,7 +374,6 @@ pub(super) fn find_move_path(
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     facts: MoverPathFacts,
     allow_zone_hierarchy: bool,
@@ -399,7 +390,6 @@ pub(super) fn find_move_path(
         bridge_blocks,
         zone_mz,
         movement_zone,
-        too_big_to_fit_under_bridge,
         entity_block_map,
         None,
         facts,
@@ -420,7 +410,6 @@ pub(super) fn find_move_path_with_marker(
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverPathFacts,
@@ -438,7 +427,6 @@ pub(super) fn find_move_path_with_marker(
         bridge_blocks,
         zone_mz,
         movement_zone,
-        too_big_to_fit_under_bridge,
         entity_block_map,
         marker_overlay,
         facts,
@@ -470,7 +458,6 @@ pub(super) fn find_move_path_with_marker_detailed(
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverPathFacts,
@@ -484,12 +471,7 @@ pub(super) fn find_move_path_with_marker_detailed(
         PATH_SEARCH_USED_ZONE_GRID.with(|used| used.set(true));
     }
     let resolved_terrain = ctx.resolved_terrain;
-    let merged_entity_blocks = merge_path_blocks(
-        entity_blocks,
-        resolved_terrain,
-        movement_zone,
-        too_big_to_fit_under_bridge,
-    );
+    let merged_entity_blocks = entity_blocks.cloned().unwrap_or_default();
     let entity_blocks = (!merged_entity_blocks.is_empty()).then_some(&merged_entity_blocks);
     // Build the Foot `+0x1AC` cost-class producer here, at the search boundary:
     // the tables are per pass and on `ctx`, the rest is per mover and on
@@ -734,16 +716,13 @@ fn build_flat_fallback_layers(
 pub(super) fn try_repath_after_block(
     target: &mut MovementTarget,
     path_runtime: &mut crate::sim::components::FootPathRuntime,
-    facing: &mut u8,
     current: (u16, u16),
     current_layer: MovementLayer,
     layered_pathing: bool,
     ctx: PathfindingContext<'_>,
     terrain_costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    _rng: &mut SimRng,
     movement_zone: Option<MovementZone>,
-    too_big_to_fit_under_bridge: bool,
     mcfg: MovementConfig,
     entity_block_map: Option<&LayeredEntityBlockMap>,
     facts: MoverPathFacts,
@@ -761,12 +740,7 @@ pub(super) fn try_repath_after_block(
         return false;
     };
 
-    let combined_blocks: BTreeSet<(u16, u16)> = merge_path_blocks(
-        entity_blocks,
-        ctx.resolved_terrain,
-        movement_zone,
-        too_big_to_fit_under_bridge,
-    );
+    let combined_blocks: BTreeSet<(u16, u16)> = entity_blocks.cloned().unwrap_or_default();
     let Some(effective_goal) = resolve_requested_move_goal(
         grid,
         goal,
@@ -810,7 +784,6 @@ pub(super) fn try_repath_after_block(
         Some(&combined_blocks),
         zone_mz,
         movement_zone,
-        too_big_to_fit_under_bridge,
         entity_block_map,
         marker_overlay,
         MoverPathFacts {
@@ -852,7 +825,9 @@ pub(super) fn try_repath_after_block(
     target.move_dir_x = d_x;
     target.move_dir_y = d_y;
     target.move_dir_len = d_len;
-    *facing = facing_from_delta(dx, dy);
+    // No facing write: Drive's Process_Movement turns the body only through
+    // Do_Turn (locomotor `+0x4C` at `0x004B344C`) on a later fresh arm, never
+    // after FindPath; Walk snaps at its next head and Hover steers.
     true
 }
 
@@ -863,64 +838,12 @@ mod tests {
         ResolvedTerrainCell, ResolvedTerrainGrid, YR_CELL_LAND_TUNNEL,
     };
     use crate::map::tube_facts::{TubeFact, TubeId};
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::pathfinding::passability::LandType;
     use crate::sim::pathfinding::zone_map::ZoneGrid;
 
     fn make_resolved_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -949,7 +872,6 @@ mod tests {
                 None,
                 MovementZone::Normal,
                 Some(MovementZone::Normal),
-                false,
                 None,
                 None,
                 super::MoverPathFacts::without_wall_arm(0, false, true),
@@ -1050,7 +972,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             super::MoverPathFacts::without_wall_arm(0, false, false),
             true,
@@ -1088,7 +1009,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             Some(&marker_overlay),
             super::MoverPathFacts::without_wall_arm(0, false, false),
@@ -1150,13 +1070,10 @@ mod tests {
         let mut path_runtime = crate::sim::components::FootPathRuntime::default();
         path_runtime.path_blocked = true;
         path_runtime.start_blocked(0, 1);
-        let mut facing = 0;
-        let mut rng = SimRng::new(0);
 
         assert!(try_repath_after_block(
             &mut target,
             &mut path_runtime,
-            &mut facing,
             (6, 6),
             MovementLayer::Ground,
             false,
@@ -1170,9 +1087,7 @@ mod tests {
             },
             None,
             None,
-            &mut rng,
             Some(MovementZone::Normal),
-            false,
             MovementConfig {
                 binary_frame: 0,
                 close_enough: crate::util::fixed_math::SIM_ZERO,
@@ -1204,13 +1119,10 @@ mod tests {
             ..MovementTarget::default()
         };
         let mut path_runtime = crate::sim::components::FootPathRuntime::default();
-        let mut facing = 0;
-        let mut rng = crate::sim::rng::SimRng::new(0);
 
         assert!(try_repath_after_block(
             &mut target,
             &mut path_runtime,
-            &mut facing,
             (0, 1),
             MovementLayer::Ground,
             false,
@@ -1224,9 +1136,7 @@ mod tests {
             },
             None,
             None,
-            &mut rng,
             Some(MovementZone::Normal),
-            false,
             MovementConfig {
                 binary_frame: 0,
                 close_enough: crate::util::fixed_math::SIM_ZERO,
@@ -1276,7 +1186,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             super::MoverPathFacts::without_wall_arm(0, false, false),
             true,
@@ -1303,7 +1212,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             super::MoverPathFacts::without_wall_arm(0, false, false),
             true,
@@ -1399,7 +1307,6 @@ mod tests {
                 None,
                 MovementZone::Normal,
                 Some(MovementZone::Normal),
-                false,
                 None,
                 facts,
                 true,
@@ -1534,7 +1441,6 @@ mod tests {
             None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            false,
             None,
             armed,
             true,

@@ -27,12 +27,7 @@ fn is_ore(id: u8) -> bool {
 
 fn load_raw_overlay_pack_from_map(map: &vera20k::map::map_file::MapFile) -> Vec<u8> {
     let section = map.ini.section("OverlayPack").expect("OverlayPack section");
-    let mut b64: String = String::new();
-    for key in section.keys() {
-        if let Some(val) = section.get(key) {
-            b64.push_str(val);
-        }
-    }
+    let b64 = section.read_packed_text();
     assert!(!b64.is_empty(), "no base64 data in OverlayPack");
     base64::base64_decode(&b64).expect("base64 decode")
 }

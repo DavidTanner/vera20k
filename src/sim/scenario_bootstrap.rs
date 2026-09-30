@@ -5,7 +5,7 @@
 //! into the live world. Final House projection, opening forces, shroud, AI
 //! credits, and alliances remain behind the same simulation authority boundary.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseRoster;
@@ -16,7 +16,6 @@ use crate::map::waypoints::Waypoint;
 use crate::rng_continuation::MapGenRngContinuation;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::ai::AiPlayerState;
 #[cfg(test)]
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::find_nearby_cell::{
@@ -89,6 +88,15 @@ impl NativeStartBounds {
             width: extent_x.saturating_sub(1),
             height: extent_y.saturating_sub(1),
         }
+    }
+
+    /// The inclusive test native walks make against `+0x124..+0x130`:
+    /// `left <= x <= left + width`, and the same for y. Both CABHUT tails
+    /// walk inside it (repair `0x005738B1`, death `0x005744F7..0x00574531`).
+    pub(crate) fn contains(self, at: (i16, i16)) -> bool {
+        let (left, top) = (i32::from(self.min_rx), i32::from(self.min_ry));
+        (left..=left + i32::from(self.width)).contains(&i32::from(at.0))
+            && (top..=top + i32::from(self.height)).contains(&i32::from(at.1))
     }
 
     fn max_rx(self) -> u16 {
@@ -335,6 +343,7 @@ pub(crate) enum StockOfflineStartCallbackFamily {
 #[derive(Debug)]
 pub(crate) struct PreFillScenarioPrefixPlan {
     projection: StockOfflinePrefixProjection,
+    #[cfg(test)]
     first_gathered_starts: Vec<Waypoint>,
     first_house_timers: Vec<u32>,
     second_house_timers: Vec<u32>,
@@ -573,9 +582,8 @@ pub(crate) fn prepare_stock_offline_scenario_prefix_plan(
         StockOfflineStartCallbackFamily::Cooperative => {
             let human_start_spots = map_data
                 .ini
-                .section("Header")
-                .and_then(|header| header.get_i32("NumCoopHumanStartSpots"))
-                .unwrap_or(0)
+                .section_or_empty("Header")
+                .read_int("NumCoopHumanStartSpots", 0)
                 .max(0) as usize;
             native_assign_cooperative_starts_from_preassignment(
                 session,
@@ -607,6 +615,7 @@ pub(crate) fn prepare_stock_offline_scenario_prefix_plan(
             final_gathered_starts,
             assignment,
         },
+        #[cfg(test)]
         first_gathered_starts,
         first_house_timers,
         second_house_timers,
@@ -1089,7 +1098,6 @@ pub(crate) fn initialize_skirmish_launch_houses(
     assert!(
         sim.houses.is_empty()
             && sim.session.house_order.is_empty()
-            && sim.ai_players.is_empty()
             && sim.entities().is_empty()
             && sim.production.terrain_objects.is_empty(),
         "skirmish houses must be initialized before map objects"
@@ -1130,7 +1138,6 @@ pub(crate) fn apply_explicit_skirmish_launch_session(
     map_data: &MapFile,
     house_roster: &HouseRoster,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     descriptor: &MatchLaunchDescriptor,
 ) -> SkirmishLaunchApplyResult {
@@ -1139,7 +1146,6 @@ pub(crate) fn apply_explicit_skirmish_launch_session(
         map_data,
         house_roster,
         rules,
-        height_map,
         resolved_terrain,
         descriptor,
         None,
@@ -1156,7 +1162,6 @@ pub(crate) fn apply_pre_fill_scenario_prefix_launch_session(
     map_data: &MapFile,
     house_roster: &HouseRoster,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     descriptor: &MatchLaunchDescriptor,
     plan: &StockOfflinePrefixProjection,
@@ -1166,7 +1171,6 @@ pub(crate) fn apply_pre_fill_scenario_prefix_launch_session(
         map_data,
         house_roster,
         rules,
-        height_map,
         resolved_terrain,
         descriptor,
         None,
@@ -1180,7 +1184,6 @@ pub(crate) fn apply_pre_fill_scenario_prefix_launch_session_with_overlay_registr
     map_data: &MapFile,
     house_roster: &HouseRoster,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     descriptor: &MatchLaunchDescriptor,
     overlay_registry: &OverlayTypeRegistry,
@@ -1191,7 +1194,6 @@ pub(crate) fn apply_pre_fill_scenario_prefix_launch_session_with_overlay_registr
         map_data,
         house_roster,
         rules,
-        height_map,
         resolved_terrain,
         descriptor,
         Some(overlay_registry),
@@ -1210,7 +1212,6 @@ fn apply_resolved_skirmish_launch_session(
     map_data: &MapFile,
     house_roster: &HouseRoster,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     descriptor: &MatchLaunchDescriptor,
     overlay_registry: Option<&OverlayTypeRegistry>,
@@ -1289,9 +1290,8 @@ fn apply_resolved_skirmish_launch_session(
             let assignment = if cooperative {
                 let human_start_spots = map_data
                     .ini
-                    .section("Header")
-                    .and_then(|header| header.get_i32("NumCoopHumanStartSpots"))
-                    .unwrap_or(0)
+                    .section_or_empty("Header")
+                    .read_int("NumCoopHumanStartSpots", 0)
                     .max(0) as usize;
                 sim.assign_native_cooperative_starts(session, &starts, human_start_spots)
             } else {
@@ -1319,7 +1319,6 @@ fn apply_resolved_skirmish_launch_session(
                 waypoint.ry,
                 bounds,
                 rules,
-                height_map,
                 resolved_terrain,
                 overlay_registry,
             )
@@ -1354,7 +1353,6 @@ fn apply_resolved_skirmish_launch_session(
         sim,
         &slots,
         rules,
-        height_map,
         resolved_terrain,
         bounds,
         session.options.unit_count,
@@ -1446,7 +1444,7 @@ fn assign_launch_base_centers(
             &slot.owner_name,
             &sim.interner,
         ) {
-            house.base_center = Some((waypoint.rx, waypoint.ry));
+            house.set_base_center((waypoint.rx, waypoint.ry));
             if let Some(waypoint_edge) = waypoint_edge {
                 house.waypoint_edge = waypoint_edge;
             }
@@ -1575,10 +1573,11 @@ pub(crate) fn populate_launch_houses(
         // passed and keep the constructor's values.
         house.set_difficulty(
             slot.difficulty,
-            &rules.general.difficulty_rof,
-            &rules.general.difficulty_repair_delay,
+            &rules.general,
             rules.country_rof(country_name),
             sim.session.game_mode_nonzero,
+            sim.session.house_order.len() as i32,
+            sim.session.binary_frame as i32,
         );
         // ScenarioClass::Create_Houses leaves generated human CurrentIQ at
         // the constructor value zero and stamps generated computer slots with
@@ -1591,10 +1590,6 @@ pub(crate) fn populate_launch_houses(
         house.project_country_cost_mults(rules, &sim.interner);
         sim.houses.insert(name_id, house);
         sim.session.house_order.push(name_id);
-        if !slot.is_human {
-            sim.ai_players.push(AiPlayerState::new(name_id));
-            log::info!("AI player registered: {}", slot.owner_name);
-        }
     }
 }
 
@@ -1641,10 +1636,7 @@ pub(crate) fn native_ai_opening_grant(coefficient: i32, money: i32) -> i32 {
 /// (pure integer arithmetic on the native side: `CDQ/SAR/IDIV` budget thirds
 /// and integer cost subtraction, no x87 involvement).
 pub(crate) fn apply_skirmish_ai_opening_credits(sim: &mut Simulation, rules: &RuleSet) {
-    for ai in &sim.ai_players {
-        let Some(house) = sim.houses.get_mut(&ai.owner) else {
-            continue;
-        };
+    for house in sim.houses.values_mut() {
         if house.is_human || house.multiplay_passive {
             continue;
         }
@@ -1732,7 +1724,6 @@ fn place_starting_mcv(
     base_ry: u16,
     bounds: NativeStartBounds,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> Option<u64> {
@@ -1746,7 +1737,6 @@ fn place_starting_mcv(
         1,
         bounds,
         rules,
-        height_map,
         resolved_terrain,
         overlay_registry,
     )
@@ -1762,12 +1752,13 @@ fn place_starting_object_near_base(
     start_radius: i32,
     bounds: NativeStartBounds,
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> Option<u64> {
     let category = rules.object(type_id)?.category;
-    let initial_z = height_map.get(&(base_rx, base_ry)).copied().unwrap_or(0);
+    let initial_z = resolved_terrain
+        .cell(base_rx, base_ry)
+        .map_or(0, |cell| cell.level);
     // Active retail constructs one Techno before exact/fallback Unlimbo. The
     // one constructor draw therefore precedes every placement-search draw and
     // remains spent even when every attempt fails.
@@ -1822,7 +1813,7 @@ fn place_starting_object_near_base(
                 {
                     continue;
                 }
-                let z = height_map.get(&(rx, ry)).copied().unwrap_or(0);
+                let z = resolved_terrain.cell(rx, ry).map_or(0, |cell| cell.level);
                 if sim
                     .reveal_constructed_object_at_height_with_unit_context(
                         stable_id,
@@ -1867,7 +1858,6 @@ pub(crate) fn seed_starting_extra_units(
     sim: &mut Simulation,
     slots: &[NormalizedSkirmishSlot],
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     bounds: NativeStartBounds,
     unit_count: i32,
@@ -1877,7 +1867,6 @@ pub(crate) fn seed_starting_extra_units(
         sim,
         slots,
         rules,
-        height_map,
         resolved_terrain,
         bounds,
         unit_count,
@@ -1891,7 +1880,6 @@ fn seed_starting_extra_units_with_overlay_registry(
     sim: &mut Simulation,
     slots: &[NormalizedSkirmishSlot],
     rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
     resolved_terrain: &ResolvedTerrainGrid,
     bounds: NativeStartBounds,
     unit_count: i32,
@@ -1961,7 +1949,6 @@ fn seed_starting_extra_units_with_overlay_registry(
                 STARTING_EXTRA_UNIT_FALLBACK_START_RADIUS,
                 bounds,
                 rules,
-                height_map,
                 resolved_terrain,
                 overlay_registry,
             ) else {
@@ -2566,7 +2553,7 @@ pub(crate) fn initialize_map_roster_houses(
         // MaxIQLevels to literal one before storing it as both the authored
         // IQ (+0x1D0) and CurrentIQ (+0x24C) (0x00500DBA..0x00500DC0).
         house_state.current_iq = rules.map_or_else(
-            || house.iq.unwrap_or(0),
+            || house.iq,
             |rules| house.scenario_current_iq(rules.general.max_iq_levels),
         );
         house_state.authored_iq = house_state.current_iq;
@@ -2655,10 +2642,8 @@ mod tests {
             "negative chops toward zero"
         );
     }
-    use crate::map::bridge_facts::BridgeCellFacts;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
+    use crate::map::resolved_terrain::ResolvedTerrainCell;
     use crate::rules::ini_parser::IniFile;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
 
     fn descriptor(seed: u32) -> ScenarioDescriptor {
         ScenarioDescriptor {
@@ -2714,7 +2699,6 @@ mod tests {
                 local_height: 40,
             },
             basic: Default::default(),
-            briefing: Default::default(),
             preview: Default::default(),
             cells: Vec::new(),
             iso_map_pack_lookups: Vec::new(),
@@ -2845,7 +2829,6 @@ mod tests {
                     &terrain,
                     "TEMPERATE",
                     Some(&rules),
-                    &BTreeMap::new(),
                     Some(&overlays),
                     Some(&overlay_grid),
                     crate::map::basic::BridgeDestroyabilityMode::SkirmishOrMultiplayer {
@@ -2887,7 +2870,6 @@ mod tests {
                     &map,
                     &roster,
                     &rules,
-                    &BTreeMap::new(),
                     &terrain,
                     &launch,
                     &overlays,
@@ -2994,76 +2976,11 @@ mod tests {
     }
 
     fn techno_constructor_flat_start_terrain(size: u16) -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            float: Some(100),
-            amphibious: Some(100),
-            float_beach: Some(100),
-            hover: Some(100),
-        };
-        let mut cells = Vec::with_capacity(usize::from(size) * usize::from(size));
-        for ry in 0..size {
-            for rx in 0..size {
-                cells.push(ResolvedTerrainCell {
-                    rx,
-                    ry,
-                    source_tile_index: 0,
-                    source_sub_tile: 0,
-                    final_tile_index: 0,
-                    final_sub_tile: 0,
-                    is_wood_bridge_repair_tile: false,
-                    level: 0,
-                    filled_clear: false,
-                    tileset_index: Some(0),
-                    land_type,
-                    yr_cell_land_type: land_type,
-                    slope_type: 0,
-                    template_height: 0,
-                    height_in_pixels: 0,
-                    render_offset_x: 0,
-                    render_offset_y: 0,
-                    terrain_class: TerrainClass::Clear,
-                    speed_costs,
-                    is_water: false,
-                    is_cliff_like: false,
-                    is_rough: false,
-                    is_road: false,
-                    accepts_smudge: true,
-                    allows_tiberium: true,
-                    variant: 0,
-                    has_ramp: false,
-                    canonical_ramp: None,
-                    ground_walk_blocked: false,
-                    terrain_object_blocks: false,
-                    terrain_object_occupation: None,
-                    overlay_blocks: false,
-                    overlay_zone_type: None,
-                    outside_playfield: false,
-                    zone_type: zone_class::GROUND,
-                    base_ground_walk_blocked: false,
-                    base_build_blocked: false,
-                    base_land_type: land_type,
-                    base_yr_cell_land_type: land_type,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: speed_costs,
-                    has_bridge_deck: false,
-                    bridge_walkable: false,
-                    bridge_transition: false,
-                    bridge_deck_level: 0,
-                    bridge_layer: None,
-                    bridge_facts: BridgeCellFacts::default(),
-                    tube_index: None,
-                    radar_left: [0; 3],
-                    radar_right: [0; 3],
-                    has_damaged_data: false,
-                    bridgehead_anchor_class_at_load: None,
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(size, size, cells)
+        crate::map::resolved_terrain::test_grid(size, size, |rx, ry| ResolvedTerrainCell {
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_tiberium_cell(rx, ry)
+        })
     }
 
     fn techno_constructor_start_sim(seed: u64, size: u16) -> Simulation {
@@ -3105,7 +3022,6 @@ mod tests {
             1,
             bounds,
             &rules,
-            &BTreeMap::new(),
             &terrain,
             None,
         )
@@ -3122,7 +3038,7 @@ mod tests {
         let mut fallback_expected = SimRng::new(seed);
         let blocker_word = (fallback_expected.next_u32() & 0xFFFF) as u16;
         let blocker = fallback
-            .spawn_object("MTNK", "Americans", 6, 5, 0, &rules, &BTreeMap::new())
+            .spawn_object("MTNK", "Americans", 6, 5, 0, &rules)
             .unwrap();
         assert_eq!(
             fallback
@@ -3145,7 +3061,6 @@ mod tests {
             1,
             bounds,
             &rules,
-            &BTreeMap::new(),
             &terrain,
             None,
         )
@@ -3201,7 +3116,6 @@ mod tests {
                 1,
                 bounds,
                 &rules,
-                &BTreeMap::new(),
                 &terrain,
                 None,
             )
@@ -3244,7 +3158,6 @@ mod tests {
             1,
             bounds,
             &rules,
-            &BTreeMap::new(),
             &terrain,
             None,
         )
@@ -3286,7 +3199,7 @@ mod tests {
         let mut expected = SimRng::new(seed);
         let blocker_word = (expected.next_u32() & 0xFFFF) as u16;
         let blocker = sim
-            .spawn_object("MTNK", "Americans", 6, 5, 0, &rules, &BTreeMap::new())
+            .spawn_object("MTNK", "Americans", 6, 5, 0, &rules)
             .expect("starting-cell blocker");
         assert_eq!(
             sim.substrate
@@ -3302,16 +3215,7 @@ mod tests {
         let _fallback_start_direction = expected.next_range_u32_inclusive(0, 7);
 
         assert_eq!(
-            seed_starting_extra_units(
-                &mut sim,
-                &slots,
-                &rules,
-                &BTreeMap::new(),
-                &terrain,
-                bounds,
-                1,
-                false,
-            ),
+            seed_starting_extra_units(&mut sim, &slots, &rules, &terrain, bounds, 1, false,),
             1
         );
         let entity = sim.substrate.entities.get(2).unwrap();
@@ -4302,7 +4206,6 @@ mod tests {
             sim.spawn_generated_from_map_with_resolved(
                 &map.entities,
                 &rules,
-                &BTreeMap::new(),
                 Some(&terrain),
                 &bindings,
             )
@@ -4331,7 +4234,6 @@ mod tests {
             &map,
             &house_roster,
             &rules,
-            &BTreeMap::new(),
             &terrain,
             &launch,
             &overlays,
@@ -4379,8 +4281,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: SIZE,
             map_height: SIZE,
-            basic: &map.basic,
-            special_flags: &map.special_flags,
             normal_lighting: crate::map::lighting::parse_lighting_profiles(&map.ini).normal,
             rules: &rules,
             overlay_registry: &overlays,

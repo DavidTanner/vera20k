@@ -120,14 +120,7 @@ fn advance_lethal_shot(sim: &mut Simulation, rules: &RuleSet, attacker: u64, vic
     ));
     for _ in 0..60 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(rules),
-            &BTreeMap::new(),
-            Some(&grid),
-            None,
-            100,
-        );
+        sim.advance_tick(&commands, Some(rules), Some(&grid), None, 100);
         if !sim.substrate.voxel_anims.is_empty() {
             return;
         }
@@ -172,7 +165,7 @@ fn ordinary_lethal_fire_commits_debris_animations_and_sparks_once() {
     assert_eq!(debris_fingerprint(&sim, ids[0]), 1748609705070689488);
     let next_id = sim.allocate_stable_id();
     assert_eq!(next_id, ids[2] + 1);
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 100);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     assert_eq!(delivered_ids(&sim), ids[..3]);
     assert_eq!(
         delivery_sounds(&sim),

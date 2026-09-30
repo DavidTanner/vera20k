@@ -11,7 +11,6 @@ use crate::sim::miner::{CargoBale, MinerState, ResourceType};
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::radio::{RadioMessage, RadioResponse, TransmitRecord};
 use crate::sim::world::SimSoundEvent;
-use std::collections::BTreeMap;
 
 const PAD: (u16, u16) = (9, 10);
 
@@ -37,14 +36,8 @@ fn step(s: &mut Scene) -> Vec<TransmitRecord> {
     crate::sim::radio::take_transmit_log();
     let overlay = crate::sim::tiberium::test_support::overlay_registry();
     let grid = s.sim.path_grid_snapshot();
-    s.sim.advance_tick(
-        &[],
-        Some(&s.rules),
-        &BTreeMap::new(),
-        grid.as_deref(),
-        Some(overlay),
-        67,
-    );
+    s.sim
+        .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(overlay), 67);
     crate::sim::radio::take_transmit_log()
 }
 
@@ -59,10 +52,7 @@ fn frame(s: &mut Scene) -> Sample {
         contact: miner.radio_contacts.slot(0),
         tethered: miner.dock_entered_with.is_some(),
         unloading: state.unload_active,
-        facing: miner
-            .body_facing
-            .as_ref()
-            .map_or(0, |f| f.current(s.sim.session.binary_frame)),
+        facing: miner.body_facing_current(s.sim.session.binary_frame),
         ore: state
             .cargo
             .iter()
@@ -200,15 +190,7 @@ fn one_dock(s: &mut Scene) {
 fn spawn_returning_cmin(s: &mut Scene, cell: (u16, u16)) -> u64 {
     let id = s
         .sim
-        .spawn_object(
-            "CMIN",
-            "Americans",
-            cell.0,
-            cell.1,
-            0,
-            &s.rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("CMIN", "Americans", cell.0, cell.1, 0, &s.rules)
         .expect("second miner");
     let now = s.sim.session.binary_frame;
     s.sim
@@ -395,8 +377,6 @@ fn a_chrono_miner_ordered_to_a_busy_refinery_warps_in_after_it_frees() {
             target_refinery_id: Some(s.refinery),
         },
         Some(&s.rules),
-        None,
-        &BTreeMap::new(),
     ));
     let paid_before = credits(&s);
     let mut second_docked = None;

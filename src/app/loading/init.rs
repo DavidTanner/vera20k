@@ -403,8 +403,7 @@ mod native_overlay_shp_tests {
 mod map_wall_owner_candidate_tests {
     use super::*;
     use crate::map::entities::EntityCategory;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::components::{BuildingUp, Health};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::overlay_grid::{MapWallOwnerCandidate, OverlayGrid};
@@ -412,70 +411,12 @@ mod map_wall_owner_candidate_tests {
     use crate::sim::radiation::RadDetonation;
     use crate::sim::runtime::map_wall_owner_candidate_from_building;
 
-    fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        let land = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile::default();
-        ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: true,
-            tileset_index: None,
-            land_type: land,
-            yr_cell_land_type: land,
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: true,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: land,
-            base_yr_cell_land_type: land,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
-
     fn flat_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
-        let cells = (0..height)
-            .flat_map(|ry| (0..width).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(
+            width,
+            height,
+            crate::map::resolved_terrain::test_loader_clear_cell,
+        )
     }
 
     fn building(
@@ -1229,7 +1170,7 @@ mod map_wall_owner_candidate_tests {
         lamp.lifecycle.object_alive = true;
         lamp.lifecycle.in_limbo = false;
         lamp.lifecycle.cell_marked = false;
-        lamp.building_up = Some(BuildingUp::completing_in_ticks(9, 0));
+        lamp.install_building_up(BuildingUp::completing_in_ticks(9, 0), 0);
         sim.entities_mut().insert(lamp);
         sim.add_entity_occupancy(41);
         sim.allocate_building_light(41, rules);
@@ -1251,7 +1192,7 @@ mod map_wall_owner_candidate_tests {
         );
         let low_detail = derive_lighting_view(&config, Some(&sim), Some(&rules), 1);
         assert!(low_detail.point_lights.is_empty());
-        assert_ne!(lit.fingerprint, low_detail.fingerprint);
+        assert_ne!(lit, low_detail);
 
         sim.power_states.insert(
             owner,
@@ -1266,14 +1207,14 @@ mod map_wall_owner_candidate_tests {
         // House508C30->454CE0 RET and Building4549B0 animation-only
         // effects do not call LightSource disable on ordinary power loss.
         assert_eq!(offline.point_lights, lit.point_lights);
-        assert_eq!(lit.fingerprint, offline.fingerprint);
+        assert_eq!(lit, offline);
 
         let power = sim.power_states.get_mut(&owner).expect("power state");
         power.total_output = 100;
         power.is_low_power = false;
         let restored = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(restored.point_lights.len(), 1);
-        assert_eq!(lit.fingerprint, restored.fingerprint);
+        assert_eq!(lit, restored);
 
         sim.set_building_light_active(41, false);
         let disabled = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
@@ -1318,7 +1259,7 @@ mod map_wall_owner_candidate_tests {
         sim.change_owner(41, captured_owner);
         let captured_offline = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(captured_offline.point_lights, before_capture.point_lights);
-        assert_eq!(before_capture.fingerprint, captured_offline.fingerprint);
+        assert_eq!(before_capture, captured_offline);
 
         let power = sim
             .power_states
@@ -1328,14 +1269,14 @@ mod map_wall_owner_candidate_tests {
         power.is_low_power = false;
         let captured_online = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(captured_online.point_lights.len(), 1);
-        assert_eq!(before_capture.fingerprint, captured_online.fingerprint);
+        assert_eq!(before_capture, captured_online);
 
         assert!(crate::sim::production::sell_building_now_for_test(
             &mut sim, &rules, 41
         ));
         let sold = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert!(sold.point_lights.is_empty());
-        assert_ne!(captured_online.fingerprint, sold.fingerprint);
+        assert_ne!(captured_online, sold);
     }
 
     #[test]
@@ -1391,7 +1332,7 @@ mod map_wall_owner_candidate_tests {
     }
 
     #[test]
-    fn gsi_04_20_same_cell_radiation_merge_changes_complete_light_fingerprint() {
+    fn gsi_04_20_same_cell_radiation_merge_changes_the_light_view() {
         let rules = lighting_rules();
         let mut sim = Simulation::with_seed(0x421);
         let detonation = RadDetonation {
@@ -1409,7 +1350,7 @@ mod map_wall_owner_candidate_tests {
             .apply_detonation(detonation, 0, &rules.radiation, None);
         let merged = derive_lighting_view(&LightingConfig::default(), Some(&sim), Some(&rules), 2);
         assert_eq!(merged.point_lights.len(), 1);
-        assert_ne!(first.fingerprint, merged.fingerprint);
+        assert_ne!(first, merged);
         assert_ne!(
             first.point_lights[0].intensity,
             merged.point_lights[0].intensity
@@ -1879,6 +1820,7 @@ impl MapLoadInitial {
             game_mode_nonzero: true,
             no_damage: false,
             free_radar: map_data.basic.free_radar.unwrap_or(false),
+            ignore_global_ai_triggers: map_data.basic.ignore_global_ai_triggers.unwrap_or(false),
             // Skirmish start forces `TiberiumGrows|TiberiumSpreads` (`OR 0xC0`
             // at `0x005E74CD`), copied into the scenario at `0x00687C23`.
             tiberium_grows_flag: true,
@@ -2037,7 +1979,6 @@ impl MapLoadInitial {
         );
         let house_roster =
             houses::parse_house_roster(&map_data.ini, &rules.color_schemes, Some(&rules));
-        let height_map = resolved_terrain.build_height_map();
         let bridge_destroyability_mode =
             crate::map::basic::BridgeDestroyabilityMode::SkirmishOrMultiplayer {
                 bridge_destruction: match_launch_descriptor
@@ -2056,7 +1997,6 @@ impl MapLoadInitial {
             &resolved_terrain,
             &map_data.header.theater,
             Some(&rules),
-            &height_map,
             Some(&overlay_registry),
             Some(&overlay_grid),
             bridge_destroyability_mode,
@@ -2135,7 +2075,6 @@ impl MapLoadInitial {
             &map_data,
             &house_roster,
             &rules,
-            &height_map,
             &resolved_terrain,
             &match_launch_descriptor,
             &overlay_registry,
@@ -2518,24 +2457,12 @@ pub(crate) fn load_map_from_initial(
         .into_parts();
     let bound_scenario_prefix =
         scenario_prefix_plan.bind_native_rules_receipt(native_rules_receipt);
-    let fixed_team_ai_ini =
-        crate::app::loading::init_helpers::load_retail_team_ai_source(&asset_manager)
-            .ok_or_else(|| anyhow::anyhow!("failed to load active YR aimd.ini"))?;
-    let team_ai_registry = crate::rules::team_ai_ini::TeamAiIniRegistry::from_sources(
-        &fixed_team_ai_ini,
+    let team_ai_registry = crate::rules::team_ai_ini::TeamAiIniRegistry::load_retail(
+        asset_manager,
         &map_data.ini,
         true,
-    );
-    if !team_ai_registry.fixed_source_is_complete() {
-        anyhow::bail!(
-            "active YR aimd.ini failed structural validation: fixed_counts={:?}, diagnostics={:?}",
-            team_ai_registry.fixed_counts,
-            team_ai_registry.diagnostics
-        );
-    }
-    for diagnostic in &team_ai_registry.diagnostics {
-        log::warn!("Team AI INI diagnostic: {diagnostic:?}");
-    }
+    )
+    .map_err(anyhow::Error::msg)?;
     let mut rules = loaded_rules;
     rules.install_art_data(ArtRegistry::from_ini(&fixed_art_ini));
     // Preserve the load phase: marking dimensions precede scheduler binding.
@@ -2592,6 +2519,7 @@ pub(crate) fn load_map_from_initial(
         // replace active SpecialFlags from session staging.
         no_damage: false,
         free_radar: map_data.basic.free_radar.unwrap_or(false),
+        ignore_global_ai_triggers: map_data.basic.ignore_global_ai_triggers.unwrap_or(false),
         // Skirmish start forces `TiberiumGrows|TiberiumSpreads` (`OR 0xC0`
         // at `0x005E74CD`), copied into the scenario at `0x00687C23`.
         tiberium_grows_flag: true,
@@ -2875,14 +2803,12 @@ pub(crate) fn load_map_from_initial(
                     cleared_terrain_overlay_cells.len(),
                 );
             }
-            let construction_height_map = resolved_terrain.build_height_map();
             crate::app::loading::init_helpers::populate_staged_app_scenario(
                 &mut staged_simulation,
                 &map_data,
                 resolved_terrain,
                 &map_data.header.theater,
                 Some(&rules),
-                &construction_height_map,
                 Some(&overlay_registry),
                 Some(&overlay_grid),
                 bridge_destroyability_mode,
@@ -2962,13 +2888,13 @@ pub(crate) fn load_map_from_initial(
     // with its existing eager grid unchanged.
     let height_map: BTreeMap<(u16, u16), u8> = resolved_terrain.build_height_map();
     let bridge_height_map: BTreeMap<(u16, u16), u8> = resolved_terrain.build_bridge_height_map();
-    let anchor_variant_table = theater_result
+    let bridge_middle_tiles = theater_result
         .as_ref()
-        .and_then(crate::map::theater::BridgeAnchorVariantTable::from_theater);
+        .and_then(crate::map::theater::BridgeMiddleTiles::from_theater);
     let grid: TerrainGrid = terrain::build_terrain_grid_from_resolved(
         &resolved_terrain,
         local_bounds,
-        anchor_variant_table,
+        bridge_middle_tiles,
     );
     progress.milestone(50);
     progress.milestone(55);
@@ -3056,18 +2982,10 @@ pub(crate) fn load_map_from_initial(
         // warhead handles combat compares during the bridge-damage path;
         // resolution must happen before any combat tick.
         sim.resolve_type_handles(ruleset);
-        let diagnostics = sim.install_team_ai_registry(&team_ai_registry, ruleset);
-        if diagnostics
-            .iter()
-            .any(crate::sim::team_script_vm::TeamAiInstallDiagnostic::is_fixed_source_refusal)
-        {
-            anyhow::bail!(
-                "active YR aimd.ini failed RuleSet resolution: diagnostics={diagnostics:?}"
-            );
-        }
-        for diagnostic in diagnostics {
-            log::warn!("Team AI install diagnostic: {diagnostic:?}");
-        }
+        sim.install_team_ai_registry(&team_ai_registry, ruleset)
+            .map_err(|refused| {
+                anyhow::anyhow!("active YR aimd.ini failed RuleSet resolution: {refused:?}")
+            })?;
     }
 
     let mut initial_local_owner: Option<String> = None;
@@ -3078,7 +2996,6 @@ pub(crate) fn load_map_from_initial(
             &map_data,
             &house_roster,
             ruleset,
-            &height_map,
             &resolved_terrain,
             &match_launch_descriptor,
             &overlay_registry,
@@ -3159,7 +3076,6 @@ pub(crate) fn load_map_from_initial(
                     ry,
                     64,
                     ruleset,
-                    &height_map,
                     &overlay_registry,
                 )
                 .is_some()

@@ -31,7 +31,7 @@ pub fn apply_client_theme(ctx: &egui::Context) -> ClientPalette {
 pub fn card_frame(fill: egui::Color32, stroke: egui::Color32) -> egui::Frame {
     egui::Frame::new()
         .fill(fill)
-        .stroke(egui::Stroke::new(1.0, stroke))
+        .stroke(egui::Stroke::new(1.0_f32, stroke))
         .corner_radius(6.0)
         .inner_margin(egui::Margin::same(18))
 }

@@ -23,7 +23,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::native_xyz_distance;
 use crate::sim::combat::TargetKind;
 use crate::sim::components::DriveCoord;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
@@ -37,7 +36,6 @@ impl Simulation {
         request: WalkAdmissionRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Option<FootPathRequest>, String> {
         let rules = rules.ok_or("Walk admission requires rules")?;
@@ -101,9 +99,7 @@ impl Simulation {
             rules,
             registry,
         )?;
-        self.finish_walk_admission_response(
-            request, candidate, code, held, rules, fallback, registry,
-        )
+        self.finish_walk_admission_response(request, candidate, code, held, rules, registry)
     }
 
     ///75B696: one response owner for the live classifier and the corpus's
@@ -116,7 +112,6 @@ impl Simulation {
         code: u8,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Option<FootPathRequest>, String> {
         let id = request.entity_id;
@@ -129,7 +124,7 @@ impl Simulation {
                 &self.substrate.occupancy,
                 &mut self.substrate.raw_cell_occupation,
                 self.resolved_terrain.as_ref(),
-                grid.as_deref().or(fallback),
+                grid.as_deref(),
                 Some(rules),
                 &self.interner,
                 &mut self.scenario_rng,
@@ -144,7 +139,7 @@ impl Simulation {
                 super::walk_head::finish_fresh_head(actor, self.session.binary_frame);
             } else {
                 //75BCC0..75BCD5: failed subcell selection only zeros speed.
-                actor.foot_speed.applied_fraction = SIM_ZERO;
+                actor.foot_speed.set_speed_fraction(SIM_ZERO);
                 actor.navigation.path_runtime.clear_scold_latch();
             }
             return Ok(None);
@@ -162,7 +157,7 @@ impl Simulation {
                 self.walk_retry_admission(request)
             }
             2 => {
-                self.walk_blocked_delay(request, held, rules, fallback, registry)?;
+                self.walk_blocked_delay(request, held, rules, registry)?;
                 Ok(None)
             }
             3 => {
@@ -201,7 +196,7 @@ impl Simulation {
                     .as_ref()
                     .unwrap()
                     .native_cell_coord(native);
-                let blocker = self.find_blocking_object((at.0 as u16, at.1 as u16), rules);
+                let blocker = self.find_blocking_object((at.0 as u16, at.1 as u16));
                 if request.allows_retry() {
                     return self.walk_retry_admission(request);
                 }
@@ -214,10 +209,13 @@ impl Simulation {
                     .entities
                     .get_mut(id)
                     .ok_or("retired Walk stop owner")?;
-                actor.foot_speed.applied_fraction = SIM_ZERO;
-                if let Some(loco) = actor.locomotor.as_mut() {
-                    loco.stop_walk();
-                }
+                actor.foot_speed.set_speed_fraction(SIM_ZERO);
+                self.walk_stop_moving(id, Some(rules))?;
+                let actor = self
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .ok_or("Walk stop owner retired during its callback")?;
                 //75BB84/75BB90: both override/Stop exits clear the byte.
                 actor.navigation.path_runtime.clear_scold_latch();
                 super::retain_committed_movement(actor);
@@ -230,7 +228,7 @@ impl Simulation {
                 if request.allows_retry() {
                     return self.walk_retry_admission(request);
                 }
-                self.walk_scatter_or_stop(id, cell, rules, fallback)?;
+                self.walk_scatter_or_stop(id, cell, rules, registry)?;
                 Ok(None)
             }
             7 => self.walk_retry_admission(request),
@@ -257,7 +255,7 @@ impl Simulation {
             rules,
         )
         .ok_or("missing Walk corpus receiver")?;
-        self.finish_walk_admission_response(request, candidate, code, None, rules, None, registry)
+        self.finish_walk_admission_response(request, candidate, code, None, rules, registry)
     }
 
     fn walk_lookup_cell(&self, cell: (i16, i16)) -> Result<NativeCellIdentity, String> {
@@ -301,14 +299,7 @@ impl Simulation {
             .entities
             .get_mut(id)
             .ok_or("retired Walk path owner")?;
-        actor.navigation.path_replay.clear_live_head();
-        //The route adapter caches the live Foot words, not an independent
-        //request; retain its destination while invalidating those cells.
-        if let Some(target) = actor.movement_target.as_mut() {
-            target.path.clear();
-            target.path_layers.clear();
-            target.next_index = 0;
-        }
+        actor.clear_live_path_head();
         Ok(())
     }
 
@@ -351,7 +342,6 @@ impl Simulation {
         request: WalkAdmissionRequest,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<(), String> {
         let id = request.entity_id;
@@ -380,7 +370,7 @@ impl Simulation {
             .and_then(|loco| loco.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         let request = request.into_path_request(destination, urgency);
-        let found = self.foot_find_path(&request, held, rules, fallback, registry)?;
+        let found = self.foot_find_path(&request, held, rules, registry)?;
         self.substrate
             .entities
             .get_mut(id)
@@ -422,7 +412,7 @@ impl Simulation {
         id: u64,
         cell: NativeCellIdentity,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -450,9 +440,14 @@ impl Simulation {
                 .ok_or("retired Walk code6 owner")?;
             if let Some(loco) = actor.locomotor.as_mut() {
                 loco.set_step_head(None);
-                loco.stop_walk();
             }
-            actor.foot_speed.applied_fraction = SIM_ZERO;
+            self.walk_stop_moving(id, Some(rules))?;
+            self.substrate
+                .entities
+                .get_mut(id)
+                .ok_or("Walk code6 owner retired during its callback")?
+                .foot_speed
+                .set_speed_fraction(SIM_ZERO);
             self.set_walk_class_null_destination(id, rules);
             self.clear_walk_admission_path(id)?;
             if let Some(actor) = self.substrate.entities.get_mut(id) {
@@ -471,8 +466,7 @@ impl Simulation {
             .wrapping_abs()
                 > 2;
         let at = cells.coord(cell);
-        self.scatter_cell_contacts(at, deck, true, rules, fallback);
-        Ok(())
+        self.scatter_cell_contacts(at, deck, true, rules, registry)
     }
 
     fn walk_override_blocker(

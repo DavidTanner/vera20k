@@ -9,8 +9,6 @@
 //! [`ReplayLog`] remains the richer Rust-only command/hash diagnostic used by
 //! parity tests. It is deliberately separate from [`NativeReplay`].
 
-#[cfg(test)]
-use std::collections::BTreeMap;
 use std::num::NonZeroI32;
 use std::path::Path;
 
@@ -808,13 +806,10 @@ impl ReplayRunner {
         sim: &mut Simulation,
         replay: &ReplayLog,
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         path_grid: Option<&PathGrid>,
         tick_ms: u32,
     ) -> Vec<u64> {
-        Self::run_fixture_with_overlay_registry(
-            sim, replay, rules, height_map, path_grid, None, tick_ms,
-        )
+        Self::run_fixture_with_overlay_registry(sim, replay, rules, path_grid, None, tick_ms)
     }
 
     /// Fixture-only variant with the static overlay type registry used by the
@@ -826,7 +821,6 @@ impl ReplayRunner {
         sim: &mut Simulation,
         replay: &ReplayLog,
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
@@ -835,7 +829,6 @@ impl ReplayRunner {
             sim,
             replay,
             rules,
-            height_map,
             path_grid,
             overlay_registry,
             tick_ms,
@@ -853,7 +846,6 @@ impl ReplayRunner {
         sim: &mut Simulation,
         replay: &ReplayLog,
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
@@ -886,6 +878,7 @@ impl ReplayRunner {
                 );
             }
         }
+        sim.install_fixture_path_grid(path_grid);
         let mut hashes: Vec<u64> = Vec::with_capacity(replay.ticks.len());
         for entry in &replay.ticks {
             let due_commands = sim.take_due_replay_commands(entry.commands.iter().cloned());
@@ -893,8 +886,6 @@ impl ReplayRunner {
                 .advance_master_frame(
                     &due_commands,
                     rules,
-                    height_map,
-                    path_grid,
                     overlay_registry,
                     tick_ms,
                     TickLane::Ordinary,
@@ -1437,8 +1428,7 @@ mod tests {
         assert_eq!(decoded.ticks[0].commands[0].payload, Command::ExitMatch);
         assert_eq!(NATIVE_REPLAY_VERSION, 10);
 
-        let hashes =
-            ReplayRunner::run_fixture(&mut sim, &decoded, None, &BTreeMap::new(), None, 33);
+        let hashes = ReplayRunner::run_fixture(&mut sim, &decoded, None, None, 33);
         assert_eq!(hashes.len(), 1);
         assert!(sim.quit_requested);
         assert_eq!(sim.take_executed_exit_owner(), Some(owner));
@@ -1459,14 +1449,7 @@ mod tests {
         };
         let (mut recorded, owner) = make_sim();
         let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
-        let tick = recorded.advance_tick(
-            std::slice::from_ref(&command),
-            None,
-            &BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        let tick = recorded.advance_tick(std::slice::from_ref(&command), None, None, None, 67);
         assert_eq!(recorded.session.game_options.game_speed, 4);
 
         let mut log = ReplayLog::new(ReplayHeader {
@@ -1482,8 +1465,7 @@ mod tests {
         let decoded: ReplayLog = serde_json::from_str(&json).expect("decode GameSpeed replay");
 
         let (mut replayed, _) = make_sim();
-        let hashes =
-            ReplayRunner::run_fixture(&mut replayed, &decoded, None, &BTreeMap::new(), None, 67);
+        let hashes = ReplayRunner::run_fixture(&mut replayed, &decoded, None, None, 67);
         assert_eq!(hashes, vec![tick.state_hash]);
         assert_eq!(replayed.session.game_options.game_speed, 4);
         assert_eq!(replayed.state_hash(), recorded.state_hash());
@@ -1513,7 +1495,7 @@ mod tests {
         );
         log.record_tick(2, Vec::new(), 0);
 
-        let hashes = ReplayRunner::run_fixture(&mut sim, &log, None, &BTreeMap::new(), None, 33);
+        let hashes = ReplayRunner::run_fixture(&mut sim, &log, None, None, 33);
 
         assert_eq!(hashes.len(), 2);
         assert!(
@@ -1548,7 +1530,7 @@ mod tests {
         });
         log.record_tick(1, vec![regenerated.clone()], 0);
 
-        let hashes = ReplayRunner::run_fixture(&mut sim, &log, None, &BTreeMap::new(), None, 33);
+        let hashes = ReplayRunner::run_fixture(&mut sim, &log, None, None, 33);
 
         assert_eq!(hashes.len(), 1);
         assert_eq!(sim.session.game_options.game_speed, 4);

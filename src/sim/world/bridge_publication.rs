@@ -1,7 +1,7 @@
-//! Live high-body publication (576BA0/47E040). Authorities stay in Simulation
+//! Live structural-body publication (576BA0/571490, setters 47E040/47E470). Authorities stay in Simulation
 //! through synchronous fallout, including recursive DeathWeapon damage.
 //!
-//! Rim576770/576200 runs against live scalar cells and uses this same publisher.
+//! Rims 576770/576200 and 571050/570AE0 run against live scalar cells and uses this same publisher.
 //! Literal middle-tile replacement uses resident56EB80/47D2B0 inputs. Repair
 //! constructors share this publisher; full engineer/zone/render delivery is
 //! separately required before the bridge mechanism can close.
@@ -11,6 +11,7 @@ use crate::map::cell_index::NativeCellIdentity as Cell;
 use crate::map::resolved_terrain::DynamicTerrainCellState;
 use crate::sim::bridge_state::Phase;
 use crate::sim::bridge_state::publication::{self, BridgePublicationHost, CellCoord};
+use crate::sim::bridge_state::ramp_repair::Family;
 
 #[path = "bridge_rim_publication.rs"]
 mod rim_publication;
@@ -57,52 +58,58 @@ impl BodyResult {
     }
 }
 
-/// Only the structural high-body continuation is migrated here. Overlay-first
-/// dispatch, head entry and other bridge mechanisms retain their existing path.
-pub(super) fn try_body(
+/// ProcessBridgeDamageStateMachine_High 0x00576BA0 or _Low 0x00571490. A
+/// structural cell runs the anchor switch (0x005776D6, 0x00571FEB); any other
+/// cell runs the middle-tile bridgehead branch. Both use the family's
+/// instruction-identical helpers.
+pub(super) fn run_state_machine(
     sim: &mut Simulation,
     rules: &RuleSet,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
-) -> Option<BodyResult> {
-    let terrain = sim.resolved_terrain.as_ref()?;
-    let runtime = sim
-        .bridge_state
-        .as_ref()?
-        .cell(input.0 as u16, input.1 as u16)?;
-    if matches!(runtime.overlay_byte, 0x4a..=0x63 | 0xcd..=0xe6)
-        || runtime.role == BridgeCellRole::Bridgehead
-    {
-        return None;
-    }
+    family: Family,
+) -> BodyResult {
+    let terrain = sim
+        .resolved_terrain
+        .as_ref()
+        .expect("bridge damage terrain");
     let selected = terrain.native_cell_identity(input);
     if terrain.native_cell_flags(selected) & BRIDGE_FLAG_STRUCTURAL == 0 {
-        return Some(BodyResult::no_change());
+        let mut host = LivePublication {
+            sim,
+            rules,
+            registry,
+            collapsed: false,
+        };
+        let returned = publication::advance_bridgehead(&mut host, input, family);
+        return BodyResult {
+            returned,
+            collapsed: host.collapsed,
+        };
     }
     let anchor = if terrain.native_cell_flags(selected) & BRIDGE_FLAG_ANCHOR_SELF != 0 {
         selected
     } else {
         match terrain.native_cell_anchor(selected) {
             Some(anchor) => anchor,
-            None => return Some(BodyResult::no_change()),
+            None => return BodyResult::no_change(),
         }
     };
     let overlay = match anchor {
-        Cell::Real(index) => {
-            let cell = &terrain.cells()[index];
-            // Unmigrated high/head writers publish their identity in the same
-            // runtime authority as their state. Its erased sentinel must win
-            // over load-time terrain/OverlayGrid identities.
-            sim.bridge_state
-                .as_ref()
-                .and_then(|state| state.cell(cell.rx, cell.ry))
-                .map(|runtime| runtime.overlay_byte)
-                .or(cell.bridge_facts.overlay_id)
-        }
+        Cell::Real(index) => terrain.cells()[index].bridge_facts.overlay_id,
         Cell::Dummy => terrain.shared_cell_dummy().overlay_fields().0,
     };
-    if !matches!(overlay, Some(0x18 | 0x19)) {
-        return Some(BodyResult::no_change());
+    // Residual: ApplyDamageToCell 0x00587180 also admits a state machine by
+    // a middle tile, and neither driver tests the anchor overlay before its
+    // +11E switch. This gate keeps the pre-existing concrete behavior for
+    // both families; its no-change result for a structural cell whose anchor
+    // lacks these overlays is unproven against native.
+    let anchor_overlays = match family {
+        Family::High => [0x18, 0x19],
+        Family::Low => [0xed, 0xee],
+    };
+    if !overlay.is_some_and(|overlay| anchor_overlays.contains(&overlay)) {
+        return BodyResult::no_change();
     }
     let mut host = LivePublication {
         sim,
@@ -110,11 +117,31 @@ pub(super) fn try_body(
         registry,
         collapsed: false,
     };
-    let returned = publication::advance_body_at_anchor(&mut host, input, anchor);
-    Some(BodyResult {
+    let returned = publication::advance_body_at_anchor(&mut host, input, anchor, family);
+    BodyResult {
         returned,
         collapsed: host.collapsed,
-    })
+    }
+}
+
+/// UpdateAdjacentBridges outside a state machine: both CABHUT fallback twins
+/// call the concrete 576770 (0x005745B4, 0x005751D0). Its clears reach
+/// BlowUpBridge; returns whether one ran.
+pub(super) fn update_adjacent_bridges(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    input: CellCoord,
+    family: Family,
+) -> bool {
+    let mut host = LivePublication {
+        sim,
+        rules,
+        registry,
+        collapsed: false,
+    };
+    rim_publication::update(&mut host, input, family);
+    host.collapsed
 }
 
 struct LivePublication<'a> {
@@ -175,67 +202,24 @@ impl BridgePublicationHost for LivePublication<'_> {
         self.terrain().native_cell_flags(cell)
     }
     fn state(&self, cell: Cell) -> u8 {
-        // Existing head/repair drivers still own their encoded runtime state.
-        // Read that authority until those writers migrate; the map's initial
-        // state byte alone would silently discard their completed transitions.
-        if let Some((x, y)) = self.real_coord(cell)
-            && let Some(runtime) = self.sim.bridge_state.as_ref().and_then(|s| s.cell(x, y))
-            && let Some(axis) = runtime.axis
-        {
-            runtime.damage_state.to_state_byte(axis)
-        } else {
-            self.terrain().native_cell_state(cell)
-        }
+        self.terrain().native_cell_state(cell)
     }
     fn write_flags(&mut self, cell: Cell, flags: u32) {
-        let structural_changed = (self.flags(cell) ^ flags) & BRIDGE_FLAG_STRUCTURAL != 0;
         self.sim
             .resolved_terrain
             .as_mut()
             .unwrap()
             .write_native_cell_flags(cell, flags);
-        if structural_changed
-            && let Some((x, y)) = self.real_coord(cell)
-            && let Some(runtime) = self
-                .sim
-                .bridge_state
-                .as_mut()
-                .and_then(|s| s.cell_mut(x, y))
-        {
-            runtime.deck_present = flags & BRIDGE_FLAG_STRUCTURAL != 0;
-        }
         self.retain_real_write(cell);
     }
     fn write_state(&mut self, cell: Cell, state: u8) {
-        if let Some((x, y)) = self.real_coord(cell) {
-            let flags = self.flags(cell);
-            if let Some(runtime) = self
-                .sim
-                .bridge_state
-                .as_mut()
-                .and_then(|s| s.cell_mut(x, y))
-            {
-                if state <= 17 {
-                    runtime.axis = Some(if state <= 8 { Axis::NS } else { Axis::EW });
-                }
-                runtime.damage_state = if state == 0 && flags & BRIDGE_FLAG_STRUCTURAL == 0 {
-                    DamageState::Destroyed
-                } else {
-                    DamageState::from_state_byte(state).unwrap_or(runtime.damage_state)
-                };
-            }
-            if let (Some(grid), Some(terrain)) = (
+        if let Some((x, y)) = self.real_coord(cell)
+            && let (Some(grid), Some(terrain)) = (
                 self.sim.overlay_grid.as_mut(),
                 self.sim.resolved_terrain.as_mut(),
-            ) {
-                grid.write_literal_bridge_state(terrain, x, y, state);
-            } else {
-                self.sim
-                    .resolved_terrain
-                    .as_mut()
-                    .unwrap()
-                    .write_native_cell_state(cell, state);
-            }
+            )
+        {
+            grid.write_literal_bridge_state(terrain, x, y, state);
         } else {
             self.sim
                 .resolved_terrain
@@ -263,14 +247,6 @@ impl BridgePublicationHost for LivePublication<'_> {
             if let Some(grid) = self.sim.overlay_grid.as_mut() {
                 grid.clear_literal_bridge_identity(x, y);
             }
-            if let Some(runtime) = self
-                .sim
-                .bridge_state
-                .as_mut()
-                .and_then(|s| s.cell_mut(x, y))
-            {
-                runtime.overlay_byte = 0xff;
-            }
         }
         self.retain_real_write(cell);
     }
@@ -284,7 +260,14 @@ impl BridgePublicationHost for LivePublication<'_> {
         self.sim
             .mark_radar_terrain_dirty_cells([(x as u16, y as u16)]);
     }
-    fn perpendicular(&mut self, input: CellCoord, axis: Axis, phase: Phase, direction: u8) {
+    fn perpendicular(
+        &mut self,
+        input: CellCoord,
+        axis: Axis,
+        phase: Phase,
+        direction: u8,
+        family: Family,
+    ) {
         let (dx, dy) = crate::util::direction::DIRECTION_DELTAS[usize::from(direction & 7)];
         // Native helpers retain this requested coordinate on their stack;
         // it is distinct from the retained allocation's current +24.
@@ -298,7 +281,7 @@ impl BridgePublicationHost for LivePublication<'_> {
                 crate::sim::bridge_specs::apply_ramp_transition(self.state(target), axis, phase)
         {
             if next == 0 {
-                self.perpendicular(target_coord, axis, phase, direction);
+                self.perpendicular(target_coord, axis, phase, direction, family);
                 publication::set_bridge_direction(
                     self,
                     target,
@@ -313,17 +296,40 @@ impl BridgePublicationHost for LivePublication<'_> {
             }
         }
         if let Err(error) =
-            self.perpendicular_tile_tail(target_coord, target, axis, phase, direction)
+            self.perpendicular_tile_tail(target_coord, target, axis, phase, direction, family)
         {
             // An unavailable/unadmitted input is not a successful native
             // sparse fallback. Preserve completed writes and report the gap.
             log::error!("bridge tile update at {target_coord:?} failed: {error}");
         }
     }
-    fn rim(&mut self, coord: CellCoord) {
-        rim_publication::update(self, coord);
+    fn rim(&mut self, coord: CellCoord, family: Family) {
+        rim_publication::update(self, coord, family);
     }
-    fn zones(&mut self, _anchor: Cell) {
-        refresh_bridge_zones_if_dirty(self.sim, self.rules, true);
+    fn zones(&mut self, query: CellCoord) {
+        let _ = invalidate_bridge_zones(self.sim, query);
+        publish_bridge_navigation(self.sim, self.rules);
+    }
+    fn tile(&self, cell: Cell) -> i32 {
+        LivePublication::tile(self, cell)
+    }
+    fn subtile(&self, cell: Cell) -> u8 {
+        LivePublication::subtile(self, cell)
+    }
+    fn level(&self, cell: Cell) -> i8 {
+        LivePublication::level(self, cell)
+    }
+    fn flood(&mut self, coord: CellCoord, tile: i32, level: i32) {
+        if let Err(error) = self.replace_tiles(coord, tile, level) {
+            log::error!("bridge flood at {coord:?} failed: {error}");
+        }
+    }
+    fn recalc_zones(&mut self, cells: &[CellCoord]) {
+        if let Err(error) = self.recalculate_bridge_zones(cells) {
+            log::error!("bridge zone batch at {:?} failed: {error}", cells.first());
+        }
+    }
+    fn middles(&self, family: Family) -> Option<(i32, [i32; 2])> {
+        super::family_rim_tiles(self.terrain(), family).map(|keys| (keys.base, keys.middle))
     }
 }

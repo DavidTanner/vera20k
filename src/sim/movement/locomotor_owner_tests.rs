@@ -2,17 +2,15 @@
 //! `locomotor_owner`. These supplied states do not certify native command or
 //! warp behavior beyond the constructor/transfer/reuse boundaries cited there.
 
-use std::collections::BTreeMap;
-
 use super::*;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::Command;
 use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, Health};
-use crate::sim::movement::locomotion::{LocomotorRuntimePayload, LocomotorSlot};
-use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-use crate::sim::movement::{self, teleport_movement};
+use crate::sim::movement;
+use crate::sim::movement::locomotion::LocomotorRuntimePayload;
+use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -61,8 +59,7 @@ fn replay_fixture() -> crate::sim::components::FootPathQueue {
 
 fn supply_drive_state(entity: &mut GameEntity) {
     entity.navigation.path_replay = replay_fixture();
-    entity.foot_speed.applied_fraction = SimFixed::lit("0.5");
-    entity.foot_speed.cached_current_speed = 11;
+    entity.foot_speed.set_speed_fraction(SimFixed::lit("0.5"));
     entity.drive_locomotion = Some(DriveLocomotionRuntime {
         // Is_Moving compares exact XY only. Retained Z deliberately differs
         // from the owner's height, so retirement cannot depend on full XYZ.
@@ -129,7 +126,12 @@ fn destination(sim: &mut Simulation, rules: &RuleSet, dock_contact: bool) -> boo
             .radio_contacts
             .set_slot(0, 2);
     }
-    sim.set_unit_cell_destination(1, (12, 8), rules, true)
+    sim.set_unit_destination(
+        1,
+        crate::sim::components::NavTargetRef::cell(12, 8),
+        rules,
+        true,
+    )
 }
 
 #[test]
@@ -222,8 +224,7 @@ fn out_of_contact_destination_installs_fresh_drive_without_previous_instance_sta
     assert!(entity.movement_target.is_some());
     let drive = entity.drive_locomotion.as_ref().unwrap();
     assert_eq!(drive.track.residual, 0);
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.5"));
-    assert_eq!(entity.foot_speed.cached_current_speed, 11);
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.5"));
 }
 
 #[test]
@@ -244,11 +245,6 @@ fn refused_installation_and_absent_stash_do_not_retire_external_state() {
     for state in [
         None,
         Some(LocomotorState::for_test_kind(LocomotorKind::Drive)),
-        {
-            let mut incoherent = LocomotorState::for_test_kind(LocomotorKind::Drive);
-            incoherent.slot = LocomotorSlot::from_kind(LocomotorKind::Teleport);
-            Some(incoherent)
-        },
     ] {
         let (mut sim, _) = fixture();
         let entity = sim.substrate.entities.get_mut(1).unwrap();
@@ -274,13 +270,7 @@ fn stop_command_retires_only_the_drive_admitted_by_its_existing_gate() {
         if head_ahead {
             entity.drive_locomotion.as_mut().unwrap().head_to = Some(DriveCoord::cell(9, 8, 731));
         }
-        assert!(sim.apply_command(
-            "Americans",
-            &Command::Stop { entity_id: 1 },
-            Some(&rules),
-            None,
-            &BTreeMap::new(),
-        ));
+        assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, Some(&rules),));
 
         let entity = sim.substrate.entities.get(1).unwrap();
         if head_ahead {
@@ -302,40 +292,6 @@ fn stop_command_retires_only_the_drive_admitted_by_its_existing_gate() {
     }
 }
 
-#[test]
-fn finished_teleport_restores_suspended_drive_without_retiring_its_state() {
-    let (mut sim, rules) = fixture();
-    let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    supply_drive_state(entity);
-    let before = owned_state(entity);
-
-    assert!(teleport_movement::issue_teleport_command(
-        &mut sim.substrate.entities,
-        1,
-        (12, 8),
-        &rules.general,
-        true,
-        37,
-    ));
-    teleport_movement::tick_teleport_movement(
-        &mut sim.substrate.entities,
-        &mut sim.substrate.occupancy,
-        &[1],
-        1,
-        None,
-        None,
-    );
-
-    let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(entity.teleport_state.is_none());
-    assert_eq!(
-        entity.locomotor.as_ref().unwrap().layer,
-        MovementLayer::Ground
-    );
-    assert_eq!(owned_state(entity), before);
-}
-
 /// Unit741970's class refusals return before its Teleporter swap (0x7423CD),
 /// so a refused Chrono Miner order never installs Drive: payload and external
 /// instance state stay untouched. An accepted order has no rollback (the
@@ -354,17 +310,17 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         path_runtime.path_blocked = true;
         path_runtime.retries_left = u32::MAX;
         entity.navigation.path_runtime = path_runtime;
-        entity.order_intent = Some(crate::sim::components::OrderIntent::Unloading);
+        entity.dying = true;
         let before = owned_state(entity);
         let mut grid = PathGrid::test_all_blocked(16, 16);
         grid.set_blocked(8, 8, false);
         grid.set_blocked(12, 8, false);
+        sim.path_grid = Some(std::sync::Arc::new(grid));
 
         assert!(
             !crate::sim::miner::miner_system::issue_stock_miner_drive_move(
                 &mut sim,
                 &rules,
-                &grid,
                 1,
                 (12, 8),
             )
@@ -375,7 +331,7 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         assert_eq!(entity.navigation.path_runtime, path_runtime);
         assert!(matches!(
             entity.locomotor.as_ref().unwrap().runtime_payload,
-            LocomotorRuntimePayload::Teleport(None)
+            LocomotorRuntimePayload::Teleport
         ));
         assert!(entity.movement_target.is_none());
     }
@@ -410,8 +366,7 @@ fn foot_speed_without_class_payload_roundtrips_and_hashes_each_field() {
     // Normalize this fixture to that load state before comparing whole hashes.
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let mut expected = crate::sim::components::FootSpeedState::default();
-    expected.applied_fraction = SimFixed::lit("0.625");
-    expected.cached_current_speed = 13;
+    expected.set_speed_fraction(SimFixed::lit("0.625"));
     assert!(
         expected.accept_speed_crate(crate::util::native_x87::NativeF64Bits::from_bits(
             1.2_f64.to_bits()
@@ -428,17 +383,14 @@ fn foot_speed_without_class_payload_roundtrips_and_hashes_each_field() {
     assert_eq!(entity.foot_speed, expected);
     assert_eq!(loaded.state_hash(), sim.state_hash());
     let original = loaded.state_hash();
-    for field in 0..3 {
+    for field in 0..2 {
         let speed = &mut loaded.substrate.entities.get_mut(1).unwrap().foot_speed;
         *speed = expected.clone();
         if field == 0 {
-            speed.applied_fraction += SimFixed::lit("0.125");
-        } else if field == 1 {
-            speed.cached_current_speed += 1;
+            speed.set_speed_fraction(speed.applied_fraction() + SimFixed::lit("0.125"));
         } else {
             *speed = Default::default();
-            speed.applied_fraction = expected.applied_fraction;
-            speed.cached_current_speed = expected.cached_current_speed;
+            speed.set_speed_fraction(expected.applied_fraction());
             assert!(
                 speed.accept_speed_crate(crate::util::native_x87::NativeF64Bits::from_bits(
                     1.3_f64.to_bits()
@@ -457,6 +409,11 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
         "../../../tools/spatial_oracle/foot_speed_owner.json"
     ))
     .unwrap();
+    // The setter-only rows are the owner's (`components.rs`).
+    let cases: Vec<_> = cases
+        .into_iter()
+        .filter(|case| case["input"]["family"] != "setter")
+        .collect();
     assert_eq!(cases.len(), 12);
     for case in cases {
         let requested = SimFixed::from_num(case["input"]["requested"].as_f64().unwrap());
@@ -480,7 +437,7 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
                 SIM_ZERO,
                 SIM_ONE,
             );
-            assert_eq!(owner_speed.applied_fraction, expected);
+            assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             assert!(begin_drive_for_teleporter(entity, 3));
             super::super::navcom::set_destination_internal_cell(entity, (12, 8), None);
@@ -511,7 +468,7 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
                 SIM_ZERO,
                 SIM_ONE,
             );
-            assert_eq!(owner_speed.applied_fraction, expected);
+            assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
             super::super::navcom::set_destination_internal_cell(entity, (12, 8), None);
@@ -649,8 +606,6 @@ fn foot_idle_drive_end_uses_native_gates_and_preserves_owner_state() {
         let (mut sim, _) = fixture();
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         activate_drive(entity);
-        entity.locomotor.as_mut().unwrap().phase =
-            super::super::locomotor::GroundMovePhase::Cruising;
         match denied {
             1 => entity.drive_locomotion.as_mut().unwrap().end_permitted = false,
             2 => entity.foot_locomotor_swap_active = true,

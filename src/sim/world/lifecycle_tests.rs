@@ -10,9 +10,7 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::anim_class::{AnimObject, AnimRuntime, AnimWorldCoord};
-use crate::sim::animation::{Animation, SequenceKind};
-use crate::sim::bridge_state::StateOutcome;
-use crate::sim::combat::{AttackTarget, PendingInfantryFire, TargetKind};
+use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::{
     C4PlantState, DriveLocomotionRuntime, DriveOccupationFootprint, Health, NavTargetRef,
 };
@@ -20,7 +18,6 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
-use crate::sim::movement::homing_movement::{HomingTarget, attach_homing_state};
 use crate::sim::movement::locomotor::{AirMovePhase, LocomotorState, MovementLayer};
 use crate::sim::occupancy::CellListInsertion;
 use crate::sim::particles::ParticleSystem;
@@ -248,6 +245,14 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
     sim.playfield_bounds =
         Some(crate::sim::cell_rect::PlayfieldBounds::from_normalized_local_size(16, 2, 2, 12, 3));
     install_common_raw_terrain(&mut sim, 16, 16, 4, None);
+    // SellBuilding's exit probe is the occupant's own Can_Enter_Cell, which
+    // reads the cells' speed rows.
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    for (rx, ry) in (0..16u16).flat_map(|ry| (0..16u16).map(move |rx| (rx, ry))) {
+        let cell = terrain.cell_mut(rx, ry).unwrap();
+        cell.speed_costs = crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS;
+        cell.base_speed_costs = cell.speed_costs;
+    }
     let building_id = sim.allocate_stable_id();
     insert_entity(&mut sim, building_id, EntityCategory::Structure);
     let passenger_id = sim.allocate_stable_id();
@@ -450,62 +455,18 @@ pub(crate) fn common_raw_terrain_cell(
         BridgeCellFacts::default()
     };
     ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
         level,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
         template_height: level,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
-        speed_costs: SpeedCostProfile::default(),
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: false,
-        allows_tiberium: false,
-        height_in_pixels: 0,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
         base_terrain_class: TerrainClass::Clear,
-        base_speed_costs: SpeedCostProfile::default(),
         has_bridge_deck,
         bridge_walkable: has_bridge_deck,
-        bridge_transition: false,
         bridge_deck_level: if has_bridge_deck {
             level.saturating_add(4)
         } else {
             level
         },
-        bridge_layer: None,
         bridge_facts,
-        tube_index: None,
-        radar_left: [0, 0, 0],
-        radar_right: [0, 0, 0],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     }
 }
 
@@ -584,6 +545,40 @@ fn grounded_ramp_reveal_commits_native_height_before_occupation() {
     }
 }
 
+/// A building's Unlimbo coordinate passes through BuildingType virtual +0x6C
+/// (`0x00464A70`): the floor at its XY, whatever the input Z, and never a
+/// deck. Ground=52 is the original-code result ramp_1_sub_128_128 in
+/// tools/ramp_height_vectors.json.
+#[test]
+fn a_revealed_building_takes_the_floor_at_its_location_as_its_z() {
+    for (on_bridge, requested_level) in [(false, 0), (false, 4), (true, 4)] {
+        let mut sim = Simulation::with_seed(71);
+        install_common_raw_terrain(&mut sim, 8, 8, 0, Some((2, 2)));
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(2, 2)
+            .unwrap()
+            .slope_type = 1;
+        insert_entity(&mut sim, 1, EntityCategory::Structure);
+        sim.substrate.entities.get_mut(1).unwrap().on_bridge = on_bridge;
+        assert!(matches!(
+            sim.try_reveal_entity(1, common_raw_request(2, 2, requested_level, 128, 128)),
+            RevealOutcome::Revealed { .. }
+        ));
+        let building = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(
+            building.position.exact_z_leptons,
+            Some(52),
+            "bridge={on_bridge} level={requested_level}"
+        );
+        assert_eq!(
+            crate::sim::movement::ground_pose::position_world_coord(&building.position).z,
+            52
+        );
+    }
+}
+
 #[test]
 fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs() {
     for kind in [
@@ -637,8 +632,9 @@ fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs(
         None
     );
 
-    // Actual paradrop ordering: attach while limbo, then Reveal. The ground
-    // adapter must not reinstate a stale exact Z over the descent integrator.
+    // Actual paradrop ordering: attach while limbo, then Reveal. Paradrop's
+    // Unlimbo coordinate is the drop coordinate (0x005F5A50), so the ground
+    // adapter keeps the drop's Z rather than the passenger's old one.
     install_common_raw_terrain(&mut sim, 8, 8, 0, None);
     insert_entity(&mut sim, 2, EntityCategory::Infantry);
     let entity = sim.substrate.entities.get_mut(2).unwrap();
@@ -648,7 +644,7 @@ fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs(
         crate::sim::movement::parachute_descent::begin_parachute_descent(
             &mut sim.substrate.entities,
             2,
-            SimFixed::from_num(1200)
+            1200
         )
     );
     assert!(matches!(
@@ -656,11 +652,8 @@ fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs(
         RevealOutcome::Revealed { .. }
     ));
     let entity = sim.substrate.entities.get(2).unwrap();
-    assert_eq!(entity.position.exact_z_leptons, None);
-    assert_eq!(
-        entity.parachute_state.as_ref().unwrap().altitude,
-        SimFixed::from_num(1200)
-    );
+    assert_eq!(entity.position.exact_z_leptons, Some(1200));
+    assert!(entity.is_falling_down());
 }
 
 #[test]
@@ -708,8 +701,8 @@ fn grounded_ramp_position_survives_snapshot_and_idle_continuation() {
         Some(52)
     );
     for _ in 0..3 {
-        sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 66);
-        restored.advance_tick(&[], None, &BTreeMap::new(), None, None, 66);
+        sim.advance_tick(&[], None, None, None, 66);
+        restored.advance_tick(&[], None, None, None, 66);
         assert_eq!(
             restored
                 .substrate
@@ -763,15 +756,7 @@ fn drive_ship_slope_production_spawn_unlimbo_snaps_without_manual_rocking_state(
         let _constructor_word = expected_rng.next_u32();
 
         let stable_id = sim
-            .spawn_object(
-                type_id,
-                "Americans",
-                cell.0,
-                cell.1,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object(type_id, "Americans", cell.0, cell.1, 0, &rules)
             .expect("production spawn/unlimbo");
         let entity = sim.substrate.entities.get(stable_id).unwrap();
         // Original-code ramp_{5,9,12}_sub_128_128 fixtures; this reaches the
@@ -835,15 +820,7 @@ fn zero_speed_foot_drive_ship_payloads_survive_all_world_spawn_paths() {
         ("ZAIRS", (6, 2), LocomotorKind::Ship, 11),
     ] {
         let stable_id = sim
-            .spawn_object(
-                type_id,
-                "Americans",
-                cell.0,
-                cell.1,
-                0,
-                &rules,
-                &BTreeMap::new(),
-            )
+            .spawn_object(type_id, "Americans", cell.0, cell.1, 0, &rules)
             .expect("zero-speed Foot production spawn/reveal");
         let entity = sim.substrate.entities.get(stable_id).unwrap();
         assert_eq!(
@@ -877,10 +854,7 @@ fn zero_speed_foot_drive_ship_payloads_survive_all_world_spawn_paths() {
         structure_ai_sellable: false,
         structure_ai_repairable: false,
     };
-    assert_eq!(
-        sim.spawn_from_map(&[placement], Some(&rules), &BTreeMap::new()),
-        1
-    );
+    assert_eq!(sim.spawn_from_map(&[placement], Some(&rules)), 1);
     let map_entity = sim
         .substrate
         .entities
@@ -1076,28 +1050,8 @@ fn gsi_04_12_common_raw_occupation_structural_deck_unit_tracks_live_collapse_fla
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 
     {
+        // The collapse setter 47E040 clears bit100 before any later receiver.
         let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
-        assert!(
-            bridge_state
-                .cell(3, 4)
-                .expect("collapsed bridge cell")
-                .deck_present,
-            "collapse leaves the structural deck record present"
-        );
-        assert!(!bridge_state.is_bridge_walkable(3, 4));
-        // The legacy controller above returns its flag transaction; its
-        // isolated entry does not publish it. Supply native47E040's cleared
-        // bit100 at this occupation-reader boundary, as the live publisher
-        // does before the next receiver. A render-only collapse is not enough.
         let cell = terrain.native_cell_identity((3, 4));
         terrain.write_native_cell_flags(
             cell,
@@ -1496,19 +1450,8 @@ fn gsi_04_12_object_raw_occupation_deck_clear_rechecks_live_structural_state() {
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0x40);
 
     {
+        // The collapse setter 47E040 clears bit100 before any later receiver.
         let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
-        assert!(!bridge_state.is_bridge_walkable(3, 4));
-        // Supply the live47E040 structural clear, not just the legacy
-        // controller's overlay/damage projection, before Object5F6120.
         let cell = terrain.native_cell_identity((3, 4));
         terrain.write_native_cell_flags(
             cell,
@@ -1546,7 +1489,7 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert!(aircraft.locomotor.as_ref().unwrap().altitude > SimFixed::from_num(0));
@@ -1578,7 +1521,7 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
         .unwrap()
         .position
         .exact_z_leptons = Some(1);
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1615,7 +1558,7 @@ fn gsi_05_05_fly_takeoff_commits_absolute_z_after_remove_process() {
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     let altitude = aircraft
@@ -1653,7 +1596,7 @@ fn gsi_05_05_fly_landing_on_bridge_uses_absolute_z_for_deck_put() {
         locomotor.begin_fly_landing();
         locomotor.set_fly_target_height(0);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1730,7 +1673,7 @@ fn gsi_05_05_mapless_fly_uses_dummy_ground_then_bridge_height() {
     }
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 2, 128, 128));
 
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1766,7 +1709,7 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     let shared_bucket = second.air_spatial_bucket;
     let second_order = second.air_spatial_enter_order;
 
-    sim.tick_air_movement_with_cell_lists_one(20, None);
+    sim.tick_air_movement_with_cell_lists_one(20, None, None);
     assert_eq!(
         sim.substrate
             .entities
@@ -1778,7 +1721,7 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     );
 
     sim.substrate.entities.get_mut(20).unwrap().position.rx = 12;
-    sim.tick_air_movement_with_cell_lists_one(20, None);
+    sim.tick_air_movement_with_cell_lists_one(20, None, None);
     let crossed = sim.substrate.entities.get(20).unwrap();
     assert_ne!(crossed.air_spatial_bucket, shared_bucket);
     assert!(crossed.air_spatial_enter_order > second_order);
@@ -1840,7 +1783,6 @@ fn insert_particle_system(sim: &mut Simulation, stable_id: u64) {
         lifetime: -1,
         spark_spawn_frames: 0,
         facing: 0,
-        directionless: true,
         attached_entity: None,
         owner_entity: None,
         target_coords: IVec3::ZERO,
@@ -2142,7 +2084,6 @@ fn lifecycle_authority_second_reveal_is_idempotent() {
         }
     );
     let first_position = sim.substrate.entities.get(1).unwrap().position.clone();
-    let first_enter_order = sim.substrate.entities.get(1).unwrap().occupancy_enter_order;
     sim.lifecycle_outputs.clear();
     sim.lifecycle_test_events.clear();
 
@@ -2167,7 +2108,6 @@ fn lifecycle_authority_second_reveal_is_idempotent() {
             first_position.sub_y,
         )
     );
-    assert_eq!(entity.occupancy_enter_order, first_enter_order);
     assert!(sim.substrate.occupancy.contains_entity(10, 20, 1));
     assert!(!sim.substrate.occupancy.contains_entity(30, 40, 1));
     assert_eq!(sim.live_object_order_snapshot(), vec![1]);
@@ -2916,7 +2856,6 @@ fn pointer_expiry_clears_live_target_and_navigation_refs() {
     let listener = sim.substrate.entities.get_mut(1).unwrap();
     listener.attack_target = Some(AttackTarget {
         target: TargetKind::Entity(2),
-        pending_infantry_fire: None,
     });
     listener.suspended_attack_target = Some(TargetKind::Entity(2));
     listener.navigation.suspended_nav_com = Some(NavTargetRef::Entity { id: 2 });
@@ -3067,33 +3006,47 @@ fn target_expiry_rearms_passive_scan_and_restores_suspended_mission() {
 
 #[test]
 fn infantry_target_expiry_clears_firing_action_before_target() {
-    let mut sim = Simulation::new();
-    insert_entity(&mut sim, 1, EntityCategory::Infantry);
-    insert_entity(&mut sim, 2, EntityCategory::Unit);
-    let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
-
-    let listener = sim.substrate.entities.get_mut(1).unwrap();
-    listener.attack_target = Some(AttackTarget {
-        target: TargetKind::Entity(2),
-        pending_infantry_fire: Some(PendingInfantryFire {
-            sequence: SequenceKind::Attack,
-            fire_frame: 4,
-        }),
-    });
-    listener.animation = Some(Animation::new(SequenceKind::Attack));
-    listener.mission_leaf = crate::sim::mission::MissionLeafState::infantry_raw_for_test(7, 12);
-
-    sim.uninit(2);
-
-    let listener = sim.substrate.entities.get(1).unwrap();
-    assert!(listener.attack_target.is_none());
-    assert_eq!(
-        listener.animation.as_ref().unwrap().sequence,
-        SequenceKind::Stand
+    use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
+    let ini = IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=TEST\n[AircraftTypes]\n\
+         [BuildingTypes]\n[E1]\nImage=GI\nStrength=125\n\
+         [TEST]\nStrength=100\n",
     );
-    let leaf = listener.mission_leaf.as_infantry().unwrap();
-    assert_eq!(leaf.firing_sequence_latch(), 0);
-    assert_eq!(leaf.doing(), -1);
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    // Original 51B20E drops the firing latch before its unforced Ready
+    // request. FireUp (4) admits it; Die2 (12) refuses and retains its stage.
+    // The corresponding class-target receipts pin this ordering without RNG.
+    for (doing, expected_doing) in [(4, 0), (12, 12)] {
+        let mut sim = Simulation::new();
+        assert_eq!(
+            sim.spawn_object_at_height("E1", "Americans", 2, 3, 0, 0, &rules),
+            Some(1)
+        );
+        insert_entity(&mut sim, 2, EntityCategory::Unit);
+        let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
+        assert!(sim.infantry_do_action(1, doing, true, &rules).unwrap());
+        let listener = sim.substrate.entities.get_mut(1).unwrap();
+        listener.attack_target = Some(AttackTarget::new(2));
+        listener.mission_leaf =
+            crate::sim::mission::MissionLeafState::infantry_raw_for_test(1, doing);
+        // Isolate the class action: the separate PointerExpired timer gate
+        // (7079D1) draws RandomRanged(4,8) only above ten remaining frames.
+        listener.passive_scan_timer.arm(0, 0);
+        let before = sim.scenario_rng.logical_state();
+        sim.uninit_with_rules(2, &rules);
+        let listener = sim.substrate.entities.get(1).unwrap();
+        assert!(listener.attack_target.is_none());
+        assert_eq!(listener.infantry_sprite_pose().unwrap().0, expected_doing);
+        let leaf = listener.mission_leaf.as_infantry().unwrap();
+        assert_eq!(leaf.firing_sequence_latch(), 0);
+        assert_eq!(leaf.doing(), expected_doing);
+        assert_eq!(sim.scenario_rng.logical_state(), before);
+    }
 }
 
 #[test]
@@ -3121,135 +3074,6 @@ fn pointer_expiry_clears_particle_owner_and_deletes_attached_system() {
     assert!(attached.owner_entity.is_none());
     assert!(attached.attached_entity.is_none());
     assert!(attached.done_spawning);
-}
-
-#[test]
-fn homing_target_expiry_uses_ground_cell_but_nulls_high_flying_target() {
-    let mut sim = Simulation::new();
-    insert_entity(&mut sim, 1, EntityCategory::Unit);
-    insert_entity(&mut sim, 2, EntityCategory::Unit);
-    insert_entity(&mut sim, 3, EntityCategory::Unit);
-    insert_entity(&mut sim, 4, EntityCategory::Aircraft);
-    let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
-    let _ = sim.try_reveal_entity(4, request(13, 15, PlacementEvidence::MarkSucceeded));
-    let mut high_locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
-    high_locomotor.altitude = SimFixed::from_num(208);
-    sim.substrate.entities.get_mut(4).unwrap().locomotor = Some(high_locomotor);
-    assert!(attach_homing_state(
-        &mut sim.substrate.entities,
-        1,
-        (2, 3),
-        2,
-        (9, 11),
-        SimFixed::from_num(10),
-        5,
-        0,
-        false,
-        false,
-        SimFixed::from_num(1),
-    ));
-    assert!(attach_homing_state(
-        &mut sim.substrate.entities,
-        3,
-        (2, 3),
-        4,
-        (13, 15),
-        SimFixed::from_num(10),
-        5,
-        0,
-        false,
-        false,
-        SimFixed::from_num(1),
-    ));
-
-    sim.uninit(2);
-    sim.uninit(4);
-
-    assert_eq!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .homing_state
-            .as_ref()
-            .unwrap()
-            .target,
-        Some(HomingTarget::Cell { rx: 9, ry: 11 })
-    );
-    assert!(
-        sim.substrate
-            .entities
-            .get(3)
-            .unwrap()
-            .homing_state
-            .as_ref()
-            .unwrap()
-            .target
-            .is_none()
-    );
-}
-
-#[test]
-fn gsi_05_11_homing_building_target_expiry_uses_foundation_center_cell() {
-    // `BulletClass::PointerExpired @ 0x004684E0` derives its replacement cell
-    // from the expiring object's `ObjectClass::GetCoords` (vtable +0x48), so an
-    // entity-hosted missile must land on the same foundation-centre cell the
-    // store-hosted arm already uses (see
-    // `gsi_05_04_building_get_coords_uses_foundation_center_cell`).
-    let mut sim = Simulation::new();
-    sim.session.map_width = 20;
-    sim.session.map_height = 20;
-    install_common_raw_terrain(&mut sim, 20, 20, 0, None);
-
-    let target_id = sim.allocate_stable_id();
-    insert_entity(&mut sim, target_id, EntityCategory::Structure);
-    let gapowr = sim.interner.intern("GAPOWR");
-    {
-        let target = sim.substrate.entities.get_mut(target_id).unwrap();
-        target.type_ref = gapowr;
-        target.foundation = "2x2".to_string();
-    }
-    assert!(matches!(
-        sim.try_reveal_entity(target_id, common_raw_request(9, 11, 0, 128, 128)),
-        RevealOutcome::Revealed { .. }
-    ));
-
-    let missile_id = sim.allocate_stable_id();
-    insert_entity(&mut sim, missile_id, EntityCategory::Unit);
-    assert!(attach_homing_state(
-        &mut sim.substrate.entities,
-        missile_id,
-        (2, 3),
-        target_id,
-        (9, 11),
-        SimFixed::from_num(10),
-        5,
-        0,
-        false,
-        false,
-        SimFixed::from_num(1),
-    ));
-
-    sim.uninit(target_id);
-
-    let homing = sim
-        .substrate
-        .entities
-        .get(missile_id)
-        .unwrap()
-        .homing_state
-        .clone()
-        .unwrap();
-    assert_eq!(
-        homing.target,
-        Some(HomingTarget::Cell { rx: 10, ry: 12 }),
-        "the entity-hosted arm takes the GetCoords foundation centre, not the stored NW anchor"
-    );
-    assert_eq!(
-        (homing.last_known_rx, homing.last_known_ry),
-        (10, 12),
-        "the cached last-known cell follows the same derivation"
-    );
 }
 
 #[test]
@@ -3496,7 +3320,7 @@ fn gsi_04_16_dustbowl_conyard_unlimbo_uses_local_size_edge() {
     sim.houses.insert(owner, house);
 
     let conyard = sim
-        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules, &BTreeMap::new())
+        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules)
         .expect("GACNST reveals");
     assert!(
         sim.substrate
@@ -3524,7 +3348,7 @@ fn gsi_04_16_committed_structure_owner_change_refreshes_new_house_edge() {
     new_house.base_center = Some((68, 114));
     sim.houses.insert(new_owner, new_house);
     let conyard = sim
-        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules, &BTreeMap::new())
+        .spawn_object("GACNST", "Americans", 69, 115, 0, &rules)
         .expect("GACNST reveals");
 
     sim.change_owner(conyard, new_owner);
@@ -3549,7 +3373,7 @@ fn gsi_04_16_caoild_reveal_and_owner_change_preserve_waypoint_edges() {
     sim.houses.insert(new_owner, new_house);
 
     let oil = sim
-        .spawn_object("CAOILD", "Americans", 69, 115, 0, &rules, &BTreeMap::new())
+        .spawn_object("CAOILD", "Americans", 69, 115, 0, &rules)
         .expect("CAOILD reveals");
     assert!(
         !sim.substrate
@@ -4032,8 +3856,7 @@ fn lifecycle_authority_late_tail_commits_frame_before_drain() {
     sim.uninit(1);
     sim.lifecycle_test_events.clear();
 
-    let height_map = BTreeMap::new();
-    let _ = sim.advance_tick(&[], None, &height_map, None, None, 67);
+    let _ = sim.advance_tick(&[], None, None, None, 67);
     assert_eq!(
         sim.lifecycle_test_events,
         vec![
@@ -4134,6 +3957,7 @@ fn persistent_bullet_logic_slot_publishes_native_wall_dirty_visits() {
         grid.place_overlay(5, 5, 2, initial_wall_data);
         let _ = grid.take_dirty_cells();
         sim.overlay_grid = Some(grid);
+        sim.resolved_terrain = Some(crate::sim::tiberium::test_support::flat_terrain(12, 12));
 
         let projectile_id = sim.allocate_stable_id();
         let impact = ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0);
@@ -5020,7 +4844,7 @@ fn gsi_05_04_building_get_coords_uses_foundation_center_cell() {
 }
 
 #[test]
-fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
+fn gsi_04_01_cell_target_uses_live_structural_bit() {
     let mut sim = Simulation::new();
     sim.session.map_width = 16;
     sim.session.map_height = 16;
@@ -5047,7 +4871,7 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
     let center_y = 7 * 256 + 128;
     let bridge_z = crate::util::lepton::ground_height_leptons(2, 1, center_x, center_y)
         .unwrap()
-        .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     let center = ProjectileCoord::new(center_x, center_y, bridge_z);
     let mut spawn = gsi_05_04_guided_projectile(
         crate::sim::combat::RAD_NO_ATTACKER,
@@ -5068,31 +4892,11 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
         cell_target_coord(sim.resolved_terrain.as_ref(), 6, 7),
         center
     );
-    {
-        let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(6, 7, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(6, 7, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
-        assert!(!bridge_state.is_bridge_walkable(6, 7));
-    }
-    assert_eq!(
-        cell_target_coord(sim.resolved_terrain.as_ref(), 6, 7),
-        center,
-        "CellClass target height follows live +0x100, not bridge runtime walkability"
-    );
-
     assert!(sim.object_ai_visit_one(projectile_id, None, ObjectAiCtx::default()));
 
-    // The actual Bullet visit consumes the live Cell target coordinate even
-    // though runtime bridge walkability is false. Being stationary at that
-    // target is not an admission: old height is 416, above both native tail
-    // gates (4677D3: <208; 467B68: <10).
+    // The actual Bullet visit consumes the live Cell target coordinate. Being
+    // stationary at that target is not an admission: old height is 416, above
+    // both native tail gates (4677D3: <208; 467B68: <10).
     assert!(sim.pending_projectile_detonations.is_empty());
     assert_eq!(sim.projectiles.get(projectile_id).unwrap().position, center);
 }
@@ -5138,9 +4942,10 @@ fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
     };
 
     assert!(
-        sim.bridge_state
+        sim.resolved_terrain
             .as_ref()
-            .is_some_and(|state| state.is_bridge_walkable(6, 7))
+            .and_then(|terrain| terrain.cell(6, 7))
+            .is_some_and(|cell| cell.bridge_facts.has_structural_bridge())
     );
     let result = sim.tick_combat_with_fatal_lifecycle(
         &rules,
@@ -6029,7 +5834,6 @@ fn gsi_01_05_terminal_wave_damages_once_before_single_current_removal() {
         .unwrap()
         .attack_target = Some(AttackTarget {
         target: TargetKind::Entity(victim_id),
-        pending_infantry_fire: None,
     });
     let mut wave = Wave::new_owned(
         0,
@@ -6113,7 +5917,6 @@ fn terminal_type_zero_wave_with_empty_recorded_vector_has_no_damage_area_tail() 
         firer.type_ref = sim.interner.intern("FIRER");
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Cell(4, 5),
-            pending_infantry_fire: None,
         });
     }
     let wave_id = sim.allocate_stable_id();
@@ -6191,10 +5994,9 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
         firer.type_ref = sim.interner.intern("FIRER");
-        firer.veterancy = 200;
+        firer.set_veterancy_rank(200);
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(next_id),
-            pending_infantry_fire: None,
         });
     }
 
@@ -6314,7 +6116,6 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
             firer.type_ref = sim.interner.intern("FIRER");
             firer.attack_target = Some(AttackTarget {
                 target: TargetKind::Entity(building_id),
-                pending_infantry_fire: None,
             });
         }
         let wave_id = sim.allocate_stable_id();
@@ -6400,7 +6201,6 @@ fn wave_tail_consumes_wall_roll_before_mandatory_cliff_chance_roll() {
         firer.type_ref = sim.interner.intern("FIRER");
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Cell(4, 1),
-            pending_infantry_fire: None,
         });
     }
 
@@ -6616,7 +6416,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
         firer.type_ref = sim.interner.intern("FIRER");
         firer.attack_target = Some(AttackTarget {
             target: TargetKind::Cell(4, 1),
-            pending_infantry_fire: None,
         });
     }
     let mut cells = Vec::new();
@@ -6705,7 +6504,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     let decal = overlay_registry.id_for_name("DECAL").expect("test decal");
     overlay.place_overlay(0, 0, decal, 11);
     overlay.place_overlay(1, 0, decal, 12);
-    overlay.retain_zero_wall_plane_for_tests();
     sim.overlay_grid = Some(overlay);
     let mut smudge = crate::sim::smudge_grid::SmudgeGrid::new(16, 16);
     for (rx, frame_offset) in [(0, 0), (1, 1)] {
@@ -6789,7 +6587,6 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     );
     let canonical_path = crate::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
     );
     for rx in 9..=12 {
         assert_eq!(
@@ -6921,7 +6718,6 @@ fn gsi_01_05_wave_reselects_live_cell_list_after_fatal_receiver_unmark() {
         .unwrap()
         .attack_target = Some(AttackTarget {
         target: TargetKind::Entity(building_id),
-        pending_infantry_fire: None,
     });
     let mut wave = Wave::new_owned(
         0,
@@ -7677,7 +7473,7 @@ fn production_air_wrapper_keeps_fly_exact_producer_and_reads_live_dummy_for_lega
             .as_mut()
             .unwrap()
             .set_fly_target_height((SimFixed::from_num(expected - ground - 416)).to_num::<i32>());
-        sim.tick_air_movement_with_cell_lists_one(1, None);
+        sim.tick_air_movement_with_cell_lists_one(1, None, None);
         let e = sim.substrate.entities.get(1).unwrap();
         assert_eq!(e.position.exact_z_leptons, Some(expected));
         assert_eq!(sim.foot_navigation_coordinate(1).unwrap().z, expected);
@@ -7710,7 +7506,7 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         sim
     }
     let mut direct = fixture();
-    assert!(direct.tick_jumpjet_cruise_one(1, None).is_some());
+    assert!(direct.tick_jumpjet_cruise_one(1, None, None).is_some());
     let expected = direct
         .substrate
         .entities
@@ -7736,7 +7532,7 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         SimFixed::from_num(0)
     );
     let mut wrapped = fixture();
-    wrapped.tick_air_movement_with_cell_lists_one(1, None);
+    wrapped.tick_air_movement_with_cell_lists_one(1, None, None);
     assert_eq!(
         wrapped
             .substrate
@@ -7775,16 +7571,16 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         let destination_ground = i32::from(destination_level) * 104;
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.position.exact_z_leptons = Some(origin_z);
-        entity.facing = 0;
+        entity.body_facing.snap(0x0000, 0);
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(600);
         loco.set_fly_target_height(600);
 
-        loco.fly_current_speed = SIM_ONE;
-        loco.speed_fraction = SIM_ONE;
-        loco.rot = 0;
+        let fly = loco.fly_runtime_mut().unwrap();
+        fly.current_speed = SIM_ONE;
+        fly.target_speed = SIM_ONE;
         assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), None,));
-        sim.tick_air_movement_with_cell_lists_one(1, None);
+        sim.tick_air_movement_with_cell_lists_one(1, None, None);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
         let moved_z = entity.position.exact_z_leptons.unwrap();
@@ -7815,7 +7611,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             for instance in [&mut sim, &mut restored] {
                 instance.session.tick = frame;
                 instance.session.binary_frame = frame as u32;
-                instance.tick_air_movement_with_cell_lists_one(1, None);
+                instance.tick_air_movement_with_cell_lists_one(1, None, None);
             }
             assert_eq!(restored.state_hash(), sim.state_hash());
             let entity = sim.substrate.entities.get(1).unwrap();
@@ -7858,14 +7654,8 @@ fn display_lifecycle_is_independent_of_logic_and_survives_production_save() {
         sim.substrate.entities.get_mut(id).unwrap().position.rx = 7 - id as u16;
     }
     let before_sort = sim.state_hash();
-    let before_sort_without_display =
-        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(182));
     sim.sort_display_ground(None);
     assert_ne!(sim.state_hash(), before_sort);
-    assert_eq!(
-        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(182)),
-        before_sort_without_display
-    );
     assert_eq!(
         sim.substrate.display.members(DisplayLayer::GROUND),
         [2, 3, 4, 1]
@@ -8100,27 +7890,26 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     sim.substrate
         .display
         .submit(id, Some(DisplayLayer::TOP), &|_| 0);
-    sim.tick_air_movement_with_cell_lists_one(id, None);
+    sim.tick_air_movement_with_cell_lists_one(id, None, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 
     // A real changed query re-submits even if cached membership is absent.
     sim.substrate.display.remove(id);
     let before = sim.entity_display_layer(id, None).unwrap();
+    // GetHeight reads the coordinate Z Jumpjet flight writes.
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
-        .locomotor
-        .as_mut()
-        .unwrap()
-        .altitude = SimFixed::from_num(600);
+        .position
+        .exact_z_leptons = Some(600);
     sim.complete_jumpjet_display_process(id, before, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
     // The native tail's alive gate prevents another submission after death.
     let before = sim.entity_display_layer(id, None).unwrap();
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     entity.lifecycle.object_alive = false;
-    entity.locomotor.as_mut().unwrap().altitude = SimFixed::ZERO;
+    entity.position.exact_z_leptons = Some(0);
     sim.complete_jumpjet_display_process(id, before, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 }
@@ -8147,4 +7936,125 @@ fn display_registration_expires_with_a_resubmitted_uninit_owner() {
     assert!(!sim.substrate.entities.contains(id));
     assert_eq!(sim.substrate.display.layer_of(id), None);
     sim.sort_display_ground(None);
+}
+
+/// `TechnoClass::Unlimbo` snaps the barrel elevation level (`0x006F6DC3`) and
+/// turns it toward `0x4000 - (FireAngle= << 8)` (`0x006F6DF5`) at the
+/// constructor's rate 3. A Techno whose elevation never moved hashes as
+/// schemas before the fold.
+#[test]
+fn unlimbo_levels_then_aims_the_barrel_elevation() {
+    let rules =
+        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+            "[VehicleTypes]\n0=TANK\n1=RAISED\n\
+         [TANK]\nStrength=100\nSpeed=6\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
+         [RAISED]\nStrength=100\nSpeed=6\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
+         FireAngle=32\n",
+        ))
+        .expect("barrel elevation rules");
+    // FireAngle 8 turns 0x800 in two frames; 32 turns 0x2000 in ten, at
+    // 0x2000 / 10 a frame, so it starts two short of level.
+    for (type_id, samples) in [
+        ("TANK", [(40, 0x4000), (41, 0x3C00), (42, 0x3800)]),
+        ("RAISED", [(40, 0x3FFE), (45, 0x2FFF), (50, 0x2000)]),
+    ] {
+        let mut sim = Simulation::with_seed(7);
+        sim.session.binary_frame = 40;
+        sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
+            base: 0,
+            off_fc: -100,
+            off_100: -100,
+            off_104: 200,
+            off_108: 200,
+        });
+        install_common_raw_terrain(&mut sim, 10, 10, 0, None);
+        let cell = sim
+            .resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(4, 4)
+            .unwrap();
+        cell.speed_costs.track = Some(100);
+        cell.base_speed_costs = cell.speed_costs;
+        let id = sim
+            .spawn_object(type_id, "Americans", 4, 4, 0, &rules)
+            .expect("production spawn/unlimbo");
+        let elevation = *sim.substrate.entities.get(id).unwrap().barrel_elevation();
+        for (frame, heading) in samples {
+            assert_eq!(elevation.current(frame), heading, "{type_id} frame {frame}");
+        }
+        assert!(
+            !sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .barrel_elevation_is_constructed(),
+            "{type_id}"
+        );
+    }
+
+    let mut sim = Simulation::new();
+    insert_entity(&mut sim, 1, EntityCategory::Unit);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .barrel_elevation_is_constructed()
+    );
+}
+
+/// Rocket Process moves its owner's AircraftTracker entry after the flight
+/// step (`0x00662FA1..0x00662FD0`, the update at `0x004138C0`): a missile
+/// whose step reaches a new cell is tracked there in the same turn.
+#[test]
+fn a_missile_is_tracked_in_the_cell_its_flight_step_reached() {
+    use crate::sim::movement::rocket_movement::{RocketFlightParameters, RocketPhase, RocketState};
+    let mut sim = Simulation::new();
+    install_common_raw_terrain(&mut sim, 32, 32, 0, None);
+    insert_entity(&mut sim, 1, EntityCategory::Aircraft);
+    sim.substrate.entities.get_mut(1).unwrap().locomotor =
+        Some(LocomotorState::for_test_kind(LocomotorKind::Rocket));
+    let _ = sim.try_reveal_entity(1, common_raw_request(5, 5, 0, 128, 128));
+    let speed = SimFixed::from_num(64);
+    sim.substrate.entities.get_mut(1).unwrap().rocket_state = Some(RocketState {
+        phase: RocketPhase::Cruise,
+        origin_rx: 5,
+        origin_ry: 5,
+        target_rx: 20,
+        target_ry: 5,
+        speed,
+        current_speed: speed,
+        altitude: SimFixed::from_num(512),
+        progress: SimFixed::from_num(0.25),
+        phase_frames: 0,
+        parameters: RocketFlightParameters::legacy(speed),
+        pitch: 0.0,
+        payload: None,
+    });
+    sim.sync_air_spatial_membership(1);
+    let bucket = |sim: &Simulation, cell: (u16, u16)| {
+        crate::sim::occupancy::air_spatial_bucket_index(
+            cell.0,
+            cell.1,
+            sim.session.map_width,
+            sim.session.map_height,
+        )
+    };
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().air_spatial_bucket,
+        Some(bucket(&sim, (5, 5)))
+    );
+
+    sim.advance_live_object_turn(1, None, super::techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    let missile = sim.substrate.entities.get(1).unwrap();
+    let cell = (missile.position.rx, missile.position.ry);
+    assert_ne!(cell, (5, 5), "the flight step left the launch cell");
+    assert_eq!(missile.air_spatial_bucket, Some(bucket(&sim, cell)));
 }

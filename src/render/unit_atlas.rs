@@ -29,7 +29,7 @@ use crate::assets::vxl_file::VxlFile;
 use crate::render::atlas_growth::{self, GrowthShelf, SPRITE_PADDING};
 use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::vxl_raster::{self, VxlRenderParams, VxlSlopeBlend, VxlSprite};
-use crate::rules::art_data::{self, ArtRegistry};
+use crate::rules::art_data;
 use crate::rules::ruleset::RuleSet;
 
 /// Edge of a growth page. One byte per texel makes it 64 MB, room for the
@@ -94,6 +94,77 @@ pub struct UnitSpriteKey {
     /// clamps any value ≥ 17 to 0 before constructing this key. Different
     /// slopes produce distinct pre-rendered sprites with tilted models.
     pub slope_type: u8,
+    /// A barrel's pitch step, `d32 - 8` of the unit's barrel elevation
+    /// (`TechnoClass+0x370`); 0 for every other layer.
+    pub barrel_pitch: i8,
+}
+
+/// The pitch each unit type's barrel image was first drawn at.
+///
+/// `TechnoClass::DrawVoxel @ 0x00706640` keeps a unit's turret and barrel
+/// images per type (`TechnoType+0x258`, `+0x280`), stored on a miss and blitted
+/// on a hit, under the turret's key: its step, the hull's step when the type
+/// has a `TurretOffset=`, the locomotor's key and the turret frame
+/// (`0x0073B748..0x0073B79F`). The barrel elevation is not in it, and when both
+/// images are cached `UnitClass::DrawVoxelBody` skips the turret and barrel
+/// matrices (`0x0073BA12..0x0073BA47`). So a key's barrel keeps the elevation of
+/// the first unit drawn under it: level for a unit drawn while its elevation
+/// still rounds level (the first two frames after Unlimbo at the default
+/// `FireAngle=`).
+///
+/// Not modelled here:
+/// - Every cached body, turret, barrel and shadow image shares one 4,000,000
+///   byte pool (`0x00887460`, sized at `0x0040F270`). Running it out frees every
+///   type's caches (`0x005F99E0`, called at `0x00706AE0` and from the shadow
+///   draw at `0x00706E38`), and later draws cache the pitch of the moment. VERA
+///   keeps first-drawn pitches until the scenario ends; how often retail games
+///   run the pool out is not measured.
+/// - `DisableVoxelCache=` (`Type+0xDBE`, tested at `0x00706806`) bypasses the
+///   cache; retail sets it only on SHAD, PDPLANE and SPYP, none of which has a
+///   barrel.
+/// - The turret index native keys above the frame (`TurretCount=` types): no
+///   retail barrel belongs to one.
+#[derive(Default)]
+pub struct BarrelImagePitches {
+    by_type: HashMap<String, HashMap<BarrelImageKey, i8>>,
+}
+
+/// The parts of a turret key a unit's barrel image varies by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct BarrelImageKey {
+    turret_facing: u8,
+    /// The hull's facing, keyed only for a type with a `TurretOffset=`.
+    body_facing: Option<u8>,
+    slope_type: u8,
+    turret_frame: u32,
+}
+
+impl BarrelImagePitches {
+    /// The pitch the barrel image cached with `turret`'s image holds: the
+    /// first `drawn` pitch for that key.
+    pub fn pitch(&mut self, turret: &UnitSpriteKey, body_facing: Option<u8>, drawn: i8) -> i8 {
+        let key = BarrelImageKey {
+            turret_facing: turret.facing,
+            body_facing,
+            slope_type: turret.slope_type,
+            turret_frame: turret.frame,
+        };
+        if let Some(pitches) = self.by_type.get_mut(turret.type_id.as_str()) {
+            return *pitches.entry(key).or_insert(drawn);
+        }
+        self.by_type
+            .entry(turret.type_id.clone())
+            .or_default()
+            .insert(key, drawn);
+        drawn
+    }
+
+    /// Each scenario and loaded game starts empty, as a freshly started
+    /// gamemd does; whether gamemd's type caches outlive a scenario within one
+    /// process is not established.
+    pub fn clear(&mut self) {
+        self.by_type.clear();
+    }
 }
 
 /// UV and offset data for one sprite within the unit atlas.
@@ -550,6 +621,7 @@ impl CachedUnitSprite {
 pub(crate) use crate::sim::voxel_frame_catalog::{
     UnitAtlasVariant, detect_hva_frame_count, seed_layers_for, unit_atlas_variants,
 };
+use crate::sim::voxel_frame_catalog::{has_gun_parts, voxel_image_id};
 
 fn insert_unit_layer_keys(
     needed: &mut HashSet<UnitSpriteKey>,
@@ -557,23 +629,52 @@ fn insert_unit_layer_keys(
     layer: VxlLayer,
     num_frames: u32,
     is_ground_vehicle: bool,
+    barrel_pitches: &[i8],
 ) {
     let (step, buckets) = facing_config_for_layer(layer);
     let slope_range = if is_ground_vehicle { 0..=16 } else { 0..=0 };
+    let pitches: &[i8] = if layer == VxlLayer::Barrel {
+        barrel_pitches
+    } else {
+        &[0]
+    };
     for bucket in 0..buckets {
         let facing = (bucket * u16::from(step)) as u8;
         for frame in 0..num_frames {
             for slope_type in slope_range.clone() {
-                needed.insert(UnitSpriteKey {
-                    type_id: type_id.to_string(),
-                    facing,
-                    layer,
-                    frame,
-                    slope_type,
-                });
+                for &barrel_pitch in pitches {
+                    needed.insert(UnitSpriteKey {
+                        type_id: type_id.to_string(),
+                        facing,
+                        layer,
+                        frame,
+                        slope_type,
+                        barrel_pitch,
+                    });
+                }
             }
         }
     }
+}
+
+/// Every pitch step a unit's barrel is drawn at. Unlimbo is the only writer
+/// of a unit's barrel elevation: it snaps it level and turns it toward the
+/// `FireAngle=` target ([`crate::sim::game_entity::unlimbo_barrel_target`]),
+/// so the steps are those along that turn's short arc, `d32 - 8` of each
+/// heading.
+pub(crate) fn unit_barrel_pitches(fire_angle: i32) -> Vec<i8> {
+    use crate::sim::game_entity::{BARREL_LEVEL, unlimbo_barrel_target};
+    let arc = i32::from(unlimbo_barrel_target(fire_angle).wrapping_sub(BARREL_LEVEL) as i16);
+    let mut pitches = Vec::new();
+    // One step spans 0x800; sampling every 0x100 visits each one.
+    for turned in (0..=arc.abs()).step_by(0x100) {
+        let heading = BARREL_LEVEL.wrapping_add((turned * arc.signum()) as u16);
+        let pitch = vxl_raster::voxel_facing_step_u16(heading) as i8 - 8;
+        if !pitches.contains(&pitch) {
+            pitches.push(pitch);
+        }
+    }
+    pitches
 }
 
 fn seed_unit_variant_keys(
@@ -583,19 +684,15 @@ fn seed_unit_variant_keys(
     is_ground_vehicle: bool,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) {
-    let layers = seed_layers_for(
-        asset_manager,
-        &variant.type_id,
-        variant.has_turret,
-        rules,
-        art,
-    );
+    let layers = seed_layers_for(asset_manager, &variant.type_id, variant.has_turret, rules);
+    let barrel_pitches = rules
+        .and_then(|rules| rules.object(&variant.type_id))
+        .map_or_else(|| vec![0], |object| unit_barrel_pitches(object.fire_angle));
     for &layer in layers {
         let frame_key = (variant.type_id.clone(), layer);
         let num_frames = *frame_counts.entry(frame_key).or_insert_with(|| {
-            detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules, art)
+            detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules)
         });
         insert_unit_layer_keys(
             needed,
@@ -603,13 +700,14 @@ fn seed_unit_variant_keys(
             layer,
             num_frames,
             is_ground_vehicle,
+            &barrel_pitches,
         );
     }
     // Ground vehicles and ships cast a voxel shadow (one frame, every facing
     // and slope). Aircraft use FlyLocomotion's own shadow matrix and point,
     // which are not modelled yet, so they get none (recorded residual).
     if is_ground_vehicle {
-        insert_unit_layer_keys(needed, &variant.type_id, VxlLayer::Shadow, 1, true);
+        insert_unit_layer_keys(needed, &variant.type_id, VxlLayer::Shadow, 1, true, &[0]);
     }
 }
 
@@ -622,7 +720,6 @@ fn needed_unit_keys(
     demand: &UnitAtlasDemand,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) -> (HashSet<UnitSpriteKey>, BTreeMap<(String, VxlLayer), u32>) {
     let mut needed: HashSet<UnitSpriteKey> = HashSet::new();
     let mut frame_counts: BTreeMap<(String, VxlLayer), u32> = BTreeMap::new();
@@ -636,7 +733,6 @@ fn needed_unit_keys(
                     is_ground_vehicle,
                     asset_manager,
                     rules,
-                    art,
                 );
             }
         }
@@ -653,6 +749,7 @@ fn needed_unit_keys(
                 layer: VxlLayer::Composite,
                 frame: 0,
                 slope_type: 0,
+                barrel_pitch: 0,
             });
         }
     }
@@ -678,7 +775,6 @@ pub fn build_unit_atlas(
     entities: &crate::sim::entity_store::EntityStore,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
     existing: Option<UnitAtlas>,
     interner: Option<&crate::sim::intern::StringInterner>,
 ) -> Option<UnitAtlas> {
@@ -696,7 +792,7 @@ pub fn build_unit_atlas(
         log::info!("No new voxel models — keeping the current unit atlas");
         return existing;
     }
-    let (needed, frame_counts) = needed_unit_keys(&missing, asset_manager, rules, art);
+    let (needed, frame_counts) = needed_unit_keys(&missing, asset_manager, rules);
     // A type seeded as an aircraft after its ground variant (or the reverse)
     // shares its flat keys with the resident ones.
     let mut new_keys: Vec<UnitSpriteKey> = needed
@@ -710,13 +806,22 @@ pub fn build_unit_atlas(
     // By model, then pose: each model is parsed once, and each pose's body,
     // turret and barrel are rasterized once for its three part keys.
     new_keys.sort_unstable_by(|a, b| {
-        (&a.type_id, a.frame, a.facing, a.slope_type, a.layer).cmp(&(
-            &b.type_id,
-            b.frame,
-            b.facing,
-            b.slope_type,
-            b.layer,
-        ))
+        (
+            &a.type_id,
+            a.frame,
+            a.facing,
+            a.slope_type,
+            a.layer,
+            a.barrel_pitch,
+        )
+            .cmp(&(
+                &b.type_id,
+                b.frame,
+                b.facing,
+                b.slope_type,
+                b.layer,
+                b.barrel_pitch,
+            ))
     });
     log::info!(
         "Unit atlas: {} new sprites to render for {} new voxel models",
@@ -752,7 +857,7 @@ pub fn build_unit_atlas(
         let workers = std::thread::available_parallelism().map_or(1, |n| n.get());
         for type_keys in new_keys.chunk_by(|a, b| a.type_id == b.type_id) {
             let type_id = type_keys[0].type_id.as_str();
-            let Some(model) = UnitModel::load(asset_manager, type_id, rules, art) else {
+            let Some(model) = UnitModel::load(asset_manager, type_id, rules) else {
                 *failed.entry(type_id).or_default() += type_keys.len();
                 continue;
             };
@@ -842,7 +947,7 @@ pub fn build_unit_atlas(
     Some(atlas)
 }
 
-/// A turret or barrel part: `{image}TUR`, `{image}BARL` or `{image}BARREL`.
+/// A turret or barrel part: `{image}TUR` or `{image}BARL`.
 pub(crate) struct VoxelPart {
     vxl: VxlFile,
     hva: Option<HvaFile>,
@@ -879,17 +984,13 @@ impl VoxelPart {
 }
 
 /// A voxel model's files, parsed once and shared by every sprite drawn from
-/// it.
-///
-/// Uses ArtRegistry to resolve the correct VXL/HVA filenames.
-/// Falls back to direct {TYPE_ID}.VXL if art data is unavailable.
+/// it. They are named from [`voxel_image_id`].
 pub(crate) struct UnitModel {
     type_id: String,
     body: VxlFile,
     body_hva: Option<HvaFile>,
+    /// The gun parts, present only where [`has_gun_parts`] holds.
     turret: Option<VoxelPart>,
-    /// BARL is the common spelling; a handful of models use BARREL.
-    barl: Option<VoxelPart>,
     barrel: Option<VoxelPart>,
     /// Ordinary ground Drive units cast the prepared native shadow.
     drive_shadow: bool,
@@ -909,17 +1010,8 @@ impl UnitModel {
         asset_manager: &AssetManager,
         type_id: &str,
         rules: Option<&RuleSet>,
-        art: Option<&ArtRegistry>,
     ) -> Option<Self> {
-        // Resolve image name: type_id → rules.ini Image= → art.ini Image= override.
-        let rules_image: String = rules
-            .and_then(|r| r.object(type_id))
-            .map(|o| o.image.clone())
-            .unwrap_or_else(|| type_id.to_string());
-        let image: String = art
-            .map(|a| a.resolve_effective_image_id(type_id, &rules_image))
-            .unwrap_or_else(|| rules_image.to_uppercase());
-
+        let image = voxel_image_id(type_id, rules);
         let (vxl_name, hva_name): (String, String) = art_data::voxel_asset_names(&image);
 
         let vxl_data = asset_manager.get_ref(&vxl_name)?;
@@ -942,14 +1034,18 @@ impl UnitModel {
                         None
                     }
                 });
-        let part = |suffix: &str| VoxelPart::load(asset_manager, &format!("{image}{suffix}"));
+        let gun_parts = has_gun_parts(type_id, rules);
+        let part = |suffix: &str| {
+            gun_parts
+                .then(|| VoxelPart::load(asset_manager, &format!("{image}{suffix}")))
+                .flatten()
+        };
         Some(Self {
             type_id: type_id.to_string(),
             body,
             body_hva,
             turret: part("TUR"),
-            barl: part("BARL"),
-            barrel: part("BARREL"),
+            barrel: part("BARL"),
             drive_shadow: rules.and_then(|r| r.object(type_id)).is_some_and(|o| {
                 o.locomotor == crate::rules::locomotor_type::LocomotorKind::Drive
                     && !o.considered_aircraft
@@ -994,7 +1090,13 @@ impl UnitModel {
             ];
             return Some((sprite, Some(bounds)));
         }
-        let native_draw_bounds = self.native_draw_bounds(&params, key.layer);
+        // A barrel key draws its part at its pitch; the pose's other parts,
+        // and every other key, stay level.
+        let part_params = VxlRenderParams {
+            barrel_pitch: key.barrel_pitch,
+            ..params.clone()
+        };
+        let native_draw_bounds = self.native_draw_bounds(&part_params, key.layer);
 
         // House remap is no longer applied at bake time — the fragment shader
         // does it via per-instance DrawState::remap_row + house_ramp texture lookup.
@@ -1004,7 +1106,7 @@ impl UnitModel {
                 &self.body,
                 self.body_hva.as_ref(),
                 self.turret.as_ref(),
-                self.barl.as_ref().or(self.barrel.as_ref()),
+                self.barrel.as_ref(),
                 &params,
                 vpl,
             ),
@@ -1014,7 +1116,6 @@ impl UnitModel {
             VxlLayer::Body | VxlLayer::Turret | VxlLayer::Barrel => {
                 let key_pose = (params.frame, params.facing, params.slope_type, slope_blend);
                 if pose.as_ref().is_none_or(|parts| parts.pose != key_pose) {
-                    let barrel = self.barl.as_ref().or(self.barrel.as_ref());
                     *pose = Some(PoseParts {
                         pose: key_pose,
                         body: vxl_raster::render_vxl(
@@ -1024,20 +1125,26 @@ impl UnitModel {
                             vpl,
                         ),
                         turret: self.turret.as_ref().map(|part| part.render(&params, vpl)),
-                        barrel: barrel.map(|part| part.render(&params, vpl)),
+                        barrel: self.barrel.as_ref().map(|part| part.render(&params, vpl)),
                     });
                 }
                 let parts = pose.as_ref().expect("the pose was just rendered");
+                let pitched_barrel = self
+                    .barrel
+                    .as_ref()
+                    .filter(|_| key.barrel_pitch != 0)
+                    .map(|part| part.render(&part_params, vpl));
+                let barrel = pitched_barrel.as_ref().or(parts.barrel.as_ref());
                 let all_layers: Vec<&VxlSprite> = [Some(&parts.body)]
                     .into_iter()
-                    .chain([parts.turret.as_ref(), parts.barrel.as_ref()])
+                    .chain([parts.turret.as_ref(), barrel])
                     .flatten()
                     .collect();
 
                 let requested: &VxlSprite = match key.layer {
                     VxlLayer::Body => &parts.body,
                     VxlLayer::Turret => parts.turret.as_ref()?,
-                    VxlLayer::Barrel => parts.barrel.as_ref()?,
+                    VxlLayer::Barrel => barrel?,
                     _ => unreachable!(),
                 };
                 pad_layer_to_union_bounds(requested, &all_layers)
@@ -1085,7 +1192,7 @@ impl UnitModel {
             &self.body,
             self.body_hva.as_ref(),
             self.turret.as_ref(),
-            self.barl.as_ref().or(self.barrel.as_ref()),
+            self.barrel.as_ref(),
             &params,
             vpl,
         );
@@ -1107,16 +1214,11 @@ impl UnitModel {
             VxlLayer::Shadow => None,
             VxlLayer::Body => body(),
             VxlLayer::Turret => part(&self.turret).ok().flatten(),
-            VxlLayer::Barrel => part(&self.barl)
-                .ok()?
-                .or_else(|| part(&self.barrel).ok().flatten()),
+            VxlLayer::Barrel => part(&self.barrel).ok().flatten(),
             VxlLayer::Composite => {
                 let mut bounds = Some(body()?);
                 let turret = part(&self.turret).ok()?;
-                let barrel = match part(&self.barl).ok()? {
-                    Some(bounds) => Some(bounds),
-                    None => part(&self.barrel).ok()?,
-                };
+                let barrel = part(&self.barrel).ok()?;
                 for part in [turret, barrel].into_iter().flatten() {
                     vxl_raster::union_native_voxel_draw_bounds(&mut bounds, part);
                 }
@@ -1132,16 +1234,10 @@ pub(crate) fn render_unit_sprite_with_slope_blend(
     asset_manager: &AssetManager,
     key: &UnitSpriteKey,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
     vpl: Option<&VplFile>,
     slope_blend: Option<VxlSlopeBlend>,
 ) -> Option<(VxlSprite, Option<[i32; 4]>)> {
-    UnitModel::load(asset_manager, &key.type_id, rules, art)?.render(
-        key,
-        vpl,
-        slope_blend,
-        &mut None,
-    )
+    UnitModel::load(asset_manager, &key.type_id, rules)?.render(key, vpl, slope_blend, &mut None)
 }
 
 /// Body plus optional turret and barrel, depth-composited on the CPU.
@@ -1150,9 +1246,10 @@ pub(crate) fn render_unit_sprite_with_slope_blend(
 /// composited sprite the game does. The bake path composites through the same
 /// `composite_parts`, so the two cannot drift apart.
 ///
-/// Pure CPU: no `GpuContext`, no atlas state, no wgpu. The turret and barrel are
-/// found by the conventional `TUR` / `BARL` / `BARREL` suffixes on the effective
-/// image id; a model without them composites to just its body.
+/// Pure CPU: no `GpuContext`, no atlas state, no wgpu. This works on an image,
+/// not a type: it composites whichever `{image}TUR` and `{image}BARL` files
+/// exist, as a type with [`has_gun_parts`] draws them. A vehicle type without
+/// `Turret=` draws its body alone.
 pub fn composite_unit_vxl_cpu(
     asset_manager: &AssetManager,
     body: &VxlFile,
@@ -1163,8 +1260,7 @@ pub fn composite_unit_vxl_cpu(
 ) -> VxlSprite {
     let part = |suffix: &str| VoxelPart::load(asset_manager, &format!("{image}{suffix}"));
     let turret = part("TUR");
-    // BARL is the common spelling; a handful of models use BARREL.
-    let barrel = part("BARL").or_else(|| part("BARREL"));
+    let barrel = part("BARL");
     composite_parts(
         body,
         body_hva,

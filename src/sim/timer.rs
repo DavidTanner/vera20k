@@ -166,6 +166,14 @@ mod tests {
     }
 
     #[test]
+    fn a_running_timer_with_no_or_negative_time_has_expired() {
+        assert!(CdTimer::started(100, 0).expired(100));
+        let timer = CdTimer::started(100, -7);
+        assert_eq!(timer.remaining(100), 0);
+        assert!(timer.expired(100));
+    }
+
+    #[test]
     fn raw_paused_duration_is_not_implicitly_clamped() {
         let timer = CdTimer::from_raw(PAUSED_START_FRAME, -7);
 

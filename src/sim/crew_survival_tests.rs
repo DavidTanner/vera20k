@@ -411,8 +411,7 @@ fn survivors_of_a_c4_charged_building_attack_an_enemy_planter() {
                 .get_mut(plant)
                 .unwrap()
                 .pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-                start_frame: 0,
-                duration_frames: 100,
+                timer: crate::sim::timer::CdTimer::started(0, 100),
                 source_entity_id: Some(planter),
             });
             let before = sim.substrate.entities.keys_sorted();
@@ -1175,15 +1174,7 @@ fn keep_undefeated(
             if !open {
                 return None;
             }
-            sim.spawn_object(
-                "GAPOWR",
-                "Americans",
-                x,
-                y,
-                0,
-                &resources.rules,
-                &resources.height_map,
-            )
+            sim.spawn_object("GAPOWR", "Americans", x, y, 0, &resources.rules)
         })
         .expect("room for a power plant away from the scene")
 }
@@ -1240,24 +1231,9 @@ fn retail_dustbowl_crews_scatter_off_their_wrecks() {
                 if !open {
                     return None;
                 }
-                let mcv = sim.spawn_object(
-                    "AMCV",
-                    "Americans",
-                    x,
-                    y,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
-                let plant = sim.spawn_object(
-                    "GAPOWR",
-                    "Americans",
-                    x - 3,
-                    y,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                let mcv = sim.spawn_object("AMCV", "Americans", x, y, 0, &resources.rules)?;
+                let plant =
+                    sim.spawn_object("GAPOWR", "Americans", x - 3, y, 0, &resources.rules)?;
                 Some((mcv, plant))
             })
             .expect("an MCV cell with room for a power plant");
@@ -1338,7 +1314,6 @@ fn retail_dustbowl_crews_scatter_off_their_wrecks() {
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
 fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
-    use crate::sim::passenger::BoardingPhase;
     let dir = std::env::var("RA2_DIR")
         .ok()
         .filter(|path| !path.trim().is_empty())
@@ -1386,9 +1361,7 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
             if !spaced || open() != Some(true) {
                 continue;
             }
-            if let Some(id) =
-                sim.spawn_object(kind, "Americans", x, y, 0, rules, &resources.height_map)
-            {
+            if let Some(id) = sim.spawn_object(kind, "Americans", x, y, 0, rules) {
                 placed = Some((id, (x, y)));
                 break;
             }
@@ -1404,13 +1377,11 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
                         if i < 3 { ty + 1 } else { ty - 1 },
                         0,
                         rules,
-                        &resources.height_map,
                     )
                     .expect("GI spawns");
                 sim.substrate.entities.get_mut(id).unwrap().passenger_role =
                     PassengerRole::Boarding {
                         target_transport_id: transport,
-                        phase: BoardingPhase::Entering,
                     };
                 id
             })
@@ -1419,7 +1390,7 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
     }
     let guard = keep_undefeated(sim, resources, loads[0].2);
     sim.resolve_type_handles(rules);
-    crate::sim::passenger::tick_passenger_system(sim, rules);
+    crate::sim::passenger::tick_passenger_system(sim, rules, None);
     for (kind, transport, _, gis) in &loads {
         assert_eq!(cargo_len(sim, *transport), gis.len(), "{kind} boarded");
     }
@@ -1479,5 +1450,43 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
     for ((kind, id, wreck, destination), left) in destinations.into_iter().zip(left) {
         println!("{kind} GI {id}: wreck {wreck:?}, Scatter to {destination:?}");
         assert!(left, "{kind}: GI {id} walked off the wreck");
+    }
+}
+
+/// SpawnSurvivors' Unlimbo direction (`0x00442F3C..0x00442F63`, which the
+/// survivor spawn above reads through `body_facing_dir`): the building's
+/// `+0x388` Current() rounded to a DirType, wrapping 0xFF80.. to 0. Rows are
+/// the original instructions' outputs (`tools/spatial_oracle/survivor_facing.py`).
+#[test]
+fn survivor_direction_matches_the_original() {
+    let rows: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/survivor_facing.json"
+    ))
+    .unwrap();
+    let rows = rows.as_array().unwrap();
+    assert_eq!(rows.len(), 42);
+    for row in rows {
+        let input = &row["input"];
+        let number = |key: &str| input[key].as_i64().unwrap();
+        let initial = number("initial") as u16;
+        let mut facing = crate::sim::movement::FacingClass::new(initial, number("rot") as i32);
+        facing.snap(initial, number("start") as u32);
+        if let Some(target) = input["target"].as_u64() {
+            facing.set(target as u16, number("set_frame") as u32);
+        }
+        let mut building =
+            crate::sim::game_entity::GameEntity::test_default(1, "GAPILE", "Americans", 5, 5);
+        building.body_facing = facing;
+        let frame = number("sample_frame") as u32;
+        assert_eq!(
+            u64::from(building.body_facing_current(frame)),
+            row["current"].as_u64().unwrap(),
+            "{input}"
+        );
+        assert_eq!(
+            u64::from(building.body_facing_dir(frame)),
+            row["direction"].as_u64().unwrap(),
+            "{input}"
+        );
     }
 }

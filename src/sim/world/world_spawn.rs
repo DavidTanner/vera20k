@@ -27,7 +27,6 @@ use crate::sim::game_entity::{
     GameEntity, GeneratedTechnoInit, StructureUpgradeLink, TechnoConstructorInit,
 };
 use crate::sim::intern::InternedId;
-use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::production::{self, ProductionCategory, foundation_dimensions};
 use crate::sim::vision::MAX_SIGHT_RANGE;
 
@@ -185,7 +184,6 @@ impl Simulation {
             TechnoConstructorInit::FreshScenario => {
                 Ok((self.scenario_rng.next_u32() & 0xFFFF) as u16)
             }
-            TechnoConstructorInit::Restored(word) => Ok(word),
             TechnoConstructorInit::PreconsumedGenerated(generated) => {
                 let Some((entity_index, techno_type, cell)) = expected_generated_identity else {
                     return Err(GeneratedTechnoInitError::UnexpectedEntityIndex(
@@ -264,26 +262,19 @@ impl Simulation {
 impl Simulation {
     /// Spawn entities from parsed map placements into EntityStore.
     #[cfg(test)]
-    pub fn spawn_from_map(
-        &mut self,
-        entities: &[MapEntity],
-        rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
-    ) -> u32 {
-        self.spawn_from_map_with_resolved(entities, rules, height_map, None)
+    pub fn spawn_from_map(&mut self, entities: &[MapEntity], rules: Option<&RuleSet>) -> u32 {
+        self.spawn_from_map_with_resolved(entities, rules, None)
     }
 
     pub fn spawn_from_map_with_resolved(
         &mut self,
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
     ) -> u32 {
         self.spawn_from_map_with_resolved_and_overlay_registry(
             entities,
             rules,
-            height_map,
             resolved_terrain,
             None,
         )
@@ -293,14 +284,12 @@ impl Simulation {
         &mut self,
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> u32 {
         self.spawn_from_map_with_constructor_inits(
             entities,
             rules,
-            height_map,
             resolved_terrain,
             overlay_registry,
             None,
@@ -315,14 +304,12 @@ impl Simulation {
         &mut self,
         entities: &[MapEntity],
         rules: &RuleSet,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         constructor_inits: &GeneratedTechnoInitTable,
     ) -> Result<u32, GeneratedTechnoInitError> {
         self.spawn_from_map_with_constructor_inits(
             entities,
             Some(rules),
-            height_map,
             resolved_terrain,
             None,
             Some(constructor_inits),
@@ -333,7 +320,6 @@ impl Simulation {
         &mut self,
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
-        height_map: &BTreeMap<(u16, u16), u8>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         constructor_inits: Option<&GeneratedTechnoInitTable>,
@@ -388,10 +374,10 @@ impl Simulation {
                 );
             }
             let z: u8 = bridge_spawn.unwrap_or_else(|| {
-                height_map
-                    .get(&(map_ent.cell_x, map_ent.cell_y))
-                    .copied()
-                    .unwrap_or(0)
+                resolved_terrain
+                    .or(self.resolved_terrain.as_ref())
+                    .and_then(|terrain| terrain.cell(map_ent.cell_x, map_ent.cell_y))
+                    .map_or(0, |cell| cell.level)
             });
 
             // Typed production admission has already resolved the class type.
@@ -697,9 +683,8 @@ impl Simulation {
         ry: u16,
         facing: u8,
         rules: &RuleSet,
-        height_map: &BTreeMap<(u16, u16), u8>,
     ) -> Option<u64> {
-        let z: u8 = height_map.get(&(rx, ry)).copied().unwrap_or(0);
+        let z: u8 = self.terrain_cell_level(rx, ry).unwrap_or(0);
         self.spawn_object_at_height(type_id, owner, rx, ry, facing, z, rules)
     }
 
@@ -715,10 +700,9 @@ impl Simulation {
         ry: u16,
         facing: u8,
         rules: &RuleSet,
-        height_map: &BTreeMap<(u16, u16), u8>,
         overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
     ) -> Option<u64> {
-        let z = height_map.get(&(rx, ry)).copied().unwrap_or(0);
+        let z = self.terrain_cell_level(rx, ry).unwrap_or(0);
         self.spawn_object_at_height_with_overlay_registry(
             type_id,
             owner,
@@ -913,56 +897,10 @@ impl Simulation {
         self.spawn_object_limbo_at_height(type_id, owner, rx, ry, facing, z, rules)
     }
 
-    /// Run one result-bearing Unlimbo transaction against an already stored
-    /// production object. Mark failure restores this same identity to limbo;
-    /// construction and its Add_Tracking are deliberately not repeated.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn unlimbo_held_production_object(
-        &mut self,
-        stable_id: u64,
-        rx: u16,
-        ry: u16,
-        facing: u8,
-        z: u8,
-        placement: PlacementEvidence,
-        rules: &RuleSet,
-    ) -> Option<u64> {
-        self.reveal_constructed_object_at_height_with_unit_context(
-            stable_id, rx, ry, facing, z, placement, rules, None, stable_id,
-        )
-    }
-
-    /// Production delivery boundary for a held object whose concrete Unit
-    /// virtual needs the live overlay table and selected producer identity.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn unlimbo_held_production_object_with_unit_context(
-        &mut self,
-        stable_id: u64,
-        producer_id: u64,
-        rx: u16,
-        ry: u16,
-        facing: u8,
-        z: u8,
-        placement: PlacementEvidence,
-        rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> Option<u64> {
-        self.reveal_constructed_object_at_height_with_unit_context(
-            stable_id,
-            rx,
-            ry,
-            facing,
-            z,
-            placement,
-            rules,
-            overlay_registry,
-            producer_id,
-        )
-    }
-
-    /// Place an already constructed limbo Techno without repeating its
-    /// constructor draw or manager initialization. Failure restores this same
-    /// identity to limbo so a caller may try another coordinate.
+    /// Place an already constructed limbo Techno, such as a held production
+    /// object, without repeating its constructor draw, manager initialization
+    /// or Add_Tracking. Failure restores this same identity to limbo so a
+    /// caller may try another coordinate.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn reveal_constructed_object_at_height(
         &mut self,
@@ -1026,21 +964,6 @@ impl Simulation {
             return None;
         }
 
-        let z = match placement {
-            PlacementEvidence::UnitCanEnterExactZero {
-                layer: MovementLayer::Bridge,
-            } => self
-                .resolved_terrain
-                .as_ref()
-                .and_then(|terrain| terrain.cell(rx, ry))
-                .map_or(z, |cell| cell.bridge_deck_level),
-            _ => z,
-        };
-        if let PlacementEvidence::UnitCanEnterExactZero { layer } = placement
-            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
-        {
-            entity.on_bridge = layer == MovementLayer::Bridge;
-        }
         let is_infantry = self
             .substrate
             .entities
@@ -1049,7 +972,6 @@ impl Simulation {
         let infantry_sub_cell = is_infantry.then(|| self.allocate_infantry_sub_cell(rx, ry));
         let (sub_x, sub_y) = {
             let entity = self.substrate.entities.get_mut(stable_id)?;
-            entity.facing = facing;
             if let Some(sub_cell) = infantry_sub_cell {
                 entity.sub_cell = Some(sub_cell);
                 let offsets = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
@@ -1075,6 +997,12 @@ impl Simulation {
         );
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             return None;
+        }
+        // `TechnoClass::Unlimbo` snaps the body to the requested direction
+        // once the Reveal succeeded (`+0x388` Set_Current, `0x006F6DAA`).
+        let frame = self.session.binary_frame;
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            entity.body_facing.snap(u16::from(facing) << 8, frame);
         }
         self.allocate_building_light(stable_id, rules);
         self.initialize_cloak_after_unlimbo(stable_id, rules);
@@ -1223,7 +1151,7 @@ impl Simulation {
     fn unlimbo_constructed_parent(
         &mut self,
         stable_id: u64,
-        mut position: RevealPosition,
+        position: RevealPosition,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (u64, RevealOutcome) {
@@ -1236,18 +1164,6 @@ impl Simulation {
                 stable_id,
             )
         });
-        if let PlacementEvidence::UnitCanEnterExactZero { layer } = placement {
-            if layer == MovementLayer::Bridge {
-                position.z = self
-                    .resolved_terrain
-                    .as_ref()
-                    .and_then(|terrain| terrain.cell(position.rx, position.ry))
-                    .map_or(position.z, |cell| cell.bridge_deck_level);
-            }
-            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                entity.on_bridge = layer == MovementLayer::Bridge;
-            }
-        }
         let outcome = self.try_reveal_entity_with_context(
             stable_id,
             RevealRequest {
@@ -1335,7 +1251,7 @@ impl Simulation {
             self.substrate.entities.get(stable_id).map(|entity| {
                 (
                     entity.category,
-                    entity.veterancy,
+                    entity.veterancy(),
                     entity.in_playfield,
                     entity.type_ref(),
                 )
@@ -1480,7 +1396,8 @@ impl Simulation {
                     entity.veterancy_raw,
                     entity.attack_target.as_ref().map(|t| t.target),
                 ),
-                crate::sim::mcv_deploy::current_direction(entity, self.session.binary_frame),
+                // Native rounds FacingClass::Current, including wrap at 0xff80.
+                entity.body_facing_dir(self.session.binary_frame),
                 yard_obj.construction_yard,
                 rules
                     .object(type_str)
@@ -1514,11 +1431,11 @@ impl Simulation {
         // type's CanPlaceAt tests the origin for no house, and the unit is put
         // back (`0x0073953B..0x00739565` / `0x0073959C..0x007395B4`) before
         // either outcome acts.
-        self.foot_mark_remove(stable_id, Some(rules), None, registry);
+        self.foot_mark_remove(stable_id, Some(rules), registry);
         let placeable = rules.object(&yard_type).is_some_and(|yard| {
             crate::sim::build_site::can_place_building_at(self, rules, registry, yard, origin, None)
         });
-        self.foot_mark_put(stable_id, Some(rules), None, registry);
+        self.foot_mark_put(stable_id, Some(rules), registry);
         if !placeable {
             log::info!("MCV deploy blocked at origin {origin:?}");
             // `0x007394E0..0x0073950A`: EVA CannotDeployHere only for the
@@ -1558,9 +1475,17 @@ impl Simulation {
             // to radio contact 0, then +0x68C.
             let now = self.session.binary_frame;
             if let Some(entity) = self.substrate.entities.get_mut(stable_id)
-                && !crate::sim::movement::ready_producer::is_moving_now_for(entity, now)
+                && !crate::sim::movement::ready_producer::is_moving_now_for(
+                    entity,
+                    Some(crate::sim::movement::SpeedRules::new(
+                        rules,
+                        &self.interner,
+                        &self.type_handles,
+                    )),
+                    now,
+                )
             {
-                crate::sim::mcv_deploy::start_turn(entity, deploy_facing, now);
+                crate::sim::movement::drive_do_turn(entity, u16::from(deploy_facing) << 8, now);
             }
             crate::sim::radio::transmit_to_contact(
                 self,
@@ -1655,10 +1580,13 @@ impl Simulation {
         destination.selected = was_selected;
         // Begin_Mode(0) at its Unlimbo, the Construction mission queued
         // (0x007396D5) and its ready byte set (0x0073984E).
-        destination.building_up = Some(BuildingUp::deployed(
-            rules.buildup_control(&yard_type),
+        destination.install_building_up(
+            BuildingUp::deployed(
+                rules.buildup_control(&yard_type),
+                self.session.binary_frame as i32,
+            ),
             self.session.binary_frame as i32,
-        ));
+        );
         let (new_sid, outcome) =
             self.unlimbo_after_constructor_managers(destination, Some(rules), registry);
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
@@ -1708,7 +1636,6 @@ impl Simulation {
         // cache (`+0x13C`) stays the building's own.
         if let Some(building) = self.substrate.entities.get_mut(new_sid) {
             building.veterancy_raw = veterancy;
-            building.veterancy = crate::sim::combat::veterancy::rank_u16(veterancy);
         }
         // 0x007397E4..0x007397F4: a building deployed for a house other than
         // the local player's (`IsHumanPlayer`, here whether a human controls
@@ -1742,7 +1669,7 @@ impl Simulation {
                 .houses
                 .get_mut(&owner_id)
                 .expect("qualifying deploy owner remains registered");
-            house.base_center = Some((rx, ry));
+            house.set_base_center((rx, ry));
             if house.base_plan.nodes.is_empty() {
                 recalc_base_plan(
                     &mut house.base_plan,
@@ -1792,7 +1719,7 @@ impl Simulation {
             && production::sell_back(self, rules, stable_id, production::SellOrder::Undeploy)
     }
 
-    /// `BuildingClass::Sell`'s UndeploysInto conversion (`0x00449CEA`), on
+    /// `BuildingClass::Mission_Selling`'s UndeploysInto conversion (`0x00449CEA`), on
     /// the Selling mission's completing visit
     /// (`production::production_sell::sell_complete`). The unit is
     /// constructed at the building's undeploy cell with its
@@ -1906,7 +1833,6 @@ impl Simulation {
             // The VeterancyClass (`+0x150`); the rank cache (`+0x13C`) stays
             // the unit's own.
             unit.veterancy_raw = veterancy;
-            unit.veterancy = crate::sim::combat::veterancy::rank_u16(veterancy);
         }
         self.transfer_slave_manager(sid, new_sid, false, rules, overlay_registry);
         // A building's archive is a cell. Of its VERA writers (the Slave
@@ -1914,7 +1840,12 @@ impl Simulation {
         // rally-line factories), only the relocation reaches an
         // UndeploysInto building: no retail rally-line type undeploys.
         if let Some(TargetKind::Cell(x, y)) = archive {
-            if !self.set_unit_cell_destination(new_sid, (x, y), rules, true) {
+            if !self.set_unit_destination(
+                new_sid,
+                crate::sim::components::NavTargetRef::cell(x, y),
+                rules,
+                true,
+            ) {
                 log::debug!("undeployed unit {new_sid} refused its archive ({x}, {y})");
             }
             if let Some(unit) = self.substrate.entities.get_mut(new_sid) {

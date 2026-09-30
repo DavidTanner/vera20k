@@ -53,7 +53,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet) {
     };
     let mut source = GameEntity::test_default(1, "ORCA", "Americans", 10, 10);
     source.category = EntityCategory::Aircraft;
-    source.veterancy = (case["veterancy"].as_u64().unwrap_or(0) * 100) as u16;
+    source.set_veterancy_rank((case["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
     source.aircraft_ammo = Some(AircraftAmmo::new(2));
     source.aircraft_mission = Some(AircraftMission::Attack { sub_state: 3 });
     source.locomotor = Some(LocomotorState::from_object_type(
@@ -124,18 +124,13 @@ fn selected_strafe_range_branch_matches_native_and_dispatches_when_in_range() {
         let (mut sim, rules) = fixture(&row);
         let aircraft = sim.substrate.entities.get(1).unwrap();
         let target = aircraft.attack_target.as_ref().unwrap().target;
-        let distance = crate::sim::combat::object_distance_to(
-            aircraft,
-            &target,
-            &sim.substrate.entities,
-            &rules,
-            &sim.interner,
-        )
-        .unwrap();
+        let distance =
+            crate::sim::combat::object_distance_to(aircraft, &target, &sim.substrate.entities)
+                .unwrap();
         assert_eq!(distance, row["distance"].as_i64().unwrap() as i32, "{row}");
         let weapon = crate::sim::combat::combat_weapon::primary_for_tier(
             rules.object("ORCA").unwrap(),
-            aircraft.veterancy,
+            aircraft.veterancy(),
         )
         .unwrap();
         assert_eq!(
@@ -151,7 +146,7 @@ fn selected_strafe_range_branch_matches_native_and_dispatches_when_in_range() {
         // This older native corpus stops before the out-of-range setter.
         // Complete state3 effects are compared in aircraft_approach_tests.
         if row["in_range"].as_bool().unwrap() {
-            crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
             assert_native_in_range_result(&sim, &row);
         }
     }
@@ -171,8 +166,8 @@ fn pending_approach_range_decision_survives_save_restore() {
         let mut restored = GameSnapshot::load(&saved).unwrap().sim;
         restored.restore_after_snapshot_load().unwrap();
         assert_eq!(sim.state_hash(), restored.state_hash());
-        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
-        crate::sim::aircraft::tick_aircraft_missions(&mut restored, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
+        crate::sim::aircraft::tick_aircraft_missions(&mut restored, &rules);
         assert_native_in_range_result(&restored, &row);
         assert_eq!(sim.state_hash(), restored.state_hash());
     }

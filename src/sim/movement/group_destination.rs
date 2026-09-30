@@ -8,8 +8,8 @@
 
 use std::collections::BTreeSet;
 
+use crate::util::lepton::lepton_to_cell;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
-use crate::util::direction_tables::lepton_to_cell;
 
 const MAX_CANDIDATE_PROBES: usize = 6;
 

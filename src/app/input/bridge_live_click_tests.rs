@@ -32,7 +32,7 @@ fn runtime(direction: u8) -> SimRuntime {
         })
         .collect();
     sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(32, 32, cells));
-    sim.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(32, 32));
+    sim.overlay_grid = Some(OverlayGrid::new(32, 32));
     sim.apply_runtime_bridge_mark_stamp(
         BridgeFlagStamp::new((16, 16), direction, true),
         if direction == 0 {
@@ -43,7 +43,6 @@ fn runtime(direction: u8) -> SimRuntime {
     );
     let template = sim.resolved_terrain.clone().unwrap();
     let mut runtime = SimRuntime::from_simulation(sim);
-    runtime.resources.height_map = template.build_height_map();
     runtime.resources.terrain_template = Some(template);
     runtime
 }
@@ -62,7 +61,12 @@ fn assert_clicks(runtime: &SimRuntime, row: &serde_json::Value) {
             world_point_to_cell(
                 point.0,
                 point.1,
-                &runtime.resources.height_map,
+                &runtime
+                    .resources
+                    .terrain_template
+                    .as_ref()
+                    .unwrap()
+                    .build_height_map(),
                 crate::app::match_runtime::sim_tick::tactical_bridge_cells(&runtime.simulation)
             ),
             expected,

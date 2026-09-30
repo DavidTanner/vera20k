@@ -215,7 +215,6 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
             best_id,
             hover,
             state.rules(),
-            sim.path_grid(),
             state.overlay_registry(),
         );
         return Some(kind);
@@ -399,8 +398,6 @@ fn what_action_on_cell(
                         resolved_terrain: sim.resolved_terrain.as_ref(),
                         terrain_costs,
                         bypass_grid: false,
-                        mode:
-                            crate::sim::pathfinding::cell_entry::TerrainEntryMode::RuntimeTransition,
                         is_infantry: entity.category
                             == crate::map::entities::EntityCategory::Infantry,
                         mover_is_crusher: crate::sim::movement::bump_crush::CrushCapability::of(
@@ -446,7 +443,6 @@ fn capability_cursor_for_hover(
     best_id: Option<u64>,
     hover: &crate::app::input::entity_pick::HoverTargetKindWithId,
     rules: Option<&crate::rules::ruleset::RuleSet>,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> CursorFeedbackKind {
     use crate::map::entities::EntityCategory;
@@ -604,7 +600,6 @@ fn capability_cursor_for_hover(
                         rules,
                         best_id,
                         hover.stable_id,
-                        path_grid,
                     ) {
                         return CursorFeedbackKind::Enter;
                     }
@@ -638,7 +633,13 @@ fn capability_cursor_for_hover(
                 } else {
                     CursorFeedbackKind::EnemyOutOfRange
                 };
-                return ivan_attack_feedback(kind, best_is_ivan, hovered_entity, hovered_obj);
+                return ivan_attack_feedback(
+                    kind,
+                    best_is_ivan,
+                    || click_refused(sim, rules, Some(best_id), hover.stable_id, overlay_registry),
+                    hovered_entity,
+                    hovered_obj,
+                );
             }
 
             // 8. Harvester docking — selected miner hovering own/ally refinery.
@@ -704,23 +705,32 @@ fn capability_cursor_for_hover(
             } else {
                 CursorFeedbackKind::EnemyOutOfRange
             };
-            ivan_attack_feedback(kind, best_is_ivan, hovered_entity, hovered_obj)
+            ivan_attack_feedback(
+                kind,
+                best_is_ivan,
+                || click_refused(sim, rules, best_id, hover.stable_id, overlay_registry),
+                hovered_entity,
+                hovered_obj,
+            )
         }
         HoverTargetKind::HiddenEnemy => CursorFeedbackKind::Invalid,
     }
 }
 
 /// `InfantryClass::What_Action_OnObject` (`0x0051EB24..0x0051EB7E`) for a
-/// Crazy Ivan (`Ivan=`) whose action is Attack: IvanBomb on a `Bombable=`
-/// target without a bomb, NoIvanBomb (NoMove's cursor row) on any other.
-/// A target that already carries one only reaches it by force-fire: the base
-/// action is Attack only while `GetFireError` (vtable `+0x3C0`, 0x00700542)
-/// allows the shot, and the IvanBomb gate (0x006FCBAD) refuses it, so the
-/// action falls back to Select (`TechnoClass::What_Action_OnObject`,
-/// 0x0070056C).
+/// Crazy Ivan (`Ivan=`) whose action is Attack ([`ivan_bomb_action`]).
+/// Unforced, the base action stays Attack only while the Ivan's GetFireError
+/// for the target is not ILLEGAL (`refused`, [`click_refused`]), and a bombed
+/// target is ILLEGAL to him at any distance (`0x006FCBAD`). An ILLEGAL action
+/// falls back to None over another house's object and to Select over his own
+/// (`TechnoClass::What_Action_OnObject`, `0x0070056C..0x007005E9`).
+///
+/// RESIDUAL: VERA shows Select for both; over another house's object retail
+/// shows the plain arrow of None.
 fn ivan_attack_feedback(
     kind: CursorFeedbackKind,
     selector_is_ivan: bool,
+    refused: impl FnOnce() -> bool,
     target: Option<&crate::sim::game_entity::GameEntity>,
     target_obj: Option<&crate::rules::object_type::ObjectType>,
 ) -> CursorFeedbackKind {
@@ -733,29 +743,44 @@ fn ivan_attack_feedback(
     if !selector_is_ivan || !attack {
         return kind;
     }
-    ivan_bomb_action(target, target_obj, false)
+    if refused() {
+        return CursorFeedbackKind::FriendlyUnit;
+    }
+    ivan_bomb_action(target, target_obj)
 }
 
-/// The Crazy Ivan's action over an object (`0x0051EB24`): IvanBomb on a
-/// `Bombable=` target without a bomb, NoIvanBomb (NoMove's row) otherwise —
-/// except that without force-fire a bombed target never gets an Attack base
-/// action (its `GetFireError` refuses it), so it reads Select instead.
+/// The Crazy Ivan's arm itself (`0x0051EB24`): IvanBomb on a `Bombable=`
+/// target without a bomb (`+0x38`), NoIvanBomb (NoMove's row) otherwise.
 fn ivan_bomb_action(
     target: Option<&crate::sim::game_entity::GameEntity>,
     target_obj: Option<&crate::rules::object_type::ObjectType>,
-    forced: bool,
 ) -> CursorFeedbackKind {
     if target.is_some_and(|target| target.bomb.is_some()) {
-        if forced {
-            CursorFeedbackKind::Invalid
-        } else {
-            CursorFeedbackKind::FriendlyUnit
-        }
+        CursorFeedbackKind::Invalid
     } else if target_obj.is_some_and(|obj| obj.bombable) {
         CursorFeedbackKind::IvanBomb
     } else {
         CursorFeedbackKind::Invalid
     }
+}
+
+/// Whether `actor`'s GetFireError for `target` is ILLEGAL, which ends its
+/// unforced Attack action ([`crate::sim::world::Simulation::selected_weapon_fire_error`]).
+fn click_refused(
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    actor: Option<u64>,
+    target: u64,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> bool {
+    rules.zip(actor).is_some_and(|(rules, actor)| {
+        sim.selected_weapon_fire_error(
+            rules,
+            actor,
+            crate::sim::combat::TargetKind::Entity(target),
+            overlay_registry,
+        ) == crate::sim::combat::fire_error::FireError::Illegal
+    })
 }
 
 /// The bomb actions under force-fire. `InfantryClass::What_Action_OnObject`
@@ -789,7 +814,6 @@ fn forced_bomb_feedback(
         ivan_bomb_action(
             Some(target),
             rules.object(sim.interner.resolve(target.type_ref())),
-            true,
         )
     })
 }
@@ -913,9 +937,12 @@ fn entity_world_leptons(
     entity: &crate::sim::game_entity::GameEntity,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> (i64, i64, i64) {
-    let z = terrain
-        .and_then(|t| combat::in_range::effective_z_leptons(entity, t))
-        .unwrap_or(0);
+    let z = terrain.map_or(0, |t| {
+        i64::from(crate::sim::movement::ground_pose::object_world_z_leptons(
+            entity,
+            Some(t),
+        ))
+    });
     (
         entity.position.rx as i64 * LEPTONS_PER_CELL + entity.position.sub_x.to_num::<i64>(),
         entity.position.ry as i64 * LEPTONS_PER_CELL + entity.position.sub_y.to_num::<i64>(),
@@ -1304,7 +1331,6 @@ mod tests {
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
     use crate::sim::world::Simulation;
-    use std::collections::BTreeMap;
 
     fn cursor_contract_rules() -> RuleSet {
         let ini = IniFile::from_str(
@@ -1342,22 +1368,21 @@ mod tests {
     #[test]
     fn seal_hovering_enemy_building_shows_demolish() {
         // 1. Load the narrow stock-shaped contract consumed by this cursor path.
-        let mut rules = cursor_contract_rules();
+        let rules = cursor_contract_rules();
 
         // 2. Build a Simulation. resolve_type_handles is required by the
         //    c4 tick path even though we don't tick here — keeps the sim in a
         //    consistent state with what the runtime would see.
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         // 3. Spawn a SEAL and an enemy Power Plant via the same path the
         //    barracks uses on production completion.
         let seal_id = sim
-            .spawn_object("GHOST", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("GHOST", "Americans", 5, 5, 0, &rules)
             .expect("SEAL spawned");
         let bld_id = sim
-            .spawn_object("NAPOWR", "Soviets", 10, 10, 0, &rules, &height_map)
+            .spawn_object("NAPOWR", "Soviets", 10, 10, 0, &rules)
             .expect("Power Plant spawned");
 
         // 4. Mark the SEAL as selected (mirrors clicking it in-game).
@@ -1379,7 +1404,6 @@ mod tests {
             Some(seal_id),
             &hover,
             Some(&rules),
-            None,
             None,
         );
 
@@ -1407,17 +1431,16 @@ mod tests {
     /// for any harvester targeting a same-owner refinery.
     #[test]
     fn chrono_miner_hovering_own_refinery_shows_enter() {
-        let mut rules = cursor_contract_rules();
+        let rules = cursor_contract_rules();
 
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         let miner_id = sim
-            .spawn_object("CMIN", "Americans", 5, 5, 0, &rules, &height_map)
+            .spawn_object("CMIN", "Americans", 5, 5, 0, &rules)
             .expect("Chrono Miner spawned");
         let refinery_id = sim
-            .spawn_object("GAREFN", "Americans", 10, 10, 0, &rules, &height_map)
+            .spawn_object("GAREFN", "Americans", 10, 10, 0, &rules)
             .expect("Refinery spawned");
 
         if let Some(e) = sim.entities_mut().get_mut(miner_id) {
@@ -1435,7 +1458,6 @@ mod tests {
             Some(miner_id),
             &hover,
             Some(&rules),
-            None,
             None,
         );
         assert_eq!(
@@ -1523,66 +1545,6 @@ mod tests {
         RuleSet::from_ini(&ini).expect("cell action rules")
     }
 
-    /// A minimal flat clear land cell for the cursor fixtures.
-    fn flat_land_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::ResolvedTerrainCell {
-        use crate::map::resolved_terrain::ResolvedTerrainCell;
-        use crate::rules::terrain_rules::TerrainClass;
-        ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: Default::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: Default::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
-
     /// A tank that actually carries a locomotor, and therefore a SpeedType.
     ///
     /// `cell_action_rules` declares no `Speed=`, so its MTNK spawns with
@@ -1613,9 +1575,8 @@ mod tests {
         let rules = RuleSet::from_ini(&ini).expect("track tank rules");
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let tank = sim
-            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules, &heights)
+            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules)
             .expect("tank spawned");
         assert!(
             sim.entities()
@@ -1628,12 +1589,11 @@ mod tests {
     }
 
     fn sim_with_tank() -> (Simulation, RuleSet, u64) {
-        let mut rules = cell_action_rules();
+        let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         let tank = sim
-            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 2, 2, 0, &rules)
             .expect("tank spawned");
         (sim, rules, tank)
     }
@@ -1645,7 +1605,7 @@ mod tests {
 
         let (mut sim, rules, actor_id) = sim_with_tank();
         let target_id = sim
-            .spawn_object("MTNK", "Soviets", 3, 2, 0, &rules, &BTreeMap::new())
+            .spawn_object("MTNK", "Soviets", 3, 2, 0, &rules)
             .expect("enemy target");
         // Both live objects deliberately miss this allocated map. Their exact
         // Z and marked state force source +54 and target +50/+54 to read the
@@ -1655,7 +1615,7 @@ mod tests {
             entity.position.exact_z_leptons = Some(900);
             entity.lifecycle.cell_marked = true;
         }
-        let mut retained_cell = flat_land_cell(0, 0);
+        let mut retained_cell = crate::map::resolved_terrain::test_flat_cell(0, 0);
         // A bridge anchor retaining Dummy makes its requested coordinate a
         // deterministic future input. World hashing intentionally omits that
         // transient coordinate when no Bullet or bridge anchor retains it.
@@ -1685,7 +1645,6 @@ mod tests {
                     Some(actor_id),
                     &hover,
                     Some(&rules),
-                    None,
                     None,
                 ),
                 CursorFeedbackKind::EnemyUnit,
@@ -1869,7 +1828,7 @@ mod tests {
         let mut cells = Vec::new();
         for ry in 0..SIZE {
             for rx in 0..SIZE {
-                cells.push(flat_land_cell(rx, ry));
+                cells.push(crate::map::resolved_terrain::test_flat_cell(rx, ry));
             }
         }
         let mut terrain =
@@ -1965,16 +1924,15 @@ mod tests {
     /// which is closer.
     #[test]
     fn secondary_only_unit_outranks_a_closer_unarmed_unit() {
-        let mut rules = cell_action_rules();
+        let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         let truck = sim
-            .spawn_object("TRUCKA", "Americans", 9, 10, 0, &rules, &height_map)
+            .spawn_object("TRUCKA", "Americans", 9, 10, 0, &rules)
             .expect("unarmed truck");
         let arty = sim
-            .spawn_object("SREF", "Americans", 2, 2, 0, &rules, &height_map)
+            .spawn_object("SREF", "Americans", 2, 2, 0, &rules)
             .expect("secondary-only unit");
 
         let best = select_best_for_action(
@@ -1995,16 +1953,15 @@ mod tests {
     /// cell-index tie-break cannot separate them; the sub-cell offset can.
     #[test]
     fn tie_break_uses_lepton_distance_to_the_cell_centre() {
-        let mut rules = cell_action_rules();
+        let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
         let near = sim
-            .spawn_object("MTNK", "Americans", 8, 10, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 8, 10, 0, &rules)
             .expect("near tank");
         let far = sim
-            .spawn_object("MTNK", "Americans", 12, 10, 0, &rules, &height_map)
+            .spawn_object("MTNK", "Americans", 12, 10, 0, &rules)
             .expect("far tank");
         // Nudge the far tank's sub-cell offset toward the target so that both
         // sit two cell indices away but the far one is closer in leptons.
@@ -2089,26 +2046,25 @@ mod tests {
             kind,
             stable_id: target,
         };
-        capability_cursor_for_hover(sim, &[actor], Some(actor), &hover, Some(rules), None, None)
+        capability_cursor_for_hover(sim, &[actor], Some(actor), &hover, Some(rules), None)
     }
 
     /// `InfantryClass::What_Action_OnObject`: a Crazy Ivan offers IvanBomb on
     /// any target without a bomb — enemy or, by AttackCursorOnFriendlies, own —
-    /// and falls back to Select on one that carries a bomb; an Engineer
-    /// offers DisarmBomb on any bombed object its player sees, own or enemy,
-    /// and nothing on an unseen one.
+    /// and falls back to Select on one that carries a bomb, whose GetFireError
+    /// is ILLEGAL near or far; an Engineer offers DisarmBomb on any bombed
+    /// object its player sees, own or enemy, and nothing on an unseen one.
     #[test]
     fn crazy_ivan_and_engineer_bomb_cursors() {
         let rules = bomb_cursor_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         for house in ["Americans", "Soviets"] {
             let id = sim.interner.intern(house);
             sim.session.house_order.push(id);
         }
         let mut spawn = |kind: &str, owner: &str, rx: u16| {
-            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules)
                 .expect("spawned")
         };
         let ivan = spawn("IVAN", "Americans", 5);
@@ -2290,60 +2246,55 @@ mod cursor_animation_tests {
         );
     }
 
-    /// RESIDUAL - gamemd address 0x00587410,
-    /// `MapClass::FindBridgeConnection_Predicate`, branch selection.
-    ///
-    /// The overlay branch is ported: step 3 above gates the engineer Enter
-    /// cursor on `bridge_hut_has_collapsed_span`, so a hut whose span carries
-    /// no collapsed anchor no longer offers a repair cursor.
-    ///
-    /// Trigger, corrected 2026-08-19: NOT "a partially damaged span". The
-    /// native picks its branch from whichever of the four 5x5 cases matched
-    /// LAST, and a cell whose iso-tile sits in a bridge tileset window is a
-    /// tileset match whose overlay is never read (the body is an if /
-    /// else-if chain testing `cell+0x38` before `cell+0x44`). A repair hut
-    /// sits beside ramp and bridgehead iso-tiles, so the tileset branch is
-    /// plausibly the ordinary case rather than a corner - though whether it
-    /// wins the last-match race on stock maps is UNCHECKED. Whenever it does,
-    /// gamemd walks `BridgeRecord`s at tolerance 3 and VERA walks overlays.
-    ///
-    /// Effect and DIRECTION: unbounded, and it can point either way. Where
-    /// the record branch would return true and the overlay walk finds no
-    /// anchor, VERA withholds a cursor gamemd shows - the opposite of the
-    /// over-eager cursor this fix removed. The repair itself is unaffected:
-    /// `context_order.rs` and the world-order path accept the order on the
-    /// hut flag alone, so a player who clicks anyway still repairs. What is
-    /// lost is the affordance, and a player reading the cursor concludes the
-    /// bridge cannot be repaired.
-    ///
-    /// Frequency: every mouse-over of a repair hut with an engineer selected
-    /// on a bridged map - the same cadence as the defect it replaces, not
-    /// narrower.
-    ///
-    /// Also unported, verified separately and NOT part of the branch problem
-    /// above: at 0x0051E3B0 the BridgeRepairHut arm RETURNS unconditionally.
-    /// `read_memory 0x0051E520` decodes the tail after the
-    /// `CALL 0x00587410` at 0x0051E54C as
-    /// `NEG AL; SBB EAX,EAX; AND AL,0xFD; ADD EAX,0x20; RET 0x8` - 0x1D when
-    /// the predicate holds, 0x20 when it does not, with no path past it. gamemd
-    /// therefore never reaches a later cursor case for a hut, while
-    /// `capability_cursor_for_hover` falls through to the capturable and
-    /// friendly-structure cases below.
-    ///
-    /// Trigger: every engineer hover over a repair hut. Effect today is nil -
-    /// `CABHUT` carries no `Capturable=` in `ini/rulesmd.ini`, so the case
-    /// immediately below does not fire - but nothing constrains the cases after
-    /// it, and a modded or future hut type would diverge silently.
-    ///
-    /// Blocker: the three geometry tables are data this crate has no reader
-    /// for; the tolerance-3 record hop needs `FindBridgeRecord`'s semantics
-    /// ported first; and settling the direction needs a live check of what a
-    /// stock hut's 5x5 actually contains.
-    #[test]
-    #[ignore = "gamemd 0x00587410 picks overlay-vs-record branch by last 5x5 match; VERA always walks overlays"]
-    fn bridge_hut_repair_cursor_always_takes_the_overlay_branch() {
-        panic!(
-            "unimplemented: branch selection + record branch of FindBridgeConnection_Predicate 0x00587410"
-        );
-    }
+    // RESIDUAL - gamemd address 0x00587410,
+    // `MapClass::FindBridgeConnection_Predicate`, branch selection.
+    //
+    // The overlay branch is ported: step 3 above gates the engineer Enter
+    // cursor on `bridge_hut_has_collapsed_span`, so a hut whose span carries
+    // no collapsed anchor no longer offers a repair cursor.
+    //
+    // Trigger, corrected 2026-08-19: NOT "a partially damaged span". The
+    // native picks its branch from whichever of the four 5x5 cases matched
+    // LAST, and a cell whose iso-tile sits in a bridge tileset window is a
+    // tileset match whose overlay is never read (the body is an if /
+    // else-if chain testing `cell+0x38` before `cell+0x44`). A repair hut
+    // sits beside ramp and bridgehead iso-tiles, so the tileset branch is
+    // plausibly the ordinary case rather than a corner - though whether it
+    // wins the last-match race on stock maps is UNCHECKED. Whenever it does,
+    // gamemd walks `BridgeRecord`s at tolerance 3 and VERA walks overlays.
+    //
+    // Effect and DIRECTION: unbounded, and it can point either way. Where
+    // the record branch would return true and the overlay walk finds no
+    // anchor, VERA withholds a cursor gamemd shows - the opposite of the
+    // over-eager cursor this fix removed. The repair itself is unaffected:
+    // `context_order.rs` and the world-order path accept the order on the
+    // hut flag alone, so a player who clicks anyway still repairs. What is
+    // lost is the affordance, and a player reading the cursor concludes the
+    // bridge cannot be repaired.
+    //
+    // Frequency: every mouse-over of a repair hut with an engineer selected
+    // on a bridged map - the same cadence as the defect it replaces, not
+    // narrower.
+    //
+    // Also unported, verified separately and NOT part of the branch problem
+    // above: at 0x0051E3B0 the BridgeRepairHut arm RETURNS unconditionally.
+    // `read_memory 0x0051E520` decodes the tail after the
+    // `CALL 0x00587410` at 0x0051E54C as
+    // `NEG AL; SBB EAX,EAX; AND AL,0xFD; ADD EAX,0x20; RET 0x8` - 0x1D when
+    // the predicate holds, 0x20 when it does not, with no path past it. gamemd
+    // therefore never reaches a later cursor case for a hut, while
+    // `capability_cursor_for_hover` falls through to the capturable and
+    // friendly-structure cases below.
+    //
+    // Trigger: every engineer hover over a repair hut. Effect today is nil -
+    // `CABHUT` carries no `Capturable=` in `ini/rulesmd.ini`, so the case
+    // immediately below does not fire - but nothing constrains the cases after
+    // it, and a modded or future hut type would diverge silently.
+    //
+    // Blocker: the three geometry tables are data this crate has no reader
+    // for; the tolerance-3 record hop needs `FindBridgeRecord`'s semantics
+    // ported first; and settling the direction needs a live check of what a
+    // stock hut's 5x5 actually contains.
+    // Residual (formerly an ignored placeholder test): gamemd 0x00587410 picks overlay-vs-record branch by last 5x5 match; VERA always walks overlays.
+    // Unimplemented: branch selection + record branch of FindBridgeConnection_Predicate 0x00587410.
 }

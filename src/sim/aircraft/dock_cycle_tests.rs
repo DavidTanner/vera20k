@@ -7,7 +7,6 @@ use super::AircraftMission;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::movement::locomotor::AirMovePhase;
 use crate::sim::world::Simulation;
-use std::collections::BTreeMap;
 
 const RULES: &str = "[General]\nFlightLevel=1500\n\
 [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n0=ORCA\n[BuildingTypes]\n0=GAAIRC\n\
@@ -24,10 +23,9 @@ struct Milestones {
 }
 
 fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) -> Milestones {
-    let heights = BTreeMap::new();
     let mut seen = Milestones::default();
     for _ in 0..4000 {
-        let _ = sim.advance_tick(&[], Some(rules), &heights, None, None, 33);
+        let _ = sim.advance_tick(&[], Some(rules), None, None, 33);
         let entity = sim.substrate.entities.get(orca).expect("aircraft survives");
         let phase = crate::sim::movement::air_movement::fly_mission_phase(
             entity,

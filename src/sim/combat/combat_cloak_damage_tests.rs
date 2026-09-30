@@ -231,8 +231,7 @@ fn an_iron_curtained_cloaked_dolphin_stays_submerged() {
     let rules = dolphin_rules();
     let mut entities = store("DEST", "Americans");
     entities.get_mut(2).unwrap().invulnerability = Some(InvulnerabilityState {
-        start_frame: TICK as u32 - 10,
-        duration_frames: 100,
+        timer: crate::sim::timer::CdTimer::started(TICK as i32 - 10, 100),
         kind: InvulnKind::IronCurtain,
     });
     let landed = hit(&mut entities, &rules, "SonicWH", &HouseAllianceMap::new());

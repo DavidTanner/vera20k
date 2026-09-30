@@ -62,17 +62,12 @@ fn live_shot<'r>(
             .entities
             .get(id)
             .filter(|target| !target.lifecycle.in_limbo)
-            .map(|target| {
-                (
-                    target_coords(target, Some(rules), &world.interner),
-                    target.type_ref(),
-                )
-            }),
+            .map(|target| (target_coords(target), target.type_ref())),
         Some(TargetKind::Cell(rx, ry)) => Some((cell_center_coords(rx, ry), entity.type_ref())),
         None => None,
     };
     let shot = coordinates.map(|(target_coords, target_type_ref)| AdmittedFire {
-        snap: build_attacker_snapshot(entity, target.unwrap(), None, None),
+        snap: build_attacker_snapshot(entity, target.unwrap(), None),
         obj,
         selected,
         target_coords,
@@ -130,8 +125,8 @@ pub(super) fn visit(
         return;
     }
     let entity = world.substrate.entities.get(id).unwrap();
-    let weapon0 =
-        combat_weapon::primary_for_tier(obj, entity.veterancy).and_then(|name| rules.weapon(name));
+    let weapon0 = combat_weapon::primary_for_tier(obj, entity.veterancy())
+        .and_then(|name| rules.weapon(name));
     let facts = StrikeFacts {
         state,
         target: attack_mission::aircraft_target_present(
@@ -142,7 +137,7 @@ pub(super) fn visit(
             .aircraft_ammo
             .as_ref()
             .map_or(-1, |ammo| ammo.current),
-        strafe: combat_weapon::aircraft_strafes(rules, obj, entity.veterancy),
+        strafe: combat_weapon::aircraft_strafes(rules, obj, entity.veterancy()),
         fighter: obj.fighter,
         curley_shuffle: rules.general.curley_shuffle,
         weapon0_rof: weapon0.map_or(0, |weapon| weapon.rof),
@@ -303,19 +298,14 @@ impl StrikeHost for CombatStrike<'_, '_> {
                 entity,
                 &target,
                 &world.substrate.entities,
-                Some(self.rules),
-                &world.interner,
             )
         }) else {
             return;
         };
         let (frame, rot) = (self.binary_frame, self.obj.turret_rot);
         if let Some(entity) = world.substrate.entities.get_mut(id) {
-            let initial = u16::from(entity.facing) << 8;
-            entity
-                .body_facing
-                .get_or_insert_with(|| crate::sim::movement::FacingClass::new(initial, rot))
-                .set(desired, frame);
+            let initial = entity.body_facing.current(frame);
+            entity.body_facing.set(desired, frame);
             entity
                 .barrel_facing
                 .get_or_insert_with(|| crate::sim::movement::FacingClass::new(initial, rot))
@@ -353,8 +343,8 @@ impl StrikeHost for CombatStrike<'_, '_> {
     }
 
     /// RESIDUAL (see `aircraft::attack_mission`): the source-aware Cell
-    /// Scatter_Objects is not ported; the NullCoord blocker helper is not
-    /// equivalent.
+    /// Scatter_Objects is not ported; `movement::scatter` owns only the
+    /// null-coordinate dispatch.
     fn scatter(&mut self) {}
 
     fn assign_target_destination(&mut self) {

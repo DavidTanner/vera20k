@@ -214,7 +214,7 @@ fn shp_z_adjust_in_runtime(
     runtime: Option<&crate::sim::runtime::SimRuntime>,
     entity: &GameEntity,
 ) -> f32 {
-    let world_z = crate::render::locomotor_visual::world_z_leptons(entity);
+    let world_z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, None);
     let height_only = adjust_for_z_standard(world_z)
         .wrapping_neg()
         .wrapping_sub(2);
@@ -240,7 +240,7 @@ fn shp_z_adjust_in_runtime(
         return height_only as f32;
     };
     let surface = ground.wrapping_add(if entity.on_bridge {
-        crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
     } else {
         0
     });
@@ -279,7 +279,7 @@ fn unit_z_adjust_in_runtime(
     entity: &GameEntity,
     unloading_body: bool,
 ) -> i32 {
-    let world_z = crate::render::locomotor_visual::world_z_leptons(entity);
+    let world_z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, None);
     if !matches!(
         entity.category,
         EntityCategory::Unit | EntityCategory::Infantry
@@ -334,12 +334,7 @@ fn unit_z_adjust_in_runtime(
     let context = FootDepthContext {
         cell: coord,
         on_bridge: entity.on_bridge,
-        facing_u16: entity
-            .body_facing
-            .as_ref()
-            .map_or(u16::from(entity.facing) << 8, |f| {
-                f.current(view.session().binary_frame)
-            }),
+        facing_u16: entity.body_facing_current(view.session().binary_frame),
         world_z_leptons: world_z,
         // Drive 0x4B4870, Ship 0x6A3EA0, and the shared 0x55ABA0 inherited
         // by Walk/Hover/Fly/Jumpjet/Teleport all return zero at loco slot +0x38.

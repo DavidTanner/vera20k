@@ -14,8 +14,6 @@ use std::collections::{HashMap, HashSet};
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::pal_file::{Color, Palette};
 use crate::assets::tmp_file::TmpFile;
-use crate::map::bridge_facts::{Axis, BridgeheadAnchorClass};
-use crate::map::bridge_facts::{BridgeRampKind, BridgeRampTile};
 use crate::map::map_file::MapError;
 use crate::rules::ini_parser::{IniFile, IniSection};
 
@@ -546,9 +544,11 @@ fn parse_tileset_sections(ini: &IniFile, extension: &str) -> Result<TilesetLooku
             break;
         };
 
-        let filename: &str = section.get("FileName").unwrap_or("");
-        let set_name: &str = section.get("SetName").unwrap_or("No Name");
-        let raw_tiles: Option<&str> = section.get("TilesInSet");
+        // 0x40-byte ReadStrings (`0x005460C0`, `0x005460E5`). An absent
+        // `FileName` reads the native default `TILE`; Rust keeps that set
+        // blank instead (every retail tileset names its file).
+        let filename: &str = section.read_name("FileName", 0x40).unwrap_or("");
+        let set_name: &str = section.read_name("SetName", 0x40).unwrap_or("No Name");
         let last_tiles_in_set = section.read_int("LastTilesInSet", -1);
         if last_tiles_in_set != -1 && last_tiles_in_set != tiles_in_set {
             let boundary = legacy_cursor.wrapping_add(last_tiles_in_set);
@@ -586,16 +586,15 @@ fn parse_tileset_sections(ini: &IniFile, extension: &str) -> Result<TilesetLooku
             count: tiles_in_set,
         });
         set_names.push(set_name.to_string());
-        let morphable: bool = section.get_bool("Morphable").unwrap_or(false);
+        let morphable: bool = section.read_bool("Morphable", false);
         morphable_flags.push(morphable);
-        let allow_tiberium: bool = section.get_bool("AllowTiberium").unwrap_or(false);
+        let allow_tiberium: bool = section.read_bool("AllowTiberium", false);
         allow_tiberium_flags.push(allow_tiberium);
 
-        // Diagnostic: log ALL tileset raw TilesInSet values for debugging.
+        // Diagnostic: log ALL tileset TilesInSet values for debugging.
         log::debug!(
-            "  TileSet{:04} raw_TilesInSet={:?} parsed={} start={} file={} name={}",
+            "  TileSet{:04} TilesInSet={} start={} file={} name={}",
             idx,
-            raw_tiles,
             tiles_in_set,
             start,
             filename,
@@ -685,25 +684,32 @@ fn parse_tileset_sections(ini: &IniFile, extension: &str) -> Result<TilesetLooku
 /// numeric keys pass the field's current value as their own INI default, which
 /// for a freshly constructed tile type is 0 / 0 / -1 / 0.
 fn parse_tile_anim(section: &IniSection, tile_ordinal: u32) -> Option<TileAnimAttachment> {
-    let anim_name = section.get(&format!("Tile{:02}Anim", tile_ordinal))?.trim();
-    if anim_name.is_empty() {
-        return None;
-    }
+    // 0x80-byte ReadString at `0x00546524`, then `AnimTypeClass::Find`.
+    let anim_name = section.read_name(&format!("Tile{:02}Anim", tile_ordinal), 0x80)?;
     Some(TileAnimAttachment {
         anim_name: anim_name.to_string(),
-        x_offset: section
-            .get_i32(&format!("Tile{:02}XOffset", tile_ordinal))
-            .unwrap_or(TILE_ANIM_DEFAULT_OFFSET),
-        y_offset: section
-            .get_i32(&format!("Tile{:02}YOffset", tile_ordinal))
-            .unwrap_or(TILE_ANIM_DEFAULT_OFFSET),
-        attaches_to: section
-            .get_i32(&format!("Tile{:02}AttachesTo", tile_ordinal))
-            .unwrap_or(TILE_ANIM_NO_SUBTILE),
-        z_adjust: section
-            .get_i32(&format!("Tile{:02}ZAdjust", tile_ordinal))
-            .unwrap_or(TILE_ANIM_DEFAULT_Z_ADJUST),
+        x_offset: section.read_int(
+            &format!("Tile{:02}XOffset", tile_ordinal),
+            TILE_ANIM_DEFAULT_OFFSET,
+        ),
+        y_offset: section.read_int(
+            &format!("Tile{:02}YOffset", tile_ordinal),
+            TILE_ANIM_DEFAULT_OFFSET,
+        ),
+        attaches_to: section.read_int(
+            &format!("Tile{:02}AttachesTo", tile_ordinal),
+            TILE_ANIM_NO_SUBTILE,
+        ),
+        z_adjust: section.read_int(
+            &format!("Tile{:02}ZAdjust", tile_ordinal),
+            TILE_ANIM_DEFAULT_Z_ADJUST,
+        ),
     })
+}
+
+/// The TMP extension of a theater name (e.g. "TEMPERATE" -> "tem").
+pub fn theater_extension(name: &str) -> Option<&'static str> {
+    theater_def(name).map(|def| def.extension)
 }
 
 /// Look up the theater definition for a theater name (e.g., "TEMPERATE").
@@ -736,22 +742,6 @@ pub struct TheaterData {
     pub slope_set_pieces: Option<u16>,
     /// `[General] SlopeSetPieces2=N` - TileSet section whose first tile becomes DAT_00AA1098.
     pub slope_set_pieces2: Option<u16>,
-    /// `[General] BridgeTopLeft1=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_left_1: Option<u16>,
-    /// `[General] BridgeTopLeft2=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_left_2: Option<u16>,
-    /// `[General] BridgeBottomRight1=N` - east-edge pavement-under-bridge tile key.
-    pub bridge_bottom_right_1: Option<u16>,
-    /// `[General] BridgeBottomRight2=N` - alternate east-edge pavement tile key.
-    pub bridge_bottom_right_2: Option<u16>,
-    /// `[General] BridgeTopRight1=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_right_1: Option<u16>,
-    /// `[General] BridgeTopRight2=N` - BridgeSet-relative high bridge ramp tile key.
-    pub bridge_top_right_2: Option<u16>,
-    /// `[General] BridgeBottomLeft1=N` - south-edge pavement-under-bridge tile key.
-    pub bridge_bottom_left_1: Option<u16>,
-    /// `[General] BridgeBottomLeft2=N` - alternate south-edge pavement tile key.
-    pub bridge_bottom_left_2: Option<u16>,
     /// `[General] BridgeMiddle1=N` — BridgeSet-relative offset for the NS
     /// bridgehead variant block. The 4 NS variant tile_ids occupy
     /// `BridgeSet_start + {N-1, N, N+1, N+2}`. None if the key is absent.
@@ -776,122 +766,14 @@ pub struct TheaterData {
     pub rmg_tiles: RmgTileKeys,
 }
 
-/// Theater-derived 4-NS + 4-EW tile_id table for HIGH bridge anchor variants.
-///
-/// Built once at theater load from `BridgeSet` (tileset start tile_id)
-/// + `BridgeMiddle1` / `BridgeMiddle2` (BridgeSet-relative offsets).
-/// The 4 variant tile_ids per axis occupy consecutive slots starting at
-/// `BridgeSet_start + (BridgeMiddle* - 1)`.
-///
-/// Enum order: `[Variant0, Variant1, Damaged, AboutToFall]`.
-#[derive(Debug, Clone, Copy)]
-pub struct BridgeAnchorVariantTable {
-    /// NS variant tile_ids in enum order (Variant0..AboutToFall).
-    pub ns: [u16; 4],
-    /// EW variant tile_ids in enum order.
-    pub ew: [u16; 4],
-}
-
-/// BridgeSet-relative tile keys used by gamemd.exe `MapClass::IsBridgeRampTile`.
-#[derive(Debug, Clone, Copy)]
-pub struct BridgeRampTileTable {
-    pub top_right_1: Option<u16>,
-    pub top_right_2: Option<u16>,
-    pub top_left_1: Option<u16>,
-    pub top_left_2: Option<u16>,
-    pub middle_1: Option<u16>,
-    pub middle_2: Option<u16>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TheaterBridgePieceKeys {
-    bridge_top_left_1: Option<u16>,
-    bridge_top_left_2: Option<u16>,
-    bridge_bottom_right_1: Option<u16>,
-    bridge_bottom_right_2: Option<u16>,
-    bridge_top_right_1: Option<u16>,
-    bridge_top_right_2: Option<u16>,
-    bridge_bottom_left_1: Option<u16>,
-    bridge_bottom_left_2: Option<u16>,
-    bridge_middle_1: Option<u16>,
-    bridge_middle_2: Option<u16>,
-}
-
-impl BridgeRampTileTable {
-    pub fn from_theater(td: &TheaterData) -> Option<Self> {
-        Some(Self {
-            top_right_1: td.bridge_top_right_1,
-            top_right_2: td.bridge_top_right_2,
-            top_left_1: td.bridge_top_left_1,
-            top_left_2: td.bridge_top_left_2,
-            middle_1: td.bridge_middle_1,
-            middle_2: td.bridge_middle_2,
-        })
-        .filter(|table| {
-            table.top_right_1.is_some()
-                || table.top_right_2.is_some()
-                || table.top_left_1.is_some()
-                || table.top_left_2.is_some()
-                || table.middle_1.is_some()
-                || table.middle_2.is_some()
-        })
-    }
-
-    pub fn match_relative_tile(
-        &self,
-        relative_tile_index: u16,
-        height_byte: u8,
-    ) -> Option<BridgeRampTile> {
-        if height_byte == 0x0C
-            && (self.top_right_1 == Some(relative_tile_index)
-                || self.top_right_2 == Some(relative_tile_index))
-        {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::TopRight,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        if height_byte == 0x08
-            && (self.top_left_1 == Some(relative_tile_index)
-                || self.top_left_2 == Some(relative_tile_index))
-        {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::TopLeft,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        if height_byte == 0x04 && in_four_tile_run(relative_tile_index, self.middle_1) {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::Middle1,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        if height_byte == 0x02 && in_four_tile_run(relative_tile_index, self.middle_2) {
-            return Some(BridgeRampTile {
-                kind: BridgeRampKind::Middle2,
-                relative_tile_index,
-                height_byte,
-            });
-        }
-        None
-    }
-
-    pub fn match_tile_id(
-        &self,
-        tile_id: u16,
-        bridge_set_start: u16,
-        bridge_set_count: u16,
-        height_byte: u8,
-    ) -> Option<BridgeRampTile> {
-        let zero_based = tile_id.checked_sub(bridge_set_start)?;
-        if zero_based >= bridge_set_count {
-            return None;
-        }
-        self.match_relative_tile(zero_based + 1, height_byte)
-    }
+/// Every BridgeMiddle1/2 tile a live bridge publication can write, for the
+/// tile atlas pre-load. Relative to each family's tileset base (BridgeSet,
+/// WoodBridgeSet), a middle variant `v` is `base + key - 1 + v`: damage
+/// floods write variant 3 and collapse floods and ramp tails variant 4
+/// (576BA0/571490 via 56EB80; 572230..573170 and their wooden twins).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeMiddleTiles {
+    pub tile_ids: Vec<u16>,
 }
 
 impl TheaterData {
@@ -921,83 +803,27 @@ impl TheaterData {
     }
 }
 
-fn in_four_tile_run(relative_tile_index: u16, start: Option<u16>) -> bool {
-    start.is_some_and(|first| {
-        let relative_tile_index = u32::from(relative_tile_index);
-        let first = u32::from(first);
-        relative_tile_index >= first && relative_tile_index < first + 4
-    })
-}
-
-impl BridgeAnchorVariantTable {
-    /// Derive the variant table from a fully-loaded TheaterData.
-    ///
-    /// Returns None when BridgeSet, BridgeMiddle1, or BridgeMiddle2 is
-    /// absent, BridgeMiddle1 or BridgeMiddle2 is 0 (Variant0 = BS+M-1
-    /// would underflow), or any of the 8 computed tile_ids falls outside
-    /// the tileset bounds.
+impl BridgeMiddleTiles {
+    /// None without BridgeMiddle1/2 or without either family's tileset.
+    /// Variants past the end of the tileset lookup are omitted.
     pub fn from_theater(td: &TheaterData) -> Option<Self> {
-        let bs_idx = td.bridge_set?;
-        let m1 = td.bridge_middle_1?;
-        let m2 = td.bridge_middle_2?;
-        if m1 < 1 || m2 < 1 {
-            return None;
-        }
-        let bs_start = td.lookup.bounds().get(bs_idx as usize).map(|b| b.start)?;
-        let max_tid = td.lookup.len() as u32;
-
-        let compute_axis = |m: u16| -> Option<[u16; 4]> {
-            let base = bs_start as u32 + (m as u32) - 1;
-            let highest = base + 3;
-            if highest >= max_tid {
-                return None;
+        let keys = [td.bridge_middle_1?, td.bridge_middle_2?];
+        let max_tile = td.lookup.len() as u32;
+        let mut tile_ids = Vec::new();
+        for set in [td.bridge_set, td.wood_bridge_set].into_iter().flatten() {
+            let Some(start) = td.lookup.bounds().get(usize::from(set)).map(|b| b.start) else {
+                continue;
+            };
+            for key in keys.into_iter().filter(|&key| key >= 1) {
+                for variant in 0..=4 {
+                    let tile = u32::from(start) + u32::from(key) - 1 + variant;
+                    if tile < max_tile && !tile_ids.contains(&(tile as u16)) {
+                        tile_ids.push(tile as u16);
+                    }
+                }
             }
-            Some([
-                base as u16,
-                (base + 1) as u16,
-                (base + 2) as u16,
-                (base + 3) as u16,
-            ])
-        };
-        let ns = compute_axis(m1)?;
-        let ew = compute_axis(m2)?;
-        Some(Self { ns, ew })
-    }
-
-    /// Look up the tile_id for a (axis, class) pair. Returns None when
-    /// class is Variant0 — callers fall through to the cell's native
-    /// tile_id in that case (no render-side override needed).
-    pub fn tile_id_for(&self, axis: Axis, class: BridgeheadAnchorClass) -> Option<u16> {
-        let slot = match class {
-            BridgeheadAnchorClass::Variant0 => return None,
-            BridgeheadAnchorClass::Variant1 => 1usize,
-            BridgeheadAnchorClass::Damaged => 2usize,
-            BridgeheadAnchorClass::AboutToFall => 3usize,
-        };
-        let arr = match axis {
-            Axis::NS => &self.ns,
-            Axis::EW => &self.ew,
-        };
-        Some(arr[slot])
-    }
-
-    /// Reverse-match a tile_id to (axis, class). Used at map load to
-    /// pre-classify author-damaged anchors. None when the tile_id is not
-    /// a variant.
-    pub fn match_tile_id(&self, tile_id: u16) -> Option<(Axis, BridgeheadAnchorClass)> {
-        const CLASS_ORDER: [BridgeheadAnchorClass; 4] = [
-            BridgeheadAnchorClass::Variant0,
-            BridgeheadAnchorClass::Variant1,
-            BridgeheadAnchorClass::Damaged,
-            BridgeheadAnchorClass::AboutToFall,
-        ];
-        if let Some(slot) = self.ns.iter().position(|&t| t == tile_id) {
-            return Some((Axis::NS, CLASS_ORDER[slot]));
         }
-        if let Some(slot) = self.ew.iter().position(|&t| t == tile_id) {
-            return Some((Axis::EW, CLASS_ORDER[slot]));
-        }
-        None
+        (!tile_ids.is_empty()).then_some(Self { tile_ids })
     }
 }
 
@@ -1060,18 +886,8 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
     let mut wood_bridge_set = read_general_u16(general, "WoodBridgeSet");
     let slope_set_pieces = read_general_u16(general, "SlopeSetPieces");
     let slope_set_pieces2 = read_general_u16(general, "SlopeSetPieces2");
-    let TheaterBridgePieceKeys {
-        bridge_top_left_1,
-        bridge_top_left_2,
-        bridge_bottom_right_1,
-        bridge_bottom_right_2,
-        bridge_top_right_1,
-        bridge_top_right_2,
-        bridge_bottom_left_1,
-        bridge_bottom_left_2,
-        bridge_middle_1,
-        bridge_middle_2,
-    } = read_bridge_piece_keys(general);
+    let bridge_middle_1 = read_general_u16(general, "BridgeMiddle1");
+    let bridge_middle_2 = read_general_u16(general, "BridgeMiddle2");
     let tunnels = read_general_u16(general, "Tunnels");
     let track_tunnels = read_general_u16(general, "TrackTunnels");
     let dirt_tunnels = read_general_u16(general, "DirtTunnels");
@@ -1093,18 +909,10 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
     );
     if bridge_set.is_some() || wood_bridge_set.is_some() {
         log::info!(
-            "Theater {}: BridgeSet={:?}, WoodBridgeSet={:?}, BridgePieces={:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}/{:?}, Tunnels={:?}/{:?}/{:?}/{:?}",
+            "Theater {}: BridgeSet={:?}, WoodBridgeSet={:?}, BridgeMiddle={:?}/{:?}, Tunnels={:?}/{:?}/{:?}/{:?}",
             theater_name,
             bridge_set,
             wood_bridge_set,
-            bridge_top_left_1,
-            bridge_top_left_2,
-            bridge_bottom_right_1,
-            bridge_bottom_right_2,
-            bridge_top_right_1,
-            bridge_top_right_2,
-            bridge_bottom_left_1,
-            bridge_bottom_left_2,
             bridge_middle_1,
             bridge_middle_2,
             tunnels,
@@ -1140,14 +948,6 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
         wood_bridge_set,
         slope_set_pieces,
         slope_set_pieces2,
-        bridge_top_left_1,
-        bridge_top_left_2,
-        bridge_bottom_right_1,
-        bridge_bottom_right_2,
-        bridge_top_right_1,
-        bridge_top_right_2,
-        bridge_bottom_left_1,
-        bridge_bottom_left_2,
         bridge_middle_1,
         bridge_middle_2,
         tunnels,
@@ -1313,21 +1113,6 @@ fn read_general_u16(general: Option<&IniSection>, key: &str) -> Option<u16> {
     u16::try_from(general?.read_int(key, -1)).ok()
 }
 
-fn read_bridge_piece_keys(general: Option<&IniSection>) -> TheaterBridgePieceKeys {
-    TheaterBridgePieceKeys {
-        bridge_top_left_1: read_general_u16(general, "BridgeTopLeft1"),
-        bridge_top_left_2: read_general_u16(general, "BridgeTopLeft2"),
-        bridge_bottom_right_1: read_general_u16(general, "BridgeBottomRight1"),
-        bridge_bottom_right_2: read_general_u16(general, "BridgeBottomRight2"),
-        bridge_top_right_1: read_general_u16(general, "BridgeTopRight1"),
-        bridge_top_right_2: read_general_u16(general, "BridgeTopRight2"),
-        bridge_bottom_left_1: read_general_u16(general, "BridgeBottomLeft1"),
-        bridge_bottom_left_2: read_general_u16(general, "BridgeBottomLeft2"),
-        bridge_middle_1: read_general_u16(general, "BridgeMiddle1"),
-        bridge_middle_2: read_general_u16(general, "BridgeMiddle2"),
-    }
-}
-
 fn load_exact_palette(
     asset_manager: &AssetManager,
     name: &str,
@@ -1409,14 +1194,13 @@ pub(crate) fn wrapped_subtile_index(
 /// Silently skips tile_ids whose TMP file is absent from `asset_manager`
 /// (e.g., mod theaters missing a variant TMP). Logs one `WARN` per missing
 /// TMP at theater load.
-pub fn inject_bridge_anchor_variant_tiles(
+pub fn inject_bridge_middle_tiles(
     needed: &mut HashSet<TileKey>,
-    table: &BridgeAnchorVariantTable,
+    table: &BridgeMiddleTiles,
     lookup: &TilesetLookup,
     asset_manager: &crate::assets::asset_manager::AssetManager,
 ) {
-    let all_tile_ids = table.ns.iter().chain(table.ew.iter()).copied();
-    for tile_id in all_tile_ids {
+    for &tile_id in &table.tile_ids {
         let Some(filename) = lookup.filename(tile_id as i32) else {
             log::warn!(
                 "Bridge anchor variant tile_id {} has no entry in TilesetLookup; skipping pre-load",

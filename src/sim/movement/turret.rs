@@ -55,33 +55,22 @@ pub fn facing_toward_lepton(
     facing_from_delta_int_u16(dx, dy)
 }
 
-/// Convert 8-bit body facing to 16-bit turret facing.
-/// Maps 0..255 → 0..65280 (shifts into the upper byte).
-#[inline]
+/// Convert an 8-bit facing to a 16-bit one (shifts into the upper byte).
+/// No production caller; test fixtures author 8-bit facings.
+#[cfg(test)]
 pub fn body_facing_to_turret(body: u8) -> u16 {
     (body as u16) << 8
 }
 
-/// NO-DIFF (GSI-08.14) — one facing is right, and pass 1's premise was wrong.
-/// `TechnoClass` carries exactly TWO `FacingClass` instances: the body at
-/// `+0x388` and the turret at `+0x3A0` (0x18 stride; `+0x3B8` is
-/// `CurrentBurstIndex`, not a third facing). There is no separate barrel
-/// facing, so `barrel_facing` here IS native's turret facing and the fire
-/// location reads that same value — the claimed coupling to the FLH slice
-/// (`GSI-08.04`) does not exist. `TurretROT=` likewise does not exist in
-/// gamemd; the only `TurretRot`-shaped string in the image is
-/// `TurretRotateSound`, so driving turret rotation from `ROT=` is correct.
-///
-/// The hull heading as a 16-bit facing — `FacingClass::Current` on the primary
-/// facing `+0x388`. VERA keeps the animated hull in `body_facing` only while a
-/// rotation is live and mirrors its top byte into `entity.facing`, so read the
-/// interpolator when it exists and the byte otherwise.
-pub(crate) fn hull_facing_16(entity: &GameEntity, binary_frame: u32) -> u16 {
-    match entity.body_facing {
-        Some(ref hull) => hull.current(binary_frame),
-        None => body_facing_to_turret(entity.facing),
-    }
-}
+// NO-DIFF (GSI-08.14) — one turret facing is right, and pass 1's premise was
+// wrong. `TechnoClass` carries three `FacingClass` instances (0x18 stride): the
+// barrel elevation at `+0x370` (`GameEntity::barrel_elevation`), the body at
+// `+0x388` (`GameEntity::body_facing`) and the turret at `+0x3A0` (`+0x3B8` is
+// `CurrentBurstIndex`, not a fourth). `barrel_facing` here is native's turret
+// facing, and the fire location reads that same value — the claimed coupling to
+// the FLH slice (`GSI-08.04`) does not exist. `TurretROT=` likewise does not
+// exist in gamemd; the only `TurretRot`-shaped string in the image is
+// `TurretRotateSound`, so driving turret rotation from `ROT=` is correct.
 
 /// Lepton-precise facing from `entity` toward a resolved attack target, using
 /// the target's own coordinate slot. gamemd reaches the target through
@@ -93,11 +82,8 @@ pub(crate) fn facing_toward_target(
     entity: &GameEntity,
     target: &crate::sim::combat::TargetKind,
     entities: &EntityStore,
-    rules: Option<&RuleSet>,
-    interner: &crate::sim::intern::StringInterner,
 ) -> Option<u16> {
-    let (trx, try_, tsx, tsy) =
-        crate::sim::combat::resolve_target_coords(target, entities, rules, interner)?;
+    let (trx, try_, tsx, tsy) = crate::sim::combat::resolve_target_coords(target, entities)?;
     Some(facing_toward_lepton(
         entity.position.rx,
         entity.position.ry,
@@ -224,7 +210,7 @@ pub(crate) fn facing_update(
     let target_facing: Option<u16> = entity
         .attack_target
         .as_ref()
-        .and_then(|attack| facing_toward_target(entity, &attack.target, entities, rules, interner));
+        .and_then(|attack| facing_toward_target(entity, &attack.target, entities));
     if let Some(tgt) = target_facing
         && !entity.turret_rotation_latch
     {
@@ -235,7 +221,7 @@ pub(crate) fn facing_update(
         } else if obj
             .is_some_and(|o| o.speed_type == crate::rules::locomotor_type::SpeedType::Track)
             && entity.movement_target.is_none()
-            && hull_facing_16(entity, binary_frame) == tgt
+            && entity.body_facing_current(binary_frame) == tgt
         {
             out.hull_destination = Some(tgt);
         }
@@ -270,7 +256,7 @@ pub(crate) fn facing_update(
             if dwell_elapsed && !bunkered {
                 out.turret_destination = Some(match nav_destination_facing(entity, entities) {
                     Some(nav) => nav,
-                    None => hull_facing_16(entity, binary_frame),
+                    None => entity.body_facing_current(binary_frame),
                 });
                 // `Set` at `0x00736BDD`, which native reaches only AFTER the
                 // `+0x6AF` store — so the arc this starts leaves the latch
@@ -328,7 +314,7 @@ pub(crate) fn current_weapon_is_omni_fire(
     } else {
         0
     };
-    crate::sim::combat::combat_weapon::weapon_for_index(obj, entity.veterancy, index)
+    crate::sim::combat::combat_weapon::weapon_for_index(obj, entity.veterancy(), index)
         .and_then(|(weapon_id, _)| rules.weapon(weapon_id))
         .is_some_and(|weapon| weapon.omni_fire)
 }
@@ -374,18 +360,16 @@ pub(crate) fn desired_turret_facing(
             entity
                 .attack_target
                 .as_ref()
-                .and_then(|attack| {
-                    facing_toward_target(entity, &attack.target, entities, rules, interner)
-                })
-                .unwrap_or_else(|| body_facing_to_turret(entity.facing)),
+                .and_then(|attack| facing_toward_target(entity, &attack.target, entities))
+                .unwrap_or_else(|| entity.body_facing_current(binary_frame)),
         ),
     }
 }
 
 /// Per-binary-frame turret rotation for the class this sweep still owns —
 /// legacy Infantry. Unit turrets are driven per-object by the combat Phase-2
-/// read window plus `unit_post::apply_unit_facing` while
-/// `L2_UNIT_POST_AUTHORITATIVE` holds, and a building's by its Mission_Attack.
+/// read window plus `unit_post::apply_unit_facing`, and a building's by its
+/// Mission_Attack.
 ///
 /// Calls `FacingClass::set`, which is a no-op when the desired facing equals the
 /// current destination — so this function is idempotent. `None` from
@@ -409,10 +393,8 @@ pub fn tick_turret_rotation(
             Some(e) => e,
             None => continue,
         };
-        // Unit turrets are driven per-object by unit_post once authoritative.
-        if crate::sim::world::unit_post::L2_UNIT_POST_AUTHORITATIVE
-            && entity.category == crate::map::entities::EntityCategory::Unit
-        {
+        // Unit barrels are committed by their own live Fire -> Facing slot.
+        if entity.category == crate::map::entities::EntityCategory::Unit {
             continue;
         }
         // A warped object's AI sets no facing; its barrel finishes the turn it

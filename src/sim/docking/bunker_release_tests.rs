@@ -38,7 +38,7 @@ pub(super) fn record(sim: &Simulation, building: u64, unit: u64, name: &'static 
             powered: unit
                 .and_then(|unit| unit.locomotor.as_ref())
                 .is_some_and(|loco| loco.is_powered()),
-            speed: unit.map(|unit| unit.foot_speed.applied_fraction),
+            speed: unit.map(|unit| unit.foot_speed.applied_fraction()),
             head: unit
                 .and_then(|unit| unit.drive_locomotion.as_ref())
                 .and_then(|drive| drive.head_to),
@@ -64,8 +64,7 @@ fn release_fixture() -> Simulation {
     let unit = sim.substrate.entities.get_mut(1).unwrap();
     unit.radio_contacts.insert(2);
     unit.locomotor.as_mut().unwrap().power_off();
-    unit.foot_speed.applied_fraction = SimFixed::lit("0.25");
-    unit.foot_speed.cached_current_speed = 7;
+    unit.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
     let drive = unit.drive_locomotion.as_mut().unwrap();
     drive.track.residual = 971;
     drive.track.reversed = true;
@@ -114,7 +113,7 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
     assert_eq!(trace[4].building_link, None);
     let unit = sim.substrate.entities.get(1).unwrap();
     assert_eq!(position_world_coord(&unit.position), pose);
-    assert_eq!(unit.facing, 0);
+    assert_eq!(unit.body_facing.destination(), 0);
     let drive = unit.drive_locomotion.as_ref().unwrap();
     assert_eq!(
         (
@@ -125,7 +124,6 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
         (0x47, 0, 971)
     );
     assert!(drive.track.reversed);
-    assert_eq!(unit.foot_speed.cached_current_speed, 7);
     assert!(!unit.lifecycle.in_limbo && unit.in_logic_vector);
     assert!(!unit.radio_contacts.contains(2));
     assert!(
@@ -159,7 +157,7 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
 fn normal_release_clears_unit_first_and_assigns_destination_without_teleport() {
     let mut sim = release_fixture();
     let pose = position_world_coord(&sim.substrate.entities.get(1).unwrap().position);
-    release_normal(&mut sim, 2, &super::tests::rules(), None);
+    release_normal(&mut sim, 2, &super::tests::rules());
     let trace = take_trace();
     assert_eq!(
         trace.iter().map(|b| b.name).collect::<Vec<_>>(),
@@ -210,7 +208,7 @@ fn force_limbo_early_return_does_not_skip_caller_speed_links_or_break() {
     release_sell_destroy(&mut sim, 2);
     let unit = sim.substrate.entities.get(1).unwrap();
     assert!(unit.lifecycle.in_limbo, "release must not resurrect/reveal");
-    assert_eq!(unit.foot_speed.applied_fraction, SIM_ONE);
+    assert_eq!(unit.foot_speed.applied_fraction(), SIM_ONE);
     assert_eq!(unit.bunker_link, BunkerLink::None);
     assert!(!unit.radio_contacts.contains(2));
     let drive = unit.drive_locomotion.as_ref().unwrap();
@@ -292,7 +290,7 @@ fn nonunit_link_does_not_release_or_reset_bunker() {
         let mut sim = release_fixture();
         sim.substrate.entities.get_mut(1).unwrap().category = EntityCategory::Infantry;
         if normal {
-            release_normal(&mut sim, 2, &super::tests::rules(), None);
+            release_normal(&mut sim, 2, &super::tests::rules());
         } else {
             release_sell_destroy(&mut sim, 2);
         }
@@ -300,7 +298,7 @@ fn nonunit_link_does_not_release_or_reset_bunker() {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.bunker_link, BunkerLink::Installed(2));
         assert!(!unit.locomotor.as_ref().unwrap().is_powered());
-        assert_eq!(unit.foot_speed.applied_fraction, SimFixed::lit("0.25"));
+        assert_eq!(unit.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
         let building = sim.substrate.entities.get(2).unwrap();
         assert_eq!(building.bunker_occupant, Some(1));
         assert_eq!(

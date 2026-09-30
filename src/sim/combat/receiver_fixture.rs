@@ -4,6 +4,54 @@
 use super::*;
 use crate::sim::world::Simulation;
 
+thread_local! {
+    static FIRE_VISIT_TRACE: std::cell::RefCell<Option<Vec<serde_json::Value>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Observe the real FireAt transaction at its caller's boundaries. The trace
+/// supplies no return values, callbacks or world state, and is never saved.
+pub(crate) fn trace_fire_visits<T>(run: impl FnOnce() -> T) -> (T, Vec<serde_json::Value>) {
+    FIRE_VISIT_TRACE.with_borrow_mut(|trace| {
+        assert!(trace.is_none(), "nested FireAt traces");
+        *trace = Some(Vec::new());
+    });
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            FIRE_VISIT_TRACE.with_borrow_mut(|trace| *trace = None);
+        }
+    }
+    let reset = Reset;
+    let result = run();
+    let trace = FIRE_VISIT_TRACE.with_borrow_mut(|trace| trace.take().unwrap());
+    drop(reset);
+    (result, trace)
+}
+
+/// Snapshot only when a comparison installed the observer. Ordinary tests and
+/// the production build pay no actor-serialization or RNG-copy cost.
+pub(crate) fn observe_fire_visit(world: &Simulation, id: u64, phase: &str) {
+    FIRE_VISIT_TRACE.with_borrow_mut(|trace| {
+        if let Some(observations) = trace {
+            observations.push(serde_json::json!({
+                "phase": phase,
+                "id": id,
+                "actor": world.substrate.entities.get(id),
+                "rng_streams": {
+                    "main": world.main_rng.native_state_hex(),
+                    "scenario": world.scenario_rng.native_state_hex(),
+                    "mapgen": world.mapgen_rng.native_state_hex(),
+                },
+                "rng_states": {
+                    "main": world.main_rng,
+                    "scenario": world.scenario_rng,
+                    "mapgen": world.mapgen_rng,
+                },
+            }));
+        }
+    });
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct BaseDefenseResponseTraceEntry {
     pub(crate) site: BaseDefenseResponseCallSite,
@@ -22,8 +70,6 @@ pub(crate) struct FixtureTrace {
 /// These are never deferred spawn requests and cannot construct a second anim.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ConstructedAnimObservation {
-    pub(crate) stable_id: u64,
-    pub(crate) native_unique_id: i32,
     pub(crate) type_id: InternedId,
     pub(crate) world_coord: crate::sim::anim_class::AnimWorldCoord,
 }
@@ -34,8 +80,6 @@ fn constructed_anims(world: &Simulation) -> Vec<ConstructedAnimObservation> {
         .anims
         .iter()
         .map(|(_, anim)| ConstructedAnimObservation {
-            stable_id: anim.stable_id,
-            native_unique_id: anim.native_unique_id,
             type_id: anim.type_id,
             world_coord: anim.world_coord,
         })

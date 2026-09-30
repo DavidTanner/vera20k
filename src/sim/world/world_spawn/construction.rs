@@ -7,10 +7,10 @@
 use super::{GeneratedTechnoInitError, object_uses_voxel};
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::{Animation, SequenceKind};
-use crate::sim::components::{BridgeOccupancy, HarvestOverlay, Health, VoxelAnimation};
+use crate::sim::components::{HarvestOverlay, Health, VoxelAnimation};
 use crate::sim::game_entity::{GameEntity, TechnoConstructorInit};
 use crate::sim::miner::{Miner, MinerConfig, miner_kind_for_object};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
@@ -50,12 +50,7 @@ impl Simulation {
             // Original copy slices: object_health corpus / constructors.
             current: obj.strength,
         };
-        let category = match obj.category {
-            ObjectCategory::Infantry => EntityCategory::Infantry,
-            ObjectCategory::Vehicle => EntityCategory::Unit,
-            ObjectCategory::Aircraft => EntityCategory::Aircraft,
-            ObjectCategory::Building => EntityCategory::Structure,
-        };
+        let category = EntityCategory::from(obj.category);
         let uses_voxel = object_uses_voxel(type_id, obj, rules);
         let sight_range = (obj.sight.max(0) as u16).min(MAX_SIGHT_RANGE);
         let stable_id = self.allocate_stable_id();
@@ -94,7 +89,7 @@ impl Simulation {
         origin: ComponentOrigin,
     ) {
         let category = ge.category;
-        let facing = ge.facing;
+        let initial = ge.body_facing.destination();
         let uses_voxel = ge.is_voxel;
         // InitManagers6F3F40 classifies the owner after construction; it does
         // not manufacture either discovery-history byte. The launch-owned
@@ -106,37 +101,35 @@ impl Simulation {
 
         stamp_scoring_flags(ge, obj, rules);
         ge.sight_is_zero = obj.is_some_and(|object| object.sight == 0);
-        // BuildingClass::Init gives every building its `+0x388` rate from
-        // `ROT=` (`Set_ROT` at `0x00442CA5`) without testing `Turret=`: a
-        // turretless building's `+0x388` is its body, which Mission_Attack
-        // aims and ReceiveDamage's retaliation turns.
+        // The class constructor's one `+0x388` rate write (`Set_ROT`): `ROT=`
+        // for a unit (`0x00735579`), an aircraft (`0x00413FE7`) and a building
+        // (`BuildingClass::Init`, `0x00442CA5`, without testing `Turret=`: a
+        // turretless building's `+0x388` is the body Mission_Attack aims and
+        // ReceiveDamage's retaliation turns); 127 for infantry (`0x00517BC5`).
+        if let Some(obj) = obj {
+            ge.set_body_facing_rot(obj.turret_rot);
+        }
+        // `+0x3A0`: a turreted unit's turret and every aircraft's Secondary. A
+        // building aims its `+0x388`.
         if let Some(obj) = obj.filter(|obj| {
-            obj.has_turret
-                || matches!(
-                    category,
-                    EntityCategory::Aircraft | EntityCategory::Structure
-                )
+            (obj.has_turret && category != EntityCategory::Structure)
+                || category == EntityCategory::Aircraft
         }) {
-            let initial = crate::sim::movement::turret::body_facing_to_turret(facing);
-            ge.barrel_facing = Some(crate::sim::movement::FacingClass::new(
-                initial,
-                obj.turret_rot,
-            ));
+            let mut secondary = crate::sim::movement::FacingClass::new(initial, obj.turret_rot);
             if category == EntityCategory::Aircraft {
                 // Aircraft413FD2..414015 supplies ROT to BOTH controllers;
                 // Unlimbo414310 -> Foot4D7170 -> Techno6F6DAA snaps Primary;
                 // Aircraft414417 snaps Secondary. Both timers retain this frame.
-                let mut facing = crate::sim::movement::FacingClass::new(initial, obj.turret_rot);
-                facing.snap(initial, self.session.binary_frame);
-                ge.body_facing = Some(facing);
-                ge.barrel_facing = Some(facing);
+                let frame = self.session.binary_frame;
+                ge.body_facing.snap(initial, frame);
+                secondary.snap(initial, frame);
             }
+            ge.barrel_facing = Some(secondary);
         }
         if uses_voxel {
             ge.voxel_animation = Some(VoxelAnimation::new(1, 1));
         }
         if category == EntityCategory::Infantry {
-            ge.animation = Some(Animation::new(SequenceKind::Stand));
             ge.sub_cell = Some(match origin {
                 ComponentOrigin::Authored { sub_cell, .. } => sub_cell,
                 ComponentOrigin::Runtime => {
@@ -174,8 +167,6 @@ impl Simulation {
         // no Buildup SHP clears the AI sale byte (`0x00442CBC`).
         ge.ai_sellable = category == EntityCategory::Structure
             && rules.is_some_and(|rules| rules.has_buildup(&obj.id));
-        ge.zfudge_bridge = obj.zfudge_bridge;
-        ge.too_big_to_fit_under_bridge = obj.too_big_to_fit_under_bridge;
         if should_construct_locomotor(category, obj) {
             ge.locomotor = Some(LocomotorState::from_object_type(
                 obj,
@@ -203,7 +194,7 @@ impl Simulation {
                 rules,
                 obj,
                 category,
-                ge.veterancy,
+                ge.veterancy(),
             )
         {
             ge.parasite = Some(Box::new(
@@ -229,7 +220,6 @@ impl Simulation {
             ge.harvest_overlay = Some(HarvestOverlay {
                 frame: 0,
                 visible: false,
-                elapsed_frames: 0,
             });
         }
         // Passenger cargo for transports and garrisonable buildings.
@@ -264,14 +254,13 @@ impl Simulation {
 
 fn install_authored_bridge(ge: &mut GameEntity, origin: ComponentOrigin) {
     if let ComponentOrigin::Authored {
-        bridge_deck: Some(deck_level),
+        bridge_deck: Some(_),
         ..
     } = origin
     {
         if let Some(loco) = &mut ge.locomotor {
             loco.layer = MovementLayer::Bridge;
         }
-        ge.bridge_occupancy = Some(BridgeOccupancy { deck_level });
         ge.on_bridge = true;
     }
 }
@@ -290,23 +279,7 @@ fn stamp_scoring_flags(
     rules: Option<&RuleSet>,
 ) {
     ge.dont_score = obj.is_some_and(|o| o.dont_score);
-    // Add_Tracking's building arm (`0x004FF761..0x004FF791`): vtable `+0x80`,
-    // or UndeploysInto (`+0x408`) with ResourceGatherer (`+0x5EC`).
-    let unit_like_building = ge.category == EntityCategory::Structure
-        && obj.is_some_and(|o| {
-            o.is_1x1_with_undeploy()
-                || o.undeploys_into
-                    .as_deref()
-                    .and_then(|undeploys| rules.and_then(|rules| rules.object(undeploys)))
-                    .is_some_and(|undeploys| undeploys.resource_gatherer)
-        });
-    ge.tracking_facts = crate::sim::house_tracking::TrackingFacts {
-        insignificant: obj.is_some_and(|o| o.insignificant),
-        unit_like_building,
-        resource_gatherer: obj.is_some_and(|o| o.resource_gatherer),
-        force_value: obj
-            .and_then(|o| crate::sim::house_tracking::ForceValueFacts::of(ge.category, o)),
-    };
+    ge.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(ge.category, obj, rules);
 }
 
 fn stamp_building_cell_profile(

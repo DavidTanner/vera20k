@@ -3,7 +3,6 @@ use crate::rules::ini_parser::IniFile;
 use crate::sim::native_identity::NativeUniqueIdCursor;
 use crate::sim::overlay_grid::OverlayGrid;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 fn fixture() -> (
     Simulation,
@@ -205,7 +204,7 @@ fn live_bridge_constructor_matches_original_and_drains_at_admitted_tick() {
         assert_eq!(sim.native_unique_ids.as_ref().unwrap().current_raw(), 1001);
         // This is the production frame admission/drain, not a direct test-only
         // destruction call. Original corpus separately executes725C70's body.
-        sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], None, None, None, 67);
         assert_eq!(
             json!(sim.load_objects.registry_counts()),
             original["after_drain"]["registry_counts"]
@@ -223,7 +222,6 @@ fn live_bridge_constructor_matches_original_and_drains_at_admitted_tick() {
 #[test]
 fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
     use crate::map::entities::EntityCategory;
-    use crate::sim::bridge_state::{BridgeRuntimeCell, BridgeheadAnchorClass};
     use crate::sim::world::{PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest};
     use crate::util::fixed_math::SimFixed;
 
@@ -231,38 +229,13 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
         "../../../tools/spatial_oracle/bridge_constructor.json"
     ))
     .unwrap();
-    // Original5FC380 success controls for24/25/237/238. Start with retained
-    // collapsed runtime projections, then execute the actual constructor.
+    // Original5FC380 success controls for24/25/237/238. Execute the actual
+    // constructor on the fixture's CellClass cells.
     // The field goldens pin publication; occupation below exercises the live
     // reader and is not a claim of full native Engineer traversal coverage.
     for original in &corpus["cases"].as_array().unwrap()[8..12] {
         assert_eq!(original["kind"], "success");
         let (mut sim, rules, registry) = fixture();
-        let mut bridges = BridgeRuntimeState::default();
-        for row in original["cells"].as_array().unwrap() {
-            if row["flags"].as_u64().unwrap() & 0x100 == 0 {
-                continue;
-            }
-            let x = row["coord"][0].as_u64().unwrap() as u16;
-            let y = row["coord"][1].as_u64().unwrap() as u16;
-            bridges.test_seed_cell(
-                x,
-                y,
-                BridgeRuntimeCell {
-                    deck_present: false,
-                    destroyable: true,
-                    deck_level: 10,
-                    bridge_group_id: None,
-                    damage_state: DamageState::Destroyed,
-                    axis: None,
-                    role: BridgeCellRole::Body,
-                    anchor_span_id: None,
-                    overlay_byte: 0xff,
-                    bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-                },
-            );
-        }
-        sim.bridge_state = Some(bridges);
         LivePublication {
             sim: &mut sim,
             rules: &rules,
@@ -274,7 +247,6 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
         assert_eq!(cells(&sim), original["cells"]);
         let path = crate::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(
             sim.resolved_terrain.as_ref().unwrap(),
-            sim.bridge_state.as_ref(),
         );
         let mut id = 100;
         for row in original["cells"].as_array().unwrap() {
@@ -286,10 +258,7 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
             let terrain = sim.resolved_terrain.as_ref().unwrap().cell(x, y).unwrap();
             assert!(terrain.bridge_facts.has_structural_bridge());
             assert_eq!(terrain.bridge_facts.overlay_id, None);
-            let runtime = sim.bridge_state.as_ref().unwrap().cell(x, y).unwrap();
-            assert!(runtime.deck_present);
-            assert_eq!(runtime.overlay_byte, 0xff);
-            assert!(BridgeRuntimeState::effective_render_state(runtime).is_none());
+            assert!(crate::sim::bridge_state::cell_render_state(terrain.bridge_facts).is_none());
             assert!(path.cell(x, y).unwrap().bridge_walkable, "{row}");
 
             for (category, mask) in [
@@ -499,14 +468,14 @@ fn live_bridge_constructor_queue_respects_terminal_admission_and_other_objects()
     let retained_cells = cells(&sim);
     let retained_dummy = dummy(&sim);
     sim.quit_requested = true;
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert_eq!(sim.load_objects.queue_count(), 2);
     assert_eq!(sim.load_objects.registry_counts(), [2; 5]);
     assert!(sim.substrate.entities.get(100).is_some());
     assert!(sim.substrate.pending_delete.contains(&100));
     assert!(sim.substrate.pending_delete.contains(&101));
     sim.quit_requested = false;
-    sim.advance_tick(&[], None, &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], None, None, None, 67);
     assert_eq!(sim.load_objects.queue_count(), 0);
     assert_eq!(sim.load_objects.registry_counts(), [0; 5]);
     assert!(sim.substrate.entities.get(100).is_none());
@@ -518,8 +487,18 @@ fn live_bridge_constructor_queue_respects_terminal_admission_and_other_objects()
 }
 
 #[test]
-fn live_bridge_constructor_restamp_updates_existing_runtime_axis() {
+fn live_bridge_constructor_restamp_updates_the_state_byte_axis() {
     let (mut sim, rules, registry) = fixture();
+    let render = |sim: &Simulation| {
+        crate::sim::bridge_state::cell_render_state(
+            sim.resolved_terrain
+                .as_ref()
+                .unwrap()
+                .cell(16, 16)
+                .unwrap()
+                .bridge_facts,
+        )
+    };
     {
         let mut host = LivePublication {
             sim: &mut sim,
@@ -529,20 +508,7 @@ fn live_bridge_constructor_restamp_updates_existing_runtime_axis() {
         };
         host.construct_bridge_overlay((16, 16), 25, -1).unwrap();
     }
-    sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
-        sim.resolved_terrain.as_ref().unwrap(),
-        true,
-        1,
-    ));
-    assert_eq!(
-        sim.bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(16, 16)
-            .unwrap()
-            .axis,
-        Some(Axis::EW)
-    );
+    assert_eq!(render(&sim).map(|(_, axis)| axis), Some(Axis::EW));
     let mut host = LivePublication {
         sim: &mut sim,
         rules: &rules,
@@ -552,13 +518,15 @@ fn live_bridge_constructor_restamp_updates_existing_runtime_axis() {
     host.construct_bridge_overlay((16, 16), 24, -1).unwrap();
     let selected = host.lookup((16, 16));
     assert_eq!(host.state(selected), 0);
-    let runtime = host
-        .sim
-        .bridge_state
-        .as_ref()
-        .unwrap()
-        .cell(16, 16)
-        .unwrap();
-    assert_eq!(runtime.axis, Some(Axis::NS));
-    assert_eq!(runtime.overlay_byte, 24);
+    assert_eq!(render(&sim).map(|(_, axis)| axis), Some(Axis::NS));
+    assert_eq!(
+        sim.resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(16, 16)
+            .unwrap()
+            .bridge_facts
+            .overlay_id,
+        Some(24)
+    );
 }

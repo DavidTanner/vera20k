@@ -19,7 +19,7 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
-use crate::rules::ini_value::{PERCENT_SCALE, atoi_lenient, parse_leading_f64};
+use crate::rules::ini_value::{PERCENT_SCALE, crt_atoi, parse_leading_f64};
 use crate::util::fixed_math::{SimFixed, sim_from_f32};
 use crate::util::native_x87::X87Chop53;
 
@@ -31,18 +31,12 @@ use crate::util::native_x87::X87Chop53;
 pub struct WarheadType {
     /// Section name in rules.ini (e.g., "AP", "HE", "SA").
     pub id: String,
-    /// Damage percentage per armor type (0–200). Index order:
-    /// 0=none, 1=flak, 2=plate, 3=light, 4=medium, 5=heavy,
-    /// 6=wood, 7=steel, 8=concrete, 9=special_1, 10=special_2.
-    /// Empty if Verses= is absent. 100 = full damage, 0 = immune.
-    pub verses: Vec<u8>,
     /// Damage effectiveness per armor type, full f64 precision (gamemd stores
     /// Verses as a `double[11]` at warhead+0xA0 and keeps full precision through
-    /// the damage kernel — the single float exception). Same index order as
-    /// `verses`. Defaults to `[1.0; 11]` (100%) when `Verses=` is absent. This is
-    /// the faithful representation consumed by the damage substrate service; the
-    /// lossy `verses: Vec<u8>` above is retained for the existing readers until
-    /// the authoritative cutover retires it.
+    /// the damage kernel — the single float exception). Index order: 0=none,
+    /// 1=flak, 2=plate, 3=light, 4=medium, 5=heavy, 6=wood, 7=steel,
+    /// 8=concrete, 9=special_1, 10=special_2. Defaults to `[1.0; 11]` (100%)
+    /// when `Verses=` is absent.
     pub verses_f64: [f64; 11],
     /// Splash damage radius in cells (SIM_ZERO = direct hit only).
     /// Native `CellSpread=` is a **float** at `WarheadTypeClass+0x124`
@@ -324,42 +318,33 @@ pub struct WarheadType {
 impl WarheadType {
     /// Parse a WarheadType from a rules.ini section.
     pub fn from_ini_section(id: &str, section: &IniSection) -> Self {
-        let verses: Vec<u8> = section.get("Verses").map(parse_verses).unwrap_or_default();
+        // The absent-key default is the reader's own all-`100%` string
+        // (`0x0075DDE6`), which scans to `[1.0; 11]`.
         let verses_f64: [f64; 11] = section
-            .get("Verses")
-            .map(|_| parse_verses_f64(&section.read_string("Verses", "", 128)))
-            .unwrap_or([1.0; 11]);
+            .read_list("Verses", 0x80)
+            .map_or([1.0; 11], |tokens| verses_from_tokens(&tokens));
 
-        let cell_spread_native = section.get_f32("CellSpread").unwrap_or(0.0);
+        // Float fields (`FSTP dword` at `0x0075D3E6`, `0x0075D424`, `0x0075D477`).
+        let cell_spread_native = section.read_float("CellSpread", 0.0);
         let cell_spread: SimFixed = sim_from_f32(cell_spread_native);
         let cell_spread_f64 = f64::from(cell_spread_native);
-        let percent_at_max_native = section.get_f32("PercentAtMax").unwrap_or(1.0);
+        let percent_at_max_native = section.read_float("PercentAtMax", 1.0);
         let percent_at_max: u8 = (percent_at_max_native * 100.0).round().clamp(0.0, 200.0) as u8;
         let percent_at_max_f64 = f64::from(percent_at_max_native);
-        let delay_kill_at_max_f64 = f64::from(section.get_f32("DelayKillAtMax").unwrap_or(1.0));
+        let delay_kill_at_max_f64 = f64::from(section.read_float("DelayKillAtMax", 1.0));
 
         let anim_list: Vec<String> = section
-            .get_list("AnimList")
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-            .collect();
+            .read_list("AnimList", 0x80)
+            .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+            .unwrap_or_default();
 
         let debris_types: Vec<String> = section
-            .get_list("DebrisTypes")
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-            .collect();
+            .read_list("DebrisTypes", 0x80)
+            .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+            .unwrap_or_default();
 
-        let debris_maximums: Vec<i32> = section
-            .get_list("DebrisMaximums")
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|s| s.trim().parse::<i32>().ok())
-            .collect();
+        // The IntVector reader (`0x0075DD22` -> `0x00475D70`).
+        let debris_maximums: Vec<i32> = section.read_int_list("DebrisMaximums").unwrap_or_default();
 
         // `WarheadTypeClass::ReadINI @ 0x0075DA95..0x0075DAE6`: MaxDebris is
         // read first (`0x0075DA95 PUSH 0x84439C` -> `0x0075DAB1` +0x1C4),
@@ -375,63 +360,62 @@ impl WarheadType {
         // (`0x0084439C`) and `MinDebris` (`0x00844390`). No stock `[Warheads]`
         // section mis-spells either — only `Smashing` and `TRexWH` author them
         // at all — so this changes nothing in retail and is right in principle.
-        let max_debris = section.get_i32("MaxDebris").unwrap_or(0);
-        let min_debris = section.get_i32("MinDebris").unwrap_or(0).max(0);
+        let max_debris = section.read_int("MaxDebris", 0);
+        let min_debris = section.read_int("MinDebris", 0).max(0);
         let max_debris = max_debris.max(min_debris);
 
         Self {
             id: id.to_string(),
-            verses,
             verses_f64,
             cell_spread,
             cell_spread_f64,
             percent_at_max,
             percent_at_max_f64,
-            causes_delay_kill: section.get_bool("CausesDelayKill").unwrap_or(false),
-            delay_kill_frames: section.get_i32("DelayKillFrames").unwrap_or(5),
+            causes_delay_kill: section.read_bool("CausesDelayKill", false),
+            delay_kill_frames: section.read_int("DelayKillFrames", 5),
             delay_kill_at_max_f64,
-            wall: section.get_bool("Wall").unwrap_or(false),
-            wood: section.get_bool("Wood").unwrap_or(false),
-            penetrates_bunker: section.get_bool("PenetratesBunker").unwrap_or(false),
-            affects_allies: section.get_bool("AffectsAllies").unwrap_or(true),
-            psychic_damage: section.get_bool("PsychicDamage").unwrap_or(false),
+            wall: section.read_bool("Wall", false),
+            wood: section.read_bool("Wood", false),
+            penetrates_bunker: section.read_bool("PenetratesBunker", false),
+            affects_allies: section.read_bool("AffectsAllies", true),
+            psychic_damage: section.read_bool("PsychicDamage", false),
             anim_list,
-            inf_death: section.get_i32("InfDeath").unwrap_or(1).clamp(0, 10) as u8,
+            inf_death: section.read_int("InfDeath", 1).clamp(0, 10) as u8,
 
             // Bool fields — all default false
-            conventional: section.get_bool("Conventional").unwrap_or(false),
-            rocker: section.get_bool("Rocker").unwrap_or(false),
-            direct_rocker: section.get_bool("DirectRocker").unwrap_or(false),
-            tiberium: section.get_bool("Tiberium").unwrap_or(false),
-            bright: section.get_bool("Bright").unwrap_or(false),
-            cl_disable_red: section.get_bool("CLDisableRed").unwrap_or(false),
-            cl_disable_green: section.get_bool("CLDisableGreen").unwrap_or(false),
-            cl_disable_blue: section.get_bool("CLDisableBlue").unwrap_or(false),
+            conventional: section.read_bool("Conventional", false),
+            rocker: section.read_bool("Rocker", false),
+            direct_rocker: section.read_bool("DirectRocker", false),
+            tiberium: section.read_bool("Tiberium", false),
+            bright: section.read_bool("Bright", false),
+            cl_disable_red: section.read_bool("CLDisableRed", false),
+            cl_disable_green: section.read_bool("CLDisableGreen", false),
+            cl_disable_blue: section.read_bool("CLDisableBlue", false),
             combat_light_size_f64: section.read_double("CombatLightSize", 0.0),
             prone_damage_f64: section.read_double("ProneDamage", 1.0),
-            wall_absolute_destroyer: section.get_bool("WallAbsoluteDestroyer").unwrap_or(false),
-            temporal: section.get_bool("Temporal").unwrap_or(false),
-            is_locomotor: section.get_bool("IsLocomotor").unwrap_or(false),
-            parasite: section.get_bool("Parasite").unwrap_or(false),
-            psychedelic: section.get_bool("Psychedelic").unwrap_or(false),
-            ivan_bomb: section.get_bool("IvanBomb").unwrap_or(false),
-            mind_control: section.get_bool("MindControl").unwrap_or(false),
-            poison: section.get_bool("Poison").unwrap_or(false),
-            airstrike: section.get_bool("Airstrike").unwrap_or(false),
-            electric: section.get_bool("Electric").unwrap_or(false),
-            radiation: section.get_bool("Radiation").unwrap_or(false),
-            culling: section.get_bool("Culling").unwrap_or(false),
-            paralyzes: section.get_i32("Paralyzes").unwrap_or(0),
-            sonic: section.get_bool("Sonic").unwrap_or(false),
-            makes_disguise: section.get_bool("MakesDisguise").unwrap_or(false),
-            electric_assault: section.get_bool("ElectricAssault").unwrap_or(false),
-            bomb_disarm: section.get_bool("BombDisarm").unwrap_or(false),
-            nuke_maker: section.get_bool("NukeMaker").unwrap_or(false),
+            wall_absolute_destroyer: section.read_bool("WallAbsoluteDestroyer", false),
+            temporal: section.read_bool("Temporal", false),
+            is_locomotor: section.read_bool("IsLocomotor", false),
+            parasite: section.read_bool("Parasite", false),
+            psychedelic: section.read_bool("Psychedelic", false),
+            ivan_bomb: section.read_bool("IvanBomb", false),
+            mind_control: section.read_bool("MindControl", false),
+            poison: section.read_bool("Poison", false),
+            airstrike: section.read_bool("Airstrike", false),
+            electric: section.read_bool("Electric", false),
+            radiation: section.read_bool("Radiation", false),
+            culling: section.read_bool("Culling", false),
+            paralyzes: section.read_int("Paralyzes", 0),
+            sonic: section.read_bool("Sonic", false),
+            makes_disguise: section.read_bool("MakesDisguise", false),
+            electric_assault: section.read_bool("ElectricAssault", false),
+            bomb_disarm: section.read_bool("BombDisarm", false),
+            nuke_maker: section.read_bool("NukeMaker", false),
 
             // Int fields — all default 0
-            em_effect: section.get_bool("EMEffect").unwrap_or(false),
-            transact_money: section.get_i32("TransactMoney").unwrap_or(0),
-            cell_inf_death: section.get_i32("CellInfDeath").unwrap_or(0),
+            em_effect: section.read_bool("EMEffect", false),
+            transact_money: section.read_int("TransactMoney", 0),
+            cell_inf_death: section.read_int("CellInfDeath", 0),
 
             // List fields
             debris_types,
@@ -442,49 +426,23 @@ impl WarheadType {
     }
 }
 
-/// Parse the Verses= value into a vec of u8 percentages (0–200).
-///
-/// Format: "100%,100%,90%,75%,..." — percentages separated by commas.
-/// Values without a '%' suffix are treated as raw percentages (e.g., "100" = 100).
-/// Result: 100 = full damage, 0 = immune, 200 = double damage.
-fn parse_verses(raw: &str) -> Vec<u8> {
-    raw.split(',')
-        .map(|s| {
-            let s: &str = s.trim();
-            let pct: f32 = if let Some(stripped) = s.strip_suffix('%') {
-                stripped.trim().parse::<f32>().unwrap_or(100.0)
-            } else {
-                // Some mods/versions use raw percentages without '%'.
-                s.parse::<f32>().unwrap_or(100.0)
-            };
-            pct.round().clamp(0.0, 200.0) as u8
-        })
-        .collect()
-}
-
-/// Original WarheadType ReadINI75DDCC..75DE5A, after ReadString128.
-/// `strtok` skips empty comma tokens. Each nonempty token containing `%`
-/// takes signed32 atoi, FILD and PC53/chop multiplication by the original
-/// binary64 0.01 constant; other tokens use CRT atof's binary64 numeric prefix.
+/// Original WarheadType ReadINI75DDCC..75DE5A, over the `strtok(",")`
+/// tokens of the `char[128]` ReadString. Each token containing `%` takes
+/// signed32 atoi, FILD and PC53/chop multiplication by the original binary64
+/// 0.01 constant; other tokens use CRT atof's binary64 numeric prefix.
 /// Original-reader and damage goldens: rules_oracle/bridge_landing_inputs.
 ///
 /// Rust retains safe trailing 1.0 entries for malformed short lists. Native
 /// unconditionally performs eleven strchr calls and faults on a null strtok
 /// result; this recovery is deliberately not described as native equivalence.
-fn parse_verses_f64(raw: &str) -> [f64; 11] {
+fn verses_from_tokens(tokens: &[&str]) -> [f64; 11] {
     // Nearest-rounded host multiplication by the original 0.01 changes retail
     // HE's integer damage by one for several armor classes.
     let scale = X87Chop53::load_f64(PERCENT_SCALE).expect("finite original constant");
     let mut out = [1.0_f64; 11];
-    for (i, token) in raw
-        .split(',')
-        .filter(|token| !token.is_empty())
-        .take(11)
-        .enumerate()
-    {
-        let token = token.trim_ascii();
+    for (i, token) in tokens.iter().take(11).enumerate() {
         out[i] = if token.contains('%') {
-            let scaled = X87Chop53::mul(X87Chop53::load_i32(atoi_lenient(token)), scale);
+            let scaled = X87Chop53::mul(X87Chop53::load_i32(crt_atoi(token)), scale);
             f64::from_bits(
                 X87Chop53::store_f64(scaled)
                     .expect("signed32 percentage is finite")
@@ -548,13 +506,6 @@ mod tests {
         assert_eq!(wh.cell_spread, sim_from_f32(0.5));
         assert_eq!(wh.percent_at_max, 25); // 0.25 * 100 = 25
         assert!(wh.wall);
-        assert_eq!(wh.verses.len(), 11);
-        assert_eq!(wh.verses[0], 100); // none: 100%
-        assert_eq!(wh.verses[2], 90); // plate: 90%
-        assert_eq!(wh.verses[6], 60); // wood: 60%
-        assert_eq!(wh.verses[10], 0); // special_2: 0%
-
-        // Parallel f64 table carries the same values at full precision.
         assert!((wh.verses_f64[0] - 1.00).abs() < 1e-9); // none: 100%
         assert!((wh.verses_f64[2] - 0.90).abs() < 1e-9); // plate: 90%
         assert!((wh.verses_f64[6] - 0.60).abs() < 1e-9); // wood: 60%
@@ -573,8 +524,8 @@ mod tests {
     fn fractional_verses_preserved() {
         // % branch: integer atoi BEFORE x0.01 => "50.5%" -> 50*0.01 = 0.5 (NOT
         // 0.505). Bare branch: "0.505" -> 0.505 full precision.
-        let pct = parse_verses_f64("50.5%,1.5%,0.5%");
-        let bare = parse_verses_f64("0.505,0.015,0.005");
+        let pct = verses_from_tokens(&["50.5%", "1.5%", "0.5%"]);
+        let bare = verses_from_tokens(&["0.505", "0.015", "0.005"]);
         assert!((pct[0] - 0.5).abs() < 1e-9); // 50.5% -> atoi(50)*0.01
         assert!((pct[1] - 0.01).abs() < 1e-9); // 1.5%  -> atoi(1)*0.01
         assert!((pct[2] - 0.0).abs() < 1e-9); // 0.5%   -> atoi(0)*0.01
@@ -590,7 +541,7 @@ mod tests {
         let section: &IniSection = ini.section("Empty").unwrap();
         let wh: WarheadType = WarheadType::from_ini_section("Empty", section);
 
-        assert!(wh.verses.is_empty());
+        assert_eq!(wh.verses_f64, [1.0; 11]);
         assert_eq!(wh.cell_spread, sim_from_f32(0.0));
         assert_eq!(wh.percent_at_max, 100);
         assert!(!wh.causes_delay_kill);
@@ -629,16 +580,6 @@ mod tests {
         assert!(!wh.temporal);
         assert!(!wh.electric);
         assert!(!wh.ivan_bomb);
-    }
-
-    #[test]
-    fn test_parse_verses_without_percent() {
-        // Some formats omit the '%' suffix.
-        let result: Vec<u8> = parse_verses("100,50,25");
-        assert_eq!(result.len(), 3);
-        assert_eq!(result[0], 100);
-        assert_eq!(result[1], 50);
-        assert_eq!(result[2], 25);
     }
 
     #[test]

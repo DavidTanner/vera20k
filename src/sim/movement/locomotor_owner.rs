@@ -31,22 +31,16 @@ pub(crate) fn begin_drive_for_teleporter(entity: &mut GameEntity, binary_frame: 
 }
 
 pub(crate) fn try_restore_primary(entity: &mut GameEntity) -> bool {
-    if entity
-        .locomotor
-        .as_ref()
-        .is_some_and(|locomotor| locomotor.active_kind() == LocomotorKind::Drive)
-    {
-        return try_end_drive_at_foot_idle(entity);
-    }
-    let gate = super::locomotor_end_gate_context(entity);
-    let admitted = entity.locomotor.as_ref().is_some_and(|locomotor| {
-        locomotor.can_restore_primary_from_piggyback(
-            gate.owner_moving,
-            gate.owner_teleporting,
-            gate.owner_deploying,
-        )
-    });
-    admitted && restore_admitted_primary(entity)
+    piggyback_end_admitted(entity) && restore_admitted_primary(entity)
+}
+
+/// The active locomotor's END gate for an entity-level caller. The one
+/// piggyback VERA installs is a Drive over a Teleport primary (the Unit
+/// setter's Teleporter arm), so the active Drive's own gate is the only one.
+/// A piggyback over any other primary needs the Chronosphere's
+/// ChangeLocomotorTo, which is not represented.
+pub(crate) fn piggyback_end_admitted(entity: &GameEntity) -> bool {
+    drive_end_admitted(entity)
 }
 
 /// Drive IsOKToEnd4AF970 at Foot EnterIdle4D833D, before NavQueue.
@@ -55,15 +49,21 @@ pub(crate) fn try_restore_primary(entity: &mut GameEntity) -> bool {
 /// This same class gate applies at other entity-level END callers. A missing
 /// lazily allocated Drive payload has its constructor's true permission.
 pub(crate) fn try_end_drive_at_foot_idle(entity: &mut GameEntity) -> bool {
-    let admitted = entity.locomotor.as_ref().is_some_and(|locomotor| {
+    drive_end_admitted(entity) && restore_admitted_primary(entity)
+}
+
+/// IsMoving here is the Drive's own order (+34 and its head): the Drive
+/// holds +34 until it arrives, so a Chrono Miner's Drive does not end
+/// mid-route.
+fn drive_end_admitted(entity: &GameEntity) -> bool {
+    entity.locomotor.as_ref().is_some_and(|locomotor| {
         locomotor.active_kind() == LocomotorKind::Drive && locomotor.piggyback.is_some()
     }) && entity
         .drive_locomotion
         .as_ref()
         .is_none_or(|drive| drive.end_permitted)
         && !super::drive_locomotion::drive_locomotor_is_moving(entity)
-        && !entity.foot_locomotor_swap_active;
-    admitted && restore_admitted_primary(entity)
+        && !entity.foot_locomotor_swap_active
 }
 
 /// The caller has already evaluated its END gate, at its own required point in
@@ -74,7 +74,7 @@ pub(crate) fn restore_admitted_primary(entity: &mut GameEntity) -> bool {
         return false;
     };
     let retired_drive = locomotor.active_kind() == LocomotorKind::Drive;
-    let restored = locomotor.restore_primary_from_piggyback();
+    let restored = locomotor.end_piggyback();
     if restored {
         // END transfers the controller without moving Object+9C. Restored
         // altitude is controller state, not an addition to this exact XYZ.

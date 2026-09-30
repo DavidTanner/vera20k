@@ -8,8 +8,52 @@ use crate::app::diagnostics::state::{MAP_PRESENTATION_CLOCK_POLICY, MAP_PRESENTA
 use crate::app::presentation::render::GameRenderTimes;
 use crate::skirmish_launch::{LaunchStartPosition, PreFillHouseRoster, SkirmishLaunchSession};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
-const SCHEMA: &str = "vera20k.map-observation-profile.v1";
+const PROFILE_V1: &str = "vera20k.map-observation-profile.v1";
+const PROFILE_V2: &str = "vera20k.map-observation-profile.v2";
+const CHILD_SCHEMA: &str = "vera20k.map-observation.v4";
+const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v1";
+const MAX_COMMANDS: usize = 1024;
+const MAX_OBSERVED_OWNERS: usize = 30;
+const MAX_TERRAIN_CELLS: usize = 256;
+const MAX_OBSERVATION_SAMPLES: usize = 100_000;
+const MAX_RECEIPT_BYTES: usize = 128 * 1024 * 1024;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MapScheduledCommand {
+    issue_after_step: u32,
+    owner: String,
+    #[serde(deserialize_with = "deserialize_command")]
+    payload: Command,
+}
+
+// Reuse Command's one serde schema, but reject fields that its permissive
+// enum deserializer would otherwise discard. No second command parser here.
+fn deserialize_command<'de, D>(deserializer: D) -> std::result::Result<Command, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    let command: Command =
+        serde_json::from_value(value.clone()).map_err(serde::de::Error::custom)?;
+    let canonical = serde_json::to_value(&command).map_err(serde::de::Error::custom)?;
+    if value != canonical {
+        return Err(serde::de::Error::custom(
+            "command payload has unrecognized or noncanonical fields",
+        ));
+    }
+    Ok(command)
+}
+
+fn deserialize_present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -22,6 +66,32 @@ pub(crate) struct MapCaptureProfile {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) timeout_seconds: u32,
+    // Option retains field presence in the sealed profile receipt: old v1
+    // profiles serialize byte-equivalent JSON values without new defaults.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    commands: Option<Vec<MapScheduledCommand>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_owners: Option<Vec<String>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    camera_cell: Option<[u16; 2]>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    terrain_cells: Option<Vec<[u16; 2]>>,
 }
 
 impl MapCaptureProfile {
@@ -40,9 +110,18 @@ impl MapCaptureProfile {
 
     fn validate(&self) -> Result<()> {
         ensure!(
-            self.schema_version == SCHEMA,
+            matches!(self.schema_version.as_str(), PROFILE_V1 | PROFILE_V2),
             "unsupported map observation schema"
         );
+        if self.schema_version == PROFILE_V1 {
+            ensure!(
+                self.commands.is_none()
+                    && self.observe_owners.is_none()
+                    && self.camera_cell.is_none()
+                    && self.terrain_cells.is_none(),
+                "map observation profile v1 cannot declare v2 extension fields"
+            );
+        }
         ensure!(
             (640..=4096).contains(&self.width) && (480..=4096).contains(&self.height),
             "capture extent must be 640..4096 by 480..4096"
@@ -51,6 +130,53 @@ impl MapCaptureProfile {
         ensure!(
             (1..=900).contains(&self.timeout_seconds),
             "timeout must be 1..900 seconds"
+        );
+        ensure!(
+            self.commands().len() <= MAX_COMMANDS,
+            "too many scheduled commands"
+        );
+        let mut previous = 0;
+        for command in self.commands() {
+            ensure!(
+                command.issue_after_step >= previous && command.issue_after_step < self.ticks,
+                "commands must be ordered by issue_after_step before the final step"
+            );
+            ensure!(!command.owner.is_empty(), "command owner is empty");
+            ensure!(
+                matches!(
+                    command.payload,
+                    Command::Move { .. }
+                        | Command::Stop { .. }
+                        | Command::Attack { .. }
+                        | Command::ForceAttack { .. }
+                        | Command::Guard { .. }
+                        | Command::DeployMcv { .. }
+                        | Command::ForceAttackCell { .. }
+                ),
+                "command is outside the map observation's ordinary order coverage"
+            );
+            previous = command.issue_after_step;
+        }
+        let owners = self.observe_owners();
+        ensure!(
+            owners.len() <= MAX_OBSERVED_OWNERS,
+            "too many observed owners"
+        );
+        let mut unique_owners = BTreeSet::new();
+        for owner in owners {
+            ensure!(
+                !owner.is_empty() && unique_owners.insert(owner),
+                "empty or duplicate observed owner"
+            );
+        }
+        let cells = self.terrain_cells();
+        ensure!(
+            cells.len() <= MAX_TERRAIN_CELLS,
+            "too many observed terrain cells"
+        );
+        ensure!(
+            cells.iter().collect::<BTreeSet<_>>().len() == cells.len(),
+            "duplicate observed terrain cell"
         );
         ensure!(
             matches!(
@@ -90,6 +216,18 @@ impl MapCaptureProfile {
         }
         Ok(())
     }
+
+    fn commands(&self) -> &[MapScheduledCommand] {
+        self.commands.as_deref().unwrap_or_default()
+    }
+
+    fn observe_owners(&self) -> &[String] {
+        self.observe_owners.as_deref().unwrap_or_default()
+    }
+
+    fn terrain_cells(&self) -> &[[u16; 2]] {
+        self.terrain_cells.as_deref().unwrap_or_default()
+    }
 }
 
 #[derive(Default)]
@@ -98,6 +236,31 @@ pub(super) struct MapObservation {
     inputs: Option<Value>,
     loaded_session: Option<Value>,
     draws: Vec<MapDrawTime>,
+    commands: Vec<MapCommandReceipt>,
+    frames: Vec<MapFrameObservation>,
+    observed_ids: BTreeSet<u64>,
+    sample_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct MapCommandReceipt {
+    ordinal: usize,
+    issue_after_step: u32,
+    issued_simulation_tick: u64,
+    envelope_execute_tick: u64,
+    owner: String,
+    payload: Command,
+}
+
+#[derive(Debug, Serialize)]
+struct MapFrameObservation {
+    completed_steps: u64,
+    simulation_tick: u64,
+    binary_frame: u32,
+    total_simulation_ms: u64,
+    actors: Vec<Value>,
+    missing_actor_ids: Vec<u64>,
+    terrain: Vec<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -109,6 +272,44 @@ struct MapDrawTime {
 }
 
 impl MapObservation {
+    fn pending_command<'a>(
+        &self,
+        profile: &'a MapCaptureProfile,
+        completed_steps: u64,
+    ) -> Result<Option<&'a MapScheduledCommand>> {
+        let Some(command) = profile.commands().get(self.commands.len()) else {
+            return Ok(None);
+        };
+        ensure!(
+            u64::from(command.issue_after_step) >= completed_steps,
+            "scheduled command missed its issue step"
+        );
+        Ok((u64::from(command.issue_after_step) == completed_steps).then_some(command))
+    }
+
+    fn observe_frame(&mut self, frame: MapFrameObservation, ids: BTreeSet<u64>) -> Result<()> {
+        ensure!(
+            frame.completed_steps == self.frames.len() as u64
+                && frame.simulation_tick == frame.completed_steps
+                && u64::from(frame.binary_frame) == frame.completed_steps,
+            "actor observation skipped or repeated a committed frame"
+        );
+        let count = self
+            .sample_count
+            .checked_add(frame.actors.len())
+            .and_then(|count| count.checked_add(frame.missing_actor_ids.len()))
+            .and_then(|count| count.checked_add(frame.terrain.len()))
+            .context("actor observation sample count overflow")?;
+        ensure!(
+            count <= MAX_OBSERVATION_SAMPLES,
+            "observation exceeds sample budget"
+        );
+        self.sample_count = count;
+        self.observed_ids = ids;
+        self.frames.push(frame);
+        Ok(())
+    }
+
     fn observe_draw(
         &mut self,
         requested: u32,
@@ -304,6 +505,22 @@ impl TacticalCaptureSession {
             }
             let loaded_session = json!({"map_name": sim.session.map_name, "theater": sim.session.theater,
                 "options": sim.session.game_options, "start_slots": slots, "map_waypoints": sim.session.mp_start_waypoints});
+            // Owner strings must name real loaded Houses before the ordinary
+            // input owner is allowed to intern a command receiver.
+            for owner in profile.observe_owners().iter().map(String::as_str).chain(
+                profile
+                    .commands()
+                    .iter()
+                    .map(|command| command.owner.as_str()),
+            ) {
+                ensure!(
+                    sim.interner
+                        .get(owner)
+                        .is_some_and(|id| sim.houses.contains_key(&id)),
+                    "observation owner {owner:?} is absent from the loaded Houses"
+                );
+            }
+            let camera_cell = profile.camera_cell;
             let source = state
                 .match_state
                 .loaded_map_source
@@ -320,6 +537,10 @@ impl TacticalCaptureSession {
             self.map_source_evidence = Some(serde_json::to_value(source)?);
             self.map_state_mut()?.initial = Some(self.map_fingerprint(state)?);
             self.map_state_mut()?.loaded_session = Some(loaded_session);
+            if let Some([rx, ry]) = camera_cell {
+                crate::app::input::camera::center_camera_on_cell(state, rx, ry);
+            }
+            self.record_map_frame(state)?;
             self.post_l0_started_at = Some(Instant::now());
             self.failure_stage = "exact-steps".to_owned();
         }
@@ -338,13 +559,161 @@ impl TacticalCaptureSession {
             "previous map step has no completed draw"
         );
         if self.exact_step_receipts.len() < requested {
+            self.issue_map_commands(state)?;
             self.advance_exact_step(state)?;
+            self.record_map_frame(state)?;
         }
         if self.exact_step_receipts.len() == requested {
             self.capture_requested = true;
             self.failure_stage = "final-render".to_owned();
         }
         Ok(())
+    }
+
+    fn issue_map_commands(&mut self, state: &mut AppState) -> Result<()> {
+        let completed_steps = self.exact_step_receipts.len() as u64;
+        loop {
+            let profile = &self
+                .request
+                .map_profile()
+                .context("map profile missing")?
+                .value;
+            let Some(command) = self
+                .map_state()?
+                .pending_command(profile, completed_steps)?
+                .cloned()
+            else {
+                return Ok(());
+            };
+            let issued_tick = state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .context("command simulation absent")?
+                .simulation
+                .session
+                .tick;
+            ensure!(
+                issued_tick == completed_steps,
+                "command issue is outside exact-step boundary"
+            );
+            // The sole ordinary input producer owns envelope encoding, stamping
+            // and queuing. This diagnostic does not add the input-delay setting
+            // or bypass ordinary House/actor admission in the next frame.
+            let execute_tick = crate::app::input::commands::try_schedule_command(
+                state,
+                &command.owner,
+                command.payload.clone(),
+            )
+            .context("ordinary command producer refused scheduled input")?;
+            ensure!(
+                execute_tick == issued_tick,
+                "ordinary producer changed the issue stamp"
+            );
+            let map = self.map_state_mut()?;
+            map.commands.push(MapCommandReceipt {
+                ordinal: map.commands.len(),
+                issue_after_step: command.issue_after_step,
+                issued_simulation_tick: issued_tick,
+                envelope_execute_tick: execute_tick,
+                owner: command.owner,
+                payload: command.payload,
+            });
+        }
+    }
+
+    fn record_map_frame(&mut self, state: &AppState) -> Result<()> {
+        let profile = &self
+            .request
+            .map_profile()
+            .context("map profile missing")?
+            .value;
+        let runtime = state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .context("observation simulation absent")?;
+        let sim = &runtime.simulation;
+        let grid = runtime.view().resolved_terrain();
+        // This derived diagnostic index retains every observed stable handle.
+        // Captured objects continue to report their actual new owner; destroyed
+        // objects retain a missing row rather than disappearing from history.
+        let mut ids = self.map_state()?.observed_ids.clone();
+        let mut actors = Vec::new();
+        if !profile.observe_owners().is_empty() {
+            for (id, entity) in sim.entities().iter_sorted() {
+                let owner = sim.interner.resolve(entity.owner());
+                if !ids.contains(&id)
+                    && !profile.observe_owners().iter().any(|watch| watch == owner)
+                {
+                    continue;
+                }
+                ids.insert(id);
+                let coord =
+                    crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+                let timer = entity.mission.dispatch_timer();
+                let foot = if entity.category != crate::map::entities::EntityCategory::Structure {
+                    let (navigation_leptons, navigation_unavailable) =
+                        match sim.foot_navigation_coordinate(id) {
+                            Ok(coord) => (Some([coord.x, coord.y, coord.z]), None),
+                            Err(cause) => (None, Some(cause)),
+                        };
+                    Some(json!({
+                        "retarget_after_stop_688": entity.foot_retarget_after_stop(),
+                        "firing_sequence_latch_68d": entity.mission_leaf.foot_firing_sequence_latch(),
+                        "infantry_doing": entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()),
+                        "navigation_leptons": navigation_leptons,
+                        "navigation_unavailable": navigation_unavailable,
+                    }))
+                } else {
+                    None
+                };
+                actors.push(json!({
+                    "stable_id": id, "owner": owner,
+                    "type_id": sim.interner.resolve(entity.type_ref()), "category": entity.category,
+                    "cell": [entity.position.rx, entity.position.ry],
+                    "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
+                    "health": entity.health.current, "active": entity.is_active(),
+                    "in_limbo": entity.lifecycle.in_limbo, "dying": entity.dying,
+                    "mission": {"current": entity.mission.current().raw(),
+                        "queued": entity.mission.queued().raw(), "suspended": entity.mission.suspended().raw(),
+                        "effective": entity.mission.effective().raw(), "handler_state": entity.mission.handler_state(),
+                        "start_frame": entity.mission.mission_start_frame(), "ai_counter": entity.mission.ai_counter(),
+                        "dispatch_timer": {"start_frame": timer.start_frame(), "delay": timer.delay()}},
+                    "target": entity.attack_target.as_ref().map(|target| target.target),
+                    "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
+                }));
+            }
+        }
+        let missing_actor_ids = ids
+            .iter()
+            .copied()
+            .filter(|id| !sim.entities().contains(*id))
+            .collect();
+        let terrain = profile.terrain_cells().iter().map(|&[rx, ry]| {
+            // Immutable real-cell indexing only. A diagnostic lookup must not
+            // stamp canonical Dummy or evaluate gameplay height/zone queries.
+            let cell = grid.and_then(|grid| grid.cell(rx, ry));
+            json!({"cell": [rx, ry], "allocated": cell.is_some(),
+                "final_tile_index": cell.map(|cell| cell.final_tile_index),
+                "final_sub_tile": cell.map(|cell| cell.final_sub_tile),
+                "presentation_tile": cell.and_then(|cell| grid.map(|grid| grid.presentation_tile(cell))),
+                "level": cell.map(|cell| cell.level), "slope": cell.map(|cell| cell.slope_type),
+                "raw_bridge_flags": cell.map(|cell| cell.bridge_facts.raw_flags),
+                "bridge_state": cell.map(|cell| cell.bridge_facts.state_byte),
+                "has_deck": cell.map(|cell| cell.has_bridge_deck), "deck_level": cell.map(|cell| cell.bridge_deck_level),
+                "walkable": cell.map(|cell| cell.bridge_walkable), "transition": cell.map(|cell| cell.bridge_transition)})
+        }).collect();
+        let frame = MapFrameObservation {
+            completed_steps: self.exact_step_receipts.len() as u64,
+            simulation_tick: sim.session.tick,
+            binary_frame: sim.session.binary_frame,
+            total_simulation_ms: sim.session.total_sim_ms,
+            actors,
+            missing_actor_ids,
+            terrain,
+        };
+        self.map_state_mut()?.observe_frame(frame, ids)
     }
 
     pub(super) fn observe_map_draw(
@@ -433,6 +802,9 @@ impl TacticalCaptureSession {
                 "gpu": super::super::evidence::GpuAdapterEvidence::from_observation(state.renderer.gpu.capture_adapter_observation()),
                 "unit_atlas": unit_atlas,
                 "neutral_input": {"static_default_cursor": static_default_cursor, "camera_input_idle": camera_input_idle},
+                "camera": {"requested_cell": self.request.map_profile().context("map profile missing")?.value.camera_cell,
+                    "top_left": [state.match_state.input.camera_x, state.match_state.input.camera_y],
+                    "zoom": state.match_state.input.zoom_level},
             }),
         ))
     }
@@ -459,6 +831,11 @@ impl TacticalCaptureSession {
             map.draws.len() == profile.value.ticks.max(1) as usize,
             "incomplete map draw schedule"
         );
+        ensure!(
+            map.frames.len() == profile.value.ticks as usize + 1
+                && map.commands.len() == profile.value.commands().len(),
+            "incomplete actor/command observation transcript"
+        );
         let mut render = self
             .last_render_evidence
             .clone()
@@ -468,7 +845,7 @@ impl TacticalCaptureSession {
         render["presentation_clock"] = json!({"policy": MAP_PRESENTATION_CLOCK_POLICY,
             "origin_ms": 0, "interval_ms": MAP_PRESENTATION_INTERVAL_MS, "draws": map.draws});
         let manifest = json!({
-            "schema_version": "vera20k.map-observation.v3", "status": "COMPLETE",
+            "schema_version": CHILD_SCHEMA, "status": "COMPLETE",
             "profile": {"sha256": profile.sha256, "request": profile.value},
             "contract": {"sha256": self.request.sealed_contract().sha256},
             "inputs": self.map_state()?.inputs, "map_source": self.map_source_evidence,
@@ -477,6 +854,8 @@ impl TacticalCaptureSession {
             "final": self.map_fingerprint(state)?, "exact_step_count": self.exact_step_receipts.len(),
             "first_exact_step": self.exact_step_receipts.first(), "last_exact_step": self.exact_step_receipts.last(),
             "frame": frame, "render": render,
+            "observations": {"policy": OBSERVATION_POLICY, "owners": profile.value.observe_owners(),
+                "commands": map.commands, "frames": map.frames},
             "lifecycle": {"window_hidden": state.platform.window.is_visible() == Some(false),
                 "window_focused": state.platform.window.has_focus(), "focus_violations": self.focus_violations,
                 "input_violations": self.input_violations},
@@ -484,6 +863,10 @@ impl TacticalCaptureSession {
             "evidence_limitations": ["Production loading, exact stepping and GPU readback only; no native pixel or gameplay equivalence is established.",
                 "Radar and timed HUD presentation consume the recorded diagnostic exact-step clock; ordinary gameplay clocks are unchanged. Audio, menus, animated input and scenario exit are outside this comparison."],
         });
+        ensure!(
+            serde_json::to_vec_pretty(&manifest)?.len() < MAX_RECEIPT_BYTES,
+            "map observation manifest exceeds the 128 MiB receipt budget"
+        );
         publish_transaction(
             self.request.output_dir(),
             &manifest,
@@ -494,12 +877,19 @@ impl TacticalCaptureSession {
 
     pub(super) fn publish_map_failure(&self, error: &str) -> Result<()> {
         let profile = self.request.map_profile().context("map profile missing")?;
-        let manifest = json!({"schema_version": "vera20k.map-observation.v3", "status": "FAILED",
+        let map = self.map_state()?;
+        let manifest = json!({"schema_version": CHILD_SCHEMA, "status": "FAILED",
             "profile": {"sha256": profile.sha256, "request": profile.value},
             "contract": {"sha256": self.request.sealed_contract().sha256},
             "failure": {"stage": self.failure_stage, "message": error}, "frame": null,
             "exact_step_count": self.exact_step_receipts.len(), "map_source": self.map_source_evidence,
+            "observations": {"policy": OBSERVATION_POLICY, "owners": profile.value.observe_owners(),
+                "commands": map.commands, "frames": map.frames},
             "native_comparator": "NONE", "parity_certification": "NONE"});
+        ensure!(
+            serde_json::to_vec_pretty(&manifest)?.len() < MAX_RECEIPT_BYTES,
+            "map failure manifest exceeds the 128 MiB receipt budget"
+        );
         publish_transaction(
             self.request.output_dir(),
             &manifest,
@@ -629,5 +1019,142 @@ mod tests {
         let mut json = serde_json::to_value(example()).unwrap();
         json["launch"]["ignored_option"] = json!(true);
         assert!(serde_json::from_value::<MapCaptureProfile>(json).is_err());
+    }
+
+    #[test]
+    fn versioned_extension_fields_preserve_presence_and_reject_null_or_ignored_arguments() {
+        let original: Value = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.example.json"
+        ))
+        .unwrap();
+        assert_eq!(serde_json::to_value(example()).unwrap(), original);
+        let mut legacy = example();
+        legacy.commands = Some(Vec::new());
+        assert!(legacy.validate().is_err());
+        let mut modern = original;
+        modern["schema_version"] = json!(PROFILE_V2);
+        modern["commands"] = json!([{"issue_after_step": 0, "owner": "Computer1",
+            "payload": {"DeployMcv": {"entity_id": 1}}}]);
+        modern["observe_owners"] = json!(["Computer1"]);
+        let profile: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
+        profile.validate().unwrap();
+        assert_eq!(serde_json::to_value(profile).unwrap(), modern);
+        for key in ["commands", "observe_owners", "camera_cell", "terrain_cells"] {
+            let mut invalid = modern.clone();
+            invalid[key] = Value::Null;
+            assert!(
+                serde_json::from_value::<MapCaptureProfile>(invalid).is_err(),
+                "{key}"
+            );
+        }
+        for (key, value) in [("ignored", json!(true)), ("entity_id", json!(1.0))] {
+            let mut invalid = modern.clone();
+            invalid["commands"][0]["payload"]["DeployMcv"][key] = value;
+            assert!(
+                serde_json::from_value::<MapCaptureProfile>(invalid).is_err(),
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn command_schedule_keeps_equal_step_input_order_and_refuses_missed_or_final_steps() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.ticks = 3;
+        profile.commands = Some(vec![
+            MapScheduledCommand {
+                issue_after_step: 0,
+                owner: "Computer1".to_owned(),
+                payload: Command::Stop { entity_id: 1 },
+            },
+            MapScheduledCommand {
+                issue_after_step: 0,
+                owner: "Computer1".to_owned(),
+                payload: Command::DeployMcv { entity_id: 2 },
+            },
+            MapScheduledCommand {
+                issue_after_step: 2,
+                owner: "Computer1".to_owned(),
+                payload: Command::ForceAttackCell {
+                    attacker_id: 3,
+                    target_rx: 87,
+                    target_ry: 53,
+                },
+            },
+        ]);
+        profile.validate().unwrap();
+        let mut map = initialized_map();
+        assert!(map.pending_command(&profile, 1).is_err());
+        for ordinal in 0..2 {
+            let command = map.pending_command(&profile, 0).unwrap().unwrap().clone();
+            assert_eq!(command.payload, profile.commands()[ordinal].payload);
+            map.commands.push(MapCommandReceipt {
+                ordinal,
+                issue_after_step: 0,
+                issued_simulation_tick: 0,
+                envelope_execute_tick: 0,
+                owner: command.owner,
+                payload: command.payload,
+            });
+        }
+        assert!(map.pending_command(&profile, 1).unwrap().is_none());
+        assert_eq!(
+            map.pending_command(&profile, 2)
+                .unwrap()
+                .unwrap()
+                .issue_after_step,
+            2
+        );
+        assert!(map.pending_command(&profile, 3).is_err());
+        profile.commands.as_mut().unwrap()[2].issue_after_step = 3;
+        assert!(profile.validate().is_err());
+        profile.commands.as_mut().unwrap()[0].issue_after_step = 1;
+        assert!(profile.validate().is_err());
+    }
+
+    #[test]
+    fn observations_require_l0_then_every_committed_frame_and_bound_retained_samples() {
+        let frame = |step, tick| MapFrameObservation {
+            completed_steps: step,
+            simulation_tick: tick,
+            binary_frame: tick as u32,
+            total_simulation_ms: tick * 22,
+            actors: Vec::new(),
+            missing_actor_ids: Vec::new(),
+            terrain: Vec::new(),
+        };
+        let mut map = initialized_map();
+        assert!(map.observe_frame(frame(1, 1), BTreeSet::new()).is_err());
+        map.observe_frame(frame(0, 0), BTreeSet::new()).unwrap();
+        assert!(map.observe_frame(frame(0, 0), BTreeSet::new()).is_err());
+        assert!(map.observe_frame(frame(1, 2), BTreeSet::new()).is_err());
+        map.observe_frame(frame(1, 1), BTreeSet::new()).unwrap();
+        let mut large = frame(2, 2);
+        large.terrain = vec![Value::Null; MAX_OBSERVATION_SAMPLES + 1];
+        assert!(map.observe_frame(large, BTreeSet::new()).is_err());
+        assert_eq!(map.frames.len(), 2);
+        assert_eq!(map.sample_count, 0);
+    }
+
+    #[test]
+    fn anytown_discovery_example_is_an_accepted_ordinary_allied_ai_launch() {
+        let profile: MapCaptureProfile = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.bridge-response.example.json"
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(
+            profile.launch.selected_map_file.as_deref(),
+            Some("XMP03T4.MAP")
+        );
+        assert_eq!(profile.launch.opponents.len(), 2);
+        assert_eq!(
+            profile.commands().len(),
+            0,
+            "discovery must not invent stable actor IDs"
+        );
+        assert_eq!(profile.ticks, 0);
+        assert_eq!(profile.observe_owners(), ["Computer1", "Computer2"]);
     }
 }

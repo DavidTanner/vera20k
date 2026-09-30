@@ -13,8 +13,10 @@
 //! `tools/spatial_oracle/facing_class.py` and its retained-history corpus.
 //!
 //! ## Dependency rules
-//! - Part of sim/ — depends only on serde and std.
+//! - Part of sim/ — depends only on `sim::timer`, serde and std.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+
+use crate::sim::timer::CdTimer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FacingClass {
@@ -47,6 +49,13 @@ impl FacingClass {
             rot_per_frame: 0,
         };
         fc.set_rot(rot);
+        fc
+    }
+
+    /// A controller at rest on `initial` that turns at `rate_source`'s rate.
+    pub(crate) fn with_rate_of(initial: u16, rate_source: &Self) -> Self {
+        let mut fc = Self::new(initial, 0);
+        fc.rot_per_frame = rate_source.rot_per_frame;
         fc
     }
 
@@ -194,23 +203,15 @@ impl FacingClass {
         (self.rot_per_frame as i16) > 0 && self.remaining_frames(binary_frame) != 0
     }
 
-    /// Native timer epoch -1 pauses the countdown, including when a setter
-    /// runs at frame u32::MAX. The original queries compare elapsed against
-    /// duration before subtraction (4C93E9..4C93F8 / 4C948D..4C94A0).
+    /// The rotation timer's time left (`4C93E9..4C93F8` / `4C948D..4C94A0`).
+    /// A setter at frame u32::MAX leaves the native epoch -1, which pauses
+    /// the countdown; a never-started timer has none left.
     fn remaining_frames(&self, binary_frame: u32) -> i32 {
-        let Some(start) = self.start_frame else {
-            return 0;
+        let timer = match self.start_frame {
+            Some(start) => CdTimer::from_raw(start as i32, i32::from(self.duration_frames)),
+            None => CdTimer::from_raw(-1, 0),
         };
-        let duration = i32::from(self.duration_frames);
-        if start == u32::MAX {
-            return duration;
-        }
-        let elapsed = (binary_frame as i32).wrapping_sub(start as i32);
-        if elapsed >= duration {
-            0
-        } else {
-            duration.wrapping_sub(elapsed)
-        }
+        timer.remaining(binary_frame as i32)
     }
 }
 

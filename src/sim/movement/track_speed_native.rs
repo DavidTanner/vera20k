@@ -5,6 +5,7 @@
 //! are deliberately separate. This is not wired into production until its live
 //! owners retain native precision; no fixed-point mirror is maintained here.
 
+use crate::sim::components::FootSpeedState;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 use crate::util::native_x87::{NativeX87Error, X87Chop53 as X, X87Ordering, sqrt_approx_f32};
 
@@ -14,18 +15,6 @@ const DESTINATION_FLOOR: NativeF64Bits = NativeF64Bits::from_bits(0x3fd3_3333_40
 const SINKING_FLOOR: NativeF64Bits = NativeF64Bits::from_bits(0x3fb9_9999_a000_0000);
 const SINKING_DECEL: NativeF64Bits = NativeF64Bits::from_bits(0x3f58_9374_c000_0000);
 const CRUSH_CAP: NativeF64Bits = NativeF64Bits::from_bits(0x3fc9_9999_9999_999a);
-
-/// Actual Foot4D3710 finite clamp. Negative zero survives the equality arms.
-pub(crate) fn set_fraction(value: NativeF64Bits) -> Result<NativeF64Bits, NativeX87Error> {
-    let number = X::load_f64(value)?;
-    if X::compare(number, X::load_i32(0)) == X87Ordering::Less {
-        Ok(NativeF64Bits::POSITIVE_ZERO)
-    } else if X::compare(number, X::load_i32(1)) == X87Ordering::Greater {
-        Ok(NativeF64Bits::ONE)
-    } else {
-        Ok(value)
-    }
-}
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FootSpeedInputs {
@@ -117,7 +106,7 @@ pub(crate) fn track_prefix(input: TrackSpeedInputs) -> Result<TrackSpeedOutput, 
         propagate_to_linked_units: false,
     };
     if !input.accelerates {
-        output.applied = set_fraction(input.target)?;
+        output.applied = FootSpeedState::stored_speed_fraction(input.target);
         output.called_setter = true;
         return Ok(output);
     }
@@ -180,7 +169,7 @@ pub(crate) fn track_prefix(input: TrackSpeedInputs) -> Result<TrackSpeedOutput, 
         }
     }
     output.called_setter = true;
-    output.applied = set_fraction(candidate)?;
+    output.applied = FootSpeedState::stored_speed_fraction(candidate);
     Ok(output)
 }
 

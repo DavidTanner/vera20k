@@ -14,7 +14,6 @@ use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::projectile::ProjectileCoord;
 use crate::util::fixed_math::SimFixed;
-use std::collections::BTreeMap;
 
 fn fixture() -> (Simulation, RuleSet, u64, u64) {
     fixture_with_first("TANK")
@@ -47,10 +46,10 @@ fn fixture_with_first(first_type: &str) -> (Simulation, RuleSet, u64, u64) {
     }
     crate::sim::arena_fixture::flat_arena(&mut sim, &rules);
     let first = sim
-        .spawn_object(first_type, "Americans", 16, 16, 0, &rules, &BTreeMap::new())
+        .spawn_object(first_type, "Americans", 16, 16, 0, &rules)
         .unwrap();
     let second = sim
-        .spawn_object("TANK", "Russians", 20, 16, 0, &rules, &BTreeMap::new())
+        .spawn_object("TANK", "Russians", 20, 16, 0, &rules)
         .unwrap();
     sim.resolve_type_handles(&rules);
     sim.session.binary_frame = 10;
@@ -117,19 +116,11 @@ fn paid_move_fires_before_later_unit_and_new_bullet_slots() {
     let (mut sim, rules, first, second) = fixture();
     install_paid_track(&mut sim, first);
     let before = position(&sim, first);
-    let path_grid = sim.path_grid_snapshot();
     let mut visits = Vec::new();
     let mut first_after_move = None;
     sim.try_for_each_live_object::<std::convert::Infallible>(|world, id| {
         world
-            .advance_live_object_turn(
-                id,
-                Some(&rules),
-                techno_ai::ObjectAiCtx {
-                    path_grid: path_grid.as_deref(),
-                    ..Default::default()
-                },
-            )
+            .advance_live_object_turn(id, Some(&rules), techno_ai::ObjectAiCtx::default())
             .unwrap();
         visits.push((id, world.fire_events.len()));
         if id == first {
@@ -174,9 +165,7 @@ fn earlier_unit_fire_reads_later_targets_pose_before_its_movement() {
         .unwrap()
         .attack_target = None;
     let before = position(&sim, second);
-    let path_grid = sim.path_grid_snapshot();
-    sim.advance_live_object_pass(Some(&rules), path_grid.as_deref(), None)
-        .unwrap();
+    sim.advance_live_object_pass(Some(&rules), None).unwrap();
     assert_ne!(position(&sim, second), before);
     let bullet = sim
         .projectiles
@@ -209,16 +198,8 @@ fn attack_move_acquires_before_its_foot_fire_slot() {
                 .attack_target
                 .is_none()
         );
-        let path_grid = sim.path_grid_snapshot();
-        sim.advance_live_object_turn(
-            first,
-            Some(&rules),
-            techno_ai::ObjectAiCtx {
-                path_grid: path_grid.as_deref(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        sim.advance_live_object_turn(first, Some(&rules), techno_ai::ObjectAiCtx::default())
+            .unwrap();
         assert_eq!(sim.fire_events.len(), 1);
         assert_eq!(sim.fire_events[0].attacker_id, first);
     }
@@ -233,16 +214,8 @@ fn global_combat_tail_cannot_fire_a_ready_foot_a_second_time() {
             .get_mut(second)
             .unwrap()
             .attack_target = None;
-        let path_grid = sim.path_grid_snapshot();
-        sim.advance_live_object_turn(
-            first,
-            Some(&rules),
-            techno_ai::ObjectAiCtx {
-                path_grid: path_grid.as_deref(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        sim.advance_live_object_turn(first, Some(&rules), techno_ai::ObjectAiCtx::default())
+            .unwrap();
         assert_eq!(sim.fire_events.len(), 1);
         sim.substrate.entities.get_mut(first).unwrap().rearm_timer =
             crate::sim::timer::CdTimer::started(10, 0);

@@ -294,7 +294,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         false,
         rules.general.cliff_back_impassability,
     );
-    let height_map = resolved.build_height_map();
     let path_grid = PathGrid::from_resolved_terrain(&resolved);
     let overlay_grid =
         OverlayGrid::from_overlay_entries(&map.overlays, resolved.width(), resolved.height());
@@ -321,7 +320,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
             fixture.provider.1,
             0,
             &rules,
-            &height_map,
         )
         .expect("spawn stock GACNST through lifecycle authority");
     let provider = sim
@@ -369,8 +367,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         !crate::sim::production::tick_production_with_overlay_registry(
             &mut sim,
             &rules,
-            &height_map,
-            Some(&path_grid),
             Some(&overlay_registry),
         )
     );
@@ -434,14 +430,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
             ry: fixture.blocked.1,
         },
     );
-    let tick = sim.advance_tick(
-        &[rejected],
-        Some(&rules),
-        &height_map,
-        Some(&path_grid),
-        None,
-        67,
-    );
+    let tick = sim.advance_tick(&[rejected], Some(&rules), Some(&path_grid), None, 67);
     assert_eq!(tick.executed_commands, 1);
     assert!(!tick.spawned_entities);
     assert_eq!(sim.substrate.entities.len(), entities_before);
@@ -498,14 +487,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
             ry: fixture.valid.1,
         },
     );
-    let tick = sim.advance_tick(
-        &[accepted],
-        Some(&rules),
-        &height_map,
-        Some(&path_grid),
-        None,
-        67,
-    );
+    let tick = sim.advance_tick(&[accepted], Some(&rules), Some(&path_grid), None, 67);
     assert_eq!(tick.executed_commands, 1);
     assert!(tick.spawned_entities);
     assert!(ready_buildings_for_owner(&sim, &rules, OWNER).is_empty());

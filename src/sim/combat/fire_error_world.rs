@@ -26,7 +26,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::ground_pose::{
-    object_center_coord, position_world_coord, query_object_cell,
+    object_center_xy, position_world_coord, query_object_cell,
 };
 use crate::sim::vision::FogState;
 use crate::sim::world::Simulation;
@@ -42,7 +42,8 @@ pub(crate) struct FireSubject<'a> {
     pub target: Option<TargetKind>,
     pub weapon_index: i32,
     /// A garrisoned building's GetWeapon (`0x004526F0`) answers its firing
-    /// occupant's `OccupyWeapon` for every slot, with the garrison range.
+    /// occupant's weapon ([`combat_weapon::occupant_weapon`]) for every slot,
+    /// with the garrison range.
     pub garrison: Option<(&'a WeaponType, crate::util::fixed_math::SimFixed)>,
 }
 
@@ -86,13 +87,21 @@ impl FireSubject<'_> {
         self.world.session.binary_frame
     }
 
+    fn speed_rules(&self) -> crate::sim::movement::SpeedRules<'_> {
+        crate::sim::movement::SpeedRules::new(
+            self.rules,
+            &self.world.interner,
+            &self.world.type_handles,
+        )
+    }
+
     /// GetWeapon (vt+0x3F8) at an index: a garrison's occupant weapon for
     /// every slot (`0x004526F0`), else the rank-selected slot.
     pub(crate) fn weapon_at(&self, index: i32) -> Option<&WeaponType> {
         if let Some((weapon, _)) = self.garrison {
             return (index >= 0).then_some(weapon);
         }
-        combat_weapon::weapon_for_index(self.obj, self.firer.veterancy, index)
+        combat_weapon::weapon_for_index(self.obj, self.firer.veterancy(), index)
             .and_then(|(weapon_id, _)| self.rules.weapon(weapon_id))
     }
 
@@ -192,20 +201,16 @@ impl FireSubject<'_> {
             .radio_contacts
             .slot(0)
             .and_then(|id| self.world.substrate.entities.get(id));
-        let current = |facing: Option<crate::sim::movement::FacingClass>, fallback: u8| {
-            facing.map_or(u16::from(fallback) << 8, |facing| facing.current(frame))
-        };
         let firer_facts = FirerFacts {
             enslaved: firer.slave.owner().is_some(),
             warped_out: firer.is_warped_out(),
             warping_in: firer.is_warping_in(),
             on_bridge: firer.on_bridge,
-            z: self
-                .terrain()
-                .and_then(|terrain| in_range::effective_z_leptons(firer, terrain))
-                .map_or(0, |z| z as i32),
+            z: self.terrain().map_or(0, |terrain| {
+                crate::sim::movement::ground_pose::object_world_z_leptons(firer, Some(terrain))
+            }),
             berserk: firer.berserk.active,
-            falling: firer.object_is_falling_down != 0,
+            falling: firer.is_falling_down(),
             sinking: firer.sinking.is_active(),
             in_open_transport: firer.passenger_role.in_open_transport(),
             transporter: match transport {
@@ -255,14 +260,13 @@ impl FireSubject<'_> {
                     &self.world.interner,
                 ) as i32,
             }),
-            // A Building turns its turret with `+0x388`, which VERA keeps in
-            // `barrel_facing`; other classes' `+0x388` is the body.
-            primary_facing: if class == FirerClass::Building {
-                current(firer.barrel_facing, firer.facing)
-            } else {
-                current(firer.body_facing, firer.facing)
-            },
-            secondary_facing: current(firer.barrel_facing.or(firer.body_facing), firer.facing),
+            // `+0x388`: the body, which a Building also turns as its turret.
+            primary_facing: firer.body_facing_current(frame),
+            secondary_facing: firer
+                .barrel_facing
+                .map_or(firer.body_facing_current(frame), |facing| {
+                    facing.current(frame)
+                }),
             navcom: firer.navigation.nav_com.is_some(),
             moving_faster_than_tenth: firer.foot_speed.above_tenth(),
             deploying: unit_deploying(firer),
@@ -339,10 +343,12 @@ impl FireSubject<'_> {
                         in_limbo: entity.lifecycle.in_limbo,
                         sinking: entity.sinking.is_active(),
                         on_bridge: entity.on_bridge,
-                        z: self
-                            .terrain()
-                            .and_then(|terrain| in_range::effective_z_leptons(entity, terrain))
-                            .map_or(0, |z| z as i32),
+                        z: self.terrain().map_or(0, |terrain| {
+                            crate::sim::movement::ground_pose::object_world_z_leptons(
+                                entity,
+                                Some(terrain),
+                            )
+                        }),
                         mission: entity.mission.current().raw(),
                         iron_curtained: crate::sim::superweapon::invulnerability::is_invulnerable(
                             entity.invulnerability.as_ref(),
@@ -396,9 +402,7 @@ impl FireSubject<'_> {
         crate::util::fixed_math::SimFixed,
     )> {
         match self.target? {
-            TargetKind::Entity(_) => self
-                .target_entity()
-                .map(|target| super::target_coords(target, Some(self.rules), &self.world.interner)),
+            TargetKind::Entity(_) => self.target_entity().map(super::target_coords),
             TargetKind::Cell(rx, ry) => Some(super::cell_center_coords(rx, ry)),
         }
     }
@@ -412,15 +416,14 @@ impl FireSubject<'_> {
 }
 
 /// A garrisoned building's GetWeapon (`0x004526F0` through `IsOccupied`
-/// `0x00458DD0`): its firing occupant's OccupyWeapon, as the attacker
-/// snapshot resolves it, with the garrison fire range (half the foundation
-/// plus `OccupyWeaponRange`).
+/// `0x00458DD0`): its firing occupant's weapon for every index and target
+/// ([`combat_weapon::occupant_weapon`]), with the garrison fire range (half
+/// the foundation plus `OccupyWeaponRange`).
 pub(crate) fn garrison_weapon<'r>(
     world: &Simulation,
     rules: &'r RuleSet,
     building: &GameEntity,
     obj: &ObjectType,
-    target: TargetKind,
 ) -> Option<(&'r WeaponType, crate::util::fixed_math::SimFixed)> {
     if !obj.can_be_occupied || !obj.can_occupy_fire {
         return None;
@@ -433,31 +436,15 @@ pub(crate) fn garrison_weapon<'r>(
         .substrate
         .entities
         .get(cargo.passengers[cargo.garrison_fire_index as usize % cargo.count() as usize])?;
-    let (category, armor) = match target {
-        TargetKind::Entity(id) => {
-            let target = world.substrate.entities.get(id)?;
-            (
-                super::combat_target_category(target, rules, &world.interner),
-                rules
-                    .object(world.interner.resolve(target.type_ref()))
-                    .map_or("none", |target| target.armor.as_str()),
-            )
-        }
-        // The fire path reads a cell target as a Structure of the firer's
-        // own type.
-        TargetKind::Cell(..) => (EntityCategory::Structure, obj.armor.as_str()),
-    };
-    let selected = combat_weapon::select_garrison_weapon(
-        rules,
-        world.interner.resolve(occupant.type_ref()),
-        occupant.veterancy,
-        category,
-        armor,
-    )?;
+    let weapon = rules
+        .object(world.interner.resolve(occupant.type_ref()))
+        .and_then(|occupant_obj| {
+            combat_weapon::occupant_weapon(rules, occupant_obj, occupant.veterancy())
+        })?;
     let (width, height) = crate::sim::production::foundation_dimensions(&obj.foundation);
     let cells = i32::from(width.min(height) / 2) + rules.garrison_rules.occupy_weapon_range;
     Some((
-        selected.weapon,
+        weapon,
         crate::util::fixed_math::SimFixed::from_num(cells.max(1)),
     ))
 }
@@ -488,13 +475,11 @@ impl FireQuery for WorldQuery<'_, '_> {
         };
         let xy = match self.subject.target {
             Some(TargetKind::Entity(_)) => {
-                let Some((target, object)) =
-                    self.subject.target_entity().zip(self.subject.target_obj())
-                else {
+                let Some(target) = self.subject.target_entity() else {
                     return;
                 };
-                let point = object_center_coord(target, object);
-                (point.x, point.y)
+                let [x, y] = object_center_xy(target);
+                (x, y)
             }
             Some(TargetKind::Cell(..)) => {
                 let Some(cell) = self.subject.cell_target_identity() else {
@@ -551,6 +536,29 @@ impl FireQuery for WorldQuery<'_, '_> {
             return flat(range);
         }
         match subject.terrain() {
+            // GetFireError6FCCEE calls InRange with its original target. A Cell
+            // retains its Cell+48/+50 geometry through the existing range
+            // owner; it must not acquire Techno low-flying source semantics.
+            Some(terrain) if matches!(target, TargetKind::Cell(..)) => {
+                let Some(cell) = subject.cell_target_identity() else {
+                    return false;
+                };
+                in_range::cell_target_in_range(
+                    firer,
+                    cell,
+                    weapon,
+                    subject.rules,
+                    &subject.world.interner,
+                    &subject.world.substrate.entities,
+                    terrain,
+                    &line_of_fire::LineOfFireInputs {
+                        overlay_grid: subject.world.overlay_grid.as_ref(),
+                        overlay_registry: subject.overlay_registry,
+                        alliances: subject.fog.map(|fog| &fog.alliances),
+                    },
+                )
+                .unwrap_or(false)
+            }
             Some(terrain) => in_range::fire_source_coords(
                 firer,
                 &target,
@@ -769,13 +777,18 @@ impl FireQuery for WorldQuery<'_, '_> {
     fn locomotor_moving(&mut self) -> bool {
         crate::sim::movement::ready_producer::is_moving_now_for(
             self.subject.firer,
+            Some(self.subject.speed_rules()),
             self.subject.frame(),
         )
     }
 
     fn target_locomotor_moving(&mut self) -> bool {
         self.subject.target_entity().is_some_and(|target| {
-            crate::sim::movement::ready_producer::is_moving_now_for(target, self.subject.frame())
+            crate::sim::movement::ready_producer::is_moving_now_for(
+                target,
+                Some(self.subject.speed_rules()),
+                self.subject.frame(),
+            )
         })
     }
 

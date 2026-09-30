@@ -327,9 +327,6 @@ impl ZoneEdgeKey {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ZonePrecheckExclusions {
     lookup: [BTreeSet<ZoneEdgeKey>; ZONE_PRECHECK_LEVELS],
-    // Preserves the verified producer's append order once failed-A* exclusion
-    // production is activated.
-    ordered: [Vec<ZoneEdgeKey>; ZONE_PRECHECK_LEVELS],
 }
 
 impl ZonePrecheckExclusions {
@@ -341,27 +338,6 @@ impl ZonePrecheckExclusions {
         self.lookup
             .get_mut(level)
             .is_some_and(|set| set.insert(key))
-    }
-
-    // Exact failed-A* producer wiring is intentionally deferred.
-    #[cfg(test)]
-    pub(crate) fn append_producer_edge(&mut self, level: usize, a: ZoneId, b: ZoneId) -> bool {
-        let Some(key) = ZoneEdgeKey::new(a, b) else {
-            return false;
-        };
-        let Some((lookup, ordered)) = self.lookup.get_mut(level).zip(self.ordered.get_mut(level))
-        else {
-            return false;
-        };
-        lookup.insert(key);
-        ordered.push(key);
-        true
-    }
-
-    // Diagnostic view of the deferred producer's native append order.
-    #[cfg(test)]
-    pub(crate) fn ordered_edges(&self, level: usize) -> &[ZoneEdgeKey] {
-        self.ordered.get(level).map(Vec::as_slice).unwrap_or(&[])
     }
 
     fn contains(&self, level: usize, a: ZoneId, b: ZoneId) -> bool {
@@ -912,26 +888,6 @@ mod tests {
             panic!("precheck should treat reversed exclusion as the same edge");
         };
         assert_eq!(result.paths[0], vec![1, 2, 3, 5, 6]);
-    }
-
-    #[test]
-    fn zone_precheck_producer_edges_preserve_append_order_and_duplicates() {
-        let mut exclusions = ZonePrecheckExclusions::default();
-
-        assert!(exclusions.append_producer_edge(0, 3, 4));
-        assert!(exclusions.append_producer_edge(0, 4, 3));
-        assert!(exclusions.append_producer_edge(0, 2, 4));
-
-        assert_eq!(
-            exclusions.ordered_edges(0),
-            &[
-                ZoneEdgeKey::new(3, 4).unwrap(),
-                ZoneEdgeKey::new(3, 4).unwrap(),
-                ZoneEdgeKey::new(2, 4).unwrap(),
-            ]
-        );
-        assert!(exclusions.contains(0, 3, 4));
-        assert!(exclusions.contains(0, 2, 4));
     }
 
     #[test]

@@ -23,7 +23,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::warhead_type::WarheadType;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::StringInterner;
-use crate::sim::map::bridge_topology::{BRIDGE_DECK_HEIGHT_LEVELS, CellBridgeView, ListLayer};
+use crate::sim::map::bridge_topology::{CellBridgeView, ListLayer};
 use crate::sim::mission::authority::restore_entity_after_target_expiry;
 use crate::sim::mission::concrete_effects::represented_assign_target;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -33,14 +33,16 @@ use crate::sim::occupancy::{
 #[cfg(test)]
 use crate::sim::overlay_grid::WallMutation;
 use crate::sim::overlay_grid::{
-    OverlayGrid, WallDamageTransactionHost, WallDirtyStep, WallPointerTarget, WallZoneRepairKind,
+    OverlayGrid, WallDamageTransactionHost, WallDirtyStep, WallPointerTarget,
     damage_wall_overlay_with_runtime_host,
 };
+use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::rng::SimRng;
 use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
 #[cfg(test)]
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::fixed_math::SimFixed;
+use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 use crate::util::lepton::{CELL_CENTER_LEPTON, LEPTONS_PER_LEVEL, ground_height_leptons};
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
@@ -95,7 +97,7 @@ pub(crate) trait AoECellPrelude {
         _terrain: &ResolvedTerrainGrid,
         _cell: (u16, u16),
         _navigation_changed: bool,
-        _repair: WallZoneRepairKind,
+        _repair: ZoneRepairKind,
     ) {
     }
 
@@ -121,7 +123,7 @@ impl WallDamageTransactionHost for AoEWallDamageHost<'_, '_> {
         terrain: &ResolvedTerrainGrid,
         cell: (u16, u16),
         navigation_changed: bool,
-        repair: WallZoneRepairKind,
+        repair: ZoneRepairKind,
     ) {
         if let Some(prelude) = self.prelude.as_deref_mut() {
             prelude.wall_navigation_step(terrain, cell, navigation_changed, repair);
@@ -247,7 +249,10 @@ pub(crate) fn air_impact_from_entity(
     Some(AoEAirImpact {
         sub_x: entity.position.sub_x,
         sub_y: entity.position.sub_y,
-        z_leptons: i32::try_from(super::in_range::effective_z_leptons(entity, terrain?)?).ok()?,
+        z_leptons: crate::sim::movement::ground_pose::object_world_z_leptons(
+            entity,
+            Some(terrain?),
+        ),
     })
 }
 
@@ -922,11 +927,7 @@ fn push_airborne_aoe_damage(
     if entity.health.current == 0 || entity.dying {
         return;
     }
-    let Some(target_z) =
-        super::in_range::effective_z_leptons(entity, terrain).and_then(|z| i32::try_from(z).ok())
-    else {
-        return;
-    };
+    let target_z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, Some(terrain));
     let impact_x = i32::from(impact_rx)
         .wrapping_mul(256)
         .wrapping_add(impact.sub_x.to_num::<i32>());
@@ -1047,20 +1048,7 @@ fn push_entity_aoe_damage(
         let y = i32::from(entity.position.ry)
             .wrapping_mul(256)
             .wrapping_add(entity.position.sub_y.to_num::<i32>());
-        let z = terrain
-            .and_then(|terrain| super::in_range::effective_z_leptons(entity, terrain))
-            .and_then(|z| i32::try_from(z).ok())
-            .unwrap_or_else(|| {
-                i32::from(entity.position.z)
-                    .wrapping_mul(LEPTONS_PER_LEVEL as i32)
-                    .wrapping_add(
-                        entity
-                            .locomotor
-                            .as_ref()
-                            .map(|locomotor| locomotor.altitude.to_num::<i32>())
-                            .unwrap_or(0),
-                    )
-            });
+        let z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain);
         (x, y, z)
     };
     let distance_leptons = if entity.category == EntityCategory::Structure && center_cell {
@@ -1184,7 +1172,6 @@ mod tests {
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::combat::{AttackTarget, TargetKind};
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
@@ -1447,6 +1434,7 @@ mod tests {
             (8_i32 + i32::from(wall_offset.1)) as u16,
         );
         let mut overlays = OverlayGrid::new(16, 16);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
         overlays.place_overlay(wall_cell.0, wall_cell.1, 2, 0);
         let mut scenario_rng = SimRng::new(91);
         let mut prelude = OreReseedDraw { cell: (8, 8) };
@@ -1465,7 +1453,7 @@ mod tests {
             (crate::sim::combat::RAD_NO_ATTACKER, None, warhead_ref),
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -1527,10 +1515,8 @@ mod tests {
         let mut interner = test_interner();
         let warhead_ref = interner.intern("BlastWH");
         let occupancy = OccupancyGrid::new();
-        let cells = (0..20)
-            .flat_map(|ry| (0..20).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(20, 20, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| test_terrain_cell(rx, ry));
 
         let at_ground = apply_aoe_damage(
             &mut entities,
@@ -1633,10 +1619,8 @@ mod tests {
                 CellListInsertion::PrependNonBuilding,
             );
         }
-        let cells = (0..24)
-            .flat_map(|ry| (0..24).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(24, 24, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(24, 24, |rx, ry| test_terrain_cell(rx, ry));
 
         let result = apply_aoe_damage(
             &mut entities,
@@ -1744,10 +1728,8 @@ mod tests {
             None,
             CellListInsertion::AppendBuilding,
         );
-        let cells = (0..12)
-            .flat_map(|ry| (0..12).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(12, 12, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(12, 12, |rx, ry| test_terrain_cell(rx, ry));
 
         for (impact_z, expected_distance) in [(208, 0), (256, 48)] {
             let result = apply_aoe_damage(
@@ -1831,8 +1813,7 @@ mod tests {
             protected.lifecycle.in_limbo = false;
             protected.lifecycle.cell_marked = true;
             protected.invulnerability = Some(InvulnerabilityState {
-                start_frame: 0,
-                duration_frames: 100,
+                timer: crate::sim::timer::CdTimer::started(0, 100),
                 kind,
             });
             entities.insert(protected);
@@ -1851,10 +1832,8 @@ mod tests {
                     CellListInsertion::PrependNonBuilding,
                 );
             }
-            let cells = (0..12)
-                .flat_map(|ry| (0..12).map(move |rx| test_terrain_cell(rx, ry)))
-                .collect();
-            let mut terrain = ResolvedTerrainGrid::from_cells(12, 12, cells);
+            let mut terrain =
+                crate::map::resolved_terrain::test_grid(12, 12, |rx, ry| test_terrain_cell(rx, ry));
             let aoe = apply_aoe_damage(
                 &mut entities,
                 5,
@@ -1976,7 +1955,7 @@ mod tests {
                  [TESTWALL]\nWall=yes\nArmor=concrete\nStrength=400\n",
             );
             let art = IniFile::from_str("[TESTWALL]\nDamageLevels=2\n");
-            let mut rules = RuleSet::from_ini(&ini).expect("air-first death rules");
+            let rules = RuleSet::from_ini(&ini).expect("air-first death rules");
             let blast = rules.warhead("BlastWH").unwrap().clone();
             let registry = OverlayTypeRegistry::from_ini(&ini, Some(&art));
 
@@ -2034,10 +2013,8 @@ mod tests {
                 None,
                 CellListInsertion::PrependNonBuilding,
             );
-            let cells = (0..10)
-                .flat_map(|ry| (0..10).map(move |rx| test_terrain_cell(rx, ry)))
-                .collect();
-            let mut terrain = ResolvedTerrainGrid::from_cells(10, 10, cells);
+            let mut terrain =
+                crate::map::resolved_terrain::test_grid(10, 10, |rx, ry| test_terrain_cell(rx, ry));
             let mut overlays = OverlayGrid::new(10, 10);
             for &(rx, ry) in &[(3, 5), (5, 5), (7, 5)] {
                 overlays.place_overlay(rx, ry, 0, 0);
@@ -2182,7 +2159,7 @@ mod tests {
              [WIDEWH]\nCellSpread=11\nPercentAtMax=1\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         );
-        let mut rules = RuleSet::from_ini(&ini).expect("band-11 rules");
+        let rules = RuleSet::from_ini(&ini).expect("band-11 rules");
         let wide = rules.warhead("WIDEWH").unwrap().clone();
         let mut stock = wide.clone();
         stock.cell_spread = SimFixed::from_num(10);
@@ -2214,10 +2191,8 @@ mod tests {
                 CellListInsertion::PrependNonBuilding,
             );
         }
-        let cells = (0..48)
-            .flat_map(|ry| (0..48).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(48, 48, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(48, 48, |rx, ry| test_terrain_cell(rx, ry));
         let mut interner = test_interner();
         let _handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
@@ -2312,6 +2287,7 @@ mod tests {
         let mut entities = EntityStore::new();
         let mut interner = test_interner();
         let mut overlays = OverlayGrid::new(16, 16);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
         overlays.place_overlay(8, 8, 0, 0);
         overlays.place_overlay(9, 7, 0, 0);
         let mut scenario_rng = SimRng::new(1);
@@ -2332,7 +2308,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2373,6 +2349,7 @@ mod tests {
         let mut entities = EntityStore::new();
         let mut interner = test_interner();
         let mut overlays = OverlayGrid::new(32, 32);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(32, 32);
         overlays.place_overlay(16, 16, 0, 0);
         overlays.place_overlay(17, 15, 0, 0);
         let mut scenario_rng = SimRng::new(19);
@@ -2388,7 +2365,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2417,6 +2394,7 @@ mod tests {
 
         let (rules, nuke, registry) = wall_aoe_fixture("10", "WallAbsoluteDestroyer=yes\nWall=yes");
         let mut overlays = OverlayGrid::new(40, 40);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(40, 40);
         let stock_cells = [(20, 20), (20, 10), (30, 20), (17, 29)];
         for &(rx, ry) in &stock_cells {
             overlays.place_overlay(rx, ry, 2, 0);
@@ -2434,7 +2412,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2488,6 +2466,7 @@ mod tests {
         let mut interner = test_interner();
         let owner = crate::sim::intern::InternedId::from_index(7);
         let mut overlays = OverlayGrid::new(16, 16);
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
         overlays.place_overlay(8, 8, 2, 0);
         overlays.place_owned_wall(8, 7, 2, 0x24, owner);
         let mut scenario_rng = SimRng::new(5);
@@ -2502,7 +2481,7 @@ mod tests {
             "Americans",
             AoELayerContext {
                 occupancy: None,
-                terrain: None,
+                terrain: Some(&mut terrain),
                 overlay_grid: Some(&mut overlays),
                 overlay_registry: Some(&registry),
                 scenario_rng: Some(&mut scenario_rng),
@@ -2651,7 +2630,7 @@ mod tests {
                  [CrushWH]\nCellSpread=0\nAffectsAllies=no\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
                 if damage_self { "yes" } else { "no" }
             ));
-            let mut rules = RuleSet::from_ini(&ini).expect("receiver admission fixture");
+            let rules = RuleSet::from_ini(&ini).expect("receiver admission fixture");
             let warhead = rules.warhead(warhead_name).unwrap().clone();
             let mut interner = test_interner();
             let _handles =
@@ -2687,10 +2666,8 @@ mod tests {
                     CellListInsertion::PrependNonBuilding,
                 );
             }
-            let cells = (0..3)
-                .flat_map(|ry| (0..3).map(move |rx| test_terrain_cell(rx, ry)))
-                .collect();
-            let mut terrain = ResolvedTerrainGrid::from_cells(3, 3, cells);
+            let mut terrain =
+                crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| test_terrain_cell(rx, ry));
             let aoe = apply_aoe_damage(
                 &mut entities,
                 1,
@@ -2819,10 +2796,8 @@ mod tests {
                 None,
                 CellListInsertion::AppendBuilding,
             );
-            let cells = (0..8)
-                .flat_map(|ry| (0..8).map(move |rx| test_terrain_cell(rx, ry)))
-                .collect();
-            let mut terrain = ResolvedTerrainGrid::from_cells(8, 8, cells);
+            let mut terrain =
+                crate::map::resolved_terrain::test_grid(8, 8, |rx, ry| test_terrain_cell(rx, ry));
             let aoe = apply_aoe_damage(
                 &mut entities,
                 5,
@@ -2938,7 +2913,7 @@ mod tests {
         veteran.owner = american;
         veteran.type_ref = mtnk;
         veteran.health.current = 300;
-        veteran.veterancy = 100;
+        veteran.set_veterancy_rank(100);
         entities.insert(veteran);
 
         let mut occupancy = OccupancyGrid::new();
@@ -2952,10 +2927,8 @@ mod tests {
                 CellListInsertion::PrependNonBuilding,
             );
         }
-        let cells = (0..8)
-            .flat_map(|ry| (0..8).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(8, 8, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(8, 8, |rx, ry| test_terrain_cell(rx, ry));
         let aoe = apply_aoe_damage(
             &mut entities,
             5,
@@ -3107,10 +3080,8 @@ mod tests {
             None,
             CellListInsertion::AppendBuilding,
         );
-        let cells = (0..12)
-            .flat_map(|ry| (0..12).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(12, 12, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(12, 12, |rx, ry| test_terrain_cell(rx, ry));
         let aoe = apply_aoe_damage(
             &mut entities,
             5,
@@ -3311,10 +3282,8 @@ mod tests {
                 CellListInsertion::PrependNonBuilding,
             );
         }
-        let cells = (0..8)
-            .flat_map(|ry| (0..8).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(8, 8, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(8, 8, |rx, ry| test_terrain_cell(rx, ry));
         let aoe = apply_aoe_damage(
             &mut entities,
             5,
@@ -3530,7 +3499,7 @@ mod tests {
             {
                 use crate::sim::components::{DriveCoord, FootPathQueue};
                 use crate::sim::timer::CdTimer;
-                victim.facing = 64;
+                victim.body_facing.snap(0x4000, 0);
                 victim.infantry.as_mut().unwrap().cell_entry_blocked = true;
                 victim.navigation.nav_com_aux =
                     Some(crate::sim::components::NavTargetRef::cell(1, 1));
@@ -3700,7 +3669,7 @@ mod tests {
                 let script = world.interner.intern("ScatterFixture");
                 world
                     .team_script_vm
-                    .create_team(victim_house, script, vec![2], None, 0);
+                    .create_team(victim_house, script, vec![2], 0);
             }
             let before_rng = world.scenario_rng.state();
             let mut receiver = crate::sim::combat::world_receiver::ReceiverRun::default();
@@ -3752,7 +3721,7 @@ mod tests {
                         "queue": victim.navigation.path_replay.directions.iter().map(|&v| if v == 255 { -1 } else { i32::from(v) }).collect::<Vec<_>>(),
                         "reference": victim.navigation.path_replay.reference_cell,
                         "queued_mission": victim.mission.queued().raw(),
-                        "facing": u32::from(victim.facing) * 256 * 65537,
+                        "facing": u32::from(victim.body_facing.destination()) * 65537,
                         "moving": u8::from(loco.walk_is_moving().unwrap()), "powered": u8::from(loco.powered),
                         "blocked": u8::from(path.path_blocked),
                         "movement_timer": [path.movement_timer.start_frame(), path.movement_timer.duration()],
@@ -4015,58 +3984,7 @@ mod tests {
 
     fn test_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs: SpeedCostProfile::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -4138,21 +4056,16 @@ mod tests {
         let mut terrain_objects = BTreeMap::new();
         let mut terrain_cells = BTreeMap::new();
         for (stable_id, rx) in [(100, 5), (101, 6), (102, 8)] {
-            terrain_objects.insert(
-                stable_id,
-                {
-                    let mut terrain = TerrainObjectState::for_test(stable_id, tree_ref, rx, 5);
-                    terrain.occupation_bits = 4;
-                    terrain
-                },
-            );
+            terrain_objects.insert(stable_id, {
+                let mut terrain = TerrainObjectState::for_test(stable_id, tree_ref, rx, 5);
+                terrain.occupation_bits = 4;
+                terrain
+            });
             terrain_cells.insert((rx, 5), stable_id);
         }
 
-        let cells = (0..12)
-            .flat_map(|ry| (0..12).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        let mut terrain = ResolvedTerrainGrid::from_cells(12, 12, cells);
+        let mut terrain =
+            crate::map::resolved_terrain::test_grid(12, 12, |rx, ry| test_terrain_cell(rx, ry));
         let result = apply_aoe_damage_with_terrain(
             &mut entities,
             5,
@@ -4265,17 +4178,16 @@ mod tests {
              [OUTERWH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n\
              [C4WH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n",
         );
-        let mut rules = RuleSet::from_ini(&ini).expect("spawning Terrain rules");
+        let rules = RuleSet::from_ini(&ini).expect("spawning Terrain rules");
         let mut sim = crate::sim::world::Simulation::new();
         sim.resolve_type_handles(&rules);
         let victim_id = sim
-            .spawn_object("VICTIM", "VictimHouse", 5, 5, 0, &rules, &BTreeMap::new())
+            .spawn_object("VICTIM", "VictimHouse", 5, 5, 0, &rules)
             .expect("nested C4 victim spawns");
 
-        let cells = (0..10)
-            .flat_map(|ry| (0..10).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(10, 10, cells));
+        sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(10, 10, |rx, ry| {
+            test_terrain_cell(rx, ry)
+        }));
 
         let terrain_id = 900;
         let terrain_ref = sim.interner.intern("TIBTREE");
@@ -4420,29 +4332,25 @@ mod tests {
              [OUTERWH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n\
              [C4WH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n",
         );
-        let mut rules = RuleSet::from_ini(&ini).expect("inert Terrain rules");
+        let rules = RuleSet::from_ini(&ini).expect("inert Terrain rules");
         let mut sim = crate::sim::world::Simulation::new();
         sim.resolve_type_handles(&rules);
         let victim_id = sim
-            .spawn_object("VICTIM", "VictimHouse", 5, 5, 0, &rules, &BTreeMap::new())
+            .spawn_object("VICTIM", "VictimHouse", 5, 5, 0, &rules)
             .expect("inert receiver victim spawns");
-        let cells = (0..10)
-            .flat_map(|ry| (0..10).map(move |rx| test_terrain_cell(rx, ry)))
-            .collect();
-        sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(10, 10, cells));
+        sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(10, 10, |rx, ry| {
+            test_terrain_cell(rx, ry)
+        }));
 
         let terrain_id = 901;
         let terrain_ref = sim.interner.intern("TIBTREE");
-        sim.production.terrain_objects.insert(
-            terrain_id,
-            {
-                let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
-                terrain.health = 10;
-                terrain.max_health = 10;
-                terrain.occupation_bits = 4;
-                terrain
-            },
-        );
+        sim.production.terrain_objects.insert(terrain_id, {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 4;
+            terrain
+        });
         sim.production
             .terrain_object_cells
             .insert((5, 5), terrain_id);

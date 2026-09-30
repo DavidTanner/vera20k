@@ -121,9 +121,8 @@ fn native_sink_suffix_preserves_cadence_coordinates_and_complete_rng_states() {
 }
 
 #[test]
-fn sinking_state_is_hashed_only_in_its_schema_and_survives_snapshot() {
+fn sinking_state_is_hashed_and_survives_snapshot() {
     use crate::sim::snapshot::GameSnapshot;
-    use crate::sim::world::hash_schema::HashSchema;
 
     let (mut sim, rules, id) = fixture(-125);
     sim.session.map_name = "SINK.MAP".to_owned();
@@ -134,17 +133,12 @@ fn sinking_state_is_hashed_only_in_its_schema_and_survives_snapshot() {
     // Native load restarts Scenario from Seed0. Begin both compared futures
     // at that same cursor; this test does not assert saved Scenario retention.
     sim.scenario_rng = SimRng::new(0);
-    let old_hash = sim.state_hash_with_schema(HashSchema::Before(227));
     let active_hash = sim.state_hash();
     sim.sinking_edge_sounds(id, &rules);
     assert_ne!(
         sim.state_hash(),
         active_hash,
         "the observed sound edge is authority"
-    );
-    assert_eq!(
-        sim.state_hash_with_schema(HashSchema::Before(227)),
-        old_hash
     );
     let expected_hash = sim.state_hash();
     let bytes = GameSnapshot::save_validated(&sim, 17, 18, "sinking", 19);
@@ -233,7 +227,7 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
         }
         let processed = layers.process().unwrap();
         let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
-        rules.bind_sinking_sounds(processed.ini(), &sounds);
+        rules.bind_type_sound_references(processed.ini(), &sounds);
         let object = rules.object("AEGIS").unwrap();
         for (field, actual) in [
             ("type_sinking", object.sinking_sound.as_deref()),
@@ -272,7 +266,7 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
             },
             if quiet { "unknown" } else { sound_name },
         ));
-        rules.bind_sinking_sounds(&reader_input, &sounds);
+        rules.bind_type_sound_references(&reader_input, &sounds);
         let hull = sim.substrate.entities.get_mut(id).unwrap();
         hull.sinking.active = input["sinking"].as_u64().unwrap() != 0;
         hull.sinking.sound_edge_seen = input["seen"].as_u64().unwrap() != 0;
@@ -358,7 +352,7 @@ fn load_preserves_sinking_edge_and_resets_shared_foot_sound_bytes() {
         let (mut sim, mut rules, id) = fixture(-30);
         let sounds =
             SoundRegistry::from_ini(&IniFile::from_str("[SoundList]\n0=GenLargeWaterDie\n"));
-        rules.bind_sinking_sounds(
+        rules.bind_type_sound_references(
             &IniFile::from_str("[TEST]\nSinkingSound=GenLargeWaterDie\n"),
             &sounds,
         );

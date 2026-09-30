@@ -123,7 +123,7 @@ pub fn owns_build_power_plant(
 /// Run the advice block for every human-controlled house in
 /// `ScenarioSession::house_order`, in that order.
 pub fn tick_house_eva(sim: &mut Simulation, rules: &RuleSet) {
-    let now = i64::from(sim.session.binary_frame);
+    let now = sim.session.binary_frame as i32;
     let game_mode_nonzero = sim.session.game_mode_nonzero;
     let delay = speak_delay_frames(rules, &sim.session.game_options);
     let owners: Vec<InternedId> = sim.session.house_order.clone();
@@ -152,7 +152,7 @@ pub fn tick_house_eva(sim: &mut Simulation, rules: &RuleSet) {
                 owner,
                 event: EVA_INSUFFICIENT_FUNDS,
             });
-            timer.arm(now, delay);
+            timer.start(now, delay);
         }
         // --- Silo re-arm, `0x004F8BE4..0x004F8C53` --- (timer re-read after
         // the nag's own re-arm). VERA has no ore storage authority, so
@@ -172,7 +172,7 @@ pub fn tick_house_eva(sim: &mut Simulation, rules: &RuleSet) {
                 .map(|obj| obj.storage)
                 .fold(0i32, i32::saturating_add);
             if silo_nearly_full(capacity, 0) {
-                timer.arm(now, delay);
+                timer.start(now, delay);
             }
         }
 
@@ -212,7 +212,8 @@ mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
     use crate::sim::game_entity::GameEntity;
-    use crate::sim::house_state::{HouseFrameTimer, HouseState};
+    use crate::sim::house_state::HouseState;
+    use crate::sim::timer::CdTimer;
 
     fn rules() -> RuleSet {
         RuleSet::from_ini(&IniFile::from_str(
@@ -295,28 +296,6 @@ mod tests {
         assert_eq!(speak_delay_frames(&rules, &options), 1800);
     }
 
-    #[test]
-    fn frame_timer_expiry_matches_the_native_timer_struct_test() {
-        let armed = HouseFrameTimer {
-            start_frame: 10,
-            duration: 5,
-        };
-        assert!(!armed.expired(14));
-        assert!(armed.expired(15));
-        let never = HouseFrameTimer {
-            start_frame: -1,
-            duration: 5,
-        };
-        assert!(!never.expired(1_000));
-        let never_zero = HouseFrameTimer {
-            start_frame: -1,
-            duration: 0,
-        };
-        assert!(never_zero.expired(0));
-        assert!(HouseFrameTimer::at_construction(0).expired(1));
-        assert!(!HouseFrameTimer::at_construction(0).expired(0));
-    }
-
     /// A broke human house with an idle barracks hears the nag once per
     /// normalised SpeakDelay, no build stalled or queued.
     #[test]
@@ -335,10 +314,7 @@ mod tests {
         assert_eq!(nags, vec![1, 1 + 2880, 1 + 2880 * 2]);
         assert_eq!(
             sim.houses[&owner].eva_funds_timer,
-            HouseFrameTimer {
-                start_frame: 1 + 2880 * 2,
-                duration: 2880,
-            }
+            CdTimer::started(1 + 2880 * 2, 2880)
         );
     }
 

@@ -17,7 +17,7 @@
 //! RA2_DIR=<retail root> cargo test -p vera20k --lib --release \
 //!     retail_atlas_refresh_costs -- --ignored --nocapture
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -127,7 +127,6 @@ fn retail_atlas_refresh_costs() {
         .find(|entity| sim.interner.resolve(entity.owner()) == owner)
         .map(|entity| (entity.position.rx, entity.position.ry))
         .expect("owned anchor");
-    let heights = BTreeMap::new();
     // Place `type_id` on the first free cell of growing rings around the
     // player's first object, two cells apart.
     let spawn_near = |sim: &mut crate::sim::world::Simulation, type_id: &str, reach: i32| {
@@ -141,7 +140,7 @@ fn retail_atlas_refresh_costs() {
                 rx > 0
                     && ry > 0
                     && sim
-                        .spawn_object(type_id, &owner, rx as u16, ry as u16, 64, rules, &heights)
+                        .spawn_object(type_id, &owner, rx as u16, ry as u16, 64, rules)
                         .is_some()
             })
     };
@@ -207,7 +206,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         None,
         Some(&sim.interner),
     )
@@ -353,7 +351,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         Some(units),
         Some(&sim.interner),
     )
@@ -396,7 +393,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         Some(units),
         Some(&sim.interner),
     )
@@ -429,6 +425,7 @@ fn retail_atlas_refresh_costs() {
                 layer: VxlLayer::Body,
                 frame: 0,
                 slope_type: 0,
+                barrel_pitch: 0,
             })
             .is_some(),
         "the refreshed unit atlas draws the new vehicle"
@@ -484,7 +481,6 @@ fn retail_atlas_refresh_costs() {
         sim.entities(),
         &assets,
         Some(rules),
-        Some(art),
         None,
         Some(&sim.interner),
     )

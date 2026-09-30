@@ -15,7 +15,6 @@ use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::production::{PRODUCTION_STEPS, ProductionCategory, StepOutcome};
 use crate::sim::timer::CdTimer;
-use std::collections::BTreeMap;
 
 fn empty_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str("")).expect("empty rules parse")
@@ -54,16 +53,6 @@ fn spawn_war_factory(sim: &mut Simulation, owner: InternedId) {
     sim.substrate.entities.insert(e);
 }
 
-/// Rules with exactly one OrePurifier building type (`GAPROC`). Used by the
-/// purifier-count guard — proves the base is the building COUNT (the v2 finding),
-/// not silo storage capacity.
-fn rules_with_ore_purifier() -> RuleSet {
-    RuleSet::from_ini(&IniFile::from_str(
-        "[BuildingTypes]\n1=GAPROC\n[GAPROC]\nOrePurifier=yes\n",
-    ))
-    .expect("ore-purifier rules parse")
-}
-
 /// Arm a build directly on the FactoryRegistry (the P5d queue-of-record). Replaces the
 /// retired `insert_queue(queued_item(..))` pattern: `enqueue` creates-or-re-arms the
 /// active build for `(owner, cat)`, or appends a `QueueEntry` to the FIFO tail when an
@@ -83,100 +72,12 @@ fn arm(
         .test_enqueue_kernel(owner, cat, ty, order, cost);
 }
 
-/// Purifier refresh preserves the house's initialized cash balance.
-#[test]
-fn purifier_refresh_preserves_house_wallet() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let a = sim.interner.intern("Americans");
-    let b = sim.interner.intern("Russians");
-    sim.houses
-        .insert(a, HouseState::new(a, 0, None, true, 5000, 10));
-    sim.houses
-        .insert(b, HouseState::new(b, 1, None, true, 1234, 10));
-    sim.refresh_economy_shadow(Some(&rules));
-    assert_eq!(sim.houses[&a].economy.credits, 5000);
-    assert_eq!(sim.houses[&b].economy.credits, 1234);
-    // The purifier-count statistic is still recomputed each refresh.
-    assert_eq!(sim.houses[&a].economy.purifier_count, 0);
-}
-
-#[test]
-fn economy_shadow_does_not_create_houses() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let before_len = sim.houses.len();
-    let before = sim.state_hash();
-    sim.refresh_economy_shadow(Some(&rules));
-    assert_eq!(
-        sim.houses.len(),
-        before_len,
-        "shadow must not create houses"
-    );
-    assert_eq!(before, sim.state_hash(), "shadow must not perturb the hash");
-}
-
-#[test]
-fn economy_shadow_does_not_change_state_hash() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let a = sim.interner.intern("Americans");
-    sim.houses
-        .insert(a, HouseState::new(a, 0, None, true, 5000, 10));
-    let before = sim.state_hash();
-    sim.refresh_economy_shadow(Some(&rules));
-    let after = sim.state_hash();
-    assert_eq!(
-        before, after,
-        "economy shadow must not perturb the state hash"
-    );
-}
-
-/// CONCERN-1 regression guard for the v2 correction: the purifier-bonus base is the
-/// OrePurifier *building count* (NOT silo storage capacity). Would fail if the impl
-/// ever modeled storage capacity (it counts owned OrePurifier structures).
-#[test]
-fn economy_purifier_count_is_building_count() {
-    let mut sim = Simulation::new();
-    let rules = rules_with_ore_purifier();
-    let owner = sim.interner.intern("Americans");
-    sim.houses
-        .insert(owner, HouseState::new(owner, 0, None, true, 5000, 10));
-    let proc_ty = sim.interner.intern("GAPROC");
-    let powr_ty = sim.interner.intern("GAPOWR"); // not a purifier (absent from rules)
-
-    let add_structure = |sim: &mut Simulation, id: u64, ty: InternedId, rx: u16| {
-        let mut e = GameEntity::test_default(id, "GAPROC", "Americans", rx, 5);
-        e.category = EntityCategory::Structure;
-        e.owner = owner;
-        e.type_ref = ty;
-        e.lifecycle.in_limbo = false;
-        sim.substrate.entities.insert(e);
-    };
-    // One purifier -> count 1.
-    add_structure(&mut sim, 1, proc_ty, 5);
-    sim.refresh_economy_shadow(Some(&rules));
-    assert_eq!(sim.houses[&owner].economy.purifier_count, 1);
-
-    // Second purifier + a non-purifier structure -> count 2 (the power plant is
-    // NOT counted, proving it tracks OrePurifier buildings specifically).
-    add_structure(&mut sim, 2, proc_ty, 6);
-    add_structure(&mut sim, 3, powr_ty, 7);
-    sim.refresh_economy_shadow(Some(&rules));
-    assert_eq!(
-        sim.houses[&owner].economy.purifier_count, 2,
-        "purifier_count is the OrePurifier building count, not storage capacity"
-    );
-}
-
 // ===== P2 — Factory / FactoryRegistry shadow =====
 
-/// The registry is AUTHORITATIVE for progress, NOT derived from frames. The SEED arm
-/// (`enqueue`) seeds a fresh build at progress 0; the PERSIST arm keeps the authoritative
-/// progress across a `refresh_production_shadow` (now a no-op for the registry — there is
-/// no reconcile to re-derive progress from frames).
+/// The registry is AUTHORITATIVE for progress, NOT derived from frames: the SEED arm
+/// (`enqueue`) seeds a fresh build at progress 0.
 #[test]
-fn factory_reconcile_seeds_zero_and_persists_progress() {
+fn factory_enqueue_seeds_zero_progress() {
     let mut sim = Simulation::new();
     let rules = vehicle_rules();
     let owner = sim.interner.intern("Americans");
@@ -196,23 +97,6 @@ fn factory_reconcile_seeds_zero_and_persists_progress() {
         );
         assert!(view.object.is_some(), "Building front => active object");
     }
-    // Manually advance the authoritative progress, then refresh: the PERSIST arm must
-    // leave progress UNTOUCHED (the registry persists with no rebuild).
-    sim.production
-        .factory_shadow
-        .test_first_mut()
-        .unwrap()
-        .progress = 9;
-    sim.refresh_production_shadow(Some(&rules));
-    let view = sim
-        .production
-        .factory_shadow
-        .view(owner, ProductionCategory::Vehicle)
-        .unwrap();
-    assert_eq!(
-        view.progress, 9,
-        "PERSIST arm keeps authoritative progress; frames are not the source"
-    );
 }
 
 #[test]
@@ -242,29 +126,6 @@ fn factory_registry_iteration_is_insertion_ordered() {
     sorted.sort();
     assert_eq!(seqs, sorted, "iteration is monotonic in insertion_seq");
     assert_eq!(seqs.len(), 6, "3 owners x 2 categories = 6 factories");
-}
-
-#[test]
-fn insertion_seq_stable_across_rebuild() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let owner = sim.interner.intern("Americans");
-    let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
-    let seq_a = sim.production.factory_shadow.iter_insertion_ordered()[0].insertion_seq;
-    // Advance the build, refresh — the registry persists, the same (owner, category)
-    // survives with the same seq (refresh no longer reconciles).
-    sim.production
-        .factory_shadow
-        .test_first_mut()
-        .unwrap()
-        .progress = 10;
-    sim.refresh_production_shadow(Some(&rules));
-    let seq_b = sim.production.factory_shadow.iter_insertion_ordered()[0].insertion_seq;
-    assert_eq!(
-        seq_a, seq_b,
-        "surviving factory keeps a stable insertion_seq"
-    );
 }
 
 /// The authority-flip inversion of `factory_registry_shadow_no_hash_change`: the
@@ -307,11 +168,7 @@ fn production_authoritative_hash_includes_factory_fields() {
     }
 
     type EMut = fn(&mut crate::sim::economy::Economy);
-    let econ_muts: [EMut; 3] = [
-        |e| e.spent_credits += 1,
-        |e| e.harvested_credits += 1,
-        |e| e.purifier_count += 1,
-    ];
+    let econ_muts: [EMut; 2] = [|e| e.spent_credits += 1, |e| e.harvested_credits += 1];
     for m in econ_muts {
         let mut sim = mid_build();
         let owner = sim.interner.intern("Americans");
@@ -322,31 +179,6 @@ fn production_authoritative_hash_includes_factory_fields() {
             "a hashed economy statistic must move the hash"
         );
     }
-}
-
-#[test]
-fn production_shadow_does_not_create_houses() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let owner = sim.interner.intern("Ghost"); // no HouseState inserted
-    let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
-    let before_houses = sim.houses.len();
-    let before_factories = sim.production.factory_shadow.len();
-    sim.refresh_production_shadow(Some(&rules));
-    // The refresh NEVER fabricates a house (the auto-create hazard guard); the registry
-    // (now authoritative + hashed) is populated by the arm, so the hash IS allowed to
-    // move — only the no-house-creation invariant is asserted here.
-    assert_eq!(
-        sim.houses.len(),
-        before_houses,
-        "refresh must not create houses"
-    );
-    assert_eq!(
-        sim.production.factory_shadow.len(),
-        before_factories,
-        "registry unchanged by the refresh no-op"
-    );
 }
 
 /// FIT (a): the factory shell trace visits live Structures in LogicVector order.
@@ -371,7 +203,7 @@ fn factory_shadow_trace_order_matches_logic_vector() {
 
 /// The authority-flip inversion of `snapshot_roundtrip_ignores_shadow`: the registry
 /// is now serialized + hashed, so a mid-build factory survives save->load
-/// bit-identically AND the first post-load reconcile (PERSIST arm) leaves it untouched.
+/// bit-identically.
 #[test]
 fn snapshot_roundtrip_factory_registry() {
     let mut sim = Simulation::new();
@@ -408,52 +240,13 @@ fn snapshot_roundtrip_factory_registry() {
     let before = sim.state_hash();
 
     let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 0, 0, "test_map", 0);
-    let mut loaded = crate::sim::snapshot::GameSnapshot::load(&bytes)
+    let loaded = crate::sim::snapshot::GameSnapshot::load(&bytes)
         .expect("load")
         .sim;
     assert_eq!(
         loaded.state_hash(),
         before,
         "registry + economy stats round-trip bit-identically"
-    );
-
-    // The first post-load reconcile (PERSIST arm, same front) must NOT perturb it.
-    loaded.refresh_production_shadow(Some(&rules));
-    assert_eq!(
-        before,
-        loaded.state_hash(),
-        "post-load reconcile leaves the loaded build untouched"
-    );
-}
-
-/// `progress_carry` was the retired frames-timer field with no live reader. P5d retired
-/// the entire `BuildQueueItem`/`queues_by_owner` queue-of-record (along with
-/// `progress_carry` and `remaining_base_frames`), so there is no longer a per-queue-item
-/// hash fold for any of these fields to exercise. The original assertion ("mutating
-/// progress_carry leaves the hash unchanged") can no longer be expressed — the field does
-/// not exist. The equivalent invariant now: the registry has no per-queue-item retired
-/// frames field to fold, so the only hashed production state is the `Factory` head fields
-/// + `QueueEntry` (type/order/total) — none of which is a `progress_carry`/`remaining`
-/// frames timer.
-// P5D-REVIEW: original tested mutation of the RETIRED BuildQueueItem.progress_carry field;
-// that field no longer exists. Re-expressed as "no retired frames-timer field is hashed".
-// Human: confirm this is the intended equivalent, or delete the test.
-#[test]
-#[ignore = "P5D-REVIEW: BuildQueueItem.progress_carry retired; original mutation no longer expressible"]
-fn legacy_progress_carry_removed_from_hash() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let owner = sim.interner.intern("Americans");
-    let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
-    let before = sim.state_hash();
-    // No retired per-queue-item frames field exists to mutate; a refresh no-op must not
-    // perturb the hash (the registry carries no progress_carry/remaining frames timer).
-    sim.refresh_production_shadow(Some(&rules));
-    assert_eq!(
-        before,
-        sim.state_hash(),
-        "no retired progress_carry frames field is hashed"
     );
 }
 
@@ -463,10 +256,9 @@ fn legacy_progress_carry_removed_from_hash() {
 fn production_shadow_preserves_advance_tick_phase_order() {
     fn run() -> Vec<u64> {
         let mut sim = Simulation::new();
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         (0..5)
             .map(|_| {
-                sim.advance_tick(&[], None, &heights, None, None, 67);
+                sim.advance_tick(&[], None, None, None, 67);
                 sim.state_hash()
             })
             .collect()
@@ -575,7 +367,7 @@ fn queue_advances_only_after_delivery() {
 
 // ===== P5a — flip-prep (pure producers + temporal mint + inversion-readiness, hash-neutral) =====
 
-/// P5a Lane-A mint: after `refresh_production_shadow`, each factory's `insertion_seq`
+/// P5a Lane-A mint: each factory's `insertion_seq`
 /// equals its queue front's `enqueue_order` (the temporal first-Begin stamp), NOT the
 /// old BTreeMap sorted-(owner, category) mint. Aircraft begun BEFORE Vehicle (lower
 /// enqueue_order) must sweep first even though Vehicle sorts before Aircraft by enum.
@@ -675,10 +467,9 @@ fn factory_step_matches_legacy_shadow_holds() {
         .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
     let ty = sim.interner.intern("GRIZZLY");
     arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     for _ in 0..5 {
         // If the inversion assert diverges, advance_tick panics in a debug build.
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
 }
 
@@ -707,13 +498,12 @@ fn single_wallet_charged_once_no_double_debit() {
         "GRIZZLY needs a positive cost for this guard"
     );
     let start = sim.houses[&owner].economy.credits;
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     // A war factory exists but no path_grid is supplied, so the completed vehicle has no exit
     // cell and is held (delivery never fires) — the build charges to completion exactly once
     // and never re-seeds. Upper-bound the cadence (<= 255 frames/step * 54 steps) and break
     // once the cost is fully drained.
     for _ in 0..(PRODUCTION_STEPS as usize * 256) {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         if sim.houses[&owner].economy.spent_credits >= full_cost {
             break;
         }
@@ -741,9 +531,8 @@ fn stall_on_no_funds_holds() {
     let ty = sim.interner.intern("GRIZZLY");
     arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
     spawn_war_factory(&mut sim, owner); // P6: factory present so the build STALLS (not abandoned)
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     for _ in 0..200 {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     assert_eq!(
         sim.houses[&owner].economy.credits, 0,
@@ -772,10 +561,9 @@ fn cancel_one_partial_refund_to_house_credits() {
         .object_type(ty, &rules)
         .map(|o| o.cost.max(0))
         .unwrap_or(0);
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     // Charge partway (not to completion).
     for _ in 0..200 {
-        sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     let spent = sim.houses[&owner].economy.spent_credits;
     assert!(
@@ -831,7 +619,6 @@ fn factory_flip_determinism_over_scripted_commands() {
         arm(&mut sim, &rules, b, ProductionCategory::Vehicle, griz, 3);
         sim.production.next_enqueue_order = 4;
 
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         (0..160)
             .map(|i| {
                 if i == 10 {
@@ -844,7 +631,7 @@ fn factory_flip_determinism_over_scripted_commands() {
                         false,
                     );
                 }
-                sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
+                sim.advance_tick(&[], Some(&rules), None, None, 67);
                 sim.state_hash()
             })
             .collect()

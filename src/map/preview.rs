@@ -80,21 +80,9 @@ impl From<LzoError> for PreviewDecodeError {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PreviewChannelOrder {
-    Rgb,
-    #[allow(dead_code)]
-    Bgr,
-}
-
-const PREVIEW_CHANNEL_ORDER: PreviewChannelOrder = PreviewChannelOrder::Rgb;
-
 /// Parse preview metadata from map INI sections.
 pub fn parse_preview_section(ini: &IniFile) -> PreviewSection {
-    let size = ini
-        .section("Preview")
-        .and_then(|section| section.get("Size"))
-        .and_then(parse_preview_size);
+    let size = preview_size(ini);
 
     let has_packed_preview = preview_pack_text(ini).is_some();
 
@@ -105,27 +93,19 @@ pub fn parse_preview_section(ini: &IniFile) -> PreviewSection {
     }
 }
 
-fn parse_preview_size(value: &str) -> Option<(u32, u32)> {
-    let parts: Vec<u32> = value
-        .split(',')
-        .map(str::trim)
-        .map(str::parse::<u32>)
-        .collect::<Result<Vec<u32>, _>>()
-        .ok()?;
-    match parts.as_slice() {
-        [width, height] => Some((*width, *height)),
-        [_, _, width, height, ..] => Some((*width, *height)),
-        _ => None,
-    }
+/// `[Preview] Size` is a ReadRect (`DecodePreviewPackToSurface @
+/// 0x00641B00`) whose last two fields size the surface; a zero-sized rect has
+/// none. Native overlays a partial rect on the previous preview's rect; Rust
+/// overlays zeros.
+fn preview_size(ini: &IniFile) -> Option<(u32, u32)> {
+    let [_, _, width, height] = ini.section("Preview")?.read_rect("Size", [0; 4]);
+    let size = (u32::try_from(width).ok()?, u32::try_from(height).ok()?);
+    (size.0 > 0 && size.1 > 0).then_some(size)
 }
 
 fn preview_pack_text(ini: &IniFile) -> Option<String> {
-    let section = ini.section("PreviewPack")?;
-    let values = section.get_values();
-    if values.iter().all(|value| value.trim().is_empty()) {
-        return None;
-    }
-    Some(values.concat())
+    let text = ini.section("PreviewPack")?.read_packed_text();
+    (!text.is_empty()).then_some(text)
 }
 
 fn expected_preview_rgb_len(width: u32, height: u32) -> Result<usize, PreviewDecodeError> {
@@ -148,15 +128,9 @@ fn expected_preview_rgba_len(width: u32, height: u32) -> Result<usize, PreviewDe
     usize::try_from(bytes).map_err(|_| PreviewDecodeError::PixelBufferTooLarge)
 }
 
+/// `[PreviewPack]` pixels are stored in RGB order.
 fn push_rgba_from_preview_pixel(out: &mut Vec<u8>, pixel: &[u8]) {
-    match PREVIEW_CHANNEL_ORDER {
-        PreviewChannelOrder::Rgb => {
-            out.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
-        }
-        PreviewChannelOrder::Bgr => {
-            out.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
-        }
-    }
+    out.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
 }
 
 /// Decode row-major 3-byte `[PreviewPack]` pixels into RGBA.
@@ -199,11 +173,7 @@ pub fn decode_preview_pack(
 pub fn decode_preview_image_from_ini(
     ini: &IniFile,
 ) -> Result<Option<DecodedPreview>, PreviewDecodeError> {
-    let Some((width, height)) = ini
-        .section("Preview")
-        .and_then(|section| section.get("Size"))
-        .and_then(parse_preview_size)
-    else {
+    let Some((width, height)) = preview_size(ini) else {
         return Ok(None);
     };
     let Some(pack_text) = preview_pack_text(ini) else {
@@ -219,7 +189,7 @@ mod tests {
 
     #[test]
     fn parse_preview_metadata() {
-        let ini = IniFile::from_str("[Preview]\nSize=80,50\n[PreviewPack]\n1=ABC\n2=DEF\n");
+        let ini = IniFile::from_str("[Preview]\nSize=0,0,80,50\n[PreviewPack]\n1=ABC\n2=DEF\n");
         let preview = parse_preview_section(&ini);
         assert_eq!(preview.size, Some((80, 50)));
         assert!(preview.has_packed_preview);
@@ -245,6 +215,14 @@ mod tests {
     #[test]
     fn parse_preview_size_rejects_single_value() {
         let ini = IniFile::from_str("[Preview]\nSize=138\n");
+        let preview = parse_preview_section(&ini);
+        assert_eq!(preview.size, None);
+    }
+
+    /// ReadRect scans a two-field value into the origin, leaving no size.
+    #[test]
+    fn parse_preview_size_two_fields_fill_the_origin() {
+        let ini = IniFile::from_str("[Preview]\nSize=80,50\n");
         let preview = parse_preview_section(&ini);
         assert_eq!(preview.size, None);
     }
@@ -305,7 +283,8 @@ mod tests {
 
     #[test]
     fn parse_preview_section_keeps_invalid_pack_nonfatal() {
-        let ini = IniFile::from_str("[Preview]\nSize=2,1\n[PreviewPack]\n1=not valid base64!\n");
+        let ini =
+            IniFile::from_str("[Preview]\nSize=0,0,2,1\n[PreviewPack]\n1=not valid base64!\n");
         let preview = parse_preview_section(&ini);
         assert_eq!(preview.size, Some((2, 1)));
         assert!(preview.has_packed_preview);

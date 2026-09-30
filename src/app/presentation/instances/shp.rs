@@ -8,8 +8,9 @@
 //! - Part of the app layer — may depend on everything.
 
 use super::helpers::{
-    ANIM_DRAW_DEPTH_BIAS_PX, apply_shape_z_adjust, compute_sprite_depth, effective_anim_z_adjust,
-    entity_draw_band, ground_sort_row, ground_z_adjust, in_view, tactical_entity_render_admission,
+    ANIM_DRAW_DEPTH_BIAS_PX, apply_shape_z_adjust, compute_sprite_depth,
+    compute_sprite_depth_params_lifted, depth_axis, effective_anim_z_adjust, entity_draw_band,
+    ground_sort_row, in_view, lifted_z_adjust, tactical_entity_render_admission,
 };
 use crate::app::AppState;
 use crate::app::presentation::render::draw_plan_lowering::{
@@ -100,6 +101,12 @@ pub(crate) fn build_shp_instances(
         state.rules().map(|rules| rules.art());
     let canopy_owners = super::overlays::parachute_canopy_owners(state, sim);
 
+    // Drawing borrows live map fields but uses its own small Dummy identity,
+    // so native-style misses cannot mutate lockstep simulation state.
+    let cells = sim
+        .resolved_terrain
+        .as_ref()
+        .map(crate::map::resolved_terrain::NativeCellQuery::isolated);
     let encounter_order = super::helpers::tactical_entity_encounter_order(sim);
     for stable_id in encounter_order {
         let Some(entity) = sim.entities().get(stable_id) else {
@@ -175,6 +182,11 @@ pub(crate) fn build_shp_instances(
             }
         };
         let interp_z = pos.z;
+        // The lift `screen_position` drew this body with. A building's draw
+        // cancels exactly that for its sort row and per-pixel Z seed
+        // (`NormalZAdjust - AdjustForZ(Z)`), so its body, bib, anims and
+        // turret sort and clip against the height they are drawn at.
+        let lift_px = crate::render::locomotor_visual::screen_lift_px(entity);
         if !in_view(sx, sy, 200.0, 200.0, cam_x, cam_y, sw, sh, 200.0) {
             continue;
         }
@@ -202,9 +214,10 @@ pub(crate) fn build_shp_instances(
             }
             let stage = if selling {
                 let end = anim.control[0].wrapping_add(anim.control[1]);
-                end.wrapping_sub(anim.stage).wrapping_sub(1)
+                end.wrapping_sub(entity.construction_stage_value())
+                    .wrapping_sub(1)
             } else {
-                anim.stage
+                entity.construction_stage_value()
             };
             let frame = stage.clamp(0, i32::from(total_make_frames) - 1) as u16;
             (frame, Some(make_key))
@@ -243,7 +256,18 @@ pub(crate) fn build_shp_instances(
                     };
                     (frame, None)
                 }
-                _ => (resolve_infantry_shp_frame(state, type_str, entity), None),
+                _ => {
+                    let Some(frame) = resolve_infantry_shp_frame(
+                        state,
+                        type_str,
+                        entity,
+                        sim.session.binary_frame,
+                        cells.as_ref(),
+                    ) else {
+                        continue;
+                    };
+                    (frame, None)
+                }
             }
         };
         let key: ShpSpriteKey = ShpSpriteKey {
@@ -290,7 +314,8 @@ pub(crate) fn build_shp_instances(
                 // NW footprint cell's tile row — the row gamemd's YSort (X + Y
                 // off the render coords) reduces to. A building therefore sorts
                 // on its own cell rather than one iso row north of it.
-                compute_sprite_depth(state, sy, interp_z)
+                let axis = depth_axis(state);
+                compute_sprite_depth_params_lifted(axis.origin_y, axis.world_height, sy, lift_px)
             }
             _ => {
                 // The drawn row carries this body's height lift; the sort key
@@ -376,7 +401,7 @@ pub(crate) fn build_shp_instances(
                 point_move,
             );
             (
-                ground_z_adjust(interp_z, normal_z_adjust + SHP_DRAW_Z_ADJUST_PX),
+                lifted_z_adjust(lift_px, normal_z_adjust + SHP_DRAW_Z_ADJUST_PX),
                 native_z::pack_building_z_gradient(zshape, entry.extended),
                 [origin.0 as f32, origin.1 as f32],
             )
@@ -460,7 +485,7 @@ pub(crate) fn build_shp_instances(
                     hc,
                     sx,
                     sy,
-                    interp_z,
+                    lift_px,
                     depth,
                     tint,
                     palette_light,
@@ -496,7 +521,7 @@ pub(crate) fn build_shp_instances(
                     &entity.building_anim_slots,
                     world_height,
                     draw_state,
-                    interp_z,
+                    lift_px,
                 );
             }
             // Emit VXL turret on top of building (e.g., SAM site, Prism Tower).
@@ -506,15 +531,11 @@ pub(crate) fn build_shp_instances(
                         if let Some((page, instance)) = emit_building_turret_vxl(
                             state,
                             turret_id,
-                            entity
-                                .barrel_facing
-                                .as_ref()
-                                .map(|f| f.current(sim.session.binary_frame))
-                                .unwrap_or(0u16),
+                            entity.body_facing_current(sim.session.binary_frame),
                             hc,
                             sx,
                             sy,
-                            interp_z,
+                            lift_px,
                             depth,
                             tint,
                             // Building VXL 0043DA80 reads top directly (e.g.
@@ -572,7 +593,7 @@ fn emit_building_turret_vxl(
     _hc: HouseColorIndex,
     building_sx: f32,
     building_sy: f32,
-    z: u8,
+    lift_px: i32,
     building_depth: f32,
     tint: [f32; 3],
     palette_light: crate::render::palette_light::PaletteLight,
@@ -590,6 +611,7 @@ fn emit_building_turret_vxl(
         layer: VxlLayer::Composite,
         frame: 0,
         slope_type: 0, // building turrets don't tilt on slopes
+        barrel_pitch: 0,
     };
     let entry = unit_atlas.get(&key)?;
     // Position turret at building cell origin + pixel offset from INI.
@@ -611,7 +633,7 @@ fn emit_building_turret_vxl(
             alpha: 1.0,
             draw_state,
             // VXL blit: gradient entry 2, lift cancelled, no DrawSHP -2.
-            z_adjust: ground_z_adjust(z, 0),
+            z_adjust: lifted_z_adjust(lift_px, 0),
             z_gradient: pack_z_gradient(ZGradient::Vertical, false),
             ..Default::default()
         },
@@ -632,7 +654,7 @@ fn emit_building_bib(
     house_color: HouseColorIndex,
     screen_x: f32,
     screen_y: f32,
-    z: u8,
+    lift_px: i32,
     building_depth: f32,
     tint: [f32; 3],
     palette_light: crate::render::palette_light::PaletteLight,
@@ -690,7 +712,7 @@ fn emit_building_bib(
             palette_light,
             alpha: 1.0,
             draw_state,
-            z_adjust: ground_z_adjust(z, BIB_Z_ADJUST_PX + SHP_DRAW_Z_ADJUST_PX),
+            z_adjust: lifted_z_adjust(lift_px, BIB_Z_ADJUST_PX + SHP_DRAW_Z_ADJUST_PX),
             z_gradient: pack_z_gradient(ZGradient::Flat, false),
             ..Default::default()
         },
@@ -721,7 +743,7 @@ fn emit_building_anims(
     slots: &[Option<u64>; 21],
     world_height: f32,
     draw_state: DrawState,
-    z: u8,
+    lift_px: i32,
 ) {
     let rules_image: String = rules
         .and_then(|r| r.object(building_type))
@@ -736,7 +758,9 @@ fn emit_building_anims(
         else {
             continue;
         };
-        if instance.runtime.inactive || instance.draw_runtime.hidden {
+        // Building's retained slot reaches DrawIt422CA0..4238AF until physical
+        // release. That body gates on hidden19D, not19B or Logic membership.
+        if instance.draw_runtime.hidden {
             continue;
         }
         let anim_name = sim.interner.resolve(instance.type_id);
@@ -836,8 +860,8 @@ fn emit_building_anims(
                 draw_state,
                 // The anim's YDrawOffset is baked into the atlas offset, so it
                 // also rides the Z term (native `YDrawOffset + ZAdjust - 2`).
-                z_adjust: ground_z_adjust(
-                    z,
+                z_adjust: lifted_z_adjust(
+                    lift_px,
                     z_adjust_px
                         + art_reg
                             .anim_runtime_config(anim_name)
@@ -854,7 +878,10 @@ fn resolve_infantry_shp_frame(
     state: &AppState,
     type_id: &str,
     entity: &crate::sim::game_entity::GameEntity,
-) -> u16 {
+    binary_frame: u32,
+    cells: Option<&crate::map::resolved_terrain::NativeCellQuery<'_>>,
+) -> Option<u16> {
+    let facing = entity.body_facing_byte(binary_frame);
     // Pass raw facing (not canonical) to resolve_shp_frame so the
     // facing-to-index division works correctly for any facing count
     // (6, 8, 10, etc.). The absolute frame index encodes the direction.
@@ -872,22 +899,68 @@ fn resolve_infantry_shp_frame(
         && let Some(set) = sequence_set
         && let Some(frame) = animation::resolve_shp_vehicle_body_frame(
             set,
-            entity.facing,
+            facing,
             entity.body_frame_counter,
             crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(entity),
         )
     {
-        return frame;
+        return Some(frame);
+    }
+    if let (Some((doing, stage)), Some(set)) = (entity.infantry_sprite_pose(), sequence_set) {
+        // Original518D93..518DC8: Doing-1 draws Tread16 only when the
+        // current CellClass+EC is Water2 and OnBridge is clear. This reads
+        // live map land; it does not depend on the separate Infantry6E8 byte.
+        let selected = if doing == -1 {
+            let water = cells.is_some_and(|cells| {
+                let cell = cells.lookup((entity.position.rx as i16, entity.position.ry as i16));
+                cells.land_type(cell) == 2
+            });
+            if water && !entity.on_bridge { 16 } else { 0 }
+        } else {
+            doing
+        };
+        let record = set.infantry_action(selected)?;
+        let facing = state
+            .rules()
+            .and_then(|rules| {
+                let sim = &state.match_state.sim_runtime.as_ref()?.simulation;
+                rules.object(sim.interner.resolve(entity.type_ref()))
+            })
+            .filter(|object| object.jumpjet && !object.jumpjet_turn)
+            .filter(|_| {
+                entity.locomotor.as_ref().is_some_and(|loco| {
+                    loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+                })
+            })
+            .and_then(|_| entity.attack_target.as_ref())
+            .and_then(|target| {
+                let sim = &state.match_state.sim_runtime.as_ref()?.simulation;
+                crate::sim::movement::turret::facing_toward_target(
+                    entity,
+                    &target.target,
+                    sim.entities(),
+                )
+            })
+            .map_or(facing, |direction| (direction >> 8) as u8);
+        // Native EAX remains signed. A negative/wide result cannot alias an
+        // unrelated valid frame in the u16 SHP atlas. This is an asset boundary,
+        // not evidence for native invalid-index shape-access behavior.
+        return u16::try_from(animation::resolve_shp_frame(record, facing, stage)).ok();
     }
     if let (Some(anim_state), Some(set)) = (entity.animation.as_ref(), sequence_set) {
         if let Some(def) = set.get(&anim_state.sequence) {
-            return animation::resolve_shp_frame(def, entity.facing, anim_state.frame_index);
+            return u16::try_from(animation::resolve_shp_frame(
+                def,
+                facing,
+                i32::from(anim_state.frame_index),
+            ))
+            .ok();
         }
     }
     // Fallback when no sequence data was built for this type: the standing
     // block is frames 0..7, so the facing slot is the frame index. Uses the
     // same native facing table as the real path so the two cannot disagree.
-    animation::infantry_facing_slot(entity.facing)
+    Some(animation::infantry_facing_slot(facing))
 }
 
 /// Completed `CanBeOccupied` body frame: native GetCurrentFrame 0x0043EF90.

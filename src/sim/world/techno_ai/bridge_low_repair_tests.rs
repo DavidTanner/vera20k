@@ -98,7 +98,6 @@ fn retail_shrapnel_engineer_repairs_authored_water_gap() {
             55,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .expect("ordinary Engineer placement on the hut's bank");
     let command = CommandEnvelope::new(
@@ -216,7 +215,6 @@ fn cross_repaired_road(scene: &mut HeadlessScenario) {
             55,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("ordinary FV on the north road");
@@ -343,7 +341,6 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
             55,
             0,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
         )
         .unwrap();
     let ship = runtime
@@ -355,7 +352,6 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
             59,
             64,
             &runtime.resources.rules,
-            &runtime.resources.height_map,
             &runtime.resources.overlay_registry,
         )
         .expect("ordinary AEGIS placement in the untouched water lane");
@@ -400,11 +396,12 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
         path_delay_bytes,
         readers["path_delay_bits"].as_str().unwrap()
     );
-    let other_ships = runtime
-        .simulation
-        .entities()
-        .count_owned_of_type(owner, ship_type)
-        - 1;
+    let ships = |sim: &crate::sim::world::Simulation| {
+        sim.houses[&owner]
+            .tracking
+            .active_count(crate::map::entities::EntityCategory::Unit, ship_type)
+    };
+    let other_ships = ships(&runtime.simulation) - 1;
     let initial_losses = runtime.simulation.houses[&owner].stats.units_lost;
     let ship_delay: usize = std::env::var("VERA20K_LOW_NAVAL_DELAY")
         .ok()
@@ -582,8 +579,8 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                 assert_eq!(Some(loco.track), retained_track, "sinking bypasses Process");
                 saw_last_live_height |= coord.z == last_live_z;
                 assert_eq!(
-                    scene.sim().entities().count_owned_of_type(owner, ship_type) - other_ships,
-                    native["after_damage"]["owner_type_count"].as_u64().unwrap() as u32
+                    ships(scene.sim()) - other_ships,
+                    native["after_damage"]["owner_type_count"].as_i64().unwrap() as i32
                 );
             }
         } else if terminal_frame.is_none() {
@@ -630,10 +627,10 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                 initial_losses,
             );
             assert_eq!(
-                scene.sim().entities().count_owned_of_type(owner, ship_type) - other_ships,
+                ships(scene.sim()) - other_ships,
                 native["terminal"]["state"]["owner_type_count"]
-                    .as_u64()
-                    .unwrap() as u32
+                    .as_i64()
+                    .unwrap() as i32
             );
         }
     }

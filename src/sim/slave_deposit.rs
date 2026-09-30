@@ -59,6 +59,8 @@ mod tests {
             e.category = category;
             if id == 1 {
                 e.slave_manager = manager(&mut interner, &[2]);
+                // Construction stamps the type's `Foundation=2x2`.
+                e.foundation = "2x2".to_string();
             }
             if id == 2 {
                 e.slave = SlaveLink::for_test(Some(1), Vec::new());
@@ -314,16 +316,13 @@ impl SlaveDepositQuery<'_> {
                     .into_iter()
                     .flat_map(|list| list.iter_layer(MovementLayer::Ground))
                     .filter_map(|entry| self.entities.get(entry.entity_id))
-                    .filter_map(|entity| {
-                        let kind = self
-                            .rules
-                            .object(self.interner.resolve(entity.type_ref()))?;
-                        let c = ground_pose::object_center_coord(entity, kind);
-                        Some((
+                    .map(|entity| {
+                        let [x, y] = ground_pose::object_center_xy(entity);
+                        (
                             entity.stable_id(),
                             true,
-                            crate::sim::cell_kernel::CellQueryPoint { x: c.x, y: c.y },
-                        ))
+                            crate::sim::cell_kernel::CellQueryPoint { x, y },
+                        )
                     });
                 crate::sim::cell_kernel::nearest_eligible_in_order(
                     crate::sim::cell_kernel::CellQueryPoint { x: 0, y: 0 },

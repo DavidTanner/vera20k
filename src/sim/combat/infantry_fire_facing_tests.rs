@@ -7,8 +7,7 @@ use crate::sim::world::Simulation;
 fn pair() -> EntityStore {
     let mut store = EntityStore::new();
     let mut firer = make_infantry_entity(1, "E1", 5, 5, 125);
-    firer.facing = 0x81;
-    firer.body_facing = Some(FacingClass::new(0x8123, 5));
+    firer.body_facing = FacingClass::new(0x8123, 5);
     store.insert(firer);
     store.insert(make_infantry_entity(2, "E2", 8, 5, 125));
     store
@@ -34,14 +33,8 @@ fn infantry_orders_leave_facing_to_fire_start() {
         let mut store = pair();
         let interner = test_interner();
         match order {
-            0 => assert!(issue_attack_command(
-                &mut store,
-                1,
-                2,
-                Some(&rules),
-                &interner
-            )),
-            _ => assert!(issue_attack_cell_command(
+            0 => assert!(install_entity_attack_target_for_test(&mut store, 1, 2)),
+            _ => assert!(install_cell_attack_target_for_test(
                 &mut store,
                 1,
                 8,
@@ -51,8 +44,7 @@ fn infantry_orders_leave_facing_to_fire_start() {
             )),
         }
         let entity = store.get(1).unwrap();
-        assert_eq!(entity.facing, 0x81, "order {order}");
-        assert_eq!(entity.body_facing.unwrap().current(100), 0x8123);
+        assert_eq!(entity.body_facing.current(100), 0x8123, "order {order}");
     }
 }
 
@@ -96,32 +88,17 @@ fn infantry_fire_start_heading_matches_original_code_vectors() {
                 row["initial_start"].as_u64().unwrap() as u32,
             );
         }
-        firer.facing = (body.current(100) >> 8) as u8;
-        firer.body_facing = Some(body);
+        firer.body_facing = body;
         firer.infantry.as_mut().unwrap().is_prone = row["prone"] == 1;
         if row["deployed"] == true {
-            firer.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
-            firer.animation = Some(Animation::new(SequenceKind::Deployed));
+            firer.mission_leaf.set_infantry_doing_verified(28).unwrap();
         }
         firer.attack_target = Some(AttackTarget::new(2));
         let result = visit(&mut store, &rules, 100);
         let firer = store.get(1).unwrap();
         let expected = row["facing"].as_u64().unwrap() as u16;
-        assert_eq!(
-            firer.body_facing.unwrap().current(100),
-            expected,
-            "{}",
-            row["name"]
-        );
-        assert_eq!(firer.facing, (expected >> 8) as u8);
-        assert!(
-            firer
-                .attack_target
-                .as_ref()
-                .unwrap()
-                .pending_infantry_fire
-                .is_some()
-        );
+        assert_eq!(firer.body_facing.current(100), expected, "{}", row["name"]);
+        assert!(firer.mission_leaf.foot_firing_sequence_latch() != 0);
         assert!(result.consequences.fire_events().is_empty());
         compared += 1;
     }
@@ -146,10 +123,7 @@ fn infantry_refused_or_reloading_does_not_snap() {
                 .fire_events()
                 .is_empty()
         );
-        assert_eq!(
-            store.get(1).unwrap().body_facing.unwrap().current(100),
-            0x8123
-        );
+        assert_eq!(store.get(1).unwrap().body_facing.current(100), 0x8123);
     }
 }
 
@@ -164,25 +138,21 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
     for row in rows.iter().filter(|row| !row["fixed_bits"].is_null()) {
         let mut store = pair();
         let firer = store.get_mut(1).unwrap();
-        firer.foot_speed.applied_fraction =
-            SimFixed::from_bits(row["fixed_bits"].as_i64().unwrap() as i32);
+        firer.foot_speed.set_speed_fraction(SimFixed::from_bits(
+            row["fixed_bits"].as_i64().unwrap() as i32,
+        ));
         firer.attack_target = Some(AttackTarget::new(2));
         let result = visit(&mut store, &rules, 100);
         let firer = store.get(1).unwrap();
         let refused = row["refused"].as_bool().unwrap();
         assert_eq!(
-            firer
-                .attack_target
-                .as_ref()
-                .unwrap()
-                .pending_infantry_fire
-                .is_none(),
+            firer.mission_leaf.foot_firing_sequence_latch() == 0,
             refused,
             "{}",
             row["name"]
         );
         assert_eq!(
-            firer.body_facing.unwrap().current(100),
+            firer.body_facing.current(100),
             if refused { 0x8123 } else { 0x3FFF },
             "{}",
             row["name"]
@@ -194,40 +164,23 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
 }
 
 #[test]
-fn infantry_speed_refusal_at_fire_frame_clears_pending_sequence() {
+fn infantry_speed_refusal_at_fire_frame_clears_firing_latch() {
     let rules = infantry_fire_frame_rules();
     let mut store = pair();
     store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
     visit(&mut store, &rules, 100);
     let body = store.get(1).unwrap().body_facing;
-    set_anim_frame(&mut store, 1, 2);
+    set_infantry_stage(&mut store, 1, 2);
     let firer = store.get_mut(1).unwrap();
-    assert!(
-        firer
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_some()
-    );
+    assert!(firer.mission_leaf.foot_firing_sequence_latch() != 0);
     // Isolate the live Foot predicate from the older movement-target shortcut.
     assert!(firer.movement_target.is_none());
-    firer.foot_speed.applied_fraction = SimFixed::ONE;
+    firer.foot_speed.set_speed_fraction(SimFixed::ONE);
     let result = visit(&mut store, &rules, 101);
     let firer = store.get(1).unwrap();
     assert!(result.consequences.fire_events().is_empty());
-    assert!(
-        firer
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_none()
-    );
-    assert_eq!(
-        firer.animation.as_ref().unwrap().sequence,
-        SequenceKind::Stand
-    );
+    assert!(firer.mission_leaf.foot_firing_sequence_latch() == 0);
+    assert_eq!(firer.infantry_sprite_pose(), Some((0, 0)));
     assert_eq!(firer.body_facing, body);
 }
 
@@ -257,7 +210,9 @@ fn rocketeer_pair() -> (EntityStore, RuleSet) {
     );
     let mut store = EntityStore::new();
     let mut firer = make_infantry_entity(1, "JJ", 5, 5, 125);
-    firer.body_facing = Some(FacingClass::new(0x4000, 127));
+    firer.body_facing = FacingClass::new(0x4000, 127);
+    // Object5F6B90 requires +74 as well as the height for the Hover remap.
+    firer.lifecycle.cell_marked = true;
     firer.position.exact_z_leptons = Some(500);
     let mut locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
         rules.object("JJ").unwrap(),
@@ -292,42 +247,33 @@ fn a_rocketeer_refused_at_its_fire_frame_hovers() {
             .doing()
     };
     assert_eq!(doing(&store), DO_FIRE_FLY);
-    assert_eq!(
-        store.get(1).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::FireFly
-    );
-    set_anim_frame(&mut store, 1, 2);
-    store.get_mut(1).unwrap().foot_speed.applied_fraction = SimFixed::ONE;
+    assert_eq!(store.get(1).unwrap().infantry_sprite_pose(), Some((26, 0)));
+    set_infantry_stage(&mut store, 1, 2);
+    store
+        .get_mut(1)
+        .unwrap()
+        .foot_speed
+        .set_speed_fraction(SimFixed::ONE);
     let result = visit(&mut store, &rules, 101);
     assert!(result.consequences.fire_events().is_empty());
     let firer = store.get(1).unwrap();
-    assert!(
-        firer
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_none()
-    );
+    assert!(firer.mission_leaf.foot_firing_sequence_latch() == 0);
     assert_eq!(doing(&store), DO_HOVER);
-    assert_eq!(
-        firer.animation.as_ref().unwrap().sequence,
-        SequenceKind::Hover
-    );
+    assert_eq!(firer.infantry_sprite_pose(), Some((23, 0)));
 }
 
 #[test]
-fn pending_sequence_keeps_start_facing_when_target_moves() {
+fn firing_latch_keeps_start_facing_when_target_moves() {
     let rules = infantry_fire_frame_rules();
     let mut store = pair();
     store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
     visit(&mut store, &rules, 100);
-    let facing = store.get(1).unwrap().body_facing.unwrap();
+    let facing = store.get(1).unwrap().body_facing;
     store.get_mut(2).unwrap().position.rx = 2;
-    set_anim_frame(&mut store, 1, 2);
+    set_infantry_stage(&mut store, 1, 2);
     let result = visit(&mut store, &rules, 101);
     assert_eq!(result.consequences.fire_events().len(), 1);
-    assert_eq!(store.get(1).unwrap().body_facing, Some(facing));
+    assert_eq!(store.get(1).unwrap().body_facing, facing);
     assert_eq!(
         result.consequences.fire_events()[0].facing,
         (facing.current(101) >> 8) as u8
@@ -363,18 +309,21 @@ fn production_rules(fire_up: u32) -> RuleSet {
 fn production_pair(rules: &RuleSet) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(flat_level_zero_terrain(16, 16));
-    let firer = sim
-        .spawn_object("E1", "Americans", 5, 5, 0, rules, &BTreeMap::new())
-        .unwrap();
-    let target = sim
-        .spawn_object("E2", "Russians", 8, 5, 0, rules, &BTreeMap::new())
-        .unwrap();
-    assert!(issue_attack_command(
+    // This full-frame receiver can take damage before its own Infantry fear
+    // turn. Supply both live House owners instead of a null-house fixture.
+    for name in ["Americans", "Russians"] {
+        let owner = sim.interner.intern(name);
+        sim.houses.insert(
+            owner,
+            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+        );
+    }
+    let firer = sim.spawn_object("E1", "Americans", 5, 5, 0, rules).unwrap();
+    let target = sim.spawn_object("E2", "Russians", 8, 5, 0, rules).unwrap();
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         firer,
-        target,
-        Some(rules),
-        &sim.interner
+        target
     ));
     (sim, firer, target)
 }
@@ -401,13 +350,10 @@ fn production_zero_delay_shot_and_restore_use_new_heading() {
     let source = &sim.substrate.entities.get(firer).unwrap().position;
     let source_x = i32::from(source.rx) * 256 + source.sub_x.to_num::<i32>();
     let source_y = i32::from(source.ry) * 256 + source.sub_y.to_num::<i32>();
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     let entity = sim.substrate.entities.get(firer).unwrap();
     assert!(sim.fog.is_cell_visible(entity.owner(), 8, 5));
-    let facing = entity
-        .body_facing
-        .expect("retained fire-facing owner")
-        .current(sim.session.binary_frame);
+    let facing = entity.body_facing.current(sim.session.binary_frame);
     assert_eq!(facing, 0x3FFF, "native eastward direction");
     let event = sim
         .fire_events
@@ -442,8 +388,8 @@ fn production_zero_delay_shot_and_restore_use_new_heading() {
     sim.scenario_rng = SimRng::new(0);
     assert_eq!(sim.state_hash(), restored.state_hash());
     for _ in 0..4 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
-        restored.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
+        restored.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(sim.state_hash(), restored.state_hash());
     }
 }
@@ -464,14 +410,17 @@ fn cell_and_building_fire_headings_match_original_coordinate_getters() {
         firer.attack_target = Some(if row["target_kind"] == "cell" {
             AttackTarget::for_cell(8, 5)
         } else {
-            store.insert(make_structure_entity(2, "TARGET", 8, 5, 125, 125));
+            let mut target = make_structure_entity(2, "TARGET", 8, 5, 125, 125);
+            // Construction stamps the type's `Foundation=2x3`.
+            target.foundation = "2x3".to_string();
+            store.insert(target);
             AttackTarget::new(2)
         });
         store.insert(firer);
         let result = visit(&mut store, &rules, 100);
         assert!(result.consequences.fire_events().is_empty());
         assert_eq!(
-            u64::from(store.get(1).unwrap().body_facing.unwrap().current(100)),
+            u64::from(store.get(1).unwrap().body_facing.current(100)),
             row["facing"].as_u64().unwrap(),
             "{}",
             row["name"]
@@ -482,33 +431,24 @@ fn cell_and_building_fire_headings_match_original_coordinate_getters() {
 }
 
 #[test]
-fn production_pending_fire_restores_heading_and_reaches_emission() {
+fn production_firing_latch_restores_heading_and_reaches_emission() {
     let rules = production_rules(2);
     let (mut sim, firer, target) = production_pair(&rules);
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     let entity = sim.substrate.entities.get(firer).unwrap();
-    assert!(
-        entity
-            .attack_target
-            .as_ref()
-            .unwrap()
-            .pending_infantry_fire
-            .is_some()
-    );
-    let body = entity
-        .body_facing
-        .expect("facing written at sequence start");
+    assert!(entity.mission_leaf.foot_firing_sequence_latch() != 0);
+    let body = entity.body_facing;
     assert!(sim.fire_events.is_empty());
     let mut restored = restore_production_pair(&sim, &rules);
     sim.scenario_rng = SimRng::new(0); // Native Scenario load reseed.
     assert_eq!(sim.state_hash(), restored.state_hash());
     for _ in 0..24 {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
-        restored.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
+        restored.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(sim.state_hash(), restored.state_hash());
         assert_eq!(
             restored.substrate.entities.get(firer).unwrap().body_facing,
-            Some(body)
+            body
         );
         if restored
             .fire_events
@@ -548,26 +488,11 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
     let (mut sim, firer, target) = production_pair(&rules);
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let command = |sim: &mut Simulation, command: Command| {
-        let grid = sim.path_grid_snapshot();
-        assert!(sim.apply_command_with_overlays(
-            "Americans",
-            &command,
-            Some(&rules),
-            grid.as_deref(),
-            &BTreeMap::new(),
-            None,
-        ));
+        assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None,));
     };
     let frame = |sim: &mut Simulation| {
         let grid = sim.path_grid_snapshot();
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &BTreeMap::new(),
-            grid.as_deref(),
-            None,
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), grid.as_deref(), None, 67);
     };
     // Walk south, then attack the enemy east of us. The turn is observable.
     command(
@@ -602,8 +527,8 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
         .unwrap()
         .step_head()
         .expect("accepted Walk step");
-    let body = entity.body_facing.expect("Walk's heading owner");
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
+    let body = entity.body_facing;
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::ONE);
     if boosted {
         assert!(
             sim.substrate
@@ -626,11 +551,10 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
     let entity = sim.substrate.entities.get(firer).unwrap();
     assert_eq!(entity.locomotor.as_ref().unwrap().step_head(), Some(head));
     assert_eq!(
-        entity.body_facing,
-        Some(body),
+        entity.body_facing, body,
         "order keeps the paid-step heading"
     );
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::ONE);
     let mut resumed = restore_production_pair(&sim, &rules);
     sim.scenario_rng = SimRng::new(0); // Native Scenario load reseeds this stream.
     assert_eq!(sim.state_hash(), resumed.state_hash());
@@ -654,30 +578,21 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             .fire_events
             .iter()
             .any(|event| event.attacker_id == firer);
-        if entity.foot_speed.applied_fraction > SimFixed::ONE / SimFixed::from_num(10) {
+        if entity.foot_speed.applied_fraction() > SimFixed::ONE / SimFixed::from_num(10) {
             if boosted {
                 assert_eq!(
-                    entity.foot_speed.cached_current_speed, 11,
+                    sim.current_speed_for_test(firer, &rules),
+                    11,
                     "live native crate speed"
                 );
             }
             assert!(!fired, "a retained paid step cannot fire");
             assert_eq!(
-                entity
-                    .body_facing
-                    .unwrap()
-                    .current(sim.session.binary_frame),
+                entity.body_facing.current(sim.session.binary_frame),
                 step_heading,
                 "movement may correct toward its head; fire must not turn toward the enemy"
             );
-            assert!(
-                entity
-                    .attack_target
-                    .as_ref()
-                    .unwrap()
-                    .pending_infantry_fire
-                    .is_none()
-            );
+            assert!(entity.mission_leaf.foot_firing_sequence_latch() == 0);
             refused_frames += 1;
         } else if fired {
             assert!(
@@ -686,8 +601,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             );
             assert!(entity.locomotor.as_ref().unwrap().step_head().is_none());
             assert_ne!(
-                entity.body_facing,
-                Some(body),
+                entity.body_facing, body,
                 "face target at accepted fire start"
             );
             assert_eq!(

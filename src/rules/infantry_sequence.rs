@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use crate::rules::animation_sequence::{
     FacingSlots, LoopMode, SequenceDef, SequenceKind, SequenceSet,
 };
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
 
 /// Bytes 0 and 3 of gamemd's 42 four-byte infantry action records at
 /// 0x007EAF7C (re-read from the binary 2026-09-15; all 42 rows match).
@@ -313,44 +313,57 @@ pub type InfantrySequenceRegistry = HashMap<String, InfantrySequenceDef>;
 /// constructor values; malformed nonempty input still returns that record.
 #[cfg(test)]
 pub fn parse_sequence_value(value: &str) -> Option<InfantrySequenceEntry> {
-    let value = crate::rules::ini_value::truncate_bytes(value, 31);
-    if crate::rules::ini_value::strtrim_ascii(value).is_empty() {
-        return None;
-    }
-    let mut record = InfantrySequenceEntry::default();
-    read_sequence_value(value, &mut record);
-    Some(record)
+    let mut section = IniSection::new(String::new());
+    section.set("K", value);
+    section.read_name("K", 0x20)?;
+    Some(read_sequence(
+        &section,
+        "K",
+        InfantrySequenceEntry::default(),
+    ))
 }
 
-/// Original523D00 partial sscanf retains every field whose conversion fails.
-/// ReadString's31-byte copy occurs before trimming; literal commas skip no
-/// whitespace. Corpus: tools/spatial_oracle/infantry_sequence_rules.
-fn read_sequence_value(value: &str, record: &mut InfantrySequenceEntry) {
-    let value = crate::rules::ini_value::truncate_bytes(value, 31);
-    let mut bytes = crate::rules::ini_value::strtrim_ascii(value).as_bytes();
-    for slot in [
-        &mut record.start_frame,
-        &mut record.frames_per_facing,
-        &mut record.facings,
-    ] {
-        let Some(value) = crate::rules::ini_value::scan_decimal_i32(&mut bytes) else {
-            return;
-        };
-        *slot = value;
-        if bytes.first() != Some(&b',') {
-            return;
+/// Original523D00: ReadString into `char[32]` (the 31-byte cut precedes the
+/// trim), then a partial `sscanf("%d,%d,%d,%s")` over `record` that retains
+/// every field whose conversion fails. Literal commas skip no whitespace. An
+/// absent key keeps `record`. Corpus: tools/spatial_oracle/infantry_sequence_rules.
+pub(crate) fn read_sequence(
+    section: &IniSection,
+    key: &str,
+    record: InfantrySequenceEntry,
+) -> InfantrySequenceEntry {
+    section.read_string_with(key, 0x20, record, |mut record, value| {
+        let mut bytes = value.as_bytes();
+        let slots = [
+            &mut record.start_frame,
+            &mut record.frames_per_facing,
+            &mut record.facings,
+        ];
+        let scanned = slots.into_iter().all(|slot| {
+            let Some(value) = crate::rules::ini_value::scan_decimal_i32(&mut bytes) else {
+                return false;
+            };
+            *slot = value;
+            let comma = bytes.first() == Some(&b',');
+            if comma {
+                bytes = &bytes[1..];
+            }
+            comma
+        });
+        if !scanned {
+            return record;
         }
-        bytes = &bytes[1..];
-    }
-    let token = bytes
-        .split(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 11 | 12))
-        .find(|token| !token.is_empty())
-        .unwrap_or_default();
-    if let Ok(token) = std::str::from_utf8(token)
-        && let Some(hint) = parse_facing_hint(token)
-    {
-        record.facing_hint = Some(hint);
-    }
+        let token = bytes
+            .split(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 11 | 12))
+            .find(|token| !token.is_empty())
+            .unwrap_or_default();
+        if let Ok(token) = std::str::from_utf8(token)
+            && let Some(hint) = parse_facing_hint(token)
+        {
+            record.facing_hint = Some(hint);
+        }
+        record
+    })
 }
 
 /// Parse a facing direction hint string (e.g., "S", "NE", "W").
@@ -368,7 +381,7 @@ fn parse_facing_hint(s: &str) -> Option<FacingHint> {
     }
 }
 
-fn completion_facing(hint: Option<FacingHint>) -> Option<u8> {
+pub(crate) fn completion_facing(hint: Option<FacingHint>) -> Option<u8> {
     match hint {
         Some(FacingHint::N) => Some(0),
         Some(FacingHint::NE) => Some(32),
@@ -398,19 +411,10 @@ pub fn parse_infantry_sequence_registry(ini: &IniFile) -> InfantrySequenceRegist
         let mut entries: HashMap<String, InfantrySequenceEntry> = HashMap::new();
 
         for key in NATIVE_SEQUENCE_NAMES {
-            let value = match section.get(key) {
-                Some(v) => v,
-                None => continue,
-            };
-
-            let mut entry = InfantrySequenceEntry::default();
-            if let Some(values) = section.projected_values(key) {
-                for value in values {
-                    read_sequence_value(value, &mut entry);
-                }
-            } else {
-                read_sequence_value(value, &mut entry);
+            if !section.is_present(key) {
+                continue;
             }
+            let entry = read_sequence(section, key, InfantrySequenceEntry::default());
             entries.insert(key.to_ascii_uppercase(), entry);
         }
 
@@ -676,7 +680,8 @@ pub fn build_sequence_set(def: &InfantrySequenceDef) -> SequenceSet {
         // Multiplier>0 → directional with 8 infantry facings.
         // The existing generic SHP interface represents u16 asset indices.
         // It must never narrow the signed bank used by gameplay. Wider/negative
-        // native draw selection remains a separate presentation migration.
+        // native drawing reads the signed bank directly through the shared
+        // frame resolver; this generic map is only a compatibility projection.
         let (Ok(start_frame), Ok(frame_count), Ok(stride)) = (
             u16::try_from(entry.start_frame),
             u16::try_from(entry.frames_per_facing),

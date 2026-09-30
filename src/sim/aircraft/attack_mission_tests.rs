@@ -464,6 +464,8 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
         if airfield {
             let mut pad = GameEntity::test_default(2, "AIRF", "Americans", 20, 40);
             pad.category = EntityCategory::Structure;
+            // Construction stamps the type's `Foundation=2x2`.
+            pad.foundation = "2x2".to_string();
             pad.lifecycle.in_limbo = false;
             sim.substrate.entities.insert(pad);
         }
@@ -510,7 +512,7 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
             &mut expected_rng,
         )
         .unwrap();
-        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
         assert_eq!(
             sim.scenario_rng.logical_state(),
             expected_rng.logical_state()

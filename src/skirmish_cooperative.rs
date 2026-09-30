@@ -10,6 +10,8 @@ use crate::sim::rng::SimRng;
 
 pub const COOPERATIVE_CAMPAIGN_INI: &str = "CoopCampMD.ini";
 const MAP_VARIANT_COUNT: usize = 3;
+/// Every CoopCampMD.ini value is a `ReadString(..., 0x80)` in 0x0049DB00.
+const CAMPAIGN_VALUE_CAPACITY: usize = 0x80;
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum CooperativeError {
@@ -50,14 +52,13 @@ pub enum CooperativeAiDifficulty {
 }
 
 impl CooperativeAiDifficulty {
-    fn from_ini(value: Option<&str>) -> Self {
-        match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-            Some("hard") => Self::Hard,
-            Some("normal") => Self::Normal,
-            Some("easy") | None => Self::Easy,
+    fn from_ini(value: &str) -> Self {
+        match value.to_ascii_lowercase().as_str() {
+            "hard" => Self::Hard,
+            "normal" => Self::Normal,
             // Native enum lookup retains the caller-provided Easy default when
             // the string is not a recognized difficulty name.
-            Some(_) => Self::Easy,
+            _ => Self::Easy,
         }
     }
 }
@@ -92,9 +93,10 @@ pub struct CooperativeRegistry {
 }
 
 impl CooperativeRegistry {
-    /// Parse the already loaded retail payload. A successful empty or missing
-    /// `[Campaigns]` section yields a valid zero-campaign registry, matching the
-    /// native lazy loader's successful-empty state.
+    /// Parse the already loaded retail payload like the coopcamp.cpp registry
+    /// read 0x0049DB00. A successful empty or missing `[Campaigns]` section
+    /// yields a valid zero-campaign registry, matching the native lazy loader's
+    /// successful-empty state.
     pub fn from_ini(ini: &IniFile) -> Result<Self, CooperativeError> {
         let Some(roster) = ini.section("Campaigns") else {
             return Ok(Self::default());
@@ -102,22 +104,16 @@ impl CooperativeRegistry {
 
         let mut campaigns = Vec::with_capacity(roster.entry_count());
         for roster_key in roster.keys() {
-            let Some(section_name) = roster.get(roster_key) else {
+            let Some(section_name) = roster.read_name(roster_key, CAMPAIGN_VALUE_CAPACITY) else {
                 continue;
             };
-            let section = ini.section(section_name);
-            let stage_count = section
-                .and_then(|section| section.get("NumberOfCampaignMaps"))
-                .map(native_atoi_or_hex)
-                .unwrap_or(0)
-                .max(0) as usize;
+            let section = ini.section_or_empty(section_name);
+            let stage_count = section.read_int("NumberOfCampaignMaps", 0).max(0) as usize;
 
             let mut stages = Vec::with_capacity(stage_count);
             for stage_index in 0..stage_count {
                 let source_number = stage_index + 1;
-                let variants = comma_tokens(
-                    section.and_then(|section| section.get(&format!("Map{source_number}"))),
-                );
+                let variants = campaign_tokens(section, &format!("Map{source_number}"));
                 if variants.len() < MAP_VARIANT_COUNT {
                     return Err(CooperativeError::InvalidMapVariantCount {
                         campaign: section_name.to_string(),
@@ -131,25 +127,31 @@ impl CooperativeRegistry {
                         variants[1].clone(),
                         variants[2].clone(),
                     ],
-                    player_countries: comma_tokens(section.and_then(|section| {
-                        section.get(&format!("CampaignPlayer{source_number}"))
-                    })),
-                    enemy_countries: comma_tokens(
-                        section.and_then(|section| {
-                            section.get(&format!("CampaignEnemy{source_number}"))
-                        }),
+                    player_countries: campaign_tokens(
+                        section,
+                        &format!("CampaignPlayer{source_number}"),
+                    ),
+                    enemy_countries: campaign_tokens(
+                        section,
+                        &format!("CampaignEnemy{source_number}"),
                     ),
                 });
             }
 
             campaigns.push(CooperativeCampaign {
                 section: section_name.to_string(),
-                campaign_name: read_string(section, "CampaignName"),
-                load_screen: read_string(section, "CampaignLoadScreen"),
-                load_screen_pallet: read_string(section, "CampaignLoadScreenPallet"),
-                ai_difficulty: CooperativeAiDifficulty::from_ini(
-                    section.and_then(|section| section.get("CampaignAI")),
+                campaign_name: section.read_string("CampaignName", "", CAMPAIGN_VALUE_CAPACITY),
+                load_screen: section.read_string("CampaignLoadScreen", "", CAMPAIGN_VALUE_CAPACITY),
+                load_screen_pallet: section.read_string(
+                    "CampaignLoadScreenPallet",
+                    "",
+                    CAMPAIGN_VALUE_CAPACITY,
                 ),
+                ai_difficulty: CooperativeAiDifficulty::from_ini(&section.read_string(
+                    "CampaignAI",
+                    "Easy",
+                    CAMPAIGN_VALUE_CAPACITY,
+                )),
                 stages,
             });
         }
@@ -490,79 +492,15 @@ pub fn draw_country_for_progress(
     Ok(eligibility.draw(rng))
 }
 
-fn read_string(section: Option<&IniSection>, key: &str) -> String {
+/// `MapN`, `CampaignPlayerN` and `CampaignEnemyN` are `ReadString(0x80)`
+/// values split with `strtok(",")`; an absent key yields no tokens.
+fn campaign_tokens(section: &IniSection, key: &str) -> Vec<String> {
     section
-        .and_then(|section| section.get(key))
+        .read_list(key, CAMPAIGN_VALUE_CAPACITY)
         .unwrap_or_default()
-        .to_string()
-}
-
-fn comma_tokens(value: Option<&str>) -> Vec<String> {
-    value
-        .filter(|value| !value.is_empty())
-        .map(|value| value.split(',').map(str::to_string).collect())
-        .unwrap_or_default()
-}
-
-fn native_atoi_or_hex(value: &str) -> i32 {
-    let value = value.trim_matches(|character: char| (character as u32) <= 0x20);
-    if let Some(hex) = value.strip_prefix('$') {
-        return parse_hex_prefix(hex).unwrap_or(0);
-    }
-    if value
-        .as_bytes()
-        .last()
-        .is_some_and(|byte| byte.eq_ignore_ascii_case(&b'h'))
-    {
-        return parse_hex_prefix(&value[..value.len().saturating_sub(1)]).unwrap_or(0);
-    }
-    parse_decimal_prefix(value)
-}
-
-fn parse_hex_prefix(value: &str) -> Option<i32> {
-    let mut parsed = 0u32;
-    let mut found = false;
-    for byte in value.bytes() {
-        let digit = match byte {
-            b'0'..=b'9' => u32::from(byte - b'0'),
-            b'a'..=b'f' => u32::from(byte - b'a' + 10),
-            b'A'..=b'F' => u32::from(byte - b'A' + 10),
-            _ => break,
-        };
-        parsed = parsed.wrapping_mul(16).wrapping_add(digit);
-        found = true;
-    }
-    found.then_some(parsed as i32)
-}
-
-fn parse_decimal_prefix(value: &str) -> i32 {
-    let bytes = value.as_bytes();
-    let mut cursor = 0;
-    let negative = match bytes.first() {
-        Some(b'-') => {
-            cursor = 1;
-            true
-        }
-        Some(b'+') => {
-            cursor = 1;
-            false
-        }
-        _ => false,
-    };
-    let mut parsed = 0u32;
-    while let Some(&byte) = bytes.get(cursor) {
-        if !byte.is_ascii_digit() {
-            break;
-        }
-        parsed = parsed.wrapping_mul(10).wrapping_add(u32::from(byte - b'0'));
-        cursor += 1;
-    }
-    let signed = parsed as i32;
-    if negative {
-        signed.wrapping_neg()
-    } else {
-        signed
-    }
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 #[cfg(test)]

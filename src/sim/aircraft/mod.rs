@@ -93,13 +93,7 @@ pub enum AircraftMission {
     /// Kept under the older Rust name for save compatibility; stock SW PDPLANE
     /// starts here (gamemd mission 0x1A), not in binary Mission_ParaDropApproach.
     /// Transitions to the Rescue-equivalent state when distance ≤ ParadropRadius.
-    ParaDropApproach {
-        target_rx: u16,
-        target_ry: u16,
-        /// Save-compatible latch retained from the older Rust approach path.
-        /// Standard Mission_Open does not emit ChuteSound/fog reveal at threshold.
-        has_revealed_fog: bool,
-    },
+    ParaDropApproach { target_rx: u16, target_ry: u16 },
 
     /// Standard superweapon paradrop carrier in its Rescue-equivalent mission.
     /// Kept under the older Rust name for save compatibility; this is not
@@ -113,9 +107,6 @@ pub enum AircraftMission {
         exit_ry: u16,
         /// Ticks until next drop allowed (Mission_Rescue 5-frame cadence).
         drop_cooldown: u16,
-        /// LandingState mirror. Drop_Payload writes 5, but in-range Rescue does
-        /// not use it as an extra throttle beyond the 5-frame mission cadence.
-        landing_state: u8,
         /// Decrements per drop; parity drives V-pattern side (paradrop P25).
         payload_count: u8,
     },
@@ -140,12 +131,11 @@ impl AircraftMission {
 pub fn tick_aircraft_missions(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
 ) -> std::collections::BTreeSet<u64> {
     let order = sim.substrate.logic.as_slice().to_vec();
     order
         .into_iter()
-        .filter(|&id| dispatch_aircraft_mission(sim, rules, id, path_grid))
+        .filter(|&id| dispatch_aircraft_mission(sim, rules, id))
         .collect()
 }
 
@@ -159,14 +149,7 @@ pub fn tick_aircraft_missions(
 /// run a Mission_Attack strike visit (states 4..9) for this aircraft this
 /// frame. RESIDUAL: that visit runs in VERA's combat phase after the live
 /// pass, like every other attacker's FireAt, so its draws do not interleave.
-///
-/// `path_grid`: Paradrop's Drop_Payload uses it for drop-cell passability.
-pub(crate) fn dispatch_aircraft_mission(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    id: u64,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-) -> bool {
+pub(crate) fn dispatch_aircraft_mission(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
     let Some(e) = sim.substrate.entities.get(id) else {
         return false;
     };
@@ -187,8 +170,8 @@ pub(crate) fn dispatch_aircraft_mission(
     {
         return false;
     }
-    match mission_step(sim, rules, id, &mission, path_grid) {
-        Some(m) => apply_mission_mutation(sim, rules, m, path_grid),
+    match mission_step(sim, rules, id, &mission) {
+        Some(m) => apply_mission_mutation(sim, rules, m),
         None => false,
     }
 }
@@ -209,7 +192,6 @@ struct MissionMutation {
     /// Fly BeginTakeoff4CF950 through the world owner.
     begin_takeoff: bool,
     // Paradrop-specific apply-phase signals.
-    paradrop_chute_sound_at: Option<(u16, u16)>,
     paradrop_try_drop: bool,
     paradrop_payload_count_pre: u8,
     paradrop_silent_despawn: bool,
@@ -220,7 +202,6 @@ fn mission_step(
     rules: &RuleSet,
     id: u64,
     mission: &AircraftMission,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
 ) -> Option<MissionMutation> {
     let now = sim.session.binary_frame;
     let mut m = MissionMutation {
@@ -233,7 +214,6 @@ fn mission_step(
         self_destruct: false,
         begin_landing: false,
         begin_takeoff: false,
-        paradrop_chute_sound_at: None,
         paradrop_try_drop: false,
         paradrop_payload_count_pre: 0,
         paradrop_silent_despawn: false,
@@ -530,29 +510,16 @@ fn mission_step(
         AircraftMission::ParaDropApproach {
             target_rx,
             target_ry,
-            has_revealed_fog,
         } => {
-            let outcome = paradrop_mission::tick_approach(
-                sim,
-                rules,
-                id,
-                *target_rx,
-                *target_ry,
-                *has_revealed_fog,
-                path_grid,
-            );
+            let outcome = paradrop_mission::tick_approach(sim, rules, id, *target_rx, *target_ry);
             m.new_mission = outcome.new_mission;
             m.move_to = outcome.move_to;
-            if outcome.play_chute_sound {
-                m.paradrop_chute_sound_at = Some((*target_rx, *target_ry));
-            }
         }
 
         AircraftMission::ParaDropOverfly {
             exit_rx,
             exit_ry,
             drop_cooldown,
-            landing_state,
             payload_count,
         } => {
             let outcome = paradrop_mission::tick_overfly(
@@ -561,7 +528,6 @@ fn mission_step(
                 *exit_rx,
                 *exit_ry,
                 *drop_cooldown,
-                *landing_state,
                 *payload_count,
             );
             m.new_mission = outcome.new_mission;
@@ -657,12 +623,7 @@ fn enter_idle_mode(
 }
 
 /// Apply one handler decision. Returns the Mission_Attack fire request.
-fn apply_mission_mutation(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    m: MissionMutation,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-) -> bool {
+fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutation) -> bool {
     // No "Unit lost" here: `AircraftClass::Enter_Idle_Mode @ 0x004176F0`
     // handles the AirportBound-without-airfield case by calling the
     // `Crash` slot `+0x3DC` directly with no attacker (`0x004179FD`,
@@ -685,7 +646,7 @@ fn apply_mission_mutation(
         if aircraft {
             sim.foot_crash(m.id, None, rules);
         } else {
-            let infantry_terminal = sim.begin_raw_infantry_death(m.id, None);
+            let infantry_terminal = sim.begin_raw_infantry_death(m.id);
             if !infantry_terminal && let Some(entity) = sim.substrate.entities.get_mut(m.id) {
                 entity.health.current = 0;
                 entity.dying = true;
@@ -727,21 +688,15 @@ fn apply_mission_mutation(
             .substrate
             .entities
             .get(m.id)
-            .and_then(|e| {
-                let obj = sim.object_type(e.type_ref(), rules)?;
-                Some(crate::util::fixed_math::ra2_speed_to_leptons_per_second(
-                    obj.speed.max(1),
-                ))
+            .map(|e| {
+                crate::sim::movement::order_speed(
+                    e,
+                    sim.object_type(e.type_ref(), rules),
+                    Some(rules),
+                )
             })
             .unwrap_or(SimFixed::from_num(8));
         sim.issue_air_cell_destination(m.id, (rx, ry), speed, Some(rules));
-    }
-
-    // Standard Mission_Open is silent at the threshold; this compatibility path
-    // remains inert for stock SW carriers unless a mission handler requests it.
-    if let Some((rx, ry)) = m.paradrop_chute_sound_at {
-        sim.sound_events
-            .push(crate::sim::world::SimSoundEvent::ChuteSound { rx, ry });
     }
 
     // Standard SW cadence is Mission_Rescue returning 5 game frames after one
@@ -749,13 +704,7 @@ fn apply_mission_mutation(
     if m.paradrop_try_drop {
         let aircraft_id = m.id;
         let drop_interval = drop_payload::PARADROP_DROP_INTERVAL_FRAMES;
-        let result = drop_payload::try_drop(
-            sim,
-            rules,
-            aircraft_id,
-            m.paradrop_payload_count_pre,
-            path_grid,
-        );
+        let result = drop_payload::try_drop(sim, rules, aircraft_id, m.paradrop_payload_count_pre);
         let frame = sim.session.binary_frame as i32;
         if let Some(entity) = sim.substrate.entities.get_mut(aircraft_id) {
             if let Some(AircraftMission::ParaDropOverfly {
@@ -775,7 +724,6 @@ fn apply_mission_mutation(
                             exit_rx,
                             exit_ry,
                             drop_cooldown: drop_interval,
-                            landing_state: drop_payload::LANDING_STATE_RESET,
                             payload_count: payload_count.saturating_sub(1),
                         }
                     }
@@ -788,7 +736,6 @@ fn apply_mission_mutation(
                             exit_rx,
                             exit_ry,
                             drop_cooldown: 0,
-                            landing_state: 0,
                             payload_count,
                         }
                     }
@@ -805,7 +752,7 @@ fn apply_mission_mutation(
     // `AircraftClass::AI` (`0x00414F93` / `0x00414FD1`) is a bare `UnInit`
     // (`+0xF8`) with no `Death_Announcement` (`+0x3B8`).
     if m.paradrop_silent_despawn {
-        let infantry_terminal = sim.begin_raw_infantry_death(m.id, None);
+        let infantry_terminal = sim.begin_raw_infantry_death(m.id);
         if let Some(entity) = sim.substrate.entities.get_mut(m.id) {
             if !infantry_terminal {
                 entity.health.current = 0;

@@ -7,7 +7,8 @@ from tools.native_oracle import _canonical, finish_vectors, provenance
 from tools.spatial_oracle.shrapnel_repair.packet_io import read_result
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE / 'paid_conditional.json.gz'
+SOURCE = HERE / 'paid_conditional_v26.json.gz'
+OUTPUT = HERE / 'paid_conditional_v26_vectors.json'
 sha = lambda raw: hashlib.sha256(raw).hexdigest()
 
 
@@ -37,6 +38,12 @@ def anim(value):
 
 def frame(native, index, identity):
     raw_actor = bytes.fromhex(native['actor_bytes'])
+    raw_drive = bytes.fromhex(native['drive_bytes'])
+    track_state = dict(
+        movement_timer=[struct.unpack_from('<i', raw_actor, offset)[0] for offset in (0x640, 0x648)],
+        blocked_timer=[struct.unpack_from('<i', raw_actor, offset)[0] for offset in (0x668, 0x670)],
+        residual=struct.unpack_from('<i', raw_drive, 0x4C)[0],
+        target_speed_bits=struct.unpack_from('<Q', raw_drive, 0x50)[0])
     passive_scan = dict(
         timer=[struct.unpack_from('<I', raw_actor, offset)[0] for offset in (0x180, 0x188)],
         last_frame=struct.unpack_from('<I', raw_actor, 0x4FC)[0],
@@ -46,7 +53,7 @@ def frame(native, index, identity):
     return dict(completed_frame=native['actor']['frame'] - 1 if index else None,
         next_frame=native['actor']['frame'], actor=actor, mission=mission,
         native_id=identity, next_native_id=native['scenario_next_id'],
-        game_speed=native['options']['game_speed'], passive_scan=passive_scan,
+        game_speed=native['options']['game_speed'], passive_scan=passive_scan, track_state=track_state,
         nav_cell=native['nav_cell'], drive_destination=native['drive_destination'],
         drive_head=native['drive_head'], target_present=int(native['actor']['target'],16) != 0,
         bullets=[bullet(value) for value in native['all_bullets'] if value['alive']],
@@ -57,8 +64,7 @@ def frame(native, index, identity):
         rng_sha256={k:sha(bytes.fromhex(value)) for k,value in native['rng'].items()})
 
 
-def generate():
-    source = read_result(SOURCE)
+def project(source):
     cases = []
     for case in source['cases']:
         frames = []
@@ -84,9 +90,14 @@ def generate():
             final_span=[cell(row) for row in case['states'][-1]['span']]))
     frozen = json.loads((HERE / 'promotion.json').read_bytes())['results']
     result = dict(schema=1, native_sha256=source['native_sha256'],
-                  source_sha256=frozen['paid_conditional.json']['frozen_source_sha256'],
+                  source_sha256=frozen['paid_conditional_v26.json']['frozen_source_sha256'],
                   input_sha256=source['input_sha256'], cases=cases)
-    assert sha(_canonical(result)) == frozen['paid_conditional_vectors.json']['published_payload_sha256'], 'Frozen native conditional projection changed'
+    return result
+
+def generate():
+    result = project(read_result(SOURCE))
+    frozen = json.loads((HERE / 'promotion.json').read_bytes())['results']
+    assert sha(_canonical(result)) == frozen['paid_conditional_v26_vectors.json']['published_payload_sha256'], 'Frozen native conditional projection changed'
     return result
 
 
@@ -102,4 +113,4 @@ def metadata():
 
 
 if __name__ == '__main__':
-    finish_vectors(generate, HERE / 'paid_conditional_vectors.json', provenance=metadata)
+    finish_vectors(generate, OUTPUT, provenance=metadata)

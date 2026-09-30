@@ -106,7 +106,7 @@ fn test_load_real_rules_ini() {
                     println!(
                         "Warhead '{}': {} armor multipliers, spread={:.1}",
                         wh.id,
-                        wh.verses.len(),
+                        wh.verses_f64.len(),
                         wh.cell_spread
                     );
                 }

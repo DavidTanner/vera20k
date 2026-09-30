@@ -214,8 +214,8 @@ if the warhead `IsRocker` and force > 0.3, it sweeps a **7×7 cell box** and cal
 every techno. Impact-cell occupiers are rocked away from the *source* with a 10-lepton
 displacement; everything else away from the impact coord. (Note VERA's own constant comment
 at `rocking_system.rs:52-55` describes a 3×3 loop, which matches neither side.)
-**Disposition** LEAD · **TS-RISK** no (`Rocker=`, `DirectRocker=`, `RockerScale=` are stock
-YR keys; `RockerScale` is already parsed at `rules/projectile_type.rs:127`)
+**Disposition** LEAD · **TS-RISK** no (`Rocker=` and `DirectRocker=` are stock YR keys;
+gamemd.exe holds no `RockerScale` string)
 **Effect** tanks and ships never lurch when a shell, missile or Demo Truck goes off beside
 them. The static, unreactive look of a firefight is the symptom.
 **Frequency** constant — 18 stock warheads in `ini/rulesmd.ini` carry `Rocker=yes`.
@@ -702,7 +702,7 @@ gone. · **Frequency** every deliberate bridge cut with traffic on the span.
 (ground kill vs deck fall) separately.
 
 #### T2-02 · No kill for units moving onto a span as it collapses; fallout is per-cell inline, not a deferred batch — `bridge`
-**VERA** `blow_up_bridge_cell_fallout` (`bridge_orchestrator.rs:1298`) runs per collapsed cell
+**VERA** `blow_up_bridge_cell_fallout` (`bridge_orchestrator.rs:911`) runs per collapsed cell
 inline and touches only that cell; no neighbourhood sweep exists and
 `notify_bridge_span_collapse` is a deliberate skirmish no-op. **Reference** `Destroy_Bridge` only
 *queues* (`cell.cpp:1435`); `MapClass::Damage_Bridge` (`map.cpp:12041`) runs the family
@@ -712,8 +712,13 @@ sweeps a 5×5 neighbourhood over **both** object lists and kills any foot whose
 **TS-RISK** no · **Effect** a unit that has stepped off the ramp toward the dropping span
 keeps its movement and arrives on a destroyed cell instead of dying with it. · **Frequency**
 every bridge cut with inbound traffic — most of them.
-**Ghidra** Look for a deferred pending-cells queue drained after the family handler in YR's
-bridge damage entry, and for an `Is_Moving_Here`-gated neighbourhood kill.
+**YR** ApplyDamageToCell `0x00587180` clears the pending vector `Map+0xD4` on entry
+(`0x005871A2`); BlowUpBridge `0x0047DD70` appends each blown cell (`0x0047DDE4..0x0047DE22`);
+the tail `0x00587388..0x005873DF` calls `0x00487720` on each queued cell, which (when cell
+`+0x128` is set) walks the 5×5 around it, both object lists (`+0xE4`, `+0xE8`), and hits every
+techno whose locomotor `Is_Moving_Here` (vtable `+0xA0`) the cell's deck coordinate with its
+full health of `C4Warhead` (`Rules+0xFA8`). Area damage and the CABHUT death fallback both
+reach it through ApplyDamageToCell; VERA ports neither the queue nor the drain.
 
 #### T2-03 · Low-bridge damage stages do no occupant-legality kill — `bridge`
 **VERA** the low walkers (`src/sim/bridge_state/walker.rs:509` → `destroy_bridge_walker_*_low`)
@@ -1398,7 +1403,7 @@ goes straight to Ghidra; there is no lens to look through.
 | NH-11 | `src/sim/aircraft/drop_payload.rs`, `paradrop_mission.rs` | YR superweapon paradrop. TS `Paradrop_Cargo` (`aircraft.cpp:1041`) is scenario-reinforcement cargo with no cadence — comparing them would import TS legacy. `dropship.cpp` deliberately not consulted. |
 | NH-12 | `src/sim/superweapon/genetic_converter.rs`, `psychic_reveal.rs`, `force_shield.rs`, `iron_curtain.rs`, `paradrop.rs`; `wave.rs` type 3 (MagBeam) | Yuri psychic/genetic content is YR-only; TS's nearest analogues to shield/curtain are the Firestorm wall and drop pods, both TS content. TS's `wave.cpp` knows only SONIC, LASER, BIG_LASER. `ionblast.cpp` (Ion Cannon) is TS-only. |
 | NH-13 | `src/sim/particles/spark_world.rs`, particle store/serde plumbing, the `system_ai.rs` take/reinsert ownership dance | VERA-internal architecture. |
-| NH-14 | `src/sim/map/` (`mod.rs`, `bridge_topology.rs`, `bridge_occupancy_shadow.rs`) | Not homologous *to the vision group's homolog set* — it is a bridge-topology / two-layer occupancy read service, not a cell or shroud master. the reference tree's bridge code lives in `map.cpp` but belongs to the movement/terrain groups, which are covered by the `bridge` entries. |
+| NH-14 | `src/sim/map/` (`mod.rs`, `bridge_topology.rs`) | Not homologous *to the vision group's homolog set* — it is a bridge-topology read service, not a cell or shroud master. the reference tree's bridge code lives in `map.cpp` but belongs to the movement/terrain groups, which are covered by the `bridge` entries. |
 
 ---
 

@@ -228,7 +228,7 @@ them, so they are recorded here rather than padding the matrix.
 
 | ID | Item | Disposition | Evidence |
 |---|---|---|---|
-| N-01 | `spawn_object` has no bridge-deck term (`world_spawn.rs:354`, `height_map…unwrap_or(0)`) | **KNOWN-BROKEN** (OI-22) | MEASURED: spawning a Grizzly at BayOPigs `(111,143)` gives `z=1, on_bridge=false` on a cell whose deck is at 5 — literally under the bridge — and it then paths nowhere in either gate state. |
+| N-01 | `spawn_object` has no bridge-deck term (`world_spawn.rs` `spawn_object`, `terrain_cell_level…unwrap_or(0)`) | **KNOWN-BROKEN** (OI-22) | MEASURED: spawning a Grizzly at BayOPigs `(111,143)` gives `z=1, on_bridge=false` on a cell whose deck is at 5 — literally under the bridge — and it then paths nowhere in either gate state. |
 | N-02 | Map-placed units on a deck are placed at riverbed height | **KNOWN-BROKEN** (OI-22) | `austintx.map` (MIX) is the only map in 184 setting `[Units]` field 10 (`High`) to `1`; all **76** such units stand on stamped structural cells. `parse_common_fields` (`map/entities.rs:280-330`) reads fields 0-5 and 8-9 and **never reads field 10**. Field identity is inferred, not read from a VERA parser — but no unit with `High=0` lands on a structural cell anywhere in the corpus. |
 | N-03 | No air-layer landing path writes bridge state | UNCHECKED (L4) | `air_movement.rs`, `jumpjet_movement.rs` and `parachute_descent.rs` contain **zero** occurrences of "bridge". A paradropped GI or a landing SHAD on a deck cell gets N-01's symptom. Deck landings are rare; paradrops are not. |
 

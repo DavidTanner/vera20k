@@ -8,7 +8,6 @@
 //! draws). The app submits immutable map/session inputs and consumes only the
 //! receipt.
 
-use crate::map::basic::{BasicSection, SpecialFlagsSection};
 use crate::map::houses::HouseRoster;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
@@ -23,8 +22,6 @@ use crate::skirmish_launch::SkirmishLaunchSession;
 pub(crate) struct ScenarioPostMapInput<'a> {
     pub(crate) map_width: u16,
     pub(crate) map_height: u16,
-    pub(crate) basic: &'a BasicSection,
-    pub(crate) special_flags: &'a SpecialFlagsSection,
     pub(crate) normal_lighting: crate::map::lighting::LightingProfileUnits,
     pub(crate) rules: &'a RuleSet,
     pub(crate) overlay_registry: &'a OverlayTypeRegistry,
@@ -65,15 +62,14 @@ impl Simulation {
         // this startup pass uses.
         self.scenario_normal_lighting = input.normal_lighting;
         // Runtime rebuilds use this same sim-owned publication seam. Crate
-        // placement below pins the newly published path snapshot.
-        let mut navigation_published = self.rebuild_dynamic_navigation(input.rules);
+        // placement below reads the newly published canonical grid.
+        let navigation_published = self.rebuild_dynamic_navigation(input.rules);
 
         #[cfg(test)]
         let mut skirmish_order = [None; 3];
         let crates = if let Some(descriptor) = input.skirmish_session {
             let session = descriptor.session();
             let player_count = crate::sim::crates::human_player_count(self);
-            let initial_path = self.path_grid_snapshot();
             #[cfg(test)]
             {
                 skirmish_order[0] = Some(ScenarioPostMapStep::StartupCrates);
@@ -82,18 +78,12 @@ impl Simulation {
                 self,
                 input.rules,
                 input.overlay_registry,
-                initial_path.as_deref(),
                 player_count,
                 input.normal_lighting,
             );
             // Startup OverlayClass::Mark completes synchronously before native
-            // proceeds to AI credits. Rust's BridgeRuntimeState is a derived
-            // cache built earlier in the load funnel, so rebuild it from the
-            // now-final CellClass projection and publish matching first-frame
-            // navigation without consuming OverlayGrid's dirty receipt.
-            if self.refresh_bridge_runtime_after_crate_mark() {
-                navigation_published = self.rebuild_dynamic_navigation(input.rules);
-            }
+            // proceeds to AI credits; the placement refreshed the bridge
+            // records and navigation from the now-final CellClass state.
             #[cfg(test)]
             {
                 skirmish_order[1] = Some(ScenarioPostMapStep::AiOpeningCredits);
@@ -151,11 +141,11 @@ impl Simulation {
         }
     }
 
-    /// Rebuild the derived bridge runtime cache after a crate `OverlayClass::Mark`
+    /// Rebuild the derived bridge record vector after a crate `OverlayClass::Mark`
     /// batch. Native Mark mutates live CellClass state synchronously; Rust builds
     /// `BridgeRuntimeState` earlier in the load funnel, so both the startup batch
     /// and the per-tick regeneration rung refresh it from the now-final CellClass
-    /// projection.
+    /// state.
     pub(crate) fn refresh_bridge_runtime_after_crate_mark(&mut self) -> bool {
         let Some((destroyable, bridge_strength)) = self
             .bridge_state
@@ -190,13 +180,11 @@ mod tests {
     use std::collections::BTreeSet;
     use std::fmt::Write as _;
 
-    use crate::map::bridge_facts::BridgeCellFacts;
+    use crate::map::basic::{BasicSection, SpecialFlagsSection};
     use crate::map::houses::HouseDefinition;
-    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
+    use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::house_colors::HouseColorIndex;
     use crate::rules::ini_parser::IniFile;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
-    use crate::sim::ai::AiPlayerState;
     use crate::sim::house_state::HouseState;
     use crate::sim::overlay_grid::OverlayGrid;
     use crate::skirmish_launch::{
@@ -247,76 +235,11 @@ mod tests {
     }
 
     fn flat_terrain() -> ResolvedTerrainGrid {
-        let land_type = LandType::Clear.as_index();
-        let speed_costs = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            float: Some(100),
-            amphibious: Some(100),
-            float_beach: Some(100),
-            hover: Some(100),
-        };
-        let mut cells = Vec::with_capacity(MAP_SIZE as usize * MAP_SIZE as usize);
-        for ry in 0..MAP_SIZE {
-            for rx in 0..MAP_SIZE {
-                cells.push(ResolvedTerrainCell {
-                    rx,
-                    ry,
-                    source_tile_index: 0,
-                    source_sub_tile: 0,
-                    final_tile_index: 0,
-                    final_sub_tile: 0,
-                    is_wood_bridge_repair_tile: false,
-                    level: 0,
-                    filled_clear: false,
-                    tileset_index: Some(0),
-                    land_type,
-                    yr_cell_land_type: land_type,
-                    slope_type: 0,
-                    template_height: 0,
-                    render_offset_x: 0,
-                    render_offset_y: 0,
-                    terrain_class: TerrainClass::Clear,
-                    speed_costs,
-                    is_water: false,
-                    is_cliff_like: false,
-                    is_rough: false,
-                    is_road: false,
-                    accepts_smudge: true,
-                    allows_tiberium: true,
-                    height_in_pixels: 0,
-                    variant: 0,
-                    has_ramp: false,
-                    canonical_ramp: None,
-                    ground_walk_blocked: false,
-                    terrain_object_blocks: false,
-                    terrain_object_occupation: None,
-                    overlay_blocks: false,
-                    overlay_zone_type: None,
-                    outside_playfield: false,
-                    zone_type: zone_class::GROUND,
-                    base_ground_walk_blocked: false,
-                    base_build_blocked: false,
-                    base_land_type: land_type,
-                    base_yr_cell_land_type: land_type,
-                    base_terrain_class: TerrainClass::Clear,
-                    base_speed_costs: speed_costs,
-                    has_bridge_deck: false,
-                    bridge_walkable: false,
-                    bridge_transition: false,
-                    bridge_deck_level: 0,
-                    bridge_layer: None,
-                    bridge_facts: BridgeCellFacts::default(),
-                    tube_index: None,
-                    radar_left: [0; 3],
-                    radar_right: [0; 3],
-                    has_damaged_data: false,
-                    bridgehead_anchor_class_at_load: None,
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(MAP_SIZE, MAP_SIZE, cells)
+        crate::map::resolved_terrain::test_grid(MAP_SIZE, MAP_SIZE, |rx, ry| ResolvedTerrainCell {
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_tiberium_cell(rx, ry)
+        })
     }
 
     fn twinkle_rules_and_overlays() -> (RuleSet, OverlayTypeRegistry) {
@@ -358,8 +281,6 @@ mod tests {
         ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BASIC_DEFAULT,
-            special_flags: &SPECIAL_FLAGS_DEFAULT,
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules,
             overlay_registry: overlays,
@@ -367,11 +288,6 @@ mod tests {
             skirmish_session: None,
         }
     }
-
-    static BASIC_DEFAULT: std::sync::LazyLock<BasicSection> =
-        std::sync::LazyLock::new(BasicSection::default);
-    static SPECIAL_FLAGS_DEFAULT: std::sync::LazyLock<SpecialFlagsSection> =
-        std::sync::LazyLock::new(SpecialFlagsSection::default);
 
     /// `FUN_00684C30 @ 0x0068504D..0x006850F3`: one `RandomRanged(0, N-1)`
     /// Scenario draw per resource cell in `CellIterator` order, one native ID
@@ -706,7 +622,6 @@ mod tests {
             computer,
             HouseState::new(computer, 1, None, false, 5_000, 10),
         );
-        sim.ai_players.push(AiPlayerState::new(computer));
 
         let mut expected_rng = sim.scenario_rng.clone();
         let expected_crate_cell = (
@@ -737,8 +652,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &basic,
-            special_flags: &special_flags,
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,
@@ -836,8 +749,6 @@ mod tests {
         sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BasicSection::default(),
-            special_flags: &SpecialFlagsSection::default(),
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,
@@ -915,8 +826,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BasicSection::default(),
-            special_flags: &SpecialFlagsSection::default(),
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,
@@ -938,12 +847,12 @@ mod tests {
             .next()
             .expect("one startup crate anchor");
         let bridge_cell = sim
-            .bridge_state
+            .resolved_terrain
             .as_ref()
-            .and_then(|state| state.cell(anchor.0, anchor.1))
-            .expect("startup high anchor reaches BridgeRuntimeState");
-        assert!(bridge_cell.deck_present);
-        assert_eq!(bridge_cell.overlay_byte, 0x18);
+            .and_then(|terrain| terrain.cell(anchor.0, anchor.1))
+            .expect("startup high anchor cell");
+        assert!(bridge_cell.bridge_facts.has_structural_bridge());
+        assert_eq!(bridge_cell.bridge_facts.overlay_id, Some(0x18));
         let path_cell = sim
             .path_grid()
             .and_then(|grid| grid.cell(anchor.0, anchor.1))
@@ -971,7 +880,6 @@ mod tests {
         let owner = sim.interner.intern("HouseA");
         sim.houses
             .insert(owner, HouseState::new(owner, 0, None, false, 7_500, 10));
-        sim.ai_players.push(AiPlayerState::new(owner));
         let rng_before = sim.scenario_rng.state();
         let roster = HouseRoster {
             houses: vec![
@@ -981,7 +889,7 @@ mod tests {
                     country: None,
                     side: None,
                     player_control: Some(false),
-                    iq: None,
+                    iq: 0,
                     allies: vec!["HouseB".to_string()],
                     base_plan: Default::default(),
                 },
@@ -991,7 +899,7 @@ mod tests {
                     country: None,
                     side: None,
                     player_control: Some(true),
-                    iq: None,
+                    iq: 0,
                     allies: Vec::new(),
                     base_plan: Default::default(),
                 },
@@ -1013,8 +921,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BasicSection::default(),
-            special_flags: &SpecialFlagsSection::default(),
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,

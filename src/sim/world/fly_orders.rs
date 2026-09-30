@@ -27,13 +27,16 @@ impl Simulation {
             | NavTargetRef::Building { id }
             | NavTargetRef::Object { id } => Some(id),
         };
-        //41AA8C: Target+54 is marked && physical GetHeight >= 2*104.
-        // Cells implement the false stub. High targets take the NULL Foot
-        // entry immediately, before departure power/radio work.
+        //41AA8C: Target+54 (IsHighFlying). Cells implement the false stub.
+        // High targets take the NULL Foot entry immediately, before departure
+        // power/radio work.
         let high = requested.and_then(target_id).is_some_and(|target| {
             self.substrate.entities.get(target).is_some_and(|e| {
-                e.lifecycle.object_alive
-                    && air_movement::current_fly_height(e, self.resolved_terrain.as_ref()) >= 208
+                air_movement::is_high_flying(
+                    e,
+                    self.resolved_terrain.as_ref(),
+                    Some((rules, &self.interner)),
+                )
             })
         });
         let requested = if high { None } else { requested };
@@ -91,11 +94,11 @@ impl Simulation {
             )
             .expect("live aircraft NavCom coordinate");
             let entity = self.substrate.entities.get(id).unwrap();
-            let speed = rules
-                .object(self.interner.resolve(entity.type_ref()))
-                .map_or(SimFixed::from_num(8), |o| {
-                    crate::util::fixed_math::ra2_speed_to_leptons_per_second(o.speed.max(1))
-                });
+            let speed = crate::sim::movement::order_speed(
+                entity,
+                self.object_type(entity.type_ref(), rules),
+                Some(rules),
+            );
             self.move_air_coordinate(id, coord, speed, None, Some(rules));
         }
         // Accepted Foot setter resets both timers even when Fly MoveTo refuses

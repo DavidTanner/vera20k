@@ -102,8 +102,8 @@ pub(super) fn publish_fresh_track_target(
 }
 
 /// Drive4B3DFA..3E21 / Ship twin: a selector below 64 keeps the request on
-/// the class target (+50); otherwise it goes to the Foot setter, clamped,
-/// when it differs from the applied fraction.
+/// the class target (+50); otherwise it goes to the Foot setter
+/// (`SetSpeedFraction`4D3710) when it differs from the applied fraction.
 fn publish_target_fraction(entity: &mut GameEntity, requested: SimFixed) {
     let Some(kind) = entity.locomotor.as_ref().map(|loco| loco.kind) else {
         return;
@@ -121,8 +121,8 @@ fn publish_target_fraction(entity: &mut GameEntity, requested: SimFixed) {
     };
     if selector < 64 {
         *retained = requested;
-    } else if entity.foot_speed.applied_fraction != requested {
-        entity.foot_speed.applied_fraction = requested.clamp(SIM_ZERO, SIM_ONE);
+    } else if entity.foot_speed.applied_fraction() != requested {
+        entity.foot_speed.set_speed_fraction(requested);
     }
 }
 
@@ -172,7 +172,7 @@ pub(super) fn advance(
             .and_then(|g| g.cell(entity.position.rx, entity.position.ry))
             .is_some_and(|cell| cell.bridge_deck_level_if_any().is_some())
     {
-        distance += super::movement_bridge::BRIDGE_Z_OFFSET;
+        distance += SimFixed::from_num(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     let accel = object
         .map(|o| o.accel_factor)
@@ -221,14 +221,10 @@ pub(super) fn advance(
         }
         _ => unreachable!(),
     }
-    entity.foot_speed.cached_current_speed = super::foot_speed::owner_current_speed_from_fraction(
+    super::foot_speed::owner_current_speed_from_fraction(
         speed,
-        entity.foot_speed.applied_fraction,
-    );
-    if let Some(target) = entity.movement_target.as_mut() {
-        target.current_speed = speed * entity.foot_speed.applied_fraction;
-    }
-    entity.foot_speed.cached_current_speed
+        entity.foot_speed.applied_fraction(),
+    )
 }
 
 #[cfg(test)]
@@ -304,10 +300,6 @@ mod tests {
                 mover.movement_target.as_ref().unwrap().speed,
                 SimFixed::from_num(150)
             );
-            assert_eq!(
-                mover.movement_target.as_ref().unwrap().current_speed,
-                SimFixed::from_num(165)
-            );
         }
     }
 
@@ -316,7 +308,7 @@ mod tests {
         for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
             for selector in [-1, 63, 64, 71] {
                 let mut entity = entity(kind, selector, SimFixed::lit("0.5"));
-                entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+                entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
                 publish_fresh_target(
                     &mut entity,
                     None,
@@ -330,7 +322,7 @@ mod tests {
                     (SimFixed::lit("0.5"), SIM_ONE)
                 };
                 assert_eq!(
-                    (retained(&entity), entity.foot_speed.applied_fraction),
+                    (retained(&entity), entity.foot_speed.applied_fraction()),
                     expected,
                     "{kind:?} selector {selector}"
                 );
@@ -355,10 +347,6 @@ mod tests {
                 assert_eq!(
                     advance(&mut mover, rules.object("MTNK"), Some(&rules), None),
                     15
-                );
-                assert_eq!(
-                    mover.movement_target.as_ref().unwrap().current_speed,
-                    SimFixed::from_num(225)
                 );
             }
         }
@@ -402,7 +390,9 @@ mod tests {
             .unwrap();
             let mut entity = entity(kind, selector, fixed(&input["target_bits"]));
             entity.drive_accelerates = accelerates;
-            entity.foot_speed.applied_fraction = fixed(&input["applied_bits"]);
+            entity
+                .foot_speed
+                .set_speed_fraction(fixed(&input["applied_bits"]));
             advance(&mut entity, rules.object("MTNK"), Some(&rules), None);
             assert_eq!(
                 retained(&entity),
@@ -410,7 +400,7 @@ mod tests {
                 "{input}"
             );
             assert_eq!(
-                entity.foot_speed.applied_fraction,
+                entity.foot_speed.applied_fraction(),
                 fixed(&case["output"]["applied_bits"]),
                 "{input}"
             );

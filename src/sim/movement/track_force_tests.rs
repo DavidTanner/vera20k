@@ -69,7 +69,7 @@ fn mirrored_state(entity: &GameEntity) -> Value {
         "destination": coord_array(drive.destination),
         "track_valid": u8::from(drive.track_valid),
         "target_fraction_bits": format!("{:016x}", drive.target_speed_fraction.to_num::<f64>().to_bits()),
-        "applied_fraction_bits": format!("{:016x}", entity.foot_speed.applied_fraction.to_num::<f64>().to_bits()),
+        "applied_fraction_bits": format!("{:016x}", entity.foot_speed.applied_fraction().to_num::<f64>().to_bits()),
         "owner_limbo": u8::from(entity.lifecycle.in_limbo),
         "owner_alive": u8::from(entity.lifecycle.object_alive),
     })
@@ -116,8 +116,9 @@ fn fixture(case: &Value) -> Simulation {
     entity.lifecycle.in_limbo = integer(&before["owner_limbo"]) != 0;
     entity.lifecycle.cell_marked = false;
     entity.foot_occupation_enabled = input["occupation_enabled"].as_bool().unwrap_or(false);
-    entity.foot_speed.applied_fraction = fraction(&before["applied_fraction_bits"]);
-    entity.foot_speed.cached_current_speed = 73;
+    entity
+        .foot_speed
+        .set_speed_fraction(fraction(&before["applied_fraction_bits"]));
     put_coords(
         &mut entity,
         DriveCoord {
@@ -348,7 +349,6 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
             },
         );
         entity.bunker_link = BunkerLink::Approaching(2);
-        entity.facing_target = None;
         let before_owner = owner_state(entity, true);
         let mut building = GameEntity::test_default(2, "NATBNK", "Americans", 10, 10);
         building.owner = sim.intern("Americans");

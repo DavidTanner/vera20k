@@ -14,6 +14,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement;
+use crate::sim::movement::ScatterFlags;
 use crate::sim::world::Simulation;
 
 /// TryToDeploy's fallback sites (`0x00B1D010..0x00B1D09C`), offsets from the
@@ -196,7 +197,7 @@ pub(crate) fn try_to_deploy(
             .is_some_and(|e| e.navigation.nav_com.is_some())
     };
     let origin_of = |cell: (i16, i16)| (cell.0.wrapping_sub(1), cell.1.wrapping_sub(1));
-    sim.foot_mark_remove(id, Some(rules), None, registry);
+    sim.foot_mark_remove(id, Some(rules), registry);
     if !has_destination(sim) {
         if crate::sim::build_site::can_place_building_at(
             sim,
@@ -206,7 +207,7 @@ pub(crate) fn try_to_deploy(
             origin_of(cell),
             None,
         ) {
-            sim.foot_mark_put(id, Some(rules), None, registry);
+            sim.foot_mark_put(id, Some(rules), registry);
             return true;
         }
         // 0x007392CA..0x00739360: the first fallback site the type can stand
@@ -227,28 +228,25 @@ pub(crate) fn try_to_deploy(
         {
             // An admitted origin lies on the map, and the site is inside
             // its foundation or one cell past it, so it is too.
-            sim.set_unit_cell_destination(id, (site.0 as u16, site.1 as u16), rules, true);
+            sim.set_unit_destination(
+                id,
+                crate::sim::components::NavTargetRef::cell(site.0 as u16, site.1 as u16),
+                rules,
+                true,
+            );
         }
     }
-    sim.foot_mark_put(id, Some(rules), None, registry);
-    // 0x00739372..0x00739394: vt+0x174 Scatter(&ZeroCoord, 0, 0).
-    //
-    // RESIDUAL: `UnitClass::Scatter @ 0x00743A50` runs through the shared
-    // compatibility adapter (`scatter_blocker`), which draws one random start
-    // among the eight neighbours. Native passes the MissionControl gate
-    // (`0x005B3A00`), searches with `0x0056DC20`, makes its own RandomRanged
-    // draws (`0x0065C7E0`) and may queue a mission (`0x00744053`) before
-    // SetDestination. Trigger: a computer MCV with no clear site among the 36
-    // and no destination. Effect: another destination cell and other Scenario
-    // draws. Frequency: uncommon (cramped starts, map edges). Owner: the Unit
-    // Scatter migration.
+    sim.foot_mark_put(id, Some(rules), registry);
+    // 0x00739372..0x00739394: vt+0x174 Scatter(&ZeroCoord, 0, 0), the Unit
+    // receiver's null arm.
     if !has_destination(sim)
         && !sim
             .houses
             .get(&owner)
             .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero))
+        && let Err(cause) = sim.scatter_null(id, ScatterFlags::new(false, false), rules, registry)
     {
-        sim.scatter_null_source(id, rules);
+        log::debug!("MCV {id} did not scatter: {cause}");
     }
     false
 }
@@ -304,20 +302,6 @@ pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> boo
         &EntityReadyInputProvider,
     )
     .is_ok()
-}
-
-/// Native rounds FacingClass::Current, including wrap at 0xff80.
-pub(crate) fn current_direction(entity: &GameEntity, frame: u32) -> u8 {
-    let raw = entity
-        .body_facing
-        .as_ref()
-        .map_or(u16::from(entity.facing) << 8, |body| body.current(frame));
-    (((u32::from(raw) >> 7) + 1) >> 1) as u8
-}
-
-pub(crate) fn start_turn(entity: &mut GameEntity, target: u8, frame: u32) {
-    movement::drive_do_turn(entity, u16::from(target) << 8, frame);
-    entity.facing_target = Some(target);
 }
 
 pub(crate) fn queue_guard(sim: &mut Simulation, id: u64) {

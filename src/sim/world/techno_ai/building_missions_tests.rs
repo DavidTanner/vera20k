@@ -100,20 +100,9 @@ pub(super) fn fixture(
 ) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(16));
-    let heights = BTreeMap::new();
-    let building = sim
-        .spawn_object(kind, "Americans", 5, 5, 0, rules, &heights)
-        .unwrap();
+    let building = sim.spawn_object(kind, "Americans", 5, 5, 0, rules).unwrap();
     let target = sim
-        .spawn_object(
-            "SHED",
-            "Russians",
-            target_cell.0,
-            target_cell.1,
-            0,
-            rules,
-            &heights,
-        )
+        .spawn_object("SHED", "Russians", target_cell.0, target_cell.1, 0, rules)
         .unwrap();
     sim.session.binary_frame = FRAME;
     (sim, building, target)
@@ -332,14 +321,12 @@ fn mission_attack_matches_the_original() {
                 entity,
                 &TargetKind::Entity(target),
                 &sim.substrate.entities,
-                Some(&rules),
-                &sim.interner,
             )
             .unwrap()
         };
         let away = toward.wrapping_add(0x8000);
         let entity = sim.substrate.entities.get_mut(building).unwrap();
-        entity.barrel_facing.as_mut().unwrap().snap(away, FRAME);
+        entity.body_facing.snap(away, FRAME);
         let mut cloak = crate::sim::cloak_disguise::CloakRuntime::new(
             FRAME as i32,
             rules.general.cloaking_stages,
@@ -368,7 +355,7 @@ fn mission_attack_matches_the_original() {
             called(row, "fire_at"),
             "{name} FireAt"
         );
-        let desired = entity.barrel_facing.unwrap().destination();
+        let desired = entity.body_facing.destination();
         assert_eq!(
             desired,
             if called(row, "set_desired") {
@@ -579,12 +566,11 @@ fn building_dispatch_cadence_matches_the_original() {
         let rules = rules(".016", input["rof"].as_u64().unwrap() as u32);
         let mut sim = Simulation::new();
         sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(16));
-        let heights = BTreeMap::new();
         let building = sim
-            .spawn_object("DEF", "Americans", 5, 5, 0, &rules, &heights)
+            .spawn_object("DEF", "Americans", 5, 5, 0, &rules)
             .unwrap();
         let target = sim
-            .spawn_object("SHED", "Russians", 8, 5, 0, &rules, &heights)
+            .spawn_object("SHED", "Russians", 8, 5, 0, &rules)
             .unwrap();
         let owner = sim.interner.intern("Americans");
         let events: BTreeMap<u64, Event> = input["events"]
@@ -654,7 +640,7 @@ fn building_dispatch_cadence_matches_the_original() {
                 ));
             }
             sim.fire_events.clear();
-            sim.advance_tick(&commands, Some(&rules), &heights, None, None, 67);
+            sim.advance_tick(&commands, Some(&rules), None, None, 67);
             assert_eq!(u64::from(sim.session.binary_frame - start), k, "{name}");
 
             let at = format!("{name} frame {k}");
@@ -766,15 +752,23 @@ fn retail_building_mission_inputs() {
             "AMRADR", "GAAIRC", "GADEPT", "NADEPT", "NAMISL", "NATBNK", "YADEPT"
         ])
     );
+    // A garrison's Unload (`0x0044D880`) ends in its plain Guard tail: no
+    // retail `CanBeOccupied=` type takes the absorber, factory or gap arm.
+    let garrisons: Vec<_> = buildings.iter().filter(|obj| obj.can_be_occupied).collect();
+    assert!(!garrisons.is_empty());
+    for obj in garrisons {
+        assert!(
+            !(obj.infantry_absorb || obj.unit_absorb || obj.weapons_factory || obj.gap_generator),
+            "{}",
+            obj.id
+        );
+    }
     for obj in &buildings {
         let id = obj.id.as_str();
         assert!(!(obj.weapons_factory && !obj.has_stupid_guard_mode), "{id}");
         assert!(!obj.tick_tank && !obj.artillary, "{id}");
         assert!(!(armed(obj) && obj.super_weapon.is_some()), "{id}");
-        let sam = rules_ini
-            .section(id)
-            .and_then(|section| section.get_bool("SAM"))
-            .unwrap_or(false);
+        let sam = rules_ini.section_or_empty(id).read_bool("SAM", false);
         assert!(!sam, "{id}");
     }
 }
@@ -839,9 +833,9 @@ pub(super) fn retail_dustbowl_defence(
             if !open {
                 return None;
             }
-            let truck = sim.spawn_object(mcv, enemy, x + 5, y, 0, rules, &resources.height_map)?;
+            let truck = sim.spawn_object(mcv, enemy, x + 5, y, 0, rules)?;
             let defence = sim
-                .spawn_object(kind, owner, x, y, 0, rules, &resources.height_map)
+                .spawn_object(kind, owner, x, y, 0, rules)
                 .expect("the defence stands where the MCV does");
             Some((defence, truck, x, y))
         })
@@ -850,9 +844,7 @@ pub(super) fn retail_dustbowl_defence(
         (20..120_u16)
             .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
             .filter(|&(px, py)| px.abs_diff(x).max(py.abs_diff(y)) >= 24)
-            .find_map(|(px, py)| {
-                sim.spawn_object(plant, house, px, py, 0, rules, &resources.height_map)
-            })
+            .find_map(|(px, py)| sim.spawn_object(plant, house, px, py, 0, rules))
             .unwrap_or_else(|| panic!("room for {plant}"));
     }
     for (house, ally) in [
@@ -895,15 +887,7 @@ fn retail_spawn(
         resources,
     } = &mut scenario.runtime;
     let id = sim
-        .spawn_object(
-            kind,
-            owner,
-            cell.0,
-            cell.1,
-            0,
-            &resources.rules,
-            &resources.height_map,
-        )
+        .spawn_object(kind, owner, cell.0, cell.1, 0, &resources.rules)
         .expect("spawns");
     sim.resolve_type_handles(&resources.rules);
     id
@@ -1176,15 +1160,7 @@ fn retail_dustbowl_prism_towers_forward_their_charge() {
             .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
             .filter(|&(px, py)| px.abs_diff(x).max(py.abs_diff(y)) >= 30)
             .find_map(|(px, py)| {
-                sim.spawn_object(
-                    "GAPOWR",
-                    "Americans",
-                    px,
-                    py,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )
+                sim.spawn_object("GAPOWR", "Americans", px, py, 0, &resources.rules)
             })
             .expect("room for a second GAPOWR");
         sim.resolve_type_handles(&resources.rules);

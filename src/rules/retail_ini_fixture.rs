@@ -14,6 +14,74 @@ use std::path::{Path, PathBuf};
 use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::rules::ini_parser::IniFile;
 
+/// Fixed ARTMD.INI [GI]/[GISequence] inputs for asset-free authored scenarios.
+/// Callers explicitly supply E1 Image=GI and use the existing ART reader and
+/// sequence binder. These are input records, not native replay goldens. The
+/// original reader/Ready receipt is in anytown_damage/foot_missions.json.
+pub(crate) const GI_ART_EXCERPT: &str = "\
+[GI]
+Sequence=GISequence
+Crawls=yes
+FireUp=2
+PrimaryFireFLH=80,0,105
+SecondaryFireFLH=80,0,90
+[GISequence]
+Ready=0,1,1
+Guard=0,1,1
+Prone=86,1,6
+Walk=8,6,6
+FireUp=164,6,6
+Down=260,2,2
+Crawl=86,6,6
+Up=276,2,2
+FireProne=212,6,6
+Idle1=56,15,0,S
+Idle2=71,15,0,E
+Die1=134,15,0
+Die2=149,15,0
+Die3=0,1,1
+Die4=0,1,1
+Die5=0,1,1
+Deploy=300,15,0
+Deployed=292,1,1
+DeployedFire=315,6,6
+DeployedIdle=0,0,0
+Undeploy=276,2,2
+Paradrop=363,1,0
+Cheer=364,8,0,E
+Panic=8,6,6
+";
+
+/// Physical ARTMD [TRST]/[TerroristSequence] inputs for fatal receiver
+/// fixtures. These are reader inputs; native death goldens remain separate.
+pub(crate) const TRST_ART_EXCERPT: &str = "\
+[TRST]
+Sequence=TerroristSequence
+Crawls=no
+FireUp=1
+[TerroristSequence]
+Ready=0,1,1
+Guard=0,1,1
+Prone=0,1,1
+Walk=8,6,6
+Down=8,2,6
+Crawl=8,6,6
+Up=8,2,6
+Idle1=56,15,0,S
+Idle2=71,15,0,E
+Die1=86,15,0
+Die2=101,15,0
+Die3=0,1,1
+Die4=0,1,1
+Die5=0,1,1
+Paradrop=179,1,0
+Cheer=180,8,0,E
+FireUp=164,6,6
+FireProne=164,6,6
+Deploy=164,15,0
+Panic=8,6,6
+";
+
 /// Environment variable that turns a missing retail INI into a test failure.
 pub(crate) const REQUIRE_RETAIL_INI_ENV: &str = "VERA20K_REQUIRE_RETAIL_INI";
 

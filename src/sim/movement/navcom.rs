@@ -121,7 +121,7 @@ fn adjusted_destination(
         if structural {
             coord.z = coord
                 .z
-                .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+                .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         }
     }
     Some(coord)
@@ -155,14 +155,15 @@ pub(crate) fn building_dock_cell(
     entities: &EntityStore,
     building_id: u64,
     requester: Option<u64>,
+    terrain: Option<&ResolvedTerrainGrid>,
     rules: &crate::rules::ruleset::RuleSet,
     interner: &crate::sim::intern::StringInterner,
 ) -> Option<(u16, u16)> {
     let building = entities.get(building_id)?;
     let object = rules.object(interner.resolve(building.type_ref()))?;
     let coord = super::building_coordinate::dock_coordinate(
-        super::ground_pose::position_world_coord(&building.position),
-        super::ground_pose::object_center_coord(building, object),
+        super::ground_pose::object_location(building, terrain),
+        super::ground_pose::object_get_coords(building, terrain),
         object,
         &building.radio_contacts,
         requester,
@@ -171,22 +172,39 @@ pub(crate) fn building_dock_cell(
             let entity = entities
                 .get(id)
                 .ok_or_else(|| format!("Dock requester {id} disappeared"))?;
-            Ok(rules
-                .object(interner.resolve(entity.type_ref()))
-                .map_or_else(
-                    || {
-                        super::ground_pose::object_center_coord_with_foundation(
-                            entity,
-                            &entity.foundation,
-                        )
-                    },
-                    |object| super::ground_pose::object_center_coord(entity, object),
-                ))
+            Ok(super::ground_pose::object_get_coords(entity, terrain))
         },
     )
     .ok()?;
     let cell = |value: i32| u16::try_from(value / 256).ok();
     Some((cell(coord.x)?, cell(coord.y)?))
+}
+
+/// Native pointer-comparison gates use the receiver identity. The stored tag
+/// is retained; it does not make a different entity receiver. Valid Cells
+/// retain the existing coordinate identity; dummy/aliased Cell pointer
+/// retention is outside this ordinary object-reference slice.
+pub(crate) fn nav_targets_same_receiver(left: Option<NavTargetRef>, right: NavTargetRef) -> bool {
+    match (left, right) {
+        (
+            Some(NavTargetRef::Cell {
+                rx: left_x,
+                ry: left_y,
+            }),
+            NavTargetRef::Cell { rx, ry },
+        ) => (left_x, left_y) == (rx, ry),
+        (
+            Some(
+                NavTargetRef::Entity { id: left }
+                | NavTargetRef::Object { id: left }
+                | NavTargetRef::Building { id: left },
+            ),
+            NavTargetRef::Entity { id: right }
+            | NavTargetRef::Object { id: right }
+            | NavTargetRef::Building { id: right },
+        ) => left == right,
+        _ => false,
+    }
 }
 
 /// Resolve the live receiver behind a non-null NavCom. The Rust reference tag
@@ -217,8 +235,8 @@ pub(crate) fn nav_target_coordinate(
             .object(interner.resolve(entity.type_ref()))
             .ok_or_else(|| format!("Building {id} navigation type disappeared"))?;
         return super::building_coordinate::navigation_coordinate(
-            super::ground_pose::position_world_coord(&entity.position),
-            super::ground_pose::object_center_coord(entity, object),
+            super::ground_pose::object_location(entity, terrain),
+            super::ground_pose::object_get_coords(entity, terrain),
             object,
             &entity.radio_contacts,
             requester,
@@ -227,24 +245,15 @@ pub(crate) fn nav_target_coordinate(
                 let entity = entities
                     .get(id)
                     .ok_or_else(|| format!("Navigation requester {id} disappeared"))?;
-                Ok(rules
-                    .object(interner.resolve(entity.type_ref()))
-                    .map_or_else(
-                        || {
-                            super::ground_pose::object_center_coord_with_foundation(
-                                entity,
-                                &entity.foundation,
-                            )
-                        },
-                        |object| super::ground_pose::object_center_coord(entity, object),
-                    ))
+                Ok(super::ground_pose::object_get_coords(entity, terrain))
             },
         );
     }
     super::foot_coordinate::navigation_coordinate(entity, terrain)
 }
 
-/// Owner non-null destination path for the Phase 1 normal cell-target slice.
+/// Cell callers of the shared non-null destination owner. Object callers
+/// capture their receiver's +4C through `nav_target_coordinate` instead.
 pub(crate) fn set_destination_internal_cell(
     entity: &mut GameEntity,
     target: (u16, u16),
@@ -287,11 +296,17 @@ pub(super) fn publish_nav_com(entity: &mut GameEntity, target: NavTargetRef) {
     entity.navigation.pending_arrival_clear = false;
 }
 
-/// Owner null destination path. Clears the owner and active Drive/Ship destination.
-pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
+/// Foot4D94C7/4D9510 NULL reference publication, before locomotor Stop.
+pub(super) fn publish_null_nav_com(entity: &mut GameEntity) {
     entity.navigation.nav_com_aux = None;
     entity.navigation.nav_com = None;
     entity.navigation.pending_arrival_clear = false;
+}
+
+/// Entity-local Drive/Ship destination path. World Walk receivers dispatch
+/// Stop75ADA0 and its concrete +54C callback through Simulation::walk_stop_moving.
+pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
+    publish_null_nav_com(entity);
 
     if is_drive_locomotor(entity) {
         drive_stop_moving(entity);
@@ -532,10 +547,9 @@ fn drive_stop_moving(entity: &mut GameEntity) {
     // arrival returns skip that tail. Preserve the existing adapter timing
     // here until that continuation is wired; this is not Stop parity.
     if drive.head_to.is_none() {
-        if entity.foot_speed.applied_fraction > SIM_ZERO {
-            entity.foot_speed.applied_fraction = SIM_ZERO;
+        if entity.foot_speed.applied_fraction() > SIM_ZERO {
+            entity.foot_speed.set_speed_fraction(SIM_ZERO);
         }
-        entity.foot_speed.cached_current_speed = 0;
     }
 }
 
@@ -573,10 +587,9 @@ fn ship_stop_moving(entity: &mut GameEntity) {
     // rest speed before the native Process-tail admission. FootStop4DF0D0
     // does NOT clear Foot+5E0; explicit abandonment is a separate owner call.
     if ship.head_to.is_none() {
-        if entity.foot_speed.applied_fraction > SIM_ZERO {
-            entity.foot_speed.applied_fraction = SIM_ZERO;
+        if entity.foot_speed.applied_fraction() > SIM_ZERO {
+            entity.foot_speed.set_speed_fraction(SIM_ZERO);
         }
-        entity.foot_speed.cached_current_speed = 0;
     }
 }
 
@@ -627,8 +640,7 @@ mod tests {
             "Move_To does not invent a committed head"
         );
         ship.target_speed_fraction = SIM_ONE;
-        entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
+        entity.foot_speed.set_speed_fraction(SIM_HALF);
         entity.navigation.path_replay.directions = vec![2, 2];
         entity.navigation.path_replay.cursor = 0;
 
@@ -637,8 +649,7 @@ mod tests {
         assert_eq!(ship.destination, None);
         assert_eq!(ship.target_speed_fraction, TRACK_STOP_TARGET_FRACTION);
         assert_eq!(entity.navigation.path_replay.cursor, 0);
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
-        assert_eq!(entity.foot_speed.cached_current_speed, 0);
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
     }
 
     #[test]
@@ -651,8 +662,7 @@ mod tests {
             cursor: 1,
             ..Default::default()
         };
-        entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
+        entity.foot_speed.set_speed_fraction(SIM_HALF);
         entity.ship_locomotion = Some(ShipLocomotionRuntime {
             destination: Some(DriveCoord::cell(5, 3, 0)),
             head_to: Some(DriveCoord::cell(4, 3, 0)),
@@ -667,8 +677,7 @@ mod tests {
         assert_eq!(ship.destination, None);
         assert_eq!(ship.head_to, Some(DriveCoord::cell(4, 3, 0)));
         assert_eq!(ship.target_speed_fraction, TRACK_STOP_TARGET_FRACTION);
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_HALF);
-        assert_eq!(entity.foot_speed.cached_current_speed, 10);
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF);
 
         let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
         ship.destination = Some(DriveCoord::cell(5, 3, 0));
@@ -695,8 +704,7 @@ mod tests {
             cursor: 0,
             ..Default::default()
         };
-        entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
+        entity.foot_speed.set_speed_fraction(SIM_HALF);
         entity.ship_locomotion = Some(ShipLocomotionRuntime {
             destination: Some(DriveCoord::cell(4, 3, 0)),
             head_to: Some(DriveCoord::cell(4, 3, 0)),
@@ -711,14 +719,13 @@ mod tests {
         assert_eq!(ship.destination, None);
         assert_eq!(ship.head_to, None);
         assert_eq!(entity.navigation.path_replay.cursor, 1);
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
-        assert_eq!(entity.foot_speed.cached_current_speed, 0);
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
     }
 
     fn resting_drive_miner() -> GameEntity {
         let mut entity = GameEntity::test_default(1, "HARV", "Americans", 3, 3);
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-        entity.foot_speed.applied_fraction = SIM_ONE;
+        entity.foot_speed.set_speed_fraction(SIM_ONE);
         entity.drive_locomotion = Some(DriveLocomotionRuntime {
             destination: Some(DriveCoord::cell(3, 3, 0)),
             ..Default::default()
@@ -737,7 +744,7 @@ mod tests {
         set_destination_internal_null(&mut entity);
 
         let drive = entity.drive_locomotion.as_ref().expect("drive state");
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
         assert_eq!(drive.destination, None);
     }
 
@@ -751,11 +758,11 @@ mod tests {
             .as_mut()
             .expect("drive state")
             .head_to = Some(DriveCoord::cell(4, 3, 0));
-        entity.foot_speed.applied_fraction = SIM_HALF;
+        entity.foot_speed.set_speed_fraction(SIM_HALF);
 
         set_destination_internal_null(&mut entity);
 
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_HALF);
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF);
     }
 
     #[test]

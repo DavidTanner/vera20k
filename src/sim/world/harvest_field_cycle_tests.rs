@@ -10,7 +10,6 @@ use super::harvest_field_oracle_tests::{registry, row_scene};
 use super::refinery_dock_oracle_tests::Scene;
 use crate::sim::miner::{MinerState, ResourceType};
 use crate::sim::ore_growth::OreGrowthConfig;
-use std::collections::BTreeMap;
 
 /// One miner's observable state after a frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,14 +23,8 @@ struct Sample {
 
 fn frame(s: &mut Scene) -> Sample {
     let grid = s.sim.path_grid_snapshot();
-    s.sim.advance_tick(
-        &[],
-        Some(&s.rules),
-        &BTreeMap::new(),
-        grid.as_deref(),
-        Some(registry()),
-        67,
-    );
+    s.sim
+        .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(registry()), 67);
     let miner = s.sim.substrate.entities.get(s.miner).unwrap();
     let state = miner.miner.as_ref().unwrap();
     Sample {
@@ -229,13 +222,10 @@ fn until_first_bale(s: &mut Scene) {
 }
 
 fn order(s: &mut Scene, command: crate::sim::command::Command) {
-    let grid = s.sim.path_grid_snapshot();
     assert!(s.sim.apply_command_with_overlays(
         "Americans",
         &command,
         Some(&s.rules),
-        grid.as_deref(),
-        &BTreeMap::new(),
         Some(registry()),
     ));
 }

@@ -8,7 +8,6 @@
 
 use super::harvest_field_oracle_tests::registry;
 use super::slave_manager_oracle_tests::{SlaveScene, row_scene};
-use crate::sim::animation::SequenceKind;
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::NavTargetRef;
@@ -16,7 +15,6 @@ use crate::sim::mission::MissionType;
 use crate::sim::ore_growth::OreGrowthConfig;
 use crate::sim::slave_manager::{ManagerState, SlaveState};
 use crate::sim::world::SimSoundEvent;
-use std::collections::BTreeMap;
 
 fn frame(s: &mut SlaveScene) {
     let grid = s.scene.sim.path_grid_snapshot();
@@ -24,7 +22,6 @@ fn frame(s: &mut SlaveScene) {
     s.scene.sim.advance_tick(
         &commands,
         Some(&s.scene.rules),
-        &BTreeMap::new(),
         grid.as_deref(),
         Some(registry()),
         67,
@@ -124,9 +121,8 @@ fn slave_refinery_deploys_digs_carries_home_pays_and_goes_out_again() {
             let entity = s.scene.sim.substrate.entities.get(slave).unwrap();
             dug |= !entity.slave.cargo().is_empty();
             shovel_shown |= entity
-                .animation
-                .as_ref()
-                .is_some_and(|animation| animation.sequence == SequenceKind::Shovel);
+                .infantry_sprite_pose()
+                .is_some_and(|(doing, _)| doing == 38);
         }
         if paid_at.is_none() && credits(&s) > start {
             paid_at = Some(n);
@@ -166,9 +162,10 @@ fn a_refinery_building_up_keeps_its_slaves_inside() {
         .entities
         .get_mut(s.master)
         .unwrap()
-        .building_up = Some(crate::sim::components::BuildingUp::completing_in_ticks(
-        30, 0,
-    ));
+        .install_building_up(
+            crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
+            0,
+        );
     let mut frames = 0;
     while s
         .scene
@@ -491,15 +488,7 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
     let killer = s
         .scene
         .sim
-        .spawn_object(
-            "MTNK",
-            "Russians",
-            10,
-            20,
-            0,
-            &s.scene.rules,
-            &BTreeMap::new(),
-        )
+        .spawn_object("MTNK", "Russians", 10, 20, 0, &s.scene.rules)
         .expect("killer");
     s.scene.sim.sound_events.clear();
     let master = s.master;
@@ -541,8 +530,8 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
     // The Cheer cannot be interrupted: a Move order given during it walks the
     // slave off at once, but its mission waits in the queue
     // (Ready_To_Commence). The Cheer's end, `InfantryClass::DoType_Sequencer`'s
-    // default arm, forces Ready on a standing slave and clears a walking one's
-    // action, and the queued Move commences.
+    // default arm, forces Ready on a standing slave or Walk on a moving one;
+    // the queued Move then commences.
     let ordered = s.slaves[&1];
     let tick = s.scene.sim.session.tick;
     s.scene.sim.queue_command(CommandEnvelope::new(
@@ -595,7 +584,10 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
         0,
         "a standing slave returns to Ready"
     );
-    assert_eq!(doing(&s, ordered), -1, "a walking slave's action clears");
+    // Native520D38/520D71..79 forces Walk3 after a moving Cheer completes;
+    // original jumpjet_infantry_actions row522 pins that common default arm.
+    // This cycle exercises the production SLAV consumer, not native FreeSlaves.
+    assert_eq!(doing(&s, ordered), 3, "a moving slave resumes Walk");
     for _ in 0..3 {
         frame(&mut s);
     }
@@ -790,7 +782,7 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     );
     let unit = sim.substrate.entities.get(back).unwrap();
     let elite = sim.substrate.entities.get(yarefn).unwrap().veterancy_raw;
-    assert_eq!((unit.veterancy_raw, unit.veterancy), (elite, 200));
+    assert_eq!((unit.veterancy_raw, unit.veterancy()), (elite, 200));
     // The rank cache (`+0x13C`) is not copied: the constructor's -1.
     assert_eq!(unit.veterancy_rank_cache, -1);
     assert_eq!(pool(&sim, back), slaves);
@@ -860,8 +852,8 @@ fn a_refinery_whose_ore_runs_out_packs_up_and_moves_to_the_next_field() {
             .resolve(sim.substrate.entities.get(holder).unwrap().type_ref());
         if kind == "SMIN" {
             if miner.is_none() {
-                // `BuildingClass::Sell 0x0044A091..0x0044A0AE`: the unit is
-                // sent to the refinery's archived cell, its own.
+                // `BuildingClass::Mission_Selling 0x0044A091..0x0044A0AE`: the
+                // unit is sent to the refinery's archived cell, its own.
                 let unit = sim.substrate.entities.get(holder).unwrap();
                 assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(12, 12)));
                 assert_eq!(unit.mission.queued().known(), Some(MissionType::Move));
@@ -951,7 +943,7 @@ fn retail_rules_feed_the_slave_refinery_relocation() {
     assert_eq!(miner.deploys_into.as_deref(), Some("YAREFN"));
 }
 
-/// `BuildingClass::Sell`'s conversion constructs the unit, lists the
+/// `BuildingClass::Mission_Selling`'s conversion constructs the unit, lists the
 /// building's attackers (`0x00449F23..0x00449FDC`), and Limbos the building,
 /// whose Detach_All clears their targets (an attacker with more than 10
 /// frames left on its passive scan re-arms it with a Scenario draw); after

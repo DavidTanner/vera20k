@@ -96,6 +96,15 @@ pub fn direction_delta(direction: u8) -> Option<(i32, i32)> {
     Ra2Direction::from_index(direction).map(Ra2Direction::delta)
 }
 
+/// Direction whose one-cell step is exactly `(dx, dy)`; `None` for a null or
+/// longer step.
+pub fn direction_from_delta(dx: i32, dy: i32) -> Option<u8> {
+    DIRECTION_DELTAS
+        .iter()
+        .position(|&delta| delta == (dx, dy))
+        .map(|index| index as u8)
+}
+
 pub fn direction_from_facing(facing: u8) -> u8 {
     (facing.wrapping_add(FACING_UNITS_PER_DIRECTION / 2) / FACING_UNITS_PER_DIRECTION)
         & (DIRECTION_COUNT as u8 - 1)

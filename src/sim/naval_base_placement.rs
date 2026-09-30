@@ -26,7 +26,6 @@ pub(crate) fn find_naval_base_placement(
     sim: &Simulation,
     rules: &RuleSet,
     owner: crate::sim::intern::InternedId,
-    path_grid: Option<&PathGrid>,
 ) -> Option<(u16, u16)> {
     let house = sim.houses.get(&owner)?;
 
@@ -38,19 +37,14 @@ pub(crate) fn find_naval_base_placement(
     let height_type = first_buildable_shipyard(rules, sim, house)?;
     let height = crate::rules::foundation::foundation_dimensions(&height_type.foundation).1;
 
-    let origin = if house.alternate_base_center != (0, 0) {
-        house.alternate_base_center
-    } else {
-        // Rust's older Option projects the packed native default; the native
-        // fallback itself is still literal `(0,0)` and reaches normal FNPC/
-        // MapClass admission rather than becoming an early Rust-side failure.
-        house.base_center.unwrap_or((0, 0))
-    };
+    // The native fallback is literal `(0,0)` and reaches normal FNPC/MapClass
+    // admission rather than becoming an early Rust-side failure.
+    let origin = house.base_origin();
 
     // This is an active MapClass query. Missing PathGrid, real CellClass
     // terrain, diamond bounds, or Size-height authority cannot be replaced by
     // the compatibility projection without changing bridge pools or Z.
-    let path_grid = path_grid?;
+    let path_grid = sim.path_grid()?;
     let resolved_terrain = sim.resolved_terrain.as_ref()?;
     let playfield_bounds = sim.playfield_bounds?;
     let size_height = sim.playfield_size_height?;
@@ -180,28 +174,10 @@ fn first_yard_distance_accepts(
         return false;
     };
 
-    let (foundation_width, foundation_height) =
-        crate::rules::foundation::foundation_dimensions(&yard.foundation);
-    let yard_x = i32::from(yard.position.rx as i16)
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(yard.position.sub_x.to_num::<i32>())
-        .wrapping_add(
-            i32::from(foundation_width)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::sim::cell_kernel::CELL_CENTER_LEPTONS),
-        );
-    let yard_y = i32::from(yard.position.ry as i16)
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(yard.position.sub_y.to_num::<i32>())
-        .wrapping_add(
-            i32::from(foundation_height)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::sim::cell_kernel::CELL_CENTER_LEPTONS),
-        );
-    let yard_z = crate::sim::combat::object_world_z_leptons(yard, Some(terrain));
+    let yard_coord = crate::sim::movement::ground_pose::object_get_coords(yard, Some(terrain));
     let distance = crate::util::native_x87::distance_3d_leptons(
         [cell_x, cell_y, cell_z],
-        [yard_x, yard_y, yard_z],
+        [yard_coord.x, yard_coord.y, yard_coord.z],
     );
     let cap = rules.ai_naval_yard_adjacency.wrapping_shl(8);
     distance <= cap
@@ -210,11 +186,9 @@ fn first_yard_distance_accepts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
 
-    use crate::map::bridge_facts::{
-        BRIDGE_FLAG_FORWARD_SIDE, BRIDGE_FLAG_STRUCTURAL, BridgeCellFacts,
-    };
+    use crate::map::bridge_facts::{BRIDGE_FLAG_FORWARD_SIDE, BRIDGE_FLAG_STRUCTURAL};
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
@@ -226,58 +200,18 @@ mod tests {
         let mut speed_costs = SpeedCostProfile::default();
         speed_costs.float = Some(100);
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
             tileset_index: None,
             land_type: LandType::Water.as_index(),
             yr_cell_land_type: LandType::Water.as_index(),
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
             terrain_class: TerrainClass::Water,
             speed_costs,
             is_water: true,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
             zone_type: zone_class::WATER,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
             base_land_type: LandType::Water.as_index(),
             base_yr_cell_land_type: LandType::Water.as_index(),
             base_terrain_class: TerrainClass::Water,
             base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -529,6 +463,7 @@ mod tests {
         sim.playfield_size_height = Some(24);
         sim.resolved_terrain = Some(water_terrain(24, 24));
         let path = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
+        sim.install_fixture_path_grid(Some(&path));
         let owner = sim.interner.intern("AIHouse");
         let country = sim.interner.intern("Americans");
         let mut house = HouseState::new(owner, 0, Some(country), false, 10_000, 10);
@@ -537,33 +472,35 @@ mod tests {
         sim.houses.insert(owner, house);
 
         assert_eq!(
-            find_naval_base_placement(&sim, &rules, owner, Some(&path)),
+            find_naval_base_placement(&sim, &rules, owner),
             Some((15, 15)),
             "nonzero alternate packed cell overrides primary"
         );
         sim.houses.get_mut(&owner).unwrap().alternate_base_center = (0, 0);
         assert_eq!(
-            find_naval_base_placement(&sim, &rules, owner, Some(&path)),
+            find_naval_base_placement(&sim, &rules, owner),
             Some((10, 10)),
             "packed-zero alternate falls back to primary"
         );
         sim.houses.get_mut(&owner).unwrap().base_center = None;
         assert_eq!(
-            find_naval_base_placement(&sim, &rules, owner, Some(&path)),
+            find_naval_base_placement(&sim, &rules, owner),
             None,
             "absent Rust primary projects native packed zero and is rejected normally"
         );
         sim.houses.get_mut(&owner).unwrap().base_center = Some((10, 10));
 
-        assert!(find_naval_base_placement(&sim, &rules, owner, None).is_none());
+        let grid = sim.path_grid.take();
+        assert!(find_naval_base_placement(&sim, &rules, owner).is_none());
+        sim.path_grid = grid;
         let terrain = sim.resolved_terrain.take();
-        assert!(find_naval_base_placement(&sim, &rules, owner, Some(&path)).is_none());
+        assert!(find_naval_base_placement(&sim, &rules, owner).is_none());
         sim.resolved_terrain = terrain;
         let bounds = sim.playfield_bounds.take();
-        assert!(find_naval_base_placement(&sim, &rules, owner, Some(&path)).is_none());
+        assert!(find_naval_base_placement(&sim, &rules, owner).is_none());
         sim.playfield_bounds = bounds;
         let size_height = sim.playfield_size_height.take();
-        assert!(find_naval_base_placement(&sim, &rules, owner, Some(&path)).is_none());
+        assert!(find_naval_base_placement(&sim, &rules, owner).is_none());
         sim.playfield_size_height = size_height;
     }
 
@@ -584,7 +521,8 @@ mod tests {
             house.base_center = Some((5, 5));
             sim.houses.insert(owner, house);
             sim.resolved_terrain = Some(terrain);
-            find_naval_base_placement(&sim, &rules, owner, Some(&path))
+            sim.install_fixture_path_grid(Some(&path));
+            find_naval_base_placement(&sim, &rules, owner)
         };
 
         assert_eq!(run(water_terrain(20, 20)), Some((5, 5)));
@@ -716,15 +654,16 @@ mod tests {
             HouseState::new(owner, 0, Some(country), false, 10_000, 10),
         );
         let yard = sim
-            .spawn_object("GACNST", "AIHouse", 10, 10, 0, &rules, &BTreeMap::new())
+            .spawn_object("GACNST", "AIHouse", 10, 10, 0, &rules)
             .expect("parsed BuildConst Construction Yard reveals");
         assert_eq!(sim.houses[&owner].build_const_order, [yard]);
         assert!(sim.entities().get(yard).unwrap().build_const_eligible);
 
         sim.houses.get_mut(&owner).unwrap().base_center = Some((11, 10));
         let path = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
+        sim.install_fixture_path_grid(Some(&path));
         assert_eq!(
-            find_naval_base_placement(&sim, &rules, owner, Some(&path)),
+            find_naval_base_placement(&sim, &rules, owner),
             None,
             "the zero-cell cap rejects the adjacent result once the parsed yard reaches House state"
         );
@@ -735,7 +674,7 @@ mod tests {
             .build_const_order
             .clear();
         assert_eq!(
-            find_naval_base_placement(&sim, &rules, owner, Some(&path)),
+            find_naval_base_placement(&sim, &rules, owner),
             Some((11, 10)),
             "the same query would pass only through the native empty-vector bypass"
         );
@@ -755,6 +694,7 @@ mod tests {
         sim.playfield_size_height = Some(32);
         sim.resolved_terrain = Some(water_terrain(32, 32));
         let path = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
+        sim.install_fixture_path_grid(Some(&path));
         let owner = sim.interner.intern("AIHouse");
         let country = sim.interner.intern("Americans");
         let mut house = HouseState::new(owner, 0, Some(country), false, 10_000, 10);
@@ -763,26 +703,25 @@ mod tests {
         sim.houses.insert(owner, house);
         let naval = rules.object("NAVAL").unwrap();
         let land = rules.object("LAND").unwrap();
-        let site = |sim: &Simulation, ty, path| {
+        let site = |sim: &Simulation, ty| {
             crate::sim::ai_base_site::find_base_building_site(
                 sim,
                 &rules,
                 owner,
                 ty,
                 crate::sim::ai_base_site::SiteKey::Ordinary,
-                Some(path),
                 None,
             )
         };
 
-        let naval_site = find_naval_base_placement(&sim, &rules, owner, Some(&path))
+        let naval_site = find_naval_base_placement(&sim, &rules, owner)
             .expect("open water around the house origin");
         assert_eq!(
-            site(&sim, naval, &path),
+            site(&sim, naval),
             (naval_site.0 as i16, naval_site.1 as i16)
         );
         // Without a plan centre an ordinary type takes the alternate origin.
-        assert_eq!(site(&sim, land, &path), (15, 15));
+        assert_eq!(site(&sim, land), (15, 15));
 
         let mut blocked = sim;
         for cell in &mut blocked.resolved_terrain.as_mut().unwrap().cells {
@@ -790,6 +729,7 @@ mod tests {
         }
         let blocked_path =
             PathGrid::from_resolved_terrain(blocked.resolved_terrain.as_ref().unwrap());
-        assert_eq!(site(&blocked, naval, &blocked_path), (0, 0));
+        blocked.path_grid = Some(std::sync::Arc::new(blocked_path));
+        assert_eq!(site(&blocked, naval), (0, 0));
     }
 }

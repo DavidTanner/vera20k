@@ -573,18 +573,18 @@ pub fn parse_lighting(ini: &IniFile) -> LightingConfig {
         None => return LightingConfig::default(),
     };
     LightingConfig {
-        ambient: section.get_f32("Ambient").unwrap_or(1.0),
-        red: section.get_f32("Red").unwrap_or(1.0),
-        green: section.get_f32("Green").unwrap_or(1.0),
-        blue: section.get_f32("Blue").unwrap_or(1.0),
-        ground: section.get_f32("Ground").unwrap_or(0.05),
-        level: section.get_f32("Level").unwrap_or(0.008),
-        ion_ambient: section.get_f32("IonAmbient").unwrap_or(0.87),
-        ion_red: section.get_f32("IonRed").unwrap_or(0.30),
-        ion_green: section.get_f32("IonGreen").unwrap_or(0.40),
-        ion_blue: section.get_f32("IonBlue").unwrap_or(0.75),
-        ion_ground: section.get_f32("IonGround").unwrap_or(0.0),
-        ion_level: section.get_f32("IonLevel").unwrap_or(0.0),
+        ambient: section.read_double("Ambient", 1.0) as f32,
+        red: section.read_double("Red", 1.0) as f32,
+        green: section.read_double("Green", 1.0) as f32,
+        blue: section.read_double("Blue", 1.0) as f32,
+        ground: section.read_double("Ground", 0.05) as f32,
+        level: section.read_double("Level", 0.008) as f32,
+        ion_ambient: section.read_double("IonAmbient", 0.87) as f32,
+        ion_red: section.read_double("IonRed", 0.30) as f32,
+        ion_green: section.read_double("IonGreen", 0.40) as f32,
+        ion_blue: section.read_double("IonBlue", 0.75) as f32,
+        ion_ground: section.read_double("IonGround", 0.0) as f32,
+        ion_level: section.read_double("IonLevel", 0.0) as f32,
     }
 }
 

@@ -91,10 +91,10 @@ fn tracker_object_signed_cell(
     // `RadarClass::GetObjectAtRadarPixel @ 0x00656750` returns the tracker
     // object, then its caller dispatches ObjectClass vtable +0x48. Buildings
     // therefore center through `BuildingClass::GetCoords @ 0x00447AC0`.
-    let (x, y) = super::radar_visibility::radar_object_get_coords_leptons(entity);
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     Some((
-        crate::util::direction_tables::lepton_to_cell(x) as i16,
-        crate::util::direction_tables::lepton_to_cell(y) as i16,
+        crate::util::lepton::lepton_to_cell_packed(x),
+        crate::util::lepton::lepton_to_cell_packed(y),
     ))
 }
 
@@ -341,69 +341,12 @@ mod tests {
 
     fn terrain_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::ResolvedTerrainCell {
         crate::map::resolved_terrain::ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: crate::rules::terrain_rules::TerrainClass::Clear,
-            speed_costs: Default::default(),
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: Default::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
     fn click_terrain(width: u16, height: u16) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
-        let mut cells = Vec::with_capacity(usize::from(width) * usize::from(height));
-        for ry in 0..height {
-            for rx in 0..width {
-                cells.push(terrain_cell(rx, ry));
-            }
-        }
-        crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(width, height, cells)
+        crate::map::resolved_terrain::test_grid(width, height, |rx, ry| terrain_cell(rx, ry))
     }
 
     #[test]

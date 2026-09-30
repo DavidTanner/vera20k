@@ -68,7 +68,7 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
         entity.position.sub_y = SimFixed::from_num(initial.y % 256);
         entity.position.z = 1; // Deliberately differs from the retained raw Z.
         entity.position.exact_z_leptons = Some(initial.z);
-        entity.facing = 64;
+        entity.body_facing.snap(0x4000, 0);
         entity.lifecycle.in_limbo = false;
         entity.lifecycle.cell_marked = true;
         let mut entities = EntityStore::new();
@@ -225,7 +225,7 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
                     entity.lifecycle.cell_marked = true;
                     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
                     entity.drive_accelerates = false;
-                    entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+                    entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
                     let track = TrackProgress {
                         turn_index: selector,
                         cursor: 0,
@@ -257,7 +257,7 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
                         .unwrap();
                     let entity = sim.substrate.entities.get(1).unwrap();
                     assert_eq!(
-                        entity.foot_speed.applied_fraction,
+                        entity.foot_speed.applied_fraction(),
                         SimFixed::lit(if valid && selector != -1 {
                             "0.75"
                         } else {

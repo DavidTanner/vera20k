@@ -393,25 +393,18 @@ fn losing_the_last_building_blows_up_the_army_next_frame() {
     let enemy_base = sim
         .spawn_object_at_height("NAREFN", "house1", 30, 30, 0, 0, &rules)
         .unwrap();
-    assert_eq!(sim.houses[&houses[0]].tracking.buildings_for_test(), 1);
+    assert_eq!(sim.houses[&houses[0]].tracking.buildings(), 1);
     let step = |sim: &mut Simulation| {
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
     };
     step(&mut sim);
     assert!(!sim.houses[&houses[0]].is_defeated);
 
     // The refinery dies; its tracking leaves with the frame-end drain.
     sim.uninit_with_rules(refinery, &rules);
-    assert_eq!(sim.houses[&houses[0]].tracking.buildings_for_test(), 1);
+    assert_eq!(sim.houses[&houses[0]].tracking.buildings(), 1);
     step(&mut sim);
-    assert_eq!(sim.houses[&houses[0]].tracking.buildings_for_test(), 0);
+    assert_eq!(sim.houses[&houses[0]].tracking.buildings(), 0);
     assert!(
         !sim.houses[&houses[0]].is_defeated,
         "counted until its deletion"

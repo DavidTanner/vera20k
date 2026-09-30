@@ -87,7 +87,6 @@ fn advance_prone_mover(crawls: bool) -> SimFixed {
     let mut occupancy = OccupancyGrid::new();
     let mut sounds = Vec::new();
     let mut lifecycle_requests = Vec::new();
-    let mut next_occupancy_enter_order = crate::sim::world::EnterOrderCounter::new();
     let terrain_costs: BTreeMap<SpeedType, TerrainCostGrid> = BTreeMap::new();
 
     tick_movement_with_grids(
@@ -99,7 +98,6 @@ fn advance_prone_mover(crawls: bool) -> SimFixed {
         &mut occupancy,
         &mut crate::sim::occupancy::CellOccupationGrid::new(),
         &mut crate::sim::occupancy::RawCellOccupationGrid::new(),
-        &mut next_occupancy_enter_order,
         &mut rng,
         0,
         0, // binary_frame (test)
@@ -118,9 +116,16 @@ fn advance_prone_mover(crawls: bool) -> SimFixed {
 
     assert!(lifecycle_requests.is_empty());
     // Foot speed comes from live E1 Speed=4 (10 leptons/frame), not the stale
-    // 165-leptons/second request cache. The Infantry override is local; it does
-    // not replace the Foot owner's unadjusted current-speed cache.
-    assert_eq!(entities.get(1).unwrap().foot_speed.cached_current_speed, 10);
+    // 165-leptons/second request stamp. The Infantry override is local; the
+    // Foot owner's GetCurrentSpeed stays unadjusted.
+    assert_eq!(
+        crate::sim::movement::owner_current_speed(
+            entities.get(1).unwrap(),
+            rules.object("E1"),
+            rules.general.veteran_speed,
+        ),
+        10
+    );
 
     entities.get(1).expect("entity exists").position.sub_x
 }

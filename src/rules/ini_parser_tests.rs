@@ -105,71 +105,6 @@ fn test_inline_comments() {
 }
 
 #[test]
-fn test_get_i32() {
-    let ini: IniFile =
-        IniFile::from_str("[Stats]\nCost=1000\nDamage=-50\nName=tank\nBadHex=$junk\n");
-
-    let section: &IniSection = ini.section("Stats").unwrap();
-    assert_eq!(section.get_i32("Cost"), Some(1000));
-    assert_eq!(section.get_i32("Damage"), Some(-50));
-    assert_eq!(section.get_i32("Name"), Some(0)); // C atoi prefix: no digits -> 0
-    assert_eq!(section.get_i32("BadHex"), None); // `%x` converted nothing
-    assert_eq!(section.get_i32("Missing"), None); // Key doesn't exist
-}
-
-#[test]
-fn test_get_f32() {
-    let ini: IniFile = IniFile::from_str("[Stats]\nSpeed=5.5\nROF=0.1\n");
-
-    let section: &IniSection = ini.section("Stats").unwrap();
-    let speed: f32 = section.get_f32("Speed").unwrap();
-    assert!((speed - 5.5).abs() < f32::EPSILON);
-    let rof: f32 = section.get_f32("ROF").unwrap();
-    assert!((rof - 0.1).abs() < 0.001);
-}
-
-#[test]
-fn test_get_light_f32_stops_before_comma() {
-    let ini: IniFile =
-        IniFile::from_str("[Light]\nGood=0.25\nCommaDecimal=0,01\nSigned=-0.5\nBad=abc\n");
-
-    let section: &IniSection = ini.section("Light").unwrap();
-    assert!((section.get_light_f32("Good").unwrap() - 0.25).abs() < 0.001);
-    assert_eq!(section.get_light_f32("CommaDecimal"), Some(0.0));
-    assert!((section.get_light_f32("Signed").unwrap() + 0.5).abs() < 0.001);
-    assert_eq!(section.get_light_f32("Bad"), Some(0.0));
-    assert_eq!(section.get_light_f32("Missing"), None);
-}
-
-#[test]
-fn test_get_bool() {
-    let ini: IniFile = IniFile::from_str(
-        "[Flags]\nDoubleOwned=yes\nCloakable=no\nActive=true\nDebug=false\nBit=1\nOff=0\n",
-    );
-
-    let section: &IniSection = ini.section("Flags").unwrap();
-    assert_eq!(section.get_bool("DoubleOwned"), Some(true));
-    assert_eq!(section.get_bool("Cloakable"), Some(false));
-    assert_eq!(section.get_bool("Active"), Some(true));
-    assert_eq!(section.get_bool("Debug"), Some(false));
-    assert_eq!(section.get_bool("Bit"), Some(true));
-    assert_eq!(section.get_bool("Off"), Some(false));
-}
-
-#[test]
-fn test_get_list() {
-    let ini: IniFile = IniFile::from_str("[Build]\nPrereq=GAWEAP,RADAR,TECH\nEmpty=\n");
-
-    let section: &IniSection = ini.section("Build").unwrap();
-
-    let prereq: Vec<&str> = section.get_list("Prereq").unwrap();
-    assert_eq!(prereq, vec!["GAWEAP", "RADAR", "TECH"]);
-
-    assert!(section.get_list("Empty").is_none());
-    assert!(section.get_list("Missing").is_none());
-}
-
-#[test]
 fn duplicate_nonempty_section_bodies_are_retained_in_source_order() {
     let text: &str = "\
 [General]
@@ -252,36 +187,36 @@ fn overlong_physical_line_discards_everything_after_511_bytes() {
 }
 
 #[test]
-fn test_get_values_zero_indexed() {
+fn test_registry_ids_zero_indexed() {
     let ini: IniFile = IniFile::from_str("[Types]\n0=E1\n1=E2\n2=ENGINEER\n3=FLAKT\n");
     let section: &IniSection = ini.section("Types").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["E1", "E2", "ENGINEER", "FLAKT"]);
 }
 
 #[test]
-fn test_get_values_one_indexed() {
+fn test_registry_ids_one_indexed() {
     // Active retail RULESMD uses 1-indexed type registries in this family.
     let ini: IniFile = IniFile::from_str("[InfantryTypes]\n1=E1\n2=E2\n3=SHK\n");
     let section: &IniSection = ini.section("InfantryTypes").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["E1", "E2", "SHK"]);
 }
 
 #[test]
-fn test_get_values_with_numeric_gaps() {
+fn test_registry_ids_with_numeric_gaps() {
     let ini: IniFile =
         IniFile::from_str("[VehicleTypes]\n36=CMIN\n1=HTNK\n40=HARV\n2=MTNK\n5=SMIN\n");
     let section: &IniSection = ini.section("VehicleTypes").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["CMIN", "HTNK", "HARV", "MTNK", "SMIN"]);
 }
 
 #[test]
-fn test_get_values_reads_named_entries_too() {
+fn test_registry_ids_reads_named_entries_too() {
     let ini: IniFile = IniFile::from_str("[Empty]\nName=Test\n");
     let section: &IniSection = ini.section("Empty").unwrap();
-    let values: Vec<&str> = section.get_values();
+    let values: Vec<&str> = section.registry_ids();
     assert_eq!(values, vec!["Test"]);
 }
 
@@ -291,24 +226,6 @@ fn test_whitespace_handling() {
 
     let section: &IniSection = ini.section("Test").unwrap();
     assert_eq!(section.get("Key"), Some("Value"));
-}
-
-#[test]
-fn test_get_percent() {
-    let ini: IniFile = IniFile::from_str(
-        "[AudioVisual]\nConditionRed=25%\nConditionYellow=50%\nBare=0.75\nBad=abc\n",
-    );
-    let section: &IniSection = ini.section("AudioVisual").unwrap();
-    let red: f32 = section.get_percent("ConditionRed").unwrap();
-    assert!((red - 0.25).abs() < f32::EPSILON);
-    let yellow: f32 = section.get_percent("ConditionYellow").unwrap();
-    assert!((yellow - 0.50).abs() < f32::EPSILON);
-    // Bare float without % suffix works too.
-    let bare: f32 = section.get_percent("Bare").unwrap();
-    assert!((bare - 0.75).abs() < f32::EPSILON);
-    // Non-numeric returns None.
-    assert_eq!(section.get_percent("Bad"), Some(0.0));
-    assert!(section.get_percent("Missing").is_none());
 }
 
 /// `content_hash` is deterministic and sensitive to every value — a scalar

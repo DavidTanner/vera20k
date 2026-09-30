@@ -15,7 +15,6 @@ use crate::render::unit_atlas::{
     UnitSpriteEntry, UnitSpriteKey, VxlLayer, render_unit_sprite_with_slope_blend,
 };
 use crate::render::vxl_raster::VxlSlopeBlend;
-use crate::rules::art_data::ArtRegistry;
 use crate::rules::ruleset::RuleSet;
 
 const PAGE_SIZE: u32 = 2048;
@@ -30,6 +29,8 @@ pub struct TransitionUnitSpriteKey {
     pub to_slope: u8,
     pub phase_num: i32,
     pub phase_den: u8,
+    /// The barrel's pitch step, as [`UnitSpriteKey::barrel_pitch`].
+    pub barrel_pitch: i8,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -66,7 +67,6 @@ impl VxlSlopeTransitionCache {
         batch: &BatchRenderer,
         asset_manager: &AssetManager,
         rules: Option<&RuleSet>,
-        art: Option<&ArtRegistry>,
         key: TransitionUnitSpriteKey,
     ) -> Option<TransitionUnitSpriteEntry> {
         if let Some(entry) = self.entries.get(&key).copied() {
@@ -84,6 +84,7 @@ impl VxlSlopeTransitionCache {
             layer: key.layer,
             frame: key.frame,
             slope_type: key.to_slope,
+            barrel_pitch: key.barrel_pitch,
         };
         let blend = VxlSlopeBlend {
             from_slope: key.from_slope,
@@ -95,7 +96,6 @@ impl VxlSlopeTransitionCache {
             asset_manager,
             &render_key,
             rules,
-            art,
             vpl.as_ref(),
             Some(blend),
         )?;
@@ -163,6 +163,7 @@ mod tests {
             to_slope,
             phase_num,
             phase_den: crate::sim::movement::slope_transition::SLOPE_TRANSITION_FRAMES,
+            barrel_pitch: 0,
         }
     }
 

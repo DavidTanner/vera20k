@@ -45,11 +45,9 @@
 use crate::map::retail_trig::{AtanTable, TrigTable};
 use crate::rules::jumpjet_params::JumpjetParams;
 use crate::sim::movement::facing_class::FacingClass;
-use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
+use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, X87Ordering, X87Value};
 
-/// `[0x00ABC5DC]`, the bridge deck height.
-pub(crate) const BRIDGE_DECK_LEPTONS: i32 = 416;
 /// Arrival radius in leptons (`CMP EBX,0x14` at `0x0054C163`).
 const ARRIVAL_RADIUS: i32 = 20;
 /// Extra reference height for a non-building techno in a cell (`ADD EBP,0x55`
@@ -210,6 +208,17 @@ pub(crate) enum FlightOwnerKind {
     Other,
 }
 
+impl FlightOwnerKind {
+    pub(crate) fn of(category: crate::map::entities::EntityCategory) -> Self {
+        use crate::map::entities::EntityCategory;
+        match category {
+            EntityCategory::Unit => Self::Unit,
+            EntityCategory::Infantry => Self::Infantry,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// Everything the flight kernel reads from or writes to the owner and the map.
 /// Coordinates are world leptons.
 pub(crate) trait JumpjetFlightHost {
@@ -293,8 +302,9 @@ pub(crate) trait JumpjetFlightHost {
     /// `0x0048117A`; only the upper bytes of EAX are stale), which the caller
     /// applies, so this is never consulted for them.
     fn sub_cell_free(&self, cell: (i16, i16), sub_cell: i32, bridge: bool) -> bool;
-    /// The owner's mission (`+0xB4`) or its queued mission (vtable `+0x184`)
-    /// is 7, which skips State 4's landing admission.
+    /// Owner `+0xB4` (the queued mission) or `GetCurrentMission` (vtable
+    /// `+0x184`, `0x005B3040`) is Enter (7), which skips State 4's landing
+    /// admission.
     fn mission_is_seven(&self) -> bool;
     /// State 4's refusal calls `Stop_Moving` (interface vtable `+0x48`) as its
     /// last act. The host runs the order body
@@ -386,7 +396,7 @@ fn reference_height(
     let here_xy = [location[0], location[1]];
     let mut here = host.cell_top_height(here_xy);
     if host.cell_high_bridge(here_xy) {
-        here = here.wrapping_add(BRIDGE_DECK_LEPTONS);
+        here = here.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     if ordering(double(flight.current_speed_bits), zero()) != X87Ordering::Greater {
         return here;
@@ -395,7 +405,7 @@ fn reference_height(
     let ahead_xy = [location[0].wrapping_add(dx), location[1].wrapping_add(dy)];
     let ahead = host.cell_top_height(ahead_xy);
     if host.cell_high_bridge(ahead_xy) {
-        here = here.wrapping_add(BRIDGE_DECK_LEPTONS);
+        here = here.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     if ahead > here {
         ahead
@@ -467,11 +477,11 @@ pub(crate) fn update_coordinates_and_altitude(
     let mut ground = host.floor_height(xy);
     if host.cell_high_bridge(xy) {
         let deck_approach = X87Chop53::sub(
-            int(ground.wrapping_add(4 * GROUND_LEVEL_HEIGHT_LEPTONS)),
+            int(ground.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS)),
             single(params.crash_bits),
         );
         if ordering(deck_approach, int(z)) != X87Ordering::Greater {
-            ground = ground.wrapping_add(BRIDGE_DECK_LEPTONS);
+            ground = ground.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
         }
     }
     let reference =
@@ -489,9 +499,11 @@ pub(crate) fn update_coordinates_and_altitude(
         let mut height = host.height_above_ground();
         if host.cell_high_bridge(xy)
             && !host.on_bridge()
-            && z >= host.floor_height(xy).wrapping_add(BRIDGE_DECK_LEPTONS)
+            && z >= host
+                .floor_height(xy)
+                .wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS)
         {
-            height = height.wrapping_sub(BRIDGE_DECK_LEPTONS);
+            height = height.wrapping_sub(BRIDGE_DECK_HEIGHT_LEPTONS);
         }
         if height == 0 {
             host.grounded_reset();
@@ -842,8 +854,8 @@ pub(crate) fn state1_ascend(
     let here = host.cell_of([location[0], location[1]]);
     // The owner's own height, taken off the deck while it flies over a bridge.
     let mut height = host.height_above_ground();
-    if !host.on_bridge() && host.cell_high_bridge_at(here) && height >= BRIDGE_DECK_LEPTONS {
-        height = height.wrapping_sub(BRIDGE_DECK_LEPTONS);
+    if !host.on_bridge() && host.cell_high_bridge_at(here) && height >= BRIDGE_DECK_HEIGHT_LEPTONS {
+        height = height.wrapping_sub(BRIDGE_DECK_HEIGHT_LEPTONS);
     }
 
     if height < flight.target_height {
@@ -998,8 +1010,8 @@ pub(crate) fn state4_descend(
     flight.target_height = 0;
 
     let mut height = host.height_above_ground();
-    if !host.on_bridge() && host.cell_high_bridge_at(here) && height >= BRIDGE_DECK_LEPTONS {
-        height = height.wrapping_sub(BRIDGE_DECK_LEPTONS);
+    if !host.on_bridge() && host.cell_high_bridge_at(here) && height >= BRIDGE_DECK_HEIGHT_LEPTONS {
+        height = height.wrapping_sub(BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     if height != 0 {
         return STATE_DESCEND;
@@ -1045,7 +1057,9 @@ pub(crate) fn state5_crash(
 
     // `CMP EBP,ESI` / `CMP EAX,ESI`, both signed: from on or above the deck to
     // below it.
-    let deck = host.floor_height([x, y]).wrapping_add(BRIDGE_DECK_LEPTONS);
+    let deck = host
+        .floor_height([x, y])
+        .wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
     let crossed_deck = host.cell_high_bridge([x, y]) && old_z >= deck && new_z < deck;
     let here = host.cell_of([x, y]);
     if host.in_bounds(here) {
@@ -2288,7 +2302,7 @@ mod tests {
         let location = host.location;
         assert_eq!(
             reference_height(&eastbound_flight(4.0), &host, location),
-            (0 + BRIDGE_DECK_LEPTONS) / 2
+            (0 + BRIDGE_DECK_HEIGHT_LEPTONS) / 2
         );
         // Stationary: no look-ahead, and the current cell has no bridge.
         assert_eq!(reference_height(&eastbound_flight(0.0), &host, location), 0);

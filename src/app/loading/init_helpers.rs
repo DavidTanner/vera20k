@@ -3,7 +3,7 @@
 //!
 //! Split from `loading::init` for file-size limits.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 use crate::assets::asset_manager::AssetManager;
@@ -196,15 +196,14 @@ pub(crate) fn build_tile_atlas(
         sub_tile: 0,
         variant: 0,
     });
-    // Inject the 8 bridge anchor variant tile_ids × all sub_tiles so the
-    // atlas has them loaded before any damage hits at runtime. Without
-    // this, the first weapon hit on a bridge ramp would be an atlas miss
-    // on the variant cell, producing a blank sprite on the same tick.
-    if let Some(table) = grid.anchor_variant_table {
+    // Inject every bridge middle variant × all sub_tiles so the atlas holds
+    // them before a live bridge publication rewrites a cell's tile; the
+    // tactical draw keeps the load-time tile for anything not resident.
+    if let Some(table) = &grid.bridge_middle_tiles {
         let before = needed.len();
-        theater::inject_bridge_anchor_variant_tiles(&mut needed, &table, lookup, asset_manager);
+        theater::inject_bridge_middle_tiles(&mut needed, table, lookup, asset_manager);
         log::info!(
-            "Atlas pre-load: injected {} bridge anchor variant TileKeys",
+            "Atlas pre-load: injected {} bridge middle TileKeys",
             needed.len() - before,
         );
     }
@@ -224,42 +223,7 @@ pub(crate) fn build_tile_atlas(
 
 /// Fallback theater extension from theater name when load_theater fails.
 pub(crate) fn theater_ext_for(theater_name: &str) -> &'static str {
-    match theater_name.to_uppercase().as_str() {
-        "TEMPERATE" => "tem",
-        "SNOW" => "sno",
-        "URBAN" => "urb",
-        "DESERT" => "des",
-        "LUNAR" => "lun",
-        "NEWURBAN" => "ubn",
-        _ => "tem",
-    }
-}
-
-/// Load the distinct active-YR AI definition root.
-///
-/// Retail provenance: `Load_Game_Rules @ 0x0052CD70` opens `AIMD.INI` as its
-/// standalone root. It is intentionally not merged with Rules layers; the
-/// scenario loader applies map overrides per AI registry later.
-pub(crate) fn load_retail_team_ai_source(asset_manager: &AssetManager) -> Option<IniFile> {
-    let (data, source) = asset_manager.get_with_source("aimd.ini")?;
-    log::info!("Loading aimd.ini ({} bytes) from {}", data.len(), source);
-    let ini = IniFile::from_bytes(&data).ok()?;
-    let missing = missing_active_team_ai_registry_sections(&ini);
-    if !missing.is_empty() {
-        log::warn!(
-            "aimd.ini from {source} is missing required active-YR registries: {}",
-            missing.join(", ")
-        );
-        return None;
-    }
-    Some(ini)
-}
-
-fn missing_active_team_ai_registry_sections(ini: &IniFile) -> Vec<&'static str> {
-    ["TeamTypes", "ScriptTypes", "TaskForces", "AITriggerTypes"]
-        .into_iter()
-        .filter(|section| ini.section(section).is_none())
-        .collect()
+    crate::map::theater::theater_extension(theater_name).unwrap_or("tem")
 }
 
 /// Match-load rules for a test, through the path a match load takes: the cold
@@ -451,7 +415,6 @@ pub(crate) fn populate_staged_app_scenario<F>(
     resolved_terrain: &ResolvedTerrainGrid,
     theater_name: &str,
     rules: Option<&RuleSet>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
     bridge_destroyability_mode: BridgeDestroyabilityMode,
@@ -468,7 +431,6 @@ where
         resolved_terrain,
         theater_name,
         rules,
-        height_map,
         overlay_registry,
         overlay_grid,
         bridge_destroyability_mode,
@@ -570,7 +532,6 @@ pub(crate) fn build_entity_atlases(
             sim.entities(),
             asset_manager,
             rules,
-            art,
             None, // initial build — no existing cache
             Some(&sim.interner),
         )
@@ -686,10 +647,7 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
-    use super::{
-        load_rules_with_merged_ini, missing_active_team_ai_registry_sections, scheduler_anim_roots,
-        startup_crate_anim_remap_keys,
-    };
+    use super::{load_rules_with_merged_ini, scheduler_anim_roots, startup_crate_anim_remap_keys};
     use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::map::entities::EntityCategory;
     use crate::map::overlay_types::OverlayTypeRegistry;
@@ -967,20 +925,6 @@ mod tests {
     const RULES_BASE: &str = "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\n\
         [General]\nBuildSpeed=.7\n[CombatDamage]\nC4Delay=.03\n";
 
-    #[test]
-    fn active_team_ai_root_requires_all_four_native_registries() {
-        let complete = IniFile::from_str(
-            "[TeamTypes]\n0=T\n[ScriptTypes]\n0=S\n[TaskForces]\n0=F\n[AITriggerTypes]\nA=x\n",
-        );
-        assert!(missing_active_team_ai_registry_sections(&complete).is_empty());
-
-        let incomplete = IniFile::from_str("[TeamTypes]\n0=T\n[TaskForces]\n0=F\n");
-        assert_eq!(
-            missing_active_team_ai_registry_sections(&incomplete),
-            ["ScriptTypes", "AITriggerTypes"]
-        );
-    }
-
     /// AT-9: a map embedding [General]/[CombatDamage] overrides lands those
     /// values in RuleSet, including a sim-consumed path (C4 delay ticks).
     #[test]
@@ -1053,8 +997,8 @@ mod tests {
         let (_rules, ini, _fixed_art) = scenario_rules(rulesmd, langrule, &mode, &map);
 
         let general = ini.section("General").unwrap();
-        assert_eq!(general.get("BuildSpeed"), Some("1"));
-        assert_eq!(general.get("FlightLevel"), Some("900"));
+        assert_eq!(general.get_for_test("BuildSpeed"), Some("1"));
+        assert_eq!(general.get_for_test("FlightLevel"), Some("900"));
     }
 
     #[test]

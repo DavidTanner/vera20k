@@ -29,11 +29,12 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{BuildingUp, Health};
 use crate::sim::estimated_health::EstimatedHealth;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::house_state::{HouseDifficulty, HouseFrameTimer, HouseState};
+use crate::sim::house_state::{HouseDifficulty, HouseState};
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 use crate::sim::production::{self, RepairControl};
 use crate::sim::rng::SimRng;
+use crate::sim::timer::CdTimer;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use serde_json::{Value, json};
 
@@ -293,10 +294,7 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
     let timer = input["timer"].as_array().map_or([0, 0], |timer| {
         [timer[0].as_i64().unwrap(), timer[2].as_i64().unwrap()]
     });
-    house.repair_latch_timer = HouseFrameTimer {
-        start_frame: timer[0],
-        duration: timer[1] as i32,
-    };
+    house.repair_latch_timer = CdTimer::from_raw(timer[0] as i32, timer[1] as i32);
     house.repair_delay = f64::from_bits(
         input["delay"]
             .as_u64()
@@ -335,10 +333,10 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
         other => panic!("mission {other}"),
     };
     if input["mission"] == "construction" || input["queue"] == "construction" {
-        building.building_up = Some(BuildingUp::completing_in_ticks(
-            2,
+        building.install_building_up(
+            BuildingUp::completing_in_ticks(2, sim.session.binary_frame as i32),
             sim.session.binary_frame as i32,
-        ));
+        );
     }
     building.mission.apply_test_fixture(MissionTestFixture {
         current: mission("mission", "guard"),
@@ -427,8 +425,8 @@ fn update_repair_and_power_matches_the_original() {
                 house.economy.spent_credits,
                 u8::from(house.repair_start_latch),
                 [
-                    house.repair_latch_timer.start_frame,
-                    house.repair_latch_timer.duration
+                    house.repair_latch_timer.start_frame(),
+                    house.repair_latch_timer.duration()
                 ],
             ]),
             json!([row["balance"], row["spent"], row["latched"], row["timer"]]),
@@ -496,13 +494,19 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
         let owner = sim.interner.get("AI").unwrap();
         let control: [i32; 3] = serde_json::from_value(input["control"].clone()).unwrap();
         let start = input["frame"].as_i64().unwrap() as i32;
-        sim.substrate.entities.get_mut(1).unwrap().building_up =
-            Some(match input["route"].as_str().unwrap() {
-                "deploy" => BuildingUp::deployed(control, start),
-                "computer" => BuildingUp::placed_by_computer(control, start),
-                "player" => BuildingUp::placed_by_player(control, start),
-                other => panic!("route {other}"),
-            });
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .install_building_up(
+                match input["route"].as_str().unwrap() {
+                    "deploy" => BuildingUp::deployed(control, start),
+                    "computer" => BuildingUp::placed_by_computer(control, start),
+                    "player" => BuildingUp::placed_by_player(control, start),
+                    other => panic!("route {other}"),
+                },
+                start,
+            );
         for frame in row["frames"].as_array().unwrap() {
             let now = frame["frame"].as_u64().unwrap();
             sim.session.binary_frame = now as u32;
@@ -524,8 +528,8 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
                     house.economy.credits,
                     u8::from(house.repair_start_latch),
                     [
-                        house.repair_latch_timer.start_frame,
-                        house.repair_latch_timer.duration
+                        house.repair_latch_timer.start_frame(),
+                        house.repair_latch_timer.duration()
                     ],
                 ]),
                 json!([
@@ -568,10 +572,10 @@ fn the_auto_repair_latch_releases_on_the_original_timer() {
         let input = &row["input"];
         let mut house = HouseState::new(Default::default(), 0, None, false, 0, 10);
         house.repair_start_latch = input["latched"] == 1;
-        house.repair_latch_timer = HouseFrameTimer {
-            start_frame: input["timer"][0].as_i64().unwrap(),
-            duration: input["timer"][1].as_i64().unwrap() as i32,
-        };
+        house.repair_latch_timer = CdTimer::from_raw(
+            input["timer"][0].as_i64().unwrap() as i32,
+            input["timer"][1].as_i64().unwrap() as i32,
+        );
         house.release_repair_latch(input["frame"].as_u64().unwrap() as u32);
         assert_eq!(
             u8::from(house.repair_start_latch),
@@ -634,13 +638,7 @@ fn retail_repair_keys_read_as_the_oracle_writes_them() {
     // SetDifficulty copies the house's row (HouseDifficulty order: 0 is a
     // Hard AI reading [Easy]).
     let mut house = HouseState::new(Default::default(), 0, None, false, 0, 10);
-    house.set_difficulty(
-        HouseDifficulty::Easy,
-        &rules.general.difficulty_rof,
-        &rules.general.difficulty_repair_delay,
-        1.0,
-        true,
-    );
+    house.set_difficulty(HouseDifficulty::Easy, &rules.general, 1.0, true, 0, 0);
     assert_eq!(house.repair_delay.to_bits(), constant(&corpus, "delay_05"));
 }
 
@@ -703,7 +701,7 @@ fn the_repair_step_keeps_signed_adds_and_the_live_strength() {
     }
 }
 
-/// Each Selling visit stops a repair first (`BuildingClass::Sell`'s
+/// Each Selling visit stops a repair first (`BuildingClass::Mission_Selling`'s
 /// `ToggleRepair(0)`, `0x00449C41`): on the refinery dock scene's second
 /// refinery, damaged and paid for, a repair running when its owner's sale
 /// order arrives keeps running through the order's frame and stops at the
@@ -711,7 +709,6 @@ fn the_repair_step_keeps_signed_adds_and_the_live_strength() {
 /// building; the same visit of a building not repairing plays no click.
 #[test]
 fn a_sale_s_first_visit_stops_the_repair() {
-    let heights = std::collections::BTreeMap::new();
     let overlay = crate::sim::tiberium::test_support::overlay_registry();
     for repairing in [true, false] {
         let mut s = super::refinery_dock_oracle_tests::scene(&json!({
@@ -743,14 +740,8 @@ fn a_sale_s_first_visit_stops_the_repair() {
         for _ in 0..2 {
             s.sim.sound_events.clear();
             let grid = s.sim.path_grid_snapshot();
-            s.sim.advance_tick(
-                &[],
-                Some(&s.rules),
-                &heights,
-                grid.as_deref(),
-                Some(overlay),
-                67,
-            );
+            s.sim
+                .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(overlay), 67);
             let entity = s.sim.substrate.entities.get(building).unwrap();
             let clicks = s
                 .sim

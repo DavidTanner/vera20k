@@ -121,7 +121,13 @@ fn retail_fv_pursuit_missiles_collapse_and_guard_survive_restore() {
         healthy.sim().resolved_terrain.as_ref().unwrap().clone()
     };
     let (mut scene, ambient) = prepared_paid_scene("damaged");
-    let source = command_paid_fv(&mut scene, [22400, 12414, 416], 3, 3);
+    // The v26 original-native damaged case with declared Scenario seed 31
+    // fires at 1/4, collapses 220->232 at 32 and drains into Guard by next_frame 53.
+    // Main's migrated Infantry idle scheduling changes the supplied outside
+    // RNG calls, so the historical seed 3 case no longer guarantees collapse.
+    // Use the independently executed current witness; keep every save boundary.
+    // Evidence: tools/spatial_oracle/fv_cell_attack/paid_conditional_v26_vectors.json.
+    let source = command_paid_fv(&mut scene, [22400, 12414, 416], 31, 3);
     let mut checkpoints = Vec::new();
     for _ in 0..96 {
         let output = scene

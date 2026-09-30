@@ -48,18 +48,6 @@
 //!   it (`sim::ai_base_building`). Trigger: a map plan with a `-3` node.
 //!   Effect: its defenses are keyed by the whole perimeter rather than the
 //!   weakest quadrant's cells.
-//! - The enemy is `+0x5600`, which VERA sets only through the anger writer
-//!   (`house_strategy`). Native Strategy (not scheduled:
-//!   `sim::ai_base_building`'s residual) also picks the nearest house that is
-//!   neither passive nor defeated when there is none
-//!   (`0x004FD538..0x004FD71E`), and takes back a defeated enemy's anger and
-//!   clears it (`0x004FD723..0x004FD772`). Trigger: every choice before the
-//!   house is attacked or after its enemy is defeated. Effect: without an
-//!   enemy VERA takes a third for each threat share and makes none of the
-//!   three threat draws native makes; with no defense built yet all three
-//!   gaps are then equal, so its first defense always comes from the
-//!   infantry list, where native weighs its enemy's forces. After that
-//!   enemy's defeat VERA keeps drawing against its values.
 //! - Native reads VERA defines, none reachable with retail rules: a quadrant
 //!   total of 999999 or more in all four quadrants leaves the weakest at -1,
 //!   whose sums are read from the stack (VERA reads 0); the fudge vector is
@@ -73,7 +61,7 @@
 
 use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::ai_buildable::{country_bit, owner_allows};
+use crate::sim::ai_buildable::owner_allows;
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell};
 use crate::sim::base_plan_generation::prerequisites_satisfied;
 use crate::sim::house_tracking::ForceValues;
@@ -361,21 +349,15 @@ impl<'r> DefenseChoice<'r> {
                 ))
             })
             .collect();
-        // `FindIndexOfName` answers -1 for an unknown name, and the shift
-        // takes its low five bits.
-        let country_bit = rules
-            .trigger_house_type_index(sim.interner.resolve(house.house_type_id()))
-            .map_or(1 << 31, country_bit);
+        let country_bit = crate::sim::ai_buildable::house_country_bit(
+            rules,
+            sim.interner.resolve(house.house_type_id()),
+        );
         let enemy = house
             .enemy_house
             .and_then(|enemy| sim.houses.get(&enemy))
             .map(|enemy| enemy.tracking.force_values());
-        let fudge = rules
-            .general
-            .ai_force_prediction_fudge
-            .get(house.difficulty.table_index())
-            .copied()
-            .unwrap_or(0);
+        let fudge = house.difficulty_value(&rules.general.ai_force_prediction_fudge);
         let (x, y) = house.base_plan_center;
         Some(Self {
             rules,
@@ -578,7 +560,6 @@ pub(crate) fn choose_next_production(
     rules: &RuleSet,
     owner: InternedId,
     index: usize,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let Some(choice) = DefenseChoice::of_house(sim, rules, owner, index) else {
@@ -597,7 +578,6 @@ pub(crate) fn choose_next_production(
             grid: &pick.grid,
             argument: pick.argument,
         },
-        path_grid,
         registry,
     );
     if site == (0, 0) {

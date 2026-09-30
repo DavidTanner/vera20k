@@ -260,7 +260,6 @@ fn place(sim: &mut Simulation, id: u64, coord: [i32; 3]) {
 fn set_elite(sim: &mut Simulation, id: u64) {
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     entity.veterancy_raw = crate::util::native_x87::NativeF32Bits::from_bits(2.0f32.to_bits());
-    entity.veterancy = crate::sim::combat::veterancy::rank_u16(entity.veterancy_raw);
 }
 
 fn veterancy(sim: &Simulation, id: u64) -> f32 {
@@ -957,14 +956,7 @@ fn a_chrono_legionnaire_erases_a_tank() {
     let mut erased_after = None;
     for frame in 0..700 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
         if started.is_none() && head_of(&sim, tank) == Some(cleg) {
             started = Some(frame);
             assert_eq!(entity(&sim, tank).health.current, 400, "no damage");
@@ -1030,28 +1022,14 @@ fn a_legionnaires_inviso_bullet_warps_after_existing_object_turns() {
         for _ in 0..60 {
             let before = entity(&sim, tank).mission.ai_counter();
             let commands = sim.take_due_commands();
-            sim.advance_tick(
-                &commands,
-                Some(&rules),
-                &std::collections::BTreeMap::new(),
-                Some(&grid),
-                None,
-                33,
-            );
+            sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
             if head_of(&sim, tank) == Some(cleg) {
                 assert_eq!(
                     entity(&sim, tank).mission.ai_counter(),
                     before.wrapping_add(1),
                     "target_first={target_first}: Bullet AI follows the existing target's turn"
                 );
-                sim.advance_tick(
-                    &[],
-                    Some(&rules),
-                    &std::collections::BTreeMap::new(),
-                    Some(&grid),
-                    None,
-                    33,
-                );
+                sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
                 assert_eq!(
                     entity(&sim, tank).mission.ai_counter(),
                     before.wrapping_add(1),
@@ -1088,14 +1066,7 @@ fn only_temporal_fire_reaches_a_warped_target() {
     ));
     for _ in 0..40 {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
     }
     assert_eq!(head_of(&sim, tank), Some(cleg), "still warped");
     assert_eq!(entity(&sim, tank).health.current, 400);
@@ -1127,14 +1098,7 @@ fn moving_releases_the_target() {
         },
     ));
     let step = |sim: &mut Simulation, commands: &[CommandEnvelope]| {
-        sim.advance_tick(
-            commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(commands, Some(&rules), Some(&grid), None, 33);
     };
     for _ in 0..200 {
         let commands = sim.take_due_commands();
@@ -1224,7 +1188,21 @@ fn a_warp_in_progress_survives_a_snapshot() {
 /// frozen jump).
 #[test]
 fn a_warped_object_runs_none_of_its_ai_phases() {
-    let rules = rules();
+    // Stand is presentation; native idle admission reads Doing. Supply the
+    // real Ready record, then start it through Do_Action before testing freeze.
+    let ini = IniFile::from_str(&RULES.replace("[E1]\n", "[E1]\nImage=GI\n"));
+    let art = IniFile::from_str(&format!(
+        "{ART}\n{}",
+        crate::rules::retail_ini_fixture::GI_ART_EXCERPT
+    ));
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    let mut registry = crate::rules::art_data::ArtRegistry::from_ini(&art);
+    registry.bind_anim_frame_count_for_test("WARPAWAY", 20);
+    registry.bind_anim_frame_count_for_test("CHRONOSK", 3);
+    rules.install_art_data(registry);
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
     let mut sim = sim(21);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
     let plant = spawn(&mut sim, &rules, "GAPOWR", "Americans", 16, 16);
@@ -1239,10 +1217,16 @@ fn a_warped_object_runs_none_of_its_ai_phases() {
     sim.houses.get_mut(&americans).unwrap().economy.credits = 5000;
     let now = sim.session.binary_frame;
     let _ = sim.mission_assign_exact(gi, MissionId::from_known(MissionType::Guard), now);
+    assert!(
+        sim.infantry_do_action(
+            gi,
+            crate::sim::movement::infantry_action::DO_READY,
+            false,
+            &rules
+        )
+        .unwrap()
+    );
     let idle_turn = |sim: &mut Simulation, frame: u32| {
-        sim.substrate.entities.get_mut(gi).unwrap().animation = Some(
-            crate::sim::animation::Animation::new(crate::sim::animation::SequenceKind::Stand),
-        );
         let order = sim.live_object_order_snapshot();
         let before = sim.scenario_rng.logical_state();
         crate::sim::infantry::tick_idle_actions(
@@ -1313,7 +1297,9 @@ fn only_a_temporal_scanner_acquires_a_warped_enemy() {
             None,
             crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
             Some(sim),
+            None,
         )
+        .target()
     };
     assert_eq!(acquire(&sim, gi), Some(tank), "the control");
     sim.temporal_initiate_warp(cleg, Some(tank), &rules);
@@ -1339,14 +1325,7 @@ fn stop_retains_the_legionnaires_victim_until_attack_dispatch() {
     let owner = sim.interner.intern("Russians");
     let step = |sim: &mut Simulation| {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
     };
     sim.queue_command(CommandEnvelope::new(
         owner,
@@ -1371,8 +1350,6 @@ fn stop_retains_the_legionnaires_victim_until_attack_dispatch() {
         "Russians",
         &Command::Stop { entity_id: cleg },
         Some(&rules),
-        Some(&grid),
-        &std::collections::BTreeMap::new(),
         None,
     ));
     assert!(entity(&sim, cleg).attack_target.is_none());
@@ -1414,14 +1391,7 @@ fn a_released_mover_does_not_resume_its_order() {
     let owner = sim.interner.intern("Americans");
     let step = |sim: &mut Simulation| {
         let commands = sim.take_due_commands();
-        sim.advance_tick(
-            &commands,
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            Some(&grid),
-            None,
-            33,
-        );
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
     };
     sim.queue_command(CommandEnvelope::new(
         owner,

@@ -473,7 +473,6 @@ mod tests {
             lifetime: -1,
             spark_spawn_frames: 0,
             facing: 0,
-            directionless: true,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,

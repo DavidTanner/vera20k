@@ -11,8 +11,6 @@
 //! occupancy, overlay registry, etc.; the contract being verified here is
 //! purely about determinism + serialization, so the simpler seeding is enough.
 
-use std::collections::BTreeMap;
-
 use super::Simulation;
 use crate::sim::smudge_grid::{SmudgeCell, SmudgeGrid};
 use crate::sim::snapshot::GameSnapshot;
@@ -58,9 +56,8 @@ fn build_test_sim_with_seed(seed: u64) -> Simulation {
 
 /// Run `advance_tick` n times with empty inputs.
 fn advance_n(sim: &mut Simulation, n: u32) {
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     for _ in 0..n {
-        sim.advance_tick(&[], None, &height_map, None, None, 33);
+        sim.advance_tick(&[], None, None, None, 33);
     }
 }
 

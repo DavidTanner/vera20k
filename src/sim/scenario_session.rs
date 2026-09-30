@@ -179,6 +179,8 @@ pub struct ScenarioDescriptor {
     /// Map `[Basic] FreeRadar`, native Scenario+34A4. Fresh reset at 0068383C
     /// is false; House 00508DF0 bypasses ordinary power/providers when set.
     pub free_radar: bool,
+    /// Map `[Basic] IgnoreGlobalAITriggers`, native Scenario+34B4.
+    pub ignore_global_ai_triggers: bool,
     /// Native `ScenarioClass` flags bit `0x40` (`[SpecialFlags] TiberiumGrows`,
     /// bit layout from the writer `0x006B8B30`). Every skirmish/multiplayer
     /// start forces it on (`OR 0xC0` at `0x005E74CD` on the ordinary skirmish
@@ -258,6 +260,9 @@ pub struct ScenarioSession {
     /// Persistent native Scenario+34A4, included by original CRC at 0068BC16.
     #[serde(default)]
     pub free_radar: bool,
+    /// Persistent native Scenario+34B4 (`[Basic] IgnoreGlobalAITriggers`).
+    #[serde(default)]
+    ignore_global_ai_triggers: bool,
     /// Persisted native `ScenarioClass` flags bit `0x40` (`TiberiumGrows`);
     /// see the descriptor field of the same name.
     #[serde(default)]
@@ -339,6 +344,9 @@ impl ScenarioSession {
         if s.free_radar {
             b"scenario-free-radar-v1".hash(hasher);
         }
+        if s.ignore_global_ai_triggers {
+            b"scenario-ignore-global-ai-triggers-v1".hash(hasher);
+        }
         // Same legacy-preserving shape for the `0x40`/`0x80` tiberium bits.
         if s.tiberium_grows_flag {
             b"scenario-tiberium-grows-v1".hash(hasher);
@@ -407,6 +415,12 @@ impl ScenarioSession {
         opts.ai_players.hash(hasher);
     }
 
+    /// Scenario+34B4 (`[Basic] IgnoreGlobalAITriggers=`): the computer's
+    /// team creation skips the global (`AIMD.INI`) AI triggers.
+    pub(crate) const fn ignore_global_ai_triggers(&self) -> bool {
+        self.ignore_global_ai_triggers
+    }
+
     pub fn from_descriptor(desc: &ScenarioDescriptor) -> Self {
         Self {
             seed: u64::from(desc.seed),
@@ -415,6 +429,7 @@ impl ScenarioSession {
             game_mode_nonzero: desc.game_mode_nonzero,
             no_damage: desc.no_damage,
             free_radar: desc.free_radar,
+            ignore_global_ai_triggers: desc.ignore_global_ai_triggers,
             tiberium_grows_flag: desc.tiberium_grows_flag,
             tiberium_spreads_flag: desc.tiberium_spreads_flag,
             lighting: desc.lighting,
@@ -515,7 +530,6 @@ mod tests {
     fn mp_sibling_rng_state_matches_after_seed_sync() {
         use crate::map::entities::{EntityCategory, MapEntity};
         use crate::sim::command::{Command, CommandEnvelope};
-        use std::collections::BTreeMap;
 
         fn build(seed: u32) -> Simulation {
             let mut sim = Simulation::from_descriptor(&ScenarioDescriptor {
@@ -543,11 +557,10 @@ mod tests {
                 structure_ai_sellable: false,
                 structure_ai_repairable: false,
             };
-            sim.spawn_from_map(&[entity], None, &BTreeMap::new());
+            sim.spawn_from_map(&[entity], None);
             sim
         }
         fn run_300(sim: &mut Simulation) -> Vec<u64> {
-            let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
             let owner = sim.interner.get("Americans").expect("owner interned");
             (0..300u64)
                 .map(|t| {
@@ -565,8 +578,7 @@ mod tests {
                     } else {
                         Vec::new()
                     };
-                    sim.advance_tick(&cmds, None, &heights, None, None, 67)
-                        .state_hash
+                    sim.advance_tick(&cmds, None, None, None, 67).state_hash
                 })
                 .collect()
         }

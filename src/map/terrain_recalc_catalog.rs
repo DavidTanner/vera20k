@@ -333,8 +333,7 @@ impl BridgeRecalcCatalog {
                     .flatten()
                     .filter_map(|name| ini.section(name))
                     .any(|section| {
-                        section.get("ShadowCaster").is_some()
-                            || section.get("ShadowTiles").is_some()
+                        section.is_present("ShadowCaster") || section.is_present("ShadowTiles")
                     })
                 {
                     return Err(BridgeRecalcCatalogError::Unsupported {

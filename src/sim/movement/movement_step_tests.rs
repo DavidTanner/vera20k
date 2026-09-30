@@ -36,10 +36,8 @@ fn exhausted_foot_queue_cannot_bypass_drive_or_ship_track_admission() {
                 &mut target,
                 &mut position,
                 &mut Some(LocomotorState::for_test_kind(kind)),
-                EntityCategory::Unit,
                 SimFixed::from_num(255),
                 SimFixed::from_num(1) / SimFixed::from_num(15),
-                1,
             );
             assert!(
                 matches!(result, AdvanceResult::DriveTrackActive),
@@ -82,35 +80,20 @@ fn test_body_rotation_matches_native_frame_duration() {
     // Drive the in-place rotation frame by frame, returning the native-frame
     // count at which it completes (ReadyToMove with the exact target reached).
     fn frames_to_turn(from: u8, to: u8, rot: i32) -> u32 {
-        let mut facing = from;
-        let mut facing_target = Some(to);
-        let mut body_facing = None;
-        let mut position = Position {
-            rx: 5,
-            ry: 5,
-            z: 0,
-            exact_z_leptons: None,
-            sub_x: crate::util::lepton::CELL_CENTER_LEPTON,
-            sub_y: crate::util::lepton::CELL_CENTER_LEPTON,
-        };
-        let mut locomotor = None;
+        let target = u16::from(to) << 8;
+        let mut body_facing = crate::sim::movement::FacingClass::new(u16::from(from) << 8, rot);
+        let mut desired = Some(target);
         for frame in 0..1000u32 {
-            match handle_vehicle_rotation(
-                &mut facing,
-                &mut facing_target,
-                &mut body_facing,
-                &mut position,
-                &mut locomotor,
-                rot,
-                frame,
-                0,
-            ) {
+            match handle_vehicle_rotation(&mut body_facing, desired.take(), frame) {
                 RotationResult::ReadyToMove => {
-                    assert_eq!(facing, to, "rotation must land exactly on the target");
-                    assert!(body_facing.is_none(), "interpolator cleared on completion");
+                    assert_eq!(
+                        body_facing.current(frame),
+                        target,
+                        "rotation must land exactly on the target"
+                    );
                     return frame;
                 }
-                RotationResult::StillRotating { .. } => {}
+                RotationResult::StillRotating => {}
             }
         }
         panic!("rotation did not complete within 1000 frames");
@@ -228,14 +211,13 @@ fn fresh_retry_terminal_retains_raw_head_for_both_track_families() {
             state.head_to = Some(head);
             state.track = track;
         }
-        assert_eq!(
-            sim.run_track_points(invocation, budget, None, None, None),
-            1
-        );
+        assert_eq!(sim.run_track_points(invocation, budget, None, None), 1);
         let entity = sim.substrate.entities.get(1).unwrap();
+        // The terminal SetHeight(0) grounds the retained head XY. The fixture
+        // has no map, so that ground is the Dummy cell's level 0.
         assert_eq!(
             super::super::ground_pose::position_world_coord(&entity.position),
-            head
+            DriveCoord { z: 0, ..head }
         );
         assert_eq!(retained_track(entity, kind).turn_index, -1);
         assert_eq!(retained_track(entity, kind).cursor, 0);
@@ -278,10 +260,7 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
         final_goal: Some((11, 10)),
         ..Default::default()
     });
-    assert_eq!(
-        sim.run_track_points(invocation, budget, None, None, None),
-        1
-    );
+    assert_eq!(sim.run_track_points(invocation, budget, None, None), 1);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     assert_eq!(entity.drive_locomotion.as_ref().unwrap().track.residual, 1);
     assert_eq!(
@@ -293,23 +272,12 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
     // Actual combat hull ownership can retain all16 bits with no movement
     // facing target. The earlier rotation sample must not destroy the one-bit
     // mismatch proved by drive_fresh_turn.json (initial0x4001/direction2).
-    entity.facing = 0x40;
-    entity.facing_target = None;
-    entity.body_facing = Some(crate::sim::movement::FacingClass::new(0x4001, 5));
+    entity.body_facing = crate::sim::movement::FacingClass::new(0x4001, 5);
     assert!(matches!(
-        handle_vehicle_rotation(
-            &mut entity.facing,
-            &mut entity.facing_target,
-            &mut entity.body_facing,
-            &mut entity.position,
-            &mut entity.locomotor,
-            5,
-            2,
-            3,
-        ),
+        handle_vehicle_rotation(&mut entity.body_facing, None, 2),
         RotationResult::ReadyToMove
     ));
-    let live_facing = entity.body_facing.as_ref().unwrap().current(2);
+    let live_facing = entity.body_facing.current(2);
     assert_eq!(live_facing, 0x4001);
     let prepare = |facing,
                    entity: &mut GameEntity,
@@ -321,7 +289,6 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
             target,
             &entity.position,
             facing,
-            &mut entity.facing_target,
             &mut entity.drive_locomotion,
             &mut entity.ship_locomotion,
             &entity.locomotor,
@@ -334,9 +301,8 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
     };
     assert!(matches!(
         prepare(live_facing, entity, &mut target, &mut occupation),
-        Some(NativeTrackPreparation::TurnFirst(_))
+        Some(NativeTrackPreparation::TurnFirst(_, 64))
     ));
-    assert_eq!(entity.facing_target, Some(64));
     assert_eq!(entity.drive_locomotion.as_ref().unwrap().track.residual, 1);
     let Some(NativeTrackPreparation::Invoke(next)) =
         prepare(0x4000, entity, &mut target, &mut occupation)
@@ -348,7 +314,7 @@ fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
     assert_eq!(track.cursor, 0);
     assert_eq!(track.residual, 1);
     entity.movement_target = Some(target);
-    assert_eq!(sim.run_track_points(next, 0, None, None, None), 0);
+    assert_eq!(sim.run_track_points(next, 0, None, None), 0);
     let track = sim
         .substrate
         .entities
@@ -369,10 +335,7 @@ fn drive_track_first_native_frame_uses_native_frame_budget() {
         crate::sim::movement::foot_speed::owner_current_speed_from_fraction(current_speed, SIM_ONE);
     assert_eq!(budget, 11);
     let (mut sim, invocation, budget) = native_track_fixture(LocomotorKind::Drive, budget);
-    assert_eq!(
-        sim.run_track_points(invocation, budget, None, None, None),
-        1
-    );
+    assert_eq!(sim.run_track_points(invocation, budget, None, None), 1);
     let track = retained_track(sim.substrate.entities.get(1).unwrap(), LocomotorKind::Drive);
     assert_eq!(track.cursor, 1);
     assert_eq!(track.residual, 4);
@@ -388,43 +351,36 @@ fn gsi_04_05_paid_track_point_clears_current_before_same_cell_coordinate_commit(
         .cell_occupation
         .mark_vehicle_on_layer(10, 9, 1, MovementLayer::Ground);
     let mut paid_commits = 0;
-    sim.run_track_points_observed(
-        invocation,
-        budget,
-        None,
-        None,
-        None,
-        &mut |sim, id, event| {
-            if event == TrackWorldEvent::SetCoords {
-                paid_commits += 1;
-                let entity = sim.substrate.entities.get(id).unwrap();
-                assert_eq!((entity.position.rx, entity.position.ry), (10, 10));
-                assert_eq!(
-                    sim.substrate
-                        .cell_occupation
-                        .vehicle_bits(10, 10, MovementLayer::Ground),
-                    0
-                );
-                assert_eq!(
-                    sim.substrate
-                        .cell_occupation
-                        .vehicle_bits(10, 9, MovementLayer::Ground),
-                    0x20
-                );
-                assert!(!entity.foot_occupation_enabled);
-            }
-        },
-    );
+    sim.run_track_points_observed(invocation, budget, None, None, &mut |sim, id, event| {
+        if event == TrackWorldEvent::SetCoords {
+            paid_commits += 1;
+            let entity = sim.substrate.entities.get(id).unwrap();
+            assert_eq!((entity.position.rx, entity.position.ry), (10, 10));
+            assert_eq!(
+                sim.substrate
+                    .cell_occupation
+                    .vehicle_bits(10, 10, MovementLayer::Ground),
+                0
+            );
+            assert_eq!(
+                sim.substrate
+                    .cell_occupation
+                    .vehicle_bits(10, 9, MovementLayer::Ground),
+                0x20
+            );
+            assert!(!entity.foot_occupation_enabled);
+        }
+    });
     assert!(paid_commits >= 1, "observe the actual coordinate receiver");
 }
 
 #[test]
 fn drive_track_each_call_consumes_fresh_native_frame_budget() {
     let (mut sim, invocation, budget) = native_track_fixture(LocomotorKind::Drive, 11);
-    sim.run_track_points(invocation, budget, None, None, None);
+    sim.run_track_points(invocation, budget, None, None);
     let first = retained_track(sim.substrate.entities.get(1).unwrap(), LocomotorKind::Drive);
     assert_eq!((first.cursor, first.residual), (1, 4));
-    sim.run_track_points(invocation, budget, None, None, None);
+    sim.run_track_points(invocation, budget, None, None);
     let second = retained_track(sim.substrate.entities.get(1).unwrap(), LocomotorKind::Drive);
     assert_eq!((second.cursor, second.residual), (3, 1));
 }
@@ -436,7 +392,7 @@ fn fresh_track_pays_point_zero_and_terminal_through_the_production_host() {
     {
         let (mut sim, invocation, budget) = native_track_fixture(LocomotorKind::Drive, budget);
         assert_eq!(
-            sim.run_track_points(invocation, budget, None, None, None),
+            sim.run_track_points(invocation, budget, None, None),
             expected_steps
         );
         let entity = sim.substrate.entities.get(1).unwrap();

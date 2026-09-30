@@ -492,19 +492,18 @@ pub(crate) fn damage_terrain_object_at_cell(
 mod tests {
     use super::*;
     use crate::map::overlay::TerrainObject;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::locomotor_type::MovementZone;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::LandType;
     use crate::sim::movement::bump_crush::{
         CrushCapability, build_blocker_neighbor_counts, collect_crush_victims,
     };
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::pathfinding::PathGrid;
     use crate::sim::pathfinding::cell_entry::{
-        CanEnterCellContext, CanEnterCellResult, TerrainEntryMode, evaluate_can_enter_cell,
+        CanEnterCellContext, CanEnterCellResult, evaluate_can_enter_cell,
     };
     use crate::sim::terrain_spawn::seed_terrain_spawners;
     use crate::sim::world::Simulation;
@@ -681,17 +680,11 @@ mod tests {
             .cell(0, 0)
             .expect("clear template")
             .clone();
-        let mut cells = Vec::with_capacity(9);
-        for ry in 0..3 {
-            for rx in 0..3 {
-                cells.push(ResolvedTerrainCell {
-                    rx,
-                    ry,
-                    ..template.clone()
-                });
-            }
-        }
-        ResolvedTerrainGrid::from_cells(3, 3, cells)
+        crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| ResolvedTerrainCell {
+            rx,
+            ry,
+            ..template.clone()
+        })
     }
 
     #[test]
@@ -735,7 +728,6 @@ mod tests {
                     resolved_terrain: Some(&resolved),
                     terrain_costs: None,
                     bypass_grid: false,
-                    mode: TerrainEntryMode::RuntimeTransition,
                     is_infantry: false,
                     mover_is_crusher: false,
                 }),

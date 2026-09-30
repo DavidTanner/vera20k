@@ -114,8 +114,7 @@ mod tests {
             level_steps: 500 / 90,
             duration: 500,
             remaining,
-            level_timer_start: 0,
-            level_timer_duration: 90,
+            level_timer: crate::sim::timer::CdTimer::started(0, 90),
         }
     }
 

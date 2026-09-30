@@ -27,8 +27,8 @@ fn stock_cloak_tick_facts(
         return None;
     }
     let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
-    let rank_cloak = entity.veterancy >= 100 && object.veteran_cloak
-        || entity.veterancy >= 200 && object.elite_cloak;
+    let rank_cloak = entity.veterancy() >= 100 && object.veteran_cloak
+        || entity.veterancy() >= 200 && object.elite_cloak;
     if !object.cloakable && !rank_cloak {
         return None;
     }
@@ -172,7 +172,10 @@ fn stock_cloak_tick_facts(
         //    `TechnoClass::ImbueLocomotor @ 0x00710352`). VERA has no
         //    Magnetron, so the term is always false and is not evaluated.
         // 8. `GetHeight() < 1`.
-        && entity.position.z < 1
+        && crate::sim::movement::air_movement::current_fly_height(
+            entity,
+            sim.resolved_terrain.as_ref(),
+        ) < 1
         // The pre-CanAutoCloak `Contact_With_Whom(0)` exclusion at
         // 0x006FB7FD..0x006FB823 (`BuildingType+0x16BD` = `WeaponsFactory=`,
         // verified from the key string at 0x0081AA4C).
@@ -616,7 +619,7 @@ pub(super) fn tick_stock_cloak_producer(sim: &mut Simulation, id: u64, rules: &R
         .substrate
         .entities
         .get(id)
-        .map(|entity| (entity.category, entity.type_ref(), entity.veterancy))
+        .map(|entity| (entity.category, entity.type_ref(), entity.veterancy()))
     else {
         return;
     };

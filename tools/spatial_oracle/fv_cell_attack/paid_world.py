@@ -20,7 +20,7 @@ from tools.spatial_oracle.naval_head_producer import Head
 from tools.spatial_oracle.building_body_rules import SP, RULES, INI, dwords
 from tools.rules_oracle import bridge_anim_lists as lists_owner, bridge_anim_inputs as reader_owner
 HERE=Path(__file__).resolve().parent
-FROZEN_SOURCE_SHA256='21ea76612a495088d5f2d49ace3236694d3b31748bd18a8f9b106ae127b0e2b0'
+OUTPUT=HERE/'paid_world_drive_crt.json.gz'
 sha=frozen.proof.sha
 WORLD_GLOBALS=[(0x87F7E8,0x200),(0xC00000,0x100000),(0xABDC50,0x200),(0x89EA40,12*36),(0xA8ED28,24),(0xA83D80,24),(0xA8E318,24),(0x8B4150,24),(0xB0F4E8,24),(0xB0EDC0,0x1000),(0xB0F670,24),(0xA8E988,24),(0x87E8B8,0xD00)]
 
@@ -130,6 +130,17 @@ class Paid(mission_owner.Mission):
    water.append(dict(name=name,sha256=sha(raw),admitted_al=admitted&255,frames=struct.unpack('<h',u.mem_read(img+6,2))[0],end=m.read32(ap+0x2C0),rate=m.read32(ap+0x2B0),report=m.read32(ap+0x2F8),assets=list(m.asset_loaded)))
   self.inputs['splash_art']=dict(source_lines=water_lines,rows=water)
   art,_=frozen.proof.lexical((frozen.proof.assets_root()/'ARTMD.INI').read_bytes(),art_names|set(splash));m.make_ini(art)
+  # Original CRT startup7CD8B4 ->7CBDAF ->7CBED3 walks812000..815DA4.
+  # Its Drive slice812D2C..812D64 contains14 initializers4AF330..4AF520.
+  #4AF400 (not mid-body4AF420) writes level height8A07D0 at4AF42B;
+  #4AF4A0 derives bridge scale8A07C4. Image-zero globals incorrectly reject
+  # reached-destination4B2196 and re-enter path search at frame7 of this FV.
+  # Execute the original dispatcher/table before actor construction; no supplied
+  # scale, movement result or floating-point calculation replaces native code.
+  drive_table=bytes(u.mem_read(0x812D2C,56))
+  drive_before={f'{a:08x}':m.read32(a)for a in(0x8A07D0,0x8A07C4)}
+  m.invoke(0x7CBED3,0,(0x812D2C,0x812D64))
+  self.inputs['drive_crt']=dict(dispatcher='007cbed3',table_begin='00812d2c',table_end='00812d64',table_bytes=drive_table.hex(),initializers=[f'{a:08x}'for a in struct.unpack('<14I',drive_table)],before=drive_before,after={f'{a:08x}':m.read32(a)for a in(0x8A07D0,0x8A07C4)})
   scenario=m.read32(0xA8B230);m.invoke(0x6B8AE0,scenario);flag_before=m.read32(scenario)
   map_sections,map_lines=frozen.proof.lexical(frozen.proof.MAP.read_bytes(),{'SpecialFlags'});m.rules_cache(map_sections);u.mem_write(0xA8B238,dwords(5));m.invoke(0x6B8CA0,scenario,(RULES,))
   self.inputs['impact_combat_layers']=combat_rows;self.inputs['special_flags']=dict(constructor=flag_before,after_physical_map=m.read32(scenario),map_sections=map_sections,mode=5)
@@ -290,8 +301,8 @@ def metadata():
   'Existing bounded native fixture owners provide OS string/CLSID/COM transport, bump allocation and deallocation, selected native INI cache entries and physical SHP transport. Actual Drive/Bullet COM factories execute. Existing setup-only wall-clock and type-visual sinks, radar and sound boundaries are retained and reported as events.',
   'Whole physical-world native heap/global snapshots are supplied inputs; source constructor clock is reset to frame0 before the new lifetime. The existing Mission setup then runs original base connectivity again; the packet distinguishes unchanged native live base labels from exact native post-load rebuilt labels, while retaining the donor live hierarchy.',
   'No original gameplay code or native return values are patched. VM wall-clock allowance for the unchanged Mission-owned loop is60seconds with the original instruction-count guard, to accommodate tracing and concurrent independent replay.'])
- result.update(source_pins=sources(),harness_sha256=sha(Path(__file__).read_bytes()),frozen_source_sha256=FROZEN_SOURCE_SHA256,frozen_source_metadata_sha256='fff1d73d67221d175efb7752bb3e1415494aed0ded31c6571652e0a3159014e2',publication_changes=['Imported-source census moves to this metadata; the external pickle transport hash is omitted. Native states, field bytes, ordered traces, input identities and raw world-region digests remain unchanged.','The shared publisher replaces copied lexical INI entries with hashes. The portable native generator must match the original frozen canonical projection even under --write.'])
+ result.update(source_pins=sources(),harness_sha256=sha(Path(__file__).read_bytes()),frozen_source_sha256=json.loads((HERE/'promotion.json').read_bytes())['results']['paid_world_drive_crt.json']['frozen_source_sha256'],supersedes='paid_world.json.gz',publication_changes=['Imported-source census moves to this metadata; the external pickle transport hash is omitted. The original Drive CRT table now executes before construction; the previous image-zero packet is preserved as superseded evidence.','The shared publisher replaces copied lexical INI entries with hashes. The portable native generator must match the original frozen canonical projection even under --write.'])
  return result
 
 
-if __name__=='__main__':finish_vectors(generate,HERE/'paid_world.json.gz',provenance=metadata)
+if __name__=='__main__':finish_vectors(generate,OUTPUT,provenance=metadata)

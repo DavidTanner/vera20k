@@ -101,14 +101,13 @@ fn cloak_tick_reports_arg_zero_sound_for_entering_and_leaving_cloak() {
     abort.visual_phase = Some(CloakVisualPhase::Cloaking);
     abort.depth = 3;
     abort.step_delta = 1;
-    abort.step_timer = CloakStepTimer {
-        start_frame: 0,
-        speed: 1,
-        duration_frames: 1,
-    };
+    abort.step_timer = CloakStepTimer::started(0, 1);
     let result = abort.tick(facts(false, false), &mut rng);
     assert!(result.transitioned);
-    assert!(!result.play_cloak_sound, "mid-cloak abort calls StartUncloaking(1)");
+    assert!(
+        !result.play_cloak_sound,
+        "mid-cloak abort calls StartUncloaking(1)"
+    );
 
     let mut entering = CloakRuntime::new(0, 9);
     let result = entering.tick(facts(true, false), &mut rng);
@@ -120,7 +119,10 @@ fn cloak_tick_reports_arg_zero_sound_for_entering_and_leaving_cloak() {
     reversal.depth = 1;
     let result = reversal.tick(facts(true, false), &mut rng);
     assert!(result.transitioned);
-    assert!(!result.play_cloak_sound, "state-three reversal calls StartCloaking(1)");
+    assert!(
+        !result.play_cloak_sound,
+        "state-three reversal calls StartCloaking(1)"
+    );
 
     let mut ordinary = CloakRuntime::new(0, 9);
     ordinary.establish_unlimbo_fully_cloaked();

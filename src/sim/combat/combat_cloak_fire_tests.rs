@@ -30,7 +30,7 @@ fn entities(target_type: &str) -> EntityStore {
     // (`UnitClass::GetFireError @ 0x00740FD0` step 17) compares its HULL
     // `+0x388` against the target. Face it east at the target one cell away so
     // this fixture exercises the DecloakToFire arm rather than turn-to-fire.
-    bsub.facing = 64;
+    bsub.body_facing.snap(0x4000, 0);
     bsub.attack_target = Some(AttackTarget::new(2));
     let mut cloak = CloakRuntime::new(0, 9);
     cloak.establish_unlimbo_fully_cloaked();
@@ -52,7 +52,7 @@ fn resolve_once(
 ) {
     let attacker = entities.get(1).unwrap();
     let attack = attacker.attack_target.as_ref().unwrap();
-    let snap = build_attacker_snapshot(attacker, attack.target, attack.pending_infantry_fire, None);
+    let snap = build_attacker_snapshot(attacker, attack.target, None);
     let mut rng = SimRng::new(0xC10A_F1AE);
     let mut hooks: Option<&mut FixtureTrace> = None;
     resolve_attacker_fire(

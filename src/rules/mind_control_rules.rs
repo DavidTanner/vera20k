@@ -58,40 +58,37 @@ pub struct MindControlRules {
 
 impl MindControlRules {
     pub fn from_ini(ini: &IniFile) -> Self {
-        let combat = ini.section("CombatDamage");
-        let audio = ini.section("AudioVisual");
-        let general = ini.section("General");
-        let list = |section: Option<&IniSection>, key: &str| -> Vec<i32> {
-            section
-                .and_then(|section| section.get_list(key))
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|item| item.trim().parse::<i32>().ok())
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
+        let combat = ini.section_or_empty("CombatDamage");
+        let audio = ini.section_or_empty("AudioVisual");
+        let general = ini.section_or_empty("General");
+        // `DifficultyClass::ReadINI_IntVector @ 0x00475D70`.
+        let list = |section: &IniSection, key: &str| section.read_int_list(key).unwrap_or_default();
         Self {
-            controlled_anim: combat.and_then(|s| name(s, "ControlledAnimationType")),
+            // ReadString 0x80, then the anim or sound lookup.
+            controlled_anim: combat
+                .read_type_name("ControlledAnimationType", 0x80)
+                .map(str::to_string),
             overload_count: list(combat, "OverloadCount"),
             overload_damage: list(combat, "OverloadDamage"),
             overload_frames: list(combat, "OverloadFrames"),
-            mind_control_sound: audio.and_then(|s| name(s, "YuriMindControlSound")),
-            mind_cleared_sound: audio.and_then(|s| name(s, "MindClearedSound")),
-            overload_sound: audio.and_then(|s| name(s, "MasterMindOverloadDeathSound")),
+            mind_control_sound: audio
+                .read_type_name("YuriMindControlSound", 0x80)
+                .map(str::to_string),
+            mind_cleared_sound: audio
+                .read_type_name("MindClearedSound", 0x80)
+                .map(str::to_string),
+            overload_sound: audio
+                .read_type_name("MasterMindOverloadDeathSound", 0x80)
+                .map(str::to_string),
             ai_capture: [
                 list(general, "AICaptureLowMoney"),
                 list(general, "AICaptureLowPower"),
                 list(general, "AICaptureWounded"),
                 list(general, "AICaptureNormal"),
             ],
-            ai_capture_low_money_mark: general
-                .and_then(|s| s.get_i32("AICaptureLowMoneyMark"))
-                .unwrap_or(0),
-            ai_capture_wounded_mark: general
-                .and_then(|s| s.get_f32("AICaptureWoundedMark"))
-                .unwrap_or(0.0),
+            ai_capture_low_money_mark: general.read_int("AICaptureLowMoneyMark", 0),
+            // ReadDouble -> `FSTP dword [ESI+0xEC0]` (`0x00670509`).
+            ai_capture_wounded_mark: general.read_float("AICaptureWoundedMark", 0.0),
         }
     }
 
@@ -105,13 +102,6 @@ impl MindControlRules {
         };
         &self.ai_capture[index]
     }
-}
-
-fn name(section: &IniSection, key: &str) -> Option<String> {
-    section
-        .get(key)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("none"))
 }
 
 #[cfg(test)]

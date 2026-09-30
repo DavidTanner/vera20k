@@ -29,6 +29,7 @@ impl NativeFileName {
     pub fn is_ascii_name(&self, name: &[u8]) -> bool {
         self.0.eq_ignore_ascii_case(name)
     }
+    #[cfg(windows)]
     fn full_path(&self, directory: &Path) -> std::io::Result<std::ffi::CString> {
         let mut bytes = super::native_string::acp_encode(&directory.to_string_lossy());
         if !bytes.ends_with(b"\\") && !bytes.ends_with(b"/") {

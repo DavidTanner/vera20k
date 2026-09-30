@@ -29,39 +29,6 @@ pub(super) fn radar_owner_is_human_player(
     }
 }
 
-/// ObjectClass virtual `GetCoords` used by radar visibility and radar clicks.
-/// `BuildingClass::GetCoords @ 0x00447AC0` projects the stored foundation-origin
-/// coordinate to its geometric centre; mobiles inherit the raw Object result.
-pub(super) fn radar_object_get_coords_leptons(
-    entity: &crate::sim::game_entity::GameEntity,
-) -> (i32, i32) {
-    let (mut x, mut y) = radar_raw_coord_leptons(entity);
-    if entity.category == EntityCategory::Structure {
-        let (width, height) = crate::rules::foundation::foundation_dimensions(&entity.foundation);
-        x = x.wrapping_add(
-            i32::from(width)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::util::lepton::CELL_CENTER_LEPTON_I32),
-        );
-        y = y.wrapping_add(
-            i32::from(height)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::util::lepton::CELL_CENTER_LEPTON_I32),
-        );
-    }
-    (x, y)
-}
-
-fn radar_raw_coord_leptons(entity: &crate::sim::game_entity::GameEntity) -> (i32, i32) {
-    let x = i32::from(entity.position.rx)
-        .wrapping_mul(crate::util::lepton::LEPTONS_PER_CELL_I32)
-        .wrapping_add(entity.position.sub_x.to_num::<i32>());
-    let y = i32::from(entity.position.ry)
-        .wrapping_mul(crate::util::lepton::LEPTONS_PER_CELL_I32)
-        .wrapping_add(entity.position.sub_y.to_num::<i32>());
-    (x, y)
-}
-
 fn radar_packed_cell_from_leptons(x: i32, y: i32) -> (i32, i32) {
     // Coord2Cell uses signed division and then narrows to signed words.
     (
@@ -103,7 +70,8 @@ fn radar_fresh_mode_one_membership(
         // cannot be replaced by a rectangular or geometry-only approximation.
         return false;
     };
-    let (x, y) = radar_object_get_coords_leptons(entity);
+    // ObjectClass virtual `GetCoords`.
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     crate::sim::cell_rect::cell_is_in_playfield_leptons(
         (x, y, 0),
         Some(bounds),
@@ -115,7 +83,8 @@ fn radar_get_height_leptons(
     entity: &crate::sim::game_entity::GameEntity,
     resolved_terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> i32 {
-    let (x, y) = radar_object_get_coords_leptons(entity);
+    // ObjectClass virtual `GetCoords`.
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     let (rx, ry) = radar_packed_cell_from_leptons(x, y);
     let ground = resolved_terrain
         .and_then(|terrain| {
@@ -130,9 +99,10 @@ fn radar_get_height_leptons(
             i32::from(entity.position.z as i8)
                 .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
         });
-    let mut height = super::locomotor_visual::world_z_leptons(entity).wrapping_sub(ground);
+    let mut height = crate::sim::movement::ground_pose::object_world_z_leptons(entity, None)
+        .wrapping_sub(ground);
     if entity.on_bridge {
-        height = height.wrapping_sub(crate::sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS);
+        height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     height
 }
@@ -309,7 +279,7 @@ pub(super) fn build_radar_object_update(
 ) -> RadarObjectUpdate {
     let type_str = interner.map_or("", |i| i.resolve(entity.type_ref()));
     let object = rules.and_then(|rules| rules.object(type_str));
-    let (raw_x, raw_y) = radar_raw_coord_leptons(entity);
+    let [raw_x, raw_y] = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
     let origin = projection.native_surface.map_or_else(
         || {
             let (screen_x, screen_y) = super::locomotor_visual::screen_position(entity);
@@ -336,7 +306,7 @@ pub(super) fn build_radar_object_update(
     let owner_is_human_player = local_owner.is_none_or(|local_owner| {
         radar_owner_is_human_player(entity.owner(), local_owner, houses, game_mode_nonzero)
     });
-    let (coord_x, coord_y) = radar_object_get_coords_leptons(entity);
+    let [coord_x, coord_y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     let current_cell = radar_fog_cell_from_leptons(coord_x, coord_y);
     // The type-5 call at `0x0070DA95..0x0070DAD7` converts raw Object+0x9C,
     // not BuildingClass's centre-adjusted +0x324 coordinate.
@@ -442,10 +412,8 @@ mod lifecycle_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::map::tube_facts::TubeId;
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::components::DriveCoord;
     use crate::sim::docking::aircraft_dock::AircraftAmmo;
     use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
@@ -518,44 +486,14 @@ mod tests {
             crate::sim::game_entity::GameEntity::test_default(1, "BLDG", "Enemy", 4, 5);
         entity.category = EntityCategory::Structure;
         entity.foundation = "3x2".to_string();
-        let raw = radar_raw_coord_leptons(&entity);
-        let visibility = radar_object_get_coords_leptons(&entity);
-        assert_eq!(radar_fog_cell_from_leptons(raw.0, raw.1), Some((4, 5)));
+        let raw = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
+        let visibility = crate::sim::movement::ground_pose::object_center_xy(&entity);
+        assert_eq!(radar_fog_cell_from_leptons(raw[0], raw[1]), Some((4, 5)));
         assert_ne!(
-            radar_fog_cell_from_leptons(visibility.0, visibility.1),
+            radar_fog_cell_from_leptons(visibility[0], visibility[1]),
             Some((4, 5)),
             "BuildingClass +0x324 may center its query, but 0x70DAD7 packs Object+0x9C"
         );
-    }
-
-    #[test]
-    fn radar_object_get_coords_centralizes_mobile_and_building_foundation_centres() {
-        let mut entity =
-            crate::sim::game_entity::GameEntity::test_default(1, "BLDG", "Enemy", 10, 20);
-        entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(200);
-        entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(33);
-        let raw = (10 * 256 + 200, 20 * 256 + 33);
-
-        assert_eq!(
-            radar_object_get_coords_leptons(&entity),
-            raw,
-            "mobile GetCoords is raw"
-        );
-        entity.category = EntityCategory::Structure;
-        for (foundation, expected) in [
-            ("1x1", raw),
-            ("2x2", (raw.0 + 128, raw.1 + 128)),
-            ("4x3", (raw.0 + 384, raw.1 + 256)),
-            ("", raw),
-            ("not-a-native-foundation", raw),
-        ] {
-            entity.foundation = foundation.to_string();
-            assert_eq!(
-                radar_object_get_coords_leptons(&entity),
-                expected,
-                "foundation {foundation:?}"
-            );
-        }
     }
 
     #[test]
@@ -637,76 +575,15 @@ mod tests {
     }
 
     fn flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-        let speed_costs = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            float: Some(100),
-            amphibious: Some(100),
-            float_beach: Some(100),
-            hover: Some(100),
-        };
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
-            speed_costs,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: true,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: TerrainClass::Clear,
-            base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+            ..crate::map::resolved_terrain::test_smudge_cell(rx, ry)
         }
     }
 
     pub(super) fn flat_terrain(side: u16) -> ResolvedTerrainGrid {
-        let cells = (0..side)
-            .flat_map(|ry| (0..side).map(move |rx| flat_cell(rx, ry)))
-            .collect();
-        ResolvedTerrainGrid::from_cells(side, side, cells)
+        crate::map::resolved_terrain::test_grid(side, side, flat_cell)
     }
 
     pub(super) fn visibility_projection() -> RadarProjectionFacts {

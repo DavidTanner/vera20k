@@ -47,7 +47,6 @@ use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
 };
 use crate::sim::occupancy::OBJECT_OCCUPATION_BIT;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
 
@@ -108,12 +107,14 @@ enum OneCrateResult {
 /// Production invariants select `None`; focused tests inject the other cases
 /// without importing gamemd's object allocator into simulation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[cfg_attr(not(test), allow(dead_code))]
 enum ForcedPostPrecheckFailure {
     #[default]
     None,
+    #[cfg(test)]
     Allocation,
+    #[cfg(test)]
     Unlimbo,
+    #[cfg(test)]
     Mark,
 }
 
@@ -151,14 +152,12 @@ pub fn place_scenario_start_crates(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: &OverlayTypeRegistry,
-    path_grid: Option<&PathGrid>,
     player_count: i32,
 ) -> CratePlacement {
     place_scenario_start_crates_with_lighting(
         sim,
         rules,
         overlay_registry,
-        path_grid,
         player_count,
         ParsedLightingProfiles::default().normal,
     )
@@ -173,7 +172,6 @@ pub(crate) fn place_scenario_start_crates_with_lighting(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: &OverlayTypeRegistry,
-    path_grid: Option<&PathGrid>,
     player_count: i32,
     lighting_profile: LightingProfileUnits,
 ) -> CratePlacement {
@@ -181,7 +179,6 @@ pub(crate) fn place_scenario_start_crates_with_lighting(
         sim,
         rules,
         overlay_registry,
-        path_grid,
         player_count,
         lighting_profile,
         ForcedPostPrecheckFailure::None,
@@ -192,7 +189,6 @@ fn place_scenario_start_crates_with_failure(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: &OverlayTypeRegistry,
-    path_grid: Option<&PathGrid>,
     player_count: i32,
     lighting_profile: LightingProfileUnits,
     forced_failure: ForcedPostPrecheckFailure,
@@ -220,7 +216,6 @@ fn place_scenario_start_crates_with_failure(
             sim,
             rules,
             overlay_registry,
-            path_grid,
             lighting_profile,
             forced_failure,
         ) {
@@ -237,23 +232,7 @@ fn place_scenario_start_crates_with_failure(
         // Mark mutates live CellClass land/zone/bridge state synchronously;
         // refresh Rust's derived bridge and path projections once after the
         // ordered crate batch, without introducing another RNG boundary.
-        if let (Some(bridge_state), Some(terrain), Some(bounds), Some(size_height)) = (
-            sim.bridge_state.as_ref(),
-            sim.resolved_terrain.as_ref(),
-            sim.playfield_bounds,
-            sim.playfield_size_height,
-        ) {
-            let destroyable = bridge_state.is_destroyable();
-            let bridge_strength = bridge_state.bridge_strength();
-            sim.bridge_state = Some(
-                crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
-                    terrain,
-                    destroyable,
-                    bridge_strength,
-                    (bounds.base, size_height),
-                ),
-            );
-        }
+        sim.refresh_bridge_runtime_after_crate_mark();
         let _ = sim.rebuild_dynamic_navigation(rules);
     }
     log::info!(
@@ -279,7 +258,6 @@ fn place_one_random_crate(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: &OverlayTypeRegistry,
-    path_grid: Option<&PathGrid>,
     lighting_profile: LightingProfileUnits,
     forced_failure: ForcedPostPrecheckFailure,
 ) -> OneCrateResult {
@@ -299,7 +277,7 @@ fn place_one_random_crate(
         let movement_surface = crate_surface_at_packed(sim, drawn);
 
         let Some(cell) =
-            snap_to_passable_with_radius(sim, path_grid, drawn, movement_surface, frame.radius_cap)
+            snap_to_passable_with_radius(sim, drawn, movement_surface, frame.radius_cap)
         else {
             continue;
         };
@@ -881,12 +859,7 @@ fn recalc_real_crate_mark_cell(
     else {
         return;
     };
-    grid.recalculate_runtime_cell(
-        terrain,
-        registry,
-        cell,
-        crate::sim::overlay_grid::NavigationPublication::NextPathReader,
-    );
+    grid.recalculate_runtime_cell(terrain, registry, cell);
 }
 
 fn set_crate_mark_data(sim: &mut Simulation, cell: (u16, u16), data: u8) {
@@ -1127,17 +1100,15 @@ fn crate_surface_at_packed(sim: &Simulation, cell: (i32, i32)) -> CrateSurface {
 #[cfg(test)]
 fn snap_to_passable(
     sim: &Simulation,
-    path_grid: Option<&PathGrid>,
     drawn: (i32, i32),
     surface: CrateSurface,
 ) -> Option<(u16, u16)> {
     let radius_cap = crate_random_frame(sim)?.radius_cap;
-    snap_to_passable_with_radius(sim, path_grid, drawn, surface, radius_cap)
+    snap_to_passable_with_radius(sim, drawn, surface, radius_cap)
 }
 
 fn snap_to_passable_with_radius(
     sim: &Simulation,
-    path_grid: Option<&PathGrid>,
     drawn: (i32, i32),
     surface: CrateSurface,
     radius_cap: u16,
@@ -1169,7 +1140,7 @@ fn snap_to_passable_with_radius(
         // this reference to the engine zero cell. FNPC @ 0x0056DC20 treats
         // that zero sentinel as "no target" and selects by live frame modulo.
         target_cell: None,
-        path_grid,
+        path_grid: sim.path_grid(),
         resolved_terrain: sim.resolved_terrain.as_ref(),
         overlay_grid: sim.overlay_grid.as_ref(),
         occupancy: Some(&sim.substrate.occupancy),
@@ -1389,9 +1360,10 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0x1234_5678);
+        sim.install_fixture_path_grid(Some(&grid));
 
         // Five players, ceiling 3.
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 5);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 5);
 
         assert_eq!(result.requested, 3);
         assert_eq!((result.accepted, result.visible), (3, 3));
@@ -1410,8 +1382,9 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(99);
+        sim.install_fixture_path_grid(Some(&grid));
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!(result.requested, 4);
         assert_eq!((result.accepted, result.visible), (4, 4));
@@ -1424,10 +1397,11 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(7);
+        sim.install_fixture_path_grid(Some(&grid));
         sim.session.game_options.crates = false;
         let rng_before = sim.scenario_rng.state();
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 4);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 4);
 
         assert_eq!(
             result,
@@ -1447,10 +1421,11 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0xBAD5_1E00);
+        sim.install_fixture_path_grid(Some(&grid));
         sim.playfield_size_height = None;
         let before = sim.scenario_rng.state();
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!((result.accepted, result.visible), (0, 0));
         assert_eq!(sim.scenario_rng.state(), before);
@@ -1465,8 +1440,9 @@ pub(crate) mod tests {
         let grid = PathGrid::test_all_passable(MAP, MAP);
 
         let mut first = sim_with_grid(0xABCD);
+        first.install_fixture_path_grid(Some(&grid));
         let mut replay = first.scenario_rng.clone();
-        place_scenario_start_crates(&mut first, &rules, &registry, Some(&grid), 3);
+        place_scenario_start_crates(&mut first, &rules, &registry, 3);
 
         // Three successful first attempts: X, Y, timer for each crate.
         for _ in 0..3 {
@@ -1481,9 +1457,11 @@ pub(crate) mod tests {
         );
 
         let mut same_cursor = sim_with_grid(0xABCD);
-        place_scenario_start_crates(&mut same_cursor, &rules, &registry, Some(&grid), 3);
+        same_cursor.install_fixture_path_grid(Some(&grid));
+        place_scenario_start_crates(&mut same_cursor, &rules, &registry, 3);
         let mut other_cursor = sim_with_grid(0x1111);
-        place_scenario_start_crates(&mut other_cursor, &rules, &registry, Some(&grid), 3);
+        other_cursor.install_fixture_path_grid(Some(&grid));
+        place_scenario_start_crates(&mut other_cursor, &rules, &registry, 3);
 
         assert_eq!(
             crate_cells(&first, &registry),
@@ -1503,6 +1481,7 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0xA11C_E);
+        sim.install_fixture_path_grid(Some(&grid));
         let mut replay = sim.scenario_rng.clone();
 
         let first = (
@@ -1522,7 +1501,7 @@ pub(crate) mod tests {
             .expect("overlay grid")
             .place_overlay(first.0, first.1, blocker, 0);
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!((result.accepted, result.visible), (1, 1));
         assert_eq!(crate_cells(&sim, &registry), vec![second]);
@@ -1537,6 +1516,7 @@ pub(crate) mod tests {
 
         // Seed 1671 yields (37,4), timer, (37,4), then retry (5,8).
         let mut sim = sim_with_grid(1671);
+        sim.install_fixture_path_grid(Some(&grid));
         let mut replay = sim.scenario_rng.clone();
         let first = (
             replay.next_range_u32_inclusive(1, u32::from(MAP - 1)) as u16,
@@ -1558,7 +1538,7 @@ pub(crate) mod tests {
         assert_eq!(retry, (5, 8));
         replay.next_range_u32_inclusive(0, 0x7fff_fffe);
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 2);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 2);
 
         assert_eq!((result.accepted, result.visible), (2, 2));
         assert_eq!(
@@ -1576,6 +1556,7 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0xF411_ED);
+        sim.install_fixture_path_grid(Some(&grid));
         // Empty diamond: every FNPC candidate fails the mandatory anchor gate
         // (and the independent final playfield gate would reject it too).
         sim.playfield_bounds = Some(PlayfieldBounds {
@@ -1591,7 +1572,7 @@ pub(crate) mod tests {
             replay.next_range_u32_inclusive(1, u32::from(MAP - 1));
         }
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!((result.accepted, result.visible), (0, 0));
         assert!(crate_cells(&sim, &registry).is_empty());
@@ -1605,6 +1586,7 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0x5107_0256);
+        sim.install_fixture_path_grid(Some(&grid));
         let mut replay = sim.scenario_rng.clone();
         let mut occupied = BTreeSet::new();
         while occupied.len() < state::CRATE_SLOT_CAPACITY {
@@ -1617,7 +1599,7 @@ pub(crate) mod tests {
             }
         }
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 300);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 300);
 
         assert_eq!(result.requested, 300);
         assert_eq!(
@@ -1636,12 +1618,13 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0x5107_F011);
+        sim.install_fixture_path_grid(Some(&grid));
         for index in 0..state::CRATE_SLOT_CAPACITY {
             sim.crate_authority.slot_mut(index).cell_x = (index as i16).wrapping_add(1);
         }
         let before = sim.scenario_rng.state();
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!(result.requested, 4);
         assert_eq!((result.accepted, result.visible), (0, 0));
@@ -1654,6 +1637,7 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0x47C5_50);
+        sim.install_fixture_path_grid(Some(&grid));
         let mut replay = sim.scenario_rng.clone();
         let rx = replay.next_range_u32_inclusive(1, u32::from(MAP - 1)) as u16;
         let ry = replay.next_range_u32_inclusive(1, u32::from(MAP - 1)) as u16;
@@ -1662,7 +1646,7 @@ pub(crate) mod tests {
             .raw_cell_occupation
             .mark_ground(rx, ry, OBJECT_OCCUPATION_BIT);
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!(result.requested, 1);
         assert_eq!((result.accepted, result.visible), (1, 0));
@@ -1695,11 +1679,12 @@ pub(crate) mod tests {
 
         for bit in [1, 2, 4, 8, 16, 32, 64, 128] {
             let mut sim = sim_with_grid(0x0CC0_0000 + u64::from(bit));
+            sim.install_fixture_path_grid(Some(&grid));
             let (cell, _) = first_random_cell(&sim);
             sim.substrate
                 .raw_cell_occupation
                 .mark_ground(cell.0, cell.1, bit);
-            let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+            let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
             assert_eq!(
                 (result.accepted, result.visible),
                 (1, u32::from(bit != OBJECT_OCCUPATION_BIT)),
@@ -1727,6 +1712,7 @@ pub(crate) mod tests {
         let grid = PathGrid::test_all_passable(MAP, MAP);
 
         let mut null_sim = sim_with_grid(0xA011_0001);
+        null_sim.install_fixture_path_grid(Some(&grid));
         null_sim.session.binary_frame = u32::MAX;
         let (null_cell, mut null_replay) = first_random_cell(&null_sim);
         let timer_draw = null_replay.next_range_u32_inclusive(0, 0x7fff_fffe);
@@ -1735,8 +1721,7 @@ pub(crate) mod tests {
             timer_draw,
             null_sim.session.binary_frame as i32,
         );
-        let null_result =
-            place_scenario_start_crates(&mut null_sim, &null_rules, &registry, Some(&grid), 1);
+        let null_result = place_scenario_start_crates(&mut null_sim, &null_rules, &registry, 1);
         assert_eq!((null_result.accepted, null_result.visible), (1, 0));
         assert!(
             null_sim
@@ -1759,15 +1744,11 @@ pub(crate) mod tests {
         assert_eq!(null_sim.scenario_rng.state(), null_replay.state());
 
         let mut terrain_sim = sim_with_grid(0xA011_0002);
+        terrain_sim.install_fixture_path_grid(Some(&grid));
         let (cell, _) = first_random_cell(&terrain_sim);
         terrain_sim.production.terrain_object_cells.insert(cell, 77);
-        let terrain_result = place_scenario_start_crates(
-            &mut terrain_sim,
-            &ordinary_rules,
-            &registry,
-            Some(&grid),
-            1,
-        );
+        let terrain_result =
+            place_scenario_start_crates(&mut terrain_sim, &ordinary_rules, &registry, 1);
         assert_eq!((terrain_result.accepted, terrain_result.visible), (1, 0));
         assert_eq!(
             (
@@ -1790,11 +1771,11 @@ pub(crate) mod tests {
             ForcedPostPrecheckFailure::Mark,
         ] {
             let mut sim = sim_with_grid(0xFA11_0000 + failure as u64);
+            sim.install_fixture_path_grid(Some(&grid));
             let result = place_scenario_start_crates_with_failure(
                 &mut sim,
                 &rules,
                 &registry,
-                Some(&grid),
                 1,
                 ParsedLightingProfiles::default().normal,
                 failure,
@@ -1820,6 +1801,7 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0xF10A_7000);
+        sim.install_fixture_path_grid(Some(&grid));
         sim.resolved_terrain = Some(uniform_terrain(true));
         for cell in &mut sim.resolved_terrain.as_mut().expect("terrain").cells {
             cell.speed_costs.track = Some(0);
@@ -1832,7 +1814,7 @@ pub(crate) mod tests {
         );
         replay.next_range_u32_inclusive(0, 0x7fff_fffe);
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!((result.accepted, result.visible), (1, 1));
         assert_eq!(
@@ -2097,7 +2079,6 @@ pub(crate) mod tests {
 
     #[test]
     fn crate_mark_publishes_navigation_before_next_reader_and_frame_delivery() {
-        use crate::sim::overlay_grid::NavigationPublication;
         use crate::sim::world::TickLane;
         use std::sync::Arc;
 
@@ -2148,15 +2129,11 @@ pub(crate) mod tests {
             sim.resolved_terrain.as_mut().unwrap(),
             &registry,
             cells[0],
-            NavigationPublication::NextPathReader,
         );
         assert!(!repeated.navigation_changed);
         let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
         assert_eq!(pending.take_synchronous_navigation_cells(), cells);
-        assert_eq!(
-            pending.take_dirty_cells_with_passability_signal(),
-            (cells.to_vec(), true)
-        );
+        assert_eq!(pending.take_dirty_cells(), cells);
 
         // Even an empty receiver batch executes the production consequence settlement.
         // It must publish pending crate terrain before its next navigation reader.
@@ -2170,16 +2147,15 @@ pub(crate) mod tests {
         let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
         assert!(pending.take_synchronous_navigation_cells().is_empty());
         assert_eq!(
-            pending.take_dirty_cells_with_passability_signal(),
-            (cells.to_vec(), true),
-            "next-reader settlement does not consume presentation dirtiness or the frame signal"
+            pending.take_dirty_cells(),
+            cells,
+            "next-reader settlement does not consume presentation dirtiness"
         );
         let settled = sim.path_grid_snapshot().unwrap();
         let first = sim
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &std::collections::BTreeMap::new(),
                 Some(&registry),
                 67,
                 TickLane::Ordinary,
@@ -2197,14 +2173,13 @@ pub(crate) mod tests {
         assert_eq!(first.tick.state_hash, sim.state_hash());
         let published = sim.path_grid_snapshot().unwrap();
         assert!(
-            !Arc::ptr_eq(&settled, &published),
-            "the independent frame signal also publishes"
+            Arc::ptr_eq(&settled, &published),
+            "the next-reader settlement already published the Recalc"
         );
         let second = sim
             .advance_app_frame(
                 &[],
                 Some(&rules),
-                &std::collections::BTreeMap::new(),
                 Some(&registry),
                 67,
                 TickLane::Ordinary,
@@ -2900,6 +2875,7 @@ pub(crate) mod tests {
 
         for water in [false, true] {
             let mut sim = sim_with_grid(0x5150);
+            sim.install_fixture_path_grid(Some(&grid));
             sim.resolved_terrain = Some(uniform_terrain(water));
             // Keep the convenience boolean deliberately opposite: selection
             // is by CellClass LandType == 2, not this derived Rust flag.
@@ -2907,7 +2883,7 @@ pub(crate) mod tests {
                 cell.is_water = !water;
             }
 
-            let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 4);
+            let result = place_scenario_start_crates(&mut sim, &rules, &registry, 4);
             assert_eq!((result.accepted, result.visible), (4, 4));
 
             let silver_crates = cells_with_overlay(&sim, &registry, "SILVER");
@@ -2932,6 +2908,7 @@ pub(crate) mod tests {
 
         for drawn_is_water in [true, false] {
             let mut sim = sim_with_grid(0x1234_5678);
+            sim.install_fixture_path_grid(Some(&grid));
             let mut replay = sim.scenario_rng.clone();
             let drawn = (
                 replay.next_range_u32_inclusive(1, u32::from(MAP - 1)) as u16,
@@ -2977,7 +2954,7 @@ pub(crate) mod tests {
             }
             sim.resolved_terrain = Some(terrain);
 
-            let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+            let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
             assert_eq!((result.accepted, result.visible), (1, 1));
             let expected_image = if drawn_is_water { "WOOD" } else { "WATER" };
@@ -3033,17 +3010,18 @@ pub(crate) mod tests {
             .expect("overlay grid")
             .place_overlay(11, 20, ore, 0);
         let grid = PathGrid::test_all_passable(MAP, MAP);
+        sim.install_fixture_path_grid(Some(&grid));
 
         sim.session.binary_frame = 0;
         assert_eq!(
-            snap_to_passable(&sim, Some(&grid), (20, 20), CrateSurface::Land),
+            snap_to_passable(&sim, (20, 20), CrateSurface::Land),
             Some((29, 11)),
             "frame zero selects the first preferred survivor, not nearest to (0,0)"
         );
 
         sim.session.binary_frame = 1;
         assert_eq!(
-            snap_to_passable(&sim, Some(&grid), (20, 20), CrateSurface::Land),
+            snap_to_passable(&sim, (20, 20), CrateSurface::Land),
             Some((11, 20)),
             "the live frame advances modulo the preferred pool"
         );
@@ -3080,16 +3058,17 @@ pub(crate) mod tests {
         });
         sim.session.binary_frame = 0;
         let grid = PathGrid::test_all_passable(MAP, MAP);
+        sim.install_fixture_path_grid(Some(&grid));
 
         assert_eq!(
-            snap_to_passable(&sim, Some(&grid), (9, 4), CrateSurface::Land),
+            snap_to_passable(&sim, (9, 4), CrateSurface::Land),
             Some((8, 5)),
             "the earlier rectangularly valid but off-diamond anchor must be rejected"
         );
 
         sim.playfield_bounds = None;
         assert_eq!(
-            snap_to_passable(&sim, Some(&grid), (9, 4), CrateSurface::Land),
+            snap_to_passable(&sim, (9, 4), CrateSurface::Land),
             None,
             "missing MapClass playfield authority must reject, not bypass"
         );
@@ -3116,58 +3095,17 @@ pub(crate) mod tests {
             LandType::Clear.as_index()
         };
         let template = ResolvedTerrainCell {
-            rx: 0,
-            ry: 0,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
             land_type,
             yr_cell_land_type: land_type,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
             speed_costs,
             is_water: water,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
             allows_tiberium: true,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
             zone_type: zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
             base_land_type: land_type,
             base_yr_cell_land_type: land_type,
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: speed_costs,
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0; 3],
-            radar_right: [0; 3],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(0, 0)
         };
         let mut cells = Vec::with_capacity(MAP as usize * MAP as usize);
         for ry in 0..MAP {
@@ -3206,8 +3144,8 @@ pub(crate) mod tests {
         let rules = crate_ruleset("CrateMinimum=1\nCrateMaximum=255\n");
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
-        let result =
-            place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), player_count);
+        sim.install_fixture_path_grid(Some(&grid));
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, player_count);
         assert_eq!(result.requested, 1);
         assert_eq!((result.accepted, result.visible), (1, 1));
     }
@@ -3218,6 +3156,7 @@ pub(crate) mod tests {
         let registry = crate_registry();
         let grid = PathGrid::test_all_passable(MAP, MAP);
         let mut sim = sim_with_grid(0x2468);
+        sim.install_fixture_path_grid(Some(&grid));
         sim.playfield_bounds.as_mut().unwrap().base = 14;
         sim.playfield_size_height = Some(9);
         sim.session.map_width = 37;
@@ -3232,7 +3171,7 @@ pub(crate) mod tests {
         sim.session.local_width = 1;
         sim.session.local_height = 1;
 
-        let result = place_scenario_start_crates(&mut sim, &rules, &registry, Some(&grid), 1);
+        let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
         assert_eq!((result.accepted, result.visible), (1, 1));
         assert_eq!(crate_cells(&sim, &registry), vec![expected]);

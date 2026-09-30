@@ -167,9 +167,13 @@ fn native_ifv_bridge_impact_orders_live_selection_debris_ids_and_rng() {
         if name == "collapsed" {
             // Same original HighBridgeBody576BA0 priming boundary as native:
             // 9 -> 15, without a preceding AreaDamage admission or effect.
-            let result =
-                super::super::super::try_body(&mut world, &rules, Some(&overlays), (10, 20))
-                    .unwrap();
+            let result = super::super::super::run_state_machine(
+                &mut world,
+                &rules,
+                Some(&overlays),
+                (10, 20),
+                Family::High,
+            );
             let body: Value = serde_json::from_str(include_str!(
                 "../../../tools/spatial_oracle/bridge_rim_body.json"
             ))

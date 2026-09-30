@@ -172,6 +172,12 @@ impl MissionCom {
         self.movement_bypass_latch = 0;
     }
 
+    /// `+0xB0 = -1` outside a Restore: an object leaving its team drops its
+    /// suspended mission (`TeamClass::Remove_Member @ 0x006EA9A3`).
+    pub(crate) fn clear_suspended(&mut self) {
+        self.suspended = MissionId::NONE;
+    }
+
     pub(super) fn restore_transition(&mut self) {
         self.current = self.suspended;
         self.suspended = MissionId::NONE;

@@ -64,7 +64,6 @@ mod tests {
         entity.position.sub_x = SimFixed::from_num(position.x % 256);
         entity.position.sub_y = SimFixed::from_num(position.y % 256);
         entity.position.exact_z_leptons = Some(position.z);
-        entity.occupancy_enter_order = id;
     }
 
     #[test]
@@ -282,6 +281,10 @@ mod tests {
                 let type_ref = sim.interner.intern(name);
                 let entity = sim.substrate.entities.get_mut(2).unwrap();
                 entity.type_ref = type_ref;
+                if category == EntityCategory::Structure {
+                    // Construction stamps the type's `Foundation=`.
+                    entity.foundation = dimensions.clone();
+                }
                 entity.lifecycle.cell_marked = target["marked"].as_bool().unwrap_or(true);
                 entity.on_bridge = target["on_bridge"].as_bool().unwrap_or(false);
                 if target["rocket"].as_bool().unwrap_or(false)
@@ -381,11 +384,6 @@ mod tests {
                         EntityCategory::Unit
                     };
                     place(&mut sim, id, position, category);
-                    sim.substrate
-                        .entities
-                        .get_mut(id)
-                        .unwrap()
-                        .occupancy_enter_order = 100 - id;
                     sim.substrate.occupancy.add(
                         1,
                         0,
@@ -403,6 +401,12 @@ mod tests {
                 "[BuildingTypes]\n0=TEST\n[TEST]\nFoundation={foundation}\n"
             )))
             .unwrap();
+            // Construction stamps the type's foundation on each building.
+            for entity in sim.substrate.entities.values_mut() {
+                if entity.category == EntityCategory::Structure {
+                    entity.foundation = foundation.clone();
+                }
+            }
             let mut world = world(&sim);
             world.rules = Some(&rules);
             let selected = world
@@ -420,14 +424,11 @@ mod tests {
                     .enumerate()
                     .filter_map(|(index, _)| {
                         let e = sim.substrate.entities.get(index as u64 + 1)?;
-                        let c = crate::sim::movement::ground_pose::object_center_coord(
-                            e,
-                            rules.object("TEST").unwrap(),
-                        );
+                        let [x, y] = crate::sim::movement::ground_pose::object_center_xy(e);
                         Some((
                             index as u64,
                             true,
-                            crate::sim::cell_kernel::CellQueryPoint { x: c.x, y: c.y },
+                            crate::sim::cell_kernel::CellQueryPoint { x, y },
                         ))
                     }),
             );
@@ -649,10 +650,8 @@ mod tests {
             install_native_size_terrain(&mut sim, 16, 16);
             let terrain = sim.resolved_terrain.as_ref().unwrap().clone();
             sim.install_resolved_terrain_for_new_map(terrain.clone());
-            let mut overlays = crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(
-                terrain.width(),
-                terrain.height(),
-            );
+            let mut overlays =
+                crate::sim::overlay_grid::OverlayGrid::new(terrain.width(), terrain.height());
             overlays.place_overlay(12, 12, 0, 0);
             sim.overlay_grid = Some(overlays);
             let source = sim.allocate_stable_id();
@@ -876,7 +875,7 @@ mod tests {
                         .exact_z_leptons = Some(100);
                 }
                 let firer = sim.substrate.entities.get_mut(source).unwrap();
-                firer.facing = 64;
+                firer.body_facing.snap(0x4000, 0);
                 firer.attack_target = Some(AttackTarget::new(target));
                 sim.session.binary_frame = 100;
                 let mut runtime = SimRuntime::from_simulation(sim);
@@ -934,12 +933,10 @@ mod tests {
             install_native_size_terrain(&mut sim, 16, 16);
             let terrain_template = sim.resolved_terrain.as_ref().unwrap().clone();
             sim.install_resolved_terrain_for_new_map(terrain_template.clone());
-            sim.overlay_grid = Some(
-                crate::sim::overlay_grid::OverlayGrid::new_with_retained_wall_plane(
-                    terrain_template.width(),
-                    terrain_template.height(),
-                ),
-            );
+            sim.overlay_grid = Some(crate::sim::overlay_grid::OverlayGrid::new(
+                terrain_template.width(),
+                terrain_template.height(),
+            ));
             let source = sim.allocate_stable_id();
             let target = sim.allocate_stable_id();
             let z = if voxel { 1000 } else { 100 };
@@ -979,7 +976,7 @@ mod tests {
             assert!(sim.substrate.entities.get(source).unwrap().in_playfield);
             assert!(sim.substrate.entities.get(target).unwrap().in_playfield);
             let firer = sim.substrate.entities.get_mut(source).unwrap();
-            firer.facing = 64;
+            firer.body_facing.snap(0x4000, 0);
             firer.attack_target = Some(AttackTarget::new(target));
             let mut runtime = SimRuntime::from_simulation(sim);
             runtime.resources.rules = make_rules();
@@ -1457,26 +1454,16 @@ impl ProjectileCollisionWorld<'_> {
             .first_building_on_layer(cell.rx, cell.ry, MovementLayer::Ground)
     }
 
+    /// The object's Location (+0x9C).
     fn raw_location(&self, object: &crate::sim::game_entity::GameEntity) -> ProjectileCoord {
-        ProjectileCoord::new(
-            i32::from(object.position.rx) * 256 + object.position.sub_x.to_num::<i32>(),
-            i32::from(object.position.ry) * 256 + object.position.sub_y.to_num::<i32>(),
-            crate::sim::combat::object_world_z_leptons(object, self.terrain),
-        )
+        let coord = crate::sim::movement::ground_pose::object_location(object, self.terrain);
+        ProjectileCoord::new(coord.x, coord.y, coord.z)
     }
 
+    /// The object's GetCoords (vt+0x48).
     fn location(&self, object: &crate::sim::game_entity::GameEntity) -> ProjectileCoord {
-        let mut coord = self.raw_location(object);
-        if object.category == EntityCategory::Structure
-            && let Some(kind) = self
-                .rules
-                .and_then(|rules| rules.object(self.interner.resolve(object.type_ref())))
-        {
-            let (width, height) = crate::rules::foundation::foundation_dimensions(&kind.foundation);
-            coord.x = coord.x.wrapping_add(i32::from(width) * 128 - 128);
-            coord.y = coord.y.wrapping_add(i32::from(height) * 128 - 128);
-        }
-        coord
+        let coord = crate::sim::movement::ground_pose::object_get_coords(object, self.terrain);
+        ProjectileCoord::new(coord.x, coord.y, coord.z)
     }
 
     fn allied(&self, source: Option<u64>, other: u64) -> bool {
@@ -1636,7 +1623,11 @@ impl ProjectileCollisionWorld<'_> {
                     offset_coords: coords,
                     in_air: false,
                     ground_layer: true,
-                    distance: coord_distance(location, coords),
+                    distance: crate::util::native_x87::object_distance(
+                        [location.x, location.y, location.z],
+                        [coords.x, coords.y, coords.z],
+                        None,
+                    ),
                     building_offset: false,
                 })
             }
@@ -1678,7 +1669,7 @@ impl ProjectileCollisionWorld<'_> {
         let mut impact = false;
         if !vertical {
             let floor = self.ground(candidate);
-            let deck = floor.wrapping_add(416);
+            let deck = floor.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
             let cell = self.cell(candidate);
             let structural = cell.bridge_flags_0x1180() & 0x100 != 0
                 || self.cell(projectile.position).bridge_flags_0x1180() & 0x100 != 0;
@@ -1789,7 +1780,7 @@ impl ProjectileCollisionWorld<'_> {
                 .z
                 .wrapping_sub(self.ground(projectile.position))
                 .wrapping_sub(if projectile.on_bridge {
-                    crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
                 } else {
                     0
                 })
@@ -1877,7 +1868,7 @@ impl ProjectileCollisionWorld<'_> {
             return true;
         }
         let height = candidate.z.wrapping_sub(self.ground(candidate));
-        if height <= -416 {
+        if height <= -crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS {
             return true;
         }
         if projectile.collision.flak_scatter
@@ -1918,20 +1909,23 @@ impl ProjectileCollisionWorld<'_> {
         candidate: ProjectileCoord,
         target: &crate::sim::game_entity::GameEntity,
     ) -> i32 {
-        // ObjectClass 5F6360: virtual +48 positions, then RTTI-6 foundation
-        // radius subtraction (45ECA0(false), 45EC90), clamped at zero.
-        let mut distance = coord_distance(candidate, self.location(target));
-        if target.category == EntityCategory::Structure
-            && let Some(kind) = self
-                .rules
-                .and_then(|rules| rules.object(self.interner.resolve(target.type_ref())))
-        {
-            let (width, height) = crate::rules::foundation::foundation_dimensions(&kind.foundation);
-            distance = distance
-                .wrapping_sub((i32::from(width) + i32::from(height)) * 64)
-                .max(0);
-        }
-        distance
+        // ObjectClass::Distance 5F6360 between the virtual +48 positions,
+        // with a building target's foundation term.
+        let building = self
+            .rules
+            .filter(|_| target.category == EntityCategory::Structure)
+            .and_then(|rules| rules.object(self.interner.resolve(target.type_ref())))
+            .map(|kind| {
+                let (width, height) =
+                    crate::rules::foundation::foundation_dimensions(&kind.foundation);
+                (i32::from(width), i32::from(height))
+            });
+        let location = self.location(target);
+        crate::util::native_x87::object_distance(
+            [candidate.x, candidate.y, candidate.z],
+            [location.x, location.y, location.z],
+            building,
+        )
     }
 
     fn cell_location(cell: &CellRef<'_>) -> ProjectileCoord {
@@ -2057,25 +2051,12 @@ impl ProjectileCollisionWorld<'_> {
         }
     }
 
+    /// The target's vt+0x54, IsInAir.
     fn high_flying(&self, target: &crate::sim::game_entity::GameEntity) -> bool {
-        if target.category == EntityCategory::Aircraft
-            && self.rules.is_some_and(|rules| {
-                let name = self.interner.resolve(target.type_ref());
-                name.eq_ignore_ascii_case(&rules.missile_spawn.v3.type_name)
-                    || name.eq_ignore_ascii_case(&rules.missile_spawn.dmisl.type_name)
-            })
-        {
-            return target
-                .rocket_state
-                .as_ref()
-                .is_some_and(|rocket| rocket.phase.is_moving_now());
-        }
-        let raw = self.raw_location(target);
-        target.lifecycle.cell_marked
-            && raw
-                .z
-                .wrapping_sub(self.ground(raw))
-                .wrapping_sub(if target.on_bridge { 416 } else { 0 })
-                >= 208
+        crate::sim::movement::air_movement::is_high_flying(
+            target,
+            self.terrain,
+            self.rules.map(|rules| (rules, self.interner)),
+        )
     }
 }

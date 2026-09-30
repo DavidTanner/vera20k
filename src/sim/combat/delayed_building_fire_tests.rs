@@ -2,8 +2,6 @@
 //! shot, ProcessDelayedFire counts it down in the building's visit and the
 //! combat phase serves its FireAt.
 
-use std::collections::BTreeMap;
-
 use super::*;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
@@ -52,7 +50,7 @@ fn spawn(
     rx: u16,
     ry: u16,
 ) -> u64 {
-    sim.spawn_object(type_id, owner, rx, ry, 0, rules, &BTreeMap::new())
+    sim.spawn_object(type_id, owner, rx, ry, 0, rules)
         .unwrap_or_else(|| panic!("spawn {type_id}"))
 }
 
@@ -86,12 +84,10 @@ fn gsi_05_10_tesla_arms_without_emission_and_fires_on_visit_28() {
     let mut sim = Simulation::new();
     let tower = spawn(&mut sim, &rules, "TESLA", "Soviet", 5, 5);
     let target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         tower,
-        target,
-        Some(&rules),
-        &sim.interner,
+        target
     ));
     let mut main_rng = SimRng::new(1);
 
@@ -155,22 +151,23 @@ fn gsi_05_10_expiry_reads_live_target_but_keeps_saved_weapon_slot() {
     // The tower must arm against a genuinely airborne target for the AA
     // secondary to be the saved slot. `TechnoClass::What_Weapon_Should_I_Use`
     // arm V (`0x006F37E7`) reads `ObjectClass::IsHighFlying @ 0x005F6B90` —
-    // altitude, not `AircraftTypes` membership — so a parked aircraft would
-    // arm the ground primary instead.
-    sim.substrate
-        .entities
-        .get_mut(air)
-        .and_then(|entity| entity.locomotor.as_mut())
+    // height, not `AircraftTypes` membership — so a parked aircraft would
+    // arm the ground primary instead. It flies as the Fly host leaves it: its
+    // Location Z two levels above the mapless ground, with the altitude copy.
+    let flying = sim.substrate.entities.get_mut(air).expect("AIR spawned");
+    flying.position.exact_z_leptons =
+        Some(crate::util::lepton::HIGH_FLIGHT_THRESHOLD_LEPTONS as i32);
+    flying
+        .locomotor
+        .as_mut()
         .expect("AIR carries a locomotor")
         .altitude = crate::util::fixed_math::SimFixed::from_num(
         crate::util::lepton::HIGH_FLIGHT_THRESHOLD_LEPTONS,
     );
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         tower,
-        air,
-        Some(&rules),
-        &sim.interner,
+        air
     ));
     let mut main_rng = SimRng::new(2);
     let arm = combat_visit(&mut sim, &rules, &mut main_rng, 1);
@@ -214,12 +211,10 @@ fn gsi_05_10_expiry_error_clears_without_retarget_or_shot() {
     let tower = spawn(&mut sim, &rules, "TESLA", "Soviet", 5, 5);
     let target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
     let alternative = spawn(&mut sim, &rules, "GROUND", "Allies", 6, 5);
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         tower,
-        target,
-        Some(&rules),
-        &sim.interner,
+        target
     ));
     let mut main_rng = SimRng::new(3);
     let _ = combat_visit(&mut sim, &rules, &mut main_rng, 1);
@@ -268,19 +263,15 @@ fn gsi_05_10_non_delayed_fires_at_once_and_a_lone_prism_arms_its_own_shot() {
     let prism = spawn(&mut sim, &rules, "ATESLA", "Allies", 5, 8);
     let ordinary_target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
     let prism_target = spawn(&mut sim, &rules, "GROUND", "Soviet", 7, 8);
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         ordinary,
-        ordinary_target,
-        Some(&rules),
-        &sim.interner,
+        ordinary_target
     ));
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         prism,
-        prism_target,
-        Some(&rules),
-        &sim.interner,
+        prism_target
     ));
     let result = combat_visit(&mut sim, &rules, &mut SimRng::new(4), 1);
 
@@ -316,12 +307,10 @@ fn gsi_05_10_delays_at_or_below_one_expire_on_the_arming_visit() {
         let mut sim = Simulation::new();
         let tower = spawn(&mut sim, &rules, "TESLA", "Soviet", 5, 5);
         let target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
-        assert!(issue_attack_command(
+        assert!(install_entity_attack_target_for_test(
             &mut sim.substrate.entities,
             tower,
-            target,
-            Some(&rules),
-            &sim.interner,
+            target
         ));
 
         let result = combat_visit(&mut sim, &rules, &mut SimRng::new(5), 1);

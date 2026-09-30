@@ -3,6 +3,67 @@
 use super::*;
 
 #[test]
+fn native_discharge_art_reader_matches_original_signed_independent_keys() {
+    // Original InfantryType ART reads 5246BE..52473A call ReadInt5276D0
+    // independently over E40/E44/E48/E4C. Replay every cached-input row
+    // through the production read owner, then fresh file/registry inputs.
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_discharge_rules.json"
+    ))
+    .unwrap();
+    let rows = corpus["cases"].as_array().unwrap();
+    assert_eq!(rows.len(), 150);
+    let mut compared = 0;
+    for row in rows {
+        let layers = row["layers"].as_array().unwrap();
+        let section = row["section"].as_str().unwrap();
+        let mut retained: [i32; 4] = serde_json::from_value(row["before"].clone()).unwrap();
+        for (index, layer) in layers.iter().enumerate() {
+            // The original oracle supplies cached values. `set` preserves
+            // present-empty/raw text, unlike physical INI loading, which
+            // omits empty entries and trims values before these reads.
+            let mut cached = IniSection::new(section.to_owned());
+            for (key, value) in layer.as_object().unwrap() {
+                if let Some(raw) = value.as_str() {
+                    cached.set(key, raw);
+                }
+            }
+            read_infantry_discharge_frames(&cached, &mut retained);
+            let expected: [i32; 4] =
+                serde_json::from_value(row["after_layers"][index].clone()).unwrap();
+            assert_eq!(
+                retained, expected,
+                "original row {} pass{index}",
+                row["case"]
+            );
+        }
+        if !row["initial"].is_null() || layers.len() != 1 {
+            continue;
+        }
+        // A harmless unknown key keeps all-absent/empty sections in the
+        // physical loader; it is never a discharge read input.
+        let mut text = format!("[{section}]\nFixtureOnly=1\n");
+        for (key, value) in layers[0].as_object().unwrap() {
+            if let Some(raw) = value.as_str() {
+                text.push_str(&format!("{key}={raw}\n"));
+            }
+        }
+        let registry = ArtRegistry::from_ini(&IniFile::from_str(&text));
+        let entry = registry.get(section).unwrap();
+        let actual = [
+            entry.fire_up,
+            entry.fire_prone,
+            entry.secondary_fire,
+            entry.secondary_prone,
+        ];
+        let expected: [i32; 4] = serde_json::from_value(row["after"].clone()).unwrap();
+        assert_eq!(actual, expected, "original row {}", row["case"]);
+        compared += 1;
+    }
+    assert_eq!(compared, 75);
+}
+
+#[test]
 fn animation_layer_matches_original_name_reader() {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../tools/spatial_oracle/anim_layer_rules.json"
@@ -172,9 +233,9 @@ fn test_from_ini_parses_entries() {
     let gi: &ArtEntry = reg.get("GI").expect("GI exists");
     assert!(gi.crawls);
     assert_eq!(gi.fire_up, 2);
-    assert_eq!(gi.fire_prone, 2);
+    assert_eq!(gi.fire_prone, 0);
     assert_eq!(gi.secondary_fire, 4);
-    assert_eq!(gi.secondary_prone, 4);
+    assert_eq!(gi.secondary_prone, 0);
 }
 
 #[test]
@@ -761,12 +822,20 @@ fn test_sequence_frames_partial_some_missing() {
 }
 
 #[test]
-fn test_parse_sequence_frames_helper() {
-    assert_eq!(parse_sequence_frames("300,15,0"), Some(15));
-    assert_eq!(parse_sequence_frames(" 8 , 6 , 6 "), Some(6));
-    assert_eq!(parse_sequence_frames("only-one"), None);
-    assert_eq!(parse_sequence_frames("a,b,c"), None);
-    assert_eq!(parse_sequence_frames(""), None);
+fn test_sequence_frames_follow_the_native_sequence_scan() {
+    // 0x00523D00 scans `%d,%d,%d,%s` over the constructor's zero record; a
+    // literal comma skips no whitespace, so `8 , 6` stops after one field.
+    let deploy_frames = |value: &str| {
+        let ini = IniFile::from_str(&format!("[E1]\nSequence=S\n[S]\nDeploy={value}\n"));
+        ArtRegistry::from_ini(&ini)
+            .get("E1")
+            .expect("E1 entry")
+            .deploy_frames
+    };
+    assert_eq!(deploy_frames("300,15,0"), Some(15));
+    assert_eq!(deploy_frames(" 8 , 6 , 6 "), Some(0));
+    assert_eq!(deploy_frames("only-one"), Some(0));
+    assert_eq!(deploy_frames("a,b,c"), Some(0));
 }
 
 #[test]

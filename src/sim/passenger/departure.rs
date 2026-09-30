@@ -17,7 +17,6 @@ use crate::util::lepton;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DepartureRoute {
-    Garrison,
     Vehicle,
     LandedAircraft,
     Paradrop,
@@ -59,8 +58,7 @@ pub(crate) fn depart_cargo_head(
         .ok_or(DepartureFailure::NoCargo)?;
     let (passenger_id, passenger_size) = cargo.unload_first().ok_or(DepartureFailure::NoCargo)?;
     // FUN_004DE710's empty-hold weapon reset occurs before placement for these
-    // callers. Garrison resets only after successful scatter; paradrop does
-    // not reset the carrier override at all.
+    // callers. Paradrop does not reset the carrier override at all.
     let emptied = matches!(
         route,
         DepartureRoute::Vehicle | DepartureRoute::LandedAircraft | DepartureRoute::DeathEscape
@@ -150,7 +148,7 @@ fn restore_departure(
         DepartureRoute::DeathEscape => {
             unreachable!("a dying transport's passenger never re-boards")
         }
-        DepartureRoute::Garrison | DepartureRoute::Vehicle | DepartureRoute::LandedAircraft => {
+        DepartureRoute::Vehicle | DepartureRoute::LandedAircraft => {
             assert!(
                 matches!(
                     failure,
@@ -189,8 +187,11 @@ fn restore_departure(
 
 /// Reveal a cargo passenger at an exit cell. The passenger's `sub_cell` and
 /// `facing` must already be written by the caller; its role is cleared here.
+/// The Reveal runs without rules, so the barrel elevation Unlimbo writes
+/// follow it here.
 pub(crate) fn reveal_unloaded_passenger(
     sim: &mut Simulation,
+    rules: &RuleSet,
     transport_id: u64,
     passenger_id: u64,
     rx: u16,
@@ -230,7 +231,10 @@ pub(crate) fn reveal_unloaded_passenger(
         },
     );
     match outcome {
-        RevealOutcome::Revealed { .. } => Ok(()),
+        RevealOutcome::Revealed { .. } => {
+            sim.unlimbo_barrel_elevation(passenger_id, rules);
+            Ok(())
+        }
         other => Err(DepartureFailure::GroundReveal(other)),
     }
 }
@@ -240,9 +244,8 @@ pub(crate) fn reveal_unloaded_passenger(
 /// and applies InfantryType+0x688 (IFVMode) through `FUN_0070DC70`. It reverses
 /// the empty-pop `+0x4D8` (`0x007464E0`). Aircraft/Techno bind those slots to
 /// stubs `0x004DE750`/`0x004DE760`; preserve the represented Rust Gunner gate.
-/// UnitClass `+0x4D4` (`0x00746420`) for a `Gunner=yes` transport: the
-/// re-added head passenger's `IFVMode=` becomes the transport's weapon slot
-/// again. VERA's representation of that swap is `weapon_override`.
+/// Gates UnitClass `+0x4D4` ([`super::receive_gunner`]) on a `Gunner=yes`
+/// transport for the re-added head passenger.
 fn reapply_gunner_weapon(sim: &mut Simulation, rules: &RuleSet, transport_id: u64, pax_id: u64) {
     let Some(transport) = sim.substrate.entities.get(transport_id) else {
         return;
@@ -259,10 +262,5 @@ fn reapply_gunner_weapon(sim: &mut Simulation, rules: &RuleSet, transport_id: u6
     let ifv_mode = sim
         .object_type(passenger.type_ref(), rules)
         .map_or(0, |obj| obj.ifv_mode);
-    if let Some(transport) = sim.substrate.entities.get_mut(transport_id) {
-        transport.weapon_override = Some(
-            crate::sim::combat::combat_weapon::WeaponOverride::IfvSlot(ifv_mode),
-        );
-    }
-    sim.temporal_receive_gunner(transport_id, pax_id);
+    super::receive_gunner(sim, transport_id, pax_id, ifv_mode);
 }

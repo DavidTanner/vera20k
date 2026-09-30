@@ -10,7 +10,6 @@ use crate::sim::cell_rect::{CellRef, get_cellclass_fallback};
 pub(super) fn compute_bridge_endpoints(
     terrain: &ResolvedTerrainGrid,
     size: Option<(i32, i32)>,
-    runtime_cells: &[Option<BridgeRuntimeCell>],
 ) -> Vec<BridgeEndpointRecord> {
     let mut records = Vec::new();
     let starts: Vec<_> = if let Some((width, _)) = size {
@@ -31,7 +30,7 @@ pub(super) fn compute_bridge_endpoints(
             let Ok(direction) = u8::try_from(HIGH_BRIDGE_WALK_DIRECTION[offset]) else {
                 continue;
             };
-            if let Some(record) = high_record(terrain, size, runtime_cells, start, direction) {
+            if let Some(record) = high_record(terrain, size, start, direction) {
                 records.push(record);
             }
         } else if is_tube(terrain, start) {
@@ -51,7 +50,6 @@ pub(super) fn compute_bridge_endpoints(
                     endpoint_b: tube.exit,
                     // Tube records are always active and independent of a
                     // structural bridge damage group, native kind +0xC = 1.
-                    group_id: 0,
                     active: true,
                     bridge_kind: BridgeRecordKind::Low,
                 });
@@ -106,7 +104,6 @@ fn cell_ordinal((x, y): (u16, u16), width: i32) -> i32 {
 fn high_record(
     terrain: &ResolvedTerrainGrid,
     size: Option<(i32, i32)>,
-    runtime_cells: &[Option<BridgeRuntimeCell>],
     start: &ResolvedTerrainCell,
     direction: u8,
 ) -> Option<BridgeEndpointRecord> {
@@ -114,8 +111,6 @@ fn high_record(
     let mut cursor = (i32::from(start.rx as i16), i32::from(start.ry as i16));
     let mut far_match = false;
     let mut intact = true;
-    let mut group =
-        bridge_runtime_group_at(runtime_cells, terrain.width(), terrain.height(), a.0, a.1);
     loop {
         let next = step(terrain, cursor, direction);
         cursor = coord(&next);
@@ -131,7 +126,6 @@ fn high_record(
             return Some(BridgeEndpointRecord {
                 endpoint_a: a,
                 endpoint_b: (b.0 as u16, b.1 as u16),
-                group_id: if intact { group.unwrap_or(0) } else { 0 },
                 active: intact,
                 bridge_kind: BridgeRecordKind::High,
             });
@@ -141,15 +135,6 @@ fn high_record(
         }
         match next {
             CellRef::Real(cell) => {
-                group = group.or_else(|| {
-                    bridge_runtime_group_at(
-                        runtime_cells,
-                        terrain.width(),
-                        terrain.height(),
-                        cell.rx,
-                        cell.ry,
-                    )
-                });
                 if let Some(offset) = terrain.high_bridge_tile_offset(cell) {
                     far_match = HIGH_BRIDGE_END_SUBTILE[offset] == i32::from(cell.final_sub_tile);
                 } else if !cell.bridge_facts.has_structural_bridge() {

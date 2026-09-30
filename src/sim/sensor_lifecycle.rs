@@ -180,7 +180,7 @@ impl Simulation {
     /// stamped. `BuildingClass::RemoveDetectDisguiseAt @ 0x00455980` opens with
     /// `0045598A MOV EDX,[ECX+0x21C]` / `004559A1 MOV EAX,[EDX+0x30]`;
     /// `BuildingClass::RemoveSensorArrayAt @ 0x004556D0` and
-    /// `TechnoClass::RemoveSensorsAt @ 0x004DE940` open with the identical
+    /// `FootClass::RemoveSensorsAt @ 0x004DE940` open with the identical
     /// `*(int *)(param_1[0x87] + 0x30)` read, and so do both adds
     /// (`0x00455820`, `0x00455A80`). `TechnoClass::ChangeOwner @ 0x007014A0`
     /// overwrites that pointer (`param_1[0x87] = param_2`), so the live owner
@@ -369,22 +369,6 @@ impl Simulation {
         let _ = self.remove_cached_sensor_deposit(stable_id, Some(rules));
     }
 
-    /// FootClass::PerCellProcess old-remove/new-add pair. TubeMovement owns an
-    /// early-return turn and is intentionally not routed here until its native
-    /// completion writer lands.
-    pub(crate) fn move_unit_sensor_after_cell_change(
-        &mut self,
-        stable_id: u64,
-        old_cell: Option<(u16, u16)>,
-        new_cell: Option<(u16, u16)>,
-        rules: &RuleSet,
-    ) {
-        if old_cell == new_cell {
-            return;
-        }
-        self.refresh_unit_sensor_at_per_cell(stable_id, rules);
-    }
-
     /// Foot4D8611/4D8621 executes both receivers for PerCellProcess(2),
     /// including a terminal or chain callback in the same cell.
     pub(crate) fn refresh_unit_sensor_at_per_cell(&mut self, stable_id: u64, rules: &RuleSet) {
@@ -532,9 +516,8 @@ mod tests {
             "the overlapping second deposit remains positive"
         );
 
-        let old = Some((40, 30));
         sim.substrate.entities.get_mut(second).unwrap().position.rx = 50;
-        sim.move_unit_sensor_after_cell_change(second, old, Some((50, 30)), &rules);
+        sim.refresh_unit_sensor_at_per_cell(second, &rules);
         assert!(!sim.fog.has_sensor_for_house(americans, 33, 30));
         assert!(sim.fog.has_sensor_for_house(americans, 57, 30));
 
@@ -544,7 +527,7 @@ mod tests {
 
         // Drift every live fact after the deposit. The cached center still
         // decides WHICH cells the removal walks, but the HOUSE is re-read live:
-        // `TechnoClass::RemoveSensorsAt @ 0x004DE940` opens with
+        // `FootClass::RemoveSensorsAt @ 0x004DE940` opens with
         // `*(int *)(param_1[0x87] + 0x30)`, the same read as the BuildingClass
         // pair. gamemd cannot reach this state for a Foot — only
         // `FootClass::ChangeOwner @ 0x004DBED0` moves `+0x21C`, and it dispatches
@@ -586,16 +569,12 @@ mod tests {
                 .sensor_deposit
                 .is_none()
         );
-        sim.substrate.entities.get_mut(id).unwrap().building_up =
-            Some(BuildingUp::completing_in_ticks(1, 0));
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .install_building_up(BuildingUp::completing_in_ticks(1, 0), 0);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(
             sim.substrate
                 .entities
@@ -634,16 +613,12 @@ mod tests {
             .spawn_object_at_height("NAPSIS", "Soviet", 40, 40, 0, 0, &rules)
             .unwrap();
         let soviet = sim.substrate.entities.get(id).unwrap().owner;
-        sim.substrate.entities.get_mut(id).unwrap().building_up =
-            Some(BuildingUp::completing_in_ticks(1, 0));
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .install_building_up(BuildingUp::completing_in_ticks(1, 0), 0);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(sim.fog.has_sensor_for_house(soviet, 54, 40));
         assert!(sim.fog.detects_disguise_for_house(soviet, 54, 40));
 
@@ -711,16 +686,12 @@ mod tests {
             .spawn_object_at_height("NAPSIS", "Soviet", 40, 40, 0, 0, &rules)
             .unwrap();
         let soviet = sim.substrate.entities.get(id).unwrap().owner;
-        sim.substrate.entities.get_mut(id).unwrap().building_up =
-            Some(BuildingUp::completing_in_ticks(1, 0));
-        sim.advance_tick(
-            &[],
-            Some(&rules),
-            &std::collections::BTreeMap::new(),
-            None,
-            None,
-            67,
-        );
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .install_building_up(BuildingUp::completing_in_ticks(1, 0), 0);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
 
         let americans = sim.interner.intern("Americans");
         sim.change_owner(id, americans);
@@ -862,7 +833,6 @@ mod tests {
             .flat_map(|ry| (0u16..64).map(move |rx| (rx, ry)))
             .find(|&(rx, ry)| !bounds.contains_height_aware_packed(rx.into(), ry.into(), 0, 0))
             .expect("mode-one outside cell");
-        let height = std::collections::BTreeMap::new();
         sim.spawn_from_map(
             &[
                 MapEntity {
@@ -903,7 +873,6 @@ mod tests {
                 },
             ],
             Some(&rules),
-            &height,
         );
         assert_eq!(
             sim.substrate

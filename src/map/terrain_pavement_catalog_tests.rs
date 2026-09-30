@@ -68,7 +68,7 @@ fn retail_pavement_resident_gate_survives_normal_loader_asset_drop() {
     // This plain road receiver is the case skipped by the old BRS-only writer.
     let cell = terrain.cell(66, 102).unwrap();
     assert_eq!((cell.final_tile_index, cell.final_sub_tile), (278, 7));
-    assert!(sim.bridge_state.as_ref().unwrap().cell(66, 102).is_none());
+    assert!(!cell.has_bridge_deck && !cell.bridge_facts.has_structural_bridge());
     for sub in 0..=u8::MAX {
         assert_eq!(
             terrain.native_tmp_has_damaged_data(278, sub),

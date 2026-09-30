@@ -277,7 +277,11 @@ fn stock_cloak_producer_honors_rank_selected_cloak_ability() {
         .spawn_object_at_height("RANKED", "Soviet", rx, ry, 0, 0, &rules)
         .unwrap();
     assert!(sim.substrate.entities.get(ranked).unwrap().cloak.is_none());
-    sim.substrate.entities.get_mut(ranked).unwrap().veterancy = 100;
+    sim.substrate
+        .entities
+        .get_mut(ranked)
+        .unwrap()
+        .set_veterancy_rank(100);
     tick_stock_cloak_producer(&mut sim, ranked, &rules);
     assert_eq!(
         sim.substrate

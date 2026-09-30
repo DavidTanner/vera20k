@@ -22,13 +22,6 @@ impl LivePublication<'_> {
         };
         let resolved = &terrain.cells()[index];
         let coord = (resolved.rx, resolved.ry);
-        if let Some(runtime) = sim
-            .bridge_state
-            .as_mut()
-            .and_then(|state| state.cell_mut(coord.0, coord.1))
-        {
-            runtime.deck_level = resolved.bridge_deck_level;
-        }
         self.retain_real_write(cell);
         let sim = &mut self.sim;
         crate::sim::world::navigation::NavigationCaches {
@@ -39,7 +32,6 @@ impl LivePublication<'_> {
         }
         .publish_current_path_cell(
             sim.resolved_terrain.as_ref().unwrap(),
-            sim.bridge_state.as_ref(),
             &sim.substrate.entities,
             &sim.interner,
             self.rules,
@@ -98,8 +90,9 @@ impl LivePublication<'_> {
         axis: Axis,
         phase: Phase,
         direction: u8,
+        family: Family,
     ) -> Result<(), String> {
-        let Some(keys) = self.terrain().high_bridge_rim_tiles() else {
+        let Some(keys) = super::super::family_rim_tiles(self.terrain(), family) else {
             return Ok(());
         };
         let relative = self.tile(retained).wrapping_sub(keys.base).wrapping_add(1);
@@ -133,7 +126,7 @@ impl LivePublication<'_> {
             return Ok(());
         }
 
-        self.perpendicular(requested, axis, phase, direction);
+        self.perpendicular(requested, axis, phase, direction, family);
         // Native rereads the retained receiver's +11A after recursion. Fallout
         // uses the stack coordinate, with the half-footprint adjustment below.
         let sub = self.subtile(retained);
@@ -238,14 +231,6 @@ impl IsoTileFloodHost for LiveTileFlood<'_, '_> {
         // Original47D2B0 publishes Map+68 class/height and Map+70 height
         // before returning to the next ordered repair callback. Publication
         // must survive a later presentation failure and must not rebuild IDs.
-        let deck_level = terrain.cells()[index].bridge_deck_level;
-        if let Some(runtime) = sim
-            .bridge_state
-            .as_mut()
-            .and_then(|state| state.cell_mut(coord.0, coord.1))
-        {
-            runtime.deck_level = deck_level;
-        }
         // Recalc owns the finalized pair; never leave a later reader on the
         // input overlay when native has removed it during this invocation.
         sim.overlay_grid.as_mut().unwrap().write_finalized_map_cell(
@@ -261,7 +246,6 @@ impl IsoTileFloodHost for LiveTileFlood<'_, '_> {
         }
         .publish_recalculated_cell(
             terrain,
-            sim.bridge_state.as_ref(),
             &sim.substrate.entities,
             &sim.interner,
             self.publication.rules,

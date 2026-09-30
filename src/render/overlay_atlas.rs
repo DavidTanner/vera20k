@@ -604,8 +604,7 @@ pub(crate) fn build_overlay_atlas_on_device(
             art_registry,
         );
         let ordinary_static = rules_ini.section(&obj.name).is_none_or(|s| {
-            !s.get_bool("IsAnimated").unwrap_or(false)
-                && !s.get_bool("SpawnsTiberium").unwrap_or(false)
+            !s.read_bool("IsAnimated", false) && !s.read_bool("SpawnsTiberium", false)
         }) && overlay_registry.flags_by_name(&obj.name).is_none();
         if frame_count == 1 && ordinary_static {
             native_static_candidates.insert(obj.name.clone());
@@ -650,9 +649,8 @@ pub(crate) fn build_overlay_atlas_on_device(
         // tiberium trees — the original engine uses unit palette + -12px Y offset for these.
         let spawns_tiberium: bool = !flags.tiberium
             && rules_ini
-                .section(&key.name)
-                .and_then(|s| s.get_bool("SpawnsTiberium"))
-                .unwrap_or(false);
+                .section_or_empty(&key.name)
+                .read_bool("SpawnsTiberium", false);
         // Palette selection:
         // - Tiberium overlays → tiberium palette (e.g., temperat.pal), NO remap
         // - SpawnsTiberium terrain objects → unit palette

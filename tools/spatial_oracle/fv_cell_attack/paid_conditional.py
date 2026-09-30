@@ -18,7 +18,8 @@ from tools.spatial_oracle.anim_bouncer_launch import constructor_state
 from tools.rules_oracle.bridge_anim_inputs import Reader
 
 HERE = Path(__file__).resolve().parent
-INPUT = HERE / 'paid_conditional.input.json'
+INPUT = HERE / 'paid_conditional_v26.input.json'
+OUTPUT = HERE / 'paid_conditional_v26.json.gz'
 sha = lambda raw: hashlib.sha256(raw).hexdigest()
 
 
@@ -204,6 +205,7 @@ def generate():
 
 def metadata():
     result = provenance(scope=__doc__, entry_points={
+        'drive_crt_dispatcher':0x7CBED3, 'drive_height_initializer':0x4AF400,
         'scenario_constructor_seed':0x65C6D0, 'unit_ctor':0x7353C0, 'unit_unlimbo':0x737BA0, 'event':0x4C6CB0,
         'live_logic':0x55B5FF, 'outside_raw_next':0x65C780,
         'raw_word':0x65C79D, 'ranged_word':0x65C84B, 'anim_ai':0x423AC0},
@@ -216,12 +218,12 @@ def metadata():
             'Shared Paid OS/assets/physical-world boundaries and MoveSound sound-device boundary remain. No selected RNG return, constructed object ID, movement, timer, projectile, damage or cleanup result is supplied.'])
     result.update(input_sha256=sha(INPUT.read_bytes()), harness_sha256=sha(Path(__file__).read_bytes()),
                   source_pins=owner.sources())
-    frozen = json.loads((HERE / 'promotion.json').read_bytes())['results']['paid_conditional.json']
+    frozen = json.loads((HERE / 'promotion.json').read_bytes())['results']['paid_conditional_v26.json']
     result.update(frozen_source_sha256=frozen['frozen_source_sha256'],
-                  frozen_source_metadata_sha256=frozen['frozen_source_metadata_sha256'],
-                  publication_changes=['The standalone original runner is promoted with package-relative input/output and the shared immutable compressed publisher. Original native execution and all selected values are unchanged.', 'Copied lexical INI text is represented by SHA256 and checkout references become relative. Imported Python source census stays in metadata; historical Rust input receipts stay sealed in the compact input.'])
+                  supersedes='paid_conditional_drive_crt.json.gz',
+                  publication_changes=['Original selected execution uses the new sealed bridge-fv-current-v26 outside-call boundary. All six original declarations and horizons remain; prior conditional inputs and native packets are preserved. Drive CRT initialization remains enabled.', 'Copied lexical INI text is represented by SHA256 and checkout references become relative. Imported Python source census stays in metadata; historical Rust input receipts stay sealed in the compact input.'])
     return result
 
 
 if __name__ == '__main__':
-    finish_vectors(generate, HERE / 'paid_conditional.json.gz', provenance=metadata)
+    finish_vectors(generate, OUTPUT, provenance=metadata)

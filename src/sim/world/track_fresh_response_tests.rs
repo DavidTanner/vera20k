@@ -30,7 +30,6 @@ use crate::sim::movement::fresh_oracle_seam::{self, FreshCallRecord, SuppliedPat
 use crate::sim::movement::track_process::TrackFamily;
 use crate::sim::world::Simulation;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 /// The oracle's Unit type (MovementZone Normal, SpeedType Track, or Wheel
 /// for its SpeedType-2 rows) for both locomotors; O5 carries +22D Crushable
@@ -108,7 +107,6 @@ fn unit(
             general.wheeled_downhill,
         );
     let terrain = sim.resolved_terrain.as_mut().unwrap();
-    let mut heights = BTreeMap::new();
     for cell in input["cells"].as_array().into_iter().flatten() {
         let (x, y) = pair(cell);
         let level = cell[2].as_u64().unwrap() as u8;
@@ -116,7 +114,6 @@ fn unit(
         target.level = level;
         // Cell+140, the bridge bits the +68B comparison reads.
         target.bridge_facts.raw_flags = cell[3].as_u64().unwrap() as u32;
-        heights.insert((x as u16, y as u16), level);
     }
     for overlay in input["overlays"].as_array().into_iter().flatten() {
         let (x, y) = pair(overlay);
@@ -164,7 +161,7 @@ fn unit(
     let kind = kind.as_str();
     sim.session.binary_frame = 100;
     let id = sim
-        .spawn_object(kind, "Americans", 10, 10, 0, &rules, &heights)
+        .spawn_object(kind, "Americans", 10, 10, 0, &rules)
         .unwrap_or_else(|| panic!("spawn {kind}: {input}"));
     sim.mission_assign_exact(id, MissionId::from_known(MissionType::Move), 100)
         .unwrap();
@@ -272,12 +269,12 @@ fn expected_records(events: &Value) -> Vec<FreshCallRecord> {
                     }
                 }
                 "scatter" => {
-                    // Scatter_Objects(Null, 1, force, deck).
+                    // Scatter_Objects(Null, 1, no_kidding, deck).
                     assert_eq!(event[2].as_i64(), Some(1));
                     let (x, y) = pair(&event[1]);
                     FreshCallRecord::Scatter {
                         cell: (x as i16, y as i16),
-                        forced: event[3] != 0,
+                        no_kidding: event[3] != 0,
                         deck: event[4] != 0,
                     }
                 }
@@ -357,10 +354,7 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
         ),
         ("latched", json!(u8::from(p.path_blocked))),
         ("retries", json!(p.retries_left)),
-        (
-            "facing",
-            json!(e.body_facing.as_ref().unwrap().destination()),
-        ),
+        ("facing", json!(e.body_facing.destination())),
         ("mission", json!(e.mission.current().raw())),
         (
             "foot_68b",
@@ -374,7 +368,7 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
     // Loco+50 and Foot+578 are doubles; SimFixed holds 16 fraction bits.
     for (key, actual) in [
         ("target_speed", target),
-        ("applied_speed", e.foot_speed.applied_fraction),
+        ("applied_speed", e.foot_speed.applied_fraction()),
     ] {
         let expected = state[key].as_f64().unwrap();
         assert!(
@@ -424,9 +418,7 @@ fn fresh_arm_rows_match_the_original_responses() {
         e.navigation.path_replay.directions = route;
         e.navigation.path_replay.cursor = 0;
         e.navigation.path_replay.reference_cell = Some((9, 8));
-        let rot = e.locomotor.as_ref().map_or(0, |loco| loco.rot);
-        e.body_facing = Some(FacingClass::new(rest, rot));
-        e.facing = (rest >> 8) as u8;
+        e.body_facing = FacingClass::with_rate_of(rest, &e.body_facing);
         let runtime = &mut e.navigation.path_runtime;
         runtime.start_movement(movement[0] as u32, movement[2] as i32);
         runtime.start_blocked(blocked[0] as u32, blocked[2] as i32);
@@ -451,14 +443,12 @@ fn fresh_arm_rows_match_the_original_responses() {
         sim.session.binary_frame = 101;
         let (codes, paths) = supplied(input);
         fresh_oracle_seam::install(codes, paths);
-        let grid = sim.path_grid.clone();
         let out = sim.run_track_process_movement(
             id,
             family,
             ProcessMovementArgs::OUTER,
             None,
             &rules,
-            grid.as_deref(),
             Some(&registry),
         );
         let (records, unused) = fresh_oracle_seam::finish();
@@ -491,16 +481,13 @@ fn first_code7_scold_request_retains_the_native_byte() {
         e.navigation.path_replay.directions = vec![2, 2, 2];
         e.navigation.path_replay.cursor = 0;
         e.navigation.path_replay.reference_cell = Some((9, 8));
-        let rot = e.locomotor.as_ref().unwrap().rot;
-        e.body_facing = Some(FacingClass::new(2 << 13, rot));
-        e.facing = 64;
+        e.body_facing = FacingClass::with_rate_of(2 << 13, &e.body_facing);
         e.navigation.path_runtime.start_movement(100, 0);
         e.navigation
             .path_runtime
             .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
         sim.session.binary_frame = 101;
         fresh_oracle_seam::install(vec![7], vec![]);
-        let grid = sim.path_grid.clone();
         // The native sound fragment stops at the code7 retry ladder. This
         // production call takes its nonrecursive Stop path; the byte remains
         // live there too. Clearing on sound delivery would fail this check.
@@ -517,7 +504,6 @@ fn first_code7_scold_request_retains_the_native_byte() {
             },
             None,
             &rules,
-            grid.as_deref(),
             Some(&registry),
         );
         let (_, unused) = fresh_oracle_seam::finish();
@@ -539,7 +525,9 @@ fn first_code7_scold_request_retains_the_native_byte() {
             .sound_events
             .iter()
             .filter_map(|event| match event {
-                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => Some(sound_id.as_str()),
+                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => {
+                    Some(sound_id.as_str())
+                }
                 _ => None,
             })
             .collect();

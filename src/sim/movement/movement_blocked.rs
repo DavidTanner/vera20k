@@ -11,7 +11,6 @@ use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::pathfinding::LayeredEntityBlockMap;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
-use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::movement_path::{supports_layered_bridge_pathing, try_repath_after_block};
@@ -35,8 +34,8 @@ pub(super) fn handle_blocked_tick(
     path_replay: &mut crate::sim::components::FootPathQueue,
     target: &mut MovementTarget,
     path_runtime: &mut crate::sim::components::FootPathRuntime,
-    facing: &mut u8,
-    body_facing: Option<super::FacingClass>,
+    // The body heading (`+0x388`) at `mcfg.binary_frame`.
+    body_facing: u16,
     locomotor: &Option<LocomotorState>,
     drive_locomotion: &mut Option<crate::sim::components::DriveLocomotionRuntime>,
     ship_locomotion: &mut Option<crate::sim::components::ShipLocomotionRuntime>,
@@ -51,9 +50,7 @@ pub(super) fn handle_blocked_tick(
     entity_cost_grid: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     entity_block_map: Option<&LayeredEntityBlockMap>,
-    too_big_to_fit_under_bridge: bool,
     mcfg: MovementConfig,
-    rng: &mut SimRng,
     sim_tick: u64,
     path_stuck_init: u32,
     facts: MoverPathFacts,
@@ -175,7 +172,6 @@ pub(super) fn handle_blocked_tick(
             occupancy,
             entity_id,
             current_pos,
-            *facing,
             body_facing,
             on_bridge,
             urgency,
@@ -191,16 +187,13 @@ pub(super) fn handle_blocked_tick(
     let repath_ok = try_repath_after_block(
         target,
         path_runtime,
-        facing,
         current_pos,
         active_layer,
         layered_pathing_for_repath,
         ctx,
         entity_cost_grid,
         entity_blocks,
-        rng,
         repath_mz,
-        too_big_to_fit_under_bridge,
         mcfg,
         entity_block_map,
         // `urgency` is computed in this function, not carried by the mover, so
@@ -374,7 +367,6 @@ mod native_walk_timer_tests {
                 n("movement_duration") as i32,
             );
             path_runtime.retries_left = 10;
-            let mut facing = 64;
             let mut stats = MovementTickStats::default();
             let mut finished = Vec::new();
             let mut aborted = false;
@@ -382,8 +374,7 @@ mod native_walk_timer_tests {
                 &mut Default::default(),
                 &mut target,
                 &mut path_runtime,
-                &mut facing,
-                None,
+                0x4000,
                 &locomotor,
                 &mut None,
                 &mut None,
@@ -405,14 +396,12 @@ mod native_walk_timer_tests {
                 None,
                 None,
                 None,
-                false,
                 MovementConfig {
                     binary_frame: frame as u32,
                     close_enough: SIM_ZERO,
                     path_delay_ticks: 3,
                     blockage_path_delay_ticks: n("configured_grace") as i32,
                 },
-                &mut SimRng::new(7),
                 frame as u64,
                 10,
                 super::MoverPathFacts::without_wall_arm(0, false, true),

@@ -14,15 +14,13 @@
 
 use std::collections::BTreeMap;
 
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::missile_spawn::MissileFamily;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::combat::TargetKind;
-use crate::sim::spawn_manager::{
-    SpawnManagerMode, SpawnSlotState, SpawnTimer, tick_spawn_managers,
-};
+use crate::sim::spawn_manager::{SpawnManagerMode, SpawnSlotState, tick_spawn_managers};
+use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
 
@@ -250,82 +248,17 @@ Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
 "
 }
 
-fn empty_height_map() -> BTreeMap<(u16, u16), u8> {
-    BTreeMap::new()
-}
-
 fn flat_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
-    let speed_costs = SpeedCostProfile {
-        foot: Some(100),
-        track: Some(100),
-        wheel: Some(100),
-        float: Some(100),
-        amphibious: Some(100),
-        float_beach: Some(100),
-        hover: Some(100),
-    };
     ResolvedTerrainCell {
-        rx,
-        ry,
-        source_tile_index: 0,
-        source_sub_tile: 0,
-        final_tile_index: 0,
-        final_sub_tile: 0,
-        is_wood_bridge_repair_tile: false,
-        level: 0,
-        filled_clear: false,
-        tileset_index: Some(0),
-        land_type: 0,
-        yr_cell_land_type: 0,
-        slope_type: 0,
-        template_height: 0,
-        height_in_pixels: 0,
-        render_offset_x: 0,
-        render_offset_y: 0,
-        terrain_class: TerrainClass::Clear,
-        speed_costs,
-        is_water: false,
-        is_cliff_like: false,
-        is_rough: false,
-        is_road: false,
-        accepts_smudge: true,
-        allows_tiberium: true,
-        variant: 0,
-        has_ramp: false,
-        canonical_ramp: None,
-        ground_walk_blocked: false,
-        terrain_object_blocks: false,
-        terrain_object_occupation: None,
-        overlay_blocks: false,
-        overlay_zone_type: None,
-        outside_playfield: false,
-        zone_type: 0,
-        base_ground_walk_blocked: false,
-        base_build_blocked: false,
-        base_land_type: 0,
-        base_yr_cell_land_type: 0,
-        base_terrain_class: TerrainClass::Clear,
-        base_speed_costs: speed_costs,
-        has_bridge_deck: false,
-        bridge_walkable: false,
-        bridge_transition: false,
-        bridge_deck_level: 0,
-        bridge_layer: None,
-        bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-        tube_index: None,
-        radar_left: [0, 0, 0],
-        radar_right: [0, 0, 0],
-        has_damaged_data: false,
-        bridgehead_anchor_class_at_load: None,
+        speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+        base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+        ..crate::map::resolved_terrain::test_tiberium_cell(rx, ry)
     }
 }
 
 fn flat_sim() -> Simulation {
     const WIDTH: u16 = 40;
     const HEIGHT: u16 = 32;
-    let cells = (0..HEIGHT)
-        .flat_map(|ry| (0..WIDTH).map(move |rx| flat_terrain_cell(rx, ry)))
-        .collect();
     let mut sim = Simulation::new();
     sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
         base: 0,
@@ -334,7 +267,11 @@ fn flat_sim() -> Simulation {
         off_104: 80,
         off_108: 41,
     });
-    sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(WIDTH, HEIGHT, cells));
+    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(
+        WIDTH,
+        HEIGHT,
+        flat_terrain_cell,
+    ));
     sim
 }
 
@@ -356,9 +293,8 @@ fn move_target_to_x_distance(sim: &mut Simulation, target_id: u64, distance_lept
 fn v3_launcher_gets_a_missile_pool_on_spawn() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
 
     let manager = sim
@@ -389,9 +325,8 @@ fn v3_launcher_gets_a_missile_pool_on_spawn() {
 fn carrier_pool_is_not_missile_flavoured() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let manager = sim
         .substrate
@@ -412,9 +347,8 @@ fn carrier_pool_is_not_missile_flavoured() {
 fn units_without_spawns_get_no_manager() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
     assert!(
         sim.substrate
@@ -430,12 +364,11 @@ fn units_without_spawns_get_no_manager() {
 fn set_target_queues_and_the_ai_pass_promotes_it() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
 
     if let Some(manager) = sim
@@ -448,7 +381,7 @@ fn set_target_queues_and_the_ai_pass_promotes_it() {
         assert_eq!(manager.queued_target, Some(TargetKind::Entity(target)));
         assert_eq!(manager.current_target, None, "SetTarget only queues");
         // Force the update gate open so this test exercises one AI pass.
-        manager.update_timer = SpawnTimer::ready();
+        manager.update_timer = CdTimer::default();
     }
 
     tick_spawn_managers(&mut sim, &rules, &[v3], None);
@@ -466,7 +399,6 @@ fn set_target_queues_and_the_ai_pass_promotes_it() {
 #[test]
 fn hornet_launcher_maximum_matches_native_distance_ties() {
     let rules = make_spawner_rules();
-    let hm = empty_height_map();
     // SpawnManager6B7B43 -> Unit+3AC/6F7780 -> CanFireAt6F77B0 ->
     // InRange6F7220. Its approximate distance accepts 6401 at Range6400;
     // the three original numeric controls bound this shared caller check.
@@ -492,10 +424,10 @@ fn hornet_launcher_maximum_matches_native_distance_ties() {
         };
         let mut sim = flat_sim();
         let carrier = sim
-            .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+            .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
             .expect("spawn carrier");
         let target = sim
-            .spawn_object("MOBILE", "Yuri", 20, 10, 0, &rules, &hm)
+            .spawn_object("MOBILE", "Yuri", 20, 10, 0, &rules)
             .expect("spawn initially legal mobile target");
         let manager = sim
             .substrate
@@ -504,7 +436,7 @@ fn hornet_launcher_maximum_matches_native_distance_ties() {
             .and_then(|entity| entity.spawn_manager.as_mut())
             .expect("carrier manager");
         manager.set_target(Some(TargetKind::Entity(target)));
-        manager.update_timer = SpawnTimer::ready();
+        manager.update_timer = CdTimer::default();
 
         move_target_to_x_distance(&mut sim, target, distance);
         tick_spawn_managers(&mut sim, &rules, &[carrier], None);
@@ -538,13 +470,12 @@ fn gsi_05_08_idle_legality_uses_effective_3d_distance() {
     );
 
     let rules = make_spawner_rules();
-    let hm = empty_height_map();
     let mut sim = flat_sim();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn carrier");
     let target = sim
-        .spawn_object("MOBILE", "Yuri", 20, 10, 0, &rules, &hm)
+        .spawn_object("MOBILE", "Yuri", 20, 10, 0, &rules)
         .expect("spawn initially legal mobile target");
     let manager = sim
         .substrate
@@ -553,7 +484,7 @@ fn gsi_05_08_idle_legality_uses_effective_3d_distance() {
         .and_then(|entity| entity.spawn_manager.as_mut())
         .expect("carrier manager");
     manager.set_target(Some(TargetKind::Entity(target)));
-    manager.update_timer = SpawnTimer::ready();
+    manager.update_timer = CdTimer::default();
 
     move_target_to_x_distance(&mut sim, target, HORIZONTAL_LEPTONS);
     sim.substrate
@@ -578,7 +509,6 @@ fn gsi_05_08_idle_legality_uses_effective_3d_distance() {
 #[test]
 fn gsi_05_08_v3_minimum_accepts_1280_and_clears_1279() {
     let rules = make_spawner_rules();
-    let hm = empty_height_map();
 
     for (distance, expected_mode) in [
         (1280, SpawnManagerMode::Launching),
@@ -586,10 +516,10 @@ fn gsi_05_08_v3_minimum_accepts_1280_and_clears_1279() {
     ] {
         let mut sim = flat_sim();
         let v3 = sim
-            .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+            .spawn_object("V3", "Russians", 10, 10, 0, &rules)
             .expect("spawn V3");
         let target = sim
-            .spawn_object("MOBILE", "Yuri", 16, 10, 0, &rules, &hm)
+            .spawn_object("MOBILE", "Yuri", 16, 10, 0, &rules)
             .expect("spawn initially legal mobile target");
         let manager = sim
             .substrate
@@ -598,7 +528,7 @@ fn gsi_05_08_v3_minimum_accepts_1280_and_clears_1279() {
             .and_then(|entity| entity.spawn_manager.as_mut())
             .expect("V3 manager");
         manager.set_target(Some(TargetKind::Entity(target)));
-        manager.update_timer = SpawnTimer::ready();
+        manager.update_timer = CdTimer::default();
 
         move_target_to_x_distance(&mut sim, target, distance);
         tick_spawn_managers(&mut sim, &rules, &[v3], None);
@@ -628,12 +558,11 @@ fn gsi_05_08_v3_minimum_accepts_1280_and_clears_1279() {
 fn update_timer_gates_the_whole_ai_pass() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
     if let Some(manager) = sim
         .substrate
@@ -668,12 +597,11 @@ fn update_timer_gates_the_whole_ai_pass() {
 fn v3_launches_its_rocket_into_the_kamikaze_window() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
     let child_id = sim
         .substrate
@@ -690,7 +618,7 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
         .and_then(|e| e.spawn_manager.as_mut())
     {
         manager.set_target(Some(TargetKind::Entity(target)));
-        manager.update_timer = SpawnTimer::ready();
+        manager.update_timer = CdTimer::default();
     }
     // Pass 1: Idle → Launching (the slot walk runs before the mode block, so
     // nothing launches while the manager is still Idle).
@@ -711,7 +639,7 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
         .get_mut(v3)
         .and_then(|e| e.spawn_manager.as_mut())
     {
-        manager.update_timer = SpawnTimer::ready();
+        manager.update_timer = CdTimer::default();
     }
     tick_spawn_managers(&mut sim, &rules, &[v3], None);
 
@@ -737,7 +665,8 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
         .expect("manager");
     assert_eq!(manager.slots[0].state, SpawnSlotState::KamikazeWait);
     assert_eq!(
-        manager.slots[0].timer.duration, 60,
+        manager.slots[0].timer.duration(),
+        60,
         "V3RocketPauseFrames + V3RocketTiltFrames"
     );
     assert_eq!(
@@ -751,12 +680,11 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
 fn a_moving_launcher_holds_its_missile() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
     let child_id = sim
         .substrate
@@ -766,12 +694,14 @@ fn a_moving_launcher_holds_its_missile() {
         .and_then(|m| m.slots[0].spawn)
         .expect("child");
 
+    let frame = sim.session.binary_frame;
     if let Some(entity) = sim.substrate.entities.get_mut(v3) {
         // Mid-turn: the native gate is ILocomotor::Is_Moving_Now.
-        entity.facing_target = Some(64);
+        entity.body_facing.set_rot(5);
+        entity.body_facing.set(0x4000, frame);
         if let Some(manager) = entity.spawn_manager.as_mut() {
             manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
             manager.mode = SpawnManagerMode::Launching;
         }
     }
@@ -796,13 +726,12 @@ fn missile_impact_kills_through_the_shared_death_pipeline() {
     // takes a target the missile can actually destroy and asserts it is gone.
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Soviet", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Soviet", 10, 10, 0, &rules)
         .expect("spawn V3");
     // FRAGILE (Strength=50) sits well under the V3's 200 damage.
     let target = sim
-        .spawn_object("FRAGILE", "Americans", 20, 20, 0, &rules, &hm)
+        .spawn_object("FRAGILE", "Americans", 20, 20, 0, &rules)
         .expect("spawn FRAGILE");
     let child_id = sim
         .substrate
@@ -824,6 +753,7 @@ fn missile_impact_kills_through_the_shared_death_pipeline() {
             damage: 200,
             firer_id: v3,
         }),
+        sim.session.binary_frame,
     );
     let _ = sim.reveal(child_id);
 
@@ -851,7 +781,7 @@ fn missile_impact_kills_through_the_shared_death_pipeline() {
 
     // One tick: the queued impact is expanded by combat and resolved by the
     // shared death handling.
-    sim.advance_tick(&[], Some(&rules), &hm, None, None, 67);
+    sim.advance_tick(&[], Some(&rules), None, None, 67);
     sim.flush_pending_delete();
 
     assert!(
@@ -870,12 +800,11 @@ fn missile_impact_kills_through_the_shared_death_pipeline() {
 fn v3_attack_order_damages_the_target_through_the_spawned_rocket() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("FRAGILE", "Yuri", 16, 10, 0, &rules, &hm)
+        .spawn_object("FRAGILE", "Yuri", 16, 10, 0, &rules)
         .expect("spawn FRAGILE");
 
     assert!(
@@ -895,7 +824,7 @@ fn v3_attack_order_damages_the_target_through_the_spawned_rocket() {
     // pipeline running leaves it standing at 0 HP and this fails.
     let mut destroyed = false;
     for _ in 0..600 {
-        sim.advance_tick(&[], Some(&rules), &hm, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         let gone = sim
             .substrate
             .entities
@@ -918,9 +847,8 @@ fn v3_attack_order_damages_the_target_through_the_spawned_rocket() {
 fn owner_death_destroys_docked_children() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let dred = sim
-        .spawn_object("DRED", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("DRED", "Russians", 10, 10, 0, &rules)
         .expect("spawn DRED");
     let children: Vec<u64> = sim
         .substrate
@@ -955,9 +883,8 @@ fn a_killing_hit_destroys_docked_children_at_the_destroy() {
 
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let dred = sim
-        .spawn_object("DRED", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("DRED", "Russians", 10, 10, 0, &rules)
         .expect("spawn DRED");
     let children: Vec<u64> = sim
         .substrate
@@ -1014,15 +941,14 @@ fn spawn_manager_state_contributes_to_the_state_hash() {
     // slot machine both move the hash — otherwise slot/timer divergence would
     // go uncaught in lockstep.
     let rules = make_spawner_rules();
-    let hm = empty_height_map();
 
     let mut a = Simulation::new();
     let v3_a = a
-        .spawn_object("V3", "Soviet", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Soviet", 10, 10, 0, &rules)
         .expect("spawn V3");
     let mut b = Simulation::new();
     let v3_b = b
-        .spawn_object("V3", "Soviet", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Soviet", 10, 10, 0, &rules)
         .expect("spawn V3");
     assert_eq!(
         a.state_hash(),
@@ -1064,12 +990,11 @@ fn spawn_manager_state_contributes_to_the_state_hash() {
 fn launcher_death_destroys_a_missile_already_in_flight() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
     let child_id = sim
         .substrate
@@ -1088,7 +1013,7 @@ fn launcher_death_destroys_a_missile_already_in_flight() {
             .and_then(|e| e.spawn_manager.as_mut())
         {
             manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
         }
         tick_spawn_managers(&mut sim, &rules, &[v3], None);
     }
@@ -1131,15 +1056,14 @@ fn launcher_death_destroys_a_missile_already_in_flight() {
 fn a_missile_shot_down_in_flight_explodes_where_it_is() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
     let bystander = sim
-        .spawn_object("TARGET", "Yuri", 11, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 11, 10, 0, &rules)
         .expect("spawn a bystander beside the launcher");
     let missile = sim
         .substrate
@@ -1156,7 +1080,7 @@ fn a_missile_shot_down_in_flight_explodes_where_it_is() {
             .and_then(|e| e.spawn_manager.as_mut())
         {
             manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
         }
         tick_spawn_managers(&mut sim, &rules, &[v3], None);
     }
@@ -1167,7 +1091,7 @@ fn a_missile_shot_down_in_flight_explodes_where_it_is() {
     let target_health = sim.substrate.entities.get(target).unwrap().health.current;
 
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(40, 32);
-    sim.advance_tick(&[], Some(&rules), &hm, Some(&grid), None, 67);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
 
     assert!(
         sim.substrate
@@ -1201,9 +1125,8 @@ fn a_missile_shot_down_in_flight_explodes_where_it_is() {
 fn ownership_change_clears_the_pool_and_rearms_without_a_regen_wait() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let dred = sim
-        .spawn_object("DRED", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("DRED", "Russians", 10, 10, 0, &rules)
         .expect("spawn DRED");
     let children: Vec<u64> = sim
         .substrate
@@ -1231,7 +1154,7 @@ fn ownership_change_clears_the_pool_and_rearms_without_a_regen_wait() {
         "the old owner's pool is gone"
     );
     assert!(
-        manager.slots.iter().all(|s| s.timer.duration == 0),
+        manager.slots.iter().all(|s| s.timer.duration() == 0),
         "an alive owner rebuilds immediately; SpawnRegenRate applies only on death"
     );
     for child in children {
@@ -1251,12 +1174,11 @@ fn ownership_change_clears_the_pool_and_rearms_without_a_regen_wait() {
 fn missile_flight_speed_uses_the_ra2_conversion() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Russians", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
         .expect("spawn TARGET");
     let child_id = sim
         .substrate
@@ -1274,7 +1196,7 @@ fn missile_flight_speed_uses_the_ra2_conversion() {
             .and_then(|e| e.spawn_manager.as_mut())
         {
             manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
         }
         tick_spawn_managers(&mut sim, &rules, &[v3], None);
     }
@@ -1315,9 +1237,8 @@ fn gsi_13_07_no_spawn_alt_parser_defaults_false_and_reads_yes() {
 fn gsi_13_07_count_docked_spawns_accepts_only_states_zero_and_six() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Soviet", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Soviet", 10, 10, 0, &rules)
         .expect("spawn V3");
 
     let manager = sim
@@ -1347,15 +1268,7 @@ fn reload_due_restores_actual_and_estimated_health_from_child_type() {
         let rules = make_spawner_rules_with_hornet_strength(strength);
         let mut sim = flat_sim();
         let carrier = sim
-            .spawn_object(
-                "CARRIER",
-                "Americans",
-                10,
-                10,
-                0,
-                &rules,
-                &empty_height_map(),
-            )
+            .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
             .expect("spawn carrier and docked wing");
         let manager = sim
             .substrate
@@ -1367,8 +1280,8 @@ fn reload_due_restores_actual_and_estimated_health_from_child_type() {
             .unwrap();
         let child = manager.slots[0].spawn.unwrap();
         manager.slots[0].state = SpawnSlotState::Reloading;
-        manager.slots[0].timer = SpawnTimer::ready();
-        manager.update_timer = SpawnTimer::ready();
+        manager.slots[0].timer = CdTimer::default();
+        manager.update_timer = CdTimer::default();
         let aircraft = sim.substrate.entities.get_mut(child).unwrap();
         aircraft.health.current = 1;
         aircraft.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-123);
@@ -1398,12 +1311,11 @@ fn reload_due_restores_actual_and_estimated_health_from_child_type() {
 fn hornets_hold_over_the_carrier_until_the_whole_wing_is_up() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
         .expect("spawn TARGET");
 
     // Pass 1: Idle -> Launching. Pass 2: the first Hornet leaves the deck.
@@ -1415,7 +1327,7 @@ fn hornets_hold_over_the_carrier_until_the_whole_wing_is_up() {
             .and_then(|e| e.spawn_manager.as_mut())
         {
             manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
         }
         tick_spawn_managers(&mut sim, &rules, &[carrier], None);
     }
@@ -1468,12 +1380,11 @@ fn hornets_hold_over_the_carrier_until_the_whole_wing_is_up() {
 fn a_dead_carriers_airborne_hornet_crashes() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
         .expect("spawn TARGET");
     for _ in 0..2 {
         if let Some(manager) = sim
@@ -1483,7 +1394,7 @@ fn a_dead_carriers_airborne_hornet_crashes() {
             .and_then(|e| e.spawn_manager.as_mut())
         {
             manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
         }
         tick_spawn_managers(&mut sim, &rules, &[carrier], None);
     }
@@ -1544,12 +1455,11 @@ fn a_dead_carriers_airborne_hornet_crashes() {
 fn a_dead_carriers_hornets_crash_from_the_last_slot() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
         .expect("spawn TARGET");
     let airborne = |sim: &Simulation| -> Vec<(usize, u64)> {
         sim.substrate
@@ -1577,9 +1487,9 @@ fn a_dead_carriers_hornets_crash_from_the_last_slot() {
             .and_then(|e| e.spawn_manager.as_mut())
         {
             manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
             // The launch pacing between Hornets.
-            manager.reload_timer = SpawnTimer::ready();
+            manager.reload_timer = CdTimer::default();
         }
         tick_spawn_managers(&mut sim, &rules, &[carrier], None);
     }
@@ -1644,12 +1554,11 @@ fn a_dead_carriers_hornets_crash_from_the_last_slot() {
 fn a_landing_hornet_keeps_its_slot_and_reloads() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
         .expect("spawn TARGET");
     let tick = |sim: &mut Simulation| {
         if let Some(manager) = sim
@@ -1658,7 +1567,7 @@ fn a_landing_hornet_keeps_its_slot_and_reloads() {
             .get_mut(carrier)
             .and_then(|e| e.spawn_manager.as_mut())
         {
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
         }
         tick_spawn_managers(sim, &rules, &[carrier], None);
     };
@@ -1737,7 +1646,8 @@ fn a_landing_hornet_keeps_its_slot_and_reloads() {
         "the Limbo broadcast must not free a living child's slot"
     );
     assert_eq!(
-        manager.slots[slot].timer.duration, 150,
+        manager.slots[slot].timer.duration(),
+        150,
         "SpawnReloadRate, not the SpawnRegenRate rebuild"
     );
     assert!(
@@ -1756,7 +1666,7 @@ fn a_landing_hornet_keeps_its_slot_and_reloads() {
         .get_mut(carrier)
         .and_then(|e| e.spawn_manager.as_mut())
     {
-        manager.slots[slot].timer = SpawnTimer::ready();
+        manager.slots[slot].timer = CdTimer::default();
     }
     tick(&mut sim);
     let manager = sim
@@ -1777,12 +1687,11 @@ fn a_landing_hornet_keeps_its_slot_and_reloads() {
 fn target_death_clears_the_wing_target() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
         .expect("spawn TARGET");
 
     if let Some(manager) = sim
@@ -1792,7 +1701,7 @@ fn target_death_clears_the_wing_target() {
         .and_then(|e| e.spawn_manager.as_mut())
     {
         manager.set_target(Some(TargetKind::Entity(target)));
-        manager.update_timer = SpawnTimer::ready();
+        manager.update_timer = CdTimer::default();
     }
     tick_spawn_managers(&mut sim, &rules, &[carrier], None);
     assert_eq!(
@@ -1834,15 +1743,14 @@ fn target_death_clears_the_wing_target() {
 fn queued_target_death_clears_only_the_queued_field() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let live = sim
-        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
         .expect("spawn live target");
     let queued = sim
-        .spawn_object("TARGET", "Yuri", 31, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 31, 10, 0, &rules)
         .expect("spawn queued target");
 
     if let Some(manager) = sim
@@ -1873,9 +1781,8 @@ fn queued_target_death_clears_only_the_queued_field() {
 fn a_launch_at_a_vanished_target_leaves_no_orphan() {
     let rules = make_spawner_rules();
     let mut sim = Simulation::new();
-    let hm = empty_height_map();
     let v3 = sim
-        .spawn_object("V3", "Soviet", 10, 10, 0, &rules, &hm)
+        .spawn_object("V3", "Soviet", 10, 10, 0, &rules)
         .expect("spawn V3");
     let child_id = sim
         .substrate
@@ -1895,7 +1802,7 @@ fn a_launch_at_a_vanished_target_leaves_no_orphan() {
     {
         manager.current_target = Some(TargetKind::Entity(999_999));
         manager.mode = SpawnManagerMode::Launching;
-        manager.update_timer = SpawnTimer::ready();
+        manager.update_timer = CdTimer::default();
     }
     tick_spawn_managers(&mut sim, &rules, &[v3], None);
 
@@ -1931,15 +1838,14 @@ fn a_launch_at_a_vanished_target_leaves_no_orphan() {
 fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
     let rules = make_spawner_rules();
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
         .expect("spawn TARGET");
     let other = sim
-        .spawn_object("TARGET", "Yuri", 30, 20, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 30, 20, 0, &rules)
         .expect("spawn the other TARGET");
     let pass = |sim: &mut Simulation, wing_target: Option<u64>| {
         if let Some(manager) = sim
@@ -1951,7 +1857,7 @@ fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
             if let Some(id) = wing_target {
                 manager.set_target(Some(TargetKind::Entity(id)));
             }
-            manager.update_timer = SpawnTimer::ready();
+            manager.update_timer = CdTimer::default();
         }
         tick_spawn_managers(sim, &rules, &[carrier], None);
     };
@@ -2076,12 +1982,11 @@ CurleyShuffle=yes
         );
     let rules = RuleSet::from_ini(&IniFile::from_str(&text)).expect("strafing carrier rules");
     let mut sim = flat_sim();
-    let hm = empty_height_map();
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules, &hm)
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 24, 10, 0, &rules, &hm)
+        .spawn_object("TARGET", "Yuri", 24, 10, 0, &rules)
         .expect("spawn TARGET");
     let wing: Vec<u64> = sim
         .substrate
@@ -2103,7 +2008,7 @@ CurleyShuffle=yes
             manager.set_target(Some(TargetKind::Entity(target)));
         }
         sim.fire_events.clear();
-        sim.advance_tick(&[], Some(&rules), &hm, None, None, 67);
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
         let frame = sim.session.binary_frame;
         for event in sim
             .fire_events

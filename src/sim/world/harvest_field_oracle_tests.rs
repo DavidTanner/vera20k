@@ -159,11 +159,10 @@ pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String)) -> S
     // allied Unit standing there (Unlimbo lists it and sets its vehicle
     // bit), or only the raw vehicle bit (`+0x124` 0x20), as a Drive holding
     // the cell as its next one.
-    let heights = std::collections::BTreeMap::new();
     for at in input["units"].as_array().into_iter().flatten() {
         let (x, y) = cell(at);
         s.sim
-            .spawn_object("MTNK", "Americans", x, y, 0, &s.rules, &heights)
+            .spawn_object("MTNK", "Americans", x, y, 0, &s.rules)
             .expect("standing unit");
     }
     for at in input["reserved"].as_array().into_iter().flatten() {
@@ -184,12 +183,7 @@ pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String)) -> S
             .unwrap();
         let grid = s.sim.overlay_grid.as_mut().unwrap();
         grid.place_overlay(at.0, at.1, id, ore[4].as_u64().unwrap() as u8);
-        grid.recalculate_runtime_cell(
-            s.sim.resolved_terrain.as_mut().unwrap(),
-            registry,
-            at,
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        grid.recalculate_runtime_cell(s.sim.resolved_terrain.as_mut().unwrap(), registry, at);
     }
     let frame = s.sim.session.binary_frame;
     s.sim.production.ore_growth_state = OreGrowthState::new(33, 33);
@@ -303,17 +297,13 @@ fn compare_state(s: &Scene, row: &Value, context: &str) {
         native["harvesting"].as_u64().unwrap(),
         "{context}: Unit+0x6D2"
     );
-    let start = if miner.stage_timer.is_armed() {
-        i64::from(miner.stage_timer.start_frame)
-    } else {
-        -1
-    };
+    let stage = entity.native_stage();
     assert_eq!(
         serde_json::json!([
-            miner.stage_value,
-            start,
-            miner.stage_timer.duration,
-            miner.stage_rate
+            stage.value(),
+            stage.timer().start_frame(),
+            stage.timer().duration(),
+            stage.rate()
         ]),
         native["stage"],
         "{context}: StageClass"
@@ -418,11 +408,9 @@ fn search_for_tiberium_matches_the_original_search_and_move() {
         let input = &row["input"];
         let mut s = row_scene(input);
         compare_reach(&s, row, &context);
-        let grid = s.sim.path_grid.clone();
         let ok = crate::sim::miner::ore_scan::search_for_tiberium_and_move(
             &mut s.sim,
             &s.rules,
-            grid.as_deref(),
             Some(registry()),
             s.miner,
             input["range"].as_i64().unwrap() as i32,
@@ -465,13 +453,11 @@ fn mission_harvest_states_zero_and_one_match_the_original_dispatch() {
         let mut s = row_scene(input);
         compare_reach(&s, row, &context);
         let config = crate::sim::miner::MinerConfig::from_rules(&s.rules);
-        let grid = s.sim.path_grid.clone();
         let frame = s.sim.session.binary_frame;
         crate::sim::miner::dispatch_harvest_for_object(
             &mut s.sim,
             &s.rules,
             &config,
-            grid.as_deref(),
             Some(registry()),
             s.miner,
         );

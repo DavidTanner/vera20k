@@ -8,23 +8,16 @@
 
 use std::collections::BTreeMap;
 
-use crate::rules::ini_parser::{IniFile, IniSection};
-use crate::rules::ini_value::{atoi_lenient, parse_read_double, parse_read_int_value};
+use crate::assets::asset_manager::AssetManager;
+use crate::rules::ini_parser::{IniFile, IniSection, is_native_none_type_name};
+use crate::rules::ini_value::{crt_atoi, parse_leading_f64, scan_decimal_i32};
 use crate::util::native_x87::NativeF64Bits;
 
 const SCRIPT_ACTION_CAPACITY: usize = 50;
 const TASK_FORCE_CAPACITY: usize = 6;
 const AI_TRIGGER_TOKEN_COUNT: usize = 18;
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TeamAiDefinitionSource {
     FixedAimd,
     Scenario,
@@ -61,46 +54,23 @@ pub struct TaskForceIni {
 ///
 /// Typed consumers resolve only fields backed by their own native evidence;
 /// retaining the ordered raw payload prevents later AI-trigger/recruitment
-/// work from having to reconstruct the loader.
+/// work from having to reconstruct the loader. The payload stays private:
+/// consumers read it through [`Self::section`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamTypeIni {
     pub id: String,
-    pub fields: Vec<(String, String)>,
+    fields: IniSection,
     pub source: TeamAiDefinitionSource,
 }
 
 impl TeamTypeIni {
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.fields
-            .iter()
-            .find_map(|(candidate, value)| (candidate == key).then_some(value.as_str()))
-    }
-
-    pub fn read_int(&self, key: &str, default: i32) -> i32 {
-        self.get(key)
-            .and_then(parse_read_int_value)
-            .unwrap_or(default)
-    }
-
-    pub fn read_bool(&self, key: &str, default: bool) -> bool {
-        self.get(key).map_or(default, |raw| read_bool(raw, default))
+    /// The overlaid fields as a section for the `read_*` readers.
+    pub fn section(&self) -> &IniSection {
+        &self.fields
     }
 
     fn overlay(&mut self, section: &IniSection, source: TeamAiDefinitionSource) {
-        for key in section.keys() {
-            let Some(value) = section.get(key) else {
-                continue;
-            };
-            if let Some((_, current)) = self
-                .fields
-                .iter_mut()
-                .find(|(candidate, _)| candidate == key)
-            {
-                *current = value.to_string();
-            } else {
-                self.fields.push((key.to_string(), value.to_string()));
-            }
-        }
+        self.fields.overlay(section);
         self.source = source;
     }
 }
@@ -126,11 +96,17 @@ pub struct AiTriggerTypeIni {
     pub condition: i32,
     pub object_type: Option<String>,
     pub comparison_mask: [u8; 32],
+    /// Tokens 7, 8 and 9: the weight (`+0xB8`), its minimum (`+0xC0`) and
+    /// maximum (`+0xC8`), see [`ai_trigger_weight`].
     pub weights: [NativeF64Bits; 3],
-    pub storage_flag_d0: bool,
-    pub storage_i32_ac: i32,
+    /// Token 10 (`+0xD0`): the trigger may run in a multiplayer game.
+    pub multiplayer: bool,
+    /// Token 12 (`+0xAC`): 1, 2 or 3 limits it to side 0, 1 or 2.
+    pub side: i32,
     pub storage_flag_d1: bool,
     pub secondary_team_type: Option<String>,
+    /// Tokens 15, 16 and 17 (`+0xD2`, `+0xD3`, `+0xD4`): the easy, normal and
+    /// hard difficulties it runs at.
     pub difficulty_enabled: [bool; 3],
     pub enabled: bool,
     pub source: TeamAiDefinitionSource,
@@ -218,15 +194,36 @@ pub struct TeamAiIniRegistry {
 }
 
 impl TeamAiIniRegistry {
+    /// Load the definitions a scenario installs: the active-YR `AIMD.INI`
+    /// root, extended by the scenario INI.
+    ///
+    /// Retail provenance: `Load_Game_Rules @ 0x0052CD70` opens `AIMD.INI` as
+    /// its standalone root, never merged with the Rules layers; the scenario
+    /// passes of [`Self::from_sources`] then extend each registry.
+    pub(crate) fn load_retail(
+        assets: &AssetManager,
+        scenario: &IniFile,
+        game_mode_nonzero: bool,
+    ) -> Result<Self, String> {
+        let fixed = crate::rules::retail_sources::select_ini(assets, "aimd.ini")?.ini;
+        let registry = Self::from_sources(&fixed, scenario, game_mode_nonzero);
+        if !registry.fixed_source_is_complete() {
+            return Err(format!(
+                "active YR aimd.ini failed structural validation: fixed_counts={:?}, diagnostics={:?}",
+                registry.fixed_counts, registry.diagnostics
+            ));
+        }
+        for diagnostic in &registry.diagnostics {
+            log::warn!("Team AI INI diagnostic: {diagnostic:?}");
+        }
+        Ok(registry)
+    }
+
     /// Reproduce the active-YR per-registry fixed/map pass sequence.
     ///
     /// Retail provenance: `ScenarioClass::Full_Init @ 0x00686B20`, exact
     /// calls `0x0068797A..0x006879E3`.
-    pub fn from_sources(
-        fixed_aimd: &IniFile,
-        scenario: &IniFile,
-        game_mode_nonzero: bool,
-    ) -> Self {
+    pub fn from_sources(fixed_aimd: &IniFile, scenario: &IniFile, game_mode_nonzero: bool) -> Self {
         let mut registry = Self {
             game_mode_nonzero,
             ..Self::default()
@@ -306,7 +303,15 @@ impl TeamAiIniRegistry {
             return;
         };
         let mut index = identity_index(self.team_types.iter().map(|entry| entry.id.as_str()));
-        for id in list.get_values().into_iter().filter(|id| valid_identity(id)) {
+        // `0x006F19B0`: each entry through ReadString(0x20); the factory
+        // allocates nothing for `none`/`<none>`.
+        for key in list.keys() {
+            let Some(id) = list
+                .read_name(key, 0x20)
+                .filter(|id| !is_native_none_type_name(id))
+            else {
+                continue;
+            };
             let Some(section) = ini.section(id) else {
                 self.diagnostics
                     .push(TeamAiIniDiagnostic::MissingDefinitionSection {
@@ -323,7 +328,7 @@ impl TeamAiIniRegistry {
             } else {
                 let mut definition = TeamTypeIni {
                     id: id.to_string(),
-                    fields: Vec::new(),
+                    fields: IniSection::new(id.to_string()),
                     source,
                 };
                 definition.overlay(section, source);
@@ -342,7 +347,15 @@ impl TeamAiIniRegistry {
             return;
         };
         let mut index = identity_index(self.scripts.iter().map(|entry| entry.id.as_str()));
-        for id in list.get_values().into_iter().filter(|id| valid_identity(id)) {
+        // `0x00691970`: each entry through ReadString(0x18); the factory
+        // allocates nothing for `none`/`<none>`.
+        for key in list.keys() {
+            let Some(id) = list
+                .read_name(key, 0x18)
+                .filter(|id| !is_native_none_type_name(id))
+            else {
+                continue;
+            };
             let Some(section) = ini.section(id) else {
                 self.diagnostics
                     .push(TeamAiIniDiagnostic::MissingDefinitionSection {
@@ -352,12 +365,17 @@ impl TeamAiIniRegistry {
                     });
                 continue;
             };
+            // ScriptTypeClass::Read_INI `0x006918A0`: ReadString 0x80 per
+            // numbered key, then `sscanf("%d,%d")` (`0x00723CA0`). A partial
+            // scan leaves stale stack values natively; VERA refuses the entry.
             let mut actions = Vec::new();
             for key in 0..SCRIPT_ACTION_CAPACITY {
-                let Some(value) = section.get(&key.to_string()) else {
+                let name = key.to_string();
+                let Some(value) = section.read_name(&name, 0x80) else {
                     continue;
                 };
-                let Some((action, argument)) = value.split_once(',') else {
+                let Some([action_id, argument]) = section.read_int_fields_complete(&name, 0x80)
+                else {
                     self.diagnostics
                         .push(TeamAiIniDiagnostic::MalformedScriptAction {
                             script_id: id.to_string(),
@@ -368,8 +386,8 @@ impl TeamAiIniRegistry {
                     continue;
                 };
                 actions.push(ScriptActionIni {
-                    action_id: atoi_lenient(action.trim()),
-                    argument: atoi_lenient(argument.trim()),
+                    action_id,
+                    argument,
                 });
             }
             let definition = ScriptTypeIni {
@@ -386,7 +404,15 @@ impl TeamAiIniRegistry {
             return;
         };
         let mut index = identity_index(self.task_forces.iter().map(|entry| entry.id.as_str()));
-        for id in list.get_values().into_iter().filter(|id| valid_identity(id)) {
+        // `0x006E8220`: each entry through ReadString(0x18); the factory
+        // allocates nothing for `none`/`<none>`.
+        for key in list.keys() {
+            let Some(id) = list
+                .read_name(key, 0x18)
+                .filter(|id| !is_native_none_type_name(id))
+            else {
+                continue;
+            };
             let Some(section) = ini.section(id) else {
                 self.diagnostics
                     .push(TeamAiIniDiagnostic::MissingDefinitionSection {
@@ -396,12 +422,15 @@ impl TeamAiIniRegistry {
                     });
                 continue;
             };
+            // TaskForceClass::Read_INI `0x006E8420`: ReadString 0x80 per
+            // numbered key, then `sscanf("%d,%s")` (`0x004C4EF0`) and the
+            // member type lookup; an unresolved member adds no entry.
             let mut entries = Vec::new();
             for key in 0..TASK_FORCE_CAPACITY {
-                let Some(value) = section.get(&key.to_string()) else {
+                let Some(value) = section.read_name(&key.to_string(), 0x80) else {
                     continue;
                 };
-                let Some((count, member_type)) = value.split_once(',') else {
+                let Some((count, member_type)) = scan_count_and_word(value) else {
                     self.diagnostics
                         .push(TeamAiIniDiagnostic::MalformedTaskForceEntry {
                             task_force_id: id.to_string(),
@@ -411,8 +440,7 @@ impl TeamAiIniRegistry {
                         });
                     continue;
                 };
-                let member_type = member_type.trim();
-                if member_type.is_empty() || !valid_identity(member_type) {
+                if !valid_identity(member_type) {
                     self.diagnostics
                         .push(TeamAiIniDiagnostic::MalformedTaskForceEntry {
                             task_force_id: id.to_string(),
@@ -423,7 +451,7 @@ impl TeamAiIniRegistry {
                     continue;
                 }
                 entries.push(TaskForceEntryIni {
-                    count: atoi_lenient(count.trim()),
+                    count,
                     member_type: member_type.to_string(),
                 });
             }
@@ -433,12 +461,9 @@ impl TeamAiIniRegistry {
                 entries,
                 source,
             };
-            upsert_ordered(
-                &mut self.task_forces,
-                &mut index,
-                definition,
-                |entry| &entry.id,
-            );
+            upsert_ordered(&mut self.task_forces, &mut index, definition, |entry| {
+                &entry.id
+            });
         }
     }
 
@@ -447,18 +472,15 @@ impl TeamAiIniRegistry {
             return;
         };
         let mut index = identity_index(self.ai_triggers.iter().map(|entry| entry.id.as_str()));
+        // AITriggerTypeClass::Read_INI `0x0041F580`: ReadString 0x200, then
+        // one `strtok(",")` per field. Native skips a missing field; VERA
+        // refuses a record without all eighteen.
         for id in section.keys().filter(|id| valid_identity(id)) {
-            let Some(value) = section.get(id) else {
+            let Some(tokens) = section.read_list(id, 0x200) else {
                 continue;
             };
-            let tokens: Vec<String> = value
-                .split(',')
-                .map(|token| token.trim().to_string())
-                .collect();
             let token_count = tokens.len();
-            let Ok(tokens) = <Vec<String> as TryInto<[String; AI_TRIGGER_TOKEN_COUNT]>>::try_into(
-                tokens,
-            ) else {
+            let Ok(tokens) = <[&str; AI_TRIGGER_TOKEN_COUNT]>::try_from(tokens) else {
                 self.diagnostics
                     .push(TeamAiIniDiagnostic::MalformedAiTrigger {
                         trigger_id: id.to_string(),
@@ -467,6 +489,7 @@ impl TeamAiIniRegistry {
                     });
                 continue;
             };
+            let tokens = tokens.map(str::to_string);
             let Some(comparison_mask) = parse_ai_trigger_comparison(&tokens[6]) else {
                 self.diagnostics
                     .push(TeamAiIniDiagnostic::MalformedAiTriggerComparison {
@@ -491,22 +514,23 @@ impl TeamAiIniRegistry {
                 } else {
                     AiTriggerOwnerIni::Country(tokens[2].clone())
                 },
-                condition: atoi_lenient(&tokens[4]),
+                condition: crt_atoi(&tokens[4]),
                 object_type: optional_reference(&tokens[5]),
                 comparison_mask,
                 weights: [
-                    NativeF64Bits::from_bits(parse_read_double(&tokens[7]).to_bits()),
-                    NativeF64Bits::from_bits(parse_read_double(&tokens[8]).to_bits()),
-                    NativeF64Bits::from_bits(parse_read_double(&tokens[9]).to_bits()),
+                    ai_trigger_weight(&tokens[7]),
+                    ai_trigger_weight(&tokens[8]),
+                    ai_trigger_weight(&tokens[9]),
                 ],
-                storage_flag_d0: read_bool(&tokens[10], false),
-                storage_i32_ac: atoi_lenient(&tokens[12]),
-                storage_flag_d1: read_bool(&tokens[13], false),
+                // `atoi(token) != 0` (`0x0041F929`..`0x0041FA56`).
+                multiplayer: crt_atoi(&tokens[10]) != 0,
+                side: crt_atoi(&tokens[12]),
+                storage_flag_d1: crt_atoi(&tokens[13]) != 0,
                 secondary_team_type: optional_reference(&tokens[14]),
                 difficulty_enabled: [
-                    read_bool(&tokens[15], true),
-                    read_bool(&tokens[16], true),
-                    read_bool(&tokens[17], true),
+                    crt_atoi(&tokens[15]) != 0,
+                    crt_atoi(&tokens[16]) != 0,
+                    crt_atoi(&tokens[17]) != 0,
                 ],
                 tokens,
                 enabled,
@@ -527,9 +551,6 @@ impl TeamAiIniRegistry {
         };
         let index = identity_index(self.ai_triggers.iter().map(|entry| entry.id.as_str()));
         for id in section.keys() {
-            let Some(value) = section.get(id) else {
-                continue;
-            };
             let Some(position) = index.get(&canonical_identity(id)).copied() else {
                 self.diagnostics
                     .push(TeamAiIniDiagnostic::UnknownAiTriggerEnable {
@@ -537,9 +558,10 @@ impl TeamAiIniRegistry {
                     });
                 continue;
             };
-            // `FUN_0041F2E0`: a false authored value disables only when
-            // `g_GameMode == 0`; every listed key is enabled in skirmish/MP.
-            self.ai_triggers[position].enabled = read_bool(value, false) || game_mode_nonzero;
+            // `0x0041F451` ReadBool(false): a false authored value disables
+            // only when `g_GameMode == 0`; every listed key is enabled in
+            // skirmish/MP.
+            self.ai_triggers[position].enabled = section.read_bool(id, false) || game_mode_nonzero;
         }
     }
 }
@@ -602,17 +624,31 @@ fn upsert_ordered<T>(
     }
 }
 
-fn read_bool(raw: &str, default: bool) -> bool {
-    match raw
-        .trim()
-        .as_bytes()
-        .first()
-        .map(|byte| byte.to_ascii_uppercase())
-    {
-        Some(b'1') | Some(b'T') | Some(b'Y') => true,
-        Some(b'0') | Some(b'F') | Some(b'N') => false,
-        _ => default,
-    }
+/// One AITrigger weight token as the raw reader stores it
+/// (`0x0041F892..0x0041F8AC` and the two after it): CRT `atof`, `Math::ftol`
+/// toward zero, the low dword zero-extended and loaded as a 64-bit integer, so
+/// a weight is a whole number in `0..2^32` (`-1` reads 4294967295).
+fn ai_trigger_weight(token: &str) -> NativeF64Bits {
+    use crate::util::native_x87::X87Chop53;
+    let parsed = NativeF64Bits::from_bits(parse_leading_f64(token).to_bits());
+    let whole = X87Chop53::load_f64(parsed).map_or(0, X87Chop53::ftol_i32_low_masked) as u32;
+    NativeF64Bits::from_bits(f64::from(whole).to_bits())
+}
+
+/// `sscanf("%d,%s")`: a decimal, a comma right after it, then one
+/// whitespace-free word.
+fn scan_count_and_word(value: &str) -> Option<(i32, &str)> {
+    let mut bytes = value.as_bytes();
+    let count = scan_decimal_i32(&mut bytes)?;
+    let rest = bytes.strip_prefix(b",")?;
+    let rest = &value[value.len() - rest.len()..];
+    let is_space = |c: char| matches!(c, '\t'..='\r' | ' ');
+    let word = rest
+        .trim_start_matches(is_space)
+        .split(is_space)
+        .next()
+        .filter(|word| !word.is_empty())?;
+    Some((count, word))
 }
 
 #[cfg(test)]
@@ -656,11 +692,8 @@ mod tests {
 
     #[test]
     fn complete_fixed_source_requires_all_four_nonempty_clean_registries() {
-        let loaded = TeamAiIniRegistry::from_sources(
-            &complete_fixed_aimd(),
-            &IniFile::from_str(""),
-            false,
-        );
+        let loaded =
+            TeamAiIniRegistry::from_sources(&complete_fixed_aimd(), &IniFile::from_str(""), false);
 
         assert_eq!(
             loaded.fixed_counts,
@@ -707,9 +740,7 @@ mod tests {
             loaded
                 .diagnostics
                 .iter()
-                .filter(|diagnostic| {
-                    diagnostic.source() == TeamAiDefinitionSource::FixedAimd
-                })
+                .filter(|diagnostic| { diagnostic.source() == TeamAiDefinitionSource::FixedAimd })
                 .count(),
             4
         );
@@ -774,14 +805,24 @@ mod tests {
         assert_eq!(
             loaded
                 .team_type_read_sequence()
-                .map(|entry| entry.read_int("Priority", 7))
+                .map(|entry| entry.section().read_int("Priority", 7))
                 .collect::<Vec<_>>(),
             [5, 7, 9, 20],
             "each replay transaction retains the current-field state at that read"
         );
-        assert_eq!(loaded.team_types[0].read_int("Priority", 7), 20);
-        assert!(loaded.team_types[0].read_bool("Autocreate", false));
-        assert_eq!(loaded.scripts[0].actions, vec![ScriptActionIni { action_id: 49, argument: 0 }]);
+        assert_eq!(loaded.team_types[0].section().read_int("Priority", 7), 20);
+        assert!(
+            loaded.team_types[0]
+                .section()
+                .read_bool("Autocreate", false)
+        );
+        assert_eq!(
+            loaded.scripts[0].actions,
+            vec![ScriptActionIni {
+                action_id: 49,
+                argument: 0
+            }]
+        );
         assert_eq!(loaded.task_forces[0].entries.len(), 1);
         assert_eq!(loaded.task_forces[0].entries[0].count, 2);
         assert_eq!(loaded.ai_triggers.len(), 2);
@@ -803,8 +844,8 @@ mod tests {
                 NativeF64Bits::from_bits(40.0_f64.to_bits()),
             ]
         );
-        assert!(trigger.storage_flag_d0);
-        assert_eq!(trigger.storage_i32_ac, 1);
+        assert!(trigger.multiplayer);
+        assert_eq!(trigger.side, 1);
         assert!(!trigger.storage_flag_d1);
         assert_eq!(trigger.secondary_team_type, None);
         assert_eq!(trigger.difficulty_enabled, [true, true, true]);
@@ -846,8 +887,14 @@ mod tests {
             "a map override retains the existing fixed identity's enabled byte"
         );
         assert_eq!(by_id("OVERRIDE").source, TeamAiDefinitionSource::Scenario);
-        assert!(!by_id("MAPNEW").enabled, "map-new unlisted rows start disabled");
-        assert!(!by_id("LISTED").enabled, "mode zero honors a listed false value");
+        assert!(
+            !by_id("MAPNEW").enabled,
+            "map-new unlisted rows start disabled"
+        );
+        assert!(
+            !by_id("LISTED").enabled,
+            "mode zero honors a listed false value"
+        );
 
         let skirmish = TeamAiIniRegistry::from_sources(&fixed, &scenario, true);
         assert!(
@@ -881,16 +928,31 @@ mod tests {
         assert_eq!(
             loaded.scripts[0].actions,
             vec![
-                ScriptActionIni { action_id: 2, argument: 0 },
-                ScriptActionIni { action_id: -1, argument: 9 },
-                ScriptActionIni { action_id: 64, argument: -7 },
+                ScriptActionIni {
+                    action_id: 2,
+                    argument: 0
+                },
+                ScriptActionIni {
+                    action_id: -1,
+                    argument: 9
+                },
+                ScriptActionIni {
+                    action_id: 64,
+                    argument: -7
+                },
             ]
         );
         assert_eq!(
             loaded.task_forces[0].entries,
             vec![
-                TaskForceEntryIni { count: -2, member_type: "E0".to_string() },
-                TaskForceEntryIni { count: 3, member_type: "E5".to_string() },
+                TaskForceEntryIni {
+                    count: -2,
+                    member_type: "E0".to_string()
+                },
+                TaskForceEntryIni {
+                    count: 3,
+                    member_type: "E5".to_string()
+                },
             ]
         );
     }
@@ -937,9 +999,7 @@ mod tests {
 
     #[test]
     fn sentinel_task_force_member_is_a_source_tagged_refusal() {
-        let fixed = IniFile::from_str(
-            "[TaskForces]\n0=BAD_FORCE\n[BAD_FORCE]\n0=1,<none>\n",
-        );
+        let fixed = IniFile::from_str("[TaskForces]\n0=BAD_FORCE\n[BAD_FORCE]\n0=1,<none>\n");
         let loaded = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), false);
 
         assert!(loaded.task_forces[0].entries.is_empty());
@@ -969,7 +1029,12 @@ mod tests {
         assert_eq!(loaded.scripts.len(), 88);
         assert_eq!(loaded.team_types.len(), 163);
         assert_eq!(loaded.ai_triggers.len(), 165);
-        assert!(loaded.ai_triggers.iter().all(|trigger| trigger.tokens.len() == 18));
+        assert!(
+            loaded
+                .ai_triggers
+                .iter()
+                .all(|trigger| trigger.tokens.len() == 18)
+        );
         assert_eq!(
             loaded
                 .ai_triggers
@@ -1014,8 +1079,8 @@ mod tests {
                 NativeF64Bits::from_bits(70.0_f64.to_bits()),
             ]
         );
-        assert!(anti_nuke.storage_flag_d0);
-        assert_eq!(anti_nuke.storage_i32_ac, 1);
+        assert!(anti_nuke.multiplayer);
+        assert_eq!(anti_nuke.side, 1);
         assert!(!anti_nuke.storage_flag_d1);
         assert_eq!(anti_nuke.secondary_team_type.as_deref(), Some("0CB246CC-G"));
         assert_eq!(anti_nuke.difficulty_enabled, [false, true, true]);
@@ -1023,7 +1088,7 @@ mod tests {
             loaded
                 .team_types
                 .iter()
-                .filter(|team| team.read_bool("Autocreate", false))
+                .filter(|team| team.section().read_bool("Autocreate", false))
                 .count(),
             163
         );
@@ -1031,14 +1096,16 @@ mod tests {
             loaded
                 .team_types
                 .iter()
-                .filter(|team| team.read_bool("IsBaseDefense", false))
+                .filter(|team| team.section().read_bool("IsBaseDefense", false))
                 .count(),
             12
         );
 
         let mut priorities = BTreeMap::<i32, usize>::new();
         for team in &loaded.team_types {
-            *priorities.entry(team.read_int("Priority", 7)).or_default() += 1;
+            *priorities
+                .entry(team.section().read_int("Priority", 7))
+                .or_default() += 1;
         }
         assert_eq!(
             priorities,

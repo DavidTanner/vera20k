@@ -5,17 +5,18 @@
 //! payout math, dock queuing, Chrono teleport rules, incremental unloading,
 //! local continuation, pip display, and refinery rebinding.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{HarvestOverlay, Health, VoxelAnimation};
 use crate::sim::game_entity::GameEntity;
+use crate::sim::house_state::HouseState;
+use crate::sim::intern::InternedId;
 use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, ResourceType};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
+use crate::sim::movement::teleport_movement;
+use crate::sim::occupancy::CellListInsertion;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production::credits_for_owner;
@@ -176,6 +177,8 @@ fn spawn_miner(sim: &mut Simulation, sid: u64, kind: MinerKind, rx: u16, ry: u16
             off_104: 128,
             off_108: 65,
         });
+    sim.playfield_size_height.get_or_insert(64);
+    ensure_scan_map_context(sim);
     // Update the shared object allocator if needed so test IDs do not collide.
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
@@ -204,11 +207,26 @@ fn spawn_refinery(sim: &mut Simulation, sid: u64, rx: u16, ry: u16) {
     // Placed in its cells' lists: on the map, out of limbo and marked.
     ge.lifecycle.in_limbo = false;
     ge.lifecycle.cell_marked = true;
+    // Construction stamps the type's `Foundation=4x3`.
+    ge.foundation = "4x3".to_string();
     sim.substrate.entities.insert(ge);
     occupy_structure_cells(sim, sid, rx, ry, 4, 3);
+    join_house_list(sim, sid, owner_id);
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
+}
+
+/// The building joins its House's building list (House+0x68) as Unlimbo
+/// makes it. A fixture without the House gets a human one, as the miner
+/// code treats a missing House.
+fn join_house_list(sim: &mut Simulation, sid: u64, owner: InternedId) {
+    sim.houses
+        .entry(owner)
+        .or_insert_with(|| HouseState::new(owner, 0, None, true, 0, 10));
+    sim.append_house_base_building_for_test(sid);
+    // The class constructor's `Add_Tracking`, which a direct insert skips.
+    sim.update_house_tracking(sid, crate::sim::house_tracking::HouseTracking::add_tracking);
 }
 
 fn spawn_structure(sim: &mut Simulation, sid: u64, type_id: &str, rx: u16, ry: u16) {
@@ -242,6 +260,7 @@ fn spawn_structure_owned(
     ge.lifecycle.in_limbo = false;
     sim.substrate.entities.insert(ge);
     occupy_structure_cells(sim, sid, rx, ry, 1, 1);
+    join_house_list(sim, sid, owner_id);
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
@@ -274,6 +293,14 @@ fn spawn_inert_dock_instance(sim: &mut Simulation) {
     );
     ge.lifecycle.in_limbo = false;
     sim.substrate.entities.insert(ge);
+    sim.houses
+        .entry(owner_id)
+        .or_insert_with(|| HouseState::new(owner_id, 0, None, true, 0, 10));
+    // The class constructor's `Add_Tracking`, which a direct insert skips.
+    sim.update_house_tracking(
+        INERT_DOCK_ID,
+        crate::sim::house_tracking::HouseTracking::add_tracking,
+    );
     if sim.substrate.next_stable_object_id <= INERT_DOCK_ID {
         sim.substrate.next_stable_object_id = INERT_DOCK_ID + 1;
     }
@@ -310,12 +337,33 @@ fn occupy_structure_cells(
 fn place_ore(sim: &mut Simulation, rx: u16, ry: u16, amount: u16) {
     sim.resolved_terrain
         .get_or_insert_with(|| crate::map::resolved_terrain::test_flat_ground_grid(64));
+    ensure_scan_map_context(sim);
     crate::sim::tiberium::test_support::place_tiberium_on_map(
         sim,
         (rx, ry),
         ResourceType::Ore,
         amount.div_ceil(120).clamp(1, 11) as u8,
     );
+}
+
+fn ensure_scan_map_context(sim: &mut Simulation) {
+    if sim.zone_grid.is_none()
+        && let Some(terrain) = sim.resolved_terrain.as_ref()
+    {
+        // The production ore probe now uses the native zone owner. Supply
+        // this direct-insert fixture's map cache instead of relying on the
+        // removed no-zone shortcut in the scan.
+        let path = PathGrid::from_resolved_terrain(terrain);
+        sim.zone_grid = Some(
+            crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_map_context(
+                &path,
+                terrain,
+                &[],
+                sim.map_size_diamond(),
+                sim.playfield_bounds,
+            ),
+        );
+    }
 }
 
 /// Tick the miner system `n` times.
@@ -327,25 +375,39 @@ fn place_ore(sim: &mut Simulation, rx: u16, ry: u16, amount: u16) {
 /// the mission dispatch as the production host runs it.
 fn tick_stages(sim: &mut Simulation) {
     for id in sim.substrate.entities.keys_sorted() {
-        super::tick_stage(sim, id);
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .tick_native_stage(sim.session.binary_frame as i32);
     }
 }
 
 fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
     let config = MinerConfig::default();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
     for _ in 0..n {
         sim.session.total_sim_ms = sim.session.total_sim_ms.saturating_add(67);
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
-        crate::sim::movement::teleport_movement::tick_teleport_movement(
-            &mut sim.substrate.entities,
-            &mut OccupancyGrid::new(),
-            &[],
-            sim.session.tick,
-            None,
-            None,
-        );
-        super::miner_system::tick_miners(sim, rules, &config, Some(&grid));
+        // The object turn admits a Teleport Process for an owner whose active
+        // locomotor is Teleport.
+        for id in sim.substrate.entities.keys_sorted() {
+            if sim
+                .substrate
+                .entities
+                .get(id)
+                .is_some_and(teleport_movement::teleport_process_active)
+            {
+                teleport_movement::process_teleport(
+                    &mut sim.substrate.entities,
+                    id,
+                    sim.session.tick,
+                    None,
+                );
+            }
+        }
+        super::miner_system::tick_miners(sim, rules, &config);
         tick_stages(sim);
         // Also tick movement so issue_direct_move targets are consumed
         // (Linked/Departing wait for movement_target to be None).
@@ -614,6 +676,7 @@ fn chrono_miner_does_not_warp_outbound() {
     let rules = miner_rules();
     let config = MinerConfig::default();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
 
     // Chrono miner at the refinery exit cell, empty cargo, entering SearchOre.
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::Chrono, 14, 11);
@@ -629,7 +692,7 @@ fn chrono_miner_does_not_warp_outbound() {
         miner.cargo.clear();
     }
 
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     let entity = sim.substrate.entities.get(miner_id).expect("entity");
     assert!(
@@ -701,7 +764,6 @@ fn search_ore_becomes_wait_when_empty() {
 fn wait_no_ore_queues_guard_when_the_wait_expires() {
     let mut sim = Simulation::new();
     let rules = miner_rules();
-    let config = MinerConfig::default();
 
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 20, 20);
     spawn_refinery(&mut sim, 2, 10, 10);
@@ -776,7 +838,7 @@ fn wait_no_ore_queues_guard_when_the_wait_expires() {
     tick_miners_n(
         &mut sim,
         &rules,
-        (base + crate::sim::mission::authority::RATE_EPILOGUE_JITTER_MAX_FRAMES) as usize,
+        (base + crate::sim::mission::authority::RATE_EPILOGUE_JITTER_MAX_FRAMES as i32) as usize,
     );
     let m = get_miner(&sim, miner_id);
     assert_eq!(m.state, MinerState::WaitNoOre);
@@ -792,7 +854,6 @@ fn wait_no_ore_queues_guard_when_the_wait_expires() {
 fn wait_no_ore_retry_gate_is_exactly_105_frames() {
     let mut sim = Simulation::new();
     let rules = miner_rules();
-    let config = MinerConfig::default();
 
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 20, 20);
     spawn_refinery(&mut sim, 2, 10, 10);
@@ -829,7 +890,7 @@ fn harvester_uses_dock_list_for_refinery_selection() {
     let mut sim = Simulation::new();
     let rules = dock_rules();
     let miner_id = sim
-        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules, &BTreeMap::new())
+        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "OTHERPROC", 28, 28);
     spawn_structure(&mut sim, 3, "MODPROC", 10, 10);
@@ -867,7 +928,7 @@ fn a_warped_refinery_is_passed_over() {
     let mut sim = Simulation::new();
     let rules = dock_rules();
     let miner_id = sim
-        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules, &BTreeMap::new())
+        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "MODPROC", 26, 26);
     spawn_structure(&mut sim, 3, "MODPROC", 10, 10);
@@ -904,7 +965,7 @@ fn harvester_queues_guard_when_no_dock_compatible_refinery_exists() {
     let mut sim = Simulation::new();
     let rules = dock_rules();
     let miner_id = sim
-        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules, &BTreeMap::new())
+        .spawn_object("MODHARV", "Americans", 30, 30, 64, &rules)
         .expect("spawn harvester");
     spawn_structure(&mut sim, 2, "OTHERPROC", 10, 10);
 
@@ -1369,16 +1430,11 @@ fn tick_miners_overlay_n(
 ) {
     let config = MinerConfig::default();
     let grid = PathGrid::new(64, 64);
+    sim.install_fixture_path_grid(Some(&grid));
     for _ in 0..n {
         sim.session.total_sim_ms = sim.session.total_sim_ms.saturating_add(67);
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
-        super::miner_system::tick_miners_test_walk(
-            sim,
-            rules,
-            &config,
-            Some(&grid),
-            Some(registry),
-        );
+        super::miner_system::tick_miners_test_walk(sim, rules, &config, Some(registry));
         tick_stages(sim);
         crate::sim::movement::tick_movement(
             &mut sim.substrate.entities,
@@ -1391,6 +1447,14 @@ fn tick_miners_overlay_n(
 
 /// Mission_Harvest state 1 with the StageClass at 9 on the stock
 /// `HarvesterLoadRate` 2, so the next dispatch cuts.
+fn get_stage(sim: &Simulation, id: u64) -> &crate::sim::stage::StageClass {
+    sim.substrate
+        .entities
+        .get(id)
+        .expect("miner entity")
+        .native_stage()
+}
+
 fn arm_cutting(sim: &mut Simulation, id: u64) {
     let entity = sim.substrate.entities.get_mut(id).expect("miner entity");
     entity
@@ -1398,9 +1462,7 @@ fn arm_cutting(sim: &mut Simulation, id: u64) {
         .set_handler_state(MinerState::Harvest.cursor());
     let miner = entity.miner.as_mut().expect("miner component");
     miner.harvesting = true;
-    miner.stage_value = 9;
-    miner.stage_rate = 2;
-    miner.stage_timer.arm(0, 2);
+    entity.restart_native_stage(9, 0, 2);
 }
 
 /// Frames between two cuts: the stage re-arms at `HarvesterLoadRate` 2 and
@@ -1429,7 +1491,10 @@ fn harvester_takes_one_bale_per_gate_over_eleven_gates() {
         assert_eq!(miner.cargo.len(), 1, "first gate removes one level");
         assert_eq!(miner.state, MinerState::Harvest);
         assert_eq!(
-            (miner.stage_value, miner.stage_rate),
+            (
+                get_stage(&sim, miner_id).value(),
+                get_stage(&sim, miner_id).rate()
+            ),
             (0, 2),
             "success re-arms the StageClass at HarvesterLoadRate"
         );
@@ -1526,7 +1591,6 @@ fn harvester_clears_density_zero_overlay_without_bale_and_moves_on() {
             terrain,
             crate::sim::tiberium::test_support::overlay_registry_with_land(),
             at,
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
         );
     }
 
@@ -1559,7 +1623,10 @@ fn harvester_clears_density_zero_overlay_without_bale_and_moves_on() {
             "gate {bale}: overlay present, one level lower"
         );
         assert_eq!(
-            (miner.stage_value, miner.stage_rate),
+            (
+                get_stage(&sim, miner_id).value(),
+                get_stage(&sim, miner_id).rate()
+            ),
             (0, 2),
             "gate {bale}: success re-arms the StageClass"
         );
@@ -1651,7 +1718,10 @@ fn harvester_caps_extraction_at_remaining_capacity() {
         "positive extraction remains a successful Harvest tick"
     );
     assert_eq!(
-        (miner.stage_value, miner.stage_rate),
+        (
+            get_stage(&sim, miner_id).value(),
+            get_stage(&sim, miner_id).rate()
+        ),
         (0, 2),
         "success re-arms the StageClass"
     );
@@ -1722,7 +1792,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         entity.harvest_overlay = Some(HarvestOverlay {
             frame: 6,
             visible: true,
-            elapsed_frames: 0,
         });
     }
     arm_cutting(&mut sim, miner_id);
@@ -1734,8 +1803,17 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         let miner = entity.miner.as_ref().expect("miner component");
         assert_eq!(miner.cargo.len(), 40);
         assert_eq!(entity.miner_state().unwrap(), MinerState::Harvest);
-        assert_eq!(miner.stage_timer.start_frame, fill_frame);
-        assert_eq!((miner.stage_value, miner.stage_rate), (0, 2));
+        assert_eq!(
+            entity.native_stage().timer().start_frame() as u32,
+            fill_frame
+        );
+        assert_eq!(
+            (
+                get_stage(&sim, miner_id).value(),
+                get_stage(&sim, miner_id).rate()
+            ),
+            (0, 2)
+        );
         assert_eq!(entity.archive_target(), None);
         assert_eq!(miner.reserved_refinery, None);
         assert!(entity.movement_target.is_none());
@@ -1745,7 +1823,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!((voxel.frame, voxel.elapsed_frames), (7, 1));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
-        assert_eq!((overlay.frame, overlay.elapsed_frames), (6, 0));
+        assert_eq!(overlay.frame, 6);
     }
 
     tick_miners_n(&mut sim, &rules, GATE - 1);
@@ -1762,7 +1840,8 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
             "F+18 remains pending"
         );
         assert_eq!(
-            miner.stage_value, 9,
+            entity.native_stage().value(),
+            9,
             "the ninth step lands after F+18's dispatch"
         );
         assert_eq!(entity.archive_target(), None);
@@ -1778,8 +1857,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
         assert_eq!(
-            (overlay.frame, overlay.elapsed_frames),
-            (6, 0),
+            overlay.frame, 6,
             "nonzero overlay state remains live through F+18"
         );
     }
@@ -1792,9 +1870,16 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         let miner = entity.miner.as_ref().expect("miner component");
         assert_eq!(full_gate_frame.wrapping_sub(fill_frame), GATE as u32);
         assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
-        assert_eq!(miner.stage_timer.start_frame, full_gate_frame);
-        assert_eq!(miner.stage_timer.duration, 0);
-        assert_eq!(miner.stage_rate, 0, "the full gate resets the StageClass");
+        assert_eq!(
+            entity.native_stage().timer().start_frame() as u32,
+            full_gate_frame
+        );
+        assert_eq!(entity.native_stage().timer().duration(), 0);
+        assert_eq!(
+            entity.native_stage().rate(),
+            0,
+            "the full gate resets the StageClass"
+        );
         assert_eq!(
             entity.archive_target(),
             Some(crate::sim::combat::TargetKind::Cell(31, 30))
@@ -1807,7 +1892,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!((voxel.frame, voxel.elapsed_frames), (0, 0));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(!overlay.visible);
-        assert_eq!((overlay.frame, overlay.elapsed_frames), (0, 0));
+        assert_eq!(overlay.frame, 0);
     }
 
     open_playfield(&mut sim);
@@ -1903,7 +1988,7 @@ fn purifier_under_construction_pays_no_bonus_until_complete() {
         .entities
         .get_mut(4)
         .expect("purifier 4")
-        .building_up = Some(BuildingUp::completing_in_ticks(1000, 0));
+        .install_building_up(BuildingUp::completing_in_ticks(1000, 0), 0);
     assert_eq!(
         super::miner_system::count_purifiers_for_owner(&sim, &rules, "Americans"),
         1,
@@ -2169,8 +2254,6 @@ fn harvest_order_mid_unload_drops_the_unload_latch_and_image() {
             target_ry: 30,
         },
         Some(&rules),
-        None,
-        &BTreeMap::new(),
     ));
 
     let entity = sim.substrate.entities.get(miner_id).unwrap();
@@ -2211,8 +2294,6 @@ fn stop_breaks_an_untethered_refinery_contact_and_is_ignored_once_entered() {
                 entity_id: miner_id
             },
             Some(&rules),
-            None,
-            &BTreeMap::new(),
         ));
 
         assert_eq!(
@@ -2267,6 +2348,7 @@ fn scan_skips_tree_blocked_ore_cell() {
     // (12, 10) is also reachable but farther, so without the tree the scan
     // would pick (10, 10).
     let grid = PathGrid::new(32, 32);
+    sim.install_fixture_path_grid(Some(&grid));
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 5, 10);
     place_ore(&mut sim, 10, 10, 1200);
     place_ore(&mut sim, 12, 10, 1200);
@@ -2284,7 +2366,7 @@ fn scan_skips_tree_blocked_ore_cell() {
     }
 
     let config = MinerConfig::default();
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     assert_eq!(
         nav_cell(&sim, miner_id),
@@ -2322,6 +2404,7 @@ fn scan_skips_cell_occupied_by_other_miner() {
     let rules = miner_rules();
 
     let grid = PathGrid::new(32, 32);
+    sim.install_fixture_path_grid(Some(&grid));
 
     // Miner A sits on ore at (10, 10). Miner B at (5, 10) is the scanner.
     let _miner_a = spawn_miner(&mut sim, 1, MinerKind::War, 10, 10);
@@ -2354,7 +2437,7 @@ fn scan_skips_cell_occupied_by_other_miner() {
     }
 
     let config = MinerConfig::default();
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     assert_eq!(
         nav_cell(&sim, miner_b),
@@ -2400,7 +2483,7 @@ fn scan_ring_0_allows_harvesters_own_cell() {
     }
 
     let config = MinerConfig::default();
-    super::miner_system::tick_miners(&mut sim, &rules, &config, Some(&grid));
+    super::miner_system::tick_miners(&mut sim, &rules, &config);
 
     let m = get_miner(&sim, miner_id);
     assert_eq!(
@@ -2408,67 +2491,6 @@ fn scan_ring_0_allows_harvesters_own_cell() {
         (MinerState::Harvest, None),
         "the own-cell answer starts cutting where the harvester stands",
     );
-}
-
-// ---------------------------------------------------------------------------
-// Mission_Harvest state 0 destination guard
-// ---------------------------------------------------------------------------
-
-/// Re-anchor the miner's Harvest dispatch timer so the very next dispatch runs.
-///
-/// A productive scan exits through the Rate epilogue (~14-16 frames), so the
-/// frames immediately behind it carry no Harvest dispatch at all. A fixture that
-/// means to observe the *next* dispatch has to ask for it rather than assume the
-/// following tick brings one: what that dispatch does is under test here, not
-/// which frame it lands on. Mirrors the helper of the same name in
-/// `outbound_drive_tests` — sibling test modules cannot share it.
-fn arm_dispatch_now(sim: &mut Simulation, entity_id: u64) {
-    let now = sim.session.binary_frame as i32;
-    sim.substrate
-        .entities
-        .get_mut(entity_id)
-        .expect("miner entity")
-        .mission
-        .write_dispatch_epilogue(now, 0);
-}
-
-/// End the outbound drive the way arrival or an abort does: the owner
-/// destination and the transitional MovementTarget both go null.
-///
-/// Both halves matter, and only because these fixtures spawn their miner
-/// through `spawn_drive_miner`: a move command writes `navigation.nav_com`
-/// only for a Drive or Ship locomotor, so on a locomotor-less miner this
-/// would be one real clear and one no-op.
-fn clear_outbound_drive(sim: &mut Simulation, entity_id: u64) {
-    let entity = sim
-        .substrate
-        .entities
-        .get_mut(entity_id)
-        .expect("miner entity");
-    entity.navigation.nav_com = None;
-    entity.movement_target = None;
-}
-
-/// A stock War Miner with the Drive locomotor it actually has in a match.
-///
-/// The destination guard reads the owner `navigation.nav_com` first and takes
-/// `movement_target` only as Rust's transitional second owner. A move command
-/// writes nav_com solely for Drive/Ship locomotors, and the shared
-/// `spawn_miner` attaches a locomotor only for the Chrono kind — so a bare
-/// fixture would hold the guard on the transitional field alone, never
-/// exercising the field that owns it once the Drive host migration lands and
-/// the transitional half goes away. Mirrors `spawn_search_miner` in
-/// `miner_system`'s own test module.
-fn spawn_drive_miner(sim: &mut Simulation, sid: u64, rx: u16, ry: u16) -> u64 {
-    let miner_id = spawn_miner(sim, sid, MinerKind::War, rx, ry);
-    let entity = sim
-        .substrate
-        .entities
-        .get_mut(miner_id)
-        .expect("miner entity");
-    entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(Default::default());
-    miner_id
 }
 
 // ==========================================================================
@@ -2568,8 +2590,7 @@ fn stop_commits_guard_and_takes_a_harvesting_miner_off_the_loop() {
             entity_id: miner_id,
         },
     );
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-    let _ = sim.advance_tick(&[stop], Some(&rules), &heights, None, None, 33);
+    let _ = sim.advance_tick(&[stop], Some(&rules), None, None, 33);
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(
@@ -2584,7 +2605,7 @@ fn stop_commits_guard_and_takes_a_harvesting_miner_off_the_loop() {
     // stops advancing.
     let after_stop = miner.miner_state();
     for tick in 2..40u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), &heights, None, None, tick as u32);
+        let _ = sim.advance_tick(&[], Some(&rules), None, None, tick as u32);
     }
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(
@@ -2629,13 +2650,10 @@ fn stop_does_not_force_guard_on_a_non_miner() {
     sim.mission_assign_exact(7, MissionId::from_known(MissionType::Move), 0)
         .expect("tank exists");
 
-    let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     assert!(sim.apply_command_with_overlays(
         "Americans",
         &Command::Stop { entity_id: 7 },
         Some(&rules),
-        None,
-        &heights,
         None,
     ));
 
@@ -3088,8 +3106,7 @@ fn dock_for_unload(sim: &mut Simulation, miner: u64, refinery: u64) {
     let entity = sim.substrate.entities.get_mut(miner).expect("miner");
     let mut hull = crate::sim::movement::FacingClass::new(DOCK_FACING, 5);
     hull.snap(DOCK_FACING, frame);
-    entity.body_facing = Some(hull);
-    entity.facing = (DOCK_FACING >> 8) as u8;
+    entity.body_facing = hull;
     entity.mission.set_handler_state(0);
     sim.mission_assign_exact(
         miner,
@@ -3369,8 +3386,9 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
             .expect("miner entity");
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         entity.drive_locomotion = Some(Default::default());
-        entity.foot_speed.applied_fraction = crate::util::fixed_math::SimFixed::lit("0.25");
-        entity.foot_speed.cached_current_speed = 7;
+        entity
+            .foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SimFixed::lit("0.25"));
     }
     // The first pass raises the unload latch; the dump gate is 15 frames out.
     run_unload(&mut sim, &rules, miner_id, 1);
@@ -3565,7 +3583,6 @@ fn sim_with_resolved_tiberium_cell(
     registry: &crate::map::overlay_types::OverlayTypeRegistry,
     cell: (u16, u16),
 ) -> Simulation {
-    use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::rules::terrain_rules::LandType;
     use crate::sim::house_state::HouseState;
 
@@ -3574,13 +3591,11 @@ fn sim_with_resolved_tiberium_cell(
     let owner = sim.interner.intern("Americans");
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
-    let mut cells = Vec::with_capacity(64 * 64);
-    for ry in 0..64u16 {
-        for rx in 0..64u16 {
-            cells.push(crate::sim::deploy_tests::clear_terrain_cell(rx, ry));
-        }
-    }
-    let mut terrain = ResolvedTerrainGrid::from_cells(64, 64, cells);
+    let mut terrain = crate::map::resolved_terrain::test_grid(
+        64,
+        64,
+        crate::map::resolved_terrain::test_tiberium_cell,
+    );
     let mut overlay = OverlayGrid::new(64, 64);
     overlay.place_overlay(cell.0, cell.1, tib01, 3);
     assert!(crate::sim::overlay_grid::recalc_overlay_passability(
@@ -3605,16 +3620,12 @@ fn sim_with_resolved_tiberium_cell(
 /// `ResolvedTerrainGrid` with every tiberium overlay folded into `land_type`
 /// by `recalc_overlay_passability`, as the map loader does.
 fn install_land_types_for_placed_ore(sim: &mut Simulation) {
-    use crate::map::resolved_terrain::ResolvedTerrainGrid;
-
     let size = crate::sim::tiberium::test_support::TEST_GRID_SIZE;
-    let mut cells = Vec::with_capacity(usize::from(size) * usize::from(size));
-    for ry in 0..size {
-        for rx in 0..size {
-            cells.push(crate::sim::deploy_tests::clear_terrain_cell(rx, ry));
-        }
-    }
-    let mut terrain = ResolvedTerrainGrid::from_cells(size, size, cells);
+    let mut terrain = crate::map::resolved_terrain::test_grid(
+        size,
+        size,
+        crate::map::resolved_terrain::test_tiberium_cell,
+    );
     let overlay = sim.overlay_grid.as_mut().expect("place_ore ran first");
     let ore_cells: Vec<(u16, u16)> = overlay
         .iter_occupied()

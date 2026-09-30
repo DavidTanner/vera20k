@@ -142,10 +142,11 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     if let Some(turn_to) = input["turn_to"].as_i64() {
         facing.set(turn_to as u16, frame - int(input, "turn_age", 0) as u32);
     }
-    entity.body_facing = Some(facing);
+    entity.body_facing = facing;
     let loco = entity.locomotor.as_mut().unwrap();
     loco.set_fly_target_height(int(input, "target_height", 1500) as i32);
-    loco.fly_current_speed = SimFixed::from_bits(int(input, "speed_bits", 65536) as i32);
+    loco.fly_runtime_mut().unwrap().current_speed =
+        SimFixed::from_bits(int(input, "speed_bits", 65536) as i32);
     if int(input, "moving", 1) != 0 {
         let destination = input["destination"].as_array().map_or(
             DriveCoord {
@@ -294,7 +295,7 @@ fn crash_fall_matches_native_frames_to_the_impact() {
                     ),
                     RevealOutcome::Revealed { .. }
                 ));
-                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
                 assert!(stats.impact, "{name}: impact frame {n}");
                 let entity = sim.substrate.entities.get(1).unwrap();
                 let xy = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
@@ -331,7 +332,7 @@ fn crash_fall_matches_native_frames_to_the_impact() {
                 assert!(calls.iter().any(|c| c["call"] == "fire_death_weapon"));
                 assert!(calls.iter().any(|c| c["call"] == "uninit"));
             } else {
-                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
                 assert!(!stats.impact, "{name}: early impact at frame {n}");
                 let entity = sim.substrate.entities.get(1).unwrap();
                 let xy = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
@@ -388,7 +389,6 @@ fn crash_smoke_matches_native_rows() {
 #[test]
 fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
     use crate::sim::combat::combat_aoe::AreaDamageReceiver;
-    use std::collections::BTreeMap;
     let input = serde_json::json!({"health": 150, "crashing": 0});
     let (mut sim, rules) = fixture(&input);
     let soviets = sim.interner.intern("Soviets");
@@ -461,7 +461,7 @@ fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
         assert!(frames < 60, "the fall must reach the ground");
         let anims_before = sim.substrate.anims.len();
         sim.sound_events.clear();
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         smoke += sim.substrate.anims.len().saturating_sub(anims_before);
         crash_sound |= sim.sound_events.iter().any(|event| {
             matches!(
@@ -502,7 +502,6 @@ fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
 fn a_crash_saved_in_mid_fall_lands_like_the_original() {
     use crate::sim::combat::combat_aoe::AreaDamageReceiver;
     use crate::sim::snapshot::GameSnapshot;
-    use std::collections::BTreeMap;
     let (mut sim, rules) = fixture(&serde_json::json!({"health": 150, "crashing": 0}));
     let soviets = sim.interner.intern("Soviets");
     let warhead = sim.interner.intern("CrashWH");
@@ -518,7 +517,7 @@ fn a_crash_saved_in_mid_fall_lands_like_the_original() {
     assert!(sim.substrate.entities.get(1).unwrap().crashing);
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
     let tick = |sim: &mut Simulation| {
-        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     };
     for _ in 0..10 {
         tick(&mut sim);
@@ -694,7 +693,7 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.health.current = 300;
         entity.position.exact_z_leptons = Some(500);
-        entity.body_facing = Some(FacingClass::new(0x4000, 5));
+        entity.body_facing = FacingClass::new(0x4000, 5);
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(500);
         let runtime = loco.jumpjet_runtime_mut().unwrap();
@@ -775,7 +774,6 @@ struct JumpjetFall {
 }
 
 fn fall_to_the_impact(sim: &mut Simulation, rules: &RuleSet) -> JumpjetFall {
-    use std::collections::BTreeMap;
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
     let boom = sim.interner.intern("BOOM");
     let mut fall = JumpjetFall {
@@ -793,7 +791,7 @@ fn fall_to_the_impact(sim: &mut Simulation, rules: &RuleSet) -> JumpjetFall {
             .iter()
             .filter(|(_, anim)| anim.type_id == boom)
             .count();
-        sim.advance_tick(&[], Some(rules), &BTreeMap::new(), Some(&grid), None, 67);
+        sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
         if sim.sound_events.iter().any(|event| {
             matches!(
                 event,
@@ -1016,7 +1014,7 @@ fn a_jumpjet_shot_down_after_its_order_dropped_reaches_the_ground() {
     {
         assert!(frame < 1200, "the cruise never left the hover cell");
         sim.session.binary_frame = frame;
-        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         frame += 1;
     }
     let runtime = |sim: &Simulation| {
@@ -1036,7 +1034,7 @@ fn a_jumpjet_shot_down_after_its_order_dropped_reaches_the_ground() {
     let here = (entity.position.rx, entity.position.ry);
     entity.movement_target = None;
     sim.session.binary_frame = frame;
-    sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+    sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
     let stopped = runtime(&sim);
     assert!(stopped.moving, "Stop_Moving keeps the moving byte");
     assert_eq!(
@@ -1153,14 +1151,7 @@ fn a_jumpjet_wreck_scans_only_on_its_committed_guard() {
         let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
         let mut acquired = false;
         for _ in 0..40 {
-            sim.advance_tick(
-                &[],
-                Some(&rules),
-                &std::collections::BTreeMap::new(),
-                Some(&grid),
-                None,
-                67,
-            );
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
             let Some(wreck) = sim
                 .substrate
                 .entities
@@ -1266,38 +1257,12 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
                 ("GAPOWR", "Americans", x - 4),
                 ("NAPOWR", "Russians", x + 12),
             ] {
-                sim.spawn_object(
-                    plant,
-                    owner,
-                    px,
-                    y - 1,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object(plant, owner, px, y - 1, 0, &resources.rules)?;
             }
-            let harrier = sim.spawn_object(
-                "ORCA",
-                "Americans",
-                x,
-                y,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
+            let harrier = sim.spawn_object("ORCA", "Americans", x, y, 64, &resources.rules)?;
             let flak = [(x + 8, y - 1), (x + 8, y + 1), (x + 9, y)]
                 .into_iter()
-                .map(|(fx, fy)| {
-                    sim.spawn_object(
-                        "HTK",
-                        "Russians",
-                        fx,
-                        fy,
-                        192,
-                        &resources.rules,
-                        &resources.height_map,
-                    )
-                })
+                .map(|(fx, fy)| sim.spawn_object("HTK", "Russians", fx, fy, 192, &resources.rules))
                 .collect::<Option<Vec<_>>>()?;
             Some((harrier, flak))
         })
@@ -1548,44 +1513,12 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
                 ("GAPOWR", "Americans", x - 4),
                 ("NAPOWR", "Russians", x + 14),
             ] {
-                sim.spawn_object(
-                    plant,
-                    owner,
-                    px,
-                    y - 2,
-                    0,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object(plant, owner, px, y - 2, 0, &resources.rules)?;
             }
-            let nighthawk = sim.spawn_object(
-                "SHAD",
-                "Americans",
-                x,
-                y,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
-            let kirov = sim.spawn_object(
-                "ZEP",
-                "Americans",
-                x,
-                y + 2,
-                64,
-                &resources.rules,
-                &resources.height_map,
-            )?;
+            let nighthawk = sim.spawn_object("SHAD", "Americans", x, y, 64, &resources.rules)?;
+            let kirov = sim.spawn_object("ZEP", "Americans", x, y + 2, 64, &resources.rules)?;
             for (fx, fy) in [(x + 8, y - 1), (x + 8, y + 1), (x + 9, y)] {
-                sim.spawn_object(
-                    "HTK",
-                    "Russians",
-                    fx,
-                    fy,
-                    192,
-                    &resources.rules,
-                    &resources.height_map,
-                )?;
+                sim.spawn_object("HTK", "Russians", fx, fy, 192, &resources.rules)?;
             }
             Some((nighthawk, kirov, (x + 12, y)))
         })
@@ -1665,6 +1598,10 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
             super::TickLane::Ordinary,
         )
         .expect("the order frame");
+    // The Kirov follows the Nighthawk in the Logic vector; see the skip below.
+    let logic = scenario.sim().substrate.logic.as_slice();
+    let slot = |id| logic.iter().position(|&live| live == id);
+    assert_eq!(slot(kirov), slot(nighthawk).map(|slot| slot + 1));
 
     #[derive(Default)]
     struct Wreck {
@@ -1768,6 +1705,14 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
         riders_killed_by_crash.is_some_and(|kills| kills >= 2),
         "the flak holds both riders' kills at the Nighthawk's death"
     );
+    // The Logic walk re-reads its count after every AI and never repairs its
+    // index (`0x0055B608..0x0055B619`). The Nighthawk's wreck leaves the
+    // vector inside its own AI: UnInit (`0x005F65F0`) calls Limbo, which calls
+    // `LogicClass::Remove @ 0x0055BAE0`. The Kirov, next in the vector, is
+    // skipped that frame and holds its height once.
+    let nighthawk_gone = wrecks[&nighthawk]
+        .impact_frame
+        .expect("the Nighthawk reached the ground");
     for (id, drop, crashing, voice, impact_cue) in [
         (
             nighthawk,
@@ -1786,9 +1731,15 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
         let crash_frame = wreck.crash_frame.expect("shot down");
         let impact_frame = wreck.impact_frame.expect("reached the ground");
         // After the frame the latch engages, every frame falls by climb plus
-        // crash until the impact takes the wreck.
-        for pair in wreck.heights[1..].windows(2) {
-            assert_eq!(pair[0] - pair[1], drop, "{crashing}: {:?}", wreck.heights);
+        // crash until the impact takes the wreck, except a frame it is skipped.
+        for (index, pair) in wreck.heights.windows(2).enumerate().skip(1) {
+            let frame = crash_frame + index as i32 + 1;
+            let fell = if id == kirov && frame == nighthawk_gone {
+                0
+            } else {
+                drop
+            };
+            assert_eq!(pair[0] - pair[1], fell, "{crashing}: {:?}", wreck.heights);
         }
         assert!(wreck.heights.last().is_some_and(|&last| last <= drop));
         let heard = |name: &str| {

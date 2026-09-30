@@ -52,10 +52,6 @@
 //!   against `medium`) healing a deployed Slave Miner (YAREFN,
 //!   `Armor=medium`), if its targeting admits the building. Effect: native
 //!   pings the ore-miner line and stops at the ally test; VERA pings nothing.
-//! - An occupied building's weapon 0 is the firing occupant's
-//!   (`0x004526F0`), which VERA chooses for the source as target
-//!   ([`super::target_scan::weapon_at_index_for`]). Only presence and `AA=`
-//!   are read, so this only matters if an occupant's weapons differ in them.
 //! - Is_Operational ([`Simulation::building_operational_state`]) counts no
 //!   Tesla chargers and no EMP. Trigger: a Tesla Coil in a low-power base
 //!   charged by two or more Tesla Troopers (`ElectricAssault=`), which native
@@ -105,12 +101,8 @@ impl Simulation {
         let obj = self.object_type(building.type_ref(), rules)?;
         // The radar cell is the building's GetCoords (vt+0x48, `0x00447AC0`,
         // the foundation centre; `0x004F94AE`, `0x004F950E`, `0x004F956A`).
-        let (rx, ry, _, _) = resolve_target_coords(
-            &TargetKind::Entity(id),
-            &self.substrate.entities,
-            Some(rules),
-            &self.interner,
-        )?;
+        let (rx, ry, _, _) =
+            resolve_target_coords(&TargetKind::Entity(id), &self.substrate.entities)?;
         let ping = (!obj.insignificant && !obj.is_1x1_with_undeploy()).then(|| UnderAttackEvent {
             rx,
             ry,
@@ -127,7 +119,7 @@ impl Simulation {
                 building.owner(),
                 source_entity.owner(),
             )
-            || !building_weapon0_aims(self, rules, id, TargetKind::Entity(source))
+            || !building_weapon0_aims(self, rules, id)
             || building.attack_target.as_ref().is_some_and(|attack| {
                 let weapon = select_weapon(self, rules, id, Some(attack.target));
                 can_fire_at(self, rules, id, attack.target, weapon, overlay_registry)
@@ -143,18 +135,11 @@ impl Simulation {
             || (human && !rules.general.player_return_fire)
         {
             let frame = self.session.binary_frame;
-            let rotating = building
-                .barrel_facing
-                .is_some_and(|facing| facing.is_rotating(frame));
+            let rotating = building.body_facing.is_rotating(frame);
             if !rotating && self.building_operational_state(id, rules) == Some(true) {
                 let direction = ((self.scenario_rng.next_u32() & 0xFF) as u16) << 8;
-                if let Some(facing) = self
-                    .substrate
-                    .entities
-                    .get_mut(id)
-                    .and_then(|building| building.barrel_facing.as_mut())
-                {
-                    facing.set(direction, frame);
+                if let Some(building) = self.substrate.entities.get_mut(id) {
+                    building.body_facing.set(direction, frame);
                 }
             }
         } else {

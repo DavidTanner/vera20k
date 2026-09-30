@@ -231,7 +231,7 @@ mod tests {
                 .flat_map(|y| (0..width).map(move |x| test_flat_cell(x, y)))
                 .collect(),
         ));
-        let mut grid = OverlayGrid::new_with_retained_wall_plane(width, width);
+        let mut grid = OverlayGrid::new(width, width);
         grid.seed_neighbor_counts_for_tests(seed);
         sim.overlay_grid = Some(grid);
         for _ in 0..seed {
@@ -334,7 +334,6 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .retained_neighbor_counts()
-                .unwrap()
                 .iter()
                 .enumerate()
                 .filter(|(_, value)| **value != seed)
@@ -379,7 +378,6 @@ mod tests {
             .as_ref()
             .unwrap()
             .retained_neighbor_counts()
-            .unwrap()
             .to_vec();
         assert_eq!(before.iter().map(|v| u32::from(*v)).sum::<u32>(), 8);
         sim.reveal(1);
@@ -387,8 +385,7 @@ mod tests {
             sim.overlay_grid
                 .as_ref()
                 .unwrap()
-                .retained_neighbor_counts()
-                .unwrap(),
+                .retained_neighbor_counts(),
             before
         );
         // The live position changes in flight without a PerCell callback. Save
@@ -412,8 +409,7 @@ mod tests {
                 .overlay_grid
                 .as_ref()
                 .unwrap()
-                .retained_neighbor_counts()
-                .unwrap(),
+                .retained_neighbor_counts(),
             before
         );
         assert_eq!(
@@ -454,7 +450,6 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .retained_neighbor_counts()
-                .unwrap()
                 .iter()
                 .all(|v| *v == 0)
         );
@@ -465,7 +460,6 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .retained_neighbor_counts()
-                .unwrap()
                 .iter()
                 .all(|v| *v == 0)
         );
@@ -516,8 +510,7 @@ mod tests {
                 .overlay_grid
                 .as_ref()
                 .unwrap()
-                .retained_neighbor_counts()
-                .unwrap();
+                .retained_neighbor_counts();
             for cell in row["after"]["neighbors"].as_array().unwrap() {
                 let index =
                     cell[1].as_u64().unwrap() as usize * 128 + cell[0].as_u64().unwrap() as usize;

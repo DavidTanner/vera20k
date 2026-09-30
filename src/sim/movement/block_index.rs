@@ -95,22 +95,8 @@ fn contribution(
         };
         let foundation_cells =
             crate::sim::production::building_base_foundation_cells(cell.0, cell.1, &obj.foundation);
-        let is_bunker_occupied = obj.bunker
-            && (entity.bunker_occupant.is_some()
-                || entity
-                    .passenger_role
-                    .cargo()
-                    .is_some_and(|cargo| cargo.count() > 0));
         return Some(Contribution::Structure(
-            crate::sim::production::building_movement_blocking_cells_for_state(
-                &foundation_cells,
-                cell.0,
-                obj.bib,
-                obj.number_impassable_rows,
-                obj.bunker,
-                is_bunker_occupied,
-                false,
-            ),
+            crate::sim::production::building_movement_blocking_cells(&foundation_cells, obj.bib),
         ));
     }
     let infantry = entity.category == EntityCategory::Infantry;
@@ -135,7 +121,7 @@ fn contribution(
                 // exit runs before the locomotor question and is answered
                 // per mover by the Drive selection lane.
                 ally: MovingAllyOccupant {
-                    facing: entity.facing,
+                    facing: entity.body_facing,
                     world: crate::sim::pathfinding::cell_entry::entity_world_leptons(entity),
                 },
                 raises_code_2: !((in_transit || infantry)

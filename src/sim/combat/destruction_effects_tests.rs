@@ -221,6 +221,7 @@ fn a_destroyed_building_explodes_per_foundation_cell_then_plays_its_destroy_anim
                 i32::from(rx) * 256 + 0x80,
                 i32::from(ry) * 256 + 0x80,
                 0x40,
+                super::super::inviso_scatter::RandomDirectionSnap::Preserve,
             );
             let delay = replay.next_range_u32_inclusive(0, 3) as u16;
             let anim = pick(&mut replay, &["EXPA", "EXPB"]);
@@ -445,6 +446,7 @@ fn a_killed_building_draws_its_death_anims_before_its_survivors() {
                 i32::from(rx) * 256 + 0x80,
                 i32::from(ry) * 256 + 0x80,
                 0x40,
+                super::super::inviso_scatter::RandomDirectionSnap::Preserve,
             );
             let delay = replay.next_range_u32_inclusive(0, 3) as u16;
             let anim = pick(&mut replay, &["EXPA", "EXPB"]);
@@ -756,15 +758,7 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
         let ore = map_cell(cell_x, cell_y).unwrap()["overlay"].is_i64();
         let (plant, mcv) = if !ore {
             let plant = sim
-                .spawn_object(
-                    "GAPOWR",
-                    "Americans",
-                    cell_x,
-                    cell_y,
-                    0,
-                    rules,
-                    &resources.height_map,
-                )
+                .spawn_object("GAPOWR", "Americans", cell_x, cell_y, 0, rules)
                 .expect("a power plant on the clean cells");
             (plant, None)
         } else {
@@ -784,24 +778,8 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
                     if !open {
                         return None;
                     }
-                    let mcv = sim.spawn_object(
-                        "AMCV",
-                        "Americans",
-                        x,
-                        y,
-                        0,
-                        rules,
-                        &resources.height_map,
-                    )?;
-                    let plant = sim.spawn_object(
-                        "GAPOWR",
-                        "Americans",
-                        x - 3,
-                        y,
-                        0,
-                        rules,
-                        &resources.height_map,
-                    )?;
+                    let mcv = sim.spawn_object("AMCV", "Americans", x, y, 0, rules)?;
+                    let plant = sim.spawn_object("GAPOWR", "Americans", x - 3, y, 0, rules)?;
                     Some((plant, mcv))
                 })
                 .expect("an MCV cell with room for a power plant");

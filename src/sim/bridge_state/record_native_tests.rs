@@ -106,14 +106,22 @@ fn native_bridge_records_match_original_executable() {
             (int(&case["dummy_coord"], 0), int(&case["dummy_coord"], 1)),
             "{name}: retained dummy stamp"
         );
-        state.refresh_endpoint_active_flags();
+        let tubes: Vec<_> = state
+            .endpoint_records()
+            .iter()
+            .filter(|r| !r.is_high())
+            .map(|r| r.endpoint_a)
+            .collect();
+        for a in tubes {
+            state.invalidate_bridge_zones(&terrain, (a.0 as i16, a.1 as i16));
+        }
         assert!(
             state
                 .endpoint_records()
                 .iter()
                 .filter(|r| !r.is_high())
-                .all(|r| r.group_id == 0 && r.active),
-            "{name}: tube activity independent of structural groups"
+                .all(|r| r.active),
+            "{name}: 56DA10 never matches a tube record"
         );
     }
 }

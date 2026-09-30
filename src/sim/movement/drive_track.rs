@@ -3587,44 +3587,28 @@ pub const TURN_TRACK_TURNS_FLAG: u8 = 0x08;
 /// Facing units per direction octant (256 / 8).
 const OCTANT_FACING_STEP: u8 = 0x20;
 
-/// The fresh selector `to + from*8` (Drive 0x4B4016..0x4B4034): a null entry
-/// takes the straight `from*9` diagonal, which is never itself null.
-/// ShipLocomotion consumes only the RawTrack set it shares with Drive.
-pub(crate) fn fresh_turn_index(from: u8, to: u8, is_ship: bool) -> usize {
+/// The fresh selector `to + from*8` (Drive 0x4B4016..0x4B4034, Ship
+/// 0x6A3642..0x6A3660): a null entry takes the straight `from*9` diagonal,
+/// which is never itself null. Ship reads its own TurnTrack table
+/// (0x007F2A40), whose 64 entries are byte-identical to Drive's first 64
+/// (0x007E7B28, retail bytes), and every fresh index is below 64, so one
+/// selector serves both.
+pub(crate) fn fresh_turn_index(from: u8, to: u8) -> usize {
     let (from, to) = (usize::from(from & 7), usize::from(to & 7));
-    let straight_index = from * FACING_DIRECTIONS + from;
-    let mut turn_index = from * FACING_DIRECTIONS + to;
+    let turn_index = from * FACING_DIRECTIONS + to;
     if TURN_TRACKS[turn_index].normal_track == 0 {
-        turn_index = straight_index;
+        from * FACING_DIRECTIONS + from
+    } else {
+        turn_index
     }
-    if is_ship && TURN_TRACKS[turn_index].normal_track > SHIP_MAX_SHARED_RAW_TRACK {
-        turn_index = straight_index;
-    }
-    turn_index
 }
 
-/// Highest RawTrack index in the set ShipLocomotion shares with Drive.
-const SHIP_MAX_SHARED_RAW_TRACK: u8 = 13;
-
-/// Cell delta of each direction octant in the sim cell grid
-/// (+X = east, +Y = south), indexed N=0, NE=1, E=2, SE=3, S=4, SW=5, W=6, NW=7.
-/// Mirrors `crate::util::fixed_math::dir_to_cell_delta` without the facing-byte
-/// round trip, so a path step maps to an octant exactly.
-const OCTANT_CELL_DELTA: [(i32, i32); FACING_DIRECTIONS] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
+/// Cell delta of each direction octant, `util::direction::DIRECTION_DELTAS`.
+const OCTANT_CELL_DELTA: [(i32, i32); FACING_DIRECTIONS] = crate::util::direction::DIRECTION_DELTAS;
 
 /// Direction octant of a one-cell path step. `None` for a null step.
 fn octant_from_cell_delta(dx: i32, dy: i32) -> Option<usize> {
-    let step = (dx.signum(), dy.signum());
-    OCTANT_CELL_DELTA.iter().position(|&delta| delta == step)
+    crate::util::direction::direction_from_delta(dx.signum(), dy.signum()).map(usize::from)
 }
 
 /// A curve chosen from the path window, with the head cell it reserves.
@@ -3681,7 +3665,6 @@ pub fn plan_drive_track_from_path(
     body_facing: u16,
     from_delta: (i32, i32),
     to_delta: Option<(i32, i32)>,
-    is_ship: bool,
 ) -> DriveTrackDecision {
     let Some(from_dir) = octant_from_cell_delta(from_delta.0, from_delta.1) else {
         return DriveTrackDecision::Unavailable;
@@ -3698,7 +3681,7 @@ pub fn plan_drive_track_from_path(
     let to_dir = to_delta
         .and_then(|(dx, dy)| octant_from_cell_delta(dx, dy))
         .unwrap_or(from_dir);
-    let turn_index = fresh_turn_index(from_dir as u8, to_dir as u8, is_ship);
+    let turn_index = fresh_turn_index(from_dir as u8, to_dir as u8);
 
     let turn = &TURN_TRACKS[turn_index];
     let raw_index = turn.normal_track;

@@ -41,7 +41,7 @@ pub(crate) fn bullet_land(
         coordinate,
     );
     let height = coordinate.z.wrapping_sub(floor).wrapping_sub(if on_bridge {
-        crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
     } else {
         0
     });

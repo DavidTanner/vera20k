@@ -8,13 +8,8 @@
 //! helpers are `CDTimerClass::Start @ 0x0046B640` and `Remaining @ 0x004B4D70`.
 
 use crate::map::entities::EntityCategory;
-#[cfg(test)]
-use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
-#[cfg(test)]
-use crate::sim::movement::locomotion::LocomotorRuntimePayload;
-#[cfg(test)]
-use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::timer::CdTimer;
 
 /// Literal Drive/Ship slope interpolation duration installed by both native
 /// `Process` implementations.
@@ -72,19 +67,12 @@ impl SlopeTransitionState {
         self.transition_total = SLOPE_TRANSITION_FRAMES;
     }
 
+    /// The timer's time left. Native starts it (`+0x24`/`+0x2C`) with the
+    /// same value it writes to the total (`+0x30`), so the total stands for
+    /// both.
     pub(crate) fn remaining(&self, binary_frame: u32) -> i32 {
-        if self.transition_total == 0 {
-            return 0;
-        }
-        if self.start_frame == -1 {
-            return i32::from(self.transition_total);
-        }
-        let elapsed = (binary_frame as i32).wrapping_sub(self.start_frame);
-        if elapsed < i32::from(self.transition_total) {
-            i32::from(self.transition_total).wrapping_sub(elapsed)
-        } else {
-            0
-        }
+        CdTimer::from_raw(self.start_frame, i32::from(self.transition_total))
+            .remaining(binary_frame as i32)
     }
 
     pub(crate) fn render_phase(&self, binary_frame: u32) -> SlopeRenderPhase {
@@ -167,50 +155,6 @@ pub(crate) fn sample_process_entry(entity: &mut GameEntity, sampled_slope: u8, b
     if let Some(state) = state_for_entity_mut(entity) {
         state.sample_process_entry(sampled_slope, binary_frame);
     }
-}
-
-/// `TechnoClass::Set_Destination @ 0x00741970` has one extra force-slope call
-/// at `0x00742BE3`, confined to ground-layer Tunnel/piggyback restoration.
-/// Rust has no active stock Tunnel caller. This dormant transaction keeps the
-/// typed pre-restore check, real piggyback END, restored-Drive check, and snap
-/// inseparable on one entity so no generic restoration path can reuse a proof.
-#[cfg(test)]
-fn restore_ground_tunnel_stashed_drive_and_snap(
-    entity: &mut GameEntity,
-    sampled_slope: u8,
-    binary_frame: u32,
-) -> bool {
-    if !foot_equivalent(entity.category) {
-        return false;
-    }
-    let Some(locomotor) = entity.locomotor.as_mut() else {
-        return false;
-    };
-    if locomotor.active_kind() != LocomotorKind::Tunnel
-        || locomotor.layer != MovementLayer::Ground
-        || !matches!(
-            &locomotor.runtime_payload,
-            LocomotorRuntimePayload::Tunnel(_)
-        )
-    {
-        return false;
-    }
-    let Some(stashed) = locomotor.piggyback.as_deref() else {
-        return false;
-    };
-    if stashed.kind != LocomotorKind::Drive
-        || !matches!(&stashed.payload, LocomotorRuntimePayload::Drive(_))
-    {
-        return false;
-    }
-    if !locomotor.end_piggyback() || locomotor.active_kind() != LocomotorKind::Drive {
-        return false;
-    }
-    let LocomotorRuntimePayload::Drive(state) = &mut locomotor.runtime_payload else {
-        return false;
-    };
-    state.snap(sampled_slope, binary_frame);
-    true
 }
 
 #[cfg(test)]
@@ -338,7 +282,6 @@ mod tests {
             LocomotorKind::Jumpjet,
             LocomotorKind::Rocket,
             LocomotorKind::Teleport,
-            LocomotorKind::Tunnel,
         ] {
             assert!(super::state_for_entity(&entity_with(EntityCategory::Unit, kind)).is_none());
         }
@@ -380,11 +323,13 @@ mod tests {
         );
 
         let mut stashed_drive = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        assert!(stashed_drive.locomotor.as_mut().unwrap().begin_piggyback(
-            LocomotorKind::Teleport,
-            crate::sim::movement::locomotor::MovementLayer::Ground,
-            23,
-        ));
+        assert!(
+            stashed_drive
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .begin_piggyback(LocomotorKind::Teleport, 23)
+        );
         assert!(super::state_for_entity(&stashed_drive).is_none());
         assert!(matches!(
             stashed_drive
@@ -393,7 +338,7 @@ mod tests {
                 .unwrap()
                 .piggyback
                 .as_deref()
-                .map(|runtime| &runtime.payload),
+                .map(|stashed| &stashed.runtime_payload),
             Some(LocomotorRuntimePayload::Drive(_))
         ));
         assert!(stashed_drive.locomotor.as_mut().unwrap().end_piggyback());
@@ -403,151 +348,6 @@ mod tests {
                 .hash_fields(),
             (0, 0, 0, 0),
             "generic piggyback restore does not invent a terrain snap"
-        );
-    }
-
-    #[test]
-    fn only_ground_tunnel_piggyback_restore_uses_the_extra_force_slope_gate() {
-        use crate::sim::movement::locomotor::MovementLayer;
-
-        let mut exact = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        let identical_other_entity = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        assert!(exact.locomotor.as_mut().unwrap().begin_piggyback(
-            LocomotorKind::Tunnel,
-            MovementLayer::Ground,
-            22,
-        ));
-        assert_eq!(
-            exact.locomotor.as_ref().unwrap().active_kind(),
-            LocomotorKind::Tunnel
-        );
-        assert!(super::restore_ground_tunnel_stashed_drive_and_snap(
-            &mut exact, 9, 30
-        ));
-        assert_eq!(
-            exact.locomotor.as_ref().unwrap().active_kind(),
-            LocomotorKind::Drive,
-            "the integrated operation performs the real complete-runtime restore"
-        );
-        assert_eq!(
-            super::state_for_entity(&exact).unwrap().hash_fields(),
-            (9, 9, 30, 0)
-        );
-        assert_eq!(
-            super::state_for_entity(&identical_other_entity)
-                .unwrap()
-                .hash_fields(),
-            (0, 0, 0, 0),
-            "no transferable proof API can affect an identical runtime on entity B"
-        );
-
-        let mut wrong_layer = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        assert!(wrong_layer.locomotor.as_mut().unwrap().begin_piggyback(
-            LocomotorKind::Tunnel,
-            MovementLayer::Air,
-            22,
-        ));
-        assert!(
-            !super::restore_ground_tunnel_stashed_drive_and_snap(&mut wrong_layer, 9, 30),
-            "an air-layer Tunnel is not restored"
-        );
-        assert_eq!(
-            wrong_layer.locomotor.as_ref().unwrap().active_kind(),
-            LocomotorKind::Tunnel
-        );
-        assert!(wrong_layer.locomotor.as_ref().unwrap().piggyback.is_some());
-
-        let mut missing_stash = entity_with(EntityCategory::Unit, LocomotorKind::Tunnel);
-        assert!(
-            !super::restore_ground_tunnel_stashed_drive_and_snap(&mut missing_stash, 9, 30),
-            "an active Tunnel without a suspended runtime is not restored"
-        );
-
-        let mut wrong_stash = entity_with(EntityCategory::Unit, LocomotorKind::Ship);
-        assert!(wrong_stash.locomotor.as_mut().unwrap().begin_piggyback(
-            LocomotorKind::Tunnel,
-            MovementLayer::Ground,
-            22,
-        ));
-        assert!(
-            !super::restore_ground_tunnel_stashed_drive_and_snap(&mut wrong_stash, 9, 30),
-            "a suspended Ship is not restored through the Drive-only transaction"
-        );
-        assert_eq!(
-            wrong_stash.locomotor.as_ref().unwrap().active_kind(),
-            LocomotorKind::Tunnel
-        );
-        assert!(wrong_stash.locomotor.as_ref().unwrap().piggyback.is_some());
-
-        let mut wrong_active_payload = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        assert!(
-            wrong_active_payload
-                .locomotor
-                .as_mut()
-                .unwrap()
-                .begin_piggyback(LocomotorKind::Tunnel, MovementLayer::Ground, 22,)
-        );
-        wrong_active_payload
-            .locomotor
-            .as_mut()
-            .unwrap()
-            .runtime_payload = LocomotorRuntimePayload::Teleport(None);
-        assert!(
-            !super::restore_ground_tunnel_stashed_drive_and_snap(&mut wrong_active_payload, 9, 30,),
-            "a Tunnel discriminant with a non-Tunnel active payload is rejected"
-        );
-        assert_eq!(
-            wrong_active_payload
-                .locomotor
-                .as_ref()
-                .unwrap()
-                .active_kind(),
-            LocomotorKind::Tunnel,
-        );
-        assert_eq!(
-            wrong_active_payload
-                .locomotor
-                .as_ref()
-                .unwrap()
-                .piggyback
-                .as_deref()
-                .unwrap()
-                .kind,
-            LocomotorKind::Drive
-        );
-
-        let mut teleport = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        assert!(teleport.locomotor.as_mut().unwrap().begin_piggyback(
-            LocomotorKind::Teleport,
-            MovementLayer::Ground,
-            22,
-        ));
-        assert!(
-            !super::restore_ground_tunnel_stashed_drive_and_snap(&mut teleport, 9, 30),
-            "generic Teleport piggyback restoration is not this Tunnel branch"
-        );
-        assert_eq!(
-            teleport.locomotor.as_ref().unwrap().active_kind(),
-            LocomotorKind::Teleport
-        );
-        assert!(teleport.locomotor.as_ref().unwrap().piggyback.is_some());
-
-        let mut tube = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        tube.low_bridge_tube_state = Some(
-            crate::sim::movement::tube_movement::LowBridgeTubeMovementState {
-                tube_id: crate::map::tube_facts::TubeId(0),
-                cursor: 0,
-                target: crate::sim::components::DriveCoord::cell(0, 0, 0),
-            },
-        );
-        assert!(
-            !super::restore_ground_tunnel_stashed_drive_and_snap(&mut tube, 9, 30),
-            "ordinary low-bridge Tube state is not a Tunnel locomotor restore"
-        );
-        assert_eq!(
-            super::state_for_entity(&tube).unwrap().hash_fields(),
-            (0, 0, 0, 0),
-            "Tube movement cannot acquire the restoration snap"
         );
     }
 }

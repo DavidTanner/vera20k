@@ -273,7 +273,6 @@ mod tests {
             lifetime,
             spark_spawn_frames: 0,
             facing: 0x1D,
-            directionless: false,
             attached_entity: None,
             owner_entity: None,
             target_coords: IVec3::ZERO,
@@ -303,7 +302,6 @@ mod tests {
         Particle {
             type_id: ParticleTypeId(0),
             coords: IVec3::new(x, 0, 100),
-            previous_coords: IVec3::ZERO,
             origin: IVec3::ZERO,
             direction: [SimFixed::from_num(0); 3],
             velocity: SimFixed::from_num(0),
@@ -312,14 +310,10 @@ mod tests {
             state_ai_advance: 0,
             animation_state: 0,
             translucency: 0,
-            hit_ground: false,
             marked_for_deletion: false,
             drift_x: 0,
             drift_y: 0,
             drift_z: 0,
-            current_color: [0; 3],
-            color_index: 0,
-            color_accumulator: SimFixed::from_num(0),
             spark: Some(SparkRuntimeState {
                 velocity_x: NativeF32Bits::POSITIVE_ZERO,
                 velocity_y: NativeF32Bits::POSITIVE_ZERO,
@@ -635,7 +629,10 @@ SpawnSparkPercentage=1
             .unwrap()
             .query(motion)
             .unwrap();
-        assert!(facts.slope_matrix.is_some(), "a selected collision performs the final slope lookup");
+        assert!(
+            facts.slope_matrix.is_some(),
+            "a selected collision performs the final slope lookup"
+        );
         let particle_type = rules.particle_type(collision_particle.type_id);
         finish_particle_tick(
             &mut collision_particle,
@@ -651,7 +648,10 @@ SpawnSparkPercentage=1
         assert_eq!(collision_particle.lifetime_remaining, 1);
         let mut expected_rng = SimRng::new(790);
         expected_rng.next_range_u32_inclusive(0, 0x7fff_fffe);
-        assert_eq!(collision_sim.rng_views().scenario, expected_rng.logical_view());
+        assert_eq!(
+            collision_sim.rng_views().scenario,
+            expected_rng.logical_view()
+        );
     }
 
     mod advance_state_tests {
@@ -670,7 +670,6 @@ SpawnSparkPercentage=1
             Particle {
                 type_id: ParticleTypeId(0),
                 coords: IVec3::ZERO,
-                previous_coords: IVec3::ZERO,
                 origin: IVec3::ZERO,
                 direction: [SimFixed::from_num(0); 3],
                 velocity: SimFixed::from_num(0),
@@ -679,14 +678,10 @@ SpawnSparkPercentage=1
                 state_ai_advance: pt.state_ai_advance,
                 animation_state: pt.start_state_ai,
                 translucency: pt.translucency,
-                hit_ground: false,
                 marked_for_deletion: false,
                 drift_x: 0,
                 drift_y: 0,
                 drift_z: 0,
-                current_color: [0; 3],
-                color_index: 0,
-                color_accumulator: SimFixed::from_num(0),
                 spark: None,
                 prev_delta: [SimFixed::from_num(0); 3],
                 state_advance_counter: 0,

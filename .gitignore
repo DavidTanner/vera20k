@@ -20,7 +20,9 @@ Thumbs.db
 *.map
 *_todo.md
 
-/ini/
+# No trailing slash: a linked worktree reaches the retail INIs through an
+# `ini` symlink, which a directory-only pattern does not match.
+/ini
 
 /infodocs/
 

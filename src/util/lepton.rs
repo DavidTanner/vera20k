@@ -109,7 +109,7 @@ pub const LEPTONS_PER_LEVEL: i64 = 104;
 
 /// Verified active-retail ground-height scalar. Bridge/deck height is a
 /// caller-owned conditional addition and is never included here.
-pub const GROUND_LEVEL_HEIGHT_LEPTONS: i32 = 104;
+pub const GROUND_LEVEL_HEIGHT_LEPTONS: i32 = LEPTONS_PER_LEVEL as i32;
 
 /// Sentinel weapon range meaning "always in range". When the configured
 /// weapon range equals -512 leptons, InRange short-circuits to true regardless
@@ -125,9 +125,40 @@ pub const WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS: i64 = -512;
 /// independently initialized 104-lepton flight-level scalar.
 pub const HIGH_FLIGHT_THRESHOLD_LEPTONS: i64 = 2 * LEPTONS_PER_LEVEL;
 
-/// Range/LOS cell-to-deck delta. Kept separate from entity OnBridge coordinate
-/// selection even though both active retail values are 416 leptons.
-pub const BRIDGE_HEIGHT_DELTA_LEPTONS: i64 = 416;
+/// Signed lepton→cell, truncating toward zero: gamemd's `CDQ; AND EDX,0xFF;
+/// ADD; SAR 8` idiom (e.g. `ObjectClass::Get_Cell_Packed` `0x0041BEA0` and
+/// the Unit readiness, ore-scan and Foot path copies inlined at `0x004D404A`
+/// and `0x004DCF3E`). `v / 256` agrees; `div_euclid(256)` and a bare `>> 8`
+/// floor negative leptons instead.
+pub const fn lepton_to_cell(v: i32) -> i32 {
+    (v + ((v >> 31) & 0xFF)) >> 8
+}
+
+/// [`lepton_to_cell`] stored into a 16-bit `CellStruct` field.
+pub const fn lepton_to_cell_packed(v: i32) -> i16 {
+    lepton_to_cell(v) as i16
+}
+
+/// Levels a high bridge deck sits above the cell that carries it.
+///
+/// Native code spells this 4 two ways: as an immediate (`GetEffectiveHeight`
+/// adds `((flags >> 7) & 1) * 4` for an anchor cell) and as the lepton deck
+/// global below divided by the level step. Both are fixed, never INI-read.
+pub const BRIDGE_DECK_HEIGHT_LEVELS: i32 = 4;
+
+/// Leptons a high bridge deck sits above the ground height of its cell.
+///
+/// gamemd keeps separate globals for this value, each initialized once to four
+/// times a 104-lepton level step: Foot `[0x00AC13BC]` (stored by
+/// `0x005F37C0..0x005F3890`, `LEA ECX,[EAX*4]` at `0x005F3866`, added by
+/// `ObjectClass::SetHeight 0x005F5FA0`), Bounce `[0x0089C76C]` (initializer
+/// `0x00439610`, read by `0x00439A10`/`0x00439B00`), Jumpjet `[0x00ABC5DC]`,
+/// the parasite release deck `[0x00AC497C]`, and Anim `[0x0089A1B4]`
+/// (initializer `0x00421E20`, the same `4 * level + 0.5` truncation, read by
+/// the MakeInfantry mark and clear at `0x0042629B`/`0x00426328`). None is
+/// INI-read and every captured value is 416, so one constant serves them all,
+/// as [`LEPTONS_PER_LEVEL`] does for their level steps.
+pub const BRIDGE_DECK_HEIGHT_LEPTONS: i32 = BRIDGE_DECK_HEIGHT_LEVELS * GROUND_LEVEL_HEIGHT_LEPTONS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnsupportedGroundSlope(pub u8);
@@ -367,6 +398,29 @@ pub fn cell_delta_to_lepton_dir(dx: i32, dy: i32) -> (SimFixed, SimFixed, SimFix
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lepton_to_cell_truncates_toward_zero_and_packs_to_16_bits() {
+        for (leptons, cell) in [
+            (256, 1),
+            (-256, -1),
+            (255, 0),
+            (-1, 0),
+            (-255, 0),
+            (-257, -1),
+            (384, 1),
+            (-384, -1),
+        ] {
+            assert_eq!(lepton_to_cell(leptons), cell, "{leptons}");
+        }
+        assert_eq!(lepton_to_cell_packed(0x0100_0000), 0);
+    }
+
+    #[test]
+    fn bridge_deck_height_is_the_captured_416_leptons() {
+        assert_eq!(BRIDGE_DECK_HEIGHT_LEPTONS, 416);
+        assert_eq!(BRIDGE_DECK_HEIGHT_LEVELS, 4);
+    }
 
     #[test]
     fn integer_and_fixed_leptons_per_cell_agree() {

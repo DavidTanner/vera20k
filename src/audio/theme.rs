@@ -833,10 +833,11 @@ pub(crate) fn catalog_from_ini(ini: &IniFile) -> Vec<ThemeEntry> {
     let Some(themes) = ini.section("Themes") else {
         return entries;
     };
-    for key in themes.get_values() {
-        if key.is_empty() {
+    // Each entry through ReadString(0x20) (`0x007205DE`).
+    for entry_name in themes.keys() {
+        let Some(key) = themes.read_name(entry_name, 0x20) else {
             continue;
-        }
+        };
         let existing = entries
             .iter()
             .position(|entry| entry.key.eq_ignore_ascii_case(key));
@@ -862,22 +863,21 @@ pub(crate) fn catalog_from_ini(ini: &IniFile) -> Vec<ThemeEntry> {
         let Some(section) = find_section(ini, &entry.key) else {
             continue;
         };
-        if let Some(sound) = section.get("Sound") {
-            entry.sound = sound.trim_start_matches(['$', '#']).to_string();
-        }
-        if let Some(scenario) = section.get_i32("Scenario") {
-            entry.scenario = scenario;
-        }
-        if let Some(normal) = section.get_bool("Normal") {
-            entry.normal = normal;
-        }
+        // `0x00720480`: ReadString 0x100 over an empty default, then
+        // ReadInt/ReadBool over each field and the side-name read
+        // (`0x004756F0`, 0x80 bytes).
+        entry.sound = section
+            .read_string("Sound", "", 0x100)
+            .trim_start_matches(['$', '#'])
+            .to_string();
+        entry.scenario = section.read_int("Scenario", entry.scenario);
+        entry.normal = section.read_bool("Normal", entry.normal);
         if entry.normal {
-            entry.name_key = section.get("Name").unwrap_or("").to_owned();
+            // The string-table label read `0x00529160` copies up to 0x3FF bytes.
+            entry.name_key = section.read_string("Name", "", 0x400);
         }
-        if let Some(repeat) = section.get_bool("Repeat") {
-            entry.repeat = repeat;
-        }
-        if let Some(side) = section.get("Side") {
+        entry.repeat = section.read_bool("Repeat", entry.repeat);
+        if let Some(side) = section.read_name("Side", 0x80) {
             entry.side_name = Some(side.to_string());
         }
     }

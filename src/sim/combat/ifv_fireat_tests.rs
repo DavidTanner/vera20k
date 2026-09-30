@@ -72,9 +72,8 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
             terrain.cell_mut(x, y).unwrap().level = 6;
         }
     }
-    let heights = std::collections::BTreeMap::from([((10, 20), 6)]);
     let firer_id = world
-        .spawn_object("FV", "Americans", 10, 20, 0, &rules, &heights)
+        .spawn_object("FV", "Americans", 10, 20, 0, &rules)
         .unwrap();
     world.resolve_type_handles(&rules);
     let target_cell = &rows[0]["supplied"]["target_cell"];
@@ -82,7 +81,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         target_cell[0].as_u64().unwrap() as u16,
         target_cell[1].as_u64().unwrap() as u16,
     );
-    assert!(super::issue_attack_cell_command(
+    assert!(super::install_cell_attack_target_for_test(
         &mut world.substrate.entities,
         firer_id,
         target_cell[0].as_u64().unwrap() as u16,
@@ -99,10 +98,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         firer.position.sub_x = SimFixed::from_num(origin.x % 256);
         firer.position.sub_y = SimFixed::from_num(origin.y % 256);
         firer.position.exact_z_leptons = Some(origin.z);
-        firer.body_facing = Some(FacingClass::new(
-            input["body_heading"].as_u64().unwrap() as u16,
-            0,
-        ));
+        firer.body_facing = FacingClass::new(input["body_heading"].as_u64().unwrap() as u16, 0);
         firer.barrel_facing = Some(FacingClass::new(
             input["source_heading"].as_u64().unwrap() as u16,
             0,
@@ -128,7 +124,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
             row["launch"]["burst_before"].as_i64().unwrap() as i32
         );
         assert!(firer.rearm_timer.expired(frame as i32));
-        let snapshot = build_attacker_snapshot(firer, target, None, None);
+        let snapshot = build_attacker_snapshot(firer, target, None);
         assert_eq!(
             world.scenario_rng.native_state_hex(),
             row["rng_before"].as_str().unwrap(),

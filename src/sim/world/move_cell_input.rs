@@ -60,7 +60,7 @@ impl Simulation {
             .z
             .wrapping_sub(ground)
             .wrapping_sub(if entity.on_bridge {
-                BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+                BRIDGE_DECK_HEIGHT_LEPTONS
             } else {
                 0
             });
@@ -129,7 +129,7 @@ use crate::sim::find_nearby_cell::{
 use crate::sim::movement::ground_pose::query_ground_height as query_ground;
 use crate::sim::occupancy::RawCellOccupationGrid;
 use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneQueryCell};
-use crate::util::lepton::{BRIDGE_HEIGHT_DELTA_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS};
+use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS};
 
 /// Values read by the ordinary Foot 4DE1D0 input receiver. The +70 action
 /// has already been selected at the input boundary; it is not a mission.
@@ -160,7 +160,7 @@ fn clicked_coordinate(
     point.z = query_ground(cells, point)?;
     //4DE242/4DE38C are separate Map calls after the height query.
     if cells.flags(cells.lookup_world(point.x, point.y)) & 0x100 != 0 {
-        point.z = point.z.wrapping_add(BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        point.z = point.z.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     Ok(point)
 }
@@ -199,7 +199,7 @@ fn resolve_foot_cell_click(
             .z
             .wrapping_sub(query_ground(cells, click.current)?)
             .wrapping_sub(if click.on_bridge {
-                BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+                BRIDGE_DECK_HEIGHT_LEPTONS
             } else {
                 0
             });
@@ -251,7 +251,7 @@ fn resolve_foot_cell_click(
     } else {
         let p = cells.coord(source);
         let zone = zones
-            .get_path_zone_id_native_in_query(
+            .get_zone_id_native_in_query(
                 terrain,
                 (p.0 as u16, p.1 as u16),
                 click.movement_zone,
@@ -259,9 +259,8 @@ fn resolve_foot_cell_click(
                 Some(cells),
             )
             .ok_or("input FNPC source lacks native zone topology")?;
-        //Native DWORD-1 disables the comparison; so does a raw WORDFFFF,
-        //which FNPC's entry turns into -1 (0x56DC43..0x56DC60).
-        u16::try_from(zone).ok()
+        // FNPC disables the comparison for DWORD -1 and raw 0xFFFF alike.
+        Some(zone)
     };
     Ok(find_nearby_passable_cell(
         (i32::from(click.clicked.0), i32::from(click.clicked.1)),

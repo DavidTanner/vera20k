@@ -10,8 +10,6 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{DeathEffects, UnderAttackEvent};
 use crate::sim::intern::InternedId;
-use crate::sim::pathfinding::PathGrid;
-use std::sync::Arc;
 
 enum DamageDelivery {
     Immediate,
@@ -31,7 +29,6 @@ pub(crate) struct DamageCommitReceipt {
     pub(crate) fatal_ids: Vec<u64>,
     pub(super) structure_destroyed: bool,
     pub(crate) bridge_state_changed: bool,
-    pub(super) path_grid: Option<Arc<PathGrid>>,
 }
 
 impl DamageConsequences {
@@ -88,7 +85,7 @@ impl DamageConsequences {
         // carrying the accumulator whole must not replay those leftovers here.
         effects.rad_detonations.clear();
         effects.death_sounds.clear();
-        Self::fire(
+        Self::live_fire(
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
@@ -96,10 +93,10 @@ impl DamageConsequences {
         )
     }
 
-    /// One live fire slot has not crossed the old phase's radiation/sound
-    /// drains. Deliver its effects and fire presentation through this same
-    /// consuming owner before the next Logic object runs.
-    pub(crate) fn fire(
+    /// A shot committed inside its actor's Logic visit. No earlier global
+    /// combat phase has delivered its radiation/death sounds; preserve those
+    /// alongside the same ordinary fire-event and effect delivery owner.
+    pub(crate) fn live_fire(
         mut effects: DeathEffects,
         under_attack_events: Vec<UnderAttackEvent>,
         terrain_navigation_changed_cells: Vec<(u16, u16)>,
@@ -118,7 +115,6 @@ impl DamageConsequences {
         world: &mut Simulation,
         rules: &RuleSet,
         overlay_registry: Option<&OverlayTypeRegistry>,
-        fallback_path_grid: Option<&PathGrid>,
     ) -> DamageCommitReceipt {
         let Self {
             mut effects,
@@ -176,10 +172,7 @@ impl DamageConsequences {
             );
         }
 
-        let path_grid = world.finish_terrain_navigation_changes(
-            fallback_path_grid,
-            &terrain_navigation_changed_cells,
-        );
+        world.finish_terrain_navigation_changes(rules, &terrain_navigation_changed_cells);
         if world.session.game_options.super_weapons && effects.structure_destroyed {
             let mut refreshed = Vec::new();
             for &(owner, category) in &dead_infos {
@@ -238,7 +231,6 @@ impl DamageConsequences {
             fatal_ids: effects.despawned_ids,
             structure_destroyed: effects.structure_destroyed,
             bridge_state_changed,
-            path_grid,
         }
     }
 }
@@ -532,7 +524,11 @@ mod muzzle_anim_tests {
 
         let anim = sim.anim(id).expect("the anim is still stored this frame");
         assert_eq!(anim.owner_entity, None, "the teardown detached it");
-        assert!(anim.runtime.inactive, "and marked it for removal");
+        assert!(
+            anim.runtime.inactive,
+            "native19B requests expiry on its next AI"
+        );
+        assert!(!sim.substrate.pending_delete.contains(&id));
         assert_eq!(
             sim.anim_absolute_coord(id),
             Some(relative),

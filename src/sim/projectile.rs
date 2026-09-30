@@ -231,7 +231,7 @@ pub(crate) fn cell_target_coord(
     if structural {
         coord.z = coord
             .z
-            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+            .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     coord
 }
@@ -266,7 +266,7 @@ pub(crate) fn dummy_cell_target_coord(dummy: &SharedCellDummy) -> ProjectileCoor
     if structural {
         coord.z = coord
             .z
-            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+            .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     coord
 }
@@ -671,6 +671,7 @@ pub fn projectile_next_cluster_coord(
         impact.x,
         impact.y,
         distance,
+        crate::sim::combat::inviso_scatter::RandomDirectionSnap::Preserve,
     );
     ProjectileCoord::new(x, y, impact.z)
 }
@@ -1229,7 +1230,7 @@ impl ProjectileStore {
     /// represented — `ROT >= 1` homing, the `ROT < 1` ballistic arm, and the
     /// `ROT < 1, Vertical` arm. An `Inviso` bullet is then placed on its
     /// target by [`Self::fire_inviso`] and detonates on its first AI.
-    // AbstractClass::AssignUniqueID @ 0x00410230 obtains this identity from
+    // AbstractClass::Create_ID @ 0x00410230 obtains this identity from
     // ScenarioClass::NextUniqueID @ 0x0068BCB0; the store never owns a second
     // allocator.
     #[cfg(test)]
@@ -1653,12 +1654,15 @@ impl ProjectileStore {
 
             let mut impact = snap_impact.unwrap_or(candidate);
             if impact_flag {
-                // `0x00467BF0..0x00467C06`: the getter and, when negative,
-                // setter both query the committed coordinate before the fuse.
-                // The setter does not rewrite the stack coordinate used below.
+                // `0x00467BF0..0x00467C06`: GetHeight and, when negative,
+                // SetHeight(0) both query the committed coordinate before the
+                // fuse, and both count the deck for an OnBridge bullet. The
+                // setter does not rewrite the stack coordinate used below.
+                use crate::sim::movement::ground_pose::{height_at_z, z_at_height};
                 let floor = projectile_ground_z(terrain, shared_cell_dummy, impact);
-                if impact.z.wrapping_sub(floor) < 0 {
-                    impact.z = projectile_ground_z(terrain, shared_cell_dummy, impact);
+                if height_at_z(impact.z, floor, projectile.on_bridge) < 0 {
+                    let floor = projectile_ground_z(terrain, shared_cell_dummy, impact);
+                    impact.z = z_at_height(floor, 0, projectile.on_bridge);
                 }
             }
 
@@ -2149,7 +2153,7 @@ fn bridge_surface_z(
         cell.bridge_flags_0x1180() & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL != 0
     };
     (structural(candidate) || structural(previous))
-        .then(|| floor.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32))
+        .then(|| floor.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS))
 }
 
 /// YR `BulletClass_GetAnimFrame` @ 0x00468000.
@@ -2376,6 +2380,32 @@ mod tests {
         }
     }
 
+    /// Bullet AI's admitted-impact clamp (`0x00467BF0..0x00467C06`) is
+    /// GetHeight below 0, then SetHeight(0), and both count the deck for an
+    /// OnBridge bullet (`0x005F5F40`, `0x005F5FA0`). FireAt copies an Inviso
+    /// shot's OnBridge from its target (`0x006FF08B`); an impact below the
+    /// deck lands on it.
+    #[test]
+    fn an_on_bridge_impact_below_the_deck_is_raised_to_the_deck() {
+        let mut store = ProjectileStore::new();
+        let mut shot = spawn(ProjectileTarget::Cell { rx: 4, ry: 0 });
+        shot.origin = ProjectileCoord::new(0, 0, 100);
+        let id = store.spawn(1, shot);
+        store.projectiles.get_mut(&id).unwrap().on_bridge = true;
+        let result = store.advance(
+            0,
+            &BTreeMap::new(),
+            None,
+            &SharedCellDummy::fresh(),
+            |_, coord| Some(ProjectileCollisionResponse::TargetZClamp(coord)),
+        );
+        assert_eq!(result.detonations.len(), 1);
+        assert_eq!(
+            result.detonations[0].impact.z,
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+        );
+    }
+
     #[test]
     fn guided_projectile_turns_with_persisted_rot_state() {
         let mut store = ProjectileStore::new();
@@ -2466,7 +2496,7 @@ mod tests {
         assert_eq!(bridge.y, ground.y);
         assert_eq!(
             bridge.z - ground.z,
-            crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
         );
     }
 
@@ -2933,6 +2963,7 @@ mod tests {
                             impact.x,
                             impact.y,
                             distance.as_i64().unwrap() as i32,
+                            crate::sim::combat::inviso_scatter::RandomDirectionSnap::Preserve,
                         );
                     ProjectileCoord::new(x, y, impact.z)
                 }))

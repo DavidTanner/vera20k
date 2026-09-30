@@ -14,8 +14,8 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use super::cell_entry::{
-    CanEnterCellContext, CanEnterCellResult, CanEnterLayerContext, TerrainEntryMode,
-    WallArmContext, evaluate_can_enter_cell, search_cell_cost_decision,
+    CanEnterCellContext, CanEnterCellResult, CanEnterLayerContext, WallArmContext,
+    evaluate_can_enter_cell, search_cell_cost_decision,
 };
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_hierarchy::ZoneLevelGraph;
@@ -27,7 +27,6 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::theater::TilesetLookup;
 use crate::map::tube_facts::{TubeId, TubeSource};
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
-use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::movement::locomotor::MovementLayer;
 use std::cell::RefCell;
 use std::cmp::Reverse;
@@ -176,11 +175,12 @@ pub struct LayeredEntityBlockMap {
     moving_allies: BTreeMap<(MovementLayer, (u16, u16)), MovingAllyOccupant>,
 }
 
-/// A moving allied occupant as the head-on exit sees it: its facing byte and
-/// its lepton coordinates at the time the owner snapshot was built.
+/// A moving allied occupant as the head-on exit sees it: its body facing
+/// (`+0x388`) and its lepton coordinates at the time the owner snapshot was
+/// built. The facing is kept as state and sampled at the asking frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MovingAllyOccupant {
-    pub facing: u8,
+    pub facing: crate::sim::movement::FacingClass,
     pub world: [i32; 3],
 }
 
@@ -755,12 +755,11 @@ fn search_cell_allocated(terrain: Option<&ResolvedTerrainGrid>, coord: (u16, u16
 pub struct AStarOptions<'a> {
     /// Terrain speed multipliers (cost 0 = blocked for this SpeedType).
     pub terrain_costs: Option<&'a TerrainCostGrid>,
-    /// Search-only bridge/coercion gate for the native Foot predicate result.
-    ///
-    /// This never receives a terrain speed percentage: those remain in
-    /// `terrain_costs`. The default is off until a mover's native gate source is
-    /// represented by runtime state.
-    pub search_cost_class_coerce_to_zero: bool,
+    /// The mover type's `IsTrain=` flag (`TechnoTypeClass+0xC94`), which
+    /// `AStar_main_loop` reads at `0x00429B64`/`0x00429C79` to zero every
+    /// passable `+0x1AC` class. Residual: no mover supplies it (always false);
+    /// no retail `rulesmd.ini` type sets `IsTrain=`, so the arm is dormant.
+    pub mover_is_train: bool,
     /// Optional native cost-class producer for the Foot `+0x1ac` search call.
     /// The classifier is deliberately cell/search scoped and never receives a
     /// `TerrainCostGrid` speed percentage.
@@ -782,8 +781,11 @@ pub struct AStarOptions<'a> {
     /// `CellClass+0x140 & 0x40000`. Destination hits multiply normal compass
     /// edge cost, but do not change walkability or persistent pathgrid state.
     pub marker_overlay: Option<&'a SearchMarkerOverlay>,
-    /// Crusher units bypass all entity soft-block costs (codes 1-6).
-    /// Buildings (code 7, in entity_blocks BTreeSet) still block.
+    /// Reduced-admission searches only (movers without a Foot +1AC search
+    /// entry, e.g. the legacy blocked-repath lane): crusher units bypass all
+    /// entity soft-block costs (codes 1-6); buildings (code 7, in the
+    /// entity_blocks set) still block. Searches through the live +1AC price
+    /// codes natively and ignore this.
     pub mover_is_crusher: bool,
     /// Code-2 urgency escalation (0 = look-ahead chain walk, 1 = traffic penalty,
     /// 2 = route around). Matches gamemd.exe PathfinderClass+0x3C.
@@ -1200,7 +1202,6 @@ pub fn astar_search(
                                 options.resolved_terrain,
                                 options.terrain_costs,
                                 false,
-                                TerrainEntryMode::AStarNeighbor,
                             );
                         if prev_on_bridge {
                             bridge_terrain_passable
@@ -1218,7 +1219,6 @@ pub fn astar_search(
                             options.resolved_terrain,
                             options.terrain_costs,
                             false,
-                            TerrainEntryMode::AStarNeighbor,
                             options.is_infantry,
                             options.mover_is_crusher,
                         )
@@ -1340,10 +1340,7 @@ pub fn astar_search(
                 // One native class supplies both admission and the edge base.
                 // Reduced adapters use None for clear; live Foot returns Some(0).
                 let raw_cost_class = refused_cost_class.unwrap_or(0);
-                let search_cost = search_cell_cost_decision(
-                    raw_cost_class,
-                    options.search_cost_class_coerce_to_zero,
-                );
+                let search_cost = search_cell_cost_decision(raw_cost_class, options.mover_is_train);
                 if !search_cost.expands {
                     continue;
                 }
@@ -1515,42 +1512,16 @@ pub fn is_cell_passable_for_mover(
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> bool {
-    is_cell_passable_for_mover_with_speed(
-        grid,
-        x,
-        y,
-        movement_zone,
-        None,
-        resolved_terrain,
-        None,
-        false,
-        TerrainEntryMode::AStarNeighbor,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn is_cell_passable_for_mover_with_speed(
-    grid: &PathGrid,
-    x: u16,
-    y: u16,
-    movement_zone: Option<MovementZone>,
-    speed_type: Option<SpeedType>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    terrain_costs: Option<&TerrainCostGrid>,
-    bypass_grid: bool,
-    mode: TerrainEntryMode,
-) -> bool {
     is_cell_passable_for_mover_on_layer_with_speed(
         grid,
         x,
         y,
         MovementLayer::Ground,
         movement_zone,
-        speed_type,
+        None,
         resolved_terrain,
-        terrain_costs,
-        bypass_grid,
-        mode,
+        None,
+        false,
     )
 }
 
@@ -1570,7 +1541,6 @@ pub fn is_cell_passable_for_category_on_layer(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     terrain_costs: Option<&TerrainCostGrid>,
     bypass_grid: bool,
-    mode: TerrainEntryMode,
     is_infantry: bool,
     mover_is_crusher: bool,
 ) -> bool {
@@ -1584,7 +1554,6 @@ pub fn is_cell_passable_for_category_on_layer(
         resolved_terrain,
         terrain_costs,
         bypass_grid,
-        mode,
         is_infantry,
         mover_is_crusher,
         None,
@@ -1617,7 +1586,6 @@ pub fn evaluate_cell_entry_for_category_on_layer(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     terrain_costs: Option<&TerrainCostGrid>,
     bypass_grid: bool,
-    mode: TerrainEntryMode,
     is_infantry: bool,
     mover_is_crusher: bool,
     wall: Option<WallArmContext<'_>>,
@@ -1632,7 +1600,6 @@ pub fn evaluate_cell_entry_for_category_on_layer(
         resolved_terrain,
         terrain_costs,
         bypass_grid,
-        mode,
         is_infantry,
         mover_is_crusher,
     })
@@ -1649,7 +1616,6 @@ pub fn is_cell_passable_for_mover_on_layer_with_speed(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     terrain_costs: Option<&TerrainCostGrid>,
     bypass_grid: bool,
-    mode: TerrainEntryMode,
 ) -> bool {
     evaluate_can_enter_cell(CanEnterCellContext {
         wall: None,
@@ -1661,7 +1627,6 @@ pub fn is_cell_passable_for_mover_on_layer_with_speed(
         resolved_terrain,
         terrain_costs,
         bypass_grid,
-        mode,
         is_infantry: false,
         // Callers of this wrapper (bridge plane, scheduling, placement) carry
         // no mover type; the crusher route of the wall arm is not theirs.
@@ -1817,7 +1782,6 @@ pub struct LayeredPathStep {
 /// Derived path state is separate from structure occupancy and zone history.
 fn project_terrain_path_cell(
     cell: &crate::map::resolved_terrain::ResolvedTerrainCell,
-    bridge_state: Option<&BridgeRuntimeState>,
 ) -> (PathCell, u8, bool) {
     let bridge_structural = cell.bridge_facts.has_structural_bridge()
         || (cell.has_bridge_deck
@@ -1827,10 +1791,11 @@ fn project_terrain_path_cell(
             && cell.bridge_facts.family == crate::map::bridge_facts::BridgeStampFamily::None);
     // Original47E470 stamps structural side cells without giving each its own
     // overlay (bridge_constructor success25: flags0x11300, overlay-1). Raw100
-    // already admits that deck; sprite availability is only a legacy fallback.
+    // already admits that deck; a live bridge sprite is only a legacy fallback
+    // for decks that carry no bit0x100.
     let bridge_intact = cell.bridge_facts.has_structural_bridge()
         || !bridge_structural
-        || bridge_state.map_or(true, |state| state.is_bridge_walkable(cell.rx, cell.ry));
+        || crate::sim::bridge_state::cell_render_state(cell.bridge_facts).is_some();
     let path_cell = PathCell {
         // Walkability rules (matching old PathGrid::from_resolved_terrain):
         // - Overlay blocks / terrain object blocks → blocked
@@ -1878,10 +1843,7 @@ fn project_terrain_path_cell(
             cell.bridge_transition
         },
         ground_level: cell.level,
-        bridge_deck_level: bridge_state
-            .and_then(|state| state.cell(cell.rx, cell.ry))
-            .map(|runtime| runtime.deck_level)
-            .unwrap_or(cell.bridge_deck_level),
+        bridge_deck_level: cell.bridge_deck_level,
         slope_type: cell.slope_type,
         tube_index: cell.tube_index,
         low_bridge_tube_cell: cell.is_low_bridge_tube_cell(),
@@ -2025,53 +1987,6 @@ impl PathGrid {
         }
         self.cells
             .get(y as usize * self.width as usize + x as usize)
-    }
-
-    /// Replace one derived terrain cell while retaining every other dynamic
-    /// blocker already stamped into other cells. Callers must guarantee that
-    /// the refreshed coordinate has no independent structure blocker. Canonical
-    /// grids copy both terrain-object side tables; tableless test/headless grids
-    /// retain their documented PathCell fallback.
-    pub(crate) fn replace_cell_from(&mut self, source: &PathGrid, x: u16, y: u16) -> bool {
-        let Some(source_cell) = source.cell(x, y).copied() else {
-            return false;
-        };
-        let source_idx = y as usize * source.width as usize + x as usize;
-        let source_size = source.cells.len();
-        let source_aux = if source.terrain_object_cell_bits.len() == source_size
-            && source.ground_walkable_without_terrain_object.len() == source_size
-        {
-            Some((
-                source.terrain_object_cell_bits[source_idx],
-                source.ground_walkable_without_terrain_object[source_idx],
-            ))
-        } else if source.terrain_object_cell_bits.is_empty()
-            && source.ground_walkable_without_terrain_object.is_empty()
-        {
-            None
-        } else {
-            return false;
-        };
-        if x >= self.width || y >= self.height {
-            return false;
-        }
-        let idx = y as usize * self.width as usize + x as usize;
-        let target_size = self.cells.len();
-        let target_has_aux = self.terrain_object_cell_bits.len() == target_size
-            && self.ground_walkable_without_terrain_object.len() == target_size;
-        let target_has_no_aux = self.terrain_object_cell_bits.is_empty()
-            && self.ground_walkable_without_terrain_object.is_empty();
-        if self.cells.get(idx).is_none() || (!target_has_aux && !target_has_no_aux) {
-            return false;
-        }
-        self.cells[idx] = source_cell;
-        if target_has_aux {
-            let (terrain_object_bits, walkable_without_terrain_object) =
-                source_aux.unwrap_or((0, source_cell.ground_walkable));
-            self.terrain_object_cell_bits[idx] = terrain_object_bits;
-            self.ground_walkable_without_terrain_object[idx] = walkable_without_terrain_object;
-        }
-        true
     }
 
     pub fn bridge_deck_level(&self, x: u16, y: u16) -> Option<u8> {
@@ -2241,7 +2156,7 @@ impl PathGrid {
 
     /// Build from resolved terrain without bridge data.
     pub fn from_resolved_terrain(terrain: &ResolvedTerrainGrid) -> Self {
-        Self::from_resolved_terrain_with_bridges(terrain, None)
+        Self::from_resolved_terrain_with_bridges(terrain)
     }
 
     /// Build from resolved terrain with bridge metadata.
@@ -2251,10 +2166,7 @@ impl PathGrid {
     /// is handled by TerrainCostGrid (cost=0 blocks ground units in A*).
     /// This preserves the behavior of the old flat PathGrid where Float/Hover/
     /// Amphibious units could path through water via cost > 0.
-    pub fn from_resolved_terrain_with_bridges(
-        terrain: &ResolvedTerrainGrid,
-        bridge_state: Option<&BridgeRuntimeState>,
-    ) -> Self {
+    pub fn from_resolved_terrain_with_bridges(terrain: &ResolvedTerrainGrid) -> Self {
         let size = terrain.width() as usize * terrain.height() as usize;
         let mut cells = vec![DEFAULT_BLOCKED_CELL; size];
         // Retail terrain occupation is a per-cell *sub-cell* mask that only the
@@ -2265,7 +2177,7 @@ impl PathGrid {
         let mut ground_walkable_without_terrain_object = vec![false; size];
         for cell in terrain.iter() {
             let (path_cell, bits, walkable_without_terrain_object) =
-                project_terrain_path_cell(cell, bridge_state);
+                project_terrain_path_cell(cell);
             let index = cell.ry as usize * terrain.width() as usize + cell.rx as usize;
             if let Some(slot) = cells.get_mut(index) {
                 *slot = path_cell;
@@ -2292,14 +2204,13 @@ impl PathGrid {
     pub(crate) fn refresh_resolved_cell(
         &mut self,
         cell: &crate::map::resolved_terrain::ResolvedTerrainCell,
-        bridge_state: Option<&BridgeRuntimeState>,
         structure_blocked: bool,
     ) -> bool {
         if cell.rx >= self.width || cell.ry >= self.height {
             return false;
         }
         let index = usize::from(cell.ry) * usize::from(self.width) + usize::from(cell.rx);
-        let (path_cell, bits, without_terrain) = project_terrain_path_cell(cell, bridge_state);
+        let (path_cell, bits, without_terrain) = project_terrain_path_cell(cell);
         self.cells[index] = path_cell;
         if let Some(slot) = self.terrain_object_cell_bits.get_mut(index) {
             *slot = bits;
@@ -2318,15 +2229,13 @@ impl PathGrid {
     pub(crate) fn resolved_cell_is_current(
         &self,
         cell: &crate::map::resolved_terrain::ResolvedTerrainCell,
-        bridge_state: Option<&BridgeRuntimeState>,
         structure_blocked: bool,
     ) -> bool {
         if cell.rx >= self.width || cell.ry >= self.height {
             return false;
         }
         let index = usize::from(cell.ry) * usize::from(self.width) + usize::from(cell.rx);
-        let (mut projected, bits, mut without_terrain) =
-            project_terrain_path_cell(cell, bridge_state);
+        let (mut projected, bits, mut without_terrain) = project_terrain_path_cell(cell);
         if structure_blocked {
             projected.ground_walkable = false;
             without_terrain = false;
@@ -2476,7 +2385,7 @@ impl PathGrid {
     /// is structurally part of a span while its walkability permission or its
     /// stored deck value says otherwise. gamemd has no such coupling — the deck
     /// height there is terrain plus a constant gated only on the mover's own
-    /// OnBridge byte (`FootClass::Set_Height_On_Bridge` 0x005F5FA0) — so tests
+    /// OnBridge byte (`ObjectClass::SetHeight` 0x005F5FA0) — so tests
     /// need to be able to build the decoupled state to prove the mover's height
     /// is immune to it.
     #[cfg(test)]

@@ -44,6 +44,7 @@ impl ShellDialogChromeProfile {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkirmishShellDrawRole {
     ParentBackgroundMnscrns640,
@@ -107,6 +108,7 @@ pub(super) fn lower_strip_role(layout: &SkirmishShellLayout) -> LowerStripRole {
     }
 }
 
+#[cfg(test)]
 fn push_base_shell_roles(
     roles: &mut Vec<SkirmishShellDrawRole>,
     layout: &SkirmishShellLayout,
@@ -130,6 +132,7 @@ fn push_base_shell_roles(
     });
 }
 
+#[cfg(test)]
 fn push_steady_optional_roles(
     roles: &mut Vec<SkirmishShellDrawRole>,
     profile: ShellDialogChromeProfile,

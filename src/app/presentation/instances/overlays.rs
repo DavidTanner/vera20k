@@ -233,7 +233,9 @@ pub(crate) fn build_anim_class_instances(
         let Some(anim) = sim.anim(stable_id) else {
             continue;
         };
-        if anim.runtime.inactive || anim.building_slot.is_some() {
+        // DrawIt422CA0..4238AF does not read native19B. Display membership
+        // supplies live generic draws; retained Building slots have their own pass.
+        if anim.building_slot.is_some() {
             continue;
         }
         // The canopy is placed by `build_parachute_instances`, on its owner's
@@ -467,7 +469,6 @@ pub(crate) fn parachute_canopy_owners(
     sim.display_layers()
         .ordered_ids()
         .filter_map(|&id| sim.anim(id))
-        .filter(|anim| !anim.runtime.inactive)
         .filter_map(|anim| parachute_canopy_owner(anim, parachute_type))
         .collect()
 }
@@ -544,7 +545,7 @@ fn build_cell_overlay_instances(
         };
 
         // High-bridge bodies are emitted by `instances::bridges` reading
-        // `BridgeRuntimeCell` post-tick. Skip them here so they don't double-
+        // live CellClass fields post-tick. Skip them here so they don't double-
         // render via the static map overlay list.
         if !ordinary_overlay_accepts_identity(entry.overlay_id, static_name) {
             continue;
@@ -1088,9 +1089,6 @@ pub(crate) fn build_parachute_instances(
         let Some(target_id) = parachute_canopy_owner(anim, parachute_type) else {
             continue;
         };
-        if anim.runtime.inactive {
-            continue;
-        }
         let Ok(frame) = u16::try_from(anim.runtime.current_frame) else {
             continue;
         };

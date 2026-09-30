@@ -11,7 +11,7 @@ use crate::sim::components::DriveCoord;
 use crate::sim::components::{DriveLocomotionRuntime, FootSpeedState, ShipLocomotionRuntime};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::pathfinding::terrain_speed::{self, TerrainSpeedConfig};
-use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 const DRIVE_DESTINATION_BRAKE_FLOOR: SimFixed = SimFixed::lit("0.3");
 
@@ -34,15 +34,9 @@ pub(crate) fn drive_locomotor_is_moving(entity: &GameEntity) -> bool {
 /// `FacingClass::Set @ 0x004C9220` on the owner's PrimaryFacing (+0x388).
 /// Re-issuing the destination the facing already holds keeps its running
 /// timer (tools/mcv_deploy_oracle.json turns). The hull then animates from the
-/// frame-anchored `body_facing`; `unit_post::apply_unit_facing` mirrors it into
-/// the 8-bit heading while the unit holds no movement target.
+/// frame-anchored `body_facing`.
 pub(crate) fn drive_do_turn(entity: &mut GameEntity, desired: u16, frame: u32) {
-    let rot = entity.locomotor.as_ref().map_or(0, |loco| loco.rot);
-    let facing = entity.facing;
-    entity
-        .body_facing
-        .get_or_insert_with(|| super::FacingClass::new(u16::from(facing) << 8, rot))
-        .set(desired, frame);
+    entity.body_facing.set(desired, frame);
 }
 
 /// Compute the Drive-local target speed fraction from currently modeled runtime
@@ -93,7 +87,7 @@ pub(super) fn update_drive_speed_fraction(
     update_vehicle_speed_fraction(
         drive.target_speed_fraction,
         drive.track.turn_index,
-        &mut owner_speed.applied_fraction,
+        owner_speed,
         accelerates,
         unit_passive,
         raw_speed_per_frame,
@@ -124,7 +118,7 @@ pub(super) fn update_ship_speed_fraction(
     update_vehicle_speed_fraction(
         ship.target_speed_fraction,
         ship.track.turn_index,
-        &mut owner_speed.applied_fraction,
+        owner_speed,
         accelerates,
         unit_passive,
         raw_speed_per_frame,
@@ -148,7 +142,7 @@ pub(super) fn update_ship_speed_fraction(
 fn update_vehicle_speed_fraction(
     target: SimFixed,
     selector: i32,
-    current_slot: &mut SimFixed,
+    owner_speed: &mut FootSpeedState,
     accelerates: bool,
     unit_passive: bool,
     raw_speed_per_frame: SimFixed,
@@ -160,13 +154,13 @@ fn update_vehicle_speed_fraction(
     // ProcessMovement retains an unclamped class target. Only the Foot
     // setter4D3710 clamps the applied fraction to [0,1].
     if !accelerates {
-        *current_slot = target.clamp(SIM_ZERO, SIM_ONE);
+        owner_speed.set_speed_fraction(target);
         return;
     }
     if unit_passive || selector >= 64 {
         return;
     }
-    let mut current = *current_slot;
+    let mut current = owner_speed.applied_fraction();
     if slowdown_distance > SIM_ZERO && distance_to_goal < slowdown_distance {
         current -= raw_speed_per_frame * decel_factor;
         if current < DRIVE_DESTINATION_BRAKE_FLOOR {
@@ -183,14 +177,14 @@ fn update_vehicle_speed_fraction(
             current = target;
         }
     }
-    *current_slot = current.clamp(SIM_ZERO, SIM_ONE);
+    owner_speed.set_speed_fraction(current);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::SpeedCostProfile;
     use crate::sim::movement::foot_speed::owner_current_speed_from_fraction;
     use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO};
 
@@ -212,9 +206,9 @@ mod tests {
             SimFixed::from_num(1000),
         );
         assert_eq!(ship.target_speed_fraction, SIM_HALF);
-        assert_eq!(owner_speed.applied_fraction, SIM_HALF);
+        assert_eq!(owner_speed.applied_fraction(), SIM_HALF);
 
-        owner_speed.applied_fraction = SIM_ZERO;
+        owner_speed.set_speed_fraction(SIM_ZERO);
         ship.target_speed_fraction = SIM_ONE;
         update_ship_speed_fraction(
             &ship,
@@ -228,7 +222,7 @@ mod tests {
             SimFixed::from_num(1000),
         );
         assert_eq!(ship.target_speed_fraction, SIM_ONE);
-        assert_eq!(owner_speed.applied_fraction, SimFixed::lit("0.03"));
+        assert_eq!(owner_speed.applied_fraction(), SimFixed::lit("0.03"));
     }
 
     #[test]
@@ -264,8 +258,7 @@ mod tests {
 
         let speed = ra2_speed_to_leptons_per_second(8);
         let mut owner_speed = FootSpeedState::default();
-        owner_speed.applied_fraction = SIM_HALF;
-        owner_speed.cached_current_speed = 10;
+        owner_speed.set_speed_fraction(SIM_HALF);
         let ship = ShipLocomotionRuntime {
             destination: None,
             head_to: Some(DriveCoord::cell(4, 3, 0)),
@@ -285,72 +278,23 @@ mod tests {
                 SIM_ZERO,
                 SimFixed::from_num(256),
             );
-            owner_speed.cached_current_speed =
-                owner_current_speed_from_fraction(speed, owner_speed.applied_fraction);
             assert_eq!(ship.target_speed_fraction, SimFixed::lit("0.3"));
-            assert!(owner_speed.cached_current_speed > 0);
+            assert!(owner_current_speed_from_fraction(speed, owner_speed.applied_fraction()) > 0);
         }
 
         assert_eq!(ship.destination, None);
         assert_eq!(ship.head_to, Some(DriveCoord::cell(4, 3, 0)));
-        assert_eq!(owner_speed.applied_fraction, SimFixed::lit("0.3"));
-        assert_eq!(owner_speed.cached_current_speed, 6);
+        assert_eq!(owner_speed.applied_fraction(), SimFixed::lit("0.3"));
+        assert_eq!(
+            owner_current_speed_from_fraction(speed, owner_speed.applied_fraction()),
+            6
+        );
     }
 
     fn terrain_cell(rx: u16, ry: u16, speed_costs: SpeedCostProfile) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
-            rx,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: false,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: 0,
-            yr_cell_land_type: 0,
-            slope_type: 0,
-            template_height: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Clear,
             speed_costs,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: false,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            height_in_pixels: 0,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: 0,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: 0,
-            base_yr_cell_land_type: 0,
-            base_terrain_class: Default::default(),
-            base_speed_costs: Default::default(),
-            has_bridge_deck: false,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: None,
-            bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
+            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
         }
     }
 
@@ -445,9 +389,7 @@ mod tests {
             LocomotorKind::Walk,
             LocomotorKind::Hover,
             LocomotorKind::Jumpjet,
-            LocomotorKind::Mech,
             LocomotorKind::Teleport,
-            LocomotorKind::Tunnel,
             LocomotorKind::Fly,
         ] {
             assert_eq!(fraction_for(kind, true), SIM_ONE, "damaged {kind:?}");
@@ -578,11 +520,11 @@ mod tests {
         // `Process_Movement` @ 0x004B2630 writes `drive+0x50` unclamped on its
         // ordinary `drive+0x58 < 0x40` arm (`0x004B3E00`), so a 1.2 downhill
         // product survives on the locomotor-owned slot; the only native clamp is
-        // `TechnoClass::SetSpeedFraction` @ 0x004D3710, and every arm of
+        // `FootClass::SetSpeedFraction` @ 0x004D3710, and every arm of
         // `Process_Drive_Track` that writes the owner's fraction goes through
         // it, so that fraction never exceeds 1.
         let mut owner_speed = FootSpeedState::default();
-        owner_speed.applied_fraction = SIM_ZERO;
+        owner_speed.set_speed_fraction(SIM_ZERO);
         let mut drive = DriveLocomotionRuntime::default();
 
         drive.target_speed_fraction = SimFixed::lit("1.2");
@@ -599,13 +541,13 @@ mod tests {
         );
 
         assert_eq!(drive.target_speed_fraction, SimFixed::lit("1.2"));
-        assert_eq!(owner_speed.applied_fraction, SIM_ONE);
+        assert_eq!(owner_speed.applied_fraction(), SIM_ONE);
     }
 
     #[test]
     fn accelerates_false_assigns_current_fraction_directly() {
         let mut owner_speed = FootSpeedState::default();
-        owner_speed.applied_fraction = SIM_ZERO;
+        owner_speed.set_speed_fraction(SIM_ZERO);
         let mut drive = DriveLocomotionRuntime::default();
 
         drive.target_speed_fraction = SIM_HALF;
@@ -622,13 +564,13 @@ mod tests {
         );
 
         assert_eq!(drive.target_speed_fraction, SIM_HALF);
-        assert_eq!(owner_speed.applied_fraction, SIM_HALF);
+        assert_eq!(owner_speed.applied_fraction(), SIM_HALF);
     }
 
     #[test]
     fn accelerates_true_ramps_current_fraction_upward() {
         let mut owner_speed = FootSpeedState::default();
-        owner_speed.applied_fraction = SIM_ZERO;
+        owner_speed.set_speed_fraction(SIM_ZERO);
         let mut drive = DriveLocomotionRuntime::default();
 
         drive.target_speed_fraction = SIM_ONE;
@@ -645,13 +587,13 @@ mod tests {
         );
 
         assert_eq!(drive.target_speed_fraction, SIM_ONE);
-        assert_eq!(owner_speed.applied_fraction, SimFixed::lit("0.03"));
+        assert_eq!(owner_speed.applied_fraction(), SimFixed::lit("0.03"));
     }
 
     #[test]
     fn accelerates_true_brakes_by_raw_speed_scaled_decel_with_floor() {
         let mut owner_speed = FootSpeedState::default();
-        owner_speed.applied_fraction = SIM_HALF;
+        owner_speed.set_speed_fraction(SIM_HALF);
         let mut drive = DriveLocomotionRuntime::default();
 
         drive.target_speed_fraction = SIM_ONE;
@@ -668,7 +610,7 @@ mod tests {
         );
 
         assert_eq!(
-            owner_speed.applied_fraction,
+            owner_speed.applied_fraction(),
             SIM_HALF - SimFixed::from_num(10) * SimFixed::lit("0.002")
         );
     }
@@ -676,7 +618,7 @@ mod tests {
     #[test]
     fn accelerates_true_braking_uses_strict_slowdown_distance() {
         let mut owner_speed = FootSpeedState::default();
-        owner_speed.applied_fraction = SIM_HALF;
+        owner_speed.set_speed_fraction(SIM_HALF);
         let mut drive = DriveLocomotionRuntime::default();
 
         drive.target_speed_fraction = SIM_ONE;
@@ -692,6 +634,6 @@ mod tests {
             SimFixed::from_num(500),
         );
 
-        assert_eq!(owner_speed.applied_fraction, SimFixed::lit("0.53"));
+        assert_eq!(owner_speed.applied_fraction(), SimFixed::lit("0.53"));
     }
 }

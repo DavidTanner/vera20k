@@ -3,8 +3,8 @@
 //! Each area-damage continuation calls this owner synchronously after its
 //! receivers and before returning to the bullet's animation/cluster tail.
 //! The four native admission blocks run in fixed order, selecting drivers from
-//! live state. Concrete-body publication is synchronous; other driver outcomes
-//! still feed the existing cascade. Debris uses the shared AnimClass lifecycle;
+//! live state. Every driver publishes synchronously through the live host.
+//! Debris uses the shared AnimClass lifecycle;
 //! tagged collapse notification remains a required dependency.
 //!
 //! ## Dependency rules
@@ -15,6 +15,7 @@ use std::collections::BTreeSet;
 
 #[path = "bridge_damage_dispatch.rs"]
 mod damage_dispatch;
+use damage_dispatch::{BridgeDamageDrivers, LiveCells};
 
 #[path = "bridge_ground.rs"]
 mod ground_fallout;
@@ -24,22 +25,21 @@ mod live_publication;
 
 pub(crate) use live_publication::repair_from_engineer;
 
-use crate::map::bridge_facts::{
-    BRIDGE_FLAG_ANCHOR_SELF, BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_DIRECTION_ZERO,
-    BRIDGE_FLAG_STRUCTURAL,
-};
-use crate::map::resolved_terrain::{BridgeDirection, ResolvedTerrainGrid};
+use crate::map::bridge_facts::{BRIDGE_FLAG_ANCHOR_SELF, BRIDGE_FLAG_STRUCTURAL};
+use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
+use crate::map::cell_index::NativeCellIdentity;
+use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
-use crate::sim::bridge_state::ordinary;
-use crate::sim::bridge_state::ramp_repair::Family as HutBridgeFamily;
-use crate::sim::bridge_state::{
-    Axis, BridgeCellRole, BridgeDamageEvent, BridgeOverlayProjectionOp, BridgeRuntimeCell,
-    BridgeRuntimeState, DamageState, DispatchPath, StateOutcome,
-};
+#[cfg(test)]
+use crate::sim::bridge_state::BridgeRuntimeState;
+use crate::sim::bridge_state::ramp_repair::{self, Family as HutBridgeFamily};
+use crate::sim::bridge_state::{Axis, BridgeDamageEvent, DispatchPath};
+use crate::sim::bridge_state::{ordinary, rim};
+use crate::sim::scenario_bootstrap::NativeStartBounds;
 use crate::sim::world::Simulation;
 use crate::sim::{intern::InternedId, rng::SimRng};
-use crate::util::lepton::{BRIDGE_HEIGHT_DELTA_LEPTONS, LEPTONS_PER_LEVEL};
+use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, LEPTONS_PER_LEVEL};
 use crate::util::native_x87::{NativeF64Bits, X87Chop53};
 
 #[cfg(test)]
@@ -61,14 +61,10 @@ mod debris_tests;
 /// 5. All four blocks run against live post-callback state, even after a
 ///    prior block succeeds. Successful calls detach the targeted cell.
 ///
-/// Returns `true` if any event in the batch produced a `StateOutcome::Collapsed`
-/// — i.e. at least one bridge cell transitioned to `DamageState::Destroyed`.
-/// Callers use this to signal `TickResult.bridge_state_changed` so the app
-/// consumes the already-published navigation and refreshes presentation.
-///
-/// Cascade side-effects (kill / DropIn / debris / rim / zone) run unconditionally
-/// when matching outcomes are present in this batch — they don't depend on
-/// the return value.
+/// Returns `true` if any driver collapsed a span. Callers use this to signal
+/// `TickResult.bridge_state_changed` so the app consumes the already-published
+/// navigation and refreshes presentation. Each driver runs its own cascade
+/// (fallout, rim, zones) synchronously.
 #[cfg(test)]
 pub(crate) fn apply_bridge_damage_events(
     sim: &mut Simulation,
@@ -108,113 +104,19 @@ fn apply_one_bridge_damage_event(
         _ => return false,
     };
 
-    // The structural body publishes synchronously. Other drivers still return
-    // outcomes for their existing cascade below.
-    let (outcomes, published_collapse) = run_dispatch_loop(
-        sim,
-        events,
-        bridge_strength,
-        Some((rules, overlay_registry)),
-    );
-    // `ToggleBridgePavement @ 0x0056E990` marks each changed cell before its
-    // direction-0..7 recursion. Outcomes retain that pre-order per event.
-    // Keep this sequence until the collapse dirty set is known so the Rust
-    // presentation generation advances once for the native damage batch.
-    let damaged_variant_dirty: Vec<(u16, u16)> = outcomes
-        .iter()
-        .flat_map(|outcome| outcome.damaged_variant_cells().iter().copied())
-        .collect();
-    project_pending_low_bridge_overlay_writes(sim, overlay_registry);
-
-    // Aggregate destroyed cells + the subset receiving BlowUpBridge from
-    // the dispatcher's outcomes. BTreeSet keeps deterministic order for
-    // the cascade walk.
-    let mut destroyed_set: BTreeSet<(u16, u16)> = BTreeSet::new();
-    let mut blow_up_cells: Vec<(u16, u16)> = Vec::new();
-    let mut radar_dirty: BTreeSet<(u16, u16)> = BTreeSet::new();
-    for outcome in &outcomes {
-        if let StateOutcome::Collapsed {
-            destroyed_cells,
-            set_bridge_direction,
-            radar_cells,
-            ..
-        } = outcome
-        {
-            destroyed_set.extend(destroyed_cells.iter().copied());
-            radar_dirty.extend(radar_cells.iter().copied());
-            for (cell, _slot, action) in &set_bridge_direction.actions {
-                if matches!(action, crate::sim::bridge_specs::CellAction::BlowUpBridge) {
-                    blow_up_cells.push(*cell);
-                    destroyed_set.insert(*cell);
-                }
-            }
-        }
-    }
-
-    // BlowUpBridge fallout is per write-cell: ground occupants die with
-    // C4Warhead semantics, bridge-deck occupants DropIn, then that cell emits
-    // debris. Keeping the effects inside this helper preserves the binary's
-    // per-cell fallout order instead of batching kills, drops, and debris.
-    for &(rx, ry) in &blow_up_cells {
-        blow_up_bridge_cell_fallout(sim, rules, rx, ry, overlay_registry);
-    }
-
-    // Aggregate rim cells + zones-dirty flag from the dispatcher's
-    // outcomes so the trailing cascade hooks see them in one pass.
-    let mut rim_cells: BTreeSet<(u16, u16)> = BTreeSet::new();
-    let mut any_zones_dirty = false;
-    for outcome in &outcomes {
-        if let StateOutcome::Collapsed {
-            adjacent_bridges_dirty,
-            zones_dirty,
-            ..
-        } = outcome
-        {
-            rim_cells.extend(adjacent_bridges_dirty.iter().copied());
-            any_zones_dirty |= *zones_dirty;
-        }
-    }
-
-    // Cascade Step 4: rim refresh (HIGH §11.9). Stub today — see helper.
-    update_adjacent_bridges(sim, &rim_cells);
-    project_pending_low_bridge_overlay_writes(sim, overlay_registry);
-
-    // Cascade Step 5: TriggerEvent 31 broadcast (HIGH §11.3). No-op on
-    // skirmish; hook stub for future campaign / map-trigger support.
-    notify_bridge_span_collapse(sim, &destroyed_set);
-
-    // Cascade Step 6: zone graph rebuild (HIGH §12.8). Triggered when
-    // any final-stage walker cell flagged the bridge endpoint records
-    // dirty.
-    refresh_bridge_zones_if_dirty(sim, rules, any_zones_dirty);
-
-    // BR-16: feed the minimap radar-dirty channel — the collapsed triple plus
-    // every cascade-leaf cell touched (carried in each outcome's `radar_cells`),
-    // unioned with the destroyed/BlowUpBridge set so the SetBridgeDirection
-    // cells are covered too. Same channel the engineer-repair path uses. The
-    // union may harmlessly over-mark a cell that did not change this tick (e.g.
-    // an already-Destroyed perpendicular neighbor); the minimap recomputes its
-    // color from current bridge state, so over-marking is a render-side no-op.
-    radar_dirty.extend(destroyed_set.iter().copied());
-    sim.mark_radar_terrain_dirty_cells(
-        damaged_variant_dirty
-            .into_iter()
-            .chain(radar_dirty.iter().copied()),
-    );
-
-    // state_changed = "at least one cell collapsed this batch". The destroyed_set
-    // is built from StateOutcome::Collapsed outcomes earlier in this function;
-    // if it's non-empty, real work happened.
-    published_collapse || !destroyed_set.is_empty()
+    // Every driver publishes its cascade synchronously.
+    damage_dispatch::run(sim, events, bridge_strength, rules, overlay_registry)
 }
 
 /// Bridge-collapse dispatch from a `BridgeRepairHut` death event (C4 timer
-/// expired, demo-truck explosion). Chooses low/high from hut-local evidence,
-/// finds an overlay entry directly or through a bounded bridge/ramp fallback,
-/// then runs the shared damage primitive. Both ordinary overlay families
-/// publish Recalc and occupant callbacks synchronously.
+/// expired, demo-truck explosion). Chooses low/high from hut-local evidence;
+/// a 5x5 overlay seed runs the bounded collapse walker, and without one the
+/// fallback walk ([`run_hut_fallback`]) damages the bridge through
+/// ApplyDamageToCell. Both ordinary overlay families publish Recalc and
+/// occupant callbacks synchronously.
 ///
-/// Returns `true` if any bridge cell transitioned (caller ORs into
+/// Returns `true` if a bridge cell collapsed or the fallback found an anchor,
+/// after which native always rebuilds zones (caller ORs into
 /// `bridge_state_changed` so the app rebuilds the PathGrid).
 ///
 /// Caller ensures the hut itself is not damaged — the hut survives the
@@ -247,40 +149,19 @@ pub(crate) fn dispatch_bridge_collapse_from_hut_with_overlay_registry(
 ) -> bool {
     let scan: Vec<(u16, u16)> = hut_destroy_5x5_scan(hut_center).collect();
     let family = choose_hut_bridge_family(sim, &scan);
-
-    let fallback_plan = build_hut_fallback_plan(sim, hut_center);
-
     if sim.bridge_state.is_none() || sim.resolved_terrain.is_none() {
         return false;
     }
     let seed_axis = find_destroy_overlay_seed(&|x, y| bridge_overlay_at(sim, x, y), &scan, family);
-    let mut host = HutDamage {
-        sim,
-        rules,
-        registry: overlay_registry,
-        outcomes: Vec::new(),
-        published_collapse: false,
-    };
+    let mut host = BridgeDamageDrivers::new(sim, rules, overlay_registry);
     let fallback = if let Some((rx, ry, axis)) = seed_axis {
         run_hut_collapse_bounded(&mut host, family, axis, rx, ry);
         HutFallbackExecution::default()
     } else {
-        run_hut_fallback_plan(&mut host, fallback_plan)
+        run_hut_fallback(&mut host, family, hut_center)
     };
-    let HutDamage {
-        sim,
-        outcomes,
-        published_collapse,
-        ..
-    } = host;
-    apply_hut_bridge_execution(
-        sim,
-        rules,
-        &outcomes,
-        fallback.zones_dirty,
-        fallback.adjacent_dirty_anchor,
-        overlay_registry,
-    ) || published_collapse
+    let BridgeDamageDrivers { sim, collapsed, .. } = host;
+    finish_hut_fallback(sim, rules, fallback, overlay_registry) || collapsed
 }
 
 /// Overlay values a fully collapsed span leaves on its anchor: `0xE7` / `0xE8`
@@ -324,8 +205,8 @@ const LOW_COLLAPSED_ANCHORS: [u8; 2] = [0x64, 0x65];
 /// agree. Original execution over both Anytown huts returns0/0/1/0 for healthy,
 /// first-damaged, collapsed and repaired states, with unchanged Cells/RNG/frame:
 /// `tools/spatial_oracle/anytown_damage/hut_cursor`. Its other-axis and mixed-
-/// family selection paths remain instruction evidence. The test
-/// `bridge_hut_repair_cursor_always_takes_the_overlay_branch` records the
+/// family selection paths remain instruction evidence. The residual note
+/// on the bridge-hut repair cursor in `app/input/cursor.rs` records the
 /// separate structural-branch limitation.
 pub(crate) fn bridge_hut_has_collapsed_span(sim: &Simulation, hut_center: (u16, u16)) -> bool {
     hut_has_collapsed_anchor(&|x, y| bridge_overlay_at(sim, x, y), hut_center)
@@ -344,10 +225,13 @@ pub(crate) fn bridge_hut_has_collapsed_span(sim: &Simulation, hut_center: (u16, 
 /// exists to remove.
 #[cfg(test)]
 pub(crate) fn hut_span_has_collapsed_anchor(
-    bs: &BridgeRuntimeState,
+    terrain: &ResolvedTerrainGrid,
     hut_center: (u16, u16),
 ) -> bool {
-    hut_has_collapsed_anchor(&|x, y| bs.cell(x, y).map(|c| c.overlay_byte), hut_center)
+    hut_has_collapsed_anchor(
+        &|x, y| terrain.cell(x, y).and_then(|c| c.bridge_facts.overlay_id),
+        hut_center,
+    )
 }
 
 fn hut_has_collapsed_anchor(
@@ -505,90 +389,30 @@ fn canonicalize_hut_destroy_seed(
     }
 }
 
-fn apply_hut_bridge_execution(
+/// The CABHUT fallback's own cascade after its damage retries: the ramp's
+/// rim refresh through the concrete 576770 (0x005745B4, 0x005751D0) and the
+/// unconditional 56C510 (0x005745CC). Returns whether it asked for either.
+fn finish_hut_fallback(
     sim: &mut Simulation,
     rules: &RuleSet,
-    outcomes: &[StateOutcome],
-    extra_zones_dirty: bool,
-    extra_adjacent_dirty_anchor: Option<(u16, u16)>,
+    extra: HutFallbackExecution,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
-    if outcomes.is_empty() && !extra_zones_dirty && extra_adjacent_dirty_anchor.is_none() {
-        return false;
+    let rim_collapsed = extra.rim_cell.is_some_and(|ramp| {
+        live_publication::update_adjacent_bridges(
+            sim,
+            rules,
+            overlay_registry,
+            ramp,
+            HutBridgeFamily::High,
+        )
+    });
+    if extra.zones_dirty {
+        publish_bridge_navigation(sim, rules);
     }
-
-    for outcome in outcomes {
-        apply_runtime_bridge_flag_transcript_from_outcome(sim, outcome);
-    }
-
-    let damaged_variant_dirty: Vec<(u16, u16)> = outcomes
-        .iter()
-        .flat_map(|outcome| outcome.damaged_variant_cells().iter().copied())
-        .collect();
-
-    let mut destroyed_set: BTreeSet<(u16, u16)> = BTreeSet::new();
-    let mut blow_up_cells: Vec<(u16, u16)> = Vec::new();
-    let mut rim_cells: BTreeSet<(u16, u16)> = BTreeSet::new();
-    let mut radar_dirty: BTreeSet<(u16, u16)> = BTreeSet::new();
-    let mut any_zones_dirty = false;
-    for outcome in outcomes {
-        if let StateOutcome::Collapsed {
-            destroyed_cells,
-            set_bridge_direction,
-            adjacent_bridges_dirty,
-            zones_dirty,
-            radar_cells,
-            ..
-        } = outcome
-        {
-            destroyed_set.extend(destroyed_cells.iter().copied());
-            radar_dirty.extend(radar_cells.iter().copied());
-            for (cell, _slot, action) in &set_bridge_direction.actions {
-                if matches!(action, crate::sim::bridge_specs::CellAction::BlowUpBridge) {
-                    blow_up_cells.push(*cell);
-                    destroyed_set.insert(*cell);
-                }
-            }
-            rim_cells.extend(adjacent_bridges_dirty.iter().copied());
-            any_zones_dirty |= *zones_dirty;
-        }
-    }
-    if let Some(anchor) = extra_adjacent_dirty_anchor {
-        rim_cells.insert(anchor);
-    }
-    any_zones_dirty |= extra_zones_dirty;
-
-    project_pending_low_bridge_overlay_writes(sim, overlay_registry);
-    for &(rx, ry) in &blow_up_cells {
-        blow_up_bridge_cell_fallout(sim, rules, rx, ry, overlay_registry);
-    }
-    update_adjacent_bridges(sim, &rim_cells);
-    project_pending_low_bridge_overlay_writes(sim, overlay_registry);
-    notify_bridge_span_collapse(sim, &destroyed_set);
-    refresh_bridge_zones_if_dirty(sim, rules, any_zones_dirty);
-
-    // BR-16: feed the minimap radar-dirty channel (see apply_bridge_damage_events).
-    radar_dirty.extend(destroyed_set.iter().copied());
-    sim.mark_radar_terrain_dirty_cells(
-        damaged_variant_dirty
-            .into_iter()
-            .chain(radar_dirty.iter().copied()),
-    );
-
-    !destroyed_set.is_empty() || extra_zones_dirty || extra_adjacent_dirty_anchor.is_some()
+    extra.zones_dirty || rim_collapsed
 }
 
-const HUT_FALLBACK_DIRS: [(i16, i16); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
-const HUT_FALLBACK_STARTER_MASK: u32 = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DESTROYED_OR_RAMP;
 // Hard cap of the bounded walker: gamemd's `CollapseBridge_*_*` uses
 // `local_2c = 4`. See `BRIDGE_COLLAPSE_CHAIN_MECHANISM_GHIDRA_REPORT.md` §4.
 const MAX_HUT_SWEEP_STEPS: usize = 4;
@@ -610,29 +434,15 @@ const BRIDGE_METALLIC_GATE_EXCLUSIVE: u32 = 0x3FFF_FFFF;
 // overlay band check were buggy. 64 cells is well beyond any realistic
 // YR bridge length.
 const MAX_EXTENT_PROBE: usize = 64;
-const MAX_HUT_ENDPOINT_PROBE: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct HutFallbackStarter {
-    pos: (u16, u16),
-    flags: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HutFallbackPlan {
-    NoAcceptedStarter,
-    MissingAnchor,
-    PureBridgeheadTooLong,
-    RampWalk {
-        starter: HutFallbackStarter,
-        anchor: (u16, u16),
-    },
-}
-
+/// The CABHUT fallback's own cascade requests.
 #[derive(Debug, Default)]
 struct HutFallbackExecution {
+    /// RebuildZoneConnectivity (0x0056C510) after any anchor was found.
     zones_dirty: bool,
-    adjacent_dirty_anchor: Option<(u16, u16)>,
+    /// UpdateAdjacentBridges_High (576770) at the ramp cell, which both
+    /// twins call (0x005745B4, 0x005751D0).
+    rim_cell: Option<(i16, i16)>,
 }
 
 fn choose_hut_bridge_family(sim: &Simulation, scan: &[(u16, u16)]) -> HutBridgeFamily {
@@ -657,278 +467,157 @@ fn is_low_hut_scan_evidence(sim: &Simulation, rx: u16, ry: u16) -> bool {
 }
 
 fn bridge_overlay_at(sim: &Simulation, rx: u16, ry: u16) -> Option<u8> {
-    let terrain_overlay = sim
-        .resolved_terrain
-        .as_ref()
-        .and_then(|terrain| terrain.cell(rx, ry))
-        .and_then(|cell| cell.bridge_facts.overlay_id);
-    // Both ordinary families publish CellClass synchronously, even where no
-    // structural/deck runtime entry exists. Hut searches read that authority.
-    if terrain_overlay.is_some_and(|overlay| {
-        ordinary::member(i32::from(overlay), HutBridgeFamily::Low)
-            || ordinary::member(i32::from(overlay), HutBridgeFamily::High)
-    }) {
-        return terrain_overlay;
-    }
-    // Structural controllers retain their deferred runtime projection.
-    sim.bridge_state
-        .as_ref()
-        .and_then(|bs| bs.cell(rx, ry))
-        .map(|cell| cell.overlay_byte)
-        .or(terrain_overlay)
-        .or_else(|| {
-            sim.resolved_terrain
-                .as_ref()
-                .and_then(|terrain| terrain.cell(rx, ry))
-                .and_then(|cell| cell.bridge_layer.as_ref())
-                .map(|layer| layer.overlay_id)
-        })
-}
-
-/// RESIDUAL (GSI-04.14) — the fallback starter and anchor search is a VERA
-/// heuristic with no cited native address, unlike the primary hut path, whose
-/// 5x5 scan order, seed canonicalisation and repair walk are all pinned to
-/// addresses and tests. It runs when the primary path finds no anchor.
-///
-/// **The native fallback is identified.** It is the tail of
-/// `MapClass::DestroyBridge_Low_OnHutDeath` 0x00574C20 and its high twin
-/// 0x00574000, decompiled 2026-08-19: when the 5x5 overlay scan finds nothing,
-/// the native walks the eight directions out to three cells looking for a cell
-/// with `+0x140 & 0x500`, resolves an anchor from that cell's 0x100 / 0x400 /
-/// 0x80 bits (pure-bridgehead cells walk up to four perpendicular cells then
-/// offset two more), walks forward in direction `(flags & 0x800) ? 6 : 0`
-/// calling `ApplyDamageToCell` up to three times on each cell
-/// `MapClass::IsBridgeRampTile` 0x005746C0 accepts, and stops when
-/// `MapClass::IsLowBridgeEndpointTile` 0x00574600 fires. The structure here —
-/// starter search, `find_hut_fallback_ramp_cell`, `apply_hut_damage_retries`,
-/// `find_hut_fallback_endpoint_cell` — follows that shape.
-/// - Trigger: destroying a `BridgeRepairHut=yes` structure whose span does not
-///   resolve through the primary search — an irregular or already-damaged
-///   bridge.
-/// - Player effect: if the ported shape diverges, the wrong span may collapse,
-///   or none at all, where retail picks deterministically.
-/// - Frequency: uncommon; the primary path covers the ordinary intact-bridge
-///   case that stock maps present.
-/// - Downstream risk: a different span collapsing changes occupancy, zone
-///   connectivity and which units drop. Now that the native address is known,
-///   a term-by-term comparison against 0x00574C20 is the next step rather than
-///   more search.
-fn build_hut_fallback_plan(sim: &Simulation, hut_center: (u16, u16)) -> HutFallbackPlan {
-    let Some(starter) = find_hut_fallback_starter(sim, hut_center) else {
-        return HutFallbackPlan::NoAcceptedStarter;
-    };
-    resolve_hut_fallback_anchor(sim, starter)
-}
-
-fn find_hut_fallback_starter(
-    sim: &Simulation,
-    hut_center: (u16, u16),
-) -> Option<HutFallbackStarter> {
-    let hut_flags = hut_fallback_flags(sim, hut_center);
-    if hut_flags & HUT_FALLBACK_STARTER_MASK != 0 {
-        return Some(HutFallbackStarter {
-            pos: hut_center,
-            flags: hut_flags,
-        });
-    }
-
-    for &(dx, dy) in &HUT_FALLBACK_DIRS {
-        for distance in 1..=3i16 {
-            let rx = hut_center.0 as i32 + dx as i32 * distance as i32;
-            let ry = hut_center.1 as i32 + dy as i32 * distance as i32;
-            if rx < 0 || ry < 0 || rx > u16::MAX as i32 || ry > u16::MAX as i32 {
-                continue;
-            }
-            let pos = (rx as u16, ry as u16);
-            let flags = hut_fallback_flags(sim, pos);
-            if flags & HUT_FALLBACK_STARTER_MASK != 0 {
-                return Some(HutFallbackStarter { pos, flags });
-            }
-        }
-    }
-
-    None
-}
-
-fn resolve_hut_fallback_anchor(sim: &Simulation, starter: HutFallbackStarter) -> HutFallbackPlan {
-    if starter.flags & BRIDGE_FLAG_STRUCTURAL != 0 {
-        if starter.flags & BRIDGE_FLAG_ANCHOR_SELF != 0 {
-            return HutFallbackPlan::RampWalk {
-                starter,
-                anchor: starter.pos,
-            };
-        }
-        let anchor = sim
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(starter.pos.0, starter.pos.1))
-            .and_then(|cell| cell.bridge_facts.anchor)
-            .map(|relation| relation.anchor)
-            .or_else(|| {
-                sim.bridge_state
-                    .as_ref()
-                    .and_then(|bs| bs.cell(starter.pos.0, starter.pos.1))
-                    .and_then(|cell| cell.anchor_span_id)
-                    .and_then(|span_id| sim.bridge_state.as_ref()?.anchor_span(span_id))
-                    .map(|span| span.anchor)
-            });
-        return anchor.map_or(HutFallbackPlan::MissingAnchor, |anchor| {
-            HutFallbackPlan::RampWalk { starter, anchor }
-        });
-    }
-
-    if starter.flags & BRIDGE_FLAG_DESTROYED_OR_RAMP != 0 {
-        return resolve_pure_bridgehead_anchor(sim, starter);
-    }
-
-    HutFallbackPlan::NoAcceptedStarter
-}
-
-fn resolve_pure_bridgehead_anchor(
-    sim: &Simulation,
-    starter: HutFallbackStarter,
-) -> HutFallbackPlan {
-    let (scan_dir, opposite_dir) = if starter.flags & BRIDGE_FLAG_DIRECTION_ZERO != 0 {
-        (4usize, 0usize)
-    } else {
-        (2usize, 6usize)
-    };
-    let mut cur = starter.pos;
-    let mut continuations = 0usize;
-    loop {
-        let Some(next) = step_hut_dir(cur, scan_dir) else {
-            return HutFallbackPlan::MissingAnchor;
-        };
-        let flags = hut_fallback_flags(sim, next);
-        if flags & BRIDGE_FLAG_DESTROYED_OR_RAMP == 0 {
-            let Some(anchor) =
-                step_hut_dir(next, opposite_dir).and_then(|p| step_hut_dir(p, opposite_dir))
-            else {
-                return HutFallbackPlan::MissingAnchor;
-            };
-            return HutFallbackPlan::RampWalk { starter, anchor };
-        }
-        continuations += 1;
-        if continuations >= 4 {
-            return HutFallbackPlan::PureBridgeheadTooLong;
-        }
-        cur = next;
-    }
-}
-
-fn hut_fallback_flags(sim: &Simulation, pos: (u16, u16)) -> u32 {
+    // Every bridge writer publishes CellClass+44 synchronously; hut searches
+    // read that authority.
     sim.resolved_terrain
         .as_ref()
-        .and_then(|terrain| terrain.cell(pos.0, pos.1))
-        .map(|cell| cell.bridge_flags())
-        .unwrap_or(0)
+        .and_then(|terrain| terrain.cell(rx, ry))
+        .and_then(|cell| cell.bridge_facts.overlay_id)
 }
 
-fn run_hut_fallback_plan(host: &mut HutDamage<'_>, plan: HutFallbackPlan) -> HutFallbackExecution {
-    let HutFallbackPlan::RampWalk { starter, anchor } = plan else {
+/// The CABHUT death fallback: the tail of
+/// `MapClass::DestroyBridge_High_OnHutDeath` 0x00574000 and of its wooden twin
+/// 0x00574C20, run when the 5x5 overlay scan finds no seed. On stock maps
+/// that is every hut beside a bridgehead rather than over the span.
+///
+/// 1. Starter and anchor ([`ramp_repair::hut_anchor`], shared with the
+///    repair). No starter: return without a zone rebuild (0x00574244).
+/// 2. From the anchor, walk direction 6 (starter 0x800) or 0 through the
+///    MapClass cell-array rectangle to the first allocated cell
+///    [`HighBridgeRimTiles::is_ramp`] accepts, and call ApplyDamageToCell
+///    there up to three times until one returns true. No ramp: only the zone
+///    rebuild (0x00574465).
+/// 3. Walk back from the ramp through live cells to the first one
+///    [`HighBridgeRimTiles::is_end`] accepts. Unless its tile is two below the
+///    tile base (0x00574551), call ApplyDamageToCell up to three times on the
+///    cell one step back toward the ramp. Leaving the rectangle skips this.
+/// 4. UpdateAdjacentBridges_High (576770) at the ramp (0x005745B4), then the
+///    zone rebuild (0x005745CC), both in [`finish_bridge_damage`].
+fn run_hut_fallback(
+    host: &mut BridgeDamageDrivers<'_>,
+    family: HutBridgeFamily,
+    hut_center: (u16, u16),
+) -> HutFallbackExecution {
+    let center = (hut_center.0 as i16, hut_center.1 as i16);
+    // Err is a 0x100 starter without 0x80 or +0x2C, which faults natively;
+    // stamped structural cells always carry +0x2C.
+    let Ok(Some((anchor, forward))) =
+        ramp_repair::hut_anchor(&mut LiveCells::new(host.sim), center)
+    else {
         return HutFallbackExecution::default();
     };
-    let forward_dir = if starter.flags & BRIDGE_FLAG_DIRECTION_ZERO != 0 {
-        6
-    } else {
-        0
-    };
-    let terrain = host.sim.resolved_terrain.as_ref().unwrap();
-    let Some(ramp_cell) = find_hut_fallback_ramp_cell(terrain, anchor, forward_dir) else {
+    let sim: &Simulation = host.sim;
+    let terrain = sim
+        .resolved_terrain
+        .as_ref()
+        .expect("bridge damage terrain");
+    let tiles = hut_tile_keys(terrain, family);
+    let bounds = NativeStartBounds::from_session(sim, terrain);
+    let Some(ramp) = find_hut_fallback_ramp(terrain, bounds, tiles, anchor, forward) else {
         return HutFallbackExecution {
             zones_dirty: true,
-            ..Default::default()
+            rim_cell: None,
         };
     };
-    let mut live_flags = terrain.bridge_flag_execution_state();
-    apply_hut_damage_retries(host, ramp_cell, &mut live_flags);
-    let execution = HutFallbackExecution {
-        zones_dirty: true,
-        adjacent_dirty_anchor: Some(anchor),
-    };
-    let terrain = host.sim.resolved_terrain.as_ref().unwrap();
-    let reverse_dir = (forward_dir + 4) & 7;
-    let Some(endpoint) = find_hut_fallback_endpoint_cell(terrain, ramp_cell, reverse_dir) else {
-        return execution;
-    };
-    if hut_endpoint_needs_beyond_damage(terrain, endpoint)
-        && let Some(target) = step_hut_dir(endpoint, forward_dir)
-    {
-        apply_hut_damage_retries(host, target, &mut live_flags);
-    }
-    execution
-}
+    apply_hut_damage_retries(host, ramp);
 
-fn find_hut_fallback_ramp_cell(
-    terrain: &ResolvedTerrainGrid,
-    anchor: (u16, u16),
-    forward_dir: usize,
-) -> Option<(u16, u16)> {
-    let mut cur = anchor;
-    for _ in 0..MAX_EXTENT_PROBE {
-        let cell = terrain.cell(cur.0, cur.1)?;
-        if cell.bridge_facts.ramp_tile.is_some() {
-            return Some(cur);
-        }
-        cur = step_hut_dir(cur, forward_dir)?;
-    }
-    None
-}
-
-fn find_hut_fallback_endpoint_cell(
-    terrain: &ResolvedTerrainGrid,
-    ramp_cell: (u16, u16),
-    reverse_dir: usize,
-) -> Option<(u16, u16)> {
-    let mut cur = ramp_cell;
-    for _ in 0..MAX_HUT_ENDPOINT_PROBE {
-        cur = step_hut_dir(cur, reverse_dir)?;
-        let cell = terrain.cell(cur.0, cur.1)?;
-        if cell.bridge_facts.ramp_tile.is_some() || cell.bridge_facts.anchor.is_some() {
-            return Some(cur);
-        }
-    }
-    None
-}
-
-fn hut_endpoint_needs_beyond_damage(terrain: &ResolvedTerrainGrid, endpoint: (u16, u16)) -> bool {
-    terrain
-        .cell(endpoint.0, endpoint.1)
-        .and_then(|cell| cell.bridge_facts.ramp_tile)
-        .is_none_or(|tile| tile.relative_tile_index != u16::MAX - 1)
-}
-
-fn apply_hut_damage_retries(
-    host: &mut HutDamage<'_>,
-    target: (u16, u16),
-    live_flags: &mut crate::map::resolved_terrain::CellClassBridgeFlagState,
-) {
-    if host
+    let terrain = host
         .sim
-        .bridge_state
+        .resolved_terrain
         .as_ref()
-        .unwrap()
-        .cell(target.0, target.1)
-        .is_none()
-        && bridge_overlay_at(host.sim, target.0, target.1).is_none()
+        .expect("bridge damage terrain");
+    let back = (forward + 4) & 7;
+    if let Some((end, tile)) = find_hut_fallback_end(terrain, bounds, tiles, ramp, back)
+        && tile.wrapping_sub(tiles.base) != -2
     {
-        return;
+        apply_hut_damage_retries(host, rim::step(end, forward));
     }
+    HutFallbackExecution {
+        zones_dirty: true,
+        rim_cell: Some(ramp),
+    }
+}
+
+/// The live theater keys with the family's tileset base, absent on synthetic
+/// grids without an active theater. Each wooden bridge helper reads
+/// g_WoodBridgeSet_TileSetBase 0xABAD1C where its concrete twin reads
+/// g_BridgeSet_TileSetBase 0xAA0E28.
+fn family_rim_tiles(
+    terrain: &ResolvedTerrainGrid,
+    family: HutBridgeFamily,
+) -> Option<HighBridgeRimTiles> {
+    terrain
+        .high_bridge_rim_tiles()
+        .map(|_| hut_tile_keys(terrain, family))
+}
+
+/// The `Bridge*` theater keys both CABHUT tails compare, with the family's
+/// base. Grids without an active theater read every key as -1.
+fn hut_tile_keys(terrain: &ResolvedTerrainGrid, family: HutBridgeFamily) -> HighBridgeRimTiles {
+    let mut keys = terrain
+        .high_bridge_rim_tiles()
+        .unwrap_or_else(|| HighBridgeRimTiles::from_ini(-1, &[]));
+    if family == HutBridgeFamily::Low {
+        keys.base = terrain.wood_bridge_set_base();
+    }
+    keys
+}
+
+/// The ramp walk (0x00574372..0x00574465). Unallocated cells are stepped
+/// over without a lookup.
+fn find_hut_fallback_ramp(
+    terrain: &ResolvedTerrainGrid,
+    bounds: NativeStartBounds,
+    tiles: HighBridgeRimTiles,
+    mut at: (i16, i16),
+    forward: u8,
+) -> Option<(i16, i16)> {
+    while bounds.contains(at) {
+        if let Some(index) = terrain.native_fixed_cell_index(at.0, at.1) {
+            let cell = NativeCellIdentity::Real(index);
+            if tiles.is_ramp(
+                terrain.native_cell_tile_index(cell),
+                terrain.native_cell_sub_tile(cell),
+            ) {
+                return Some(at);
+            }
+        }
+        at = rim::step(at, forward);
+    }
+    None
+}
+
+/// The end walk (0x0057449E..0x0057454B): the end cell and its tile, or
+/// `None` when the walk leaves the rectangle first.
+fn find_hut_fallback_end(
+    terrain: &ResolvedTerrainGrid,
+    bounds: NativeStartBounds,
+    tiles: HighBridgeRimTiles,
+    mut at: (i16, i16),
+    back: u8,
+) -> Option<((i16, i16), i32)> {
+    loop {
+        at = rim::step(at, back);
+        let cell = terrain.native_cell_identity(at);
+        if !bounds.contains(at) {
+            return None;
+        }
+        let tile = terrain.native_cell_tile_index(cell);
+        if tiles.is_end(tile, terrain.native_cell_sub_tile(cell), back) {
+            return Some((at, tile));
+        }
+    }
+}
+
+/// The fallback's ApplyDamageToCell at `target`, up to three times until it
+/// returns true (`0x0057447A..0x00574490`, `0x00574591..0x005745A7`; the
+/// wooden twin's `0x0057509F`, `0x005751B6`).
+fn apply_hut_damage_retries(host: &mut BridgeDamageDrivers<'_>, target: (i16, i16)) {
     for _ in 0..MAX_HUT_ATTEMPTS_PER_STEP {
-        if apply_hut_damage_to_cell(host, target.0, target.1, live_flags) {
+        if host.apply_damage_to_cell(target) {
             break;
         }
     }
-}
-
-fn step_hut_dir(pos: (u16, u16), direction: usize) -> Option<(u16, u16)> {
-    let (dx, dy) = HUT_FALLBACK_DIRS[direction & 7];
-    let rx = pos.0 as i32 + dx as i32;
-    let ry = pos.1 as i32 + dy as i32;
-    if rx < 0 || ry < 0 || rx > u16::MAX as i32 || ry > u16::MAX as i32 {
-        return None;
-    }
-    Some((rx as u16, ry as u16))
 }
 
 fn physical_span_axis_for_destroy_overlay(family: HutBridgeFamily, overlay: u8) -> Option<Axis> {
@@ -985,7 +674,7 @@ fn step_axis(pos: (u16, u16), axis: Axis, dir: i16) -> Option<(u16, u16)> {
 /// invocation (axial 3-cell windows overlap by 2 across iterations).
 /// For the 1-wide bridges in test fixtures, ~4 axial cells.
 fn run_hut_collapse_bounded(
-    host: &mut HutDamage<'_>,
+    host: &mut BridgeDamageDrivers<'_>,
     family: HutBridgeFamily,
     axis: Axis,
     seed_rx: u16,
@@ -1001,8 +690,12 @@ fn run_hut_collapse_bounded(
     };
     for _ in 0..MAX_HUT_SWEEP_STEPS {
         spawn_hut_walker_pre_destroy_effects(host, family, axis, cur);
+        let direct = match family {
+            HutBridgeFamily::Low => DispatchPath::LowDirect,
+            HutBridgeFamily::High => DispatchPath::HighDirect,
+        };
         for _ in 0..MAX_HUT_ATTEMPTS_PER_STEP {
-            if host.destroy(family, cur) {
+            if host.run((cur.0 as i16, cur.1 as i16), direct) {
                 break;
             }
         }
@@ -1020,7 +713,7 @@ fn run_hut_collapse_bounded(
 }
 
 fn spawn_hut_walker_pre_destroy_effects(
-    host: &mut HutDamage<'_>,
+    host: &mut BridgeDamageDrivers<'_>,
     family: HutBridgeFamily,
     physical_axis: Axis,
     center: (u16, u16),
@@ -1050,7 +743,8 @@ fn spawn_hut_walker_pre_destroy_effects(
                 .cell(rx, ry)
                 .map(|c| c.level)
                 .unwrap_or(0);
-            spawn_walker_bridge_explosion(host.sim, host.rules, rx, ry, z);
+            let rules = host.rules;
+            spawn_walker_bridge_explosion(host.sim, rules, rx, ry, z);
         }
     }
 }
@@ -1096,38 +790,6 @@ fn in_bridge_band(family: HutBridgeFamily, overlay: u8) -> bool {
     ordinary::member(i32::from(overlay), family)
 }
 
-/// Ordinary overlay calls share synchronous57BAA0/57CCF0 publication with
-/// area damage; structural ramp outcomes retain their existing adapter.
-struct HutDamage<'a> {
-    sim: &'a mut Simulation,
-    rules: &'a RuleSet,
-    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
-    outcomes: Vec<StateOutcome>,
-    published_collapse: bool,
-}
-
-impl HutDamage<'_> {
-    fn retain(&mut self, outcome: StateOutcome) -> bool {
-        let success = outcome.apply_damage_success();
-        if outcome.has_effect() {
-            self.outcomes.push(outcome);
-        }
-        success
-    }
-    fn destroy(&mut self, family: HutBridgeFamily, cell: (u16, u16)) -> bool {
-        let result = live_publication::damage_ordinary(
-            self.sim,
-            self.rules,
-            self.registry,
-            (cell.0 as i16, cell.1 as i16),
-            family,
-        )
-        .unwrap_or_else(|error| panic!("hut {family:?} publication at {cell:?}: {error}"));
-        self.published_collapse |= result.collapsed;
-        result.returned
-    }
-}
-
 /// Multi-cell axial step. Saturates to u16 bounds — out-of-map → None.
 fn step_axis_by(pos: (u16, u16), axis: Axis, delta: i32) -> Option<(u16, u16)> {
     let (rx, ry) = pos;
@@ -1145,63 +807,6 @@ fn step_axis_by(pos: (u16, u16), axis: Axis, delta: i32) -> Option<(u16, u16)> {
                 .then_some((rx, next as u16))
         }
     }
-}
-
-fn apply_hut_damage_to_cell(
-    host: &mut HutDamage<'_>,
-    rx: u16,
-    ry: u16,
-    live_flags: &mut crate::map::resolved_terrain::CellClassBridgeFlagState,
-) -> bool {
-    if let Some(overlay) = bridge_overlay_at(host.sim, rx, ry) {
-        if (0x4A..=0x63).contains(&overlay) {
-            return host.destroy(HutBridgeFamily::Low, (rx, ry));
-        }
-        if (0xCD..=0xE6).contains(&overlay) {
-            return host.destroy(HutBridgeFamily::High, (rx, ry));
-        }
-    }
-    let Some(cell) = host
-        .sim
-        .bridge_state
-        .as_ref()
-        .unwrap()
-        .cell(rx, ry)
-        .copied()
-    else {
-        return false;
-    };
-    let bridge_state = host.sim.bridge_state.as_mut().unwrap();
-    let terrain = host.sim.resolved_terrain.as_mut().unwrap();
-    let is_high = !hut_cell_is_low_bridge(bridge_state, terrain, rx, ry);
-    let outcome =
-        match cell.role {
-            BridgeCellRole::Bridgehead => bridge_state
-                .bridgehead_advance_state_with_flags(rx, ry, is_high, terrain, live_flags),
-            BridgeCellRole::Anchor | BridgeCellRole::Body | BridgeCellRole::Tail => bridge_state
-                .body_cell_advance_state_with_flags(rx, ry, is_high, terrain, live_flags),
-        };
-    host.retain(outcome)
-}
-
-fn hut_cell_is_low_bridge(
-    bridge_state: &BridgeRuntimeState,
-    terrain: &crate::map::resolved_terrain::ResolvedTerrainGrid,
-    rx: u16,
-    ry: u16,
-) -> bool {
-    bridge_state
-        .cell(rx, ry)
-        .is_some_and(|cell| ordinary::member(i32::from(cell.overlay_byte), HutBridgeFamily::Low))
-        || terrain.cell(rx, ry).is_some_and(|cell| {
-            cell.is_wood_bridge_repair_tile
-                || cell.bridge_layer.as_ref().is_some_and(|layer| {
-                    ordinary::member(i32::from(layer.overlay_id), HutBridgeFamily::Low)
-                })
-                || cell.bridge_facts.overlay_id.is_some_and(|overlay| {
-                    ordinary::member(i32::from(overlay), HutBridgeFamily::Low)
-                })
-        })
 }
 
 /// Complete ground receivers before the deck pass and debris RNG.
@@ -1232,248 +837,31 @@ pub(super) fn kill_ground_occupants_at(
     ground_fallout::apply(sim, rules, overlay_registry, rx, ry);
 }
 
-/// Rim refresh. For each just-collapsed rim cell, walk along the bridge
-/// in the direction of an adjacent bridge head (Bridgehead role or already
-/// Destroyed) and reset orphaned stub cells whose anchor span has gone
-/// away. A reset cell becomes:
-///   - `overlay_byte = 0xFF` (sentinel: no overlay / -1)
-///   - `damage_state = Healthy { variant: 0 }`
-///   - `bridge_group_id = None`
-///   - `deck_present = false`
-///
-/// Walk-length cap = 30 cells per RE doc §7.2 to bound the worst-case
-/// linear-bridge length.
-fn update_adjacent_bridges(sim: &mut Simulation, rim_cells: &BTreeSet<(u16, u16)>) {
-    let Some(bridge_state) = sim.bridge_state.as_mut() else {
-        return;
+/// MapClass::InvalidateBridgeZones (`0x0056DAE0`) on the live record owner.
+/// Returns whether a record deactivated (the native RebuildZoneConnectivity
+/// `0x0056C510` request).
+pub(crate) fn invalidate_bridge_zones(sim: &mut Simulation, query: (i16, i16)) -> bool {
+    let (Some(bridges), Some(terrain)) = (sim.bridge_state.as_mut(), sim.resolved_terrain.as_ref())
+    else {
+        return false;
     };
-
-    const WALK_LIMIT: usize = 30;
-    const DIRECTIONS: [(i32, i32); 8] = [
-        (0, -1),
-        (1, -1),
-        (1, 0),
-        (1, 1),
-        (0, 1),
-        (-1, 1),
-        (-1, 0),
-        (-1, -1),
-    ];
-
-    for &(rx, ry) in rim_cells {
-        // Phase A: find adjacent bridge-head candidate among 8 neighbors.
-        let mut head_dir: Option<(i32, i32)> = None;
-        for &(dx, dy) in &DIRECTIONS {
-            let nx = rx as i32 + dx;
-            let ny = ry as i32 + dy;
-            if nx < 0 || ny < 0 {
-                continue;
-            }
-            let Some(neigh) = bridge_state.cell(nx as u16, ny as u16) else {
-                continue;
-            };
-            let is_head_candidate = matches!(neigh.role, BridgeCellRole::Bridgehead)
-                || matches!(neigh.damage_state, DamageState::Destroyed);
-            if is_head_candidate {
-                head_dir = Some((dx, dy));
-                break;
-            }
-        }
-        let Some((dx, dy)) = head_dir else { continue };
-
-        // Phase B: walk along the bridge from (rx, ry) toward the head and
-        // reset dangling stubs whose anchor span no longer exists.
-        let mut walk_x = rx as i32;
-        let mut walk_y = ry as i32;
-        for _ in 0..WALK_LIMIT {
-            walk_x += dx;
-            walk_y += dy;
-            if walk_x < 0 || walk_y < 0 {
-                break;
-            }
-            let Some(cell) = bridge_state.cell(walk_x as u16, walk_y as u16) else {
-                break;
-            };
-            if !cell.deck_present {
-                break;
-            }
-            // Just-walker-destroyed cells render their own destroyed-bridge
-            // overlay tile (0xE8 etc) — skip them so we don't blank that sprite.
-            if matches!(cell.damage_state, DamageState::Destroyed) {
-                continue;
-            }
-            let stub_now = cell
-                .anchor_span_id
-                .map(|sid| !bridge_state.anchor_spans().contains_key(&sid))
-                .unwrap_or(false);
-            if !stub_now {
-                continue;
-            }
-            if bridge_state.cell(walk_x as u16, walk_y as u16).is_some() {
-                let _ = bridge_state.write_overlay_byte(walk_x as u16, walk_y as u16, 0xFF);
-                let c = bridge_state
-                    .cell_mut(walk_x as u16, walk_y as u16)
-                    .expect("bridge stub existed before overlay write");
-                c.damage_state = DamageState::Healthy { variant: 0 };
-                c.bridge_group_id = None;
-                c.deck_present = false;
-            }
-        }
-    }
+    bridges.invalidate_bridge_zones(terrain, query)
 }
 
-/// TriggerEvent 31 broadcast. Mirror of binary
-/// `MapClass::RepairBridgeSegment @ 0x00575EE0` (binary name is
-/// misleading — the function actually fires `TriggerEvent 31` on bridge
-/// span collapse; HIGH §11.3 + §12.6).
+/// Zone graph refresh after a collapse or CABHUT fallback. The endpoint
+/// records' active bytes are already current: collapses cleared theirs through
+/// [`invalidate_bridge_zones`], repairs set theirs through56DB70.
 ///
-/// No-op on skirmish maps — RA2 skirmish has no triggers bound to
-/// event 31. Wired as a hook so future campaign and map-trigger
-/// support can drop in without changing the orchestrator's cascade
-/// order.
-fn notify_bridge_span_collapse(sim: &mut Simulation, cells: &BTreeSet<(u16, u16)>) {
-    let _ = (sim, cells);
-}
-
-/// Select the ground-level bridge surface from map/deck facts, never from the
-/// numeric overlay band: urban low bridges share bytes with elevated bridges.
-fn is_low_surface_bridge_cell(
-    bridge_cell: &BridgeRuntimeCell,
-    terrain_cell: &crate::map::resolved_terrain::ResolvedTerrainCell,
-) -> bool {
-    if let Some(layer) = terrain_cell.bridge_layer.as_ref() {
-        return layer.direction == BridgeDirection::Low;
-    }
-    terrain_cell.bridge_facts.family == crate::map::bridge_facts::BridgeStampFamily::None
-        && terrain_cell.bridge_facts.overlay_id.is_some()
-        && bridge_cell.deck_level == terrain_cell.level
-}
-
-fn project_low_bridge_overlay_ops(
-    sim: &mut Simulation,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ops: Vec<BridgeOverlayProjectionOp>,
-) {
-    let mut terrain_changed = false;
-    for op in ops {
-        let (rx, ry) = match op {
-            BridgeOverlayProjectionOp::Write { rx, ry, .. }
-            | BridgeOverlayProjectionOp::Recalc { rx, ry } => (rx, ry),
-        };
-        let low_surface = sim
-            .bridge_state
-            .as_ref()
-            .and_then(|state| state.cell(rx, ry))
-            .zip(
-                sim.resolved_terrain
-                    .as_ref()
-                    .and_then(|terrain| terrain.cell(rx, ry)),
-            )
-            .is_some_and(|(bridge_cell, terrain_cell)| {
-                is_low_surface_bridge_cell(bridge_cell, terrain_cell)
-            });
-        if !low_surface {
-            continue;
-        }
-
-        match op {
-            BridgeOverlayProjectionOp::Write { overlay_byte, .. } => {
-                if let Some(overlay_grid) = sim.overlay_grid.as_mut() {
-                    let _ = overlay_grid.write_bridge_overlay_identity(rx, ry, overlay_byte);
-                }
-            }
-            BridgeOverlayProjectionOp::Recalc { .. } => {
-                let Some(registry) = overlay_registry else {
-                    continue;
-                };
-                if let (Some(overlay_grid), Some(terrain)) =
-                    (sim.overlay_grid.as_mut(), sim.resolved_terrain.as_mut())
-                {
-                    terrain_changed |= crate::sim::overlay_grid::recalc_overlay_passability(
-                        overlay_grid,
-                        terrain,
-                        registry,
-                        rx,
-                        ry,
-                    );
-                }
-            }
-        }
-    }
-
-    if terrain_changed && let Some(terrain) = sim.resolved_terrain.as_ref() {
-        sim.terrain_costs =
-            crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(terrain);
-    }
-}
-
-pub(crate) fn project_pending_low_bridge_overlay_writes(
-    sim: &mut Simulation,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-) {
-    let ops = sim
-        .bridge_state
-        .as_mut()
-        .map(BridgeRuntimeState::take_overlay_projection_ops)
-        .unwrap_or_default();
-    project_low_bridge_overlay_ops(sim, overlay_registry, ops);
-}
-
-/// Reconcile serialized low-bridge authority with the fresh map-derived
-/// terrain cache. This also repairs older saves whose OverlayGrid identity
-/// still contains the load-time Road overlay after a terminal collapse.
-pub(crate) fn reconcile_low_bridge_surface_after_cache_load(
-    sim: &mut Simulation,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
-) {
-    let ops = sim.bridge_state.as_mut().map(|state| {
-        let _ = state.take_overlay_projection_ops();
-        state
-            .iter_cells()
-            .flat_map(|((rx, ry), cell)| {
-                [
-                    BridgeOverlayProjectionOp::Write {
-                        rx,
-                        ry,
-                        overlay_byte: cell.overlay_byte,
-                    },
-                    BridgeOverlayProjectionOp::Recalc { rx, ry },
-                ]
-            })
-            .collect()
-    });
-    project_low_bridge_overlay_ops(sim, Some(overlay_registry), ops.unwrap_or_default());
-}
-
-/// Zone graph refresh. Per HIGH §12.8: walker emits `zones_dirty=true`
-/// only when a final-stage cell flips a `BridgeEndpointRecord.active`
-/// flag, mirroring the binary's `MapClass::InvalidateBridgeZones`
-/// @ `0x0056DAE0` → `MapClass::RebuildZoneConnectivity` @ `0x0056C510`
-/// chain. When set:
-///   1. Recompute every endpoint record's `active` flag from current
-///      cell damage state — first destroyed cell in a group flips its
-///      endpoint pair to `active = false`. Replaces the side-effect of
-///      the legacy single-shot `apply_damage`.
-///   2. Ask the world navigation owner to publish current terrain costs,
-///      structure blockers, bridge passability and zone connectivity together.
-pub(crate) fn refresh_bridge_zones_if_dirty(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    any_zones_dirty: bool,
-) {
-    if !any_zones_dirty {
-        return;
-    }
-    if let Some(bs) = sim.bridge_state.as_mut() {
-        bs.refresh_endpoint_active_flags();
-    }
-    // VERA-internal projection ownership, gamemd equivalent UNCHECKED.
-    // This publishes the canonical path as well as zones. Use the shared
-    // structure/terrain projection so unrelated foundations survive bridge
-    // changes before the next reader; endpoint refresh must stay first.
-    // Native zone-tail ordering: BRIDGE_COLLAPSE_FALLOUT_ORDERING_GHIDRA_REPORT.md
-    // in docs/research/bridges/05-damage-collapse-repair-cabhut/, section
-    // "Zone/path invalidation" (UpdateBridgeZonesHelper @ 0x0056C510).
+/// VERA-internal projection ownership, gamemd equivalent UNCHECKED. It stands
+/// in for the native per-cell Recalc, RemoveBridgeZoneEdges (`0x00584E50`) and
+/// RebuildZoneConnectivity (`0x0056C510`), and runs even when no record
+/// changed. It publishes the canonical path as well as zones through the
+/// shared structure/terrain projection, so unrelated foundations survive
+/// bridge changes before the next reader. Native zone-tail ordering:
+/// BRIDGE_COLLAPSE_FALLOUT_ORDERING_GHIDRA_REPORT.md in
+/// docs/research/bridges/05-damage-collapse-repair-cabhut/, section
+/// "Zone/path invalidation".
+pub(crate) fn publish_bridge_navigation(sim: &mut Simulation, rules: &RuleSet) {
     let _ = sim.rebuild_dynamic_navigation(rules);
 }
 
@@ -1500,7 +888,7 @@ fn spawn_bridge_debris(sim: &mut Simulation, rules: &RuleSet, cells: &BTreeSet<(
             .as_ref()
             .map(|terrain| terrain.collapse_animation_level(rx as i16, ry as i16))
             .unwrap_or(0);
-        let z = i32::from(level) * LEPTONS_PER_LEVEL as i32 + BRIDGE_HEIGHT_DELTA_LEPTONS as i32;
+        let z = i32::from(level) * LEPTONS_PER_LEVEL as i32 + BRIDGE_DECK_HEIGHT_LEPTONS;
         let coord = bridge_jittered_coord(sim.bridge_rng(), (rx as i16, ry as i16), z);
         let metallic_draw = sim
             .bridge_rng()
@@ -1627,68 +1015,36 @@ fn drop_in_bridge_deck_entities(sim: &mut Simulation, rx: u16, ry: u16) {
     }
 }
 
-/// Inner dispatch loop. Owns the split borrow of `Simulation` so the
-/// dispatcher can read terrain immutably while mutating bridge_state +
-/// rng. Returns a `StateOutcome` per event whose path matched and whose
-/// driver did real work.
-fn run_dispatch_loop(
-    sim: &mut Simulation,
-    events: &[BridgeDamageEvent],
-    bridge_strength: i32,
-    publication: Option<(
-        &RuleSet,
-        Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    )>,
-) -> (Vec<StateOutcome>, bool) {
-    damage_dispatch::run(sim, events, bridge_strength, publication)
-}
-
-fn apply_runtime_bridge_flag_transcript_from_outcome(sim: &mut Simulation, outcome: &StateOutcome) {
-    for &stamp in outcome.setter_transcript() {
-        sim.apply_planned_bridge_flag_stamp_to_real_cells(stamp);
-    }
-    // The legacy caller has already executed56E990 synchronously on the live
-    // grid. Retain plain pavement cells too, before fallout/another dispatch.
-    if let Some(terrain) = sim.resolved_terrain.as_ref() {
-        for &(rx, ry) in outcome.damaged_variant_cells() {
-            if let Some(cell) = terrain.cell(rx, ry) {
-                sim.dynamic_terrain_cells.insert(
-                    (rx, ry),
-                    crate::map::resolved_terrain::DynamicTerrainCellState::capture(cell),
-                );
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::bridge_facts::{BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_DIRECTION_ZERO};
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-    use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
-    use crate::sim::components::{BridgeOccupancy, Health};
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_intern;
-    use crate::sim::movement::locomotion::LocomotorSlot;
-    use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
     use crate::sim::occupancy::CellListInsertion;
-    use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
-    pub(super) fn seed_bridge_cell(
-        overlay_byte: u8,
-    ) -> crate::sim::bridge_state::BridgeRuntimeCell {
-        crate::sim::bridge_state::BridgeRuntimeCell {
-            deck_present: true,
-            destroyable: true,
-            deck_level: 4,
-            bridge_group_id: Some(1),
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: None,
-            role: BridgeCellRole::Body,
-            anchor_span_id: None,
-            overlay_byte,
-            bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
+    /// Write CellClass+44 on each listed cell.
+    pub(super) fn seed_bridge_overlay(
+        terrain: &mut ResolvedTerrainGrid,
+        cells: &[(u16, u16)],
+        overlay: u8,
+    ) {
+        for &(x, y) in cells {
+            terrain.cell_mut(x, y).unwrap().bridge_facts.overlay_id = Some(overlay);
+        }
+    }
+
+    /// A hut-scan overlay reader over the listed CellClass+44 identities.
+    fn overlay_lookup(cells: &[((u16, u16), u8)]) -> impl Fn(u16, u16) -> Option<u8> + '_ {
+        move |x, y| {
+            cells
+                .iter()
+                .find(|(cell, _)| *cell == (x, y))
+                .map(|(_, overlay)| *overlay)
         }
     }
 
@@ -1702,347 +1058,24 @@ mod tests {
             for x in 0..=5u16 {
                 let is_bridge = x == 5 && y == 5;
                 cells.push(ResolvedTerrainCell {
-                    rx: x,
-                    ry: y,
-                    source_tile_index: 0,
-                    source_sub_tile: 0,
-                    final_tile_index: 0,
-                    final_sub_tile: 0,
-                    is_wood_bridge_repair_tile: false,
-                    level: 0,
-                    filled_clear: false,
-                    tileset_index: Some(0),
-                    land_type: 0,
-                    yr_cell_land_type: 0,
-                    slope_type: 0,
-                    template_height: 0,
-                    render_offset_x: 0,
-                    render_offset_y: 0,
-                    terrain_class: TerrainClass::Clear,
-                    speed_costs: SpeedCostProfile::default(),
                     is_water: is_bridge,
-                    is_cliff_like: false,
-                    height_in_pixels: 0,
-                    variant: 0,
-                    is_rough: false,
-                    is_road: false,
-                    accepts_smudge: false,
-                    allows_tiberium: false,
-                    has_ramp: false,
-                    canonical_ramp: None,
                     ground_walk_blocked: is_bridge,
-                    terrain_object_blocks: false,
-                    terrain_object_occupation: None,
-                    overlay_blocks: false,
-                    overlay_zone_type: None,
-                    outside_playfield: false,
-                    zone_type: 0,
-                    base_ground_walk_blocked: false,
-                    base_build_blocked: false,
-                    base_land_type: 0,
-                    base_yr_cell_land_type: 0,
-                    base_terrain_class: Default::default(),
-                    base_speed_costs: Default::default(),
                     has_bridge_deck: is_bridge,
                     bridge_walkable: is_bridge,
                     bridge_transition: is_bridge,
                     bridge_deck_level: if is_bridge { deck_level } else { 0 },
-                    bridge_layer: None,
-                    bridge_facts: crate::map::bridge_facts::BridgeCellFacts::default(),
-                    tube_index: None,
-                    radar_left: [0, 0, 0],
-                    radar_right: [0, 0, 0],
-                    has_damaged_data: false,
-                    bridgehead_anchor_class_at_load: None,
+                    ..crate::map::resolved_terrain::test_flat_cell(x, y)
                 });
             }
         }
         ResolvedTerrainGrid::from_cells(6, 6, cells)
     }
 
-    fn gsi_04_13_stock_low_registry() -> crate::map::overlay_types::OverlayTypeRegistry {
-        use std::fmt::Write as _;
-
-        let mut ini = String::from("[OverlayTypes]\n");
-        for id in 0..=101u8 {
-            let name = if (74..=101).contains(&id) {
-                format!("LOBRDG{:02}", id - 73)
-            } else {
-                format!("FILL{id:03}")
-            };
-            let _ = writeln!(ini, "{id}={name}");
-        }
-        ini.push_str(
-            "[Road]\nFoot=100%\nTrack=100%\nWheel=100%\n\
-             [Rough]\nFoot=100%\nTrack=100%\nWheel=100%\n",
-        );
-        for variant in 1..=26u8 {
-            let _ = writeln!(
-                ini,
-                "[LOBRDG{variant:02}]\nLand=Road\nNoUseTileLandType=yes"
-            );
-        }
-        for variant in 27..=28u8 {
-            let _ = writeln!(ini, "[LOBRDG{variant:02}]\nLand=Road\nNoUseTileLandType=no");
-        }
-        crate::map::overlay_types::OverlayTypeRegistry::from_ini(
-            &crate::rules::ini_parser::IniFile::from_str(&ini),
-            None,
-        )
-    }
-
-    fn gsi_04_13_low_cell(
-        ry: u16,
-        road_speed: SpeedCostProfile,
-        rough_speed: SpeedCostProfile,
-    ) -> ResolvedTerrainCell {
-        use crate::rules::terrain_rules::LandType;
-
-        let mut bridge_facts = crate::map::bridge_facts::BridgeCellFacts::default();
-        bridge_facts.overlay_id = Some(0x4A);
-        ResolvedTerrainCell {
-            rx: 0,
-            ry,
-            source_tile_index: 0,
-            source_sub_tile: 0,
-            final_tile_index: 0,
-            final_sub_tile: 0,
-            is_wood_bridge_repair_tile: true,
-            level: 0,
-            filled_clear: false,
-            tileset_index: Some(0),
-            land_type: LandType::Road.as_index(),
-            yr_cell_land_type: LandType::Road.as_index(),
-            slope_type: 0,
-            template_height: 0,
-            height_in_pixels: 0,
-            render_offset_x: 0,
-            render_offset_y: 0,
-            terrain_class: TerrainClass::Road,
-            speed_costs: road_speed,
-            is_water: false,
-            is_cliff_like: false,
-            is_rough: false,
-            is_road: true,
-            accepts_smudge: false,
-            allows_tiberium: false,
-            variant: 0,
-            has_ramp: false,
-            canonical_ramp: None,
-            ground_walk_blocked: false,
-            terrain_object_blocks: false,
-            terrain_object_occupation: None,
-            overlay_blocks: false,
-            overlay_zone_type: None,
-            outside_playfield: false,
-            zone_type: crate::map::resolved_terrain::zone_class::GROUND,
-            base_ground_walk_blocked: false,
-            base_build_blocked: false,
-            base_land_type: LandType::Rough.as_index(),
-            base_yr_cell_land_type: LandType::Rough.as_index(),
-            base_terrain_class: TerrainClass::Rough,
-            base_speed_costs: rough_speed,
-            has_bridge_deck: true,
-            bridge_walkable: false,
-            bridge_transition: false,
-            bridge_deck_level: 0,
-            bridge_layer: Some(crate::map::resolved_terrain::BridgeLayer {
-                overlay_id: 0x4A,
-                overlay_name: "LOBRDG01".to_owned(),
-                deck_level: 0,
-                direction: BridgeDirection::Low,
-            }),
-            bridge_facts,
-            tube_index: None,
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-            bridgehead_anchor_class_at_load: None,
-        }
-    }
-
-    fn gsi_04_13_assert_ground_surface(sim: &Simulation, expected_land: u8) {
-        use crate::sim::movement::locomotor::MovementLayer;
-
-        let terrain = sim.resolved_terrain.as_ref().expect("terrain");
-        let path = crate::sim::pathfinding::PathGrid::from_resolved_terrain_with_bridges(
-            terrain,
-            sim.bridge_state.as_ref(),
-        );
-        for ry in 0..3 {
-            let cell = terrain.cell(0, ry).expect("low bridge cell");
-            assert_eq!(cell.land_type, expected_land, "land at y={ry}");
-            assert_eq!(
-                cell.yr_cell_land_type, expected_land,
-                "CellClass land at y={ry}"
-            );
-            if expected_land == crate::rules::terrain_rules::LandType::Road.as_index() {
-                assert_eq!(cell.terrain_class, TerrainClass::Road);
-                assert!(cell.is_road);
-                assert!(!cell.is_rough);
-            } else {
-                assert_eq!(cell.terrain_class, TerrainClass::Rough);
-                assert!(cell.is_rough);
-                assert!(!cell.is_road);
-                assert_eq!(cell.speed_costs, cell.base_speed_costs);
-            }
-            assert!(!cell.is_elevated_bridge_cell(), "low bridge at y={ry}");
-            assert!(path.is_walkable_on_layer(0, ry, MovementLayer::Ground));
-            assert!(!path.is_walkable_on_layer(0, ry, MovementLayer::Bridge));
-        }
-        assert!(terrain.tube_facts().is_empty());
-        assert!(
-            sim.bridge_state
-                .as_ref()
-                .expect("bridge state")
-                .endpoint_records()
-                .is_empty(),
-            "stock low surface has no synthetic BridgeZone record"
-        );
-    }
-
-    #[test]
-    fn gsi_04_13_urban_low_uses_deck_facts_not_high_numeric_overlay_band() {
-        let mut runtime = seed_bridge_cell(0xCD);
-        runtime.deck_level = 0;
-        let mut terrain =
-            gsi_04_13_low_cell(0, SpeedCostProfile::default(), SpeedCostProfile::default());
-        terrain.bridge_facts.overlay_id = Some(0xCD);
-        terrain
-            .bridge_layer
-            .as_mut()
-            .expect("bridge layer")
-            .overlay_id = 0xCD;
-
-        assert!(is_low_surface_bridge_cell(&runtime, &terrain));
-        terrain
-            .bridge_layer
-            .as_mut()
-            .expect("bridge layer")
-            .direction = BridgeDirection::EastWest;
-        assert!(!is_low_surface_bridge_cell(&runtime, &terrain));
-    }
-
-    #[test]
-    fn gsi_04_13_stock_low_cache_reconcile_preserves_overlay_metadata() {
-        use crate::rules::locomotor_type::SpeedType;
-        use crate::rules::terrain_rules::LandType;
-
-        let registry = gsi_04_13_stock_low_registry();
-        let road_speed = registry
-            .flags(0x4A)
-            .and_then(|flags| flags.land_speed_costs)
-            .expect("LOBRDG01 Road profile");
-        let rough_speed = SpeedCostProfile {
-            foot: Some(100),
-            track: Some(100),
-            wheel: Some(100),
-            ..SpeedCostProfile::default()
-        };
-        let terrain = ResolvedTerrainGrid::from_cells(
-            1,
-            3,
-            (0..3)
-                .map(|ry| gsi_04_13_low_cell(ry, road_speed, rough_speed))
-                .collect(),
-        );
-        let bridge_state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 1);
-        let preserved_owner = test_intern("GSI0413OWNER");
-        let mut overlay_grid = crate::sim::overlay_grid::OverlayGrid::new(1, 3);
-        for ry in 0..3 {
-            overlay_grid.place_overlay(0, ry, 0x4A, 0xA0 + ry as u8);
-            overlay_grid.cell_mut(0, ry).wall_owner = Some(preserved_owner);
-        }
-
-        let mut sim = Simulation::new();
-        sim.terrain_costs =
-            crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(&terrain);
-        sim.resolved_terrain = Some(terrain);
-        sim.bridge_state = Some(bridge_state);
-        sim.overlay_grid = Some(overlay_grid);
-        gsi_04_13_assert_ground_surface(&sim, LandType::Road.as_index());
-
-        // Supplied serialized terminal overlays. Ordinary damage is covered by
-        // the native controller corpus and physical Shrapnel chain; this test
-        // isolates rebuilding a pristine map cache from legacy saved state.
-        for ry in 0..3 {
-            let cell = sim.bridge_state.as_mut().unwrap().cell_mut(0, ry).unwrap();
-            cell.overlay_byte = 100;
-            cell.damage_state = DamageState::Destroyed;
-        }
-        // A loaded save receives the pristine map cache again. Reconcile the
-        // serialized bridge owner before movement can observe stale Road.
-        for ry in 0..3 {
-            let cell = sim
-                .resolved_terrain
-                .as_mut()
-                .expect("terrain")
-                .cell_mut(0, ry)
-                .expect("low bridge cell");
-            cell.land_type = LandType::Road.as_index();
-            cell.yr_cell_land_type = LandType::Road.as_index();
-            cell.terrain_class = TerrainClass::Road;
-            cell.speed_costs = road_speed;
-            cell.is_rough = false;
-            cell.is_road = true;
-            let _ = sim
-                .overlay_grid
-                .as_mut()
-                .expect("overlay grid")
-                .write_bridge_overlay_identity(0, ry, 0x4A);
-        }
-        let stale = sim.resolved_terrain.as_ref().expect("terrain");
-        sim.terrain_costs =
-            crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(stale);
-        reconcile_low_bridge_surface_after_cache_load(&mut sim, &registry);
-        gsi_04_13_assert_ground_surface(&sim, LandType::Rough.as_index());
-
-        assert_eq!(
-            sim.terrain_costs
-                .get(&SpeedType::Track)
-                .unwrap()
-                .cost_at(0, 1),
-            100,
-        );
-        for ry in 0..3 {
-            let overlay = sim.overlay_grid.as_ref().unwrap().cell(0, ry);
-            assert_eq!(overlay.overlay_id, Some(100));
-            assert_eq!(overlay.overlay_data, 0xA0 + ry as u8);
-            assert_eq!(overlay.wall_owner, Some(preserved_owner));
-        }
-    }
-
     /// Build a Drive locomotor on the Bridge layer (mimics `high=true` spawn).
     fn drive_loco_on_bridge() -> LocomotorState {
-        LocomotorState {
-            kind: LocomotorKind::Drive,
-            slot: LocomotorSlot::from_kind(LocomotorKind::Drive),
-            powered: true,
-            piggyback: None,
-            runtime_payload: crate::sim::movement::locomotion::LocomotorRuntimePayload::for_kind(
-                LocomotorKind::Drive,
-                0,
-            ),
-            layer: MovementLayer::Bridge,
-            phase: GroundMovePhase::Cruising,
-
-            speed_multiplier: SimFixed::from_num(1),
-            speed_fraction: SimFixed::from_num(1),
-            fly_current_speed: SIM_ZERO,
-            altitude: SIM_ZERO,
-
-            balloon_hover: false,
-            hover_attack: false,
-            speed_type: SpeedType::Track,
-            movement_zone: MovementZone::Normal,
-            rot: 0,
-            air_progress: SIM_ZERO,
-            infantry_wobble_phase: 0.0,
-            subcell_dest: None,
-            hover_throttle: crate::util::fixed_math::SIM_ZERO,
-            hover_speed_request: crate::util::fixed_math::SIM_ZERO,
-            hover_bob_offset: crate::util::fixed_math::SIM_ZERO,
-        }
+        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
+        loco.layer = MovementLayer::Bridge;
+        loco
     }
 
     /// Insert a vehicle on the bridge deck at (5,5) with deck_level=3.
@@ -2062,7 +1095,6 @@ mod tests {
             true,
         );
         entity.on_bridge = true;
-        entity.bridge_occupancy = Some(BridgeOccupancy { deck_level: 3 });
         entity.locomotor = Some(drive_loco_on_bridge());
         // Give it a short fake movement target so we can verify it gets
         // halted on collapse.
@@ -2098,7 +1130,6 @@ mod tests {
             .expect("deck entity must SURVIVE collapse over water");
         assert_eq!(e.position.z, 0, "snapped to ground level");
         assert!(!e.on_bridge, "OnBridge cleared by DropIn");
-        assert!(e.bridge_occupancy.is_none(), "bridge_occupancy cleared");
         assert!(e.movement_target.is_none(), "movement halted on collapse");
         assert_eq!(e.health.current, 256, "DropIn never harms — no damage");
         let loco = e.locomotor.as_ref().expect("locomotor");
@@ -2107,7 +1138,6 @@ mod tests {
             MovementLayer::Ground,
             "layer flipped Bridge → Ground"
         );
-        assert_eq!(loco.phase, GroundMovePhase::Idle, "phase reset to Idle");
         let cell = sim
             .substrate
             .occupancy
@@ -2115,6 +1145,47 @@ mod tests {
             .expect("occupancy retained");
         assert_eq!(cell.count_on(MovementLayer::Ground), 1);
         assert_eq!(cell.count_on(MovementLayer::Bridge), 0);
+    }
+
+    /// DropIn (`0x005F4160`) writes no Location: an object falling onto the
+    /// deck keeps its Z when the deck goes, and falls on to the ground.
+    #[test]
+    fn drop_in_keeps_a_falling_objects_z_and_it_falls_to_the_ground() {
+        let mut sim = Simulation::new();
+        sim.resolved_terrain = Some(water_below_bridge_terrain(3));
+        let id = spawn_deck_unit(&mut sim);
+        let entity = sim.substrate.entities.get_mut(id).unwrap();
+        entity.position.exact_z_leptons = Some(1000);
+        entity.set_falling_down_for_test(true);
+        sim.substrate.occupancy.add(
+            5,
+            5,
+            id,
+            MovementLayer::Bridge,
+            None,
+            CellListInsertion::PrependNonBuilding,
+        );
+
+        drop_in_bridge_deck_entities(&mut sim, 5, 5);
+
+        let e = sim.substrate.entities.get(id).unwrap();
+        assert!(!e.on_bridge);
+        assert!(e.is_falling_down());
+        assert_eq!(e.position.exact_z_leptons, Some(1000));
+        let mut frames = 0;
+        while !sim.advance_fall(id, -8) {
+            frames += 1;
+            assert!(frames < 200, "the fall reaches the ground");
+        }
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .position
+                .exact_z_leptons,
+            Some(0)
+        );
     }
 
     /// Bound synthetic explosion types for the hut-walker fixture.
@@ -2144,14 +1215,10 @@ mod tests {
 
     #[test]
     fn hut_destroy_overlay_seed_uses_physical_span_axis_not_walker_family() {
-        use crate::sim::bridge_state::BridgeRuntimeState;
-
-        let mut high_ew_range = BridgeRuntimeState::default();
-        high_ew_range.test_seed_cell(5, 4, seed_bridge_cell(0xCD));
-        high_ew_range.test_seed_cell(5, 5, seed_bridge_cell(0xCD));
+        let high_ew_range = [((5, 4), 0xCD), ((5, 5), 0xCD)];
         assert_eq!(
             find_destroy_overlay_seed(
-                &|x, y| high_ew_range.cell(x, y).map(|c| c.overlay_byte),
+                &overlay_lookup(&high_ew_range),
                 &[(5, 5)],
                 HutBridgeFamily::High
             ),
@@ -2159,12 +1226,10 @@ mod tests {
             "0xCD high range dispatches to CollapseBridge_EW_High, so the hut sweep must step X"
         );
 
-        let mut high_ns_range = BridgeRuntimeState::default();
-        high_ns_range.test_seed_cell(4, 5, seed_bridge_cell(0xD6));
-        high_ns_range.test_seed_cell(5, 5, seed_bridge_cell(0xD6));
+        let high_ns_range = [((4, 5), 0xD6), ((5, 5), 0xD6)];
         assert_eq!(
             find_destroy_overlay_seed(
-                &|x, y| high_ns_range.cell(x, y).map(|c| c.overlay_byte),
+                &overlay_lookup(&high_ns_range),
                 &[(5, 5)],
                 HutBridgeFamily::High
             ),
@@ -2172,12 +1237,10 @@ mod tests {
             "0xD6 high range dispatches to CollapseBridge_NS_High, so the hut sweep must step Y"
         );
 
-        let mut low_ew_range = BridgeRuntimeState::default();
-        low_ew_range.test_seed_cell(5, 4, seed_bridge_cell(0x4A));
-        low_ew_range.test_seed_cell(5, 5, seed_bridge_cell(0x4A));
+        let low_ew_range = [((5, 4), 0x4A), ((5, 5), 0x4A)];
         assert_eq!(
             find_destroy_overlay_seed(
-                &|x, y| low_ew_range.cell(x, y).map(|c| c.overlay_byte),
+                &overlay_lookup(&low_ew_range),
                 &[(5, 5)],
                 HutBridgeFamily::Low
             ),
@@ -2185,12 +1248,10 @@ mod tests {
             "0x4A low range dispatches to CollapseBridge_EW_Low, so the hut sweep must step X"
         );
 
-        let mut low_ns_range = BridgeRuntimeState::default();
-        low_ns_range.test_seed_cell(4, 5, seed_bridge_cell(0x53));
-        low_ns_range.test_seed_cell(5, 5, seed_bridge_cell(0x53));
+        let low_ns_range = [((4, 5), 0x53), ((5, 5), 0x53)];
         assert_eq!(
             find_destroy_overlay_seed(
-                &|x, y| low_ns_range.cell(x, y).map(|c| c.overlay_byte),
+                &overlay_lookup(&low_ns_range),
                 &[(5, 5)],
                 HutBridgeFamily::Low
             ),
@@ -2201,17 +1262,10 @@ mod tests {
 
     #[test]
     fn cabhut_seed_canonicalization_shifts_edge_hit_forward() {
-        use crate::sim::bridge_state::BridgeRuntimeState;
-
-        let mut state = BridgeRuntimeState::default();
-        state.test_seed_cell(5, 5, seed_bridge_cell(0xCD));
+        let state = [((5, 5), 0xCD)];
 
         assert_eq!(
-            find_destroy_overlay_seed(
-                &|x, y| state.cell(x, y).map(|c| c.overlay_byte),
-                &[(5, 5)],
-                HutBridgeFamily::High
-            ),
+            find_destroy_overlay_seed(&overlay_lookup(&state), &[(5, 5)], HutBridgeFamily::High),
             Some((5, 6, Axis::EW)),
             "when no back lane is in the bridge band, DestroyBridgeFromCell shifts one cell forward"
         );
@@ -2219,18 +1273,10 @@ mod tests {
 
     #[test]
     fn cabhut_seed_canonicalization_keeps_middle_hit() {
-        use crate::sim::bridge_state::BridgeRuntimeState;
-
-        let mut state = BridgeRuntimeState::default();
-        state.test_seed_cell(5, 4, seed_bridge_cell(0xCD));
-        state.test_seed_cell(5, 5, seed_bridge_cell(0xCD));
+        let state = [((5, 4), 0xCD), ((5, 5), 0xCD)];
 
         assert_eq!(
-            find_destroy_overlay_seed(
-                &|x, y| state.cell(x, y).map(|c| c.overlay_byte),
-                &[(5, 5)],
-                HutBridgeFamily::High
-            ),
+            find_destroy_overlay_seed(&overlay_lookup(&state), &[(5, 5)], HutBridgeFamily::High),
             Some((5, 5, Axis::EW)),
             "one in-band back lane and one off-band second back lane keeps the matched cell"
         );
@@ -2238,19 +1284,10 @@ mod tests {
 
     #[test]
     fn cabhut_seed_canonicalization_shifts_two_cells_in_backward() {
-        use crate::sim::bridge_state::BridgeRuntimeState;
-
-        let mut state = BridgeRuntimeState::default();
-        state.test_seed_cell(5, 3, seed_bridge_cell(0xCD));
-        state.test_seed_cell(5, 4, seed_bridge_cell(0xCD));
-        state.test_seed_cell(5, 5, seed_bridge_cell(0xCD));
+        let state = [((5, 3), 0xCD), ((5, 4), 0xCD), ((5, 5), 0xCD)];
 
         assert_eq!(
-            find_destroy_overlay_seed(
-                &|x, y| state.cell(x, y).map(|c| c.overlay_byte),
-                &[(5, 5)],
-                HutBridgeFamily::High
-            ),
+            find_destroy_overlay_seed(&overlay_lookup(&state), &[(5, 5)], HutBridgeFamily::High),
             Some((5, 4, Axis::EW)),
             "two in-band back probes shift the canonical seed one cell backward"
         );
@@ -2277,19 +1314,11 @@ mod tests {
 
     #[test]
     fn hut_destroy_overlay_seed_prefers_x_major_first_match() {
-        use crate::sim::bridge_state::BridgeRuntimeState;
-
         let scan: Vec<(u16, u16)> = hut_destroy_5x5_scan((10, 10)).collect();
-        let mut state = BridgeRuntimeState::default();
-        state.test_seed_cell(9, 8, seed_bridge_cell(0xCD));
-        state.test_seed_cell(8, 12, seed_bridge_cell(0xCD));
+        let state = [((9, 8), 0xCD), ((8, 12), 0xCD)];
 
         assert_eq!(
-            find_destroy_overlay_seed(
-                &|x, y| state.cell(x, y).map(|c| c.overlay_byte),
-                &scan,
-                HutBridgeFamily::High
-            ),
+            find_destroy_overlay_seed(&overlay_lookup(&state), &scan, HutBridgeFamily::High),
             Some((8, 13, Axis::EW)),
             "Y-major scan would find (9,8) first; gamemd hut death finds the earlier X column"
         );
@@ -2303,7 +1332,10 @@ mod tests {
         let mut sim = Simulation::new();
         let seed = 0x48A7_51DE_u64;
         sim.reseed_scenario_and_main(seed);
-        sim.resolved_terrain = Some(water_below_bridge_terrain(3));
+        let mut terrain = water_below_bridge_terrain(3);
+        seed_bridge_overlay(&mut terrain, &[(4, 3), (4, 4)], 0xE0);
+        sim.resolved_terrain = Some(terrain);
+        sim.bridge_state = Some(crate::sim::bridge_state::BridgeRuntimeState::default());
         let bridge_explosion = sim.interner.intern("BRIDGEEXP1");
         sim.bridge_explosions.push(bridge_explosion);
 
@@ -2311,10 +1343,6 @@ mod tests {
         // 0xE0 is a non-terminal presentation overlay whose destruction
         // transition is NoChange, while the missing next EW cell bounds the
         // physical walker to exactly one step with no fallout outcome.
-        let mut bridge_state = BridgeRuntimeState::default();
-        bridge_state.test_seed_cell(4, 3, seed_bridge_cell(0xE0));
-        bridge_state.test_seed_cell(4, 4, seed_bridge_cell(0xE0));
-        sim.bridge_state = Some(bridge_state);
 
         let before = sim.rng_state();
         let mut predicted = crate::sim::rng::SimRng::new(seed);
@@ -2333,10 +1361,10 @@ mod tests {
             "intermediate-only fixture must not add BlowUpBridge fallout draws"
         );
         assert_eq!(
-            sim.bridge_state
+            sim.resolved_terrain
                 .as_ref()
-                .and_then(|state| state.cell(4, 4))
-                .map(|cell| cell.overlay_byte),
+                .and_then(|terrain| terrain.cell(4, 4))
+                .and_then(|cell| cell.bridge_facts.overlay_id),
             Some(0xE0),
             "fixture must run the real hut dispatcher without a terminal transition"
         );
@@ -2386,7 +1414,7 @@ mod tests {
     /// block (block D). With the inter-block early-out removed, the dispatcher
     /// consumes exactly TWO `RandomRanged(1,BridgeStrength)` draws for the one
     /// cell. Before BR-01/02 it consumed one; the missing draw desynced
-    /// lockstep on every multi-match cell. `run_dispatch_loop` is used directly
+    /// lockstep on every multi-match cell. `damage_dispatch::run` is used directly
     /// so only the per-block gate draws are measured (the debris/explosion
     /// draws happen later in the cascade).
     #[test]
@@ -2404,10 +1432,9 @@ mod tests {
                 b"[General]\nBridgeMiddle1=20\nBridgeMiddle2=40\n",
             ),
         );
+        seed_bridge_overlay(&mut terrain, &[(5, 5)], 0xCD);
         sim.resolved_terrain = Some(terrain);
-        let mut bs = BridgeRuntimeState::default();
-        bs.test_seed_cell(5, 5, seed_bridge_cell(0xCD));
-        sim.bridge_state = Some(bs);
+        sim.bridge_state = Some(BridgeRuntimeState::default());
 
         let bridge_strength = 1500i32;
         // Predict exactly two BridgeStrength gate draws (block A + block D).
@@ -2425,7 +1452,8 @@ mod tests {
             is_ion_cannon: false,
             impact_z_leptons: 0,
         };
-        let _ = run_dispatch_loop(&mut sim, &[event], bridge_strength, None);
+        let rules = bridge_explosion_rules();
+        let _ = damage_dispatch::run(&mut sim, &[event], bridge_strength, &rules, None);
 
         assert_eq!(
             sim.scenario_rng.state(),
@@ -2434,552 +1462,190 @@ mod tests {
         );
     }
 
+    /// The fallback's starter and anchor (0x0057418A..0x00574355) through the
+    /// live cells, for each starter kind, with the hut at (9, 10) and the
+    /// starter three cells east.
     #[test]
-    fn gsi_04_01_dispatcher_applies_direct_setter_descriptor() {
-        use crate::map::bridge_facts::{BridgeStampSlot, MODELED_CELLCLASS_BRIDGE_FLAG_MASK};
-        use crate::sim::bridge_state::{AnchorSpan, Direction};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.test_set_native_allocated_cells(&[(1, 1)]);
-        terrain.cell_mut(1, 1).unwrap().bridge_facts.raw_flags = MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        let dummy = terrain.shared_cell_dummy();
-        dummy.apply_bridge_flag_slot(BridgeStampSlot::Anchor, true);
-        sim.resolved_terrain = Some(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut anchor = seed_bridge_cell(24);
-        anchor.deck_level = 4;
-        anchor.damage_state = DamageState::Damaged;
-        anchor.axis = Some(Axis::NS);
-        anchor.role = BridgeCellRole::Anchor;
-        anchor.anchor_span_id = Some(1);
-        bridge_state.test_seed_cell(1, 1, anchor);
-        bridge_state.test_seed_anchor_span(AnchorSpan {
-            id: 1,
-            anchor: (1, 1),
-            cells: [
-                Some((1, 1)),
-                Some((2, 1)),
-                Some((3, 1)),
-                Some((4, 1)),
-                Some((0, 1)),
-                None,
-            ],
-            axis: Axis::NS,
-            direction: Direction::E,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
-        });
-        sim.bridge_state = Some(bridge_state);
-
-        let event = BridgeDamageEvent {
-            rx: 1,
-            ry: 1,
-            damage: 1,
-            warhead_ref: crate::sim::intern::InternedId::default(),
-            is_ion_cannon: true,
-            impact_z_leptons: 416,
-        };
-        let (outcomes, _) = run_dispatch_loop(&mut sim, &[event], 1500, None);
-        assert_eq!(outcomes.len(), 1);
-        assert!(matches!(outcomes[0], StateOutcome::Collapsed { .. }));
-        assert_eq!(
-            dummy.bridge_flags_0x1180(),
-            crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF,
-            "missing non-anchor slots clear 0x1100 but preserve the dummy's pre-existing 0x80"
-        );
-        assert_eq!(dummy.snapshot().coord, (0, 1));
-        assert_eq!(
-            sim.resolved_terrain
-                .as_ref()
-                .unwrap()
-                .cell(1, 1)
-                .unwrap()
-                .bridge_facts
-                .raw_flags
-                & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0
-        );
-    }
-
-    #[test]
-    fn gsi_04_01_ns_perpendicular_dir0_precedes_parent_setter_on_real_and_dummy() {
-        use crate::map::bridge_facts::{
-            BridgeFlagStamp, BridgeStampSlot, MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-        };
-        use crate::sim::bridge_state::{AnchorSpan, Direction};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.test_set_native_allocated_cells(&[(2, 2), (3, 2)]);
-        for (rx, ry) in [(2, 2), (3, 2)] {
-            terrain.cell_mut(rx, ry).unwrap().bridge_facts.raw_flags =
-                MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        }
-        let dummy = terrain.shared_cell_dummy();
-        dummy.apply_bridge_flag_slot(BridgeStampSlot::Anchor, true);
-        sim.install_resolved_terrain_for_new_map(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut parent = seed_bridge_cell(0);
-        parent.damage_state = DamageState::Damaged;
-        parent.axis = Some(Axis::NS);
-        parent.role = BridgeCellRole::Anchor;
-        parent.anchor_span_id = Some(1);
-        bridge_state.test_seed_cell(2, 2, parent);
-
-        let mut perpendicular = seed_bridge_cell(0);
-        perpendicular.damage_state = DamageState::PartialCollapseB;
-        perpendicular.axis = Some(Axis::NS);
-        perpendicular.role = BridgeCellRole::Anchor;
-        perpendicular.anchor_span_id = None;
-        bridge_state.test_seed_cell(3, 2, perpendicular);
-        bridge_state.test_seed_anchor_span(AnchorSpan {
-            id: 1,
-            anchor: (2, 2),
-            cells: [
-                Some((2, 2)),
-                Some((3, 2)),
-                Some((4, 2)),
-                Some((5, 2)),
-                Some((1, 2)),
-                None,
-            ],
-            axis: Axis::NS,
-            direction: Direction::E,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
-        });
-        sim.bridge_state = Some(bridge_state);
-
-        let outcome = {
-            let terrain = sim.resolved_terrain.as_mut().unwrap();
-            sim.bridge_state
-                .as_mut()
-                .unwrap()
-                .body_cell_advance_state(2, 2, true, terrain)
-        };
-        assert_eq!(
-            outcome.setter_transcript(),
-            &[
-                BridgeFlagStamp::new((3, 2), Direction::N as u8, false),
-                BridgeFlagStamp::new((2, 2), Direction::E as u8, false),
-            ],
-            "native CollapseA perpendicular dir0 setter precedes parent span setter"
-        );
-        let dummy_after_planning = dummy.snapshot();
-        assert_eq!(
-            dummy_after_planning.coord,
-            (1, 2),
-            "with no later helper lookup, the parent direction-2 opposite slot remains the final dummy writer"
-        );
-        apply_runtime_bridge_flag_transcript_from_outcome(&mut sim, &outcome);
-
-        let terrain = sim.resolved_terrain.as_mut().unwrap();
-        assert_eq!(
-            terrain.cell(3, 2).unwrap().bridge_facts.raw_flags & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0,
-            "perpendicular allocated CellClass is cleared through the live seam"
-        );
-        assert_eq!(
-            terrain.cell(2, 2).unwrap().bridge_facts.raw_flags & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0,
-            "later parent setter clears its allocated anchor"
-        );
-        assert_eq!(
-            sim.real_cell_bridge_flags_0x1180,
-            terrain.capture_real_cell_bridge_flags_0x1180(),
-            "ordered live projection keeps serialized real-cell value authority exact"
-        );
-        assert_eq!(
-            dummy.bridge_flags_0x1180(),
-            crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF,
-            "missing non-anchor slots preserve the dummy's independent live anchor bit"
-        );
-        assert_eq!(
-            dummy.snapshot(),
-            dummy_after_planning,
-            "real-only transcript projection cannot replay the parent setter into the dummy"
-        );
-    }
-
-    #[test]
-    fn gsi_04_01_recursive_dir0_chain_projects_deepest_first_to_real_and_dummy() {
-        use crate::map::bridge_facts::{
-            BridgeFlagStamp, BridgeStampSlot, MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-        };
-        use crate::sim::bridge_state::{Direction, Phase};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.test_set_native_allocated_cells(&[(3, 2), (4, 2), (5, 2)]);
-        for x in 3..=5 {
-            terrain.cell_mut(x, 2).unwrap().bridge_facts.raw_flags =
-                MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        }
-        let dummy = terrain.shared_cell_dummy();
-        dummy.apply_bridge_flag_slot(BridgeStampSlot::Anchor, true);
-        sim.install_resolved_terrain_for_new_map(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut anchor = seed_bridge_cell(0);
-        anchor.axis = Some(Axis::NS);
-        anchor.role = BridgeCellRole::Anchor;
-        bridge_state.test_seed_cell(2, 2, anchor);
-        let mut chained = anchor;
-        chained.damage_state = DamageState::PartialCollapseB;
-        for x in 3..=5 {
-            bridge_state.test_seed_cell(x, 2, chained);
-        }
-        sim.bridge_state = Some(bridge_state);
-
-        let outcome = {
-            let terrain = sim.resolved_terrain.as_mut().unwrap();
-            crate::sim::bridge_specs::update_ramp_perpendicular(
-                sim.bridge_state.as_mut().unwrap(),
-                (2, 2),
-                Axis::NS,
-                Phase::CollapseA,
-                true,
-                terrain,
-            )
-        };
-        assert_eq!(
-            outcome.setter_transcript,
-            vec![
-                BridgeFlagStamp::new((5, 2), Direction::N as u8, false),
-                BridgeFlagStamp::new((4, 2), Direction::N as u8, false),
-                BridgeFlagStamp::new((3, 2), Direction::N as u8, false),
-            ]
-        );
-        for &stamp in &outcome.setter_transcript {
-            sim.apply_planned_bridge_flag_stamp_to_real_cells(stamp);
-        }
-
-        let terrain = sim.resolved_terrain.as_mut().unwrap();
-        for x in 3..=5 {
-            assert_eq!(
-                terrain.cell(x, 2).unwrap().bridge_facts.raw_flags
-                    & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-                0,
-                "every allocated recursive anchor is cleared"
+    fn the_hut_fallback_anchor_follows_the_starter_flags() {
+        let hut = (9, 10);
+        let grid = |cells: &[((u16, u16), u32)]| {
+            let mut terrain = crate::map::resolved_terrain::test_grid(
+                20,
+                20,
+                crate::map::resolved_terrain::test_flat_cell,
             );
-        }
-        assert_eq!(
-            sim.real_cell_bridge_flags_0x1180,
-            terrain.capture_real_cell_bridge_flags_0x1180(),
-            "each recursive setter updates serialized real-cell value authority"
-        );
-        assert_eq!(
-            dummy.bridge_flags_0x1180(),
-            crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF,
-            "none of the recursive setter anchors resolve to the dummy"
-        );
-        assert_eq!(
-            dummy.snapshot().coord,
-            (3, 3),
-            "outermost dir0 opposite lookup is last after deepest-first projection"
-        );
-    }
-
-    #[test]
-    fn gsi_04_01_later_about_to_fall_lookup_wins_after_synchronous_setter() {
-        use crate::map::bridge_facts::{
-            BRIDGE_FLAG_ANCHOR_SELF, BridgeFlagStamp, MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-        };
-        use crate::sim::bridge_state::{BridgeheadAnchorClass, Direction, Phase};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.test_set_native_allocated_cells(&[(3, 2)]);
-        terrain.cell_mut(3, 2).unwrap().bridge_facts.raw_flags = MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        // AboutToFall recursion is a raw middle-tile branch, not a role gate.
-        terrain.cell_mut(3, 2).unwrap().final_tile_index = 9;
-        terrain.test_set_high_bridge_rim_tiles(crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
-            0,b"[General]\nBridgeMiddle1=7\nBridgeMiddle2=12\nBridgeBottomRight1=3\nBridgeBottomRight2=3\n"));
-        terrain.test_set_dummy_cell_level_slope(2, 0);
-        let dummy = terrain.shared_cell_dummy();
-        dummy.set_bridge_flags_0x1180(MODELED_CELLCLASS_BRIDGE_FLAG_MASK);
-        sim.install_resolved_terrain_for_new_map(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut perpendicular = seed_bridge_cell(0);
-        perpendicular.damage_state = DamageState::PartialCollapseB;
-        perpendicular.axis = Some(Axis::NS);
-        perpendicular.role = BridgeCellRole::Anchor;
-        perpendicular.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
-        bridge_state.test_seed_cell(3, 2, perpendicular);
-        sim.bridge_state = Some(bridge_state);
-
-        let outcome = {
-            let terrain = sim.resolved_terrain.as_mut().unwrap();
-            crate::sim::bridge_specs::update_ramp_perpendicular(
-                sim.bridge_state.as_mut().unwrap(),
-                (2, 2),
-                Axis::NS,
-                Phase::CollapseA,
-                true,
-                terrain,
-            )
-        };
-        assert_eq!(
-            outcome.setter_transcript,
-            vec![BridgeFlagStamp::new((3, 2), Direction::N as u8, false)]
-        );
-        let dummy_after_planning = dummy.snapshot();
-        assert_eq!(
-            dummy_after_planning.coord,
-            (4, 2),
-            "the independent AboutToFall recursion's later GetCell miss wins after the setter's final slot"
-        );
-        assert_eq!(
-            dummy_after_planning.bridge_flags_0x1180, BRIDGE_FLAG_ANCHOR_SELF,
-            "the synchronous setter clears missing-slot 0x1100 while preserving non-anchor 0x80"
-        );
-        let retained_target = crate::sim::projectile::ProjectileTarget::DummyCell;
-        let observed_target = match retained_target {
-            crate::sim::projectile::ProjectileTarget::DummyCell => {
-                crate::sim::projectile::dummy_cell_target_coord(&dummy)
+            for &((x, y), flags) in cells {
+                terrain.cell_mut(x, y).unwrap().bridge_facts.raw_flags = flags;
             }
-            _ => unreachable!("fixture retains the shared dummy pointer kind"),
+            terrain
         };
-        assert_eq!(
-            observed_target,
-            crate::sim::projectile::ProjectileCoord::new(4 * 256 + 128, 2 * 256 + 128, 2 * 104,)
-        );
+        let hut_fallback_anchor = |terrain: ResolvedTerrainGrid, hut| {
+            let mut sim = Simulation::new();
+            sim.resolved_terrain = Some(terrain);
+            ramp_repair::hut_anchor(&mut LiveCells::new(&sim), hut)
+                .expect("stamped structural starters carry +0x2C")
+        };
+        let ramp = BRIDGE_FLAG_DESTROYED_OR_RAMP;
 
-        for &stamp in &outcome.setter_transcript {
-            sim.apply_planned_bridge_flag_stamp_to_real_cells(stamp);
-        }
-        assert_eq!(
-            dummy.snapshot(),
-            dummy_after_planning,
-            "deferred real-only commit must not overwrite the later live GetCell coordinate"
-        );
-        let terrain = sim.resolved_terrain.as_mut().unwrap();
-        assert_eq!(
-            terrain.cell(3, 2).unwrap().bridge_facts.raw_flags & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0
-        );
-        assert_eq!(
-            sim.real_cell_bridge_flags_0x1180,
-            terrain.capture_real_cell_bridge_flags_0x1180()
-        );
+        // 0x100 with 0x80 anchors on the starter; 0x800 walks direction 6.
+        let terrain = grid(&[(
+            (12, 10),
+            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_ANCHOR_SELF | BRIDGE_FLAG_DIRECTION_ZERO,
+        )]);
+        assert_eq!(hut_fallback_anchor(terrain, hut), Some(((12, 10), 6)));
+
+        // 0x100 alone anchors on +0x2C.
+        let mut terrain = grid(&[((12, 10), BRIDGE_FLAG_STRUCTURAL)]);
+        let anchor = terrain.native_cell_identity((13, 12));
+        terrain.cell_mut(12, 10).unwrap().bridge_facts.native_anchor = Some(anchor);
+        assert_eq!(hut_fallback_anchor(terrain, hut), Some(((13, 12), 0)));
+
+        // A pure 0x400 starter scans direction 2 over at most three more
+        // 0x400 cells and anchors two cells back from the first without it.
+        let terrain = grid(&[
+            ((12, 10), ramp),
+            ((13, 10), ramp),
+            ((14, 10), ramp),
+            ((15, 10), ramp),
+        ]);
+        assert_eq!(hut_fallback_anchor(terrain, hut), Some(((14, 10), 0)));
+        let terrain = grid(&[
+            ((12, 10), ramp),
+            ((13, 10), ramp),
+            ((14, 10), ramp),
+            ((15, 10), ramp),
+            ((16, 10), ramp),
+        ]);
+        assert_eq!(hut_fallback_anchor(terrain, hut), None);
+        // With 0x800 it scans direction 4 and steps back along direction 0.
+        let terrain = grid(&[((12, 10), ramp | BRIDGE_FLAG_DIRECTION_ZERO)]);
+        assert_eq!(hut_fallback_anchor(terrain, hut), Some(((12, 9), 6)));
+
+        // 0x80 and 0x800 alone start nothing.
+        let terrain = grid(&[(
+            (12, 10),
+            BRIDGE_FLAG_ANCHOR_SELF | BRIDGE_FLAG_DIRECTION_ZERO,
+        )]);
+        assert_eq!(hut_fallback_anchor(terrain, hut), None);
     }
 
+    /// The fallback's walks. The ramp walk (0x00574372..0x00574465) steps
+    /// over unallocated cells without a lookup and stops at the first tile
+    /// `is_ramp` accepts; the end walk (0x0057449E..0x0057454B) stops at the
+    /// first tile `is_end` accepts in the back direction. Both give up where
+    /// they leave the cell-array rectangle.
     #[test]
-    fn gsi_04_01_bridgehead_perpendicular_dir6_projects_without_outer_setter() {
-        use crate::map::bridge_facts::{
-            BridgeFlagStamp, BridgeStampSlot, MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-        };
-        use crate::sim::bridge_state::{BridgeheadAnchorClass, Direction};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.cell_mut(2, 2).unwrap().template_height = 2;
-        terrain.test_set_native_allocated_cells(&[(2, 2), (2, 3)]);
-        terrain.cell_mut(2, 3).unwrap().bridge_facts.raw_flags = MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        let dummy = terrain.shared_cell_dummy();
-        dummy.apply_bridge_flag_slot(BridgeStampSlot::Anchor, true);
-        sim.install_resolved_terrain_for_new_map(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut bridgehead = seed_bridge_cell(0);
-        bridgehead.axis = Some(Axis::EW);
-        bridgehead.role = BridgeCellRole::Bridgehead;
-        bridgehead.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
-        bridge_state.test_seed_cell(2, 2, bridgehead);
-
-        let mut perpendicular = seed_bridge_cell(0);
-        perpendicular.damage_state = DamageState::PartialCollapseB;
-        perpendicular.axis = Some(Axis::EW);
-        perpendicular.role = BridgeCellRole::Anchor;
-        bridge_state.test_seed_cell(2, 3, perpendicular);
-        sim.bridge_state = Some(bridge_state);
-
-        let outcome = {
-            let terrain = sim.resolved_terrain.as_mut().unwrap();
-            sim.bridge_state
-                .as_mut()
-                .unwrap()
-                .bridgehead_advance_state(2, 2, false, terrain)
-        };
-        let StateOutcome::Collapsed {
-            set_bridge_direction,
-            ..
-        } = &outcome
-        else {
-            panic!("final bridgehead must collapse");
-        };
-        assert!(
-            set_bridge_direction.flag_stamp.is_none(),
-            "bridgehead row has no parent SetBridgeDirection header"
+    fn the_hut_fallback_walks_stop_at_ramp_and_end_tiles() {
+        let tiles = HighBridgeRimTiles::from_ini(
+            100,
+            b"[General]\nBridgeTopRight1=5\nBridgeBottomLeft1=7\n",
         );
-        assert_eq!(
-            outcome.setter_transcript(),
-            &[BridgeFlagStamp::new((2, 3), Direction::W as u8, false)],
-            "EW complementary partial emits the native direction-6 helper setter"
+        let mut terrain = crate::map::resolved_terrain::test_grid(
+            20,
+            20,
+            crate::map::resolved_terrain::test_flat_cell,
         );
-        let dummy_after_planning = dummy.snapshot();
-        assert_eq!(
-            dummy_after_planning.coord,
-            (2, 1),
-            "the later CollapseB perpendicular GetCell miss follows the direction-6 setter"
-        );
-        apply_runtime_bridge_flag_transcript_from_outcome(&mut sim, &outcome);
-
-        assert_eq!(
-            sim.resolved_terrain
-                .as_ref()
-                .unwrap()
-                .cell(2, 3)
-                .unwrap()
-                .bridge_facts
-                .raw_flags
-                & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0
-        );
-        assert_eq!(
-            dummy.bridge_flags_0x1180(),
-            crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF,
-            "direction-6 non-anchor dummy visits preserve pre-existing 0x80"
-        );
-        assert_eq!(
-            dummy.snapshot(),
-            dummy_after_planning,
-            "real-only projection preserves the later CollapseB lookup over the earlier direction-6 extra"
-        );
-    }
-
-    #[test]
-    fn gsi_04_01_hut_low_bridgehead_retries_share_live_anchor_flags() {
-        use crate::map::bridge_facts::{
-            BRIDGE_FLAG_ANCHOR_SELF, BridgeFlagStamp, MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-        };
-        use crate::sim::bridge_state::{BridgeheadAnchorClass, Direction};
-
-        let mut sim = Simulation::new();
-        let mut terrain = water_below_bridge_terrain(4);
-        terrain.test_set_native_allocated_cells(&[(2, 2), (2, 3), (2, 4), (3, 2)]);
-        for (ry, height) in [(4, 8), (3, 6), (2, 4)] {
-            terrain.cell_mut(2, ry).unwrap().template_height = height;
+        // TopRight1 at sub-tile 12 is a ramp; BottomLeft1 at sub-tile 2 ends
+        // a walk heading direction 4. Tiles are base + key - 1.
+        for (cell, tile, sub_tile) in [((10, 4), 104, 12), ((10, 6), 104, 12), ((10, 9), 106, 2)] {
+            let cell = terrain.cell_mut(cell.0, cell.1).unwrap();
+            cell.final_tile_index = tile;
+            cell.final_sub_tile = sub_tile;
         }
-        terrain.cell_mut(2, 4).unwrap().is_wood_bridge_repair_tile = true;
-        terrain.cell_mut(3, 2).unwrap().bridge_facts.raw_flags = MODELED_CELLCLASS_BRIDGE_FLAG_MASK;
-        let dummy = terrain.shared_cell_dummy();
-        dummy.set_bridge_flags_0x1180(MODELED_CELLCLASS_BRIDGE_FLAG_MASK);
-        sim.install_resolved_terrain_for_new_map(terrain);
-
-        let mut bridge_state = BridgeRuntimeState::default();
-        let mut bridgehead = seed_bridge_cell(0x18);
-        bridgehead.axis = Some(Axis::NS);
-        bridgehead.role = BridgeCellRole::Bridgehead;
-        bridgehead.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
-        bridge_state.test_seed_cell(2, 4, bridgehead);
-
-        let mut anchor = seed_bridge_cell(0x20);
-        anchor.axis = Some(Axis::NS);
-        anchor.role = BridgeCellRole::Anchor;
-        anchor.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
-        bridge_state.test_seed_cell(2, 2, anchor);
-
-        let mut perpendicular = seed_bridge_cell(0x21);
-        perpendicular.axis = Some(Axis::NS);
-        perpendicular.role = BridgeCellRole::Anchor;
-        perpendicular.damage_state = DamageState::PartialCollapseB;
-        bridge_state.test_seed_cell(3, 2, perpendicular);
-        sim.bridge_state = Some(bridge_state);
-
-        let rules = RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str("[General]\n"))
-            .expect("minimal hut retry rules");
-        sim.resolve_type_handles(&rules);
-
-        let outcomes = {
-            let terrain = sim.resolved_terrain.as_mut().unwrap();
-            let mut live_flags = terrain.bridge_flag_execution_state();
-            let mut host = HutDamage {
-                sim: &mut sim,
-                rules: &rules,
-                registry: None,
-                outcomes: Vec::new(),
-                published_collapse: false,
-            };
-            apply_hut_damage_retries(&mut host, (2, 4), &mut live_flags);
-            assert_eq!(
-                live_flags.flags_at((3, 2)) & BRIDGE_FLAG_ANCHOR_SELF,
-                0,
-                "the first synchronous helper setter clears live 0x80 before retry two"
-            );
-            host.outcomes
-        };
-
-        assert_eq!(outcomes.len(), MAX_HUT_ATTEMPTS_PER_STEP);
-        assert!(outcomes.iter().all(|outcome| matches!(
-            outcome,
-            StateOutcome::Collapsed {
-                binary_success: false,
-                ..
-            }
-        )));
-        let transcript: Vec<_> = outcomes
-            .iter()
-            .flat_map(|outcome| outcome.setter_transcript().iter().copied())
+        let allocated: Vec<_> = (0..20)
+            .flat_map(|y| (0..20).map(move |x| (x, y)))
+            .filter(|&cell| cell != (10, 6))
             .collect();
-        assert_eq!(
-            transcript,
-            vec![BridgeFlagStamp::new((3, 2), Direction::N as u8, false)],
-            "later low-return retries observe cleared 0x80 and cannot invent another setter"
-        );
-        assert_eq!(
-            sim.bridge_state
-                .as_ref()
-                .unwrap()
-                .cell(3, 2)
-                .unwrap()
-                .damage_state,
-            DamageState::Destroyed
-        );
+        terrain.test_set_native_allocated_cells(&allocated);
+        let bounds = NativeStartBounds {
+            min_rx: 1,
+            min_ry: 1,
+            width: 18,
+            height: 18,
+        };
 
-        // Planning/retries defer allocated real CellClass values, but missing
-        // slots have already mutated the actual shared dummy synchronously.
         assert_eq!(
-            sim.resolved_terrain
-                .as_ref()
-                .unwrap()
-                .cell(3, 2)
-                .unwrap()
-                .bridge_facts
-                .raw_flags
-                & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            MODELED_CELLCLASS_BRIDGE_FLAG_MASK
+            find_hut_fallback_ramp(&terrain, bounds, tiles, (10, 12), 0),
+            Some((10, 4)),
+            "the unallocated ramp tile at (10, 6) is stepped over"
         );
-        let dummy_after_planning = dummy.snapshot();
         assert_eq!(
-            dummy_after_planning.bridge_flags_0x1180, BRIDGE_FLAG_ANCHOR_SELF,
-            "the first setter's missing non-anchor slots are live during later CABHUT retries"
+            find_hut_fallback_ramp(&terrain, bounds, tiles, (3, 12), 0),
+            None
         );
+        assert_eq!(
+            find_hut_fallback_end(&terrain, bounds, tiles, (10, 4), 4),
+            Some(((10, 9), 106))
+        );
+        assert_eq!(
+            find_hut_fallback_end(&terrain, bounds, tiles, (3, 4), 4),
+            None
+        );
+    }
 
-        assert!(apply_hut_bridge_execution(
-            &mut sim, &rules, &outcomes, false, None, None,
-        ));
+    /// Stock bridge-repair huts stand beside a bridgehead, where the 5x5
+    /// overlay scan of 0x00574000 / 0x00574C20 finds no seed, so their death
+    /// drops the bridge through the fallback walk: ApplyDamageToCell on the
+    /// ramp it reaches. One concrete-family hut (Barrel) and one wooden-family
+    /// hut (Carville): the anchor the walk starts from loses its structural
+    /// 0x100 flag and turns 0x400.
+    #[test]
+    fn a_stock_bridgehead_hut_drops_its_bridge() {
+        let Some((root, _)) = crate::rules::retail_ini_fixture::retail_assets() else {
+            return;
+        };
+        for (map, hut, family) in [
+            ("Barrel.mmx", (65, 54), HutBridgeFamily::High),
+            ("Carville.mmx", (117, 107), HutBridgeFamily::Low),
+        ] {
+            let mut scene = crate::headless_scenario::load(&root, map, 0)
+                .unwrap_or_else(|error| panic!("{map}: {error}"));
+            let sim = &scene.runtime.simulation;
+            assert!(
+                sim.entities().values().any(|e| {
+                    (e.position.rx, e.position.ry) == hut && sim.resolve(e.type_ref()) == "CABHUT"
+                }),
+                "{map}: a CABHUT stands at {hut:?}"
+            );
+            let scan: Vec<_> = hut_destroy_5x5_scan(hut).collect();
+            assert_eq!(choose_hut_bridge_family(sim, &scan), family, "{map}");
+            assert_eq!(
+                find_destroy_overlay_seed(&|x, y| bridge_overlay_at(sim, x, y), &scan, family),
+                None,
+                "{map}: the overlay scan finds no seed"
+            );
+            let (anchor, _) =
+                ramp_repair::hut_anchor(&mut LiveCells::new(sim), (hut.0 as i16, hut.1 as i16))
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| panic!("{map}: a fallback anchor"));
+            let flags = |sim: &Simulation| {
+                let terrain = sim.resolved_terrain.as_ref().unwrap();
+                terrain.native_cell_flags(terrain.native_cell_identity(anchor))
+                    & (BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DESTROYED_OR_RAMP)
+            };
+            assert_eq!(
+                flags(sim),
+                BRIDGE_FLAG_STRUCTURAL,
+                "{map}: the bridge stands"
+            );
 
-        let terrain = sim.resolved_terrain.as_mut().unwrap();
-        assert_eq!(
-            terrain.cell(3, 2).unwrap().bridge_facts.raw_flags & MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
-            0,
-            "the single retained transcript projects once to the allocated real cell"
-        );
-        assert_eq!(
-            dummy.snapshot(),
-            dummy_after_planning,
-            "real-only outcome projection must leave the synchronously mutated dummy byte-for-byte unchanged"
-        );
-        assert_eq!(
-            sim.real_cell_bridge_flags_0x1180,
-            terrain.capture_real_cell_bridge_flags_0x1180(),
-            "the one actual projection keeps serialized value authority exact"
-        );
+            let crate::sim::runtime::SimRuntime {
+                simulation,
+                resources,
+            } = &mut scene.runtime;
+            dispatch_bridge_collapse_from_hut_with_overlay_registry(
+                simulation,
+                &resources.rules,
+                hut,
+                Some(&resources.overlay_registry),
+            );
+            assert_eq!(
+                flags(simulation),
+                BRIDGE_FLAG_DESTROYED_OR_RAMP,
+                "{map}: the span falls"
+            );
+        }
     }
 
     /// Debris helper short-circuits when the required BridgeExplosion list is
@@ -3008,68 +1674,6 @@ mod tests {
     }
 
     /// Task 11 — DropIn must NOT touch entities that aren't on the bridge
-    /// Rim refresh resets dangling stub cells whose anchor span has gone
-    /// away. Layout: anchor span 1 owns (4,2)+(5,2)+(6,2). After collapse,
-    /// drop the span entry from the registry, mark (5,2) Destroyed (the
-    /// "head" candidate), and call `update_adjacent_bridges` with rim cell
-    /// (4,2). Expected: (4,2)→(5,2) walks east, (5,2) is the head so the
-    /// loop continues past it; once it sees an orphan-anchor cell, the
-    /// reset fires.
-    #[test]
-    fn rim_refresh_clears_dangling_stub_cells() {
-        use crate::sim::bridge_state::{BridgeRuntimeCell, BridgeRuntimeState};
-        let mut sim = Simulation::new();
-        let mut bs = BridgeRuntimeState::default();
-        // (5,2): destroyed head (acts as direction beacon).
-        bs.test_seed_cell(
-            5,
-            2,
-            BridgeRuntimeCell {
-                deck_present: true,
-                destroyable: true,
-                deck_level: 4,
-                bridge_group_id: Some(1),
-                damage_state: DamageState::Destroyed,
-                axis: Some(crate::sim::bridge_state::Axis::EW),
-                role: BridgeCellRole::Body,
-                anchor_span_id: Some(99),
-                overlay_byte: 0xE8,
-                bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
-            },
-        );
-        // (6,2): dangling stub — anchor_span_id=99 but no AnchorSpan entry.
-        bs.test_seed_cell(
-            6,
-            2,
-            BridgeRuntimeCell {
-                deck_present: true,
-                destroyable: true,
-                deck_level: 4,
-                bridge_group_id: Some(1),
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis: Some(crate::sim::bridge_state::Axis::EW),
-                role: BridgeCellRole::Body,
-                anchor_span_id: Some(99),
-                overlay_byte: 0xDC,
-                bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
-            },
-        );
-        sim.bridge_state = Some(bs);
-
-        let mut rim: BTreeSet<(u16, u16)> = BTreeSet::new();
-        rim.insert((4, 2));
-        update_adjacent_bridges(&mut sim, &rim);
-
-        let stub = sim.bridge_state.as_ref().unwrap().cell(6, 2).unwrap();
-        assert_eq!(stub.overlay_byte, 0xFF, "stub overlay reset to NONE");
-        assert!(matches!(
-            stub.damage_state,
-            DamageState::Healthy { variant: 0 }
-        ));
-        assert!(stub.bridge_group_id.is_none());
-        assert!(!stub.deck_present);
-    }
-
     /// layer at the destroyed cell. Ground-layer entities are handled by
     /// `kill_ground_occupants_at` (Step 1), not DropIn.
     #[test]

@@ -2,7 +2,7 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell, unpack_base_plan_cell};
 use crate::sim::house_state::HouseState;
-use std::collections::BTreeMap;
+use crate::sim::pathfinding::PathGrid;
 
 const RULES: &str = "[General]\nPlacementDelay=.05\nAIAlternateProductionCreditCutoff=10\n\
     [AI]\nBuildConst=YARD\n\
@@ -45,7 +45,7 @@ fn fixture_with(rules: &str) -> Fixture {
     sim.houses.insert(owner, house);
     sim.session.house_order.push(owner);
     let yard = sim
-        .spawn_object("YARD", "AIHouse", 12, 12, 0, &rules, &BTreeMap::new())
+        .spawn_object("YARD", "AIHouse", 12, 12, 0, &rules)
         .unwrap();
     for (x, y) in [(16, 16), (17, 16), (16, 17), (17, 17)] {
         sim.substrate
@@ -63,14 +63,8 @@ fn fixture_with(rules: &str) -> Fixture {
 
 impl Fixture {
     fn tick(&mut self) {
-        self.sim.advance_tick(
-            &[],
-            Some(&self.rules),
-            &BTreeMap::new(),
-            Some(&self.path),
-            None,
-            67,
-        );
+        self.sim
+            .advance_tick(&[], Some(&self.rules), Some(&self.path), None, 67);
     }
 
     /// The yard's object while its factory holds one.
@@ -134,7 +128,7 @@ fn after_a_blocked_try_the_yard_waits_the_placement_delay() {
     let mut f = fixture();
     // A unit of the house parks on the site; the exit tells it to leave.
     f.sim
-        .spawn_object("TANK", "AIHouse", 17, 17, 0, &f.rules, &BTreeMap::new())
+        .spawn_object("TANK", "AIHouse", 17, 17, 0, &f.rules)
         .unwrap();
     let mut frames = 0;
     while f.node().1 == 0 && frames < 3000 {
@@ -169,7 +163,7 @@ fn a_failed_exit_abandons_the_object_and_refunds_it() {
         .insert(enemy, HouseState::new(enemy, 1, None, false, 0, 10));
     f.sim.session.house_order.push(enemy);
     f.sim
-        .spawn_object("TANK", "Enemy", 16, 16, 0, &f.rules, &BTreeMap::new())
+        .spawn_object("TANK", "Enemy", 16, 16, 0, &f.rules)
         .unwrap();
     let mut frames = 0;
     let mut object = None;
