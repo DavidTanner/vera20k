@@ -986,7 +986,6 @@ Name=GasStation
 Cost=0
 Strength=400
 Armor=wood
-Foundation=2x2
 CanBeOccupied=yes
 CanOccupyFire=yes
 MaxNumberOccupants=5
@@ -1005,7 +1004,8 @@ ConditionRed=25%
 ConditionYellow=50%
 ";
         let ini = IniFile::from_str(ini_str);
-        RuleSet::from_ini(&ini).expect("parse garrison test rules")
+        let art = IniFile::from_str("[CAGAS01]\nFoundation=2x2\n");
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("parse garrison test rules")
     }
 
     fn open_topped_test_rules() -> RuleSet {

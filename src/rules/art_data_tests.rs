@@ -646,6 +646,30 @@ fn add_remove_occupy_empty_when_no_keys() {
 }
 
 #[test]
+fn exact_foundation_sections_preserve_folded_visual_lookup_and_mutation() {
+    let ini = IniFile::from_str(
+        "[HUT]\nFoundation=2x2\nYDrawOffset=4\n[hut]\nFoundation=3x3\nYDrawOffset=9\n",
+    );
+    let mut registry = ArtRegistry::from_ini(&ini);
+    assert_eq!(registry.read_foundation("HUT", 0), 3);
+    assert_eq!(registry.read_foundation("hut", 0), 6);
+    assert_eq!(registry.read_foundation("HuT", 1), 1);
+    assert_eq!(
+        registry.len(),
+        1,
+        "visual aliases retain the former folded count"
+    );
+    assert_eq!(registry.get("HuT").unwrap().y_draw_offset, 9);
+    registry.get_mut("HUT").unwrap().y_draw_offset = 12;
+    let entries: Vec<_> = registry.iter_entries().collect();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].0, "HUT");
+    assert_eq!(entries[0].1.y_draw_offset, 12);
+    assert_eq!(registry.get("hut").unwrap().y_draw_offset, 12);
+    assert_eq!(registry.read_foundation("HUT", 0), 3);
+}
+
+#[test]
 fn add_remove_occupy_scans_sparse_numbered_keys() {
     let ini: IniFile = IniFile::from_str(
         "[FOO]\n\

@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 
 use winit::keyboard::KeyCode;
 
-
 /// Background clear color — black, matching the shroud/fog of war in RA2.
 /// Areas outside the isometric terrain diamond are not visible in the original game.
 pub(crate) const CLEAR_COLOR: wgpu::Color = wgpu::Color {
@@ -280,6 +279,8 @@ pub(crate) enum CursorFeedbackKind {
     Enter,
     /// Engineer repair cursor — engineer hovering a damaged friendly building.
     EngineerRepair,
+    /// Engineer bridge-hut object action29/32: normal Repair/NoRepair rows.
+    BridgeRepair(bool),
     /// C4 plant cursor — SEAL/Tanya/PTROOP hovering a CanC4 enemy structure
     /// (action 0x10 in gamemd, distinct mouse.shp frames from Enter).
     Demolish,

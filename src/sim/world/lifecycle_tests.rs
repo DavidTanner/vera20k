@@ -159,7 +159,7 @@ fn receiver_authority_rules() -> crate::rules::ruleset::RuleSet {
     crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
         "[VehicleTypes]\n0=TEST\n[BuildingTypes]\n0=BUILDING41\n\
          [TEST]\nStrength=100\nArmor=light\n\
-         [BUILDING41]\nStrength=100\nArmor=concrete\nFoundation=1x1\n\
+         [BUILDING41]\nStrength=100\nArmor=concrete\n\
          [Warheads]\n0=KILLWH\n[KILLWH]\nCellSpread=0\n\
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
@@ -238,15 +238,17 @@ fn receiver_fatal_limbo_clears_sparse_map_dummy_reservation() {
 
 #[test]
 fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
-    let rules =
-        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+    let rules = crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(
+        &crate::rules::ini_parser::IniFile::from_str(
             "[InfantryTypes]\n0=OCCUPANT\n[BuildingTypes]\n0=GARRISON\n\
              [OCCUPANT]\nStrength=100\nArmor=none\n\
-             [GARRISON]\nStrength=100\nArmor=concrete\nFoundation=2x2\nCanBeOccupied=yes\n\
+             [GARRISON]\nStrength=100\nArmor=concrete\nCanBeOccupied=yes\n\
              [Warheads]\n0=KILLWH\n[KILLWH]\nCellSpread=0\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        ))
-        .expect("garrison survivor rules");
+        ),
+        &crate::rules::ini_parser::IniFile::from_str("[GARRISON]\nFoundation=2x2\n"),
+    )
+    .expect("garrison survivor rules");
     let mut sim = Simulation::new();
     sim.session.map_width = 16;
     sim.session.map_height = 16;
@@ -3636,28 +3638,35 @@ fn gsi_04_05_reservation_repair_replays_multicell_neighbor_for_every_hit() {
 }
 
 #[test]
-fn gsi_04_05_reservation_art_foundation_recomputes_writer_before_lifecycle_mark() {
+fn gsi_04_05_reservation_processed_foundation_precedes_metadata_and_lifecycle_mark() {
     use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
 
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+    let ini = IniFile::from_str(
         "[AI]\nAIBaseSpacing=2\n\
          [BuildingTypes]\n0=GACNST\n1=ONECNST\n\
          [GACNST]\nUndeploysInto=AMCV\n\
          [ONECNST]\nUndeploysInto=AMCV\n",
-    ))
-    .expect("split rules-side construction-yard data");
+    );
+    let constructor_only =
+        RuleSet::from_ini(&ini).expect("split rules-side construction-yard data");
     assert_eq!(
-        rules.object("GACNST").unwrap().base_reservation_spacing,
+        constructor_only
+            .object("GACNST")
+            .unwrap()
+            .base_reservation_spacing,
         None,
         "the provisional Rules-only 1x1 foundation is ineligible"
     );
 
-    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
+    let art = IniFile::from_str(
         "[GACNST]\nFoundation=4x4\n\
          [ONECNST]\nFoundation=1x1\n",
-    )));
+    );
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+        .expect("ART is fixed during native BuildingType read");
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     let gacnst = rules.object("GACNST").unwrap();
     assert_eq!(gacnst.foundation, "4x4");
     assert_eq!(gacnst.base_reservation_spacing, Some(2));
@@ -5152,8 +5161,8 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
 
 #[test]
 fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
-    let rules =
-        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+    let rules = crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(
+        &crate::rules::ini_parser::IniFile::from_str(
             "[InfantryTypes]\n0=OCCUPANT\n\
              [VehicleTypes]\n0=BLOCKER\n\
              [AircraftTypes]\n\
@@ -5161,11 +5170,13 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
              [Warheads]\n0=KILLWH\n\
              [OCCUPANT]\nStrength=10\nArmor=none\n\
              [BLOCKER]\nStrength=100\nArmor=heavy\n\
-             [GARRISON]\nStrength=10\nArmor=concrete\nFoundation=2x2\nCanBeOccupied=yes\n\
+             [GARRISON]\nStrength=10\nArmor=concrete\nCanBeOccupied=yes\n\
              [KILLWH]\nCellSpread=0\nPercentAtMax=1\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        ))
-        .expect("fatal garrison recursion rules");
+        ),
+        &crate::rules::ini_parser::IniFile::from_str("[GARRISON]\nFoundation=2x2\n"),
+    )
+    .expect("fatal garrison recursion rules");
     let mut sim = Simulation::new();
     sim.session.map_width = 16;
     sim.session.map_height = 16;
@@ -5613,8 +5624,9 @@ fn gsi_05_04_projectile_listener_keeps_mixed_object_construction_order() {
 }
 
 fn gsi_01_05_damage_rules() -> crate::rules::ruleset::RuleSet {
-    crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-        "[InfantryTypes]\n\
+    crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(
+        &crate::rules::ini_parser::IniFile::from_str(
+            "[InfantryTypes]\n\
              [VehicleTypes]\n0=VICTIM\n1=SUCCESSOR\n2=FIRER\n\
              [AircraftTypes]\n\
              [BuildingTypes]\n0=DUPBLDG\n\
@@ -5622,12 +5634,14 @@ fn gsi_01_05_damage_rules() -> crate::rules::ruleset::RuleSet {
              [VICTIM]\nStrength=30\nArmor=light\n\
              [SUCCESSOR]\nStrength=30\nArmor=light\n\
              [FIRER]\nStrength=30\nArmor=light\nPrimary=SONIC\nElitePrimary=SONICE\n\
-             [DUPBLDG]\nStrength=10\nArmor=concrete\nFoundation=2x1\n\
+             [DUPBLDG]\nStrength=10\nArmor=concrete\n\
              [SONIC]\nDamage=1\nAmbientDamage=10\nWarhead=KILLWH\nIsSonic=yes\n\
              [SONICE]\nDamage=2\nAmbientDamage=15\nWarhead=KILLWH\nIsSonic=yes\n\
              [KILLWH]\nCellSpread=0\nPercentAtMax=1\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-    ))
+        ),
+        &crate::rules::ini_parser::IniFile::from_str("[DUPBLDG]\nFoundation=2x1\n"),
+    )
     .expect("Logic-slot damage fixture rules")
 }
 
@@ -6172,7 +6186,7 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
                  [BuildingTypes]\n0=BLDG\n\
                  [TerrainTypes]\n0=TREE01\n\
                  [UNIT]\nStrength=100\nArmor=none\n\
-                 [BLDG]\nStrength=100\nArmor=wood\nFoundation=1x1\n\
+                 [BLDG]\nStrength=100\nArmor=wood\n\
                  [FIRER]\nStrength=100\nArmor=light\nPrimary=SONIC\n\
                  [TREE01]\nStrength=100\nArmor=wood\nImmune=no\n\
                  [SONIC]\nDamage=4\nAmbientDamage=10\nWarhead=WH\nIsSonic=yes\n\
@@ -6499,15 +6513,16 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
          [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [DECAL]\n",
     );
-    let mut rules = crate::rules::ruleset::RuleSet::from_ini(&ini).expect("cliff body rules");
     let overlay_registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
-    let mut art = crate::rules::art_data::ArtRegistry::from_ini(
-        &crate::rules::ini_parser::IniFile::from_str(
-            "[XGRYMED1]\nEnd=1\nRate=1\nRandomRate=900,300\n\
+    let art_ini = crate::rules::ini_parser::IniFile::from_str(
+        "[XGRYMED1]\nEnd=1\nRate=1\nRandomRate=900,300\n\
              [XGRYMED2]\nEnd=1\nRate=1\nRandomRate=900,300\n\
              [XGRYSML1]\nEnd=1\nRate=1\nRandomRate=900,300\n",
-        ),
     );
+    let mut rules =
+        crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini)
+            .expect("cliff body rules");
+    let mut art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
     for name in ["XGRYMED1", "XGRYMED2", "XGRYSML1"] {
         art.bind_anim_frame_count_for_test(name, 1);
     }

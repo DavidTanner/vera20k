@@ -1650,8 +1650,9 @@ mod tests {
     }
 
     fn naval_delivery_rules() -> RuleSet {
-        RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-            "[InfantryTypes]\n\
+        RuleSet::from_ini_with_fixed_art_for_test(
+            &crate::rules::ini_parser::IniFile::from_str(
+                "[InfantryTypes]\n\
              [VehicleTypes]\n\
              0=DEST\n\
              [AircraftTypes]\n\
@@ -1671,13 +1672,18 @@ mod tests {
              Foundation=4x4\n\
              [BLOCKER]\n\
              Foundation=1x1\n",
-        ))
+            ),
+            &crate::rules::ini_parser::IniFile::from_str(
+                "[GAYARD]\nFoundation=4x4\n[BLOCKER]\nFoundation=1x1\n",
+            ),
+        )
         .expect("naval delivery rules")
     }
 
     fn production_admission_rules() -> RuleSet {
-        RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-            "[InfantryTypes]\n\
+        RuleSet::from_ini_with_fixed_art_for_test(
+            &crate::rules::ini_parser::IniFile::from_str(
+                "[InfantryTypes]\n\
              [VehicleTypes]\n\
              0=SAPC\n\
              1=DEST\n\
@@ -1727,7 +1733,11 @@ mod tests {
              LaserFence=yes\n\
              [FIREDEFAULT]\n\
              Foundation=1x1\n",
-        ))
+            ),
+            &crate::rules::ini_parser::IniFile::from_str(
+                "[YARD]\nFoundation=4x4\n[NORMAL]\nFoundation=1x1\n[FIREDEFAULT]\nFoundation=1x1\n",
+            ),
+        )
         .expect("production admission rules")
     }
 

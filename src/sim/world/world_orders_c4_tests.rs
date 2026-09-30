@@ -23,18 +23,21 @@ fn c4_test_rules() -> RuleSet {
          [GHOST]\nStrength=125\nArmor=flak\nSpeed=4\nC4=yes\nPrimary=Pistol\n\n\
          [TANY]\nStrength=125\nArmor=flak\nSpeed=4\nC4=yes\nPrimary=Pistol\n\n\
          [E1]\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
-         [GAPILE]\nStrength=600\nArmor=wood\nFoundation=2x2\n\n\
-         [CAMISC01]\nStrength=600\nArmor=concrete\nFoundation=1x1\nCanC4=no\n\n\
-         [GAREFN]\nStrength=1000\nArmor=wood\nFoundation=4x3\n\n\
+         [GAPILE]\nStrength=600\nArmor=wood\n\n\
+         [CAMISC01]\nStrength=600\nArmor=concrete\nCanC4=no\n\n\
+         [GAREFN]\nStrength=1000\nArmor=wood\n\n\
          [Pistol]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [CombatDamage]\nC4Warhead=SA\n\n\
          [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("c4 test rules should parse");
     let art_ini: IniFile = IniFile::from_str(
-        "[GAREFN]\nFoundation=4x3\nAddOccupy1=-1,0\nAddOccupy2=-1,-1\nRemoveOccupy1=3,1\n",
+        "[GAPILE]\nFoundation=2x2\n\
+         [CAMISC01]\nFoundation=1x1\n\
+         [GAREFN]\nFoundation=4x3\nAddOccupy1=-1,0\nAddOccupy2=-1,-1\nRemoveOccupy1=3,1\n",
     );
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini)
+        .expect("c4 test rules should parse");
     let art = ArtRegistry::from_ini(&art_ini);
     rules.install_art_data(art);
     rules
@@ -47,13 +50,15 @@ fn c4_damage_state_rules() -> RuleSet {
          [AircraftTypes]\n\n\
          [BuildingTypes]\n0=GAPILE\n\n\
          [GHOST]\nStrength=125\nArmor=flak\nSpeed=4\nC4=yes\nPrimary=Pistol\n\n\
-         [GAPILE]\nStrength=600\nArmor=wood\nFoundation=2x2\n\n\
+         [GAPILE]\nStrength=600\nArmor=wood\n\n\
          [Pistol]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [CombatDamage]\nC4Warhead=SA\n\n\
          [SA]\nVerses=50%,50%,50%,50%,50%,50%,50%,50%,50%,0%,0%\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("c4 damage-state rules should parse");
-    let art = ArtRegistry::from_ini(&IniFile::from_str("[GAPILE]\nFoundation=2x2\n"));
+    let art_ini = IniFile::from_str("[GAPILE]\nFoundation=2x2\n");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini)
+        .expect("c4 damage-state rules should parse");
+    let art = ArtRegistry::from_ini(&art_ini);
     rules.install_art_data(art);
     rules
 }

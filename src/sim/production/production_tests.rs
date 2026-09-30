@@ -261,7 +261,11 @@ pub(super) fn naval_production_rules() -> RuleSet {
          WaterBound=yes\n\
          ExitCoord=512,256,0\n",
     );
-    RuleSet::from_ini(&ini).expect("naval production rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GAYARD]\nFoundation=4x4\n"),
+    )
+    .expect("naval production rules and ART should parse")
 }
 
 pub(super) fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
@@ -333,7 +337,13 @@ pub(super) fn placement_radius_rules() -> RuleSet {
              BaseNormal=no\n\
              Adjacent=0\n[Clear]\nBuildable=yes\n",
     );
-    RuleSet::from_ini(&ini).expect("placement radius rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str(
+            "[GACNST]\nFoundation=2x2\n[GAPOWR]\nFoundation=2x2\n[GAGAP]\nFoundation=2x2\n",
+        ),
+    )
+    .expect("placement radius rules and ART should parse")
 }
 
 pub(super) fn sell_rules() -> RuleSet {
@@ -395,7 +405,13 @@ pub(super) fn sell_rules() -> RuleSet {
              CanOccupyFire=yes\n\
              MaxNumberOccupants=5\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("sell rules should parse");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str(
+            "[GAPOWR]\nFoundation=2x2\n[NAHAND]\nFoundation=2x2\n[NABNKR]\nFoundation=1x1\n",
+        ),
+    )
+    .expect("sell rules and ART should parse");
     // Each binds a Buildup (`GAPOWRMK`, `NAHANDMK`, `NABNKRMK`), so each sells.
     for type_id in ["GAPOWR", "NAHAND", "NABNKR"] {
         rules.set_buildup_control_for_test(type_id, [0, 25, 2]);
@@ -451,7 +467,13 @@ pub(super) fn factory_rules() -> RuleSet {
              Factory=AircraftType\n\
              ExitCoord=384,128,0\n",
     );
-    RuleSet::from_ini(&ini).expect("factory rules should parse")
+    let art = IniFile::from_str(
+        "[GAPILE]\nFoundation=3x2\n[GAWEAP]\nFoundation=5x3\n\
+         [GAWEAT]\nFoundation=5x3\n[GAAIRC]\nFoundation=3x2\n\
+         [MYBARR]\nFoundation=2x2\n",
+    );
+    RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+        .expect("factory rules and ART should parse")
 }
 
 /// Rules with [General] PrerequisiteXxx groups for testing data-driven
@@ -988,7 +1010,7 @@ fn naval_factory_spawn_uses_water_exit_cells() {
 
 #[test]
 fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(
         "[InfantryTypes]\n\
          [VehicleTypes]\n0=MTNK\n1=DEST\n\
          [AircraftTypes]\n\
@@ -997,7 +1019,7 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
          [DEST]\nCost=1000\nNaval=yes\nSpeedType=Float\nMovementZone=Water\nTechLevel=1\nOwner=Americans\n\
          [GAWEAP]\nFactory=UnitType\nWeaponsFactory=yes\nNaval=no\nExitCoord=512,256,0\n\
          [GAYARD]\nFactory=UnitType\nWeaponsFactory=yes\nNaval=yes\nFoundation=4x4\n",
-    ))
+    ), &IniFile::from_str("[GAYARD]\nFoundation=4x4\n"))
     .expect("mixed stock-shaped Vehicle/Ship rules");
     let mut sim = Simulation::new();
     let mut terrain = water_terrain(40, 40);

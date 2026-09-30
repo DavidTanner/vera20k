@@ -315,6 +315,18 @@ impl ProcessedRulesLayers {
             .map(|member| (member.native_stored_id.as_str(), &member.projectile_art))
     }
 
+    /// BuildingType +EF0 after each reached ReadINI body, retained with its
+    /// native process registry rather than reconstructed from merged Rules keys.
+    pub(crate) fn building_foundation_states(&self) -> impl Iterator<Item = (&str, u8)> {
+        self.native_type_construction_trace
+            .registry_state()
+            .families
+            .get(&RulesTypeFamily::Building)
+            .into_iter()
+            .flatten()
+            .map(|member| (member.native_stored_id.as_str(), member.building_foundation))
+    }
+
     /// Retained +A8 speed and +A0 projectile after the last Weapon sweep.
     pub(crate) fn weapon_speeds_and_projectiles(
         &self,
@@ -757,6 +769,9 @@ struct ProcessedType {
     anim_art_read: bool,
     /// One owner for Bullet's two-phase Image/ART reads across rules passes.
     projectile_art: ProjectileArtState,
+    /// BuildingType45DF13 initializes +EF0 to zero; ReadINI461225..46125D
+    /// updates it from fixed ART after ObjectType5F933B reads effective Image.
+    building_foundation: u8,
     weapon: WeaponReadState,
     warhead_anim: WarheadAnimReadState,
 }
@@ -778,6 +793,7 @@ impl ProcessedType {
             projectile_art: ProjectileArtState::new(&native_stored_id),
             native_stored_id,
             anim_art_read: false,
+            building_foundation: 0,
             weapon: WeaponReadState::default(),
             warhead_anim: WarheadAnimReadState::default(),
         }
@@ -1391,6 +1407,26 @@ impl RulesPassProcessor {
                 self.process_techno_base(&raw, &effective);
                 match family {
                     RulesTypeFamily::Building => {
+                        // Native ObjectType5F933B copies Rules Image into its
+                        // 25-byte field using the retained field as default.
+                        // The reached-body projection holds the last input, so
+                        // applying that native cut here preserves the same image
+                        // across missing keys and registry handoffs. The later
+                        // ART Image redirect is local to visual asset loading.
+                        let image = effective.read_string("Image", &native_stored_id, 0x19);
+                        let member = &mut self.families.get_mut(&family).unwrap()[index];
+                        member.building_foundation =
+                            crate::rules::foundation::read_building_foundation(
+                                member.building_foundation,
+                                &image,
+                                &native_stored_id,
+                                |section, current| {
+                                    crate::rules::foundation::read_foundation(
+                                        fixed_art.section_or_empty(section),
+                                        current,
+                                    )
+                                },
+                            );
                         self.allocate_scalar_from(&raw, "FreeUnit", RulesTypeFamily::Vehicle, 0x80);
                         self.allocate_scalar_from(
                             &raw,

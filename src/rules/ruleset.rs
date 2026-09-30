@@ -3182,6 +3182,24 @@ impl RuleSet {
             .anim_type_art_read_states()
             .map(|(name, read)| (name.to_owned(), read))
             .collect();
+        // Building ctor45DF13 / ReadINI461225..46125D: the process-resident
+        // owner retained +EF0 across reached rules passes and exact ART reads.
+        // Projection receives its result; RULES Foundation is not an input.
+        for (name, foundation_id) in processed.building_foundation_states() {
+            if let Some(building) = rules
+                .object_list
+                .iter_mut()
+                .find(|object| object.category == ObjectCategory::Building && object.id == name)
+            {
+                building.foundation = crate::rules::foundation::FOUNDATION_TABLE
+                    [usize::from(foundation_id)]
+                .name
+                .to_owned();
+                building.base_reservation_spacing = building
+                    .base_reservation_writer_eligible()
+                    .then_some(rules.ai_base_spacing);
+            }
+        }
         // The registry processor owns native read timing and retained values;
         // the runtime definition receives that result, not another ART read.
         for (name, art) in processed.projectile_art_states() {
@@ -4595,12 +4613,9 @@ impl RuleSet {
             .any(|dock| dock.eq_ignore_ascii_case(structure_id))
     }
 
-    /// Merge art.ini data into object types (Foundation, QueueingCell, DockingOffset).
-    ///
-    /// In the original engine, `Foundation=` is an **art.ini-only** property — it does
-    /// NOT exist in rules.ini. ObjectType defaults to "1x1" and this method overwrites
-    /// it with the authoritative value from art.ini, resolved via the `Image=` key.
-    /// Without this, all buildings would be 1x1 which breaks placement and rendering.
+    /// Bind ART metadata and project QueueingCell/DockingOffset and presentation.
+    /// Building Foundation already came from the ordered native rules processor;
+    /// binding assets cannot execute a ReadINI for a constructor-only type.
     pub fn install_art_data(&mut self, art: crate::rules::art_data::ArtRegistry) {
         self.art_registry = art;
         self.art_registry
@@ -4613,7 +4628,6 @@ impl RuleSet {
         // Projectile ART is already projected from the per-pass registry owner.
         // A final-image reread here would lose omission/cache/default semantics.
         let ai_base_spacing = self.ai_base_spacing;
-        let mut patched: u32 = 0;
         let mut dock_patched: u32 = 0;
         let mut buildings_checked: u32 = 0;
         let mut infantry_checked: u32 = 0;
@@ -4644,31 +4658,11 @@ impl RuleSet {
             }
             buildings_checked += 1;
             obj.hidden_occupancy = art.building_hidden_occupancy_profile(&obj.id, art_key);
-            let rules_foundation_id = crate::rules::foundation::foundation_id(&obj.foundation);
+            // +EF0 is supplied by the sole pass owner in from_processed_rules.
+            // Repeating461225 here changes late constructor-only types and
+            // loses retained state when installation ART differs from the pass.
             if let Some(entry) = entry {
                 obj.to_overlay = entry.to_overlay.clone();
-                if let Some(ref foundation) = entry.foundation {
-                    let effective_foundation =
-                        if rules_foundation_id != crate::rules::foundation::DEFAULT_FOUNDATION_ID {
-                            crate::rules::foundation::foundation_name(&obj.foundation)
-                        } else {
-                            crate::rules::foundation::foundation_name(foundation)
-                        };
-                    if obj.foundation != effective_foundation {
-                        log::trace!(
-                            "Foundation patch: {} (image={}) {} → {}",
-                            obj.id,
-                            art_key,
-                            obj.foundation,
-                            effective_foundation,
-                        );
-                    }
-                    obj.foundation = effective_foundation.to_string();
-                    patched += 1;
-                } else {
-                    obj.foundation =
-                        crate::rules::foundation::foundation_name(&obj.foundation).to_string();
-                }
                 // Merge QueueingCell from art.ini (TibSun legacy dock system).
                 if entry.queueing_cell != [0, 0] {
                     obj.queueing_cell = entry.queueing_cell;
@@ -4703,16 +4697,17 @@ impl RuleSet {
                 .then_some(ai_base_spacing);
         }
         log::info!(
-            "Merged art.ini → RuleSet: {} foundations, {} dock cells ({} buildings checked)",
-            patched,
+            "Merged art.ini → RuleSet: {} dock cells ({} buildings checked)",
             dock_patched,
             buildings_checked,
         );
         let mut terrain_foundations_patched: u32 = 0;
         for terrain in self.terrain_object_types.values_mut() {
             if let Some(entry) = art.get(&terrain.name) {
-                if let Some(ref foundation) = entry.foundation {
-                    terrain.merge_art_foundation(foundation);
+                if let Some(foundation) = entry.foundation {
+                    terrain.merge_art_foundation(
+                        crate::rules::foundation::FOUNDATION_TABLE[usize::from(foundation)].name,
+                    );
                     terrain_foundations_patched += 1;
                 }
             }
@@ -6138,7 +6133,8 @@ MutateWarhead=MyMutate\n\
     #[test]
     fn test_object_lookup() {
         let ini: IniFile = IniFile::from_str(&make_test_rules());
-        let rules: RuleSet = RuleSet::from_ini(&ini).expect("Should parse");
+        let art = IniFile::from_str("[GAPOWR]\nFoundation=2x2\n");
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("Should parse");
 
         let e1: &ObjectType = rules.object("E1").expect("E1 exists");
         assert_eq!(e1.cost, 200);
@@ -7540,8 +7536,10 @@ Projectile=Invisible
             ),
         );
         let art_text = "[GAREFN]\nFoundation=4x3\nCanHideThings=no\nOccupyHeight=4\nAddOccupy1=-1,0\nAddOccupy2=-1,-1\nRemoveOccupy1=3,1\n";
-        let mut rules: RuleSet = RuleSet::from_rules_layers(&layers).expect("rules parse");
         let art_ini: IniFile = IniFile::from_str(art_text);
+        let mut rules =
+            RuleSet::from_processed_rules(&layers.process_with_fixed_art(&art_ini).unwrap())
+                .expect("rules parse");
         let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
         rules.install_art_data(art);
         let obj = rules.object("GAREFN").expect("GAREFN");
@@ -7637,10 +7635,12 @@ Projectile=Invisible
              [GAPOWR]\nName=Power\nStrength=750\nArmor=wood\nFoundation=2x2\n",
             ),
         );
-        let mut rules = RuleSet::from_rules_layers(&layers).expect("rules parse");
         let art_ini = IniFile::from_str(
-            "[GI]\nCrawls=yes\nFireUp=2\nFireProne=3\nSecondaryFire=4\nSecondaryProne=5\n\n[GAPOWR]\nCrawls=yes\nFireUp=9\n",
+            "[GI]\nCrawls=yes\nFireUp=2\nFireProne=3\nSecondaryFire=4\nSecondaryProne=5\n\n[GAPOWR]\nFoundation=2x2\nCrawls=yes\nFireUp=9\n",
         );
+        let mut rules =
+            RuleSet::from_processed_rules(&layers.process_with_fixed_art(&art_ini).unwrap())
+                .expect("rules parse");
         let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
         rules.install_art_data(art);
 
@@ -7893,7 +7893,14 @@ Projectile=Invisible
              [YACNST]\nFoundation=4x4\n\
              [WRONG]\nFoundation=4x4\n",
         );
-        let rules = RuleSet::from_ini(&ini).expect("naval base rules");
+        let art = IniFile::from_str(
+            "[GAYARD]\nFoundation=4x4\n[NAYARD]\nFoundation=4x4\n\
+             [YAYARD]\nFoundation=4x4\n[GACNST]\nFoundation=4x4\n\
+             [NACNST]\nFoundation=4x4\n[YACNST]\nFoundation=4x4\n\
+             [WRONG]\nFoundation=4x4\n",
+        );
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+            .expect("naval base rules and ART");
 
         assert_eq!(rules.shipyard_types, ["GAYARD", "nayard", "YAYARD"]);
         assert_eq!(
@@ -8159,8 +8166,9 @@ Projectile=Invisible
             building_section,
         );
         let rules_ini = IniFile::from_str(&rules_str);
-        let mut rules = RuleSet::from_ini(&rules_ini).expect("rules parse");
         let art_ini_parsed = IniFile::from_str(art_ini);
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini_parsed)
+            .expect("rules parse");
         let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini_parsed);
         rules.install_art_data(art);
         rules
@@ -8211,9 +8219,10 @@ Projectile=Invisible
 
     #[test]
     fn gsi_04_05_reservation_ai_base_spacing_default_signed_and_writer_gates() {
-        let default_rules = RuleSet::from_ini(&IniFile::from_str(
-            "[BuildingTypes]\n0=PLAIN\n[PLAIN]\nFoundation=2x2\n",
-        ))
+        let default_rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str("[BuildingTypes]\n0=PLAIN\n[PLAIN]\nName=Plain\n"),
+            &IniFile::from_str("[PLAIN]\nFoundation=2x2\n"),
+        )
         .expect("default AI spacing rules");
         assert_eq!(default_rules.ai_base_spacing, 1);
         assert_eq!(
@@ -8224,8 +8233,9 @@ Projectile=Invisible
             Some(1)
         );
 
-        let rules = RuleSet::from_ini(&IniFile::from_str(
-            "[AI]\nAIBaseSpacing=-3\n\
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[AI]\nAIBaseSpacing=-3\n\
              [BuildingTypes]\n\
              0=PLAIN\n1=GATHER\n2=UNDEPLOY\n3=UNDEPLOYGATHER\n4=UNDEPLOYONE\n\
              [PLAIN]\nFoundation=2x2\n\
@@ -8233,7 +8243,13 @@ Projectile=Invisible
              [UNDEPLOY]\nFoundation=2x2\nUndeploysInto=MCV\n\
              [UNDEPLOYGATHER]\nFoundation=2x2\nUndeploysInto=MCV\nResourceGatherer=yes\n\
              [UNDEPLOYONE]\nFoundation=1x1\nUndeploysInto=MCV\n",
-        ))
+            ),
+            &IniFile::from_str(
+                "[PLAIN]\nFoundation=2x2\n[GATHER]\nFoundation=2x2\n\
+             [UNDEPLOY]\nFoundation=2x2\n[UNDEPLOYGATHER]\nFoundation=2x2\n\
+             [UNDEPLOYONE]\nFoundation=1x1\n",
+            ),
+        )
         .expect("signed AI spacing rules");
         assert_eq!(rules.ai_base_spacing, -3);
         assert_eq!(

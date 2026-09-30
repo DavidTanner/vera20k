@@ -182,48 +182,129 @@ fn damage_ordinary_bridge(scene: &mut HeadlessScenario, point: (u16, u16), z: i3
 /// Damage is admitted through the area-damage owner; rebuilding uses the ordinary
 /// Engineer command and object turns, including its entry and consumption.
 pub(crate) fn visit_anytown_concrete_stages(mut visit: impl FnMut(&str, &HeadlessScenario)) {
+    visit_anytown_concrete_stages_with_repair_orders(
+        |phase, scene| visit(phase, scene),
+        ordinary_repair_orders,
+    );
+}
+
+/// The same physical damage/repair witness with an app-owned input producer.
+/// This callback seam replaces only the previously supplied Capture envelope;
+/// it does not replace Engineer construction, the repair loop or its resources.
+/// Mutable phase observation permits an app test to construct a fresh ordinary
+/// actor for a healthy no-order probe after the repaired actor was consumed.
+pub(crate) fn visit_anytown_concrete_stages_with_repair_orders(
+    mut visit: impl FnMut(&str, &mut HeadlessScenario),
+    mut producer: impl FnMut(
+        &Simulation,
+        &crate::rules::ruleset::RuleSet,
+        u64,
+        u64,
+    ) -> Vec<CommandEnvelope>,
+) {
     let mut scene = load_anytown_concrete();
-    visit("loaded", &scene);
+    visit("loaded", &mut scene);
     assert!(!damage_anytown_concrete(&mut scene));
-    visit("damaged", &scene);
+    visit("damaged", &mut scene);
     assert!(damage_anytown_concrete(&mut scene));
-    visit("collapsed", &scene);
-    repair_anytown_concrete(&mut scene);
-    visit("repaired", &scene);
+    visit("collapsed", &mut scene);
+    repair_anytown_concrete_with_orders(&mut scene, &mut producer);
+    visit("repaired", &mut scene);
 }
 
 pub(super) fn repair_anytown_concrete(scene: &mut HeadlessScenario) {
-    repair_ordinary_bridge(scene, (89, 51), (89, 50));
+    repair_anytown_concrete_with_orders(scene, &mut ordinary_repair_orders);
+}
+
+fn repair_anytown_concrete_with_orders(
+    scene: &mut HeadlessScenario,
+    producer: &mut impl FnMut(
+        &Simulation,
+        &crate::rules::ruleset::RuleSet,
+        u64,
+        u64,
+    ) -> Vec<CommandEnvelope>,
+) {
+    repair_ordinary_bridge(scene, (89, 51), (89, 50), producer);
     assert_repaired_ground_row(scene, 86..=88, 54, 214..=217);
 }
 
 pub(super) fn repair_shrapnel_wood(scene: &mut HeadlessScenario) {
-    repair_ordinary_bridge(scene, (117, 56), (117, 55));
+    repair_shrapnel_wood_with_orders(scene, &mut ordinary_repair_orders);
+}
+
+fn repair_shrapnel_wood_with_orders(
+    scene: &mut HeadlessScenario,
+    producer: &mut impl FnMut(
+        &Simulation,
+        &crate::rules::ruleset::RuleSet,
+        u64,
+        u64,
+    ) -> Vec<CommandEnvelope>,
+) {
+    repair_ordinary_bridge(scene, (117, 56), (117, 55), producer);
     assert_repaired_ground_row(scene, 114..=116, 59, 83..=86);
 }
 
 pub(crate) fn visit_shrapnel_wood_stages(mut visit: impl FnMut(&str, &HeadlessScenario)) {
-    let mut scene = load_shrapnel();
-    visit("loaded", &scene);
-    repair_shrapnel_wood(&mut scene);
-    visit("healthy", &scene);
-    assert!(!damage_shrapnel_wood(&mut scene));
-    visit("damaged", &scene);
-    assert!(damage_shrapnel_wood(&mut scene));
-    visit("collapsed", &scene);
-    repair_shrapnel_wood(&mut scene);
-    visit("repaired", &scene);
+    visit_shrapnel_wood_stages_with_repair_orders(
+        |phase, scene| visit(phase, scene),
+        ordinary_repair_orders,
+    );
 }
 
-fn repair_ordinary_bridge(scene: &mut HeadlessScenario, hut_coord: (u16, u16), start: (u16, u16)) {
+pub(crate) fn visit_shrapnel_wood_stages_with_repair_orders(
+    mut visit: impl FnMut(&str, &mut HeadlessScenario),
+    mut producer: impl FnMut(
+        &Simulation,
+        &crate::rules::ruleset::RuleSet,
+        u64,
+        u64,
+    ) -> Vec<CommandEnvelope>,
+) {
+    let mut scene = load_shrapnel();
+    visit("loaded", &mut scene);
+    repair_shrapnel_wood_with_orders(&mut scene, &mut producer);
+    visit("healthy", &mut scene);
+    assert!(!damage_shrapnel_wood(&mut scene));
+    visit("damaged", &mut scene);
+    assert!(damage_shrapnel_wood(&mut scene));
+    visit("collapsed", &mut scene);
+    repair_shrapnel_wood_with_orders(&mut scene, &mut producer);
+    visit("repaired", &mut scene);
+}
+
+/// Preserve the original simulation/GPU witness's next-frame envelope.
+fn ordinary_repair_orders(
+    sim: &Simulation,
+    _rules: &crate::rules::ruleset::RuleSet,
+    engineer: u64,
+    hut: u64,
+) -> Vec<CommandEnvelope> {
+    vec![CommandEnvelope::new(
+        sim.entities().get(engineer).unwrap().owner(),
+        sim.session.tick + 1,
+        Command::CaptureBuilding {
+            engineer_id: engineer,
+            target_building_id: hut,
+        },
+    )]
+}
+
+fn repair_ordinary_bridge(
+    scene: &mut HeadlessScenario,
+    hut_coord: (u16, u16),
+    start: (u16, u16),
+    producer: &mut impl FnMut(
+        &Simulation,
+        &crate::rules::ruleset::RuleSet,
+        u64,
+        u64,
+    ) -> Vec<CommandEnvelope>,
+) {
     let owner = scene.sim().session.current_house.unwrap();
     let owner_name = scene.sim().resolve(owner).to_owned();
-    assert!(
-        crate::sim::world::bridge_orchestrator::bridge_hut_has_collapsed_span(
-            scene.sim(),
-            hut_coord
-        )
-    );
+    assert!(crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(scene.sim(), hut_coord));
     let runtime = &mut scene.runtime;
     let hut = runtime
         .simulation
@@ -246,27 +327,21 @@ fn repair_ordinary_bridge(scene: &mut HeadlessScenario, hut_coord: (u16, u16), s
             &runtime.resources.rules,
         )
         .expect("ordinary Engineer bank placement");
-    let repair = CommandEnvelope::new(
-        owner,
-        runtime.simulation.session.tick + 1,
-        Command::CaptureBuilding {
-            engineer_id: engineer,
-            target_building_id: hut,
-        },
+    let orders = producer(&runtime.simulation, &runtime.resources.rules, engineer, hut);
+    assert!(
+        !orders.is_empty(),
+        "collapsed bridge input must produce a repair order"
     );
+    runtime.simulation.queue_commands(orders);
     let mut consumed = false;
-    for frame in 0..1200 {
-        scene
+    let mut published = false;
+    for _ in 0..1200 {
+        let due = scene.runtime.simulation.take_due_commands();
+        let output = scene
             .runtime
-            .advance_frame_for_tooling(
-                if frame == 0 {
-                    std::slice::from_ref(&repair)
-                } else {
-                    &[]
-                },
-                SIM_TICK_MS,
-            )
+            .advance_frame(&due, SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
             .unwrap();
+        published |= output.tick.bridge_state_changed;
         if scene
             .sim()
             .entities()
@@ -286,11 +361,10 @@ fn repair_ordinary_bridge(scene: &mut HeadlessScenario, hut_coord: (u16, u16), s
         "ordinary Engineer must enter the hut and be consumed"
     );
     assert!(
-        !crate::sim::world::bridge_orchestrator::bridge_hut_has_collapsed_span(
-            scene.sim(),
-            hut_coord
-        )
+        published,
+        "ordinary repair must publish the bridge mutation to the frame output"
     );
+    assert!(!crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(scene.sim(), hut_coord));
 }
 
 fn assert_repaired_ground_row(

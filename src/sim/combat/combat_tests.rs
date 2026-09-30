@@ -309,22 +309,31 @@ fn make_entity_owned(
 }
 
 fn gsi_04_05_attack_frame_rules() -> RuleSet {
-    RuleSet::from_ini(&IniFile::from_str(
+    let ini = IniFile::from_str(
         "[VehicleTypes]\n0=SOURCE\n1=PROTECTED\n\
          [BuildingTypes]\n0=NORMAL\n1=MOD1X1\n2=STOCK2X2\n3=SELFNO\n4=SELFYES\n5=IMMUNE\n6=PROTECTEDBLDG\n\
          [Warheads]\n0=HITWH\n\
          [SOURCE]\nStrength=100\nArmor=heavy\n\
          [PROTECTED]\nStrength=100\nArmor=heavy\nToProtect=yes\n\
-         [NORMAL]\nStrength=100\nArmor=wood\nFoundation=2x2\n\
-         [MOD1X1]\nStrength=100\nArmor=wood\nUndeploysInto=MODUNIT\nFoundation=1x1\n\
-         [STOCK2X2]\nStrength=100\nArmor=wood\nUndeploysInto=MODUNIT\nFoundation=2x2\n\
-         [SELFNO]\nStrength=100\nArmor=wood\nFoundation=2x2\nDamageSelf=no\n\
-         [SELFYES]\nStrength=100\nArmor=wood\nFoundation=2x2\nDamageSelf=yes\n\
-         [IMMUNE]\nStrength=100\nArmor=wood\nFoundation=2x2\nImmune=yes\n\
-         [PROTECTEDBLDG]\nStrength=100\nArmor=wood\nFoundation=2x2\nToProtect=yes\n\
+         [NORMAL]\nStrength=100\nArmor=wood\n\
+         [MOD1X1]\nStrength=100\nArmor=wood\nUndeploysInto=MODUNIT\n\
+         [STOCK2X2]\nStrength=100\nArmor=wood\nUndeploysInto=MODUNIT\n\
+         [SELFNO]\nStrength=100\nArmor=wood\nDamageSelf=no\n\
+         [SELFYES]\nStrength=100\nArmor=wood\nDamageSelf=yes\n\
+         [IMMUNE]\nStrength=100\nArmor=wood\nImmune=yes\n\
+         [PROTECTEDBLDG]\nStrength=100\nArmor=wood\nToProtect=yes\n\
          [HITWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-    ))
-    .expect("House attack-frame rules parse")
+    );
+    let art = IniFile::from_str(
+        "[NORMAL]\nFoundation=2x2\n\
+         [MOD1X1]\nFoundation=1x1\n\
+         [STOCK2X2]\nFoundation=2x2\n\
+         [SELFNO]\nFoundation=2x2\n\
+         [SELFYES]\nFoundation=2x2\n\
+         [IMMUNE]\nFoundation=2x2\n\
+         [PROTECTEDBLDG]\nFoundation=2x2\n",
+    );
+    RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("House attack-frame rules parse")
 }
 
 #[test]
@@ -8557,10 +8566,11 @@ fn projectile_shrapnel_targets_hostile_head_before_random_cell_child() {
 /// (`0x00447AC0`), not its north-west cell.
 #[test]
 fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\nFoundation=3x3\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-5\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-    ))
-    .expect("shrapnel rules");
+    let ini = IniFile::from_str(
+        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-5\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    );
+    let art = IniFile::from_str("[HQ]\nFoundation=3x3\n");
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("shrapnel rules");
     let mut entities = EntityStore::new();
     let mut source = make_entity_owned(1, "MTNK", 5, 5, 100, "Soviet");
     source.lifecycle.cell_marked = true;
@@ -8629,10 +8639,11 @@ fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
 
 #[test]
 fn projectile_shrapnel_aims_at_a_building_foundation_center() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\nFoundation=2x2\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=1\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-    ))
-    .expect("shrapnel rules");
+    let ini = IniFile::from_str(
+        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=1\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    );
+    let art = IniFile::from_str("[HQ]\nFoundation=2x2\n");
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("shrapnel rules");
     let mut entities = EntityStore::new();
     let mut source = make_entity_owned(1, "MTNK", 5, 5, 100, "Soviet");
     source.lifecycle.cell_marked = true;
@@ -10263,16 +10274,18 @@ fn gsi_05_14_a_dying_building_uses_its_own_debris_anims() {
 /// H*128 - 128)), 20 leptons up — not from its top-left cell.
 #[test]
 fn a_dying_buildings_debris_leaves_from_its_centre() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let ini = IniFile::from_str(
         "[General]\nMetallicDebris=DBRIS1LG\n\
          [VehicleTypes]\n0=MTNK\n\
          [BuildingTypes]\n0=BIG\n\
          [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nCost=700\nPrimary=105mm\n\
-         [BIG]\nStrength=1\nArmor=heavy\nFoundation=3x3\nMinDebris=1\nMaxDebris=2\n\
+         [BIG]\nStrength=1\nArmor=heavy\nMinDebris=1\nMaxDebris=2\n\
          [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\
          [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-    ))
-    .expect("building debris fixture parses");
+    );
+    let art = IniFile::from_str("[BIG]\nFoundation=3x3\n");
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+        .expect("building debris fixture parses");
 
     let mut store = EntityStore::new();
     let _ = test_intern("BIG");

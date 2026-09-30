@@ -437,7 +437,7 @@ fn what_action_on_cell(
 /// 7. AttackCursorOnFriendlies: selected unit attacks friendlies, treat as attack target.
 /// 8. Harvester docking: selected miner hovering friendly refinery (gamemd action 0x1A).
 /// 9. Generic friendly/enemy/in-range/out-of-range fallback.
-fn capability_cursor_for_hover(
+pub(super) fn capability_cursor_for_hover(
     sim: &crate::sim::world::Simulation,
     selected: &[u64],
     best_id: Option<u64>,
@@ -529,6 +529,17 @@ fn capability_cursor_for_hover(
                 return CursorFeedbackKind::DisarmBomb;
             }
 
+            // Object51E3B0 hut arm returns action29/32 unconditionally;
+            // Display4AAE90 selects Repair/NoRepair, independently of owner.
+            if matches!(
+                hover.kind,
+                HoverTargetKind::FriendlyStructure | HoverTargetKind::EnemyStructure
+            ) && let Some(action) = rules.and_then(|rules| {
+                sim.engineer_bridge_hut_action(sel_entity.stable_id(), hover.stable_id, rules)
+            }) {
+                return CursorFeedbackKind::BridgeRepair(action);
+            }
+
             // 2. C4 plant: SEAL / Tanya / Psi-Corp Trooper hovering an enemy
             //    structure with CanC4=yes, not InvisibleInGame, not iron-curtained.
             //    SabotageCursor flag remains in the data model (parsed in
@@ -550,24 +561,6 @@ fn capability_cursor_for_hover(
             let is_infantry = sel_entity.category == EntityCategory::Infantry;
 
             if sel_obj.engineer {
-                // 3. Engineer on bridge repair hut → repair (Enter cursor).
-                //    `MapClass::FindBridgeConnection_Predicate` 0x00587410 is
-                //    the native gate here, reached from
-                //    `InfantryClass::What_Action_OnCell` 0x0051F800 and
-                //    `What_Action_OnObject` 0x0051E3B0. The hut flag alone is
-                //    not enough: the connected span must actually be collapsed.
-                if matches!(hover.kind, HoverTargetKind::EnemyStructure) {
-                    if hovered_obj.map_or(false, |o| o.bridge_repair_hut)
-                        && hovered_entity.is_some_and(|e| {
-                            crate::sim::world::bridge_orchestrator::bridge_hut_has_collapsed_span(
-                                sim,
-                                (e.position.rx, e.position.ry),
-                            )
-                        })
-                    {
-                        return CursorFeedbackKind::Enter;
-                    }
-                }
                 // 4. Engineer on capturable enemy building → capture (Enter cursor).
                 if matches!(hover.kind, HoverTargetKind::EnemyStructure) {
                     if hovered_obj.map_or(false, |o| o.capturable) {
@@ -1091,6 +1084,11 @@ pub(crate) fn cursor_id_for_feedback(kind: CursorFeedbackKind) -> Option<CursorI
         CursorFeedbackKind::MinimapMove => Some(CursorId::MinimapMove),
         CursorFeedbackKind::Enter => Some(CursorId::Enter),
         CursorFeedbackKind::EngineerRepair => Some(CursorId::EngineerRepair),
+        CursorFeedbackKind::BridgeRepair(valid) => Some(if valid {
+            CursorId::Repair
+        } else {
+            CursorId::NoRepair
+        }),
         CursorFeedbackKind::Demolish => Some(CursorId::Demolish),
         // `DisplayClass::SetCursorFromAction @ 0x004AAE90`: action 0x35 ->
         // row 0x26, action 0x39 -> row 0x3B (action 0x36 NoIvanBomb shares
@@ -1982,6 +1980,122 @@ mod tests {
         );
     }
 
+    /// Native51E551/51FA75: friendship does not gate the terminal hut arm.
+    /// Display4AAE90 maps action29 to Repair row33 and action32 to NoRepair
+    /// row35. The complete query and caller goldens live in spatial_oracle.
+    #[test]
+    fn engineer_hut_cursor_uses_native_repair_rows_for_all_relations() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n0=ENGINEER\n[BuildingTypes]\n0=CABHUT\n\
+             [ENGINEER]\nStrength=75\nEngineer=yes\nC4=yes\n\
+             [CABHUT]\nStrength=200\nFoundation=1x1\nBridgeRepairHut=yes\nCanC4=yes\nRepairable=yes\nCapturable=yes\n",
+        )).unwrap();
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/engineer_bridge_cursor_caller.json"
+        ))
+        .unwrap();
+        for relation in ["hostile", "allied", "self"] {
+            for collapsed in [false, true] {
+                let mut sim = Simulation::with_seed(0x587410);
+                sim.resolve_type_handles(&rules);
+                sim.session.game_mode_nonzero = true;
+                sim.session.current_house = Some(sim.interner.intern("Americans"));
+                let mut terrain = crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| {
+                    crate::map::resolved_terrain::test_flat_cell(rx, ry)
+                });
+                terrain.test_set_high_bridge_set_starts(Some(100), Some(200));
+                for y in 9..=11 {
+                    terrain.cell_mut(12, y).unwrap().bridge_facts.overlay_id =
+                        Some(if collapsed { 0xE7 } else { 0xD4 });
+                }
+                sim.install_resolved_terrain_for_new_map(terrain);
+                sim.bridge_state = Some(crate::sim::bridge_state::BridgeRuntimeState::default());
+                let owner = if relation == "self" {
+                    "Americans"
+                } else {
+                    "Soviets"
+                };
+                let engineer = sim
+                    .spawn_object("ENGINEER", "Americans", 8, 10, 0, &rules)
+                    .unwrap();
+                let hut = sim
+                    .spawn_object("CABHUT", owner, 10, 10, 0, &rules)
+                    .unwrap();
+                // A damaged friendly hut and a capturable hostile hut must
+                // still terminate this branch instead of taking those fallbacks.
+                sim.entities_mut().get_mut(hut).unwrap().health.current = 150;
+                if relation == "allied" {
+                    sim.house_alliances
+                        .entry("AMERICANS".into())
+                        .or_default()
+                        .insert("SOVIETS".into());
+                }
+                let kind = if relation == "hostile" {
+                    HoverTargetKind::EnemyStructure
+                } else {
+                    HoverTargetKind::FriendlyStructure
+                };
+                let before = sim.state_hash();
+                let rng = (
+                    sim.scenario_rng.logical_state(),
+                    sim.main_rng.logical_state(),
+                    sim.mapgen_rng.logical_state(),
+                );
+                let actual = capability_cursor_for_hover(
+                    &sim,
+                    &[engineer],
+                    Some(engineer),
+                    &HoverTargetKindWithId {
+                        kind,
+                        stable_id: hut,
+                    },
+                    Some(&rules),
+                    None,
+                );
+                let row = native["actions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|row| {
+                        row["input"]["route"] == "object"
+                            && row["input"]["name"]
+                                == format!(
+                                    "{relation}_{}",
+                                    if collapsed { "True" } else { "False" }
+                                )
+                    })
+                    .unwrap();
+                assert_eq!(row["output"]["action"], if collapsed { 29 } else { 32 });
+                assert_eq!(
+                    actual,
+                    CursorFeedbackKind::BridgeRepair(collapsed),
+                    "{relation} collapsed={collapsed}"
+                );
+                assert_eq!(
+                    super::cursor_id_for_feedback(actual),
+                    Some(if collapsed {
+                        CursorId::Repair
+                    } else {
+                        CursorId::NoRepair
+                    })
+                );
+                assert_eq!(
+                    sim.state_hash(),
+                    before,
+                    "hover must leave gameplay state untouched"
+                );
+                assert_eq!(
+                    (
+                        sim.scenario_rng.logical_state(),
+                        sim.main_rng.logical_state(),
+                        sim.mapgen_rng.logical_state()
+                    ),
+                    rng
+                );
+            }
+        }
+    }
+
     /// Stock Crazy Ivan, Engineer and a heavy tank, with their weapons.
     fn bomb_cursor_rules() -> RuleSet {
         RuleSet::from_ini(&IniFile::from_str(
@@ -2246,55 +2360,8 @@ mod cursor_animation_tests {
         );
     }
 
-    // RESIDUAL - gamemd address 0x00587410,
-    // `MapClass::FindBridgeConnection_Predicate`, branch selection.
-    //
-    // The overlay branch is ported: step 3 above gates the engineer Enter
-    // cursor on `bridge_hut_has_collapsed_span`, so a hut whose span carries
-    // no collapsed anchor no longer offers a repair cursor.
-    //
-    // Trigger, corrected 2026-08-19: NOT "a partially damaged span". The
-    // native picks its branch from whichever of the four 5x5 cases matched
-    // LAST, and a cell whose iso-tile sits in a bridge tileset window is a
-    // tileset match whose overlay is never read (the body is an if /
-    // else-if chain testing `cell+0x38` before `cell+0x44`). A repair hut
-    // sits beside ramp and bridgehead iso-tiles, so the tileset branch is
-    // plausibly the ordinary case rather than a corner - though whether it
-    // wins the last-match race on stock maps is UNCHECKED. Whenever it does,
-    // gamemd walks `BridgeRecord`s at tolerance 3 and VERA walks overlays.
-    //
-    // Effect and DIRECTION: unbounded, and it can point either way. Where
-    // the record branch would return true and the overlay walk finds no
-    // anchor, VERA withholds a cursor gamemd shows - the opposite of the
-    // over-eager cursor this fix removed. The repair itself is unaffected:
-    // `context_order.rs` and the world-order path accept the order on the
-    // hut flag alone, so a player who clicks anyway still repairs. What is
-    // lost is the affordance, and a player reading the cursor concludes the
-    // bridge cannot be repaired.
-    //
-    // Frequency: every mouse-over of a repair hut with an engineer selected
-    // on a bridged map - the same cadence as the defect it replaces, not
-    // narrower.
-    //
-    // Also unported, verified separately and NOT part of the branch problem
-    // above: at 0x0051E3B0 the BridgeRepairHut arm RETURNS unconditionally.
-    // `read_memory 0x0051E520` decodes the tail after the
-    // `CALL 0x00587410` at 0x0051E54C as
-    // `NEG AL; SBB EAX,EAX; AND AL,0xFD; ADD EAX,0x20; RET 0x8` - 0x1D when
-    // the predicate holds, 0x20 when it does not, with no path past it. gamemd
-    // therefore never reaches a later cursor case for a hut, while
-    // `capability_cursor_for_hover` falls through to the capturable and
-    // friendly-structure cases below.
-    //
-    // Trigger: every engineer hover over a repair hut. Effect today is nil -
-    // `CABHUT` carries no `Capturable=` in `ini/rulesmd.ini`, so the case
-    // immediately below does not fire - but nothing constrains the cases after
-    // it, and a modded or future hut type would diverge silently.
-    //
-    // Blocker: the three geometry tables are data this crate has no reader
-    // for; the tolerance-3 record hop needs `FindBridgeRecord`'s semantics
-    // ported first; and settling the direction needs a live check of what a
-    // stock hut's 5x5 actually contains.
-    // Residual (formerly an ignored placeholder test): gamemd 0x00587410 picks overlay-vs-record branch by last 5x5 match; VERA always walks overlays.
-    // Unimplemented: branch selection + record branch of FindBridgeConnection_Predicate 0x00587410.
+    // Native query and object-route admission are now compared through the
+    // shared587410 owner and engineer_bridge_cursor_caller corpus. Minimap
+    // hover, full base WhatAction/modifiers and final SHP drawing remain
+    // outside this tactical object-route comparison.
 }

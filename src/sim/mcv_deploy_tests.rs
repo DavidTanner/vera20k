@@ -17,9 +17,13 @@ fn fixture_with_sound(
 ) -> (Simulation, RuleSet, u64) {
     let sound_line = sound.map_or(String::new(), |s| format!("DeploySound={s}\n"));
     let text = format!(
-        "[InfantryTypes]\n[AircraftTypes]\n[VehicleTypes]\n0={kind}\n[BuildingTypes]\n0=YARD\n[{kind}]\nStrength=1000\nSpeed=5\nROT={rot}\nLocomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\nDeploysInto=YARD\n{sound_line}[YARD]\nStrength=1000\nConstructionYard=yes\nFoundation=4x3\nDeployFacing={deploy_facing}\n[Unload]\nRate=0.016\n[Clear]\nBuildable=yes\n"
+        "[InfantryTypes]\n[AircraftTypes]\n[VehicleTypes]\n0={kind}\n[BuildingTypes]\n0=YARD\n[{kind}]\nStrength=1000\nSpeed=5\nROT={rot}\nLocomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\nDeploysInto=YARD\n{sound_line}[YARD]\nStrength=1000\nConstructionYard=yes\nDeployFacing={deploy_facing}\n[Unload]\nRate=0.016\n[Clear]\nBuildable=yes\n"
     );
-    let rules = RuleSet::from_ini(&IniFile::from_str(&text)).unwrap();
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(&text),
+        &IniFile::from_str("[YARD]\nFoundation=4x3\n"),
+    )
+    .unwrap();
     let mut sim = Simulation::new();
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     // No house AI/opponent defeat system in these command/locomotor fixtures.
@@ -416,7 +420,7 @@ fn retail_mcv_and_target_rules_deploy_with_one_command() {
     else {
         return;
     };
-    let mut rules = RuleSet::from_ini(&rules_ini).unwrap();
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
     let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
     rules.install_art_data(art);
     for kind in ["AMCV", "SMCV", "PCV"] {
@@ -575,10 +579,14 @@ fn house_fixture(human: bool, land: &str) -> (Simulation, RuleSet, u64) {
         "[InfantryTypes]\n[AircraftTypes]\n[VehicleTypes]\n0=AMCV\n[BuildingTypes]\n0=YARD\n\
          [AI]\nBuildConst=YARD\n\
          [AMCV]\nStrength=1000\nSpeed=5\nROT=5\nLocomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\nDeploysInto=YARD\n\
-         [YARD]\nStrength=1000\nConstructionYard=yes\nFoundation=4x3\nDeployFacing=4\n\
+         [YARD]\nStrength=1000\nConstructionYard=yes\nDeployFacing=4\n\
          [Hunt]\nRate=0.016\n[Guard]\nRate=0.016\n[Unload]\nRate=0.016\n{land}"
     );
-    let rules = RuleSet::from_ini(&IniFile::from_str(&text)).unwrap();
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(&text),
+        &IniFile::from_str("[YARD]\nFoundation=4x3\n"),
+    )
+    .unwrap();
     let mut sim = Simulation::new();
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     sim.session.game_mode_nonzero = true;

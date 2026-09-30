@@ -51,6 +51,30 @@ pub(crate) fn install_ordinary_repair_test_catalog(grid: &mut ResolvedTerrainGri
     install_repair_test_catalog(grid, false, false, 11);
 }
 
+/// Sparse physical TMP headers for supplied-state native587410 comparisons.
+/// Use the production registered-file reader; no query-origin substitution.
+pub(crate) fn install_bridge_query_test_catalog(
+    grid: &mut ResolvedTerrainGrid,
+    width: u8,
+    tiles: &[u16],
+) {
+    let theater = synthetic_theater_from_ini(
+        b"[TileSet0000]\nTilesInSet=1\nFileName=source\nSetName=Plain\n",
+    );
+    let mut tmp = vec![0u8; 16 + usize::from(width) * 4];
+    tmp[0..4].copy_from_slice(&u32::from(width).to_le_bytes());
+    tmp[4..8].copy_from_slice(&1u32.to_le_bytes());
+    tmp[8..12].copy_from_slice(&60u32.to_le_bytes());
+    tmp[12..16].copy_from_slice(&30u32.to_le_bytes());
+    let (_directory, assets) = gsi_04_02_asset_manager_with_loose_tmps(&[("source01.tem", &tmp)]);
+    let rules = TerrainRules::from_ini(&IniFile::from_str("[Clear]\nFoot=100%\n"));
+    let mut catalog = BridgeRecalcCatalog::for_tiles(&theater, &assets, &rules, false, 0, [0]);
+    for &tile in tiles {
+        catalog = catalog.with_fixture_files(tile, &assets, &["source01.tem"], [0; 64]);
+    }
+    grid.bridge_recalc_catalog = Some(Arc::new(catalog));
+}
+
 /// The ordinary catalog with a Tunnel tile1 (TMP terrain type 5): a Cell on it
 /// keeps Cell+EC = Tunnel through the Recalc(-1) its Mark runs.
 pub(crate) fn install_tunnel_repair_test_catalog(grid: &mut ResolvedTerrainGrid) {

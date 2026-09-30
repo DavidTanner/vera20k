@@ -65,12 +65,13 @@ fn rules(input: &Value) -> RuleSet {
         ""
     };
     let yes = |set: bool| if set { "yes" } else { "no" };
-    RuleSet::from_ini(&IniFile::from_str(&format!(
-        "[General]\nGuardAreaTargetingDelay=36\n[CombatDamage]\nPlayerReturnFire={}\n\
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(&format!(
+            "[General]\nGuardAreaTargetingDelay=36\n[CombatDamage]\nPlayerReturnFire={}\n\
          [BuildingTypes]\n0=DEF\n\
          [VehicleTypes]\n0=TANK\n\
          [AircraftTypes]\n0=JET\n\
-         [DEF]\nStrength=1000\nArmor=concrete\nFoundation={foundation}\nROT={}\n\
+         [DEF]\nStrength=1000\nArmor=concrete\nROT={}\n\
          Insignificant={}\n{weapon}{undeploys}{powered}\
          [TANK]\nStrength=300\nArmor=heavy\nSpeed=6\n\
          [JET]\nStrength=150\nArmor=light\nSpeed=12\n\
@@ -79,10 +80,12 @@ fn rules(input: &Value) -> RuleSet {
          [Shell]\nAG=yes\n\
          [FlakShell]\nAA=yes\nAG=no\n\
          [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        yes(number("player_return_fire", 0) != 0),
-        number("rot", 10),
-        yes(number("insignificant", 0) != 0),
-    )))
+            yes(number("player_return_fire", 0) != 0),
+            number("rot", 10),
+            yes(number("insignificant", 0) != 0),
+        )),
+        &IniFile::from_str(&format!("[DEF]\nFoundation={foundation}\n")),
+    )
     .unwrap()
 }
 
@@ -307,18 +310,18 @@ fn the_block_matches_the_original() {
 /// turretless `Insignificant=` one, and the enemy `GUN` that hits them (a
 /// building, which the bare test map can place).
 fn production_rules(extra: &str) -> RuleSet {
-    RuleSet::from_ini(&IniFile::from_str(&format!(
+    RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&format!(
         "[General]\nGuardAreaTargetingDelay=36\n[BuildingTypes]\n0=DEF\n1=SHACK\n2=GUN\n3=MINER\n\
-         [DEF]\nStrength=1000\nArmor=concrete\nFoundation=2x2\nPrimary=Gun\nTurret=yes\nROT=10\n\
-         [SHACK]\nStrength=1000\nArmor=concrete\nFoundation=2x2\nPrimary=Gun\nROT=10\n\
+         [DEF]\nStrength=1000\nArmor=concrete\nPrimary=Gun\nTurret=yes\nROT=10\n\
+         [SHACK]\nStrength=1000\nArmor=concrete\nPrimary=Gun\nROT=10\n\
          Insignificant=yes\n\
-         [GUN]\nStrength=1000\nArmor=concrete\nFoundation=1x1\nPrimary=Gun\n\
-         [MINER]\nStrength=1000\nArmor=concrete\nFoundation=2x2\nUndeploysInto=GUN\n\
+         [GUN]\nStrength=1000\nArmor=concrete\nPrimary=Gun\n\
+         [MINER]\nStrength=1000\nArmor=concrete\nUndeploysInto=GUN\n\
          ResourceGatherer=yes\n\
          [Gun]\nDamage=10\nROF=20\nRange=6\nProjectile=Shell\nWarhead=AP\n\
          [Shell]\nAG=yes\n\
          [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n{extra}"
-    )))
+    )), &IniFile::from_str("[DEF]\nFoundation=2x2\n[SHACK]\nFoundation=2x2\n[GUN]\nFoundation=1x1\n[MINER]\nFoundation=2x2\n"))
     .unwrap()
 }
 

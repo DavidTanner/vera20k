@@ -2884,13 +2884,14 @@ mod tests {
              [AudioVisual]\nConditionYellow=50%\nConditionRed=25%\n",
             if can_be_occupied { "yes" } else { "no" },
         ));
-        let mut rules = RuleSet::from_ini(&rules_ini).expect("damage-fire rules");
         let art_ini = IniFile::from_str(
             "[TESTART]\nFoundation=4x4\nDamageFireOffset0=-24,-1\nDamageFireOffset1=64,36\n\n\
              [FIRE01]\nRate=450\nLoopCount=-1\nStartSound=BuildingFireBig\n\n\
              [FIRE02]\nRate=450\nLoopCount=-1\nStartSound=BuildingFireMed\n\n\
              [FIRE03]\nRate=450\nLoopCount=-1\nStartSound=BuildingFireSmall\n",
         );
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini)
+            .expect("damage-fire rules and ART");
         let mut art = ArtRegistry::from_ini(&art_ini);
         art.bind_anim_frame_count_for_test("FIRE01", 30);
         art.bind_anim_frame_count_for_test("FIRE02", 64);

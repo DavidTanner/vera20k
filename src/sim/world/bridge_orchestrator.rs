@@ -164,162 +164,32 @@ pub(crate) fn dispatch_bridge_collapse_from_hut_with_overlay_registry(
     finish_hut_fallback(sim, rules, fallback, overlay_registry) || collapsed
 }
 
-/// Overlay values a fully collapsed span leaves on its anchor: `0xE7` / `0xE8`
-/// on the high side, `0x64` / `0x65` on the low side. `DestroyBridgeWalker_*`
-/// writes them on final collapse and nothing else produces them.
-const HIGH_COLLAPSED_ANCHORS: [u8; 2] = [0xE7, 0xE8];
-const LOW_COLLAPSED_ANCHORS: [u8; 2] = [0x64, 0x65];
-
-/// The overlay half of `MapClass::FindBridgeConnection_Predicate` 0x00587410 -
-/// the cursor-side "is there anything here to repair" test behind the engineer
-/// cursor over a bridge repair hut.
-///
-/// Native shape: scan the 5x5 block around the hovered cell; a cell whose
-/// overlay falls in a destroy band selects the low or high family, and the walk
-/// then follows the axis PERPENDICULAR to the overlay's own class - an NS-class
-/// overlay walks along X, an EW-class overlay along Y - in both directions,
-/// continuing while the overlay stays inside the family band and returning true
-/// the moment a collapsed anchor appears.
-///
-/// **Two things about the native's branch selection are NOT reproduced here,
-/// and neither is a corner case.**
-///
-/// 1. *Which branch runs.* All four scan cases write the same `[ESP+0x12]`
-///    selector, read once after the loop at 0x005876BA, so whichever of the
-///    four matched LAST decides whether the native walks overlays (this
-///    function) or walks `BridgeRecord`s through the per-tile geometry tables
-///    at 0x0082AA04 / 0x0082AA24 / 0x0082AA44. This port always walks overlays.
-/// 2. *Per-cell precedence.* The 5x5 body is a strict if / else-if chain that
-///    tests `cell+0x38` against the two tileset windows at 0x00587483 and
-///    0x00587503 BEFORE it looks at `cell+0x44` against either overlay band at
-///    0x00587580 / 0x00587613. A cell that is both a bridge iso-tile and
-///    carries a destroy-band overlay is therefore a TILESET match and its
-///    overlay is never read. This port has no tile-index reader at all, so it
-///    would treat such a cell as an overlay match.
-///
-/// Whether cells satisfying both conditions occur on stock maps is UNCHECKED,
-/// and so is the record branch's answer for an intact span: its only
-/// true-returns are a record byte `+0x08` of zero and a coordinate matching
-/// neither endpoint, and the "inactive" reading of `+0x08` is itself
-/// unproven by the physical overlay witness. Do not assume the two branches
-/// agree. Original execution over both Anytown huts returns0/0/1/0 for healthy,
-/// first-damaged, collapsed and repaired states, with unchanged Cells/RNG/frame:
-/// `tools/spatial_oracle/anytown_damage/hut_cursor`. Its other-axis and mixed-
-/// family selection paths remain instruction evidence. The residual note
-/// on the bridge-hut repair cursor in `app/input/cursor.rs` records the
-/// separate structural-branch limitation.
-pub(crate) fn bridge_hut_has_collapsed_span(sim: &Simulation, hut_center: (u16, u16)) -> bool {
-    hut_has_collapsed_anchor(&|x, y| bridge_overlay_at(sim, x, y), hut_center)
-}
-
-/// State-only half of [`bridge_hut_has_collapsed_span`], split out so the walk
-/// can be tested without standing up a `Simulation`.
-///
-/// Seed selection follows 0x00587410 exactly, and it is not what it looks
-/// like: the native's 5x5 loop has **no break**. Every one of its four cases
-/// falls through to `INC EDI` at 0x005876A6, so the cell it finally walks from
-/// is the LAST cell that matched, not the first, and the iteration is Y-major
-/// (`EBP` outer adds to the coord's Y at 0x00587443, `EDI` inner adds to X at
-/// 0x00587447). Scanning every cell and accepting any hit would be more
-/// permissive than the binary, which is the direction of the bug this port
-/// exists to remove.
-#[cfg(test)]
-pub(crate) fn hut_span_has_collapsed_anchor(
-    terrain: &ResolvedTerrainGrid,
-    hut_center: (u16, u16),
-) -> bool {
-    hut_has_collapsed_anchor(
-        &|x, y| terrain.cell(x, y).and_then(|c| c.bridge_facts.overlay_id),
-        hut_center,
+/// Engineer WhatAction's complete Map587410 admission. Each ordinary input
+/// producer gets an isolated fallback identity, so hover cadence cannot change
+/// simulation state. The query still retains that identity across all nested
+/// lookups; the live records and registered TMP metadata remain map-owned.
+pub(crate) fn bridge_hut_can_repair(sim: &Simulation, hut_center: (u16, u16)) -> bool {
+    let Some(terrain) = sim.resolved_terrain.as_ref() else {
+        return false;
+    };
+    let records = sim
+        .bridge_state
+        .as_ref()
+        .map_or(&[][..], |state| state.endpoint_records());
+    crate::sim::bridge_state::repair_query::can_repair(
+        &crate::map::resolved_terrain::NativeCellQuery::isolated(terrain),
+        records,
+        (hut_center.0 as i16, hut_center.1 as i16),
     )
 }
 
-fn hut_has_collapsed_anchor(
-    overlay_at: &impl Fn(u16, u16) -> Option<u8>,
-    hut_center: (u16, u16),
-) -> bool {
-    let Some((seed, axis, anchors, is_high)) = hut_scan_last_overlay_seed(overlay_at, hut_center)
-    else {
-        return false;
-    };
-    // Perpendicular convention: an NS-class overlay is walked along X.
-    let walk_axis = match axis {
-        Axis::NS => Axis::EW,
-        Axis::EW => Axis::NS,
-    };
-    let first_step = if axis == Axis::NS { -1 } else { 1 };
-    [first_step, -first_step].into_iter().any(|step| {
-        walk_span_for_collapsed_anchor(overlay_at, seed, walk_axis, step, anchors, is_high)
-    })
-}
-
-/// The native's surviving seed: the last destroy-band cell in Y-major order
-/// over the 5x5 block. Returns its family and axis alongside it.
-fn hut_scan_last_overlay_seed(
-    overlay_at: &impl Fn(u16, u16) -> Option<u8>,
-    hut_center: (u16, u16),
-) -> Option<((u16, u16), Axis, &'static [u8; 2], bool)> {
-    let mut seed = None;
-    for (rx, ry) in hut_scan_5x5_y_major(hut_center) {
-        let Some(overlay) = overlay_at(rx, ry) else {
-            continue;
-        };
-        if let Some(axis) = ordinary::axis(i32::from(overlay), HutBridgeFamily::High) {
-            seed = Some(((rx, ry), axis, &HIGH_COLLAPSED_ANCHORS, true));
-        } else if let Some(axis) = ordinary::axis(i32::from(overlay), HutBridgeFamily::Low) {
-            seed = Some(((rx, ry), axis, &LOW_COLLAPSED_ANCHORS, false));
-        }
-    }
-    seed
-}
-
-/// 0x00587410's scan order: outer counter on Y, inner on X. Distinct from
-/// [`hut_destroy_5x5_scan`], which is the X-major order the CABHUT death path
-/// uses; the two natives genuinely disagree and must not be shared.
-fn hut_scan_5x5_y_major(center: (u16, u16)) -> impl Iterator<Item = (u16, u16)> {
-    let (cx, cy) = (center.0 as i32, center.1 as i32);
-    (-2..=2i32).flat_map(move |dy| {
-        (-2..=2i32).filter_map(move |dx| {
-            let nx = cx + dx;
-            let ny = cy + dy;
-            if nx < 0 || ny < 0 || nx > u16::MAX as i32 || ny > u16::MAX as i32 {
-                None
-            } else {
-                Some((nx as u16, ny as u16))
-            }
-        })
-    })
-}
-
-fn walk_span_for_collapsed_anchor(
-    overlay_at: &impl Fn(u16, u16) -> Option<u8>,
-    from: (u16, u16),
-    axis: Axis,
-    step: i16,
-    anchors: &[u8; 2],
-    is_high: bool,
-) -> bool {
-    let mut cur = from;
-    loop {
-        let Some(overlay) = overlay_at(cur.0, cur.1) else {
-            return false;
-        };
-        let in_band = if is_high {
-            ordinary::member(i32::from(overlay), HutBridgeFamily::High)
-        } else {
-            ordinary::member(i32::from(overlay), HutBridgeFamily::Low)
-        };
-        if !in_band {
-            return false;
-        }
-        if anchors.contains(&overlay) {
-            return true;
-        }
-        let Some(next) = step_axis(cur, axis, step) else {
-            return false;
-        };
-        cur = next;
-    }
+#[cfg(test)]
+pub(crate) fn hut_span_can_repair(terrain: &ResolvedTerrainGrid, hut_center: (u16, u16)) -> bool {
+    crate::sim::bridge_state::repair_query::can_repair(
+        &crate::map::resolved_terrain::NativeCellQuery::canonical(terrain),
+        &[],
+        (hut_center.0 as i16, hut_center.1 as i16),
+    )
 }
 
 fn hut_destroy_5x5_scan(center: (u16, u16)) -> impl Iterator<Item = (u16, u16)> {

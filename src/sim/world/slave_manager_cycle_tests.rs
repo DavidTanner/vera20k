@@ -668,14 +668,17 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     use crate::rules::ruleset::RuleSet;
     use crate::sim::rng::SimRng;
     use crate::sim::world::Simulation;
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n1=SLAV\n[VehicleTypes]\n1=SMIN\n[BuildingTypes]\n1=YAREFN\n\
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(
+            "[InfantryTypes]\n1=SLAV\n[VehicleTypes]\n1=SMIN\n[BuildingTypes]\n1=YAREFN\n\
          [SLAV]\nStrength=125\nSpeed=3\nSlaved=yes\nStorage=4\nHarvestRate=150\n\
          [SMIN]\nStrength=2000\nSpeed=3\nEnslaves=SLAV\nSlavesNumber=5\nDeploysInto=YAREFN\n\
          ResourceGatherer=yes\nResourceDestination=yes\n\
          [YAREFN]\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=5\nUndeploysInto=SMIN\n\
-         Foundation=3x3\nDeployFacing=0\n[Clear]\nBuildable=yes\n",
-    ))
+         DeployFacing=0\n[Clear]\nBuildable=yes\n",
+        ),
+        &IniFile::from_str("[YAREFN]\nFoundation=3x3\n"),
+    )
     .expect("slave miner rules");
     // A Buildup SHP, without which the refinery cannot undeploy
     // (`Sell_Back @ 0x00447110`).
@@ -921,7 +924,8 @@ fn retail_rules_feed_the_slave_refinery_relocation() {
     else {
         return;
     };
-    let mut rules = RuleSet::from_ini(&rules_ini).expect("retail rules");
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).expect("retail rules");
     rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     let general = &rules.general;
     assert_eq!(
@@ -957,14 +961,16 @@ fn an_attacker_of_a_packing_refinery_takes_the_slave_miner() {
     use crate::sim::combat::{AttackTarget, TargetKind};
     use crate::sim::rng::SimRng;
     use crate::sim::world::Simulation;
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n1=SLAV\n[VehicleTypes]\n1=SMIN\n2=TANK\n[BuildingTypes]\n1=YAREFN\n\
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(
+            "[InfantryTypes]\n1=SLAV\n[VehicleTypes]\n1=SMIN\n2=TANK\n[BuildingTypes]\n1=YAREFN\n\
          [SLAV]\nStrength=125\nSpeed=3\nSlaved=yes\nStorage=4\n\
          [SMIN]\nStrength=2000\nSpeed=3\nEnslaves=SLAV\nSlavesNumber=1\nDeploysInto=YAREFN\n\
          [TANK]\nStrength=300\nSpeed=5\n\
-         [YAREFN]\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=1\nUndeploysInto=SMIN\n\
-         Foundation=2x2\n",
-    ))
+         [YAREFN]\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=1\nUndeploysInto=SMIN\n",
+        ),
+        &IniFile::from_str("[YAREFN]\nFoundation=2x2\n"),
+    )
     .expect("rules");
     let mut rules = rules;
     rules.set_buildup_control_for_test("YAREFN", [0, 17, 3]);

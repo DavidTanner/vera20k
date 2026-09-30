@@ -167,7 +167,7 @@ fn war_miner_visit_on_retail_rules() {
     else {
         return;
     };
-    let mut rules = RuleSet::from_ini(&rules_ini).unwrap();
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let refinery = rules.object("GAREFN").unwrap();
     assert!(refinery.dock_unload && refinery.refinery);
