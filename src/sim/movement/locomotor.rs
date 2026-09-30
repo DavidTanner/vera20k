@@ -101,31 +101,6 @@ pub struct LocomotorState {
     /// during cell entry. The locomotor walks the infantry toward this point after
     /// the path is exhausted.
     pub subcell_dest: Option<(SimFixed, SimFixed)>,
-    /// Hover throttle `[0, 1]` — the persisted speed fraction of the hover
-    /// locomotor's SpeedUpdate model (see `sim/movement/hover.rs`). Lives on the
-    /// locomotor (not `MovementTarget`) so it survives path recomputes: a hover
-    /// unit re-pathed mid-route keeps its momentum instead of re-spinning up.
-    /// Zero at spawn (units start from rest) and reset to zero on full stop.
-    /// Unused by non-Hover locomotors.
-    #[serde(default)]
-    pub hover_throttle: SimFixed,
-
-    /// Hover speed *request* — the unramped throttle target, distinct from
-    /// `hover_throttle` (the ramped value that lags it).
-    ///
-    /// Persisted solely so the Mission readiness producer can read it: the
-    /// native readiness slot reads the request, not the ramp, and the ramp lags
-    /// by up to ~27 ticks on the brake side, which is the direction that would
-    /// wrongly report "moving". Takes only three values (0, 0.5, 1).
-    /// Unused by non-Hover locomotors.
-    #[serde(default)]
-    pub hover_speed_request: SimFixed,
-    /// Hover vertical-spring state — the velocity-like bob offset of the
-    /// damped-spring altitude controller (see `hover::hover_vertical_tick`).
-    /// Pairs with `altitude`, which for hover units holds the visible float
-    /// height above ground. Unused by non-Hover locomotors.
-    #[serde(default)]
-    pub hover_bob_offset: SimFixed,
 }
 
 impl LocomotorState {
@@ -148,6 +123,11 @@ impl LocomotorState {
         // builds the locomotor facing at its `JumpjetTurnRate=`.
         if let LocomotorRuntimePayload::Jumpjet(runtime) = &mut state.runtime_payload {
             runtime.link(&obj.jumpjet_params);
+        }
+        // `Link_To_Object @ 0x00513CB0` builds the steering facing at the
+        // type's `ROT=`.
+        if let LocomotorRuntimePayload::Hover(runtime) = &mut state.runtime_payload {
+            runtime.link(obj.turret_rot);
         }
         if let LocomotorRuntimePayload::Fly(runtime) = &mut state.runtime_payload {
             runtime.link(
@@ -184,9 +164,6 @@ impl LocomotorState {
             speed_type,
             movement_zone,
             subcell_dest: None,
-            hover_throttle: SIM_ZERO,
-            hover_speed_request: SIM_ZERO,
-            hover_bob_offset: SIM_ZERO,
         }
     }
 
@@ -323,7 +300,7 @@ impl LocomotorState {
     pub(crate) fn step_head(&self) -> Option<crate::sim::components::DriveCoord> {
         match (self.kind, &self.runtime_payload) {
             (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => state.head,
-            (LocomotorKind::Hover, LocomotorRuntimePayload::Hover(head)) => *head,
+            (LocomotorKind::Hover, LocomotorRuntimePayload::Hover(runtime)) => runtime.head(),
             _ => None,
         }
     }
@@ -331,8 +308,23 @@ impl LocomotorState {
     pub(crate) fn set_step_head(&mut self, head: Option<crate::sim::components::DriveCoord>) {
         match (self.kind, &mut self.runtime_payload) {
             (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => state.head = head,
-            (LocomotorKind::Hover, LocomotorRuntimePayload::Hover(stored)) => *stored = head,
+            // Hover's head has one writer, its ProcessMovement (`hover_process`).
             _ => {}
+        }
+    }
+
+    /// The active Hover object's state.
+    pub(crate) fn hover_runtime(&self) -> Option<&super::hover::HoverRuntime> {
+        match (self.kind, &self.runtime_payload) {
+            (LocomotorKind::Hover, LocomotorRuntimePayload::Hover(runtime)) => Some(runtime),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn hover_runtime_mut(&mut self) -> Option<&mut super::hover::HoverRuntime> {
+        match (self.kind, &mut self.runtime_payload) {
+            (LocomotorKind::Hover, LocomotorRuntimePayload::Hover(runtime)) => Some(runtime),
+            _ => None,
         }
     }
 

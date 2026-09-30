@@ -7,12 +7,10 @@
 //!
 //! RESIDUALS:
 //! - `Set_Destination` for an aircraft (`0x0041AA80`), a Walk unit, a
-//!   Hover or Jumpjet unit, or a Jumpjet infantryman is not given. VERA has
-//!   no class setter for the aircraft, Walk-unit and Jumpjet-infantry
-//!   receivers. The Unit setter's cell arm reaches Hover and Jumpjet
-//!   Move_To, but this caller keeps to `unit_setter_receiver`: Hover's
-//!   represented Move_To publishes no NavCom (#689), which the team's move
-//!   checks read. Trigger: such a member in a team ordered to move or to
+//!   Jumpjet unit, or a Jumpjet infantryman is not given. VERA has no class
+//!   setter for the aircraft, Walk-unit and Jumpjet-infantry receivers. The
+//!   Unit setter's cell arm reaches Jumpjet Move_To, but this caller keeps
+//!   to `unit_setter_receiver`. Trigger: such a member in a team ordered to move or to
 //!   join up. Effect: it stays where it is and never joins, so a team of
 //!   them never finishes action 53 or 54 (`Coordinate_Move`) and passes
 //!   action 0 without attacking.

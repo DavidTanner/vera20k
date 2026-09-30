@@ -949,8 +949,9 @@ mod tests {
         );
         peer.locomotor
             .as_mut()
+            .and_then(|loco| loco.hover_runtime_mut())
             .unwrap()
-            .set_step_head(Some(crate::sim::components::DriveCoord::cell(5, 4, 104)));
+            .set_head(Some(crate::sim::components::DriveCoord::cell(5, 4, 104)));
         peer.movement_target = Some(crate::sim::components::MovementTarget {
             path: vec![(5, 4), (6, 4), (7, 4)],
             path_layers: vec![

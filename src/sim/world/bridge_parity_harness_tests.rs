@@ -224,6 +224,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // all819 frame rows, all three RNG states and ordered raw draw callers.
 // Incoming main preserves candidate state; its source-line changes remain
 // recorded. This Rust replay pin does not establish native whole-world parity.
+// Native Hover host (snapshot 269): the locomotor fold drops the three
+// SimFixed Hover copies and hashes the whole HoverLocomotionClass object in
+// place of its head. Ceremony: this change with the old composition (three
+// zero words, head only; probe not committed) printed the previous pin, so
+// no hashed state moved. Previous: 0x4477_C324_18ED_A27F.
 // 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
 // AircraftTracker, which native Mark never touches, so a ground object keeps
 // its constructor-seeded enter order (its stable id) where the old lifecycle
@@ -232,7 +237,7 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
 // above unchanged (the probe patch was not committed). Old value: the commit
 // that moved it.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4ABD_AEFB_B0B5_94CD;
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x6670_93CF_F88F_7008;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

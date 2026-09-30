@@ -258,6 +258,7 @@ pub(crate) fn set_destination_internal_cell(
     entity: &mut GameEntity,
     target: (u16, u16),
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
 ) {
     let coord = target_cell_coord(target.0, target.1, resolved_terrain);
     set_destination_internal_coord(
@@ -265,16 +266,19 @@ pub(crate) fn set_destination_internal_cell(
         NavTargetRef::cell(target.0, target.1),
         coord,
         resolved_terrain,
+        binary_frame,
     );
 }
 
 /// Foot4D9510/4D9628 publishes the reference and dispatches its captured +4C
-/// coordinate. Cell and object orders reach the same active locomotor owner.
+/// coordinate. Cell and object orders reach the same active locomotor owner;
+/// `binary_frame` is Hover Move_To's paralysis clock.
 pub(crate) fn set_destination_internal_coord(
     entity: &mut GameEntity,
     target: NavTargetRef,
     coord: DriveCoord,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
 ) {
     publish_nav_com(entity, target);
 
@@ -282,6 +286,7 @@ pub(crate) fn set_destination_internal_coord(
         drive_set_destination(entity, coord, resolved_terrain);
     } else if is_ship_locomotor(entity) {
         ship_set_destination(entity, coord, resolved_terrain);
+    } else if super::hover::hover_move_to(entity, coord, resolved_terrain, binary_frame) {
     } else {
         set_walk_destination_coord(entity, coord, resolved_terrain);
     }
@@ -312,6 +317,7 @@ pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
         drive_stop_moving(entity);
     } else if is_ship_locomotor(entity) {
         ship_stop_moving(entity);
+    } else if super::hover::hover_stop_moving(entity) {
     } else if let Some(loco) = entity.locomotor.as_mut() {
         loco.stop_walk();
     }
@@ -346,6 +352,7 @@ fn reset_drive_track_runtime(entity: &mut GameEntity) {
 pub(super) fn finish_drive_navigation(
     entity: &mut GameEntity,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
 ) {
     // Walk's PerCell completion owns its cell/height destination test. Reaching
     // an A* approach endpoint does not authorize Foot SetDestination(NULL).
@@ -375,7 +382,7 @@ pub(super) fn finish_drive_navigation(
                 if rx == entity.position.rx && ry == entity.position.ry
         );
         if arrived {
-            finish_drive_arrival(entity, resolved_terrain);
+            finish_drive_arrival(entity, resolved_terrain, binary_frame);
         } else {
             defer_drive_arrival_clear(entity);
         }
@@ -417,7 +424,11 @@ pub(super) fn finish_drive_navigation(
 /// waypoint into a fresh destination. The path toward the fresh destination
 /// is built by the deferred process-entry pass at the top of the next
 /// movement tick, matching the native next-process track build.
-fn finish_drive_arrival(entity: &mut GameEntity, resolved_terrain: Option<&ResolvedTerrainGrid>) {
+fn finish_drive_arrival(
+    entity: &mut GameEntity,
+    resolved_terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
+) {
     foot_stop_moving(entity);
     entity.navigation.pending_arrival_clear = false;
     reset_drive_track_runtime(entity);
@@ -432,7 +443,7 @@ fn finish_drive_arrival(entity: &mut GameEntity, resolved_terrain: Option<&Resol
         return;
     };
     entity.navigation.nav_queue.remove(0);
-    set_destination_internal_cell(entity, (rx, ry), resolved_terrain);
+    set_destination_internal_cell(entity, (rx, ry), resolved_terrain, binary_frame);
     entity.navigation.pending_arrival_clear = true;
 }
 
@@ -516,16 +527,17 @@ pub(super) fn track_move_to(
     }
 }
 
-/// ILocomotion +0x48 Stop_Moving of the active Drive/Ship instance, the only
-/// call of Foot's failed-path receiver 0x4D55C0 (Unit +0x500). It clears the
-/// locomotor destination; NavCom and the committed head are untouched.
+/// ILocomotion +0x48 Stop_Moving of the active Drive, Ship or Hover
+/// instance, the only call of Foot's failed-path receiver 0x4D55C0 (Unit
+/// +0x500). It clears the locomotor destination; NavCom and the committed
+/// head are untouched.
 pub(crate) fn track_stop_moving(entity: &mut GameEntity) -> bool {
     if is_drive_locomotor(entity) {
         drive_stop_moving(entity);
     } else if is_ship_locomotor(entity) {
         ship_stop_moving(entity);
     } else {
-        return false;
+        return super::hover::hover_stop_moving(entity);
     }
     true
 }
@@ -632,7 +644,7 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "DLPH", "Americans", 3, 3);
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
 
-        set_destination_internal_cell(&mut entity, (4, 3), None);
+        set_destination_internal_cell(&mut entity, (4, 3), None, 0);
         let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
         assert_eq!(ship.destination, Some(DriveCoord::cell(4, 3, 0)));
         assert_eq!(
@@ -713,7 +725,7 @@ mod tests {
             ..Default::default()
         });
 
-        finish_drive_navigation(&mut entity, None);
+        finish_drive_navigation(&mut entity, None, 0);
 
         let ship = entity.ship_locomotion.as_ref().expect("Ship runtime");
         assert_eq!(ship.destination, None);

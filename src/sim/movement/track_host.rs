@@ -261,9 +261,7 @@ impl Simulation {
 
     pub(super) fn track_survives(&self, id: u64) -> bool {
         self.substrate.entities.get(id).is_some_and(|entity| {
-            entity.lifecycle.object_alive
-                && !entity.lifecycle.in_limbo
-                && !entity.is_falling_down()
+            entity.lifecycle.object_alive && !entity.lifecycle.in_limbo && !entity.is_falling_down()
         })
     }
 
@@ -710,7 +708,8 @@ impl Simulation {
         layer
     }
 
-    fn track_set_coords(&mut self, id: u64, coord: DriveCoord, rules: Option<&RuleSet>) {
+    /// FootClass::SetCoords 0x4DB810 over a changed XYZ.
+    pub(super) fn foot_set_coords(&mut self, id: u64, coord: DriveCoord, rules: Option<&RuleSet>) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
@@ -760,7 +759,7 @@ impl Simulation {
         } else {
             None
         };
-        self.track_set_coords(id, coord, rules);
+        self.foot_set_coords(id, coord, rules);
         observe(self, id, TrackWorldEvent::SetCoords);
         if crossing && !terminal {
             // Crossing uses actual current cell; this predicate instead uses
@@ -1136,6 +1135,7 @@ impl Simulation {
                 entity,
                 next,
                 self.resolved_terrain.as_ref(),
+                self.session.binary_frame,
             );
             entity.navigation.nav_queue.remove(0);
             entity.navigation.pending_arrival_clear = true;

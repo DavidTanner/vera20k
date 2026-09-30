@@ -365,50 +365,54 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
     }
 }
 
-/// A hover unit with no movement work is not moving, and a stale speed request
-/// cannot resurrect it.
+fn hover_runtime(entity: &mut GameEntity, runtime: super::super::hover::HoverRuntime) {
+    if let Some(locomotor) = entity.locomotor.as_mut() {
+        locomotor.runtime_payload =
+            super::super::locomotion::piggyback::LocomotorRuntimePayload::Hover(runtime);
+    }
+}
+
+/// Is_Moving_Now 0x00514C80: with neither a destination nor a head the Foot is
+/// not moving, whatever request is left.
 #[test]
 fn stopped_hover_reports_not_moving_despite_stale_request() {
     let mut entity = entity_with(LocomotorKind::Hover);
-    if let Some(locomotor) = entity.locomotor.as_mut() {
-        // Left over from the last leg — the producer must not trust it.
-        locomotor.hover_speed_request = SIM_ONE;
-    }
+    hover_runtime(
+        &mut entity,
+        super::super::hover::HoverRuntime::moving_for_test(None, NativeF64Bits::ONE),
+    );
     let state = ready_state_for(&entity, None, 100).expect("Hover has a producer");
     assert!(!state.is_moving_now());
 }
 
-/// A hover unit under way with a non-zero throttle request is moving.
+/// A destination and a nonzero request read moving.
 #[test]
 fn hover_under_way_reports_moving() {
     let mut entity = entity_with(LocomotorKind::Hover);
-    entity.movement_target = Some(moving_target());
-    if let Some(locomotor) = entity.locomotor.as_mut() {
-        locomotor.hover_speed_request = SIM_ONE;
-    }
+    hover_runtime(
+        &mut entity,
+        super::super::hover::HoverRuntime::moving_for_test(
+            Some(DriveCoord::cell(4, 4, 0)),
+            NativeF64Bits::HALF,
+        ),
+    );
     let state = ready_state_for(&entity, None, 100).expect("Hover has a producer");
     assert!(state.is_moving_now());
 }
 
-/// A zero throttle request — the turn-stall case — reads not moving even with a
-/// live movement target, because the native predicate's speed term is strict.
+/// A zero request, the hard-turn case, reads not moving under way.
 #[test]
 fn hover_turn_stall_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Hover);
-    entity.movement_target = Some(moving_target());
-    if let Some(locomotor) = entity.locomotor.as_mut() {
-        locomotor.hover_speed_request = SIM_ZERO;
-    }
+    hover_runtime(
+        &mut entity,
+        super::super::hover::HoverRuntime::moving_for_test(
+            Some(DriveCoord::cell(4, 4, 0)),
+            NativeF64Bits::POSITIVE_ZERO,
+        ),
+    );
     let state = ready_state_for(&entity, None, 100).expect("Hover has a producer");
     assert!(!state.is_moving_now());
-}
-
-/// The three reachable throttle requests map onto the native double's bits.
-#[test]
-fn hover_request_maps_to_native_double_bits() {
-    assert_eq!(hover_request_bits(SIM_ZERO), 0);
-    assert_eq!(hover_request_bits(SimFixed::lit("0.5")), F64_BITS_HALF);
-    assert_eq!(hover_request_bits(SIM_ONE), F64_BITS_ONE);
 }
 
 /// Families with no readiness slot this gate consults must yield `None`, which

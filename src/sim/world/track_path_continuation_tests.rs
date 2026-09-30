@@ -1275,11 +1275,8 @@ fn queued_waypoint_arrival_returns_before_the_continuation() {
 }
 
 /// A damaged Hover unit ordered to a free depot reaches the pad and is
-/// serviced. Native admits the pad through Hover `Find_Path`/`Can_Enter_Cell`;
-/// VERA's Hover arm of the Unit setter still routes through the legacy
-/// pass-lane move, whose goal resolver relocates the blocked footprint cell,
-/// so the unit parks beside the depot (observed at (15,8), pad (17,10)) and
-/// never docks. Ignored until the native Hover host lands (#689).
+/// serviced: the Unit setter reaches Hover Move_To, and the Hover Process
+/// admits the pad through `Find_Path` and `Can_Enter_Cell`.
 #[test]
 fn damaged_hover_unit_reaches_a_free_depot_pad() {
     use crate::sim::docking::building_dock::DockPhase;
@@ -1322,5 +1319,46 @@ fn damaged_hover_unit_reaches_a_free_depot_pad() {
         "hover never docked: at {:?}, phase {:?}",
         (e.position.rx, e.position.ry),
         e.dock_state.as_ref().map(|s| s.phase)
+    );
+}
+
+/// A Hover unit's order through the Unit setter: Move_To (0x00514D90), then
+/// its own Process (0x00514310) searches, steps cell by cell and ends the
+/// order at the destination cell (Path_And_Arrival 0x005164D0).
+#[test]
+fn hover_unit_drives_to_its_destination_cell_and_stops() {
+    let hover_rules = format!(
+        "{}[HOV]\nStrength=300\nSpeed=6\nSpeedType=Hover\nMovementZone=Normal\n\
+         Locomotor={{4A582742-9839-11d1-B709-00A024DDAFD1}}\n",
+        UNITS.replace("1=SHP\n", "1=SHP\n2=HOV\n")
+    );
+    let (mut sim, rules, registry) = fixture_with_rules(&hover_rules);
+    let id = sim
+        .spawn_object("HOV", "Americans", 10, 10, 0, &rules)
+        .unwrap();
+    assert!(sim.set_unit_destination(id, NavTargetRef::cell(14, 12), &rules, true));
+    let mut moved = false;
+    for _ in 0..600 {
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
+        let e = sim.substrate.entities.get(id).unwrap();
+        moved |= (e.position.rx, e.position.ry) != (10, 10);
+        if e.navigation.nav_com.is_none() {
+            assert!(moved, "the order ended before the unit moved");
+            assert_eq!((e.position.rx, e.position.ry), (14, 12));
+            assert!(e.movement_target.is_none());
+            assert!(
+                e.locomotor
+                    .as_ref()
+                    .and_then(|loco| loco.hover_runtime())
+                    .is_some_and(|hover| hover.head().is_some() || !hover.is_moving()),
+                "Stop_Moving leaves at most the paid head"
+            );
+            return;
+        }
+    }
+    let e = sim.substrate.entities.get(id).unwrap();
+    panic!(
+        "hover never arrived: at {:?}",
+        (e.position.rx, e.position.ry)
     );
 }

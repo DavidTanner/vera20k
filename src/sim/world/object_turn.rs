@@ -110,7 +110,7 @@ pub(crate) struct GroundLocomotorOutcome {
     pub(super) movement: movement::MovementTickStats,
     pub(super) bridge_state_changed: bool,
     track_owned: bool,
-    /// The Hover or tube-exit arrival ran `Per_Cell_Process(2)`.
+    /// The tube-exit arrival ran `Per_Cell_Process(2)`.
     per_cell_ran: bool,
 }
 
@@ -174,7 +174,7 @@ impl Simulation {
     ///   `+0x692`) is dormant: no retail warhead sets `DirectRocker=`, and
     ///   VERA keeps no link.
     /// - The active class picks the one Process: the ground corridor for
-    ///   Drive, Ship, Walk and Hover, the air pass for Fly and Jumpjet, and
+    ///   Drive, Ship and Walk, the air pass for Fly and Jumpjet, and Hover's,
     ///   Teleport's and Rocket's own.
     fn process_active_locomotor(
         &mut self,
@@ -197,12 +197,7 @@ impl Simulation {
                 });
         let ground = matches!(
             admitted,
-            Some(
-                LocomotorKind::Drive
-                    | LocomotorKind::Ship
-                    | LocomotorKind::Walk
-                    | LocomotorKind::Hover
-            )
+            Some(LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk)
         );
         // The vehicle plane is a projection each object turn reconciles once
         // at Process entry: the ground corridor in `prepare_movement_pass`,
@@ -219,12 +214,17 @@ impl Simulation {
             return Ok(LocomotorProcess::default());
         };
         match kind {
-            LocomotorKind::Drive
-            | LocomotorKind::Ship
-            | LocomotorKind::Walk
-            | LocomotorKind::Hover => self
+            LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk => self
                 .process_ground_locomotor_one(stable_id, rules, overlay_registry)
                 .map(LocomotorProcess::from_ground),
+            LocomotorKind::Hover => self
+                .process_hover_locomotor(stable_id, rules, overlay_registry)
+                .map(|hover| LocomotorProcess {
+                    admitted: true,
+                    bridge_state_changed: hover.bridge_state_changed,
+                    per_cell_ran: hover.per_cell_ran,
+                    ..LocomotorProcess::default()
+                }),
             LocomotorKind::Fly | LocomotorKind::Jumpjet => {
                 self.process_air_locomotor(stable_id, rules, overlay_registry)
             }
@@ -487,14 +487,11 @@ impl Simulation {
         if sim.path_grid.is_some() {
             sim.complete_pending_order(stable_id, rules);
         }
-        let movement_before = sim.substrate.entities.get(stable_id).map(|entity| {
-            (
-                (entity.position.rx, entity.position.ry),
-                entity.movement_target.is_some(),
-                entity.low_bridge_tube_state.is_some(),
-                entity.locomotor.as_ref().map(|loco| loco.active_kind()),
-            )
-        });
+        let movement_before = sim
+            .substrate
+            .entities
+            .get(stable_id)
+            .map(|entity| entity.low_bridge_tube_state.is_some());
         // Drive4B050B..0557 / Ship69FC1B..FC67 samples the containing
         // cell slope before any active-track, destination or turn return.
         // Entry-active Tube owns its whole visit and does not call Process.
@@ -542,7 +539,6 @@ impl Simulation {
                 rules,
                 Some(&sim.type_handles),
                 &mut sim.movement_pass_cache,
-                &sim.houses,
             )
             .map_err(|cause| super::FrameAdvanceError {
                 tick: sim.session.tick,
@@ -709,17 +705,13 @@ impl Simulation {
                 &mut sim.pending_lifecycle_requests,
                 &mut sim.movement_pass_cache,
             ));
-        if let Some((old_cell, had_target, tube_active, kind)) = movement_before {
-            let per_cell = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
-                // Tube exits Unit73603F / Infantry51BA9B and Hover arrival5146CA / cell-entry
-                // 515A1C call vt+0x18C(2). The existing Hover integrator still
-                // approximates native crossing timing; its accepted entries
-                // use this owner.
-                (tube_active && entity.low_bridge_tube_state.is_none())
-                    || (kind == Some(crate::rules::locomotor_type::LocomotorKind::Hover)
-                        && (old_cell != (entity.position.rx, entity.position.ry)
-                            || (had_target && entity.movement_target.is_none())))
-            });
+        if let Some(tube_active) = movement_before {
+            // Tube exits Unit73603F / Infantry51BA9B call vt+0x18C(2).
+            let per_cell = sim
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(|entity| tube_active && entity.low_bridge_tube_state.is_none());
             if per_cell {
                 outcome.bridge_state_changed |= sim.per_cell_process(
                     stable_id,

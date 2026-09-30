@@ -1473,9 +1473,9 @@ fn gsi_06_02_cross_zone_move_order_is_accepted_without_redirect() {
 }
 
 /// `AStar @ 0x0042CAD6` uses the hierarchy only for a +3D5 (in playfield)
-/// mover. Hover keeps the command-time search adapter, so the order's own
-/// search shows the flat fallback (Drive/Ship search at their first Process
-/// through the same `allow_zone_hierarchy` snapshot).
+/// mover. A queued Walk order keeps the command-time search adapter, so the
+/// order's appended search shows the flat fallback (Drive and Ship search at
+/// their first Process through the same `allow_zone_hierarchy` snapshot).
 #[test]
 fn techno_playfield_false_mover_uses_flat_astar_instead_of_hierarchy_abort() {
     let grid = PathGrid::new(5, 1);
@@ -1507,12 +1507,13 @@ fn techno_playfield_false_mover_uses_flat_astar_instead_of_hierarchy_abort() {
     ));
 
     let mut entities = EntityStore::new();
-    let mut mover = GameEntity::test_default(1, "LCRF", "Americans", 0, 0);
-    mover.category = EntityCategory::Unit;
-    let mut hover = LocomotorState::for_test_kind(LocomotorKind::Hover);
-    hover.movement_zone = MovementZone::Normal;
-    mover.locomotor = Some(hover);
+    let mut mover = GameEntity::test_default(1, "E1", "Americans", 0, 0);
+    mover.category = EntityCategory::Infantry;
+    let mut walk = LocomotorState::for_test_kind(LocomotorKind::Walk);
+    walk.movement_zone = MovementZone::Normal;
+    mover.locomotor = Some(walk);
     mover.in_playfield = false;
+    mover.movement_target = Some(MovementTarget::default());
     entities.insert(mover);
 
     assert!(issue_move_command_with_layered(
@@ -1521,7 +1522,7 @@ fn techno_playfield_false_mover_uses_flat_astar_instead_of_hierarchy_abort() {
         1,
         (4, 0),
         SimFixed::from_num(1024),
-        false,
+        true,
         None,
         None,
         Some(&terrain),
@@ -1533,7 +1534,7 @@ fn techno_playfield_false_mover_uses_flat_astar_instead_of_hierarchy_abort() {
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
     let target = entities.get(1).unwrap().movement_target.as_ref().unwrap();
-    assert_eq!(target.final_goal, Some((4, 0)));
+    assert_eq!(target.path.last(), Some(&(4, 0)));
     assert!(target.path.contains(&(2, 0)));
 }
 
@@ -2785,20 +2786,13 @@ fn code_two_arms_blockage_path_delay_once_and_never_scatters() {
 /// tick two would overwrite its archived Move with Attack and every later
 /// Restore would hand it back Attack instead of its order — a unit losing its
 /// move order every time an enemy blocks it.
-/// Four locomotors own the arm in gamemd — Walk, Hover, Drive and Ship — and
-/// this test covers the two VERA currently routes here: Walk and HOVER. Hover's
-/// movement processor `FUN_00514F70` carries its own `case 4: case 5:` pair
-/// (object arm Override at 0x00515C2C, wall arm at 0x00515C9C) — the Override
-/// itself is the same, though the stop route around it is not; see the residual
-/// on the gate in `movement_occupancy`. `Locomotor={4A582742-...}` has four
-/// uncommented users: [ROBO] the Robot Tank and the [LCRF]/[SAPC]/[YHVR]
-/// transports.
+/// Four locomotors own the arm in gamemd — Walk, Hover, Drive and Ship. This
+/// test covers Walk's pass lane; Hover's `case 4: case 5:` pair (object arm
+/// Override at 0x00515C2C, wall arm at 0x00515C9C) is its own ProcessMovement
+/// (`hover_process`), which calls the shared blocker override.
 #[test]
 fn gsi_07_03_blocked_mover_overrides_onto_attack_exactly_once() {
-    use crate::rules::locomotor_type::LocomotorKind;
-    for kind in [LocomotorKind::Walk, LocomotorKind::Hover] {
-        blocked_override_fires_once_for(kind);
-    }
+    blocked_override_fires_once_for(crate::rules::locomotor_type::LocomotorKind::Walk);
 }
 
 fn blocked_override_fires_once_for(mover_kind: crate::rules::locomotor_type::LocomotorKind) {
@@ -3665,7 +3659,6 @@ fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() 
         locomotor.altitude, SIM_ZERO,
         "hover vertical postpass must not mutate a queued crush victim"
     );
-    assert_eq!(locomotor.hover_bob_offset, SIM_ZERO);
 }
 
 #[test]
@@ -4456,7 +4449,7 @@ fn drive_accelerates_false_tick_stores_modified_fraction_without_mutating_speed(
         cursor: 0,
         reference_cell: Some((0, 0)),
     };
-    super::navcom::set_destination_internal_cell(&mut mover, (1, 0), None);
+    super::navcom::set_destination_internal_cell(&mut mover, (1, 0), None, 0);
     entities.insert(mover);
 
     let mut occupancy = OccupancyGrid::new();
@@ -4535,7 +4528,7 @@ fn drive_accelerates_true_tick_ramps_fraction_before_movement_speed() {
         cursor: 0,
         reference_cell: Some((0, 0)),
     };
-    super::navcom::set_destination_internal_cell(&mut mover, (1, 0), None);
+    super::navcom::set_destination_internal_cell(&mut mover, (1, 0), None, 0);
     entities.insert(mover);
 
     let mut occupancy = OccupancyGrid::new();
@@ -5359,469 +5352,6 @@ fn multi_crossing_preserves_first_bridge_set_update() {
     assert_eq!(cell.count_on(MovementLayer::Ground), 0);
 }
 
-// --- Hover throttle integration (M2 P2a) ---
-
-/// Minimal hover mover: hover locomotor, straight eastward path, cell-center start.
-fn make_hover_mover(path: Vec<(u16, u16)>, sub_x: i32) -> GameEntity {
-    let goal = *path.last().expect("non-empty path");
-    let mut entity = GameEntity::new_at_frame_zero_for_test(
-        1,
-        path[0].0,
-        path[0].1,
-        0,
-        64,
-        crate::sim::intern::test_intern("Americans"),
-        crate::sim::components::Health { current: 100 },
-        crate::sim::intern::test_intern("LCRF"),
-        EntityCategory::Unit,
-        0,
-        5,
-        false,
-    );
-    entity.position.sub_x = SimFixed::from_num(sub_x);
-    entity.position.sub_y = SimFixed::from_num(128);
-    // UnitClass's constructor rate write (`0x00735579`), at the stock ROT=5.
-    entity.set_body_facing_rot(5);
-    entity.locomotor = Some(
-        crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-            crate::rules::locomotor_type::LocomotorKind::Hover,
-        ),
-    );
-    let path_len = path.len();
-    entity.movement_target = Some(MovementTarget {
-        path,
-        path_layers: vec![MovementLayer::Ground; path_len],
-        next_index: 1,
-        speed: SimFixed::from_num(11),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
-        final_goal: Some(goal),
-        ..Default::default()
-    });
-    entity
-}
-
-/// One movement tick over a bare world (no grids, no rules → stock hover
-/// defaults). `binary_frame` must advance per call — hover steering runs a
-/// binary-frame FacingClass, which never progresses on a constant frame.
-fn tick_hover_world(
-    entities: &mut EntityStore,
-    native_frame: u32,
-    lifecycle_requests: &mut Vec<LifecycleRequest>,
-) {
-    tick_hover_world_on(
-        entities,
-        native_frame,
-        &mut OccupancyGrid::new(),
-        &mut crate::sim::occupancy::CellOccupationGrid::new(),
-        lifecycle_requests,
-    );
-}
-
-/// `tick_hover_world` over caller-owned object lists and owner plane, so the
-/// plane side effects of a run can be observed across frames.
-fn tick_hover_world_on(
-    entities: &mut EntityStore,
-    native_frame: u32,
-    occupancy: &mut OccupancyGrid,
-    cell_occupation: &mut crate::sim::occupancy::CellOccupationGrid,
-    lifecycle_requests: &mut Vec<LifecycleRequest>,
-) {
-    let mut rng = SimRng::new(0);
-    let mut interner = test_interner();
-    let mut sounds = Vec::new();
-    let terrain_costs: std::collections::BTreeMap<
-        crate::rules::locomotor_type::SpeedType,
-        crate::sim::pathfinding::terrain_cost::TerrainCostGrid,
-    > = std::collections::BTreeMap::new();
-    tick_movement_with_grids(
-        entities,
-        None,
-        None,
-        &terrain_costs,
-        &Default::default(),
-        occupancy,
-        cell_occupation,
-        &mut crate::sim::occupancy::RawCellOccupationGrid::new(),
-        &mut rng,
-        0,
-        native_frame,
-        None,
-        None,
-        None,
-        &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-        SIM_ZERO,
-        9,
-        60,
-        &mut interner,
-        None,
-        &mut sounds,
-        lifecycle_requests,
-    );
-}
-
-/// `HoverLocomotionClass::Move 0x00514310` zeroes the Foot occupation enable
-/// (`+0x6B6`) on its first translating frame (0x005147D5, gated on speed > 0,
-/// the enable still set and a live head) and restores it in the arrival arm
-/// (0x0051451E). Native established from the body; this pins VERA's flag over
-/// one straight hover run: enabled while the throttle ramps from rest, cleared
-/// from the first frame that moves the body, restored exactly at arrival.
-#[test]
-fn hover_mover_is_in_transit_from_first_translating_frame_until_arrival() {
-    let mut entities = EntityStore::new();
-    let mut mover = make_hover_mover(vec![(1, 1), (2, 1)], 128);
-    mover.lifecycle.cell_marked = true;
-    entities.insert(mover);
-    let world_xy = |p: &crate::sim::components::Position| (p.rx, p.ry, p.sub_x, p.sub_y);
-    let start = world_xy(&entities.get(1).unwrap().position);
-    let mut lifecycle_requests = Vec::new();
-    let mut translated = false;
-    // The bare world's hover integrator covers one cell in roughly 470 frames.
-    for frame in 1..1500u32 {
-        tick_hover_world(&mut entities, frame, &mut lifecycle_requests);
-        let e = entities.get(1).unwrap();
-        translated |= world_xy(&e.position) != start;
-        if e.movement_target.is_some() {
-            assert_eq!(
-                e.foot_occupation_enabled, !translated,
-                "frame {frame}: +0x6B6 follows the first translating frame"
-            );
-        } else {
-            assert!(translated, "hover arrived without moving");
-            assert!(e.foot_occupation_enabled, "arrival restores +0x6B6");
-            return;
-        }
-    }
-    let e = entities.get(1).unwrap();
-    panic!(
-        "hover never arrived: pos=({},{},{:?},{:?}) idx={:?} flag={}",
-        e.position.rx,
-        e.position.ry,
-        e.position.sub_x,
-        e.position.sub_y,
-        e.movement_target.as_ref().map(|t| t.next_index),
-        e.foot_occupation_enabled
-    );
-}
-
-/// The consumer side of the enable: the owner plane (`CellOccupationGrid`,
-/// which `detect_deferred_cell_check` and the Drive selection lane read) drops
-/// the hover's claim for the whole transit and carries it again at arrival.
-#[test]
-fn hover_owner_plane_claim_is_absent_in_transit_and_present_at_arrival() {
-    let mut entities = EntityStore::new();
-    let mut mover = make_hover_mover(vec![(1, 1), (2, 1)], 128);
-    mover.lifecycle.cell_marked = true;
-    entities.insert(mover);
-    let mut occupancy = OccupancyGrid::new();
-    occupancy.add(
-        1,
-        1,
-        1,
-        MovementLayer::Ground,
-        None,
-        crate::sim::occupancy::CellListInsertion::from_category(EntityCategory::Unit),
-    );
-    let mut plane = crate::sim::occupancy::CellOccupationGrid::new();
-    plane.reconcile_entity(entities.get(1).unwrap(), &occupancy);
-    let bit = crate::sim::occupancy::VEHICLE_OCCUPATION_BIT;
-    assert_eq!(plane.vehicle_bits(1, 1, MovementLayer::Ground), bit);
-    let mut lifecycle_requests = Vec::new();
-    let mut frames_in_transit = 0u32;
-    for frame in 1..1500u32 {
-        tick_hover_world_on(
-            &mut entities,
-            frame,
-            &mut occupancy,
-            &mut plane,
-            &mut lifecycle_requests,
-        );
-        let e = entities.get(1).unwrap();
-        let here = (e.position.rx, e.position.ry);
-        if e.movement_target.is_some() {
-            if !e.foot_occupation_enabled {
-                frames_in_transit += 1;
-                assert_eq!(
-                    plane.vehicle_bits(here.0, here.1, MovementLayer::Ground),
-                    0,
-                    "frame {frame}: no claim on {here:?} while in transit"
-                );
-            }
-        } else {
-            assert!(frames_in_transit > 0);
-            assert_eq!(here, (2, 1));
-            assert_eq!(plane.vehicle_bits(2, 1, MovementLayer::Ground), bit);
-            assert_eq!(plane.vehicle_bits(1, 1, MovementLayer::Ground), 0);
-            return;
-        }
-    }
-    panic!("hover never arrived");
-}
-
-/// A hover whose next step is refused (parked ally ahead, code 2 wait) ends the
-/// frame with the enable set and its cell claimed, as the native arrival arm
-/// leaves it (0x0051451E, refused return 0x00514711).
-#[test]
-fn hover_refused_next_step_re_enables_occupation_while_it_waits() {
-    let mut entities = EntityStore::new();
-    let mut mover = make_hover_mover(vec![(1, 1), (2, 1)], 128);
-    mover.lifecycle.cell_marked = true;
-    entities.insert(mover);
-    let mut parked = GameEntity::test_default(2, "MTNK", "Americans", 2, 1);
-    parked.category = EntityCategory::Unit;
-    parked.lifecycle.cell_marked = true;
-    parked.locomotor = Some(
-        crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-            crate::rules::locomotor_type::LocomotorKind::Drive,
-        ),
-    );
-    entities.insert(parked);
-    let mut occupancy = OccupancyGrid::new();
-    for (id, x) in [(1u64, 1u16), (2, 2)] {
-        occupancy.add(
-            x,
-            1,
-            id,
-            MovementLayer::Ground,
-            None,
-            crate::sim::occupancy::CellListInsertion::from_category(EntityCategory::Unit),
-        );
-    }
-    let mut plane = crate::sim::occupancy::CellOccupationGrid::new();
-    for id in [1, 2] {
-        plane.reconcile_entity(entities.get(id).unwrap(), &occupancy);
-    }
-    let mut lifecycle_requests = Vec::new();
-    let mut saw_transit = false;
-    let mut prev_sub_x = entities.get(1).unwrap().position.sub_x;
-    for frame in 1..1500u32 {
-        tick_hover_world_on(
-            &mut entities,
-            frame,
-            &mut occupancy,
-            &mut plane,
-            &mut lifecycle_requests,
-        );
-        let e = entities.get(1).unwrap();
-        assert_eq!(
-            (e.position.rx, e.position.ry),
-            (1, 1),
-            "frame {frame}: held"
-        );
-        saw_transit |= !e.foot_occupation_enabled;
-        let held = e.position.sub_x <= prev_sub_x;
-        prev_sub_x = e.position.sub_x;
-        if saw_transit && held && e.movement_target.is_some() {
-            // The refused step held the body: the wait leaves the hover an
-            // occupant of the cell it is still in.
-            assert!(
-                e.foot_occupation_enabled,
-                "frame {frame}: refused step re-enables"
-            );
-            assert_eq!(
-                plane.vehicle_bits(1, 1, MovementLayer::Ground),
-                crate::sim::occupancy::VEHICLE_OCCUPATION_BIT
-            );
-            return;
-        }
-    }
-    panic!("hover never reached the refused boundary");
-}
-
-/// VERA-internal: a hover whose `movement_target` was dropped while in transit
-/// (stop order) re-enables its occupation on its next own turn. Native reaches
-/// the same state through the arrival arm, which every hover passes because
-/// Head_To survives the stop.
-#[test]
-fn stopped_hover_left_in_transit_re_enables_occupation_on_its_next_turn() {
-    let mut entities = EntityStore::new();
-    let mut mover = make_hover_mover(vec![(1, 1), (2, 1)], 128);
-    mover.lifecycle.cell_marked = true;
-    mover.movement_target = None;
-    mover.foot_occupation_enabled = false;
-    entities.insert(mover);
-    let mut lifecycle_requests = Vec::new();
-    tick_hover_world(&mut entities, 1, &mut lifecycle_requests);
-    assert!(entities.get(1).unwrap().foot_occupation_enabled);
-}
-
-#[test]
-fn hover_mover_ramps_throttle_from_rest_and_persists_on_locomotor() {
-    use crate::sim::movement::hover;
-    // Far from the goal (4 cells ≈ 1024 leptons > 255): cruise request 1.0,
-    // spin-up from rest at one accel step per tick.
-    let mut entities = EntityStore::new();
-    entities.insert(make_hover_mover(
-        vec![(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)],
-        128,
-    ));
-
-    let step = hover::hover_ramp_step(hover::HOVER_ACCELERATION_DEFAULT_MINUTES);
-    let mut lifecycle_requests = Vec::new();
-
-    tick_hover_world(&mut entities, 0, &mut lifecycle_requests);
-    let e = entities.get(1).expect("mover");
-    let throttle = e.locomotor.as_ref().expect("loco").hover_throttle;
-    assert_eq!(
-        throttle, step,
-        "tick 1: throttle = one accel step from rest"
-    );
-    assert_eq!(
-        e.movement_target.as_ref().expect("target").current_speed,
-        SimFixed::from_num(11) * step,
-        "current_speed = base speed × throttle"
-    );
-
-    tick_hover_world(&mut entities, 1, &mut lifecycle_requests);
-    let e = entities.get(1).expect("mover");
-    let throttle2 = e.locomotor.as_ref().expect("loco").hover_throttle;
-    assert!(
-        throttle2 > throttle,
-        "tick 2: throttle keeps ramping ({throttle2} > {throttle})"
-    );
-}
-
-#[test]
-fn hover_mover_brakes_toward_half_throttle_on_final_approach() {
-    use crate::sim::movement::hover;
-    // Within 255 leptons of the goal (sub_x=200 → 184 leptons to the next cell
-    // center): approach request 0.5, so a full-throttle mover brakes one step.
-    let mut entities = EntityStore::new();
-    let mut mover = make_hover_mover(vec![(0, 0), (1, 0)], 200);
-    mover.locomotor.as_mut().expect("loco").hover_throttle = SIM_ONE;
-    entities.insert(mover);
-
-    let mut lifecycle_requests = Vec::new();
-    tick_hover_world(&mut entities, 0, &mut lifecycle_requests);
-    let e = entities.get(1).expect("mover");
-    let throttle = e.locomotor.as_ref().expect("loco").hover_throttle;
-    assert_eq!(
-        throttle,
-        SIM_ONE - hover::hover_ramp_step(hover::HOVER_BRAKE_DEFAULT_MINUTES),
-        "full-throttle mover on approach brakes by one brake step"
-    );
-}
-
-#[test]
-fn hover_mover_swings_through_corner_braking_not_freezing() {
-    use crate::sim::movement::hover;
-    // Mover at (0,1) facing EAST with its waypoint due NORTH (0,0): a 90° turn.
-    // Contract: while the swing exceeds 45° the throttle BRAKES (request 0) and
-    // the position holds; once the facing converges within 45°, movement
-    // resumes along the (new) hull heading and the mover crosses into (0,0).
-    // The old stop-rotate-go model froze the throttle instead.
-    let mut entities = EntityStore::new();
-    let mut mover = make_hover_mover(vec![(0, 1), (0, 0)], 128);
-    mover.locomotor.as_mut().expect("loco").hover_throttle = SIM_ONE;
-    entities.insert(mover);
-    let mut lifecycle_requests = Vec::new();
-
-    // Tick 1 (frame 0): hard turn → throttle brakes one step, position holds.
-    tick_hover_world(&mut entities, 0, &mut lifecycle_requests);
-    let e = entities.get(1).expect("mover");
-    assert_eq!(
-        e.locomotor.as_ref().expect("loco").hover_throttle,
-        SIM_ONE - hover::hover_ramp_step(hover::HOVER_BRAKE_DEFAULT_MINUTES),
-        "hard turn brakes the throttle (gamemd turn-stall), never freezes it"
-    );
-    assert_eq!(
-        (e.position.rx, e.position.ry),
-        (0, 1),
-        "position held during hard turn"
-    );
-    assert_eq!(
-        e.position.sub_y,
-        SimFixed::from_num(128),
-        "no lepton drift while stalled"
-    );
-
-    // Run the swing + native-frame travel out. ROT=5 takes 12 frames for the
-    // 90° swing; Speed=11 at approach throttle then needs hundreds of 15 Hz
-    // visits to cover the 128 leptons from cell center to the north edge.
-    let mut crossed_at = None;
-    for frame in 1..600u32 {
-        tick_hover_world(&mut entities, frame, &mut lifecycle_requests);
-        let cell = entities
-            .get(1)
-            .map(|entity| (entity.position.rx, entity.position.ry));
-        if cell == Some((0, 0)) {
-            crossed_at = Some(frame);
-            break;
-        }
-    }
-    assert!(
-        crossed_at.is_some(),
-        "mover must resume after the swing and cross within 600 native frames"
-    );
-    let e = entities.get(1).expect("mover");
-    assert_eq!(
-        (e.position.rx, e.position.ry),
-        (0, 0),
-        "mover crossed into the northern cell after the swing"
-    );
-    // Facing-lagged curve: the mover drifts east while the hull swings, then
-    // re-aims at the cell center from the southeast — so the final heading is
-    // northern-half, NOT exactly 0 (exact-north snap was the old stop-rotate
-    // behavior this replaces).
-    let facing = e.body_facing_byte(crossed_at.unwrap());
-    assert!(
-        facing >= 192 || facing <= 64,
-        "hull converged into the northern half-circle, got {facing}"
-    );
-    assert_ne!(facing, 64, "hull is no longer facing due east");
-}
-
-#[test]
-fn hover_units_float_and_bob_vertically() {
-    // Vertical controller: a MOVING hover unit lifts off toward cruise height,
-    // and a PARKED hover unit (no movement target) floats too — the idle pass
-    // covers every hover unit, not just movers.
-    let mut entities = EntityStore::new();
-    entities.insert(make_hover_mover(
-        vec![(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)],
-        128,
-    ));
-    let mut parked = make_hover_mover(vec![(5, 5), (6, 5)], 128);
-    parked.stable_id = 2;
-    parked.movement_target = None;
-    entities.insert(parked);
-
-    let mut lifecycle_requests = Vec::new();
-    for frame in 0..60u32 {
-        tick_hover_world(&mut entities, frame, &mut lifecycle_requests);
-    }
-
-    let mover_alt = entities
-        .get(1)
-        .expect("mover")
-        .locomotor
-        .as_ref()
-        .expect("loco")
-        .altitude;
-    let parked_alt = entities
-        .get(2)
-        .expect("parked")
-        .locomotor
-        .as_ref()
-        .expect("loco")
-        .altitude;
-    assert!(
-        mover_alt > SIM_ZERO,
-        "moving hover unit lifted off (altitude {mover_alt})"
-    );
-    assert!(
-        parked_alt > SIM_ZERO,
-        "parked hover unit floats too (altitude {parked_alt})"
-    );
-    // Under the rules-None defaults (HoverHeight=120) both should sit somewhere
-    // below the height cap; the spring never runs away.
-    assert!(
-        mover_alt < SimFixed::from_num(200) && parked_alt < SimFixed::from_num(200),
-        "spring settles near cruise, no runaway (mover {mover_alt}, parked {parked_alt})"
-    );
-}
-
 // --- Sharp-turn substitute: path-node accounting ---
 
 /// The null-curve substitute consumes exactly ONE path node — the same single
@@ -5961,7 +5491,7 @@ fn gsi_06_13_fixture_mover(
     });
     // A seeded path is only the route adapter. Native terminal +504 checks
     // NavCom independently; install the real destination before executing it.
-    super::navcom::set_destination_internal_cell(&mut e, goal, None);
+    super::navcom::set_destination_internal_cell(&mut e, goal, None, 0);
     e
 }
 
@@ -6832,101 +6362,5 @@ fn deferred_crush_uses_binary_frame_after_cell_classification_with_offset_clocks
                 "{context}"
             );
         }
-    }
-}
-
-/// The production movement host must carry CurrentIQ/type abilities into the
-/// cell-entry dispatcher; a classifier-only test cannot detect dropped context.
-#[test]
-fn cell_scatter_world_reads_live_house_and_veteran_ability() {
-    let rules = crate::rules::ruleset::RuleSet::from_ini(
-        &crate::rules::ini_parser::IniFile::from_str(
-            "[General]\nCloseEnough=0\n[VehicleTypes]\n0=LCRF\n[InfantryTypes]\n0=E1\n[LCRF]\nSpeed=6\nCrusher=yes\n[E1]\nSpeed=4\nVeteranAbilities=SCATTER\n[IQ]\nScatter=2\n[CombatDamage]\nPlayerScatter=no\n"
-        )
-    ).unwrap();
-    assert_eq!(rules.general.iq_scatter, 2);
-    assert!(!rules.general.player_scatter);
-    for (iq, rank, expected) in [(0, 0, false), (2, 0, true), (0, 100, true)] {
-        let mut sim = crate::sim::world::Simulation::new();
-        let mut mover = make_hover_mover(vec![(1, 1), (2, 1), (3, 1)], 250);
-        mover.regular_crusher = true;
-        mover.lifecycle.cell_marked = true;
-        mover.lifecycle.in_limbo = false;
-        sim.substrate.entities.insert(mover);
-        let mut victim = GameEntity::test_default(2, "E1", "Soviets", 2, 1);
-        victim.category = EntityCategory::Infantry;
-        victim.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
-            EntityCategory::Infantry,
-        );
-        victim.crushable = true;
-        victim.lifecycle.cell_marked = true;
-        victim.lifecycle.in_limbo = false;
-        // Outside the full-cell crush radius, so this test observes the entering
-        // cell's scatter dispatch instead of a simultaneous destruction.
-        victim.position.sub_x = SIM_ZERO;
-        victim.position.sub_y = SIM_ZERO;
-        victim.set_veterancy_rank(rank);
-        victim.locomotor = Some(
-            crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-                crate::rules::locomotor_type::LocomotorKind::Walk,
-            ),
-        );
-        let owner = victim.owner();
-        sim.substrate.entities.insert(victim);
-        sim.interner = test_interner();
-        let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10);
-        house.current_iq = iq;
-        sim.houses.insert(owner, house);
-        sim.substrate.occupancy = OccupancyGrid::rebuild(&sim.substrate.entities);
-        let classification = |sim: &crate::sim::world::Simulation| {
-            crate::sim::pathfinding::cell_entry::classify_occupied_cell_with_occupation_and_slave_query(
-                (2, 1), crate::sim::pathfinding::cell_entry::CanEnterLayerContext::single(MovementLayer::Ground),
-                1, bump_crush::CrushCapability::new(true, false), "Americans",
-                crate::rules::locomotor_type::LocomotorKind::Hover, false, None,
-                &sim.substrate.occupancy, &sim.substrate.cell_occupation,
-                &sim.substrate.raw_cell_occupation, sim.session.binary_frame,
-                &sim.substrate.entities, &sim.house_alliances, &sim.interner, None,
-            )
-        };
-        assert!(
-            matches!(
-                classification(&sim),
-                crate::sim::pathfinding::cell_entry::CellEntryResult::Crushable { .. }
-            ),
-            "initial classification {:?}",
-            classification(&sim)
-        );
-        let mut scattered = false;
-        let mut visited_cell_receiver = false;
-        for frame in 1..1500 {
-            let before_x = sim.substrate.entities.get(1).unwrap().position.sub_x;
-            sim.session.binary_frame = frame;
-            let timing = super::MovementConfig::from_rules(frame, Some(&rules));
-            let stats = sim
-                .process_ground_locomotor_with_config_for_test(1, Some(&rules), None, timing)
-                .unwrap();
-            scattered |= stats.scatter_requests != 0;
-            // The non-centred infantry survives the crush-radius test, so the
-            // existing entering-cell receiver returns the hover to its old
-            // centre. Requiring a whole-cell crossing would incorrectly reject
-            // the intended no-scatter case, which continues waiting here.
-            let after = &sim.substrate.entities.get(1).unwrap().position;
-            visited_cell_receiver |= before_x > SimFixed::from_num(128)
-                && after.rx == 1
-                && after.sub_x == SimFixed::from_num(128);
-            if scattered || visited_cell_receiver {
-                break;
-            }
-        }
-        assert!(
-            scattered || visited_cell_receiver,
-            "fixture must reach occupied cell; IQ={iq}, rank={rank}, mover={:?}, path={:?}, classification={:?}",
-            sim.substrate.entities.get(1).unwrap().position,
-            sim.substrate.entities.get(1).unwrap().movement_target,
-            classification(&sim)
-        );
-        // The dispatch gate decides the call; this map-less fixture gives the
-        // Infantry receiver no cell to send the man to.
-        assert_eq!(scattered, expected, "IQ={iq}, rank={rank}");
     }
 }

@@ -158,8 +158,9 @@ pub fn release_normal(sim: &mut Simulation, building_id: u64, rules: &RuleSet) {
     let cell = bunker_exit_cell(sim, building_id);
     if let Some(cell) = cell {
         let terrain = sim.resolved_terrain.as_ref();
+        let frame = sim.session.binary_frame;
         if let Some(unit) = sim.substrate.entities.get_mut(unit_id) {
-            crate::sim::movement::set_destination_internal_cell(unit, cell, terrain);
+            crate::sim::movement::set_destination_internal_cell(unit, cell, terrain, frame);
         }
     }
     #[cfg(test)]

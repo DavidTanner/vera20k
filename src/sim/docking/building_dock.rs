@@ -70,7 +70,6 @@ use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
 
 /// Dock state machine phase for a unit interacting with a repair depot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -332,47 +331,12 @@ fn arm_enter_retry(sim: &mut Simulation, rules: &RuleSet, timer: &mut MissionTim
 /// `Can_Enter_Cell` (`0x0073F0A0`, UnitRepair arm 0x0073F761 and
 /// radio-contact arm 0x0073F57C..5A2).
 fn issue_pad_move(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
-    let hover = sim.substrate.entities.get(id).is_some_and(|unit| {
-        unit.locomotor.as_ref().is_some_and(|loco| {
-            loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Hover
-        })
-    });
-    if !hover {
-        sim.set_unit_destination(
-            id,
-            crate::sim::components::NavTargetRef::cell(target.0, target.1),
-            rules,
-            true,
-        );
-        return;
-    }
-    // RESIDUAL (#689, no native Hover host): the Unit setter's Hover arm is
-    // the pass lane's ground move, whose goal resolver relocates the blocked
-    // pad cell, so a Hover occupant would park beside the depot and never
-    // dock. Until Hover moves through Unit Find_Path, it keeps the pre-setter
-    // grid-ignoring direct move onto the pad. Trigger: a Hover unit (ROBO,
-    // SAPC, LCRF, YHVR) sent to a depot. Effect: no native NavCom or route
-    // costs for that last move. Risk: route shape only.
-    let speed = sim
-        .resolve_move_info(id, Some(rules))
-        .map(|info| info.speed)
-        .unwrap_or_else(|| ra2_speed_to_leptons_per_second(4));
-    let timing =
-        crate::sim::movement::DestinationTiming::from_rules(sim.session.binary_frame, rules.into());
-    if crate::sim::movement::issue_direct_move(
-        &mut sim.substrate.entities,
+    sim.set_unit_destination(
         id,
-        target,
-        speed,
-        timing,
-    ) && let Some(target) = sim
-        .substrate
-        .entities
-        .get_mut(id)
-        .and_then(|entity| entity.movement_target.as_mut())
-    {
-        target.bypass_grid = true;
-    }
+        crate::sim::components::NavTargetRef::cell(target.0, target.1),
+        rules,
+        true,
+    );
 }
 
 /// The cell of the depot's ArchiveTarget, its rally point (read at

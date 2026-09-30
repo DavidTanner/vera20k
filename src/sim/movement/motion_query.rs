@@ -7,7 +7,8 @@ use super::track_process::TrackFamily;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
 
-/// Drive4AFB80, Ship69F290, Walk75AB30, Fly4CCA90 and Jumpjet54AE50.
+/// Drive4AFB80, Ship69F290, Walk75AB30, Fly4CCA90, Jumpjet54AE50 and
+/// Hover514C30.
 /// Evidence: locomotor_moving and air_locomotor_moving native corpora.
 pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
     let locomotor = entity.locomotor.as_ref()?;
@@ -19,6 +20,9 @@ pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
             .fly_runtime()
             .map(|state| state.moving() || entity.flight_attitude.blocks_landing()),
         LocomotorKind::Jumpjet => locomotor.jumpjet_runtime().map(|state| state.moving),
+        LocomotorKind::Hover => locomotor
+            .hover_runtime()
+            .map(super::hover::HoverRuntime::is_moving),
         // Teleport Is_Moving 0x718080 reads the +0x30 request byte: Move_To
         // raises it and the warp's Stop_Moving (0x00719725) clears it, so it
         // is up only for an armed warp not yet processed.
@@ -27,7 +31,7 @@ pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
                 state.phase == super::teleport_movement::TeleportPhase::Relocate
             }))
         }
-        // Hover/Rocket destination storage still requires its native
+        // Rocket destination storage still requires its native
         // producer/lifecycle migration.
         _ => None,
     }

@@ -256,7 +256,7 @@ fn track_move_to_and_accepted_foot_calls_match_original_warp_and_zero_semantics(
             }
         } else {
             counts[1] += 1;
-            set_destination_internal_cell(&mut e, (11, 10), Some(&terrain));
+            set_destination_internal_cell(&mut e, (11, 10), Some(&terrain), 0);
             super::super::DestinationTiming::new(100, 22).accept(&mut e);
         }
         compare(&e, &row);

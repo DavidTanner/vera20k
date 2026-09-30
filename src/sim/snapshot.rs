@@ -771,7 +771,10 @@ use crate::sim::world::Simulation;
 // pre-admission writes gate EnterWaterSound/LeaveWaterSound.
 // 267 -> 268: retained Cell targets and navigation retain the live fallback
 // coordinate in deterministic state hashing for range and pursuit.
-const SNAPSHOT_VERSION: u32 = 268;
+// 268 -> 269: the Hover locomotor saves its native object (destination, head,
+// steering facing, the four doubles, Shove and Push state); the locomotor's
+// throttle, request and bob copies are gone.
+const SNAPSHOT_VERSION: u32 = 269;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3670,7 +3673,8 @@ mod tests {
         // 265 -> 266: no Approach depot phase; WaitForDock is pending entry.
         // 266 -> 267: Infantry water-transition state+6E8.
         // 267 -> 268: retained Cell targets hash the live fallback coordinate.
-        assert_eq!(super::SNAPSHOT_VERSION, 268);
+        // 268 -> 269: the native Hover locomotor object.
+        assert_eq!(super::SNAPSHOT_VERSION, 269);
     }
 
     #[test]

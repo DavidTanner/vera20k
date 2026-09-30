@@ -61,7 +61,7 @@ pub enum LocomotorRuntimePayload {
     Walk(WalkRuntime),
     Teleport,
     Rocket,
-    Hover(Option<crate::sim::components::DriveCoord>),
+    Hover(super::super::hover::HoverRuntime),
     Ship(SlopeTransitionState),
     Fly(super::super::fly_height::FlyRuntime),
     Jumpjet(super::super::jumpjet_movement::JumpjetRuntime),
@@ -76,7 +76,7 @@ impl LocomotorRuntimePayload {
             LocomotorKind::Walk => Self::Walk(WalkRuntime::default()),
             LocomotorKind::Teleport => Self::Teleport,
             LocomotorKind::Rocket => Self::Rocket,
-            LocomotorKind::Hover => Self::Hover(None),
+            LocomotorKind::Hover => Self::Hover(Default::default()),
             LocomotorKind::Ship => Self::Ship(SlopeTransitionState::at_binary_frame(binary_frame)),
             LocomotorKind::Fly => Self::Fly(Default::default()),
             LocomotorKind::Jumpjet => Self::Jumpjet(Default::default()),
@@ -226,7 +226,6 @@ mod tests {
     fn begin_and_end_transfer_the_complete_object() {
         let mut state = teleporter();
         state.altitude = SimFixed::from_num(123);
-        state.hover_speed_request = SimFixed::from_num(1);
         state.speed_type = SpeedType::Wheel;
         state.power_off();
         let before = state.clone();
@@ -241,7 +240,6 @@ mod tests {
         // temporary shares only the type's data with the displaced object.
         assert!(state.powered);
         assert_eq!(state.altitude, SimFixed::ZERO);
-        assert_eq!(state.hover_speed_request, SimFixed::ZERO);
         assert_eq!(state.speed_type, SpeedType::Wheel);
         assert_eq!(state.piggyback.as_deref(), Some(&before));
 
@@ -277,9 +275,10 @@ mod tests {
 
     #[test]
     fn piggyback_restores_complete_typed_special_payload() {
-        let head = crate::sim::components::DriveCoord::cell(4, 5, 0);
+        let mut hover = super::super::super::hover::HoverRuntime::default();
+        hover.set_head(Some(crate::sim::components::DriveCoord::cell(4, 5, 0)));
         let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
-        state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
+        state.runtime_payload = LocomotorRuntimePayload::Hover(hover.clone());
 
         assert_eq!(
             begin(&mut state, LocomotorKind::Drive, 0),
@@ -294,21 +293,19 @@ mod tests {
                 .piggyback
                 .as_deref()
                 .map(|stashed| &stashed.runtime_payload),
-            Some(&LocomotorRuntimePayload::Hover(Some(head)))
+            Some(&LocomotorRuntimePayload::Hover(hover.clone()))
         );
 
         assert!(end(&mut state).is_some());
-        assert_eq!(
-            state.runtime_payload,
-            LocomotorRuntimePayload::Hover(Some(head))
-        );
+        assert_eq!(state.runtime_payload, LocomotorRuntimePayload::Hover(hover));
     }
 
     #[test]
     fn serde_round_trip_preserves_active_and_suspended_payloads() {
-        let head = crate::sim::components::DriveCoord::cell(6, 7, 0);
+        let mut hover = super::super::super::hover::HoverRuntime::default();
+        hover.set_head(Some(crate::sim::components::DriveCoord::cell(6, 7, 0)));
         let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
-        state.runtime_payload = LocomotorRuntimePayload::Hover(Some(head));
+        state.runtime_payload = LocomotorRuntimePayload::Hover(hover.clone());
         assert_eq!(
             begin(&mut state, LocomotorKind::Rocket, 0),
             BeginOutcome::Installed
@@ -323,7 +320,7 @@ mod tests {
                 .piggyback
                 .as_deref()
                 .map(|stashed| &stashed.runtime_payload),
-            Some(&LocomotorRuntimePayload::Hover(Some(head)))
+            Some(&LocomotorRuntimePayload::Hover(hover.clone()))
         );
     }
 

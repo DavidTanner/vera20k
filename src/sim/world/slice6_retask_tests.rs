@@ -205,6 +205,11 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // frame5 timer and ends with11 visits instead of5. Frames0..9 hashes match
 // exactly; final changed fields are only current/start/dispatch/counter.
 // Native Event IDLE: tools/spatial_oracle/fv_cell_attack/paid_conditional*.json.
+// Native Hover host (snapshot 269): the locomotor fold drops the three
+// SimFixed Hover copies and hashes the whole HoverLocomotionClass object in
+// place of its head. Ceremony: this change with the old composition (three
+// zero words, head only; probe not committed) printed the previous pin, so
+// no hashed state moved. Previous: 0x38A2_A509_33EC_5219.
 // 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
 // AircraftTracker, which native Mark never touches, so a ground object keeps
 // its constructor-seeded enter order (its stable id) where the old lifecycle
@@ -213,7 +218,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
 // above unchanged (the probe patch was not committed). Old value: the commit
 // that moved it.
-const SLICE6_BASELINE_HASH: u64 = 0xCAFE_C558_646C_EBD8;
+const SLICE6_BASELINE_HASH: u64 = 0x3983_6E86_AD68_DCF0;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
