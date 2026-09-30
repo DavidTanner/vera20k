@@ -438,13 +438,15 @@ fn native_bridge_producer_primary_flight_landing_and_rng_continuation() {
                 tick["location"],
                 "{context}"
             );
-            // The Rust flag also denotes deferred destruction. Native +19B
-            // remains zero here; compare the original logical Alive state.
-            assert_eq!(tick["inactive"], 0, "{context}: native +19B boundary");
             assert_eq!(
-                !anim.runtime.inactive,
+                anim.runtime.inactive,
+                tick["inactive"] != 0,
+                "{context}: native19B"
+            );
+            assert_eq!(
+                !sim.substrate.pending_delete.contains(&id),
                 tick["alive"] == 1,
-                "{context}: alive"
+                "{context}: retained logical Alive"
             );
             assert_eq!(
                 i64::from(anim.runtime.current_frame),
@@ -532,7 +534,7 @@ fn native_bridge_producer_primary_flight_landing_and_rng_continuation() {
             "{input}: trailer/landing constructor order"
         );
         let anim = sim.anim(id).unwrap();
-        assert!(anim.runtime.inactive, "{input}");
+        assert!(sim.substrate.pending_delete.contains(&id), "{input}");
         assert!(!anim.in_logic_vector, "{input}");
         assert!(
             sim.display_layers().layer_of(id).is_none(),

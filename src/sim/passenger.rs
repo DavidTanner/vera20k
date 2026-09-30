@@ -653,8 +653,10 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
                 open_topped: transport_open_topped,
             };
             pax.movement_target = None;
-            pax.attack_target = None;
-            pax.passively_acquired_target = false;
+            if !transport_open_topped {
+                pax.attack_target = None;
+                pax.passively_acquired_target = false;
+            }
             pax.order_intent = None;
         }
         if transport_open_topped {
@@ -662,6 +664,9 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
             // `0x0073A75D`): `+0x82` (the role's flag above), then
             // `ResetOrdersToGuard` (vt+0x3D0) and the LogicClass add, so the
             // rider keeps an AI turn and guards from inside.
+            // Infantry Limbo51DF10 keeps TarCom: 51A441 ->51A45E ->710484
+            // reaches the class NULL setter with the former target intact.
+            // Clearing it above would bypass the changed-target effects.
             sim.reset_orders_to_guard(pax_id, rules);
             let registered = sim.register_open_topped_passenger(pax_id);
             debug_assert!(
@@ -782,15 +787,9 @@ impl Simulation {
             .map(|cargo| cargo.passengers.clone())
             .unwrap_or_default();
         for passenger in passengers {
-            let commits = crate::sim::mission::concrete_effects::assign_target_commits(
-                &self.substrate.entities,
-                target,
-            );
-            if let Some(passenger) = self.substrate.entities.get_mut(passenger) {
-                crate::sim::mission::concrete_effects::represented_assign_target_admitted(
-                    passenger, target, commits,
-                );
-            }
+            // Original71056C dispatches each receiver's virtual+3C8, including
+            // Infantry51B1F0's synchronous action/path/latch effects.
+            let _ = self.assign_target_represented(passenger, target, Some(rules));
         }
     }
 }
@@ -1842,9 +1841,10 @@ ConditionYellow=50%
                 .entities
                 .get_mut(bldg)
                 .expect("building exists");
-            building.building_up = Some(crate::sim::components::BuildingUp::completing_in_ticks(
-                30, 0,
-            ));
+            building.install_building_up(
+                crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
+                0,
+            );
 
             assert!(
                 !can_enter_garrison_fixture(&sim, &rules, pax, bldg),
@@ -1861,7 +1861,7 @@ ConditionYellow=50%
                 .entities
                 .get_mut(bldg)
                 .expect("building exists");
-            building.building_down = Some(crate::sim::components::BuildingDown::commenced(
+            building.install_building_down(crate::sim::components::BuildingDown::commenced(
                 [0, 30, 1],
                 0,
                 false,
@@ -1905,6 +1905,50 @@ ConditionYellow=50%
         }
         assert!(found_eva, "expected StructureGarrisoned event");
         assert!(found_sfx, "expected BuildingGarrisonedSfx event");
+    }
+
+    #[test]
+    fn open_topped_boarding_preserves_old_target_until_class_reset() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/base_defense_response.json"
+        ))
+        .unwrap();
+        let row = native["infantry_assignment"]["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["input"]["name"] == "target_clear")
+            .unwrap();
+        let rules = open_topped_test_rules();
+        let mut sim = Simulation::new();
+        let transport = spawn_transport(&mut sim, &rules, "BFRT", "Americans", 10, 10);
+        let passenger = spawn_boarding_occupier(&mut sim, "E1", "Americans", transport, 10, 11);
+        let actor = sim.substrate.entities.get_mut(passenger).unwrap();
+        actor.health.current = row["input"]["health"].as_i64().unwrap() as i32;
+        actor.attack_target = Some(crate::sim::combat::AttackTarget::new(transport));
+        actor
+            .mission_leaf
+            .set_foot_firing_sequence(row["before"]["firing_latch"].as_u64().unwrap() as u8);
+
+        tick_boarding(&mut sim, &rules);
+
+        let actor = sim.substrate.entities.get(passenger).unwrap();
+        assert!(matches!(
+            actor.passenger_role,
+            PassengerRole::Inside { transport_id, open_topped: true }
+                if transport_id == transport
+        ));
+        assert!(actor.attack_target.is_none());
+        // Original51B20E clears68D on a changed live target before any Doing
+        // admission. Limbo51DF10 has already forced Ready during boarding;
+        // therefore only this independent native latch output is transported
+        // from target_clear, not that row's action/Stage result. The synthetic
+        // rules intentionally lack ART; no full boarding parity is claimed.
+        assert_eq!(
+            actor.mission_leaf.foot_firing_sequence_latch(),
+            row["after"]["firing_latch"].as_u64().unwrap() as u8,
+            "SetInOpenTransport710484 must observe the former TarCom",
+        );
     }
 
     #[test]

@@ -224,8 +224,7 @@ pub(crate) fn begin_selling(sim: &mut Simulation, rules: &RuleSet, id: u64, unde
     if entity.mission.current() != selling || entity.building_down.is_some() {
         return;
     }
-    entity.building_up = None;
-    entity.building_down = Some(BuildingDown::commenced(control, now as i32, undeploy_order));
+    entity.install_building_down(BuildingDown::commenced(control, now as i32, undeploy_order));
 }
 
 /// `BuildingClass::CanSell @ 0x004494C0` (vt+0x98), which the sell cursor
@@ -384,8 +383,8 @@ pub(crate) fn sell_stage_one(
     let now = sim.session.binary_frame as i32;
     if let Some(building) = sim.substrate.entities.get_mut(id) {
         let mut status = building.mission.handler_state();
-        if let Some(down) = building.building_down.as_mut() {
-            down.begin_stage_two(&mut status, now);
+        if building.building_down.is_some() {
+            building.begin_building_pack_up_stage_two(&mut status, now);
         }
         building.mission.set_handler_state(status);
     }

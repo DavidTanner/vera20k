@@ -9,7 +9,7 @@
 //! pre-converted to integer frames so no float ever reaches a tick path.
 //!
 //! ## Dependency rules
-//! - Part of rules/ and depends only on rules::ini_parser.
+//! - Part of rules/; parses INI values and uses the shared numeric conversion owner.
 //! - No dependency on sim/ or runtime scheduling.
 
 use crate::rules::ini_parser::IniFile;
@@ -271,7 +271,7 @@ const CONSTRUCTED_RATE_MINUTES: f64 = 0.016;
 
 /// Convert an INI rate (minutes between processings) to integer frames,
 /// modelling gamemd's `Math::ftol(Rate * 900)` truncate-toward-zero (the
-/// per-minute domain is non-negative, so `as u32` == floor == ftol here).
+/// signed result is retained through the dispatch timer).
 ///
 /// The minutes come from `CCINIClass::ReadDouble`, whose `%f` scan widens a
 /// **float**: `[Guard] Rate=.030` reads as 0.029999999329447746 and truncates
@@ -279,18 +279,25 @@ const CONSTRUCTED_RATE_MINUTES: f64 = 0.016;
 /// 71). Guard is the mission every idle unit holds and its dispatch consumes
 /// a scenario-RNG draw, so the width moves deterministic state.
 #[inline]
-fn rate_to_frames(minutes: f64) -> u32 {
-    (minutes * FRAMES_PER_MINUTE) as u32
+fn rate_to_frames(minutes: f64) -> i32 {
+    // DeployedGuard521484..5214B8 executes negative rates unchanged;
+    // infantry_deployed_guard.json pins Rate=-.1 through original ftol/RNG.
+    // ReadDouble widens f32, whose x900 product fits binary64 precision.
+    // Reuse the existing ftol owner for signed64-to-low32/invalid semantics.
+    use crate::util::native_x87::{MaskedX87Chop53, NativeF64Bits};
+    MaskedX87Chop53::ftol_i32_low_masked(MaskedX87Chop53::load_f64(NativeF64Bits::from_bits(
+        (minutes * FRAMES_PER_MINUTE).to_bits(),
+    )))
 }
 
 /// One mission's processing cadence and behaviour flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MissionControlEntry {
     /// Frames between normal processings (`Rate=` × 900, ftol-truncated).
-    pub rate_frames: u32,
+    pub rate_frames: i32,
     /// Frames between anti-aircraft processings (`AARate=`; copies `rate_frames`
     /// when the key is absent or zero).
-    pub aa_rate_frames: u32,
+    pub aa_rate_frames: i32,
     /// Weapons disabled → ignored as a target until it fires (`NoThreat=`, def no).
     ///
     /// **Parsed, no consumer.** Stock YR sets it on exactly two sections,
@@ -405,7 +412,7 @@ impl MissionControl {
 
     /// Processing cadence in frames for a mission (0 if unknown).
     #[inline]
-    pub fn rate_frames(&self, mission: MissionType) -> u32 {
+    pub fn rate_frames(&self, mission: MissionType) -> i32 {
         self.entries.get(&mission).map_or(0, |e| e.rate_frames)
     }
 
@@ -455,7 +462,7 @@ impl MissionControl {
     /// `sim::world::techno_ai::building_missions`; `Mission_Attack`'s read is
     /// its SAM arm, dormant with retail data.
     #[inline]
-    pub fn aa_rate_frames(&self, mission: MissionType) -> u32 {
+    pub fn aa_rate_frames(&self, mission: MissionType) -> i32 {
         self.entries.get(&mission).map_or(0, |e| e.aa_rate_frames)
     }
 
@@ -670,7 +677,7 @@ mod mission_control_tests {
     #[test]
     fn stock_rates_go_through_the_f32_widening() {
         for (section, mission, widened, exact_f64) in [
-            ("Guard", MissionType::Guard, 26u32, 27u32),
+            ("Guard", MissionType::Guard, 26i32, 27i32),
             ("Area Guard", MissionType::AreaGuard, 35, 36),
             ("Repair", MissionType::Repair, 71, 72),
         ] {
@@ -694,7 +701,7 @@ mod mission_control_tests {
         // Values whose x900 lands the same side of the boundary in both widths.
         // Only `1` is exactly representable; the other three are inexact as f32
         // AND as f64, but not near enough to a boundary for the width to matter.
-        for (raw, frames) in [(".016", 14u32), (".032", 28), (".1", 90), ("1", 900)] {
+        for (raw, frames) in [(".016", 14i32), (".032", 28), (".1", 90), ("1", 900)] {
             let mc = MissionControl::from_ini(&ini(&format!("[Move]\nRate={raw}\n")));
             assert_eq!(mc.rate_frames(MissionType::Move), frames);
         }

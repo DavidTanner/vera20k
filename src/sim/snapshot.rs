@@ -755,13 +755,21 @@ use crate::sim::world::Simulation;
 // enter order; the enter-order counter serves only the AirTracker.
 // 260 -> 261: an entity no longer saves the ObjectClass falling byte; the
 // parachute descent it saves is IsFallingDown.
-// 261 -> 262: bridge cells no longer save a runtime copy of CellClass bridge
+// 261 -> 262: the combined branch retains House4FD150 base radius, Foot688
+// stopped/cannot-fire latch and inherited Unit/Aircraft raw Foot68D.
+// 262 -> 263: bridge cells no longer save a runtime copy of CellClass bridge
 // state (deck, damage state, axis, role, span, overlay); anchor spans are gone.
-// 262 -> 263: a parachute descent no longer saves an altitude; the falling
+// 263 -> 264: each Techno saves its sole private native StageClass. Miner
+// and Building metadata no longer save competing stage/rate/timer copies.
+// Infantry retains the native pending-Deploy6E4 and Techno crush2A4 bytes;
+// its TarCom no longer saves a competing cached sequence/discharge frame.
+// 264 -> 265: a parachute descent no longer saves an altitude; the falling
 // object's height is its Location Z.
-// 263 -> 264: a depot dock state no longer saves an Approach phase;
+// 265 -> 266: a depot dock state no longer saves an Approach phase;
 // WaitForDock is the depot as pending entry (Unit+0x500).
-const SNAPSHOT_VERSION: u32 = 264;
+// 266 -> 267: Infantry retains signed water-transition state+6E8, whose
+// pre-admission writes gate EnterWaterSound/LeaveWaterSound.
+const SNAPSHOT_VERSION: u32 = 267;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3649,11 +3657,13 @@ mod tests {
         // 258 -> 259: no bridgehead anchor class.
         // 259 -> 260: no bridge_occupancy or ground enter order.
         // 260 -> 261: no falling byte beside the parachute descent.
-        // 261 -> 262: no runtime copy of CellClass bridge cell state.
-        // 262 -> 263: no parachute altitude beside the Location Z.
-        // 263 -> 264: no Approach depot dock phase; WaitForDock is the depot
-        // pending entry (Unit+0x500).
-        assert_eq!(super::SNAPSHOT_VERSION, 264);
+        // 261 -> 262: retained House radius, Foot688 and inherited Foot68D.
+        // 262 -> 263: no runtime copy of CellClass bridge cell state.
+        // 263 -> 264: shared native StageClass; no Miner/Building clock copies.
+        // 264 -> 265: no parachute altitude beside the Location Z.
+        // 265 -> 266: no Approach depot phase; WaitForDock is pending entry.
+        // 266 -> 267: Infantry water-transition state+6E8.
+        assert_eq!(super::SNAPSHOT_VERSION, 267);
     }
 
     #[test]
@@ -7313,7 +7323,7 @@ mod tests {
         use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionLeafState};
         use crate::sim::movement::locomotor::LocomotorState;
 
-        let leaves = [
+        let mut leaves = [
             MissionLeafState::unit_raw_for_test(1, 2, 3, 4),
             MissionLeafState::infantry_raw_for_test(5, 41),
             MissionLeafState::aircraft_raw_for_test(6, 7, true),
@@ -7321,6 +7331,8 @@ mod tests {
             MissionLeafState::unit_raw_for_test(9, 10, 11, 12),
             MissionLeafState::infantry_raw_for_test(13, -1),
         ];
+        leaves[1].set_infantry_water_state(false);
+        leaves[5].set_infantry_water_state(true);
 
         let mut sim = Simulation::new();
         for index in 0..6 {

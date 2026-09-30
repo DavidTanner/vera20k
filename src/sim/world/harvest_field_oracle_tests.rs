@@ -297,17 +297,13 @@ fn compare_state(s: &Scene, row: &Value, context: &str) {
         native["harvesting"].as_u64().unwrap(),
         "{context}: Unit+0x6D2"
     );
-    let start = if miner.stage_timer.is_armed() {
-        i64::from(miner.stage_timer.start_frame)
-    } else {
-        -1
-    };
+    let stage = entity.native_stage();
     assert_eq!(
         serde_json::json!([
-            miner.stage_value,
-            start,
-            miner.stage_timer.duration,
-            miner.stage_rate
+            stage.value(),
+            stage.timer().start_frame(),
+            stage.timer().duration(),
+            stage.rate()
         ]),
         native["stage"],
         "{context}: StageClass"

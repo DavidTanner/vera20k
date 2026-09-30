@@ -16,9 +16,12 @@ pub(crate) enum MissionLeafState {
     Building(BuildingMissionLeaf),
 }
 
-/// Unit readiness bytes, stored independently in native declaration order.
+/// Unit readiness bytes and its inherited Foot firing byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct UnitMissionLeaf {
+    /// Foot+68D: ctor4D33C6 clears it; Unit736DF0 only clears it, while raw
+    /// Object5F5E80/Abstract410380 load retains the full Unit8E8 record.
+    firing_sequence_latch: u8,
     deploy_begin_active: u8,
     deploy_reverse_active: u8,
     tracker_byte_18: u8,
@@ -30,11 +33,27 @@ pub(crate) struct UnitMissionLeaf {
 pub(crate) struct InfantryMissionLeaf {
     firing_sequence_latch: u8,
     doing: i32,
+    /// Infantry+6E8: ctor517AC2 writes2. DoAction51D8B8 stores0 for
+    /// Water/Beach offbridge, otherwise1, before its action admission.
+    /// Native load retains the signed dword, including the initial sentinel.
+    #[serde(default = "initial_infantry_water_state")]
+    water_state: i32,
+    /// Infantry+6E4: ctor517ABC clears it; Guard52167C and the
+    /// approach/deploy request producers set it after locomotor Stop.
+    /// Stop callback521B40 consumes it before requesting unforced Deploy27.
+    #[serde(default)]
+    pending_deploy: u8,
+}
+
+const fn initial_infantry_water_state() -> i32 {
+    2
 }
 
 /// Aircraft policy and readiness bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct AircraftMissionLeaf {
+    /// The same inherited Foot+68D, retained by the raw Aircraft6D8 load.
+    firing_sequence_latch: u8,
     /// Aircraft+6D2: shared by Mission_Attack, Fly and ReadyToCommence41B5E0.
     action_latch: u8,
     /// Aircraft+6D4, independent of the pending-ammunition byte+6C8.
@@ -116,8 +135,30 @@ impl MissionLeafState {
         self.expect_unit_mut().tracker_byte_19 = raw;
     }
 
-    pub(crate) fn set_infantry_firing_sequence(&mut self, raw: u8) {
-        self.expect_infantry_mut().firing_sequence_latch = raw;
+    /// The one inherited Foot+68D view used by Foot handlers. Infantry's
+    /// concrete readiness view reads that same variant field. Buildings do
+    /// not inherit this byte.
+    pub(crate) const fn foot_firing_sequence_latch(&self) -> u8 {
+        match self {
+            Self::Unit(leaf) => leaf.firing_sequence_latch,
+            Self::Infantry(leaf) => leaf.firing_sequence_latch,
+            Self::Aircraft(leaf) => leaf.firing_sequence_latch,
+            Self::Building(_) => 0,
+        }
+    }
+
+    /// Raw Foot+68D state. Its active nonzero producer is Infantry5206B0's
+    /// store520912; class target-change51B20E and Unit736DF0 clear it.
+    /// No ordinary Unit/Aircraft nonzero producer is claimed here. Native
+    /// load retains this byte; do not infer it from a pending shot or Doing.
+    #[track_caller]
+    pub(crate) fn set_foot_firing_sequence(&mut self, raw: u8) {
+        match self {
+            Self::Unit(leaf) => leaf.firing_sequence_latch = raw,
+            Self::Infantry(leaf) => leaf.firing_sequence_latch = raw,
+            Self::Aircraft(leaf) => leaf.firing_sequence_latch = raw,
+            Self::Building(_) => panic!("Foot firing writer used for a Building"),
+        }
     }
 
     /// Write only values accepted by the verified 42-entry Doing table.
@@ -131,6 +172,17 @@ impl MissionLeafState {
         }
         leaf.doing = doing;
         Ok(())
+    }
+
+    /// Original51D8B8 is a pre-admission store: even an unchanged or
+    /// noninterruptible action retains the new land/water state.
+    pub(crate) fn set_infantry_water_state(&mut self, on_land: bool) {
+        self.expect_infantry_mut().water_state = i32::from(on_land);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_infantry_water_state_fixture(&mut self, raw: i32) {
+        self.expect_infantry_mut().water_state = raw;
     }
 
     #[cfg(test)]
@@ -171,6 +223,22 @@ impl MissionLeafState {
         }
     }
 
+    /// Supplied native fixture state. The live undeployed AI Guard producer
+    /// remains recorded at mission_handlers; the Stop consumer is connected.
+    #[cfg(test)]
+    pub(crate) fn set_infantry_pending_deploy(&mut self, raw: u8) {
+        self.expect_infantry_mut().pending_deploy = raw;
+    }
+
+    /// Native521B52 clears the byte before the class Do_Action call, even
+    /// when that call refuses. A recursive Stop observes the consumed byte.
+    pub(crate) fn take_infantry_pending_deploy(&mut self) -> bool {
+        let leaf = self.expect_infantry_mut();
+        let pending = leaf.pending_deploy != 0;
+        leaf.pending_deploy = 0;
+        pending
+    }
+
     #[track_caller]
     fn expect_aircraft_mut(&mut self) -> &mut AircraftMissionLeaf {
         match self {
@@ -195,6 +263,7 @@ impl MissionLeafState {
         tracker_byte_19: u8,
     ) -> Self {
         Self::Unit(UnitMissionLeaf {
+            firing_sequence_latch: 0,
             deploy_begin_active,
             deploy_reverse_active,
             tracker_byte_18,
@@ -207,6 +276,8 @@ impl MissionLeafState {
         Self::Infantry(InfantryMissionLeaf {
             firing_sequence_latch,
             doing,
+            water_state: initial_infantry_water_state(),
+            pending_deploy: 0,
         })
     }
 
@@ -217,6 +288,7 @@ impl MissionLeafState {
         airstrike_manager_present: bool,
     ) -> Self {
         Self::Aircraft(AircraftMissionLeaf {
+            firing_sequence_latch: 0,
             action_latch,
             transition_ready_latch,
             airstrike_manager_present,
@@ -232,6 +304,7 @@ impl MissionLeafState {
 impl UnitMissionLeaf {
     const fn initial() -> Self {
         Self {
+            firing_sequence_latch: 0,
             deploy_begin_active: 0,
             deploy_reverse_active: 0,
             tracker_byte_18: 0,
@@ -261,6 +334,8 @@ impl InfantryMissionLeaf {
         Self {
             firing_sequence_latch: 0,
             doing: -1,
+            water_state: initial_infantry_water_state(),
+            pending_deploy: 0,
         }
     }
 
@@ -271,11 +346,20 @@ impl InfantryMissionLeaf {
     pub(crate) const fn doing(&self) -> i32 {
         self.doing
     }
+
+    pub(crate) const fn water_state(&self) -> i32 {
+        self.water_state
+    }
+
+    pub(crate) const fn pending_deploy(&self) -> u8 {
+        self.pending_deploy
+    }
 }
 
 impl AircraftMissionLeaf {
     const fn initial() -> Self {
         Self {
+            firing_sequence_latch: 0,
             action_latch: 0,
             transition_ready_latch: 1,
             airstrike_manager_present: false,
@@ -380,7 +464,7 @@ mod tests {
         assert_eq!(unit_view.tracker_byte_19(), 8);
 
         let mut infantry = MissionLeafState::infantry_raw_for_test(9, 10);
-        infantry.set_infantry_firing_sequence(11);
+        infantry.set_foot_firing_sequence(11);
         infantry
             .set_infantry_doing_verified(41)
             .expect("verified Doing");

@@ -278,7 +278,7 @@ fn spawn_pdplane(
 
     if loaded == 0 {
         // No passengers loaded — kill the empty carrier rather than fly empty.
-        let infantry_terminal = sim.begin_raw_infantry_death(pdplane_id, None);
+        let infantry_terminal = sim.begin_raw_infantry_death(pdplane_id);
         if !infantry_terminal && let Some(entity) = sim.substrate.entities.get_mut(pdplane_id) {
             entity.health.current = 0;
             entity.dying = true;

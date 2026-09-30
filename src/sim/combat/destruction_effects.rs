@@ -360,6 +360,7 @@ impl Simulation {
                     i32::from(cell_rx) * 256 + 0x80,
                     i32::from(cell_ry) * 256 + 0x80,
                     CELL_EXPLOSION_SCATTER_LEPTONS,
+                    super::inviso_scatter::RandomDirectionSnap::Preserve,
                 );
                 let delay = self.scenario_rng.next_range_u32_inclusive(0, 3) as u16;
                 let anim = self.pick_death_anim(&object.explosion_anims);

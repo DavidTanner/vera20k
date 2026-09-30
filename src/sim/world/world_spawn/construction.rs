@@ -130,7 +130,6 @@ impl Simulation {
             ge.voxel_animation = Some(VoxelAnimation::new(1, 1));
         }
         if category == EntityCategory::Infantry {
-            ge.animation = Some(Animation::new(SequenceKind::Stand));
             ge.sub_cell = Some(match origin {
                 ComponentOrigin::Authored { sub_cell, .. } => sub_cell,
                 ComponentOrigin::Runtime => {

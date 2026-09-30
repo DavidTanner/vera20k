@@ -360,7 +360,7 @@ fn a_fighter_out_of_range_cycles_back_to_its_search() {
     let mut expected = before;
     let rate = rules
         .mission_control
-        .rate_frames(crate::sim::mission::MissionType::Attack) as i32;
+        .rate_frames(crate::sim::mission::MissionType::Attack);
     assert_eq!(
         entity.mission.dispatch_timer().delay(),
         rate + expected.next_range_i32_inclusive(0, 2)

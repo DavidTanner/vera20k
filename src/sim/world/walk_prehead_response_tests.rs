@@ -175,7 +175,6 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     e.attack_target =
         (input["attack_target"] == true).then_some(crate::sim::combat::AttackTarget {
             target: TargetKind::Cell(11, 10),
-            pending_infantry_fire: None,
         });
     e.suspended_attack_target = None;
     e.navigation.path_replay.directions = vec![2, 3, 4, 5];

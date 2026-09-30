@@ -465,7 +465,7 @@ impl Simulation {
         }
     }
 
-    /// `0x00471E3A..0x00471E73` then `vt+0x3D0`: unless a Simple Deployer
+    /// Gate `0x00471E55..0x00471E9F`, then `vt+0x3D0` at471EA5: unless a Simple Deployer
     /// is deploying (Unload) or the object is Selling or under Construction,
     /// the captive's orders reset to Guard ([`Simulation::reset_orders_to_guard`]).
     fn reset_captured_orders(&mut self, target_id: u64, rules: &RuleSet) {

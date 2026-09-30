@@ -91,7 +91,7 @@ impl RetailRulesSources {
                         })
                         .ok();
                     if let Some(rules) = compatibility_rules.as_mut() {
-                        native_owner.bind_sinking_sounds(rules, &processed);
+                        native_owner.bind_type_sound_references(rules, &processed);
                     }
                     let compatibility_projection =
                         processed.into_projection_discarding_native_receipt();

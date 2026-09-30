@@ -447,7 +447,9 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                     ));
                     ui.label(format!(
                         "Stage: {} (rate {}) harvesting: {}",
-                        miner.stage_value, miner.stage_rate, miner.harvesting
+                        entity.native_stage().value(),
+                        entity.native_stage().rate(),
+                        miner.harvesting
                     ));
                     if let Some(ref_id) = miner.reserved_refinery {
                         let ref_type = sim

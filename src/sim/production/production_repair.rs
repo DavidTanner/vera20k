@@ -223,9 +223,10 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
 /// reads Guard ([`BuildingUp::completes_at`](crate::sim::components::BuildingUp)).
 /// A sale commences Selling (`production_sell::begin_selling`).
 pub(super) fn constructing_or_selling(sim: &Simulation, entity: &GameEntity) -> bool {
-    entity.building_up.is_some_and(|build_up| {
-        !build_up.completes_at(sim.session.binary_frame as i32, &sim.session.game_options)
-    }) || entity.mission.effective().known() == Some(MissionType::Selling)
+    (entity.building_up.is_some()
+        && !entity
+            .construction_completes_at(sim.session.binary_frame as i32, &sim.session.game_options))
+        || entity.mission.effective().known() == Some(MissionType::Selling)
 }
 
 /// The computer's low-credit sale (`0x00450781..0x0045080D`): a campaign

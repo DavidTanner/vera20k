@@ -514,9 +514,9 @@ fn only_a_human_scanner_passes_over_an_unarmed_building() {
     let human = sim
         .spawn_object_at_height("E1", "Human", 5, 15, 0, 0, &rules)
         .expect("E1 spawns");
-    let scan = |id| {
+    let mut scan = |id| {
         crate::sim::world::team_leader_greatest_threat(
-            &sim,
+            &mut sim,
             &rules,
             None,
             id,

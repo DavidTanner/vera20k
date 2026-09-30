@@ -300,7 +300,7 @@ pub fn place_ready_building_with_overlays(
     let control = rules.buildup_control(type_id);
     let now = sim.session.binary_frame as i32;
     if let Some(ge) = sim.substrate.entities.get_mut(new_sid) {
-        ge.building_up = Some(BuildingUp::placed_by_player(control, now));
+        ge.install_building_up(BuildingUp::placed_by_player(control, now), now);
     }
     // Refresh superweapon grants — newly placed building may provide a SW.
     if sim.session.game_options.super_weapons {

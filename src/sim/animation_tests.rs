@@ -2,20 +2,16 @@
 //!
 //! Separated from animation.rs to stay within the 400-line file limit.
 
-use std::collections::BTreeMap;
-
-use crate::map::entities::EntityCategory;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::infantry_sequence::parse_infantry_sequence_registry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::*;
-use crate::sim::combat::{AttackTarget, PendingInfantryFire};
+use crate::sim::combat::AttackTarget;
 use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, Health, MovementTarget, ShipLocomotionRuntime,
+    DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
 };
-use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::game_options::GameOptions;
 use crate::sim::intern::StringInterner;
@@ -780,32 +776,56 @@ fn gsi_08_13_death_sequence_and_anim_arms_are_exclusive() {
     }
 }
 
-// --- tick_animations integration tests ---
+// --- Infantry class action and presentation integration tests ---
 
-fn make_test_interner() -> StringInterner {
-    let mut interner = StringInterner::new();
-    interner.intern("Americans");
-    interner.intern("E1");
-    interner
-}
-
-fn make_infantry_entity(id: u64, facing: u8, interner: &mut StringInterner) -> GameEntity {
-    let mut e = GameEntity::new_at_frame_zero_for_test(
-        id,
-        0,
-        0,
-        0,
-        facing,
-        interner.intern("Americans"),
-        Health { current: 100 },
-        interner.intern("E1"),
-        EntityCategory::Infantry,
-        0,
-        0,
-        false,
+/// Production rules and ART readers establish the action records; the class
+/// owners use them directly. GI layouts supply the counts; the completed idle
+/// hint and a different Ready hint are authored completion controls below.
+fn infantry_action_fixture(
+    idle_hint: Option<&str>,
+) -> (crate::sim::world::Simulation, RuleSet, u64) {
+    let ini = IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n\
+         [E1]\nStrength=125\nSpeed=4\nImage=GI\n\
+         Locomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nMovementZone=Infantry\n",
     );
-    e.animation = Some(Animation::new(SequenceKind::Stand));
-    e
+    let hint = idle_hint.map_or(String::new(), |hint| format!(",{hint}"));
+    let art = IniFile::from_str(&format!(
+        "[GI]\nCrawls=yes\nSequence=GISequence\n\
+         [GISequence]\nReady=0,1,1,E\nGuard=0,1,1\nProne=86,1,6\nWalk=8,6,6\n\
+         FireUp=164,6,6\nDown=260,2,2\nCrawl=86,6,6\nUp=276,2,2\nFireProne=212,6,6\n\
+         Idle1=56,15,0{hint}\nIdle2=71,15,0,E\nDie1=134,15,0\nDie2=149,15,0\n",
+    ));
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(&parse_infantry_sequence_registry(&art));
+    assert_eq!(
+        rules
+            .animation_sequence("E1")
+            .unwrap()
+            .infantry_action(11)
+            .unwrap()
+            .frames_per_facing,
+        15,
+        "the declared Die1 record must reach the gameplay owner"
+    );
+    let mut sim = crate::sim::world::Simulation::with_seed(0);
+    let house = sim.interner.intern("Americans");
+    sim.houses.insert(
+        house,
+        crate::sim::house_state::HouseState::new(house, 0, None, true, 0, 10),
+    );
+    let id = sim
+        .construct_object_limbo_at_height("E1", "Americans", 10, 10, 0, 0, &rules)
+        .unwrap();
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .lifecycle
+        .in_limbo = false;
+    assert!(sim.infantry_do_action(id, 0, false, &rules).unwrap());
+    (sim, rules, id)
 }
 
 fn make_movement_target() -> MovementTarget {
@@ -821,162 +841,159 @@ fn make_movement_target() -> MovementTarget {
     }
 }
 
-#[test]
-fn test_tick_switches_to_walk_with_movement() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 0, &mut interner);
-    e.movement_target = Some(make_movement_target());
-    store.insert(e);
+/// Install the retained Walk inputs consumed by actual Is_Moving_Now. A
+/// MovementTarget alone cannot select the Infantry locomotion action.
+fn set_infantry_walk_motion(sim: &mut crate::sim::world::Simulation, id: u64, moving: bool) {
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    let locomotor = actor.locomotor.as_mut().unwrap();
+    let coord = moving.then(|| DriveCoord::cell(11, 10, 0));
+    locomotor.set_step_head(coord);
+    locomotor.set_walk_destination(coord);
+    actor
+        .foot_speed
+        .set_speed_fraction(if moving { SimFixed::ONE } else { SIM_ZERO });
+}
 
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    sequences.insert("E1".to_string(), default_infantry_sequences());
-
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
+fn assert_infantry_pose(
+    sim: &crate::sim::world::Simulation,
+    id: u64,
+    doing: i32,
+    kind: SequenceKind,
+    stage: i32,
+) {
+    let actor = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(actor.mission_leaf.as_infantry().unwrap().doing(), doing);
+    assert_eq!(actor.native_stage().value(), stage);
+    assert_eq!(actor.infantry_sprite_pose(), Some((doing, stage)));
+    assert_eq!(
+        crate::rules::infantry_sequence::action_kind(doing),
+        Some(kind)
     );
-
-    let anim = store.get(1).unwrap().animation.as_ref().unwrap();
-    assert_eq!(anim.sequence, SequenceKind::Walk);
+    assert!(
+        actor.animation.is_none(),
+        "Infantry has no writable presentation clock"
+    );
 }
 
 #[test]
-fn test_tick_switches_to_stand_without_movement() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 0, &mut interner);
-    e.animation = Some(Animation {
-        sequence: SequenceKind::Walk,
-        frame_index: 3,
-        elapsed_frames: 0,
-        finished: false,
-    });
-    store.insert(e);
+fn infantry_walk_action_uses_retained_locomotor_motion() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    sim.substrate.entities.get_mut(id).unwrap().movement_target = Some(make_movement_target());
+    sim.infantry_movement_actions(id, &rules);
+    assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
 
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    sequences.insert("E1".to_string(), default_infantry_sequences());
-
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
-    );
-
-    let anim = store.get(1).unwrap().animation.as_ref().unwrap();
-    assert_eq!(anim.sequence, SequenceKind::Stand);
+    set_infantry_walk_motion(&mut sim, id, true);
+    sim.infantry_movement_actions(id, &rules);
+    assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
 }
 
 #[test]
-fn test_tick_advances_walk_frame() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 64, &mut interner);
-    e.animation = Some(Animation::new(SequenceKind::Walk));
-    e.movement_target = Some(make_movement_target());
-    store.insert(e);
+fn infantry_stopped_walk_returns_to_ready_through_class_action() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    set_infantry_walk_motion(&mut sim, id, true);
+    sim.infantry_movement_actions(id, &rules);
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(3);
+    set_infantry_walk_motion(&mut sim, id, false);
+    sim.infantry_movement_actions(id, &rules);
+    assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
+}
 
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    sequences.insert("E1".to_string(), default_infantry_sequences());
-
-    // Default walk delay is three reached native frames.
-    for _ in 0..3 {
-        tick_animations(
-            &mut store,
-            &sequences,
-            &GameOptions::default(),
-            &interner,
-            0,
+#[test]
+fn infantry_walk_stage_uses_absolute_frames_and_presentation_leaves_it_alone() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    set_infantry_walk_motion(&mut sim, id, true);
+    sim.infantry_movement_actions(id, &rules);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .native_stage()
+            .rate(),
+        3
+    );
+    for now in [0, 1, 2, 2] {
+        assert!(
+            !sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .tick_native_stage(now)
         );
     }
-
-    let anim = store.get(1).unwrap().animation.as_ref().unwrap();
-    assert_eq!(anim.sequence, SequenceKind::Walk);
-    assert_eq!(anim.frame_index, 1);
+    assert!(
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .tick_native_stage(3)
+    );
+    assert!(
+        !sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .tick_native_stage(3)
+    );
+    assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 1);
+    for now in [3, 3, 100] {
+        let dead = tick_animations(
+            &mut sim.substrate.entities,
+            rules.animation_sequences(),
+            &sim.session.game_options,
+            &sim.interner,
+            now,
+        );
+        assert!(dead.is_empty());
+        assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 1);
+    }
 }
 
 #[test]
-fn test_tick_attack_triggers_fire_animation() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 0, &mut interner);
-    e.attack_target = Some(AttackTarget::new(999));
-    e.attack_target.as_mut().unwrap().pending_infantry_fire = Some(PendingInfantryFire {
-        sequence: SequenceKind::Attack,
-        fire_frame: 2,
-    });
-    store.insert(e);
-
-    // Build sequences that include Attack.
-    let mut set = default_infantry_sequences();
-    set.insert(
-        SequenceKind::Attack,
-        SequenceDef {
-            start_frame: 164,
-            frame_count: 6,
-            facings: 8,
-            facing_multiplier: 6,
-            frame_delay: 1,
-            normalized: false,
-            completion_facing: None,
-            loop_mode: LoopMode::TransitionTo(SequenceKind::Stand),
-            facing_slots: FacingSlots::InfantryTable,
-        },
+fn presentation_preserves_infantry_fire_action_latch_and_signed_stage() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    assert!(sim.infantry_do_action(id, 4, false, &rules).unwrap());
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.attack_target = Some(AttackTarget::new(999));
+    actor.mission_leaf.set_foot_firing_sequence(1);
+    actor.set_native_stage_value(65_538);
+    let facing = actor.body_facing;
+    let dead = tick_animations(
+        &mut sim.substrate.entities,
+        rules.animation_sequences(),
+        &sim.session.game_options,
+        &sim.interner,
+        100,
     );
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    sequences.insert("E1".to_string(), set);
-
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
-    );
-
-    let anim = store.get(1).unwrap().animation.as_ref().unwrap();
-    assert_eq!(anim.sequence, SequenceKind::Attack);
-}
-
-#[test]
-fn gsi_05_07_idle_completion_snaps_current_hint_before_stand_dispatch() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut entity = make_infantry_entity(1, 0, &mut interner);
-    entity.animation = Some(Animation::new(SequenceKind::Idle1));
-    entity.body_facing = FacingClass::new(0, 4);
-    store.insert(entity);
-
-    let mut idle = test_def(56, 1, 1, 1, LoopMode::TransitionTo(SequenceKind::Stand));
-    idle.completion_facing = Some(128);
-    let mut stand = test_def(0, 1, 8, 1, LoopMode::Loop);
-    // Proves completion reads the definition that just finished, not `next`.
-    stand.completion_facing = Some(64);
-    let mut set = SequenceSet::new();
-    set.insert(SequenceKind::Idle1, idle);
-    set.insert(SequenceKind::Stand, stand);
-    let mut sequences = BTreeMap::new();
-    sequences.insert("E1".to_string(), set);
-
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        77,
-    );
-
-    let entity = store.get(1).expect("entity");
+    assert!(dead.is_empty());
+    assert_infantry_pose(&sim, id, 4, SequenceKind::Attack, 65_538);
+    let actor = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(actor.mission_leaf.foot_firing_sequence_latch(), 1);
     assert_eq!(
-        entity.animation.as_ref().expect("animation").sequence,
-        SequenceKind::Stand
+        actor.attack_target.as_ref().unwrap().target,
+        crate::sim::combat::TargetKind::Entity(999)
     );
-    let body = entity.body_facing;
+    assert_eq!(actor.body_facing, facing);
+}
+
+#[test]
+fn gsi_05_07_idle_completion_snaps_current_hint_before_ready_dispatch() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    sim.session.binary_frame = 77;
+    sim.substrate.entities.get_mut(id).unwrap().body_facing = FacingClass::new(0, 4);
+    assert!(sim.infantry_do_action(id, 9, false, &rules).unwrap());
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(15);
+    assert!(!sim.infantry_sequencer(id, &rules));
+    assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
+    let body = sim.substrate.entities.get(id).unwrap().body_facing;
     assert_eq!(body.destination(), 0x8000);
     assert_eq!(body.current(77), 0x8000);
     assert!(!body.is_rotating(77));
@@ -984,285 +1001,188 @@ fn gsi_05_07_idle_completion_snaps_current_hint_before_stand_dispatch() {
 }
 
 #[test]
-fn gsi_05_07_unhinted_completion_preserves_entity_and_body_facing() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut entity = make_infantry_entity(1, 32, &mut interner);
-    entity.animation = Some(Animation::new(SequenceKind::Idle1));
-    entity.body_facing = FacingClass::new(0x2000, 4);
-    store.insert(entity);
-
-    let mut set = SequenceSet::new();
-    set.insert(
-        SequenceKind::Idle1,
-        test_def(56, 1, 1, 1, LoopMode::TransitionTo(SequenceKind::Stand)),
-    );
-    set.insert(SequenceKind::Stand, test_def(0, 1, 8, 1, LoopMode::Loop));
-    let mut sequences = BTreeMap::new();
-    sequences.insert("E1".to_string(), set);
-
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        91,
-    );
-
-    let entity = store.get(1).expect("entity");
-    assert_eq!(
-        entity.animation.as_ref().expect("animation").sequence,
-        SequenceKind::Stand
-    );
-    let body = entity.body_facing;
+fn gsi_05_07_unhinted_completion_preserves_body_facing() {
+    let (mut sim, rules, id) = infantry_action_fixture(None);
+    sim.session.binary_frame = 91;
+    sim.substrate.entities.get_mut(id).unwrap().body_facing = FacingClass::new(0x2000, 4);
+    assert!(sim.infantry_do_action(id, 9, false, &rules).unwrap());
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(15);
+    assert!(!sim.infantry_sequencer(id, &rules));
+    assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
+    let body = sim.substrate.entities.get(id).unwrap().body_facing;
     assert_eq!(body.destination(), 0x2000);
     assert_eq!(body.current(91), 0x2000);
 }
 
-fn add_prone_sequences(set: &mut SequenceSet) {
-    // Active retail [E1Sequence] layout. In particular, FireProne has six
-    // frames and can reach E1's FireUp=2 discharge frame; a synthetic one-frame
-    // transition would complete on this same reached native frame.
-    for (kind, start_frame, frame_count, facing_multiplier, next) in [
-        (SequenceKind::Prone, 86, 1, 6, None),
-        (SequenceKind::Crawl, 86, 6, 6, None),
-        (
-            SequenceKind::FireProne,
-            212,
-            6,
-            6,
-            Some(SequenceKind::Prone),
-        ),
-        (SequenceKind::Down, 260, 2, 2, Some(SequenceKind::Prone)),
-        (SequenceKind::Up, 276, 2, 2, Some(SequenceKind::Stand)),
-    ] {
-        set.insert(
-            kind,
-            SequenceDef {
-                start_frame,
-                frame_count,
-                facings: 8,
-                facing_multiplier,
-                frame_delay: 1,
-                normalized: false,
-                completion_facing: None,
-                loop_mode: next.map_or(LoopMode::Loop, LoopMode::TransitionTo),
-                facing_slots: FacingSlots::InfantryTable,
-            },
-        );
-    }
-}
-
 #[test]
-fn test_runtime_prone_drives_prone_crawl_and_fireprone() {
-    let mut interner = make_test_interner();
-    let mut sequences = BTreeMap::new();
-    let mut set = default_infantry_sequences();
-    add_prone_sequences(&mut set);
-    sequences.insert("E1".to_string(), set);
-
-    let mut store = EntityStore::new();
-    let mut idle = make_infantry_entity(1, 0, &mut interner);
-    idle.infantry.as_mut().unwrap().is_prone = true;
-    store.insert(idle);
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
-    );
-    assert_eq!(
-        store.get(1).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::Prone
-    );
-
-    let mut moving = make_infantry_entity(2, 0, &mut interner);
-    moving.infantry.as_mut().unwrap().is_prone = true;
-    moving.movement_target = Some(make_movement_target());
-    store.insert(moving);
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
-    );
-    assert_eq!(
-        store.get(2).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::Crawl
-    );
-
-    let mut firing = make_infantry_entity(3, 0, &mut interner);
-    firing.infantry.as_mut().unwrap().is_prone = true;
-    firing.attack_target = Some(AttackTarget::new(999));
-    firing.attack_target.as_mut().unwrap().pending_infantry_fire = Some(PendingInfantryFire {
-        sequence: SequenceKind::FireProne,
-        fire_frame: 2,
-    });
-    store.insert(firing);
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
-    );
-    assert_eq!(
-        store.get(3).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::FireProne
+fn infantry_prone_state_drives_prone_crawl_and_fireprone_actions() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .infantry
+        .as_mut()
+        .unwrap()
+        .is_prone = true;
+    assert!(sim.infantry_do_action(id, 2, false, &rules).unwrap());
+    assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
+    set_infantry_walk_motion(&mut sim, id, true);
+    sim.infantry_movement_actions(id, &rules);
+    assert_infantry_pose(&sim, id, 6, SequenceKind::Crawl, 0);
+    set_infantry_walk_motion(&mut sim, id, false);
+    sim.infantry_movement_actions(id, &rules);
+    assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
+    assert!(sim.infantry_do_action(id, 8, false, &rules).unwrap());
+    assert_infantry_pose(&sim, id, 8, SequenceKind::FireProne, 0);
+    assert!(
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .infantry
+            .as_ref()
+            .unwrap()
+            .is_prone
     );
 }
 
 #[test]
-fn test_down_and_up_transitions_are_preserved_until_complete() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 0, &mut interner);
-    e.infantry.as_mut().unwrap().is_prone = true;
-    e.animation = Some(Animation::new(SequenceKind::Down));
-    e.movement_target = Some(make_movement_target());
-    store.insert(e);
+fn infantry_down_and_up_remain_uninterruptible_until_sequence_completion() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    assert!(sim.infantry_do_action(id, 5, false, &rules).unwrap());
+    assert!(
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .infantry
+            .as_ref()
+            .unwrap()
+            .is_prone
+    );
+    assert!(!sim.infantry_do_action(id, 3, false, &rules).unwrap());
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(1);
+    assert!(!sim.infantry_sequencer(id, &rules));
+    assert_infantry_pose(&sim, id, 5, SequenceKind::Down, 1);
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(2);
+    assert!(!sim.infantry_sequencer(id, &rules));
+    assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
 
-    let mut set = default_infantry_sequences();
-    set.insert(
-        SequenceKind::Down,
-        SequenceDef {
-            start_frame: 200,
-            frame_count: 3,
-            facings: 8,
-            facing_multiplier: 3,
-            frame_delay: 1,
-            normalized: false,
-            completion_facing: None,
-            loop_mode: LoopMode::TransitionTo(SequenceKind::Prone),
-            facing_slots: FacingSlots::InfantryTable,
-        },
+    assert!(sim.infantry_do_action(id, 7, false, &rules).unwrap());
+    assert!(
+        !sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .infantry
+            .as_ref()
+            .unwrap()
+            .is_prone
     );
-    set.insert(
-        SequenceKind::Prone,
-        SequenceDef {
-            start_frame: 210,
-            frame_count: 1,
-            facings: 8,
-            facing_multiplier: 1,
-            frame_delay: 1,
-            normalized: false,
-            completion_facing: None,
-            loop_mode: LoopMode::Loop,
-            facing_slots: FacingSlots::InfantryTable,
-        },
-    );
-    let mut sequences = BTreeMap::new();
-    sequences.insert("E1".to_string(), set);
-
-    tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
-    );
-    assert_eq!(
-        store.get(1).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::Down
-    );
-    for _ in 0..3 {
-        tick_animations(
-            &mut store,
-            &sequences,
-            &GameOptions::default(),
-            &interner,
-            0,
-        );
-    }
-    assert_eq!(
-        store.get(1).unwrap().animation.as_ref().unwrap().sequence,
-        SequenceKind::Prone
-    );
+    assert!(!sim.infantry_do_action(id, 3, false, &rules).unwrap());
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(1);
+    assert!(!sim.infantry_sequencer(id, &rules));
+    assert_infantry_pose(&sim, id, 7, SequenceKind::Up, 1);
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(2);
+    assert!(!sim.infantry_sequencer(id, &rules));
+    assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
 }
 
 #[test]
-fn test_tick_dying_entity_skips_transitions() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 0, &mut interner);
-    e.dying = true;
-    e.animation = Some(Animation::new(SequenceKind::Die1));
-    e.movement_target = Some(make_movement_target());
-    store.insert(e);
-
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    sequences.insert("E1".to_string(), default_infantry_sequences());
-
+fn presentation_skips_dying_infantry_without_changing_its_stage_or_action() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    assert!(sim.infantry_do_action(id, 11, true, &rules).unwrap());
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.dying = true;
+    actor.health.current = 0;
+    actor.movement_target = Some(make_movement_target());
+    actor.set_native_stage_value(14);
     let dead = tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
+        &mut sim.substrate.entities,
+        rules.animation_sequences(),
+        &sim.session.game_options,
+        &sim.interner,
+        100,
     );
-
-    // Dying entity should NOT switch to Walk despite having movement_target.
-    let anim = store.get(1).unwrap().animation.as_ref().unwrap();
-    assert_eq!(anim.sequence, SequenceKind::Die1);
-    // One reached native frame is not enough to finish the death sequence.
     assert!(dead.is_empty());
+    assert_infantry_pose(&sim, id, 11, SequenceKind::Die1, 14);
 }
 
 #[test]
-fn test_tick_dying_entity_returns_finished_id() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 0, &mut interner);
-    e.dying = true;
-    e.animation = Some(Animation {
-        sequence: SequenceKind::Die1,
-        frame_index: 14,
-        elapsed_frames: 0,
-        finished: true,
-    });
-    store.insert(e);
-
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    sequences.insert("E1".to_string(), default_infantry_sequences());
-
-    let dead = tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
-    );
-    assert_eq!(dead, vec![1]);
+fn completed_infantry_death_is_removed_by_the_class_sequencer() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    assert!(sim.infantry_do_action(id, 11, true, &rules).unwrap());
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.dying = true;
+    actor.health.current = 0;
+    actor.set_native_stage_value(15);
+    assert!(sim.infantry_sequencer(id, &rules));
+    let retired = sim.substrate.entities.get(id).unwrap();
+    assert!(!retired.lifecycle.object_alive);
+    assert!(retired.lifecycle.in_limbo);
+    assert!(sim.substrate.pending_delete.contains(&id));
+    sim.process_pending_delete_with(Some(&rules), None);
+    assert!(sim.substrate.entities.get(id).is_none());
 }
 
 #[test]
-fn test_tick_dying_entity_returns_id_on_finishing_visit() {
-    let mut interner = make_test_interner();
-    let mut store = EntityStore::new();
-    let mut e = make_infantry_entity(1, 0, &mut interner);
-    e.dying = true;
-    e.animation = Some(Animation {
-        sequence: SequenceKind::Die1,
-        frame_index: 14,
-        elapsed_frames: 0,
-        finished: false,
-    });
-    store.insert(e);
-
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    sequences.insert("E1".to_string(), default_infantry_sequences());
-
-    let dead = tick_animations(
-        &mut store,
-        &sequences,
-        &GameOptions::default(),
-        &interner,
-        0,
+fn infantry_death_finishes_at_its_sequence_count_and_not_one_frame_early() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    assert!(sim.infantry_do_action(id, 11, true, &rules).unwrap());
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.dying = true;
+    actor.health.current = 0;
+    actor.set_native_stage_value(14);
+    assert_eq!(
+        (
+            actor.mission_leaf.as_infantry().unwrap().doing(),
+            actor.native_stage().value(),
+            sim.interner.resolve(actor.type_ref()),
+            rules
+                .animation_sequence(sim.interner.resolve(actor.type_ref()))
+                .unwrap()
+                .infantry_action(11)
+                .unwrap()
+                .frames_per_facing,
+        ),
+        (11, 14, "E1", 15),
+        "the supplied death pose and the bound action record must agree",
     );
-    assert_eq!(dead, vec![1]);
-    assert!(store.get(1).unwrap().animation.as_ref().unwrap().finished);
+    assert!(!sim.infantry_sequencer(id, &rules));
+    assert_infantry_pose(&sim, id, 11, SequenceKind::Die1, 14);
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .set_native_stage_value(15);
+    assert!(sim.infantry_sequencer(id, &rules));
+    let retired = sim.substrate.entities.get(id).unwrap();
+    assert!(!retired.lifecycle.object_alive);
+    assert!(retired.lifecycle.in_limbo);
+    assert!(sim.substrate.pending_delete.contains(&id));
+    sim.process_pending_delete_with(Some(&rules), None);
+    assert!(sim.substrate.entities.get(id).is_none());
 }
 
 #[test]
@@ -1360,4 +1280,122 @@ fn simulation_config_hash_changes_with_resolved_sequence_layout() {
         first.simulation_config_hash(),
         second.simulation_config_hash()
     );
+}
+
+#[test]
+fn raw_infantry_frames_match_whole_original_selector_rows() {
+    // Whole518D80 outputs, not a Rust or hand-calculated frame golden. The
+    // ordinary physical GI bank is independently bound through production
+    // rules/ART readers. Disguise selection, Jumpjet target-facing, rotating
+    // FacingClass and downstream invalid-index shape access are excluded.
+    let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+        return;
+    };
+    let Some(art) = crate::rules::retail_ini_fixture::retail_ini("artmd.ini") else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(&parse_infantry_sequence_registry(&art));
+    let set = rules.animation_sequence("E1").unwrap();
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+    ))
+    .unwrap();
+    let receipt = &corpus["infantry_frame_selection_receipt"];
+    assert_eq!(
+        receipt["native_sha256"],
+        "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+    );
+    assert_eq!(
+        receipt["native_span"]["sha256"],
+        "60ee1cdafdd13ab060a3fc6fc80794476f42f943d933090b63d41ced74714608"
+    );
+    assert_eq!(
+        receipt["preserved_payload"]["canonical_sha256"],
+        "54a2a1f2b554a404ed0e6530b4dc2bdea0f666584bf03f1ed8f873bb45a28e91"
+    );
+    let records = receipt["physical_gi_sequence"]["records"]
+        .as_array()
+        .unwrap();
+    assert_eq!(records.len(), 42);
+    for row in records {
+        let doing = row["doing"].as_i64().unwrap() as i32;
+        let record = set.infantry_action(doing).unwrap();
+        let words = &row["words_i32"];
+        assert_eq!(
+            record.start_frame,
+            words[0].as_i64().unwrap() as i32,
+            "Doing{doing}"
+        );
+        assert_eq!(
+            record.frames_per_facing,
+            words[1].as_i64().unwrap() as i32,
+            "Doing{doing}"
+        );
+        assert_eq!(
+            record.facings,
+            words[2].as_i64().unwrap() as i32,
+            "Doing{doing}"
+        );
+    }
+    let mut compared = 0;
+    for (group, count) in [
+        ("physical_rows", 336),
+        ("facing_rows", 40),
+        ("scalar_rows", 136),
+        ("default_rows", 4),
+    ] {
+        let rows = receipt[group].as_array().unwrap();
+        assert_eq!(rows.len(), count, "{group}");
+        for row in rows {
+            let input = &row["input"];
+            let doing = input["doing"].as_i64().unwrap() as i32;
+            // Whole original default-action selection is a recorded premise
+            // here; production drawing reads the live map through its Cell
+            // query, while this comparison isolates the shared arithmetic.
+            let selected = if doing == -1 {
+                if row["before"]["cell_land_type"] == 2 && input["on_bridge"] == 0 {
+                    16
+                } else {
+                    0
+                }
+            } else {
+                doing
+            };
+            let mut record = *set.infantry_action(selected).unwrap();
+            if let Some(words) = input["record_override"].as_array() {
+                record.start_frame = words[0].as_i64().unwrap() as i32;
+                record.frames_per_facing = words[1].as_i64().unwrap() as i32;
+                record.facings = words[2].as_i64().unwrap() as i32;
+            }
+            let observed = row["native_observations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|event| event["kind"] == "selected_record")
+                .unwrap();
+            assert_eq!(
+                record.start_frame,
+                observed["start"].as_i64().unwrap() as i32
+            );
+            assert_eq!(
+                record.frames_per_facing,
+                observed["count"].as_i64().unwrap() as i32
+            );
+            assert_eq!(record.facings, observed["stride"].as_i64().unwrap() as i32);
+            let facing = (input["facing_bam_u32"].as_u64().unwrap() >> 8) as u8;
+            assert_eq!(
+                resolve_shp_frame(&record, facing, input["stage"].as_i64().unwrap() as i32),
+                row["output"]["frame_i32"].as_i64().unwrap() as i32,
+                "{}",
+                row["name"]
+            );
+            assert_eq!(row["rng_before"], row["rng_after"]);
+            assert_eq!(row["rng_unchanged"], true);
+            assert!(row["callback_events"].as_array().unwrap().is_empty());
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 516);
 }

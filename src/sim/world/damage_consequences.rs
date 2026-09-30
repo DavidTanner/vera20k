@@ -32,6 +32,31 @@ pub(crate) struct DamageCommitReceipt {
 }
 
 impl DamageConsequences {
+    /// Assemble pure receiver fixtures from the same per-actor production
+    /// firing host. Consequences retain their actual actor-before-tail order.
+    #[cfg(test)]
+    pub(crate) fn prepend_actor_fire_for_test(&mut self, mut earlier: Self) {
+        earlier.effects.append(std::mem::take(&mut self.effects));
+        self.effects = earlier.effects;
+        earlier
+            .terrain_navigation_changed_cells
+            .append(&mut self.terrain_navigation_changed_cells);
+        self.terrain_navigation_changed_cells = earlier.terrain_navigation_changed_cells;
+        let (
+            DamageDelivery::Ordinary {
+                fire_events: previous,
+            },
+            DamageDelivery::Ordinary {
+                fire_events: current,
+            },
+        ) = (&mut earlier.delivery, &mut self.delivery)
+        else {
+            panic!("actor fire fixture requires ordinary delivery");
+        };
+        previous.append(current);
+        *current = std::mem::take(previous);
+    }
+
     pub(super) fn finish_navigation(&mut self, cells: Vec<(u16, u16)>) {
         self.terrain_navigation_changed_cells = cells;
     }
@@ -85,6 +110,23 @@ impl DamageConsequences {
         // carrying the accumulator whole must not replay those leftovers here.
         effects.rad_detonations.clear();
         effects.death_sounds.clear();
+        Self::live_fire(
+            effects,
+            under_attack_events,
+            terrain_navigation_changed_cells,
+            fire_events,
+        )
+    }
+
+    /// A shot committed inside its actor's Logic visit. No earlier global
+    /// combat phase has delivered its radiation/death sounds; preserve those
+    /// alongside the same ordinary fire-event and effect delivery owner.
+    pub(crate) fn live_fire(
+        mut effects: DeathEffects,
+        under_attack_events: Vec<UnderAttackEvent>,
+        terrain_navigation_changed_cells: Vec<(u16, u16)>,
+        fire_events: Vec<SimFireEvent>,
+    ) -> Self {
         effects.under_attack_events = under_attack_events;
         Self {
             effects,
@@ -510,7 +552,11 @@ mod muzzle_anim_tests {
 
         let anim = sim.anim(id).expect("the anim is still stored this frame");
         assert_eq!(anim.owner_entity, None, "the teardown detached it");
-        assert!(anim.runtime.inactive, "and marked it for removal");
+        assert!(
+            anim.runtime.inactive,
+            "native19B requests expiry on its next AI"
+        );
+        assert!(!sim.substrate.pending_delete.contains(&id));
         assert_eq!(
             sim.anim_absolute_coord(id),
             Some(relative),

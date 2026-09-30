@@ -196,6 +196,12 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // exact value, as this change does, with the RNG pins above unchanged
 // (the probe patch was not committed): the only change to this pin is
 // the fold. Old value: the commit that moved it.
+// 2026-09-30 native mission-site idle precedes the first Ready action; explicit
+// GI ART supplies its actual sequence records. Captured actor and full-stream
+// receipts in foot_bridge_layer.replay.json establish the changed inputs and
+// draw sites. All 200 per-frame replay hashes, route/height/layer/occupancy gates
+// and absolute RNG pins pass before this Rust regression hash is checked.
+// This is a Rust replay pin, not native whole-world parity evidence.
 // 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
 // active locomotor and its piggyback stash hash through one fold of every
 // LocomotorState field. The active fold gains BalloonHover, HoverAttack,
@@ -212,7 +218,13 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // parent and this change, each with those five inputs removed from the
 // hash, printed the same value, with the RNG pins above unchanged (the
 // probe patch was not committed). Old value: the commit that moved it.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x9454_40E0_4D2B_22C6;
+// Snapshot264: private native Stage and Infantry Doing/sequence timing.
+// Complete before/candidate/final receipts in foot_bridge_layer.replay.json
+// (techno_stage264_followup) attribute every changed actor field and retain
+// all819 frame rows, all three RNG states and ordered raw draw callers.
+// Incoming main preserves candidate state; its source-line changes remain
+// recorded. This Rust replay pin does not establish native whole-world parity.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4477_C324_18ED_A27F;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -224,7 +236,7 @@ fn bridge_ini() -> IniFile {
          [VehicleTypes]\n0=MTNK\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n\n\
-         [E1]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
+         [E1]\nImage=GI\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
@@ -234,7 +246,16 @@ fn bridge_ini() -> IniFile {
 }
 
 fn bridge_rules() -> RuleSet {
-    RuleSet::from_ini(&bridge_ini()).expect("bridge harness rules should parse")
+    let ini = bridge_ini();
+    // Explicit authored GI inputs use the production fixed-ART reader and binder;
+    // zero-count constructor records do not admit native Ready/idle actions.
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    rules
 }
 
 /// Is `x` a gorge column — the low ground the span crosses?
@@ -707,6 +728,10 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         rec.mapgen_rng.logical_state(),
         rep.mapgen_rng.logical_state()
     );
+    println!(
+        "[bridge parity] final_hash={:016X}",
+        replayed.last().unwrap()
+    );
     assert_eq!(
         (
             rep.scenario_rng.state(),
@@ -714,7 +739,9 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             rep.mapgen_rng.state()
         ),
         (
-            0x1E0D_2428_10B3_F39F,
+            // Native mission-site idle precedes first Ready; explicit GI ART
+            // supplies real action records. See foot_bridge_layer.replay.json.
+            0xBC80_136B_FB95_59C6,
             0x9C68_CC8B_9F2C_82ED,
             0x1CE8_1848_7043_6163
         ),

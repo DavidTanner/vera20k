@@ -92,7 +92,9 @@ fn acquire(
         None,
         crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
         None,
+        None,
     )
+    .target()
 }
 
 #[test]

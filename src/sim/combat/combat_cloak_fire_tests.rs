@@ -52,7 +52,7 @@ fn resolve_once(
 ) {
     let attacker = entities.get(1).unwrap();
     let attack = attacker.attack_target.as_ref().unwrap();
-    let snap = build_attacker_snapshot(attacker, attack.target, attack.pending_infantry_fire, None);
+    let snap = build_attacker_snapshot(attacker, attack.target, None);
     let mut rng = SimRng::new(0xC10A_F1AE);
     let mut hooks: Option<&mut FixtureTrace> = None;
     resolve_attacker_fire(

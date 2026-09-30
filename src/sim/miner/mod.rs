@@ -29,12 +29,11 @@ pub(crate) use self::harvest_mission::dispatch_harvest_for_object;
 pub(crate) use self::miner_system::extract_bale;
 pub(crate) use self::refinery_dock::{
     clear_unload_latch, mission_enter, mission_unload, native_dock_miner, pay_refinery_owner,
-    per_cell_dock_now, per_cell_release_dock_contact, tick_stage,
+    per_cell_dock_now, per_cell_release_dock_contact,
 };
 
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::GeneralRules;
-use crate::sim::mission::MissionTimer;
 
 /// Which kind of resource a map cell or cargo bale contains.
 #[derive(
@@ -265,18 +264,6 @@ pub struct Miner {
     /// from it while the locomotor is not moving.
     #[serde(default)]
     pub harvesting: bool,
-    /// Unit+0xF8 StageClass value: Mission_Harvest state 1's step count and
-    /// the unload's dump counter. `refinery_dock::tick_stage` (TechnoClass::AI
-    /// `0x006FABC4`) adds the step (the constructor's 1) each time the timer
-    /// expires while the rate is nonzero.
-    #[serde(default)]
-    pub stage_value: i32,
-    /// Unit+0x100/+0x108, the StageClass timer.
-    #[serde(default)]
-    pub stage_timer: MissionTimer,
-    /// Unit+0x10C, the StageClass rate; 0 stops the tick.
-    #[serde(default)]
-    pub stage_rate: u32,
 }
 
 impl Miner {
@@ -313,9 +300,6 @@ impl Miner {
             forced_return: false,
             unload_active: false,
             harvesting: false,
-            stage_value: 0,
-            stage_timer: MissionTimer::default(),
-            stage_rate: 0,
         }
     }
 
@@ -402,8 +386,16 @@ mod tests {
         ] {
             assert_eq!(MinerState::from_cursor(state.cursor()), Some(state));
         }
-        assert_eq!(MinerState::from_cursor(5), None, "retired drive-to-ore cursor");
-        assert_eq!(MinerState::from_cursor(6), None, "retired legacy unload cursor");
+        assert_eq!(
+            MinerState::from_cursor(5),
+            None,
+            "retired drive-to-ore cursor"
+        );
+        assert_eq!(
+            MinerState::from_cursor(6),
+            None,
+            "retired legacy unload cursor"
+        );
         assert_eq!(MinerState::from_cursor(8), None);
         assert_eq!(MinerState::from_cursor(u32::MAX), None);
     }

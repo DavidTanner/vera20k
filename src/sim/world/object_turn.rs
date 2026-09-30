@@ -1010,23 +1010,38 @@ impl Simulation {
                 return Ok(outcome);
             }
         }
-        // `InfantryClass::AI` ends, once FootClass::AI has returned, with its
-        // sequencer (`0x0051BF6A`) and the locomotion actions of 0x00520F40
-        // (`0x0051BF7B`), which read the fraction and state Process just left.
-        if let Some(rules) = rules
-            && sim
+        // Infantry51BDE7..51BF80 follows the Foot tail: rate-zero fire
+        // cancellation, its second Ready/Commence, Fear, firing51BF59,
+        // sequencer51BF6A and locomotion actions51BF7B. Inline FireAt
+        // consequences join the dynamic Logic suffix before its next slot.
+        let infantry = sim
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
+        if let (Some(rules), true) = (rules, infantry) {
+            outcome.bridge_state_changed |= sim
+                .infantry_action_turn(stable_id, rules, overlay_registry)
+                .map_err(|cause| super::FrameAdvanceError {
+                    tick: sim.session.tick,
+                    binary_frame: sim.session.binary_frame,
+                    entity_id: stable_id,
+                    cause,
+                })?;
+            if sim
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_some_and(|entity| entity.category == EntityCategory::Infantry)
-            && sim.infantry_action_turn(stable_id, rules)
-        {
-            // Its AirDeathFinish (or WetDie) ended in UnInit.
-            return Ok(outcome);
+                .is_none_or(|actor| !actor.is_ai_alive())
+            {
+                return Ok(outcome);
+            }
         }
         // UnitClass::AI after FootClass::AI, before its second Ready/Commence.
         crate::sim::miner::miner_system::unit_ai_clear_harvesting(sim, stable_id);
-        sim.object_ai_post_movement_promote_one(stable_id, rules);
+        if !infantry {
+            sim.object_ai_post_movement_promote_one(stable_id, rules);
+        }
         if let Some(rules) = rules {
             sim.aircraft_crash_smoke(stable_id, rules);
         }

@@ -109,12 +109,18 @@ mod tests {
 
     fn stock_cascade_rules() -> RuleSet {
         // Retail RULESMD TERROR/TerrorBomb/TerrorBombWH, E1 and MTNK damage
-        // inputs; unrelated art/voice/debris definitions are omitted.
-        RuleSet::from_ini(&IniFile::from_str(
+        // inputs and their physical GI/TRST action records. Presentation
+        // defaults cannot supply a native death clock or action admission.
+        let art = IniFile::from_str(&format!(
+            "{}\n{}",
+            crate::rules::retail_ini_fixture::GI_ART_EXCERPT,
+            crate::rules::retail_ini_fixture::TRST_ART_EXCERPT
+        ));
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(
             "[InfantryTypes]\n0=E1\n1=TERROR\n[VehicleTypes]\n0=MTNK\n\
              [AircraftTypes]\n[BuildingTypes]\n0=BUNK\n[CombatDamage]\nC4Warhead=Super\n\
-             [E1]\nStrength=125\nArmor=none\nSpeed=4\nDieSound=GIDie\n\
-             [TERROR]\nStrength=75\nArmor=flak\nSpeed=6\nExplodes=yes\nDeathWeapon=TerrorBomb\n\
+             [E1]\nImage=GI\nStrength=125\nArmor=none\nSpeed=4\nDieSound=GIDie\n\
+             [TERROR]\nImage=TRST\nStrength=75\nArmor=flak\nSpeed=6\nExplodes=yes\nDeathWeapon=TerrorBomb\n\
              [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\n\
              [BUNK]\nStrength=1000\nFoundation=1x1\nDieSound=BuildingDie\n\
              [TerrorBomb]\nDamage=225\nWarhead=TerrorBombWH\nSuicide=yes\n\
@@ -123,8 +129,12 @@ mod tests {
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
              [TerrorBombWH]\nInfDeath=4\nCellSpread=2\nPercentAtMax=.5\n\
              Verses=150%,100%,100%,90%,50%,50%,100%,150%,30%,100%,100%\n",
-        ))
-        .unwrap()
+        ), &art).unwrap();
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+        rules.bind_animation_sequences(
+            &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+        );
+        rules
     }
 
     #[test]
@@ -187,11 +197,10 @@ mod tests {
         assert!(head.infantry_terminal.is_some());
         assert!(head.destruction_recorded);
         assert!(sim.live_object_order_snapshot().contains(&terror));
-        // The rules catalog supplies a default Die2 even without art input.
-        // Drive its normal terminal visits through retirement and confirm
+        // Drive its actual Die2 clock through terminal visits and confirm
         // UnInit does not count either fatal callback again. This test does
         // not assert animation duration (completion calls UnInit520CAD).
-        for _ in 0..120 {
+        for frame in 1..=120 {
             if sim
                 .substrate
                 .entities
@@ -202,7 +211,11 @@ mod tests {
             {
                 break;
             }
-            assert!(sim.visit_infantry_terminal(terror, Some(&rules), Default::default()));
+            sim.session.binary_frame = frame;
+            assert!(
+                sim.visit_infantry_terminal(terror, Some(&rules), Default::default())
+                    .visited
+            );
         }
         let head = sim.substrate.entities.get(terror).unwrap();
         assert!(head.infantry_terminal.is_none());
@@ -266,35 +279,32 @@ mod tests {
 
     #[test]
     fn bridge_ground_infantry_action_preserves_same_sequence_and_retired_membership() {
-        use crate::sim::animation::{Animation, SequenceKind};
         use crate::sim::world::InfantryDeathSequence;
         let rules = stock_cascade_rules();
         let mut sim = world(&rules);
         let gi = place(&mut sim, &rules, "E1", 4);
-        let mut animation = Animation::new(SequenceKind::Die2);
-        animation.frame_index = 7;
-        sim.substrate.entities.get_mut(gi).unwrap().animation = Some(animation);
-        sim.begin_infantry_death_sequence(gi, InfantryDeathSequence::Die2);
+        assert!(sim.infantry_do_action(gi, 12, true, &rules).unwrap());
+        sim.substrate
+            .entities
+            .get_mut(gi)
+            .unwrap()
+            .set_native_stage_value(7);
+        sim.begin_infantry_death_sequence(gi, InfantryDeathSequence::Die2, &rules);
         assert_eq!(
             sim.substrate
                 .entities
                 .get(gi)
                 .unwrap()
-                .animation
-                .as_ref()
-                .unwrap()
-                .frame_index,
+                .native_stage()
+                .value(),
             7
         );
         sim.uninit_with_rules(gi, &rules);
         let pending = sim.substrate.pending_delete.clone();
-        sim.begin_infantry_death_sequence(gi, InfantryDeathSequence::Die1);
+        sim.begin_infantry_death_sequence(gi, InfantryDeathSequence::Die1, &rules);
         let object = sim.substrate.entities.get(gi).unwrap();
-        assert_eq!(
-            object.animation.as_ref().unwrap().sequence,
-            SequenceKind::Die1
-        );
-        assert_eq!(object.animation.as_ref().unwrap().frame_index, 0);
+        assert_eq!(object.mission_leaf.as_infantry().unwrap().doing(), 11);
+        assert_eq!(object.native_stage().value(), 0);
         assert!(object.infantry_terminal.is_none());
         assert!(!object.lifecycle.object_alive);
         assert!(!sim.live_object_order_snapshot().contains(&gi));

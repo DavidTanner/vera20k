@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::rules::ini_parser::IniFile;
+use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::rng::SimRng;
 
 fn constructor_rules() -> RuleSet {
@@ -954,7 +955,9 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
             }
             match type_id {
                 "CREW" => {
-                    assert!(entity.animation.is_some());
+                    assert!(entity.animation.is_none());
+                    assert!(entity.infantry.is_some());
+                    assert!(entity.infantry_sprite_pose().is_some());
                     assert!(entity.crushable && entity.occupier && entity.immune_to_radiation);
                     let sub_cell = entity.sub_cell.unwrap();
                     if route == 0 {

@@ -9,6 +9,10 @@ use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
 use crate::sim::world::Simulation;
 
+#[cfg(test)]
+#[path = "infantry_target_tests.rs"]
+mod infantry_target_tests;
+
 mod private {
     pub trait Sealed {}
 }
@@ -17,6 +21,9 @@ mod private {
 pub(crate) enum ConcreteSetterRequest {
     Target {
         requested: Option<TargetKind>,
+    },
+    Destination {
+        requested: Option<NavTargetRef>,
     },
     TargetAndDestination {
         requested_target: Option<TargetKind>,
@@ -28,7 +35,6 @@ pub(crate) enum ConcreteSetterRequest {
 pub(crate) enum AuthorityUnavailable {
     #[error("exact concrete Target setter is unavailable for Mission receiver {0}")]
     TargetSetter(u64),
-    #[cfg(test)]
     #[error("exact mode-one destination setter is unavailable for Mission receiver {0}")]
     DestinationSetter(u64),
 }
@@ -87,6 +93,9 @@ impl ConcreteMissionEffects for UnavailableConcreteMissionEffects {
             | ConcreteSetterRequest::TargetAndDestination { .. } => {
                 Err(AuthorityUnavailable::TargetSetter(receiver))
             }
+            ConcreteSetterRequest::Destination { .. } => {
+                Err(AuthorityUnavailable::DestinationSetter(receiver))
+            }
         }
     }
 
@@ -114,11 +123,24 @@ pub(crate) struct RepresentedPrepared {
     receiver: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct RepresentedConcreteMissionEffects<'r> {
-    /// The Unit class setter's WeaponsFactory contact test and blocked-path
-    /// timer read the rules (`Simulation::assign_null_destination`).
-    pub rules: Option<&'r crate::rules::ruleset::RuleSet>,
+    /// Class setter type/contact/timer inputs; overlay data belongs to the
+    /// moving Infantry receiver's current-cell admission query.
+    rules: Option<&'r crate::rules::ruleset::RuleSet>,
+    overlay_registry: Option<&'r crate::map::overlay_types::OverlayTypeRegistry>,
+}
+
+impl<'r> RepresentedConcreteMissionEffects<'r> {
+    pub(crate) fn new(
+        rules: Option<&'r crate::rules::ruleset::RuleSet>,
+        overlay_registry: Option<&'r crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Self {
+        Self {
+            rules,
+            overlay_registry,
+        }
+    }
 }
 
 impl private::Sealed for RepresentedConcreteMissionEffects<'_> {}
@@ -133,9 +155,75 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
         request: ConcreteSetterRequest,
     ) -> Result<Self::Prepared, AuthorityUnavailable> {
         if !sim.substrate.entities.contains(receiver) {
-            return Err(AuthorityUnavailable::TargetSetter(receiver));
+            return Err(match request {
+                ConcreteSetterRequest::Destination { .. } => {
+                    AuthorityUnavailable::DestinationSetter(receiver)
+                }
+                ConcreteSetterRequest::Target { .. }
+                | ConcreteSetterRequest::TargetAndDestination { .. } => {
+                    AuthorityUnavailable::TargetSetter(receiver)
+                }
+            });
         }
-        let _ = request;
+        let destination = match request {
+            ConcreteSetterRequest::Target { .. } => None,
+            ConcreteSetterRequest::Destination { requested }
+            | ConcreteSetterRequest::TargetAndDestination {
+                requested_destination: requested,
+                ..
+            } => requested,
+        };
+        if self.rules.is_some()
+            && let Some(
+                NavTargetRef::Entity { id }
+                | NavTargetRef::Object { id }
+                | NavTargetRef::Building { id },
+            ) = destination
+            && !sim.substrate.entities.contains(id)
+        {
+            return Err(AuthorityUnavailable::DestinationSetter(receiver));
+        }
+        if let (Some(rules), Some(destination)) = (self.rules, destination) {
+            let actor = sim
+                .substrate
+                .entities
+                .get(receiver)
+                .expect("present receiver");
+            if matches!(
+                actor.category,
+                crate::map::entities::EntityCategory::Unit
+                    | crate::map::entities::EntityCategory::Infantry
+            ) && sim.object_type(actor.type_ref(), rules).is_none()
+            {
+                return Err(AuthorityUnavailable::DestinationSetter(receiver));
+            }
+            if actor.category == crate::map::entities::EntityCategory::Unit
+                && sim.unit_setter_receiver(receiver, Some(rules))
+                && !matches!(destination, NavTargetRef::Cell { .. })
+                && crate::sim::movement::nav_target_coordinate(
+                    destination,
+                    Some(receiver),
+                    &sim.substrate.entities,
+                    sim.resolved_terrain.as_ref(),
+                    Some((rules, &sim.interner)),
+                )
+                .is_err()
+            {
+                // An object +4C projection is read-only: unlike Cell lookup,
+                // this does not stamp the shared dummy during preflight.
+                return Err(AuthorityUnavailable::DestinationSetter(receiver));
+            }
+            if sim.infantry_setter_receiver(receiver, destination, rules) {
+                if !sim.infantry_destination_inputs_available(
+                    receiver,
+                    destination,
+                    rules,
+                    self.overlay_registry,
+                ) {
+                    return Err(AuthorityUnavailable::DestinationSetter(receiver));
+                }
+            }
+        }
         Ok(RepresentedPrepared { receiver })
     }
 
@@ -153,19 +241,49 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
             self.rules
                 .is_none_or(|rules| sim.building_admits_target(prepared.receiver, requested, rules))
         });
+        let entity = sim
+            .substrate
+            .entities
+            .get(prepared.receiver)
+            .expect("preflight guaranteed receiver");
+        let changes = entity.attack_target.as_ref().map(|attack| attack.target) != requested;
+        // Infantry51B20E..51B24F clears its firing latch and requests an
+        // unforced idle action BEFORE Techno6FCDB0 reads/writes TarCom. The
+        // current Doing must survive until Do_Action tests interruptibility.
+        if changes && let Some(rules) = self.rules {
+            sim.infantry_target_change_action(prepared.receiver, rules);
+        }
+        let entity = sim
+            .substrate
+            .entities
+            .get(prepared.receiver)
+            .expect("target-change action retains its receiver");
+        let infantry = entity.category == crate::map::entities::EntityCategory::Infantry;
+        //51B273..51B299: even an unchanged target or a Health<=0 receiver
+        // takes this gate, using Doing AFTER the requested idle action.
+        if infantry
+            && entity
+                .mission_leaf
+                .as_infantry()
+                .is_some_and(|leaf| matches!(leaf.doing(), 27..=30))
+            && self.rules.is_some_and(|rules| {
+                sim.object_type(entity.type_ref(), rules)
+                    .is_some_and(|object| !object.deploy_fire)
+            })
+        {
+            return;
+        }
         let commits = assign_target_commits(&sim.substrate.entities, requested);
         let entity = sim
             .substrate
             .entities
             .get_mut(prepared.receiver)
             .expect("preflight guaranteed receiver");
-        let changes = entity.attack_target.as_ref().map(|attack| attack.target) != requested;
-        represented_assign_target_admitted(entity, requested, commits);
-        // `InfantryClass::Assign_Target @ 0x0051B1F0`'s idle action, which
-        // needs the type's records.
-        if changes && let Some(rules) = self.rules {
-            sim.infantry_target_change_action(prepared.receiver, rules);
+        if infantry {
+            //51B2A2: a same-target assignment still invalidates Foot+5E0.
+            entity.clear_live_path_head();
         }
+        represented_assign_target_admitted(entity, requested, commits);
     }
 
     fn apply_destination_mode_one(
@@ -178,12 +296,49 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
             sim.assign_null_destination(prepared.receiver, self.rules);
             return;
         }
+        let requested = requested.expect("nonnull destination arm");
+        if let Some(rules) = self.rules {
+            let category = sim
+                .substrate
+                .entities
+                .get(prepared.receiver)
+                .expect("preflight guaranteed receiver")
+                .category;
+            match category {
+                crate::map::entities::EntityCategory::Unit
+                    if sim.unit_setter_receiver(prepared.receiver, Some(rules)) =>
+                {
+                    let _ = sim.set_unit_destination(prepared.receiver, requested, rules);
+                    return;
+                }
+                crate::map::entities::EntityCategory::Infantry
+                    if sim.infantry_setter_receiver(prepared.receiver, requested, rules) =>
+                {
+                    let _ = sim
+                        .set_infantry_destination(
+                            prepared.receiver,
+                            requested,
+                            rules,
+                            self.overlay_registry,
+                        )
+                        .expect("represented Infantry destination dependencies must be available");
+                    return;
+                }
+                crate::map::entities::EntityCategory::Aircraft
+                | crate::map::entities::EntityCategory::Structure
+                | crate::map::entities::EntityCategory::Unit
+                | crate::map::entities::EntityCategory::Infantry => {}
+            }
+        }
         let entity = sim
             .substrate
             .entities
             .get_mut(prepared.receiver)
             .expect("preflight guaranteed receiver");
-        represented_assign_destination_mode_one(entity, requested);
+        // Bare-storage fixtures and the still-unmigrated locomotor paths retain
+        // their represented NavCom write set. Ordinary Unit/Walk Infantry
+        // always run the sole class owner above, including admission/refusal.
+        represented_assign_destination_mode_one(entity, Some(requested));
     }
 }
 
@@ -233,13 +388,14 @@ pub(crate) fn represented_assign_target(
 /// [`assign_target_commits`] for `requested`, read before the receiver was
 /// borrowed.
 ///
-/// The currently represented target/burst/Infantry-action writes and the
-/// object-liveness refusal share this owner. Native Techno6FCDB0 also redirects
-/// targets (a tank-bunkered object, self) and tears down linked effects;
-/// Infantry51B1F0 has class-specific branches not all represented here. This is
-/// not the whole native setter. The free function lets a bare `EntityStore`,
-/// including movement, reach the same implementation as Mission transactions
-/// without an open-coded copy.
+/// This is the represented Techno6FCDB0 base write set, shared by Mission
+/// transactions and remaining bare-storage consumers. Infantry class action,
+/// DeployFire admission and path invalidation run before it in apply_target;
+/// they must not be approximated by clearing Doing here. Native Techno6FCDB0
+/// also redirects targets (a tank-bunkered object, self) and tears down linked
+/// effects. Remaining bare-storage callers do not yet dispatch the complete
+/// class setter; neither this base write set nor apply_target claims those
+/// larger linked-effect/C4/Ivan branches.
 pub(crate) fn represented_assign_target_admitted(
     entity: &mut crate::sim::game_entity::GameEntity,
     requested: Option<TargetKind>,
@@ -279,55 +435,6 @@ pub(crate) fn represented_assign_target_admitted(
     } else {
         None
     };
-
-    // `InfantryClass::Assign_Target @ 0x0051B1F0` returns its receiver to an
-    // idle sequence only while the receiver itself is alive (`0x0051B203`).
-    //
-    // Natively the idle sequence is `Do_Action` of Deployed, Prone or Ready
-    // (`0x0051B214..0x0051B24F`), which needs the type's records: this
-    // entity-local setter clears the Doing instead, and for an infantryman
-    // whose Doing owns its sequence (a Jumpjet-flown one, `infantry_action`)
-    // leaves it to the represented Mission effects, which run the Do_Action
-    // with the rules (`Simulation::infantry_target_change_action`): the
-    // PointerExpired walk when its target dies, the scans and the
-    // Restores.
-    //
-    // RESIDUAL: the entity-local callers (orders' target clears in
-    // `world_commands`, capture, temporal, parasite, crew, spawn and
-    // base-defense paths) run no Do_Action for it. Trigger: an order or one
-    // of those events changes a Rocketeer's target while it fires or cruises.
-    // Effect: its FireFly plays out (at most 6 frames) where native turns to
-    // Hover, and a cruising one skips a one-frame Hover. Frequency: an order
-    // given mid-shot. Risk: a kill in that window stops its locomotor once
-    // more natively (the crash's draw count).
-    if entity.category == crate::map::entities::EntityCategory::Infantry
-        && entity.health.current > 0
-    {
-        entity.mission_leaf.set_infantry_firing_sequence(0);
-    }
-    if entity.category == crate::map::entities::EntityCategory::Infantry
-        && entity.health.current > 0
-        && !crate::sim::movement::infantry_action::doing_owns_sequence(entity)
-    {
-        entity
-            .mission_leaf
-            .set_infantry_doing_verified(-1)
-            .expect("idle Infantry action is always valid");
-        if let Some(animation) = entity.animation.as_mut() {
-            use crate::sim::animation::SequenceKind;
-
-            let idle = match animation.sequence {
-                SequenceKind::FireProne | SequenceKind::SecondaryProne => SequenceKind::Prone,
-                SequenceKind::DeployedFire => SequenceKind::Deployed,
-                SequenceKind::FireFly => SequenceKind::Fly,
-                SequenceKind::WetAttack => SequenceKind::Tread,
-                _ => SequenceKind::Stand,
-            };
-            if crate::sim::animation::sequence_is_fire_action(animation.sequence) {
-                animation.switch_to(idle);
-            }
-        }
-    }
 
     if requested.is_none() {
         entity.weapon_burst.clear_target();
@@ -424,6 +531,11 @@ impl ConcreteMissionEffects for RecordingConcreteMissionEffects {
                     return Err(AuthorityUnavailable::DestinationSetter(receiver));
                 }
             }
+            ConcreteSetterRequest::Destination { .. } => {
+                if !self.allow_destination {
+                    return Err(AuthorityUnavailable::DestinationSetter(receiver));
+                }
+            }
             ConcreteSetterRequest::Target { .. } => {}
         }
         Ok(RecordingPrepared { receiver, request })
@@ -442,6 +554,7 @@ impl ConcreteMissionEffects for RecordingConcreteMissionEffects {
             ConcreteSetterRequest::TargetAndDestination {
                 requested_target, ..
             } => requested_target == requested,
+            ConcreteSetterRequest::Destination { .. } => false,
         });
         let entity = sim
             .substrate
@@ -470,13 +583,16 @@ impl ConcreteMissionEffects for RecordingConcreteMissionEffects {
         prepared: &Self::Prepared,
         requested: Option<NavTargetRef>,
     ) {
-        debug_assert!(matches!(
-            prepared.request,
-            ConcreteSetterRequest::TargetAndDestination {
-                requested_destination,
+        debug_assert!(match prepared.request {
+            ConcreteSetterRequest::Destination {
+                requested: destination,
+            }
+            | ConcreteSetterRequest::TargetAndDestination {
+                requested_destination: destination,
                 ..
-            } if requested_destination == requested
-        ));
+            } => destination == requested,
+            ConcreteSetterRequest::Target { .. } => false,
+        });
         let entity = sim
             .substrate
             .entities

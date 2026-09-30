@@ -285,12 +285,38 @@ fn one_object_world(
 
 #[test]
 fn deploy_targets_get_the_same_keys_as_placed_structures() {
-    let rules =
-        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-            "[BuildingTypes]\n0=CAHOSP\n1=GACNST\n\n\
-             [CAHOSP]\nCanBeOccupied=yes\n\n[GACNST]\nStrength=1000\n",
-        ))
-        .expect("rules");
+    let directory = StoredFrameTestDirectory::new();
+    directory.write_raw_and_rle_frames("BOUNDGI.SHP", [8, 8], [0, 0, 6, 4]);
+    let assets = AssetManager::from_loose_root_for_test(&directory.0);
+    let art_ini = crate::rules::ini_parser::IniFile::from_str(
+        "[BOUNDGI]\nSequence=AtlasControl\n[AtlasControl]\nReady=0,1,0\nWalk=1,1,0\n",
+    );
+    let art = ArtRegistry::from_ini(&art_ini);
+    let mut rules = crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(
+        &crate::rules::ini_parser::IniFile::from_str(
+            "[BuildingTypes]\n0=CAHOSP\n1=GACNST\n[InfantryTypes]\n0=E1\n\n\
+             [CAHOSP]\nCanBeOccupied=yes\n\n[GACNST]\nStrength=1000\n\n\
+             [E1]\nImage=BOUNDGI\n",
+        ),
+        &art_ini,
+    )
+    .expect("rules");
+    // Fixed ART supplies native processed reader inputs; the runtime metadata
+    // registry is installed separately, as in production map loading.
+    rules.install_art_data(art.clone());
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini),
+    );
+    assert_eq!(
+        rules
+            .animation_sequence("E1")
+            .unwrap()
+            .infantry_action(3)
+            .unwrap()
+            .start_frame,
+        1,
+        "fixture Walk record is bound before key preparation"
+    );
     // Only an infantryman is placed; the two buildings arrive as deploy
     // targets, which have no placed object to take a category from.
     let (world, interner) = one_object_world("E1", EntityCategory::Infantry);
@@ -300,7 +326,17 @@ fn deploy_targets_get_the_same_keys_as_placed_structures() {
         .map(|type_id| (type_id.to_string(), color))
         .collect();
     let mut needed = HashSet::new();
-    insert_new_object_keys(&mut needed, &pairs, &world, Some(&interner), Some(&rules));
+    insert_new_object_keys(
+        &mut needed,
+        &pairs,
+        &world,
+        Some(&interner),
+        &assets,
+        "tem",
+        "TEMPERATE",
+        Some(&rules),
+        Some(&art),
+    );
 
     let frames = |type_id: &str| -> HashSet<u16> {
         needed
@@ -316,10 +352,227 @@ fn deploy_targets_get_the_same_keys_as_placed_structures() {
     );
     assert_eq!(frames("GACNST"), HashSet::from([0]), "a structure body");
     assert_eq!(
-        frames("E1").len(),
-        56,
-        "an infantryman's default stand and walk layout"
+        frames("E1"),
+        HashSet::from([0, 1]),
+        "the Infantry records are bounded by the selected SHP"
     );
+}
+
+fn raw_infantry_atlas_rules(sequence_rows: &str) -> (RuleSet, ArtRegistry) {
+    use crate::rules::ini_parser::IniFile;
+    let art_ini = IniFile::from_str(&format!(
+        "[BOUNDGI]\nSequence=AtlasControl\n[AtlasControl]\nReady=0,1,0\n{sequence_rows}\n",
+    ));
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(
+            "[InfantryTypes]\n0=RAWGI\n[RAWGI]\nImage=BOUNDGI\n\
+             [VehicleTypes]\n0=LEGACY\n[LEGACY]\nImage=BOUNDGI\n",
+        ),
+        &art_ini,
+    )
+    .expect("fixed ART atlas rules");
+    let art = ArtRegistry::from_ini(&art_ini);
+    // Processing with fixed ART does not install RuleSet's metadata registry.
+    // Bind the same image/Sequence owner used by the source loader first.
+    rules.install_art_data(art.clone());
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini),
+    );
+    assert_eq!(
+        rules
+            .art()
+            .resolve_metadata_entry("RAWGI", "BOUNDGI")
+            .unwrap()
+            .sequence
+            .as_deref(),
+        Some("AtlasControl"),
+        "fixture metadata owns the selected Sequence name"
+    );
+    assert_eq!(
+        rules
+            .animation_sequence("RAWGI")
+            .unwrap()
+            .infantry_action(0)
+            .unwrap()
+            .frames_per_facing,
+        1,
+        "fixture Ready record is bound before key preparation"
+    );
+    (rules, art)
+}
+
+#[test]
+fn raw_infantry_atlas_keeps_guard_and_actions_without_sequence_kinds() {
+    // Original523D00 reads all42 records. Guard1, WetDie20/21, Tumble25 and
+    // Carry39 must not disappear through the generic SequenceKind projection.
+    // These marker SHPs validate production binding/key preparation, not pixels
+    // or the full native class sequence which selects these actions.
+    let directory = StoredFrameTestDirectory::new();
+    directory.write_raw_and_rle_frames("BOUNDGI.SHP", [8, 8], [0, 0, 6, 4]);
+    let assets = AssetManager::from_loose_root_for_test(&directory.0);
+    let (world, interner) = one_object_world("RAWGI", EntityCategory::Infantry);
+    let colors = [HouseColorIndex(2), HouseColorIndex(5)];
+    let pairs = colors
+        .map(|color| ("RAWGI".to_string(), color))
+        .into_iter()
+        .collect();
+    for name in ["Guard", "WetDie1", "WetDie2", "Tumble", "Carry"] {
+        let (rules, art) = raw_infantry_atlas_rules(&format!("{name}=1,1,0"));
+        let mut needed = HashSet::new();
+        let sources = insert_new_object_keys(
+            &mut needed,
+            &pairs,
+            &world,
+            Some(&interner),
+            &assets,
+            "tem",
+            "TEMPERATE",
+            Some(&rules),
+            Some(&art),
+        );
+        assert_eq!(sources.len(), 1, "one decoded source for both colours");
+        let source = sources["RAWGI"].as_ref().unwrap();
+        assert_eq!(source.found_name, "BOUNDGI.SHP", "rules Image binding");
+        assert_eq!(source.shp.frames.len(), 2);
+        for color in colors {
+            let frames: HashSet<_> = needed
+                .iter()
+                .filter(|key| key.type_id == "RAWGI" && key.house_color == color)
+                .map(|key| key.frame)
+                .collect();
+            assert_eq!(frames, HashSet::from([0, 1]), "{name}, {color:?}");
+        }
+    }
+}
+
+#[test]
+fn raw_infantry_atlas_bounds_signed_records_without_aliasing_indices() {
+    // These signed reader inputs exercise cache admission through the original
+    // record owner and the shared frame resolver. Native modulo/composition
+    // receipts live in anytown_damage/foot_missions; no second frame arithmetic
+    // implementation computes these test expectations.
+    let directory = StoredFrameTestDirectory::new();
+    directory.write_raw_and_rle_frames("BOUNDGI.SHP", [8, 8], [0, 0, 6, 4]);
+    let assets = AssetManager::from_loose_root_for_test(&directory.0);
+    let (world, interner) = one_object_world("RAWGI", EntityCategory::Infantry);
+    let pairs = HashSet::from([("RAWGI".to_string(), HouseColorIndex(2))]);
+    for (row, expected) in [
+        ("Guard=65537,1,0", HashSet::from([0])),
+        ("Guard=-65535,1,0", HashSet::from([0])),
+        ("Guard=0,1,-65535", HashSet::from([0])),
+        ("Guard=0,1,65536", HashSet::from([0])),
+        ("Guard=-1,65537,-3", HashSet::from([0, 1])),
+        ("Guard=65537,2147483647,0", HashSet::from([0, 1])),
+        ("Guard=1,-2147483648,0", HashSet::from([0, 1])),
+    ] {
+        let (rules, art) = raw_infantry_atlas_rules(row);
+        let mut needed = HashSet::new();
+        let sources = insert_new_object_keys(
+            &mut needed,
+            &pairs,
+            &world,
+            Some(&interner),
+            &assets,
+            "tem",
+            "TEMPERATE",
+            Some(&rules),
+            Some(&art),
+        );
+        assert_eq!(sources["RAWGI"].as_ref().unwrap().shp.frames.len(), 2);
+        let frames: HashSet<_> = needed.iter().map(|key| key.frame).collect();
+        assert_eq!(frames, expected, "{row}");
+        assert!(needed.iter().all(|key| key.frame < 2), "{row}");
+    }
+}
+
+#[test]
+fn raw_infantry_atlas_covers_saved_native_signed_remainders() {
+    // The existing80-row receipt executes only signed native modulo, not
+    // facing/composition or drawing. With supplied start/stride0, these saved
+    // in-asset remainders must be included by cache membership; a narrow marker
+    // asset never grows to the declared sequence count. This is not a complete
+    // native frame-selection comparison.
+    let receipt: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+    ))
+    .unwrap();
+    let rows = receipt["draw_stage_modulo_receipt"]["rows"]
+        .as_array()
+        .unwrap();
+    for row in rows {
+        let input = &row["input"];
+        let count = input["count"].as_i64().unwrap() as i32;
+        let remainder = row["result_registers"]["edx"].as_i64().unwrap();
+        let action = crate::rules::infantry_sequence::InfantrySequenceEntry {
+            start_frame: 0,
+            frames_per_facing: count,
+            facings: 0,
+            facing_hint: None,
+        };
+        let frames = infantry_asset_frames(&[action], 2);
+        assert!(frames.iter().all(|&frame| frame < 2));
+        if (0..2).contains(&remainder) {
+            assert!(
+                frames.contains(&(remainder as u16)),
+                "native count={count}, stage={}",
+                input["stage"],
+            );
+        }
+    }
+    assert_eq!(rows.len(), 80);
+}
+
+#[test]
+fn raw_infantry_atlas_missing_source_has_no_invented_frame_fallback() {
+    let directory = StoredFrameTestDirectory::new();
+    let assets = AssetManager::from_loose_root_for_test(&directory.0);
+    let (rules, art) = raw_infantry_atlas_rules("Guard=1,1,0");
+    let (world, interner) = one_object_world("RAWGI", EntityCategory::Infantry);
+    let pairs = HashSet::from([
+        ("RAWGI".to_string(), HouseColorIndex(2)),
+        ("RAWGI".to_string(), HouseColorIndex(5)),
+    ]);
+    let mut needed = HashSet::new();
+    let sources = insert_new_object_keys(
+        &mut needed,
+        &pairs,
+        &world,
+        Some(&interner),
+        &assets,
+        "tem",
+        "TEMPERATE",
+        Some(&rules),
+        Some(&art),
+    );
+    assert_eq!(sources.len(), 1);
+    assert!(sources["RAWGI"].is_none());
+    assert!(needed.is_empty());
+}
+
+#[test]
+fn raw_infantry_render_does_not_substitute_an_out_of_asset_key() {
+    let directory = StoredFrameTestDirectory::new();
+    directory.write_raw_and_rle_frames("BOUNDGI.SHP", [8, 8], [0, 0, 6, 4]);
+    let assets = AssetManager::from_loose_root_for_test(&directory.0);
+    let (rules, art) = raw_infantry_atlas_rules("Guard=1,1,0");
+    let palette = Palette::from_bytes(&[0; 768]).unwrap();
+    let source = load_shp_source(
+        &assets,
+        "RAWGI",
+        None,
+        "tem",
+        "TEMPERATE",
+        Some(&rules),
+        Some(&art),
+    )
+    .unwrap();
+    let mut key = make_shp_key("RAWGI", 0);
+    key.frame = 2;
+    assert!(render_shp_frame(&source, &palette, false, &key, Some(&rules)).is_none());
+    // Preserve the existing generic class adapter; this does not establish
+    // original invalid-frame shape access or full Infantry drawing parity.
+    key.type_id = "LEGACY".to_string();
+    assert!(render_shp_frame(&source, &palette, false, &key, Some(&rules)).is_some());
 }
 
 #[test]

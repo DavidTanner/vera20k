@@ -49,6 +49,7 @@ pub(crate) mod parasite;
 pub(crate) mod rof;
 pub mod smudge_dispatch;
 mod threat_mask;
+mod threat_posed;
 pub(crate) mod threat_range;
 pub(crate) mod veterancy;
 pub(crate) mod world_receiver;
@@ -151,10 +152,10 @@ use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::LEPTONS_PER_LEVEL;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53};
 
-use super::animation::SequenceKind;
 use super::game_entity::GameEntity;
 use super::occupancy::OccupancyGrid;
 use super::production::foundation_dimensions;
+use crate::rules::animation_sequence::SequenceSet;
 
 /// One Unit's post-Foot Facing slot output for this tick — the write half of
 /// `UnitClass::Facing_Update @ 0x00736990` plus the `Fire_At_Target @
@@ -683,75 +684,74 @@ impl EntityDamageEvent {
     }
 }
 
-/// Infantry shot waiting for its current fire animation to reach the discharge frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct PendingInfantryFire {
-    /// Fire sequence started when the shot was accepted.
-    pub sequence: SequenceKind,
-    /// Animation frame index that spawns the projectile/damage.
-    pub fire_frame: u16,
-}
-
 /// Component: this entity is attacking a specific target.
 ///
-/// Attached by `issue_attack_command()` (entity targets) or
-/// `issue_attack_cell_command()` (cell targets). The combat system fires the
+/// Installed by the concrete target authority for entity or cell targets.
+/// The combat system fires the
 /// attacker's weapon at the resolved target each tick. The reload between
 /// shots is the object's own `GameEntity::rearm_timer`, not the target's.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AttackTarget {
     /// What this attacker is firing at: an entity or a ground cell (force-fire).
     pub target: TargetKind,
-    /// Infantry-only delayed shot latch. `None` for vehicles/buildings/aircraft.
-    #[serde(default)]
-    pub pending_infantry_fire: Option<PendingInfantryFire>,
 }
 
-fn infantry_fire_sequence(
-    obj: &ObjectType,
-    weapon_slot: WeaponSlot,
+/// Infantry52083E..520904: deployment uses actual Doing27..30; secondary
+/// action availability is its signed native count, never a discharge-frame
+/// comparison. Jumpjet's earlier class arm is resolved by the live caller.
+fn infantry_fire_action(
+    sequences: Option<&SequenceSet>,
+    weapon_index: i32,
     is_prone: bool,
-    is_fully_deployed: bool,
-) -> SequenceKind {
-    if is_fully_deployed {
-        return SequenceKind::DeployedFire;
+    deploying: bool,
+) -> i32 {
+    if deploying {
+        return 29;
     }
-    match (weapon_slot, is_prone) {
-        (WeaponSlot::Primary, true) => SequenceKind::FireProne,
-        (WeaponSlot::Primary, false) => SequenceKind::Attack,
-        (WeaponSlot::Secondary, true) if obj.secondary_prone_frame != obj.fire_up_frame => {
-            SequenceKind::SecondaryProne
+    let has = |action| {
+        sequences
+            .and_then(|set| set.infantry_action(action))
+            .is_some_and(|record| record.frames_per_facing != 0)
+    };
+    if weapon_index != 0 {
+        if is_prone && has(41) {
+            return 41;
         }
-        (WeaponSlot::Secondary, false) if obj.secondary_fire_frame != obj.fire_up_frame => {
-            SequenceKind::SecondaryFire
+        if has(40) {
+            return 40;
         }
-        _ => SequenceKind::Attack,
     }
+    if is_prone { 8 } else { 4 }
 }
 
+/// Infantry52094C..5209A0: signed live type fields; a deployed action does
+/// not imply prone. An absent secondary sequence falls back to the matching
+/// primary discharge frame, independently of action admission.
 fn infantry_fire_frame(
     obj: &ObjectType,
-    weapon_slot: WeaponSlot,
+    sequences: Option<&SequenceSet>,
+    weapon_index: i32,
     is_prone: bool,
-    is_fully_deployed: bool,
-) -> u16 {
-    let frame = match (weapon_slot, is_prone || is_fully_deployed) {
-        (WeaponSlot::Primary, false) => obj.fire_up_frame,
-        (WeaponSlot::Primary, true) => obj.fire_prone_frame,
-        (WeaponSlot::Secondary, false) => obj.secondary_fire_frame,
-        (WeaponSlot::Secondary, true) => obj.secondary_prone_frame,
-    };
-    frame as u16
-}
-
-fn infantry_idle_sequence(is_prone: bool, is_fully_deployed: bool) -> SequenceKind {
-    if is_fully_deployed {
-        SequenceKind::Deployed
-    } else if is_prone {
-        SequenceKind::Prone
+) -> i32 {
+    let mut frame = if is_prone {
+        obj.fire_prone_frame as i32
     } else {
-        SequenceKind::Stand
+        obj.fire_up_frame as i32
+    };
+    if weapon_index != 0 {
+        let action = if is_prone { 41 } else { 40 };
+        if sequences
+            .and_then(|set| set.infantry_action(action))
+            .is_some_and(|record| record.frames_per_facing != 0)
+        {
+            frame = if is_prone {
+                obj.secondary_prone_frame as i32
+            } else {
+                obj.secondary_fire_frame as i32
+            };
+        }
     }
+    frame
 }
 
 impl AttackTarget {
@@ -759,7 +759,6 @@ impl AttackTarget {
     pub fn new(target_stable_id: u64) -> Self {
         Self {
             target: TargetKind::Entity(target_stable_id),
-            pending_infantry_fire: None,
         }
     }
 
@@ -767,7 +766,6 @@ impl AttackTarget {
     pub fn for_cell(rx: u16, ry: u16) -> Self {
         Self {
             target: TargetKind::Cell(rx, ry),
-            pending_infantry_fire: None,
         }
     }
 }
@@ -877,12 +875,12 @@ pub(crate) fn can_fire_at_target(
     let Some(attacker_obj) = rules.object(interner.resolve(attacker.type_ref())) else {
         return false;
     };
-    let Some(selected) = select_weapon_against(
+    let Some((_, Some(selected))) = select_weapon_against(
         rules,
         attacker_obj,
         &combat_weapon::attacker_facts(attacker, attacker_obj),
         attacker.owner(),
-        target,
+        Some(target),
         entities,
         interner,
         Some(terrain),
@@ -956,12 +954,13 @@ pub(crate) fn pursuit_selection<'a>(
         attacker_obj,
         &combat_weapon::attacker_facts(entity, attacker_obj),
         entity.owner(),
-        target,
+        Some(target),
         entities,
         interner,
         terrain,
         alliances,
     )
+    .and_then(|(_, selected)| selected)
 }
 
 /// What the pursuit stage should do with an attacker that is holding a target.
@@ -1069,11 +1068,15 @@ pub(crate) fn pursuit_in_range(
     PursuitRangeVerdict::CloseIn
 }
 
-/// Issue an attack command: make `attacker` fire at `target`.
-///
-/// Replaces any existing AttackTarget. Infantry and vehicles turn through their
-/// firing/movement owners, not through target assignment.
-pub fn issue_attack_command(entities: &mut EntityStore, attacker_id: u64, target_id: u64) -> bool {
+/// Install a bare combat fixture's entity target. Production commands use
+/// `Simulation::assign_target_represented`, including concrete class effects.
+/// This adapter stages the admitted Techno base state without running an event.
+#[cfg(test)]
+pub(crate) fn install_entity_attack_target_for_test(
+    entities: &mut EntityStore,
+    attacker_id: u64,
+    target_id: u64,
+) -> bool {
     if entities.get(target_id).is_none() {
         return false;
     }
@@ -1082,19 +1085,8 @@ pub fn issue_attack_command(entities: &mut EntityStore, attacker_id: u64, target
         None => return false,
     };
 
-    // gamemd-derived: a target assignment writes the target pointer and nothing
-    // else — no facing, for any class. A TURRETLESS VEHICLE therefore gets no
-    // instant snap here: `UnitClass::Fire_At_Target @ 0x00736DF0` case 2 turns
-    // its hull at `ROT=` (`FacingClass::Set(+0x388)` at `0x00737004`) only once
-    // the fire gate refuses the shot for facing, and only while it is
-    // stationary. Infantry snap only when their fire action starts (00520925,
-    // world_receiver::resolve_attacker_fire), an aircraft turns through its
-    // Mission_Attack and Fly owners, and a building's order takes
-    // BuildingClass::SetTarget (`world_commands`), which writes no facing.
-
-    // Walk's physical head survives a null destination. The synchronized
-    // command owner applies that setter after TarCom assignment; the shared
-    // target helper must not destroy the adapter needed to finish the head.
+    // Preserve historical fixture setup: discard a non-Walk movement adapter
+    // before installing the initial target. This is not a native setter effect.
     if !attacker
         .locomotor
         .as_ref()
@@ -1103,11 +1095,11 @@ pub fn issue_attack_command(entities: &mut EntityStore, attacker_id: u64, target
         attacker.movement_target = None;
     }
 
-    // Attach the attack target using stable ID (fire immediately).
-    attacker.attack_target = Some(AttackTarget::new(target_id));
-    // An ordered target was not picked up by the passive scanner, so it is not
-    // subject to the scanner's stale-target drop or the off-mission clear.
-    attacker.passively_acquired_target = false;
+    crate::sim::mission::concrete_effects::represented_assign_target_admitted(
+        attacker,
+        Some(TargetKind::Entity(target_id)),
+        true,
+    );
 
     true
 }
@@ -1183,22 +1175,11 @@ pub(crate) fn estimated_damage_on(
     })
 }
 
-/// Issue a force-fire-on-cell command: make `attacker` fire at a ground cell.
-///
-/// Used by `Command::ForceAttackCell` (Ctrl + left-click on empty terrain).
-/// Aborts (returns `false`) if the attacker has no weapon — caller filters
-/// unarmed units client-side, but this defensive check keeps a stray command
-/// from corrupting state.
-///
-/// gamemd-derived: `TechnoClass::What_Action_OnCell @ 0x00700600` inlines
-/// `TechnoClass::Is_Armed` at `0x007008BD..0x007008CE` —
-/// `CALL [EDX+0x3F4]` (`GetCurrentWeapon`), `TEST EAX,EAX`,
-/// `CMP dword [EAX],0x0`, both misses jumping to `0x00700AB7` past every arm
-/// that can return 5 (ACTION_ATTACK). That is the gate, and it is a single
-/// weapon slot — not `Primary=` plus `Secondary=`. Reading the INI keys
-/// refused force-fire for `[SREF]` and `[YAGGUN]`, whose weapons live only in
-/// `Weapon1..N`.
-pub fn issue_attack_cell_command(
+/// Install a bare combat fixture's cell target. Keep its current-weapon gate
+/// through the shared weapon reader; production ForceAttackCell uses the
+/// concrete class authority in `world_commands`, not this setup adapter.
+#[cfg(test)]
+pub(crate) fn install_cell_attack_target_for_test(
     entities: &mut EntityStore,
     attacker_id: u64,
     target_rx: u16,
@@ -1231,8 +1212,6 @@ pub fn issue_attack_cell_command(
         None => return false,
     };
 
-    // As with entity targets, the assignment writes no facing.
-
     if !attacker
         .locomotor
         .as_ref()
@@ -1240,8 +1219,10 @@ pub fn issue_attack_cell_command(
     {
         attacker.movement_target = None;
     }
-    attacker.attack_target = Some(AttackTarget::for_cell(target_rx, target_ry));
-    attacker.passively_acquired_target = false;
+    crate::sim::mission::concrete_effects::represented_assign_target(
+        attacker,
+        Some(TargetKind::Cell(target_rx, target_ry)),
+    );
     true
 }
 
@@ -2361,8 +2342,6 @@ pub(crate) struct CombatEmit {
     pub(crate) fire_events: Vec<SimFireEvent>,
     /// aircraft that fired this tick
     pub(crate) ammo_deduct: Vec<u64>,
-    pub(crate) pending_infantry_updates: Vec<(u64, Option<PendingInfantryFire>)>,
-    pub(crate) animation_switches: Vec<(u64, SequenceKind)>,
     /// Native `CurrentWeaponNumber` writes emitted by live weapon selection.
     /// The per-attacker host commits these before that attack's receivers run.
     pub(crate) current_weapon_updates: Vec<(u64, u8)>,
@@ -2666,9 +2645,9 @@ pub(crate) struct LogicProjectileCommit {
 pub(crate) fn build_attacker_snapshot(
     entity: &GameEntity,
     target: TargetKind,
-    pending_infantry_fire: Option<PendingInfantryFire>,
     garrison: Option<GarrisonSnapshot>,
 ) -> AttackerSnapshot {
+    let infantry_pose = entity.infantry_sprite_pose();
     AttackerSnapshot {
         stable_id: entity.stable_id(),
         owner: entity.owner(),
@@ -2682,15 +2661,9 @@ pub(crate) fn build_attacker_snapshot(
         sub_y: entity.position.sub_y,
         type_id: entity.type_ref(),
         veterancy: entity.veterancy(),
-        animation_sequence: entity.animation.as_ref().map(|a| a.sequence),
-        animation_frame: entity.animation.as_ref().map(|a| a.frame_index),
-        is_prone: entity
-            .infantry
-            .as_ref()
-            .is_some_and(|infantry| infantry.is_prone),
+        infantry_doing: infantry_pose.map(|(doing, _)| doing),
         is_fully_deployed: entity.is_fully_deployed(),
         has_movement: entity.movement_target.is_some(),
-        pending_infantry_fire,
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
         weapon_override: entity.weapon_override,
@@ -3358,7 +3331,7 @@ mod impact_height_tests {
         store.insert(firer);
         let mut interner = test_interner();
         assert!(
-            issue_attack_cell_command(&mut store, 1, 5, 6, Some(&rules), &interner),
+            install_cell_attack_target_for_test(&mut store, 1, 5, 6, Some(&rules), &interner),
             "armed tank should accept a force-fire order on an adjacent cell"
         );
 
