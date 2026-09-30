@@ -263,7 +263,7 @@ impl Simulation {
         self.substrate.entities.get(id).is_some_and(|entity| {
             entity.lifecycle.object_alive
                 && !entity.lifecycle.in_limbo
-                && entity.object_is_falling_down == 0
+                && !entity.is_falling_down()
         })
     }
 

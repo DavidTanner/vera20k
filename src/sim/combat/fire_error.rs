@@ -24,8 +24,8 @@
 //! - T6: the Robot Control Center latch.
 //! - T15: the Chronosphere warp latch.
 //! - T18: balloon docking.
-//! - T19: ObjectClass `+0x8D`, VERA's `object_is_falling_down`, which no
-//!   paradrop or drop-in writes yet.
+//! - T19: ObjectClass `+0x8D` (`GameEntity::is_falling_down`), which only
+//!   the paradrop descent raises; VERA represents no other fall.
 //! - T20: EMP.
 //! - T32/T33: open-topped passengers (VERA never fires from a transport).
 //! - T37/T46: particle systems. The Sonic wave and the damage-spark system

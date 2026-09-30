@@ -83,7 +83,7 @@ impl Simulation {
         };
         if !actor.lifecycle.object_alive
             || actor.lifecycle.in_limbo
-            || actor.object_is_falling_down != 0
+            || actor.is_falling_down()
         {
             return Ok(());
         }

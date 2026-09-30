@@ -942,7 +942,8 @@ pub struct GameEntity {
     pub rocket_state: Option<RocketState>,
     /// Parachute descent state. `Some` while a paradropped unit is descending
     /// under a parachute, `None` otherwise. Set by
-    /// `parachute_descent::begin_parachute_descent`, cleared on landing.
+    /// `parachute_descent::begin_parachute_descent`, cleared on landing. It
+    /// is also the object's IsFallingDown ([`Self::is_falling_down`]).
     #[serde(default)]
     pub parachute_state: Option<crate::sim::movement::parachute_descent::ParachuteDescentState>,
     /// Active IronCurtain or ForceShield invulnerability timer.
@@ -1157,8 +1158,6 @@ pub struct GameEntity {
     /// bytes. Snapshot migration defaults reproduce Techno construction.
     #[serde(default)]
     pub(crate) base_defense_response: BaseDefenseResponseState,
-    /// ObjectClass falling-down byte read by Infantry readiness.
-    pub(crate) object_is_falling_down: u8,
     /// Sim-side model of gamemd's TechnoClass `+0x308` (`DamageSparkSystem`): the
     /// `session.tick` at which the live AI_Update damage-Spark particle system
     /// expires and the object may roll again. `0` = no live system (may roll;
@@ -1775,7 +1774,6 @@ impl GameEntity {
             mission_leaf: MissionLeafState::for_entity_category(category),
             suspended_attack_target: None,
             base_defense_response: BaseDefenseResponseState::default(),
-            object_is_falling_down: 0,
             damage_particle_live_until: 0,
             damage_smoke_system_id: None,
             transport_unload_keep_count: 0,
@@ -1862,9 +1860,24 @@ impl GameEntity {
         )
     }
 
+    /// ObjectClass `+0x8D` IsFallingDown. `ObjectClass::Paradrop`
+    /// (`0x005F5940`) raises it at `0x005F5965`, and `ObjectClass::AI`
+    /// clears it when the fall grounds (`0x005F3F86`). The paradrop descent is
+    /// VERA's only fall, so its state is the one owner.
+    pub(crate) fn is_falling_down(&self) -> bool {
+        self.parachute_state.is_some()
+    }
+
+    /// Put a fixture into a fall at its current height: an object with a
+    /// descent state but no altitude, so nothing else about it moves.
     #[cfg(test)]
-    pub(crate) fn set_object_is_falling_down_for_test(&mut self, raw: u8) {
-        self.object_is_falling_down = raw;
+    pub(crate) fn set_falling_down_for_test(&mut self, falling: bool) {
+        self.parachute_state = falling.then_some(
+            crate::sim::movement::parachute_descent::ParachuteDescentState {
+                rate: 0,
+                altitude: crate::util::fixed_math::SIM_ZERO,
+            },
+        );
     }
 
     /// Record a debug event if the event log is active. No-op when `debug_log` is `None`.

@@ -7318,7 +7318,7 @@ mod tests {
             } else {
                 TargetKind::Cell(index as u16, (index + 1) as u16)
             });
-            entity.set_object_is_falling_down_for_test(index as u8 + 1);
+            entity.set_falling_down_for_test(index & 1 == 0);
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
             if index == 0 {
                 entity.mission.apply_test_fixture(MissionTestFixture {
@@ -7356,7 +7356,7 @@ mod tests {
                 entity.suspended_attack_target, expected_suspended_target,
                 "suspended TargetKind variant and payload must round-trip"
             );
-            assert_eq!(entity.object_is_falling_down, index as u8 + 1);
+            assert_eq!(entity.is_falling_down(), index & 1 == 0);
         }
 
         let first = loaded.sim.substrate.entities.get(1).unwrap();

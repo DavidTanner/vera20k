@@ -561,7 +561,7 @@ fn evaluate_ready(
                 infantry_ready_to_commence(InfantryReadyView {
                     mission,
                     leaf,
-                    object_is_falling_down: entity.object_is_falling_down,
+                    object_is_falling_down: u8::from(entity.is_falling_down()),
                     locomotor,
                     attack_target_present,
                 })

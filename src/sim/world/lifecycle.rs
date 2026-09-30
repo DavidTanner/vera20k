@@ -1760,7 +1760,7 @@ impl Simulation {
     /// Mirror the native air-vector move producer: retain vector position while
     /// the object stays in one bucket, otherwise remove from the old vector and
     /// append to the destination vector's tail.
-    fn sync_air_spatial_membership(&mut self, stable_id: u64) {
+    pub(super) fn sync_air_spatial_membership(&mut self, stable_id: u64) {
         let desired_bucket = self.substrate.entities.get(stable_id).and_then(|entity| {
             (entity.lifecycle.object_alive
                 && !entity.lifecycle.in_limbo

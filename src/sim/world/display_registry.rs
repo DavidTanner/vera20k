@@ -53,7 +53,7 @@ pub(super) fn entity_layer(
         });
         if flags & 0x100 != 0
             && height >= crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-            && entity.object_is_falling_down == 0
+            && !entity.is_falling_down()
         {
             adjusted_height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
         }
@@ -360,7 +360,7 @@ mod tests {
             entity.position.exact_z_leptons = Some(input["z"].as_i64().unwrap() as i32);
             entity.lifecycle.cell_marked = input["marked"].as_bool().unwrap_or(true);
             entity.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
-            entity.object_is_falling_down = u8::from(input["falling"].as_bool().unwrap_or(false));
+            entity.set_falling_down_for_test(input["falling"].as_bool().unwrap_or(false));
             let loco_kind = match kind {
                 "walk" => Some(LocomotorKind::Walk),
                 "drive" => Some(LocomotorKind::Drive),
