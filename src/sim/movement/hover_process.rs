@@ -547,7 +547,7 @@ impl Simulation {
         };
         let visible = hover.altitude_step(height, climbing, id as i32, frame, powered, rules);
         //513E74..513E8C: SetHeight with +0x74 cleared, so unmarked.
-        self.set_object_height(id, visible);
+        self.set_object_height_unmarked(id, visible);
     }
 
     /// SpeedUpdate 0x00515ED0.

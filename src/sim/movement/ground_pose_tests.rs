@@ -1264,3 +1264,64 @@ fn a_building_on_a_ramp_is_targeted_at_its_floor() {
         }
     );
 }
+
+/// Two Drive units marked into cell (4, 4), 1 before 2, so 2 heads the list.
+fn two_marked_units() -> Simulation {
+    let mut sim = Simulation::new();
+    sim.interner = crate::sim::intern::test_interner();
+    for id in [1, 2] {
+        let mut entity = GameEntity::test_default(id, "ACTOR", "Americans", 4, 4);
+        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.cell_marked = false;
+        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
+        entity.position.exact_z_leptons = Some(0);
+        sim.substrate.entities.insert(entity);
+        assert!(sim.foot_mark_put(id, None, None));
+    }
+    sim
+}
+
+fn next_in_cell(sim: &Simulation, id: u64) -> Option<crate::sim::occupancy::CellObjectMember> {
+    sim.next_cell_object(crate::sim::occupancy::CellObjectMember::Entity(id))
+}
+
+/// SetHeight (`0x005F5FA0`) on a marked object runs its Mark(UP) and
+/// Mark(DOWN) around the Z write (`0x005F5FC8`, `0x005F6009`), so
+/// `FootClass::Mark` prepends it to its cell's list again.
+#[test]
+fn set_height_on_a_marked_object_re_marks_it_at_the_head_of_its_cell() {
+    use crate::sim::occupancy::CellObjectMember::Entity;
+    let mut sim = two_marked_units();
+    assert_eq!(next_in_cell(&sim, 2), Some(Entity(1)));
+    sim.set_object_height(1, 30, None, None);
+    assert_eq!(next_in_cell(&sim, 1), Some(Entity(2)));
+    let entity = sim.substrate.entities.get(1).unwrap();
+    assert!(entity.lifecycle.cell_marked);
+    assert_eq!(entity.position.exact_z_leptons, Some(30));
+}
+
+/// An unmarked object takes SetHeight's Z write alone (`0x005F6017..`), as
+/// Hover's SetHeight does with `+0x74` cleared (`0x00513E74..0x00513E8C`).
+#[test]
+fn set_height_on_an_unmarked_object_writes_z_without_marking_it() {
+    use crate::sim::occupancy::CellObjectMember::Entity;
+    let mut sim = two_marked_units();
+    sim.set_object_height_unmarked(1, 30);
+    assert_eq!(next_in_cell(&sim, 2), Some(Entity(1)));
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .position
+            .exact_z_leptons,
+        Some(30)
+    );
+
+    assert!(sim.foot_mark_remove(1, None, None));
+    sim.set_object_height(1, 60, None, None);
+    let entity = sim.substrate.entities.get(1).unwrap();
+    assert!(!entity.lifecycle.cell_marked);
+    assert_eq!(entity.position.exact_z_leptons, Some(60));
+    assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
+}

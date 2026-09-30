@@ -70,6 +70,18 @@ pub(crate) struct UninitContext<'a> {
 }
 
 impl<'a> UninitContext<'a> {
+    /// A caller's rules and overlay table, with no terrain override.
+    pub(crate) const fn new(
+        rules: Option<&'a RuleSet>,
+        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Self {
+        Self {
+            terrain: None,
+            rules,
+            registry,
+        }
+    }
+
     pub(crate) const fn with_rules(rules: &'a RuleSet) -> Self {
         Self {
             terrain: None,
@@ -1063,7 +1075,7 @@ impl Simulation {
     /// Mark(PUT) through the object's vt+0x124: `FootClass::Mark`
     /// ([`Simulation::foot_mark_put`]) for Infantry, Unit and Aircraft, the
     /// building transaction below for a Structure.
-    fn mark_entity_put(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
+    pub(crate) fn mark_entity_put(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return false;
         };
@@ -1392,7 +1404,11 @@ impl Simulation {
     /// Mark(REMOVE) through the object's vt+0x124: `FootClass::Mark`
     /// ([`Simulation::foot_mark_remove`]) for Infantry, Unit and Aircraft, the
     /// building transaction below for a Structure.
-    fn unmark_entity_remove(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
+    pub(crate) fn unmark_entity_remove(
+        &mut self,
+        stable_id: u64,
+        context: UninitContext<'_>,
+    ) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return false;
         };
@@ -1636,22 +1652,24 @@ impl Simulation {
                             && locomotor.layer == MovementLayer::Air
                     })
             });
-        // Fly4CD600 dispatches owner Mark around movement independently of
-        // RTTI. Custom Fly Infantry/Unit must also leave their ground list.
-        if transact_fly {
-            self.foot_mark_remove(stable_id, rules, registry);
-        }
-
         self.materialize_legacy_fly_coordinate(stable_id);
 
-        // Fly Process opens with a dead Fly's fall (`0x004CD67F`); reaching
-        // the ground ends it in the impact, which the object turn commits.
-        if transact_fly && self.fly_crash_fall(stable_id) {
+        // Fly Process opens with a dead Fly's fall (`0x004CD67F`), which
+        // brackets its own drop with Mark; reaching the ground ends it in the
+        // impact, which the object turn commits.
+        if transact_fly && self.fly_crash_fall(stable_id, rules, registry) {
             return crate::sim::movement::air_movement::AirMovementTickStats {
                 arrivals: 0,
                 impact: true,
                 touched_down: false,
             };
+        }
+
+        // Fly4CD600 dispatches owner Mark around movement (`0x004CDA36`)
+        // independently of RTTI. Custom Fly Infantry/Unit must also leave
+        // their ground list.
+        if transact_fly {
+            self.foot_mark_remove(stable_id, rules, registry);
         }
 
         // A cruising Jumpjet runs the native Update/State3 body instead of the
@@ -1753,7 +1771,7 @@ impl Simulation {
             .and_then(|l| l.fly_runtime())
             .is_some_and(|s| s.landing())
         {
-            self.apply_fly_landing_callback(id, rules);
+            self.apply_fly_landing_callback(id, rules, registry);
         }
         if self
             .substrate
@@ -1792,7 +1810,7 @@ impl Simulation {
                     self.substrate.entities.get(id).unwrap(),
                     self.resolved_terrain.as_ref(),
                 );
-                self.set_object_height(id, height.wrapping_add(10));
+                self.set_object_height(id, height.wrapping_add(10), rules, registry);
                 self.foot_mark_put(id, rules, registry);
             } else {
                 self.finish_fly_layer_transition(id, after, rules);

@@ -159,6 +159,12 @@ impl crate::sim::world::Simulation {
     ///
     /// - `Location.Z = GetZ() + FallRate` (`0x005F3F2C..0x005F3F60`). On the
     ///   first frame the FallRate is 0, so the object hangs for a frame.
+    /// - A marked object leaves its cell through its own Mark (`vt+0x124` at
+    ///   `0x005F3F46`) before that write and marks again after it
+    ///   (`0x005F3F58`). A paratrooper's layer is Ground at any height (Foot
+    ///   `vt+0x78` = `0x004DB7E0` asks the locomotor; Walk's `0x0075C7E0`
+    ///   returns Ground), so every fall frame prepends it to its cell's list
+    ///   again and recalculates the cell.
     /// - GetHeight at most 0 (`0x005F3F6A`) grounds it: SetHeight(0)
     ///   (`0x005F3F7A`) puts it on the ground or deck, and the falling byte
     ///   clears (`0x005F3F86`).
@@ -169,29 +175,49 @@ impl crate::sim::world::Simulation {
     ///   reset the rate, would start from a kept one, and VERA's DropIn grounds
     ///   a standing object instead (DRIFT at `drop_in_bridge_member`).
     ///
-    /// RESIDUAL: while the object is on the map, native removes it from its
-    /// cell and marks it again around the Z write (`vt+0x124` at `0x005F3F46`
-    /// and `0x005F3F58`). FootClass::Mark (`0x004D3780`) re-adds it through
-    /// Place_Down (`0x005683C0`) and AddContent (`0x0047E8A0`), at the head of
-    /// its cell's list; VERA leaves it where Reveal put it. Trigger: another
-    /// object entering the cell during a fall. Effect: that cell's list order,
-    /// which first-object reads and list walks follow. Frequency: rare.
-    /// Native also resubmits the object when its display layer (`vt+0x78`)
-    /// changes (`0x004A9720` at `0x005F400E`). A ground mover's layer does not
-    /// read the height, so only a falling Jumpjet (a paradropped Rocketeer)
-    /// could change layer; VERA does not resubmit it.
-    pub(crate) fn advance_fall(&mut self, stable_id: u64, max_fall_rate: i32) -> bool {
-        let terrain = self.resolved_terrain.as_ref();
-        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
+    /// RESIDUAL: native resubmits the object to the display when its layer
+    /// (`vt+0x78`, read at `0x005F3F23` and `0x005F4001`) changes
+    /// (`0x004A9720` at `0x005F400E`), and removes a Limbo object from the
+    /// display (`0x005F3FA4` -> `0x005F4146`). Trigger: a falling Jumpjet
+    /// crossing its layer bounds, or an object in Limbo after its landing.
+    /// Effect: its display list entry keeps the old layer. Frequency: none
+    /// with retail `rulesmd.ini`, whose `[General]` paradrop lists
+    /// (`AmerParaDropInf=E1`, `AllyParaDropInf=E1`, `SovParaDropInf=E2`,
+    /// `YuriParaDropInf=INIT`) are Walk infantry, and VERA's bridge DropIn
+    /// grounds a standing Jumpjet at once. Risk: draw order.
+    pub(crate) fn advance_fall(
+        &mut self,
+        stable_id: u64,
+        max_fall_rate: i32,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
             return false;
         };
         let Some(rate) = entity.parachute_state.as_ref().map(|state| state.rate) else {
             return false;
         };
-        entity.position.exact_z_leptons = Some(
-            crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain)
-                .wrapping_add(rate),
-        );
+        let z = crate::sim::movement::ground_pose::object_world_z_leptons(
+            entity,
+            self.resolved_terrain.as_ref(),
+        )
+        .wrapping_add(rate);
+        let marked = entity.lifecycle.cell_marked;
+        let context = crate::sim::world::UninitContext::new(rules, registry);
+        if marked {
+            self.unmark_entity_remove(stable_id, context);
+        }
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            entity.position.exact_z_leptons = Some(z);
+        }
+        if marked {
+            self.mark_entity_put(stable_id, context);
+        }
+        let terrain = self.resolved_terrain.as_ref();
+        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
+            return false;
+        };
         if crate::sim::movement::air_movement::current_fly_height(entity, terrain) > 0 {
             if let Some(state) = entity.parachute_state.as_mut() {
                 // Integer DEC, then clamp toward the more-negative bound.
@@ -203,7 +229,7 @@ impl crate::sim::world::Simulation {
         // to unwind here.
         entity.parachute_state = None;
         entity.push_debug_event(self.session.tick as u32, DebugEventKind::SpecialMovementEnd);
-        self.set_object_height(stable_id, 0);
+        self.set_object_height(stable_id, 0, rules, registry);
         true
     }
 }
@@ -331,7 +357,7 @@ mod tests {
     }
 
     fn fall(sim: &mut Simulation, id: u64) -> bool {
-        sim.advance_fall(id, RULES_PARACHUTE_MAX_FALL_RATE)
+        sim.advance_fall(id, RULES_PARACHUTE_MAX_FALL_RATE, None, None)
     }
 
     fn z(sim: &Simulation, id: u64) -> i32 {
@@ -476,7 +502,7 @@ mod tests {
         let mut observed: Vec<i32> = Vec::new();
         for _ in 0..4 {
             observed.push(rate(&sim, id));
-            sim.advance_fall(id, -1);
+            sim.advance_fall(id, -1, None, None);
         }
         assert_eq!(
             observed,
@@ -659,7 +685,7 @@ mod canopy_tests {
 
         // A few frames of descent: the canopy comes down with the object.
         for _ in 0..6 {
-            sim.advance_fall(id, -3);
+            sim.advance_fall(id, -3, None, None);
         }
         let lower = sim.anim_owner_coords(id).unwrap().z;
         assert!(lower < 600);

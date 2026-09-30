@@ -117,17 +117,17 @@ fn a_paratroopers_fall_moves_its_location_z_to_the_ground_or_deck() {
 
         // FallRate 0, -1, -2: the object hangs a frame, then sinks to 209.
         for _ in 0..3 {
-            assert!(!sim.advance_fall(1, -3));
+            assert!(!sim.advance_fall(1, -3, None, None));
         }
         let t = sim.resolved_terrain.clone();
         assert_eq!(current_fly_height(entity(&sim), t.as_ref()), 209);
         assert!(is_high_flying(entity(&sim), t.as_ref(), None));
-        assert!(!sim.advance_fall(1, -3));
+        assert!(!sim.advance_fall(1, -3, None, None));
         assert_eq!(current_fly_height(entity(&sim), t.as_ref()), 206);
         assert!(is_low_flying(entity(&sim), t.as_ref(), None));
 
         let mut frames = 4;
-        while !sim.advance_fall(1, -3) {
+        while !sim.advance_fall(1, -3, None, None) {
             frames += 1;
             assert!(frames < 100, "the fall must ground");
         }
@@ -136,4 +136,52 @@ fn a_paratroopers_fall_moves_its_location_z_to_the_ground_or_deck() {
         assert_eq!(landed.position.exact_z_leptons, Some(floor), "SetHeight(0)");
         assert_eq!(current_fly_height(landed, t.as_ref()), 0);
     }
+}
+
+/// A paratrooper stays in its cell's list as it falls: Walk's layer query
+/// (`0x0075C7E0`) answers Ground at any height. `ObjectClass::AI`'s falling
+/// block marks it again around each Z write (`0x005F3F46`, `0x005F3F58`), so
+/// it is prepended ahead of an object that entered the cell after it.
+#[test]
+fn a_falling_paratrooper_is_marked_again_at_the_head_of_its_cell() {
+    use crate::map::entities::EntityCategory;
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::movement::parachute_descent::begin_parachute_descent;
+    use crate::sim::occupancy::CellObjectMember::Entity;
+
+    let mut sim = crate::sim::world::Simulation::new();
+    sim.interner = crate::sim::intern::test_interner();
+    sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(
+        25,
+        25,
+        (0..25)
+            .flat_map(|y| (0..25).map(move |x| test_flat_cell(x, y)))
+            .collect(),
+    ));
+    for id in [1, 2] {
+        let mut infantry = GameEntity::test_default(id, "E1", "Americans", 10, 10);
+        infantry.category = EntityCategory::Infantry;
+        infantry.lifecycle.in_limbo = false;
+        infantry.lifecycle.cell_marked = false;
+        infantry.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
+        infantry.position.exact_z_leptons = Some(0);
+        sim.substrate.entities.insert(infantry);
+        assert!(sim.foot_mark_put(id, None, None));
+    }
+    assert!(begin_parachute_descent(
+        &mut sim.substrate.entities,
+        1,
+        1000
+    ));
+    let next = |sim: &crate::sim::world::Simulation, id| {
+        sim.next_cell_object(crate::sim::occupancy::CellObjectMember::Entity(id))
+    };
+    assert_eq!(next(&sim, 2), Some(Entity(1)));
+
+    assert!(!sim.advance_fall(1, -3, None, None));
+    assert_eq!(next(&sim, 1), Some(Entity(2)));
+    let paratrooper = sim.substrate.entities.get(1).unwrap();
+    assert!(paratrooper.lifecycle.cell_marked);
+    assert!(paratrooper.is_falling_down());
 }

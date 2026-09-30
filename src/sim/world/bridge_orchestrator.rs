@@ -1173,7 +1173,7 @@ mod tests {
         assert!(e.is_falling_down());
         assert_eq!(e.position.exact_z_leptons, Some(1000));
         let mut frames = 0;
-        while !sim.advance_fall(id, -8) {
+        while !sim.advance_fall(id, -8, None, None) {
             frames += 1;
             assert!(frames < 200, "the fall reaches the ground");
         }
