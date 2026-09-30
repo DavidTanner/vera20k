@@ -1,13 +1,14 @@
 """Private retention implementation; cargo_run owns its lock, registry and CLI.
 
 Only compiler objects and complete incremental sessions are disposable. Preserved
-labels are all treated as active. Never infer that a successful linker made its
+labels and all surviving references remain protected. Never infer that linking made its
 debug objects disposable: Mach-O executables commonly refer to them by pathname.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -80,6 +81,75 @@ def _identity(path: Path) -> tuple:
     info = _regular(path)
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
             info.st_ctime_ns, info.st_nlink)
+
+
+def _dependency_identity(path: Path) -> tuple | None:
+    """Absent references are degraded evidence; links/errors are not absence."""
+    if not path.is_absolute() or '..' in path.parts:
+        raise ValueError(f'Unresolved debug dependency: {path}')
+    try:
+        return _identity(path)
+    except FileNotFoundError:
+        # _plain walks from root: a dangling symlink is rejected before its
+        # nonexistent child can be mistaken for an already missing object.
+        return None
+
+
+def _inspection_revision() -> str:
+    # Successful references depend only on the executable and inspector. Their
+    # existence/identity is checked afresh each pass, including missing paths.
+    files = [Path(__file__), Path(__file__).with_name('_cargo_macho.py'),
+             Path(__file__).with_name('cargo_run.py')]
+    digest = hashlib.sha256()
+    for path in files:
+        if path.exists():
+            digest.update(path.read_bytes())
+    tool = shutil.which('readelf')
+    digest.update(repr((sys.platform, tool, _identity(Path(tool).resolve()) if tool else None)).encode())
+    return digest.hexdigest()
+
+
+def _inspect_cached(store: Path, binary: Path, revision: str, preserved, counters) -> set[Path]:
+    """Cache inspection, never the current protection/deletion decision.
+
+    Metadata equality includes ctime and inode, not just mtime/size. Unknown
+    inode platforms re-inspect. Cached failures never authorize deletion and
+    expire after five minutes, or immediately on binary/inspector changes.
+    """
+    identity = _identity(binary)
+    expected = preserved[1]['sha256'] if preserved else None
+    key = hashlib.sha256(str(binary).encode()).hexdigest()
+    path = store / 'inspections' / (key + '.json')
+    stamp = {'binary': str(binary), 'identity': list(identity),
+             'revision': revision, 'expected_sha256': expected}
+    if identity[1] and path.exists():
+        record = _json(path)
+        if not isinstance(record, dict):
+            raise ValueError('Malformed dependency inspection cache')
+        if all(record.get(k) == v for k, v in stamp.items()):
+            retry = record.get('retry_after', 0)
+            if isinstance(record.get('error'), str) and isinstance(retry, (int, float)) and time.time() < retry:
+                counters['failure_hits'] += 1
+                raise ValueError('Unchanged dependency inspection failure (cached up to 300s): ' + record['error'])
+            if isinstance(record.get('references'), list) and all(isinstance(v, str) for v in record['references']):
+                refs = {Path(v) for v in record['references']}
+                if any(not v.is_absolute() or '..' in v.parts for v in refs):
+                    raise ValueError('Invalid cached debug reference')
+                counters['hits'] += 1
+                return refs
+    counters['misses'] += 1
+    try:
+        if preserved:
+            from tools.cargo_run import preserved_artifact
+            preserved_artifact(*preserved)
+        refs = _dependencies(binary)
+        if _identity(binary) != identity:
+            raise ValueError(f'Executable changed during inspection: {binary}')
+    except (OSError, ValueError, subprocess.SubprocessError, UnicodeError) as error:
+        _write(path, dict(stamp, error=str(error), retry_after=time.time() + 300))
+        raise
+    _write(path, dict(stamp, references=sorted(map(str, refs))))
+    return refs
 
 
 def _directory_identity(path: Path) -> tuple:
@@ -306,83 +376,6 @@ MACH = {b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf',
         b'\xca\xfe\xba\xbf', b'\xbf\xba\xfe\xca'}
 
 
-def _scalar(value: str) -> str:
-    if value.startswith("'") and value.endswith("'"):
-        text = value[1:-1].replace("''", "'")
-        if "'" in value[1:-1].replace("''", ''):
-            raise ValueError('Malformed debug-map scalar')
-    elif value.startswith('"'):
-        text = json.loads(value)
-    elif re.fullmatch(r'[/A-Za-z0-9_. ()+@,=-]+', value):
-        text = value
-    else:
-        raise ValueError(f'Unsupported debug-map scalar: {value[:160]}')
-    if not isinstance(text, str) or any(ord(char) < 32 for char in text):
-        raise ValueError('Invalid debug-map scalar')
-    return text
-
-
-def _debug_map(lines) -> set[Path]:
-    """Stream LLVM's strict YAML subset, not a general YAML implementation.
-
-    Schema: LLVM release/17.x llvm/tools/dsymutil/DebugMap.cpp. Missing objects
-    are omitted by MachODebugMapParser.cpp, so the caller also requires EMPTY
-    stderr. BinaryHolder.cpp splits archive(member) at the final opening paren.
-    """
-    refs, fields, opened, docs, object_open, symbols = set(), set(), False, 0, False, False
-    for raw in lines:
-        line = raw.rstrip()
-        if not line.strip():
-            continue
-        if line == '---':
-            if opened:
-                raise ValueError('Unterminated debug-map document')
-            fields, opened, object_open, symbols = set(), True, False, False
-        elif line == '...':
-            if not opened or not {'triple', 'binary-path'} <= fields or (object_open and not symbols):
-                raise ValueError('Incomplete debug-map document')
-            docs += 1
-            opened = False
-        elif not opened:
-            raise ValueError('Debug-map output outside a document')
-        elif match := re.fullmatch(r'(triple|binary-path):\s+(.+)', line):
-            key, value = match.groups()
-            if key in fields or object_open:
-                raise ValueError('Duplicate/misordered debug-map header')
-            fields.add(key)
-            _scalar(value)
-        elif line in ('objects:', 'objects:         []', 'objects: []'):
-            if 'objects' in fields:
-                raise ValueError('Duplicate debug-map objects')
-            fields.add('objects')
-        elif match := re.fullmatch(r'  - filename:\s+(.+)', line):
-            if 'objects' not in fields or (object_open and not symbols):
-                raise ValueError('Malformed debug-map object')
-            name = _scalar(match[1])
-            if name.endswith(')'):
-                opening = name.rfind('(')
-                if opening < 1 or opening == len(name) - 2:
-                    raise ValueError('Malformed archive debug dependency')
-                name = name[:opening]
-            path = Path(name)
-            if not path.is_absolute() or '..' in path.parts:
-                raise ValueError(f'Unresolved debug dependency: {name}')
-            refs.add(path)
-            object_open, symbols = True, False
-        elif re.fullmatch(r'    timestamp:\s+[0-9]+', line) and object_open and not symbols:
-            pass
-        elif re.fullmatch(r'    symbols:\s*(\[\])?', line) and object_open and not symbols:
-            symbols = True
-        elif line.startswith('      - { ') and line.endswith(' }') and symbols:
-            if not all(key in line for key in ('sym:', 'objAddr:', 'binAddr:', 'size:')):
-                raise ValueError('Malformed debug-map symbol')
-        else:
-            raise ValueError(f'Unsupported debug-map structure: {line[:160]}')
-    if opened or not docs:
-        raise ValueError('Truncated or empty debug map')
-    return refs
-
-
 def _stream(command: list[str], consume):
     # Large lib-test debug maps can exceed 70MiB; don't buffer symbols. Stderr
     # may exceed a pipe buffer too. Zero status alone does not prove completeness.
@@ -409,14 +402,8 @@ def _stream(command: list[str], consume):
 def _dependencies(binary: Path) -> set[Path]:
     magic = _magic(binary)
     if magic in MACH:
-        tool = ['xcrun', 'dsymutil'] if sys.platform == 'darwin' else ['llvm-dsymutil']
-        refs = _stream([*tool, '--dump-debug-map', str(binary)], _debug_map)
-        for path in refs:
-            _regular(path)
-            with path.open('rb') as source:
-                if source.read(8) == b'!<thin>\n':
-                    raise ValueError(f'Unsupported thin-archive debug closure: {path}')
-        return refs
+        from tools._cargo_macho import dependencies
+        return dependencies(binary)
     if magic == b'\x7fELF':
         # GNU readelf supports this complete DWARF/link inspection. llvm-readelf
         # does not expose --debug-dump=info; do not infer compatible options.
@@ -453,7 +440,12 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
                'policy': asdict(policy), 'state': 'blocked', 'errors': [], 'notes': [],
                'removed_files': [], 'removed_allocated_bytes': 0, 'removed_logical_bytes': 0}
     devices = {}
+    receipt['degraded_debug_inputs'] = {}
+    receipt['inspection_cache'] = {'hits': 0, 'misses': 0, 'failure_hits': 0}
     try:
+        (store / 'inspections').mkdir(parents=True, exist_ok=True)
+        _plain(store / 'inspections')
+        revision = _inspection_revision()
         directory_states = {path: _directory_identity(path) for path in (
             store, store / 'artifacts', store / 'latest') if path.exists()}
         profiles = set()
@@ -496,12 +488,22 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
             # stop safely before scanning numerous rebuildable cache binaries.
             for binary in sorted(binaries, key=lambda path: (path not in preserved_checks, str(path))):
                 watched[binary] = _identity(binary)
-                if binary in preserved_checks:
-                    from tools.cargo_run import preserved_artifact
-                    preserved_artifact(*preserved_checks[binary])
-                for dependency in _dependencies(binary):
-                    watched[dependency] = _identity(dependency)
-                    protected.add(dependency)
+                missing = []
+                for dependency in _inspect_cached(store, binary, revision,
+                                                  preserved_checks.get(binary), receipt['inspection_cache']):
+                    previously_seen = dependency in watched
+                    identity = watched[dependency] if previously_seen else _dependency_identity(dependency)
+                    watched[dependency] = identity
+                    if identity is None:
+                        missing.append(str(dependency))
+                    else:
+                        if not previously_seen:
+                            with dependency.open('rb') as source:
+                                if source.read(8) == b'!<thin>\n':
+                                    raise ValueError(f'Unsupported thin-archive debug closure: {dependency}')
+                        protected.add(dependency)
+                if missing:
+                    receipt['degraded_debug_inputs'][str(binary)] = sorted(missing)
             receipt['protected_files'] = len(protected)
             groups = []
             # Only exact Cargo profile/deps *.rcgu.o; never arbitrary *.o.
@@ -564,7 +566,7 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
             if build_processes():
                 raise ValueError('Unwrapped Cargo/rustc became active; no deletion')
             for path, identity in watched.items():
-                if _identity(path) != identity:
+                if _dependency_identity(path) != identity:
                     raise ValueError(f'Debug dependency changed during inspection: {path}')
             # Preflight every eligible fallback too: APFS clones/snapshots can
             # reclaim less than allocated bytes, requiring further cold entries.
@@ -591,7 +593,7 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
                         if build_processes():
                             raise ValueError('Unwrapped Cargo/rustc became active; stopping deletion')
                         for path, identity in watched.items():
-                            if _identity(path) != identity:
+                            if _dependency_identity(path) != identity:
                                 raise ValueError(f'Debug dependency changed before deletion: {path}')
                         # Cache parents change from our unlinks; label/latest
                         # directories do not. Keep checking those publications.
@@ -660,6 +662,9 @@ def automatic_locked(root: Path, store: Path, policy: CachePolicy):
     receipt = trim_locked(root, store, policy)
     print(f"Cache retention: {receipt['state']}, removed {receipt['removed_allocated_bytes']} "
           f"allocated bytes; {receipt['receipt_path']}", file=sys.stderr, flush=True)
+    if receipt.get('degraded_debug_inputs'):
+        print(f"Saved/live builds with already missing debug inputs: {len(receipt['degraded_debug_inputs'])}; see receipt",
+              file=sys.stderr, flush=True)
     if receipt['errors']:
         print('Cache deletion stopped: ' + receipt['errors'][0].splitlines()[0][:500],
               file=sys.stderr, flush=True)

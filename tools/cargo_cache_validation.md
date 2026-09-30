@@ -56,20 +56,39 @@ hashes, selected/removed bytes and observed volume changes. Temporary fixture
 paths identify that run and are deleted by the test; the harness reproduces it.
 This validates the host example, not gamemd or whole-game debugging equivalence.
 
-The real project dry-run returned `blocked` and removed **zero** files. An older
-preserved bridge label references already missing objects in another worktree.
-The inspector exits0 but emits warnings and omits those missing inputs from its
-YAML. The receipt retains that failure. No label, source, retail asset or native
-evidence was removed, and no production apply was attempted. Repair or explicitly
-retire those older validation dependencies before expecting this store to trim.
+The earlier production receipt is retained as historical evidence: cleanup was
+blocked by debug-map warnings about already missing objects. That behavior is now
+covered by a failing-before-fix policy regression. The replacement Mach-O reader
+extracts OSO/AST references directly; absent objects no longer disappear from the
+inventory. Existing inputs are protected, missing inputs are recorded, and the
+preflight rejects a missing input that reappears during inspection. Dangling links
+are errors, never treated as missing objects.
 
-Mach-O parsing follows LLVM's
-[debug-map schema](https://github.com/llvm/llvm-project/blob/release/17.x/llvm/tools/dsymutil/DebugMap.cpp),
-[missing-object behavior](https://github.com/llvm/llvm-project/blob/release/17.x/llvm/tools/dsymutil/MachODebugMapParser.cpp)
-and [archive loading](https://github.com/llvm/llvm-project/blob/release/17.x/llvm/tools/dsymutil/BinaryHolder.cpp).
-Output is streamed; any warning, failure or malformed/truncated document blocks
-deletion. Dependencies must exist as regular files. Thin archive external members
-are unsupported. Empty maps from ordinary stripped release binaries are valid.
+[Mach-O tests](tests/test_cargo_macho.py) exercise both byte orders, 32/64-bit thin
+and universal layouts, archives, AST inputs, every fixture truncation and malformed
+bounds. The opt-in compiled fixture compares references with actual dsymutil output,
+then deletes its inputs and verifies that all references remain discoverable:
+
+```sh
+VERA20K_CACHE_NATIVE_TEST=1 python -m unittest tools.tests.test_cargo_macho tools.tests.test_cargo_cache_native
+```
+
+The retention native fixture now also removes one debug object while preserving a
+second one: real trimming removes an unrelated orphan, keeps the surviving debug
+input and saved binary byte-identical, reports the missing input, and executes the
+binary successfully. This demonstrates retention safety, not recovery of deleted
+symbols. [Label lifecycle tests](tests/test_cargo_labels.py) cover exact retirement,
+all-label preflight, durable manifest evidence before deletion, running executable
+rejection and partial failure reporting.
+
+The direct reader follows LLVM's
+[MachODebugMapParser](https://github.com/llvm/llvm-project/blob/release/17.x/llvm/tools/dsymutil/MachODebugMapParser.cpp)
+and [archive naming](https://github.com/llvm/llvm-project/blob/release/17.x/llvm/tools/dsymutil/BinaryHolder.cpp),
+with wire layouts cited in [the owner](./_cargo_macho.py). Unsupported layouts,
+malformed commands, relative paths and unknown formats fail closed. Reusing an
+inspection never reuses its dependency existence decisions: current identities and
+missing paths are rechecked before deletion. The cache tests cover restored inputs,
+changed binaries, cached failures, inspector invalidation and unknown inode fallback.
 
 ELF scanning uses [GNU readelf](https://sourceware.org/binutils/docs/binutils/readelf.html)
 to inspect sections and all compilation units without following debug links or
@@ -85,3 +104,14 @@ receipt's small deletion did not imply a positive volume delta: receipt writes,
 APFS allocation and concurrent unrelated activity also affect free space.
 Dry-run projections are estimates; apply checks actual free space as it proceeds,
 then records remaining protected-budget and free-space shortfalls.
+
+The [retirement follow-up receipt](cargo_cache_retirement_validation.json) records
+402 passing Python tests (four optional skips), native fixture comparisons and the
+real production apply: 8,231 compiler files removed, 19.50 GiB allocated and
+19.42 GiB observed volume reclamation. All 51 saved labels' manifests and executable
+hashes were reverified afterward. Seven binaries retain explicitly reported missing
+debug inputs; their surviving dependencies remain protected. A second preview reused
+all 799 inspections with no misses, completed in 13.65 seconds and selected nothing.
+Protected files leave the soft budgets unmet; no wider reclamation is claimed.
+The old local hourly deletion hook was backed up and changed to invoke this shared
+owner with a zero-second lock wait, retaining its existing safe main-sync behavior.

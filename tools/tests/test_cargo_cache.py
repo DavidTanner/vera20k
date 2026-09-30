@@ -122,6 +122,112 @@ class CacheTests(unittest.TestCase):
         self.assertTrue(dependency.exists())
         self.assertFalse(orphan.exists())
 
+    def test_missing_historical_debug_input_does_not_block_unrelated_orphan(self):
+        binary, manifest = self.label()
+        present = self.write('debug/deps/keep.rcgu.o')
+        missing = self.target / 'debug/deps/already-gone.rcgu.o'
+        orphan = self.write('debug/deps/orphan.rcgu.o')
+        receipt = self.trim(dependencies=lambda _: {present, missing})
+        self.assertEqual(receipt['state'], 'trimmed', receipt)
+        self.assertFalse(orphan.exists())
+        self.assertTrue(present.exists())
+        self.assertTrue(binary.exists())
+        self.assertEqual(receipt['degraded_debug_inputs'],
+                         {str(binary): [str(missing)]})
+
+    def test_dependency_cache_reuses_inspection_but_rechecks_missing_inputs(self):
+        binary, _ = self.label()
+        missing = self.target / 'debug/deps/restored.rcgu.o'
+        with patch.object(cache, '_dependencies', return_value={missing}) as inspect:
+            first = cache.trim(self.root, cache.CachePolicy(0, 0, 1 << 60), 0, dry_run=True)
+            self.assertEqual(first['state'], 'planned', first)
+            missing.parent.mkdir(parents=True, exist_ok=True)
+            missing.write_bytes(b'restored object')
+            second = cache.trim(self.root, cache.CachePolicy(0, 0, 0), 0, dry_run=True)
+        self.assertEqual(inspect.call_count, 1)
+        self.assertEqual(second['degraded_debug_inputs'], {})
+        self.assertNotIn(str(missing), second['selected_files'])
+        self.assertEqual(second['inspection_cache']['hits'], 1)
+
+    def test_missing_dependency_appearing_during_inspection_blocks_deletion(self):
+        binary, _ = self.label()
+        missing = self.target / 'debug/deps/restored.rcgu.o'
+        orphan = self.write('debug/deps/orphan.rcgu.o')
+        original = cache._dependency_identity
+        calls = 0
+        def raced(path):
+            nonlocal calls
+            result = original(path)
+            if path == missing:
+                calls += 1
+                if calls == 1:
+                    missing.write_bytes(b'restored')
+            return result
+        with patch.object(cache, '_dependency_identity', side_effect=raced):
+            result = self.trim(dependencies=lambda _: {missing})
+        self.assert_blocked(result, orphan)
+
+    @unittest.skipIf(os.name == 'nt', 'symlink privilege varies on Windows')
+    def test_missing_path_beneath_dangling_symlink_is_not_accepted(self):
+        self.label()
+        orphan = self.write('debug/deps/orphan.rcgu.o')
+        link = self.root / 'linked'
+        link.symlink_to(self.root / 'gone', target_is_directory=True)
+        result = self.trim(dependencies=lambda _: {link / 'missing.o'})
+        self.assert_blocked(result, orphan)
+
+    def test_cached_failure_retries_after_binary_or_inspector_changes(self):
+        binary, manifest = self.label()
+        orphan = self.write('debug/deps/orphan.rcgu.o')
+        with patch.object(cache, '_dependencies', side_effect=ValueError('unsupported fixture')) as inspect:
+            first = cache.trim(self.root, cache.CachePolicy(0, 0, 0), 0)
+            second = cache.trim(self.root, cache.CachePolicy(0, 0, 0), 0)
+        self.assertEqual(inspect.call_count, 1)
+        self.assert_blocked(first, orphan)
+        self.assert_blocked(second, orphan)
+        self.assertEqual(second['inspection_cache']['failure_hits'], 1)
+        with patch.object(cache, '_inspection_revision', return_value='updated-inspector'):
+            third = self.trim()
+        self.assertEqual(third['state'], 'trimmed', third)
+        self.assertFalse(orphan.exists())
+
+    def test_cached_label_identity_does_not_hide_replaced_binary(self):
+        binary, manifest = self.label()
+        self.write('debug/deps/orphan.rcgu.o')
+        first = self.trim(dry_run=True)
+        self.assertEqual(first['state'], 'planned', first)
+        previous = binary.stat()
+        binary.write_bytes(b'changed bytes with restored timestamp')
+        os.utime(binary, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+        result = self.trim(dry_run=True)
+        self.assert_blocked(result, binary)
+        self.assertIn('SHA-256 mismatch', result['errors'][0])
+
+    def test_unknown_inode_inspections_are_never_reused(self):
+        binary, _ = self.label()
+        self.write('debug/deps/orphan.rcgu.o')
+        original = cache._identity
+        def unidentified(path):
+            identity = original(path)
+            return (identity[0], 0, *identity[2:]) if path == binary else identity
+        with patch.object(cache, '_identity', side_effect=unidentified), \
+             patch.object(cache, '_dependencies', return_value=set()) as inspect:
+            for _ in range(2):
+                receipt = cache.trim(self.root, cache.CachePolicy(0, 0, 0), 0, dry_run=True)
+                self.assertEqual(receipt['state'], 'planned', receipt)
+        self.assertEqual(inspect.call_count, 2)
+
+    def test_unchanged_failed_inspection_retries_after_backoff(self):
+        self.label()
+        self.write('debug/deps/orphan.rcgu.o')
+        with patch.object(cache.time, 'time', return_value=1000), \
+             patch.object(cache, '_dependencies', side_effect=ValueError('temporary failure')):
+            first = cache.trim(self.root, cache.CachePolicy(0, 0, 0), 0, dry_run=True)
+        self.assert_blocked(first)
+        with patch.object(cache.time, 'time', return_value=1301):
+            result = self.trim(dry_run=True)
+        self.assertEqual(result['state'], 'planned', result)
+
     def test_total_budget_stops_after_oldest_sufficient_object(self):
         oldest = self.write('release/deps/old.rcgu.o', age=10)
         newest = self.write('release/deps/new.rcgu.o', age=20)
@@ -570,9 +676,22 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(receipt['selected_files'], [str(orphan)])
         self.assertTrue(orphan.exists())
 
+    def test_cli_retirement_uses_shared_owner_with_exact_labels(self):
+        with patch('tools._cargo_labels.retire', return_value={'errors': []}) as retire, \
+             redirect_stdout(io.StringIO()):
+            result = cargo_run.main(['--retire-label', 'old-one', '--retire-label',
+                                     'old-two', '--dry-run', '--wait-seconds', '0'])
+        self.assertEqual(result, 0)
+        self.assertEqual(retire.call_args.args[1:], (['old-one', 'old-two'], 0))
+        self.assertTrue(retire.call_args.kwargs['dry_run'])
+
     def test_cli_rejects_ambiguous_retention_and_build_or_resolve_requests(self):
         for arguments in (
             ['--dry-run', '--', 'build'],
+            ['--retire-label', 'old', '--', 'build'],
+            ['--retire-label', 'old', '--cache-gib', '0'],
+            ['--retire-label', 'old', '--trim-cache'],
+            ['--retire-label', 'old', '--profile', 'debug'],
             ['--trim-cache', '--label', 'validation'],
             ['--trim-cache', '--', 'build'],
             ['--resolve', 'game', '--profile', 'release', '--cache-gib', '0'],
@@ -586,57 +705,6 @@ class CacheTests(unittest.TestCase):
 
 
 class DebugDependencyTests(unittest.TestCase):
-    def parse(self, text):
-        return cache._debug_map(io.StringIO(text))
-
-    def test_actual_llvm_yaml_subset_includes_quoted_objects_and_archive_container(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve()
-            object_path = root / 'objects' / 'has space.rcgu.o'
-            archive_path = root / 'libs' / 'has (parenthesis).rlib'
-            def quoted(path):
-                return str(path).replace("'", "''")
-            text = f"""---
-triple:          'arm64-apple-darwin'
-binary-path:     '{quoted(root / 'game')}'
-objects:
-  - filename:        '{quoted(object_path)}'
-    timestamp:       1730301197
-    symbols:
-      - {{ sym: '_main', objAddr: 0x0, binAddr: 0x100003FB0, size: 0x20 }}
-  - filename:        '{quoted(archive_path)}(member.rcgu.o)'
-    timestamp:       1730301198
-    symbols:         []
-...
-"""
-            self.assertEqual(self.parse(text), {object_path, archive_path})
-
-    def test_multiple_architectures_and_empty_object_document(self):
-        text = "---\ntriple: 'arm64-apple-darwin'\nbinary-path: '/tmp/game'\nobjects: []\n...\n"
-        self.assertEqual(self.parse(text + text.replace('arm64', 'x86_64')), set())
-
-    def test_llvm_empty_debug_map_may_omit_objects_key(self):
-        # Actual dsymutil --dump-debug-map output on a binary without linker
-        # object references omits objects rather than serializing an empty list.
-        self.assertEqual(self.parse(
-            "---\ntriple: 'arm64-apple-darwin'\nbinary-path: '/tmp/game'\n...\n"), set())
-
-    def test_unrecognized_relative_truncated_or_malformed_map_is_not_accepted(self):
-        good = "---\ntriple: 'arm64-apple-darwin'\nbinary-path: '/tmp/game'\nobjects: []\n...\n"
-        bad_maps = [
-            '', good[:-4], 'warning: missing object\n' + good,
-            good.replace("binary-path: '/tmp/game'", "binary-path: '/tmp/game'\ntriple: duplicate"),
-            good.replace('objects: []', 'unknown: []'),
-            good.replace('objects: []', "objects:\n  - filename: 'relative.rcgu.o'\n    symbols: []"),
-            good.replace('objects: []', "objects:\n  - filename: '/tmp/../objects/x.o'\n    symbols: []"),
-            good.replace('objects: []', "objects:\n  - filename: '/tmp/x.o'"),
-            good.replace('objects: []', "objects:\n  - filename: '/tmp/lib.rlib()'\n    symbols: []"),
-            good.replace('objects: []', "objects:\n  - filename: '/tmp/x.o'\n    symbols:\n      - { sym: '_main' }"),
-        ]
-        for text in bad_maps:
-            with self.subTest(text=text), self.assertRaises(ValueError):
-                self.parse(text)
-
     def test_inspector_zero_status_with_warning_still_fails_closed(self):
         good = "---\ntriple: 'arm64-apple-darwin'\nbinary-path: '/tmp/game'\nobjects: []\n...\n"
         for status, diagnostic in ((0, 'warning: missing object\n'), (1, ''), (0, '')):
@@ -651,9 +719,9 @@ objects:
                  patch.object(cache.subprocess, 'Popen', side_effect=start):
                 if status or diagnostic:
                     with self.assertRaisesRegex(ValueError, 'inspection failed'):
-                        cache._stream(['inspector'], cache._debug_map)
+                        cache._stream(['inspector'], lambda lines: set(lines))
                 else:
-                    self.assertEqual(cache._stream(['inspector'], cache._debug_map), set())
+                    self.assertEqual(cache._stream(['inspector'], lambda lines: set(lines)), set(good.splitlines(keepends=True)))
 
     def test_non_native_or_pe_format_blocks_cleanup_instead_of_guessing_dependencies(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -36,9 +36,13 @@ class NativeCacheRetentionTests(unittest.TestCase):
                               '__attribute__((noinline)) int required_answer(void) { return 42; }\n'
                               'int main(void) { printf("%d\\n", required_answer()); return 0; }\n')
             needed, orphan = deps / 'needed.rcgu.o', deps / 'orphan.rcgu.o'
+            extra_source = root / 'extra.c'
+            extra_source.write_text('int other_answer(void) { return 7; }\n')
+            extra = deps / 'extra.rcgu.o'
             binary = deps / 'validation-test'
             subprocess.run(['clang', '-g', '-c', str(source), '-o', str(needed)], check=True)
-            subprocess.run(['clang', '-g', str(needed), '-o', str(binary)], check=True)
+            subprocess.run(['clang', '-g', '-c', str(extra_source), '-o', str(extra)], check=True)
+            subprocess.run(['clang', '-g', str(needed), str(extra), '-o', str(binary)], check=True)
             shutil.copy2(needed, orphan)
             label = store / 'artifacts/native-test'
             preserved = label / '0/validation-test'
@@ -77,10 +81,24 @@ class NativeCacheRetentionTests(unittest.TestCase):
                 dwarf = subprocess.check_output(['xcrun', 'dwarfdump', '--debug-info', str(dsym)], text=True)
                 self.assertIn('required_answer', dwarf)
                 self.assertIn('fixture.c', dwarf)
+            # A historical missing object must not erase surviving protection.
+            # The executable retains both references after one input disappears.
+            degraded = None
+            if sys.platform == 'darwin':
+                extra.unlink()
+                shutil.copy2(needed, orphan)
+                degraded = trim(root, policy, 0)
+                self.assertEqual(degraded['state'], 'trimmed', degraded)
+                self.assertEqual(degraded['degraded_debug_inputs'][str(preserved)], [str(extra)])
+                self.assertFalse(orphan.exists())
+                self.assertEqual(_dependencies(preserved), references)
+                self.assertEqual(hashlib.sha256(needed.read_bytes()).hexdigest(), before[str(needed)])
+                self.assertEqual(hashlib.sha256(preserved.read_bytes()).hexdigest(), before[str(preserved)])
+                self.assertEqual(subprocess.check_output([str(preserved)], text=True), '42\n')
             print(json.dumps({'native_cache_validation': {
                 'platform': sys.platform, 'clang': subprocess.check_output(['clang', '--version'], text=True),
                 'before_sha256': before, 'required_debug_inputs': sorted(map(str, references)),
-                'dry_run': dry, 'apply': receipt,
+                'dry_run': dry, 'apply': receipt, 'missing_object_apply': degraded,
                 'execution_after': '42', 'debug_dependency_recheck': 'passed'}}, indent=2))
 
 
