@@ -231,6 +231,50 @@ fn install_world(
     }
 }
 
+/// Give the terrain the blocking a synthetic PathGrid claims. The Unit +1AC
+/// that Find_Path's search calls (`0x00429F54`) reads the Cell's land row
+/// (`0x0073FAB5`), not a PathGrid, so a cell the grid blocks must be rock:
+/// retail [Rock] reads 0% for every SpeedType. Building cells keep their
+/// land; their occupant answers for them.
+fn rock_where_grid_blocks(sim: &mut Simulation, grid: &PathGrid) {
+    let rock = SpeedCostProfile {
+        foot: Some(0),
+        track: Some(0),
+        wheel: Some(0),
+        float: Some(0),
+        amphibious: Some(0),
+        float_beach: Some(0),
+        hover: Some(0),
+    };
+    for ry in 0..GRID_SIZE {
+        for rx in 0..GRID_SIZE {
+            if grid.is_walkable(rx, ry)
+                || sim
+                    .substrate
+                    .occupancy
+                    .first_building_on_layer(rx, ry, MovementLayer::Ground)
+                    .is_some()
+            {
+                continue;
+            }
+            let cell = sim
+                .resolved_terrain
+                .as_mut()
+                .and_then(|terrain| terrain.cell_mut(rx, ry))
+                .expect("staged cell");
+            cell.land_type = LandType::Rock.as_index();
+            cell.yr_cell_land_type = LandType::Rock.as_index();
+            cell.terrain_class = TerrainClass::Rock;
+            cell.speed_costs = rock;
+            cell.zone_type = zone_class::IMPASSABLE;
+            cell.base_land_type = LandType::Rock.as_index();
+            cell.base_yr_cell_land_type = LandType::Rock.as_index();
+            cell.base_terrain_class = TerrainClass::Rock;
+            cell.base_speed_costs = rock;
+        }
+    }
+}
+
 fn spawn_stock_miner(
     sim: &mut Simulation,
     oracle: &OutboundContractOracle,
@@ -836,6 +880,7 @@ fn gsi_04_07_placement_miner_return_threads_live_wall_neighbor_authority() {
         assert!(grid.is_walkable(staging.0, staging.1));
         install_world(&mut sim, &oracle, &grid, &[], true);
         let refinery_id = spawn_stock_refinery(&mut sim, &oracle, refinery_anchor);
+        rock_where_grid_blocks(&mut sim, &grid);
         let miner_id = spawn_stock_miner(&mut sim, &oracle, "HARV", MinerKind::War);
         arm_full_ore_return(&mut sim, miner_id, &config);
 
@@ -1137,6 +1182,7 @@ fn production_cmin_unreachable_outbound_drive_returns_to_teleport() {
     grid.set_blocked(START.0, START.1, false);
     grid.set_blocked(target.0, target.1, false);
     install_world(&mut sim, &oracle, &grid, &[target], true);
+    rock_where_grid_blocks(&mut sim, &grid);
     let entity_id = spawn_stock_miner(&mut sim, &oracle, "CMIN", MinerKind::Chrono);
     spawn_inert_dock_instance(&mut sim);
     arm_search(&mut sim, entity_id);
