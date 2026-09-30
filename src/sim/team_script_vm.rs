@@ -886,6 +886,29 @@ impl TeamScriptVm {
         Some((team_id, is_base_defense))
     }
 
+    /// `0x006EC300`'s exits before its waypoint read: `member`'s team has
+    /// formed (`+0x7F`), its script cursor names an action (`0x006915D0`,
+    /// unsigned `cursor < count`) and that action is 3. Only then does the
+    /// original read the action's waypoint and ask whether it lies outside
+    /// the playfield (mode 1). VERA has no waypoint table in the
+    /// simulation, so callers must treat `true` as an unported read.
+    pub(crate) fn member_step_reads_waypoint(&self, member: u64) -> bool {
+        let Some(team) = self
+            .member_team
+            .get(&member)
+            .and_then(|id| self.teams.get(id))
+        else {
+            return false;
+        };
+        team.formed()
+            && self.script(team.script_id()).is_some_and(|script| {
+                script
+                    .actions
+                    .get(team.cursor() as u32 as usize)
+                    .is_some_and(|action| action.action_id == 3)
+            })
+    }
+
     /// `TechnoClass::Fire @ 0x006FF7A3..0x006FF7E9`: `entity_id` remembers
     /// its team to rejoin (`+0x434`); outside a team it keeps the one it has.
     pub(crate) fn remember_team_to_rejoin(&mut self, entity_id: u64) {
@@ -1349,6 +1372,33 @@ mod tests {
             action_id,
             argument,
         }
+    }
+
+    /// `0x006EC300` reaches its waypoint read only for a formed team
+    /// (`+0x7F`) whose cursor names action 3 (`0x006915D0`, unsigned).
+    #[test]
+    fn member_step_reads_waypoint_follows_the_original_exits() {
+        let mut vm = TeamScriptVm::default();
+        let script = InternedId::from_index(7);
+        vm.register_script(TeamScriptDefinition {
+            id: script,
+            source: TeamAiDefinitionSource::FixedAimd,
+            actions: vec![action(3, 0), action(2, 0)],
+        });
+        let owner = InternedId::from_index(1);
+        let team = vm.create_team(owner, script, vec![50], 0);
+        assert!(vm.member_step_reads_waypoint(50));
+        assert!(!vm.member_step_reads_waypoint(51), "not a team member");
+        vm.teams.get_mut(&team).unwrap().formed = false;
+        assert!(!vm.member_step_reads_waypoint(50), "a forming team exits");
+        vm.teams.get_mut(&team).unwrap().formed = true;
+        vm.teams.get_mut(&team).unwrap().cursor = 1;
+        assert!(!vm.member_step_reads_waypoint(50), "action 2 exits");
+        vm.teams.get_mut(&team).unwrap().cursor = -1;
+        assert!(
+            !vm.member_step_reads_waypoint(50),
+            "a negative cursor is a huge unsigned index"
+        );
     }
 
     fn state_hash_at(vm: &TeamScriptVm, current_frame: i32) -> u64 {

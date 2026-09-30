@@ -1065,9 +1065,10 @@ pub(super) fn process_cell_crossings(
                         LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk
                     )
                 }) {
-                    super::ground_pose::commit_ground_height(
+                    super::ground_pose::set_height(
                         position,
                         projected_on_bridge_state,
+                        0,
                         resolved_terrain,
                         path_grid,
                     );
@@ -1219,9 +1220,10 @@ pub(super) fn process_cell_crossings(
                         LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk
                     )
                 }) {
-                    super::ground_pose::commit_ground_height(
+                    super::ground_pose::set_height(
                         position,
                         projected_on_bridge_state,
+                        0,
                         resolved_terrain,
                         path_grid,
                     );
@@ -1303,7 +1305,7 @@ pub(super) fn process_cell_crossings(
                     // structural deck cell whose permission is clear — a damaged span, or
                     // one carrying a terrain object — reads as ordinary terrain here. A
                     // mover on the deck now carries `ground + 4` (the native height model,
-                    // `FootClass::Set_Height_On_Bridge` 0x005F5FA0), so against that cell's
+                    // `ObjectClass::SetHeight` 0x005F5FA0), so against that cell's
                     // terrain level the difference is exactly the deck delta and the mover
                     // is stopped mid-span as if it had walked off a cliff. Reading the
                     // structural flag as well keeps the deck a deck regardless of the
@@ -1326,9 +1328,10 @@ pub(super) fn process_cell_crossings(
                                 LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk
                             )
                         }) {
-                            super::ground_pose::commit_ground_height(
+                            super::ground_pose::set_height(
                                 position,
                                 projected_on_bridge_state,
+                                0,
                                 resolved_terrain,
                                 path_grid,
                             );
@@ -1449,9 +1452,10 @@ pub(super) fn process_cell_crossings(
             .as_ref()
             .is_some_and(|loco| loco.kind == LocomotorKind::Walk)
         {
-            super::ground_pose::commit_ground_height(
+            super::ground_pose::set_height(
                 position,
                 projected_on_bridge_state,
+                0,
                 resolved_terrain,
                 path_grid,
             );

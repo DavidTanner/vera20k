@@ -60,12 +60,8 @@ pub(super) fn advance(
     if proposed[0] / 256 == i32::from(entity.position.rx)
         && proposed[1] / 256 == i32::from(entity.position.ry)
     {
-        super::ground_pose::commit_ground_height(
-            &mut entity.position,
-            entity.on_bridge,
-            terrain,
-            grid,
-        );
+        // Native clears +74 around this SetCoords/SetHeight pair (75C1FB..75C227).
+        super::ground_pose::set_height(&mut entity.position, entity.on_bridge, 0, terrain, grid);
         //75C22F follows the same-cell SetCoords/SetHeight callbacks. A
         //boundary step retains the byte until its world placement completes.
         entity.navigation.path_runtime.clear_scold_latch();

@@ -1654,12 +1654,15 @@ impl ProjectileStore {
 
             let mut impact = snap_impact.unwrap_or(candidate);
             if impact_flag {
-                // `0x00467BF0..0x00467C06`: the getter and, when negative,
-                // setter both query the committed coordinate before the fuse.
-                // The setter does not rewrite the stack coordinate used below.
+                // `0x00467BF0..0x00467C06`: GetHeight and, when negative,
+                // SetHeight(0) both query the committed coordinate before the
+                // fuse, and both count the deck for an OnBridge bullet. The
+                // setter does not rewrite the stack coordinate used below.
+                use crate::sim::movement::ground_pose::{height_at_z, z_at_height};
                 let floor = projectile_ground_z(terrain, shared_cell_dummy, impact);
-                if impact.z.wrapping_sub(floor) < 0 {
-                    impact.z = projectile_ground_z(terrain, shared_cell_dummy, impact);
+                if height_at_z(impact.z, floor, projectile.on_bridge) < 0 {
+                    let floor = projectile_ground_z(terrain, shared_cell_dummy, impact);
+                    impact.z = z_at_height(floor, 0, projectile.on_bridge);
                 }
             }
 
@@ -2375,6 +2378,32 @@ mod tests {
             target_expiry: TargetExpiryPolicy::DetonateAtLastKnown,
             collision: ProjectileCollisionPolicy::NONE,
         }
+    }
+
+    /// Bullet AI's admitted-impact clamp (`0x00467BF0..0x00467C06`) is
+    /// GetHeight below 0, then SetHeight(0), and both count the deck for an
+    /// OnBridge bullet (`0x005F5F40`, `0x005F5FA0`). FireAt copies an Inviso
+    /// shot's OnBridge from its target (`0x006FF08B`); an impact below the
+    /// deck lands on it.
+    #[test]
+    fn an_on_bridge_impact_below_the_deck_is_raised_to_the_deck() {
+        let mut store = ProjectileStore::new();
+        let mut shot = spawn(ProjectileTarget::Cell { rx: 4, ry: 0 });
+        shot.origin = ProjectileCoord::new(0, 0, 100);
+        let id = store.spawn(1, shot);
+        store.projectiles.get_mut(&id).unwrap().on_bridge = true;
+        let result = store.advance(
+            0,
+            &BTreeMap::new(),
+            None,
+            &SharedCellDummy::fresh(),
+            |_, coord| Some(ProjectileCollisionResponse::TargetZClamp(coord)),
+        );
+        assert_eq!(result.detonations.len(), 1);
+        assert_eq!(
+            result.detonations[0].impact.z,
+            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+        );
     }
 
     #[test]

@@ -768,19 +768,11 @@ fn live_surface_and_coordinate_setter_match_all_native_ramp_vectors() {
         position.sub_y = SimFixed::from_num(xy[1]);
         position.exact_z_leptons = Some(coord[2].as_i64().unwrap() as i32);
         let on_bridge = case["on_bridge"].as_bool().unwrap();
-        assert!(ground_pose::commit_ground_height(
-            &mut position,
-            on_bridge,
-            Some(&terrain),
-            None
-        ));
-        // Production movement requests height zero. The native oracle also
-        // probes arbitrary requested heights; undo only that explicit add.
         let requested = case["requested_height"].as_i64().unwrap() as i32;
-        let native_raw = case["native"]["set_height_raw_z"].as_i64().unwrap() as i32;
+        ground_pose::set_height(&mut position, on_bridge, requested, Some(&terrain), None);
         assert_eq!(
             position.exact_z_leptons,
-            Some(native_raw.wrapping_sub(requested)),
+            Some(case["native"]["set_height_raw_z"].as_i64().unwrap() as i32),
             "{name}"
         );
         assert_eq!(ground_pose::position_world_xy(&position), xy, "{name}");
@@ -799,7 +791,7 @@ fn live_surface_and_coordinate_setter_match_all_native_ramp_vectors() {
 }
 
 #[test]
-fn idle_drive_keeps_supplied_raw_height_and_headless_setter_preserves_it() {
+fn idle_drive_keeps_supplied_raw_height() {
     let terrain = terrain();
     let grid = PathGrid::from_resolved_terrain(&terrain);
     let mut sim = Simulation::new();
@@ -810,12 +802,40 @@ fn idle_drive_keeps_supplied_raw_height_and_headless_setter_preserves_it() {
     entity.position.exact_z_leptons = Some(-347);
     insert(&mut sim, entity);
     tick(&mut sim, &terrain, &grid, 0);
-    let position = &mut sim.substrate.entities.get_mut(1).unwrap().position;
+    let position = &sim.substrate.entities.get(1).unwrap().position;
     assert_eq!(position.exact_z_leptons, Some(-347));
-    assert!(!ground_pose::commit_ground_height(
-        position, false, None, None
-    ));
-    assert_eq!(position.exact_z_leptons, Some(-347));
+}
+
+/// SetHeight (`0x005F5FA0`) writes the ground under the Location plus the
+/// height, plus the deck OnBridge. The ground comes from resolved terrain,
+/// else a PathGrid, else the Dummy cell's flat level 0. An unsupported slope
+/// leaves Z alone.
+#[test]
+fn set_height_samples_terrain_then_path_grid_then_the_dummy_ground() {
+    use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
+    let mut terrain = terrain();
+    terrain.cell_mut(3, 3).unwrap().level = 2;
+    let grid = PathGrid::from_resolved_terrain(&terrain);
+    let mut position = GameEntity::test_default(1, "MOVER", "Americans", 3, 3).position;
+    position.z = 1;
+    ground_pose::set_height(&mut position, true, 10, Some(&terrain), None);
+    assert_eq!(
+        position.exact_z_leptons,
+        Some(208 + BRIDGE_DECK_HEIGHT_LEPTONS + 10)
+    );
+    ground_pose::set_height(&mut position, false, 10, None, Some(&grid));
+    assert_eq!(position.exact_z_leptons, Some(208 + 10));
+    ground_pose::set_height(&mut position, true, 10, None, None);
+    assert_eq!(
+        position.exact_z_leptons,
+        Some(BRIDGE_DECK_HEIGHT_LEPTONS + 10)
+    );
+    terrain.cell_mut(3, 3).unwrap().slope_type = 21;
+    ground_pose::set_height(&mut position, false, 0, Some(&terrain), None);
+    assert_eq!(
+        position.exact_z_leptons,
+        Some(BRIDGE_DECK_HEIGHT_LEPTONS + 10)
+    );
 }
 
 #[test]
