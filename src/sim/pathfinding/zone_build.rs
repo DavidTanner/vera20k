@@ -936,7 +936,6 @@ mod tests {
         BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (4, 0),
-            group_id: 1,
             active: true,
             bridge_kind: kind,
         }
@@ -948,30 +947,28 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (2, 0),
                 endpoint_b: (2, 4),
-                group_id: 1,
                 active: false,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (1, 0),
                 endpoint_b: (1, 4),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
         ];
 
         assert_eq!(
-            find_high_bridge_record(&records, 0, (1, 2), 1).map(|record| record.group_id),
-            Some(1)
+            find_high_bridge_record(&records, 0, (1, 2), 1).map(|record| record.endpoint_a),
+            Some((2, 0))
         );
         assert_eq!(
-            find_high_bridge_record(&records, 0, (1, 2), 0).map(|record| record.group_id),
-            Some(2)
+            find_high_bridge_record(&records, 0, (1, 2), 0).map(|record| record.endpoint_a),
+            Some((1, 0))
         );
         assert_eq!(
-            find_high_bridge_record(&records, 1, (1, 2), 1).map(|record| record.group_id),
-            Some(2)
+            find_high_bridge_record(&records, 1, (1, 2), 1).map(|record| record.endpoint_a),
+            Some((1, 0))
         );
         assert!(find_high_bridge_record(&records, 2, (1, 2), 1).is_none());
         assert!(find_high_bridge_record(&records, 0, (1, 5), 1).is_none());
@@ -983,14 +980,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (2, 4),
                 endpoint_b: (2, 0),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (4, 2),
                 endpoint_b: (0, 2),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1017,7 +1012,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (4, 0),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1056,14 +1050,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (0, 0),
                 endpoint_b: (3, 0),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (6, 0),
                 endpoint_b: (8, 0),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::Low,
             },
@@ -1105,7 +1097,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (5, 0),
-            group_id: 1,
             active: false,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1137,7 +1128,6 @@ mod tests {
         let vertical_record = [BridgeEndpointRecord {
             endpoint_a: (3, 1),
             endpoint_b: (3, 5),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1156,7 +1146,6 @@ mod tests {
         let horizontal_record = [BridgeEndpointRecord {
             endpoint_a: (1, 3),
             endpoint_b: (5, 3),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1177,7 +1166,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (3, 1),
             endpoint_b: (3, 4),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1202,7 +1190,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (0, 1),
             endpoint_b: (5, 1),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1231,7 +1218,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (1, 2),
             endpoint_b: (6, 2),
-            group_id: 1,
             active: false,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1306,7 +1292,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (2, 2),
             endpoint_b: (4, 2),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1341,21 +1326,18 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (2, 2),
                 endpoint_b: (6, 2),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (8, 2),
                 endpoint_b: (11, 2),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (2, 4),
                 endpoint_b: (6, 4),
-                group_id: 3,
                 active: false,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1410,7 +1392,6 @@ mod tests {
         let records = [BridgeEndpointRecord {
             endpoint_a: (2, 2),
             endpoint_b: (4, 2),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }];
@@ -1444,14 +1425,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (0, 0),
                 endpoint_b: (2, 1),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (1, 1),
                 endpoint_b: (3, 3),
-                group_id: 2,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1500,14 +1479,12 @@ mod tests {
             BridgeEndpointRecord {
                 endpoint_a: (1, 1),
                 endpoint_b: (3, 1),
-                group_id: 1,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             },
             BridgeEndpointRecord {
                 endpoint_a: (0, 1),
                 endpoint_b: (4, 1),
-                group_id: 2,
                 active: false,
                 bridge_kind: BridgeRecordKind::High,
             },
@@ -1807,7 +1784,6 @@ mod tests {
             let record = BridgeEndpointRecord {
                 endpoint_a: (0, 0),
                 endpoint_b: (3, 0),
-                group_id: 1,
                 active: true,
                 bridge_kind: kind,
             };

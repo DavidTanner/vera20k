@@ -14,18 +14,22 @@ pub(crate) enum Family {
 
 pub(crate) type Rect = [i32; 4];
 
-pub(crate) trait RepairHost {
+/// The cell reads of [`hut_anchor`].
+pub(crate) trait HutCells {
     type Cell: Copy;
     type Error;
-    fn tiles(&self, family: Family) -> HighBridgeRimTiles;
     fn lookup(&mut self, requested: CellCoord) -> Self::Cell;
     fn coord(&self, cell: Self::Cell) -> CellCoord;
     fn flags(&self, cell: Self::Cell) -> u32;
+    fn anchor(&self, cell: Self::Cell) -> Result<Self::Cell, Self::Error>;
+}
+
+pub(crate) trait RepairHost: HutCells {
+    fn tiles(&self, family: Family) -> HighBridgeRimTiles;
     fn tile(&self, cell: Self::Cell) -> i32;
     fn subtile(&self, cell: Self::Cell) -> u8;
     fn level(&self, cell: Self::Cell) -> u8;
     fn write_level(&mut self, cell: Self::Cell, level: u8) -> Result<(), Self::Error>;
-    fn anchor(&self, cell: Self::Cell) -> Result<Self::Cell, Self::Error>;
     fn overlay(&self, cell: Self::Cell) -> i32;
     fn search_in_bounds(&self, requested: CellCoord, family: Family) -> bool;
     /// Native allocation test does not update the shared dummy on a miss.
@@ -50,10 +54,7 @@ pub(crate) trait RepairHost {
     fn dirty_screen(&mut self, rect: Option<Rect>);
 }
 
-fn step(p: CellCoord, direction: u8) -> CellCoord {
-    let (x, y) = crate::util::direction::DIRECTION_DELTAS[usize::from(direction & 7)];
-    (p.0.wrapping_add(x as i16), p.1.wrapping_add(y as i16))
-}
+use super::rim::step;
 
 fn relative<H: RepairHost>(host: &H, cell: H::Cell, keys: HighBridgeRimTiles) -> i32 {
     host.tile(cell).wrapping_sub(keys.base).wrapping_add(1)
@@ -180,27 +181,20 @@ pub(crate) fn restore_span<H: RepairHost>(
     Ok(rect)
 }
 
-/// Family entry's overlay scan is x-major; engineer's earlier family scan is
-/// y-major. Keeping both passes distinct is observable with competing strips.
-pub(crate) fn repair<H: RepairHost>(
+/// The starter and anchor search both bridge-repair-hut tails run once their
+/// overlay scan finds nothing: the repair here, and the death fallback of
+/// `0x00574000` / `0x00574C20` (`0x005740D8..0x00574362`). The starter is the
+/// input cell, else the first cell out to three steps in directions 0..7
+/// whose flags carry 0x100 or 0x400. A 0x100 starter anchors on itself when
+/// it also has 0x80, else on its +0x2C anchor. A pure 0x400 starter walks in
+/// direction 4 (0x800) or 2 over at most three more 0x400 cells; the anchor
+/// lies two steps back from the first cell without 0x400. Returns the anchor
+/// and the walk direction, 6 for a 0x800 starter and 0 otherwise; `None`
+/// where native returns (no starter, or a fourth 0x400 cell, `0x005742FE`).
+pub(crate) fn hut_anchor<H: HutCells>(
     host: &mut H,
     input: CellCoord,
-    family: Family,
-) -> Result<(), H::Error> {
-    for x in -2..3i16 {
-        for y in -2..3i16 {
-            let requested = (input.0.wrapping_add(x), input.1.wrapping_add(y));
-            let cell = host.lookup(requested);
-            let overlay = host.overlay(cell);
-            let matches = match family {
-                Family::High => (205..=232).contains(&overlay),
-                Family::Low => (74..=101).contains(&overlay),
-            };
-            if matches {
-                return host.ordinary_repair(requested, family);
-            }
-        }
-    }
+) -> Result<Option<(CellCoord, u8)>, H::Error> {
     let mut selected = host.lookup(input);
     if host.flags(selected) & 0x500 == 0 {
         'rays: for direction in 0..8 {
@@ -216,9 +210,9 @@ pub(crate) fn repair<H: RepairHost>(
     }
     let flags = host.flags(selected);
     if flags & 0x500 == 0 {
-        return Ok(());
+        return Ok(None);
     }
-    let mut requested = if flags & 0x100 == 0 {
+    let anchor = if flags & 0x100 == 0 {
         let forward = if flags & 0x800 == 0 { 2 } else { 4 };
         let mut point = host.coord(selected);
         let mut walked = 0;
@@ -230,7 +224,7 @@ pub(crate) fn repair<H: RepairHost>(
             }
             walked += 1;
             if walked > 3 {
-                return Ok(());
+                return Ok(None);
             }
         }
         step(
@@ -242,10 +236,33 @@ pub(crate) fn repair<H: RepairHost>(
     } else {
         host.coord(selected)
     };
-    let reverse = if host.flags(selected) & 0x800 == 0 {
+    let walk = if host.flags(selected) & 0x800 == 0 {
         0
     } else {
         6
+    };
+    Ok(Some((anchor, walk)))
+}
+
+/// Family entry's overlay scan is x-major; engineer's earlier family scan is
+/// y-major. Keeping both passes distinct is observable with competing strips.
+pub(crate) fn repair<H: RepairHost>(
+    host: &mut H,
+    input: CellCoord,
+    family: Family,
+) -> Result<(), H::Error> {
+    for x in -2..3i16 {
+        for y in -2..3i16 {
+            let requested = (input.0.wrapping_add(x), input.1.wrapping_add(y));
+            let cell = host.lookup(requested);
+            let overlay = host.overlay(cell);
+            if super::ordinary::member(overlay, family) {
+                return host.ordinary_repair(requested, family);
+            }
+        }
+    }
+    let Some((mut requested, reverse)) = hut_anchor(host, input)? else {
+        return Ok(());
     };
     let keys = host.tiles(family);
     while host.search_in_bounds(requested, family) {

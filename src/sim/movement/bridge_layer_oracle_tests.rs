@@ -176,7 +176,6 @@ pub(crate) fn zones(terrain: &ResolvedTerrainGrid, row: &Value) -> ZoneGrid {
         .map(|record| BridgeEndpointRecord {
             endpoint_a: pair(&record["a"]),
             endpoint_b: pair(&record["b"]),
-            group_id: 0,
             active: record["active"].as_bool().unwrap(),
             bridge_kind: BridgeRecordKind::High,
         })

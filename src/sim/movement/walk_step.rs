@@ -42,14 +42,10 @@ pub(super) fn advance(
         adjusted_speed,
         entity.foot_speed.applied_fraction,
     );
-    entity.foot_speed.cached_current_speed = speed;
     let speed = prone_crawls.map_or(speed, |crawls| {
         crate::sim::infantry::apply_prone_speed(SimFixed::from_num(speed), crawls).to_num::<i32>()
     });
     entity.navigation.path_runtime.path_blocked = false; //75BFD1; retain grace timer.
-    if let Some(target) = entity.movement_target.as_mut() {
-        target.current_speed = adjusted_speed;
-    }
     let current = super::ground_pose::position_world_xy(&entity.position);
     let desired = crate::util::direction_tables::facing16_from_delta(
         head.x.wrapping_sub(current[0]),

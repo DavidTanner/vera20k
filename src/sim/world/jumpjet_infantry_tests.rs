@@ -464,6 +464,9 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     let row = serde_json::json!({"doing": DO_READY, "fraction": 0.0, "height": 0,
         "owner": {"phase": 0, "moving": false}});
     let (mut sim, rules, _) = rocketeer_crash_fixture(&row);
+    // The crash fixture performs bare Reveal. A normal Unlimbo also selects
+    // Guard; mission -1 dispatches the native 450-frame stub, with no idle.
+    super::techno_ai::foot_unlimbo_idle_mode(&mut sim, 1, &rules);
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
     let mut fidgets = Vec::new();
     let mut playing: Option<i32> = None;

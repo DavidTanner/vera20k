@@ -112,18 +112,6 @@ impl AircraftAmmo {
             self.current = self.current.wrapping_sub(1);
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn hash_before_pending_release(&self, hasher: &mut impl std::hash::Hasher) {
-        use std::hash::Hash;
-        self.current.hash(hasher);
-        self.max.hash(hasher);
-        self.dock_phase.hash(hasher);
-        self.target_airfield.hash(hasher);
-        self.target_pad.hash(hasher);
-        self.reload_timer.hash(hasher);
-        self.rescan_cooldown.hash(hasher);
-    }
 }
 
 /// Docking lifecycle phases for aircraft returning to an airfield.

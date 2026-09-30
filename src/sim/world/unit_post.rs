@@ -42,11 +42,6 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 
-/// When true, Unit barrel facing is owned by the per-object path (combat
-/// Phase-2 read window + `apply_unit_facing`) and `tick_turret_rotation`
-/// skips Units.
-pub(crate) const L2_UNIT_POST_AUTHORITATIVE: bool = true;
-
 /// Apply the precomputed Unit Facing slot (the write half of the post-Foot
 /// Facing slot). `FacingClass::set` is pure in `(state, binary_frame)` and no
 /// system writes Unit facings between the combat Phase-2 read window and this

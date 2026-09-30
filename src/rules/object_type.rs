@@ -894,7 +894,10 @@ pub struct ObjectType {
     pub zfudge_column: i32,
     pub zfudge_tunnel: i32,
     pub zfudge_bridge: i32,
-    /// Prevents naval/large units from traversing under bridge structural cells.
+    /// `TechnoTypeClass+0xE16`. gamemd reads it only in the draw pipeline
+    /// (sprite Z fudge on bridge-edge cells); movement and
+    /// `UnitClass::Can_Enter_Cell` never read it
+    /// (TOO_BIG_TO_FIT_UNDER_BRIDGE_GHIDRA_REPORT.md).
     pub too_big_to_fit_under_bridge: bool,
     /// `Crashable=` (`TechnoTypeClass+0xD95`): a Unit killed in the air crashes
     /// instead of vanishing (`UnitClass::ReceiveDamage 0x00738457`), and only

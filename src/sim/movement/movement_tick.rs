@@ -118,7 +118,6 @@ pub(super) fn snapshot_mover(
         is_armed,
         warhead_wall,
         warhead_wood,
-        too_big_to_fit_under_bridge: e.too_big_to_fit_under_bridge,
         on_bridge: e.on_bridge,
         runtime_bridge_transition: e.runtime_bridge_transition,
         locomotor: e.locomotor.clone(),
@@ -337,7 +336,6 @@ fn handle_path_exhaustion(
                 mover_entity_blocks,
                 seg_zone_mz,
                 Some(snap.movement_zone),
-                snap.too_big_to_fit_under_bridge,
                 mover_entity_block_map,
                 // urgency=0: proactive segment repath, no block escalation.
                 // One crush authority for every search; see `CrushCapability::of`.
@@ -614,7 +612,6 @@ fn process_pending_drive_arrivals(
             occupied_blocks_ref,
             loco.movement_zone,
             movement_zone,
-            entity.too_big_to_fit_under_bridge,
             entity_block_map,
             // No `MoverSnapshot` on this path; see the constructor's note.
             super::MoverPathFacts {
@@ -696,7 +693,6 @@ fn handle_deferred_drive_selection_block(
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     mover_entity_block_map: Option<&crate::sim::pathfinding::LayeredEntityBlockMap>,
     occupancy: &OccupancyGrid,
-    rng: &mut SimRng,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     sim_tick: u64,
@@ -733,9 +729,7 @@ fn handle_deferred_drive_selection_block(
         entity_cost_grid,
         mover_entity_blocks,
         mover_entity_block_map,
-        snap.too_big_to_fit_under_bridge,
         mcfg,
-        rng,
         sim_tick,
         PATH_STUCK_INIT,
         super::MoverPathFacts::from_snapshot(snap, 0),
@@ -939,7 +933,6 @@ impl FootPathRequest {
             Some(&blocks.0),
             snap.movement_zone,
             Some(snap.movement_zone),
-            snap.too_big_to_fit_under_bridge,
             Some(&blocks.1),
             None,
             // One crush authority for every search; see `CrushCapability::of`.
@@ -1000,7 +993,7 @@ struct MovementPassEffects {
     stats: MovementTickStats,
     finished_entities: Vec<u64>,
     crush_kills: Vec<PendingCrushKill>,
-    already_scattered: BTreeSet<u64>,
+    scatters: super::scatter::ScatterRequests,
     native_track: Option<super::track_process::TrackInvocation>,
     walk_per_cell: Option<(u64, crate::sim::components::DriveCoord)>,
     walk_boundary: Option<(u64, crate::sim::components::DriveCoord)>,
@@ -1084,7 +1077,7 @@ fn advance_ordinary_mover(
         stats,
         finished_entities,
         crush_kills,
-        already_scattered,
+        scatters,
         native_track,
         walk_per_cell,
         walk_boundary,
@@ -1532,13 +1525,11 @@ fn advance_ordinary_mover(
                 raw_cell_occupation,
                 deferred_entry_skips,
                 alliances,
-                path_grid,
                 resolved_terrain,
-                rng,
                 stats,
                 finished_entities,
                 crush_kills,
-                already_scattered,
+                scatters,
                 sim_tick,
                 interner,
                 rules,
@@ -1638,7 +1629,9 @@ fn advance_ordinary_mover(
             // consumed above. Other ground locomotors have a unity modifier.
             let cell_speed_mod = SIM_ONE;
             if uses_drive_locomotor || uses_ship_locomotor {
-                // Speed was calculated once by the shared track owner.
+                // A Unit's Drive/Ship leaves through `prepare_native_track`
+                // below; its track step queries GetCurrentSpeed live and
+                // writes nothing here.
             } else if uses_hover_locomotor {
                 // Hover throttle (the hover locomotor's SpeedUpdate model, see
                 // sim/movement/hover.rs): a [0,1] fraction of base Speed ramped
@@ -1752,6 +1745,9 @@ fn advance_ordinary_mover(
                 // No ramping data — constant speed fallback.
                 target.current_speed = target.speed;
             }
+            // Drive/Ship never move by this value: a Unit's leaves through
+            // `prepare_native_track` below, and no step writes `current_speed`
+            // for another class's Drive/Ship (#689).
             let mut effective_speed: SimFixed = if uses_drive_locomotor || uses_ship_locomotor {
                 target.current_speed
             } else {
@@ -2142,7 +2138,6 @@ fn advance_ordinary_mover(
                 mover_entity_blocks,
                 mover_entity_block_map,
                 occupancy,
-                rng,
                 stats,
                 finished_entities,
                 sim_tick,
@@ -2208,13 +2203,11 @@ fn advance_ordinary_mover(
             raw_cell_occupation,
             deferred_entry_skips,
             alliances,
-            path_grid,
             resolved_terrain,
-            rng,
             stats,
             finished_entities,
             crush_kills,
-            already_scattered,
+            scatters,
             sim_tick,
             interner,
             rules,
@@ -2236,8 +2229,8 @@ fn advance_ordinary_mover(
         // centre, and restores after the deferred response where native sets
         // the enable before the next-step admission and any scatter it
         // triggers (no reader of the flag or plane sits in that window today:
-        // `scatter_blocker` picks from `OccupancyGrid` cell lists). The next
-        // translating frame clears it again.
+        // the Scatter calls the response queues run after this restore). The
+        // next translating frame clears it again.
         if let Some(entity) = entities.get_mut(entity_id)
             && entity.category == EntityCategory::Unit
             && !entity.foot_occupation_enabled
@@ -2593,6 +2586,7 @@ fn prepare_movement_pass(
     rules: Option<&crate::rules::ruleset::RuleSet>,
     stats: &mut MovementTickStats,
     block_index: &mut OwnerBlockIndex,
+    scatters: &mut super::scatter::ScatterRequests,
 ) -> Result<PreparedMovementPass, String> {
     let path_grid = ctx.path_grid;
     let resolved_terrain = ctx.resolved_terrain;
@@ -2631,6 +2625,7 @@ fn prepare_movement_pass(
                 interner,
                 rng,
                 native_frame,
+                scatters,
             ) {
                 tube_processed.insert(entity_id);
                 stats.movers_total = stats.movers_total.saturating_add(1);
@@ -2962,6 +2957,11 @@ impl PendingMovementPass {
         self.effects.walk_admission_request.take()
     }
 
+    /// The Scatter calls this pass's steps queued since the last take.
+    pub(crate) fn take_scatter_requests(&mut self) -> Vec<(u64, super::ScatterFlags)> {
+        self.effects.scatters.take()
+    }
+
     pub(crate) fn request_foot_path(&mut self, request: FootPathRequest) {
         debug_assert!(self.effects.foot_path_request.is_none());
         self.effects.foot_path_request = Some(request);
@@ -3254,6 +3254,7 @@ pub(crate) fn begin_movement_with_grids_scoped(
         blockage_path_delay_ticks,
     };
     let dt = native_movement_frame_fraction();
+    let mut scatters = super::scatter::ScatterRequests::default();
     let mut prepared = prepare_movement_pass(
         entities,
         entity_order,
@@ -3270,10 +3271,12 @@ pub(crate) fn begin_movement_with_grids_scoped(
         rules,
         &mut stats,
         block_index,
+        &mut scatters,
     )?;
 
     let mut effects = MovementPassEffects {
         stats,
+        scatters,
         ..Default::default()
     };
     for entity_id in std::mem::take(&mut prepared.movers) {

@@ -81,12 +81,19 @@ pub(super) struct LiveObjectPassOutcome {
 }
 
 #[derive(Default)]
-pub(super) struct GroundLocomotorOutcome {
+pub(crate) struct GroundLocomotorOutcome {
     pub(super) movement: movement::MovementTickStats,
     pub(super) bridge_state_changed: bool,
     track_owned: bool,
     /// The Hover or tube-exit arrival ran `Per_Cell_Process(2)`.
     per_cell_ran: bool,
+}
+
+impl GroundLocomotorOutcome {
+    /// Whether the Process changed bridge state.
+    pub(crate) fn bridge_state_changed(&self) -> bool {
+        self.bridge_state_changed
+    }
 }
 
 /// Re-enter the pending movement pass for the same mover of this Process (see
@@ -150,6 +157,7 @@ impl Simulation {
         grid: Option<&PathGrid>,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
+        self.install_fixture_path_grid(grid);
         self.process_ground_locomotor_one(id, rules, grid, registry)
             .map(|outcome| outcome.movement)
     }
@@ -157,7 +165,7 @@ impl Simulation {
     /// The ordinary ground locomotor Process corridor, without Object/Techno AI.
     /// Infantry Scatter51D478 calls the active locomotor synchronously; its
     /// PerCell and boundary receivers must finish before Scatter returns.
-    pub(super) fn process_ground_locomotor_one(
+    pub(crate) fn process_ground_locomotor_one(
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
@@ -287,10 +295,19 @@ impl Simulation {
         };
         let mut retry = false;
         loop {
+            // The Scatter calls a step queued while the pass held the world
+            // (tube exit, pass-lane cell entry), in call order.
+            outcome.bridge_state_changed |= sim
+                .run_scatter_requests(
+                    pending_movement.take_scatter_requests(),
+                    rules,
+                    overlay_registry,
+                )
+                .map_err(|cause| frame_error(sim, cause))?;
             if let Some(request) = pending_movement.take_foot_path_request() {
                 let held = Some(pending_movement.held_block_sets());
                 let outcome = sim
-                    .run_foot_path_request(&request, held, rules, path_grid, overlay_registry)
+                    .run_foot_path_request(&request, held, rules, overlay_registry)
                     .map_err(|cause| frame_error(sim, cause))?;
                 if outcome == movement::FootPathOutcome::Resume {
                     reenter_pending_pass(
@@ -310,7 +327,6 @@ impl Simulation {
                         request,
                         Some(pending_movement.held_block_sets()),
                         rules,
-                        path_grid,
                         overlay_registry,
                     )
                     .map_err(|cause| frame_error(sim, cause))?;
@@ -336,7 +352,6 @@ impl Simulation {
                         movement::ProcessMovementArgs::OUTER,
                         Some(pending_movement.held_block_sets()),
                         rules,
-                        path_grid,
                         overlay_registry,
                     )
                     .map_err(|cause| frame_error(sim, cause))?;
@@ -371,7 +386,7 @@ impl Simulation {
                 ..invocation
             };
             let pass = sim
-                .run_track_process(invocation, rules, path_grid, overlay_registry)
+                .run_track_process(invocation, rules, overlay_registry)
                 .map_err(|cause| frame_error(sim, cause))?;
             pending_movement.record_track_movement(pass.moved);
             outcome.track_owned = true;
@@ -395,13 +410,20 @@ impl Simulation {
             );
             retry = true;
         }
+        outcome.bridge_state_changed |= sim
+            .run_scatter_requests(
+                pending_movement.take_scatter_requests(),
+                rules,
+                overlay_registry,
+            )
+            .map_err(|cause| frame_error(sim, cause))?;
         if let Some((id, head)) = pending_movement.take_walk_per_cell() {
             outcome.bridge_state_changed |=
-                sim.run_completed_walk_step(id, head, rules, path_grid, overlay_registry)?;
+                sim.run_completed_walk_step(id, head, rules, overlay_registry)?;
             pending_movement.retain_walk_completion(id, &sim.substrate.entities);
         }
         if let Some((id, coord)) = pending_movement.take_walk_boundary() {
-            sim.run_walk_boundary(id, coord, rules, path_grid, overlay_registry);
+            sim.run_walk_boundary(id, coord, rules, overlay_registry);
             pending_movement.record_track_movement(1);
         }
 
@@ -610,6 +632,13 @@ impl Simulation {
             ) {
                 crate::sim::animation::tick_shp_vehicle_body_frame_counter(
                     entity,
+                    rules.map(|rules| {
+                        crate::sim::movement::SpeedRules::new(
+                            rules,
+                            &sim.interner,
+                            &sim.type_handles,
+                        )
+                    }),
                     cadence,
                     sim.session.binary_frame,
                 );

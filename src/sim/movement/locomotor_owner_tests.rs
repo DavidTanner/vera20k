@@ -60,7 +60,6 @@ fn replay_fixture() -> crate::sim::components::FootPathQueue {
 fn supply_drive_state(entity: &mut GameEntity) {
     entity.navigation.path_replay = replay_fixture();
     entity.foot_speed.applied_fraction = SimFixed::lit("0.5");
-    entity.foot_speed.cached_current_speed = 11;
     entity.drive_locomotion = Some(DriveLocomotionRuntime {
         // Is_Moving compares exact XY only. Retained Z deliberately differs
         // from the owner's height, so retirement cannot depend on full XYZ.
@@ -221,7 +220,6 @@ fn out_of_contact_destination_installs_fresh_drive_without_previous_instance_sta
     let drive = entity.drive_locomotion.as_ref().unwrap();
     assert_eq!(drive.track.residual, 0);
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.5"));
-    assert_eq!(entity.foot_speed.cached_current_speed, 11);
 }
 
 #[test]
@@ -374,7 +372,6 @@ fn foot_speed_without_class_payload_roundtrips_and_hashes_each_field() {
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let mut expected = crate::sim::components::FootSpeedState::default();
     expected.applied_fraction = SimFixed::lit("0.625");
-    expected.cached_current_speed = 13;
     assert!(
         expected.accept_speed_crate(crate::util::native_x87::NativeF64Bits::from_bits(
             1.2_f64.to_bits()
@@ -391,17 +388,14 @@ fn foot_speed_without_class_payload_roundtrips_and_hashes_each_field() {
     assert_eq!(entity.foot_speed, expected);
     assert_eq!(loaded.state_hash(), sim.state_hash());
     let original = loaded.state_hash();
-    for field in 0..3 {
+    for field in 0..2 {
         let speed = &mut loaded.substrate.entities.get_mut(1).unwrap().foot_speed;
         *speed = expected.clone();
         if field == 0 {
             speed.applied_fraction += SimFixed::lit("0.125");
-        } else if field == 1 {
-            speed.cached_current_speed += 1;
         } else {
             *speed = Default::default();
             speed.applied_fraction = expected.applied_fraction;
-            speed.cached_current_speed = expected.cached_current_speed;
             assert!(
                 speed.accept_speed_crate(crate::util::native_x87::NativeF64Bits::from_bits(
                     1.3_f64.to_bits()

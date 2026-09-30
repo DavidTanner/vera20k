@@ -702,7 +702,7 @@ gone. · **Frequency** every deliberate bridge cut with traffic on the span.
 (ground kill vs deck fall) separately.
 
 #### T2-02 · No kill for units moving onto a span as it collapses; fallout is per-cell inline, not a deferred batch — `bridge`
-**VERA** `blow_up_bridge_cell_fallout` (`bridge_orchestrator.rs:1298`) runs per collapsed cell
+**VERA** `blow_up_bridge_cell_fallout` (`bridge_orchestrator.rs:911`) runs per collapsed cell
 inline and touches only that cell; no neighbourhood sweep exists and
 `notify_bridge_span_collapse` is a deliberate skirmish no-op. **Reference** `Destroy_Bridge` only
 *queues* (`cell.cpp:1435`); `MapClass::Damage_Bridge` (`map.cpp:12041`) runs the family
@@ -712,8 +712,13 @@ sweeps a 5×5 neighbourhood over **both** object lists and kills any foot whose
 **TS-RISK** no · **Effect** a unit that has stepped off the ramp toward the dropping span
 keeps its movement and arrives on a destroyed cell instead of dying with it. · **Frequency**
 every bridge cut with inbound traffic — most of them.
-**Ghidra** Look for a deferred pending-cells queue drained after the family handler in YR's
-bridge damage entry, and for an `Is_Moving_Here`-gated neighbourhood kill.
+**YR** ApplyDamageToCell `0x00587180` clears the pending vector `Map+0xD4` on entry
+(`0x005871A2`); BlowUpBridge `0x0047DD70` appends each blown cell (`0x0047DDE4..0x0047DE22`);
+the tail `0x00587388..0x005873DF` calls `0x00487720` on each queued cell, which (when cell
+`+0x128` is set) walks the 5×5 around it, both object lists (`+0xE4`, `+0xE8`), and hits every
+techno whose locomotor `Is_Moving_Here` (vtable `+0xA0`) the cell's deck coordinate with its
+full health of `C4Warhead` (`Rules+0xFA8`). Area damage and the CABHUT death fallback both
+reach it through ApplyDamageToCell; VERA ports neither the queue nor the drain.
 
 #### T2-03 · Low-bridge damage stages do no occupant-legality kill — `bridge`
 **VERA** the low walkers (`src/sim/bridge_state/walker.rs:509` → `destroy_bridge_walker_*_low`)

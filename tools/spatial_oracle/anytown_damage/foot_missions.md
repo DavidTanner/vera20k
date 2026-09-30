@@ -1,4 +1,4 @@
-# Selected Foot Rescue and AreaGuard native continuation
+# Selected Foot missions and ground Infantry firing prefix
 
 Run the existing mission owner with the separate mode:
 
@@ -319,14 +319,90 @@ registration history while supplying the no-target state. These rows do not
 execute candidate UnInit, future locomotor Process, occupancy relocation or
 bridge producers.
 
-All rows start from declared prior mission state after original construction and
+The220 handler/idle/threat/navigation rows start from declared prior mission state after original construction and
 placement. Pose, bridge flags, OnBridge, retained heads, timer expiry and NullPoint
 controls do not prove their producers, relocation/occupancy or native scenario
 loading. Declaring the placed candidate limbo supplies an empty-scan state; it
 does not execute UnInit. The existing cropped map, source-order INI cache,
 successful heap and imported OS boundaries remain. Sound/radar/visual sinks and
 the inherited hierarchy callback are declared in metadata and observed per row.
-The mode does not run a complete UnitAI/FootAI tick, other match objects, bridge
+Those220 rows do not run a complete UnitAI/FootAI tick, other match objects, bridge
 placement/destruction/repair, later locomotor movement, rendering, audio Main RNG,
 whole-world scheduling or persistence. Native replay alone is not a Rust or
 production parity claim.
+
+The additive `ground_firing_receipt` creates a fresh `FootMissions` VM after
+all220 frozen rows and earlier receipts are collected. `preserved_payload` pins
+their canonical projection,7,335,318 bytes with SHA256
+`bbc321dd3de71f87a2762508df6e7bcd3845510e3cd2dc0458eefaaff29314a0`.
+The old82/86/36/2/2/12 rows and every earlier receipt/RNG value remain unchanged.
+Its setup repeats the original E1/MTNK constructors, Drive/Walk factories,
+Unlimbo and registration, the existing Rules key-block receipts, and the full
+physical M60/Para/M60E/ParaE, Projectile and Warhead closure. Its nested
+`reader_context` retains those executed layers/fields/RNG. The existing explicit
+Ready fixture baseline follows Unlimbo; whole first-AI initialization from
+Doing-1 is not claimed by this new receipt.
+
+Eight `cases` expose `input`, actual ordered `registration_before`, all registered
+actor `candidate_liveness_before`, `actor_before`, `target_before`/`target_after`,
+cell/pose readback, `command`, optional `expiry`, `frames`, `final` and full
+three-stream RNG. Original Infantry AssignTarget `51B1F0` admits the placed enemy
+MTNK and `5B35E0(Attack1,0)` queues the mission. The original InfantryAI
+`51BAB0` handles promotion. Every frame has explicit absolute `native_frame`,
+before/after raw state, ordered `events`/`field_writes`, runtime `callback_events`,
+full `rng_before`/`rng_after`, `stop` and `returned`. Stage+F8 is a signed DWORD,
+stage-changed+FC and firing+68D are bytes. `stage_timer_words` retains
+`+100/+104/+108/+10C/+110`; rearm, dispatch, targeting and idle timers and full
+facing/actual Walk state are also read. Copied auxiliary words remain raw stack
+data, not semantic timer inputs.
+
+The four accepted cases use native ground placement, repeated absolute frame,
+an elapsed gap, and an explicitly supplied deck pose. Original `51BAB0` calls
+Foot `4DA530`, Techno `6F9E50`, Mission `5B3060`, then the stage block
+`6FABC4..6FAC31`, before Infantry firing `5206B0` at `51BF59`, sequencer
+`520AE0` at `51BF6A`, and movement actions `520F40` at `51BF7B`.
+SelectWeapon `5218E0`, GetFireError `51C8B0/6FC0B0`, actual Walk `55AD00`,
+DoAction `51D6F0` and actual sequence data execute. Frame1 starts FireUp4 at
+stage0/firing1. Frame2 advances to stage1. At frame3 stage2 reaches actual fire
+wrapper `51DF60`. Repeating frame1 keeps stage0; jumping from1 to20 advances
+only once to stage1 and writes20 as the new timer start, then21 reaches stage2.
+Mission cadence/RNG when due remain native observations.
+
+Accepted fire stops before executing the real `6FDD50` entry. Original
+`51DF60` has already pushed the actual target/weapon0, cleared firing+68D at
+`51DF70` and called the base at `51DF77`. The final frame's `base_fire_entry`
+records that receiver, actual return PC/arguments, stage2 and firing0, with
+`unexecuted=true`. No return value or stack return is supplied; that final AI,
+FireAtTarget and sequencer tail have not returned. Across the six AI cases there
+are16 visits:12 original AI returns and4 pre-launch entry stops. This is prefix
+evidence; it does not establish a complete shot, base launch, MGUN/PIFF/Report
+asset/sound closure, projectile, rearm after firing, impact or bridge damage.
+
+Two bridge controls execute original `51C8B0` admission only. Supplied
+opposite OnBridge bytes, deck XYZ+416 and real Cell HasBridge+140 bit0x100
+produce native ILLEGAL5 through `6FCBE6..6FCC5A`. The supplied deck accepted
+case uses the same explicit fields on both actors. Original map queries return
+the retained Cell storage; no firing/map result is substituted. Cell object heads
+retain their original ground/upper lists, which are saved. These are layer-state
+consumer controls, not native high-bridge placement, occupancy relocation,
+locomotor head production or geometry initialization. Continuing opposite-layer
+Attack through AI reaches Foot pursuit `4D5690` and path estimate `42D170`;
+its `42A5B0` storage is uninitialized in this crop. The existing
+[navigation owner](navigation.py) supplies original `42C1C0` and hierarchy
+setup. This receipt excludes that continuation and supplies no path answer or
+timer to bypass it.
+
+Two controls invoke complete original concrete PointerExpired `51AA10`, read
+from Infantry vtable+28, with the live target pointer and supplied control1.
+One runs before the first AI visit; the other runs after actual frame1 started
+FireUp4/firing1. Native Foot `4D9960` and Techno `7077C0`, an original Scenario
+RNG draw, Infantry AssignTarget `51B1F0`, DoAction and Techno target assignment
+execute in recorded order. The pending action becomes Ready0 and firing0 before
+the target reference clears. The next original InfantryAI returns without
+launch. This is the supplied expired-pointer notification receiver, not full
+target death/UnInit/broadcast; `target_after` still records the live object.
+The existing [expiry owner](../foot_attack_move.py) remains the shared class-chain
+reference. All eight controls restore native writes, CPU/x87, observer state and
+all RNG before the next case. Original `.text`, class tables and actual Drive/Walk
+tables must remain byte-identical. Whole Logic order, other actors and the
+inherited runtime/presentation boundaries remain excluded.

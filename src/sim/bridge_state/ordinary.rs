@@ -25,6 +25,18 @@ pub(crate) fn member(overlay: i32, family: Family) -> bool {
     }
 }
 
+/// A standing ordinary bridge overlay: the family short of its two collapsed
+/// caps (`0x64`/`0x65`, `0xE7`/`0xE8`). ApplyDamageToCell (`0x005871C8`)
+/// and Apply_area_damage's direct blocks (`0x0048A217`, `0x0048A26D`) admit
+/// these bands; the radar (GetRadarColor `0x0047C060`) and the parasite
+/// release-cell test read the same bands.
+pub(crate) fn standing(overlay: i32, family: Family) -> bool {
+    match family {
+        Family::Low => (0x4A..=0x63).contains(&overlay),
+        Family::High => (0xCD..=0xE6).contains(&overlay),
+    }
+}
+
 /// Native ordinary selector classification, shared by damage, repair and hut
 /// callers. These are overlay axes; the longitudinal walk is perpendicular.
 pub(crate) fn axis(overlay: i32, family: Family) -> Option<super::Axis> {

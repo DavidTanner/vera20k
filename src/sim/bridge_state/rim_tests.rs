@@ -1,4 +1,5 @@
-//! Compare the Rust control flow with original 576770/576200 execution.
+//! Compare the Rust control flow with original 576770/576200 execution and
+//! its wooden twins 571050/570AE0.
 //! The supplied host replaces object/radar/presentation effects with the same
 //! declared sinks as the native corpus. This is not world-integration coverage.
 
@@ -30,7 +31,7 @@ impl SuppliedCell {
 
 struct SuppliedHost {
     tiles: HighBridgeRimTiles,
-    size: (i32, i32),
+    bounds: RimBounds,
     cells: BTreeMap<RimCoord, SuppliedCell>,
     source_order: Vec<RimCoord>,
     calls: Vec<Value>,
@@ -66,7 +67,11 @@ impl SuppliedHost {
                 input["bridge_base"].as_i64().unwrap() as i32,
                 ini.as_bytes(),
             ),
-            size: serde_json::from_value(input["size"].clone()).unwrap(),
+            bounds: {
+                let (width, height): (i32, i32) =
+                    serde_json::from_value(input["size"].clone()).unwrap();
+                RimBounds::Diamond { width, height }
+            },
             cells: BTreeMap::new(),
             source_order: Vec::new(),
             calls: Vec::new(),
@@ -212,8 +217,8 @@ impl HighBridgeRimHost for SuppliedHost {
     fn tiles(&self) -> HighBridgeRimTiles {
         self.tiles
     }
-    fn map_size(&self) -> (i32, i32) {
-        self.size
+    fn bounds(&self) -> RimBounds {
+        self.bounds
     }
     fn cell(&mut self, coord: RimCoord) -> SuppliedHandle {
         if let Some(canonical) = Self::canonical(coord).filter(|c| self.cells.contains_key(c)) {
@@ -300,14 +305,12 @@ impl HighBridgeRimHost for SuppliedHost {
     }
 }
 
-#[test]
-fn stock_rim_control_matches_original_calls_and_full_cell_changes() {
-    let original: Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/bridge_rim.json"
-    ))
-    .unwrap();
-    for case in original["cases"].as_array().unwrap() {
+fn compare_stock_cases(cases: &Value, bounds: impl Fn(&Value) -> Option<RimBounds>) {
+    for case in cases.as_array().unwrap() {
         let mut host = SuppliedHost::stock();
+        if let Some(bounds) = bounds(case) {
+            host.bounds = bounds;
+        }
         let breaks = case["breaks"].as_array().unwrap();
         for (index, refresh) in case["refreshes"].as_array().unwrap().iter().enumerate() {
             if let Some(break_coord) = breaks.get(index) {
@@ -345,4 +348,34 @@ fn stock_rim_control_matches_original_calls_and_full_cell_changes() {
             );
         }
     }
+}
+
+fn stock_original() -> Value {
+    serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/bridge_rim.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn stock_rim_control_matches_original_calls_and_full_cell_changes() {
+    compare_stock_cases(&stock_original()["cases"], |_| None);
+}
+
+/// 571050's inclusive MapClass+0x124..+0x130 rectangle, including a top edge
+/// on the span's start tile and one row past it.
+#[test]
+fn stock_wooden_rim_matches_original_under_its_search_rectangle() {
+    compare_stock_cases(&stock_original()["low_cases"], |case| {
+        let [left, top, width, height]: [u16; 4] =
+            serde_json::from_value(case["rect"].clone()).unwrap();
+        Some(RimBounds::Rect(
+            crate::sim::scenario_bootstrap::NativeStartBounds {
+                min_rx: left,
+                min_ry: top,
+                width,
+                height,
+            },
+        ))
+    });
 }

@@ -87,6 +87,14 @@ impl FireSubject<'_> {
         self.world.session.binary_frame
     }
 
+    fn speed_rules(&self) -> crate::sim::movement::SpeedRules<'_> {
+        crate::sim::movement::SpeedRules::new(
+            self.rules,
+            &self.world.interner,
+            &self.world.type_handles,
+        )
+    }
+
     /// GetWeapon (vt+0x3F8) at an index: a garrison's occupant weapon for
     /// every slot (`0x004526F0`), else the rank-selected slot.
     pub(crate) fn weapon_at(&self, index: i32) -> Option<&WeaponType> {
@@ -757,13 +765,18 @@ impl FireQuery for WorldQuery<'_, '_> {
     fn locomotor_moving(&mut self) -> bool {
         crate::sim::movement::ready_producer::is_moving_now_for(
             self.subject.firer,
+            Some(self.subject.speed_rules()),
             self.subject.frame(),
         )
     }
 
     fn target_locomotor_moving(&mut self) -> bool {
         self.subject.target_entity().is_some_and(|target| {
-            crate::sim::movement::ready_producer::is_moving_now_for(target, self.subject.frame())
+            crate::sim::movement::ready_producer::is_moving_now_for(
+                target,
+                Some(self.subject.speed_rules()),
+                self.subject.frame(),
+            )
         })
     }
 

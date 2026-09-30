@@ -435,6 +435,12 @@ impl crate::sim::world::Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(false);
         };
+        // Guard/Hunt/AreaGuard dispatch the class virtual. Non-Infantry
+        // receivers inherit the false stub; they never resolve an Infantry
+        // type or touch its idle timer (Unit vtable+0x478 is 0x0041C040).
+        if actor.category != crate::map::entities::EntityCategory::Infantry {
+            return Ok(false);
+        }
         let object = self
             .object_type(actor.type_ref(), rules)
             .ok_or("Infantry idle action requires its native type")?;

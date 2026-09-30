@@ -405,7 +405,7 @@ fn expected_calls(row: &Value, other: Option<u64>) -> Vec<FreshCallRecord> {
                     assert_eq!(event[2][2], 1);
                     FreshCallRecord::Scatter {
                         cell: (10, 10),
-                        forced: true,
+                        no_kidding: true,
                         deck: event[2][3] != 0,
                     }
                 }
@@ -481,14 +481,12 @@ fn ordinary_and_recursive_walk_responses_match_original_decoder() {
         let result = result.and_then(|retry| {
             if input["continue_recursive"] == true {
                 let request = retry.ok_or("missing recursive Walk request")?;
-                let found =
-                    sim.run_walk_path_request(&request, None, Some(&rules), None, Some(&registry))?;
+                let found = sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry))?;
                 if found {
                     let again = sim.run_walk_admission_request(
                         request.into_walk_admission_for_test(),
                         None,
                         Some(&rules),
-                        None,
                         Some(&registry),
                     )?;
                     assert!(again.is_none(), "recursive refusal recursed twice: {input}");
@@ -560,7 +558,7 @@ fn exhausted_walk_retry_emits_native_retained_scold_request() {
             )
             .unwrap()
             .unwrap();
-        let result = sim.run_walk_path_request(&request, None, Some(&rules), None, Some(&registry));
+        let result = sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry));
         let (_, unused) = fresh_oracle_seam::finish();
         assert!(!result.unwrap());
         assert_eq!(unused, 0);

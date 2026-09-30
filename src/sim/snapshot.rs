@@ -739,11 +739,18 @@ use crate::sim::world::Simulation;
 // entity's teleport or rocket state.
 // 253 -> 254: an order intent can no longer be the garrison Unloading flag;
 // a garrison unloads through its Unload mission.
-// 254 -> 255: Houses retain the lifecycle-published House4FD150 base radius
+// 254 -> 255: an entity no longer saves its unread TooBigToFitUnderBridge and
+// ZFudgeBridge copies; movement never read them and the draw reads the type.
+// 255 -> 256: a Foot owner no longer saves a cached GetCurrentSpeed; readers
+// query the live getter.
+// 256 -> 257: bridge cells, anchor spans and endpoint records no longer save
+// unread group ids, per-cell destroyable or span damage copies; paradrop
+// missions no longer save the inert fog latch or LandingState mirror.
+// 257 -> 258: Houses retain the lifecycle-published House4FD150 base radius
 // beside their historical primary cell and ordered building lists. Foot688
 // retains the stopped/cannot-fire scan latch. Unit/Aircraft Mission leaves
 // also retain the inherited raw Foot68D, using the same owner as Infantry.
-const SNAPSHOT_VERSION: u32 = 255;
+const SNAPSHOT_VERSION: u32 = 258;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3237,14 +3244,15 @@ mod tests {
         let mut bytes = GameSnapshot::save(&sim, 0, 0, "test_map", 0);
 
         // Product magic and public envelope version occupy the first 12 bytes.
-        bytes[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+        let other = SNAPSHOT_VERSION + 1;
+        bytes[12..16].copy_from_slice(&other.to_le_bytes());
 
         assert!(matches!(
             GameSnapshot::load(&bytes),
             Err(SnapshotError::VersionMismatch {
                 expected: SNAPSHOT_VERSION,
-                found: u32::MAX,
-            })
+                found,
+            }) if found == other
         ));
     }
 
@@ -3630,8 +3638,12 @@ mod tests {
         // 251 -> 252: no entity homing state.
         // 252 -> 253: no Teleport/Rocket payload copies.
         // 253 -> 254: no garrison Unloading order intent.
-        // 254 -> 255: retained House4FD150 base radius and Foot688 scan latch.
-        assert_eq!(super::SNAPSHOT_VERSION, 255);
+        // 254 -> 255: entity TooBigToFitUnderBridge/ZFudgeBridge copies removed.
+        // 255 -> 256: no cached GetCurrentSpeed.
+        // 256 -> 257: no bridge group/destroyable/span-damage copies or
+        // inert paradrop latches.
+        // 257 -> 258: retained House4FD150 radius, Foot688 and inherited Foot68D.
+        assert_eq!(super::SNAPSHOT_VERSION, 258);
     }
 
     #[test]
@@ -5006,7 +5018,6 @@ mod tests {
         let ship_head = DriveCoord::cell(6, 5, 0);
         let entity = sim.substrate.entities.get_mut(1).expect("SHP unit");
         entity.foot_speed.applied_fraction = SIM_HALF;
-        entity.foot_speed.cached_current_speed = 10;
         entity.ship_locomotion = Some(ShipLocomotionRuntime {
             destination: Some(ship_head),
             head_to: Some(ship_head),
@@ -5042,7 +5053,6 @@ mod tests {
         assert_eq!(restored_ship.target_speed_fraction, SIM_ONE);
         let restored_owner_speed = &restored.substrate.entities.get(1).unwrap().foot_speed;
         assert_eq!(restored_owner_speed.applied_fraction, SIM_HALF);
-        assert_eq!(restored_owner_speed.cached_current_speed, 10);
         assert_eq!(restored.state_hash(), populated_shp_state_hash);
     }
 

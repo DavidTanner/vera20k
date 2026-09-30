@@ -430,7 +430,7 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
         y: 15 * 256 + 64,
         z: 0,
     };
-    sim.run_walk_boundary(id, crossing, Some(&rules), None, Some(&registry));
+    sim.run_walk_boundary(id, crossing, Some(&rules), Some(&registry));
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(ground_pose::position_world_coord(&e.position), crossing);
     assert!(e.lifecycle.cell_marked && e.foot_occupation_enabled);
@@ -713,9 +713,7 @@ fn ready_repair_fixture(
                 y,
                 BridgeRuntimeCell {
                     deck_present: true,
-                    destroyable: true,
                     deck_level: 0,
-                    bridge_group_id: None,
                     damage_state: if overlay == 231 {
                         DamageState::Destroyed
                     } else {
@@ -766,7 +764,7 @@ fn ready_engineer(
         .as_mut()
         .unwrap()
         .set_walk_destination(Some(head));
-    sim.run_walk_boundary(id, head, Some(rules), None, Some(registry));
+    sim.run_walk_boundary(id, head, Some(rules), Some(registry));
     sim.substrate
         .entities
         .get_mut(id)
@@ -857,7 +855,6 @@ fn bridge_repair_preserves_unrelated_foundation_before_next_reader() {
             engineer,
             crate::sim::components::DriveCoord::cell(16, 15, 0),
             Some(&rules),
-            None,
             Some(&registry)
         )
         .expect("fixture frame must complete")
@@ -949,7 +946,6 @@ fn later_repair_scatters_stationary_hut_occupant_and_processes_it_synchronously(
         last,
         DriveCoord::cell(16, 15, 0),
         Some(&rules),
-        None,
         Some(&registry),
     )
     .expect("hut evacuation finishes within the completion callback");
@@ -1017,7 +1013,6 @@ fn hut_repair_scatters_a_jumpjet_occupant_through_its_air_destination_owner() {
         engineer,
         DriveCoord::cell(16, 15, 0),
         Some(&rules),
-        None,
         Some(&registry),
     )
     .expect("a Jumpjet hut occupant scatters without stopping the frame");
@@ -1360,7 +1355,7 @@ fn walk_completion_uses_retained_destination_and_exact_height_tolerance() {
             final_goal: Some(((dest.x / 256) as u16, (dest.y / 256) as u16)),
             ..Default::default()
         });
-        sim.run_completed_walk_step(id, head, Some(&rules), None, Some(&registry))
+        sim.run_completed_walk_step(id, head, Some(&rules), Some(&registry))
             .expect("fixture frame must complete");
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(e.navigation.nav_com.is_some(), survives);

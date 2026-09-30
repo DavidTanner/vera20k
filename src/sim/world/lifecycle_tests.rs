@@ -10,8 +10,7 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::anim_class::{AnimObject, AnimRuntime, AnimWorldCoord};
-use crate::sim::animation::{Animation, SequenceKind};
-use crate::sim::bridge_state::StateOutcome;
+use crate::sim::animation::SequenceKind;
 use crate::sim::combat::{AttackTarget, PendingInfantryFire, TargetKind};
 use crate::sim::components::{
     C4PlantState, DriveLocomotionRuntime, DriveOccupationFootprint, Health, NavTargetRef,
@@ -1020,28 +1019,8 @@ fn gsi_04_12_common_raw_occupation_structural_deck_unit_tracks_live_collapse_fla
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 
     {
+        // The collapse setter 47E040 clears bit100 before any later receiver.
         let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
-        assert!(
-            bridge_state
-                .cell(3, 4)
-                .expect("collapsed bridge cell")
-                .deck_present,
-            "collapse leaves the structural deck record present"
-        );
-        assert!(!bridge_state.is_bridge_walkable(3, 4));
-        // The legacy controller above returns its flag transaction; its
-        // isolated entry does not publish it. Supply native47E040's cleared
-        // bit100 at this occupation-reader boundary, as the live publisher
-        // does before the next receiver. A render-only collapse is not enough.
         let cell = terrain.native_cell_identity((3, 4));
         terrain.write_native_cell_flags(
             cell,
@@ -1440,19 +1419,8 @@ fn gsi_04_12_object_raw_occupation_deck_clear_rechecks_live_structural_state() {
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0x40);
 
     {
+        // The collapse setter 47E040 clears bit100 before any later receiver.
         let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
-        let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(3, 4, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
-        assert!(!bridge_state.is_bridge_walkable(3, 4));
-        // Supply the live47E040 structural clear, not just the legacy
-        // controller's overlay/damage projection, before Object5F6120.
         let cell = terrain.native_cell_identity((3, 4));
         terrain.write_native_cell_flags(
             cell,
@@ -3010,33 +2978,58 @@ fn target_expiry_rearms_passive_scan_and_restores_suspended_mission() {
 
 #[test]
 fn infantry_target_expiry_clears_firing_action_before_target() {
-    let mut sim = Simulation::new();
-    insert_entity(&mut sim, 1, EntityCategory::Infantry);
-    insert_entity(&mut sim, 2, EntityCategory::Unit);
-    let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
-
-    let listener = sim.substrate.entities.get_mut(1).unwrap();
-    listener.attack_target = Some(AttackTarget {
-        target: TargetKind::Entity(2),
-        pending_infantry_fire: Some(PendingInfantryFire {
-            sequence: SequenceKind::Attack,
-            fire_frame: 4,
-        }),
-    });
-    listener.animation = Some(Animation::new(SequenceKind::Attack));
-    listener.mission_leaf = crate::sim::mission::MissionLeafState::infantry_raw_for_test(7, 12);
-
-    sim.uninit(2);
-
-    let listener = sim.substrate.entities.get(1).unwrap();
-    assert!(listener.attack_target.is_none());
-    assert_eq!(
-        listener.animation.as_ref().unwrap().sequence,
-        SequenceKind::Stand
+    use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
+    let ini = IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=TEST\n[AircraftTypes]\n\
+         [BuildingTypes]\n[E1]\nImage=GI\nStrength=125\n\
+         [TEST]\nStrength=100\n",
     );
-    let leaf = listener.mission_leaf.as_infantry().unwrap();
-    assert_eq!(leaf.firing_sequence_latch(), 0);
-    assert_eq!(leaf.doing(), -1);
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    // Original 51B20E drops the firing latch before its unforced Ready
+    // request. FireUp (4) admits it; Die2 (12) refuses and retains its stage.
+    // The corresponding class-target receipts pin this ordering without RNG.
+    for (doing, expected_doing, expected_sequence) in
+        [(4, 0, SequenceKind::Stand), (12, 12, SequenceKind::Die2)]
+    {
+        let mut sim = Simulation::new();
+        assert_eq!(
+            sim.spawn_object_at_height("E1", "Americans", 2, 3, 0, 0, &rules),
+            Some(1)
+        );
+        insert_entity(&mut sim, 2, EntityCategory::Unit);
+        let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
+        assert!(sim.infantry_do_action(1, doing, true, &rules).unwrap());
+        let listener = sim.substrate.entities.get_mut(1).unwrap();
+        listener.attack_target = Some(AttackTarget {
+            target: TargetKind::Entity(2),
+            pending_infantry_fire: Some(PendingInfantryFire {
+                sequence: SequenceKind::Attack,
+                fire_frame: 2,
+            }),
+        });
+        listener.mission_leaf =
+            crate::sim::mission::MissionLeafState::infantry_raw_for_test(1, doing);
+        // Isolate the class action: the separate PointerExpired timer gate
+        // (7079D1) draws RandomRanged(4,8) only above ten remaining frames.
+        listener.passive_scan_timer.arm(0, 0);
+        let before = sim.scenario_rng.logical_state();
+        sim.uninit_with_rules(2, &rules);
+        let listener = sim.substrate.entities.get(1).unwrap();
+        assert!(listener.attack_target.is_none());
+        assert_eq!(
+            listener.animation.as_ref().unwrap().sequence,
+            expected_sequence
+        );
+        let leaf = listener.mission_leaf.as_infantry().unwrap();
+        assert_eq!(leaf.firing_sequence_latch(), 0);
+        assert_eq!(leaf.doing(), expected_doing);
+        assert_eq!(sim.scenario_rng.logical_state(), before);
+    }
 }
 
 #[test]
@@ -4883,16 +4876,9 @@ fn gsi_04_01_cell_target_uses_live_structural_bit_when_runtime_unwalkable() {
         center
     );
     {
-        let terrain = sim.resolved_terrain.as_mut().expect("resolved terrain");
+        // Legacy runtime walkability drops while live bit100 stays set.
         let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(6, 7, true, terrain),
-            StateOutcome::Absorbed { .. }
-        ));
-        assert!(matches!(
-            bridge_state.body_cell_advance_state(6, 7, true, terrain),
-            StateOutcome::Collapsed { .. }
-        ));
+        bridge_state.cell_mut(6, 7).unwrap().deck_present = false;
         assert!(!bridge_state.is_bridge_walkable(6, 7));
     }
     assert_eq!(

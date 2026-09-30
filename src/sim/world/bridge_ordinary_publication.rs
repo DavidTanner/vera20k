@@ -7,7 +7,7 @@ use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
 use crate::sim::bridge_state::ordinary::OrdinaryBridgeHost;
 use crate::sim::bridge_state::ordinary_damage::{self, OrdinaryDamageHost};
 use crate::sim::bridge_state::ordinary_repair::OrdinaryRepairHost;
-use crate::sim::bridge_state::ramp_repair::{Family, Rect, RepairHost};
+use crate::sim::bridge_state::ramp_repair::{Family, HutCells, Rect, RepairHost};
 use crate::sim::bridge_state::{ordinary_repair, ramp_repair};
 
 /// Already-admitted57BAA0/57CCF0 receiver. The area-damage caller owns strength RNG
@@ -24,6 +24,7 @@ pub(crate) fn damage_ordinary(
         rules,
         registry,
         collapsed: false,
+        family,
     };
     let returned = ordinary_damage::damage(
         &mut LiveOrdinary {
@@ -51,6 +52,8 @@ pub(crate) fn repair_from_engineer(
         rules,
         registry,
         collapsed: false,
+        // Repair runs no rim or ramp-tile helper through this host.
+        family: Family::High,
     };
     let (input, family) = engineer_repair_family(&mut live, engineer)?;
     let mut host = LiveOrdinary {
@@ -92,7 +95,9 @@ fn engineer_repair_family(
             .overlay_identity(cell);
             let wood = live.terrain().wood_bridge_set_base();
             //519CA3..519CAC excludes wood+16, the following tile set.
-            if (wood..wood.wrapping_add(16)).contains(&tile) || (74..=101).contains(&overlay) {
+            if (wood..wood.wrapping_add(16)).contains(&tile)
+                || crate::sim::bridge_state::ordinary::member(overlay, Family::Low)
+            {
                 family = Family::Low;
             }
         }
@@ -134,20 +139,9 @@ impl LiveOrdinary<'_, '_> {
     }
 }
 
-impl RepairHost for LiveOrdinary<'_, '_> {
+impl HutCells for LiveOrdinary<'_, '_> {
     type Cell = Cell;
     type Error = String;
-    fn tiles(&self, family: Family) -> HighBridgeRimTiles {
-        let mut keys = self
-            .live
-            .terrain()
-            .high_bridge_rim_tiles()
-            .unwrap_or_else(|| HighBridgeRimTiles::from_ini(-1, &[]));
-        if family == Family::Low {
-            keys.base = self.live.terrain().wood_bridge_set_base();
-        }
-        keys
-    }
     fn lookup(&mut self, p: CellCoord) -> Cell {
         self.live.lookup(p)
     }
@@ -156,6 +150,17 @@ impl RepairHost for LiveOrdinary<'_, '_> {
     }
     fn flags(&self, cell: Cell) -> u32 {
         self.live.flags(cell)
+    }
+    fn anchor(&self, cell: Cell) -> Result<Cell, String> {
+        self.live
+            .terrain()
+            .native_cell_anchor(cell)
+            .ok_or("repair has no retained anchor".into())
+    }
+}
+impl RepairHost for LiveOrdinary<'_, '_> {
+    fn tiles(&self, family: Family) -> HighBridgeRimTiles {
+        super::super::hut_tile_keys(self.live.terrain(), family)
     }
     fn tile(&self, cell: Cell) -> i32 {
         self.live.tile(cell)
@@ -170,31 +175,24 @@ impl RepairHost for LiveOrdinary<'_, '_> {
         self.changed = true;
         self.live.write_raw_bridge_level(cell, level)
     }
-    fn anchor(&self, cell: Cell) -> Result<Cell, String> {
-        self.live
-            .terrain()
-            .native_cell_anchor(cell)
-            .ok_or("repair has no retained anchor".into())
-    }
     fn overlay(&self, cell: Cell) -> i32 {
         self.overlay_identity(cell)
     }
     fn search_in_bounds(&self, p: CellCoord, family: Family) -> bool {
-        let Some((w, h)) = self
-            .live
-            .sim
-            .bridge_state
-            .as_ref()
-            .and_then(|s| s.native_zone_source_size())
-        else {
-            return false;
-        };
-        let (x, y) = (i32::from(p.0), i32::from(p.1));
+        let sim = &*self.live.sim;
         match family {
-            // Map565C10 stores(1,1,W+H-1,W+H-1);5738B1 adds the
-            //origin before its inclusive comparison. This is not LocalSize.
-            Family::High => x >= 1 && y >= 1 && x <= w + h && y <= w + h,
-            Family::Low => x + y > w && x - y < w && y - x < w && x + y <= w + 2 * h,
+            Family::High => NativeStartBounds::from_session(sim, self.live.terrain()).contains(p),
+            Family::Low => {
+                let Some((w, h)) = sim
+                    .bridge_state
+                    .as_ref()
+                    .and_then(|s| s.native_zone_source_size())
+                else {
+                    return false;
+                };
+                let (x, y) = (i32::from(p.0), i32::from(p.1));
+                x + y > w && x - y < w && y - x < w && x + y <= w + 2 * h
+            }
         }
     }
     fn allocated(&self, p: CellCoord) -> bool {

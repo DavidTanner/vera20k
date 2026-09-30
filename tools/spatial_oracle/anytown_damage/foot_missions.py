@@ -1,4 +1,4 @@
-"""Selected original Foot missions, threat wrapper, idle and downstream receipts using Anytown Mission.
+"""Selected original Foot missions, threat wrapper, idle and ground firing prefix using Anytown Mission.
 
 Invoke through mission --foot-missions. No scanner, approach, RNG or map decision
 is reimplemented here. Explicit prior-state controls and the scanner-return seam
@@ -231,6 +231,156 @@ class FootMissions(native_owner.Mission):
    sequence_timer_words=list(struct.unpack('<4i',u.mem_read(p+0x100,16))),
    walk_moving=dict(interface=hex(interface),vtable=hex(m.read32(interface)),getter=hex(m.read32(m.read32(interface)+0x10)),field=hex(interface+0x30),value=u.mem_read(interface+0x30,1)[0]))
   return state
+
+ def ground_firing_snap(self,p):
+  """Read the retained ground Infantry clock without advancing any receiver."""
+  m,u=self.m,self.u;state=self.initial_action_snap(p)
+  state.update(status=native_owner.base.i32(u,p+0xBC),target=hex(m.read32(p+0x2B4)),archive=hex(m.read32(p+0x218)),nav=hex(m.read32(p+0x5A4)),
+   health=native_owner.base.i32(u,p+0x6C),firing_68d=u.mem_read(p+0x68D,1)[0],prone_6db=u.mem_read(p+0x6DB,1)[0],
+   stage_changed_fc=u.mem_read(p+0xFC,1)[0],stage_timer_words=list(struct.unpack('<5i',u.mem_read(p+0x100,20))),
+   rearm_timer_words=list(struct.unpack('<3i',u.mem_read(p+0x2EC,12))),dispatch_timer_words=list(struct.unpack('<3i',u.mem_read(p+0xC8,12))),
+   targeting_timer_words=list(struct.unpack('<3i',u.mem_read(p+0x180,12))),idle_timer_words=list(struct.unpack('<3i',u.mem_read(p+0x168,12))),mission_visit=m.read32(p+0xC4))
+  return state
+
+ def ground_firing_case(self,name,frames,source_bridge=0,target_bridge=0,bridge_flags=False,expiry_after=None):
+  # Complete selected InfantryAI calls, or their actual pre-launch prefix.
+  # Every original write is restored so controls share constructor/reader state.
+  m,u=self.m,self.u;p=self.e1;target=self.candidate
+  locomotor_vtables={m.read32(m.read32(actor+0x674)):bytes(u.mem_read(m.read32(m.read32(actor+0x674)),0x100)) for actor in (p,target)}
+  cpu=u.context_save();cursor=m.cursor;phase=self.phase;old_frame=self.frame
+  inherited_events=list(self.events);inherited_pending=dict(self.pending);old_trace=list(self.trace)
+  resident_trace=list(self.resident.trace);resident_pending=dict(self.resident.pending)
+  events=[];writes=[];journal=[];returns={};instruction=[0];segment=['command']
+  names={0x51BAB0:('infantry_ai',0),0x4DA530:('foot_ai',0),0x6F9E50:('techno_ai',0),0x5B3060:('mission_dispatch',0),
+   0x5B35E0:('queue_mission',2),0x5B3570:('commence',0),0x4D4DC0:('attack_mission',0),0x70F7E0:('targeting_timer',0),
+   0x5206B0:('fire_at_target',0),0x5218E0:('select_weapon',1),0x51C8B0:('infantry_fire_error',3),0x6FC0B0:('techno_fire_error',3),
+   0x55AD00:('walk_fire_error',1),0x70E140:('get_weapon',1),0x7012C0:('weapon_range',1),
+   0x51D6F0:('do_action',3),0x51DF60:('infantry_fire',2),0x6FDD50:('base_fire_entry_boundary',2),
+   0x520AE0:('sequencer',0),0x520F40:('movement_actions',0),0x75AB30:('walk_is_moving',1),0x4C9300:('primary_facing',1),
+   0x51AA10:('infantry_pointer_expired',2),0x4D9960:('foot_pointer_expired',2),0x7077C0:('techno_pointer_expired',2),
+   0x51B1F0:('infantry_assign_target',1),0x6FCDB0:('techno_assign_target',1),0x565730:('xyz_cell',1),0x5657A0:('cell_lookup',1),
+   0x65C640:('rng_raw_init',0),0x65C660:('rng_control',0),0x65C780:('rng_next',0),0x65C7E0:('rng_ranged',2)}
+  markers={0x6FABC4:'stage_before',0x6FAC31:'stage_after',0x51BF59:'ai_fire_call',0x51BF6A:'ai_sequencer_call',0x51BF7B:'ai_movement_call'}
+  fields={0xAC:'mission',0xB4:'queued',0xBC:'status',0xC4:'mission_visit',0xC8:'dispatch_start',0xCC:'dispatch_aux',0xD0:'dispatch_duration',
+   0x168:'idle_start',0x16C:'idle_aux',0x170:'idle_duration',0x180:'targeting_start',0x184:'targeting_aux',0x188:'targeting_duration',
+   0x2B4:'target',0x68D:'firing_68d',0x6C4:'doing',0x6DB:'prone_6db',
+   0xF8:'frame_f8',0xFC:'stage_changed_fc',0x100:'stage_start',0x104:'stage_aux',0x108:'stage_duration',0x10C:'stage_repeat',0x110:'stage_increment',
+   0x2EC:'rearm_start',0x2F0:'rearm_aux',0x2F4:'rearm_duration',0x388:'facing_desired',0x38C:'facing_current',0x390:'facing_start',0x394:'facing_aux',0x398:'facing_duration'}
+  def compact():
+   return dict(doing=native_owner.base.i32(u,p+0x6C4),frame_f8=native_owner.base.i32(u,p+0xF8),stage_changed_fc=u.mem_read(p+0xFC,1)[0],
+    stage_timer_words=list(struct.unpack('<5i',u.mem_read(p+0x100,20))),firing_68d=u.mem_read(p+0x68D,1)[0],target=hex(m.read32(p+0x2B4)))
+  def rng():return {key:native_owner.base.sr.rng_state(u,ptr) for key,ptr in self.resident.rngs.items()}
+  def observe(uc,a,n,d):
+   instruction[0]+=1;sp=uc.reg_read(UC_X86_REG_ESP)
+   if a in returns:
+    for event in returns.pop(a):
+     event.update(return_instruction=instruction[0],returned_eax=uc.reg_read(UC_X86_REG_EAX),returned_al=uc.reg_read(UC_X86_REG_EAX)&255,after=compact())
+     if event['kind'] in ('xyz_cell','cell_lookup'):event['resolved_cell']=self.cell_readback(uc.reg_read(UC_X86_REG_EAX))
+   if a in markers:events.append(dict(instruction=instruction[0],segment=segment[0],pc=hex(a),kind=markers[a],state=compact()))
+   if a in names:
+    kind,count=names[a];args=[m.read32(sp+4+4*i) for i in range(count)]
+    event=dict(instruction=instruction[0],segment=segment[0],pc=hex(a),kind=kind,caller=hex(m.read32(sp)),
+     this=hex(args[0] if a in (0x75AB30,0x55AD00) else uc.reg_read(UC_X86_REG_ECX)),args=args,before=compact())
+    if a in (0x75AB30,0x55AD00):event['convention']='COM_stdcall'
+    if a==0x565730:event['coordinate']=native_owner.base.xyz(uc,args[0])
+    if a==0x5657A0:event['cell']=list(struct.unpack('<2h',uc.mem_read(args[0],4)))
+    if a==0x75AB30:event['moving_field']=hex(args[0]+0x30);event['moving_byte']=uc.mem_read(args[0]+0x30,1)[0]
+    if a==0x4C9300:event['desired_u16']=struct.unpack('<H',uc.mem_read(args[0],2))[0]
+    if a in (0x65C640,0x65C660,0x65C780,0x65C7E0):event['stream']=next((key for key,ptr in self.resident.rngs.items() if ptr==uc.reg_read(UC_X86_REG_ECX)),hex(uc.reg_read(UC_X86_REG_ECX)))
+    events.append(event);returns.setdefault(m.read32(sp),[]).append(event)
+  def written(uc,access,address,size,value,d):
+   journal.append((address,bytes(uc.mem_read(address,size))))
+   if address-p in fields:writes.append(dict(instruction=instruction[0],segment=segment[0],field=fields[address-p],pc=hex(uc.reg_read(UC_X86_REG_EIP)),offset=hex(address-p),bytes=size,value=value))
+  def supplied(address,raw):journal.append((address,bytes(u.mem_read(address,len(raw)))));u.mem_write(address,raw)
+  def layer_poses(source_bridge,target_bridge,bridge_flags):
+   poses=[]
+   for actor,on_bridge in ((p,source_bridge),(target,target_bridge)):
+    position=native_owner.base.xyz(u,actor+0x9C);cell=(int(position[0]/256),int(position[1]/256));cell_ptr=self.resident.ptrs[cell]
+    before_cell=self.cell_readback(cell_ptr)
+    if on_bridge:position[2]+=416;supplied(actor+0x9C,dwords(*position))
+    supplied(actor+0x8C,bytes([on_bridge]))
+    if bridge_flags:supplied(cell_ptr+0x140,dwords(m.read32(cell_ptr+0x140)|0x100))
+    poses.append(dict(actor=hex(actor),supplied_on_bridge=on_bridge,supplied_xyz=None if not on_bridge else position,
+     cell_before=before_cell,cell_after=self.cell_readback(cell_ptr),ground_object_head=hex(m.read32(cell_ptr+0xE4)),upper_object_head=hex(m.read32(cell_ptr+0xE8))))
+   return poses
+  self.phase='logic';self.events.clear();self.pending.clear();self.trace.clear();self.resident.trace.clear();self.resident.pending.clear()
+  h=u.hook_add(UC_HOOK_CODE,observe);w=u.hook_add(UC_HOOK_MEM_WRITE,written)
+  try:
+   initial=self.ground_firing_snap(p);rng_initial=rng()
+   poses=layer_poses(source_bridge,target_bridge,bridge_flags)
+   input_row=dict(name=name,frames=frames,entry='0x0051BAB0' if frames else '0x0051C8B0',target=hex(target),attack_queue=[1,0],source_on_bridge=source_bridge,target_on_bridge=target_bridge,
+    supplied_has_bridge_flags=bridge_flags,expiry_after_completed_ai_calls=expiry_after,expiry_entry='0x0051AA10' if expiry_after is not None else None,expiry_control=1 if expiry_after is not None else None,
+    comparison='original selected InfantryAI or actual pre-launch prefix' if frames else 'original fire-error admission only; Attack pursuit excluded',
+    geometry_context='native constructor/Unlimbo ground placement' if not (source_bridge or target_bridge or bridge_flags) else 'supplied post-placement layer/HasBridge state; original occupancy lists retained')
+   registration=self.registration();target_before=dict(self.snap(target),actor=hex(target),vtable=hex(m.read32(target)),health=native_owner.base.i32(u,target+0x6C),
+    alive=u.mem_read(target+0x90,1)[0],limbo=u.mem_read(target+0x81,1)[0],object_next=hex(m.read32(target+0x30)))
+   candidate_liveness=[dict(pointer=pointer,limbo=u.mem_read(int(pointer,16)+0x81,1)[0],alive=u.mem_read(int(pointer,16)+0x90,1)[0],xyz=native_owner.base.xyz(u,int(pointer,16)+0x9C),house=hex(m.read32(int(pointer,16)+0x21C))) for pointer in registration['techno']['actors']]
+   assigned=m.invoke(0x51B1F0,p,(target,));queued=m.invoke(0x5B35E0,p,(1,0))
+   fire_error=m.invoke(0x51C8B0,p,(target,0,1))
+   command=dict(before=initial,after=self.ground_firing_snap(p),assign_target_eax=assigned,queue_mission_eax=queued,diagnostic_fire_error=fire_error,
+    rng_before=rng_initial,rng_after=rng(),events=list(events),field_writes=list(writes),callback_events=list(self.events))
+   frame_rows=[];expiry=None
+   for index,frame in enumerate(frames):
+    if expiry_after==index:
+     segment[0]='expiry';begin=len(events);begin_writes=len(writes);callbacks=len(self.events);before=self.ground_firing_snap(p);before_rng=rng()
+     entry=m.read32(m.read32(p)+0x28);assert entry==0x51AA10
+     answer=m.invoke(entry,p,(target,1))
+     expiry=dict(entry=hex(entry),args=[target,1],before=before,after=self.ground_firing_snap(p),returned_eax=answer,rng_before=before_rng,rng_after=rng(),
+      events=events[begin:],field_writes=writes[begin_writes:],callback_events=self.events[callbacks:])
+    segment[0]=f'ai_call_{index}';self.frame=frame;supplied(0xA8ED84,dwords(frame))
+    before=self.ground_firing_snap(p);before_rng=rng();begin=len(events);begin_writes=len(writes);callbacks=len(self.events)
+    supplied(SP,dwords(RET_MAGIC));u.reg_write(UC_X86_REG_ESP,SP);u.reg_write(UC_X86_REG_ECX,p)
+    try:stop=run_checked(u,0x51BAB0,(RET_MAGIC,0x6FDD50),count=1_000_000,required_addresses=(0x51BAB0,0x4DA530,0x6F9E50,0x5206B0))
+    except Exception as error:raise RuntimeError(f'{name}: original InfantryAI frame {frame}: {error}') from error
+    returned=stop==RET_MAGIC;sp=u.reg_read(UC_X86_REG_ESP)
+    row=dict(native_frame=frame,entry='0x0051BAB0',stop=hex(stop),returned=returned,before=before,after=self.ground_firing_snap(p),
+     rng_before=before_rng,rng_after=rng(),events=events[begin:],field_writes=writes[begin_writes:],callback_events=self.events[callbacks:])
+    if returned:row['returned_eax']=u.reg_read(UC_X86_REG_EAX)
+    else:
+     row['base_fire_entry']=dict(this=hex(u.reg_read(UC_X86_REG_ECX)),return_pc=hex(m.read32(sp)),args=[m.read32(sp+4),m.read32(sp+8)],
+      frame_f8=native_owner.base.i32(u,p+0xF8),firing_68d=u.mem_read(p+0x68D,1)[0],unexecuted=True)
+     assert row['base_fire_entry']['firing_68d']==0
+     assert any(e['kind']=='infantry_fire' for e in row['events'])
+     assert any(write['field']=='firing_68d' and write['pc']=='0x51df70' and write['value']==0 for write in row['field_writes'])
+    frame_rows.append(row)
+    if not returned:break
+   result=dict(input=input_row,registration_before=registration,candidate_liveness_before=candidate_liveness,actor_before=initial,target_before=target_before,
+    target_after=dict(self.snap(target),alive=u.mem_read(target+0x90,1)[0],limbo=u.mem_read(target+0x81,1)[0]),poses=poses,command=command,expiry=expiry,frames=frame_rows,
+    final=self.ground_firing_snap(p),rng_initial=rng_initial,rng_final=rng(),native_fpcw=u.reg_read(UC_X86_REG_FPCW),instruction_count=instruction[0])
+   assert m.cursor==cursor,'unexpected allocation before native E1 launch boundary'
+   assert hashlib.sha256(bytes(u.mem_read(0x401000,0x3E0000))).hexdigest()==self.resident.code_hash
+   assert all(bytes(u.mem_read(int(address,16),len(bytes.fromhex(raw))))==bytes.fromhex(raw) for address,raw in self.vtables.items())
+   assert all(bytes(u.mem_read(address,len(raw)))==raw for address,raw in locomotor_vtables.items())
+  finally:
+   u.hook_del(h);u.hook_del(w)
+   for address,previous in reversed(journal):u.mem_write(address,previous)
+   u.context_restore(cpu);self.frame=old_frame;self.phase=phase;self.events[:]=inherited_events;self.pending.clear();self.pending.update(inherited_pending)
+   self.trace.clear();self.trace.extend(old_trace);self.resident.trace.clear();self.resident.trace.extend(resident_trace);self.resident.pending.clear();self.resident.pending.update(resident_pending)
+  assert initial==self.ground_firing_snap(p) and rng_initial==rng()
+  return result
+
+ def ground_firing_receipt(self):
+  # Fresh VM after all frozen220 rows: no registration/read/RNG history leaks
+  # backward into their payload. Reuse this sole owner's original constructors.
+  self.initialize_companion();rules=self.rules_reader_receipts();weapons=self.weapon_reader_receipts()
+  m,u=self.m,self.u;table=m.read32(self.e1_type+0xE3C)
+  result=dict(native_sha256=NATIVE_SHA256,text_sha256=self.resident.code_hash,inputs=self.inputs,world=self.world,mission_inputs=self.mission_inputs,
+   setup=dict(e1=hex(self.e1),candidate=hex(self.candidate),house=hex(self.house),enemy=hex(self.enemy),
+    e1_ctor=self.e1_ctor,e1_placement=self.e1_placement,e1_unlimbo=self.e1_unlimbo,candidate_placement=self.candidate_placement,candidate_unlimbo=self.candidate_unlimbo,
+   original_vtables={address:hashlib.sha256(bytes.fromhex(raw)).hexdigest() for address,raw in self.vtables.items()},
+    original_locomotor_vtables={hex(m.read32(m.read32(actor+0x674))):hashlib.sha256(bytes(u.mem_read(m.read32(m.read32(actor+0x674)),0x100))).hexdigest() for actor in (self.e1,self.candidate)},
+    sequence_table=hex(table),fire_up_sequence=dict(index=4,bytes=bytes(u.mem_read(table+4*0x24,0x24)).hex(),native_frame_count=native_owner.base.i32(u,table+4*0x24+4)),
+    fire_up_frame=native_owner.base.i32(u,self.e1_type+0xE40),action_flags_rate_bytes=bytes(u.mem_read(0x7EAF7C+4*4,4)).hex()),
+   reader_context=dict(rules_reader_receipts=rules,weapon_reader_receipts=weapons,idle_action_frequency_bits=bytes(u.mem_read(self.rules+0x1710,8)).hex(),
+    weapon_context='all four physical E1 normal/elite weapons and referenced children',rules_context='physical AudioVisual idle frequency; same supplied storage and key-block bounds'),cases=[])
+  controls=[('E1_ground_attack',[1,2,3],{}),('E1_ground_repeated_frame',[1,1,2,3],{}),('E1_ground_elapsed_gap',[1,20,21],{}),
+   ('E1_supplied_deck_attack',[1,2,3],dict(source_bridge=1,target_bridge=1,bridge_flags=True)),
+   ('E1_initial_ground_to_deck_fire_error_only',[],dict(target_bridge=1,bridge_flags=True)),
+   ('E1_initial_deck_to_ground_fire_error_only',[],dict(source_bridge=1,bridge_flags=True)),
+   ('E1_target_expiry_before_fireup',[1],dict(expiry_after=0)),('E1_target_expiry_while_fireup_pending',[1,2],dict(expiry_after=1))]
+  for name,frames,kw in controls:result['cases'].append(self.ground_firing_case(name,frames,**kw))
+  result['native_text_unchanged']=hashlib.sha256(bytes(u.mem_read(0x401000,0x3E0000))).hexdigest()==self.resident.code_hash
+  return result
 
  def row(self,name,family='MTNK',mission=21,status=2,target=0,archive=0,nav=0,seed=31,stop=None,scan_expired=False,idle_expired=False,candidate_result=None,candidate_xyz=None,archive_xyz=None,source_xyz=None,on_bridge=None,head_xyz=None,source_cell_flags=None,archive_flags=None,candidate_live=False,dispatch_entry=False,greatest_args=None,idle_args=None,navigation_args=None,home_args=None,evidence_context=None,**flags):
   m,u=self.m,self.u;p=self.src if family=='MTNK' else self.e1
@@ -766,6 +916,12 @@ def generate():
    stop=(RET_MAGIC,0x4DE12D),candidate_live=live,scan=1,evidence_context=retail_context,
    navigation_args=dict(control,inactive_registered_candidates=list(q.extra_candidates.values()))))
  out['retail_weapon_rows']=weapon_rows
+ preserved=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False).encode()
+ preserved_sha=hashlib.sha256(preserved).hexdigest()
+ assert preserved_sha=='bbc321dd3de71f87a2762508df6e7bcd3845510e3cd2dc0458eefaaff29314a0','frozen220-row payload changed'
+ receipt=FootMissions().ground_firing_receipt()
+ receipt['preserved_payload']=dict(canonical_sha256=preserved_sha,canonical_bytes=len(preserved),row_counts={key:len(out[key]) for key in ('rows','retail_idle_rows','greatest_threat_rows','navigation_rows','empty_rescue_rows','retail_weapon_rows')})
+ out['ground_firing_receipt']=receipt
  return out
 
 
@@ -807,6 +963,12 @@ NATIVE_SPANS = {
  'weapon_range':(0x7012C0,0xDB),'get_weapon':(0x70E140,0x56),
  'normal_weapon_slot':(0x7177C0,0x15),'elite_weapon_slot':(0x7177E0,0x15),
  'elite_predicate':(0x750010,0x18),'elite_threshold':(0x7E37B4,4),
+ 'infantry_ai':(0x51BAB0,0x4D7),'foot_ai_entry':(0x4DA530,0x20),'techno_ai':(0x6F9E50,0x11B5),
+ 'absolute_stage_tick':(0x6FABC4,0x6D),'infantry_fire_at_target':(0x5206B0,0x42F),
+ 'infantry_select_weapon':(0x5218E0,0x7E),'infantry_fire_error':(0x51C8B0,0x2E5),'techno_fire_error':(0x6FC0B0,0xC88),
+ 'walk_fire_error':(0x55AD00,5),'infantry_fire_prefix':(0x51DF60,0x1C),'base_fire_unexecuted_entry':(0x6FDD50,0x10),
+ 'infantry_movement_actions_entry':(0x520F40,0x20),'fire_up_action_flags_rate':(0x7EAF8C,4),
+ 'infantry_pointer_expired':(0x51AA10,0x3A),'foot_pointer_expired':(0x4D9960,0x295),'techno_pointer_expired':(0x7077C0,0x4EE),
 }
 
 
@@ -845,7 +1007,13 @@ def metadata():
   'projectile_constructor':0x46BBC0,'projectile_find_or_allocate':0x46C790,'projectile_reader':0x46BEE0,'warhead_constructor':0x75CEC0,'warhead_reader':0x75D3A0,
   'weapon_speed_postpass':0x7729F0,'weapon_range':0x7012C0,'get_weapon':0x70E140,
   'normal_weapon_slot':0x7177C0,'elite_weapon_slot':0x7177E0,'elite_predicate':0x750010,
+  'infantry_ai':0x51BAB0,'foot_ai':0x4DA530,'techno_ai':0x6F9E50,'absolute_stage_tick':0x6FABC4,
+  'fire_at_target':0x5206B0,'infantry_select_weapon':0x5218E0,'infantry_fire_error':0x51C8B0,'techno_fire_error':0x6FC0B0,'walk_fire_error':0x55AD00,
+  'infantry_fire_prefix':0x51DF60,'base_fire_unexecuted_entry_boundary':0x6FDD50,'infantry_movement_actions':0x520F40,
+  'infantry_pointer_expired':0x51AA10,'foot_pointer_expired':0x4D9960,'techno_pointer_expired':0x7077C0,
  },assumptions=[
+  'ground_firing_receipt creates a fresh existing FootMissions VM only after the frozen220-row payload canonical identity is checked. It repeats original constructors, actual Drive/Walk factories, successful E1/MTNK Unlimbo/registration, the existing rules key-block receipts and all physically referenced E1 normal/elite WeaponType/Projectile/Warhead readers. The explicit companion Ready fixture baseline is retained; target admission51B1F0, Attack queue5B35E0 and native whole51BAB0 promotion/AI run. Original Foot4DA530, Techno6F9E50, Mission5B3060, absolute stage6FABC4..6FAC31, select5218E0, fire error51C8B0/6FC0B0/Walk55AD00, DoAction51D6F0, FireAtTarget5206B0, sequencer520AE0 and movement520F40 execute without gameplay-result substitutions. Clock inputs, call/write order, actual receiver/arguments/returns, stage/F8/FC, firing68D, rearm/mission timers, real Walk state, facing and full three RNG streams are recorded.',
+  'Four accepted ground_firing_receipt controls run complete selected InfantryAI returns before the launch visit. The accepted visit stops before executing the real6FDD50 entry, after original51DF60 pushed actual target/weapon0 and wrote68D0 at51DF70. No EAX or stack return is supplied at that boundary; the enclosing InfantryAI/FireAt/sequencer tails have not returned. Repeated absolute-frame and elapsed-gap controls execute the original absolute stage arithmetic, including actual mission cadence/RNG when due. Concrete51AA10 expiry control1 executes before the first AI visit or between the first two, including the real Techno/Foot and Infantry AssignTarget/DoAction receivers. This is a supplied expired-pointer notification, not original target death/UnInit/broadcast.',
   'The additive weapon_reader_receipts runs only after all208 historical rows. Original normal7177C0/elite7177E0 slot getters expose M60/Para/M60E/ParaE names and actual retained constructor/read fields. Original7012C0 GetWeaponRange and707E60 ThreatRange run through original70E140 and native vtables for the retained rookie state and separately supplied veterancy float2.0 elite control. The getter control restores that supplied field and consumes no RNG. Before closure, only M60 has read physical WeaponType772080; its actual InvisibleLow46BEE0 attempt lacks a matching section and retains original46BBC0 constructor fields, while SA75D3A0 reads. The other three weapons retain original771C70 fields and null child references. Explicit omitted_sections/read attempts qualify the historical208 results; no old result is rewritten.',
   'New weapon closure reads exact-case physical E1-referenced normal/elite weapon sections and their Projectile/Warhead names across RULESMD, optional LANGRULE, mode and map layers. Every original772080, actual child46BEE0/75D3A0 and original7729F0 postpass executes, with native AL section status, reader arguments, observed fields/writes and full unchanged RNG recorded. No native range/default/scanner/child value comes from Rust. The separate12 retail_weapon_rows execute7 consecutive Cell-leash controls including the prior2254 contrast,3 strict Rescue supplied-result boundaries and2 actual scanner prefixes under the completed physical weapon context and physically read .15 idle frequency. Each new input names its weapon/rules/registration receipt context; actual ordered registries and every registered actor limbo/alive/coordinate/House are read before entry. The two real prefix controls reuse the existing navigation fixture to supply only the two extra candidates limbo1/alive0 after prototype restoration. Other new rows restore their actual placed extra baselines; the main candidate uses candidate_live. These continue original handlers, not a whole Rules Process or whole match.',
   'The additive initial_action_receipt captures original E1517A50/Walk75AA90 constructor state and successful51DFF0 Unlimbo before the companion explicit Ready. Both retain Doing-1. Full original520AE0 then executes actual COM Walk75AB30 and forced51D6F0(Ready0,1,0), recording the51D9D2 Doing write, raw frame/sequence/facing fields and full three RNG states. All probe writes and CPU/x87 are restored before explicit fixture Ready, preserving all204 historical values. The actor is the initialized stationary source at the declared crop/frame; first whole InfantryAI, moving admission, absolute-stage clock and whole ScenarioLoad are excluded.',
@@ -862,8 +1030,9 @@ def metadata():
   'greatest_threat_registration observes actual Techno/Unit/Infantry arrays after constructors, and Logic/ground Display arrays after original Unlimbo. Techno constructor appends; Logic appends for the supplied sort0 contract; Display layer2 uses its own ordering. Additional enemy E1 requires native empty Cell owner fields: original47BBF0 executes on a donor and only its+54/+58 values are supplied to empty cropped cells after all82 preserved rows. Full Cell/map construction is not claimed. Houses/counter vectors and declaring placed candidates limbo remain supplied boundaries.',
   'Cell anchors execute486840/47B3A0 on physical level/slope and remain ground anchors when the source pose is deck+416/OnBridge1. Entity anchors execute native5F65A0 physical XYZ. Drive/Walk retained-head offsets reuse locomotor_at_coord.FAMILIES; alternate head and unrelated NavCom are explicit controls. Full scan input, Rescue strict gate and AreaGuard leash use the archived physical point.',
  ],substitutions=[
+  'ground_firing_receipt excludes6FDD50 body, launch/projectile allocation, MGUN/PIFF/Report asset or sound closure, post-fire rearm writes, impact/damage/collapse and whole Logic/Scenario/object interleaving. It is original selected per-actor AI or a pre-launch prefix, not a complete shot. Supplied high-deck controls add416 to actual placed XYZ and set OnBridge/physical Cell HasBridge0x100; real Map queries and original firing receivers run, but original ground/upper occupancy lists are retained. Native bridge Unlimbo, deck occupancy relocation and layer/head production are not established. Opposite-layer controls run original51C8B0→6FC0B0 admission only and execute no AI visit: full Attack pursuit reaches Foot4D5690 and unprepared AStar42D170/42A5B0, whose initialization/hierarchy belongs to the existing anytown_damage/navigation.py owner. No path answer, mission timer, target/fire/sequence/RNG result, code or vtable is substituted to bypass that prerequisite.',
   'Historical208 rows have an explicitly partial physical weapon read context: Para, M60E, ParaE, InvisibleLow and SSA sections are unread even though E1 TypeINI allocates all four slot weapon types. Their executed results and RNG remain unchanged. Old82 rows and initial_action_receipt use constructor IdleActionFrequency, while the later36 idle/86 threat/2 destination/2 home rows use the separately read physical frequency. The new weapon receipt publishes this array-to-reader-context map. New12 handler controls use all physically read E1 weapons and children but retain the inherited supplied crop, House, registration, archive/geometry and receiver-state bounds; strict Rescue result-seam rows do not certify actual acquisition.',
-  'This is a selected handler/dispatcher continuation on the existing Anytown crop, not a native whole-match ScenarioLoad/RespondToBaseAttack/damage trigger or full live UnitAI/FootAI object tick. Queue promotion and source state that select these handlers are supplied. Full House construction/bookkeeping remain excluded; null-House object constructors are followed by explicit owner links and valid family-specific count vectors. Physical Americans country readers and original4F643B coefficient selection execute.',
+  'The historical220-row portion is a selected handler/dispatcher continuation on the existing Anytown crop, not a native whole-match ScenarioLoad/RespondToBaseAttack/damage trigger or full live UnitAI/FootAI object tick. Queue promotion and source state that select those handlers are supplied. The separate ground_firing_receipt executes original per-actor InfantryAI returns/pre-launch prefixes under its explicit bounds. Full House construction/bookkeeping remain excluded; null-House object constructors are followed by explicit owner links and valid family-specific count vectors. Physical Americans country readers and original4F643B coefficient selection execute.',
   'Supplied-scanner-result rows execute the original Rescue prefix to4DE056, record actual virtual receiver/vtable/three arguments, then supply only the declared EAX result and consumed12-byte stack before running original caller4DE05C. They do not execute the scanner or certify candidate acquisition; full-scanner rows are separate. The preserved no-target/refused rows stop at4DE12D before status1 write, House500200 home selection, destination/archive cleanup or the cadence tail. The additive empty_rescue_rows execute that original suffix with the separate supplied House/crop premises.',
   'Geometry/layer/head/NullPoint and raw leash-boundary poses are supplied post-placement controls; they do not prove native bridge Unlimbo, locomotor head production, occupancy relocation or map loader chronology. Placed candidates can be declared limbo after actual placement to exercise empty scans; no physical UnInit transition is claimed. Crop and out-of-crop map/zone storage retain the existing owner bounds.',
   'Existing successful native heap/file/INI cache, empty SEH, wall-clock/atexit/ASCII/CLSID/Interlocked/OleRun OS boundaries remain. Additional Infantry COM activation is routed to original Walk factory after checking its physical CLSID/arguments. Visual asset/radar/sound sinks and inherited hierarchy586990 callback are recorded; full audio Main RNG/device work, rendering and future movement/occupancy effects are excluded. No range, RNG, approach, target, bridge or scanner result is replaced except the explicitly declared strict-gate scanner-result seam.',
@@ -889,6 +1058,7 @@ def source_paths():
                   'tools/spatial_oracle/bridge_target_composed.py',
                   'tools/spatial_oracle/locomotor_at_coord.py',
                   'tools/spatial_oracle/house_base_projection.py',
+                  'tools/spatial_oracle/foot_attack_move.py',
                   'tools/native_slope.py',
                   'tools/spatial_oracle/fire_error.py'):
   paths[relative]=REPO/relative

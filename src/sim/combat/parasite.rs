@@ -814,8 +814,11 @@ impl Simulation {
             grid.cell(bridge_reference.0 as u16, bridge_reference.1 as u16)
                 .overlay_id
         });
-        let overlay_bridge = overlay.is_some_and(|id| (0x4A..0x64).contains(&id))
-            || overlay.is_some_and(|id| (0xCD..=0xE6).contains(&id));
+        let overlay_bridge = overlay.is_some_and(|id| {
+            use crate::sim::bridge_state::{ordinary, ramp_repair::Family};
+            ordinary::standing(i32::from(id), Family::Low)
+                || ordinary::standing(i32::from(id), Family::High)
+        });
         !(self.cell_has_bridge(bridge_reference) || overlay_bridge)
     }
 

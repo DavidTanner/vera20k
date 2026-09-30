@@ -1419,7 +1419,7 @@ pub(crate) fn handle_death(
             // `0x0043896A`/`0x00438982`: a bombed bridge-repair hut drops
             // its bridge after the blast.
             if *bridge_hut {
-                crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(
+                bridge_state_changed |= crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(
                     world,
                     rules,
                     (*rx, *ry),

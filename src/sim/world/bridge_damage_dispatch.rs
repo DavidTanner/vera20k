@@ -1,24 +1,25 @@
-//! Live host of Apply_area_damage's bridge admission and callback order.
+//! Live host of Apply_area_damage's bridge admission and callback order, and
+//! of ApplyDamageToCell (`0x00587180`), which area damage and the CABHUT death
+//! fallback (`0x00574483`, `0x0057459A`, `0x0057509F`, `0x005751B6`) share.
 
 use super::*;
 use crate::map::cell_index::NativeCellIdentity;
-use crate::sim::bridge_state::damage_dispatch::{self, CellFields, DamageHost};
-use crate::sim::bridge_state::ramp_repair::Family;
+use crate::sim::bridge_state::damage_dispatch::{self, CellFields, CellReader, DamageHost};
+use crate::sim::bridge_state::publication::CellCoord;
+use crate::sim::bridge_state::ramp_repair::{Family, HutCells};
 
-struct LiveDamage<'a> {
-    sim: &'a mut Simulation,
-    event: &'a BridgeDamageEvent,
-    strength: i32,
-    publication: Option<(
-        &'a RuleSet,
-        Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
-    )>,
-    outcomes: Vec<StateOutcome>,
-    collapsed: bool,
+/// The live cell reads behind a driver selection and the CABHUT fallback's
+/// anchor search.
+pub(super) struct LiveCells<'a> {
+    sim: &'a Simulation,
 }
 
-impl LiveDamage<'_> {
-    fn terrain(&self) -> &ResolvedTerrainGrid {
+impl<'a> LiveCells<'a> {
+    pub(super) fn new(sim: &'a Simulation) -> Self {
+        Self { sim }
+    }
+
+    fn terrain(&self) -> &'a ResolvedTerrainGrid {
         self.sim
             .resolved_terrain
             .as_ref()
@@ -26,7 +27,26 @@ impl LiveDamage<'_> {
     }
 }
 
-impl DamageHost for LiveDamage<'_> {
+impl HutCells for LiveCells<'_> {
+    type Cell = NativeCellIdentity;
+    /// A 0x100 cell without 0x80 or +0x2C, where native faults.
+    type Error = ();
+
+    fn lookup(&mut self, requested: CellCoord) -> Self::Cell {
+        self.terrain().native_cell_identity(requested)
+    }
+    fn coord(&self, cell: Self::Cell) -> CellCoord {
+        self.terrain().native_cell_coord(cell)
+    }
+    fn flags(&self, cell: Self::Cell) -> u32 {
+        self.terrain().native_cell_flags(cell)
+    }
+    fn anchor(&self, cell: Self::Cell) -> Result<Self::Cell, ()> {
+        self.terrain().native_cell_anchor(cell).ok_or(())
+    }
+}
+
+impl CellReader for LiveCells<'_> {
     type Cell = NativeCellIdentity;
 
     fn fields(&self, cell: Self::Cell) -> CellFields {
@@ -90,24 +110,73 @@ impl DamageHost for LiveDamage<'_> {
             .high_bridge_rim_tiles()
             .map(|tiles| tiles.middle)
     }
+}
 
-    fn roll_strength(&mut self) -> i32 {
-        self.sim
-            .scenario_rng
-            .next_range_i32_inclusive(1, self.strength)
+/// A structural driver's outcome and the state machine that produced it.
+pub(super) struct DriverOutcome {
+    pub(super) outcome: StateOutcome,
+    /// Selects the ramp-pair rim: the High machine (`0x00576BA0`) calls
+    /// `0x00576770`, the Low one (`0x00571490`) its wooden twin `0x00571050`.
+    pub(super) high: bool,
+}
+
+/// The bridge drivers that ApplyDamageToCell and the direct overlay blocks
+/// call, with the structural outcomes the collapse cascade consumes.
+pub(super) struct BridgeDamageDrivers<'a> {
+    pub(super) sim: &'a mut Simulation,
+    publication: Option<(
+        &'a RuleSet,
+        Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    )>,
+    pub(super) outcomes: Vec<DriverOutcome>,
+    /// An ordinary or body publication collapsed a span synchronously.
+    pub(super) collapsed: bool,
+}
+
+impl<'a> BridgeDamageDrivers<'a> {
+    pub(super) fn new(
+        sim: &'a mut Simulation,
+        publication: Option<(
+            &'a RuleSet,
+            Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+        )>,
+    ) -> Self {
+        Self {
+            sim,
+            publication,
+            outcomes: Vec::new(),
+            collapsed: false,
+        }
     }
 
-    fn apply(&mut self, path: DispatchPath) -> bool {
-        let input = (self.event.rx as i16, self.event.ry as i16);
-        let path = if path.is_state_machine() {
-            let cell = self.terrain().native_cell_identity(input);
-            let Some(selected) = damage_dispatch::select_driver(self, cell) else {
-                return false;
-            };
-            selected
-        } else {
-            path
+    /// The rules of a publishing caller (every production caller is one).
+    pub(super) fn rules(&self) -> &'a RuleSet {
+        self.publication
+            .expect("bridge drivers need the live rules/publication context")
+            .0
+    }
+
+    /// ApplyDamageToCell `0x00587180`: the driver is chosen again from live
+    /// cell state on every call ([`damage_dispatch::select_driver`]); no
+    /// match returns false.
+    pub(super) fn apply_damage_to_cell(&mut self, input: (i16, i16)) -> bool {
+        let cell = self
+            .sim
+            .resolved_terrain
+            .as_ref()
+            .expect("bridge damage terrain")
+            .native_cell_identity(input);
+        let Some(path) = damage_dispatch::select_driver(&mut LiveCells::new(self.sim), cell) else {
+            return false;
         };
+        self.run(input, path)
+    }
+
+    /// One driver at `input`: DamageOrdinaryWoodBridge (`0x0057BAA0`) or
+    /// DestroyBridge_High (`0x0057CCF0`) for a direct path, the structural
+    /// state machines otherwise. Structural outcomes publish their flag
+    /// transcript at once, so the next call reads the flags they set.
+    pub(super) fn run(&mut self, input: (i16, i16), path: DispatchPath) -> bool {
         if matches!(path, DispatchPath::LowDirect | DispatchPath::HighDirect)
             && let Some((rules, registry)) = self.publication
         {
@@ -124,13 +193,19 @@ impl DamageHost for LiveDamage<'_> {
             self.collapsed |= result.collapsed;
             return result.returned;
         }
-        if matches!(path, DispatchPath::HighStateMachine)
-            && let Some((rules, registry)) = self.publication
-            && let Some(result) = live_publication::try_body(self.sim, rules, registry, input)
+        let family = if path == DispatchPath::HighStateMachine {
+            Family::High
+        } else {
+            Family::Low
+        };
+        if let Some((rules, registry)) = self.publication
+            && let Some(result) =
+                live_publication::try_body(self.sim, rules, registry, input, family)
         {
             self.collapsed |= result.collapsed;
             return result.returned;
         }
+        let (rx, ry) = (input.0 as u16, input.1 as u16);
         let outcome = {
             let terrain = self
                 .sim
@@ -139,12 +214,8 @@ impl DamageHost for LiveDamage<'_> {
                 .expect("bridge damage terrain");
             let state = self.sim.bridge_state.as_mut().expect("bridge damage state");
             match path {
-                DispatchPath::HighStateMachine => {
-                    state.advance_damage_state(self.event.rx, self.event.ry, true, terrain)
-                }
-                DispatchPath::LowStateMachine => {
-                    state.advance_damage_state(self.event.rx, self.event.ry, false, terrain)
-                }
+                DispatchPath::HighStateMachine => state.advance_damage_state(rx, ry, true, terrain),
+                DispatchPath::LowStateMachine => state.advance_damage_state(rx, ry, false, terrain),
                 DispatchPath::LowDirect | DispatchPath::HighDirect => {
                     panic!("ordinary bridge damage requires the live rules/publication context")
                 }
@@ -153,27 +224,81 @@ impl DamageHost for LiveDamage<'_> {
         let success = outcome.apply_damage_success();
         if outcome.has_effect() {
             apply_runtime_bridge_flag_transcript_from_outcome(self.sim, &outcome);
-            self.outcomes.push(outcome);
+            self.outcomes.push(DriverOutcome {
+                outcome,
+                high: path == DispatchPath::HighStateMachine,
+            });
         }
         success
+    }
+}
+
+/// Apply_area_damage's four admission blocks around one event's cell.
+struct LiveDamage<'a> {
+    drivers: BridgeDamageDrivers<'a>,
+    event: &'a BridgeDamageEvent,
+    strength: i32,
+}
+
+impl LiveDamage<'_> {
+    fn cells(&self) -> LiveCells<'_> {
+        LiveCells::new(self.drivers.sim)
+    }
+}
+
+impl CellReader for LiveDamage<'_> {
+    type Cell = NativeCellIdentity;
+
+    fn fields(&self, cell: Self::Cell) -> CellFields {
+        self.cells().fields(cell)
+    }
+
+    fn resolve_anchor(&mut self, cell: Self::Cell) -> Option<Self::Cell> {
+        self.cells().resolve_anchor(cell)
+    }
+
+    fn tile_bases(&self) -> [i32; 2] {
+        self.cells().tile_bases()
+    }
+
+    fn middle_tiles(&self) -> Option<[i32; 2]> {
+        self.cells().middle_tiles()
+    }
+}
+
+impl DamageHost for LiveDamage<'_> {
+    fn roll_strength(&mut self) -> i32 {
+        self.drivers
+            .sim
+            .scenario_rng
+            .next_range_i32_inclusive(1, self.strength)
+    }
+
+    fn apply(&mut self, path: DispatchPath) -> bool {
+        let input = (self.event.rx as i16, self.event.ry as i16);
+        if path.is_state_machine() {
+            self.drivers.apply_damage_to_cell(input)
+        } else {
+            self.drivers.run(input, path)
+        }
     }
 
     fn detach(&mut self, cell: Self::Cell) {
         let NativeCellIdentity::Real(_) = cell else {
             return;
         };
-        let (rx, ry) = self.terrain().native_cell_coord(cell);
-        self.sim.stop_all_targeting_cell(
-            rx as u16,
-            ry as u16,
-            self.publication.map(|(rules, _)| rules),
-        );
+        let (rx, ry) = self.cells().terrain().native_cell_coord(cell);
+        let rules = self.drivers.publication.map(|(rules, _)| rules);
+        self.drivers
+            .sim
+            .stop_all_targeting_cell(rx as u16, ry as u16, rules);
     }
 
     fn dirty(&mut self, _path: DispatchPath) {
         // Tactical presentation rebuilds a complete frame; this cell marks the
         // same native damage attempt even when its driver returns false.
-        self.sim
+        self.drivers
+            .sim
             .tactical_dirty_cells
             .push((self.event.rx, self.event.ry));
     }
@@ -187,7 +312,7 @@ pub(super) fn run(
         &RuleSet,
         Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     )>,
-) -> (Vec<StateOutcome>, bool) {
+) -> (Vec<DriverOutcome>, bool) {
     if sim.resolved_terrain.is_none() || sim.bridge_state.is_none() {
         return (Vec::new(), false);
     }
@@ -200,12 +325,9 @@ pub(super) fn run(
             .unwrap()
             .native_cell_identity((event.rx as i16, event.ry as i16));
         let mut host = LiveDamage {
-            sim,
+            drivers: BridgeDamageDrivers::new(sim, publication),
             event,
             strength,
-            publication,
-            outcomes: Vec::new(),
-            collapsed: false,
         };
         damage_dispatch::dispatch(
             &mut host,
@@ -214,8 +336,8 @@ pub(super) fn run(
             event.impact_z_leptons,
             event.is_ion_cannon,
         );
-        collapsed |= host.collapsed;
-        outcomes.extend(host.outcomes);
+        collapsed |= host.drivers.collapsed;
+        outcomes.extend(host.drivers.outcomes);
     }
     (outcomes, collapsed)
 }

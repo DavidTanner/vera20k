@@ -14,12 +14,35 @@ pub(super) fn source_start_direction(
     source: (i32, i32),
     rng: &mut crate::sim::rng::SimRng,
 ) -> i32 {
-    let facing = crate::util::direction_tables::facing16_between(
+    let away = crate::util::direction_tables::facing16_between(
         [source.0, source.1],
         [current.0, current.1],
     );
-    let away = (((u32::from(facing) >> 12) + 1) >> 1) as i32 & 7;
-    rng.next_range_u32_inclusive(0, 4) as i32 - 2 + away
+    octant_start(away, rng)
+}
+
+/// Infantry51D2D9..51D390, the null-coordinate arm: the body facing when the
+/// physical coordinate (vt+0x48) sits at its cell centre, else the heading
+/// from the centre to it; rounded to an octant, then RandomRanged(0,4)-2.
+/// The draw precedes the arm's nearby-cell search, so it is paid whether
+/// or not the fallback runs.
+pub(super) fn null_start_direction(
+    current: (i32, i32),
+    facing: u16,
+    rng: &mut crate::sim::rng::SimRng,
+) -> i32 {
+    let within = [current.0 & 0xFF, current.1 & 0xFF];
+    let heading = if within == [0x80, 0x80] {
+        facing
+    } else {
+        crate::util::direction_tables::facing16_between([0x80, 0x80], within)
+    };
+    octant_start(heading, rng)
+}
+
+fn octant_start(heading: u16, rng: &mut crate::sim::rng::SimRng) -> i32 {
+    let octant = (((u32::from(heading) >> 12) + 1) >> 1) as i32 & 7;
+    rng.next_range_u32_inclusive(0, 4) as i32 - 2 + octant
 }
 
 /// `None` refuses entry, `Some(false)` retains a fallback, `Some(true)` selects

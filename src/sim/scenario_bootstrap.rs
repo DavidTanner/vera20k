@@ -90,6 +90,15 @@ impl NativeStartBounds {
         }
     }
 
+    /// The inclusive test native walks make against `+0x124..+0x130`:
+    /// `left <= x <= left + width`, and the same for y. Both CABHUT tails
+    /// walk inside it (repair `0x005738B1`, death `0x005744F7..0x00574531`).
+    pub(crate) fn contains(self, at: (i16, i16)) -> bool {
+        let (left, top) = (i32::from(self.min_rx), i32::from(self.min_ry));
+        (left..=left + i32::from(self.width)).contains(&i32::from(at.0))
+            && (top..=top + i32::from(self.height)).contains(&i32::from(at.1))
+    }
+
     fn max_rx(self) -> u16 {
         self.min_rx.saturating_add(self.width.saturating_sub(1))
     }

@@ -1136,7 +1136,21 @@ fn a_warp_in_progress_survives_a_snapshot() {
 /// frozen jump).
 #[test]
 fn a_warped_object_runs_none_of_its_ai_phases() {
-    let rules = rules();
+    // Stand is presentation; native idle admission reads Doing. Supply the
+    // real Ready record, then start it through Do_Action before testing freeze.
+    let ini = IniFile::from_str(&RULES.replace("[E1]\n", "[E1]\nImage=GI\n"));
+    let art = IniFile::from_str(&format!(
+        "{ART}\n{}",
+        crate::rules::retail_ini_fixture::GI_ART_EXCERPT
+    ));
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    let mut registry = crate::rules::art_data::ArtRegistry::from_ini(&art);
+    registry.bind_anim_frame_count_for_test("WARPAWAY", 20);
+    registry.bind_anim_frame_count_for_test("CHRONOSK", 3);
+    rules.install_art_data(registry);
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
     let mut sim = sim(21);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
     let plant = spawn(&mut sim, &rules, "GAPOWR", "Americans", 16, 16);
@@ -1151,10 +1165,16 @@ fn a_warped_object_runs_none_of_its_ai_phases() {
     sim.houses.get_mut(&americans).unwrap().economy.credits = 5000;
     let now = sim.session.binary_frame;
     let _ = sim.mission_assign_exact(gi, MissionId::from_known(MissionType::Guard), now);
+    assert!(
+        sim.infantry_do_action(
+            gi,
+            crate::sim::movement::infantry_action::DO_READY,
+            false,
+            &rules
+        )
+        .unwrap()
+    );
     let idle_turn = |sim: &mut Simulation, frame: u32| {
-        sim.substrate.entities.get_mut(gi).unwrap().animation = Some(
-            crate::sim::animation::Animation::new(crate::sim::animation::SequenceKind::Stand),
-        );
         let order = sim.live_object_order_snapshot();
         let before = sim.scenario_rng.logical_state();
         crate::sim::infantry::tick_idle_actions(

@@ -172,6 +172,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
                         rules: &rules,
                         registry: Some(&registry),
                         collapsed: false,
+                        family: Family::High,
                     };
                     let cell = live.lookup(coord);
                     live.write_raw_bridge_level(cell, value.as_u64().unwrap() as u8)
@@ -222,6 +223,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
                 rules: &rules,
                 registry: Some(&registry),
                 collapsed: false,
+                family: Family::High,
             };
             let mut trace = BatchTrace {
                 live: &mut live,
@@ -347,6 +349,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
         rules: &rules,
         registry: Some(&registry),
         collapsed: false,
+        family: Family::High,
     };
     let cell = live.lookup((12, 10));
     live.write_raw_bridge_level(cell, 4).unwrap();
@@ -388,6 +391,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
         rules: &rules,
         registry: Some(&registry),
         collapsed: false,
+        family: Family::High,
     };
     live.recalculate_bridge_zones(&[(10, 10), (12, 10)])
         .unwrap();
@@ -427,6 +431,7 @@ fn live_raw_bridge_height_preserves_native_signed_deck_byte_and_dummy_identity()
         rules: &rules,
         registry: None,
         collapsed: false,
+        family: Family::High,
     };
     let cell = live.lookup((12, 10));
     let mut checked = 0;
@@ -506,6 +511,7 @@ fn live_bridge_batch_recovers_rust_append_capacity_without_replacing_base_connec
         rules: &rules,
         registry: Some(&registry),
         collapsed: false,
+        family: Family::High,
     }
     .recalculate_bridge_zones(&[(10, 10)])
     .unwrap();

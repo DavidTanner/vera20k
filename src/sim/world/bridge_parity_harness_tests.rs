@@ -190,7 +190,19 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // mission, NavCom, attack and movement targets, locomotor kind and layer and
 // all three RNG states matched at all 200 ticks (the probe patch was not
 // committed). Old values: the commit that moved them.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xCE12_E6CB_8870_62E5;
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+// 2026-09-30 native mission-site idle precedes the first Ready action; explicit
+// GI ART supplies its actual sequence records. Captured actor and full-stream
+// receipts in foot_bridge_layer.replay.json establish the changed inputs and
+// draw sites. All 200 per-frame replay hashes, route/height/layer/occupancy gates
+// and absolute RNG pins pass before this Rust regression hash is checked.
+// This is a Rust replay pin, not native whole-world parity evidence.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xDCB5_B510_23C8_0E6B;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -202,7 +214,7 @@ fn bridge_ini() -> IniFile {
          [VehicleTypes]\n0=MTNK\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n\n\
-         [E1]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
+         [E1]\nImage=GI\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
@@ -212,7 +224,16 @@ fn bridge_ini() -> IniFile {
 }
 
 fn bridge_rules() -> RuleSet {
-    RuleSet::from_ini(&bridge_ini()).expect("bridge harness rules should parse")
+    let ini = bridge_ini();
+    // Explicit authored GI inputs use the production fixed-ART reader and binder;
+    // zero-count constructor records do not admit native Ready/idle actions.
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    rules
 }
 
 /// Is `x` a gorge column — the low ground the span crosses?
@@ -697,6 +718,10 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         rec.mapgen_rng.logical_state(),
         rep.mapgen_rng.logical_state()
     );
+    println!(
+        "[bridge parity] final_hash={:016X}",
+        replayed.last().unwrap()
+    );
     assert_eq!(
         (
             rep.scenario_rng.state(),
@@ -704,7 +729,9 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             rep.mapgen_rng.state()
         ),
         (
-            0x1E0D_2428_10B3_F39F,
+            // Native mission-site idle precedes first Ready; explicit GI ART
+            // supplies real action records. See foot_bridge_layer.replay.json.
+            0xBC80_136B_FB95_59C6,
             0x9C68_CC8B_9F2C_82ED,
             0x1CE8_1848_7043_6163
         ),

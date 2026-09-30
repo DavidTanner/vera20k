@@ -233,8 +233,9 @@ native comparison.
 
 Across all 600 ticks the two Rust executions matched every world hash, serialized
 entity and RNG fingerprint, plus all 319 raw draws. The unchanged absolute RNG
-pins and duel checks still pass. The new final world hash `B3DF7D9407AF305B` reflects
-the completed fixture's map, coordinates and movement context. These are Rust
+pins and duel checks still pass. The final world hash `B3DF7D9407AF305B` then reflected
+the completed fixture's map, coordinates and movement context (later composition-only
+moves are recorded beside `GLOBAL_HARNESS_FINAL_HASH`). These are Rust
 regression and baseline provenance checks, not a native skirmish comparison.
 The current baseline and strengthened mining checks are reproducible with:
 
@@ -270,3 +271,31 @@ dispatch draws/cooldown timing; retail MTNK is Cost 700 / ThreatPosed 15 and
 HTNK is 900 / 40. The existing greatest_threat::live_threat_posed port is the
 owner to consolidate during that separate response mechanism, including its
 remaining Building+2E4 source substitution. These query comparisons do not close it.
+
+## Bridge-response prerequisite replay provenance (2026-09-30)
+
+The `bridge_ai_prerequisite_followup` entry in
+[the same Rust receipt owner](foot_bridge_layer.replay.json) records real spawn
+and `advance_tick` calls after the class-target, Foot mission and idle changes.
+It compares missing-ART inputs against explicit E1 `Image=GI` and the fixed
+GI/sequence excerpt bound through the production reader. These are Rust
+regression observations, not native skirmish goldens.
+
+The global replay's first difference from the historical receipt is frame0:
+draws7..13 match, but the four former global idle-tail draws14..17 are absent.
+Native mission-site idle precedes the first stationary Ready action. Bound ART
+admits Ready after that mission call, without adding a draw. It first changes
+idle callers at global frame14 and bridge frame16. Full Main/MapGen states are
+unchanged in every captured frame; the receipts explicitly bound their coverage.
+
+Slice6's new admitted Walk head is `(1728,1088,0)` with facing8315. The five
+historical native paid-step rows supplied `(1728,1216,0)` with facing10855;
+their caller premises therefore do not match this replay. All40 original rows
+remain unchanged in the sole numeric receiver comparison. The replay retains
+head/progress, health, mission-counter and per-frame determinism gates and now
+pins live counters directly, removing the historical counter inversion.
+
+The final absolute pins include the newly retained state and supplied ART.
+They protect this Rust fixture only. Ground infantry's firing/absolute-stage
+integration and ordinary ground reach/Approach remain required behavior;
+this replay provenance does not close either chain or the whole-bridge goal.

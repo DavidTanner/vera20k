@@ -38,7 +38,6 @@ fn gap_fixture(case: &serde_json::Value) -> (ResolvedTerrainGrid, Vec<BridgeEndp
         .map(|r| BridgeEndpointRecord {
             endpoint_a: (int(&r[0]) as u16, int(&r[1]) as u16),
             endpoint_b: (int(&r[2]) as u16, int(&r[3]) as u16),
-            group_id: 0,
             active: int(&r[4]) != 0,
             bridge_kind: if int(&r[5]) == 0 {
                 BridgeRecordKind::High

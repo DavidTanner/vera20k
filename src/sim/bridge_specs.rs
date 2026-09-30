@@ -1,340 +1,7 @@
-//! RE-backed bridge helper algorithms not yet fully wired into the live runtime.
-//!
-//! These helpers mirror closed behavior from the RE repo:
-//! - low-bridge overlay damage step (RA2)
-//! - low-bridge connected-section selector (YR)
-//! - ZoneConnection record decode + proximity matching
-//! - bridge-layer zone-id policy gate (RA2/YR)
-//!
-//! They are kept as pure functions so the runtime can adopt them incrementally
-//! once mutable overlay state and ZoneConnection records are available.
+//! Live bridge ramp and destruction helpers: ramp state transitions, the
+//! destroyed-overlay pick and the perpendicular ramp update.
 
-use crate::sim::bridge_state::{
-    AnchorSpan, Axis, BridgeRuntimeState, DamageState, Direction, Phase,
-};
-
-#[cfg(test)]
-const BRIDGE_GATE_BIT: u32 = 0x0100;
-#[cfg(test)]
-const NO_ZONE_CONNECTION: i16 = -1;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BridgeOverlayTriple {
-    pub a: i32,
-    pub center: i32,
-    pub b: i32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LowBridgeOverlayDamageReason {
-    NotBridgeOverlay,
-    GateFailed,
-    NoTransition,
-    Changed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LowBridgeOverlayDamageStepResult {
-    pub ok: bool,
-    pub reason: LowBridgeOverlayDamageReason,
-    pub changed: bool,
-    pub triple_out: BridgeOverlayTriple,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LowBridgeConnectedBand {
-    WoodBand1,
-    WoodBand2,
-    ConcreteBand1,
-    ConcreteBand2,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LowBridgeConnectedAnchor {
-    OppositeAdjacent,
-    Center,
-    PrimaryAdjacent,
-    ConnectedChainHelper,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LowBridgeConnectedPattern {
-    A,
-    B,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LowBridgeConnectedSectionSelectorResult {
-    pub handled: bool,
-    pub reason_not_bridge_overlay: bool,
-    pub pattern: Option<LowBridgeConnectedPattern>,
-    pub band: Option<LowBridgeConnectedBand>,
-    pub anchor: Option<LowBridgeConnectedAnchor>,
-    pub neighbor_range_lo: Option<i32>,
-    pub neighbor_range_hi: Option<i32>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ZoneConnectionRecord {
-    pub cell_a: (i16, i16),
-    pub cell_b: (i16, i16),
-    pub flags: u32,
-    pub flags_byte8: u8,
-    pub skip_if_nonzero: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BridgeZoneIdPolicyTarget {
-    Ra21006,
-    Yr1001,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BridgeZoneIdPolicyDecision {
-    pub use_bridge_path: bool,
-    pub call_bridge_remap_fallback: bool,
-    pub return_no_zone: bool,
-}
-
-#[cfg(test)]
-pub fn low_bridge_overlay_damage_step_ra2(
-    triple: BridgeOverlayTriple,
-    damage: i32,
-    bridge_strength: i32,
-    atom_damage: i32,
-    random_ranged_1_bridge_strength: i32,
-) -> LowBridgeOverlayDamageStepResult {
-    let center = triple.center;
-    let in_a = in_range_inclusive(center, 0x4a, 0x63);
-    let in_b = in_range_inclusive(center, 0xcd, 0xe6);
-
-    if !in_a && !in_b {
-        return LowBridgeOverlayDamageStepResult {
-            ok: true,
-            reason: LowBridgeOverlayDamageReason::NotBridgeOverlay,
-            changed: false,
-            triple_out: triple,
-        };
-    }
-
-    if damage != atom_damage {
-        if bridge_strength <= 0 || random_ranged_1_bridge_strength >= damage {
-            return LowBridgeOverlayDamageStepResult {
-                ok: true,
-                reason: LowBridgeOverlayDamageReason::GateFailed,
-                changed: false,
-                triple_out: triple,
-            };
-        }
-    }
-
-    let new_index = if in_a {
-        pattern_a_new_index(center)
-    } else {
-        pattern_b_new_index(center)
-    };
-
-    match new_index {
-        Some(new_index) => LowBridgeOverlayDamageStepResult {
-            ok: true,
-            reason: LowBridgeOverlayDamageReason::Changed,
-            changed: true,
-            triple_out: BridgeOverlayTriple {
-                a: new_index,
-                center: new_index,
-                b: new_index,
-            },
-        },
-        None => LowBridgeOverlayDamageStepResult {
-            ok: true,
-            reason: LowBridgeOverlayDamageReason::NoTransition,
-            changed: false,
-            triple_out: triple,
-        },
-    }
-}
-
-#[cfg(test)]
-pub fn low_bridge_connected_section_selector_yr(
-    center_overlay_type_index: i32,
-    primary_probe_in_family_range: bool,
-    secondary_probe_in_family_range: bool,
-) -> LowBridgeConnectedSectionSelectorResult {
-    let Some(band) = classify_low_bridge_band(center_overlay_type_index) else {
-        return LowBridgeConnectedSectionSelectorResult {
-            handled: false,
-            reason_not_bridge_overlay: true,
-            pattern: None,
-            band: None,
-            anchor: None,
-            neighbor_range_lo: None,
-            neighbor_range_hi: None,
-        };
-    };
-
-    let (pattern, neighbor_range_lo, neighbor_range_hi) = match band {
-        LowBridgeConnectedBand::WoodBand1 | LowBridgeConnectedBand::WoodBand2 => {
-            (LowBridgeConnectedPattern::A, 0x4a, 0x65)
-        }
-        LowBridgeConnectedBand::ConcreteBand1 | LowBridgeConnectedBand::ConcreteBand2 => {
-            (LowBridgeConnectedPattern::B, 0xcd, 0xe8)
-        }
-    };
-
-    let anchor = if !primary_probe_in_family_range {
-        LowBridgeConnectedAnchor::OppositeAdjacent
-    } else if !secondary_probe_in_family_range {
-        LowBridgeConnectedAnchor::Center
-    } else if matches!(
-        band,
-        LowBridgeConnectedBand::WoodBand1 | LowBridgeConnectedBand::ConcreteBand1
-    ) {
-        LowBridgeConnectedAnchor::PrimaryAdjacent
-    } else {
-        LowBridgeConnectedAnchor::ConnectedChainHelper
-    };
-
-    LowBridgeConnectedSectionSelectorResult {
-        handled: true,
-        reason_not_bridge_overlay: false,
-        pattern: Some(pattern),
-        band: Some(band),
-        anchor: Some(anchor),
-        neighbor_range_lo: Some(neighbor_range_lo),
-        neighbor_range_hi: Some(neighbor_range_hi),
-    }
-}
-
-pub fn decode_zone_connection_record(record: &[u8]) -> ZoneConnectionRecord {
-    assert_eq!(record.len(), 16, "expected 16-byte ZoneConnection record");
-
-    let flags = read_u32_le(record, 0x08);
-    ZoneConnectionRecord {
-        cell_a: (read_i16_le(record, 0x00), read_i16_le(record, 0x02)),
-        cell_b: (read_i16_le(record, 0x04), read_i16_le(record, 0x06)),
-        flags,
-        flags_byte8: (flags & 0xff) as u8,
-        skip_if_nonzero: read_u32_le(record, 0x0c),
-    }
-}
-
-#[cfg(test)]
-pub fn zone_connection_matches_cell(record: &[u8], cell: (i16, i16), dist: i16) -> bool {
-    let decoded = decode_zone_connection_record(record);
-    if decoded.skip_if_nonzero != 0 {
-        return false;
-    }
-
-    let dist = dist.max(0);
-    let ((ax, ay), (bx, by)) = (decoded.cell_a, decoded.cell_b);
-
-    if ax == bx {
-        let y_min = ay.min(by);
-        let y_max = ay.max(by);
-        cell.1 >= y_min && cell.1 <= y_max && (cell.0 - ax).abs() <= dist
-    } else {
-        let x_min = ax.min(bx);
-        let x_max = ax.max(bx);
-        cell.0 >= x_min && cell.0 <= x_max && (cell.1 - ay).abs() <= dist
-    }
-}
-
-#[cfg(test)]
-pub fn get_cell_zone_id_bridge_policy_decision(
-    target: BridgeZoneIdPolicyTarget,
-    on_bridge: bool,
-    cell_flags_dword: u32,
-    zone_connection_index: i16,
-) -> BridgeZoneIdPolicyDecision {
-    let use_bridge_path = on_bridge && (cell_flags_dword & BRIDGE_GATE_BIT) != 0;
-    if !use_bridge_path {
-        return BridgeZoneIdPolicyDecision {
-            use_bridge_path: false,
-            call_bridge_remap_fallback: false,
-            return_no_zone: false,
-        };
-    }
-
-    if zone_connection_index != NO_ZONE_CONNECTION {
-        return BridgeZoneIdPolicyDecision {
-            use_bridge_path: true,
-            call_bridge_remap_fallback: false,
-            return_no_zone: false,
-        };
-    }
-
-    match target {
-        BridgeZoneIdPolicyTarget::Yr1001 => BridgeZoneIdPolicyDecision {
-            use_bridge_path: true,
-            call_bridge_remap_fallback: true,
-            return_no_zone: false,
-        },
-        BridgeZoneIdPolicyTarget::Ra21006 => BridgeZoneIdPolicyDecision {
-            use_bridge_path: true,
-            call_bridge_remap_fallback: false,
-            return_no_zone: true,
-        },
-    }
-}
-
-#[cfg(test)]
-fn in_range_inclusive(x: i32, lo: i32, hi: i32) -> bool {
-    x >= lo && x <= hi
-}
-
-#[cfg(test)]
-fn pattern_a_new_index(center_overlay_type_index: i32) -> Option<i32> {
-    match center_overlay_type_index {
-        0x60 => Some(0x61),
-        0x62 => Some(0x63),
-        x if x < 0x59 => Some(0x59),
-        x if x < 0x5c => Some(0x65),
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-fn pattern_b_new_index(center_overlay_type_index: i32) -> Option<i32> {
-    match center_overlay_type_index {
-        0xe3 => Some(0xe4),
-        0xe5 => Some(0xe6),
-        x if x < 0xdc => Some(0xdc),
-        x if x < 0xdf => Some(0xe8),
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-fn classify_low_bridge_band(center_overlay_type_index: i32) -> Option<LowBridgeConnectedBand> {
-    let x = center_overlay_type_index;
-
-    if in_range_inclusive(x, 0x4a, 0x52) || in_range_inclusive(x, 0x5c, 0x5f) || x == 0x64 {
-        return Some(LowBridgeConnectedBand::WoodBand1);
-    }
-    if in_range_inclusive(x, 0x53, 0x5b) || in_range_inclusive(x, 0x60, 0x63) || x == 0x65 {
-        return Some(LowBridgeConnectedBand::WoodBand2);
-    }
-    if in_range_inclusive(x, 0xcd, 0xd5) || in_range_inclusive(x, 0xdf, 0xe2) || x == 0xe7 {
-        return Some(LowBridgeConnectedBand::ConcreteBand1);
-    }
-    if in_range_inclusive(x, 0xd6, 0xde) || in_range_inclusive(x, 0xe3, 0xe6) || x == 0xe8 {
-        return Some(LowBridgeConnectedBand::ConcreteBand2);
-    }
-
-    None
-}
-
-fn read_u16_le(bytes: &[u8], off: usize) -> u16 {
-    u16::from_le_bytes([bytes[off], bytes[off + 1]])
-}
-
-fn read_i16_le(bytes: &[u8], off: usize) -> i16 {
-    read_u16_le(bytes, off) as i16
-}
-
-fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
-    u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
-}
+use crate::sim::bridge_state::{Axis, BridgeRuntimeState, DamageState, Direction, Phase};
 
 /// Apply a single ramp state transition. Mirrors one of the binary's 16
 /// `UpdateRamp_*_High/_Low` helpers (HIGH §11.1).
@@ -454,7 +121,7 @@ static DESTRUCTION_OVERLAY_LOW_EW: [u8; 16] = [
     0xFF, 0x58, 0x5B, 0xFF, 0x57, 0x59, 0x5B, 0xFF, 0x5A, 0x5A, 0x65, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 ];
 
-/// Per-cell action emitted by `set_bridge_direction` walker. The orchestrator
+/// Per-cell action of an unmigrated bridgehead collapse. The orchestrator
 /// in `world::bridge_orchestrator::apply_bridge_damage_events` consumes these
 /// and dispatches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -467,7 +134,7 @@ pub enum CellAction {
     FlagOnly,
 }
 
-/// Result from `set_bridge_direction` walker. Each entry is one cell + its
+/// An unmigrated bridgehead collapse's setter group. Each entry is one cell + its
 /// action.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetBridgeDirectionResult {
@@ -476,54 +143,6 @@ pub struct SetBridgeDirectionResult {
     /// `SetBridgeDirection_*` group transaction. Other bridge walkers may emit
     /// BlowUpBridge actions without that setter and therefore leave it absent.
     pub flag_stamp: Option<crate::map::bridge_facts::BridgeFlagStamp>,
-}
-
-/// Emit the per-cell action list for an anchor span. Mirrors binary's
-/// `SetBridgeDirection_NESW @ 0x47E040`.
-///
-/// `set == false` is the destruction path (4 BlowUpBridge calls + 1–2
-/// flag-only). `set == true` is the build/intact path (no BlowUpBridge —
-/// flag writes only). Tier 2 only consumes destruction path; build path
-/// is exercised by map-load anchor walker construction (Task 7).
-pub fn set_bridge_direction(span: &AnchorSpan, set: bool) -> SetBridgeDirectionResult {
-    let mut actions = Vec::with_capacity(6);
-    for (slot, cell) in span.iter_cells() {
-        let action = if !set {
-            // `CellClass::BlowUpBridge` 0x0047DD70 is what a BlowUpBridge slot
-            // means: gated on `g_IsMapEditor == 0`, it walks the cell's
-            // FirstObject list calling vtable+0x16C with `RulesClass+0xFA8`,
-            // walks the AltObject list calling vtable+0xEC, appends the coord
-            // to the global at 0x0087F8C0, and then — only when
-            // `RulesClass+0x168 > 0` and a `RandomRanged(0, 0x7FFFFFFE)` roll
-            // lands under 0.95, draws five or six MORE times, i.e. six or
-            // seven in total including the gate roll. Call sites:
-            // 0x0047DE54 (gate), 0x0047DEC6 (x jitter), 0x0047DF04 (y
-            // jitter), 0x0047DF43 (the < 0.5 test), 0x0047DF91 (first anim
-            // index, only on the < 0.5 branch), 0x0047DFE1
-            // (`RandomRanged(1, 5)`) and 0x0047E004 (second anim index).
-            // Those draws are lockstep-visible, so the count matters as
-            // much as the anims.
-            // Destruction path: slots 0, 1, 2, 4 = BlowUpBridge; 3, 5 = FlagOnly.
-            if AnchorSpan::BLOW_UP_SLOTS.contains(&slot) {
-                CellAction::BlowUpBridge
-            } else {
-                CellAction::FlagOnly
-            }
-        } else {
-            // Build path: every cell is FlagOnly (no BlowUpBridge). Used by
-            // map-load construction.
-            CellAction::FlagOnly
-        };
-        actions.push((cell, slot, action));
-    }
-    SetBridgeDirectionResult {
-        actions,
-        flag_stamp: Some(crate::map::bridge_facts::BridgeFlagStamp::new(
-            span.anchor,
-            span.direction as u8,
-            set,
-        )),
-    }
 }
 
 /// Outcome of one perpendicular `UpdateRamp_*` call. One Rust function stands
@@ -970,28 +589,24 @@ pub(crate) fn apply_anchor_class_transition(
 /// cell coord, or `None` if the start cell fails the per-axis parity /
 /// upper-bound gate or the walk runs off the map.
 ///
-/// Per the HIGH bridge damage state machine:
-/// - **NS branch (start-cell gate):** reject `(h & 1) != 0` — odd heights
-///   (h=5, h=7) absorb damage with no state change.
-/// - **EW branch (start-cell gate):** reject `h > 4` — high-ramp peak
-///   (h=0xC) and other oversized heights early-return.
+/// Per the HIGH bridge damage state machine, with `h` the cell's iso
+/// sub-tile (`CellClass+0x11A`): the NS middle template is two cells wide,
+/// the EW one five.
+/// - **NS branch (start-cell gate):** reject `(h & 1) != 0` — the second
+///   column absorbs damage with no state change.
+/// - **EW branch (start-cell gate):** reject `h > 4` — the second row
+///   returns early.
 /// - **Walk direction (NS):** `h < 4 → S`, `h == 4 → at anchor`, `h > 4 → N`.
 /// - **Walk direction (EW):** `h < 2 → E`, `h == 2 → at anchor`, `h > 2 → W`.
-/// - **Mid-walk parity:** none. The walk silently passes through odd-h
-///   intermediates. (The previous Rust check was stricter than the
-///   reference behavior and caused damage absorption on multi-cell ramps.)
+/// - **Mid-walk parity:** none (`0x005771D3..0x00577237` tests only `== 4`).
 ///
-/// Walk terminates when `height == target` (4 NS / 2 EW). The 16-iter cap
+/// Walk terminates when `h == target` (4 NS / 2 EW). The 16-iter cap
 /// is an internal defensive bound — there is no equivalent cap in the
 /// reference, but bridges aren't placed near map edges in practice.
-///
-/// `cell_height` should read `ResolvedTerrainCell.template_height` (the
-/// TMP per-tile byte at offset 40, mirroring the reference's
-/// `CellClass+0x11A`).
 pub fn bridgehead_walk_to_anchor(
     start: (u16, u16),
     axis: Axis,
-    cell_height: impl Fn((u16, u16)) -> Option<u8>,
+    cell_sub_tile: impl Fn((u16, u16)) -> Option<u8>,
     map_width: u16,
     map_height: u16,
 ) -> Option<(u16, u16)> {
@@ -1002,7 +617,7 @@ pub fn bridgehead_walk_to_anchor(
 
     // Start-cell gate (parity check / upper-bound check). Only the START
     // cell is gated; mid-walk intermediates pass through.
-    let start_h = cell_height(start)?;
+    let start_h = cell_sub_tile(start)?;
     match axis {
         Axis::NS => {
             if start_h & 1 != 0 {
@@ -1048,7 +663,7 @@ pub fn bridgehead_walk_to_anchor(
             return None;
         }
         current = (nx as u16, ny as u16);
-        h = cell_height(current)?;
+        h = cell_sub_tile(current)?;
         // No mid-walk parity check.
         if h == target_height {
             return Some(current);
@@ -1057,11 +672,32 @@ pub fn bridgehead_walk_to_anchor(
     None
 }
 
+/// Middle cell of [`bridgehead_blow_up_row`], unclipped. Both machines also
+/// pass it to InvalidateBridgeZones (`0x0056DAE0`): High `0x00577071` /
+/// `0x00577587`, Low `0x00571982` / `0x00571E9B`.
+pub fn bridgehead_row_center(
+    anchor_pos: (u16, u16),
+    axis: Axis,
+    anchor_sub_tile: u8,
+) -> (i32, i32) {
+    let (anchor_x, anchor_y) = (anchor_pos.0 as i32, anchor_pos.1 as i32);
+    match axis {
+        Axis::NS => {
+            let x_offset = if anchor_sub_tile & 1 == 0 { 0 } else { -1 };
+            (anchor_x + x_offset, anchor_y)
+        }
+        Axis::EW => {
+            let y_offset = if anchor_sub_tile < 5 { 0 } else { -1 };
+            (anchor_x, anchor_y + y_offset)
+        }
+    }
+}
+
 /// Three cells receiving `BlowUpBridge` on bridgehead final-step collapse.
 /// Geometry verified live `[GHIDRA 0x576BA0]` step-3 branch.
 ///
 /// Body-axis-aligned 3-cell row (NOT perpendicular). Offset to which row /
-/// column is chosen depends on `anchor_height`'s bit predicate:
+/// column is chosen depends on the anchor's sub-tile `h` (`0x0057727C`):
 ///
 /// | Axis | predicate                 | row geometry                                                       |
 /// |------|---------------------------|---------------------------------------------------------------------|
@@ -1071,27 +707,14 @@ pub fn bridgehead_walk_to_anchor(
 /// | EW   | `h >= 5`                  | row    at `anchor.Y-1`,  X in `{anchor.X-1, anchor.X, anchor.X+1}` |
 ///
 /// Off-map cells return `None` and are skipped by the caller.
-///
-/// `anchor_height` is whatever the consumer of `bridgehead_walk_to_anchor`
-/// uses for its closure (currently `ResolvedTerrainCell.template_height`).
 pub fn bridgehead_blow_up_row(
     anchor_pos: (u16, u16),
     axis: Axis,
-    anchor_height: u8,
+    anchor_sub_tile: u8,
     map_width: u16,
     map_height: u16,
 ) -> [Option<(u16, u16)>; 3] {
-    let (anchor_x, anchor_y) = (anchor_pos.0 as i32, anchor_pos.1 as i32);
-    let (col_x, row_y) = match axis {
-        Axis::NS => {
-            let x_offset = if anchor_height & 1 == 0 { 0 } else { -1 };
-            (anchor_x + x_offset, anchor_y)
-        }
-        Axis::EW => {
-            let y_offset = if anchor_height < 5 { 0 } else { -1 };
-            (anchor_x, anchor_y + y_offset)
-        }
-    };
+    let (col_x, row_y) = bridgehead_row_center(anchor_pos, axis, anchor_sub_tile);
     let mut out: [Option<(u16, u16)>; 3] = [None; 3];
     for (i, delta) in [-1i32, 0, 1].iter().enumerate() {
         let (cx, cy) = match axis {
@@ -1110,8 +733,7 @@ mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::sim::bridge_state::{
-        AnchorSpan, Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
-        Direction, Phase,
+        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState, Direction, Phase,
     };
 
     /// Build a minimal 20x20 flat terrain for `update_ramp_perpendicular`
@@ -1136,269 +758,6 @@ mod tests {
                 crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF;
         }
         terrain
-    }
-
-    #[test]
-    fn low_bridge_damage_step_ignores_non_bridge_overlay() {
-        let out = low_bridge_overlay_damage_step_ra2(
-            BridgeOverlayTriple {
-                a: 1,
-                center: 1234,
-                b: 2,
-            },
-            50,
-            150,
-            999,
-            1,
-        );
-        assert_eq!(out.reason, LowBridgeOverlayDamageReason::NotBridgeOverlay);
-        assert!(!out.changed);
-        assert_eq!(out.triple_out.center, 1234);
-    }
-
-    #[test]
-    fn low_bridge_damage_step_applies_rng_gate() {
-        let out = low_bridge_overlay_damage_step_ra2(
-            BridgeOverlayTriple {
-                a: 96,
-                center: 96,
-                b: 96,
-            },
-            10,
-            150,
-            999,
-            10,
-        );
-        assert_eq!(out.reason, LowBridgeOverlayDamageReason::GateFailed);
-        assert!(!out.changed);
-    }
-
-    #[test]
-    fn low_bridge_damage_step_atom_damage_bypasses_gate() {
-        let out = low_bridge_overlay_damage_step_ra2(
-            BridgeOverlayTriple {
-                a: 96,
-                center: 96,
-                b: 96,
-            },
-            999,
-            150,
-            999,
-            150,
-        );
-        assert_eq!(out.reason, LowBridgeOverlayDamageReason::Changed);
-        assert!(out.changed);
-        assert_eq!(
-            out.triple_out,
-            BridgeOverlayTriple {
-                a: 97,
-                center: 97,
-                b: 97,
-            }
-        );
-    }
-
-    #[test]
-    fn low_bridge_damage_step_maps_wood_family() {
-        let out = low_bridge_overlay_damage_step_ra2(
-            BridgeOverlayTriple {
-                a: 74,
-                center: 74,
-                b: 74,
-            },
-            2,
-            150,
-            999,
-            1,
-        );
-        assert_eq!(out.triple_out.center, 89);
-
-        let out = low_bridge_overlay_damage_step_ra2(
-            BridgeOverlayTriple {
-                a: 89,
-                center: 89,
-                b: 90,
-            },
-            2,
-            150,
-            999,
-            1,
-        );
-        assert_eq!(out.triple_out.center, 101);
-    }
-
-    #[test]
-    fn low_bridge_damage_step_maps_concrete_family_and_no_transition() {
-        let out = low_bridge_overlay_damage_step_ra2(
-            BridgeOverlayTriple {
-                a: 227,
-                center: 227,
-                b: 227,
-            },
-            2,
-            150,
-            999,
-            1,
-        );
-        assert_eq!(out.triple_out.center, 228);
-
-        let no_change = low_bridge_overlay_damage_step_ra2(
-            BridgeOverlayTriple {
-                a: 223,
-                center: 223,
-                b: 223,
-            },
-            2,
-            150,
-            999,
-            1,
-        );
-        assert_eq!(no_change.reason, LowBridgeOverlayDamageReason::NoTransition);
-        assert!(!no_change.changed);
-    }
-
-    #[test]
-    fn low_bridge_selector_rejects_non_bridge_overlay() {
-        let out = low_bridge_connected_section_selector_yr(1, false, false);
-        assert!(!out.handled);
-        assert!(out.reason_not_bridge_overlay);
-    }
-
-    #[test]
-    fn low_bridge_selector_uses_exact_anchor_policy() {
-        let out = low_bridge_connected_section_selector_yr(74, false, false);
-        assert_eq!(out.pattern, Some(LowBridgeConnectedPattern::A));
-        assert_eq!(out.band, Some(LowBridgeConnectedBand::WoodBand1));
-        assert_eq!(out.anchor, Some(LowBridgeConnectedAnchor::OppositeAdjacent));
-        assert_eq!(out.neighbor_range_lo, Some(74));
-        assert_eq!(out.neighbor_range_hi, Some(101));
-
-        let out = low_bridge_connected_section_selector_yr(74, true, false);
-        assert_eq!(out.anchor, Some(LowBridgeConnectedAnchor::Center));
-
-        let out = low_bridge_connected_section_selector_yr(74, true, true);
-        assert_eq!(out.anchor, Some(LowBridgeConnectedAnchor::PrimaryAdjacent));
-
-        let out = low_bridge_connected_section_selector_yr(83, true, true);
-        assert_eq!(out.band, Some(LowBridgeConnectedBand::WoodBand2));
-        assert_eq!(
-            out.anchor,
-            Some(LowBridgeConnectedAnchor::ConnectedChainHelper)
-        );
-
-        let out = low_bridge_connected_section_selector_yr(205, false, false);
-        assert_eq!(out.pattern, Some(LowBridgeConnectedPattern::B));
-        assert_eq!(out.band, Some(LowBridgeConnectedBand::ConcreteBand1));
-        assert_eq!(out.anchor, Some(LowBridgeConnectedAnchor::OppositeAdjacent));
-        assert_eq!(out.neighbor_range_lo, Some(205));
-        assert_eq!(out.neighbor_range_hi, Some(232));
-
-        let out = low_bridge_connected_section_selector_yr(214, true, true);
-        assert_eq!(out.band, Some(LowBridgeConnectedBand::ConcreteBand2));
-        assert_eq!(
-            out.anchor,
-            Some(LowBridgeConnectedAnchor::ConnectedChainHelper)
-        );
-    }
-
-    #[test]
-    fn zone_connection_record_decodes_layout() {
-        let record = [10, 0, 254, 255, 10, 0, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0];
-        let decoded = decode_zone_connection_record(&record);
-        assert_eq!(decoded.cell_a, (10, -2));
-        assert_eq!(decoded.cell_b, (10, 5));
-        assert_eq!(decoded.flags, 1);
-        assert_eq!(decoded.flags_byte8, 1);
-        assert_eq!(decoded.skip_if_nonzero, 0);
-    }
-
-    #[test]
-    fn zone_connection_match_uses_axis_aligned_segment_proximity() {
-        let record = [10, 0, 254, 255, 10, 0, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0];
-        assert!(zone_connection_matches_cell(&record, (9, 0), 1));
-        assert!(!zone_connection_matches_cell(&record, (8, 0), 1));
-        assert!(!zone_connection_matches_cell(&record, (10, 6), 1));
-    }
-
-    #[test]
-    fn zone_connection_match_respects_skip_flag() {
-        let record = [10, 0, 254, 255, 10, 0, 5, 0, 1, 0, 0, 0, 1, 0, 0, 0];
-        assert!(!zone_connection_matches_cell(&record, (10, 0), 1));
-    }
-
-    #[test]
-    fn bridge_zone_policy_turns_off_when_on_bridge_false() {
-        let out = get_cell_zone_id_bridge_policy_decision(
-            BridgeZoneIdPolicyTarget::Yr1001,
-            false,
-            0x0100,
-            -1,
-        );
-        assert_eq!(
-            out,
-            BridgeZoneIdPolicyDecision {
-                use_bridge_path: false,
-                call_bridge_remap_fallback: false,
-                return_no_zone: false,
-            }
-        );
-    }
-
-    #[test]
-    fn bridge_zone_policy_turns_off_when_bridge_bit_clear() {
-        let out =
-            get_cell_zone_id_bridge_policy_decision(BridgeZoneIdPolicyTarget::Ra21006, true, 0, -1);
-        assert!(!out.use_bridge_path);
-        assert!(!out.call_bridge_remap_fallback);
-        assert!(!out.return_no_zone);
-    }
-
-    #[test]
-    fn bridge_zone_policy_matches_ra2_and_yr_fallback_split() {
-        let hit = get_cell_zone_id_bridge_policy_decision(
-            BridgeZoneIdPolicyTarget::Ra21006,
-            true,
-            0x0100,
-            3,
-        );
-        assert_eq!(
-            hit,
-            BridgeZoneIdPolicyDecision {
-                use_bridge_path: true,
-                call_bridge_remap_fallback: false,
-                return_no_zone: false,
-            }
-        );
-
-        let ra2_miss = get_cell_zone_id_bridge_policy_decision(
-            BridgeZoneIdPolicyTarget::Ra21006,
-            true,
-            0x0100,
-            -1,
-        );
-        assert_eq!(
-            ra2_miss,
-            BridgeZoneIdPolicyDecision {
-                use_bridge_path: true,
-                call_bridge_remap_fallback: false,
-                return_no_zone: true,
-            }
-        );
-
-        let yr_miss = get_cell_zone_id_bridge_policy_decision(
-            BridgeZoneIdPolicyTarget::Yr1001,
-            true,
-            0x0100,
-            -1,
-        );
-        assert_eq!(
-            yr_miss,
-            BridgeZoneIdPolicyDecision {
-                use_bridge_path: true,
-                call_bridge_remap_fallback: true,
-                return_no_zone: false,
-            }
-        );
     }
 
     #[test]
@@ -1611,86 +970,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn set_bridge_direction_destruction_emits_4_blow_up_actions() {
-        let span = AnchorSpan {
-            id: 1,
-            anchor: (5, 5),
-            cells: [
-                Some((5, 5)),
-                Some((6, 5)),
-                Some((7, 5)),
-                Some((8, 5)),
-                Some((4, 5)),
-                None,
-            ],
-            axis: Axis::NS,
-            direction: Direction::E,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
-        };
-        let result = set_bridge_direction(&span, false);
-        let blow_ups = result
-            .actions
-            .iter()
-            .filter(|(_, _, a)| matches!(a, CellAction::BlowUpBridge))
-            .count();
-        assert_eq!(blow_ups, 4);
-        let flag_only = result
-            .actions
-            .iter()
-            .filter(|(_, _, a)| matches!(a, CellAction::FlagOnly))
-            .count();
-        assert_eq!(flag_only, 1); // slot 3 (cell 4)
-    }
-
-    #[test]
-    fn set_bridge_direction_build_emits_no_blow_up_actions() {
-        let span = AnchorSpan {
-            id: 1,
-            anchor: (0, 0),
-            cells: [Some((0, 0)), None, None, None, None, None],
-            axis: Axis::NS,
-            direction: Direction::E,
-            damage_state: DamageState::Healthy { variant: 0 },
-            bridge_group_id: 1,
-        };
-        let result = set_bridge_direction(&span, true);
-        assert!(
-            result
-                .actions
-                .iter()
-                .all(|(_, _, a)| matches!(a, CellAction::FlagOnly))
-        );
-    }
-
-    #[test]
-    fn set_bridge_direction_includes_slot_5_only_when_present() {
-        let span = AnchorSpan {
-            id: 1,
-            anchor: (5, 5),
-            cells: [
-                Some((5, 5)),
-                Some((6, 5)),
-                Some((7, 5)),
-                Some((8, 5)),
-                Some((4, 5)),
-                Some((6, 5)), // hypothetical slot 5
-            ],
-            axis: Axis::NS,
-            direction: Direction::W,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
-        };
-        let result = set_bridge_direction(&span, false);
-        let slot_5_action = result
-            .actions
-            .iter()
-            .find(|(_, slot, _)| *slot == 5)
-            .map(|(_, _, a)| *a);
-        assert_eq!(slot_5_action, Some(CellAction::FlagOnly));
-    }
-
     /// Build a minimal BridgeRuntimeState for update_ramp tests:
     /// anchors at (4,5), (5,5), (6,5), all NS axis, Healthy{variant: 0}.
     /// Uses `test_seed_cell` (Task 1 Step 5).
@@ -1698,9 +977,7 @@ mod tests {
         let mut state = BridgeRuntimeState::default();
         let template = BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1919,9 +1196,7 @@ mod tests {
         let mut state = BridgeRuntimeState::default();
         let template = BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::EW),
             role: BridgeCellRole::Anchor,
@@ -1964,9 +1239,7 @@ mod tests {
             2,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Anchor,
@@ -1981,9 +1254,7 @@ mod tests {
             neighbor_pos.1,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: neighbor_role,

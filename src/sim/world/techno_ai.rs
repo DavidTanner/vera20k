@@ -818,12 +818,12 @@ fn veterancy_promotion_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
 /// @ 0x004B1274`, `WalkLocomotionClass::ProcessMovement @ 0x0075BFC0`,
 /// `ShipLocomotionClass::Process_Drive_Track @ 0x006A093C`,
 /// `HoverLocomotionClass::Move @ 0x00514372`), so a unit promoted mid-path
-/// speeds up on the very next frame. VERA stamps `MovementTarget::speed` once,
-/// at path creation, and recomputes only `current_speed` per frame — so the
-/// rank is the one input to the getter that can change while a path is live.
-/// Refreshing it here reproduces the native observable without a per-frame
-/// type lookup: the type speed, the house multiplier and the crate multiplier
-/// are stable for the life of a path or are separate open rows.
+/// speeds up on the very next frame. VERA's track and Walk steps and the
+/// readiness gate query the getter live; the legacy pass lane still moves by
+/// the `MovementTarget::speed` stamp made at path creation, so the stamp is
+/// refreshed here when the rank changes. The crate multiplier and the house
+/// factor do not refresh it: a legacy-lane mover keeps its stamp until its
+/// next order.
 fn refresh_mover_speed_after_promotion(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -1043,10 +1043,11 @@ fn illegal_target_drop_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     }
     let weapon = target_scan::select_weapon(sim, rules, id, Some(target));
     let code = target_scan::fire_error_at(sim, rules, id, Some(target), weapon, false);
-    if matches!(code, FireError::Illegal | FireError::Cant)
-        && let Some(entity) = sim.substrate.entities.get_mut(id)
-    {
-        crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
+    if matches!(code, FireError::Illegal | FireError::Cant) {
+        //6FA4CB dispatches class+3C8 before this object's mission handler:
+        // Infantry51B1F0 clears68D/requests its action and invalidates5E0.
+        sim.assign_target_represented(id, None, Some(rules))
+            .expect("the queried target-drop receiver remains present");
     }
 }
 
@@ -1232,9 +1233,10 @@ fn allied_target_drop_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     if engineer || overpowers || occupiable || entity.berserk.active {
         return;
     }
-    if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
-    }
+    //6FA46C precedes the subsequent live target re-read and illegal test.
+    // Preserve class refusal and synchronous action/path effects.
+    sim.assign_target_represented(id, None, Some(rules))
+        .expect("the queried allied-target receiver remains present");
 }
 
 /// The Techno AI a Die1/Die2 corpse still runs. `InfantryClass::AI` keeps
@@ -3062,6 +3064,62 @@ mod tests {
         sim.houses.get_mut(&soviet).unwrap().is_human = true;
         allied_target_drop_step(&mut sim, 1, &rules);
         assert!(held(&sim), "a human house keeps it");
+    }
+
+    #[test]
+    fn common_ai_target_drops_run_the_infantry_class_effects() {
+        // Native6FA46C/6FA4CB call+3C8 before Rescue/AreaGuard dispatch.
+        // The ordinary51B1F0 NULL controls independently pin its68D clear
+        // and path-head invalidation in mission::infantry_target_tests.
+        let rules = passive_rules();
+        for allied in [true, false] {
+            let mut sim = Simulation::new();
+            sim.session.binary_frame = 16;
+            insert_scannable(&mut sim, 1, "Soviet", "GI", EntityCategory::Infantry);
+            insert_scannable(
+                &mut sim,
+                2,
+                if allied { "Soviet" } else { "Americans" },
+                "MTNK",
+                EntityCategory::Unit,
+            );
+            let owner = sim.intern("Soviet");
+            sim.houses.insert(
+                owner,
+                crate::sim::house_state::HouseState::new(owner, 0, None, false, 0, 10),
+            );
+            let actor = sim.substrate.entities.get_mut(1).unwrap();
+            actor.attack_target = Some(AttackTarget::new(2));
+            actor.mission_leaf.set_infantry_doing_verified(0).unwrap();
+            actor.mission_leaf.set_foot_firing_sequence(1);
+            actor.navigation.path_replay.directions = vec![0, 1, 2];
+            actor.navigation.path_replay.cursor = 0;
+            if allied {
+                allied_target_drop_step(&mut sim, 1, &rules);
+            } else {
+                // The supplied target is still in limbo, hence ILLEGAL on
+                // the no-range query, as the native pointer gate requires.
+                let target = crate::sim::combat::TargetKind::Entity(2);
+                let weapon = target_scan::select_weapon(&sim, &rules, 1, Some(target));
+                assert!(matches!(
+                    target_scan::fire_error_at(&sim, &rules, 1, Some(target), weapon, false),
+                    crate::sim::combat::fire_error::FireError::Illegal
+                        | crate::sim::combat::fire_error::FireError::Cant
+                ));
+                illegal_target_drop_step(&mut sim, 1, &rules);
+            }
+            let actor = sim.substrate.entities.get(1).unwrap();
+            assert!(actor.attack_target.is_none());
+            assert_eq!(actor.mission_leaf.foot_firing_sequence_latch(), 0);
+            assert!(
+                actor
+                    .navigation
+                    .path_replay
+                    .remaining_directions()
+                    .is_empty()
+            );
+            assert_eq!(&actor.navigation.path_replay.directions[1..], &[1, 2]);
+        }
     }
 
     /// `TechnoClass::Unlimbo @ 0x006F6E2A`: an infantryman leaving limbo with
@@ -6158,7 +6216,6 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         entity.movement_target = walking.then(|| crate::sim::components::MovementTarget {
             path: vec![(5, 5), (6, 5)],
             next_index: 1,
-            current_speed: crate::util::fixed_math::SimFixed::from_num(4),
             ..Default::default()
         });
     }

@@ -430,13 +430,18 @@ fn evaluate_ready(
         // it runs, and it runs twice per object per tick — once either side of
         // that object's movement step — so a single stored value would answer
         // the second call with the first call's state.
-        let locomotor =
-            crate::sim::movement::ready_producer::ready_state_for(entity, sim.session.binary_frame)
-                .or(if degraded_moving_gate {
-                    Some(DEGRADED_NOT_MOVING)
-                } else {
-                    None
-                });
+        let locomotor = crate::sim::movement::ready_producer::ready_state_for(
+            entity,
+            rules.map(|rules| {
+                crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.type_handles)
+            }),
+            sim.session.binary_frame,
+        )
+        .or(if degraded_moving_gate {
+            Some(DEGRADED_NOT_MOVING)
+        } else {
+            None
+        });
         let attack_target_present = entity.attack_target.is_some();
 
         match entity.category {

@@ -117,7 +117,10 @@ The existing v1 example is unchanged. Start retail bridge discovery with
 [`map_observation.bridge-response.example.json`](map_observation.bridge-response.example.json):
 an accepted Battle launch on stock AnyTown (`XMP03T4.MAP`), with ordinary starting
 forces, an allied Computer1 and hostile Computer2. It requests zero steps, observes
-both AI Houses and centers the camera on the NS wooden bridge near (87,53).
+both AI Houses and centers the camera on the concrete low bridge near (87,53).
+The physical span occupies x86..88/y51..57 at level4 with LOBRDB overlays;
+it has no structural elevated deck stamp. Verify those facts in the L0 terrain
+receipt before choosing orders. A high-deck response needs a separate map site.
 Its disabled shroud is an explicit launch option for this diagnostic observation.
 No actor IDs or gameplay state are granted by the profile.
 
@@ -187,10 +190,14 @@ and pixels; large transcripts remain referenced in their sealed source bundles
 rather than being copied twice into the comparison report.
 
 For the response chain, attack Computer1's **deployed GACNST** with Computer2's
-ordinary MTNK; stock AMCV has no `ToProtect=yes`. Computer1's own E1/MTNK defenders
-are the response candidates; an allied local House does not substitute for that
-ownership gate. Verify an actual deck defender and a ground control, yard damage,
-Rescue/AreaGuard dispatch, archived victim, movement and cleanup. Do not presume
+ordinary MTNK. The yard exercises Building ReceiveDamage's sourced positive-hit
+prelude (`44227E..4422BC` -> `708080`); retail GACNST and AMCV both lack
+`ToProtect=yes`. The separate generic Techno damage response uses that flag,
+with retail protected miners as controls. Computer1's own E1/MTNK defenders are
+the response candidates; an allied local House does not substitute for that
+ownership gate. For this map site, verify an actual low-bridge defender and an
+ordinary ground control, yard damage, Rescue/AreaGuard dispatch, archived victim,
+movement and cleanup. Validate an elevated deck separately. Do not presume
 deployment clearance, bridge arrival or random mission selection from this example.
 The runtime profile establishes production integration, not native whole-world
 equivalence. Visible reproduction uses the normal release shell and the same

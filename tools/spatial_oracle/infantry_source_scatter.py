@@ -3,7 +3,9 @@
 Runs the real entry, house/mission/ability/Walk readers, heading math, Scenario
 RNG, Foot navigation coordinate, map lookup/playfield, height and projection.
 Default Can_Enter_Cell answers and QueueMission/SetDestination effects are
-observable seams. The companion infantry_scatter_entry corpus selects the real
+observable seams. Null-source rows take the null arm with FNPC answering
+NullCell, so its fallback reaches the same eight-neighbour search; the
+immediate locomotor Process call site is observed and skipped. The companion infantry_scatter_entry corpus selects the real
 +1AC body instead. The infantry_scatter_destination corpus additionally executes QueueMission,
 Infantry/Foot SetDestination and Walk MoveTo, observing first Process separately.
 """
@@ -117,12 +119,31 @@ def query(case):
     start_direction = None
     pending_entry = None
     entry_return = None
+    fnpc_seed = None
 
     def observe(_u, address, _size, _data):
-        nonlocal destination, start_direction, pending_entry, entry_return
+        nonlocal destination, start_direction, pending_entry, entry_return, fnpc_seed
         sp = u.reg_read(UC_X86_REG_ESP)
         if address == 0x51D487:
             start_direction = read32(sp + 0x1C) & 7
+        elif address == 0x56DC20:
+            # Null arm 51D41D: literal arguments as the hut corpus pins them;
+            # the answer is NullCell.
+            args = [read32(sp + 4 + i * 4) for i in range(15)]
+            fnpc_seed = list(struct.unpack('<hh', u.mem_read(args[1], 4)))
+            assert args[2:5] == [0, 0xFFFFFFFF, 0], args
+            assert args[5] & 0xFF == int(case.get('on_bridge', False)), args
+            assert args[6:12] == [1, 1, 0, 1, 0, 1], args
+            assert list(struct.unpack('<hh', u.mem_read(args[12], 4))) == [0, 0]
+            assert args[13:] == [0, 0], args
+            events.append('fnpc')
+            u.mem_write(args[0], packed(0, 0))
+            ret(60, args[0])
+        elif address == 0x51D478:
+            # The found-cell arm's locomotor Process call: observed, not run.
+            events.append('process')
+            u.reg_write(UC_X86_REG_EIP, 0x51D47B)
+            u.reg_write(UC_X86_REG_ESP, sp + 4)
         elif address == 0x65C7E0:
             events.append('random')
         elif address == entry_return and pending_entry is not None:
@@ -173,6 +194,12 @@ def query(case):
 
     call(0x49F2F0, 0, [])  # native startup populates the neighbour table
     call(0x65C6D0, SCENARIO + 0x218, [case.get('seed', 1)])
+    if 'facing' in case:
+        # Original Facing constructor and Set_Current; the null arm reads
+        # Current when the physical coordinate is at its cell centre.
+        call(0x4C91C0, ACTOR + 0x388, [])
+        u.mem_write(SOURCE + 0x100, struct.pack('<H', case['facing']))
+        call(0x4C9300, ACTOR + 0x388, [SOURCE + 0x100])
     if case.get('live_setter'):
         call(0x6D1830, 0, [])
         call(0x6D18C0, 0, [])
@@ -210,6 +237,8 @@ def query(case):
     result = dict(input=case, destination=destination, checks=checks, events=events,
                   start_direction=start_direction,
                   random_indices=[read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)])
+    if fnpc_seed is not None:
+        result['fnpc_seed'] = fnpc_seed
     if case.get('live_setter'):
         result['setter'] = dict(
             nav=list(struct.unpack('<hh', u.mem_read(read32(ACTOR + 0x5A4) + 0x24, 4))) if read32(ACTOR + 0x5A4) else None,
@@ -267,19 +296,34 @@ def generate():
               dict(actor=[384, 384, 0], source=[384, 1000, 0]),
               dict(actor=[384, 384, 0], source=[1000, 1000, 0],
                    cells=[[0, 1, 0, 0x100]])]
+    # Null source: the centre reads the body facing, elsewhere the heading
+    # from the centre; FNPC fails, so the eight-neighbour fallback runs.
+    null = [0, 0, 0]
+    cases += [dict(source=null, facing=facing, seed=seed)
+              for facing in (0, 0x1000, 0x4000, 0x9000, 0xF000) for seed in (1, 31)]
+    cases += [dict(source=null, facing=0x4000, actor=actor, seed=42)
+              for actor in ([2600, 2688, 0], [2688, 2600, 0], [2800, 2800, 0],
+                            [2561, 2815, 0], [2688, 2689, 0])]
+    cases += [dict(source=null, facing=0x4000, answers=[7] * 8),
+              dict(source=null, facing=0x4000, answers=[0 if i == 5 else 7 for i in range(8)]),
+              dict(source=null, facing=0xC000, head=[15 * 256 + 128, 15 * 256 + 128, 0]),
+              dict(source=null, facing=0x4000, doing=7),
+              dict(source=null, facing=0x4000, cells=[[10, 10, -1, 0]], on_bridge=True)]
     return [query(case) for case in cases]
 
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='Source-aware Infantry Scatter selection, native RNG and dispatch order; supplied Can_Enter_Cell answers and observed destination receiver, not full movement parity.',
+        scope='Source-aware and null-coordinate (FNPC NullCell fallback) Infantry Scatter selection, native RNG and dispatch order; supplied Can_Enter_Cell answers and observed destination receiver, not full movement parity.',
         entry_points={'scatter': 0x51D0D0, 'navigation_coord': 0x4DBDF0,
                       'projection': 0x6D6410, 'height': 0x5F5F00,
                       'direction_startup': 0x49F2F0,
-                      'playfield': 0x578460, 'random': 0x65C7E0},
+                      'playfield': 0x578460, 'random': 0x65C7E0,
+                      'facing_current': 0x4C93D0, 'facing_snap': 0x4C9300},
         assumptions=['Valid Fraidycat Infantry with native Walk interface, AI house, Guard Scatter enabled; zero NullCoord/NullCell.',
                      '32x32 allocated cells and supplied raw playfield fields widened for boundary selection; not a map-loader or retail boundary-reachability fixture. Original heading arithmetic under chop53 control word.',
                      'Original49F2F0 initializes the runtime direction table before Scatter; never use its cold image zeros.',
-                     'No NULL-source FNPC or true/true DoAction31 cases.'],
+                     'Null-source rows: original Facing constructor/Set_Current; FNPC answers NullCell. No true/true DoAction31 cases.'],
         substitutions=['Infantry+1AC returns per-direction supplied numeric answers.',
-                       'QueueMission and SetDestination are argument-checking observers.']))
+                       'QueueMission and SetDestination are argument-checking observers.',
+                       'FNPC 56DC20 checks its null-arm arguments and answers NullCell; the 51D478 Process call is recorded and skipped.']))

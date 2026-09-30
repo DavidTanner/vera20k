@@ -30,7 +30,7 @@ fn slice6_rules() -> RuleSet {
          [VehicleTypes]\n0=MTNK\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n0=GACNST\n\n\
-         [E1]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
+         [E1]\nImage=GI\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [GACNST]\nStrength=1000\nArmor=wood\nFoundation=4x3\n\n\
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
@@ -38,7 +38,15 @@ fn slice6_rules() -> RuleSet {
          [SA]\nVerses=100%,100%,100%,90%,70%,25%,100%,25%,25%,0%,0%\n\n\
          [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
     );
-    RuleSet::from_ini(&ini).expect("slice6 test rules should parse")
+    // Explicit authored GI inputs use the production fixed-ART reader and binder;
+    // zero-count constructor records do not admit native Ready/idle actions.
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    rules
 }
 
 fn cmd_envelope(
@@ -156,7 +164,20 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // mission, NavCom, attack and movement targets, locomotor kind and layer and
 // all three RNG states matched at all 16 ticks (the probe patch was not
 // committed). Old values: the commit that moved them.
-const SLICE6_BASELINE_HASH: u64 = 0xF9E4_49DA_5683_0027;
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+// 2026-09-30 bridge-response prerequisites (behavior + supplied ART): native
+// Guard/Hunt idle runs at mission dispatch, before first stationary Ready.
+// Frame0 omits the old global idle draws, changing the later admitted Walk
+// head. Explicit GI ART now admits Ready. The paired production-call receipts
+// in foot_bridge_layer.replay.json localize both changes; all40 original
+// numeric paid-step vectors remain unchanged. Hash the live mission counters,
+// whose native first-visit ordering is asserted below, without inverting them.
+const SLICE6_BASELINE_HASH: u64 = 0xC4FE_1B3B_28C0_1D17;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -228,20 +249,12 @@ fn replay_hash_stable_through_slice6() {
         rules_hash: rules.simulation_config_hash(),
     });
     let mut stopped_head = None;
-    let walk_vectors: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/walk_paid_step.json"
-    ))
-    .unwrap();
-    let paid_steps: Vec<_> = walk_vectors
-        .iter()
-        .filter(|row| {
-            row["input"]["name"]
-                .as_str()
-                .unwrap()
-                .starts_with("slice6_paid_step_")
-        })
-        .collect();
-    assert_eq!(paid_steps.len(), 5);
+    // Numeric paid-step parity is pinned at its actual post-admission
+    // boundary by walk_step::tests::paid_walk_matches_original_numeric_facing_and_boundary_vectors.
+    // Its historical Slice6 rows supply head1728,1216/facing10855; they do not
+    // establish this replay's live head choice after mission/idle RNG changes.
+    let mut paid_head = None;
+    let mut paid_coord = None;
     for tick in 0..16u64 {
         let due: Vec<CommandEnvelope> = script
             .iter()
@@ -257,20 +270,25 @@ fn replay_hash_stable_through_slice6() {
         );
         log.record_tick(tick, due, result.state_hash);
         if tick >= 11 {
-            let row = paid_steps[(tick - 11) as usize];
             let infantry = sim.substrate.entities.get(3).unwrap();
             let coord = crate::sim::movement::ground_pose::position_world_coord(&infantry.position);
-            assert_eq!(
-                [coord.x, coord.y, coord.z],
-                std::array::from_fn::<_, 3, _>(|i| row["proposed"][i].as_i64().unwrap() as i32),
-                "native paid Walk frame {}",
-                tick + 1
-            );
-            assert_eq!(
-                u64::from(infantry.body_facing.current(sim.session.binary_frame)),
-                row["facing"].as_u64().unwrap()
-            );
-            assert_eq!(infantry.foot_speed.cached_current_speed, 10);
+            let head = infantry.locomotor.as_ref().unwrap().step_head().unwrap();
+            if let Some(first) = paid_head {
+                assert_eq!(head, first, "a paid Walk retains its admitted head");
+            } else {
+                paid_head = Some(head);
+            }
+            if let Some(previous) = paid_coord {
+                assert_ne!(coord, previous, "each paid visit moves toward its head");
+                let distance = |position: crate::sim::components::DriveCoord| {
+                    let dx = i64::from(position.x) - i64::from(head.x);
+                    let dy = i64::from(position.y) - i64::from(head.y);
+                    dx * dx + dy * dy
+                };
+                assert!(distance(coord) < distance(previous));
+            }
+            paid_coord = Some(coord);
+            assert_eq!(sim.current_speed_for_test(3, &rules), 10);
         }
 
         if tick >= 10 {
@@ -354,77 +372,40 @@ fn replay_hash_stable_through_slice6() {
             "retask window must not turn into a combat/death fixture"
         );
     }
-    let live_hash = sim.state_hash();
     assert_eq!(
         [1, 2, 3].map(|id| sim.substrate.entities.get(id).unwrap().mission.ai_counter()),
         [5, 16, 7],
         "Unit/Infantry Commence precedes the Techno counter increment"
     );
-    // Original Unit736473 / Infantry51BC51 Commence clears the counter before
-    // Techno6FA64E increments it. The two missions promoted during AI therefore
-    // have one extra counted visit; actor2 was already in Guard at Unlimbo.
-    // Invert only that established correction for the historical hash pins.
-    // These are Rust regression receipts, not native goldens; the original
-    // first-visit counter1 is pinned separately by the mission_counter corpus.
-    // See docs/research/bridge-concrete-ground-damage.md.
-    let live_missions = [1, 3].map(|id| (id, sim.substrate.entities.get(id).unwrap().mission));
-    for (id, mission) in live_missions {
+    // Original Unit736473 / Infantry51BC51 Commence clears C4 before
+    // Techno6FA64E increments it; the mission_counter corpus pins that owner.
+    assert_eq!(
+        (
+            sim.scenario_rng.state(),
+            sim.main_rng.state(),
+            sim.mapgen_rng.state()
+        ),
+        (
+            0x650C_CCE5_32C8_9F6E,
+            0x4CB6_FE1C_CB45_47FF,
+            0x1CE8_1848_7043_6163
+        ),
+        "absolute stream pins supplement per-frame replay equality"
+    );
+    assert_eq!(
         sim.substrate
             .entities
-            .get_mut(id)
+            .get(3)
             .unwrap()
-            .mission
-            .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
-                current: mission.current(),
-                suspended: mission.suspended(),
-                queued: mission.queued(),
-                movement_bypass_latch: mission.movement_bypass_latch(),
-                handler_state: mission.handler_state(),
-                mission_start_frame: mission.mission_start_frame(),
-                ai_counter: mission.ai_counter() - 1,
-                dispatch_timer: mission.dispatch_timer(),
-            });
-    }
-    let hash = sim.state_hash();
-    println!(
-        "[slice6] counter-projected={hash:016X} live={live_hash:016X} streams={:016X},{:016X},{:016X}",
-        sim.scenario_rng.state(),
-        sim.main_rng.state(),
-        sim.mapgen_rng.state()
+            .body_facing
+            .rot_per_frame(),
+        0x7F00
     );
-    for id in sim.substrate.entities.keys_sorted() {
-        let entity = sim.substrate.entities.get(id).unwrap();
-        println!(
-            "[slice6 owner] id={id} cell=({},{}) sub=({},{}) health={} mission={:?} queued={:?} nav={:?} path={:?} drive={:?} speed={:?}",
-            entity.position.rx,
-            entity.position.ry,
-            entity.position.sub_x,
-            entity.position.sub_y,
-            entity.health.current,
-            entity.mission.current(),
-            entity.mission.queued(),
-            entity.navigation.nav_com,
-            entity.movement_target.as_ref().map(|target| (
-                target.next_index,
-                target.path.len(),
-                target.final_goal
-            )),
-            entity.drive_locomotion,
-            entity.foot_speed,
-        );
-    }
-    let infantry_facing = sim.substrate.entities.get(3).unwrap().body_facing;
-    assert_eq!(infantry_facing.rot_per_frame(), 0x7F00);
     assert_eq!(
-        hash, SLICE6_BASELINE_HASH,
-        "Slice 6 scripted-retask state hash drifted. Treat this as behavior drift \
-         unless a documented native behavior change or hash-composition change \
-         is causally demonstrated"
+        sim.state_hash(),
+        SLICE6_BASELINE_HASH,
+        "Slice 6 scripted-retask state hash drifted; establish native behavior or composition provenance before rebaselining"
     );
-    for (id, mission) in live_missions {
-        sim.substrate.entities.get_mut(id).unwrap().mission = mission;
-    }
-    assert_eq!(sim.state_hash(), live_hash, "restore both live missions");
 }
 
 #[test]

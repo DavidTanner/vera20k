@@ -88,7 +88,6 @@ use crate::sim::combat::TargetKind;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 use crate::util::direction::TUBE_STEP_DIRECTION;
 use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
@@ -122,7 +121,6 @@ struct FreshCall<'a> {
     family: TrackFamily,
     args: ProcessMovementArgs,
     rules: &'a RuleSet,
-    fallback: Option<&'a PathGrid>,
     registry: Option<&'a OverlayTypeRegistry>,
 }
 
@@ -149,7 +147,6 @@ impl Simulation {
         args: ProcessMovementArgs,
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let call = FreshCall {
@@ -157,7 +154,6 @@ impl Simulation {
             family,
             args,
             rules,
-            fallback,
             registry,
         };
         self.track_process_movement(&call, held)
@@ -302,7 +298,6 @@ impl Simulation {
             &request,
             held.as_deref_mut(),
             Some(call.rules),
-            call.fallback,
             call.registry,
         )? {
             FootPathOutcome::Deleted => Ok(true),
@@ -404,9 +399,9 @@ impl Simulation {
             return Ok(false);
         }
         //4B345B..4B34D1: Mark0, Unit+1AC(cell, dir, height, 0, 1), Mark1.
-        self.foot_mark_remove(id, Some(rules), call.fallback, call.registry);
+        self.foot_mark_remove(id, Some(rules), call.registry);
         let code = self.track_can_enter(call, cell, direction, height)?;
-        self.foot_mark_put(id, Some(rules), call.fallback, call.registry);
+        self.foot_mark_put(id, Some(rules), call.registry);
         let object = self.track_object(id, rules)?;
         let overlay = self.track_overlay(cell);
         //4B34D7..4B351D: the train and crusher coercions.
@@ -504,7 +499,7 @@ impl Simulation {
                     }
                 } else {
                     //4B38B3..4B393A: Scatter_Objects(Null, 1, 1, deck).
-                    self.scatter_blocked_track_cell(id, cell, rules, call.fallback);
+                    self.scatter_blocked_track_cell(id, cell, rules, call.registry)?;
                 }
                 self.track_first_rejected_tail(id);
                 Ok(false)
@@ -581,7 +576,7 @@ impl Simulation {
         let destination =
             track_destination(actor).ok_or("Drive/Ship code-2 ladder without destination")?;
         let request = self.track_path_request(call, destination, urgency)?;
-        let found = self.foot_find_path(&request, held, rules, call.fallback, call.registry)?;
+        let found = self.foot_find_path(&request, held, rules, call.registry)?;
         //4B3A13..4B3A2A: a vanished Foot sets the out byte.
         if self.substrate.entities.get(id).is_none() {
             return Ok(true);
@@ -627,7 +622,7 @@ impl Simulation {
         //4B3C8D..4B3E21: publish the target speed fraction.
         self.publish_fresh_speed(id, cell, road, rules);
         //4B3E27..4B3E65: Unit+534(cell, 1), the crusher's pre-entry scatter.
-        self.track_crusher_pre_scatter(call, cell);
+        self.track_crusher_pre_scatter(call, cell)?;
         let actor = self
             .substrate
             .entities
@@ -648,13 +643,8 @@ impl Simulation {
             if distance > 0x200 {
                 //Find_Path(cell(destination), IsTrain, 0); see the train residual.
                 let request = self.track_path_request(call, destination, 0)?;
-                let found = self.foot_find_path(
-                    &request,
-                    held.as_deref_mut(),
-                    rules,
-                    call.fallback,
-                    call.registry,
-                )?;
+                let found =
+                    self.foot_find_path(&request, held.as_deref_mut(), rules, call.registry)?;
                 if found == FindPathResult::Failed {
                     //4B3F40..4B3F55: a vanished Foot sets the out byte.
                     if self.substrate.entities.get(id).is_none() {
@@ -811,7 +801,7 @@ impl Simulation {
                     }
                 } else {
                     //4B43D0..4B4437: Scatter_Objects on the second cell.
-                    self.scatter_blocked_track_cell(id, second_cell, rules, call.fallback);
+                    self.scatter_blocked_track_cell(id, second_cell, rules, call.registry)?;
                 }
                 self.track_second_refused(call)
             }
@@ -909,7 +899,7 @@ impl Simulation {
         //4B46DF..4B46FA: the crate question (see residual), then limbo.
         if !actor.lifecycle.in_limbo {
             //4B46FC..4B4705: Apply_Track_Occupation_Mode(head, 1).
-            self.track_apply_occupation(id, call.family, true, call.fallback);
+            self.track_apply_occupation(id, call.family, true);
             return Ok(false);
         }
         //4B4716..4B473C: a live owner drops the head again.
@@ -1185,13 +1175,13 @@ impl Simulation {
         id: u64,
         cell: (i16, i16),
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
-    ) {
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Result<(), String> {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return;
+            return Ok(());
         };
         let Some(actor) = self.substrate.entities.get(id) else {
-            return;
+            return Ok(());
         };
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
         let native = cells.lookup(cell);
@@ -1199,65 +1189,67 @@ impl Simulation {
         let location = ground_pose::position_world_coord(&actor.position);
         let deck = cells.flags(native) & 0x100 != 0
             && (location.z / GROUND_LEVEL_HEIGHT_LEPTONS - level).abs() > 2;
-        self.scatter_cell_contacts(cell, deck, true, rules, fallback);
+        self.scatter_cell_contacts(cell, deck, true, rules, registry)
     }
 
-    /// `CellClass::Scatter_Objects(null, 1, forced, deck)` on `cell`; also the
-    /// computer's site clearing (`sim::build_site::flush_for_placement`).
+    /// `CellClass::Scatter_Objects(null, 1, no_kidding, deck)` on `cell`
+    /// ([`Self::scatter_cell_objects`]); also the computer's site clearing
+    /// (`sim::build_site::flush_for_placement`). The receivers' bridge-state
+    /// answer is dropped: only an Engineer arriving at a BridgeRepairHut cell
+    /// sets it, and a receiver's one Process walks toward a cell FNPC or the
+    /// neighbour search found passable, which a hut cell is not.
     pub(crate) fn scatter_cell_contacts(
         &mut self,
         cell: (i16, i16),
         deck: bool,
-        forced: bool,
+        no_kidding: bool,
         rules: &RuleSet,
-        fallback: Option<&PathGrid>,
-    ) {
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Result<(), String> {
         #[cfg(test)]
         if super::fresh_oracle_seam::substitute(
-            super::fresh_oracle_seam::FreshCallRecord::Scatter { cell, forced, deck },
+            super::fresh_oracle_seam::FreshCallRecord::Scatter {
+                cell,
+                no_kidding,
+                deck,
+            },
         ) {
-            return;
+            return Ok(());
         }
         if cell.0 < 0 || cell.1 < 0 {
-            return;
+            return Ok(());
         }
-        let grid = self.path_grid_snapshot();
-        super::bump_crush::scatter_cell_objects(
-            &mut self.substrate.entities,
-            &self.substrate.occupancy,
+        self.scatter_cell_objects(
             (cell.0 as u16, cell.1 as u16),
             if deck {
                 MovementLayer::Bridge
             } else {
                 MovementLayer::Ground
             },
-            forced,
-            grid.as_deref().or(fallback),
-            self.resolved_terrain.as_ref(),
-            &mut self.scenario_rng,
-            Some(rules),
-            &self.interner,
-            &self.houses,
-            super::DestinationTiming::new(
-                self.session.binary_frame,
-                rules.general.blockage_path_delay_ticks,
-            ),
-        );
+            super::ScatterFlags::new(true, no_kidding),
+            rules,
+            registry,
+        )?;
+        Ok(())
     }
 
     /// Unit+534(cell, 1) = 0x7416A0 with its second argument set: a Crusher
     /// (Type+D28 or ability 0x11) scatters a Cell holding infantry (raw
     /// +124/+128 & 0x1F) without force. The deck list applies on a structural
     /// Cell the Foot rides or reaches from four levels above.
-    fn track_crusher_pre_scatter(&mut self, call: &FreshCall<'_>, cell: (i16, i16)) {
+    fn track_crusher_pre_scatter(
+        &mut self,
+        call: &FreshCall<'_>,
+        cell: (i16, i16),
+    ) -> Result<(), String> {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return;
+            return Ok(());
         };
         let Some(actor) = self.substrate.entities.get(call.id) else {
-            return;
+            return Ok(());
         };
         let Some(object) = call.rules.object(self.interner.resolve(actor.type_ref())) else {
-            return;
+            return Ok(());
         };
         //Type+D28, or HasWeaponAbility(0x11) by rank (0x70D0D0).
         let crusher = object.crusher
@@ -1274,7 +1266,7 @@ impl Simulation {
                     == level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS
         };
         if !crusher {
-            return;
+            return Ok(());
         }
         let layer = if deck {
             MovementLayer::Bridge
@@ -1287,8 +1279,9 @@ impl Simulation {
         ) & 0x1F
             != 0;
         if infantry {
-            self.scatter_cell_contacts(cell, deck, false, call.rules, call.fallback);
+            self.scatter_cell_contacts(cell, deck, false, call.rules, call.registry)?;
         }
+        Ok(())
     }
 
     /// Code 4/5 without a retry (0x4B3B03..0x4B3BE9): `Find_Blocking_Object`

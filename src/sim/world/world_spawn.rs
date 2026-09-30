@@ -1505,11 +1505,11 @@ impl Simulation {
         // type's CanPlaceAt tests the origin for no house, and the unit is put
         // back (`0x0073953B..0x00739565` / `0x0073959C..0x007395B4`) before
         // either outcome acts.
-        self.foot_mark_remove(stable_id, Some(rules), None, registry);
+        self.foot_mark_remove(stable_id, Some(rules), registry);
         let placeable = rules.object(&yard_type).is_some_and(|yard| {
             crate::sim::build_site::can_place_building_at(self, rules, registry, yard, origin, None)
         });
-        self.foot_mark_put(stable_id, Some(rules), None, registry);
+        self.foot_mark_put(stable_id, Some(rules), registry);
         if !placeable {
             log::info!("MCV deploy blocked at origin {origin:?}");
             // `0x007394E0..0x0073950A`: EVA CannotDeployHere only for the
@@ -1549,7 +1549,15 @@ impl Simulation {
             // to radio contact 0, then +0x68C.
             let now = self.session.binary_frame;
             if let Some(entity) = self.substrate.entities.get_mut(stable_id)
-                && !crate::sim::movement::ready_producer::is_moving_now_for(entity, now)
+                && !crate::sim::movement::ready_producer::is_moving_now_for(
+                    entity,
+                    Some(crate::sim::movement::SpeedRules::new(
+                        rules,
+                        &self.interner,
+                        &self.type_handles,
+                    )),
+                    now,
+                )
             {
                 crate::sim::movement::drive_do_turn(entity, u16::from(deploy_facing) << 8, now);
             }

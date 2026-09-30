@@ -1285,8 +1285,13 @@ impl Simulation {
                 continue;
             }
             if let Some(source) = self.slave_owner_centre(master, rules)
-                && let Err(cause) =
-                    self.scatter_infantry_forced_from(slave, source, rules, registry)
+                && let Err(cause) = self.infantry_scatter_from(
+                    slave,
+                    source,
+                    crate::sim::movement::ScatterFlags::new(true, true),
+                    rules,
+                    registry,
+                )
             {
                 log::debug!("slave {slave} did not scatter: {cause}");
             }

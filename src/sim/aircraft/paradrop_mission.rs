@@ -29,8 +29,6 @@ pub const PARADROP_OPEN_TO_RESCUE_DELAY_FRAMES: u16 = 3;
 /// applies these mutations in the apply phase.
 pub struct ApproachOutcome {
     pub new_mission: AircraftMission,
-    pub fire_fog_reveal: bool,
-    pub play_chute_sound: bool,
     pub move_to: Option<(u16, u16)>,
 }
 
@@ -40,7 +38,6 @@ pub fn tick_approach(
     aircraft_id: u64,
     target_rx: u16,
     target_ry: u16,
-    has_revealed_fog: bool,
     path_grid: Option<&PathGrid>,
 ) -> ApproachOutcome {
     let aircraft = match sim.substrate.entities.get(aircraft_id) {
@@ -48,8 +45,6 @@ pub fn tick_approach(
         None => {
             return ApproachOutcome {
                 new_mission: AircraftMission::Idle,
-                fire_fog_reveal: false,
-                play_chute_sound: false,
                 move_to: None,
             };
         }
@@ -61,8 +56,6 @@ pub fn tick_approach(
     if cargo_count == 0 {
         return ApproachOutcome {
             new_mission: AircraftMission::Idle,
-            fire_fog_reveal: false,
-            play_chute_sound: false,
             move_to: None,
         };
     }
@@ -85,11 +78,8 @@ pub fn tick_approach(
                 exit_rx: exit.0,
                 exit_ry: exit.1,
                 drop_cooldown: PARADROP_OPEN_TO_RESCUE_DELAY_FRAMES,
-                landing_state: 0,
                 payload_count: cargo_count as u8,
             },
-            fire_fog_reveal: false,
-            play_chute_sound: false,
             move_to: Some(exit),
         };
     }
@@ -99,10 +89,7 @@ pub fn tick_approach(
         new_mission: AircraftMission::ParaDropApproach {
             target_rx,
             target_ry,
-            has_revealed_fog,
         },
-        fire_fog_reveal: false,
-        play_chute_sound: false,
         move_to: if aircraft.movement_target.is_none() {
             Some((target_rx, target_ry))
         } else {
@@ -129,7 +116,6 @@ pub fn tick_overfly(
     exit_rx: u16,
     exit_ry: u16,
     drop_cooldown: u16,
-    landing_state: u8,
     payload_count: u8,
 ) -> OverflyOutcome {
     let aircraft = match sim.substrate.entities.get(aircraft_id) {
@@ -149,7 +135,6 @@ pub fn tick_overfly(
     let cargo_empty = cargo_count == 0;
 
     let new_cooldown = drop_cooldown.saturating_sub(1);
-    let new_landing = landing_state.saturating_sub(1);
 
     // P19: cargo empty → fly to exit; despawn at boundary.
     if cargo_empty {
@@ -166,7 +151,6 @@ pub fn tick_overfly(
                 exit_rx,
                 exit_ry,
                 drop_cooldown: new_cooldown,
-                landing_state: new_landing,
                 payload_count,
             },
             move_to: if !despawn && aircraft.movement_target.is_none() {
@@ -190,7 +174,6 @@ pub fn tick_overfly(
             exit_rx,
             exit_ry,
             drop_cooldown: new_cooldown,
-            landing_state: new_landing,
             payload_count,
         },
         move_to: None,
@@ -300,54 +283,27 @@ mod tests {
         let rules = paradrop_rules(1024);
         let (sim, aircraft_id) = sim_with_loaded_pdplane(10, 10, 4);
 
-        let outcome = tick_approach(&sim, &rules, aircraft_id, 14, 10, false, None);
+        let outcome = tick_approach(&sim, &rules, aircraft_id, 14, 10, None);
 
         match outcome.new_mission {
             AircraftMission::ParaDropOverfly {
                 drop_cooldown,
-                landing_state,
                 payload_count,
                 ..
             } => {
                 assert_eq!(drop_cooldown, PARADROP_OPEN_TO_RESCUE_DELAY_FRAMES);
-                assert_eq!(landing_state, 0);
                 assert_eq!(payload_count, 4);
             }
             other => panic!("expected Rescue-equivalent state, got {:?}", other),
         }
-        assert!(!outcome.fire_fog_reveal);
-        assert!(!outcome.play_chute_sound);
         assert_eq!(outcome.move_to, Some((99, 99)));
-    }
-
-    #[test]
-    fn rescue_equivalent_does_not_use_landing_state_as_extra_drop_throttle() {
-        let (sim, aircraft_id) = sim_with_loaded_pdplane(10, 10, 1);
-
-        let outcome = tick_overfly(&sim, aircraft_id, 99, 99, 0, 5, 1);
-
-        assert!(
-            outcome.try_drop,
-            "LandingState should not delay an in-range Rescue-equivalent drop"
-        );
-        match outcome.new_mission {
-            AircraftMission::ParaDropOverfly {
-                drop_cooldown,
-                landing_state,
-                ..
-            } => {
-                assert_eq!(drop_cooldown, 0);
-                assert_eq!(landing_state, 4);
-            }
-            other => panic!("expected Rescue-equivalent state, got {:?}", other),
-        }
     }
 
     #[test]
     fn rescue_equivalent_respects_mission_cadence_cooldown() {
         let (sim, aircraft_id) = sim_with_loaded_pdplane(10, 10, 1);
 
-        let outcome = tick_overfly(&sim, aircraft_id, 99, 99, 2, 0, 1);
+        let outcome = tick_overfly(&sim, aircraft_id, 99, 99, 2, 1);
 
         assert!(!outcome.try_drop);
         match outcome.new_mission {
@@ -364,7 +320,7 @@ mod tests {
         let mut cooldown = 5;
 
         for frame in 1..=5 {
-            let outcome = tick_overfly(&sim, aircraft_id, 99, 99, cooldown, 0, 1);
+            let outcome = tick_overfly(&sim, aircraft_id, 99, 99, cooldown, 1);
             assert_eq!(
                 outcome.try_drop,
                 frame == 5,

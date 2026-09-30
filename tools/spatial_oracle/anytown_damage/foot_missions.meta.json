@@ -7,8 +7,10 @@
     1,
     33621247
   ],
-  "scope": "Selected original Foot missions, threat wrapper, idle and downstream receipts using Anytown Mission.\n\nInvoke through mission --foot-missions. No scanner, approach, RNG or map decision\nis reimplemented here. Explicit prior-state controls and the scanner-return seam\nare distinguished from the original full scanner rows; see foot_missions.md.\n",
+  "scope": "Selected original Foot missions, threat wrapper, idle and ground firing prefix using Anytown Mission.\n\nInvoke through mission --foot-missions. No scanner, approach, RNG or map decision\nis reimplemented here. Explicit prior-state controls and the scanner-return seam\nare distinguished from the original full scanner rows; see foot_missions.md.\n",
   "assumptions": [
+    "ground_firing_receipt creates a fresh existing FootMissions VM only after the frozen220-row payload canonical identity is checked. It repeats original constructors, actual Drive/Walk factories, successful E1/MTNK Unlimbo/registration, the existing rules key-block receipts and all physically referenced E1 normal/elite WeaponType/Projectile/Warhead readers. The explicit companion Ready fixture baseline is retained; target admission51B1F0, Attack queue5B35E0 and native whole51BAB0 promotion/AI run. Original Foot4DA530, Techno6F9E50, Mission5B3060, absolute stage6FABC4..6FAC31, select5218E0, fire error51C8B0/6FC0B0/Walk55AD00, DoAction51D6F0, FireAtTarget5206B0, sequencer520AE0 and movement520F40 execute without gameplay-result substitutions. Clock inputs, call/write order, actual receiver/arguments/returns, stage/F8/FC, firing68D, rearm/mission timers, real Walk state, facing and full three RNG streams are recorded.",
+    "Four accepted ground_firing_receipt controls run complete selected InfantryAI returns before the launch visit. The accepted visit stops before executing the real6FDD50 entry, after original51DF60 pushed actual target/weapon0 and wrote68D0 at51DF70. No EAX or stack return is supplied at that boundary; the enclosing InfantryAI/FireAt/sequencer tails have not returned. Repeated absolute-frame and elapsed-gap controls execute the original absolute stage arithmetic, including actual mission cadence/RNG when due. Concrete51AA10 expiry control1 executes before the first AI visit or between the first two, including the real Techno/Foot and Infantry AssignTarget/DoAction receivers. This is a supplied expired-pointer notification, not original target death/UnInit/broadcast.",
     "The additive weapon_reader_receipts runs only after all208 historical rows. Original normal7177C0/elite7177E0 slot getters expose M60/Para/M60E/ParaE names and actual retained constructor/read fields. Original7012C0 GetWeaponRange and707E60 ThreatRange run through original70E140 and native vtables for the retained rookie state and separately supplied veterancy float2.0 elite control. The getter control restores that supplied field and consumes no RNG. Before closure, only M60 has read physical WeaponType772080; its actual InvisibleLow46BEE0 attempt lacks a matching section and retains original46BBC0 constructor fields, while SA75D3A0 reads. The other three weapons retain original771C70 fields and null child references. Explicit omitted_sections/read attempts qualify the historical208 results; no old result is rewritten.",
     "New weapon closure reads exact-case physical E1-referenced normal/elite weapon sections and their Projectile/Warhead names across RULESMD, optional LANGRULE, mode and map layers. Every original772080, actual child46BEE0/75D3A0 and original7729F0 postpass executes, with native AL section status, reader arguments, observed fields/writes and full unchanged RNG recorded. No native range/default/scanner/child value comes from Rust. The separate12 retail_weapon_rows execute7 consecutive Cell-leash controls including the prior2254 contrast,3 strict Rescue supplied-result boundaries and2 actual scanner prefixes under the completed physical weapon context and physically read .15 idle frequency. Each new input names its weapon/rules/registration receipt context; actual ordered registries and every registered actor limbo/alive/coordinate/House are read before entry. The two real prefix controls reuse the existing navigation fixture to supply only the two extra candidates limbo1/alive0 after prototype restoration. Other new rows restore their actual placed extra baselines; the main candidate uses candidate_live. These continue original handlers, not a whole Rules Process or whole match.",
     "The additive initial_action_receipt captures original E1517A50/Walk75AA90 constructor state and successful51DFF0 Unlimbo before the companion explicit Ready. Both retain Doing-1. Full original520AE0 then executes actual COM Walk75AB30 and forced51D6F0(Ready0,1,0), recording the51D9D2 Doing write, raw frame/sequence/facing fields and full three RNG states. All probe writes and CPU/x87 are restored before explicit fixture Ready, preserving all204 historical values. The actor is the initialized stationary source at the declared crop/frame; first whole InfantryAI, moving admission, absolute-stage clock and whole ScenarioLoad are excluded.",
@@ -26,8 +28,9 @@
     "Cell anchors execute486840/47B3A0 on physical level/slope and remain ground anchors when the source pose is deck+416/OnBridge1. Entity anchors execute native5F65A0 physical XYZ. Drive/Walk retained-head offsets reuse locomotor_at_coord.FAMILIES; alternate head and unrelated NavCom are explicit controls. Full scan input, Rescue strict gate and AreaGuard leash use the archived physical point."
   ],
   "substitutions": [
+    "ground_firing_receipt excludes6FDD50 body, launch/projectile allocation, MGUN/PIFF/Report asset or sound closure, post-fire rearm writes, impact/damage/collapse and whole Logic/Scenario/object interleaving. It is original selected per-actor AI or a pre-launch prefix, not a complete shot. Supplied high-deck controls add416 to actual placed XYZ and set OnBridge/physical Cell HasBridge0x100; real Map queries and original firing receivers run, but original ground/upper occupancy lists are retained. Native bridge Unlimbo, deck occupancy relocation and layer/head production are not established. Opposite-layer controls run original51C8B0\u21926FC0B0 admission only and execute no AI visit: full Attack pursuit reaches Foot4D5690 and unprepared AStar42D170/42A5B0, whose initialization/hierarchy belongs to the existing anytown_damage/navigation.py owner. No path answer, mission timer, target/fire/sequence/RNG result, code or vtable is substituted to bypass that prerequisite.",
     "Historical208 rows have an explicitly partial physical weapon read context: Para, M60E, ParaE, InvisibleLow and SSA sections are unread even though E1 TypeINI allocates all four slot weapon types. Their executed results and RNG remain unchanged. Old82 rows and initial_action_receipt use constructor IdleActionFrequency, while the later36 idle/86 threat/2 destination/2 home rows use the separately read physical frequency. The new weapon receipt publishes this array-to-reader-context map. New12 handler controls use all physically read E1 weapons and children but retain the inherited supplied crop, House, registration, archive/geometry and receiver-state bounds; strict Rescue result-seam rows do not certify actual acquisition.",
-    "This is a selected handler/dispatcher continuation on the existing Anytown crop, not a native whole-match ScenarioLoad/RespondToBaseAttack/damage trigger or full live UnitAI/FootAI object tick. Queue promotion and source state that select these handlers are supplied. Full House construction/bookkeeping remain excluded; null-House object constructors are followed by explicit owner links and valid family-specific count vectors. Physical Americans country readers and original4F643B coefficient selection execute.",
+    "The historical220-row portion is a selected handler/dispatcher continuation on the existing Anytown crop, not a native whole-match ScenarioLoad/RespondToBaseAttack/damage trigger or full live UnitAI/FootAI object tick. Queue promotion and source state that select those handlers are supplied. The separate ground_firing_receipt executes original per-actor InfantryAI returns/pre-launch prefixes under its explicit bounds. Full House construction/bookkeeping remain excluded; null-House object constructors are followed by explicit owner links and valid family-specific count vectors. Physical Americans country readers and original4F643B coefficient selection execute.",
     "Supplied-scanner-result rows execute the original Rescue prefix to4DE056, record actual virtual receiver/vtable/three arguments, then supply only the declared EAX result and consumed12-byte stack before running original caller4DE05C. They do not execute the scanner or certify candidate acquisition; full-scanner rows are separate. The preserved no-target/refused rows stop at4DE12D before status1 write, House500200 home selection, destination/archive cleanup or the cadence tail. The additive empty_rescue_rows execute that original suffix with the separate supplied House/crop premises.",
     "Geometry/layer/head/NullPoint and raw leash-boundary poses are supplied post-placement controls; they do not prove native bridge Unlimbo, locomotor head production, occupancy relocation or map loader chronology. Placed candidates can be declared limbo after actual placement to exercise empty scans; no physical UnInit transition is claimed. Crop and out-of-crop map/zone storage retain the existing owner bounds.",
     "Existing successful native heap/file/INI cache, empty SEH, wall-clock/atexit/ASCII/CLSID/Interlocked/OleRun OS boundaries remain. Additional Infantry COM activation is routed to original Walk factory after checking its physical CLSID/arguments. Visual asset/radar/sound sinks and inherited hierarchy586990 callback are recorded; full audio Main RNG/device work, rendering and future movement/occupancy effects are excluded. No range, RNG, approach, target, bridge or scanner result is replaced except the explicitly declared strict-gate scanner-result seam.",
@@ -122,7 +125,22 @@
     "get_weapon": "0x0070E140",
     "normal_weapon_slot": "0x007177C0",
     "elite_weapon_slot": "0x007177E0",
-    "elite_predicate": "0x00750010"
+    "elite_predicate": "0x00750010",
+    "infantry_ai": "0x0051BAB0",
+    "foot_ai": "0x004DA530",
+    "techno_ai": "0x006F9E50",
+    "absolute_stage_tick": "0x006FABC4",
+    "fire_at_target": "0x005206B0",
+    "infantry_select_weapon": "0x005218E0",
+    "infantry_fire_error": "0x0051C8B0",
+    "techno_fire_error": "0x006FC0B0",
+    "walk_fire_error": "0x0055AD00",
+    "infantry_fire_prefix": "0x0051DF60",
+    "base_fire_unexecuted_entry_boundary": "0x006FDD50",
+    "infantry_movement_actions": "0x00520F40",
+    "infantry_pointer_expired": "0x0051AA10",
+    "foot_pointer_expired": "0x004D9960",
+    "techno_pointer_expired": "0x007077C0"
   },
   "native_spans": {
     "rescue": {
@@ -641,6 +659,116 @@
       "length": 4,
       "sha256": "d88c86f15bbea365d658ad95a81d45367c465f7af6f7264fb077f01747ddc77d",
       "hex": "00000040"
+    },
+    "infantry_ai": {
+      "address": "0x0051BAB0",
+      "file_offset": 1161904,
+      "length": 1239,
+      "sha256": "dd76ae4e4e171d16be608751337383f7c832351cf8e6607ef624e7d0a1761819",
+      "hex": "83ec0c55568bf1578a868406000084c07c18e889f8ffff8b066a008bceff90a00400005f5e5d83c40cc38b168bceff92d401000084c0750e8b068bceff90d801000084c07478a184eda800b91800000099f7f985d275678b15e07188008b824403000085c0745768c8010000e8f6d22a0083c40485c074468d8e9c0000006a006a0068000600008b116a0183c2786a008b79048954242083c7788d5424208b69088b0de0718800897c2424896c2428528b9144030000528bc8e83263f0ff8b8e7802000085c974058b01ff505c8b168bceff92d801000084c075188b068bceff90d401000084c074388a867c02000084c0742e8b867406000085c0750a6803400080e8690b2c008b8674060000508b08ff51408a869000000084c00f84af0300008b168bceff92d401000084c074398b86b402000085c0740c8b066a008bceff90c80300008b86a405000085c00f847d0300008b166a016a008bceff92800400005f5e5d83c40cc38b068bceff900002000083cdff84c0742e8b168bceff92840100003bc5751639aeb4000000750e8b066a016a008bceff90840400008b168bceff92ec0100008b466c85c07f3f8b86c406000083f80b743483f80c742f83f80d742a83f80e742583f80f742083f822741b83f823741683f824741183f814740c83f8157407c7466c010000008bcee88ce8fbff8a869000000084c00f84ce0200008a868100000084c00f850f0100008b068bceff908401000083f80574138b168bceff928401000083f80b0f85ed0000008d869c0000008b8e9c000000894c240c8d4c240c8b500451b9e8f78700895424148b400889442418e8219a04008bc8e80a08f6ff8bf885ff0f84af0000008b87200500008a880117000084c9754d8a88bf16000084c974128b871806000083f80c743883f8087535eb318a88c016000084c974128b971c0200008a82fa01000084c07519eb158a88b716000084c9740d8bcfe87768f3ff84c0740233ff8b86dc02000085c0742f8b88d802000085c974253bf875218b068bceff90bc0100008b8edc02000050568b89d8020000e8cc4a190084c0751785ff74138b166a016a016800f2a8008bceff92740100008b068bceff507883f802740c8b166a028bceff92240100008a868d06000084c0744d8b860c01000085c075438b86c4060000c6868d0600000083f81b740f83f81c740a83f81d740583f81e75128b066a006a006a1c8bceff9058050000eb108b166a006a006a008bceff92580500008b86d405000085c074118a8ed503000084c97407c68082000000018b86d405000085c0755b8b068bceff908401000083f805754c8d8e9c0000008b969c0000008954240c8d54240c8b410452894424148b4908894c2418b9e8f78700e8b1c4040084c0751b8b068bceff90a00300008b168bceff92f80000005f5e5d83c40cc38bcee82b44000084c00f85b30000008b068bceff900002000084c0742e8b168bceff92840100003bc5751639aeb4000000750e8b066a016a008bceff90840400008b168bceff92ec0100008bcee8a04100008b86a405000085c0753d8a86db06000084c075338a86da06000084c074298b96c80600008b86d00600003bd5740e8b0d84eda8002bca3bc87d062bc185c07507c686da060000008bcee8524700008a869000000084c074188bcee8714b00008a869000000084c074078bcee8c04f00005f5e5d83c40cc3"
+    },
+    "foot_ai_entry": {
+      "address": "0x004DA530",
+      "file_offset": 894256,
+      "length": 32,
+      "sha256": "3586f6584ad67303c92f7ee12f2961263a93dcf7869b84ec5499843615fe4042",
+      "hex": "83ec14535556578bf1e812f921008a869000000033db3ac30f84b2090000889e"
+    },
+    "techno_ai": {
+      "address": "0x006F9E50",
+      "file_offset": 3120720,
+      "length": 4533,
+      "sha256": "6a3463cae0d93d8626a7f00db3a37bc89cbf2fa53e583427f5c08f9faaacb94d"
+    },
+    "absolute_stage_tick": {
+      "address": "0x006FABC4",
+      "file_offset": 3124164,
+      "length": 109,
+      "sha256": "4c381b140d33b29794b6d32e192f7bb542c72bc6d5783762371bb3c53539cf96",
+      "hex": "8b96000100008b860801000083faff740e8b0d84eda8002bca3bc87d062bc13bc575438b860c0100003bc574398b8e100100008b96f800000003d1c686fc000000018996f80000008b0d84eda8008b54242c898e00010000899604010000898608010000eb07c686fc00000000"
+    },
+    "infantry_fire_at_target": {
+      "address": "0x005206B0",
+      "file_offset": 1181360,
+      "length": 1071,
+      "sha256": "6042dc0fbf3f6d4fb9afce32d7889388b682aca6b083d59a2ef04256178f7220",
+      "hex": "83ec28558be9568b85b402000085c00f840d0400008b55005750ff92e40200008bf88a858d06000084c0897c24100f85680200008b8db40200008b45006a0157518bcdff90c003000085c00f848e00000083f805741b83f8090f853d0200008b55006a008bcdff925c040000e92b020000578bcde847321d0085c00f8d1b0200008bb5b402000085f67442f6461402743c8b068bceff502c83f80f75308bcee80c550d008b0de0718800dc99f8160000dfe0f6c4010f85e10100008b55006a008bcdff92c8030000e9cf0100008b45006a008bcdff90c8030000e9bd0100008b8dc00600008a81940d000084c00f849b0000008b8d740600008d857406000085c9c744240c000000007423508d4c2410e8dba6f3ff85c07d0d3d02400080740650e84abf2b008b44240c85c0750e6803400080e838bf2b008b44240c8b108d4c2424535150ff520cb904000000bfc09a7e008d74242833d28b442410f3a70f94c385c074068b0850ff510884db5b741a8b55006a006a006a1a8bcdff92580500008b7c2410e9ca0000008b7c24108b85c406000083f81b740f83f81c740a83f81d740583f81e750e8b45006a006a006a1de9960000008b8d9402000085c9741683f828740583f829750cc785f800000000000000eb7e85ff744c8a85db06000084c074218b8dc00600008b913c0e00008b82c805000085c0740b8b45006a006a006a29eb478b8dc00600008b913c0e00008b82a405000085c0740b8b45006a006a006a28eb268a85db06000084c074138b55006a006a006a088bcdff9258050000eb118b45006a006a006a048bcdff90580500008b8db40200008d54241451528bcdc6858d06000001e892340d00508d8d88030000e8d689faff8b85b40200008b8da40500003bc175128bcde88fe7fbff8b55008bcdff92000500008b85c00600008a8ddb06000084c98b90400e000074068b90440e000085ff743484c9741a8bb03c0e00008bbec805000085ff74068b904c0e000084c975168b883c0e00008bb1a405000085f674068b90480e00008a858d0600005f84c00f842a0100003995f80000000f851e0100008b85b40200008b5500508bcdff92e40200008b55008bf08b85b40200006a0156508bcdff92c003000085c075158b85b40200008b550056508bcdff92cc030000eb5a8a85db060000c6858d0600000084c0740b8b55006a006a006a02eb368b85c406000083f81b740f83f81c740a83f81d740583f81e75138b45006a006a006a1c8bcdff9058050000eb118b55006a006a006a008bcdff92580500008b85b402000085c074788b45006a008bcdff90f80300008b08a1e07188008b91a80000008b88c01600003bd17d548d8d9c0000006a006a006a018b11895424208d5424208b410452894424288d5424308b490852894c24308b8db40200008b01ff504850b9e8f78700e86b4c04008bc8e8a40bf6ff5e5d83c428c3c6858d060000005e5d83c428c3"
+    },
+    "infantry_select_weapon": {
+      "address": "0x005218E0",
+      "file_offset": 1186016,
+      "length": 126,
+      "sha256": "e4d41bff8b1b90c5e01c30d9f41c85964d48e9de2fc37b64f8b9fc98b7184183",
+      "hex": "568bf18b8ec00600008a81ac06000084c0745b8b86c406000083f81b740f83f81c740a83f81d740583f81e750a8b81a80600005ec204008a868200000084c074278b068bceff908400000083b8500d0000ff74148b168bceff92840000008b80500d00005ec2040033c05ec204008b4424088bce50e8d6191d005ec20400"
+    },
+    "infantry_fire_error": {
+      "address": "0x0051C8B0",
+      "file_offset": 1165488,
+      "length": 741,
+      "sha256": "691a2885635a27319be44b51354cfbd6f3762af588787caaeee4b2d676d85ba1",
+      "hex": "83ec14538bd956578b83c406000083f80b742d83f80c742883f80d742383f80e741e83f80f741983f822741483f823740f83f824740a83f814740583f815750e5f5eb8060000005b83c414c20c006aff8bcbe869701d008b7c242485c07d3885ff74268b078bcfff502c83f80f751a8bcfe83a930d008b0de0718800dc99f8160000dfe0f6c401750e5f5eb8050000005b83c414c20c0085ff744f8b178bcfff522c83f80175438b038bcbff90840000008a889206000084c9742f8b8fa802000085c9742585db750433c0eb0b8a43142401f6d81bc023c33bc8740e5f5eb8050000005b83c414c20c008b4c242c8b5424285152578bcbe804f71d0085c08944240c0f85d4010000dd8378050000dc1d60387e00dfe0f6c4410f842b0100008b83a405000085c0741a8b83c406000083f8ff740f8a0c857caf7e0084c90f84070100008b83c00600008a88940d000084c90f84ca0000008b8b740600008d837406000085c9c744242c000000007423508d4c2430e877e4f3ff85c07d0d3d02400080740650e8e6fc2b008b44242c85c0750e6803400080e8d4fc2b008b44242c8b088d542410555250ff510cb910000000bfc09a7e008d74241433edf3a674051bed83ddff8d4c2430e8d282f9ff85ed0f94c084c05d74458b83c00600008a88cb0e000084c974358b837406000085c0750a6803400080e874fc2b008b8374060000508b08ff918000000084c0740e5f5eb8070000005b83c414c20c008b7c24248b4424288b13508bcbff92f80300008b3085f6747b8a862901000084c074188b83a405000085c0740e5f5eb8070000005b83c414c20c008a865001000084c0741c8b138bcbff92bc0100003bf8740e5f5eb8050000005b83c414c20c008bb6ac00000085f674298a865701000084c0741f85ff741bf647140274158b473885c0740e5f5eb8050000005b83c414c20c008b837406000085c0750a6803400080e8abfb2b008b9b74060000538b03ff908c00000085c075048b44240c5f5e5b83c414c20c00"
+    },
+    "techno_fire_error": {
+      "address": "0x006FC0B0",
+      "file_offset": 3129520,
+      "length": 3208,
+      "sha256": "e3c6f87a985e04a706c0889706268a1c3dc7270f7069c06b6116d11203cf19b1"
+    },
+    "walk_fire_error": {
+      "address": "0x0055AD00",
+      "file_offset": 1420544,
+      "length": 5,
+      "sha256": "5fed5afb29946811bf02359627a94bc01d08d31b779528feaadde3866af9c855",
+      "hex": "33c0c20400"
+    },
+    "infantry_fire_prefix": {
+      "address": "0x0051DF60",
+      "file_offset": 1171296,
+      "length": 28,
+      "sha256": "ac685d29bbd01c875e7d838a7f0d2d78fe0b86d27f34fc2083b5a6f766c6d7a7",
+      "hex": "8b442408568bf1578b4c240c50518bcec6868d06000000e8d4fd1d00"
+    },
+    "base_fire_unexecuted_entry": {
+      "address": "0x006FDD50",
+      "file_offset": 3136848,
+      "length": 16,
+      "sha256": "c030a631a81e44d8506a435d75747e183ed735e41fa60996f058adbaeafa3193",
+      "hex": "558bec83e4f881eca400000053568bf1"
+    },
+    "infantry_movement_actions_entry": {
+      "address": "0x00520F40",
+      "file_offset": 1183552,
+      "length": 32,
+      "sha256": "56e1999a0f674e956e39eff6b71f8a3963cd58857ff72a2aaff23bd7c9e3047b",
+      "hex": "83ec1c558be9568b4500ff908401000083f802755a8b857406000085c0750a68"
+    },
+    "fire_up_action_flags_rate": {
+      "address": "0x007EAF8C",
+      "file_offset": 4108172,
+      "length": 4,
+      "sha256": "afa7518106309c22d325df6d2663249d158d2f36f1976269d6d4104d9198a108",
+      "hex": "01000001"
+    },
+    "infantry_pointer_expired": {
+      "address": "0x0051AA10",
+      "file_offset": 1157648,
+      "length": 58,
+      "sha256": "3b6ce4af6a87de5c0718db561203eb81a5ee547d797a1b83bd794b8a1bd74ae6",
+      "hex": "8b44240856578b7c240c508bf157e83deffbff39bec0060000750ac786c0060000000000005f5ec2080090909090909083ec2c53558be956578b"
+    },
+    "foot_pointer_expired": {
+      "address": "0x004D9960",
+      "file_offset": 891232,
+      "length": 661,
+      "sha256": "372dc3dbb74adf40962c13f34ead0b5edf4f151f21103b174f3e975734c2ccf8",
+      "hex": "83ec0c538b5c24185556578b7c2420538bf157e848de220039bed4050000750a33ed89aed4050000eb0233ed8b86940600003bc7751439686c7409a05ceda80084c0750689ae940600008b86940600003bc5741539686c7e108b809c0600006a01578bc88b10ff52283bfe750689ae940600008b86d80500003bc7751484db74103bfd740c8b80d80500008986d805000039be180200007508558bcee80f2c230039bea8050000750689aea805000039bea40500000f85ae0000008a442424b30184c0753d3bfd74398a4f1422cb884c2424742e8b178d442410508bcfff524850b9e8f78700e8e5bc08008b8e1c0200008b51308bc852e874d6faff84c0740232db8b068bceff908401000083f80875488b168bceff522c83f80f753c8b86c00600008a88b40e000084c9742c8b8ea40500003bcd7422f6411402741c8a819000000084c0741239696c7e0d8b11ff928401000083f813751084db740c89aea005000089aea40500008b8ecc0500003bcf75623bcd74528b018d54241052ff50488bc88b019981e2ff00000003c2c1f80866894424248b41049981e2ff0000008d4c242003c251c1f808668944242a8b442428b9e8f7870089442424e87fbc08008986c8050000eb0689aec805000089aecc05000039bec8050000750689aec80500008b86bc05000033c93bc57e488b96b0050000393c8a75328b86bc0500003bc87d278d50ff8bc13bca8996bc0500007d188b96b0050000408b1c82895c82fc8b96bc0500003bc27ce8498b86bc050000413bc87cb88b869805000033c93bc57e488b868c050000393c8875328b86980500003bc87d278d50ff8bc13bca8996980500007d188b968c050000408b1c82895c82fc8b96980500003bc27ce8498b8698050000413bc87cb85f5e5d5b83c40cc20800"
+    },
+    "techno_pointer_expired": {
+      "address": "0x007077C0",
+      "file_offset": 3176384,
+      "length": 1262,
+      "sha256": "3d3232cbe8199ad769cbcbebd4892dd09c0ef7e87f0e7abfd6710020e540ad8d",
+      "hex": "8b44240883ec1053558b6c241c5657508bf155e8e832f5ff8a44242833db3ac3740c558d8e14010000e8c2bcd6ff8b86d4020000c6442424013be87506899ed40200003baee00200007506899ee00200003baecc0200007506899ecc0200003bae780200007506899e780200003bae940200007506899e940200003bae280400007506899e280400003baee4020000750e391dace7a8007406899ee40200003baecc010000754b8b8ed40100003bcb740e8b11ff92f8000000899ed40100008b86cc0100003bc374238998d00100008b86cc0100008b801c0200003bc37407c6807857000001899ecc010000899ecc0100008b861c0100003be8751f3bc3741b389890000000740d39586c7408391dace7a8007406899e1c0100008bbed00100003bef754b8b8fd40100003bcb740e8b11ff92f8000000899fd40100008b87cc0100003bc374238998d00100008b87cc0100008b801c0200003bc37407c6807857000001899fcc010000899ed00100003baed40100007506899ed40100003baec80200007506899ec80200003bae300100007506899e30010000385c242875413beb743d8a4d1480e101884c241374318b55008d442414508bcdff524850b9e8f78700e8a8dde5ff8b8e1c0200008b51308bc852e837f7d7ff84c07404885c242439aeb40200000f85c5000000385c24240f84bb000000385c242875148b45008bcdff503c3b861c0200000f84a10000008b96800100008b868801000083faff740e8b0d84eda8002bca3bc87d402bc183f80a7e39391dace7a80075318b0d30b2a8006a086a0481c118020000e8ce4df5ff8b0d84eda8008b542418898e800100008996840100008986880100008b06538bceff90c80300008b168bceff92fc01000084c0742b8b068bceff90f80100008b168bceff522c83f802751583beac00000019750c899ebc000000889ed206000039aeb8020000750c385c24247406899eb802000039ae1c020000750c899e1c020000889e1a0400008b068bceff90c400000084c0741a8b166a018bceff92d00000003bc5750a8b068bceff90700400008d8604030000b90800000039287502891883c0044975f439ae240300007506899e24030000385c2428742c39ae000500007506899e0005000039ae180200007506899e180200008b8ebc0200003bcb740655e877a4d6ff8b8ed00200003bcb740655e83701fbff8b8e740200003bcb740655e8273001008b8e940200003bcb740b39714c750655e8f259d1ff8b86a80200003be8750c8998a8020000899ea80200003baeac020000751f6a018bcee86b8300008b86ac0200003bc3740c8998b0020000899eac0200008b8eb00200003be9751d6a01e8448300008b86b00200003bc3740c8998ac020000899eb00200003bae340400007506899e340400003bae2c0100007506899e2c0100008b966804000033c03bd30f8e860000008b8e5c0400003b29740a4083c1043bc27cf4eb7283f8ff746d8b8e500400003bc17d23493bc1898e500400007d188b8e44040000408b1481895481fc8b8e500400003bc17ce88b86580400008dbe580400008d4c2428896c2428518bcfff501083f8ff74218b4f103bc17d1a493bc1894f107d128b4f04408b1481895481fc8b4f103bc17cee8b867004000081c6700400008d4c2428896c2428518bceff501083f8ff74218b4e103bc17d1a493bc1894e107d128b4e04408b1481895481fc8b4e103bc17cee5f5e5d5b83c410c20800"
     }
   },
   "source_normalized_lf_sha256": {
@@ -673,7 +801,7 @@
     "tools/spatial_oracle/anytown_damage/mtnk_attack.py": "c8c7d363b4b73fbf3593a2838e96f994b95c09da6db2375b17ddf23fdb907bd8",
     "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
     "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
-    "tools/spatial_oracle/bridge_rim.py": "4227c24dcd27ea44a2de55a866057b1accffee8106c5029dedf0171b776fa32b",
+    "tools/spatial_oracle/bridge_rim.py": "5fdcf28d51a05e8e4fddbfd41cea0a5ac19b3ab80f01a87ee36cea5ced676b80",
     "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
     "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
     "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
@@ -683,12 +811,13 @@
     "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
     "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "5386be531deb221b2abf0a06cf46371937a3134fd4fdde142a7d20fc97691400",
     "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
-    "tools/spatial_oracle/anytown_damage/foot_missions.py": "5bb62cfc5d75ad22921f5ff7ff70e55eae55bf595f653f32b58cc7980af3aee6",
+    "tools/spatial_oracle/anytown_damage/foot_missions.py": "5ff0c781396a030825a36cee5b9500601ba5aff0549a4dc49f9f4ab4700e112c",
     "tools/spatial_oracle/bridge_target_composed.py": "fb3c713e877cfaa88c5003e7624056b91343354d4034eb6bc83ee4d477f3d453",
     "tools/spatial_oracle/locomotor_at_coord.py": "11ed52b31577d264c8bc4a7acffb8e85a6b0e7d3e32c5bd74f92492368dcf1dc",
     "tools/spatial_oracle/house_base_projection.py": "1715aad017c6b0bada73d993bec13396ee2659a0ef0b6aba63ad8b508f39d460",
+    "tools/spatial_oracle/foot_attack_move.py": "bb87b4f437314f84c20e71c84118b04b62eef3f3f0f4b41732a2c3b70651edf1",
     "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
     "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402"
   },
-  "payload_sha256": "bbc321dd3de71f87a2762508df6e7bcd3845510e3cd2dc0458eefaaff29314a0"
+  "payload_sha256": "f7662e010a04347bc900c3d97887de09aaa7e40a90726bd66e11e50b6c1c5434"
 }

@@ -351,9 +351,9 @@ fn compare(row: &Value) {
         selected_by_player: input["selected"] == true,
     };
     // The oracle answers the Walk Process slot (`0x0075AC80`) as not moving.
-    super::bridge_hut_scatter::answered_process::install();
+    crate::sim::movement::answered_process::install();
     sim.release_dying_unit_passengers(&rules, None, transport, dying);
-    let processed = super::bridge_hut_scatter::answered_process::finish();
+    let processed = crate::sim::movement::answered_process::finish();
     let expected_processed: Vec<u64> = events
         .iter()
         .filter(|event| event[0] == "process")

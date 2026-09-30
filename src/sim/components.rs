@@ -177,9 +177,11 @@ pub struct MovementTarget {
     /// Maximum movement speed in leptons per second (from rules.ini Speed= value).
     /// 256 leptons = 1 cell. Fixed-point for deterministic multiplayer.
     pub speed: SimFixed,
-    /// Actual speed this tick — ramps from 0 toward `speed` via acceleration,
-    /// and brakes down near the destination. If no ramping data is set (accel=0),
-    /// the movement system falls back to using `speed` directly.
+    /// The legacy pass lane's speed this frame (`movement_tick`): Hover's
+    /// throttled speed, else a ramp toward `speed` that brakes near the
+    /// destination, or `speed` itself without ramp data. It is not
+    /// GetCurrentSpeed, which the track and Walk steps and the readiness gate
+    /// query live (`movement::owner_current_speed`).
     pub current_speed: SimFixed,
     /// Fraction of max speed gained per tick during acceleration (AccelerationFactor=).
     pub accel_factor: SimFixed,
@@ -426,17 +428,14 @@ impl FootPathQueue {
 /// Foot-owned applied speed, shared by every installed locomotor instance.
 ///
 /// SetSpeedFraction4D3710 writes Foot+578/+57C; GetCurrentSpeed4DB1A0 reads
-/// that fraction. Drive4AF540/Ship69EC50 constructors and DriveEND4AF930 do
+/// that fraction live (`movement::owner_current_speed`); nothing caches its
+/// result. Drive4AF540/Ship69EC50 constructors and DriveEND4AF930 do
 /// not own or reset it. Keep this outside both class payloads so a synchronous
 /// callback can replace a locomotor without replacing the owner's speed.
 /// Original executable witnesses: tools/spatial_oracle/foot_speed_owner.json.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FootSpeedState {
     pub applied_fraction: SimFixed,
-    /// Existing Rust adapter cache of GetCurrentSpeed, not a native field.
-    /// Its producers use the movement request's adjusted type speed. The full
-    /// Process host must query live owner/type modifiers at native call sites.
-    pub cached_current_speed: i32,
     /// Foot+580, initialized to exactly 1.0 at4D3292/4D329B. Retain the
     /// native bits: pickup refuses even the immediate neighbors of 1.0.
     /// Every speed query reads it (GetCurrentSpeed multiplies it in).
@@ -454,7 +453,6 @@ impl Default for FootSpeedState {
     fn default() -> Self {
         Self {
             applied_fraction: crate::util::fixed_math::SIM_ZERO,
-            cached_current_speed: 0,
             crate_multiplier: crate::util::native_x87::NativeF64Bits::ONE,
         }
     }
@@ -1043,7 +1041,6 @@ mod tests {
         assert_eq!(drive.target_speed_fraction, SIM_ZERO);
         let owner_speed = FootSpeedState::default();
         assert_eq!(owner_speed.applied_fraction, SIM_ZERO);
-        assert_eq!(owner_speed.cached_current_speed, 0);
         assert_eq!(drive.track.residual, 0);
     }
 

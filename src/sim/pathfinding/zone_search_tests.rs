@@ -278,7 +278,6 @@ fn playfield_hierarchy_bridge_projection_tracks_intact_and_destroyed_records() {
     let record = BridgeEndpointRecord {
         endpoint_a: (6, 6),
         endpoint_b: (8, 6),
-        group_id: 1,
         active: true,
         bridge_kind: BridgeRecordKind::High,
     };
@@ -786,7 +785,6 @@ fn caller_count_bridge_detour(
         &[BridgeEndpointRecord {
             endpoint_a: (1, 2),
             endpoint_b: (5, 2),
-            group_id: 0,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }],
@@ -948,7 +946,6 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     );
     assert_eq!(locomotor.movement_zone, MovementZone::Normal);
     assert!(!produced.on_bridge);
-    assert!(!produced.too_big_to_fit_under_bridge);
     let produced_id = produced.stable_id();
     let movement = first_track_process_route(&mut sim, produced_id, Some(&rules), &path_grid)
         .expect("completed MTNK should receive the hierarchy-backed rally route");
@@ -1719,7 +1716,6 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         &[BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (1, 0),
-            group_id: 0,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         }],
@@ -1872,7 +1868,6 @@ fn tube_hierarchy_dword_zone_query_matches_original_executable() {
             .map(|r| BridgeEndpointRecord {
                 endpoint_a: coord(&r[0]),
                 endpoint_b: coord(&r[1]),
-                group_id: 0,
                 active: r[2].as_bool().unwrap(),
                 bridge_kind: if r[3] == 0 {
                     BridgeRecordKind::High
@@ -2073,7 +2068,6 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                 endpoint_a: coord(&r[0]),
                 endpoint_b: coord(&r[1]),
                 active: r[2].as_bool().unwrap(),
-                group_id: 0,
                 bridge_kind: BridgeRecordKind::High,
             })
             .collect();

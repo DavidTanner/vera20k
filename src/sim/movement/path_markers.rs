@@ -250,10 +250,7 @@ impl BridgeMarkerContext<'_> {
 fn direction_from_step(from: (i16, i16), to: (u16, u16)) -> u8 {
     let dx = i32::from(to.0 as i16) - i32::from(from.0);
     let dy = i32::from(to.1 as i16) - i32::from(from.1);
-    DIRECTION_DELTAS
-        .iter()
-        .position(|&delta| delta == (dx, dy))
-        .map_or(TUBE_STEP_DIRECTION, |index| index as u8)
+    crate::util::direction::direction_from_delta(dx, dy).unwrap_or(TUBE_STEP_DIRECTION)
 }
 
 pub(super) fn install_path_replay(

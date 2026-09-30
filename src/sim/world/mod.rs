@@ -148,7 +148,7 @@ use crate::sim::movement::turret;
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::overlay_grid::{
     WallDamageEvent, WallDamageTransactionHost, WallDirtyStep, WallPointerTarget,
-    WallZoneRepairKind, damage_wall_overlay_with_runtime_host, recalc_overlay_passability,
+    damage_wall_overlay_with_runtime_host, recalc_overlay_passability,
 };
 use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
@@ -1128,6 +1128,13 @@ pub struct Simulation {
     /// frame pin its entry view while the sim publishes the next projection.
     #[serde(skip)]
     pub(crate) path_grid: Option<Arc<PathGrid>>,
+    /// Derived cache: the marked-structure movement cells last published into
+    /// `path_grid`. Source of truth is the marked structures themselves
+    /// (`navigation::structure_movement_cells`). A full navigation rebuild
+    /// resets it; frame-end structure publication republishes only the union
+    /// of this set and the current one, skipping cells already current.
+    #[serde(skip)]
+    structure_navigation_cells: BTreeSet<(u16, u16)>,
     #[serde(skip)]
     pub resolved_terrain: Option<ResolvedTerrainGrid>,
     /// Process-global MapClass fallback CellClass identity. Native owns this at
@@ -1399,7 +1406,7 @@ impl crate::sim::combat::combat_aoe::AoECellPrelude for SimulationAreaDamageCell
         terrain: &ResolvedTerrainGrid,
         cell: (u16, u16),
         navigation_changed: bool,
-        repair: WallZoneRepairKind,
+        repair: ZoneRepairKind,
     ) {
         repair_wall_damage_navigation_authorities(
             self.terrain_costs,
@@ -1469,23 +1476,60 @@ pub(crate) fn repair_wall_damage_navigation_authorities(
     playfield_bounds: Option<PlayfieldBounds>,
     cell: (u16, u16),
     navigation_changed: bool,
-    repair: WallZoneRepairKind,
+    repair: ZoneRepairKind,
 ) {
-    let resolved_path_grid = PathGrid::from_resolved_terrain_with_bridges(terrain, bridge_state);
-    let mut tail_path_grid = path_grid
-        .as_deref()
-        .filter(|grid| {
-            grid.width() == resolved_path_grid.width()
-                && grid.height() == resolved_path_grid.height()
-        })
-        .cloned()
-        .unwrap_or_else(|| resolved_path_grid.clone());
-    if navigation_changed {
-        let replaced = tail_path_grid.replace_cell_from(&resolved_path_grid, cell.0, cell.1);
-        debug_assert!(replaced, "wall Recalc cell must be inside the map");
+    // Only the wall cell changed: publish it into the installed views. A
+    // missing or mis-sized view (loading) is built whole from terrain.
+    let installed = path_grid
+        .as_mut()
+        .filter(|grid| grid.width() == terrain.width() && grid.height() == terrain.height());
+    match installed {
+        Some(grid) if navigation_changed => {
+            let refreshed = terrain.cell(cell.0, cell.1).is_some_and(|resolved| {
+                Arc::make_mut(grid).refresh_resolved_cell(resolved, bridge_state, false)
+            });
+            debug_assert!(refreshed, "wall Recalc cell must be inside the map");
+        }
+        Some(_) => {}
+        None => {
+            *path_grid = Some(Arc::new(PathGrid::from_resolved_terrain_with_bridges(
+                terrain,
+                bridge_state,
+            )));
+        }
     }
+    crate::sim::pathfinding::terrain_cost::refresh_canonical_terrain_costs_at(
+        terrain_costs,
+        terrain,
+        cell,
+    );
+    let tail_path_grid = path_grid
+        .as_deref()
+        .expect("wall repair installed a path grid");
+    repair_zone_after_recalc(
+        zone_grid,
+        tail_path_grid,
+        terrain,
+        bridge_state,
+        playfield_bounds,
+        cell,
+        repair,
+    );
+}
 
-    *terrain_costs = build_canonical_terrain_cost_grids(terrain);
+/// One native cell zone helper after the cell's Recalc was published:
+/// AssignOrphanedCellZone (`0x0056D460`) or MergeAdjacentCellZone
+/// (`0x0056D5A0`), then IncrementalRebuildZoneGraphAroundCell (`0x00584550`).
+/// A missing zone grid, or one whose bridge inputs changed, is built whole.
+pub(crate) fn repair_zone_after_recalc(
+    zone_grid: &mut Option<ZoneGrid>,
+    path_grid: &PathGrid,
+    terrain: &ResolvedTerrainGrid,
+    bridge_state: Option<&BridgeRuntimeState>,
+    playfield_bounds: Option<PlayfieldBounds>,
+    cell: (u16, u16),
+    repair: ZoneRepairKind,
+) {
     let bridge_records = bridge_state
         .map(BridgeRuntimeState::endpoint_records)
         .unwrap_or(&[]);
@@ -1498,34 +1542,24 @@ pub(crate) fn repair_wall_damage_navigation_authorities(
     }
     if let Some(zone_grid) = zone_grid.as_mut() {
         let _ = zone_grid.refresh_base_cell_attributes_at(terrain, cell.0, cell.1);
-        let bridge_records = bridge_state
-            .map(BridgeRuntimeState::endpoint_records)
-            .unwrap_or(&[]);
-        let repair = match repair {
-            WallZoneRepairKind::AssignOrphaned => ZoneRepairKind::AssignOrphaned,
-            WallZoneRepairKind::MergeAdjacent => ZoneRepairKind::MergeAdjacent,
-        };
         let _ = repair_zone_cell(
             zone_grid,
             PackedZoneCoord::new(cell.0 as i16, cell.1 as i16),
             repair,
-            &tail_path_grid,
+            path_grid,
             playfield_bounds,
             terrain,
             bridge_records,
         );
     } else {
         *zone_grid = Some(ZoneGrid::build_with_native_map_context(
-            &tail_path_grid,
+            path_grid,
             terrain,
-            bridge_state
-                .map(BridgeRuntimeState::endpoint_records)
-                .unwrap_or(&[]),
+            bridge_records,
             bridge_geometry,
             playfield_bounds,
         ));
     }
-    *path_grid = Some(Arc::new(tail_path_grid));
 }
 
 /// Borrow-split wall observer used by runtime placement and sale, where the
@@ -1563,7 +1597,7 @@ impl WallDamageTransactionHost for SimulationWallRuntimeHost<'_> {
         terrain: &ResolvedTerrainGrid,
         cell: (u16, u16),
         navigation_changed: bool,
-        repair: WallZoneRepairKind,
+        repair: ZoneRepairKind,
     ) {
         repair_wall_damage_navigation_authorities(
             self.terrain_costs,
@@ -2536,7 +2570,7 @@ impl Simulation {
             under_attack_events,
             terrain_navigation_changed_cells,
         )
-        .commit(self, rules, overlay_registry, None)
+        .commit(self, rules, overlay_registry)
     }
 
     /// `HouseClass::NotifyUnderAttack @ 0x004F93E0` for one damaged asset,
@@ -3003,6 +3037,7 @@ impl Simulation {
             terrain_costs: BTreeMap::new(),
             zone_grid: None,
             path_grid: None,
+            structure_navigation_cells: BTreeSet::new(),
             resolved_terrain: None,
             shared_cell_dummy: SharedCellDummy::fresh(),
             real_cell_bridge_flags_0x1180: RealCellBridgeFlags0x1180::default(),
@@ -3342,6 +3377,9 @@ impl Simulation {
         let movement_changed = before.is_some() && before != after;
         let moving_now = crate::sim::movement::ready_producer::is_moving_now_for(
             entity,
+            rules.map(|rules| {
+                crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)
+            }),
             self.session.binary_frame,
         );
         // `0x004DAA38`/`0x004DAA3E`: falling (`+0x8D`) or crashing (`+0x425`).
@@ -4813,7 +4851,7 @@ impl Simulation {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return false;
         };
-        navigation::NavigationCaches {
+        self.structure_navigation_cells = navigation::NavigationCaches {
             terrain_costs: &mut self.terrain_costs,
             zones: &mut self.zone_grid,
             path: &mut self.path_grid,
@@ -4829,6 +4867,21 @@ impl Simulation {
         true
     }
 
+    /// Publish marked-structure footprint changes into the path view only.
+    /// Native cell occupation marks are read live by the pathfinder, and the
+    /// zone map is built from terrain movement classes, which structures do
+    /// not change; costs and zone IDs therefore stay as they are.
+    fn publish_structure_navigation(&mut self, rules: &RuleSet) {
+        let current =
+            navigation::structure_movement_cells(&self.substrate.entities, &self.interner, rules);
+        let candidates: Vec<_> = current
+            .union(&self.structure_navigation_cells)
+            .copied()
+            .collect();
+        self.structure_navigation_cells = current.clone();
+        self.publish_recalculated_cells_with_presence(rules, &candidates, &current);
+    }
+
     /// Finalize mutable overlay identity, passability, and canonical navigation
     /// before the frame hash is latched.
     ///
@@ -4842,18 +4895,17 @@ impl Simulation {
         &mut self,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        mut navigation_rebuild_requested: bool,
+        navigation_rebuild_requested: bool,
+        structures_changed: bool,
     ) -> Vec<OverlayEntry> {
         let mut overlay_updates = Vec::new();
+        let mut navigation_cells = Vec::new();
         let overlay_ready =
             rules.is_some() && self.resolved_terrain.is_some() && overlay_registry.is_some();
         if overlay_ready && let Some(grid) = self.overlay_grid.as_mut() {
             self.frame_overlay_removals = grid.take_removed_render_cells();
-            let (dirty_cells, synchronous_passability_changed) =
-                grid.take_dirty_cells_with_passability_signal();
-            let synchronous_navigation_cells = grid.take_synchronous_navigation_cells();
-            navigation_rebuild_requested |=
-                synchronous_passability_changed || !synchronous_navigation_cells.is_empty();
+            let dirty_cells = grid.take_dirty_cells();
+            navigation_cells = grid.take_synchronous_navigation_cells();
 
             let terrain = self
                 .resolved_terrain
@@ -4861,8 +4913,11 @@ impl Simulation {
                 .expect("overlay-ready terrain");
             let registry = overlay_registry.expect("overlay-ready registry");
             for &(rx, ry) in &dirty_cells {
-                navigation_rebuild_requested |=
-                    recalc_overlay_passability(grid, terrain, registry, rx, ry);
+                if recalc_overlay_passability(grid, terrain, registry, rx, ry)
+                    && !navigation_cells.contains(&(rx, ry))
+                {
+                    navigation_cells.push((rx, ry));
+                }
             }
             for (rx, ry) in dirty_cells {
                 let cell = grid.cell(rx, ry);
@@ -4877,10 +4932,64 @@ impl Simulation {
             }
         }
 
-        if navigation_rebuild_requested && let Some(rules) = rules {
-            let _ = self.rebuild_dynamic_navigation(rules);
+        if let Some(rules) = rules {
+            if navigation_rebuild_requested {
+                let _ = self.rebuild_dynamic_navigation(rules);
+            } else {
+                if structures_changed {
+                    self.publish_structure_navigation(rules);
+                }
+                self.publish_recalculated_cells(rules, &navigation_cells);
+            }
         }
         overlay_updates
+    }
+
+    /// Publish completed overlay/terrain Recalcs (`CellClass::RecalcAttributes`
+    /// @ `0x0047D2B0`) through the one-cell navigation owner. Zone IDs are not
+    /// touched: gamemd's non-wall Mark (`0x005FC570`) and ReduceTiberium
+    /// (`0x00480A80`) run no zone helper, and the wall, sale and terrain owners
+    /// run theirs themselves.
+    fn publish_recalculated_cells(&mut self, rules: &RuleSet, cells: &[(u16, u16)]) {
+        let blocked = navigation::structure_blocked_among(
+            &self.substrate.entities,
+            &self.interner,
+            rules,
+            cells,
+        );
+        self.publish_recalculated_cells_with_presence(rules, cells, &blocked);
+    }
+
+    /// [`Self::publish_recalculated_cells`] with structure presence already
+    /// scanned. A cache that cannot take one cell (mis-sized during a load
+    /// transition) is rebuilt whole rather than left stale.
+    fn publish_recalculated_cells_with_presence(
+        &mut self,
+        rules: &RuleSet,
+        cells: &[(u16, u16)],
+        blocked: &BTreeSet<(u16, u16)>,
+    ) {
+        let Some(terrain) = self.resolved_terrain.as_ref() else {
+            return;
+        };
+        let mut caches = navigation::NavigationCaches {
+            terrain_costs: &mut self.terrain_costs,
+            zones: &mut self.zone_grid,
+            path: &mut self.path_grid,
+            playfield_bounds: self.playfield_bounds,
+        };
+        let published = cells.iter().try_for_each(|&coord| {
+            caches.publish_recalculated_cell_with_presence(
+                terrain,
+                self.bridge_state.as_ref(),
+                coord,
+                blocked.contains(&coord),
+            )
+        });
+        if let Err(error) = published {
+            log::warn!("Recalc navigation publication fell back to a rebuild: {error}");
+            let _ = self.rebuild_dynamic_navigation(rules);
+        }
     }
 
     /// Rebuild the zone connectivity map from the current PathGrid. Call after
@@ -4916,65 +5025,52 @@ impl Simulation {
         .rebuild_zones_full(path_grid, terrain, self.bridge_state.as_ref());
     }
 
-    /// Consume terrain/overlay receipts at their existing world-reader boundary.
-    /// VERA-internal projection protocol, gamemd equivalent UNCHECKED. A pinned
-    /// pre-callback grid is only a fallback: bridge and wall callbacks may have
-    /// already published newer canonical navigation. Never rebuild over it from
-    /// a stale reader snapshot. The returned projection serves subsequent phases.
+    /// Consume terrain/overlay receipts before the next path reader. Overlay
+    /// receipts publish their Recalc only. A destroyed terrain object follows
+    /// `TerrainClass::Limbo` @ `0x0071C930`: Recalc (`0x0071CA2A`), then
+    /// AssignOrphanedCellZone (`0x0071CA42`) and the local graph update
+    /// (`0x0071CA51`) while `g_MapEditorMode` is zero. Deaths are published
+    /// after the receiver batch, not inside each Limbo.
     fn finish_terrain_navigation_changes(
         &mut self,
-        fallback_path_grid: Option<&PathGrid>,
+        rules: &RuleSet,
         terrain_changed_cells: &[(u16, u16)],
     ) -> Option<Arc<PathGrid>> {
-        let mut changed_cells = self
+        let overlay_cells = self
             .overlay_grid
             .as_mut()
             .map(|grid| grid.take_synchronous_navigation_cells())
             .unwrap_or_default();
+        let all_cells: Vec<_> = overlay_cells
+            .iter()
+            .chain(terrain_changed_cells)
+            .copied()
+            .collect();
+        let blocked = navigation::structure_blocked_among(
+            &self.substrate.entities,
+            &self.interner,
+            rules,
+            &all_cells,
+        );
+        self.publish_recalculated_cells_with_presence(rules, &overlay_cells, &blocked);
+        // Each Limbo's AssignOrphaned sees later deaths' cells unpublished.
         for &cell in terrain_changed_cells {
-            if !changed_cells.contains(&cell) {
-                changed_cells.push(cell);
+            self.publish_recalculated_cells_with_presence(rules, &[cell], &blocked);
+            if let (Some(terrain), Some(path)) =
+                (self.resolved_terrain.as_ref(), self.path_grid.as_deref())
+            {
+                repair_zone_after_recalc(
+                    &mut self.zone_grid,
+                    path,
+                    terrain,
+                    self.bridge_state.as_ref(),
+                    self.playfield_bounds,
+                    cell,
+                    ZoneRepairKind::AssignOrphaned,
+                );
             }
         }
-        let canonical = self.path_grid_snapshot();
-        if changed_cells.is_empty() {
-            return canonical.or_else(|| fallback_path_grid.cloned().map(Arc::new));
-        }
-        let current = canonical.as_deref().or(fallback_path_grid);
-        self.refresh_navigation_after_terrain_changes(current, &changed_cells)?;
         self.path_grid_snapshot()
-    }
-
-    /// Refresh navigation authority after inline overlay mutation or terrain
-    /// object destruction. The incoming grid carries dynamic structure and
-    /// wall blockers, so only synchronously changed cells are replaced from the
-    /// current resolved-terrain/bridge projection.
-    fn refresh_navigation_after_terrain_changes(
-        &mut self,
-        input_path_grid: Option<&PathGrid>,
-        changed_cells: &[(u16, u16)],
-    ) -> Option<PathGrid> {
-        let (resolved_path_grid, terrain_costs) = {
-            let terrain = self.resolved_terrain.as_ref()?;
-            (
-                PathGrid::from_resolved_terrain_with_bridges(terrain, self.bridge_state.as_ref()),
-                build_canonical_terrain_cost_grids(terrain),
-            )
-        };
-
-        self.terrain_costs = terrain_costs;
-        let mut tail_path_grid = input_path_grid
-            .filter(|grid| {
-                grid.width() == resolved_path_grid.width()
-                    && grid.height() == resolved_path_grid.height()
-            })
-            .cloned()?;
-        for &(rx, ry) in changed_cells {
-            let replaced = tail_path_grid.replace_cell_from(&resolved_path_grid, rx, ry);
-            debug_assert!(replaced, "changed terrain cell must be inside the map");
-        }
-        self.rebuild_zone_grid_full(&tail_path_grid);
-        Some(tail_path_grid)
     }
 
     /// Apply combat-emitted wall damage events: drives the per-cell damage
@@ -5760,13 +5856,23 @@ impl Simulation {
         }
         let binary_frame = self.session.binary_frame;
         let terrain = self.resolved_terrain.as_ref();
+        let rules_context = Some(crate::sim::movement::SpeedRules::new(
+            rules,
+            &self.interner,
+            &self.type_handles,
+        ));
         let wake_positions: Vec<(u16, u16, SimFixed, SimFixed, u8)> = self
             .substrate
             .entities
             .keys_sorted()
             .iter()
             .filter_map(|id| {
-                wake_anchor_for(self.substrate.entities.get(*id)?, terrain, binary_frame)
+                wake_anchor_for(
+                    self.substrate.entities.get(*id)?,
+                    rules_context,
+                    terrain,
+                    binary_frame,
+                )
             })
             .collect();
         if wake_positions.is_empty() {
@@ -6223,12 +6329,9 @@ impl Simulation {
                 &ordinary_logic_order,
                 overlay_registry,
             );
-            let receipt = combat_result.consequences.commit(
-                self,
-                rules,
-                overlay_registry,
-                active_post_combat_path_grid,
-            );
+            let receipt = combat_result
+                .consequences
+                .commit(self, rules, overlay_registry);
             destroyed_structure |= receipt.structure_destroyed;
             bridge_state_changed |= receipt.bridge_state_changed;
             tail_path_grid = receipt.path_grid;
@@ -6328,11 +6431,7 @@ impl Simulation {
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
             building_dock::tick_building_docks(self, rules, phase_six_path_grid);
-            crate::sim::docking::bunker_install::tick_bunker_install(
-                self,
-                rules,
-                phase_six_path_grid,
-            );
+            crate::sim::docking::bunker_install::tick_bunker_install(self, rules, overlay_registry);
             aircraft_dock::tick_aircraft_docks(self, rules);
             if spawned_entities {
                 self.refresh_fog(phase_six_path_grid, &vision_config, Some(rules));
@@ -6364,7 +6463,8 @@ impl Simulation {
         self.frame_overlay_updates = self.finalize_frame_overlays_and_navigation(
             rules,
             overlay_registry,
-            destroyed_structure || bridge_state_changed || spawned_entities,
+            bridge_state_changed,
+            destroyed_structure || spawned_entities,
         );
         #[cfg(debug_assertions)]
         self.debug_assert_logic_membership_consistent();
@@ -6518,6 +6618,7 @@ const WAKE_DRAW_FLAGS: u32 = 0x600;
 /// cell whose `CellClass+0xEC` mirror is Water, anchored at its exact leptons.
 pub(crate) fn wake_anchor_for(
     entity: &crate::sim::game_entity::GameEntity,
+    rules: Option<crate::sim::movement::SpeedRules<'_>>,
     terrain: Option<&ResolvedTerrainGrid>,
     binary_frame: u32,
 ) -> Option<(u16, u16, SimFixed, SimFixed, u8)> {
@@ -6526,7 +6627,7 @@ pub(crate) fn wake_anchor_for(
     if entity.sinking.is_active() {
         return None;
     }
-    if !crate::sim::movement::ready_producer::is_moving_now_for(entity, binary_frame) {
+    if !crate::sim::movement::ready_producer::is_moving_now_for(entity, rules, binary_frame) {
         return None;
     }
     if entity.is_on_bridge_layer() {

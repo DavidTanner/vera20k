@@ -162,7 +162,11 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
     // 2026-09-25 ore-field chain: the fixture's playfield and the harvester's
     // native ore field (see GLOBAL_HARNESS_FINAL_HASH).
     // 2026-09-25 ore-field review: the fixture's map cells (same place).
-    0xCA99_BA6D_18DC_11B1,
+    // 2026-09-30 native mission-site idle/initial Ready plus explicit GI ART:
+    // frame0 omits four old global idle-tail draws; first bound ART idle at
+    // frame14 precedes Guard cadence. Saved production-call receipts are in
+    // foot_bridge_layer.replay.json. Full Main/MapGen are unchanged.
+    0xF0AB_E9EE_DB8C_2871,
     0x39F3_258B_A550_EB7C,
     0x1CE8_1848_7043_6163,
 );
@@ -369,7 +373,17 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // fingerprints and 319 raw draws at all 600 ticks. Absolute stream pins and duel
 // outcomes remain unchanged. This hash move is fixture/context coverage, not a
 // native skirmish golden. Receipts: tools/spatial_oracle/foot_bridge_layer.replay.json.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB3DF_7D94_07AF_305B;
+// 2026-09-30 no cached GetCurrentSpeed (composition only; #844): the
+// Foot owner's Rust-only `cached_current_speed` leaves the object fold.
+// Ceremony: the parent commit with only that fold removed printed this
+// exact value, as this change does, with the RNG pins above unchanged
+// (the probe patch was not committed): the only change to this pin is
+// the fold. Old value: the commit that moved it.
+// 2026-09-30: native class target/destination and Foot mission/idle owners,
+// retained House radius/Foot688/Infantry68D state, and explicit GI ART inputs.
+// The first Scenario change is localized by foot_bridge_layer.replay.json;
+// this remains a Rust regression pin, not a native whole-skirmish golden.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x18E6_EF2E_72D6_A504;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -412,7 +426,7 @@ fn harness_ini() -> IniFile {
          [Riparius]\nImage=1\nValue=25\n\n\
          [TIB01]\nTiberium=yes\n\n\
          [Tiberium]\nFoot=100%\nTrack=100%\nWheel=100%\n\n\
-         [E1]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
+         [E1]\nImage=GI\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [HARV]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=600\nArmor=heavy\nSpeed=5\nHarvester=yes\nStorage=28\nDock=GAREFN\n\n\
          [GAWEAP]\nStrength=1000\nArmor=wood\nFoundation=4x3\n\n\
@@ -426,7 +440,15 @@ fn harness_ini() -> IniFile {
 
 fn harness_rules() -> RuleSet {
     let ini = harness_ini();
-    RuleSet::from_ini(&ini).expect("harness rules should parse")
+    // Explicit authored GI inputs use the production fixed-ART reader and binder;
+    // zero-count constructor records do not admit native Ready/idle actions.
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    rules
 }
 
 fn harness_overlays() -> OverlayTypeRegistry {
@@ -528,12 +550,7 @@ fn seed_scenario(sim: &mut Simulation, rules: &RuleSet, overlays: &OverlayTypeRe
         let (rx, ry) = (rx + HARNESS_COORD_SHIFT, ry + HARNESS_COORD_SHIFT);
         overlay_grid.place_overlay(rx, ry, tib01, 11);
         // RecalcAttributes: LandType 5 and its [Tiberium] speed row.
-        overlay_grid.recalculate_runtime_cell(
-            terrain,
-            overlays,
-            (rx, ry),
-            crate::sim::overlay_grid::NavigationPublication::FrameBoundary,
-        );
+        overlay_grid.recalculate_runtime_cell(terrain, overlays, (rx, ry));
     }
     overlay_grid.take_dirty_cells();
     sim.overlay_grid = Some(overlay_grid);

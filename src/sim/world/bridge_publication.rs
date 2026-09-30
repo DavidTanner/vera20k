@@ -1,7 +1,7 @@
-//! Live high-body publication (576BA0/47E040). Authorities stay in Simulation
+//! Live structural-body publication (576BA0/571490, setters 47E040/47E470). Authorities stay in Simulation
 //! through synchronous fallout, including recursive DeathWeapon damage.
 //!
-//! Rim576770/576200 runs against live scalar cells and uses this same publisher.
+//! Rims 576770/576200 and 571050/570AE0 run against live scalar cells and uses this same publisher.
 //! Literal middle-tile replacement uses resident56EB80/47D2B0 inputs. Repair
 //! constructors share this publisher; full engineer/zone/render delivery is
 //! separately required before the bridge mechanism can close.
@@ -11,6 +11,7 @@ use crate::map::cell_index::NativeCellIdentity as Cell;
 use crate::map::resolved_terrain::DynamicTerrainCellState;
 use crate::sim::bridge_state::Phase;
 use crate::sim::bridge_state::publication::{self, BridgePublicationHost, CellCoord};
+use crate::sim::bridge_state::ramp_repair::Family;
 
 #[path = "bridge_rim_publication.rs"]
 mod rim_publication;
@@ -57,20 +58,25 @@ impl BodyResult {
     }
 }
 
-/// Only the structural high-body continuation is migrated here. Overlay-first
-/// dispatch, head entry and other bridge mechanisms retain their existing path.
+/// The structural body continuation of ProcessBridgeDamageStateMachine_High
+/// 0x00576BA0 or _Low 0x00571490: the same anchor switch (0x005776D6, 0x00571FEB)
+/// over the family's instruction-identical helpers. Overlay-first dispatch
+/// and the bridgehead branch retain their existing path.
 pub(super) fn try_body(
     sim: &mut Simulation,
     rules: &RuleSet,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
+    family: Family,
 ) -> Option<BodyResult> {
     let terrain = sim.resolved_terrain.as_ref()?;
     let runtime = sim
         .bridge_state
         .as_ref()?
         .cell(input.0 as u16, input.1 as u16)?;
-    if matches!(runtime.overlay_byte, 0x4a..=0x63 | 0xcd..=0xe6)
+    let overlay = i32::from(runtime.overlay_byte);
+    if ordinary::standing(overlay, Family::Low)
+        || ordinary::standing(overlay, Family::High)
         || runtime.role == BridgeCellRole::Bridgehead
     {
         return None;
@@ -90,7 +96,7 @@ pub(super) fn try_body(
     let overlay = match anchor {
         Cell::Real(index) => {
             let cell = &terrain.cells()[index];
-            // Unmigrated high/head writers publish their identity in the same
+            // Unmigrated head writers publish their identity in the same
             // runtime authority as their state. Its erased sentinel must win
             // over load-time terrain/OverlayGrid identities.
             sim.bridge_state
@@ -101,7 +107,16 @@ pub(super) fn try_body(
         }
         Cell::Dummy => terrain.shared_cell_dummy().overlay_fields().0,
     };
-    if !matches!(overlay, Some(0x18 | 0x19)) {
+    // Residual: ApplyDamageToCell 0x00587180 also admits a state machine by
+    // a middle tile, and neither driver tests the anchor overlay before its
+    // +11E switch. This gate keeps the pre-existing concrete behavior for
+    // both families; its no-change result for a structural cell whose anchor
+    // lacks these overlays is unproven against native.
+    let anchor_overlays = match family {
+        Family::High => [0x18, 0x19],
+        Family::Low => [0xed, 0xee],
+    };
+    if !overlay.is_some_and(|overlay| anchor_overlays.contains(&overlay)) {
         return Some(BodyResult::no_change());
     }
     let mut host = LivePublication {
@@ -109,6 +124,7 @@ pub(super) fn try_body(
         rules,
         registry,
         collapsed: false,
+        family,
     };
     let returned = publication::advance_body_at_anchor(&mut host, input, anchor);
     Some(BodyResult {
@@ -117,11 +133,37 @@ pub(super) fn try_body(
     })
 }
 
+/// UpdateAdjacentBridges outside a body publication: the family's bridgehead
+/// ramp pairs (High 0x0057702C/0x00577065/0x0057754F/0x0057757B, Low
+/// 0x0057193D/0x00571976/0x00571E63/0x00571E8F) and both CABHUT fallback
+/// twins, which each call the concrete 576770 (0x005745B4, 0x005751D0). Its
+/// clears reach BlowUpBridge; returns whether one ran.
+pub(super) fn update_adjacent_bridges(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    input: CellCoord,
+    family: Family,
+) -> bool {
+    let mut host = LivePublication {
+        sim,
+        rules,
+        registry,
+        collapsed: false,
+        family,
+    };
+    rim_publication::update(&mut host, input);
+    host.collapsed
+}
+
 struct LivePublication<'a> {
     sim: &'a mut Simulation,
     rules: &'a RuleSet,
     registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
     collapsed: bool,
+    /// Whose rim and ramp-tile helpers run; the concrete and wooden twins
+    /// differ only in tileset base and rim search bound.
+    family: Family,
 }
 
 impl LivePublication<'_> {
@@ -323,7 +365,9 @@ impl BridgePublicationHost for LivePublication<'_> {
     fn rim(&mut self, coord: CellCoord) {
         rim_publication::update(self, coord);
     }
-    fn zones(&mut self, _anchor: Cell) {
-        refresh_bridge_zones_if_dirty(self.sim, self.rules, true);
+    fn zones(&mut self, anchor: Cell) {
+        let query = self.coord(anchor);
+        let _ = invalidate_bridge_zones(self.sim, query);
+        publish_bridge_navigation(self.sim, self.rules);
     }
 }

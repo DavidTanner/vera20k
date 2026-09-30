@@ -23,19 +23,19 @@ fn concrete_foot_category_selects_raw_receiver_independently_of_locomotor() {
         (EntityCategory::Infantry, LocomotorKind::Drive, 0x01),
     ] {
         let mut sim = fixture(category, kind);
-        sim.foot_mark_put(1, None, None, None);
+        sim.foot_mark_put(1, None, None);
         assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
         assert_eq!(
             sim.substrate.raw_cell_occupation.ground_bits(4, 4),
             expected_mask
         );
         let entered = sim.substrate.entities.get(1).unwrap().occupancy_enter_order;
-        sim.foot_mark_put(1, None, None, None);
+        sim.foot_mark_put(1, None, None);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().occupancy_enter_order,
             entered
         );
-        sim.foot_mark_remove(1, None, None, None);
+        sim.foot_mark_remove(1, None, None);
         assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
         assert!(!sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
@@ -46,7 +46,7 @@ fn concrete_foot_category_selects_raw_receiver_independently_of_locomotor() {
 fn put_receiver_observes_mark_and_link_before_raw_and_can_change_live_enable() {
     let mut sim = fixture(EntityCategory::Unit, LocomotorKind::Drive);
     let mut called = false;
-    sim.foot_mark_put_observed(1, None, None, None, &mut |sim, id| {
+    sim.foot_mark_put_observed(1, None, None, &mut |sim, id| {
         called = true;
         assert!(
             sim.substrate
@@ -67,6 +67,6 @@ fn put_receiver_observes_mark_and_link_before_raw_and_can_change_live_enable() {
     assert!(called);
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
     assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
-    sim.foot_mark_remove(1, None, None, None);
+    sim.foot_mark_remove(1, None, None);
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
 }

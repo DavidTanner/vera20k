@@ -15,7 +15,6 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
 /// Infantry 0x51DAF6..0x51DB44: the action the failed-path receiver requests
@@ -39,7 +38,6 @@ impl Simulation {
         request: &FootPathRequest,
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
-        fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let rules = rules.ok_or("Walk path request requires rules")?;
@@ -53,7 +51,7 @@ impl Simulation {
             .navigation
             .path_runtime
             .start_movement(frame, rules.general.path_delay_ticks());
-        match self.foot_find_path(request, held, rules, fallback, registry)? {
+        match self.foot_find_path(request, held, rules, registry)? {
             FindPathResult::Route => {
                 //75B2DF..E2 is the success caller's retry reset. Existing
                 //head production resumes at its ordinary shared owner.

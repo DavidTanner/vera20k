@@ -1267,7 +1267,6 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         ..Default::default()
     });
     entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
-    entity.foot_speed.cached_current_speed = 123;
     sim.substrate.entities.insert(entity);
     assert!(matches!(
         sim.reveal(1),
@@ -1281,7 +1280,6 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
     assert!(sim.force_drive_track(1, 0x47, head));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
-    assert_eq!(entity.foot_speed.cached_current_speed, 123);
     let drive = entity.drive_locomotion.as_ref().unwrap();
     assert_eq!(drive.destination, Some(head));
     assert_eq!(drive.head_to, Some(head));
@@ -1299,10 +1297,6 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
             .unwrap();
         let entity = sim.substrate.entities.get(1).unwrap();
         assert!(entity.movement_target.is_none());
-        assert_ne!(
-            entity.foot_speed.cached_current_speed, 123,
-            "live getter replaces the seeded value"
-        );
         let current_cell = (entity.position.rx, entity.position.ry);
         assert!(
             sim.substrate
@@ -2160,7 +2154,6 @@ fn test_reissue_mid_curve_keeps_track_and_anchors_path_at_head() {
         let drive = entity.drive_locomotion.as_mut().expect("drive state");
         drive.target_speed_fraction = SimFixed::lit("0.4");
         entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
-        entity.foot_speed.cached_current_speed = 7;
     }
 
     // Re-order behind the body while the curve is in flight. Pre-fix this
@@ -2216,7 +2209,6 @@ fn test_reissue_mid_curve_keeps_track_and_anchors_path_at_head() {
     );
     assert_eq!(drive.target_speed_fraction, SimFixed::lit("0.4"));
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
-    assert_eq!(entity.foot_speed.cached_current_speed, 7);
     assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::cell(0, 3)));
 }
 
@@ -2695,20 +2687,47 @@ fn code_two_arms_blockage_path_delay_once_and_never_scatters() {
     let mut interner = test_interner();
     // Post-tick wait readings, collected from the first blocked tick onward.
     let mut waits: Vec<u16> = Vec::new();
+    // Only the mover's own calls: the ally's code-6 arm asks the parked unit
+    // whenever its wait runs out, which is not the arm measured here.
     let mut scatter_calls = 0u32;
     for native_frame in 0..TICKS {
-        let tick_stats = tick_movement_with_grid(
-            &mut entities,
-            Some(&grid),
-            &Default::default(),
-            &Default::default(),
-            &mut occupancy,
-            &mut rng,
-            native_frame as u64,
-            &mut interner,
-            &mut lifecycle_requests,
-        );
-        scatter_calls = scatter_calls.saturating_add(tick_stats.scatter_successes);
+        // The per-frame fixture `tick_movement_with_grid` builds, run one
+        // object at a time in its order so the mover's stats stay separate.
+        let mut cell_occupation = crate::sim::occupancy::CellOccupationGrid::rebuild(&entities);
+        let mut raw_cell_occupation = crate::sim::occupancy::RawCellOccupationGrid::new();
+        let mut enter_order = crate::sim::world::EnterOrderCounter::new();
+        for id in [1, 2, 3] {
+            let stats = super::movement_tick::tick_movement_object_with_grids(
+                &mut entities,
+                id,
+                Some(&grid),
+                &Default::default(),
+                &Default::default(),
+                &mut occupancy,
+                &mut cell_occupation,
+                &mut raw_cell_occupation,
+                &mut enter_order,
+                &mut rng,
+                native_frame as u64,
+                native_frame,
+                None,
+                None,
+                None,
+                None,
+                None,
+                &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
+                SIM_ZERO,
+                9,
+                60,
+                &mut interner,
+                None,
+                &mut Vec::new(),
+                &mut lifecycle_requests,
+            );
+            if id == 1 {
+                scatter_calls += stats.scatter_requests;
+            }
+        }
         let blocked = entities
             .get(1)
             .filter(|e| e.movement_target.is_some())
@@ -3671,9 +3690,11 @@ fn lifecycle_authority_crushed_victim_skips_all_remaining_movement_postpasses() 
 }
 
 #[test]
-fn test_friendly_scatter_issues_move_command() {
-    // A friendly stationary blocker should receive a scatter movement
-    // command — the blocker walks away instead of being teleported.
+fn friendly_stationary_blocker_is_asked_to_scatter_and_the_mover_waits() {
+    // Code 6 hands the refusing friendly `Scatter(null, 1, 1)`, which its
+    // receiver answers after the pass (`scatter::ScatterRequests`); nobody is
+    // teleported. The mover takes the fixed post-scatter wait whatever the
+    // receiver does.
     let mut entities = EntityStore::new();
     let grid: PathGrid = PathGrid::new(8, 8);
 
@@ -3731,20 +3752,15 @@ fn test_friendly_scatter_issues_move_command() {
         &mut lifecycle_requests,
     );
     assert_eq!(stats.movers_total, 1);
-    // Scatter succeeded: blocker was given a movement command.
-    assert_eq!(stats.scatter_successes, 1);
-    // Blocker should still be at (2,2) but now has a movement_target
-    // (it walks away on subsequent ticks, not teleported).
-    let bl = entities.get(1).expect("blocker exists");
-    assert!(
-        bl.movement_target.is_some(),
-        "Blocker should have a scatter movement command"
-    );
+    assert_eq!(stats.scatter_requests, 1);
+    let mover = entities.get(2).expect("mover exists");
+    assert!(mover.navigation.path_runtime.path_blocked);
     assert_eq!(
-        (bl.position.rx, bl.position.ry),
-        (2, 2),
-        "Blocker position unchanged this tick — walks next tick"
+        mover.navigation.path_runtime.blocked_timer.remaining(1),
+        crate::sim::movement::bump_crush::POST_SCATTER_WAIT_FRAMES
     );
+    let bl = entities.get(1).expect("blocker exists");
+    assert_eq!((bl.position.rx, bl.position.ry), (2, 2));
 }
 
 // --- Friendly-passable pathfinding tests ---
@@ -4510,15 +4526,6 @@ fn drive_accelerates_false_tick_stores_modified_fraction_without_mutating_speed(
         SimFixed::from_num(100),
         "Drive speed fraction must not mutate raw top speed"
     );
-    assert_eq!(
-        entity
-            .movement_target
-            .as_ref()
-            .expect("still moving")
-            .current_speed,
-        SimFixed::from_num(50),
-        "Drive current speed should be raw speed scaled by current fraction"
-    );
 }
 
 #[test]
@@ -4595,14 +4602,7 @@ fn drive_accelerates_true_tick_ramps_fraction_before_movement_speed() {
     let drive = entity.drive_locomotion.as_ref().expect("drive state");
     assert_eq!(drive.target_speed_fraction, SIM_ONE);
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.03"));
-    assert_eq!(
-        entity
-            .movement_target
-            .as_ref()
-            .expect("still moving")
-            .current_speed,
-        SimFixed::from_num(100) * SimFixed::lit("0.03"),
-    );
+    assert!(entity.movement_target.is_some(), "still moving");
 }
 
 /// One Structure per 2x2 foundation cell at (5,5), so the per-owner block
@@ -6920,6 +6920,9 @@ fn cell_scatter_world_reads_live_house_and_veteran_ability() {
         sim.substrate.entities.insert(mover);
         let mut victim = GameEntity::test_default(2, "E1", "Soviets", 2, 1);
         victim.category = EntityCategory::Infantry;
+        victim.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
+            EntityCategory::Infantry,
+        );
         victim.crushable = true;
         victim.lifecycle.cell_marked = true;
         victim.lifecycle.in_limbo = false;
@@ -6967,7 +6970,7 @@ fn cell_scatter_world_reads_live_house_and_veteran_ability() {
             let stats = sim
                 .process_ground_locomotor_with_config_for_test(1, Some(&rules), None, None, timing)
                 .unwrap();
-            scattered |= stats.scatter_successes != 0;
+            scattered |= stats.scatter_requests != 0;
             // The non-centred infantry survives the crush-radius test, so the
             // existing entering-cell receiver returns the hover to its old
             // centre. Requiring a whole-cell crossing would incorrectly reject
@@ -6987,15 +6990,8 @@ fn cell_scatter_world_reads_live_house_and_veteran_ability() {
             sim.substrate.entities.get(1).unwrap().movement_target,
             classification(&sim)
         );
+        // The dispatch gate decides the call; this map-less fixture gives the
+        // Infantry receiver no cell to send the man to.
         assert_eq!(scattered, expected, "IQ={iq}, rank={rank}");
-        assert_eq!(
-            sim.substrate
-                .entities
-                .get(2)
-                .unwrap()
-                .movement_target
-                .is_some(),
-            expected
-        );
     }
 }

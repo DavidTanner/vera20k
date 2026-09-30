@@ -88,6 +88,7 @@ fn live_bridge_recalc_publishes_retained_attributes_before_connectivity() {
         rules: &rules,
         registry: Some(&registry),
         collapsed: false,
+        family: Family::High,
     };
     let cell = host.lookup((16, 16));
     host.recalc_cell(cell, 4).unwrap();
@@ -164,6 +165,7 @@ fn live_bridge_constructor_matches_original_and_drains_at_admitted_tick() {
             rules: &rules,
             registry: Some(&registry),
             collapsed: false,
+            family: Family::High,
         };
         let handle = host
             .construct_bridge_overlay(
@@ -249,9 +251,7 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
                 y,
                 BridgeRuntimeCell {
                     deck_present: false,
-                    destroyable: true,
                     deck_level: 10,
-                    bridge_group_id: None,
                     damage_state: DamageState::Destroyed,
                     axis: None,
                     role: BridgeCellRole::Body,
@@ -267,6 +267,7 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
             rules: &rules,
             registry: Some(&registry),
             collapsed: false,
+            family: Family::High,
         }
         .construct_bridge_overlay((16, 16), original["overlay_id"].as_u64().unwrap() as u8, -1)
         .unwrap();
@@ -360,6 +361,7 @@ fn constructor_side_admission_matches_original_foot_receiver() {
             rules: &rules,
             registry: Some(&registry),
             collapsed: false,
+            family: Family::High,
         }
         .construct_bridge_overlay((16, 16), 25, -1)
         .unwrap();
@@ -480,6 +482,7 @@ fn live_bridge_constructor_queue_respects_terminal_admission_and_other_objects()
             rules: &rules,
             registry: Some(&registry),
             collapsed: false,
+            family: Family::High,
         };
         host.construct_bridge_overlay(requested, 24, -1).unwrap();
         let id = 100 + index as u64;
@@ -525,6 +528,7 @@ fn live_bridge_constructor_restamp_updates_existing_runtime_axis() {
             rules: &rules,
             registry: Some(&registry),
             collapsed: false,
+            family: Family::High,
         };
         host.construct_bridge_overlay((16, 16), 25, -1).unwrap();
     }
@@ -547,6 +551,7 @@ fn live_bridge_constructor_restamp_updates_existing_runtime_axis() {
         rules: &rules,
         registry: Some(&registry),
         collapsed: false,
+        family: Family::High,
     };
     host.construct_bridge_overlay((16, 16), 24, -1).unwrap();
     let selected = host.lookup((16, 16));

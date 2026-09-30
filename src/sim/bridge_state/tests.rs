@@ -149,7 +149,6 @@ fn bridgeheads_registered_with_bridgehead_role() {
             cell.damage_state,
             DamageState::Healthy { variant: 0 }
         ));
-        assert!(cell.bridge_group_id.is_none());
         assert!(cell.anchor_span_id.is_none());
         assert!(cell.axis.is_none());
         assert_eq!(cell.deck_level, 4);
@@ -198,9 +197,7 @@ fn repaired_overlay_is_walkable_even_with_stale_destroyed_state() {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Destroyed,
             axis: Some(Axis::NS),
             role: BridgeCellRole::Body,
@@ -224,17 +221,12 @@ fn bridge_runtime_initializes_intact_groups() {
     assert!(cell.deck_present);
     assert!(matches!(cell.damage_state, DamageState::Healthy { .. }));
     assert_eq!(cell.deck_level, 4);
-    assert_eq!(cell.bridge_group_id, Some(1));
     assert!(state.cell(0, 0).is_none());
 }
 
 #[test]
 fn marking_group_cells_destroyed_makes_them_unwalkable() {
-    // Direct mutation replaces the legacy `apply_damage`. The
-    // orchestrator's walker performs the per-cell damage-state
-    // transitions through `body_cell_advance_state`; this lower-
-    // level test just asserts the read paths (is_bridge_walkable)
-    // honor `DamageState::Destroyed`.
+    // The read path (is_bridge_walkable) honors `DamageState::Destroyed`.
     let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
     for (rx, ry) in [(1u16, 0u16), (2, 0), (3, 0)] {
         if let Some(cell) = state.cell_mut(rx, ry) {
@@ -271,7 +263,6 @@ fn bridge_endpoints_detected() {
     );
     let rec = &records[0];
     assert!(rec.active);
-    assert_eq!(rec.group_id, 1);
     assert_eq!(rec.bridge_kind, BridgeRecordKind::High);
     assert_eq!(rec.endpoint_a, (0, 0));
     assert_eq!(rec.endpoint_b, (3, 0));
@@ -362,12 +353,8 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
 
     let intact = BridgeRuntimeState::from_resolved_terrain(&make(true), true, 300);
     assert!(intact.endpoint_records()[0].active);
-    assert_ne!(intact.endpoint_records()[0].group_id, 0);
 
-    let mut broken = BridgeRuntimeState::from_resolved_terrain(&make(false), true, 300);
-    assert!(!broken.endpoint_records()[0].active);
-    assert_eq!(broken.endpoint_records()[0].group_id, 0);
-    broken.refresh_endpoint_active_flags();
+    let broken = BridgeRuntimeState::from_resolved_terrain(&make(false), true, 300);
     assert!(!broken.endpoint_records()[0].active);
 
     let mixed_gap = high_record_fixture(5, 1, Some(100), None, |cell| {
@@ -379,11 +366,7 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
             cell.bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
         }
     });
-    let mut mixed = BridgeRuntimeState::from_resolved_terrain(&mixed_gap, true, 300);
-    assert!(!mixed.endpoint_records()[0].active);
-    assert_eq!(mixed.endpoint_records()[0].group_id, 0);
-    assert!(mixed.cell(2, 0).unwrap().bridge_group_id.is_some());
-    mixed.refresh_endpoint_active_flags();
+    let mixed = BridgeRuntimeState::from_resolved_terrain(&mixed_gap, true, 300);
     assert!(!mixed.endpoint_records()[0].active);
 }
 
@@ -435,105 +418,32 @@ fn low_bridge_tube_record_requires_opposite_neighbors() {
 }
 
 #[test]
-fn bridge_destruction_deactivates_endpoints() {
-    // Endpoint deactivation is now driven by the orchestrator's
-    // `refresh_bridge_zones_if_dirty`, which calls
-    // `refresh_endpoint_active_flags` whenever a walker / state-machine
-    // collapse marks `zones_dirty`. This in-module test exercises the
-    // deactivation logic in isolation: mutate cells to Destroyed (the
-    // dispatcher's terminal effect) and call the refresh helper
-    // directly. The full pipeline is covered by world-level integration
-    // tests in `world_tests.rs`.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
-    // Pre-condition: endpoint exists and is active.
-    let records = state.endpoint_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].active);
-    let group_id = records[0].group_id;
-
-    // Mark every cell of the group destroyed (simulates a final-stage
-    // walker cascade landing on the entire group).
-    for (rx, ry) in [(1u16, 0u16), (2, 0), (3, 0)] {
-        if let Some(c) = state.cell_mut(rx, ry) {
-            c.damage_state = DamageState::Destroyed;
-        }
-    }
-    state.refresh_endpoint_active_flags();
-
-    let records = state.endpoint_records();
-    assert!(
-        !records[0].active,
-        "endpoint of destroyed group {group_id} must deactivate"
-    );
-    assert_eq!(records[0].bridge_kind, BridgeRecordKind::High);
-}
-
-#[test]
-fn refresh_endpoint_active_flags_deactivates_on_first_destroyed_cell() {
-    // Per the new state-machine semantic: a single destroyed cell in a
-    // group severs the bridge — the endpoint flips inactive immediately,
-    // not just when the entire group is destroyed.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
+fn invalidate_bridge_zones_deactivates_records_near_query() {
+    // MapClass::InvalidateBridgeZones 0x0056DAE0: every active high record
+    // within FindBridgeRecord's radius 3 of the query deactivates, and the
+    // return requests RebuildZoneConnectivity only when one changed.
+    let terrain = make_bridge_terrain();
+    let mut state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 50);
     assert!(state.endpoint_records()[0].active);
 
-    // Destroy only ONE cell of the 3-cell group.
-    if let Some(c) = state.cell_mut(2, 0) {
-        c.damage_state = DamageState::Destroyed;
-    }
-    state.refresh_endpoint_active_flags();
-
+    assert!(state.invalidate_bridge_zones(&terrain, (2, 0)));
+    assert!(!state.endpoint_records()[0].active);
+    assert_eq!(
+        state.endpoint_records()[0].bridge_kind,
+        BridgeRecordKind::High
+    );
     assert!(
-        !state.endpoint_records()[0].active,
-        "first destroyed cell must already deactivate the endpoint"
+        !state.invalidate_bridge_zones(&terrain, (2, 0)),
+        "an already inactive record requests no rebuild"
     );
 }
 
 #[test]
-fn refresh_endpoint_active_flags_leaves_intact_groups_active() {
-    // No destroyed cells anywhere — refresh must not flip anything.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
-    state.refresh_endpoint_active_flags();
+fn invalidate_bridge_zones_ignores_records_outside_radius() {
+    let terrain = make_bridge_terrain();
+    let mut state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 50);
+    assert!(!state.invalidate_bridge_zones(&terrain, (2, 4)));
     assert!(state.endpoint_records()[0].active);
-}
-
-#[test]
-fn refresh_endpoint_active_flags_reactivates_after_repair() {
-    // BR-08: re-activation must be keyed on the authoritative overlay byte
-    // (effective_render_state), NOT damage_state. The real engineer-repair path
-    // restores the overlay byte to a healthy band but leaves damage_state STALE
-    // at Destroyed (the original engine never resets the body damage byte). This
-    // test mirrors that exactly, so it FAILS if the recompute is keyed on
-    // damage_state and only passes under the overlay-derived predicate.
-    let mut state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 50);
-    assert!(state.endpoint_records()[0].active);
-
-    // Collapse (2,0) the way the body-SM does (BR-09): destroyed overlay + state.
-    {
-        let c = state.cell_mut(2, 0).unwrap();
-        c.damage_state = DamageState::Destroyed;
-        c.overlay_byte = 0xFF;
-    }
-    state.refresh_endpoint_active_flags();
-    assert!(
-        !state.endpoint_records()[0].active,
-        "destroyed cell must deactivate the record"
-    );
-
-    // Repair the REAL way: restore the overlay byte to a healthy body value,
-    // leaving damage_state stale at Destroyed.
-    {
-        let c = state.cell_mut(2, 0).unwrap();
-        c.overlay_byte = 0xCD; // healthy high-bridge body overlay (variant 0)
-        assert!(
-            matches!(c.damage_state, DamageState::Destroyed),
-            "repair leaves damage_state stale (matches the original engine)"
-        );
-    }
-    state.refresh_endpoint_active_flags();
-    assert!(
-        state.endpoint_records()[0].active,
-        "repaired (overlay-restored, damage_state stale) group must re-activate"
-    );
 }
 
 #[test]
@@ -582,8 +492,6 @@ fn make_test_span() -> AnchorSpan {
         ],
         axis: Axis::NS,
         direction: Direction::E,
-        damage_state: DamageState::Healthy { variant: 0 },
-        bridge_group_id: 1,
     }
 }
 
@@ -611,7 +519,7 @@ fn walk_anchor_pattern_dir_w_extra_slot_is_anchor_plus_2e() {
     // -> Body, keyed on slot INDEX) the alias (a) left the true extra cell
     // untagged and (b) overwrote the opposite cell's Tail role with Body via
     // last-write-wins. Distinct slots fix both.
-    let span = walk_anchor_pattern(1, (5, 5), Axis::EW, Direction::W, 1, 12, 12);
+    let span = walk_anchor_pattern(1, (5, 5), Axis::EW, Direction::W, 12, 12);
     assert_eq!(span.cells[0], Some((5, 5)), "slot 0 = anchor");
     assert_eq!(span.cells[1], Some((4, 5)), "slot 1 = +W×1");
     assert_eq!(span.cells[2], Some((3, 5)), "slot 2 = +W×2");
@@ -766,9 +674,7 @@ fn test_seed_cell_grows_grid_to_fit() {
     let mut state = BridgeRuntimeState::default();
     let cell = BridgeRuntimeCell {
         deck_present: true,
-        destroyable: true,
         deck_level: 0,
-        bridge_group_id: Some(1),
         damage_state: DamageState::Healthy { variant: 0 },
         axis: Some(Axis::NS),
         role: BridgeCellRole::Anchor,
@@ -787,9 +693,7 @@ fn cell_mut_writes_visible_through_cell_read() {
     let mut state = BridgeRuntimeState::default();
     let cell = BridgeRuntimeCell {
         deck_present: true,
-        destroyable: true,
         deck_level: 0,
-        bridge_group_id: Some(1),
         damage_state: DamageState::Healthy { variant: 0 },
         axis: Some(Axis::NS),
         role: BridgeCellRole::Anchor,
@@ -949,301 +853,14 @@ fn damage_state_round_trip_for_each_variant_per_axis() {
     }
 }
 
-fn make_body_driver_test_state() -> BridgeRuntimeState {
-    // Uses test_seed_cell + test_seed_anchor_span from Task 1 Step 5.
-    // Layout for the body-driver tests:
-    //   (5,5)  → anchor cell, axis NS, anchor_span_id=1
-    //   (4,5), (6,5) → perpendicular anchor partners (axis NS, separate
-    //                  span_id) — UpdateRamp_*A walks E, _*B walks W from
-    //                  (5,5), so these are the wrappers' targets.
-    //   (5,4)  → non-anchor body cell, anchor_span_id=1 — exercises the
-    //                  "follow to anchor" path in the driver.
-    // Slots (7,5), (8,5) are seeded so collapse can clear the full
-    // AnchorSpan overlay-byte surface, not just the anchor.
-    let mut state = BridgeRuntimeState::default();
-
-    let healthy_template = BridgeRuntimeCell {
-        deck_present: true,
-        destroyable: true,
-        deck_level: 0,
-        bridge_group_id: Some(1),
-        damage_state: DamageState::Healthy { variant: 0 },
-        axis: Some(Axis::NS),
-        role: BridgeCellRole::Anchor,
-        anchor_span_id: Some(1),
-        overlay_byte: 0x18,
-        bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-    };
-
-    // Anchor at (5,5).
-    state.test_seed_cell(5, 5, healthy_template);
-
-    // Perpendicular anchor partners. They are anchors of their own spans
-    // (binary's `+0x80` flag is set), so use anchor_span_id=2.
-    let perp = BridgeRuntimeCell {
-        anchor_span_id: Some(2),
-        ..healthy_template
-    };
-    state.test_seed_cell(4, 5, perp);
-    state.test_seed_cell(6, 5, perp);
-
-    // Non-anchor body cell with anchor_span_id=1 — used by
-    // body_driver_non_anchor_body_cell_follows_to_anchor.
-    state.test_seed_cell(
-        5,
-        4,
-        BridgeRuntimeCell {
-            role: BridgeCellRole::Body,
-            ..healthy_template
-        },
-    );
-
-    for rx in [7, 8] {
-        state.test_seed_cell(
-            rx,
-            5,
-            BridgeRuntimeCell {
-                role: BridgeCellRole::Body,
-                ..healthy_template
-            },
-        );
-    }
-
-    // AnchorSpan registry entry. The driver looks up by anchor_span_id
-    // and reads `span.anchor` to resolve. Slot positions beyond (5,5),
-    // (4,5), (6,5) aren't seeded as cells because the driver doesn't
-    // touch them in the body-cell branch.
-    state.test_seed_anchor_span(AnchorSpan {
-        id: 1,
-        anchor: (5, 5),
-        cells: [
-            Some((5, 5)),
-            Some((6, 5)),
-            Some((7, 5)),
-            Some((8, 5)),
-            Some((4, 5)),
-            None,
-        ],
-        axis: Axis::NS,
-        direction: Direction::E,
-        damage_state: DamageState::Healthy { variant: 0 },
-        bridge_group_id: 1,
-    });
-
-    state
-}
-
-#[test]
-fn body_driver_anchor_healthy_advances_to_damaged_returns_absorbed() {
-    let mut state = make_body_driver_test_state();
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(matches!(outcome, StateOutcome::Absorbed { .. }));
-    assert_eq!(state.cell(5, 5).unwrap().damage_state, DamageState::Damaged);
-}
-
-#[test]
-fn body_driver_non_anchor_body_cell_follows_to_anchor() {
-    let mut state = make_body_driver_test_state();
-    // Damage on a body cell, not the anchor.
-    let outcome = state.body_cell_advance_state(5, 4, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(matches!(outcome, StateOutcome::Absorbed { .. }));
-    // Anchor's damage_state advanced, not the input body cell's.
-    assert_eq!(state.cell(5, 5).unwrap().damage_state, DamageState::Damaged);
-    assert_eq!(
-        state.cell(5, 4).unwrap().damage_state,
-        DamageState::Healthy { variant: 0 }
-    );
-}
-
-#[test]
-fn body_driver_damaged_anchor_collapses_and_emits_set_bridge_direction() {
-    let mut state = make_body_driver_test_state();
-    state.cell_mut(5, 5).unwrap().damage_state = DamageState::Damaged;
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-    match outcome {
-        StateOutcome::Collapsed {
-            binary_success,
-            destroyed_cells,
-            set_bridge_direction,
-            adjacent_bridges_dirty,
-            zones_dirty,
-            radar_cells,
-            ..
-        } => {
-            assert!(binary_success);
-            assert!(destroyed_cells.contains(&(5, 5)));
-            // BR-16: the collapsed anchor is fed to the minimap radar channel.
-            assert!(radar_cells.contains(&(5, 5)));
-            // 4 BlowUpBridge actions per Task 12 invariant.
-            let blow_ups = set_bridge_direction
-                .actions
-                .iter()
-                .filter(|(_, _, a)| matches!(a, crate::sim::bridge_specs::CellAction::BlowUpBridge))
-                .count();
-            assert_eq!(blow_ups, 4);
-            // 2 perpendicular cells flagged dirty (E and W of (5,5)).
-            assert_eq!(adjacent_bridges_dirty.len(), 2);
-            assert!(zones_dirty);
-        }
-        other => panic!("expected Collapsed, got {other:?}"),
-    }
-    assert_eq!(
-        state.cell(5, 5).unwrap().damage_state,
-        DamageState::Destroyed
-    );
-}
-
-#[test]
-fn body_driver_partial_collapse_a_collapses_with_single_ramp_call() {
-    let mut state = make_body_driver_test_state();
-    state.cell_mut(5, 5).unwrap().damage_state = DamageState::PartialCollapseA;
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(matches!(outcome, StateOutcome::Collapsed { .. }));
-    assert_eq!(
-        state.cell(5, 5).unwrap().damage_state,
-        DamageState::Destroyed
-    );
-}
-
-#[test]
-fn body_driver_partial_collapse_b_collapses_with_single_ramp_call() {
-    let mut state = make_body_driver_test_state();
-    state.cell_mut(5, 5).unwrap().damage_state = DamageState::PartialCollapseB;
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(matches!(outcome, StateOutcome::Collapsed { .. }));
-    assert_eq!(
-        state.cell(5, 5).unwrap().damage_state,
-        DamageState::Destroyed
-    );
-}
-
-#[test]
-fn body_driver_destroyed_anchor_returns_no_change() {
-    let mut state = make_body_driver_test_state();
-    state.cell_mut(5, 5).unwrap().damage_state = DamageState::Destroyed;
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(matches!(outcome, StateOutcome::NoChange));
-}
-
-#[test]
-fn body_driver_bridgehead_cell_returns_no_change() {
-    let mut state = make_body_driver_test_state();
-    state.cell_mut(5, 5).unwrap().role = BridgeCellRole::Bridgehead;
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(matches!(outcome, StateOutcome::NoChange));
-}
-
-/// BR-09: each of the three collapse arms (Damaged, PartialCollapseA,
-/// PartialCollapseB) must clear the anchor's visible overlay to the
-/// no-overlay sentinel. We seed the anchor with a Healthy-mapping overlay
-/// byte (0xD6 ∈ the 0xD6..=0xD9 Healthy range of `effective_render_state`)
-/// so that, BEFORE the fix, the collapsed cell would still render Healthy +
-/// stay walkable. After collapse the byte must be 0xFF, render state None,
-/// and the cell non-walkable.
-fn assert_collapse_clears_anchor_overlay(start: DamageState) {
-    let mut state = make_body_driver_test_state();
-    {
-        let anchor = state.cell_mut(5, 5).unwrap();
-        anchor.damage_state = start;
-        // Healthy-mapping loaded byte: without the fix, effective_render_state
-        // maps this back to Healthy and is_bridge_walkable stays true.
-        anchor.overlay_byte = 0xD6;
-    }
-    // Pre-condition sanity: the seeded byte renders as Healthy + walkable.
-    assert!(matches!(
-        BridgeRuntimeState::effective_render_state(state.cell(5, 5).unwrap()),
-        Some(DamageState::Healthy { .. })
-    ));
-    assert!(state.is_bridge_walkable(5, 5));
-
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(
-        matches!(outcome, StateOutcome::Collapsed { .. }),
-        "start={start:?} must collapse"
-    );
-
-    let anchor = state.cell(5, 5).unwrap();
-    assert_eq!(anchor.damage_state, DamageState::Destroyed);
-    assert_eq!(
-        anchor.overlay_byte, 0xFF,
-        "collapsed anchor overlay must clear to 0xFF sentinel (start={start:?})"
-    );
-    assert!(
-        BridgeRuntimeState::effective_render_state(anchor).is_none(),
-        "collapsed anchor must render None (start={start:?})"
-    );
-    assert!(
-        !state.is_bridge_walkable(5, 5),
-        "collapsed anchor must not be walkable (start={start:?})"
-    );
-}
-
-#[test]
-fn body_collapse_from_damaged_clears_anchor_overlay() {
-    assert_collapse_clears_anchor_overlay(DamageState::Damaged);
-}
-
-#[test]
-fn body_collapse_from_partial_a_clears_anchor_overlay() {
-    assert_collapse_clears_anchor_overlay(DamageState::PartialCollapseA);
-}
-
-#[test]
-fn body_collapse_from_partial_b_clears_anchor_overlay() {
-    assert_collapse_clears_anchor_overlay(DamageState::PartialCollapseB);
-}
-
-#[test]
-fn bridge_collapse_clears_overlay_on_full_span() {
-    let mut state = make_body_driver_test_state();
-    state.cell_mut(5, 5).unwrap().damage_state = DamageState::Damaged;
-
-    let outcome = state.body_cell_advance_state(5, 5, true, &mut flood_fill_terrain(20, 20, 0));
-
-    let StateOutcome::Collapsed {
-        destroyed_cells,
-        radar_cells,
-        ..
-    } = outcome
-    else {
-        panic!("expected collapsed span");
-    };
-    for pos in [(5, 5), (6, 5), (7, 5), (8, 5), (4, 5)] {
-        let cell = state.cell(pos.0, pos.1).expect("seeded span cell");
-        assert_eq!(
-            cell.overlay_byte, 0xFF,
-            "span cell {pos:?} must clear the bridge overlay byte"
-        );
-        assert!(
-            BridgeRuntimeState::effective_render_state(cell).is_none(),
-            "span cell {pos:?} must render as collapsed"
-        );
-        assert!(
-            destroyed_cells.contains(&pos),
-            "destroyed_cells should include full span cell {pos:?}"
-        );
-        assert!(
-            radar_cells.contains(&pos),
-            "radar_cells should include full span cell {pos:?}"
-        );
-    }
-}
-
-#[test]
-fn body_driver_out_of_bounds_returns_no_change() {
-    let mut state = make_body_driver_test_state();
-    let outcome = state.body_cell_advance_state(99, 99, true, &mut flood_fill_terrain(20, 20, 0));
-    assert!(matches!(outcome, StateOutcome::NoChange));
-}
-
-/// 5x5 grid; column X=2 carries the NS bridgehead walk:
-/// (2,4)=8 (bridgehead high-ramp peak), (2,3)=6, (2,2)=4 (anchor body),
-/// (2,1)=0, (2,0)=0. Walk N from (2,4) terminates at (2,2).
+/// 5x5 grid; column X=2 carries the NS bridgehead walk's sub-tiles:
+/// (2,4)=8, (2,3)=6, (2,2)=4 (anchor body), (2,1)=0, (2,0)=0. Walk N from
+/// (2,4) terminates at (2,2).
 fn make_bridgehead_terrain_ns() -> crate::map::resolved_terrain::ResolvedTerrainGrid {
     let mut cells = Vec::with_capacity(25);
     for ry in 0..5u16 {
         for rx in 0..5u16 {
-            let template_height: u8 = if rx == 2 {
+            let final_sub_tile: u8 = if rx == 2 {
                 match ry {
                     4 => 8,
                     3 => 6,
@@ -1254,7 +871,7 @@ fn make_bridgehead_terrain_ns() -> crate::map::resolved_terrain::ResolvedTerrain
                 0
             };
             cells.push(ResolvedTerrainCell {
-                template_height,
+                final_sub_tile,
                 bridge_facts: crate::map::bridge_facts::BridgeCellFacts {
                     raw_flags: if ry == 2 && (1..=3).contains(&rx) {
                         crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF
@@ -1281,9 +898,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         4,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Bridgehead,
@@ -1298,9 +913,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1315,9 +928,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1332,9 +943,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1349,9 +958,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         4,
         BridgeRuntimeCell {
             deck_present: false,
-            destroyable: false,
             deck_level: 0,
-            bridge_group_id: None,
             damage_state: DamageState::Healthy { variant: 0 },
             axis: None,
             role: BridgeCellRole::Body,
@@ -1417,7 +1024,7 @@ fn bridgehead_advance_repeat_high_hit_collapses_about_to_fall_slot() {
             destroyed_cells,
             set_bridge_direction,
             adjacent_bridges_dirty,
-            zones_dirty,
+            zone_query,
             radar_cells,
             ..
         } => {
@@ -1435,8 +1042,9 @@ fn bridgehead_advance_repeat_high_hit_collapses_about_to_fall_slot() {
                         crate::sim::bridge_specs::CellAction::BlowUpBridge
                     ))
             );
-            assert_eq!(adjacent_bridges_dirty, vec![(3, 2), (1, 2)]);
-            assert!(zones_dirty);
+            // The NS ramp pair runs W then E (0x0057754F, 0x0057757B).
+            assert_eq!(adjacent_bridges_dirty, vec![(1, 2), (3, 2)]);
+            assert_eq!(zone_query, (2, 2), "blow-up row center");
         }
         other => panic!("expected high bridgehead collapse, got {other:?}"),
     }
@@ -1469,7 +1077,7 @@ fn bridgehead_advance_repeat_low_hit_collapses_but_returns_false() {
         StateOutcome::Collapsed {
             binary_success,
             destroyed_cells,
-            zones_dirty,
+            zone_query,
             ..
         } => {
             assert!(
@@ -1477,7 +1085,7 @@ fn bridgehead_advance_repeat_low_hit_collapses_but_returns_false() {
                 "low bridgehead slot +3 collapses but gamemd returns false"
             );
             assert_eq!(destroyed_cells, vec![(2, 1), (2, 2), (2, 3)]);
-            assert!(zones_dirty);
+            assert_eq!(zone_query, (2, 2), "blow-up row center");
         }
         other => panic!("expected low bridgehead collapse side effects, got {other:?}"),
     }
@@ -1485,12 +1093,12 @@ fn bridgehead_advance_repeat_low_hit_collapses_but_returns_false() {
 
 #[test]
 fn bridgehead_advance_odd_h_ns_absorbs_with_no_change() {
-    // Bridgehead at h=5 (odd NS ramp): parity gate fires.
+    // Bridgehead at sub-tile 5 (odd NS ramp): parity gate fires.
     let mut state = make_bridgehead_state_ns();
     let mut terrain = make_bridgehead_terrain_ns();
-    // Override (2, 4) height to 5 — odd, parity-gated.
+    // Override (2, 4) sub-tile to 5 — odd, parity-gated.
     if let Some(cell) = terrain.cells.get_mut(4 * 5 + 2) {
-        cell.template_height = 5;
+        cell.final_sub_tile = 5;
     }
     let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
     assert_eq!(outcome, StateOutcome::NoChange);
@@ -1511,9 +1119,7 @@ fn bridgehead_advance_h_gt_4_ew_absorbs_with_no_change() {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::EW),
             role: BridgeCellRole::Bridgehead,
@@ -1522,9 +1128,9 @@ fn bridgehead_advance_h_gt_4_ew_absorbs_with_no_change() {
             bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
-    // 3x3 terrain with cell (2,2) h=0xC.
+    // 3x3 terrain with cell (2,2) at sub-tile 0xC.
     let mut terrain = crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| ResolvedTerrainCell {
-        template_height: if rx == 2 && ry == 2 { 0x0C } else { 0 },
+        final_sub_tile: if rx == 2 && ry == 2 { 0x0C } else { 0 },
         ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
     });
     let outcome = state.bridgehead_advance_state(2, 2, true, &mut terrain);
@@ -1537,9 +1143,9 @@ fn bridgehead_advance_walks_through_odd_intermediate() {
     // intermediate between h=8 start and h=4 anchor.
     let mut state = make_bridgehead_state_ns();
     let mut terrain = make_bridgehead_terrain_ns();
-    // Patch the walk path: (2,4)=8, (2,3)=5 (odd!), (2,2)=4.
+    // Patch the walk path's sub-tiles: (2,4)=8, (2,3)=5 (odd!), (2,2)=4.
     if let Some(c) = terrain.cells.get_mut(3 * 5 + 2) {
-        c.template_height = 5;
+        c.final_sub_tile = 5;
     }
     let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
     assert!(matches!(outcome, StateOutcome::Absorbed { .. }));
@@ -1561,13 +1167,13 @@ fn bridgehead_advance_non_bridgehead_role_no_change() {
 
 #[test]
 fn bridgehead_advance_anchor_walk_failure_no_change() {
-    // All heights = 10: start cell is even (passes parity gate) but walk
-    // never converges to h=4 within the 16-iter cap (heights stay 10
+    // All sub-tiles = 10: start cell is even (passes parity gate) but walk
+    // never converges to h=4 within the 16-iter cap (sub-tiles stay 10
     // along the column / walking off-map).
     let mut state = make_bridgehead_state_ns();
     let mut terrain = make_bridgehead_terrain_ns();
     for c in terrain.cells.iter_mut() {
-        c.template_height = 10;
+        c.final_sub_tile = 10;
     }
     let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
     assert_eq!(outcome, StateOutcome::NoChange);
@@ -1636,9 +1242,7 @@ fn flood_fill_bridge_state(coords: &[(u16, u16)]) -> BridgeRuntimeState {
             ry,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Body,
@@ -1864,9 +1468,7 @@ fn seed_overlay_row(state: &mut BridgeRuntimeState, y: u16, xs: std::ops::Range<
             y,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 5,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Body,

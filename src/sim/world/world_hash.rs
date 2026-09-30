@@ -935,9 +935,7 @@ impl Simulation {
             ry.hash(hasher);
             cell.deck_present.hash(hasher);
             cell.damage_state.hash(hasher);
-            cell.destroyable.hash(hasher);
             cell.deck_level.hash(hasher);
-            cell.bridge_group_id.hash(hasher);
             cell.axis.hash(hasher);
             cell.role.hash(hasher);
             cell.anchor_span_id.hash(hasher);
@@ -960,7 +958,6 @@ impl Simulation {
         for record in bridge_state.endpoint_records() {
             record.endpoint_a.hash(hasher);
             record.endpoint_b.hash(hasher);
-            record.group_id.hash(hasher);
             record.active.hash(hasher);
             record.bridge_kind.hash(hasher);
         }
@@ -1313,7 +1310,6 @@ impl Simulation {
 
             hash_retained_track_classes(entity, hasher);
             entity.foot_speed.applied_fraction.hash(hasher);
-            entity.foot_speed.cached_current_speed.hash(hasher);
             if entity.flight_attitude != Default::default() {
                 0x2e8_u32.hash(hasher);
                 entity.flight_attitude.hash(hasher);
@@ -3897,9 +3893,7 @@ mod bridge_overlay_hash_tests {
             2,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Anchor,
@@ -3968,7 +3962,6 @@ mod bridge_overlay_hash_tests {
         let mut record = BridgeEndpointRecord {
             endpoint_a: (1, 1),
             endpoint_b: (4, 1),
-            group_id: 1,
             active: true,
             bridge_kind: BridgeRecordKind::High,
         };

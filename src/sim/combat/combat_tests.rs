@@ -2403,7 +2403,7 @@ fn gsi_04_07_damage_retaliation_is_receiver_synchronous_and_uses_mission_overrid
              [BuildingTypes]\n\
              [Warheads]\n0=IncomingWH\n1=ReturnWH\n\
              [SOURCE]\nStrength=200\nArmor=heavy\n\
-             [VICTIM]\nStrength=100\nArmor=heavy\nSpeed=6\nPrimary=ReturnGun\nCanRetaliate=yes\n\
+             [VICTIM]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=100\nArmor=heavy\nSpeed=6\nPrimary=ReturnGun\nCanRetaliate=yes\n\
              [IncomingGun]\nDamage=10\nRange=8\nWarhead=IncomingWH\n\
              [ReturnGun]\nDamage=1\nROF=50\nRange=8\nWarhead=ReturnWH\n\
              [IncomingWH]\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
@@ -2449,6 +2449,18 @@ fn gsi_04_07_damage_retaliation_is_receiver_synchronous_and_uses_mission_overrid
         // here is the inline mission Override, not turn-to-fire.
         victim.body_facing.snap(0xC000, 0);
         victim.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(9, 5));
+        // Supply the actual class receiver for the NULL destination below;
+        // a bare adapter without a locomotor cannot exercise Unit741970.
+        victim.locomotor = Some(
+            crate::sim::movement::locomotor::LocomotorState::from_object_type(
+                rules.object("VICTIM").unwrap(),
+                0,
+            ),
+        );
+        victim.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
+            destination: Some(crate::sim::components::DriveCoord::cell(9, 5, 0)),
+            ..Default::default()
+        });
         victim.movement_target = Some(crate::sim::components::MovementTarget::default());
         entities.insert(victim);
 
