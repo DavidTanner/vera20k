@@ -220,7 +220,7 @@ pub(crate) fn build_building_status_instances(
             continue;
         }
         let (sx, sy) = crate::render::locomotor_visual::screen_position(e);
-        // Foundation= is merged from art.ini into ObjectType by install_art_data().
+        // The ordered rules processor supplies ObjectType's ART Foundation.
         // Height= is an art.ini property, looked up via Image= redirect.
         let obj = state.rules().and_then(|r| r.object(type_str));
         let foundation: (u32, u32) = obj

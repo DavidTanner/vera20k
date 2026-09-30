@@ -216,8 +216,8 @@ fn native_bounce_ground_deck_contacts_match_original_update() {
 }
 
 fn fixture_rules() -> RuleSet {
-    RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-        "[BuildingTypes]\n0=building\n1=undeploy\n2=large_undeploy\n[VehicleTypes]\n0=nonbuilding\n[building]\nFoundation=1x1\n[undeploy]\nFoundation=1x1\nUndeploysInto=nonbuilding\n[large_undeploy]\nFoundation=2x2\nUndeploysInto=nonbuilding\n[nonbuilding]\nSpeed=5\n")).unwrap()
+    RuleSet::from_ini_with_fixed_art_for_test(&crate::rules::ini_parser::IniFile::from_str(
+        "[BuildingTypes]\n0=building\n1=undeploy\n2=large_undeploy\n[VehicleTypes]\n0=nonbuilding\n[building]\nName=Building\n[undeploy]\nUndeploysInto=nonbuilding\n[large_undeploy]\nUndeploysInto=nonbuilding\n[nonbuilding]\nSpeed=5\n"), &crate::rules::ini_parser::IniFile::from_str("[building]\nFoundation=1x1\n[undeploy]\nFoundation=1x1\n[large_undeploy]\nFoundation=2x2\n")).unwrap()
 }
 struct RecordingTerrain<'a> {
     inner: ResolvedBounceTerrain<'a>,

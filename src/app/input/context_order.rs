@@ -159,6 +159,30 @@ fn command_actor_id(command: &Command) -> Option<u64> {
     }
 }
 
+/// Selection4AE750 object loop4AE829..4AE85A resolves each object's action in the selection-array order.
+/// Capability batches may remove handled actors, but must not reorder their
+/// single-object events. Aggregated commands such as SetRally cannot be placed
+/// at one object's index; retain their dispatcher order until that separate
+/// batch representation is migrated. This index derives from input selection.
+fn restore_selection_dispatch_order(queued: &mut [CommandEnvelope], selected: &[u64]) {
+    if queued
+        .iter()
+        .any(|envelope| command_actor_id(&envelope.payload).is_none())
+    {
+        return;
+    }
+    let positions: std::collections::HashMap<_, _> = selected
+        .iter()
+        .enumerate()
+        .map(|(index, &id)| (id, index))
+        .collect();
+    queued.sort_by_key(|envelope| {
+        command_actor_id(&envelope.payload)
+            .and_then(|id| positions.get(&id).copied())
+            .unwrap_or(usize::MAX)
+    });
+}
+
 /// Play the single order-ack line for a batch of freshly queued orders.
 ///
 /// Retail's dispatch loop clears the voice-enable flag at the end of *every*
@@ -267,7 +291,7 @@ fn finish_order(
     queued: Vec<CommandEnvelope>,
     speaker_id: Option<u64>,
 ) -> bool {
-    let queued = if let Some(sim) = state
+    let mut queued = if let Some(sim) = state
         .match_state
         .sim_runtime
         .as_ref()
@@ -285,6 +309,7 @@ fn finish_order(
     if queued.is_empty() {
         return false;
     }
+    restore_selection_dispatch_order(&mut queued, &selected_stable_ids_in_order(state));
     if let Some(speaker_id) = speaker_id {
         emit_resolved_order_voice(state, speaker_id, &queued);
     }
@@ -782,8 +807,8 @@ pub(crate) fn try_queue_context_order_at_screen_point(
         } else {
             // An Engineer's DisarmBomb is its first action over a bombed object.
             // Every selected object takes its own action
-            // (`Selection__DispatchMultiUnitOrder` 0x004AE844 re-derives it per
-            // object): the Engineers defuse, and over an enemy the rest go on to
+            // (`Selection__DispatchMultiUnitOrder` 0x004AE750, object loop
+            // 0x004AE829..0x004AE85A): the Engineers defuse, and over an enemy the rest go on to
             // their own orders below. Over a friend the rest have nothing to do,
             // and the dispatch happens only when the object that owns the cursor
             // is one of the Engineers; otherwise the click selects.
@@ -815,6 +840,30 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     if friendly || selected_units.is_empty() {
                         return finish_order(state, queued, speaker_id);
                     }
+                }
+            }
+
+            // Object51E3B0 Engineer decisions precede CanDock and C4.
+            // Consume each Engineer's terminal action while retaining the
+            // other selected actors for their own actions below.
+            let mut consumed_engineer_action = false;
+            if context_actions_enabled
+                && let Some(orders) = hover.as_ref().and_then(|target| {
+                    engineer_capture_orders(sim, &resources.rules, &mut selected_units, target)
+                })
+            {
+                consumed_engineer_action = true;
+                queued.extend(
+                    orders
+                        .into_iter()
+                        .map(|command| CommandEnvelope::new(owner_id, execute_tick, command)),
+                );
+                if selected_units.is_empty() {
+                    return if queued.is_empty() {
+                        true
+                    } else {
+                        finish_order(state, queued, speaker_id)
+                    };
                 }
             }
 
@@ -855,8 +904,8 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             }
 
             // C4 plant: SEAL / Tanya / Psi-Corp Trooper clicking a CanC4 enemy
-            // structure. Ordered before the engineer-capture branch so C4 takes
-            // priority for any unit with both flags.
+            // structure. Engineers already resolved their higher-priority
+            // native action; the remaining C4 actors take their own action.
             if context_actions_enabled {
                 let c4_target = hover.as_ref().and_then(|target| {
                     if !matches!(target.kind, HoverTargetKind::EnemyStructure) {
@@ -904,58 +953,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         }
                         // Sabotage has no dedicated voice slot in retail, so
                         // `order_voice_key` routes it to VoiceSpecialAttack.
-                        return finish_order(state, queued, speaker_id);
-                    }
-                }
-            }
-
-            // Engineer capture: engineer clicking a capturable enemy building.
-            if context_actions_enabled {
-                let capture_target = hover.as_ref().and_then(|target| {
-                    if !matches!(target.kind, HoverTargetKind::EnemyStructure) {
-                        return None;
-                    }
-                    let rules = Some(&resources.rules)?;
-                    let building = sim.entities().get(target.stable_id)?;
-                    let btype_str = sim.interner.resolve(building.type_ref());
-                    let bowner_str = sim.interner.resolve(building.owner());
-                    let obj = rules.object(btype_str)?;
-                    if !obj.capturable && !obj.bridge_repair_hut {
-                        return None;
-                    }
-                    // Don't capture neutral garrisonable buildings — those use garrison entry.
-                    if obj.can_be_occupied
-                        && (bowner_str.eq_ignore_ascii_case("neutral")
-                            || bowner_str.eq_ignore_ascii_case("special"))
-                    {
-                        return None;
-                    }
-                    Some(target.stable_id)
-                });
-                if let Some(building_id) = capture_target {
-                    let engineer_ids: Vec<u64> = selected_units
-                        .iter()
-                        .copied()
-                        .filter(|&sid| {
-                            sim.entities().get(sid).is_some_and(|e| {
-                                e.category == EntityCategory::Infantry
-                                    && Some(&resources.rules)
-                                        .and_then(|r| r.object(sim.interner.resolve(e.type_ref())))
-                                        .map_or(false, |o| o.engineer)
-                            })
-                        })
-                        .collect();
-                    if !engineer_ids.is_empty() {
-                        for eng_id in engineer_ids {
-                            queued.push(CommandEnvelope::new(
-                                owner_id,
-                                execute_tick,
-                                Command::CaptureBuilding {
-                                    engineer_id: eng_id,
-                                    target_building_id: building_id,
-                                },
-                            ));
-                        }
                         return finish_order(state, queued, speaker_id);
                     }
                 }
@@ -1079,7 +1076,15 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                 }
             }
             if select_friendly_clicks && clicked_friendly && context_actions_enabled {
-                return false;
+                return if consumed_engineer_action {
+                    if queued.is_empty() {
+                        true
+                    } else {
+                        finish_order(state, queued, speaker_id)
+                    }
+                } else {
+                    false
+                };
             }
 
             // Alt force-move: the object path returns the plain Move action, so
@@ -1375,6 +1380,72 @@ fn self_click_command(
         .then_some(Command::DeployMcv {
             entity_id: target.stable_id,
         })
+}
+
+/// Engineer object actions before event enqueue. No duplicate geometry query.
+/// Some(empty) is a consumed no-order hut click; None allows other actions.
+fn engineer_capture_orders(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    selected: &mut Vec<u64>,
+    hover: &HoverTargetKindWithId,
+) -> Option<Vec<Command>> {
+    if !matches!(
+        hover.kind,
+        HoverTargetKind::FriendlyStructure | HoverTargetKind::EnemyStructure
+    ) {
+        return None;
+    }
+    if matches!(hover.kind, HoverTargetKind::FriendlyStructure)
+        && !cursor_owner(sim, rules, selected, hover.stable_id).is_some_and(|id| {
+            sim.engineer_bridge_hut_action(id, hover.stable_id, rules)
+                .is_some()
+        })
+    {
+        return None;
+    }
+    let building = sim.entities().get(hover.stable_id)?;
+    if building.category != EntityCategory::Structure {
+        return None;
+    }
+    let object = rules.object(sim.interner.resolve(building.type_ref()))?;
+    let owner = sim.interner.resolve(building.owner());
+    let ordinary_capture = matches!(hover.kind, HoverTargetKind::EnemyStructure)
+        && object.capturable
+        && !(object.can_be_occupied
+            && (owner.eq_ignore_ascii_case("neutral") || owner.eq_ignore_ascii_case("special")));
+    let mut consumed = false;
+    let mut orders = Vec::new();
+    selected.retain(|&id| {
+        let Some(actor) = sim.entities().get(id) else {
+            return true;
+        };
+        if actor.category != EntityCategory::Infantry
+            || !rules
+                .object(sim.interner.resolve(actor.type_ref()))
+                .is_some_and(|o| o.engineer)
+        {
+            return true;
+        }
+        let admitted =
+            if let Some(action) = sim.engineer_bridge_hut_action(id, hover.stable_id, rules) {
+                action
+            } else if ordinary_capture {
+                true
+            } else {
+                return true;
+            };
+        consumed = true;
+        // Foot4D7716 calls Infantry+A0/Techno700C40 before enqueue.
+        if admitted && sim.infantry_player_controllable(id, rules) {
+            orders.push(Command::CaptureBuilding {
+                engineer_id: id,
+                target_building_id: hover.stable_id,
+            });
+        }
+        false
+    });
+    consumed.then_some(orders)
 }
 
 /// The selected Engineers whose click on `target` is DisarmBomb
@@ -2238,4 +2309,529 @@ mod tests {
             Command::Attack { .. }
         ));
     }
+    /// Supplies the ordinary object-route prerequisites, through production
+    /// object constructors and the existing terrain/type authorities.
+    fn engineer_hut_click_fixture(
+        relation: &str,
+        collapsed: bool,
+        repairable: bool,
+        capturable: bool,
+        extra_hut_flags: &str,
+        extra_actor_flags: &str,
+    ) -> (
+        Simulation,
+        crate::rules::ruleset::RuleSet,
+        u64,
+        HoverTargetKindWithId,
+    ) {
+        let rules = crate::rules::ruleset::RuleSet::from_ini(
+            &crate::rules::ini_parser::IniFile::from_str(&format!(
+                "[InfantryTypes]\n0=ENGINEER\n[VehicleTypes]\n0=TRUCK\n[BuildingTypes]\n0=CABHUT\n\
+                 [TRUCK]\nStrength=100\nSpeed=4\n\
+                 [ENGINEER]\nStrength=75\nEngineer=yes\n{}\n\
+                 [CABHUT]\nStrength=200\nFoundation=1x1\nBridgeRepairHut=yes\nRepairable={}\nCapturable={}\n{}\n",
+                extra_actor_flags,
+                if repairable { "yes" } else { "no" },
+                if capturable { "yes" } else { "no" },
+                extra_hut_flags,
+            )),
+        ).unwrap();
+        let mut sim = Simulation::with_seed(0x587410);
+        sim.resolve_type_handles(&rules);
+        sim.session.game_mode_nonzero = true;
+        sim.session.current_house = Some(sim.interner.intern("Americans"));
+        let mut terrain = crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| {
+            crate::map::resolved_terrain::ResolvedTerrainCell {
+                speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+                base_speed_costs: crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS,
+                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
+            }
+        });
+        terrain.test_set_high_bridge_set_starts(Some(100), Some(200));
+        for y in 9..=11 {
+            terrain.cell_mut(12, y).unwrap().bridge_facts.overlay_id =
+                Some(if collapsed { 0xE7 } else { 0xD4 });
+        }
+        sim.install_resolved_terrain_for_new_map(terrain);
+        sim.bridge_state = Some(crate::sim::bridge_state::BridgeRuntimeState::default());
+        let owner = if relation == "self" {
+            "Americans"
+        } else {
+            "Soviets"
+        };
+        let engineer = sim
+            .spawn_object("ENGINEER", "Americans", 8, 10, 0, &rules)
+            .unwrap();
+        let hut = sim
+            .spawn_object("CABHUT", owner, 10, 10, 0, &rules)
+            .unwrap();
+        sim.entities_mut().get_mut(hut).unwrap().health.current = 150;
+        if relation == "allied" {
+            sim.house_alliances
+                .entry("AMERICANS".into())
+                .or_default()
+                .insert("SOVIETS".into());
+        }
+        let kind = if relation == "hostile" {
+            HoverTargetKind::EnemyStructure
+        } else {
+            HoverTargetKind::FriendlyStructure
+        };
+        (
+            sim,
+            rules,
+            engineer,
+            HoverTargetKindWithId {
+                kind,
+                stable_id: hut,
+            },
+        )
+    }
+
+    /// Original object-click51F190 maps action29 to Capture with Destination
+    /// hut; action32 consumes the click without queueing. Owner friendship is
+    /// absent from the admitted hut arm, including damaged/capturable traps.
+    #[test]
+    fn engineer_hut_context_orders_match_native_terminal_action_decisions() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/engineer_bridge_cursor_caller.json"
+        ))
+        .unwrap();
+        for relation in ["hostile", "allied", "self"] {
+            for collapsed in [false, true] {
+                let (sim, rules, engineer, hover) =
+                    engineer_hut_click_fixture(relation, collapsed, true, true, "", "");
+                let before = sim.state_hash();
+                let actor = serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap();
+                let rng = (
+                    sim.scenario_rng.logical_state(),
+                    sim.main_rng.logical_state(),
+                    sim.mapgen_rng.logical_state(),
+                );
+                let commands = engineer_capture_orders(&sim, &rules, &mut vec![engineer], &hover)
+                    .expect("an admitted hut arm always consumes the click, including false query");
+                let row = native["object_clicks"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|row| {
+                        row["input"]["name"]
+                            == format!("{relation}_{}", if collapsed { "True" } else { "False" })
+                            && row["input"]["emp_blocked"] == false
+                    })
+                    .unwrap();
+                assert_eq!(
+                    commands.len() as u64,
+                    row["output"]["queue_calls"].as_u64().unwrap()
+                );
+                let expected = if collapsed {
+                    vec![Command::CaptureBuilding {
+                        engineer_id: engineer,
+                        target_building_id: hover.stable_id,
+                    }]
+                } else {
+                    vec![]
+                };
+                assert_eq!(
+                    commands, expected,
+                    "relation={relation} collapsed={collapsed}"
+                );
+                assert_eq!(
+                    sim.state_hash(),
+                    before,
+                    "input producer must not mutate gameplay"
+                );
+                assert_eq!(
+                    serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap(),
+                    actor
+                );
+                assert_eq!(
+                    (
+                        sim.scenario_rng.logical_state(),
+                        sim.main_rng.logical_state(),
+                        sim.mapgen_rng.logical_state()
+                    ),
+                    rng
+                );
+            }
+        }
+    }
+
+    /// The native object route checks Repairable before entering the hut
+    /// branch. Native repairable_false establishes exclusion/query_calls=0;
+    /// its later ordinary WhatAction continuation is outside those goldens.
+    #[test]
+    fn nonrepairable_noncapturable_hut_does_not_produce_hut_capture_order() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/engineer_bridge_cursor_caller.json"
+        ))
+        .unwrap();
+        let row = native["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| {
+                row["input"]["route"] == "object" && row["input"]["name"] == "repairable_false"
+            })
+            .unwrap();
+        assert_eq!(row["output"]["query_calls"], 0);
+        for relation in ["hostile", "allied", "self"] {
+            let (sim, rules, engineer, hover) =
+                engineer_hut_click_fixture(relation, true, false, false, "", "");
+            let before = sim.state_hash();
+            let actor = serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap();
+            let rng = (
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            );
+            assert_eq!(
+                sim.engineer_bridge_hut_action(engineer, hover.stable_id, &rules),
+                None
+            );
+            assert_eq!(
+                engineer_capture_orders(&sim, &rules, &mut vec![engineer], &hover),
+                None
+            );
+            assert_eq!(sim.state_hash(), before);
+            assert_eq!(
+                serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap(),
+                actor
+            );
+            assert_eq!(
+                (
+                    sim.scenario_rng.logical_state(),
+                    sim.main_rng.logical_state(),
+                    sim.mapgen_rng.logical_state()
+                ),
+                rng
+            );
+        }
+    }
+    /// Executed local_false and undeploy_True_foundation_0 object rows stop
+    /// before the hut query. Both assertions are hut-arm exclusion, without
+    /// claiming the later ordinary WhatAction continuation's final action.
+    #[test]
+    fn engineer_hut_object_prerequisites_exclude_nonlocal_and_undeploy_targets() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/engineer_bridge_cursor_caller.json"
+        ))
+        .unwrap();
+        for gate in ["nonlocal", "undeploy"] {
+            let flags = if gate == "undeploy" {
+                "UndeploysInto=TRUCK"
+            } else {
+                ""
+            };
+            let (mut sim, rules, engineer, hover) =
+                engineer_hut_click_fixture("hostile", true, true, false, flags, "");
+            if gate == "nonlocal" {
+                sim.session.current_house = Some(sim.interner.intern("Soviets"));
+            } else {
+                assert!(rules.object("CABHUT").unwrap().is_1x1_with_undeploy());
+            }
+            if gate == "nonlocal" {
+                let row = native["actions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|row| {
+                        row["input"]["route"] == "object" && row["input"]["name"] == "local_false"
+                    })
+                    .unwrap();
+                assert_eq!(row["output"]["query_calls"], 0);
+            }
+            if gate == "undeploy" {
+                let row = native["undeploy_controls"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|row| {
+                        row["input"]["route"] == "object"
+                            && row["input"]["name"] == "undeploy_True_foundation_0"
+                    })
+                    .unwrap();
+                assert_eq!(row["output"]["query_calls"], 0);
+            }
+            let before = sim.state_hash();
+            let actor = serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap();
+            let rng = (
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            );
+            assert_eq!(
+                sim.engineer_bridge_hut_action(engineer, hover.stable_id, &rules),
+                None,
+                "gate={gate}"
+            );
+            assert_eq!(
+                engineer_capture_orders(&sim, &rules, &mut vec![engineer], &hover),
+                None,
+                "gate={gate}"
+            );
+            assert_eq!(sim.state_hash(), before);
+            assert_eq!(
+                serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap(),
+                actor
+            );
+            assert_eq!(
+                (
+                    sim.scenario_rng.logical_state(),
+                    sim.main_rng.logical_state(),
+                    sim.mapgen_rng.logical_state()
+                ),
+                rng
+            );
+        }
+    }
+    /// Original700C40 and its object-click caller are independently executed
+    /// in each paired golden group. These adapters supply represented owner
+    /// state; they do not assert that retail constructs missile-spawn Engineers
+    /// or imports arbitrary native EMP/Robot latch bytes.
+    #[test]
+    fn represented_infantry_controllability_gates_match_native_hut_clicks() {
+        use crate::sim::spawn_manager::{
+            SpawnManagerMode, SpawnManagerState, SpawnSlot, SpawnSlotState,
+        };
+        use crate::sim::timer::CdTimer;
+        let packet: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/engineer_bridge_cursor_caller.json"
+        ))
+        .unwrap();
+        let mut compared = 0;
+        let mut unrepresented = Vec::new();
+        for row in packet["controllability_controls"].as_array().unwrap() {
+            let input = &row["native"]["input"];
+            let name = input["name"].as_str().unwrap();
+            if matches!(
+                name,
+                "robot_native_save_control" | "emp_native_save_positive" | "emp_negative"
+            ) {
+                unrepresented.push(name);
+                continue;
+            }
+            let gates = &input["gates"];
+            let spawned = gates["spawned"].as_bool().unwrap_or(false);
+            let capacity = gates["spawns_number"].as_i64().unwrap_or(1);
+            let missile_child = gates["spawn_slots"]
+                .as_array()
+                .is_some_and(|slots| slots.iter().any(|slot| slot["missile_spawn"] == true));
+            let actor_flags = format!(
+                "Spawned={}\nSpawnsNumber={capacity}\nMissileSpawn={}\n",
+                if spawned { "yes" } else { "no" },
+                if missile_child { "yes" } else { "no" }
+            );
+            let (mut sim, rules, engineer, hover) =
+                engineer_hut_click_fixture("hostile", true, true, false, "", &actor_flags);
+            sim.session.binary_frame = gates["frame"].as_u64().unwrap_or(0) as u32;
+            if gates["bunker"] == true {
+                // Typed existing owner state: positive native pointer control,
+                // not an assertion of ordinary Infantry bunker installation.
+                sim.entities_mut().get_mut(engineer).unwrap().bunker_link =
+                    crate::sim::game_entity::BunkerLink::Installed(hover.stable_id);
+            }
+            if gates["paralysis_start"].is_number() {
+                sim.entities_mut()
+                    .get_mut(engineer)
+                    .unwrap()
+                    .paralysis_timer = CdTimer::from_raw(
+                    gates["paralysis_start"].as_i64().unwrap() as i32,
+                    gates["paralysis_duration"].as_i64().unwrap() as i32,
+                );
+            }
+            if gates["warp_out"] == true {
+                sim.entities_mut().get_mut(engineer).unwrap().temporal =
+                    crate::sim::temporal::TemporalState::warped_by_for_test(hover.stable_id);
+            }
+            if gates["warp_in"] == true {
+                sim.entities_mut().get_mut(engineer).unwrap().teleport_state =
+                    Some(crate::sim::movement::teleport_movement::TeleportState {
+                        phase: crate::sim::movement::teleport_movement::TeleportPhase::ChronoDelay,
+                        target_rx: 8,
+                        target_ry: 10,
+                        being_warped_ticks: 1,
+                    });
+            }
+            if gates["slave_owner"] == true {
+                sim.entities_mut().get_mut(engineer).unwrap().slave =
+                    crate::sim::slave_manager::SlaveLink::for_test(Some(hover.stable_id), vec![]);
+            }
+            if let Some(native_slots) = gates["spawn_slots"].as_array() {
+                let mut slots = Vec::new();
+                for (index, native_slot) in native_slots.iter().enumerate() {
+                    let child = if native_slot["state"] == 2 && native_slot["child"] != false {
+                        let child = sim
+                            .spawn_object("ENGINEER", "Americans", 5 + index as u16, 12, 0, &rules)
+                            .unwrap();
+                        sim.entities_mut()
+                            .get_mut(child)
+                            .unwrap()
+                            .lifecycle
+                            .in_limbo = native_slot["limbo"] == true;
+                        Some(child)
+                    } else {
+                        None
+                    };
+                    slots.push(SpawnSlot {
+                        spawn: child,
+                        state: match native_slot["state"].as_i64().unwrap() {
+                            0 => SpawnSlotState::ReadyDocked,
+                            1 => SpawnSlotState::KamikazeWait,
+                            2 => SpawnSlotState::InFlight,
+                            other => panic!("unrepresented native slot state {other}"),
+                        },
+                        timer: CdTimer::default(),
+                        is_missile_spawn: false,
+                    });
+                }
+                let spawn_type = sim.interner.intern("ENGINEER");
+                sim.entities_mut().get_mut(engineer).unwrap().spawn_manager =
+                    Some(SpawnManagerState {
+                        spawn_type,
+                        missile_family: None,
+                        regen_rate: 0,
+                        reload_rate: 0,
+                        kamikaze_wait_frames: 0,
+                        slots,
+                        update_timer: CdTimer::default(),
+                        reload_timer: CdTimer::default(),
+                        current_target: None,
+                        queued_target: None,
+                        mode: SpawnManagerMode::Idle,
+                    });
+            }
+            let before = sim.state_hash();
+            let actor = serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap();
+            let rng = (
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            );
+            assert_eq!(
+                sim.infantry_player_controllable(engineer, &rules),
+                row["native"]["output"]["returned_al"] == 1,
+                "{name}"
+            );
+            assert_eq!(
+                sim.engineer_bridge_hut_action(engineer, hover.stable_id, &rules),
+                Some(true),
+                "control admission must not change WhatAction: {name}"
+            );
+            let mut selected = vec![engineer];
+            let commands = engineer_capture_orders(&sim, &rules, &mut selected, &hover)
+                .expect("hut arm consumes blocked and allowed clicks");
+            assert_eq!(
+                commands.len() as u64,
+                row["object_click"]["output"]["queue_calls"]
+                    .as_u64()
+                    .unwrap(),
+                "{name}"
+            );
+            assert!(
+                selected.is_empty(),
+                "handled Engineer must not reach a later input branch: {name}"
+            );
+            if !commands.is_empty() {
+                assert_eq!(
+                    commands,
+                    [Command::CaptureBuilding {
+                        engineer_id: engineer,
+                        target_building_id: hover.stable_id
+                    }],
+                    "{name}"
+                );
+            }
+            assert_eq!(sim.state_hash(), before, "{name}");
+            assert_eq!(
+                serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap(),
+                actor,
+                "{name}"
+            );
+            assert_eq!(
+                (
+                    sim.scenario_rng.logical_state(),
+                    sim.main_rng.logical_state(),
+                    sim.mapgen_rng.logical_state()
+                ),
+                rng,
+                "{name}"
+            );
+            compared += 1;
+        }
+        assert_eq!(compared, 21);
+        assert_eq!(
+            unrepresented,
+            [
+                "robot_native_save_control",
+                "emp_native_save_positive",
+                "emp_negative"
+            ]
+        );
+    }
+
+    /// A hut's terminal action consumes each handled Engineer, while other
+    /// selected actors continue through their own original action routes.
+    #[test]
+    fn engineer_hut_context_keeps_unhandled_actors_in_selection_order() {
+        for collapsed in [false, true] {
+            let (mut sim, rules, engineer, hover) =
+                engineer_hut_click_fixture("hostile", collapsed, true, true, "", "C4=yes");
+            // Unit Unlimbo requires configured playfield bounds; the hut
+            // action fixture otherwise only constructs Infantry/Buildings.
+            sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
+                base: 0,
+                off_fc: -100,
+                off_100: -100,
+                off_104: 200,
+                off_108: 200,
+            });
+            let first = sim
+                .spawn_object("TRUCK", "Americans", 4, 10, 0, &rules)
+                .unwrap();
+            let last = sim
+                .spawn_object("TRUCK", "Americans", 6, 10, 0, &rules)
+                .unwrap();
+            let second_engineer = sim
+                .spawn_object("ENGINEER", "Americans", 7, 10, 0, &rules)
+                .unwrap();
+            let mut selected = vec![first, engineer, last, second_engineer];
+            let before = sim.state_hash();
+            let commands = engineer_capture_orders(&sim, &rules, &mut selected, &hover).unwrap();
+            assert_eq!(selected, [first, last]);
+            let expected = if collapsed {
+                vec![
+                    Command::CaptureBuilding {
+                        engineer_id: engineer,
+                        target_building_id: hover.stable_id,
+                    },
+                    Command::CaptureBuilding {
+                        engineer_id: second_engineer,
+                        target_building_id: hover.stable_id,
+                    },
+                ]
+            } else {
+                vec![]
+            };
+            assert_eq!(commands, expected);
+            assert_eq!(sim.state_hash(), before);
+            let before_selected = selected.clone();
+            assert_eq!(
+                engineer_capture_orders(&sim, &rules, &mut selected, &hover),
+                None
+            );
+            assert_eq!(
+                selected, before_selected,
+                "non-Engineers retain their next action route"
+            );
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "context_order_selection_tests.rs"]
+mod selection_dispatch_tests;
+
+#[cfg(test)]
+#[path = "context_order_retail_bridge_tests.rs"]
+mod retail_bridge_tests;

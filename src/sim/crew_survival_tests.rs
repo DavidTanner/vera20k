@@ -110,18 +110,15 @@ Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
 Strength=750
 Cost=800
 Crewed=yes
-Foundation=2x2
 [GACNST]
 Strength=1000
 Cost=3000
 Crewed=yes
-Foundation=3x3
 Factory=BuildingType
 [YAPOWR]
 Strength=750
 Cost=600
 Crewed=yes
-Foundation=2x2
 InfantryAbsorb=yes
 Passengers=5
 [GAREFN]
@@ -129,22 +126,24 @@ Strength=900
 Cost=2000
 Soylent=300
 Crewed=yes
-Foundation=4x3
 [GASAND]
 Strength=100
 Cost=100
-Foundation=1x1
 [REDLAMP]
 Strength=100
 Cost=0
 Crewed=yes
-Foundation=1x1
 [KILLWH]
 Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
 ";
 
+const ART: &str = "[GAPOWR]\nFoundation=2x2\n[GACNST]\nFoundation=3x3\n\
+    [YAPOWR]\nFoundation=2x2\n[GAREFN]\nFoundation=4x3\n\
+    [GASAND]\nFoundation=1x1\n[REDLAMP]\nFoundation=1x1\n";
+
 fn rules() -> RuleSet {
-    RuleSet::from_ini(&IniFile::from_str(RULES)).expect("crew survival rules")
+    RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(RULES), &IniFile::from_str(ART))
+        .expect("crew survival rules")
 }
 
 /// Allied, Soviet and Yuri houses, computer and human, plus a Neutral one.
@@ -1094,7 +1093,7 @@ fn retail_rules_crew_the_power_plant_and_the_mcv() {
     else {
         return;
     };
-    let mut rules = RuleSet::from_ini(&rules_ini).unwrap();
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let general = &rules.general;
     assert_eq!(

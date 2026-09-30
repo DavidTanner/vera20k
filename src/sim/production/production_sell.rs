@@ -1069,7 +1069,9 @@ mod tests {
              CanOccupyFire=yes\n\
              MaxNumberOccupants=5\n",
         ));
-        RuleSet::from_ini(&ini).expect("garrison edge rules should parse")
+        let art = IniFile::from_str(&format!("[{type_id}]\nFoundation=2x2\n"));
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+            .expect("garrison edge rules and ART should parse")
     }
 
     fn insert_hidden_passenger_with_subcell(

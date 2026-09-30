@@ -122,7 +122,7 @@ mod tests {
              [E1]\nImage=GI\nStrength=125\nArmor=none\nSpeed=4\nDieSound=GIDie\n\
              [TERROR]\nImage=TRST\nStrength=75\nArmor=flak\nSpeed=6\nExplodes=yes\nDeathWeapon=TerrorBomb\n\
              [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\n\
-             [BUNK]\nStrength=1000\nFoundation=1x1\nDieSound=BuildingDie\n\
+             [BUNK]\nStrength=1000\nDieSound=BuildingDie\n\
              [TerrorBomb]\nDamage=225\nWarhead=TerrorBombWH\nSuicide=yes\n\
              [Warheads]\n0=Super\n1=TerrorBombWH\n\
              [Super]\nInfDeath=2\nPenetratesBunker=yes\n\
@@ -315,14 +315,17 @@ mod tests {
     fn bridge_ground_forced_super_damages_an_occupied_tank_bunker() {
         // Stock Super has PenetratesBunker=yes. Without the ignoreDefenses
         // bypass, the linked Building arm incorrectly nullifies its damage.
-        let rules = RuleSet::from_ini(&IniFile::from_str(
-            "[InfantryTypes]\n[VehicleTypes]\n0=TANK\n[AircraftTypes]\n\
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[InfantryTypes]\n[VehicleTypes]\n0=TANK\n[AircraftTypes]\n\
              [BuildingTypes]\n0=NATBNK\n[TANK]\nStrength=100\nSpeed=4\n\
-             [NATBNK]\nStrength=1000\nFoundation=2x2\nTankBunker=yes\n\
+             [NATBNK]\nStrength=1000\nTankBunker=yes\n\
              [CombatDamage]\nC4Warhead=Super\n[Warheads]\n0=Super\n\
              [Super]\nInfDeath=2\nPenetratesBunker=yes\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        ))
+            ),
+            &IniFile::from_str("[NATBNK]\nFoundation=2x2\n"),
+        )
         .unwrap();
         let mut sim = world(&rules);
         let bunker = place(&mut sim, &rules, "NATBNK", 3);
@@ -433,13 +436,16 @@ mod tests {
 
     #[test]
     fn bridge_ground_uses_membership_order_and_nonanchor_building_foundation() {
-        let rules = RuleSet::from_ini(&IniFile::from_str(
-            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n\
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n\
              [BuildingTypes]\n0=BIG\n[E1]\nStrength=100\nSpeed=4\n\
-             [BIG]\nStrength=1000\nFoundation=2x1\n\
+             [BIG]\nStrength=1000\n\
              [CombatDamage]\nC4Warhead=KILL\n[Warheads]\n0=KILL\n\
              [KILL]\nInfDeath=3\nVerses=0%,0%,0%,0%,0%,0%,0%,0%,0%,0%,0%\n",
-        ))
+            ),
+            &IniFile::from_str("[BIG]\nFoundation=2x1\n"),
+        )
         .unwrap();
         let mut sim = Simulation::with_seed(31);
         sim.intern_rule_type_ids(&rules);

@@ -1679,9 +1679,13 @@ mod tests {
         let ini = IniFile::from_str(
             "[VehicleTypes]\n0=HARV\n[BuildingTypes]\n0=GAREFN\n\
              [HARV]\nName=Harvester\nSpeed=4\n\
-             [GAREFN]\nName=Refinery\nFoundation=4x3\nBib=yes\nNumberImpassableRows=3\n",
+             [GAREFN]\nName=Refinery\nBib=yes\nNumberImpassableRows=3\n",
         );
-        let rules = RuleSet::from_ini(&ini).expect("refinery rules");
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str("[GAREFN]\nFoundation=4x3\n"),
+        )
+        .expect("refinery rules");
         let mut entities = EntityStore::new();
         let mut mover = GameEntity::test_default(1, "HARV", "Americans", 14, 11);
         mover.category = EntityCategory::Unit;
@@ -1709,9 +1713,13 @@ mod tests {
         let ini = IniFile::from_str(
             "[VehicleTypes]\n0=HARV\n[BuildingTypes]\n0=GAREFN\n\
              [HARV]\nName=Harvester\nSpeed=4\n\
-             [GAREFN]\nName=Refinery\nFoundation=4x3\nBib=no\nNumberImpassableRows=3\n",
+             [GAREFN]\nName=Refinery\nBib=no\nNumberImpassableRows=3\n",
         );
-        let rules = RuleSet::from_ini(&ini).expect("refinery rules");
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str("[GAREFN]\nFoundation=4x3\n"),
+        )
+        .expect("refinery rules");
         let mut entities = EntityStore::new();
         let mut mover = GameEntity::test_default(1, "HARV", "Americans", 14, 11);
         mover.category = EntityCategory::Unit;
@@ -1740,9 +1748,13 @@ mod tests {
         let ini = IniFile::from_str(
             "[VehicleTypes]\n0=MTNK\n[BuildingTypes]\n0=GAGATE_A\n\
              [MTNK]\nName=Tank\nSpeed=4\n\
-             [GAGATE_A]\nName=Allied Gate\nFoundation=3x1\nGate=yes\n",
+             [GAGATE_A]\nName=Allied Gate\nGate=yes\n",
         );
-        let rules = RuleSet::from_ini(&ini).expect("gate rules");
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str("[GAGATE_A]\nFoundation=3x1\n"),
+        )
+        .expect("gate rules");
 
         let mut entities = EntityStore::new();
         let mut mover = GameEntity::test_default(1, "MTNK", "Americans", 8, 10);
@@ -1792,9 +1804,13 @@ mod tests {
         let ini = IniFile::from_str(
             "[InfantryTypes]\n0=E1\n[BuildingTypes]\n0=GAGATE_A\n\
              [E1]\nName=GI\nSpeed=4\n\
-             [GAGATE_A]\nName=Allied Gate\nFoundation=3x1\nGate=yes\nNumberImpassableRows=0\n",
+             [GAGATE_A]\nName=Allied Gate\nGate=yes\nNumberImpassableRows=0\n",
         );
-        let rules = RuleSet::from_ini(&ini).expect("gate rules");
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str("[GAGATE_A]\nFoundation=3x1\n"),
+        )
+        .expect("gate rules");
         let mut entities = EntityStore::new();
         let mut mover = GameEntity::test_default(1, "E1", "Americans", 8, 10);
         mover.category = EntityCategory::Infantry;
@@ -1826,9 +1842,13 @@ mod tests {
         let ini = IniFile::from_str(
             "[VehicleTypes]\n0=TANK\n[BuildingTypes]\n0=NATBNK\n\
              [TANK]\nName=Tank\nSpeed=6\n\
-             [NATBNK]\nName=Tank Bunker\nFoundation=1x1\nBunker=yes\nNumberImpassableRows=0\n",
+             [NATBNK]\nName=Tank Bunker\nBunker=yes\nNumberImpassableRows=0\n",
         );
-        let rules = RuleSet::from_ini(&ini).expect("bunker rules");
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str("[NATBNK]\nFoundation=1x1\n"),
+        )
+        .expect("bunker rules");
         let mut entities = EntityStore::new();
         let mut mover = GameEntity::test_default(1, "TANK", "Americans", 14, 11);
         mover.category = EntityCategory::Unit;

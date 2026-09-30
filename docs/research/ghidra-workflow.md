@@ -68,7 +68,7 @@ was checked:
   an older method name only disagrees with the slot, the name was kept and the plate
   records the slot's method; most of these are synonyms. Seven older names that YRpp
   gives to another slot of the same class were checked against their bodies and
-  corrected (for example `UnitClass__DrawExtras` 0x73CEC0 is `UnitClass__Draw`).
+  corrected (for example `UnitClass__DrawExtras` 0x73CEC0, now `UnitClass__DrawIt`).
 - `[2026-09-30 YRpp names]`: a non-virtual function or global named from a YRpp
   address binding. The plate states whether the body's `RET` matches YRpp's declared
   arguments. The name stays a lead. A global that already had its own name kept it;
@@ -77,6 +77,27 @@ was checked:
   bindings whose YRpp name is itself a placeholder (`func_3C`, `sub_53E3C0`). Some YRpp
   addresses are wrong: a few land in the middle of an instruction, and some are a few
   bytes off. The plates of the functions involved say which.
+
+  These passes read an Ares-era YRpp copy (29d74e92). A refresh against the pinned
+  Phobos fork (`reference/YRpp` at 8468aab5), whose paragraphs cite it, named 597
+  more functions at fork-bound addresses, 43 `vt_entry` slots and 4 owner-draw window
+  procedures, and labelled 185 globals. Every name passed the `RET` check;
+  constructors and destructors of classes with RTTI vtables also had to store their
+  class's vtable. Of a random sample of 40 names and 10 labels judged from their
+  bodies, 48 matched, one was contradicted (not applied) and one could not be told.
+  Where the fork binds another name at an address named from the older copy, the
+  name stayed and the plate records the fork's binding. The fork renames 20 slot
+  names taken from the older order (slot +0x114 is `DrawIt`, +0x42C
+  `GetAttackCoordinates`, +0x2A8 `TurretFacing`), and they were renamed. Slot +0x104
+  is `DrawIfVisible`: it tests visibility and then calls +0x114, so
+  `ObjectClass__DrawIt` 0x5F4B10 and two overrides named after the wrong slot were
+  corrected.
+- Trigger actions: `TriggerAction__Execute` 0x6DD8B0 (the fork's
+  `TActionClass::Execute`) switches on the action kind. Of the 131 handlers the fork
+  binds, it calls 47 from the case its enum names. The other 84 have no call, jump or
+  pointer anywhere in the image, so the game never runs them; the fork notes that
+  Execute inlines most handlers. Port an action from its Execute case; the handler's
+  plate says whether the game runs it.
 - `[2026-09-30 destructor audit]`: a destructor an older pass had named
   `__Constructor`, with the byte evidence.
 - `[2026-09-30 duplicate names]`: a name several functions shared, or a
@@ -110,10 +131,11 @@ was checked:
 Destructor and COM-interface method names rest on the bytes. For the 2,356 method
 names taken from YRpp's declaration order, each body's `ret N` was compared with
 YRpp's declared parameters: none showed a shifted slot, and a one-slot shift would
-have changed the popped bytes for about 60% of them. Two `GetSomeCellStruct` bodies
-take a pointer argument YRpp does not declare. A random sample of 40 names from YRpp
-order, YRpp address bindings and older overrides all matched their bodies; 10 were
-trivial bodies judged through other overrides of the slot.
+have changed the popped bytes for about 60% of them. The two bodies of slot +0x2F4
+(`GetLastFlightMapCoords`, formerly `GetSomeCellStruct`) pop a pointer: the hidden
+return buffer of the CellStruct the fork declares they return. A random sample of 40
+names from YRpp order, YRpp address bindings and older overrides all matched their
+bodies; 10 were trivial bodies judged through other overrides of the slot.
 
 A name without a dated paragraph predates these passes; judge it by its own plate or
 re-derive it. The scripts, plans and results of the 2026-09-30 passes are in the

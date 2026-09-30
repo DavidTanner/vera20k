@@ -83,20 +83,16 @@ Gunner=yes
 [GAPOWR]
 Strength=750
 Cost=900
-Foundation=2x2
 Power=100
 [GACNST]
 Strength=1000
-Foundation=4x4
 Power=-50
 [GAWEAP]
 Strength=1000
-Foundation=3x3
 WeaponsFactory=yes
 Factory=UnitType
 [YAPOWR]
 Strength=1000
-Foundation=3x3
 Power=150
 InfantryAbsorb=yes
 Passengers=5
@@ -150,6 +146,14 @@ Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
 ";
 
 const ART: &str = "\
+[GAPOWR]
+Foundation=2x2
+[GACNST]
+Foundation=4x4
+[GAWEAP]
+Foundation=3x3
+[YAPOWR]
+Foundation=3x3
 [WARPAWAY]
 Rate=300
 [CHRONOSK]
@@ -160,13 +164,17 @@ LoopCount=1
 ";
 
 fn rules() -> RuleSet {
-    rules_from(RULES)
+    rules_from(RULES, ART)
 }
 
 /// The fixture's rules over an edited copy of [`RULES`].
-fn rules_from(text: &str) -> RuleSet {
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(text)).expect("temporal rules");
-    let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(ART));
+fn rules_from(text: &str, art_text: &str) -> RuleSet {
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(text),
+        &IniFile::from_str(art_text),
+    )
+    .expect("temporal rules");
+    let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(art_text));
     art.bind_anim_frame_count_for_test("WARPAWAY", 20);
     art.bind_anim_frame_count_for_test("CHRONOSK", 3);
     rules.replace_art_registry_for_test(art);
@@ -659,10 +667,13 @@ fn native_open_topped_boundary_is_distance_3d() {
 /// victim's House (`0x00702D61`), which also prices the kill's score.
 #[test]
 fn erase_awards_price_each_cost_by_its_house() {
-    let rules = rules_from(&format!(
-        "{RULES}[Countries]\n0=Americans\n1=Russians\n\
+    let rules = rules_from(
+        &format!(
+            "{RULES}[Countries]\n0=Americans\n1=Russians\n\
          [Americans]\nCostUnitsMult=.5\n[Russians]\nCostInfantryMult=.5\n"
-    ));
+        ),
+        ART,
+    );
     let mut sim = sim(9);
     for house in sim.houses.values_mut() {
         house.project_country_cost_mults(&rules, &sim.interner);
@@ -1564,7 +1575,7 @@ fn native_initiate_warp_corpus() {
             keys.push_str("Harvester=yes\n");
         }
         if flag("precheck") {
-            keys.push_str("UndeploysInto=HTNK\nFoundation=1x1\n");
+            keys.push_str("UndeploysInto=HTNK\n");
         }
         if flag("gattling") {
             keys.push_str("IsGattling=yes\nRateDown=50\n");
@@ -1572,7 +1583,12 @@ fn native_initiate_warp_corpus() {
         let mut text = RULES.to_string();
         let at = text.find(section).unwrap() + section.len();
         text.insert_str(at, &keys);
-        let rules = rules_from(&text);
+        let art_text = if flag("precheck") && rtti == 6 {
+            ART.replace("[GAPOWR]\nFoundation=2x2", "[GAPOWR]\nFoundation=1x1")
+        } else {
+            ART.to_owned()
+        };
+        let rules = rules_from(&text, &art_text);
 
         let mut sim = sim(27);
         let owner = if flag("local") {

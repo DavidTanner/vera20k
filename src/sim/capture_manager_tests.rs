@@ -76,12 +76,10 @@ Strength=400
 Speed=4
 [YAPSYT]
 Strength=1000
-Foundation=2x2
 Primary=MultipleMindControlTower
 ImmuneToPsionics=yes
 [GAPOWR]
 Strength=750
-Foundation=2x2
 ImmuneToPsionics=no
 [AMCV]
 Strength=1000
@@ -89,13 +87,11 @@ Speed=4
 DeploysInto=GACNST
 [GACNST]
 Strength=1000
-Foundation=4x4
 ConstructionYard=yes
 UndeploysInto=AMCV
 ImmuneToPsionics=no
 [BIOR]
 Strength=900
-Foundation=2x2
 Passengers=5
 [TRNS]
 Strength=300
@@ -136,6 +132,12 @@ Buildable=yes
 ";
 
 const ART: &str = "\
+[YAPSYT]
+Foundation=2x2
+[GACNST]
+Foundation=4x4
+[BIOR]
+Foundation=2x2
 [MINDANIM]
 LoopCount=-1
 Rate=300
@@ -149,7 +151,11 @@ fn rules() -> RuleSet {
 }
 
 fn rules_from(text: &str) -> RuleSet {
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(text)).expect("mind control rules");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(text),
+        &IniFile::from_str(ART),
+    )
+    .expect("mind control rules");
     let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(ART));
     art.bind_anim_frame_count_for_test("MINDANIM", 8);
     rules.replace_art_registry_for_test(art);

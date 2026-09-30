@@ -1,0 +1,56 @@
+{
+  "program_info": {
+    "name": "gamemd.exe",
+    "path": "/gamemd.exe",
+    "executable_path": "/C:/Users/enok/Documents/Command and Conquer Red Alert II/gamemd.exe",
+    "executable_format": "Portable Executable (PE)",
+    "language": "x86:LE:32:default",
+    "compiler": "windows",
+    "address_size": 32,
+    "image_base": "00400000",
+    "min_address": "00400000",
+    "max_address": "ffdfffff",
+    "memory_size": 8408036,
+    "function_count": 20254,
+    "symbol_count": 51648,
+    "data_type_count": 1047,
+    "creation_date": "Sun Mar 15 13:09:46 CET 2026",
+    "memory_block_count": 6,
+    "address_spaces": [
+      {
+        "name": "ram",
+        "start": "00000000",
+        "end": "ffffffff",
+        "size": 4294967296,
+        "addressable_unit_size": 1,
+        "size_bytes": 4294967296,
+        "address_size_bits": 32,
+        "is_default": true,
+        "is_overlay": false
+      }
+    ],
+    "has_multiple_address_spaces": false,
+    "has_overlay_spaces": false,
+    "overlay_space_count": 0
+  },
+  "native_evidence": "engineer_bridge_cursor_caller.json",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "binary_identity_limit": "Executable SHA comes from the original native harness; Ghidra program-info does not expose or independently verify a binary SHA.",
+  "save_result": {
+    "success": true,
+    "program": "gamemd.exe",
+    "message": "Program saved successfully"
+  },
+  "plate_readback": [
+    {
+      "address": "00474da0",
+      "function_name": "CCINIClass__ReadFoundation",
+      "comment": "[2026-09-30 VERA backfill] Cited by VERA (99fdc110): src/map/rmg/tech_catalog.rs. Role per VERA src/map/rmg/tech_catalog.rs: art Foundation= read.\n\n[2026-09-30 Engineer/hut prerequisite execution] Original474DA0 reads a char[32] through528A10, then scans22 original names at81B9D8 with ASCII case-insensitive comparison. Missing uses the supplied current index's name; a present unmatched or empty value returns0 (474DEF), not the current index. Section/key lookup is exact-case. Native NBSP-surrounded2x2 returns0; no Unicode trim. Saved80 Foundation controls in tools/spatial_oracle/engineer_bridge_cursor_caller.json, original exe SHA2561cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c. Supplied INI caches and interior caller frame; full physical loader, rules source-selection and persistence excluded."
+    },
+    {
+      "address": "0045fe50",
+      "function_name": "BuildingTypeClass__ReadINI",
+      "comment": "BuildingTypeClass::ReadINI -- parses one building's [section] into the type object.\nVerified 2026-08-05, writer pass (Foundation= handling only; the rest of this large body\nwas not audited in this pass).\n\n*** ADDRESS CORRECTION. *** The 2026-08-05 investigation cited this function as\n\"BuildingTypeClass__ReadINI @ 0x004610d8\". That is wrong: 0x004610d8 is an address INSIDE\nthe body, not the entry. The function is 0x0045fe50 and its body runs to 0x00464a62.\n\nFOUNDATION= IS READ TWICE, both times from the INI object at 0x887180 -- never from the\nrules object:\n  00461225  MOV ECX,[EBP+0xef0]   ; the CURRENT field value ...\n  0046122b  PUSH ECX              ; ... is passed as the INI DEFAULT\n  0046122c  PUSH 0x81a734         ; key \"Foundation\" (read 2026-08-05)\n  00461231  PUSH EDI              ; section A\n  00461232  MOV ECX,0x887180      ; the INI object\n  00461237  CALL 0x00474da0\n  00461248  MOV [EBP+0xef0],EAX   ; store first result\n  0046123c  PUSH EAX              ; first result becomes the default for the second read\n  0046123d  PUSH 0x81a734         ; \"Foundation\" again\n  00461242  PUSH EBX              ; section B (different section)\n  00461243  MOV ECX,0x887180      ; same INI object\n  0046124e  CALL 0x00474da0\n\nWHY THIS MATTERS: because the CURRENT field value is passed as the default, an absent\nFoundation= key leaves the constructor's value in place (index 0 = 1x1, set at\n0x0045df13). The two reads are a base-section-then-override pair keyed on two different\nsections of the same INI object.\n\n0x887180 is the same INI object used for art lookups by BuildingTypeClass__LoadVisualAssets\n(nine references) and by ObjectTypeClass__ReadINI at 005f9587 / 005f95af; it is pushed to\nthe type-loading loop from Init_Game at 0052c9e6. Its identity as the ART ini specifically\nis strongly indicated but was NOT proven byte-for-byte this pass -- treat the object's\nNAME as UNCHECKED while treating \"both reads use the same object, and it is the one the\nart paths use\" as verified.\n\n[2026-09-30 RTTI names] BuildingTypeClass fills slot +0x64 of the AbstractTypeClass vtable (MSVC RTTI of the retail exe).\n\n[2026-09-30 Engineer/hut Foundation prerequisite execution] Saved80 original461225..46125D controls resolve section A as effective RULES Image (ObjectType5F933B writes Type+1F8 at char[25]); section B is stored type ID. Both use887180, the ART object identified by loader52D053 (loader not executed in this packet). 461248 always stores first result; 461253/461255 skip the second store when its result is0; otherwise461257 stores it. Thus explicit type-ID1x1 cannot replace a nonzero image Foundation. Both absent reads retain the current index; a present unknown first resets0. Constructor45DF13 writes0. No RULES Foundation read belongs to this pair; later visual ART Image uses a local buffer, not Type+1F8. Reader/table execution and original bytes are preserved in tools/spatial_oracle/engineer_bridge_cursor_caller.json; supplied cached ART/interior frame, no full loader, other ReadINI keys or persistence parity claim."
+    }
+  ]
+}

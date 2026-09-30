@@ -54,12 +54,15 @@ fn corpus() -> Value {
 /// The refinery_dock rules with the row's `SpreadPercentage=` and
 /// `Harvester=`, the stock overlay list and the row's `[General]` values.
 fn rules_for(input: &Value) -> (RuleSet, IniFile) {
-    rules_for_with(input, |_| {})
+    rules_for_with(input, |_, _| {})
 }
 
 /// [`rules_for`] with `edit` applied to the rules text before the overlay
 /// and land sections are appended.
-fn rules_for_with(input: &Value, edit: impl FnOnce(&mut String)) -> (RuleSet, IniFile) {
+fn rules_for_with(
+    input: &Value,
+    edit: impl FnOnce(&mut String, &mut IniFile),
+) -> (RuleSet, IniFile) {
     let percentage = input["spread_percentage"].as_f64().unwrap_or(0.1);
     let mut text = super::refinery_dock_oracle_tests::RULES
         .replace(
@@ -78,7 +81,10 @@ fn rules_for_with(input: &Value, edit: impl FnOnce(&mut String)) -> (RuleSet, In
         text = text.replacen("1=MTNK\n", "1=MTNK\n2=CMIN\n3=CTNK\n", 1);
         text.push_str(super::cmin_dock_oracle_tests::CMIN);
     }
-    edit(&mut text);
+    let mut art = IniFile::from_str(
+        "[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n[GAREFX]\nFoundation=4x3\nQueueingCell=4,1\n[GAOREP]\nFoundation=2x2\n",
+    );
+    edit(&mut text, &mut art);
     let overlays = test_support::tiberium_rules_text();
     text.push_str(&overlays[overlays.find("[OverlayTypes]").unwrap()..]);
     for land in LandType::ALL.iter().take(9) {
@@ -88,12 +94,8 @@ fn rules_for_with(input: &Value, edit: impl FnOnce(&mut String)) -> (RuleSet, In
         ));
     }
     let ini = IniFile::from_str(&text);
-    let mut rules = RuleSet::from_ini(&ini).unwrap();
-    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
-        &IniFile::from_str(
-            "[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n[GAREFX]\nFoundation=4x3\nQueueingCell=4,1\n",
-        ),
-    ));
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
     rules.general.tiberium_short_scan = input["short_scan"].as_i64().unwrap_or(6 * 256) as i32;
     rules.general.tiberium_long_scan = input["long_scan"].as_i64().unwrap_or(48 * 256) as i32;
     rules.general.harvester_load_rate = input["load_rate"].as_i64().unwrap_or(2) as i32;
@@ -127,11 +129,11 @@ fn overlay_name(kind: u64, variant: u64) -> String {
 /// so, its ore cells (LandType recomputed), the queues sized on the oracle's
 /// 16x16 MapSize, the archive, Unit+0x6D2 and the Scenario RNG seed.
 pub(super) fn row_scene(input: &Value) -> Scene {
-    row_scene_with(input, |_| {})
+    row_scene_with(input, |_, _| {})
 }
 
 /// [`row_scene`] on rules whose text `edit` extends (more types).
-pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String)) -> Scene {
+pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String, &mut IniFile)) -> Scene {
     let mut input = input.clone();
     if input.get("linked").is_none() {
         input["linked"] = false.into();

@@ -1,0 +1,29 @@
+{
+  "program": "gamemd.exe",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "saved": true,
+  "function": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Function: Selection__DispatchMultiUnitOrder at 004ae750\nSignature: undefined Selection__DispatchMultiUnitOrder(void)\nEntry: 004ae750\nBody: 004ae750 - 004ae9a2"
+      }
+    ],
+    "structuredContent": {
+      "result": "Function: Selection__DispatchMultiUnitOrder at 004ae750\nSignature: undefined Selection__DispatchMultiUnitOrder(void)\nEntry: 004ae750\nBody: 004ae750 - 004ae9a2"
+    },
+    "isError": false
+  },
+  "plate": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"address\":\"004ae750\",\"function_name\":\"Selection__DispatchMultiUnitOrder\",\"comment\":\"Selection__DispatchMultiUnitOrder — iterate g_CurrentObjects, send an order\\nto each selected unit.\\n\\nArguments:\\n  param_1 = target ObjectClass* (0 if ground-targeted)\\n  param_2 = cell/coord target\\n  param_3 = order type (1 = Move/AttackMove, 2 = Guard-variant, other = Stop)\\n\\nPre-hook loop: calls vtable[0x1a4] on every selected unit (clears formation\\nstate at +0x430 when bit 2 of +0x14 is set — cancels group-move coordination).\\n\\nDispatch:\\n  - Ground-targeted (param_1 == 0):\\n      vtable[0x70] = compute cell order (What_Action for cell)\\n      vtable[0x140] = execute cell order\\n  - Object-targeted (param_1 != 0):\\n      vtable[0x74] = compute object order (What_Action for ObjectClass)\\n      vtable[0x144] = execute object order\\n\\nNO group-pathing, NO leader, NO formation movement — each unit resolves\\nits own path from its own position. Voice suppression (g_SelectionVoice_Enable)\\ntoggles off inside the loop and is restored to 1 on exit.\\n\\nEarly-out if g_IsMapEditor != 0.\\n\\n2026-09-30 bridge Engineer input integration: native function entry is 004AE750; 004AE844 is the object-click virtual+144 call, not an entry. Original object loop004AE829 loads g_CurrentObjects_Data[ESI], calls that object's virtual+74 WhatAction at004AE83A and its virtual+144 ClickedAction at004AE844, then increments ESI and compares to the live count at004AE858 before looping004AE824. This establishes per-selected-object dispatch order for mixed Engineer/C4/Attack batches. Captured original static instruction bytes: tools/spatial_oracle/engineer_bridge_selection_dispatch.json (SHA-pinned gamemd.exe). This is control-flow evidence, not native execution of the entire handler. Rust restores order for single-object command batches only; existing aggregated SetRally representation, mouse discovery/modifiers, pre-hook/formation cleanup and whole window delivery remain outside that adapter proof. Original action29/32 and Foot enqueue admission are executed separately in engineer_bridge_cursor_caller.json.\"}"
+      }
+    ],
+    "structuredContent": {
+      "result": "{\"address\":\"004ae750\",\"function_name\":\"Selection__DispatchMultiUnitOrder\",\"comment\":\"Selection__DispatchMultiUnitOrder — iterate g_CurrentObjects, send an order\\nto each selected unit.\\n\\nArguments:\\n  param_1 = target ObjectClass* (0 if ground-targeted)\\n  param_2 = cell/coord target\\n  param_3 = order type (1 = Move/AttackMove, 2 = Guard-variant, other = Stop)\\n\\nPre-hook loop: calls vtable[0x1a4] on every selected unit (clears formation\\nstate at +0x430 when bit 2 of +0x14 is set — cancels group-move coordination).\\n\\nDispatch:\\n  - Ground-targeted (param_1 == 0):\\n      vtable[0x70] = compute cell order (What_Action for cell)\\n      vtable[0x140] = execute cell order\\n  - Object-targeted (param_1 != 0):\\n      vtable[0x74] = compute object order (What_Action for ObjectClass)\\n      vtable[0x144] = execute object order\\n\\nNO group-pathing, NO leader, NO formation movement — each unit resolves\\nits own path from its own position. Voice suppression (g_SelectionVoice_Enable)\\ntoggles off inside the loop and is restored to 1 on exit.\\n\\nEarly-out if g_IsMapEditor != 0.\\n\\n2026-09-30 bridge Engineer input integration: native function entry is 004AE750; 004AE844 is the object-click virtual+144 call, not an entry. Original object loop004AE829 loads g_CurrentObjects_Data[ESI], calls that object's virtual+74 WhatAction at004AE83A and its virtual+144 ClickedAction at004AE844, then increments ESI and compares to the live count at004AE858 before looping004AE824. This establishes per-selected-object dispatch order for mixed Engineer/C4/Attack batches. Captured original static instruction bytes: tools/spatial_oracle/engineer_bridge_selection_dispatch.json (SHA-pinned gamemd.exe). This is control-flow evidence, not native execution of the entire handler. Rust restores order for single-object command batches only; existing aggregated SetRally representation, mouse discovery/modifiers, pre-hook/formation cleanup and whole window delivery remain outside that adapter proof. Original action29/32 and Foot enqueue admission are executed separately in engineer_bridge_cursor_caller.json.\"}"
+    },
+    "isError": false
+  }
+}

@@ -45,10 +45,10 @@ pub(super) const RULES: &str = "[VehicleTypes]\n0=HARV\n1=MTNK\n\
     [HORV]\nStrength=1000\nSpeed=4\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
     [MTNK]\nStrength=300\nSpeed=6\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
     [BuildingTypes]\n0=GAREFN\n1=GAREFX\n2=GAOREP\n\
-    [GAREFN]\nFoundation=4x3\nStrength=900\nRefinery=yes\nDockUnload=yes\nNumberOfDocks=1\n\
+    [GAREFN]\nStrength=900\nRefinery=yes\nDockUnload=yes\nNumberOfDocks=1\n\
     NumberImpassableRows=3\n\
-    [GAREFX]\nFoundation=4x3\nStrength=900\nRefinery=yes\nNumberOfDocks=1\nNumberImpassableRows=3\n\
-    [GAOREP]\nFoundation=2x2\nStrength=1000\nOrePurifier=yes\n\
+    [GAREFX]\nStrength=900\nRefinery=yes\nNumberOfDocks=1\nNumberImpassableRows=3\n\
+    [GAOREP]\nStrength=1000\nOrePurifier=yes\n\
     [Tiberiums]\n0=Riparius\n1=Cruentus\n\
     [Riparius]\nImage=1\nValue=25\n[Cruentus]\nImage=2\nValue=50\n\
     [General]\nHarvesterTooFarDistance=5\nChronoHarvTooFarDistance=50\n\
@@ -214,10 +214,11 @@ pub(super) fn scene(input: &Value) -> Scene {
         ));
     }
     let ini = IniFile::from_str(&text);
-    let mut rules = RuleSet::from_ini(&ini).unwrap();
-    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
-        &IniFile::from_str("[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n[GAREFX]\nFoundation=4x3\nQueueingCell=4,1\n"),
-    ));
+    let art = IniFile::from_str(
+        "[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n[GAREFX]\nFoundation=4x3\nQueueingCell=4,1\n[GAOREP]\nFoundation=2x2\n",
+    );
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
     scene_with(input, rules, &ini)
 }
 

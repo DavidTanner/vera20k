@@ -31,6 +31,11 @@ Empty IFVs can approach and fire at concrete bridges, continue launched missiles
 after Stop, and resume saved pursuit state. The [native comparisons](tools/spatial_oracle/fv_cell_attack/README.md)
 cover six concrete-bridge cases; the whole-bridge audit remains in progress.
 
+Engineer object clicks on bridge huts use live repair geometry and Repair/NoRepair
+cursors. Healthy huts consume the click without a repair order. The
+[bounded native and retail checks](tools/spatial_oracle/engineer_bridge_production_validation.md)
+cover the object-hut route and concrete/wood rebuilding; broader bridge parity remains open.
+
 ## Running it
 
 You need Rust 1.88 or newer, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.

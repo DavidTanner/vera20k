@@ -128,14 +128,20 @@ fn rules_and_overlays() -> (RuleSet, OverlayTypeRegistry) {
     let ini = IniFile::from_str(
         "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=YARD\n1=HELD\n2=UPGRADE\n\
-         [YARD]\nStrength=500\nFoundation=2x2\nBib=yes\nFactory=BuildingType\n\
-         [HELD]\nStrength=300\nCost=100\nTechLevel=1\nOwner=Americans\nFoundation=3x3\n\
-         [UPGRADE]\nStrength=100\nFoundation=4x4\n\
+         [YARD]\nStrength=500\nBib=yes\nFactory=BuildingType\n\
+         [HELD]\nStrength=300\nCost=100\nTechLevel=1\nOwner=Americans\n\
+         [UPGRADE]\nStrength=100\n\
          [OverlayTypes]\n0=ROAD\n[ROAD]\nLand=Road\n\
          [Road]\nFoot=37%\nTrack=100%\n",
     );
     (
-        RuleSet::from_ini(&ini).unwrap(),
+        RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str(
+                "[YARD]\nFoundation=2x2\n[HELD]\nFoundation=3x3\n[UPGRADE]\nFoundation=4x4\n",
+            ),
+        )
+        .unwrap(),
         OverlayTypeRegistry::from_ini(&ini, None),
     )
 }

@@ -2073,14 +2073,13 @@ impl ObjectType {
             image: section.read_string("Image", id, 0x19),
             power: section.read_int("Power", 0),
             extra_power: section.read_int("ExtraPower", 0),
-            // The original resolves Foundation= through a fixed name table.
-            // install_art_data() applies the art-vs-rules precedence observed in gamemd.
-            foundation: crate::rules::foundation::foundation_name(&section.read_string(
-                "Foundation",
-                "1x1",
-                0x20,
-            ))
-            .to_string(),
+            // Building ctor45DF13 initializes +EF0=0 (1x1). ReadINI461225
+            // reads Foundation from ART only, never this RULES section.
+            // Pass processing projects the shared reader; ART binding does not.
+            foundation: crate::rules::foundation::FOUNDATION_TABLE
+                [usize::from(crate::rules::foundation::DEFAULT_FOUNDATION_ID)]
+            .name
+            .to_owned(),
             pixel_selection_bracket_delta: section.read_int("PixelSelectionBracketDelta", 0),
             build_cat: section
                 .read_name("BuildCat", 0x20)
@@ -3134,7 +3133,7 @@ mod tests {
             ObjectType::from_ini_section("GAPOWR", section, ObjectCategory::Building);
 
         assert_eq!(obj.power, 200);
-        assert_eq!(obj.foundation, "2x2");
+        assert_eq!(obj.foundation, "1x1", "RULES Foundation is not an input");
         assert_eq!(obj.armor, "wood");
         assert_eq!(obj.build_cat, Some(BuildCategory::Power));
         assert_eq!(obj.adjacent, 3);
@@ -3398,10 +3397,17 @@ mod tests {
     fn test_parse_undeploys_into() {
         let ini: IniFile = IniFile::from_str("[GACNST]\nUndeploysInto=AMCV\nFoundation=4x4\n");
         let section: &IniSection = ini.section("GACNST").unwrap();
-        let obj: ObjectType =
+        let mut obj: ObjectType =
             ObjectType::from_ini_section("GACNST", section, ObjectCategory::Building);
         assert_eq!(obj.undeploys_into, Some("AMCV".to_string()));
         assert_eq!(obj.deploys_into, None);
+        assert!(
+            obj.is_1x1_with_undeploy(),
+            "constructor remains1x1 until ART reads"
+        );
+        // This gate consumes a loaded native field; ART input provenance and
+        // every table dimension are tested by building_foundation_pass_matches_original_art_reads.
+        obj.foundation = "4x4".to_owned();
         assert!(!obj.is_1x1_with_undeploy());
 
         let one_by_one = IniFile::from_str("[MODDEPLOY]\nUndeploysInto=MODUNIT\nFoundation=1x1\n");

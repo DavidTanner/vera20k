@@ -196,14 +196,13 @@ fn network_modal_does_not_execute_game_speed_ingress() {
 
 fn animation_boundary_fixture() -> (Simulation, RuleSet) {
     let mut sim = Simulation::with_seed(0xA11A_7100);
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=E1\n\n[E1]\nStrength=100\n",
-    ))
-    .expect("animation fixture rules");
+    let ini = IniFile::from_str("[InfantryTypes]\n0=E1\n\n[E1]\nStrength=100\n");
     let art = IniFile::from_str(
         "[E1]\nSequence=TestSequence\n\
          [TestSequence]\nReady=1,1,1\nIdle1=0,1,0,S\n",
     );
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("animation fixture rules");
     rules.install_art_data(ArtRegistry::from_ini(&art));
     rules.bind_animation_sequences(
         &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
@@ -389,16 +388,18 @@ Naval=yes
          Locomotor={4A582741-9839-11d1-B709-00A024DDAFD1}
 ",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("drive boat rules should parse");
     // Stock artmd.ini [WAKE1]: ground layer, sorted under the hull.
-    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
+    let art = IniFile::from_str(
         "[WAKE1]
 Layer=ground
 YSortAdjust=-288
 Translucent=yes
 Rate=120
 ",
-    )));
+    );
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+        .expect("drive boat rules should parse");
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     rules.bind_anim_frame_count_for_test("WAKE1", 15);
     let mut sim = Simulation::new();
     let boat_id = sim
@@ -494,18 +495,19 @@ Rate=120
 
 #[test]
 fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+    let ini = IniFile::from_str(
         "[InfantryTypes]\n0=E1\n\
          [VehicleTypes]\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
          [E1]\nStrength=100\n",
-    ))
-    .expect("dying infantry rules");
+    );
     let art_ini = IniFile::from_str(
         "[E1]\nSequence=TestSequence\n\
          [TestSequence]\nReady=0,1,1\nDie1=8,2,0\n",
     );
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).expect("dying infantry rules");
     rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     rules.bind_animation_sequences(
         &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini),
@@ -785,16 +787,17 @@ fn gsi_13_10_art_model_rules() -> RuleSet {
          [FALLBACKINF]\nStrength=100\n\
          [FALLBACKBLD]\nStrength=100\n",
     );
-    let art = ArtRegistry::from_ini(&IniFile::from_str(
+    let art_ini = IniFile::from_str(
         "[DLPH]\nVoxel=no\n\
          [DRON]\nVoxel=no\n\
          [SQD]\nVoxel=no\n\
          [VXLTEST]\nVoxel=yes\n\
          [ALT]\nVoxel=no\n\
          [OMITTED]\nCameo=OMITTEDICON\n",
-    ));
-    let mut rules = RuleSet::from_ini(&ini).expect("art model rules");
-    rules.install_art_data(art);
+    );
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).expect("art model rules");
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     rules
 }
 
@@ -918,7 +921,8 @@ pub(crate) fn gsi_04_07_wall_sell_rules(
          [SECONDWALL]\nToOverlay=GAWALL\n\
          [GAWALL]\nDamageLevels=3\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("wall-sale rules");
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).expect("wall-sale rules");
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let overlays = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art_ini));
     (rules, overlays)
@@ -1365,11 +1369,14 @@ fn wall_sale_cleanup_reaches_fixed_stride_alias_and_reverses_that_source_only() 
 
 #[test]
 fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(
+            "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=GAREFN\n\
-         [GAREFN]\nStrength=100\nFoundation=4x3\nBib=yes\n",
-    ))
+         [GAREFN]\nStrength=100\nBib=yes\n",
+        ),
+        &IniFile::from_str("[GAREFN]\nFoundation=4x3\n"),
+    )
     .expect("dynamic navigation rules");
     let mut terrain = gsi_04_10_clear_terrain(16, 16);
     for rx in [1, 3] {
@@ -2748,13 +2755,17 @@ fn combat_test_rules() -> RuleSet {
          [E1]\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [AMCV]\nStrength=450\nArmor=heavy\nSpeed=5\nPrimary=none\nDeploysInto=GACNST\n\n\
-         [GACNST]\nStrength=1000\nArmor=wood\nFoundation=4x3\nConstructionYard=yes\nUndeploysInto=AMCV\n\n\
+         [GACNST]\nStrength=1000\nArmor=wood\nConstructionYard=yes\nUndeploysInto=AMCV\n\n\
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
          [SA]\nVerses=100%,100%,100%,90%,70%,25%,100%,25%,25%,0%,0%\n\n\
          [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n[Clear]\nBuildable=yes\n",
     );
-    RuleSet::from_ini(&ini).expect("combat test rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GACNST]\nFoundation=4x3\n"),
+    )
+    .expect("combat test rules should parse")
 }
 
 fn sonic_wave_test_rules(range: u8) -> RuleSet {
@@ -3433,11 +3444,15 @@ fn short_game_defeat_test_rules() -> RuleSet {
          [AMCV]\nStrength=450\nArmor=heavy\nSpeed=5\nDeploysInto=GACNST\n\n\
          [SMCV]\nStrength=450\nArmor=heavy\nSpeed=5\nDeploysInto=GACNST\n\n\
          [PCV]\nStrength=450\nArmor=heavy\nSpeed=5\nDeploysInto=GACNST\n\n\
-         [GACNST]\nStrength=1000\nArmor=wood\nFoundation=4x3\nConstructionYard=yes\nUndeploysInto=AMCV\n\n\
+         [GACNST]\nStrength=1000\nArmor=wood\nConstructionYard=yes\nUndeploysInto=AMCV\n\n\
          [Warheads]\n0=Super\n\n\
          [Super]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     );
-    RuleSet::from_ini(&ini).expect("short game defeat test rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GACNST]\nFoundation=4x3\n"),
+    )
+    .expect("short game defeat test rules should parse")
 }
 
 /// Water movers on Hover (HoverLocomotionClass Process 0x00514310).
@@ -3473,9 +3488,13 @@ fn teleport_command_test_rules() -> RuleSet {
          [CMIN]\nStrength=400\nArmor=light\nSpeed=4\nHarvester=yes\nTeleporter=yes\nDock=GAREFN\n\n\
          [CHRONO]\nStrength=200\nArmor=light\nSpeed=5\nTeleporter=yes\n\
          Locomotor={4A582747-9839-11d1-B709-00A024DDAFD1}\n\n\
-         [GAREFN]\nStrength=900\nArmor=wood\nFoundation=4x3\nRefinery=yes\nDockUnload=yes\n",
+         [GAREFN]\nStrength=900\nArmor=wood\nRefinery=yes\nDockUnload=yes\n",
     );
-    RuleSet::from_ini(&ini).expect("teleport command rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GAREFN]\nFoundation=4x3\n"),
+    )
+    .expect("teleport command rules should parse")
 }
 
 fn gate_test_rules() -> RuleSet {
@@ -3484,9 +3503,13 @@ fn gate_test_rules() -> RuleSet {
          [VehicleTypes]\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n0=GAGATE_A\n\n\
-         [GAGATE_A]\nStrength=500\nArmor=wood\nFoundation=3x1\nGate=yes\nDeployTime=.066\nGateCloseDelay=.2\n",
+         [GAGATE_A]\nStrength=500\nArmor=wood\nGate=yes\nDeployTime=.066\nGateCloseDelay=.2\n",
     );
-    RuleSet::from_ini(&ini).expect("gate test rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GAGATE_A]\nFoundation=3x1\n"),
+    )
+    .expect("gate test rules should parse")
 }
 
 #[test]
@@ -7775,9 +7798,13 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
 [BuildingTypes]\n0=GAPOWR\n\n\
 [InfantryTypes]\n\n\
 [AircraftTypes]\n\n\
-[GAPOWR]\nStrength=750\nArmor=wood\nFoundation=2x2\nPower=100\n";
+[GAPOWR]\nStrength=750\nArmor=wood\nPower=100\n";
     let ini = IniFile::from_str(ini_str);
-    let mut rules = RuleSet::from_ini(&ini).expect("power rules parse");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GAPOWR]\nFoundation=2x2\n"),
+    )
+    .expect("power rules parse");
     // Retail GAPOWRMK: a building sells only with a Buildup SHP.
     rules.set_buildup_control_for_test("GAPOWR", [0, 25, 2]);
 
@@ -7866,7 +7893,7 @@ fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
 [InfantryTypes]\n\n\
 [AircraftTypes]\n\n\
 [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
-[TARGB]\nStrength=750\nArmor=wood\nFoundation=1x1\nCost=1000\n\n\
+[TARGB]\nStrength=750\nArmor=wood\nCost=1000\n\n\
 [105mm]\nDamage=65\nROF=20\nRange=6\nWarhead=AP\n\n\
 [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n";
     let ini = IniFile::from_str(ini_str);
@@ -8908,13 +8935,16 @@ fn idle_objects_are_handed_out_only_for_their_own_turn() {
     use crate::sim::entity_store::TouchReader;
     use crate::sim::touch_log::Touched;
 
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[BuildingTypes]\n0=GAPOWR\n\
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(
+            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[BuildingTypes]\n0=GAPOWR\n\
          [E1]\nStrength=125\nArmor=flak\nSpeed=4\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\n\
          Armor=heavy\nSpeed=6\nTurret=yes\n\
-         [GAPOWR]\nStrength=750\nArmor=wood\nFoundation=2x2\nPower=100\n",
-    ))
+         [GAPOWR]\nStrength=750\nArmor=wood\nPower=100\n",
+        ),
+        &IniFile::from_str("[GAPOWR]\nFoundation=2x2\n"),
+    )
     .expect("idle object rules parse");
     let (mut sim, rules, grid) = stacking_navigation_world(rules, 24);
     let mut vehicles = Vec::new();
