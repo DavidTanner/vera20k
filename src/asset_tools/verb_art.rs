@@ -234,7 +234,11 @@ fn assemble(
     // answer "what should be playing while it builds / runs / burns", which the
     // object SHP alone cannot.
     let entry = art_registry.get(&effective_image_id.to_ascii_uppercase());
-    let foundation = entry.and_then(|e| e.foundation.clone());
+    let foundation = entry.and_then(|e| e.foundation).map(|id| {
+        crate::rules::foundation::FOUNDATION_TABLE[usize::from(id)]
+            .name
+            .to_owned()
+    });
     let bib_shape = entry.and_then(|e| e.bib_shape.clone()).map(|bib| {
         let (row, note) = resolve(&format!("{}.SHP", bib.to_ascii_uppercase()));
         if let Some(note) = note {

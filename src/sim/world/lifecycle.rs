@@ -70,6 +70,18 @@ pub(crate) struct UninitContext<'a> {
 }
 
 impl<'a> UninitContext<'a> {
+    /// A caller's rules and overlay table, with no terrain override.
+    pub(crate) const fn new(
+        rules: Option<&'a RuleSet>,
+        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Self {
+        Self {
+            terrain: None,
+            rules,
+            registry,
+        }
+    }
+
     pub(crate) const fn with_rules(rules: &'a RuleSet) -> Self {
         Self {
             terrain: None,
@@ -651,6 +663,14 @@ impl Simulation {
             }
         }
         let exact_z = self.grounded_reveal_z(stable_id, position, context);
+        // RESIDUAL: `ObjectClass::Unlimbo` sets this Location through
+        // SetLocation (vt+0x1B4 at 0x005F4FA8, before its Mark(1) at
+        // 0x005F4FB4), which for a Foot also runs the OpenTopped rider tail.
+        // VERA copies the parts, keeping no exact Z for an owner whose height
+        // still lives in its locomotor (`grounded_reveal_z`), so it cannot go
+        // through `foot_set_location` yet. Trigger: a loaded OpenTopped
+        // transport revealed away from its riders. Frequency: none known in
+        // retail. Effect: the riders keep their old Location.
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.position.rx = position.rx;
             entity.position.ry = position.ry;
@@ -1063,7 +1083,7 @@ impl Simulation {
     /// Mark(PUT) through the object's vt+0x124: `FootClass::Mark`
     /// ([`Simulation::foot_mark_put`]) for Infantry, Unit and Aircraft, the
     /// building transaction below for a Structure.
-    fn mark_entity_put(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
+    pub(crate) fn mark_entity_put(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return false;
         };
@@ -1392,7 +1412,11 @@ impl Simulation {
     /// Mark(REMOVE) through the object's vt+0x124: `FootClass::Mark`
     /// ([`Simulation::foot_mark_remove`]) for Infantry, Unit and Aircraft, the
     /// building transaction below for a Structure.
-    fn unmark_entity_remove(&mut self, stable_id: u64, context: UninitContext<'_>) -> bool {
+    pub(crate) fn unmark_entity_remove(
+        &mut self,
+        stable_id: u64,
+        context: UninitContext<'_>,
+    ) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return false;
         };
@@ -1636,22 +1660,32 @@ impl Simulation {
                             && locomotor.layer == MovementLayer::Air
                     })
             });
-        // Fly4CD600 dispatches owner Mark around movement independently of
-        // RTTI. Custom Fly Infantry/Unit must also leave their ground list.
-        if transact_fly {
-            self.foot_mark_remove(stable_id, rules, registry);
-        }
-
         self.materialize_legacy_fly_coordinate(stable_id);
 
-        // Fly Process opens with a dead Fly's fall (`0x004CD67F`); reaching
-        // the ground ends it in the impact, which the object turn commits.
-        if transact_fly && self.fly_crash_fall(stable_id) {
+        // Fly4CD600, which Fly Process (`0x004CCB40`) calls every frame,
+        // opens with a dead Fly's fall (`0x004CD67F`), which brackets its own
+        // drop with Mark; reaching the ground ends it in the impact, which
+        // the object turn commits.
+        if transact_fly && self.fly_crash_fall(stable_id, rules, registry) {
             return crate::sim::movement::air_movement::AirMovementTickStats {
                 arrivals: 0,
                 impact: true,
                 touched_down: false,
             };
+        }
+
+        // Fly4CD600 dispatches owner Mark around movement (`0x004CDA36`)
+        // independently of RTTI. Custom Fly Infantry/Unit must also leave
+        // their ground list. RESIDUAL: native reaches that pair only while
+        // Is_Moving (`0x004CDA0B`; otherwise the epilogue at `0x004CE4A2`).
+        // VERA brackets every visit, and a landed Fly keeps its Air path
+        // layer. Trigger: a parked aircraft. Effect: at height 0 its Mark
+        // pair unlinks and prepends it and recalculates its cell twice; in
+        // flight the pair only toggles `+0x74`. Frequency: every frame of
+        // every parked aircraft. Risk: its cell's list order when another
+        // object shares the cell; the Fly host's Is_Moving gate is unported.
+        if transact_fly {
+            self.foot_mark_remove(stable_id, rules, registry);
         }
 
         // A cruising Jumpjet runs the native Update/State3 body instead of the
@@ -1753,7 +1787,7 @@ impl Simulation {
             .and_then(|l| l.fly_runtime())
             .is_some_and(|s| s.landing())
         {
-            self.apply_fly_landing_callback(id, rules);
+            self.apply_fly_landing_callback(id, rules, registry);
         }
         if self
             .substrate
@@ -1792,7 +1826,7 @@ impl Simulation {
                     self.substrate.entities.get(id).unwrap(),
                     self.resolved_terrain.as_ref(),
                 );
-                self.set_object_height(id, height.wrapping_add(10));
+                self.set_object_height(id, height.wrapping_add(10), rules, registry);
                 self.foot_mark_put(id, rules, registry);
             } else {
                 self.finish_fly_layer_transition(id, after, rules);

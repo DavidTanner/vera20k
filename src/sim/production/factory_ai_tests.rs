@@ -8,8 +8,8 @@ const RULES: &str = "[General]\nPlacementDelay=.05\nAIAlternateProductionCreditC
     [AI]\nBuildConst=YARD\n\
     [InfantryTypes]\n[AircraftTypes]\n[VehicleTypes]\n0=TANK\n\
     [BuildingTypes]\n0=YARD\n1=PLAIN\n\
-    [YARD]\nStrength=1000\nConstructionYard=yes\nFactory=BuildingType\nFoundation=2x2\n\
-    [PLAIN]\nStrength=1000\nFoundation=2x2\nCost=100\n\
+    [YARD]\nStrength=1000\nConstructionYard=yes\nFactory=BuildingType\n\
+    [PLAIN]\nStrength=1000\nCost=100\n\
     [TANK]\nStrength=300\nSpeed=5\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
     [Clear]\nBuildable=yes\n";
 
@@ -29,7 +29,8 @@ fn fixture() -> Fixture {
 }
 
 fn fixture_with(rules: &str) -> Fixture {
-    let rules = RuleSet::from_ini(&IniFile::from_str(rules)).unwrap();
+    let art = IniFile::from_str("[YARD]\nFoundation=2x2\n[PLAIN]\nFoundation=2x2\n");
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(rules), &art).unwrap();
     let mut sim = Simulation::new();
     let path = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     sim.session.game_mode_nonzero = true;

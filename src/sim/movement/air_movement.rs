@@ -458,13 +458,18 @@ pub fn tick_air_movement(
                     // Existing placement boundary remains a separate residual:
                     // native4CDB4C..4CDD07 applies map/owner-specific correction.
                     // Keep the bounded adapter until those gates are migrated.
-                    entity.position.rx = (proposed[0] / 256).clamp(0, 511) as u16;
-                    entity.position.ry = (proposed[1] / 256).clamp(0, 511) as u16;
-                    entity.position.sub_x = SimFixed::from_num(
-                        (proposed[0] - i32::from(entity.position.rx) * 256).clamp(0, 255),
-                    );
-                    entity.position.sub_y = SimFixed::from_num(
-                        (proposed[1] - i32::from(entity.position.ry) * 256).clamp(0, 255),
+                    // RESIDUAL: native places the result through
+                    // FootClass::SetLocation (vt+0x1B4 at 0x004CDD07); this
+                    // adapter writes XY only and skips its OpenTopped rider
+                    // tail. Dormant: retail rulesmd.ini makes only the Drive
+                    // BFRT OpenTopped=yes.
+                    const MAX_WORLD: i32 = 511 * 256 + 255;
+                    super::ground_pose::set_position_world_xy(
+                        &mut entity.position,
+                        [
+                            proposed[0].clamp(0, MAX_WORLD),
+                            proposed[1].clamp(0, MAX_WORLD),
+                        ],
                     );
                 }
 
@@ -479,10 +484,10 @@ pub fn tick_air_movement(
                         .and_then(LocomotorState::fly_runtime)
                         .is_some_and(|fly| fly.current_speed < MIN_CREEP_SPEED);
                 if arrived {
-                    entity.position.rx = destination.x.div_euclid(256) as u16;
-                    entity.position.ry = destination.y.div_euclid(256) as u16;
-                    entity.position.sub_x = SimFixed::from_num(destination.x.rem_euclid(256));
-                    entity.position.sub_y = SimFixed::from_num(destination.y.rem_euclid(256));
+                    super::ground_pose::set_position_world_xy(
+                        &mut entity.position,
+                        [destination.x, destination.y],
+                    );
                     finished.push(entity_id);
                     stats.arrivals = stats.arrivals.saturating_add(1);
                 }

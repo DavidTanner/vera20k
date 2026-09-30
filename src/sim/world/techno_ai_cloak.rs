@@ -32,15 +32,25 @@ fn stock_cloak_tick_facts(
     if !object.cloakable && !rank_cloak {
         return None;
     }
-    let moving =
-        crate::sim::movement::drive_locomotor_is_moving(entity) || entity.movement_target.is_some();
     let holds_target = entity.attack_target.is_some();
     // vt+0x1D4 / vt+0x1D8 (`0x0070C5B0` / `0x0070C5C0`, reading
     // `TechnoClass+0x270`/`+0x271`): a Chrono teleport or a Temporal warp.
     let chrono_active = entity.is_warped_out() || entity.is_warping_in();
     // `FootClass::IsCloakable @ 0x004DBDA0` (vtable +0x288) =
-    // `HasStealthAbility() && !(CloakStop(+0xC93) && locomotor->IsMoving())`.
-    let is_cloakable = object.cloakable && (!object.cloak_stop || !moving);
+    // `HasStealthAbility() && !(CloakStop(+0xC93) && locomotor->Is_Moving_Now())`,
+    // the locomotor's ILocomotion+0x80 at `0x004DBDDD`, asked only under
+    // CloakStop.
+    let is_cloakable = object.cloakable
+        && !(object.cloak_stop
+            && crate::sim::movement::ready_producer::is_moving_now_for(
+                entity,
+                Some(crate::sim::movement::SpeedRules::new(
+                    rules,
+                    &sim.interner,
+                    &sim.type_handles,
+                )),
+                sim.session.binary_frame,
+            ));
 
     // The gate the state-0 head of `CloakingTick @ 0x006FB757..0x006FB7F7`
     // actually applies, read from the disassembly:

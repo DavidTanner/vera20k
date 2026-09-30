@@ -643,11 +643,14 @@ mod tests {
     }
 
     fn rules() -> RuleSet {
-        RuleSet::from_ini(&IniFile::from_str(
-            "[VehicleTypes]\n0=MTNK\n[BuildingTypes]\n0=GAPOWR\n1=NABNKR\n\
-             [MTNK]\nSpeed=4\n[GAPOWR]\nFoundation=2x2\n\
-             [NABNKR]\nFoundation=1x1\nBunker=yes\n",
-        ))
+        RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[VehicleTypes]\n0=MTNK\n[BuildingTypes]\n0=GAPOWR\n1=NABNKR\n\
+             [MTNK]\nSpeed=4\n[GAPOWR]\nName=Power Plant\n\
+             [NABNKR]\nBunker=yes\n",
+            ),
+            &IniFile::from_str("[GAPOWR]\nFoundation=2x2\n[NABNKR]\nFoundation=1x1\n"),
+        )
         .expect("rules")
     }
 

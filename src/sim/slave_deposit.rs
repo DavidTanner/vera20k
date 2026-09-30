@@ -43,9 +43,13 @@ mod tests {
     }
 
     fn setup() -> (EntityStore, StringInterner, RuleSet, OccupancyGrid) {
-        let rules = RuleSet::from_ini(&IniFile::from_str(
-            "[BuildingTypes]\n0=MASTER\n[MASTER]\nFoundation=2x2\n[InfantryTypes]\n0=SLAV\n[VehicleTypes]\n0=OTHER\n",
-        )).unwrap();
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[BuildingTypes]\n0=MASTER\n[MASTER]\nName=Master\n[InfantryTypes]\n0=SLAV\n[VehicleTypes]\n0=OTHER\n",
+            ),
+            &IniFile::from_str("[MASTER]\nFoundation=2x2\n"),
+        )
+        .unwrap();
         let mut interner = StringInterner::new();
         let mut entities = EntityStore::new();
         for (id, name, category) in [

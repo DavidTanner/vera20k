@@ -1243,3 +1243,142 @@ fn a_building_on_a_ramp_is_targeted_at_its_floor() {
         }
     );
 }
+
+/// Two Drive units marked into cell (4, 4), 1 before 2, so 2 heads the list.
+fn two_marked_units() -> Simulation {
+    let mut sim = Simulation::new();
+    sim.interner = crate::sim::intern::test_interner();
+    for id in [1, 2] {
+        let mut entity = GameEntity::test_default(id, "ACTOR", "Americans", 4, 4);
+        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.cell_marked = false;
+        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
+        entity.position.exact_z_leptons = Some(0);
+        sim.substrate.entities.insert(entity);
+        assert!(sim.foot_mark_put(id, None, None));
+    }
+    sim
+}
+
+fn next_in_cell(sim: &Simulation, id: u64) -> Option<crate::sim::occupancy::CellObjectMember> {
+    sim.next_cell_object(crate::sim::occupancy::CellObjectMember::Entity(id))
+}
+
+/// SetHeight (`0x005F5FA0`) on a marked object runs its Mark(UP) and
+/// Mark(DOWN) around the Z write (`0x005F5FC8`, `0x005F6009`), so
+/// `FootClass::Mark` prepends it to its cell's list again.
+#[test]
+fn set_height_on_a_marked_object_re_marks_it_at_the_head_of_its_cell() {
+    use crate::sim::occupancy::CellObjectMember::Entity;
+    let mut sim = two_marked_units();
+    assert_eq!(next_in_cell(&sim, 2), Some(Entity(1)));
+    sim.set_object_height(1, 30, None, None);
+    assert_eq!(next_in_cell(&sim, 1), Some(Entity(2)));
+    let entity = sim.substrate.entities.get(1).unwrap();
+    assert!(entity.lifecycle.cell_marked);
+    assert_eq!(entity.position.exact_z_leptons, Some(30));
+}
+
+/// An unmarked object takes SetHeight's Z write alone (`0x005F6017..`), as
+/// Hover's SetHeight does with `+0x74` cleared (`0x00513E74..0x00513E8C`).
+#[test]
+fn set_height_on_an_unmarked_object_writes_z_without_marking_it() {
+    use crate::sim::occupancy::CellObjectMember::Entity;
+    let mut sim = two_marked_units();
+    sim.set_object_height_unmarked(1, 30);
+    assert_eq!(next_in_cell(&sim, 2), Some(Entity(1)));
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .position
+            .exact_z_leptons,
+        Some(30)
+    );
+
+    assert!(sim.foot_mark_remove(1, None, None));
+    sim.set_object_height(1, 60, None, None);
+    let entity = sim.substrate.entities.get(1).unwrap();
+    assert!(!entity.lifecycle.cell_marked);
+    assert_eq!(entity.position.exact_z_leptons, Some(60));
+    assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
+}
+
+/// A Location on the map keeps the cell `0x0041BEA0` reads (each axis divided
+/// by 256 toward zero) and the remainder. Off it, the unsigned cell clamps and
+/// the sub-cell keeps the rest, so negative and 16-bit-aliased coordinates,
+/// which the Walk completion oracle feeds, read back unchanged.
+#[test]
+fn a_location_keeps_its_cell_and_reads_back_unchanged() {
+    use super::ground_pose::{position_world_xy, set_position_world_xy};
+    let mut position = GameEntity::test_default(1, "ACTOR", "Americans", 0, 0).position;
+    let alias = (16 + 65536) * 256 + 192;
+    for (world, cell, sub) in [
+        (0, 0, 0),
+        (255, 0, 255),
+        (256, 1, 0),
+        (511 * 256 + 255, 511, 255),
+        (-1, 0, -1),
+        (-256, 0, -256),
+        (-32768, 0, -32768),
+        (alias, 65535, alias - 65535 * 256),
+    ] {
+        set_position_world_xy(&mut position, [world, world]);
+        assert_eq!([position.rx, position.ry], [cell, cell], "{world}");
+        assert_eq!(position.sub_x, SimFixed::from_num(sub), "{world}");
+        assert_eq!(position_world_xy(&position), [world, world]);
+    }
+}
+
+/// `FootClass::SetLocation` (`0x004DB810`) writes the Location on both of its
+/// arms (`0x004DB855`, `0x004DB86B`), changed or not, which settles a staged
+/// sub-cell into its cell. Only the `OpenTopped=` rider tail waits for a
+/// changed Location (`0x004DB819..0x004DB83D`, `0x004DB870`).
+#[test]
+fn foot_set_location_always_writes_but_moves_riders_only_on_a_change() {
+    use super::ground_pose::{foot_set_location, position_world_coord};
+    use crate::sim::passenger::{PassengerCargo, PassengerRole};
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=BFRT\n[BFRT]\nOpenTopped=yes\nPassengers=5\n",
+    ))
+    .expect("rules");
+    let mut entities = crate::sim::entity_store::EntityStore::new();
+    let mut transport = GameEntity::test_default(1, "BFRT", "Americans", 1, 0);
+    // A non-canonical Location: the world XY has left cell 1, the cell has not.
+    transport.position.sub_x = SimFixed::from_num(300);
+    transport.position.sub_y = SimFixed::from_num(128);
+    transport.position.exact_z_leptons = Some(0);
+    let mut cargo = PassengerCargo::new(5, 2);
+    assert!(cargo.board(2, 1));
+    transport.passenger_role = PassengerRole::Transport { cargo };
+    let mut rider = GameEntity::test_default(2, "E1", "Americans", 3, 0);
+    rider.passenger_role = PassengerRole::Inside {
+        transport_id: 1,
+        open_topped: true,
+    };
+    entities.insert(transport);
+    entities.insert(rider);
+    let interner = crate::sim::intern::test_interner();
+
+    let staged = DriveCoord {
+        x: 556,
+        y: 128,
+        z: 0,
+    };
+    foot_set_location(&mut entities, 1, staged, Some(&rules), &interner);
+    let transport = &entities.get(1).unwrap().position;
+    assert_eq!((transport.rx, transport.sub_x), (2, SimFixed::from_num(44)));
+    assert_eq!(
+        entities.get(2).unwrap().position.rx,
+        3,
+        "no change, no tail"
+    );
+
+    let moved = DriveCoord { x: 600, ..staged };
+    foot_set_location(&mut entities, 1, moved, Some(&rules), &interner);
+    let [transport, rider] =
+        [1, 2].map(|id| position_world_coord(&entities.get(id).unwrap().position));
+    assert_eq!(transport, moved);
+    assert_eq!(rider, moved, "the rider took the changed Location");
+}

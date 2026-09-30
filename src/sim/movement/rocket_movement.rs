@@ -358,6 +358,10 @@ fn flight_distance(rocket: &RocketState) -> SimFixed {
     )
 }
 
+/// RESIDUAL: native Rocket moves its owner through FootClass::SetLocation
+/// (vt+0x1B4 at 0x00662715 and 0x00662F82); this VERA model writes the cell
+/// only, and the terminal arm snaps it to the target cell. Porting the Rocket
+/// locomotor (`0x006622C0`) is its own chain.
 fn update_rocket_position(rocket: &RocketState, position: &mut Position) {
     let origin_x = SimFixed::from_num(rocket.origin_rx);
     let origin_y = SimFixed::from_num(rocket.origin_ry);

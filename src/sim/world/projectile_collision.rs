@@ -248,10 +248,14 @@ mod tests {
                 .map(|dims| format!("{}x{}", dims[0], dims[1]))
                 .unwrap_or_else(|| "1x1".into());
             let ini = IniFile::from_str(&format!(
-                "[WallModel]\nAlliedWallTransparency={}\n[General]\nV3RocketType=V3ROCKET\nDMislType=DMISL\n[VehicleTypes]\n0=TEST\n[AircraftTypes]\n0=V3ROCKET\n1=DMISL\n2=AIR\n[BuildingTypes]\n0=BUILD\n[BUILD]\nFoundation={dimensions}\n[OverlayTypes]\n0=WALL\n[WALL]\nWall=yes\n",
+                "[WallModel]\nAlliedWallTransparency={}\n[General]\nV3RocketType=V3ROCKET\nDMislType=DMISL\n[VehicleTypes]\n0=TEST\n[AircraftTypes]\n0=V3ROCKET\n1=DMISL\n2=AIR\n[BuildingTypes]\n0=BUILD\n[BUILD]\nName=Build\n[OverlayTypes]\n0=WALL\n[WALL]\nWall=yes\n",
                 flag("transparency")
             ));
-            let rules = RuleSet::from_ini(&ini).unwrap();
+            let rules = RuleSet::from_ini_with_fixed_art_for_test(
+                &ini,
+                &IniFile::from_str(&format!("[BUILD]\nFoundation={dimensions}\n")),
+            )
+            .unwrap();
             let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
             let target = &row["target"];
             let mut spawn = gsi_05_02_projectile(1, None);
@@ -282,7 +286,7 @@ mod tests {
                 let entity = sim.substrate.entities.get_mut(2).unwrap();
                 entity.type_ref = type_ref;
                 if category == EntityCategory::Structure {
-                    // Construction stamps the type's `Foundation=`.
+                    // Construction stamps the type's ART `Foundation=`.
                     entity.foundation = dimensions.clone();
                 }
                 entity.lifecycle.cell_marked = target["marked"].as_bool().unwrap_or(true);
@@ -397,9 +401,10 @@ mod tests {
                     }
                 }
             }
-            let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
-                "[BuildingTypes]\n0=TEST\n[TEST]\nFoundation={foundation}\n"
-            )))
+            let rules = RuleSet::from_ini_with_fixed_art_for_test(
+                &IniFile::from_str("[BuildingTypes]\n0=TEST\n[TEST]\nName=Test\n"),
+                &IniFile::from_str(&format!("[TEST]\nFoundation={foundation}\n")),
+            )
             .unwrap();
             // Construction stamps the type's foundation on each building.
             for entity in sim.substrate.entities.values_mut() {
@@ -1354,7 +1359,7 @@ mod tests {
             } else {
                 ""
             };
-            let rules=RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(&format!("[VehicleTypes]\n0=UNIT\n[UNIT]\nStrength=100\n[BuildingTypes]\n0=TEST\n[TEST]\nFoundation={dimensions}\n{undeploy}"))).unwrap();
+            let rules=RuleSet::from_ini_with_fixed_art_for_test(&crate::rules::ini_parser::IniFile::from_str(&format!("[VehicleTypes]\n0=UNIT\n[UNIT]\nStrength=100\n[BuildingTypes]\n0=TEST\n[TEST]\nName=Test\n{undeploy}")), &crate::rules::ini_parser::IniFile::from_str(&format!("[TEST]\nFoundation={dimensions}\n"))).unwrap();
             if building.is_object() {
                 place(
                     &mut sim,

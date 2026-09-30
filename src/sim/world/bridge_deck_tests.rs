@@ -70,10 +70,13 @@ fn structural_fallout_retires_effect_only_ground_victim() {
 
 #[test]
 fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_effects() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n[AircraftTypes]\n[BuildingTypes]\n0=BIG\n\
-         [MTNK]\nStrength=300\nSpeed=6\n[BIG]\nStrength=1000\nFoundation=2x1\n",
-    ))
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(
+            "[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n[AircraftTypes]\n[BuildingTypes]\n0=BIG\n\
+         [MTNK]\nStrength=300\nSpeed=6\n[BIG]\nStrength=1000\n",
+        ),
+        &IniFile::from_str("[BIG]\nFoundation=2x1\n"),
+    )
     .unwrap();
     let mut sim = Simulation::with_seed(31);
     sim.intern_rule_type_ids(&rules);
@@ -315,7 +318,7 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
 fn a_bombed_bridge_hut_drops_its_bridge() {
     use crate::sim::house_state::HouseState;
     let ini = "[InfantryTypes]\n0=IVAN\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n0=CABHUT\n\
-         [IVAN]\nStrength=125\nSpeed=4\n[CABHUT]\nStrength=1000\nFoundation=1x1\n\
+         [IVAN]\nStrength=125\nSpeed=4\n[CABHUT]\nStrength=1000\n\
          BridgeRepairHut=yes\n[CombatDamage]\nIvanWarhead=IvanWH\nIvanDamage=450\n\
          IvanTimedDelay=450\n[Warheads]\n0=IvanWH\n1=Super\n\
          [IvanWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\

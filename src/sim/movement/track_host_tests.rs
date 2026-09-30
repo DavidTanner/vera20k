@@ -1,5 +1,6 @@
 use super::*;
 use crate::sim::components::{DriveLocomotionRuntime, ShipLocomotionRuntime};
+use crate::util::fixed_math::SimFixed;
 
 fn fixture(family: TrackFamily, budget: i32) -> (Simulation, TrackInvocation, i32) {
     let mut sim = Simulation::new();

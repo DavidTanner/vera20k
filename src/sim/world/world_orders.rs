@@ -53,7 +53,7 @@ enum InfantryPerCellBuildingAdmission {
 mod bridge_engineer_admission_tests;
 
 impl Simulation {
-    fn bridge_repair_notification_allowed(&self, owner: InternedId) -> bool {
+    fn house_is_human_player(&self, owner: InternedId) -> bool {
         // House50B6F0: nonzero session mode compares exactly to LocalPlayer;
         // mode zero uses the two native human/control flags.
         if self.session.game_mode_nonzero {
@@ -67,13 +67,98 @@ impl Simulation {
         }
     }
 
+    /// Infantry virtual+A0, original Techno700C40 IsControllable. This is
+    /// producer-side control admission; Event/lifecycle admission is separate.
+    /// House50B6F0, bunker link, Spawned, paralysis, warp, slave ownership and
+    /// launched-missile count remain with their existing authoritative owners.
+    ///
+    /// Ordinary Infantry +504 EMP and +1C8 Robot-offline start zero in the
+    /// native constructor. EMPulseApply4C575E admits RTTI1/2, not Infantry15;
+    /// Robot House writers scan all Techno but compare type pointers with
+    /// PowersUnit+40C, read by7132DF..713309 through UnitType7480D0.
+    /// Its UnitType pointer cannot match an ordinary InfantryType; the other
+    /// established writer is UnitPerCell739F59. This is not a generic EMP or
+    /// Robot implementation and makes no unreachable claim for50E1C0.
+    /// Arbitrary authored native raw-save bytes are outside this producer.
+    /// See engineer_bridge_cursor_caller.md for executed gate controls/bounds.
+    pub(crate) fn infantry_player_controllable(&self, id: u64, rules: &RuleSet) -> bool {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return false;
+        };
+        if actor.category != EntityCategory::Infantry
+            || !self.house_is_human_player(actor.owner())
+            || actor.bunker_link.installed_in().is_some()
+        {
+            return false;
+        }
+        let Some(object) = self.object_type(actor.type_ref(), rules) else {
+            return false;
+        };
+        if object.spawned
+            || actor.is_paralyzed(self.session.binary_frame)
+            || actor.is_warped_out()
+            || actor.is_warping_in()
+            || actor.slave.owner().is_some()
+        {
+            return false;
+        }
+        if let Some(manager) = actor.spawn_manager.as_ref() {
+            let count =
+                manager.count_launched_missiles(&self.substrate.entities, rules, &self.interner)
+                    as i32;
+            if count > 0 && count < object.spawns_number {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Object-route Engineer hut action in Infantry51E49E..51E55D.
+    /// Native caller/display vectors: engineer_bridge_cursor_caller.{py,json};
+    /// complete geometric query: bridge_repair_query.{py,json}.
+    /// Some(false) is terminal action32, not an ordinary capture fallback.
+    /// Admission belongs to the input producer, before a delayed mission event.
+    pub(crate) fn engineer_bridge_hut_action(
+        &self,
+        actor_id: u64,
+        target_id: u64,
+        rules: &RuleSet,
+    ) -> Option<bool> {
+        let actor = self.substrate.entities.get(actor_id)?;
+        if actor.category != EntityCategory::Infantry
+            || !self.object_type(actor.type_ref(), rules)?.engineer
+            || !self.house_is_human_player(actor.owner())
+        {
+            return None;
+        }
+        let target = self.substrate.entities.get(target_id)?;
+        if target.category != EntityCategory::Structure {
+            return None;
+        }
+        let object = self.object_type(target.type_ref(), rules)?;
+        if object.is_1x1_with_undeploy() || !object.repairable || !object.bridge_repair_hut {
+            return None;
+        }
+        let coord = crate::sim::movement::ground_pose::object_get_coords(
+            target,
+            self.resolved_terrain.as_ref(),
+        );
+        //51E52F..51E547: signed truncation by256 then packed-word narrowing.
+        Some(
+            crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(
+                self,
+                ((coord.x / 256) as u16, (coord.y / 256) as u16),
+            ),
+        )
+    }
+
     fn announce_bridge_repair(
         &mut self,
         owner: InternedId,
         cell: (u16, u16),
         building_cell: (u16, u16),
     ) {
-        let radar = self.bridge_repair_notification_allowed(owner).then(|| {
+        let radar = self.house_is_human_player(owner).then(|| {
             crate::sim::radar::RadarEventRequest::new(
                 crate::sim::radar::RadarEventType::BridgeRepaired,
                 cell.0,

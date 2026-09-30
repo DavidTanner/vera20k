@@ -376,29 +376,197 @@ fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
     }
 }
 
+/// Native 51E551/51FA75 hut action ignores target-owner friendship; native
+/// 51F190 -> 4D74E0 maps action29 to Capture with the hut as Destination.
+/// The native rows are engineer_bridge_cursor_caller.json self/allied/hostile.
 #[test]
-fn capture_building_command_accepts_noncapturable_bridge_repair_hut() {
-    let (mut sim, rules) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let engineer = spawn_engineer(&mut sim, 9, 10);
+fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relation() {
+    for relation in ["hostile", "allied", "self"] {
+        let (mut sim, rules) = build_sim();
+        let owner = if relation == "self" {
+            "Americans"
+        } else {
+            "Soviets"
+        };
+        let cabhut = sim
+            .spawn_object_at_height("CABHUT", owner, 9, 10, 0, 0, &rules)
+            .unwrap();
+        let engineer = spawn_engineer(&mut sim, 8, 10);
+        if relation == "allied" {
+            sim.house_alliances
+                .entry("AMERICANS".into())
+                .or_default()
+                .insert("SOVIETS".into());
+        }
+        seed_destroyed_bridge(&mut sim);
+        // Registered theater set starts keep flat tile0 out of the native
+        // tile-first ladder. A collapsed overlay alone cannot override a tile.
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .test_set_high_bridge_set_starts(Some(100), Some(200));
+        let rng_before = (
+            sim.scenario_rng.logical_state(),
+            sim.main_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        );
+        assert!(
+            sim.apply_command(
+                "Americans",
+                &Command::CaptureBuilding {
+                    engineer_id: engineer,
+                    target_building_id: cabhut,
+                },
+                Some(&rules),
+            ),
+            "relation={relation}"
+        );
+        let actor = sim.substrate.entities.get(engineer).unwrap();
+        assert_eq!(actor.capture_target, Some(cabhut), "relation={relation}");
+        assert_eq!(
+            actor.navigation.nav_com,
+            Some(NavTargetRef::building(cabhut)),
+            "relation={relation}"
+        );
+        assert!(actor.attack_target.is_none(), "native queue target is null");
+        assert_eq!(
+            (
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            ),
+            rng_before,
+            "order admission makes no RNG draws: relation={relation}"
+        );
+    }
+}
 
-    let accepted = sim.apply_command(
-        "Americans",
-        &Command::CaptureBuilding {
-            engineer_id: engineer,
-            target_building_id: cabhut,
-        },
-        Some(&rules),
-    );
+/// The friendship exception is specific to the bridge-hut destination;
+/// ordinary capturable buildings retain the enemy-only admission rule.
+#[test]
+fn ordinary_friendly_capture_is_not_enabled_by_hut_friendship_exception() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        &BRIDGE_REPAIR_TEST_INI
+            .replace("BridgeRepairHut=yes", "BridgeRepairHut=no\nCapturable=yes"),
+    ))
+    .unwrap();
+    for target_owner in ["Americans", "Soviets"] {
+        let mut sim = Simulation::with_seed(0x51E49E);
+        sim.resolve_type_handles(&rules);
+        sim.install_resolved_terrain_for_new_map(dummy_resolved_terrain());
+        let target = sim
+            .spawn_object_at_height("CABHUT", target_owner, 9, 10, 0, 0, &rules)
+            .unwrap();
+        let engineer = spawn_engineer(&mut sim, 8, 10);
+        sim.house_alliances
+            .entry("AMERICANS".into())
+            .or_default()
+            .insert("SOVIETS".into());
+        let before = sim.state_hash();
+        let rng = (
+            sim.scenario_rng.logical_state(),
+            sim.main_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        );
+        assert!(
+            !sim.apply_command(
+                "Americans",
+                &Command::CaptureBuilding {
+                    engineer_id: engineer,
+                    target_building_id: target,
+                },
+                Some(&rules)
+            ),
+            "target_owner={target_owner}"
+        );
+        assert_eq!(sim.state_hash(), before);
+        assert_eq!(
+            (
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state()
+            ),
+            rng
+        );
+    }
+}
 
-    assert!(accepted);
-    assert_eq!(
-        sim.substrate
-            .entities
-            .get(engineer)
-            .and_then(|e| e.capture_target),
-        Some(cabhut)
-    );
+/// The native query belongs to the mouse producer, before Event4C7467.
+/// An already queued Capture must survive a span becoming intact before the
+/// event executes. Re-querying at this receiver would alter delayed inputs.
+#[test]
+fn queued_hut_capture_survives_repair_before_event_execution() {
+    for relation in ["hostile", "allied", "self"] {
+        let (mut sim, rules) = build_sim();
+        let owner = if relation == "self" {
+            "Americans"
+        } else {
+            "Soviets"
+        };
+        let hut = sim
+            .spawn_object_at_height("CABHUT", owner, 9, 10, 0, 0, &rules)
+            .unwrap();
+        let engineer = spawn_engineer(&mut sim, 8, 10);
+        if relation == "allied" {
+            sim.house_alliances
+                .entry("AMERICANS".into())
+                .or_default()
+                .insert("SOVIETS".into());
+        }
+        seed_destroyed_bridge(&mut sim);
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .test_set_high_bridge_set_starts(Some(100), Some(200));
+        assert!(super::bridge_orchestrator::bridge_hut_can_repair(
+            &sim,
+            (9, 10)
+        ));
+        let actor_owner = sim.interner.intern("Americans");
+        sim.queue_command(crate::sim::command::CommandEnvelope::new(
+            actor_owner,
+            sim.session.tick + 1,
+            Command::CaptureBuilding {
+                engineer_id: engineer,
+                target_building_id: hut,
+            },
+        ));
+        for &(rx, ry) in BRIDGE_CELLS {
+            sim.resolved_terrain
+                .as_mut()
+                .unwrap()
+                .cell_mut(rx, ry)
+                .unwrap()
+                .bridge_facts
+                .overlay_id = Some(0xD4);
+        }
+        assert!(!super::bridge_orchestrator::bridge_hut_can_repair(
+            &sim,
+            (9, 10)
+        ));
+        let due = sim.take_due_commands();
+        assert_eq!(due.len(), 1);
+        let rng_before = (
+            sim.scenario_rng.logical_state(),
+            sim.main_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        );
+        assert!(
+            sim.apply_command("Americans", &due[0].payload, Some(&rules)),
+            "relation={relation}"
+        );
+        let actor = sim.substrate.entities.get(engineer).unwrap();
+        assert_eq!(actor.capture_target, Some(hut));
+        assert_eq!(actor.navigation.nav_com, Some(NavTargetRef::building(hut)));
+        assert_eq!(
+            (
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state()
+            ),
+            rng_before
+        );
+    }
 }
 
 /// SEAL with `c4_plant` set, adjacent to a healthy CABHUT, must:

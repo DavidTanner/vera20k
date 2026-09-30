@@ -388,18 +388,18 @@ mod tests {
     /// first Attack dispatch drops the target on the fog-visibility retarget
     /// (`combat::resolve_attacker_fire`) before any shot is resolved.
     fn rules() -> RuleSet {
-        RuleSet::from_ini(&IniFile::from_str(
+        RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(
             "[General]\nDrainMoneyFrameDelay=30\nDrainMoneyAmount=30\n\n\
              [InfantryTypes]\n[AircraftTypes]\n\
              [VehicleTypes]\n0=DISK\n\
              [BuildingTypes]\n0=CAOILD\n1=CAOILDP\n2=GAPOWR\n3=NAREFN\n\n\
-             [CAOILD]\nStrength=1000\nArmor=wood\nFoundation=2x2\nCapturable=true\n\
+             [CAOILD]\nStrength=1000\nArmor=wood\nCapturable=true\n\
              ProduceCashStartup=1000\nProduceCashAmount=20\nProduceCashDelay=100\n\n\
-             [CAOILDP]\nStrength=1000\nArmor=wood\nFoundation=2x2\nCapturable=true\n\
+             [CAOILDP]\nStrength=1000\nArmor=wood\nCapturable=true\n\
              Powered=yes\nPower=-10\n\
              ProduceCashStartup=1000\nProduceCashAmount=20\nProduceCashDelay=100\n\n\
-             [GAPOWR]\nStrength=750\nArmor=wood\nFoundation=2x2\nPower=100\nDrainable=yes\n\n\
-             [NAREFN]\nStrength=1000\nArmor=wood\nFoundation=2x2\n\
+             [GAPOWR]\nStrength=750\nArmor=wood\nPower=100\nDrainable=yes\n\n\
+             [NAREFN]\nStrength=1000\nArmor=wood\n\
              ResourceDestination=yes\nDrainable=yes\n\n\
              [DISK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=500\nArmor=heavy\nSpeed=6\n\
              Sight=9\nPrimary=DiskLaser\nSecondary=DiskDrain\n\n\
@@ -408,7 +408,7 @@ mod tests {
              DrainWeapon=yes\nOmniFire=yes\n\n\
              [DiskWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\n\
              [AntiB]\nVerses=0%,0%,0%,0%,0%,0%,100%,100%,100%,100%,100%\n",
-        ))
+        ), &IniFile::from_str("[CAOILD]\nFoundation=2x2\n[CAOILDP]\nFoundation=2x2\n[GAPOWR]\nFoundation=2x2\n[NAREFN]\nFoundation=2x2\n"))
         .expect("credit-income test rules parse")
     }
 

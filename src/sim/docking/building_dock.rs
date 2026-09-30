@@ -1253,12 +1253,15 @@ mod tests {
              Harvester=yes\n\
              [GADEPT]\n\
              Name=Depot\n\
-             Foundation=3x3\n\
              UnitRepair=yes\n\
              NumberImpassableRows=1\n\
              Strength=1000\n",
         ));
-        RuleSet::from_ini(&ini).expect("depot rules")
+        RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str("[GADEPT]\nFoundation=3x3\n"),
+        )
+        .expect("depot rules")
     }
 
     fn spawn_entity(

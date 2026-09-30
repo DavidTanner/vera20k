@@ -102,21 +102,17 @@ Explosion=EXPA,EXPB
 DestroyAnim=DESTA
 [PLANT]
 Strength=100
-Foundation=2x2
 Explosion=EXPA,EXPB
 DestroyAnim=DESTA
 [HALL]
 Strength=100
-Foundation=1x1
 DestroyAnim=DESTA
 [SHED]
 Strength=100
-Foundation=1x1
 [DEPOT]
 Strength=100
 Cost=800
 Crewed=yes
-Foundation=2x2
 Explosion=EXPA,EXPB
 DestroyAnim=DESTA
 [KILLWH]
@@ -132,6 +128,14 @@ AnimList=XGRYSML1,XGRYSML2,EXPLOSML,XGRYMED1,XGRYMED2,EXPLOMED,EXPLOLRG,TWLT070
 ";
 
 const ART: &str = "\
+[PLANT]
+Foundation=2x2
+[HALL]
+Foundation=1x1
+[SHED]
+Foundation=1x1
+[DEPOT]
+Foundation=2x2
 [EXPA]
 End=10
 [EXPB]
@@ -143,7 +147,11 @@ End=10
 ";
 
 fn rules() -> RuleSet {
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("death anim rules");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(RULES),
+        &IniFile::from_str(ART),
+    )
+    .expect("death anim rules");
     let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(ART));
     for name in ["EXPA", "EXPB", "EXPC", "DESTA"] {
         art.bind_anim_frame_count_for_test(name, 10);

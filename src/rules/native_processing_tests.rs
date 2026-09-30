@@ -2,6 +2,232 @@
 
 use super::*;
 
+#[test]
+fn building_foundation_pass_matches_original_art_reads() {
+    let oracle: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/engineer_bridge_cursor_caller.json"
+    ))
+    .unwrap();
+    let rows = oracle["foundation_reads"].as_array().unwrap();
+    assert_eq!(rows.len(), 80);
+    for row in rows {
+        let input = &row["input"];
+        let type_id = input["type_id"].as_str().unwrap();
+        let mut fixed_art = IniFile::empty();
+        for (name, entries) in input["art_entries"].as_object().unwrap() {
+            let mut section = IniSection::new(name.to_owned());
+            for (key, value) in entries.as_object().unwrap() {
+                section.set(key, value.as_str().unwrap());
+            }
+            fixed_art.replace_first_section(section);
+        }
+        // The native corpus supplies a current +EF0 field, including nonzero
+        // retained-state controls. Seed that exact fixture on the sole registry
+        // owner; the production Process pass performs both actual ART reads.
+        let mut member = ProcessedType::new(type_id.to_owned());
+        member.building_foundation = input["initial_foundation_id"].as_u64().unwrap() as u8;
+        let mut registry = NativeRulesRegistryState::default();
+        registry
+            .families
+            .insert(RulesTypeFamily::Building, vec![member]);
+        let mut raw = IniSection::new(type_id.to_owned());
+        raw.set("Image", input["image"].as_str().unwrap());
+        if let Some(poison) = input["rules_foundation_poison"].as_str() {
+            raw.set("Foundation", poison);
+        }
+        if input["undeploy_pointer"].as_bool().unwrap() {
+            raw.set("UndeploysInto", "TESTUNIT");
+        }
+        let mut pass = IniFile::empty();
+        pass.replace_first_section(raw);
+        let processed = RulesLayerStack::new(pass)
+            .process_with_fixed_art_and_registry_state(&fixed_art, registry)
+            .unwrap();
+        assert_eq!(
+            processed.building_foundation_states().collect::<Vec<_>>(),
+            vec![(
+                type_id,
+                row["output"]["foundation_id"].as_u64().unwrap() as u8
+            )],
+            "{}",
+            input["name"]
+        );
+        let mut rules = crate::rules::ruleset::RuleSet::from_processed_rules(&processed).unwrap();
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&fixed_art));
+        let object = rules.object(type_id).unwrap();
+        assert_eq!(
+            crate::rules::foundation::foundation_id(&object.foundation),
+            row["output"]["foundation_id"].as_u64().unwrap() as u8,
+            "{}: projected and installed native field",
+            input["name"]
+        );
+        assert_eq!(
+            crate::rules::foundation::foundation_dimensions(&object.foundation),
+            (
+                row["output"]["width"].as_u64().unwrap() as u16,
+                row["output"]["height"].as_u64().unwrap() as u16,
+            )
+        );
+        assert_eq!(
+            object.is_1x1_with_undeploy(),
+            row["output"]["is_1x1_with_undeploy"].as_bool().unwrap(),
+            "{}: Undeploy gate consumes the native field",
+            input["name"]
+        );
+    }
+}
+
+#[test]
+fn building_foundation_reads_only_reached_bodies_and_retains_rules_image() {
+    let art = IniFile::from_str(
+        "[FIRST]\nFoundation=2x2\nImage=VISUAL\n\
+         [VISUAL]\nFoundation=4x4\n[SECOND]\nFoundation=3x3\n",
+    );
+    let mut layers = RulesLayerStack::new(IniFile::from_str(
+        "[BuildingTypes]\n0=HUT\n[HUT]\nImage=FIRST\nFoundation=4x4\n",
+    ));
+    assert_eq!(
+        layers
+            .process_with_fixed_art(&art)
+            .unwrap()
+            .building_foundation_states()
+            .collect::<Vec<_>>(),
+        [("HUT", 3)],
+        "Rules Foundation and ART Image redirects are not Foundation sources"
+    );
+    layers.push(
+        RulesLayerKind::LangRule,
+        IniFile::from_str("[HUT]\nStrength=100\n"),
+    );
+    assert_eq!(
+        layers
+            .process_with_fixed_art(&art)
+            .unwrap()
+            .building_foundation_states()
+            .collect::<Vec<_>>(),
+        [("HUT", 3)],
+        "missing Rules Image uses its previous 25-byte field"
+    );
+    layers.push(
+        RulesLayerKind::GameMode,
+        IniFile::from_str("[HUT]\nImage=SECOND\n"),
+    );
+    assert_eq!(
+        layers
+            .process_with_fixed_art(&art)
+            .unwrap()
+            .building_foundation_states()
+            .collect::<Vec<_>>(),
+        [("HUT", 6)]
+    );
+    layers.push(
+        RulesLayerKind::Scenario,
+        IniFile::from_str("[HUT]\nImage=MISSING\n"),
+    );
+    let processed = layers.process_with_fixed_art(&art).unwrap();
+    assert_eq!(
+        processed.building_foundation_states().collect::<Vec<_>>(),
+        [("HUT", 6)]
+    );
+
+    let late_art = IniFile::from_str("[LATE]\nFoundation=4x4\n");
+    let mut late = RulesLayerStack::new(IniFile::from_str("[LATE]\nImage=LATE\n"));
+    late.push(
+        RulesLayerKind::Scenario,
+        IniFile::from_str("[BuildingTypes]\n0=LATE\n"),
+    );
+    assert_eq!(
+        late.process_with_fixed_art(&late_art)
+            .unwrap()
+            .building_foundation_states()
+            .collect::<Vec<_>>(),
+        [("LATE", 0)],
+        "a late constructor does not reread an earlier orphan Rules body or ART"
+    );
+}
+
+#[test]
+fn building_foundation_art_install_preserves_reached_retained_and_constructor_state() {
+    use crate::rules::art_data::ArtRegistry;
+    use crate::rules::ruleset::RuleSet;
+
+    let art = IniFile::from_str("[FIRST]\nFoundation=2x2\n[LATE]\nFoundation=4x4\n");
+    let mut layers = RulesLayerStack::new(IniFile::from_str(
+        "[BuildingTypes]\n0=HUT\n[HUT]\nImage=FIRST\nUndeploysInto=MCV\n\
+         [LATE]\nImage=LATE\n",
+    ));
+    let reached = layers.process_with_fixed_art(&art).unwrap();
+    layers.push(
+        RulesLayerKind::Scenario,
+        IniFile::from_str("[BuildingTypes]\n0=HUT\n1=LATE\n[HUT]\nImage=MISSING\n"),
+    );
+    let retained_and_late = layers.process_with_fixed_art(&art).unwrap();
+    for (processed, installation_art, expected) in [
+        (&reached, &art, vec![("HUT", "2x2")]),
+        (
+            &retained_and_late,
+            &art,
+            vec![("HUT", "2x2"), ("LATE", "1x1")],
+        ),
+        // Binding metadata is not another ReadINI pass, even if its ART cache
+        // differs. Only the process-resident native owner writes Foundation.
+        (
+            &reached,
+            &IniFile::from_str("[FIRST]\nFoundation=4x4\n"),
+            vec![("HUT", "2x2")],
+        ),
+    ] {
+        let mut rules = RuleSet::from_processed_rules(processed).unwrap();
+        rules.install_art_data(ArtRegistry::from_ini(installation_art));
+        for (name, foundation) in expected {
+            let object = rules.object(name).unwrap();
+            assert_eq!(
+                object.foundation, foundation,
+                "{name}: installation reread Foundation"
+            );
+            if name == "HUT" {
+                assert!(!object.is_1x1_with_undeploy());
+            }
+        }
+    }
+}
+
+#[test]
+fn building_foundation_survives_registry_handoff_and_resets_with_owner() {
+    let art = IniFile::from_str("[FIRST]\nFoundation=2x2\n");
+    let processed = RulesLayerStack::new(IniFile::from_str(
+        "[BuildingTypes]\n0=HUT\n[HUT]\nImage=FIRST\n",
+    ))
+    .process_with_fixed_art(&art)
+    .unwrap();
+    let (_, receipt) = processed.into_ini_and_native_type_construction_trace();
+    let continued = RulesLayerStack::new(IniFile::from_str("[HUT]\nImage=MISSING\n"))
+        .process_with_fixed_art_and_registry_state(
+            &art,
+            receipt.into_registry_state_discarding_events(),
+        )
+        .unwrap();
+    assert_eq!(
+        continued.building_foundation_states().collect::<Vec<_>>(),
+        [("HUT", 3)]
+    );
+    let (_, receipt) = continued.into_ini_and_native_type_construction_trace();
+    let reset = RulesLayerStack::new(IniFile::from_str(
+        "[BuildingTypes]\n0=HUT\n[HUT]\nImage=MISSING\n",
+    ))
+    .process_with_fixed_art_and_registry_state(
+        &art,
+        receipt
+            .into_registry_state_discarding_events()
+            .destructive_reset(),
+    )
+    .unwrap();
+    assert_eq!(
+        reset.building_foundation_states().collect::<Vec<_>>(),
+        [("HUT", 0)]
+    );
+}
+
 /// Each row is the next original ReadGeneral call on the same RulesClass.
 /// Exercise the production pass owner and its RuleSet publication, not a second
 /// list parser. The native corpus also checks ctor emptiness and factory order.

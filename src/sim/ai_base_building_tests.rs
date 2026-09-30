@@ -33,9 +33,13 @@ fn rules(advanced_prerequisite: &str) -> RuleSet {
          [GPOWER]\nPower=100\n[NPOWER]\nPower=100\n[NAPOWER]\nPower=200\n{advanced_prerequisite}\n\
          [TPOWER]\nPower=100\n[YARD]\nConstructionYard=yes\nPower=-50\n[DRAINER]\nPower=-50\n\
          [WALLTOWER]\n[DOCK]\nNaval=yes\n[PLAIN]\n[BARRA]\n[BARRB]\n[WEAPA]\n[WEAPB]\n\
-         [WALL]\nWall=yes\n[GUARDED]\nStrength=500\nFoundation=2x2\nProtectWithWall=yes\n"
+         [WALL]\nWall=yes\n[GUARDED]\nStrength=500\nProtectWithWall=yes\n"
     );
-    RuleSet::from_ini(&IniFile::from_str(&text)).unwrap()
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(&text),
+        &IniFile::from_str("[GUARDED]\nFoundation=2x2\n"),
+    )
+    .unwrap()
 }
 
 fn computer_house(game_mode_nonzero: bool) -> (Simulation, InternedId) {
@@ -249,16 +253,23 @@ fn the_walls_match_native() {
         for (index, ty) in types.iter().enumerate() {
             text += &format!("{index}={}\n", ty[0].as_str().unwrap());
         }
+        let mut art_text = String::new();
         for ty in types {
             let foundation = crate::rules::foundation::FOUNDATION_TABLE[int(&ty[3]) as usize].name;
             text += &format!(
-                "[{}]\nAIBasePlanningSide={}\nProtectWithWall={}\nFoundation={foundation}\n",
+                "[{}]\nAIBasePlanningSide={}\nProtectWithWall={}\n",
                 ty[0].as_str().unwrap(),
                 int(&ty[1]),
                 flag(&ty[2])
             );
+            // The native corpus supplies the Foundation index in type memory.
+            art_text += &format!("[{}]\nFoundation={foundation}\n", ty[0].as_str().unwrap());
         }
-        RuleSet::from_ini(&IniFile::from_str(&text)).unwrap()
+        RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(&text),
+            &IniFile::from_str(&art_text),
+        )
+        .unwrap()
     };
     // The native Width and Height tables (`0x008192B8`, `0x00819310`) that
     // `0x0045EC90` and `0x0045ECA0(0)` read, for every foundation; the
@@ -392,8 +403,8 @@ const EXIT_RULES: &str = "[General]\nAIAlternateProductionCreditCutoff=2000\n\
     MaximumBuildingPlacementFailures=2\n\
     [InfantryTypes]\n[AircraftTypes]\n[VehicleTypes]\n0=TANK\n\
     [BuildingTypes]\n0=YARD\n1=PLAIN\n\
-    [YARD]\nStrength=1000\nConstructionYard=yes\nFoundation=2x2\n\
-    [PLAIN]\nStrength=1000\nFoundation=2x2\n\
+    [YARD]\nStrength=1000\nConstructionYard=yes\n\
+    [PLAIN]\nStrength=1000\n\
     [TANK]\nStrength=300\nSpeed=5\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
     [Clear]\nBuildable=yes\n";
 
@@ -402,7 +413,11 @@ const EXIT_RULES: &str = "[General]\nAIAlternateProductionCreditCutoff=2000\n\
 /// `In_Bounds` diamond; the finished PLAIN waits in limbo. Returns the yard
 /// and the product.
 fn exit_fixture() -> (Simulation, RuleSet, InternedId, u64, u64) {
-    let rules = RuleSet::from_ini(&IniFile::from_str(EXIT_RULES)).unwrap();
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(EXIT_RULES),
+        &IniFile::from_str("[YARD]\nFoundation=2x2\n[PLAIN]\nFoundation=2x2\n"),
+    )
+    .unwrap();
     let mut sim = Simulation::new();
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     sim.session.game_mode_nonzero = true;

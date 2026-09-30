@@ -51,7 +51,7 @@ fn retail_concrete_damage_repair_and_restore_publish_navigation() {
         ));
         for hut in [(85, 58), (89, 51)] {
             assert_eq!(
-                crate::sim::world::bridge_orchestrator::bridge_hut_has_collapsed_span(
+                crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(
                     scene.sim(),
                     hut
                 ),

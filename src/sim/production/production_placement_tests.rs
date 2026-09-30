@@ -36,7 +36,7 @@ use super::tests::{
 };
 
 fn stock_refinery_completion_rules() -> RuleSet {
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+    let ini = IniFile::from_str(
         "[InfantryTypes]\n\
          [VehicleTypes]\n\
          0=CMIN\n\
@@ -78,9 +78,8 @@ fn stock_refinery_completion_rules() -> RuleSet {
          Strength=1000\n\
          FactoryPlant=yes\n\
          UnitsCostBonus=.75\n[Clear]\nBuildable=yes\n",
-    ))
-    .expect("stock refinery completion rules should parse");
-    let art = ArtRegistry::from_ini(&IniFile::from_str(
+    );
+    let art_ini = IniFile::from_str(
         "[GACNST]\n\
          Foundation=4x4\n\
          [NACNST]\n\
@@ -89,8 +88,10 @@ fn stock_refinery_completion_rules() -> RuleSet {
          Foundation=4x3\n\
          [NAREFN]\n\
          Foundation=4x3\n",
-    ));
-    rules.install_art_data(art);
+    );
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini)
+        .expect("stock refinery completion rules should parse");
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     rules
 }
 
@@ -381,7 +382,11 @@ fn naval_yard_placement_rules() -> RuleSet {
          Adjacent=12\n[Clear]\nBuildable=yes\nFloat=0%\n\
          [Water]\nFloat=100%\n[Beach]\nFloat=0%\n",
     );
-    RuleSet::from_ini(&ini).expect("naval yard placement rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GACNST]\nFoundation=2x2\n[GAYARD]\nFoundation=1x1\n"),
+    )
+    .expect("naval yard placement rules and ART should parse")
 }
 
 fn build_off_ally_rules() -> RuleSet {
@@ -405,7 +410,11 @@ fn build_off_ally_rules() -> RuleSet {
          Foundation=2x2\n\
          Adjacent=0\n[Clear]\nBuildable=yes\n",
     );
-    RuleSet::from_ini(&ini).expect("BuildOffAlly placement rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str("[GACNST]\nFoundation=2x2\n[GAPOWR]\nFoundation=2x2\n"),
+    )
+    .expect("BuildOffAlly placement rules and ART should parse")
 }
 
 fn ground_occupant_placement_rules() -> RuleSet {
@@ -445,7 +454,13 @@ fn ground_occupant_placement_rules() -> RuleSet {
          Adjacent=0\n\
          Wall=yes\n[Clear]\nBuildable=yes\n",
     );
-    RuleSet::from_ini(&ini).expect("ground-occupant placement rules should parse")
+    RuleSet::from_ini_with_fixed_art_for_test(
+        &ini,
+        &IniFile::from_str(
+            "[GACNST]\nFoundation=2x2\n[GAPOWR]\nFoundation=2x2\n[GAWALL]\nFoundation=1x1\n",
+        ),
+    )
+    .expect("ground-occupant placement rules and ART should parse")
 }
 
 fn gsi_04_07_wall_placement_contract() -> (RuleSet, OverlayTypeRegistry) {
@@ -489,12 +504,13 @@ fn gsi_04_07_wall_placement_contract() -> (RuleSet, OverlayTypeRegistry) {
          Adjacent=8\n\
          GuardRange=5\n[Clear]\nBuildable=yes\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("wall placement rules");
-    let art = ArtRegistry::from_ini(&IniFile::from_str(
-        "[GAWALL]\nToOverlay=GAWALL\n\
+    let art_ini = IniFile::from_str(
+        "[GACNST]\nFoundation=2x2\n[GAWALL]\nToOverlay=GAWALL\n\
          [WALLKIT]\nToOverlay=GAWALL\n",
-    ));
-    rules.install_art_data(art);
+    );
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).expect("wall placement rules");
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     (rules, OverlayTypeRegistry::from_ini(&ini, None))
 }
 

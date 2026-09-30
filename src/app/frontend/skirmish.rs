@@ -936,16 +936,18 @@ mod tests {
     fn gsi_17_01_preplaced_structure_reveal_accounts_against_preexisting_house_once() {
         use crate::rules::art_data::ArtRegistry;
 
-        let mut rules = RuleSet::from_ini(&IniFile::from_str(
-            "[AI]\nAIBaseSpacing=2\n\
+        let art = IniFile::from_str("[GACNST]\nFoundation=4x4\n");
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[AI]\nAIBaseSpacing=2\n\
              [Countries]\n0=Americans\n1=Russians\n2=Neutral\n3=Special\n\
              [BuildingTypes]\n0=GACNST\n\
              [GACNST]\nStrength=1000\nUndeploysInto=AMCV\n",
-        ))
+            ),
+            &art,
+        )
         .expect("structure fixture rules");
-        rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
-            "[GACNST]\nFoundation=4x4\n",
-        )));
+        rules.install_art_data(ArtRegistry::from_ini(&art));
         assert_eq!(
             rules.object("GACNST").unwrap().base_reservation_spacing,
             Some(2)

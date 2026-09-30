@@ -52,7 +52,8 @@ use std::sync::{
 #[cfg(test)]
 pub(crate) use tests::{
     bridge_constructor_terrain, install_bridge_batch_test_catalog,
-    install_ordinary_repair_test_catalog, install_tunnel_repair_test_catalog,
+    install_bridge_query_test_catalog, install_ordinary_repair_test_catalog,
+    install_tunnel_repair_test_catalog,
 };
 
 #[path = "resolved_terrain_mutation.rs"]
@@ -1144,6 +1145,17 @@ impl<'a> NativeCellQuery<'a> {
         match cell {
             NativeCellIdentity::Real(_) => self.terrain.native_cell_flags(cell),
             NativeCellIdentity::Dummy => self.dummy.raw_flags(),
+        }
+    }
+
+    /// Retained CellClass+44, without another lookup or dummy replacement.
+    pub(crate) fn overlay_identity(&self, cell: NativeCellIdentity) -> i32 {
+        match cell {
+            NativeCellIdentity::Real(index) => self.terrain.cells[index]
+                .bridge_facts
+                .overlay_id
+                .map_or(-1, i32::from),
+            NativeCellIdentity::Dummy => self.dummy.overlay_identity_state().0,
         }
     }
 

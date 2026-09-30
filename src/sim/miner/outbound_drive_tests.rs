@@ -50,7 +50,8 @@ fn outbound_contract_inputs() -> (IniFile, IniFile) {
 
 fn outbound_contract_oracle() -> OutboundContractOracle {
     let (rules_ini, art_ini) = outbound_contract_inputs();
-    let mut rules = RuleSet::from_ini(&rules_ini).expect("outbound contract rules");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini)
+        .expect("outbound contract rules");
     rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     let overlays = OverlayTypeRegistry::from_ini(&rules_ini, None);
     let tib01 = overlays.id_for_name("TIB01").expect("retail TIB01");

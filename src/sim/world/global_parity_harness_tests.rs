@@ -479,7 +479,10 @@ fn harness_rules() -> RuleSet {
     let ini = harness_ini();
     // Explicit authored GI inputs use the production fixed-ART reader and binder;
     // zero-count constructor records do not admit native Ready/idle actions.
-    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    art.merge(&IniFile::from_str(
+        "[GAWEAP]\nFoundation=4x3\n[GAREFN]\nFoundation=3x3\n",
+    ));
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
     rules.bind_animation_sequences(

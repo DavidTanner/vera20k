@@ -150,11 +150,42 @@ pub const FOUNDATION_TABLE: [FoundationDef; 22] = [
 ];
 
 pub fn foundation_def(value: &str) -> &'static FoundationDef {
-    let trimmed = value.trim();
     FOUNDATION_TABLE
         .iter()
-        .find(|def| def.name.eq_ignore_ascii_case(trimmed))
+        .find(|def| def.name.eq_ignore_ascii_case(value))
         .unwrap_or(&FOUNDATION_TABLE[DEFAULT_FOUNDATION_ID as usize])
+}
+
+/// Original ReadFoundation474DA0: ReadString528A10 at char[32], using
+/// the current table name as default, then a case-insensitive fixed-table scan.
+/// A present invalid (including empty) name resolves0. The string reader owns
+/// the byte cap and CRT trim; repeating Unicode trim here changes native inputs.
+/// Executable comparisons: spatial_oracle/engineer_bridge_cursor_caller.json.
+pub(crate) fn read_foundation(section: &crate::rules::ini_parser::IniSection, current: u8) -> u8 {
+    foundation_id(&section.read_string(
+        "Foundation",
+        FOUNDATION_TABLE[usize::from(current)].name,
+        0x20,
+    ))
+}
+
+/// BuildingType461225..46125D reads ART by effective RULES Image and then
+/// stored type ID. Both reads receive the current value; the second result
+/// replaces the first only when nonzero. The rules pass processor owns this
+/// field; asset metadata installation cannot repeat a native ReadINI pass.
+pub(crate) fn read_building_foundation(
+    current: u8,
+    image: &str,
+    type_id: &str,
+    mut read: impl FnMut(&str, u8) -> u8,
+) -> u8 {
+    let first = read(image, current);
+    let second = read(type_id, first);
+    if second == DEFAULT_FOUNDATION_ID {
+        first
+    } else {
+        second
+    }
 }
 
 pub fn foundation_id(value: &str) -> u8 {

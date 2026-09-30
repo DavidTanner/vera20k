@@ -130,7 +130,11 @@ fn compare(e: &GameEntity, row: &Value) {
     );
     if row["input"]["family"] == "drive" {
         assert_eq!(
-            super::super::drive_locomotor_is_moving(e),
+            super::super::track_head::motion_state(
+                e,
+                super::super::track_process::TrackFamily::Drive
+            )
+            .0,
             row["moving"].as_bool().unwrap(),
             "{row}"
         );
@@ -677,7 +681,11 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
                 (
                     drive.destination,
                     drive.head_to,
-                    super::super::drive_locomotor_is_moving(actor),
+                    super::super::track_head::motion_state(
+                        actor,
+                        super::super::track_process::TrackFamily::Drive,
+                    )
+                    .0,
                 )
             } else {
                 (

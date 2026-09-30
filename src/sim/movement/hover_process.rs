@@ -457,13 +457,25 @@ impl Simulation {
         if coord_cell(next) == coord_cell(location) {
             //5149F7..514A1E: SetCoords and SetZ with +74 cleared, so without
             //a Mark; VERA's SetCoords never marks.
-            self.foot_set_coords(id, next, Some(rules));
+            super::super::ground_pose::foot_set_location(
+                &mut self.substrate.entities,
+                id,
+                next,
+                Some(rules),
+                &self.interner,
+            );
             return;
         }
         //5148DF..514973: Mark(REMOVE), SetCoords, SetZ, the bridge byte from
         //the new cell and the height, Mark(PUT).
         self.foot_mark_remove(id, Some(rules), registry);
-        self.foot_set_coords(id, next, Some(rules));
+        super::super::ground_pose::foot_set_location(
+            &mut self.substrate.entities,
+            id,
+            next,
+            Some(rules),
+            &self.interner,
+        );
         let terrain = self.resolved_terrain.as_ref();
         if let (Some(terrain), Some(entity)) = (terrain, self.substrate.entities.get(id)) {
             let cells = NativeCellQuery::canonical(terrain);
@@ -547,7 +559,7 @@ impl Simulation {
         };
         let visible = hover.altitude_step(height, climbing, id as i32, frame, powered, rules);
         //513E74..513E8C: SetHeight with +0x74 cleared, so unmarked.
-        self.set_object_height(id, visible);
+        self.set_object_height_unmarked(id, visible);
     }
 
     /// SpeedUpdate 0x00515ED0.

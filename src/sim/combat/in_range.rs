@@ -1521,11 +1521,15 @@ mod tests {
                        [AircraftTypes]\n\n\
                        [BuildingTypes]\n0=BLDG\n\n\
                        [ATKR]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=GUN\n\n\
-                       [BLDG]\nStrength=750\nArmor=wood\nFoundation=4x2\n\n\
+                       [BLDG]\nStrength=750\nArmor=wood\n\n\
                        [GUN]\nDamage=1\nROF=20\nRange=4\nWarhead=WH\n\n\
                        [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n";
         let ini = IniFile::from_str(ini_str);
-        let rules = RuleSet::from_ini(&ini).expect("rules parse");
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &ini,
+            &IniFile::from_str("[BLDG]\nFoundation=4x2\n"),
+        )
+        .expect("rules parse");
         let weapon = rules.weapon("GUN").expect("weapon");
 
         let attacker = ground_attacker(6, 1, 0, "ATKR");

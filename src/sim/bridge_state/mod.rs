@@ -44,6 +44,7 @@ pub(crate) mod ordinary_repair;
 pub(crate) mod publication;
 pub(crate) mod ramp_repair;
 mod record_scan;
+pub(crate) mod repair_query;
 pub(crate) mod rim;
 mod zone_activation;
 

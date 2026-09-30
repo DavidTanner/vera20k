@@ -74,6 +74,8 @@ pub(crate) fn navigation_should_be_on_bridge(
     Ok(on_bridge)
 }
 
+/// The world XY of an object's Location (`ObjectClass+0x9C`, `+0xA0`) from
+/// the cell and sub-cell [`set_position_world_xy`] stores.
 pub(crate) fn position_world_xy(position: &Position) -> [i32; 2] {
     [
         i32::from(position.rx)
@@ -83,6 +85,77 @@ pub(crate) fn position_world_xy(position: &Position) -> [i32; 2] {
             .wrapping_mul(256)
             .wrapping_add(position.sub_y.to_num::<i32>()),
     ]
+}
+
+/// Store a Location's world XY. On the map the cell is the Location's cell
+/// (`0x0041BEA0`: each axis divided by 256 toward zero) and the sub-cell the
+/// remainder. Off it the unsigned cell clamps to 0 or 65535 and the sub-cell
+/// keeps the rest, so a negative or 16-bit-aliased coordinate from -32768 to
+/// 65535 * 256 + 32767 still reads back unchanged through
+/// [`position_world_xy`]; its native cell word comes from that full XY.
+/// Beyond that range the sub-cell overflows (a debug panic, a wrap in
+/// release), where native keeps any `i32`; no mover on a map reaches it.
+pub(crate) fn set_position_world_xy(position: &mut Position, xy: [i32; 2]) {
+    let [x, y] = xy;
+    let cell_x = crate::util::lepton::lepton_to_cell(x).clamp(0, i32::from(u16::MAX));
+    let cell_y = crate::util::lepton::lepton_to_cell(y).clamp(0, i32::from(u16::MAX));
+    position.rx = cell_x as u16;
+    position.ry = cell_y as u16;
+    position.sub_x = crate::util::fixed_math::SimFixed::from_num(x.wrapping_sub(cell_x * 256));
+    position.sub_y = crate::util::fixed_math::SimFixed::from_num(y.wrapping_sub(cell_y * 256));
+}
+
+/// `ObjectClass::SetLocation @ 0x005F6940`: the Location becomes `coord`.
+pub(crate) fn put_location(position: &mut Position, coord: DriveCoord) {
+    set_position_world_xy(position, [coord.x, coord.y]);
+    position.exact_z_leptons = Some(coord.z);
+}
+
+/// `FootClass::SetLocation` (vt+0x1B4 = `0x004DB810`): the Location becomes
+/// `coord` ([`put_location`]) whether or not it changed, then, only when it
+/// changed (`0x004DB819..0x004DB83D`), an `OpenTopped=` transport's riders
+/// take it (`0x004DB870..0x004DB88A` -> `0x007104F0`,
+/// [`open_topped_riders_follow`]). Drive, Ship, Walk, Hover, Jumpjet, the
+/// tube and the Fly crash fall move a Foot through it.
+///
+/// RESIDUAL: its marked branch (`0x004DB83F..0x004DB866`, Mark(UP),
+/// `ObjectClass::SetLocation`, Mark(DOWN) while `+0x74` is set) is not
+/// ported. Every native call a Rust caller ports runs it unmarked: Drive,
+/// Hover and Walk Mark(UP) first on a cell change (`0x004B2071`,
+/// `0x005148E3`, `0x0075BD7D`, `0x0075C11E`) and Drive and Hover clear
+/// `+0x74` around it otherwise (`0x004B209F`, `0x005149F7`); Jumpjet clears
+/// `+0x74` around it (`0x0054C189..0x0054C1A3`) or Mark(UP)s first
+/// (`0x0054C820`, `0x0054CBE1`); a tube mover is out of the lists until its
+/// exit's Mark(DOWN); and the Fly crash fall Mark(UP)s first (`0x004CD766`).
+/// The Jumpjet replay also sets the Location it Mark(UP)s from while marked,
+/// which moves nothing. Natively `ObjectClass::Paradrop` calls it on the
+/// object Unlimbo just marked, with the same coordinate (`0x005F5A3D`,
+/// `0x005F5A50`); VERA's Reveal commits the drop coordinate instead, which
+/// skips a Pick_Up/Place_Down pair that leaves the list order as it was, and
+/// its two Recalcs. Trigger: every paradrop. Effect: none on the lists. Risk:
+/// a new caller that sets a marked object's Location.
+///
+/// RESIDUAL: the change test reads [`position_world_coord`], whose Z is the
+/// stored level when no exact Z is kept (an Air or Hover owner before it
+/// first moves). Only the rider copy depends on it; an extra copy changes
+/// nothing, and a Z-only change it misses leaves riders at the old Z.
+///
+/// [`open_topped_riders_follow`]: crate::sim::passenger::open_topped_riders_follow
+pub(crate) fn foot_set_location(
+    entities: &mut crate::sim::entity_store::EntityStore,
+    id: u64,
+    coord: DriveCoord,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    interner: &crate::sim::intern::StringInterner,
+) {
+    let Some(entity) = entities.get_mut(id) else {
+        return;
+    };
+    let changed = position_world_coord(&entity.position) != coord;
+    put_location(&mut entity.position, coord);
+    if let (true, Some(rules)) = (changed, rules) {
+        crate::sim::passenger::open_topped_riders_follow(entities, id, rules, interner);
+    }
 }
 
 /// Read retained ObjectClass coordinates without resampling changed terrain.
@@ -353,33 +426,47 @@ pub(crate) fn set_height(
 }
 
 impl Simulation {
-    /// [`set_height`] for an object id. It samples terrain only, as GetHeight
-    /// ([`current_fly_height`]) does, so `SetHeight(GetHeight() + n)` round-trips
-    /// without a map too. It also keeps `LocomotorState.altitude` equal to the
-    /// requested height, for the readers that still take it as the object's
-    /// height (#692).
+    /// `ObjectClass::SetHeight @ 0x005F5FA0` for an object id. A marked object
+    /// (`+0x74`) leaves its cell through its own Mark (vt+0x124, `0x005F5FC8`)
+    /// before the Z write and marks again after it (`0x005F6009`), so a Foot
+    /// is prepended to its cell's list again and the cell recalculates. That
+    /// happens at a crash impact (Fly `0x004CD7BF`, Jumpjet notice
+    /// `0x007461B9`, Infantry notice `0x00522B7D`/`0x00522B8B`) and a fall's
+    /// landing (`0x005F3F7A`). An unmarked object takes the Z write alone
+    /// ([`Self::set_object_height_unmarked`]).
+    pub(crate) fn set_object_height(
+        &mut self,
+        id: u64,
+        height: i32,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let context = crate::sim::world::UninitContext::new(rules, registry);
+        let marked = self
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|entity| entity.lifecycle.cell_marked);
+        if marked {
+            self.unmark_entity_remove(id, context);
+        }
+        self.set_object_height_unmarked(id, height);
+        if marked {
+            self.mark_entity_put(id, context);
+        }
+    }
+
+    /// SetHeight's unmarked arm (`0x005F6017..`): [`set_height`] for an
+    /// object id. Hover's altitude step (`0x00513E74..0x00513E8C`) clears
+    /// `+0x74` around its SetHeight, so it always takes this arm.
     ///
-    /// RESIDUAL: native SetHeight on a marked object (`+0x74`) removes it from
-    /// its cell before the write and marks it again after (vt+0x124,
-    /// `0x005F5FC2..0x005F6009`), through `FootClass::Mark` (`0x004D3780`) for
-    /// a Foot. VERA writes Z only.
-    /// - Trigger: a Jumpjet's crash notice (`0x007461B9`,
-    ///   `0x00522B7D`/`0x00522B8B`) and a Fly crash impact (`0x004CD7BF`),
-    ///   whose fall re-marks the wreck (`0x004CD783`). VERA's Fly wreck is
-    ///   unmarked there: its fall has no Mark pair, and the impact returns
-    ///   before the transaction marks it again. A paratrooper's landing
-    ///   (`0x005F3F7A`) runs it too, but as a no-op: the falling block has just
-    ///   re-added it (`0x005F3F58`).
-    /// - Effect: Update's Mark bracket has already listed a Jumpjet wreck that
-    ///   fell below twice the level height, so it keeps its list position
-    ///   where native moves it to the head and runs the cell's Recalc. A Fly
-    ///   wreck is not in its cell's lists for its death weapon.
-    /// - Frequency: every Jumpjet and aircraft crash.
-    /// - Risk: list walks and first-object reads in that cell.
-    /// - Tracked by #692.
+    /// It samples terrain only, as GetHeight ([`current_fly_height`]) does, so
+    /// `SetHeight(GetHeight() + n)` round-trips without a map too. It also
+    /// keeps `LocomotorState.altitude` equal to the requested height, for the
+    /// readers that still take it as the object's height (#692).
     ///
     /// [`current_fly_height`]: super::air_movement::current_fly_height
-    pub(crate) fn set_object_height(&mut self, id: u64, height: i32) {
+    pub(crate) fn set_object_height_unmarked(&mut self, id: u64, height: i32) {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };

@@ -72,11 +72,40 @@ was checked:
 - `[2026-09-30 YRpp names]`: a non-virtual function or global named from a YRpp
   address binding. The plate states whether the body's `RET` matches YRpp's declared
   arguments. The name stays a lead. A global that already had its own name kept it;
-  its plate records YRpp's binding.
+  its plate records YRpp's binding. A later pass also replaced `vt_entry` placeholders
+  at YRpp-bound addresses when YRpp declares the method in that slot, and skipped
+  bindings whose YRpp name is itself a placeholder (`func_3C`, `sub_53E3C0`). Some YRpp
+  addresses are wrong: a few land in the middle of an instruction, and some are a few
+  bytes off. The plates of the functions involved say which.
 - `[2026-09-30 destructor audit]`: a destructor an older pass had named
   `__Constructor`, with the byte evidence.
-- `vtable__<Class>` and `vtable__<Class>__secondary_<offset>` label each vtable from
-  its RTTI complete object locator.
+- `[2026-09-30 duplicate names]`: a name several functions shared, or a
+  `__Constructor` name on a function that is not that constructor, corrected from
+  the body.
+  - The vtable a function stores last names its class. A constructor calls its base
+    first and returns `this`; a destructor stores its own vtable first and returns
+    nothing. An older pass had named every function that stores X's vtable
+    `X__Constructor`.
+  - `_NoInit` is the save-game constructor: `X__Load` or a derived NoInit
+    constructor calls it, it pops one argument and it sets the vtables.
+    `AbstractClass__Constructor_VtablesOnly` is AbstractClass's.
+  - `_Default` is the constructor without arguments. Usually only
+    `TClassFactory<X>__CreateInstance` calls it.
+  - `_Copy`, `_StringObj` and `_FromSurface` mark other overloads; the plate says
+    what each takes.
+  - A function that is not the constructor its name claimed, and whose identity is
+    unproven, went back to its default `FUN_` name. Its plate keeps the evidence and
+    the earlier name. Examples are 0x4CD600, which `FlyLocomotionClass__Process`
+    0x4CCB40 calls every frame, and 0x718B70, which only
+    `TeleportLocomotionClass__Move_To` calls.
+  - Twelve names still belong to more than one function. They are thunks that show
+    their target's name, three identical `CRect` copies, the two `What_Am_I` slots of
+    `CellClass` and `SuperClass`, and the two `VXL_Sort_Rasterize` variants.
+- `vtable__<Class>` and `vtable__<Class>__secondary_<offset>` (a decimal offset) label
+  every vtable that has an RTTI complete object locator. Where an older label existed,
+  the older one stays primary, and listings and decompiles show it: `vtable_BuildingClass`,
+  `vtable_MapClass` and the other map and sidebar layers, and the locomotors'
+  `<Class>__ILocomotion_vtable`, `__IUnknown_vtable` and `__IPiggyback_vtable`.
 
 Destructor and COM-interface method names rest on the bytes. For the 2,356 method
 names taken from YRpp's declaration order, each body's `ret N` was compared with
@@ -116,6 +145,14 @@ checked:
   - A switch got its table and cases.
   - A jump to another function's entry was marked as a tail call.
   - A reference that pointed into the middle of an instruction was removed.
+  - A body that left out bytes of its own instructions got them (11 functions).
+  - `FUN_00435b70`, which started inside another instruction, became
+    `BuildingLightClass__Destructor` at its real start 0x435B50.
+  - Four functions that store a vtable were created where the bytes had never been
+    decoded or were in no function, such as `LightConvertClass__Destructor` 0x556510.
+  - Three scalar deleting destructors named `__Destructor` were renamed
+    `__ScalarDeletingDestructor`, like every other function in the AbstractClass
+    destructor slot (+0x20). `X__Destructor` names the plain destructor.
 
 The decompiler follows control flow past a function's body, so a completed body
 changes listings, cross-references and call graphs, but rarely the decompile. A switch
@@ -133,6 +170,31 @@ nothing references, so a reference from one of them (a reader or writer "in no
 function") is not evidence until that code is shown to run. Some numbers in data
 tables were once typed as pointers into code. A data reference into the middle of a
 function is not proof of a code pointer until its source has been checked.
+
+Undecoded bytes that decode as code are not always a missed function. Some functions
+begin with a patched `ret` or `mov al,1; ret`, and their original body follows as
+undecoded bytes that never run: 0x49F5C0, 0x49F740, 0x49F7A0 and 0x49F8B0, for example.
+The code after each stub reaches its `ret` having popped 4 to 16 bytes more than it
+pushed, which only the overwritten prologue could have supplied. At 0x4E60EB a
+conditional jump was patched to `jmp`, which skips the code after it.
+
+## Virtual-call references
+
+Since 2026-09-30, a `call [reg+disp]` site whose receiver's class is established has
+user-defined `COMPUTED_CALL` references to every function the RTTI vtables can put in
+that slot. Caller lists, cross-references and call graphs include these virtual calls;
+the decompile does not change. 6,296 of the 18,872 such sites have them. The analysis
+and the list of added references are in the research folder listed in `LOCAL.md`.
+
+- The receiver's class comes from the bytes: `this` of a virtual method (its class and
+  every subclass), `this` of a function whose every caller passes a known object, a
+  global object, an object a constructor just built, or a vtable the function stored.
+- They are may-call edges: a call through a base class lists every override, including
+  overrides that site never reaches.
+- Calls through an object loaded from a field, an argument or a container have none. A
+  method without callers may still be called virtually.
+- `get_bulk_function_hashes` hashes cover references, so the hashes of the functions
+  that got one changed that day.
 
 ## Preserve findings without polluting shared analysis
 
@@ -175,5 +237,10 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
   `audit_global` reports it.
 - A thunk shows its target's name until it gets its own, so renaming the target
   renames the thunk's display name. Rename thunks before their targets.
+- `rename_function_by_address` with a function's own default name (`FUN_` and its
+  address) turns the name back into a default symbol. It rejects an empty name.
+- `create_label` at an address that already has a label adds a second one; the first
+  stays primary. `audit_global` reports only the primary label; `list_globals` with
+  `name_substring` finds the others.
 - The `find_code_gaps` records carry the neighbouring function names; compare gap
   positions and sizes, not the text, across renames.

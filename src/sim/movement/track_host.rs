@@ -18,7 +18,6 @@ use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::SimFixed;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TrackWorldEvent {
@@ -128,15 +127,6 @@ fn set_track_valid(entity: &mut GameEntity, family: TrackFamily, value: bool) {
 
 fn cell(coord: DriveCoord) -> (u16, u16) {
     ((coord.x / 256) as u16, (coord.y / 256) as u16)
-}
-
-fn put_coords(entity: &mut GameEntity, coord: DriveCoord) {
-    let (rx, ry) = cell(coord);
-    entity.position.rx = rx;
-    entity.position.ry = ry;
-    entity.position.sub_x = SimFixed::from_num(coord.x.wrapping_sub(i32::from(rx as i16) * 256));
-    entity.position.sub_y = SimFixed::from_num(coord.y.wrapping_sub(i32::from(ry as i16) * 256));
-    entity.position.exact_z_leptons = Some(coord.z);
 }
 
 impl Simulation {
@@ -708,27 +698,6 @@ impl Simulation {
         layer
     }
 
-    /// FootClass::SetCoords 0x4DB810 over a changed XYZ.
-    pub(super) fn foot_set_coords(&mut self, id: u64, coord: DriveCoord, rules: Option<&RuleSet>) {
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return;
-        };
-        if position_world_coord(&entity.position) == coord {
-            return;
-        }
-        put_coords(self.substrate.entities.get_mut(id).unwrap(), coord);
-        // Foot4DB810 -> Techno7104F0 propagates changed XYZ to OpenTopped
-        // cargo in cargo-list order, before the caller resumes Mark(PUT).
-        if let Some(rules) = rules {
-            crate::sim::passenger::open_topped_riders_follow(
-                &mut self.substrate.entities,
-                id,
-                rules,
-                &self.interner,
-            );
-        }
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn track_place(
         &mut self,
@@ -759,7 +728,13 @@ impl Simulation {
         } else {
             None
         };
-        self.foot_set_coords(id, coord, rules);
+        super::ground_pose::foot_set_location(
+            &mut self.substrate.entities,
+            id,
+            coord,
+            rules,
+            &self.interner,
+        );
         observe(self, id, TrackWorldEvent::SetCoords);
         if crossing && !terminal {
             // Crossing uses actual current cell; this predicate instead uses

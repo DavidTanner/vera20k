@@ -64,7 +64,7 @@ fn assert_ground_surface(scene: &HeadlessScenario, collapsed: bool) {
     }
     for hut in [(117, 56), (113, 62)] {
         assert_eq!(
-            crate::sim::world::bridge_orchestrator::bridge_hut_has_collapsed_span(sim, hut),
+            crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(sim, hut),
             collapsed,
         );
     }

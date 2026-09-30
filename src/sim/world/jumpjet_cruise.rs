@@ -36,12 +36,6 @@
 //! latch (`0x0054CA12`).
 //!
 //! Residuals:
-//! - A Jumpjet owner never enters a cell's object lists or raw occupation.
-//!   Native `Mark` (`0x004D3780`) places an owner whose layer (`0x0054B8D0`) is
-//!   Ground, below two cell levels, and `Update` re-marks it every frame
-//!   outside the hold and the cruise (`0x0054D12C`, `0x0054D6A6`). So a landed
-//!   Night Hawk or deployed Siege Chopper neither blocks ground units nor
-//!   refuses a later landing.
 //! - The landing State 4 admits raises only the locomotor latch, not the
 //!   owner's cell occupation bit (`+0xF0` at `0x0054C731`: a Unit's
 //!   `0x007441B0` sets `0x20`; the orders' `+0xF4`, `0x00744210`, clears it),
@@ -66,9 +60,10 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::retail_trig::{AtanTable, TrigTable, required_atan_table, required_math_tables};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::Position;
 use crate::sim::movement::air_movement::AirMovementTickStats;
-use crate::sim::movement::ground_pose::{ground_surface_z_at, position_world_xy};
+use crate::sim::movement::ground_pose::{
+    foot_set_location, ground_surface_z_at, position_world_xy,
+};
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::movement::jumpjet_flight::{
     self, FlightOwnerKind, JumpjetFlightHost, STATE_ASCEND, STATE_DESCEND, STATE_HOLD,
@@ -517,18 +512,6 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 }
 
-/// Write a world-lepton coordinate back into the cell/sub-cell position and
-/// the exact Z the renderer and range checks read.
-fn commit_world_location(position: &mut Position, location: [i32; 3]) {
-    let cell_x = i32::from(lepton_to_cell_packed(location[0])).max(0);
-    let cell_y = i32::from(lepton_to_cell_packed(location[1])).max(0);
-    position.rx = cell_x as u16;
-    position.ry = cell_y as u16;
-    position.sub_x = SimFixed::from_num((location[0] - cell_x * 256).clamp(0, 255));
-    position.sub_y = SimFixed::from_num((location[1] - cell_y * 256).clamp(0, 255));
-    position.exact_z_leptons = Some(location[2]);
-}
-
 /// An owner call the kernel made over the frozen world, replayed on commit.
 #[derive(Clone, Copy)]
 enum OwnerOp {
@@ -614,8 +597,17 @@ impl Simulation {
         for op in effects.owner_ops {
             match op {
                 OwnerOp::Mark { put, location } => {
-                    let entity = self.substrate.entities.get_mut(stable_id)?;
-                    commit_world_location(&mut entity.position, location);
+                    foot_set_location(
+                        &mut self.substrate.entities,
+                        stable_id,
+                        crate::sim::components::DriveCoord {
+                            x: location[0],
+                            y: location[1],
+                            z: location[2],
+                        },
+                        rules,
+                        &self.interner,
+                    );
                     if put {
                         self.foot_mark_put(stable_id, rules, registry);
                     } else {
@@ -636,8 +628,18 @@ impl Simulation {
                 }
             }
         }
+        foot_set_location(
+            &mut self.substrate.entities,
+            stable_id,
+            crate::sim::components::DriveCoord {
+                x: location[0],
+                y: location[1],
+                z: location[2],
+            },
+            rules,
+            &self.interner,
+        );
         let entity = self.substrate.entities.get_mut(stable_id)?;
-        commit_world_location(&mut entity.position, location);
         // `FootClass::SetSpeedFraction @ 0x004D3710` on the owner, which the
         // Infantry fire error (`0x0051C9B8`), its locomotion action AI and
         // GetCurrentSpeed's shot lead read.
