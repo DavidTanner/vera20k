@@ -11,11 +11,8 @@ use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::combat::AttackTarget;
-use crate::sim::components::Position;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
-use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
 use crate::sim::occupancy::{CellOccupationGrid, OccupancyGrid, RawCellOccupationGrid};
@@ -28,7 +25,6 @@ use crate::sim::pathfinding::{BridgeTraversalInput, PathGrid};
 
 use super::{
     MovementConfig, MovementTickStats, MoverSnapshot, PATH_STUCK_INIT, PathfindingContext,
-    PendingCrushKill,
 };
 
 pub(super) type LiveBuildingEntrySkipMap = BTreeMap<(u16, u16), BTreeSet<u64>>;
@@ -224,7 +220,6 @@ pub(super) fn evaluate_runtime_can_enter_cell(
 pub(super) fn detect_deferred_cell_check(
     mover_category: EntityCategory,
     mover_id: u64,
-    _mover_bypass_grid: bool,
     layer_context: CanEnterLayerContext,
     next_cell: (u16, u16),
     current_cell: (u16, u16),
@@ -530,11 +525,6 @@ pub(super) fn build_live_building_entry_skip_map(
     skips
 }
 
-pub(super) fn snap_motion_to_cell_center(position: &mut Position) {
-    position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
-    position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
-}
-
 pub(super) fn naval_terrain_diag(
     terrain: Option<&ResolvedTerrainGrid>,
     cell: (u16, u16),
@@ -614,7 +604,6 @@ pub(super) fn handle_deferred_occupancy(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
-    crush_kills: &mut Vec<PendingCrushKill>,
     scatters: &mut super::scatter::ScatterRequests,
     sim_tick: u64,
     interner: &crate::sim::intern::StringInterner,
@@ -628,10 +617,6 @@ pub(super) fn handle_deferred_occupancy(
     };
     let object_list_layer = layer_context.object_list_layer;
     let occupancy_bits_layer = layer_context.occupancy_bits_layer;
-    let mover_loco_kind = snap
-        .locomotor
-        .as_ref()
-        .map_or(LocomotorKind::Drive, |l| l.kind);
     let crush_capability = snap.crush_capability();
     let is_infantry = snap.category == EntityCategory::Infantry;
     if let Some(rules) = rules {
@@ -671,8 +656,7 @@ pub(super) fn handle_deferred_occupancy(
         entity_id,
         crush_capability,
         interner.resolve(snap.owner),
-        mover_loco_kind,
-        snap.bypass_grid,
+        LocomotorKind::Walk,
         ignored_buildings.as_ref(),
         occupancy,
         cell_occupation,
@@ -744,13 +728,6 @@ pub(super) fn handle_deferred_occupancy(
             // we reach this branch.
             if let Some(entity) = entities.get_mut(entity_id) {
                 // Walk75BE11/75BFD1 preserves +668.
-                if mover_loco_kind != LocomotorKind::Walk {
-                    snap_motion_to_cell_center(&mut entity.position);
-                    entity
-                        .navigation
-                        .path_runtime
-                        .start_blocked(mcfg.binary_frame, 0);
-                }
                 entity.navigation.path_runtime.path_blocked = false;
             }
         }
@@ -762,21 +739,15 @@ pub(super) fn handle_deferred_occupancy(
                 let (entity, others) = turn.split();
                 let marker_context =
                     deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
-                if mover_loco_kind != LocomotorKind::Walk {
-                    snap_motion_to_cell_center(&mut entity.position);
-                }
                 let cur_pos = (entity.position.rx, entity.position.ry);
                 let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
-                        &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
                         body_facing,
                         &snap.locomotor,
-                        &mut entity.drive_locomotion,
-                        &mut entity.ship_locomotion,
                         entity_id,
                         cur_pos,
                         active_layer,
@@ -802,62 +773,12 @@ pub(super) fn handle_deferred_occupancy(
                 }
             }
         }
-        CellEntryResult::Crushable { victims } => {
-            let crusher_cell = (i32::from(nx), i32::from(ny));
-            let crusher_lepton = (i32::from(nx) * 256 + 128, i32::from(ny) * 256 + 128);
-            let victims = bump_crush::select_crush_victims(
-                &victims,
-                entities,
-                entity_id,
-                alliances,
-                interner,
-                crusher_lepton,
-                crush_capability,
-                mcfg.binary_frame,
-            );
-            // No pre-scatter: Unit `Crush_Cell` (vt+0x534, 0x007416A0) in
-            // scatter mode is called only from the Drive and Ship
-            // Process_Movement accept arms (0x004B3E65, 0x006A34B4), which
-            // `track_fresh` ports; its third caller is the crush-mode
-            // Per_Cell_Process (0x0073B089).
-            // Remove crush victims from occupancy immediately (matches gamemd's
-            // PerCellProcess which calls RemoveFromGame before continuing).
-            for &vid in &victims {
-                let victim_cell = entities
-                    .get(vid)
-                    .map(|victim| (victim.position.rx, victim.position.ry));
-                if let Some((rx, ry)) = victim_cell {
-                    occupancy.remove(rx, ry, vid);
-                    if let Some(victim) = entities.get_mut(vid) {
-                        // UNCHECKED: movement still owns this pre-UnInit unmark
-                        // until the unified per-object scheduler can place the
-                        // exact native Mark(0) boundary.
-                        if let Some(drive) = victim.drive_locomotion.as_mut() {
-                            crate::sim::occupancy::clear_drive_head_to_occupation_for_remove(
-                                drive,
-                                cell_occupation,
-                                vid,
-                            );
-                        }
-                        victim.lifecycle.cell_marked = false;
-                        cell_occupation.reconcile_entity(victim, occupancy);
-                    }
-                }
-            }
-            crush_kills.extend(victims.into_iter().map(|victim_id| PendingCrushKill {
-                victim_id,
-                crusher_id: entity_id,
-                crush_coord: crusher_cell,
-            }));
+        CellEntryResult::Crushable { .. } => {
+            // Can_Enter_Cell admits a crushable cell; the crush itself is Unit
+            // `Crush_Cell` (vt+0x534, 0x007416A0) in crush mode from
+            // Per_Cell_Process (0x0073B089) after the mover arrives
+            // (`per_cell`). Walk75BE11/75BFD1 preserves +668.
             if let Some(entity) = entities.get_mut(entity_id) {
-                // Walk75BE11/75BFD1 preserves +668.
-                if mover_loco_kind != LocomotorKind::Walk {
-                    snap_motion_to_cell_center(&mut entity.position);
-                    entity
-                        .navigation
-                        .path_runtime
-                        .start_blocked(mcfg.binary_frame, 0);
-                }
                 entity.navigation.path_runtime.path_blocked = false;
             }
         }
@@ -886,9 +807,6 @@ pub(super) fn handle_deferred_occupancy(
                 let (entity, others) = turn.split();
                 let marker_context =
                     deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
-                if mover_loco_kind != LocomotorKind::Walk {
-                    snap_motion_to_cell_center(&mut entity.position);
-                }
                 let cur_pos = (entity.position.rx, entity.position.ry);
                 let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
@@ -896,27 +814,15 @@ pub(super) fn handle_deferred_occupancy(
                         // Blocker is walking away. The original writes its
                         // hardcoded 10-frame post-scatter wait here, not
                         // `[AI] BlockagePathDelay`, which is a separate timer.
-                        if mover_loco_kind != LocomotorKind::Walk
-                            && !entity.navigation.path_runtime.path_blocked
-                        {
-                            entity.navigation.path_runtime.path_blocked = true;
-                            entity.navigation.path_runtime.start_blocked(
-                                mcfg.binary_frame,
-                                bump_crush::POST_SCATTER_WAIT_FRAMES,
-                            );
-                        }
                         // Walk code 6 returns after CellScatter (0x75B891),
                         // without installing Drive's fixed ten-frame wait.
                     } else {
                         let mut aborted_for_stuck = false;
                         let evts = handle_blocked_tick(
-                            &mut entity.navigation.path_replay,
                             target,
                             &mut entity.navigation.path_runtime,
                             body_facing,
                             &snap.locomotor,
-                            &mut entity.drive_locomotion,
-                            &mut entity.ship_locomotion,
                             entity_id,
                             cur_pos,
                             active_layer,
@@ -1024,62 +930,15 @@ pub(super) fn handle_deferred_occupancy(
             // where native answers 4 or 5. So this site is the body arm and only
             // the body arm. A future wall-overlay producer must NOT route into
             // this arm without a Restore path for cell targets.
-            if mover_loco_kind == LocomotorKind::Walk {
-                crate::sim::mission::authority::override_mission_on_blocked_step(
-                    entities, alliances, interner, entity_id, blocker_id,
-                );
-                // The tail. `finalize_finished_entities` is VERA's single stop
-                // path: it drops the path executor (the stored path array), puts
-                // the locomotor back in its idle phase and returns the drive
-                // runtime — including its speed fraction — to rest.
-                if !finished_entities.contains(&entity_id) {
-                    finished_entities.push(entity_id);
-                }
-            } else if let Some(mut turn) = entities.take_turn(entity_id) {
-                let (entity, others) = turn.split();
-                let marker_context =
-                    deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
-                if mover_loco_kind != LocomotorKind::Walk {
-                    snap_motion_to_cell_center(&mut entity.position);
-                }
-                if entity.attack_target.is_none() {
-                    entity.attack_target = Some(AttackTarget::new(blocker_id));
-                }
-                let cur_pos = (entity.position.rx, entity.position.ry);
-                let body_facing = entity.body_facing.current(mcfg.binary_frame);
-                if let Some(ref mut target) = entity.movement_target {
-                    let mut aborted_for_stuck = false;
-                    let evts = handle_blocked_tick(
-                        &mut entity.navigation.path_replay,
-                        target,
-                        &mut entity.navigation.path_runtime,
-                        body_facing,
-                        &snap.locomotor,
-                        &mut entity.drive_locomotion,
-                        &mut entity.ship_locomotion,
-                        entity_id,
-                        cur_pos,
-                        active_layer,
-                        snap.on_bridge,
-                        stats,
-                        finished_entities,
-                        &mut aborted_for_stuck,
-                        ctx,
-                        entity_cost_grid,
-                        mover_entity_blocks,
-                        mover_entity_block_map,
-                        mcfg,
-                        sim_tick,
-                        PATH_STUCK_INIT,
-                        super::MoverPathFacts::from_snapshot(snap, 0),
-                        snap.allow_zone_hierarchy,
-                        false, // enemy blocker (code-5): keep code-2-style grace
-                        true,
-                        marker_context,
-                        occupancy,
-                    );
-                    debug_events.extend(evts);
-                }
+            crate::sim::mission::authority::override_mission_on_blocked_step(
+                entities, alliances, interner, entity_id, blocker_id,
+            );
+            // The tail. `finalize_finished_entities` is VERA's single stop
+            // path: it drops the path executor (the stored path array), puts
+            // the locomotor back in its idle phase and returns the drive
+            // runtime — including its speed fraction — to rest.
+            if !finished_entities.contains(&entity_id) {
+                finished_entities.push(entity_id);
             }
         }
         CellEntryResult::TemporaryBlock { .. } | CellEntryResult::TemporaryOccupation => {
@@ -1117,9 +976,6 @@ pub(super) fn handle_deferred_occupancy(
             // by the decrement at `0x004B2DC8`, on a different arm entirely.
             let mut has_target = false;
             if let Some(entity) = entities.get_mut(entity_id) {
-                if mover_loco_kind != LocomotorKind::Walk {
-                    snap_motion_to_cell_center(&mut entity.position);
-                }
                 if entity.movement_target.is_some() {
                     has_target = true;
                 }
@@ -1158,13 +1014,10 @@ pub(super) fn handle_deferred_occupancy(
                     if let Some(ref mut target) = entity.movement_target {
                         let mut aborted_for_stuck = false;
                         let evts = handle_blocked_tick(
-                            &mut entity.navigation.path_replay,
                             target,
                             &mut entity.navigation.path_runtime,
                             body_facing,
                             &snap.locomotor,
-                            &mut entity.drive_locomotion,
-                            &mut entity.ship_locomotion,
                             entity_id,
                             cur_pos,
                             active_layer,
@@ -1200,21 +1053,15 @@ pub(super) fn handle_deferred_occupancy(
                 let (entity, others) = turn.split();
                 let marker_context =
                     deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
-                if mover_loco_kind != LocomotorKind::Walk {
-                    snap_motion_to_cell_center(&mut entity.position);
-                }
                 let cur_pos = (entity.position.rx, entity.position.ry);
                 let body_facing = entity.body_facing.current(mcfg.binary_frame);
                 if let Some(ref mut target) = entity.movement_target {
                     let mut aborted_for_stuck = false;
                     let evts = handle_blocked_tick(
-                        &mut entity.navigation.path_replay,
                         target,
                         &mut entity.navigation.path_runtime,
                         body_facing,
                         &snap.locomotor,
-                        &mut entity.drive_locomotion,
-                        &mut entity.ship_locomotion,
                         entity_id,
                         cur_pos,
                         active_layer,
@@ -1493,7 +1340,6 @@ mod tests {
         let check = detect_deferred_cell_check(
             EntityCategory::Unit,
             1,
-            false,
             layers,
             (1, 0),
             (0, 0),
@@ -1526,7 +1372,6 @@ mod tests {
         let check = detect_deferred_cell_check(
             EntityCategory::Unit,
             1,
-            false,
             layers,
             (5, 5),
             (4, 5),
@@ -1557,7 +1402,6 @@ mod tests {
         let check = detect_deferred_cell_check(
             EntityCategory::Unit,
             1,
-            false,
             layers,
             (3, 3),
             (2, 3),
@@ -1588,7 +1432,6 @@ mod tests {
         let check = detect_deferred_cell_check(
             EntityCategory::Infantry,
             1,
-            false,
             layers,
             (3, 3),
             (2, 3),
@@ -1617,7 +1460,6 @@ mod tests {
         let check = detect_deferred_cell_check(
             EntityCategory::Unit,
             1,
-            true,
             layers,
             (3, 3),
             (2, 3),
@@ -1656,7 +1498,6 @@ mod tests {
         let check = detect_deferred_cell_check(
             EntityCategory::Unit,
             1,
-            false,
             layers,
             (3, 3),
             (2, 3),

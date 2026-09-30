@@ -127,11 +127,6 @@ fn retail_shrapnel_engineer_repairs_authored_water_gap() {
             approach_snapshot = Some(save_scene(&scene, "Shrapnel Engineer approaching hut"));
         }
         let actor = scene.sim().entities().get(engineer);
-        assert!(
-            !actor
-                .and_then(|e| e.movement_target.as_ref())
-                .is_some_and(|m| m.adapter_route)
-        );
         if actor.is_none_or(|entity| !entity.lifecycle.object_alive) {
             consumed = true;
             eprintln!("SHRAPNEL_ENGINEER consumed after {} frames", frame + 1);
@@ -246,12 +241,6 @@ fn cross_repaired_road(scene: &mut HeadlessScenario) {
             "low road must not create raised-deck occupation"
         );
         assert!(actor.low_bridge_tube_state.is_none());
-        assert!(
-            !actor
-                .movement_target
-                .as_ref()
-                .is_some_and(|target| target.adapter_route)
-        );
         crossed_gap |= (114..=116).contains(&actor.position.rx) && actor.position.ry == 59;
         if (actor.position.rx, actor.position.ry) == (115, 63) && actor.movement_target.is_none() {
             assert!(crossed_gap, "the FV must physically cross the repaired row");

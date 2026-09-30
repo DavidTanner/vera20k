@@ -471,9 +471,6 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                         if has_mt { "active" } else { "idle" },
                         if has_tp { "active" } else { "idle" },
                     ));
-                    if let Some(ref mt) = entity.movement_target {
-                        ui.label(format!("  ignore_terrain: {}", mt.ignore_terrain_cost));
-                    }
                 }
             }
         });

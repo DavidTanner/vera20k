@@ -1,72 +1,12 @@
 use super::*;
-use crate::sim::components::{FootPathQueue, TrackProgress};
+use crate::sim::components::{
+    DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime, TrackProgress,
+};
 use crate::sim::game_entity::GameEntity;
+use crate::sim::movement::drive_track;
 use crate::sim::movement::track_host::TrackWorldEvent;
 use crate::sim::movement::track_process::{TrackFamily, TrackInvocation};
 use crate::sim::world::Simulation;
-
-#[test]
-fn exhausted_foot_queue_cannot_bypass_drive_or_ship_track_admission() {
-    for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
-        for directions in [vec![], vec![2, 2]] {
-            let queue = crate::sim::components::FootPathQueue {
-                cursor: directions.len() as u16,
-                directions,
-                reference_cell: Some((0, 0)),
-            };
-            let mut target = MovementTarget {
-                path: vec![(0, 0), (1, 0)],
-                next_index: 1,
-                move_dir_x: SimFixed::from_num(256),
-                move_dir_y: SIM_ZERO,
-                move_dir_len: SimFixed::from_num(256),
-                current_speed: SimFixed::from_num(255),
-                ..Default::default()
-            };
-            let mut position = Position {
-                rx: 0,
-                ry: 0,
-                z: 0,
-                exact_z_leptons: None,
-                sub_x: CELL_CENTER_LEPTON,
-                sub_y: CELL_CENTER_LEPTON,
-            };
-            let before = position.clone();
-            let result = advance_lepton_position(
-                &mut target,
-                &mut position,
-                &mut Some(LocomotorState::for_test_kind(kind)),
-                SimFixed::from_num(255),
-                SimFixed::from_num(1) / SimFixed::from_num(15),
-            );
-            assert!(
-                matches!(result, AdvanceResult::DriveTrackActive),
-                "{kind:?}"
-            );
-            assert_eq!(
-                (
-                    position.rx,
-                    position.ry,
-                    position.sub_x,
-                    position.sub_y,
-                    position.z,
-                    position.exact_z_leptons
-                ),
-                (
-                    before.rx,
-                    before.ry,
-                    before.sub_x,
-                    before.sub_y,
-                    before.z,
-                    before.exact_z_leptons
-                ),
-                "{kind:?}: no admitted track, no coordinate step"
-            );
-            assert_eq!(target.next_index, 1);
-            assert!(queue.remaining_directions().is_empty());
-        }
-    }
-}
 
 /// Body/hull in-place turn duration = abs(delta_8bit) / ROT native frames
 /// (gamemd DriveLocomotionClass::Do_Turn on the hull FacingClass at the
@@ -231,101 +171,6 @@ fn fresh_retry_terminal_retains_raw_head_for_both_track_families() {
             None
         );
     }
-}
-
-#[test]
-fn drive_track_completion_preserves_residual_through_fresh_acceptance() {
-    let (mut sim, invocation, budget) = native_track_fixture(LocomotorKind::Drive, 0);
-    let entity = sim.substrate.entities.get_mut(1).unwrap();
-    let current = super::super::ground_pose::position_world_coord(&entity.position);
-    let drive = entity.drive_locomotion.as_mut().unwrap();
-    // Terminal budget uses the actual current/head distance. Distance 11
-    // refunds zero after the paid sentinel (Drive4B1F48..4B1FDC).
-    drive.head_to = Some(DriveCoord {
-        y: current.y - 11,
-        ..current
-    });
-    drive.track.cursor = drive_track::raw_track_points(1).len() as i32;
-    drive.track.residual = 8;
-    entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::Cell { rx: 11, ry: 10 });
-    entity.navigation.path_replay = FootPathQueue {
-        directions: vec![2],
-        cursor: 0,
-        reference_cell: Some((10, 10)),
-    };
-    entity.movement_target = Some(MovementTarget {
-        path: vec![(10, 10), (11, 10)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
-        final_goal: Some((11, 10)),
-        ..Default::default()
-    });
-    assert_eq!(sim.run_track_points(invocation, budget, None, None), 1);
-    let entity = sim.substrate.entities.get_mut(1).unwrap();
-    assert_eq!(entity.drive_locomotion.as_ref().unwrap().track.residual, 1);
-    assert_eq!(
-        entity.drive_locomotion.as_ref().unwrap().track.turn_index,
-        -1
-    );
-    let mut target = entity.movement_target.take().unwrap();
-    let mut occupation = CellOccupationGrid::new();
-    // Actual combat hull ownership can retain all16 bits with no movement
-    // facing target. The earlier rotation sample must not destroy the one-bit
-    // mismatch proved by drive_fresh_turn.json (initial0x4001/direction2).
-    entity.body_facing = crate::sim::movement::FacingClass::new(0x4001, 5);
-    assert!(matches!(
-        handle_vehicle_rotation(&mut entity.body_facing, None, 2),
-        RotationResult::ReadyToMove
-    ));
-    let live_facing = entity.body_facing.current(2);
-    assert_eq!(live_facing, 0x4001);
-    let prepare = |facing,
-                   entity: &mut GameEntity,
-                   target: &mut MovementTarget,
-                   occupation: &mut CellOccupationGrid| {
-        prepare_native_track(
-            &mut entity.foot_occupation_enabled,
-            &mut entity.navigation.path_replay,
-            target,
-            &entity.position,
-            facing,
-            &mut entity.drive_locomotion,
-            &mut entity.ship_locomotion,
-            &entity.locomotor,
-            entity.category,
-            1,
-            occupation,
-            DriveCellAdmission::default(),
-            MovementLayer::Ground,
-        )
-    };
-    assert!(matches!(
-        prepare(live_facing, entity, &mut target, &mut occupation),
-        Some(NativeTrackPreparation::TurnFirst(_, 64))
-    ));
-    assert_eq!(entity.drive_locomotion.as_ref().unwrap().track.residual, 1);
-    let Some(NativeTrackPreparation::Invoke(next)) =
-        prepare(0x4000, entity, &mut target, &mut occupation)
-    else {
-        panic!("aligned head must accept the fresh native segment");
-    };
-    let track = entity.drive_locomotion.as_ref().unwrap().track;
-    assert_eq!(track.turn_index, 18);
-    assert_eq!(track.cursor, 0);
-    assert_eq!(track.residual, 1);
-    entity.movement_target = Some(target);
-    assert_eq!(sim.run_track_points(next, 0, None, None), 0);
-    let track = sim
-        .substrate
-        .entities
-        .get(1)
-        .unwrap()
-        .drive_locomotion
-        .as_ref()
-        .unwrap()
-        .track;
-    assert_eq!(track.cursor, 0, "residual alone cannot buy a point");
-    assert_eq!(track.residual, 1);
 }
 
 #[test]

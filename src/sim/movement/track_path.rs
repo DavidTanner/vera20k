@@ -779,11 +779,6 @@ impl Simulation {
             super::navcom::set_destination_internal_null(actor);
             return;
         }
-        if let (Some(target), Some(info)) = (actor.movement_target.as_mut(), info) {
-            target.accel_factor = info.accel_factor;
-            target.decel_factor = info.decel_factor;
-            target.slowdown_distance = info.slowdown_distance;
-        }
     }
 
     /// [`Self::complete_pending_order`]'s class setter for a Teleport, Fly or
@@ -968,11 +963,6 @@ impl Simulation {
             .get_mut(id)
             .expect("same setter actor");
         let accepted = if let Some(accepted) = adapter_route {
-            if let Some(target) = actor.movement_target.as_mut().filter(|_| accepted) {
-                target.accel_factor = info.accel_factor;
-                target.decel_factor = info.decel_factor;
-                target.slowdown_distance = info.slowdown_distance;
-            }
             accepted
         } else if skip_move_to {
             super::navcom::publish_nav_com(actor, requested);
@@ -988,11 +978,6 @@ impl Simulation {
                     super::movement_commands::prepare_destination_execution(
                         actor, cell, info.speed,
                     );
-                    if let Some(target) = actor.movement_target.as_mut() {
-                        target.accel_factor = info.accel_factor;
-                        target.decel_factor = info.decel_factor;
-                        target.slowdown_distance = info.slowdown_distance;
-                    }
                     true
                 }
                 Some(LocomotorKind::Teleport) => {

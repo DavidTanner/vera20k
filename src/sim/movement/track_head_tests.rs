@@ -1,6 +1,5 @@
 use super::*;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::pathfinding::PathGrid;
@@ -71,11 +70,18 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
         entity.body_facing.snap(0x4000, 0);
         entity.lifecycle.in_limbo = false;
         entity.lifecycle.cell_marked = true;
-        let mut entities = EntityStore::new();
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[VehicleTypes]\n0=MTNK\n[MTNK]\nSpeed=0\n",
+            ))
+            .unwrap();
+        let mut sim = crate::sim::world::Simulation::new();
+        sim.interner = crate::sim::intern::test_interner();
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+        let entities = &mut sim.substrate.entities;
         entities.insert(entity);
-        let grid = PathGrid::new(20, 20);
         assert!(crate::sim::movement::issue_move_command(
-            &mut entities,
+            entities,
             &grid,
             1,
             (11, 8),
@@ -86,13 +92,10 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
             None,
             crate::sim::movement::DestinationTiming::new(0, 60),
         ));
-        assert!(committed_track_head(entities.get(1).unwrap()).is_none());
-        let mut sim = crate::sim::world::Simulation::new();
-        sim.interner = crate::sim::intern::test_interner();
-        sim.substrate.entities = entities;
+        assert!(committed_track_head(sim.substrate.entities.get(1).unwrap()).is_none());
         sim.substrate.occupancy =
             crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
-        sim.process_ground_locomotor_for_test(1, None, Some(&grid), None)
+        sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
             .unwrap();
         let entity = sim.substrate.entities.get(1).unwrap();
         let head = match kind {

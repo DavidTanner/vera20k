@@ -40,7 +40,7 @@
 //! `SpeedCostProfile` (INI-parsed terrain percentages).
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use crate::rules::locomotor_type::{LocomotorKind, SpeedType};
+use crate::rules::locomotor_type::SpeedType;
 use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SimFixed};
 
 // --- Constants from the original engine ---
@@ -87,17 +87,6 @@ pub fn is_at_or_below_condition_yellow(
         .compare_ratio(strength, condition_yellow),
         Less | Equal | Unordered
     )
-}
-
-/// Whether this locomotor is one of the two that route through the land-type ×
-/// SpeedType speed table, the slope coefficients and the damaged-mover factor.
-///
-/// Drive and Ship `Process_Movement` are the complete set in the original
-/// engine. The slope term there carries an extra "is this a vehicle" gate, which
-/// is redundant in stock YR because only vehicles and ships install these two
-/// locomotors.
-fn uses_land_type_speed_chain(kind: LocomotorKind) -> bool {
-    matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship)
 }
 
 /// Cliff/slope speed coefficients from `[General]` in rules.ini.
@@ -147,42 +136,11 @@ impl TerrainSpeedConfig {
     }
 }
 
-/// Compute the combined per-cell speed multiplier for a unit moving between cells.
-///
-/// Returns `1.0` unchanged for every locomotor the original engine does not route
-/// through the land-type table (see [`uses_land_type_speed_chain`]); otherwise the
-/// terrain × slope product, then the damaged-mover factor when
-/// `below_condition_yellow` is set.
-pub fn compute_cell_speed_modifier(
-    speed_type: SpeedType,
-    locomotor_kind: LocomotorKind,
-    mover_world: (i32, i32),
-    next_cell: (u16, u16),
-    terrain: &ResolvedTerrainGrid,
-    config: &TerrainSpeedConfig,
-    below_condition_yellow: bool,
-) -> SimFixed {
-    if !uses_land_type_speed_chain(locomotor_kind) {
-        return SIM_ONE;
-    }
-    let terrain_factor = terrain_speed_factor(speed_type, next_cell, terrain);
-    // Two sampled ground heights, as native does: the mover's exact position
-    // against the destination cell's own coordinate.
-    let slope_factor = slope_factor_for(
-        speed_type,
-        ground_height_at_world(mover_world, terrain),
-        ground_height_at_world(cell_centre_world(next_cell), terrain),
-        config,
-    );
-
-    combine_speed_stages(terrain_factor, slope_factor, below_condition_yellow)
-}
-
 /// Drive/Ship Process_Movement's target for an admitted first candidate
 /// (`0x004B357F..0x004B35D6`, `0x004B3C84..0x004B3DF6`): the candidate Cell's
 /// land speed row, or `road_row` (land type 1) when the caller found its
 /// retained height two or more levels from the Cell, then the same slope,
-/// zero and damage stages as [`compute_cell_speed_modifier`].
+/// zero and damage stages.
 pub(crate) fn fresh_track_speed_fraction(
     speed_type: SpeedType,
     mover_world: (i32, i32),
@@ -270,7 +228,7 @@ fn cell_centre_world(cell: (u16, u16)) -> (i32, i32) {
 /// Looks up the *destination* cell's terrain speed for the unit's SpeedType.
 /// Matches original engine: `> 100%` → 100%, missing → 100%, and **0% passes
 /// through as 0.0** — the 50% rescue happens later, on the combined value, in
-/// [`compute_cell_speed_modifier`].
+/// [`fresh_track_speed_fraction`].
 fn terrain_speed_factor(
     speed_type: SpeedType,
     next_cell: (u16, u16),
@@ -365,11 +323,11 @@ mod tests {
                     &row.output.ship_speed_bits,
                 ),
             ] {
-                let actual = compute_cell_speed_modifier(
+                let actual = fresh_track_speed_fraction(
                     speed,
-                    kind,
                     (128, 128),
                     (1, 0),
+                    None,
                     &terrain,
                     &TerrainSpeedConfig::default(),
                     damaged,
@@ -383,6 +341,7 @@ mod tests {
         }
     }
     use super::*;
+    use crate::rules::locomotor_type::LocomotorKind;
     use crate::rules::terrain_rules::SpeedCostProfile;
 
     /// A8 D1, over a real grid and through the production entry point.
@@ -443,11 +402,11 @@ mod tests {
 
         // A mover partway across the ramp, heading for the flat cell.
         let on_ramp = (i32::from(RAMP.0) * 256 + 200, i32::from(RAMP.1) * 256 + 200);
-        let leaving = compute_cell_speed_modifier(
+        let leaving = fresh_track_speed_fraction(
             SpeedType::Track,
-            LocomotorKind::Drive,
             on_ramp,
             FLAT,
+            None,
             &terrain,
             &config,
             false,
@@ -455,11 +414,11 @@ mod tests {
 
         // Standing on the flat cell already, heading further along it.
         let on_flat = (i32::from(FLAT.0) * 256 + 128, i32::from(FLAT.1) * 256 + 128);
-        let flat_to_flat = compute_cell_speed_modifier(
+        let flat_to_flat = fresh_track_speed_fraction(
             SpeedType::Track,
-            LocomotorKind::Drive,
             on_flat,
             (FLAT.0 + 1, FLAT.1),
+            None,
             &terrain,
             &config,
             false,

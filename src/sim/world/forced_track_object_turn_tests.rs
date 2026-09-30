@@ -64,6 +64,9 @@ fn fixture(selector: i32) -> Simulation {
 fn tick(sim: &mut Simulation, rules: &RuleSet, frame: u32) -> movement::MovementTickStats {
     sim.session.tick = u64::from(frame);
     sim.session.binary_frame = frame;
+    // The track end's own-cell request searches; a reloaded save carries no
+    // map inputs.
+    crate::sim::arena_fixture::supply_native_map(sim);
     sim.advance_live_object_turn(1, Some(rules), techno_ai::ObjectAiCtx::default())
         .unwrap()
         .movement
@@ -131,7 +134,11 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                 );
             }
             let entity = sim.substrate.entities.get(1).unwrap();
-            assert!(entity.movement_target.is_none());
+            // Only the track end's same-Process continuation requests a route.
+            assert!(
+                crate::sim::movement::track_head::committed_track_head(entity).is_none()
+                    || entity.movement_target.is_none()
+            );
             assert!(stats.moved_steps <= 1, "Speed=1 cannot pay two points");
             if frame == 0 {
                 assert_eq!(

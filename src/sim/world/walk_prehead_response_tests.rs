@@ -200,7 +200,6 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
         path_layers: vec![MovementLayer::Ground; 5],
         next_index: 1,
         final_goal: Some((10, 10)),
-        adapter_route: false,
         ..Default::default()
     });
     if input["radio"] == true {
