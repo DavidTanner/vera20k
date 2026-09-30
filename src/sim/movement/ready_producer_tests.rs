@@ -345,20 +345,16 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
             entity.movement_target = has_order.then(moving_target);
             entity.navigation.nav_com =
                 has_order.then(|| crate::sim::components::NavTargetRef::cell(6, 5));
-            let moving = if kind == LocomotorKind::Walk {
+            if kind == LocomotorKind::Walk {
                 assert_eq!(
                     is_moving_now_for(&entity, None, 100),
                     row["moving_now"].as_bool().unwrap(),
                     "{row}"
                 );
-                entity.locomotor.as_ref().unwrap().walk_is_moving().unwrap()
-            } else {
-                is_moving_for_unit_shp_draw(&entity)
-            };
-            assert_eq!(moving, row["moving"].as_bool().unwrap(), "{row}");
+            }
             assert_eq!(
                 crate::sim::movement::motion_query::is_moving(&entity),
-                Some(moving),
+                Some(row["moving"].as_bool().unwrap()),
                 "{row}"
             );
         }

@@ -1346,8 +1346,9 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
-        // Native early navigation/movement exits (0x7393E4/0x73940A) retain
-        // runtime +0x68C. They must not attempt placement while stopping.
+        // Native early exits on a NavCom (0x7393E4) or the locomotor's
+        // Is_Moving (vt+0x10 at 0x00739405, 0x73940A) retain runtime +0x68C.
+        // They must not attempt placement while stopping.
         let Some(source) = self.substrate.entities.get(stable_id) else {
             return false;
         };
@@ -1371,7 +1372,7 @@ impl Simulation {
             return false;
         }
         if source.navigation.nav_com.is_some()
-            || crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(source)
+            || crate::sim::movement::motion_query::is_moving(source) == Some(true)
         {
             return false;
         }

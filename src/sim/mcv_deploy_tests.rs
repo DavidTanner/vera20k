@@ -505,6 +505,34 @@ fn active_track_and_same_cell_destination_preserve_the_rotation_latch() {
     assert_eq!(yards(&sim), 1);
 }
 
+/// `UnitClass::Deploy @ 0x007393C0` refuses while the locomotor's Is_Moving
+/// (vt+0x10 at `0x00739405`) is true, whichever locomotor answers it: a Hover
+/// deployer still under way stays a unit, and deploys once its Hover stops.
+#[test]
+fn deploy_refuses_while_any_locomotor_is_moving() {
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::movement::hover::HoverRuntime;
+    use crate::util::native_x87::NativeF64Bits;
+    let (mut sim, rules, id) = fixture("AMCV", 128, 5, 4);
+    let set_hover = |sim: &mut Simulation, destination| {
+        let e = sim.substrate.entities.get_mut(id).unwrap();
+        let mut locomotor =
+            crate::sim::movement::locomotor::LocomotorState::for_test_kind(LocomotorKind::Hover);
+        *locomotor.hover_runtime_mut().expect("Hover payload") =
+            HoverRuntime::moving_for_test(destination, NativeF64Bits::ONE);
+        e.locomotor = Some(locomotor);
+    };
+    set_hover(
+        &mut sim,
+        Some(crate::sim::components::DriveCoord::cell(24, 22, 0)),
+    );
+    assert!(!sim.deploy_mcv(id, &rules, None), "a moving Hover refuses");
+    assert_eq!(yards(&sim), 0);
+    set_hover(&mut sim, None);
+    assert!(sim.deploy_mcv(id, &rules, None), "a stopped Hover deploys");
+    assert_eq!(yards(&sim), 1);
+}
+
 #[test]
 fn mcv_deploy_sound_occurs_once_with_conversion_at_the_source_cell() {
     use crate::sim::world::SimSoundEvent;
