@@ -46,14 +46,14 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
     });
     match kind {
         LocomotorKind::Drive => {
-            entity.foot_speed.applied_fraction = SIM_ONE;
+            entity.foot_speed.set_speed_fraction(SIM_ONE);
             entity.drive_locomotion = Some(DriveLocomotionRuntime {
                 target_speed_fraction: SIM_ONE,
                 ..Default::default()
             })
         }
         LocomotorKind::Ship => {
-            entity.foot_speed.applied_fraction = SIM_ONE;
+            entity.foot_speed.set_speed_fraction(SIM_ONE);
             entity.ship_locomotion = Some(ShipLocomotionRuntime {
                 target_speed_fraction: SIM_ONE,
                 ..Default::default()
@@ -959,12 +959,9 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
     entity.position.sub_x = SimFixed::from_num(85);
     entity.position.sub_y = SimFixed::from_num(153);
     let path = vec![(3, 3), (3, 2), (4, 1), (5, 1)];
-    let drive_track::DriveTrackDecision::Select(plan) = drive_track::plan_drive_track_from_path(
-        0,
-        (0, -1),
-        Some((1, -1)),
-        kind == LocomotorKind::Ship,
-    ) else {
+    let drive_track::DriveTrackDecision::Select(plan) =
+        drive_track::plan_drive_track_from_path(0, (0, -1), Some((1, -1)))
+    else {
         panic!("native N -> NE curve");
     };
     assert_eq!(plan.nodes, 2);

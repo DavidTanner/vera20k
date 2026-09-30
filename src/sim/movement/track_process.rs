@@ -78,15 +78,11 @@ impl TrackFamily {
 impl TrackProgress {
     /// Selector publication precedes fresh acceptance's later cursor-zero
     /// write (Drive4B4016..4034 then4B4659; Ship6A3642..3660 then6A3C88).
-    pub(crate) fn select_fresh(&mut self, family: TrackFamily, first: u8, second: u8) -> bool {
+    pub(crate) fn select_fresh(&mut self, first: u8, second: u8) -> bool {
         if first >= 8 || second >= 8 {
             return false;
         }
-        let mut index = i32::from(first) * 8 + i32::from(second);
-        if family.turn(index).is_none_or(|turn| turn.normal_track == 0) {
-            index = i32::from(first) * 9;
-        }
-        self.turn_index = index;
+        self.turn_index = drive_track::fresh_turn_index(first, second) as i32;
         self.reversed = false;
         true
     }

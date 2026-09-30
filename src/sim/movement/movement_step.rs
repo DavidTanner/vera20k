@@ -568,12 +568,10 @@ fn select_fresh_drive_track_at_current_cell(
     };
     let ndx = i32::from(next.0) - i32::from(position.rx);
     let ndy = i32::from(next.1) - i32::from(position.ry);
-    let is_ship = shared_kind == LocomotorKind::Ship;
     let plan = match drive_track::plan_drive_track_from_path(
         facing,
         (ndx, ndy),
         path_window_to_delta(target),
-        is_ship,
     ) {
         drive_track::DriveTrackDecision::TurnFirst { desired_facing } => {
             return FreshTrackOutcome::TurnFirst(desired_facing);

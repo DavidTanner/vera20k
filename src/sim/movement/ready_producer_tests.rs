@@ -42,7 +42,7 @@ fn driving_mtnk() -> GameEntity {
         y: 5 * 256 + 128,
         z: 0,
     };
-    entity.foot_speed.applied_fraction = SIM_ONE;
+    entity.foot_speed.set_speed_fraction(SIM_ONE);
     entity.drive_locomotion = Some(DriveLocomotionRuntime {
         destination: Some(head),
         head_to: Some(head),
@@ -80,7 +80,7 @@ fn driving_unit_reports_moving() {
     // `0x004AFC71` reads the live getter: a callback that zeroes Foot+578
     // (a stop) takes effect at the next query, with no speed cache left to
     // refresh.
-    entity.foot_speed.applied_fraction = SIM_ZERO;
+    entity.foot_speed.set_speed_fraction(SIM_ZERO);
     assert!(!is_moving_now_for(&entity, speed, 100));
 }
 
@@ -98,7 +98,9 @@ fn speed_crate_reaches_the_next_moving_query() {
 
     let full = speed.owner_current_speed(&entity);
     assert!(full > 1, "MTNK covers several leptons per frame");
-    entity.foot_speed.applied_fraction = SimFixed::lit("0.75") / SimFixed::from_num(full);
+    entity
+        .foot_speed
+        .set_speed_fraction(SimFixed::lit("0.75") / SimFixed::from_num(full));
     assert!(!is_moving_now_for(&entity, Some(speed), 100));
 
     assert!(
@@ -134,7 +136,7 @@ fn unit_parked_on_its_head_to_reports_not_moving() {
 fn ship_mirrors_drive_but_keeps_its_own_variant() {
     let mut entity = entity_with(LocomotorKind::Ship);
     let head = DriveCoord::cell(6, 5, 0);
-    entity.foot_speed.applied_fraction = SIM_ONE;
+    entity.foot_speed.set_speed_fraction(SIM_ONE);
     // Without rules the getter reads the order's stamped speed.
     entity.movement_target = Some(MovementTarget {
         speed: SimFixed::from_num(300),
@@ -237,7 +239,7 @@ fn walking_infantry_reports_moving() {
     let loco = entity.locomotor.as_mut().unwrap();
     loco.set_walk_destination(Some(head));
     loco.set_step_head(Some(head));
-    entity.foot_speed.applied_fraction = SIM_ONE;
+    entity.foot_speed.set_speed_fraction(SIM_ONE);
     let state = ready_state_for(&entity, None, 100).expect("Walk has a producer");
     assert!(state.is_moving_now());
 }
@@ -262,7 +264,7 @@ fn walk_stop_keeps_paid_head_readiness_until_retirement_and_restore() {
     loco.set_walk_destination(Some(head));
     loco.set_step_head(Some(head));
     loco.set_walk_destination(None);
-    entity.foot_speed.applied_fraction = SIM_ONE;
+    entity.foot_speed.set_speed_fraction(SIM_ONE);
     assert!(entity.movement_target.is_none());
     assert!(is_moving_now_for(&entity, None, 100));
     let mut restored: GameEntity =
@@ -328,8 +330,13 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
                 };
                 state.head = head;
                 state.moving = input["moving"].as_bool().unwrap();
-                entity.foot_speed.applied_fraction =
-                    SimFixed::from_num(input["speed"].as_f64().unwrap());
+                // The harness pokes Foot+0x578 directly, including -1, which
+                // SetSpeedFraction (its only writer) never stores: the owner
+                // stores +0 for it. IsMovingNow's `<= 0` test (0x0075AB52..63)
+                // answers -1 and 0 alike, so those rows still check the reader.
+                entity
+                    .foot_speed
+                    .set_speed_fraction(SimFixed::from_num(input["speed"].as_f64().unwrap()));
             }
             _ => unreachable!(),
         }

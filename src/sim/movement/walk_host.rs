@@ -110,7 +110,9 @@ impl Simulation {
             self.set_walk_null_destination(id, rules);
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 //75BF38 invokes Foot4D3710(0.0), independently of setter admission.
-                actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
+                actor
+                    .foot_speed
+                    .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
                 if let Some(loco) = actor.locomotor.as_mut() {
                     loco.set_step_head(None);
                     loco.stop_walk();

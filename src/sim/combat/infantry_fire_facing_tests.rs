@@ -146,8 +146,9 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
     for row in rows.iter().filter(|row| !row["fixed_bits"].is_null()) {
         let mut store = pair();
         let firer = store.get_mut(1).unwrap();
-        firer.foot_speed.applied_fraction =
-            SimFixed::from_bits(row["fixed_bits"].as_i64().unwrap() as i32);
+        firer.foot_speed.set_speed_fraction(SimFixed::from_bits(
+            row["fixed_bits"].as_i64().unwrap() as i32,
+        ));
         firer.attack_target = Some(AttackTarget::new(2));
         let result = visit(&mut store, &rules, 100);
         let firer = store.get(1).unwrap();
@@ -194,7 +195,7 @@ fn infantry_speed_refusal_at_fire_frame_clears_pending_sequence() {
     );
     // Isolate the live Foot predicate from the older movement-target shortcut.
     assert!(firer.movement_target.is_none());
-    firer.foot_speed.applied_fraction = SimFixed::ONE;
+    firer.foot_speed.set_speed_fraction(SimFixed::ONE);
     let result = visit(&mut store, &rules, 101);
     let firer = store.get(1).unwrap();
     assert!(result.consequences.fire_events().is_empty());
@@ -279,7 +280,11 @@ fn a_rocketeer_refused_at_its_fire_frame_hovers() {
         SequenceKind::FireFly
     );
     set_anim_frame(&mut store, 1, 2);
-    store.get_mut(1).unwrap().foot_speed.applied_fraction = SimFixed::ONE;
+    store
+        .get_mut(1)
+        .unwrap()
+        .foot_speed
+        .set_speed_fraction(SimFixed::ONE);
     let result = visit(&mut store, &rules, 101);
     assert!(result.consequences.fire_events().is_empty());
     let firer = store.get(1).unwrap();
@@ -562,7 +567,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
         .step_head()
         .expect("accepted Walk step");
     let body = entity.body_facing;
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::ONE);
     if boosted {
         assert!(
             sim.substrate
@@ -588,7 +593,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
         entity.body_facing, body,
         "order keeps the paid-step heading"
     );
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::ONE);
     let mut resumed = restore_production_pair(&sim, &rules);
     sim.scenario_rng = SimRng::new(0); // Native Scenario load reseeds this stream.
     assert_eq!(sim.state_hash(), resumed.state_hash());
@@ -612,7 +617,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             .fire_events
             .iter()
             .any(|event| event.attacker_id == firer);
-        if entity.foot_speed.applied_fraction > SimFixed::ONE / SimFixed::from_num(10) {
+        if entity.foot_speed.applied_fraction() > SimFixed::ONE / SimFixed::from_num(10) {
             if boosted {
                 assert_eq!(
                     sim.current_speed_for_test(firer, &rules),

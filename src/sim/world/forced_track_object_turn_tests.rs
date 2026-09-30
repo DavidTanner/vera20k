@@ -57,7 +57,7 @@ fn fixture(selector: i32) -> Simulation {
         .get_mut(1)
         .unwrap()
         .foot_speed
-        .applied_fraction = SIM_ONE;
+        .set_speed_fraction(SIM_ONE);
     sim
 }
 

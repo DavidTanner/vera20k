@@ -1136,7 +1136,7 @@ mod tests {
                     (value * 65536.0).floor() as i32
                 };
                 assert_eq!(
-                    entity.foot_speed.applied_fraction.to_bits(),
+                    entity.foot_speed.applied_fraction().to_bits(),
                     truncated,
                     "{name}: speed fraction, frame {index}"
                 );

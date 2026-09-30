@@ -7,9 +7,9 @@
     1,
     33621247
   ],
-  "scope": "Foot applied-fraction finite clamp and preservation across complete Drive/Ship construction and successful Drive END",
+  "scope": "Foot applied-fraction clamp, including non-finite and signed-zero requests, and preservation across complete Drive/Ship construction and successful Drive END",
   "assumptions": [
-    "Supplied disjoint owner/class memory, finite exactly representable fractions and startup x87 state",
+    "Supplied disjoint owner/class memory, finite exactly representable fractions (setter-only rows: any double) and startup x87 state",
     "Constructor global frame/null values use mapped image state; their runtime producers are excluded",
     "END uses supplied owner-link/stash; caller release, active-slot replacement and callback admission are excluded"
   ],
@@ -23,5 +23,5 @@
     "common_constructor": "0x0055A6C0",
     "drive_end": "0x004AF930"
   },
-  "payload_sha256": "8c3f16581462416346e7f0bd50097920f2d21b3d1c6cb49f9c74a05fa4050fb2"
+  "payload_sha256": "de2a237b9eeb143728a16538ce2700a097838bd36c5b860ff80715410a114746"
 }

@@ -169,7 +169,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
         loco.begin_walk_motion();
     }
     loco.set_step_head(None);
-    e.foot_speed.applied_fraction = SIM_ZERO;
+    e.foot_speed.set_speed_fraction(SIM_ZERO);
     e.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
     e.navigation.suspended_nav_com = None;
     e.attack_target =
@@ -293,7 +293,7 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
         ),
         (
             "speed",
-            json!(e.foot_speed.applied_fraction.to_num::<f64>()),
+            json!(e.foot_speed.applied_fraction().to_num::<f64>()),
         ),
         ("blocked", json!(u8::from(p.path_blocked))),
         ("retries", json!(p.retries_left as i32)),
@@ -481,7 +481,8 @@ fn ordinary_and_recursive_walk_responses_match_original_decoder() {
         let result = result.and_then(|retry| {
             if input["continue_recursive"] == true {
                 let request = retry.ok_or("missing recursive Walk request")?;
-                let found = sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry))?;
+                let found =
+                    sim.run_walk_path_request(&request, None, Some(&rules), Some(&registry))?;
                 if found {
                     let again = sim.run_walk_admission_request(
                         request.into_walk_admission_for_test(),

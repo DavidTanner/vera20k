@@ -201,7 +201,7 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         actor.navigation.path_runtime.start_blocked(40, 6);
         actor.navigation.path_runtime.retries_left = input["retries"].as_u64().unwrap() as u32;
         actor.navigation.path_runtime.set_scold_latch_for_test(255);
-        actor.foot_speed.applied_fraction = SimFixed::lit("0.75");
+        actor.foot_speed.set_speed_fraction(SimFixed::lit("0.75"));
         let owner = actor.owner();
         sim.houses.insert(
             owner,
@@ -283,7 +283,7 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
             "{input}"
         );
         assert_eq!(
-            actor.foot_speed.applied_fraction,
+            actor.foot_speed.applied_fraction(),
             SimFixed::from_num(row["speed"].as_f64().unwrap()),
             "{input}"
         );
