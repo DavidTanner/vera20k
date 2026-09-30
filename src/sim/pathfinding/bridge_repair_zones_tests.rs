@@ -157,7 +157,7 @@ fn record_activation_matches_original_and_keeps_raw_connectivity_rows() {
         let before = (base.zone_ids.clone(), base.raw_zone_ids_by_row.clone());
         if redirect_case {
             assert_eq!(
-                zones.get_zone_id_native((7, 5), MovementZone::Normal, true),
+                zones.get_zone_id_native(&terrain, (7, 5), MovementZone::Normal, true),
                 Some(3)
             );
         }
@@ -208,11 +208,7 @@ fn record_activation_matches_original_and_keeps_raw_connectivity_rows() {
         if redirect_case {
             assert!(!returned);
             assert_eq!(
-                zones.get_zone_id_native((7, 5), MovementZone::Normal, true),
-                Some(2)
-            );
-            assert_eq!(
-                zones.get_path_zone_id_native(&terrain, (7, 5), MovementZone::Normal, true),
+                zones.get_zone_id_native(&terrain, (7, 5), MovementZone::Normal, true),
                 Some(2)
             );
         }

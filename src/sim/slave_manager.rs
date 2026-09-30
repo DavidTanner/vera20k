@@ -1078,7 +1078,7 @@ impl Simulation {
         let search = DeployCellSearch::new(owner_cell(owner), seed, foundation);
         let terrain = self.resolved_terrain.as_ref()?;
         let zone = self.zone_grid.as_ref().and_then(|zones| {
-            zones.get_path_zone_id_native(
+            zones.get_zone_id_native(
                 terrain,
                 (search.zone_cell.0 as u16, search.zone_cell.1 as u16),
                 search.zone_movement_zone,
@@ -1100,7 +1100,7 @@ impl Simulation {
                     speed_type: search.speed_type,
                     // A DWORD -1 disables the comparison; FNPC turns a raw
                     // 0xFFFF into -1 as well (`find_nearby_cell`).
-                    required_zone_id: u16::try_from(zone).ok(),
+                    required_zone_id: Some(zone),
                     movement_zone: search.movement_zone,
                     bridge_aware_zone: search.bridge_aware,
                 },
