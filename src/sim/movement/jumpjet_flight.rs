@@ -208,6 +208,17 @@ pub(crate) enum FlightOwnerKind {
     Other,
 }
 
+impl FlightOwnerKind {
+    pub(crate) fn of(category: crate::map::entities::EntityCategory) -> Self {
+        use crate::map::entities::EntityCategory;
+        match category {
+            EntityCategory::Unit => Self::Unit,
+            EntityCategory::Infantry => Self::Infantry,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// Everything the flight kernel reads from or writes to the owner and the map.
 /// Coordinates are world leptons.
 pub(crate) trait JumpjetFlightHost {

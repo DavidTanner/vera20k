@@ -505,7 +505,6 @@ impl Simulation {
         rules: Option<&crate::rules::ruleset::RuleSet>,
         order: impl FnOnce(&mut JumpjetRuntime, &mut WorldOrderHost<'_>) -> R,
     ) -> Option<R> {
-        use crate::map::entities::EntityCategory;
         let path_grid = self.path_grid_snapshot();
         let size = self
             .map_size_diamond()
@@ -528,11 +527,7 @@ impl Simulation {
             playfield_bounds: self.playfield_bounds,
             radius_cap: crate::sim::find_nearby_cell::map_owned_radius_cap(size.0, size.1),
             frame: self.session.binary_frame,
-            kind: match entity.category {
-                EntityCategory::Unit => FlightOwnerKind::Unit,
-                EntityCategory::Infantry => FlightOwnerKind::Infantry,
-                _ => FlightOwnerKind::Other,
-            },
+            kind: FlightOwnerKind::of(entity.category),
             balloon_hover: locomotor.balloon_hover,
             entering: entity.mission.queued().raw() == 7 || entity.mission.effective().raw() == 7,
             location: super::ground_pose::position_world_coord(&entity.position),

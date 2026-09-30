@@ -275,25 +275,17 @@ impl Simulation {
             target.movement_zone,
             bridge,
         );
-        let aircraft = self
-            .substrate
-            .entities
-            .get(id)
-            .is_some_and(|entity| entity.category == EntityCategory::Aircraft);
-        let can_enter_code = if aircraft {
-            self.aircraft_can_enter(id, candidate)
-        } else {
-            let args = InfantryEntryArgs {
-                direction: -1,
-                height: target.height,
-                previous_cell: None,
-            };
-            self.foot_can_enter(id, cell, args, rules, registry)
-                .unwrap_or_else(|error| {
-                    log::warn!("group destination entry for {id}: {error}");
-                    7
-                })
+        let args = InfantryEntryArgs {
+            direction: -1,
+            height: target.height,
+            previous_cell: None,
         };
+        let can_enter_code = self
+            .mover_can_enter(id, candidate, args, rules, registry)
+            .unwrap_or_else(|error| {
+                log::warn!("group destination entry for {id}: {error}");
+                7
+            });
         group_destination::CandidateFacts {
             in_playfield: true,
             same_zone: zone == target.zone,
