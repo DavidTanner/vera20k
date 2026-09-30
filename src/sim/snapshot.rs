@@ -759,7 +759,9 @@ use crate::sim::world::Simulation;
 // state (deck, damage state, axis, role, span, overlay); anchor spans are gone.
 // 262 -> 263: a parachute descent no longer saves an altitude; the falling
 // object's height is its Location Z.
-const SNAPSHOT_VERSION: u32 = 263;
+// 263 -> 264: a depot dock state no longer saves an Approach phase;
+// WaitForDock is the depot as pending entry (Unit+0x500).
+const SNAPSHOT_VERSION: u32 = 264;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3649,7 +3651,9 @@ mod tests {
         // 260 -> 261: no falling byte beside the parachute descent.
         // 261 -> 262: no runtime copy of CellClass bridge cell state.
         // 262 -> 263: no parachute altitude beside the Location Z.
-        assert_eq!(super::SNAPSHOT_VERSION, 263);
+        // 263 -> 264: no Approach depot dock phase; WaitForDock is the depot
+        // pending entry (Unit+0x500).
+        assert_eq!(super::SNAPSHOT_VERSION, 264);
     }
 
     #[test]

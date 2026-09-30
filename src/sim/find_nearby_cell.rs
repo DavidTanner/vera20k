@@ -695,6 +695,74 @@ fn cell_to_u16(cell: (i32, i32)) -> Option<(u16, u16)> {
     }
 }
 
+impl crate::sim::world::Simulation {
+    /// TechnoClass NearbyLocation `0x00703590`: FNPC seeded at the cell of
+    /// `anchor`'s coordinate (its vt+0x48; the object's own when `anchor` is
+    /// NULL) with the object's SpeedType (Winged read as Track), its
+    /// MovementZone, `GetZoneID(seed, MovementZone, OnBridge)` and OnBridge.
+    pub(crate) fn techno_nearby_location(
+        &self,
+        id: u64,
+        anchor: Option<u64>,
+        rules: &crate::rules::ruleset::RuleSet,
+    ) -> Option<(i16, i16)> {
+        let entity = self.substrate.entities.get(id)?;
+        let object = self.object_type(entity.type_ref(), rules)?;
+        let speed_type = if object.speed_type == SpeedType::Winged {
+            SpeedType::Track
+        } else {
+            object.speed_type
+        };
+        let seed = match anchor {
+            None => (i32::from(entity.position.rx), i32::from(entity.position.ry)),
+            Some(anchor) => {
+                let [x, y] = crate::sim::movement::ground_pose::object_center_xy(
+                    self.substrate.entities.get(anchor)?,
+                );
+                // 0x007035E8: `(c + (c >> 31 & 0xFF)) >> 8`, toward zero.
+                (x / 256, y / 256)
+            }
+        };
+        let zone = self.zone_grid.as_ref().and_then(|zones| {
+            zones.get_zone_id_native(seed, object.movement_zone, entity.on_bridge)
+        });
+        let (width, height) = self
+            .playfield_bounds
+            .zip(self.playfield_size_height)
+            .map(|(b, h)| (b.base, h))?;
+        let grid = self.path_grid_snapshot();
+        let cell = find_nearby_passable_cell(
+            seed,
+            &NearbyQuery {
+                native_cells: None,
+                raw_occupation: Some(&self.substrate.raw_cell_occupation),
+                passability: PassabilityArgs {
+                    speed_type,
+                    required_zone_id: zone,
+                    movement_zone: object.movement_zone,
+                    bridge_aware_zone: entity.on_bridge,
+                },
+                footprint: NearbyFootprint::SINGLE,
+                anchor_gate: NearbyAnchorGate::NativeHeightAware,
+                allow_bridge_cells: true,
+                check_height: false,
+                check_occupancy: false,
+                radius_cap: map_owned_radius_cap(width, height),
+                target_cell: None,
+                path_grid: grid.as_deref(),
+                resolved_terrain: self.resolved_terrain.as_ref(),
+                overlay_grid: self.overlay_grid.as_ref(),
+                occupancy: Some(&self.substrate.occupancy),
+                entities: Some(&self.substrate.entities),
+                zone_grid: self.zone_grid.as_ref(),
+                playfield_bounds: self.playfield_bounds,
+            },
+            self.session.binary_frame,
+        )?;
+        Some((cell.0 as i16, cell.1 as i16))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

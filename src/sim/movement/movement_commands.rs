@@ -229,8 +229,9 @@ pub fn issue_move_command(
 
 /// Issue a direct move to a single cell without A* pathfinding.
 ///
-/// Used for scripted movement into/out of building footprints where the target
-/// cell is not pathfindable (e.g. refinery pad inside the foundation). Creates
+/// Used for scripted movement into a building footprint where the target
+/// cell is not pathfindable (C4 building entry) and for a Jumpjet
+/// infantryman's damage scatter. Creates
 /// a 2-cell `MovementTarget` `[start, target]` with a Euclidean direction
 /// vector that handles multi-cell deltas correctly. Each step bypasses A*;
 /// callers that also need to bypass `path_grid` walkability (e.g. foundation

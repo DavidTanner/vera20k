@@ -940,6 +940,18 @@ impl Simulation {
         }
 
         movement::tick_locomotor_piggyback_restore_one(&mut sim.substrate.entities, stable_id);
+        // FootClass::AI 0x004DAED0..0x004DAEDC: with vt+0x1D8 (the warp-in)
+        // clear, the pending entry (`Unit+0x500`) asks for its slot.
+        if let Some(rules) = rules
+            && sim.substrate.entities.get(stable_id).is_some_and(|entity| {
+                !entity.is_warping_in()
+                    && entity.dock_state.as_ref().is_some_and(|dock| {
+                        dock.phase == crate::sim::docking::building_dock::DockPhase::WaitForDock
+                    })
+            })
+        {
+            crate::sim::docking::building_dock::try_pending_entry(sim, rules, stable_id);
+        }
         // FootClass::AI tail 0x004DAEE1..0x004DAEF3, after the piggyback swap:
         // an infected Foot runs its eater's ParasiteClass AI in its own turn.
         if let Some(rules) = rules {

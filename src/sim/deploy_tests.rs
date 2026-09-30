@@ -1283,7 +1283,7 @@ fn move_works_after_undeploy_completes() {
     sim.substrate.entities.get_mut(gi).unwrap().dock_state =
         Some(crate::sim::docking::building_dock::DockState {
             dock_building_id: 9999,
-            phase: crate::sim::docking::building_dock::DockPhase::Approach,
+            phase: crate::sim::docking::building_dock::DockPhase::EnterDock,
             service_timer: 0,
             no_funds_ticks: 0,
             enter_retry: Default::default(),
