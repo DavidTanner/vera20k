@@ -329,7 +329,7 @@ pub(super) fn resolve_reachable_move_goal(
         raw_occupation: None,
         passability: PassabilityArgs {
             speed_type,
-            required_zone_id: Some(required_zone),
+            required_zone_id: Some(u32::from(required_zone)),
             movement_zone: zone_mz,
             bridge_aware_zone: goal_layer == MovementLayer::Bridge,
         },

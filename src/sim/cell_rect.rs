@@ -677,7 +677,7 @@ pub struct CellRectPassabilityContext<'a> {
     pub native_cells: Option<&'a crate::map::resolved_terrain::NativeCellQuery<'a>>,
     pub rect: CellRect,
     pub speed_type: SpeedType,
-    pub required_zone_id: Option<ZoneId>,
+    pub required_zone_id: Option<u32>,
     pub movement_zone: MovementZone,
     pub required_height_or_level: Option<i16>,
     pub bridge_aware_zone: bool,
@@ -877,7 +877,7 @@ fn check_cell_passability(
                     (x as u16, y as u16)
                 }
             };
-            zone_grid.get_path_zone_id_native_in_query(
+            zone_grid.get_zone_id_native_in_query(
                 terrain,
                 coord,
                 ctx.movement_zone,
@@ -899,7 +899,7 @@ fn check_cell_passability(
             };
             Some(u32::from(zone_map.zone_at(rx, ry, layer)))
         };
-        if actual_zone != Some(u32::from(required_zone)) {
+        if actual_zone != Some(required_zone) {
             return false;
         }
     }
@@ -1769,9 +1769,11 @@ mod tests {
             terrain.width(),
             terrain.height(),
         );
-        let zone_id = zone_grid
-            .get_zone_id_nonbridge_native((0, 0), MovementZone::Normal)
-            .unwrap();
+        let zone_id = u32::from(
+            zone_grid
+                .get_zone_id_nonbridge_native((0, 0), MovementZone::Normal)
+                .unwrap(),
+        );
 
         let wrong_zone = CellRectPassabilityContext {
             native_cells: None,
@@ -1910,7 +1912,7 @@ mod tests {
         let mut ctx = clear_passability_context(CellRect::single(1, 0), None);
         ctx.path_grid = Some(&path_grid);
         ctx.zone_grid = Some(&compatibility_zones);
-        ctx.required_zone_id = Some(zone);
+        ctx.required_zone_id = Some(u32::from(zone));
         assert!(check_passability_rect(ctx));
     }
 
@@ -1935,18 +1937,18 @@ mod tests {
         assert!(check(&terrain, &zone_grid, 91, true));
         assert!(!check(&terrain, &zone_grid, 92, true));
         zone_grid.base_topology_mut().raw_zone_ids_by_row[row][cluster] = u16::MAX;
-        assert!(check(&terrain, &zone_grid, u16::MAX, true));
+        assert!(check(&terrain, &zone_grid, 0xFFFF, true));
         terrain.cells[0].bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL;
         assert_eq!(
-            zone_grid.get_path_zone_id_native(&terrain, (0, 0), MovementZone::Normal, true),
+            zone_grid.get_zone_id_native(&terrain, (0, 0), MovementZone::Normal, true),
             Some(u32::MAX)
         );
         assert!(
-            !check(&terrain, &zone_grid, u16::MAX, true),
+            !check(&terrain, &zone_grid, 0xFFFF, true),
             "missing record DWORDFFFFFFFF is not raw WORDFFFF"
         );
         assert!(
-            check(&terrain, &zone_grid, u16::MAX, false),
+            check(&terrain, &zone_grid, 0xFFFF, false),
             "literal false bypasses the structural record query"
         );
     }

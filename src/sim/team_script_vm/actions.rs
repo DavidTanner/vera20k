@@ -609,7 +609,7 @@ impl Simulation {
             (leader_location.y / 256) as u16,
         );
         let terrain = self.resolved_terrain.as_ref()?;
-        let zone = self.zone_grid.as_ref()?.get_path_zone_id_native(
+        let zone = self.zone_grid.as_ref()?.get_zone_id_native(
             terrain,
             leader_cell,
             object.movement_zone,
@@ -618,7 +618,7 @@ impl Simulation {
         self.team_find_passable_cell(
             seed,
             object.speed_type,
-            u16::try_from(zone).ok(),
+            Some(zone),
             object.movement_zone,
             (1, 1),
         )
@@ -633,7 +633,7 @@ impl Simulation {
         &self,
         seed: (i32, i32),
         speed_type: crate::rules::locomotor_type::SpeedType,
-        zone: Option<u16>,
+        zone: Option<u32>,
         movement_zone: crate::rules::locomotor_type::MovementZone,
         footprint: (i32, i32),
     ) -> Option<(u16, u16)> {

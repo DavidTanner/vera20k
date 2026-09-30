@@ -212,10 +212,10 @@ fn prepare_native_path_entry(
     let source_cell = lookup(start); //42C938 retained identity
     let goal_cell = lookup(goal); //42C94B retained identity
     let source_zone =
-        zones.and_then(|z| z.get_path_zone_id_native(terrain, start, movement, start_bridge));
+        zones.and_then(|z| z.get_zone_id_native(terrain, start, movement, start_bridge));
     let query_goal_bridge = live_cell_flags(&lookup(goal)) & 0x100 != 0; //42C9B7
     let goal_zone =
-        zones.and_then(|z| z.get_path_zone_id_native(terrain, goal, movement, query_goal_bridge));
+        zones.and_then(|z| z.get_zone_id_native(terrain, goal, movement, query_goal_bridge));
     let records = zones.map_or(&[][..], ZoneGrid::bridge_records);
     let projection = |cell: &CellRef<'_>, enabled| {
         live_hierarchy_projection(terrain, records, cell, enabled, bounds).unwrap_or_else(

@@ -251,7 +251,7 @@ fn resolve_foot_cell_click(
     } else {
         let p = cells.coord(source);
         let zone = zones
-            .get_path_zone_id_native_in_query(
+            .get_zone_id_native_in_query(
                 terrain,
                 (p.0 as u16, p.1 as u16),
                 click.movement_zone,
@@ -259,9 +259,8 @@ fn resolve_foot_cell_click(
                 Some(cells),
             )
             .ok_or("input FNPC source lacks native zone topology")?;
-        //Native DWORD-1 disables the comparison; so does a raw WORDFFFF,
-        //which FNPC's entry turns into -1 (0x56DC43..0x56DC60).
-        u16::try_from(zone).ok()
+        // FNPC disables the comparison for DWORD -1 and raw 0xFFFF alike.
+        Some(zone)
     };
     Ok(find_nearby_passable_cell(
         (i32::from(click.clicked.0), i32::from(click.clicked.1)),
