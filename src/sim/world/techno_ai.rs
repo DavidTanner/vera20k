@@ -75,30 +75,28 @@ impl Simulation {
         let owner = wave
             .owner_id
             .and_then(|owner_id| self.substrate.entities.get(owner_id));
+        // The tracking distance reads the owner's Location (`0x00762BB4`).
+        // RESIDUAL: the geometry takes its FLH instead (vt+0xB0, `0x00762D49`).
         let owner_position = owner.map(|entity| {
-            ProjectileCoord::new(
-                i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
-                i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
-                crate::sim::movement::ground_pose::object_world_z_leptons(
-                    entity,
-                    self.resolved_terrain.as_ref(),
-                ),
-            )
+            let location = crate::sim::movement::ground_pose::object_location(
+                entity,
+                self.resolved_terrain.as_ref(),
+            );
+            ProjectileCoord::new(location.x, location.y, location.z)
         });
         let owner_current_target = owner
             .and_then(|entity| entity.attack_target.as_ref())
             .map(|attack| attack.target);
+        // The target's vt+0x58 (`0x00762BD1`, `0x00762D2C`), which an object
+        // forwards to its GetCoords (`0x00410540`).
         let target_position = match wave.target_ref {
             Some(TargetKind::Entity(target_id)) => {
                 self.substrate.entities.get(target_id).map(|entity| {
-                    ProjectileCoord::new(
-                        i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
-                        i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
-                        crate::sim::movement::ground_pose::object_world_z_leptons(
-                            entity,
-                            self.resolved_terrain.as_ref(),
-                        ),
-                    )
+                    let coords = crate::sim::movement::ground_pose::object_get_coords(
+                        entity,
+                        self.resolved_terrain.as_ref(),
+                    );
+                    ProjectileCoord::new(coords.x, coords.y, coords.z)
                 })
             }
             Some(TargetKind::Cell(rx, ry)) => Some(self.wave_cell_target_position(rx, ry)),

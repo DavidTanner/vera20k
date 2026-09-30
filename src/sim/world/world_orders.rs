@@ -1178,12 +1178,8 @@ impl Simulation {
             // Resolve target coords using the same helper combat tick uses.
             // None means entity-target despawned; combat tick's target-dead
             // branch handles cleanup.
-            let target_pos = combat::resolve_target_coords(
-                &attack.target,
-                &self.substrate.entities,
-                Some(rules),
-                &self.interner,
-            );
+            let target_pos =
+                combat::resolve_target_coords(&attack.target, &self.substrate.entities);
             let Some((trx, try_, _tsx, _tsy)) = target_pos else {
                 continue;
             };

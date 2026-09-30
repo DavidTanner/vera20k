@@ -535,6 +535,27 @@ pub(super) fn spawn_structure(
     }
 }
 
+/// Give a [`spawn_structure`] fixture the foundation construction copies from
+/// its type's `Foundation=` (`stamp_building_cell_profile`), which its
+/// GetCoords reads. Its occupancy stays on the north-west cell.
+pub(super) fn stamp_type_foundation(sim: &mut Simulation, rules: &RuleSet, sid: u64) {
+    let entity = sim
+        .substrate
+        .entities
+        .get(sid)
+        .expect("a spawned structure");
+    let foundation = rules
+        .object(sim.interner.resolve(entity.type_ref()))
+        .expect("the structure's type")
+        .foundation
+        .clone();
+    sim.substrate
+        .entities
+        .get_mut(sid)
+        .expect("a spawned structure")
+        .foundation = foundation;
+}
+
 /// P5d: arm a registry factory's queue-of-record directly (replaces the retired
 /// `queues_by_owner` insert of a `BuildQueueItem`). Interns owner/type, resolves cost from
 /// `rules`, and calls the registry `enqueue` (create-the-active-build, or append to the FIFO
@@ -857,6 +878,7 @@ fn infantry_spawn_uses_foundation_center_cell() {
     // building->GetCoord() lepton lands in.
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
     let spawn = find_spawn_cell_for_owner(
         &mut sim,
         &rules,
@@ -882,6 +904,7 @@ fn infantry_spawn_ignores_exit_coord() {
     // have zero effect.
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "MYBARR", 10, 10);
+    stamp_type_foundation(&mut sim, &rules, 1);
     let spawn = find_spawn_cell_for_owner(
         &mut sim,
         &rules,
@@ -907,6 +930,7 @@ fn infantry_spawn_succeeds_when_center_cell_blocked() {
     // hard-blocked by building cells. Infantry succeed.
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
     // Also occupy the foundation-center cell explicitly to make the test
     // robust against future changes to spawn_structure's occupancy footprint.
     sim.substrate.occupancy.add(
@@ -950,6 +974,7 @@ fn naval_factory_spawn_uses_water_exit_cells() {
     sim.playfield_size_height = Some(32);
 
     spawn_structure(&mut sim, 1, "Americans", "GAYARD", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
     let spawn =
         find_spawn_cell_for_owner(&mut sim, &rules, "Americans", ObjectCategory::Vehicle, true)
             .expect("naval factory should find a water exit cell");
@@ -998,6 +1023,8 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     // The older/lower stable-id land factory must never win the Ship slot.
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 4, 4);
     spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
+    stamp_type_foundation(&mut sim, &rules, 2);
     let vehicle_candidates = super::producer_candidates_for_owner_category(
         &sim.substrate.entities,
         &rules,
@@ -1272,6 +1299,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     );
     spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
+    stamp_type_foundation(&mut sim, &rules, 2);
     arm_build_via(
         &mut sim,
         &rules,

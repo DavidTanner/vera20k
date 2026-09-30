@@ -781,8 +781,11 @@ pub struct AStarOptions<'a> {
     /// `CellClass+0x140 & 0x40000`. Destination hits multiply normal compass
     /// edge cost, but do not change walkability or persistent pathgrid state.
     pub marker_overlay: Option<&'a SearchMarkerOverlay>,
-    /// Crusher units bypass all entity soft-block costs (codes 1-6).
-    /// Buildings (code 7, in entity_blocks BTreeSet) still block.
+    /// Reduced-admission searches only (movers without a Foot +1AC search
+    /// entry, e.g. the legacy blocked-repath lane): crusher units bypass all
+    /// entity soft-block costs (codes 1-6); buildings (code 7, in the
+    /// entity_blocks set) still block. Searches through the live +1AC price
+    /// codes natively and ignore this.
     pub mover_is_crusher: bool,
     /// Code-2 urgency escalation (0 = look-ahead chain walk, 1 = traffic penalty,
     /// 2 = route around). Matches gamemd.exe PathfinderClass+0x3C.

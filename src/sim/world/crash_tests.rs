@@ -1598,6 +1598,10 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
             super::TickLane::Ordinary,
         )
         .expect("the order frame");
+    // The Kirov follows the Nighthawk in the Logic vector; see the skip below.
+    let logic = scenario.sim().substrate.logic.as_slice();
+    let slot = |id| logic.iter().position(|&live| live == id);
+    assert_eq!(slot(kirov), slot(nighthawk).map(|slot| slot + 1));
 
     #[derive(Default)]
     struct Wreck {
@@ -1701,6 +1705,14 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
         riders_killed_by_crash.is_some_and(|kills| kills >= 2),
         "the flak holds both riders' kills at the Nighthawk's death"
     );
+    // The Logic walk re-reads its count after every AI and never repairs its
+    // index (`0x0055B608..0x0055B619`). The Nighthawk's wreck leaves the
+    // vector inside its own AI: UnInit (`0x005F65F0`) calls Limbo, which calls
+    // `LogicClass::Remove @ 0x0055BAE0`. The Kirov, next in the vector, is
+    // skipped that frame and holds its height once.
+    let nighthawk_gone = wrecks[&nighthawk]
+        .impact_frame
+        .expect("the Nighthawk reached the ground");
     for (id, drop, crashing, voice, impact_cue) in [
         (
             nighthawk,
@@ -1719,9 +1731,15 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
         let crash_frame = wreck.crash_frame.expect("shot down");
         let impact_frame = wreck.impact_frame.expect("reached the ground");
         // After the frame the latch engages, every frame falls by climb plus
-        // crash until the impact takes the wreck.
-        for pair in wreck.heights[1..].windows(2) {
-            assert_eq!(pair[0] - pair[1], drop, "{crashing}: {:?}", wreck.heights);
+        // crash until the impact takes the wreck, except a frame it is skipped.
+        for (index, pair) in wreck.heights.windows(2).enumerate().skip(1) {
+            let frame = crash_frame + index as i32 + 1;
+            let fell = if id == kirov && frame == nighthawk_gone {
+                0
+            } else {
+                drop
+            };
+            assert_eq!(pair[0] - pair[1], fell, "{crashing}: {:?}", wreck.heights);
         }
         assert!(wreck.heights.last().is_some_and(|&last| last <= drop));
         let heard = |name: &str| {

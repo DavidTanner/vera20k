@@ -187,6 +187,7 @@ fn building_docking(
                         &sim.substrate.entities,
                         building_id,
                         Some(from),
+                        sim.resolved_terrain.as_ref(),
                         rules,
                         &sim.interner,
                     )

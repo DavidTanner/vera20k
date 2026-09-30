@@ -246,11 +246,7 @@ fn guardian_gi_rules() -> RuleSet {
 /// resolution ordering pre-align here so they still observe the shot on the
 /// single tick they run; the turn-to-fire behaviour itself is covered by
 /// `combat_turret_facing_tests`.
-fn align_attackers_to_targets(
-    store: &mut EntityStore,
-    rules: &RuleSet,
-    interner: &crate::sim::intern::StringInterner,
-) {
+fn align_attackers_to_targets(store: &mut EntityStore) {
     for id in store.keys_sorted() {
         let desired = {
             let Some(entity) = store.get(id) else {
@@ -259,13 +255,8 @@ fn align_attackers_to_targets(
             let Some(attack) = entity.attack_target.as_ref() else {
                 continue;
             };
-            match crate::sim::movement::turret::facing_toward_target(
-                entity,
-                &attack.target,
-                store,
-                Some(rules),
-                interner,
-            ) {
+            match crate::sim::movement::turret::facing_toward_target(entity, &attack.target, store)
+            {
                 Some(desired) => desired,
                 None => continue,
             }
@@ -1152,7 +1143,7 @@ fn considered_aircraft_infantry_is_air_only_while_high_flying() {
 
         install_entity_attack_target_for_test(&mut sim.substrate.entities, attacker, target);
         let mut main_rng = SimRng::new(1);
-        align_attackers_to_targets(&mut sim.substrate.entities, &rules, &sim.interner);
+        align_attackers_to_targets(&mut sim.substrate.entities);
         let result = tick_combat(
             &mut sim.substrate.entities,
             &mut sim.substrate.occupancy,
@@ -1205,7 +1196,7 @@ fn ordinary_infantry_remains_ground_for_projectile_legality() {
 
     install_entity_attack_target_for_test(&mut sim.substrate.entities, attacker, target);
     let mut main_rng = SimRng::new(1);
-    align_attackers_to_targets(&mut sim.substrate.entities, &rules, &sim.interner);
+    align_attackers_to_targets(&mut sim.substrate.entities);
     let result = tick_combat(
         &mut sim.substrate.entities,
         &mut sim.substrate.occupancy,
@@ -1277,7 +1268,7 @@ fn test_tick_combat_applies_damage() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -1307,7 +1298,7 @@ fn combat_damage_crosses_live_type_condition_yellow() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -1376,7 +1367,7 @@ fn aoe_damage_crosses_live_type_condition_yellow() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -1411,7 +1402,7 @@ fn combat_damage_landed_applies_infantry_fear() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -1501,7 +1492,7 @@ fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
         let mut terrain = crate::sim::tiberium::test_support::flat_terrain(12, 12);
         overlays.place_overlay(8, 5, 0, 0);
         let mut scenario_rng = SimRng::new(1);
-        align_attackers_to_targets(&mut entities, &rules, &interner);
+        align_attackers_to_targets(&mut entities);
         let result = tick_combat_with_fog(
             &mut entities,
             &mut OccupancyGrid::new(),
@@ -1610,7 +1601,7 @@ fn gsi_04_07_damage_wall_dies_in_the_tail_after_both_attackers_fire() {
     expected_rng.next_range_u32_inclusive(0, 2);
     expected_rng.next_range_u32_inclusive(0, 2);
     let before = expected_rng.state();
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     let result = tick_combat_with_fog(
         &mut entities,
         &mut OccupancyGrid::new(),
@@ -1744,7 +1735,7 @@ fn gsi_04_07_damage_prior_projectile_fatal_death_weapon_is_inline() {
         let mut houses = BTreeMap::new();
         let handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
-        align_attackers_to_targets(&mut entities, &rules, &interner);
+        align_attackers_to_targets(&mut entities);
         // With resolved terrain the detonation collects its victims from the
         // cell lists, so the objects are placed there as live ones are.
         for id in [10, 20, 30] {
@@ -2505,7 +2496,7 @@ fn gsi_04_07_damage_retaliation_is_receiver_synchronous_and_uses_mission_overrid
         let mut houses = BTreeMap::new();
         let handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
-        align_attackers_to_targets(&mut entities, &rules, &interner);
+        align_attackers_to_targets(&mut entities);
         let result = tick_combat_with_fog_and_main_rng(
             &mut entities,
             &mut occupancy,
@@ -4340,7 +4331,7 @@ fn gsi_08_05_tick_combat_respects_the_jittered_cooldown() {
     // One call per frame: the rearm countdown is frame-anchored.
     let fire_at =
         |frame: u32, store: &mut EntityStore, interner: &mut StringInterner, rng: &mut SimRng| {
-            align_attackers_to_targets(store, &rules, interner);
+            align_attackers_to_targets(store);
             tick_combat(
                 store,
                 &mut OccupancyGrid::new(),
@@ -4878,7 +4869,7 @@ fn fatal_sound_selection_uses_human_voice_then_die_sound_main_draws() {
     let mut human_rng = SimRng::new(1);
     let handles =
         crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     tick_combat_with_fog_and_main_rng(
         &mut entities,
         &mut OccupancyGrid::new(),
@@ -5100,7 +5091,7 @@ fn a_bright_shot_lights_its_detonation() {
         store.insert(make_entity(2, "TARGET", 8, 5, 500));
         let mut interner = test_interner();
         install_entity_attack_target_for_test(&mut store, 1, 2);
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         let result = tick_combat(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -5200,7 +5191,7 @@ fn test_infantry_vs_heavy_armor() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5570,7 +5561,7 @@ fn test_prone_infantry_takes_scaled_direct_damage() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5616,7 +5607,7 @@ fn test_prone_infantry_takes_scaled_aoe_damage() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5654,7 +5645,7 @@ fn an_unseen_target_is_fired_at() {
     store.insert(make_entity_owned(2, "MTNK", 8, 5, 300, "Soviet"));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
 
     let fog = FogState::default();
     assert!(!fog.is_cell_visible(test_intern("Americans"), 8, 5));
@@ -5814,7 +5805,7 @@ fn test_weapon_fire_destroys_ore_in_spread() {
     overlays.place_overlay(9, 5, 0, 2);
 
     let mut main_rng = SimRng::new(1);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat_with_fog(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5878,7 +5869,7 @@ fn test_direct_hit_weapon_destroys_center_ore() {
     overlays.place_overlay(9, 5, 0, 5);
 
     let mut main_rng = SimRng::new(1);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat_with_fog(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -5942,7 +5933,7 @@ fn test_weak_weapon_partial_ore_reduction() {
     overlays.place_overlay(8, 5, 0, 9);
 
     let mut main_rng = SimRng::new(1);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat_with_fog(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -6618,7 +6609,7 @@ fn v3_non_killing_aoe_emits_one_detonation_anim() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -6672,7 +6663,7 @@ fn v3_killing_aoe_emits_exactly_one_detonation_anim() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -6726,7 +6717,7 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     let mut main_rng = SimRng::new(1);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -6796,7 +6787,7 @@ fn fire_admission_preserves_flat_projectile_layer_through_save_and_retirement() 
         entities.insert(make_entity(2, "TARGET", 8, 5, 500));
         let mut interner = test_interner();
         install_entity_attack_target_for_test(&mut entities, 1, 2);
-        align_attackers_to_targets(&mut entities, &rules, &interner);
+        align_attackers_to_targets(&mut entities);
         let fire = tick_combat(
             &mut entities,
             &mut OccupancyGrid::new(),
@@ -6871,7 +6862,7 @@ fn gsi_04_11_persistent_projectile_keeps_exact_lepton_z() {
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut entities, 1, 2);
 
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     let result = tick_combat_with_fog(
         &mut entities,
         &mut OccupancyGrid::new(),
@@ -6910,7 +6901,7 @@ fn persistent_projectile_delays_damage_across_save_load_continuation() {
     install_entity_attack_target_for_test(&mut entities, 1, 2);
 
     let mut scenario_rng = SimRng::new(1);
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     let fire = tick_combat(
         &mut entities,
         &mut OccupancyGrid::new(),
@@ -6975,7 +6966,7 @@ fn persistent_projectile_delays_damage_across_save_load_continuation() {
     let mut houses = BTreeMap::new();
     let handles =
         crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     tick_combat_with_fog_and_main_rng(
         &mut entities,
         &mut OccupancyGrid::new(),
@@ -7054,7 +7045,7 @@ fn inviso_scatter_uses_scenario_rng_only_for_effect_and_paired_smudge() {
     // the same frame's tail.
     expected_rng.next_range_u32_inclusive(0, 2);
     let expected_effect = inviso_detonation_draws(&mut expected_rng, target_coord);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -7101,7 +7092,7 @@ fn inviso_empty_animlist_still_consumes_one_draw() {
         &mut expected_rng,
         (8, 5, SimFixed::from_num(128), SimFixed::from_num(128)),
     );
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -7145,7 +7136,7 @@ fn gsi_08_05_non_inviso_projectile_advances_scenario_rng_by_the_reload_jitter() 
     // reload unconditionally. Exactly one draw, on the scenario instance.
     let mut expected_rng = scenario_rng.clone();
     expected_rng.next_range_u32_inclusive(0, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -7202,7 +7193,7 @@ fn two_inviso_attackers_fire_in_live_order_and_the_second_bullet_waits_a_frame()
     expected_rng.next_range_u32_inclusive(0, 2);
     expected_rng.next_range_u32_inclusive(0, 2);
     let expected = inviso_detonation_draws(&mut expected_rng, target_coord);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat_with_fog(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -7297,7 +7288,7 @@ fn inviso_special_arms_claim_the_impact_and_keep_the_shared_tail() {
         let mut expected_rng = scenario_rng.clone();
         expected_rng.next_range_u32_inclusive(0, 2);
         let expected_effect = inviso_detonation_draws(&mut expected_rng, target_coord);
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         let result = tick_combat(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -7354,7 +7345,7 @@ fn inviso_parasite_grapple_claims_the_impact() {
     store.insert(make_entity(2, "SHIP", 6, 5, 500));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -7382,7 +7373,7 @@ fn inviso_direct_rocker_at_a_cell_keeps_ordinary_damage() {
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
     store.get_mut(1).unwrap().attack_target = Some(AttackTarget::for_cell(8, 5));
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -7465,7 +7456,7 @@ fn combat_resolves_in_live_object_order_not_stable_id() {
     // it fires first and lands the lethal shot.
     {
         let (mut store, rules, mut interner) = build();
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         let result = tick_combat_with_fog(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -7500,7 +7491,7 @@ fn combat_resolves_in_live_object_order_not_stable_id() {
     // controls the resolution sequence and that &[] reproduces the prior order.
     {
         let (mut store, rules, mut interner) = build();
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         let result = tick_combat_with_fog(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -8399,7 +8390,7 @@ fn projectile_shrapnel_targets_hostile_head_before_random_cell_child() {
 
     let handles =
         crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     let result = tick_combat_with_fog_and_main_rng(
         &mut entities,
         &mut occupancy,
@@ -8457,6 +8448,8 @@ fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
     // foundation centre, `0x00447AC0`) is (512, 256) leptons away: 572 -> 2.
     let mut target = make_entity_owned(2, "HQ", 6, 5, 100, "Americans");
     target.category = EntityCategory::Structure;
+    // Construction stamps the type's `Foundation=3x3`.
+    target.foundation = "3x3".to_string();
     target.lifecycle.cell_marked = true;
     entities.insert(target);
     let mut occupancy = OccupancyGrid::rebuild(&entities);
@@ -8479,7 +8472,7 @@ fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
     let mut houses = BTreeMap::new();
     let handles =
         crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     let result = tick_combat_with_fog_and_main_rng(
         &mut entities,
         &mut occupancy,
@@ -8526,6 +8519,8 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
     // First ring-table entry is (+1,-1): the HQ's north-west cell.
     let mut target = make_entity_owned(2, "HQ", 6, 4, 100, "Americans");
     target.category = EntityCategory::Structure;
+    // Construction stamps the type's `Foundation=2x2`.
+    target.foundation = "2x2".to_string();
     target.lifecycle.cell_marked = true;
     entities.insert(target);
     let mut occupancy = OccupancyGrid::rebuild(&entities);
@@ -8548,7 +8543,7 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
     let mut houses = BTreeMap::new();
     let handles =
         crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
-    align_attackers_to_targets(&mut entities, &rules, &interner);
+    align_attackers_to_targets(&mut entities);
     let result = tick_combat_with_fog_and_main_rng(
         &mut entities,
         &mut occupancy,
@@ -8947,7 +8942,7 @@ fn gsi_08_12_a_grizzly_promotes_through_the_damage_path() {
         if let Some(attacker) = store.get_mut(1) {
             attacker.rearm_timer = crate::sim::timer::CdTimer::default();
         }
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         tick_combat(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -8994,7 +8989,7 @@ fn gsi_08_05_elite_rof_and_firepower_abilities_reach_the_fire_path() {
         store.insert(make_entity_owned(2, "HTNK", 8, 5, 400, "Americans"));
         let mut interner = test_interner();
         install_entity_attack_target_for_test(&mut store, 1, 2);
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         tick_combat(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -9049,7 +9044,7 @@ fn gsi_08_05_a_heal_skips_the_firepower_rank_stage() {
         store.insert(make_entity_owned(2, "HTNK", 8, 5, 200, "Soviet"));
         let mut interner = test_interner();
         install_entity_attack_target_for_test(&mut store, 1, 2);
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         tick_combat(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -9085,7 +9080,7 @@ fn gsi_08_05_a_sonic_shot_carries_no_damage() {
     store.insert(make_entity_owned(2, "TARGET", 8, 5, 100, "Americans"));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -9130,7 +9125,7 @@ fn gsi_08_05_a_bunkered_vehicle_takes_the_bunker_damage_multiplier() {
         store.insert(make_entity_owned(2, "MTNK", 8, 5, 400, "Americans"));
         let mut interner = test_interner();
         install_entity_attack_target_for_test(&mut store, 1, 2);
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         tick_combat(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -9220,7 +9215,7 @@ fn gsi_08_11_unit_death_plays_type_explosion_then_destroy_anim() {
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
 
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     let result = tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -9465,7 +9460,7 @@ fn gsi_08_12_a_base_defence_kill_pays_nobody() {
     store.insert(make_entity_owned(2, "HTNK", 8, 5, 1, "Americans"));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
     tick_combat(
         &mut store,
         &mut OccupancyGrid::new(),
@@ -9757,7 +9752,7 @@ fn gsi_08_05_a_berserk_firer_rearms_at_half_its_rof() {
         store.insert(make_entity_owned(2, "MTNK", 7, 5, 300, "Americans"));
         let mut interner = test_interner();
         install_entity_attack_target_for_test(&mut store, 1, 2);
-        align_attackers_to_targets(&mut store, &rules, &interner);
+        align_attackers_to_targets(&mut store);
         tick_combat(
             &mut store,
             &mut OccupancyGrid::new(),
@@ -9935,7 +9930,7 @@ fn gsi_08_08_kirov_vertical_bomb_falls_and_detonates() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     // The order writes no facing, and this fixture runs no mission that turns
     // the airship: face it at the target before the fire gate asks.
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
 
     let result = tick_combat(
         &mut store,
@@ -10050,7 +10045,7 @@ fn gsi_05_14_a_dying_vehicle_scatters_metallic_debris() {
     store.insert(make_entity_owned(2, "HTNK", 8, 5, 1, "Americans"));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
 
     let result = tick_combat(
         &mut store,
@@ -10109,7 +10104,7 @@ fn gsi_05_14_a_dying_building_uses_its_own_debris_anims() {
     store.insert(make_entity_owned(2, "HTNK", 8, 5, 1, "Americans"));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
 
     let result = tick_combat(
         &mut store,
@@ -10160,7 +10155,9 @@ fn a_dying_buildings_debris_leaves_from_its_centre() {
 
     let mut store = EntityStore::new();
     let _ = test_intern("BIG");
-    let building = make_structure_entity(2, "BIG", 8, 5, 0, 1);
+    let mut building = make_structure_entity(2, "BIG", 8, 5, 0, 1);
+    // Construction stamps the type's `Foundation=3x3`.
+    building.foundation = "3x3".to_string();
     let location = (
         8 * 256 + building.position.sub_x.to_num::<i32>(),
         5 * 256 + building.position.sub_y.to_num::<i32>(),
@@ -10216,7 +10213,7 @@ fn gsi_05_14_a_dying_harvester_throws_voxel_tires_and_no_shp_debris() {
     store.insert(make_entity_owned(2, "HTNK", 8, 5, 1, "Americans"));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
 
     let result = tick_combat(
         &mut store,
@@ -10272,7 +10269,7 @@ fn gsi_05_14_a_type_without_maxdebris_takes_no_draw() {
     store.insert(make_entity_owned(2, "HTNK", 8, 5, 1, "Americans"));
     let mut interner = test_interner();
     install_entity_attack_target_for_test(&mut store, 1, 2);
-    align_attackers_to_targets(&mut store, &rules, &interner);
+    align_attackers_to_targets(&mut store);
 
     let mut rng = SimRng::new(64);
     let result = tick_combat(

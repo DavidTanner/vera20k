@@ -1284,7 +1284,7 @@ impl Simulation {
             if !self.unlimbo_slave(slave, drop, (sub_x, sub_y), rules) {
                 continue;
             }
-            if let Some(source) = self.slave_owner_centre(master, rules)
+            if let Some(source) = self.slave_owner_centre(master)
                 && let Err(cause) = self.infantry_scatter_from(
                     slave,
                     source,
@@ -1306,11 +1306,10 @@ impl Simulation {
 
     /// The owner's Center_Coord (`vt+0x48`), the point its slaves scatter
     /// away from.
-    fn slave_owner_centre(&self, master: u64, rules: &RuleSet) -> Option<(i32, i32)> {
+    fn slave_owner_centre(&self, master: u64) -> Option<(i32, i32)> {
         let owner = self.substrate.entities.get(master)?;
-        let object = self.object_type(owner.type_ref(), rules)?;
-        let centre = crate::sim::movement::ground_pose::object_center_coord(owner, object);
-        Some((centre.x, centre.y))
+        let [x, y] = crate::sim::movement::ground_pose::object_center_xy(owner);
+        Some((x, y))
     }
 
     /// `InfantryClass::Unlimbo @ 0x0051DFF0` at `(cell, request)` with facing

@@ -127,14 +127,9 @@ impl Simulation {
             let weapon = combat_weapon::primary_for_tier(object, entity.veterancy())
                 .and_then(|name| rules.weapon(name))
                 .expect("strafe classifier's weapon");
-            let distance = crate::sim::combat::object_distance_to(
-                entity,
-                &target,
-                &self.substrate.entities,
-                rules,
-                &self.interner,
-            )
-            .expect("live aircraft Target");
+            let distance =
+                crate::sim::combat::object_distance_to(entity, &target, &self.substrate.entities)
+                    .expect("live aircraft Target");
             if distance < weapon.range_leptons {
                 return 4;
             }
@@ -159,8 +154,6 @@ impl Simulation {
             entity,
             &attack_target(nav),
             &self.substrate.entities,
-            rules,
-            &self.interner,
         )
         .expect("live aircraft NavCom");
         let facing = if distance < 512 {
@@ -168,8 +161,6 @@ impl Simulation {
                 entity,
                 &target,
                 &self.substrate.entities,
-                Some(rules),
-                &self.interner,
             )
             .expect("live approach Target")
         } else {
@@ -189,7 +180,7 @@ impl Simulation {
             //4181F6..41828E: Nav+48 and GetFLH(weapon0, additive zero XYZ).
             // Reuse the muzzle owner, including its documented tilt residual.
             let destination = self
-                .fire_location_center(nav, rules)
+                .fire_location_center(nav)
                 .expect("live approach NavCom");
             crate::util::direction_tables::facing16_between(
                 [origin.x, origin.y],

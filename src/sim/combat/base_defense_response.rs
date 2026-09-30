@@ -406,11 +406,7 @@ pub(crate) fn respond_to_base_attack(
     else {
         return;
     };
-    let attacker_coord = ground_pose::object_get_coords(
-        attacker,
-        Some(attacker_object),
-        sim.resolved_terrain.as_ref(),
-    );
+    let attacker_coord = ground_pose::object_get_coords(attacker, sim.resolved_terrain.as_ref());
     let attacker_coord = [attacker_coord.x, attacker_coord.y, attacker_coord.z];
     let victim_is_self_anchor = victim.archive_target() == Some(TargetKind::Entity(victim_id));
     let candidate_ids = entities.keys_sorted();
@@ -506,8 +502,7 @@ pub(crate) fn respond_to_base_attack(
                 continue;
             }
 
-            let current_coord =
-                ground_pose::object_get_coords(candidate, Some(candidate_object), Some(terrain));
+            let current_coord = ground_pose::object_get_coords(candidate, Some(terrain));
             let raw_score = evaluate_target_threat(ThreatFacts {
                 threat_posed: live_threat_posed(
                     candidate,

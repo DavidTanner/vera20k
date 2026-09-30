@@ -318,7 +318,7 @@ fn objects_admit(
                     return None;
                 };
                 let cell = &terrain.cells()[index];
-                sim.nearest_cell_object((cell.rx, cell.ry), MovementLayer::Ground, rules)
+                sim.nearest_cell_object((cell.rx, cell.ry), MovementLayer::Ground)
                     .map(CellObjectMember::Entity)
             })
             .or_else(|| members.iter().find(|member| is_terrain(member)).copied());

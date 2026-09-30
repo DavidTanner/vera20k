@@ -82,11 +82,8 @@ pub(crate) fn facing_toward_target(
     entity: &GameEntity,
     target: &crate::sim::combat::TargetKind,
     entities: &EntityStore,
-    rules: Option<&RuleSet>,
-    interner: &crate::sim::intern::StringInterner,
 ) -> Option<u16> {
-    let (trx, try_, tsx, tsy) =
-        crate::sim::combat::resolve_target_coords(target, entities, rules, interner)?;
+    let (trx, try_, tsx, tsy) = crate::sim::combat::resolve_target_coords(target, entities)?;
     Some(facing_toward_lepton(
         entity.position.rx,
         entity.position.ry,
@@ -213,7 +210,7 @@ pub(crate) fn facing_update(
     let target_facing: Option<u16> = entity
         .attack_target
         .as_ref()
-        .and_then(|attack| facing_toward_target(entity, &attack.target, entities, rules, interner));
+        .and_then(|attack| facing_toward_target(entity, &attack.target, entities));
     if let Some(tgt) = target_facing
         && !entity.turret_rotation_latch
     {
@@ -363,9 +360,7 @@ pub(crate) fn desired_turret_facing(
             entity
                 .attack_target
                 .as_ref()
-                .and_then(|attack| {
-                    facing_toward_target(entity, &attack.target, entities, rules, interner)
-                })
+                .and_then(|attack| facing_toward_target(entity, &attack.target, entities))
                 .unwrap_or_else(|| entity.body_facing_current(binary_frame)),
         ),
     }

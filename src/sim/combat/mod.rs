@@ -773,34 +773,19 @@ impl AttackTarget {
     }
 }
 
-/// Compute the effective target coordinates for an entity.
+/// An entity's GetCoords XY ([`object_center_xy`]) as a cell and in-cell
+/// leptons: a structure's foundation centre, any other object's Location.
+/// Callers which consume stored Location rather than this virtual point keep
+/// that distinction.
 ///
-/// For structures, returns the **foundation center** instead of the raw
-/// position (NW corner cell center):
-///   X = Location.X + (foundationWidth  - 1) * 128
-///   Y = Location.Y + (foundationHeight - 1) * 128
-///
-/// Native virtual GetCoords: Object5F65A0 and Building447AC0. Callers which
-/// consume stored Location rather than this virtual point keep that distinction.
-fn target_coords(
-    entity: &GameEntity,
-    rules: Option<&RuleSet>,
-    interner: &StringInterner,
-) -> (u16, u16, SimFixed, SimFixed) {
-    let object = (entity.category == EntityCategory::Structure)
-        .then(|| rules.and_then(|r| r.object(interner.resolve(entity.type_ref()))))
-        .flatten();
-    let coord = match object {
-        Some(object) => crate::sim::movement::ground_pose::object_center_coord(entity, object),
-        None => crate::sim::movement::ground_pose::position_world_coord(&entity.position),
-    };
-    // A foundation centre may carry sub-cell leptons past 256; callers that
-    // flatten `cell*256+sub` see the same point.
+/// [`object_center_xy`]: crate::sim::movement::ground_pose::object_center_xy
+fn target_coords(entity: &GameEntity) -> (u16, u16, SimFixed, SimFixed) {
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     (
-        (coord.x / 256) as u16,
-        (coord.y / 256) as u16,
-        SimFixed::from_num(coord.x % 256),
-        SimFixed::from_num(coord.y % 256),
+        (x / 256) as u16,
+        (y / 256) as u16,
+        SimFixed::from_num(x % 256),
+        SimFixed::from_num(y % 256),
     )
 }
 
@@ -825,11 +810,9 @@ fn cell_center_coords(rx: u16, ry: u16) -> (u16, u16, SimFixed, SimFixed) {
 pub(crate) fn resolve_target_coords(
     target: &TargetKind,
     entities: &EntityStore,
-    rules: Option<&RuleSet>,
-    interner: &StringInterner,
 ) -> Option<(u16, u16, SimFixed, SimFixed)> {
     match *target {
-        TargetKind::Entity(id) => entities.get(id).map(|t| target_coords(t, rules, interner)),
+        TargetKind::Entity(id) => entities.get(id).map(target_coords),
         TargetKind::Cell(rx, ry) => Some(cell_center_coords(rx, ry)),
     }
 }
@@ -840,12 +823,11 @@ pub(crate) fn resolve_target_coords(
 /// Reuse the coordinate projection and deterministic native sqrt owner: exact
 /// integer sqrt changes observable lepton ties (1281 becomes1280 natively).
 /// Native comparisons: tools/spatial_oracle/aircraft_approach_range.{py,json}.
+/// The discount reads the same stamped foundation as the target's GetCoords.
 pub(crate) fn object_distance_to(
     source: &GameEntity,
     target: &TargetKind,
     entities: &EntityStore,
-    rules: &RuleSet,
-    interner: &StringInterner,
 ) -> Option<i32> {
     let planar = |(rx, ry, sx, sy): (u16, u16, SimFixed, SimFixed)| {
         [
@@ -854,20 +836,14 @@ pub(crate) fn object_distance_to(
             0,
         ]
     };
-    let from = planar(target_coords(source, Some(rules), interner));
-    let to = planar(resolve_target_coords(
-        target,
-        entities,
-        Some(rules),
-        interner,
-    )?);
+    let from = planar(target_coords(source));
+    let to = planar(resolve_target_coords(target, entities)?);
     let distance = crate::util::native_x87::distance_3d_leptons(from, to);
     if let TargetKind::Entity(id) = *target
         && let Some(building) = entities.get(id)
         && building.category == EntityCategory::Structure
     {
-        let object = rules.object(interner.resolve(building.type_ref()))?;
-        let (width, height) = foundation_dimensions(&object.foundation);
+        let (width, height) = foundation_dimensions(&building.foundation);
         // Height query45ECA0 receives false: Bib never adds to this discount.
         return Some(
             distance
@@ -1055,9 +1031,7 @@ pub(crate) fn pursuit_in_range(
         // two stages still agree, which is the property that matters. That twin
         // has no MinimumRange arm either, so it cannot report the too-close
         // verdict.
-        let Some((trx, try_, tsx, tsy)) =
-            resolve_target_coords(target, entities, Some(rules), interner)
-        else {
+        let Some((trx, try_, tsx, tsy)) = resolve_target_coords(target, entities) else {
             return PursuitRangeVerdict::CloseIn;
         };
         let dist_sq = lepton_distance_sq_raw(
@@ -2451,11 +2425,7 @@ fn emit_projectile_shrapnel(
     let target_position = match detonation.target {
         // `0x0046A370`: the Target's GetCoords (vt+0x48).
         ProjectileTarget::Entity(id) => entities.get(id).map(|entity| {
-            let coord = crate::sim::movement::ground_pose::object_get_coords(
-                entity,
-                rules.object(interner.resolve(entity.type_ref())),
-                terrain,
-            );
+            let coord = crate::sim::movement::ground_pose::object_get_coords(entity, terrain);
             ProjectileCoord::new(coord.x, coord.y, coord.z)
         }),
         ProjectileTarget::Cell { rx, ry } => {
@@ -2592,11 +2562,8 @@ fn emit_projectile_shrapnel(
                     };
                     // `0x0046A614`: the object's GetCoords (vt+0x48), a
                     // building's foundation center (`0x00447AC0`).
-                    let coord = crate::sim::movement::ground_pose::object_get_coords(
-                        entity,
-                        rules.object(interner.resolve(entity.type_ref())),
-                        terrain,
-                    );
+                    let coord =
+                        crate::sim::movement::ground_pose::object_get_coords(entity, terrain);
                     ProjectileCoord::new(coord.x, coord.y, coord.z)
                 }
                 ProjectileTarget::Cell { rx, ry } => {

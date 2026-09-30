@@ -84,6 +84,9 @@ fn building_aim_directions_match_the_original() {
             EntityCategory::Structure,
             &input["location"],
         );
+        // Construction stamps each building type's `Foundation=`.
+        sim.substrate.entities.get_mut(1).unwrap().foundation =
+            input["foundation"].as_str().unwrap().to_string();
         let target = &input["target"];
         if !target.is_null() {
             let (kind, category) = match target["kind"].as_str().unwrap() {
@@ -91,6 +94,10 @@ fn building_aim_directions_match_the_original() {
                 _ => ("TGT", EntityCategory::Structure),
             };
             place(&mut sim, 2, kind, category, &target["location"]);
+            if category == EntityCategory::Structure {
+                sim.substrate.entities.get_mut(2).unwrap().foundation =
+                    target["foundation"].as_str().unwrap_or("1x1").to_string();
+            }
         }
         let frame = sim.session.binary_frame;
         let facing = input["facing"].as_u64().unwrap() as u16;
@@ -103,7 +110,6 @@ fn building_aim_directions_match_the_original() {
         let current = building.body_facing.current(frame);
         let (flh, fire) = building_fire_facings(
             &sim,
-            &rules,
             &FireSource::of_entity(building),
             obj,
             firer_art(&rules, obj),
@@ -113,8 +119,6 @@ fn building_aim_directions_match_the_original() {
         let coords = crate::sim::combat::resolve_target_coords(
             &TargetKind::Entity(1),
             &sim.substrate.entities,
-            Some(&rules),
-            &sim.interner,
         )
         .map(coords_xy);
         let native = &output["get_coords"];

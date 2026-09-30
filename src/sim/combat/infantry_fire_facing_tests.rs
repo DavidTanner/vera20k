@@ -437,7 +437,10 @@ fn cell_and_building_fire_headings_match_original_coordinate_getters() {
         firer.attack_target = Some(if row["target_kind"] == "cell" {
             AttackTarget::for_cell(8, 5)
         } else {
-            store.insert(make_structure_entity(2, "TARGET", 8, 5, 125, 125));
+            let mut target = make_structure_entity(2, "TARGET", 8, 5, 125, 125);
+            // Construction stamps the type's `Foundation=2x3`.
+            target.foundation = "2x3".to_string();
+            store.insert(target);
             AttackTarget::new(2)
         });
         store.insert(firer);

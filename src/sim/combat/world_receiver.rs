@@ -1217,10 +1217,10 @@ pub(crate) fn handle_death(
                     .substrate
                     .entities
                     .get(dead_id)
-                    .map(|entity| {
-                        crate::sim::movement::ground_pose::object_center_coord(entity, obj)
-                    })
-                    .map_or((0, 0), |coord| (coord.x, coord.y));
+                    .map_or((0, 0), |entity| {
+                        let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+                        (x, y)
+                    });
                 throw_debris_for_death(
                     obj,
                     rules,
@@ -2500,7 +2500,7 @@ fn admit_attacker_fire<'r>(
     // attacker's own type as the target type.
     let target_data: Option<(u16, u16, SimFixed, SimFixed, i32, InternedId)> = match snap.target {
         TargetKind::Entity(target_id) => world.substrate.entities.get(target_id).map(|t| {
-            let (trx, try_, tsx, tsy) = target_coords(t, Some(rules), &world.interner);
+            let (trx, try_, tsx, tsy) = target_coords(t);
             (trx, try_, tsx, tsy, t.health.current, t.type_ref())
         }),
         TargetKind::Cell(rx, ry) => {
@@ -3073,14 +3073,13 @@ pub(super) struct AdmittedFire<'a> {
     pub(super) is_garrison: bool,
 }
 
-/// The object coordinate `vt+0x48` (GetCoords) returns: a building's
-/// foundation centre (`0x00447AC0`), every other object's Location
-/// (`0x005F65A0`), at the object's world height.
-fn object_get_coords(world: &Simulation, rules: &RuleSet, id: u64) -> Option<ProjectileCoord> {
+/// Object `id`'s GetCoords (`vt+0x48`,
+/// [`crate::sim::movement::ground_pose::object_get_coords`]) as a projectile
+/// coordinate.
+fn object_get_coords(world: &Simulation, id: u64) -> Option<ProjectileCoord> {
     let entity = world.substrate.entities.get(id)?;
     let coord = crate::sim::movement::ground_pose::object_get_coords(
         entity,
-        rules.object(world.interner.resolve(entity.type_ref())),
         world.resolved_terrain.as_ref(),
     );
     Some(ProjectileCoord::new(coord.x, coord.y, coord.z))
@@ -3136,8 +3135,8 @@ fn retaliation_reaches(
         return true;
     }
     let (Some(from), Some(to)) = (
-        object_get_coords(world, rules, victim_id),
-        object_get_coords(world, rules, source_id),
+        object_get_coords(world, victim_id),
+        object_get_coords(world, source_id),
     ) else {
         return false;
     };
@@ -3177,7 +3176,7 @@ fn fireat_launch_source(
         .as_deref()
         .and_then(|id| rules.projectile(id))
         .is_some_and(|projectile| projectile.dropping);
-    match object_get_coords(world, rules, snap.stable_id).filter(|_| dropping) {
+    match object_get_coords(world, snap.stable_id).filter(|_| dropping) {
         Some(coord) => FireAtLaunchSource {
             coord,
             offset_y: fire.offset_y + (coord.y - fire.coord.y),
@@ -3245,7 +3244,7 @@ fn fireat_launch_aim(
                 floater: projectile.floater,
             })
     };
-    let firer_coords = object_get_coords(world, rules, snap.stable_id);
+    let firer_coords = object_get_coords(world, snap.stable_id);
     let speed = weapon_launch_speed(
         weapon.speed,
         speed_projectile(weapon),
@@ -3266,7 +3265,7 @@ fn fireat_launch_aim(
                 let current = combat_weapon::current_weapon(firer, firer_type)
                     .and_then(|id| rules.weapon(id))?;
                 let target_type = rules.object(world.interner.resolve(target.type_ref()));
-                let target_coords = object_get_coords(world, rules, target_id)?;
+                let target_coords = object_get_coords(world, target_id)?;
                 // `ObjectClass::Distance @ 0x005F6360` to a UnitClass target.
                 let distance = crate::util::native_x87::object_distance(
                     [firer_coords.x, firer_coords.y, firer_coords.z],
@@ -3717,7 +3716,7 @@ pub(super) fn emit_admitted_fire(
         let current_target = tarcom;
         let target_location = |target: TargetKind| -> Option<ProjectileCoord> {
             match target {
-                TargetKind::Entity(id) => object_get_coords(world, rules, id),
+                TargetKind::Entity(id) => object_get_coords(world, id),
                 TargetKind::Cell(rx, ry) => {
                     use crate::sim::cell_rect::{CellRef, get_cellclass_fallback};
                     let cell = get_cellclass_fallback(

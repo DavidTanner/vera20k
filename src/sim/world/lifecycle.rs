@@ -193,17 +193,7 @@ const NULL_TARGET_CELL_SENTINEL: (u16, u16) = (0, 0);
 /// Native's own guard against a bad coordinate is the (0, 0) sentinel, checked
 /// at the callback instead, so this arm is not the sentinel's analogue.
 fn object_get_coords_cell(entity: &crate::sim::game_entity::GameEntity) -> Option<(u16, u16)> {
-    let mut world_x = i32::from(entity.position.rx)
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(entity.position.sub_x.to_num::<i32>());
-    let mut world_y = i32::from(entity.position.ry)
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(entity.position.sub_y.to_num::<i32>());
-    if entity.category == EntityCategory::Structure {
-        let (width, height) = crate::rules::foundation::foundation_dimensions(&entity.foundation);
-        world_x = world_x.wrapping_add(i32::from(width.saturating_sub(1)).wrapping_mul(128));
-        world_y = world_y.wrapping_add(i32::from(height.saturating_sub(1)).wrapping_mul(128));
-    }
+    let [world_x, world_y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     Some((
         u16::try_from(crate::util::lepton::lepton_to_cell(world_x)).ok()?,
         u16::try_from(crate::util::lepton::lepton_to_cell(world_y)).ok()?,
@@ -3021,27 +3011,31 @@ impl Simulation {
         let Some(rules) = rules else {
             return;
         };
+        // `0x00442532`/`0x00442543`: both ends are GetCoords (vt+0x48).
         let Some((centre, helipad)) = self.substrate.entities.get(building_id).and_then(|b| {
             let object = self.object_type(b.type_ref(), rules)?;
-            let (w, h) = crate::sim::production::foundation_dimensions(&object.foundation);
-            let nw = crate::sim::movement::ground_pose::position_world_coord(&b.position);
-            // BuildingClass::GetCoords 0x00447AC0: Location + ((w-1), (h-1)) * 128.
-            let centre = [
-                i64::from(nw.x) + (i64::from(w) - 1) * 128,
-                i64::from(nw.y) + (i64::from(h) - 1) * 128,
-                i64::from(nw.z),
-            ];
-            Some((centre, object.helipad))
+            let centre = crate::sim::movement::ground_pose::object_get_coords(
+                b,
+                self.resolved_terrain.as_ref(),
+            );
+            Some((
+                [
+                    i64::from(centre.x),
+                    i64::from(centre.y),
+                    i64::from(centre.z),
+                ],
+                object.helipad,
+            ))
         }) else {
             return;
         };
         for &contact in contacts {
-            let Some(at) = self
-                .substrate
-                .entities
-                .get(contact)
-                .map(|c| crate::sim::movement::ground_pose::position_world_coord(&c.position))
-            else {
+            let Some(at) = self.substrate.entities.get(contact).map(|c| {
+                crate::sim::movement::ground_pose::object_get_coords(
+                    c,
+                    self.resolved_terrain.as_ref(),
+                )
+            }) else {
                 continue;
             };
             let d = [

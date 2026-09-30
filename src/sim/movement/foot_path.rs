@@ -33,36 +33,31 @@ use crate::sim::mission::concrete_effects::represented_assign_target;
 use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneQueryCell};
 use crate::sim::world::Simulation;
 
-/// AStar429F54's live Infantry +1AC receiver. The fifth native argument is
-/// unused by Infantry51BF90; direction, signed path height and previous Cell
-/// reach the same decision owner used by Walk and bridge repair.
-struct InfantrySearchEntry<'a> {
-    sim: &'a Simulation,
-    id: u64,
-    rules: &'a RuleSet,
-    registry: Option<&'a OverlayTypeRegistry>,
+/// AStar429F54's live Foot +1AC receiver: Infantry 0x0051BF90 or Unit
+/// 0x0073F0A0, the one class port behind `Simulation::foot_can_enter`, with
+/// the mover's own facts resolved once per search. The fifth native argument
+/// is unused by both receivers; direction, signed path height and previous
+/// Cell reach the same decision owner used by Walk, Drive/Ship and bridge
+/// repair. The raw code drives admission and cost at 0x00429F5A..FED.
+struct FootSearchEntry<'a> {
+    terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
+    receiver: Result<crate::sim::world::FootEntryReceiver<'a>, String>,
 }
 
-impl crate::sim::pathfinding::SearchFootEntry for InfantrySearchEntry<'_> {
+impl crate::sim::pathfinding::SearchFootEntry for FootSearchEntry<'_> {
     fn classify(&self, query: crate::sim::pathfinding::SearchEntryQuery) -> Result<u8, String> {
-        let terrain = self
-            .sim
-            .resolved_terrain
-            .as_ref()
-            .ok_or("Foot search requires map cells")?;
+        let terrain = self.terrain.ok_or("Foot search requires map cells")?;
+        let receiver = self.receiver.as_ref().map_err(Clone::clone)?;
         let previous = terrain.native_cell_identity((query.from.0 as i16, query.from.1 as i16));
         let candidate =
             terrain.native_cell_identity((query.candidate.0 as i16, query.candidate.1 as i16));
-        self.sim.foot_can_enter(
-            self.id,
+        receiver.can_enter(
             candidate,
             InfantryEntryArgs {
                 direction: query.direction,
                 height: query.path_height,
                 previous_cell: Some(previous),
             },
-            self.rules,
-            self.registry,
         )
     }
 }
@@ -402,46 +397,54 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .filter(|actor| actor.category == EntityCategory::Infantry)
-            .map(|_| InfantrySearchEntry {
-                sim: self,
-                id,
-                rules,
-                registry,
+            .filter(|actor| {
+                matches!(
+                    actor.category,
+                    EntityCategory::Infantry | EntityCategory::Unit
+                )
+            })
+            .map(|_| FootSearchEntry {
+                terrain: self.resolved_terrain.as_ref(),
+                receiver: self.foot_entry_receiver(id, rules, registry),
             });
-        let searched = request.search(
-            goal,
-            &self.substrate.entities,
-            super::PathfindingContext {
-                wall_tables: Some(crate::sim::pathfinding::cell_entry::WallArmTables {
-                    overlay_grid: self.overlay_grid.as_ref(),
-                    overlay_registry: registry,
-                    alliances: Some(&self.house_alliances),
-                    interner: Some(&self.interner),
-                }),
-                path_grid: Some(grid),
-                zone_grid: self.zone_grid.as_ref(),
-                resolved_terrain: self.resolved_terrain.as_ref(),
-                playfield_bounds: self.playfield_bounds,
-                blocker_neighbor_counts: Some(counts),
-            },
-            &self.terrain_costs,
-            &lent.sets,
-            entry
-                .as_ref()
-                .map(|entry| entry as &dyn crate::sim::pathfinding::SearchFootEntry),
-        );
-        if let Some(lent) = borrowed {
-            self.movement_pass_cache.give_back(owner, lent);
-        }
+        //The track_fresh_response oracle substitutes the whole AStar core
+        //0x4CBBA0 for a CoreNull row, so no +1AC call happens inside it; the
+        //replay must not run the search that would consume those answers.
         #[cfg(test)]
-        let searched = if super::fresh_oracle_seam::take_core_null() {
+        let core_null = super::fresh_oracle_seam::take_core_null();
+        #[cfg(not(test))]
+        let core_null = false;
+        let searched = if core_null {
             Err(super::movement_path::MovePathFailure::Search(
                 crate::sim::pathfinding::zone_search::PathSearchFailure::CellSearchExhausted,
             ))
         } else {
-            searched
+            request.search(
+                goal,
+                &self.substrate.entities,
+                super::PathfindingContext {
+                    wall_tables: Some(crate::sim::pathfinding::cell_entry::WallArmTables {
+                        overlay_grid: self.overlay_grid.as_ref(),
+                        overlay_registry: registry,
+                        alliances: Some(&self.house_alliances),
+                        interner: Some(&self.interner),
+                    }),
+                    path_grid: Some(grid),
+                    zone_grid: self.zone_grid.as_ref(),
+                    resolved_terrain: self.resolved_terrain.as_ref(),
+                    playfield_bounds: self.playfield_bounds,
+                    blocker_neighbor_counts: Some(counts),
+                },
+                &self.terrain_costs,
+                &lent.sets,
+                entry
+                    .as_ref()
+                    .map(|entry| entry as &dyn crate::sim::pathfinding::SearchFootEntry),
+            )
         };
+        if let Some(lent) = borrowed {
+            self.movement_pass_cache.give_back(owner, lent);
+        }
         //4D3EAC restores Mark1 before inspecting the core result.
         self.foot_mark_put(id, Some(rules), registry);
         if let Err(super::movement_path::MovePathFailure::Search(
