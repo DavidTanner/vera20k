@@ -2682,7 +2682,6 @@ pub(crate) fn build_attacker_snapshot(
         veterancy: entity.veterancy(),
         infantry_doing: infantry_pose.map(|(doing, _)| doing),
         is_fully_deployed: entity.is_fully_deployed(),
-        has_movement: entity.movement_target.is_some(),
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
         weapon_override: entity.weapon_override,

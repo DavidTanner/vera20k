@@ -88,7 +88,6 @@ pub(crate) struct AttackerSnapshot {
     /// Read-only native Infantry Doing identity; never a generic animation projection.
     pub infantry_doing: Option<i32>,
     pub is_fully_deployed: bool,
-    pub has_movement: bool,
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
     /// Body FacingClass (`+0x388`), including infantry fire-start snaps and
     /// vehicle turns. Facing gates and emission read its full 16-bit value.

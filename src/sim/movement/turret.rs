@@ -220,7 +220,11 @@ pub(crate) fn facing_update(
             }
         } else if obj
             .is_some_and(|o| o.speed_type == crate::rules::locomotor_type::SpeedType::Track)
-            && entity.movement_target.is_none()
+            // No NavCom (`+0x5A4`, `0x00736A38`) and the locomotor's Is_Moving
+            // (ILocomotion+0x10, `0x00736A5F`) false. A pending order is
+            // neither; a locomotor the query does not answer reads as still.
+            && entity.navigation.nav_com.is_none()
+            && super::motion_query::is_moving(entity) != Some(true)
             && entity.body_facing_current(binary_frame) == tgt
         {
             out.hull_destination = Some(tgt);

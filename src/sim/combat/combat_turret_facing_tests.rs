@@ -976,7 +976,7 @@ fn gsi_08_04_moving_turretless_vehicle_does_not_turn_to_fire() {
         let attacker = sim.substrate.entities.get_mut(1).unwrap();
         attacker.attack_target = Some(AttackTarget::new(2));
         attacker.passively_acquired_target = true; // pursuit leaves this one alone
-        attacker.movement_target = Some(crate::sim::components::MovementTarget::default());
+        attacker.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(5, 1));
     }
 
     let facing_before = sim.substrate.entities.get(1).unwrap().body_facing;
@@ -995,6 +995,110 @@ fn gsi_08_04_moving_turretless_vehicle_does_not_turn_to_fire() {
         facing_before,
         "and its heading is untouched by the fire decision"
     );
+}
+
+/// The hull destination case 2 hands the Facing slot for a turretless
+/// attacker at (5,5) aiming at (5,9), after `setup` shapes the attacker.
+fn fire_turn_hull(setup: impl FnOnce(&mut GameEntity)) -> Option<u16> {
+    let mut sim = Simulation::new();
+    spawn_turretless(&mut sim, 1, 5, 5, 5);
+    spawn_target(&mut sim, 2, 5, 9);
+    use_test_interner(&mut sim);
+    let rules = rules_with_mtnk_rot(5);
+    let attacker = sim.substrate.entities.get_mut(1).unwrap();
+    attacker.attack_target = Some(AttackTarget::new(2));
+    attacker.passively_acquired_target = true;
+    setup(attacker);
+    run_combat_direct(&mut sim, &rules)
+        .unit_facing
+        .iter()
+        .find(|u| u.entity_id == 1)
+        .expect("every Unit gets a Facing slot entry")
+        .hull_destination
+}
+
+/// A Drive locomotor still under way toward (5,1): Is_Moving is true.
+fn drive_under_way(entity: &mut GameEntity) {
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::components::{DriveCoord, DriveLocomotionRuntime};
+    entity.locomotor =
+        Some(crate::sim::movement::locomotor::LocomotorState::for_test_kind(LocomotorKind::Drive));
+    entity.drive_locomotion = Some(DriveLocomotionRuntime {
+        destination: Some(DriveCoord::cell(5, 1, 0)),
+        ..Default::default()
+    });
+}
+
+#[test]
+fn gsi_08_04_the_fire_turn_asks_navcom_and_the_locomotor_not_the_order() {
+    // Case 2 reads NavCom (`0x00736FB6`) and the locomotor's Is_Moving
+    // (`0x00736FE1`), nothing else about movement.
+    let toward = Some(facing_from_5_5_to_5_9());
+    assert_eq!(fire_turn_hull(|_| {}), toward, "a standing unit turns");
+    assert_eq!(
+        fire_turn_hull(|attacker| {
+            attacker.movement_target = Some(crate::sim::components::MovementTarget::default());
+        }),
+        toward,
+        "an order with no NavCom and a still locomotor turns"
+    );
+    assert_eq!(
+        fire_turn_hull(drive_under_way),
+        None,
+        "a Drive under way keeps its heading without a NavCom"
+    );
+}
+
+/// `[MTNK]` as a turretless `SpeedType=Track` unit, the only kind
+/// `UnitClass::Facing_Update`'s turretless aim arm serves (`Type+0x67C == 1`
+/// at `0x00736A2F`).
+fn rules_turretless_track() -> RuleSet {
+    RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=MTNK\n[InfantryTypes]\n[BuildingTypes]\n[AircraftTypes]\n\
+         [MTNK]\nStrength=300\nSpeed=6\nSpeedType=Track\nPrimary=105mm\n\
+         [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\
+         [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    ))
+    .expect("turretless Track rules")
+}
+
+#[test]
+fn facing_update_turretless_arm_asks_navcom_and_the_locomotor_not_the_order() {
+    // Arm A re-sets a turretless hull that already points at its target only
+    // with no NavCom (`0x00736A38`) and Is_Moving false (`0x00736A5F`).
+    use crate::sim::movement::turret::facing_update;
+    let rules = rules_turretless_track();
+    let toward = facing_from_5_5_to_5_9();
+    let hull = |setup: &dyn Fn(&mut GameEntity)| {
+        let mut sim = Simulation::new();
+        let mut unit = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
+        unit.body_facing = FacingClass::new(toward, 5);
+        unit.attack_target = Some(AttackTarget::for_cell(5, 9));
+        setup(&mut unit);
+        sim.substrate.entities.insert(unit);
+        use_test_interner(&mut sim);
+        facing_update(
+            sim.substrate.entities.get(1).unwrap(),
+            &sim.substrate.entities,
+            Some(&rules),
+            &sim.interner,
+            0,
+        )
+        .hull_destination
+    };
+    assert_eq!(hull(&|_| {}), Some(toward), "a standing unit pins its hull");
+    assert_eq!(
+        hull(&|unit| unit.movement_target = Some(crate::sim::components::MovementTarget::default())),
+        Some(toward),
+        "an order with no NavCom and a still locomotor"
+    );
+    assert_eq!(
+        hull(&|unit| unit.navigation.nav_com =
+            Some(crate::sim::components::NavTargetRef::cell(5, 1))),
+        None,
+        "a NavCom"
+    );
+    assert_eq!(hull(&drive_under_way), None, "a Drive under way");
 }
 
 #[test]
