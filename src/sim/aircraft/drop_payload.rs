@@ -36,11 +36,6 @@ use crate::util::lepton;
 /// the plane's center.
 pub const V_PATTERN_RADIUS_LEPTONS: i32 = 128;
 
-/// Reset value for the LandingState mutex (gamemd `aircraft+0x6D3`).
-/// Decremented per tick as mirrored aircraft state. Standard in-range
-/// Mission_Rescue cadence is still controlled by the mission's 5-frame return.
-pub const LANDING_STATE_RESET: u8 = 5;
-
 /// Drop interval in native gameplay frames between consecutive drops.
 ///
 /// Hardcoded in gamemd's `Mission_Rescue` (0x00415960): every code path returns
@@ -74,7 +69,7 @@ pub fn v_offset(facing: u8, payload_count_post_dec: u8) -> (i32, i32) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DropResult {
     /// Passenger placed, parachute descent attached. Caller resets cooldown
-    /// to the Mission_Rescue 5-frame cadence, mirrors landing_state=5, and
+    /// to the Mission_Rescue 5-frame cadence and
     /// decrements payload_count.
     Success,
     /// Drop cell impassable. Passenger was re-inserted at cargo HEAD; caller

@@ -79,7 +79,6 @@ fn native_tube_hierarchy_pairs_match_original_executable() {
         let record = BridgeEndpointRecord {
             endpoint_a: coord(&case["a"]),
             endpoint_b: coord(&case["b"]),
-            group_id: 0,
             active: true,
             bridge_kind: BridgeRecordKind::Low,
         };

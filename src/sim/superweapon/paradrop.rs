@@ -196,7 +196,6 @@ fn spawn_pdplane(
         entity.aircraft_mission = Some(AircraftMission::ParaDropApproach {
             target_rx,
             target_ry,
-            has_revealed_fog: false,
         });
     }
 

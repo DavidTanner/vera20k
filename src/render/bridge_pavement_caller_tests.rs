@@ -50,9 +50,7 @@ fn pavement_raw_caller_gate_keeps_plain_and_structural_endpoint_art() {
                                 4,
                                 BridgeRuntimeCell {
                                     deck_present: false,
-                                    destroyable: true,
                                     deck_level: 0,
-                                    bridge_group_id: None,
                                     damage_state: DamageState::Damaged,
                                     axis: Some(axis),
                                     role,

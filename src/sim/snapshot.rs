@@ -743,7 +743,10 @@ use crate::sim::world::Simulation;
 // ZFudgeBridge copies; movement never read them and the draw reads the type.
 // 255 -> 256: a Foot owner no longer saves a cached GetCurrentSpeed; readers
 // query the live getter.
-const SNAPSHOT_VERSION: u32 = 256;
+// 256 -> 257: bridge cells, anchor spans and endpoint records no longer save
+// unread group ids, per-cell destroyable or span damage copies; paradrop
+// missions no longer save the inert fog latch or LandingState mirror.
+const SNAPSHOT_VERSION: u32 = 257;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3633,7 +3636,9 @@ mod tests {
         // 253 -> 254: no garrison Unloading order intent.
         // 254 -> 255: entity TooBigToFitUnderBridge/ZFudgeBridge copies removed.
         // 255 -> 256: no cached GetCurrentSpeed.
-        assert_eq!(super::SNAPSHOT_VERSION, 256);
+        // 256 -> 257: no bridge group/destroyable/span-damage copies or
+        // inert paradrop latches.
+        assert_eq!(super::SNAPSHOT_VERSION, 257);
     }
 
     #[test]

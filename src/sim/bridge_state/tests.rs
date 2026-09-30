@@ -149,7 +149,6 @@ fn bridgeheads_registered_with_bridgehead_role() {
             cell.damage_state,
             DamageState::Healthy { variant: 0 }
         ));
-        assert!(cell.bridge_group_id.is_none());
         assert!(cell.anchor_span_id.is_none());
         assert!(cell.axis.is_none());
         assert_eq!(cell.deck_level, 4);
@@ -198,9 +197,7 @@ fn repaired_overlay_is_walkable_even_with_stale_destroyed_state() {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Destroyed,
             axis: Some(Axis::NS),
             role: BridgeCellRole::Body,
@@ -224,7 +221,6 @@ fn bridge_runtime_initializes_intact_groups() {
     assert!(cell.deck_present);
     assert!(matches!(cell.damage_state, DamageState::Healthy { .. }));
     assert_eq!(cell.deck_level, 4);
-    assert_eq!(cell.bridge_group_id, Some(1));
     assert!(state.cell(0, 0).is_none());
 }
 
@@ -271,7 +267,6 @@ fn bridge_endpoints_detected() {
     );
     let rec = &records[0];
     assert!(rec.active);
-    assert_eq!(rec.group_id, 1);
     assert_eq!(rec.bridge_kind, BridgeRecordKind::High);
     assert_eq!(rec.endpoint_a, (0, 0));
     assert_eq!(rec.endpoint_b, (3, 0));
@@ -362,11 +357,9 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
 
     let intact = BridgeRuntimeState::from_resolved_terrain(&make(true), true, 300);
     assert!(intact.endpoint_records()[0].active);
-    assert_ne!(intact.endpoint_records()[0].group_id, 0);
 
     let broken = BridgeRuntimeState::from_resolved_terrain(&make(false), true, 300);
     assert!(!broken.endpoint_records()[0].active);
-    assert_eq!(broken.endpoint_records()[0].group_id, 0);
 
     let mixed_gap = high_record_fixture(5, 1, Some(100), None, |cell| {
         if cell.rx == 0 || cell.rx == 3 {
@@ -379,8 +372,6 @@ fn gsi_04_12_topology_structural_gap_preserves_intact_plain_gap_clears_it() {
     });
     let mixed = BridgeRuntimeState::from_resolved_terrain(&mixed_gap, true, 300);
     assert!(!mixed.endpoint_records()[0].active);
-    assert_eq!(mixed.endpoint_records()[0].group_id, 0);
-    assert!(mixed.cell(2, 0).unwrap().bridge_group_id.is_some());
 }
 
 #[test]
@@ -505,8 +496,6 @@ fn make_test_span() -> AnchorSpan {
         ],
         axis: Axis::NS,
         direction: Direction::E,
-        damage_state: DamageState::Healthy { variant: 0 },
-        bridge_group_id: 1,
     }
 }
 
@@ -534,7 +523,7 @@ fn walk_anchor_pattern_dir_w_extra_slot_is_anchor_plus_2e() {
     // -> Body, keyed on slot INDEX) the alias (a) left the true extra cell
     // untagged and (b) overwrote the opposite cell's Tail role with Body via
     // last-write-wins. Distinct slots fix both.
-    let span = walk_anchor_pattern(1, (5, 5), Axis::EW, Direction::W, 1, 12, 12);
+    let span = walk_anchor_pattern(1, (5, 5), Axis::EW, Direction::W, 12, 12);
     assert_eq!(span.cells[0], Some((5, 5)), "slot 0 = anchor");
     assert_eq!(span.cells[1], Some((4, 5)), "slot 1 = +W×1");
     assert_eq!(span.cells[2], Some((3, 5)), "slot 2 = +W×2");
@@ -689,9 +678,7 @@ fn test_seed_cell_grows_grid_to_fit() {
     let mut state = BridgeRuntimeState::default();
     let cell = BridgeRuntimeCell {
         deck_present: true,
-        destroyable: true,
         deck_level: 0,
-        bridge_group_id: Some(1),
         damage_state: DamageState::Healthy { variant: 0 },
         axis: Some(Axis::NS),
         role: BridgeCellRole::Anchor,
@@ -710,9 +697,7 @@ fn cell_mut_writes_visible_through_cell_read() {
     let mut state = BridgeRuntimeState::default();
     let cell = BridgeRuntimeCell {
         deck_present: true,
-        destroyable: true,
         deck_level: 0,
-        bridge_group_id: Some(1),
         damage_state: DamageState::Healthy { variant: 0 },
         axis: Some(Axis::NS),
         role: BridgeCellRole::Anchor,
@@ -887,9 +872,7 @@ fn make_body_driver_test_state() -> BridgeRuntimeState {
 
     let healthy_template = BridgeRuntimeCell {
         deck_present: true,
-        destroyable: true,
         deck_level: 0,
-        bridge_group_id: Some(1),
         damage_state: DamageState::Healthy { variant: 0 },
         axis: Some(Axis::NS),
         role: BridgeCellRole::Anchor,
@@ -949,8 +932,6 @@ fn make_body_driver_test_state() -> BridgeRuntimeState {
         ],
         axis: Axis::NS,
         direction: Direction::E,
-        damage_state: DamageState::Healthy { variant: 0 },
-        bridge_group_id: 1,
     });
 
     state
@@ -1204,9 +1185,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         4,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Bridgehead,
@@ -1221,9 +1200,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1238,9 +1215,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1255,9 +1230,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1272,9 +1245,7 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
         4,
         BridgeRuntimeCell {
             deck_present: false,
-            destroyable: false,
             deck_level: 0,
-            bridge_group_id: None,
             damage_state: DamageState::Healthy { variant: 0 },
             axis: None,
             role: BridgeCellRole::Body,
@@ -1435,9 +1406,7 @@ fn bridgehead_advance_h_gt_4_ew_absorbs_with_no_change() {
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::EW),
             role: BridgeCellRole::Bridgehead,
@@ -1560,9 +1529,7 @@ fn flood_fill_bridge_state(coords: &[(u16, u16)]) -> BridgeRuntimeState {
             ry,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Body,
@@ -1788,9 +1755,7 @@ fn seed_overlay_row(state: &mut BridgeRuntimeState, y: u16, xs: std::ops::Range<
             y,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 5,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Body,

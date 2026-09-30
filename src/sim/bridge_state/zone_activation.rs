@@ -15,11 +15,8 @@ impl BridgeRuntimeState {
         if first.is_some() {
             return first;
         }
-        self.endpoint_records = record_scan::compute_bridge_endpoints(
-            terrain,
-            self.native_zone_source_size,
-            &self.cells,
-        );
+        self.endpoint_records =
+            record_scan::compute_bridge_endpoints(terrain, self.native_zone_source_size);
         find_high_bridge_record_index(&self.endpoint_records, 0, query, 3)
     }
 

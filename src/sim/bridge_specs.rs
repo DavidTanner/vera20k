@@ -726,7 +726,11 @@ pub fn bridgehead_walk_to_anchor(
 /// Middle cell of [`bridgehead_blow_up_row`], unclipped. Both machines also
 /// pass it to InvalidateBridgeZones (`0x0056DAE0`): High `0x00577071` /
 /// `0x00577587`, Low `0x00571982` / `0x00571E9B`.
-pub fn bridgehead_row_center(anchor_pos: (u16, u16), axis: Axis, anchor_sub_tile: u8) -> (i32, i32) {
+pub fn bridgehead_row_center(
+    anchor_pos: (u16, u16),
+    axis: Axis,
+    anchor_sub_tile: u8,
+) -> (i32, i32) {
     let (anchor_x, anchor_y) = (anchor_pos.0 as i32, anchor_pos.1 as i32);
     match axis {
         Axis::NS => {
@@ -1033,8 +1037,6 @@ mod tests {
             ],
             axis: Axis::NS,
             direction: Direction::E,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
         };
         let result = set_bridge_direction(&span, false);
         let blow_ups = result
@@ -1059,8 +1061,6 @@ mod tests {
             cells: [Some((0, 0)), None, None, None, None, None],
             axis: Axis::NS,
             direction: Direction::E,
-            damage_state: DamageState::Healthy { variant: 0 },
-            bridge_group_id: 1,
         };
         let result = set_bridge_direction(&span, true);
         assert!(
@@ -1086,8 +1086,6 @@ mod tests {
             ],
             axis: Axis::NS,
             direction: Direction::W,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
         };
         let result = set_bridge_direction(&span, false);
         let slot_5_action = result
@@ -1105,9 +1103,7 @@ mod tests {
         let mut state = BridgeRuntimeState::default();
         let template = BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1326,9 +1322,7 @@ mod tests {
         let mut state = BridgeRuntimeState::default();
         let template = BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::EW),
             role: BridgeCellRole::Anchor,
@@ -1371,9 +1365,7 @@ mod tests {
             2,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Anchor,
@@ -1388,9 +1380,7 @@ mod tests {
             neighbor_pos.1,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: Some(Axis::NS),
                 role: neighbor_role,

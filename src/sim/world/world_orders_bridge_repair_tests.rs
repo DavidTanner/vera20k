@@ -194,8 +194,6 @@ fn seed_bridge_with_state(sim: &mut Simulation, state: DamageState) {
         ],
         axis: Axis::NS,
         direction: Direction::S,
-        damage_state: state,
-        bridge_group_id: 1,
     };
     bs.test_seed_anchor_span(span);
     let overlay_byte = match state {
@@ -216,9 +214,7 @@ fn seed_bridge_with_state(sim: &mut Simulation, state: DamageState) {
             ry,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: state,
                 axis: Some(Axis::NS),
                 role,
@@ -256,8 +252,6 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
         cells: [Some((13, 10)), None, None, None, None, None],
         axis: Axis::EW,
         direction: Direction::E,
-        damage_state: DamageState::Damaged,
-        bridge_group_id: 1,
     };
     bs.test_seed_anchor_span(span);
     bs.test_seed_cell(
@@ -265,9 +259,7 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
         10,
         BridgeRuntimeCell {
             deck_present: false,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: None,
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::EW),
             role: BridgeCellRole::Bridgehead,
@@ -281,9 +273,7 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
         10,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Damaged,
             axis: Some(Axis::EW),
             role: BridgeCellRole::Anchor,
@@ -319,9 +309,7 @@ fn seed_terminal_overlay_with_fallback_trap(sim: &mut Simulation, overlay_byte: 
         10,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(2),
             damage_state: DamageState::Destroyed,
             axis: Some(Axis::EW),
             role: BridgeCellRole::Body,
@@ -798,8 +786,6 @@ fn seed_isolated_anchor(
         cells: [Some(pos), None, None, None, None, None],
         axis: Axis::NS,
         direction: Direction::S,
-        damage_state: state,
-        bridge_group_id: span_id,
     };
     bs.test_seed_anchor_span(span);
     bs.test_seed_cell(
@@ -807,9 +793,7 @@ fn seed_isolated_anchor(
         pos.1,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 0,
-            bridge_group_id: Some(span_id),
             damage_state: state,
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -931,9 +915,7 @@ fn ordinary_engineer_overlay_repair_does_not_clear_neighbor_pavement() {
             14,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Destroyed,
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Body,
@@ -1028,9 +1010,7 @@ fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
         4,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Bridgehead,
@@ -1044,9 +1024,7 @@ fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1060,9 +1038,7 @@ fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,
@@ -1076,9 +1052,7 @@ fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
         2,
         BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: Some(Axis::NS),
             role: BridgeCellRole::Anchor,

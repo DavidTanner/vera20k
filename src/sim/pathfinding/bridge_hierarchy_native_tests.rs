@@ -69,7 +69,7 @@ pub(crate) fn hierarchy_native_fixture(
     terrain.shared_cell_dummy().stamp_coord(1234, -2345);
     let mut records = Vec::new();
     if let Some(rows) = input["records"].as_array() {
-        for (i, row) in rows.iter().enumerate() {
+        for row in rows {
             let a = (
                 row[0][0].as_u64().unwrap() as u16,
                 row[0][1].as_u64().unwrap() as u16,
@@ -83,7 +83,6 @@ pub(crate) fn hierarchy_native_fixture(
             records.push(BridgeEndpointRecord {
                 endpoint_a: a,
                 endpoint_b: b,
-                group_id: i as u16,
                 active: row[2].as_bool().unwrap(),
                 bridge_kind: BridgeRecordKind::High,
             });
