@@ -21,6 +21,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::movement::ScatterFlags;
 use crate::sim::movement::bump_crush;
+use crate::sim::movement::ground_pose;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::scatter::ScatterRequests;
 use crate::sim::occupancy::{
@@ -31,7 +32,7 @@ use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 use crate::util::lepton::{self, CELL_CENTER_LEPTON};
-use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, distance_3d_leptons};
 
 /// FootClass-owned active TubeMovement payload.
 ///
@@ -166,12 +167,12 @@ fn initial_state(
     }
     let raw_step = tube.path_steps[0];
     let (dx, dy) = direction_delta(raw_step);
-    let current_x = position_world_x(position);
-    let current_y = position_world_y(position);
+    let [current_x, current_y] = ground_pose::position_world_xy(position);
     let current_ground =
-        ground_height_at(terrain, current_x, current_y).ok_or(TubeBeginError::MissingTerrain)?;
+        ground_pose::ground_surface_z_at([current_x, current_y], false, Some(terrain), None)
+            .ok_or(TubeBeginError::MissingTerrain)?;
     let exit_ground =
-        ground_height_at_cell_center(terrain, tube.exit).ok_or(TubeBeginError::MissingTerrain)?;
+        floor_at_cell_center(terrain, tube.exit).ok_or(TubeBeginError::MissingTerrain)?;
     let z_step = exit_ground.wrapping_sub(current_ground) / path_len as i32;
     let (target_x, target_y) = if category == EntityCategory::Infantry {
         (
@@ -286,33 +287,36 @@ pub(crate) fn tick_active_tube_object(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
+            rules,
+            interner,
             rng,
             native_frame,
             scatters,
         );
     }
 
-    let current = entity_world_coord(entity, terrain).unwrap_or(state.target);
-    let distance = native_distance_leptons(current, state.target);
+    // 0x00735A2F..0x00735A47: GetCoords (vt+0x48) less the target (+0x568),
+    // through Distance3D.
+    let current = ground_pose::object_get_coords(entity, Some(terrain));
+    let distance = distance_3d_leptons(
+        [current.x, current.y, current.z],
+        [state.target.x, state.target.y, state.target.z],
+    );
     if distance > budget {
         let Some(trig) = active_tube_trig() else {
             return true;
         };
         let raw_step = tube.path_steps[usize::from(state.cursor)];
         let next = advance_amount(current, state.target, budget, raw_step, z_step, trig);
-        if let Some(entity) = entities.get_mut(entity_id) {
-            set_entity_world_coord(entity, next);
-        }
-        riders_follow(entities, entity_id, rules, interner);
+        ground_pose::foot_set_location(entities, entity_id, next, rules, interner);
         return true;
     }
 
     state.cursor = state.cursor.saturating_add(1);
     if let Some(entity) = entities.get_mut(entity_id) {
-        set_entity_world_coord(entity, state.target);
         entity.low_bridge_tube_state = Some(state);
     }
-    riders_follow(entities, entity_id, rules, interner);
+    ground_pose::foot_set_location(entities, entity_id, state.target, rules, interner);
     if usize::from(state.cursor) >= tube.path_len() {
         return finalize_tube_object(
             entities,
@@ -323,6 +327,8 @@ pub(crate) fn tick_active_tube_object(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
+            rules,
+            interner,
             rng,
             native_frame,
             scatters,
@@ -341,25 +347,10 @@ pub(crate) fn tick_active_tube_object(
     };
     let next = advance_amount(old_target, state.target, leftover, next_raw, z_step, trig);
     if let Some(entity) = entities.get_mut(entity_id) {
-        set_entity_world_coord(entity, next);
         entity.low_bridge_tube_state = Some(state);
     }
-    riders_follow(entities, entity_id, rules, interner);
+    ground_pose::foot_set_location(entities, entity_id, next, rules, interner);
     true
-}
-
-/// The steps above move the unit through `SetLocation` (vt+0x1B4 =
-/// `FootClass::SetLocation 0x004DB810`, at `0x00735B58` and `0x00735D27`),
-/// which brings an open-topped transport's riders along.
-fn riders_follow(
-    entities: &mut EntityStore,
-    entity_id: u64,
-    rules: Option<&RuleSet>,
-    interner: &StringInterner,
-) {
-    if let Some(rules) = rules {
-        crate::sim::passenger::open_topped_riders_follow(entities, entity_id, rules, interner);
-    }
 }
 
 fn active_tube_trig() -> Option<&'static TrigTable> {
@@ -383,6 +374,8 @@ fn finalize_tube_object(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
+    rules: Option<&RuleSet>,
+    interner: &StringInterner,
     rng: &mut SimRng,
     native_frame: u32,
     scatters: &mut ScatterRequests,
@@ -446,28 +439,43 @@ fn finalize_tube_object(
         return true;
     }
 
+    // Both exits set the Location through SetLocation (vt+0x1B4): a unit at
+    // the exit cell's centre at the target's Z (+0x570,
+    // 0x00735FA1..0x00735FEC), infantry at the spot PlaceInfantryInCell
+    // (0x00481180, `allocate_sub_cell_with_preference` above) chose, at the
+    // floor there (0x00578080, 0x0051B967..0x0051B99C).
+    let (exit, floor_supported) = if let Some(sub_cell) = infantry_subcell {
+        let (sub_x, sub_y) = lepton::subcell_lepton_offset(Some(sub_cell));
+        let xy = [
+            i32::from(reached_cell.0) * 256 + sub_x.to_num::<i32>(),
+            i32::from(reached_cell.1) * 256 + sub_y.to_num::<i32>(),
+        ];
+        let floor = ground_pose::ground_surface_z_at(xy, false, Some(terrain), None);
+        let z = floor.unwrap_or_else(|| {
+            entities.get(entity_id).map_or(state.target.z, |entity| {
+                ground_pose::position_world_coord(&entity.position).z
+            })
+        });
+        let exit = DriveCoord {
+            x: xy[0],
+            y: xy[1],
+            z,
+        };
+        (exit, floor.is_some())
+    } else {
+        let exit = DriveCoord::cell(tube.exit.0, tube.exit.1, state.target.z);
+        (exit, false)
+    };
+    ground_pose::foot_set_location(entities, entity_id, exit, rules, interner);
     if let Some(entity) = entities.get_mut(entity_id) {
-        if category == EntityCategory::Infantry {
-            let sub_cell = infantry_subcell.expect("checked infantry exit sub-cell");
-            entity.position.rx = reached_cell.0;
-            entity.position.ry = reached_cell.1;
+        if let Some(sub_cell) = infantry_subcell {
             entity.sub_cell = Some(sub_cell);
-            (entity.position.sub_x, entity.position.sub_y) =
-                lepton::subcell_lepton_offset(Some(sub_cell));
-            let x = position_world_x(&entity.position);
-            let y = position_world_y(&entity.position);
-            if ground_height_at(terrain, x, y).is_some() {
+            if floor_supported {
                 entity.position.z = terrain
                     .cell(reached_cell.0, reached_cell.1)
                     .map_or(entity.position.z, |cell| cell.level);
-                entity.position.exact_z_leptons = None;
             }
         } else {
-            entity.position.rx = tube.exit.0;
-            entity.position.ry = tube.exit.1;
-            entity.position.sub_x = CELL_CENTER_LEPTON;
-            entity.position.sub_y = CELL_CENTER_LEPTON;
-            entity.position.exact_z_leptons = Some(state.target.z);
             if let Some(cell) = terrain.cell(tube.exit.0, tube.exit.1) {
                 entity.position.z = cell.level;
             }
@@ -611,80 +619,20 @@ fn live_z_step(terrain: &ResolvedTerrainGrid, tube: &TubeFact) -> Option<i32> {
     if count == 0 {
         return None;
     }
-    let entry = ground_height_at_cell_center(terrain, tube.entry)?;
-    let exit = ground_height_at_cell_center(terrain, tube.exit)?;
+    let entry = floor_at_cell_center(terrain, tube.entry)?;
+    let exit = floor_at_cell_center(terrain, tube.exit)?;
     Some(exit.wrapping_sub(entry) / count)
 }
 
-fn ground_height_at_cell_center(terrain: &ResolvedTerrainGrid, cell: (u16, u16)) -> Option<i32> {
-    ground_height_at(
-        terrain,
-        i32::from(cell.0).wrapping_mul(256).wrapping_add(128),
-        i32::from(cell.1).wrapping_mul(256).wrapping_add(128),
-    )
-}
-
-fn ground_height_at(terrain: &ResolvedTerrainGrid, x: i32, y: i32) -> Option<i32> {
-    let rx = u16::try_from(x.div_euclid(256)).ok()?;
-    let ry = u16::try_from(y.div_euclid(256)).ok()?;
-    let cell = terrain.cell(rx, ry)?;
-    lepton::ground_height_leptons(cell.level, cell.slope_type, x, y).ok()
-}
-
-fn entity_world_coord(entity: &GameEntity, terrain: &ResolvedTerrainGrid) -> Option<DriveCoord> {
-    let x = position_world_x(&entity.position);
-    let y = position_world_y(&entity.position);
-    Some(DriveCoord {
-        x,
-        y,
-        z: entity
-            .position
-            .exact_z_leptons
-            .or_else(|| ground_height_at(terrain, x, y))?,
-    })
-}
-
-fn set_entity_world_coord(entity: &mut GameEntity, coord: DriveCoord) {
-    let rx = coord.x.div_euclid(256);
-    let ry = coord.y.div_euclid(256);
-    if let (Ok(rx), Ok(ry)) = (u16::try_from(rx), u16::try_from(ry)) {
-        entity.position.rx = rx;
-        entity.position.ry = ry;
-        entity.position.sub_x =
-            crate::util::fixed_math::SimFixed::from_num(coord.x.rem_euclid(256));
-        entity.position.sub_y =
-            crate::util::fixed_math::SimFixed::from_num(coord.y.rem_euclid(256));
-        entity.position.exact_z_leptons = Some(coord.z);
-    }
-}
-
-fn position_world_x(position: &Position) -> i32 {
-    i32::from(position.rx)
-        .wrapping_mul(256)
-        .wrapping_add(position.sub_x.to_num::<i32>())
-}
-
-fn position_world_y(position: &Position) -> i32 {
-    i32::from(position.ry)
-        .wrapping_mul(256)
-        .wrapping_add(position.sub_y.to_num::<i32>())
+/// The floor height (`0x00578080`) at a cell's centre, as the live Z step
+/// reads it at the tube's entry and exit (`0x00735B05`, `0x00735B16`).
+fn floor_at_cell_center(terrain: &ResolvedTerrainGrid, cell: (u16, u16)) -> Option<i32> {
+    let center = DriveCoord::cell(cell.0, cell.1, 0);
+    ground_pose::ground_surface_z_at([center.x, center.y], false, Some(terrain), None)
 }
 
 fn direction_delta(raw: i32) -> (i32, i32) {
     crate::util::direction::DIRECTION_DELTAS[(raw & 7) as usize]
-}
-
-fn native_distance_leptons(current: DriveCoord, target: DriveCoord) -> i32 {
-    let dx = X87Chop53::load_i32(target.x.wrapping_sub(current.x));
-    let dy = X87Chop53::load_i32(target.y.wrapping_sub(current.y));
-    let dz = X87Chop53::load_i32(target.z.wrapping_sub(current.z));
-    let squared = X87Chop53::add(
-        X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy)),
-        X87Chop53::mul(dz, dz),
-    );
-    let root_bits = sqrt_approx_f32(squared).expect("tube coordinate distance stays finite");
-    let root = X87Chop53::load_f32(root_bits).expect("Sqrt_Approx returns finite output");
-    X87Chop53::ftol_i64(root).expect("tube distance fits i32") as i32
 }
 
 fn advance_amount(
@@ -907,6 +855,8 @@ mod tests {
                 &mut occupancy,
                 &mut CellOccupationGrid::new(),
                 &mut RawCellOccupationGrid::new(),
+                None,
+                &crate::sim::intern::test_interner(),
                 &mut SimRng::new(7),
                 21,
                 &mut ScatterRequests::default(),
@@ -1072,7 +1022,7 @@ mod tests {
             y: 0,
             z: 100,
         };
-        assert!(native_distance_leptons(current, target) > 256);
+        assert!(distance_3d_leptons([0, 0, 0], [target.x, target.y, target.z]) > 256);
         assert_eq!(
             advance_amount(current, target, 100, 2, 100, &trig),
             DriveCoord {
@@ -1112,6 +1062,62 @@ mod tests {
         update_unit_final_facing(&mut entities, 1, &terrain, 0);
         // Exit has no tube index in this fixture: facing is preserved.
         assert_eq!(entities.get(1).unwrap().body_facing_current(0), 0);
+    }
+
+    /// Infantry leaves a tube at its chosen spot, at the floor there
+    /// (`0x00578080` at `0x0051B98A`), through SetLocation (`0x0051B99C`).
+    /// The floor is native's: `tools/ramp_height_vectors.json`
+    /// `ramp_1_sub_64_192` (level 0, ramp 1, sub-cell (64, 192)) is 26.
+    #[test]
+    fn infantry_leaves_a_tube_at_the_floor_of_its_spot() {
+        let mut terrain = explicit_terrain(vec![2, 2]);
+        terrain.cell_mut(2, 0).unwrap().slope_type = 1;
+        let mut entity = unit(1);
+        entity.category = EntityCategory::Infantry;
+        entity.drive_locomotion = None;
+        entity.lifecycle.cell_marked = false;
+        entity.position.rx = 2;
+        entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(64);
+        entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(192);
+        entity.position.exact_z_leptons = Some(0);
+        let state = LowBridgeTubeMovementState {
+            tube_id: TubeId(0),
+            cursor: 2,
+            target: DriveCoord {
+                x: 2 * 256 + 64,
+                y: 192,
+                z: 0,
+            },
+        };
+        entity.low_bridge_tube_state = Some(state);
+        let mut entities = EntityStore::new();
+        entities.insert(entity);
+        assert!(finalize_tube_object(
+            &mut entities,
+            1,
+            state,
+            &terrain,
+            None,
+            &mut OccupancyGrid::new(),
+            &mut CellOccupationGrid::new(),
+            &mut RawCellOccupationGrid::new(),
+            None,
+            &crate::sim::intern::test_interner(),
+            &mut SimRng::new(7),
+            21,
+            &mut ScatterRequests::default(),
+        ));
+        let owner = entities.get(1).unwrap();
+        assert!(owner.low_bridge_tube_state.is_none());
+        assert_eq!(owner.sub_cell, Some(3));
+        assert_eq!(
+            ground_pose::position_world_coord(&owner.position),
+            DriveCoord {
+                x: 2 * 256 + 64,
+                y: 192,
+                z: 26
+            }
+        );
     }
 
     /// A step that reaches its target moves the unit through
@@ -1165,11 +1171,11 @@ mod tests {
             &mut ScatterRequests::default(),
         ));
         let [transport, rider] = [1, 2].map(|id| &entities.get(id).unwrap().position);
-        let coord = |p: &Position| (position_world_x(p), position_world_y(p), p.exact_z_leptons);
+        let coord = |p: &Position| (ground_pose::position_world_xy(p), p.exact_z_leptons);
         // With the retail sine table loaded (another test may have), the
         // leftover budget then steps on towards the next target as well.
         assert!(
-            position_world_x(transport) >= 384,
+            ground_pose::position_world_xy(transport)[0] >= 384,
             "the step reached its target"
         );
         assert_eq!(coord(rider), coord(transport), "the rider came along");

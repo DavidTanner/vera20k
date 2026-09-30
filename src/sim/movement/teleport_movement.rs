@@ -364,13 +364,23 @@ pub fn process_teleport(
         }
         TeleportPhase::Relocate => {
             // Instant relocation in one frame.
-            entity.position.rx = teleport.target_rx;
-            entity.position.ry = teleport.target_ry;
-            entity.position.sub_x = CELL_CENTER_LEPTON;
-            entity.position.sub_y = CELL_CENTER_LEPTON;
+            let destination =
+                crate::sim::components::DriveCoord::cell(teleport.target_rx, teleport.target_ry, 0);
+            super::ground_pose::set_position_world_xy(
+                &mut entity.position,
+                [destination.x, destination.y],
+            );
             // Process719631..7196B2: SetCoords, resolve destination bridge,
             // then Object+1CC/5F5FA0 SetHeight(0). An old split altitude
             // must not reappear in the arrival XYZ.
+            // RESIDUAL: native sets the Location through
+            // FootClass::SetLocation (vt+0x1B4, 0x00719637 and again at
+            // 0x00719684); VERA keeps no destination Z for it (SetHeight(0)
+            // replaces the Z) and skips its OpenTopped rider tail. Trigger:
+            // a loaded OpenTopped transport (retail: the Drive BFRT) warped
+            // by a superweapon, whose SuperClass code gives any Foot a
+            // Teleport locomotor (0x006CC989..0x006CC999); VERA ports no such
+            // warp yet. Effect: the riders stay at the departure point.
             if let Some(terrain) = terrain {
                 let cell = terrain
                     .native_cell_identity((teleport.target_rx as i16, teleport.target_ry as i16));
