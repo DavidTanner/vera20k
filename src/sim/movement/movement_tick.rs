@@ -541,7 +541,7 @@ fn process_pending_drive_arrivals(
             continue;
         }
         // Drive/Ship finish their deferred order before Process
-        // (`Simulation::complete_pending_track_order`).
+        // (`Simulation::complete_pending_order`).
         if entity.locomotor.as_ref().is_some_and(|loco| {
             matches!(
                 loco.active_kind(),
@@ -3081,7 +3081,7 @@ impl PendingMovementPass {
         let complete = entities.get(id).is_some_and(|e| {
             e.lifecycle.object_alive
                 && !e.lifecycle.in_limbo
-                && e.object_is_falling_down == 0
+                && !e.is_falling_down()
                 && e.locomotor
                     .as_ref()
                     .is_some_and(|loco| loco.walk_destination().is_none())

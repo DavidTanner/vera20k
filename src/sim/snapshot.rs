@@ -753,7 +753,9 @@ use crate::sim::world::Simulation;
 // bridgehead branch writes CellClass tiles and the draw reads them.
 // 259 -> 260: an entity no longer saves bridge_occupancy or a ground cell
 // enter order; the enter-order counter serves only the AirTracker.
-const SNAPSHOT_VERSION: u32 = 260;
+// 260 -> 261: an entity no longer saves the ObjectClass falling byte; the
+// parachute descent it saves is IsFallingDown.
+const SNAPSHOT_VERSION: u32 = 261;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3644,7 +3646,8 @@ mod tests {
         // 257 -> 258: the stash saves the complete suspended locomotor.
         // 258 -> 259: no bridgehead anchor class.
         // 259 -> 260: no bridge_occupancy or ground enter order.
-        assert_eq!(super::SNAPSHOT_VERSION, 260);
+        // 260 -> 261: no falling byte beside the parachute descent.
+        assert_eq!(super::SNAPSHOT_VERSION, 261);
     }
 
     #[test]
@@ -7323,7 +7326,7 @@ mod tests {
             } else {
                 TargetKind::Cell(index as u16, (index + 1) as u16)
             });
-            entity.set_object_is_falling_down_for_test(index as u8 + 1);
+            entity.set_falling_down_for_test(index & 1 == 0);
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
             if index == 0 {
                 entity.mission.apply_test_fixture(MissionTestFixture {
@@ -7361,7 +7364,7 @@ mod tests {
                 entity.suspended_attack_target, expected_suspended_target,
                 "suspended TargetKind variant and payload must round-trip"
             );
-            assert_eq!(entity.object_is_falling_down, index as u8 + 1);
+            assert_eq!(entity.is_falling_down(), index & 1 == 0);
         }
 
         let first = loaded.sim.substrate.entities.get(1).unwrap();

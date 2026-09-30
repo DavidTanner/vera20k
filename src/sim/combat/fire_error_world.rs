@@ -210,7 +210,7 @@ impl FireSubject<'_> {
                 crate::sim::combat::in_range::range_object_z_leptons(firer, Some(terrain))
             }),
             berserk: firer.berserk.active,
-            falling: firer.object_is_falling_down != 0,
+            falling: firer.is_falling_down(),
             sinking: firer.sinking.is_active(),
             in_open_transport: firer.passenger_role.in_open_transport(),
             transporter: match transport {

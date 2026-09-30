@@ -3342,14 +3342,16 @@ fn short_game_defeat_test_rules() -> RuleSet {
     RuleSet::from_ini(&ini).expect("short game defeat test rules should parse")
 }
 
+/// Water movers on Hover: the retail family whose Process is still the ground
+/// corridor's route (#689). Ships have their own Process and tests below.
 fn naval_bridge_test_rules() -> RuleSet {
     let ini: IniFile = IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=BOAT\n1=DRED\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n\n\
-         [BOAT]\nStrength=300\nArmor=heavy\nSpeed=6\nMovementZone=Water\nSpeedType=Float\nNaval=yes\n\n\
-         [DRED]\nStrength=600\nArmor=heavy\nSpeed=5\nMovementZone=Water\nSpeedType=Float\nNaval=yes\nTooBigToFitUnderBridge=yes\n",
+         [BOAT]\nStrength=300\nArmor=heavy\nSpeed=6\nMovementZone=Water\nSpeedType=Float\nNaval=yes\nLocomotor={4A582742-9839-11d1-B709-00A024DDAFD1}\n\n\
+         [DRED]\nStrength=600\nArmor=heavy\nSpeed=5\nMovementZone=Water\nSpeedType=Float\nNaval=yes\nTooBigToFitUnderBridge=yes\nLocomotor={4A582742-9839-11d1-B709-00A024DDAFD1}\n",
     );
     RuleSet::from_ini(&ini).expect("naval bridge test rules should parse")
 }
@@ -4795,6 +4797,10 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     mover.cell_y = 0;
     assert_eq!(sim.spawn_from_map(&[building, mover], Some(&rules)), 2);
     sim.resolve_type_handles(&rules);
+    // A Hover mover searches its route when the order is given (#689), and
+    // the resumed order below reads that search.
+    sim.substrate.entities.get_mut(2).unwrap().locomotor =
+        Some(LocomotorState::for_test_kind(LocomotorKind::Hover));
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let before_path = sim.path_grid_snapshot().unwrap();
     for ry in 0..3 {
@@ -5129,7 +5135,7 @@ fn test_too_big_ship_can_move_under_bridge_route() {
     // native frames until the one-cell route completes; host milliseconds do
     // not scale locomotor movement.
     let path_grid = PathGrid::new(2, 1);
-    for _ in 0..16 {
+    for _ in 0..256 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 1);
         if sim
             .substrate
@@ -5185,9 +5191,19 @@ fn test_ship_turn_path_completes_without_drive_track_stall() {
         ..Default::default()
     });
 
+    // Hover accelerates from rest (the ground corridor's Hover lane, #689),
+    // so the turn path takes more than its fixed-speed frames.
     let path_grid = PathGrid::new(3, 3);
-    for _ in 0..10 {
+    for _ in 0..256 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
+        if sim
+            .substrate
+            .entities
+            .get(boat_id)
+            .is_some_and(|boat| boat.movement_target.is_none())
+        {
+            break;
+        }
     }
 
     let boat = sim

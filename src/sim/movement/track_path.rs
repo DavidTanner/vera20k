@@ -644,39 +644,52 @@ impl Simulation {
         }
     }
 
-    /// A Drive/Ship order that Rust deferred (the `pending_arrival_clear`
-    /// flag), finished before the locomotor Process or, after a track end,
-    /// before the same-call continuation's gates (`track_continuation`),
-    /// where natively its setter already ran:
+    /// The one completion of a class-setter call Rust deferred (the
+    /// `pending_arrival_clear` flag), before the locomotor Process or, after a
+    /// track end, before the same-call continuation's gates
+    /// (`track_continuation`), where natively the setter already ran. Its
+    /// producers:
     /// - Enter_Idle_Mode took a NavQueue waypoint at an arrival (its true
-    ///   return ended that Process, 0x4B2273): +34 and a NavCom naming the
-    ///   same cell remain and only the scheduling adapter is missing; the
+    ///   return ended that Process, 0x4B2273);
+    /// - a mission restore represents `Assign_Destination(saved, 1)`
+    ///   (`FootClass::Restore_Mission`, call at 0x004D8F99) by NavCom alone
+    ///   (`mission::authority`).
+    ///
+    /// The destination is NavCom's live coordinate (an object's too), else the
+    /// first queued waypoint through the Foot setter, else the NULL clear. By
+    /// active locomotor:
+    /// - Drive and Ship: +34 may still hold an older order (a pursuit cell).
+    ///   A +34 naming NavCom's cell only lacks its scheduling adapter; the
     ///   no-queue arm (Drive 0x4B281C / Ship 0x6A1E75) requests the route,
-    ///   gated by Foot+640;
-    /// - a mission restore represents `Assign_Destination(saved, 1)` (Unit
-    ///   0x741970) by NavCom alone (`mission::authority`), while +34 may still
-    ///   hold an older order (a pursuit cell). Native NavCom and +34 never
-    ///   disagree after that setter, so a missing or disagreeing +34 completes
-    ///   the class setter toward NavCom's live coordinate. Before Process the
-    ///   Foot is then moving, as native, and the Guard/Unload tail
-    ///   (0x4B08D1) cannot strand it;
-    /// - with neither, the queued waypoint is taken through the Foot setter,
-    ///   else the NULL clear.
-    pub(crate) fn complete_pending_track_order(&mut self, id: u64, rules: Option<&RuleSet>) {
+    ///   gated by Foot+640. Native NavCom and +34 never disagree after the
+    ///   setter, so a missing or disagreeing +34 completes the class setter
+    ///   toward NavCom. Before Process the Foot is then moving, as native, and
+    ///   the Guard/Unload tail (0x4B08D1) cannot strand it.
+    /// - Teleport, Fly and Jumpjet: the class setter itself with the
+    ///   destination's cell (Teleport: `Simulation::teleport_destination`; the
+    ///   air setter `issue_air_cell_destination`). NavCom is cleared first, as
+    ///   the native setter finds it (the restore's NavCom is the override's
+    ///   order, not the saved one), so the Unit setter's unchanged-NavCom
+    ///   return cannot swallow the call.
+    ///
+    /// Walk and Hover keep the ground corridor's rebuild (#689).
+    pub(crate) fn complete_pending_order(&mut self, id: u64, rules: Option<&RuleSet>) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
-        let Some(kind) = actor
-            .locomotor
-            .as_ref()
-            .map(|loco| loco.active_kind())
-            .filter(|kind| matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship))
-        else {
+        let Some(kind) = actor.locomotor.as_ref().map(|loco| loco.active_kind()) else {
             return;
         };
+        let track = matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship);
+        let class = matches!(
+            kind,
+            LocomotorKind::Teleport | LocomotorKind::Fly | LocomotorKind::Jumpjet
+        );
         if !actor.navigation.pending_arrival_clear
-            || actor.movement_target.is_some()
-            || super::track_head::active_track_family(actor).is_some()
+            || !(track || (class && rules.is_some()))
+            || (track
+                && (actor.movement_target.is_some()
+                    || super::track_head::active_track_family(actor).is_some()))
         {
             return;
         }
@@ -702,13 +715,18 @@ impl Simulation {
         let cell = |coord: DriveCoord| ((coord.x / 256) as u16, (coord.y / 256) as u16);
         let retained = match kind {
             LocomotorKind::Drive => actor.drive_locomotion.as_ref().and_then(|d| d.destination),
-            _ => actor.ship_locomotion.as_ref().and_then(|s| s.destination),
+            LocomotorKind::Ship => actor.ship_locomotion.as_ref().and_then(|s| s.destination),
+            _ => None,
         };
         let agrees =
             |destination: DriveCoord| nav.is_none_or(|(_, coord)| cell(coord) == cell(destination));
         if let Some(destination) = retained.filter(|&destination| agrees(destination)) {
             super::movement_commands::schedule_track_process(actor, cell(destination), speed);
         } else if let Some((target, coord)) = nav {
+            if class {
+                self.finish_class_destination(id, kind, cell(coord), speed, rules);
+                return;
+            }
             let object = (!matches!(target, NavTargetRef::Cell { .. })).then_some((target, coord));
             super::movement_commands::prepare_track_destination(
                 actor,
@@ -722,6 +740,10 @@ impl Simulation {
             actor.navigation.nav_queue.first().copied()
         {
             actor.navigation.nav_queue.remove(0);
+            if class {
+                self.finish_class_destination(id, kind, (rx, ry), speed, rules);
+                return;
+            }
             super::navcom::set_destination_internal_cell(actor, (rx, ry), terrain);
             timing.accept(actor);
             super::movement_commands::schedule_track_process(actor, (rx, ry), speed);
@@ -733,6 +755,26 @@ impl Simulation {
             target.accel_factor = info.accel_factor;
             target.decel_factor = info.decel_factor;
             target.slowdown_distance = info.slowdown_distance;
+        }
+    }
+
+    /// [`Self::complete_pending_order`]'s class setter for a Teleport, Fly or
+    /// Jumpjet owner, called with NavCom cleared.
+    fn finish_class_destination(
+        &mut self,
+        id: u64,
+        kind: LocomotorKind,
+        cell: (u16, u16),
+        speed: SimFixed,
+        rules: Option<&RuleSet>,
+    ) {
+        if let Some(actor) = self.substrate.entities.get_mut(id) {
+            super::navcom::foot_stop_moving(actor);
+        }
+        if kind == LocomotorKind::Teleport {
+            self.teleport_destination(id, cell, rules);
+        } else {
+            self.issue_air_cell_destination(id, cell, speed, rules);
         }
     }
 
@@ -913,7 +955,8 @@ impl Simulation {
     }
 
     /// The Teleporter arm of Unit Assign_Destination
-    /// (`0x007423CD..0x007427C0`) for a `Teleporter=` type. The Teleport
+    /// (`0x007423CD..0x007427C0`) for a `Teleporter=` type; any other receiver
+    /// is left alone. The Teleport
     /// primary stays in charge only for a Cell destination holding no Unit
     /// while radio slot 0 holds a `DockUnload=` building (any such cell, not
     /// only the pad: oracle row `contact_other_cell`); in the dock chain that
@@ -940,11 +983,16 @@ impl Simulation {
     /// Teleport had armed waits until End_Piggyback hands it back: the
     /// Teleport step runs only while Teleport is the active locomotor
     /// (`teleport_movement::teleport_process_active`).
-    fn unit_teleporter_arm(&mut self, id: u64, cell: Option<(u16, u16)>, rules: &RuleSet) -> bool {
+    pub(crate) fn unit_teleporter_arm(
+        &mut self,
+        id: u64,
+        cell: Option<(u16, u16)>,
+        rules: &RuleSet,
+    ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        if actor.foot_locomotor_swap_active {
+        if !teleporter_unit(self, actor, Some(rules)) || actor.foot_locomotor_swap_active {
             return false;
         }
         let Some(active) = actor.locomotor.as_ref().map(|loco| loco.active_kind()) else {

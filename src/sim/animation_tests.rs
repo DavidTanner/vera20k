@@ -364,7 +364,7 @@ fn gsi_13_06_counter_suppressions_hold_the_persistent_value() {
     dying.dying = true;
     variants.push(("dying", dying));
     let mut falling = base.clone();
-    falling.set_object_is_falling_down_for_test(1);
+    falling.set_falling_down_for_test(true);
     variants.push(("falling", falling));
     let mut deployed = base.clone();
     deployed.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
