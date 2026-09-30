@@ -107,7 +107,6 @@ fn insert(sim: &mut Simulation, mut entity: GameEntity) {
     entity.lifecycle.object_alive = true;
     entity.lifecycle.in_limbo = false;
     entity.lifecycle.cell_marked = true;
-    entity.occupancy_enter_order = sim.substrate.next_occupancy_enter_order.next();
     sim.substrate.occupancy.add(
         entity.position.rx,
         entity.position.ry,
@@ -143,7 +142,6 @@ fn tick_with_rules(
         &mut sim.substrate.occupancy,
         &mut sim.substrate.cell_occupation,
         &mut sim.substrate.raw_cell_occupation,
-        &mut sim.substrate.next_occupancy_enter_order,
         &mut sim.scenario_rng,
         u64::from(frame),
         frame,
@@ -272,7 +270,6 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         );
         assert_eq!(sim.substrate.occupancy.count_on_layer(3, 3, start_layer), 0);
         assert_eq!(sim.substrate.occupancy.count_on_layer(3, 2, end_layer), 1);
-        let order_after_residual = entity.occupancy_enter_order;
 
         sim.substrate
             .entities
@@ -287,7 +284,8 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         assert_eq!(entity.position.exact_z_leptons, Some(416));
         assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 2);
         assert_eq!(
-            entity.occupancy_enter_order, order_after_residual,
+            sim.substrate.occupancy.count_on_layer(3, 2, end_layer),
+            1,
             "no duplicate cell entry at paid point"
         );
         assert_eq!(entity.locomotor.as_ref().unwrap().layer, end_layer);

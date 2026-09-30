@@ -524,7 +524,7 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
+            occupancy_deck: entity.on_bridge.then_some(entity.position.z),
             terrain_level: facts.signed_level(),
             structural: facts.has_structural_bridge(),
         });

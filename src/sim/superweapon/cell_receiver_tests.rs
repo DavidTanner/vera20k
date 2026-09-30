@@ -1047,15 +1047,6 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         .unwrap()
         .snapshot_layer(MovementLayer::Ground);
     assert_eq!(ground, vec![tank, boomer]);
-    let rebuilt = crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
-    assert_eq!(
-        rebuilt
-            .get(5, 5)
-            .unwrap()
-            .snapshot_layer(MovementLayer::Ground),
-        ground,
-        "serialized re-entry order preserves the live list during restore"
-    );
     let twin = sim.substrate.entities.get(unmarked).unwrap();
     assert!(twin.on_bridge && twin.lifecycle.in_limbo && !twin.lifecycle.cell_marked);
     assert_eq!(

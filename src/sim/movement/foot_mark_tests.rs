@@ -29,11 +29,12 @@ fn concrete_foot_category_selects_raw_receiver_independently_of_locomotor() {
             sim.substrate.raw_cell_occupation.ground_bits(4, 4),
             expected_mask
         );
-        let entered = sim.substrate.entities.get(1).unwrap().occupancy_enter_order;
         sim.foot_mark_put(1, None, None);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().occupancy_enter_order,
-            entered
+            sim.substrate
+                .occupancy
+                .count_on_layer(4, 4, MovementLayer::Ground),
+            1
         );
         sim.foot_mark_remove(1, None, None);
         assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));

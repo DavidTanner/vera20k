@@ -981,7 +981,7 @@ fn drive_across_high_bridge_with_order(
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
+            occupancy_deck: entity.on_bridge.then_some(entity.position.z),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -1724,7 +1724,7 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
+            occupancy_deck: entity.on_bridge.then_some(entity.position.z),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -2376,7 +2376,7 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
+            occupancy_deck: entity.on_bridge.then_some(entity.position.z),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -3651,7 +3651,7 @@ fn record_until(
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
+            occupancy_deck: entity.on_bridge.then_some(entity.position.z),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -4333,7 +4333,7 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
         (
             entity.position.z,
             entity.on_bridge,
-            entity.bridge_occupancy.map(|occ| occ.deck_level),
+            entity.on_bridge.then_some(entity.position.z),
         )
     };
     println!(

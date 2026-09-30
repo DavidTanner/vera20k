@@ -779,14 +779,11 @@ impl Simulation {
                         .zip(grid.cell(selected_cell.0, selected_cell.1))
                 }) {
                     match super::movement_bridge::compute_bridge_transition(source, destination) {
-                        super::movement_bridge::BridgeTransition::Enter { deck_level } => {
+                        super::movement_bridge::BridgeTransition::Enter => {
                             entity.on_bridge = true;
-                            entity.bridge_occupancy =
-                                Some(crate::sim::components::BridgeOccupancy { deck_level });
                         }
                         super::movement_bridge::BridgeTransition::Exit => {
                             entity.on_bridge = false;
-                            entity.bridge_occupancy = None;
                         }
                         super::movement_bridge::BridgeTransition::NoChange => {}
                     }

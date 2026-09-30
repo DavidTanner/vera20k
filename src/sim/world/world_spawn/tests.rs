@@ -666,7 +666,7 @@ fn assert_generated_projection_rejects_before_mutation(
     install_american_house(&mut sim);
     let scenario_before = sim.scenario_rng.logical_state();
     let stable_id_before = sim.substrate.next_stable_object_id;
-    let enter_order_before = sim.substrate.next_occupancy_enter_order.current();
+    let enter_order_before = sim.substrate.next_air_tracker_order.current();
     let occupancy_generation_before = sim.substrate.occupancy.generation();
     let raw_occupation_entries_before = sim.substrate.raw_cell_occupation.entry_count();
 
@@ -677,7 +677,7 @@ fn assert_generated_projection_rejects_before_mutation(
     assert_eq!(sim.scenario_rng.logical_state(), scenario_before);
     assert_eq!(sim.substrate.next_stable_object_id, stable_id_before);
     assert_eq!(
-        sim.substrate.next_occupancy_enter_order.current(),
+        sim.substrate.next_air_tracker_order.current(),
         enter_order_before
     );
     assert_eq!(

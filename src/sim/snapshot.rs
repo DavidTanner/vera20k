@@ -746,7 +746,9 @@ use crate::sim::world::Simulation;
 // 256 -> 257: bridge cells, anchor spans and endpoint records no longer save
 // unread group ids, per-cell destroyable or span damage copies; paradrop
 // missions no longer save the inert fog latch or LandingState mirror.
-const SNAPSHOT_VERSION: u32 = 257;
+// 259 -> 260: an entity no longer saves bridge_occupancy or a ground cell
+// enter order; the enter-order counter serves only the AirTracker.
+const SNAPSHOT_VERSION: u32 = 260;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -890,10 +892,6 @@ pub enum SnapshotRestoreError {
     },
     #[error("next object id {next_id} is not after the highest restored object id {highest_id}")]
     ObjectIdCounterBehind { next_id: u64, highest_id: u64 },
-    #[error(
-        "next occupancy-enter order {next_order} is not after the highest restored order {highest_order}"
-    )]
-    OccupancyOrderCounterBehind { next_order: u64, highest_order: u64 },
     #[error("LogicVector contains duplicate object id {object_id}")]
     DuplicateLogicIdentity { object_id: u64 },
     #[error("LogicVector object id {object_id} has no restored registry identity")]
@@ -3638,7 +3636,8 @@ mod tests {
         // 255 -> 256: no cached GetCurrentSpeed.
         // 256 -> 257: no bridge group/destroyable/span-damage copies or
         // inert paradrop latches.
-        assert_eq!(super::SNAPSHOT_VERSION, 257);
+        // 259 -> 260: no bridge_occupancy or ground enter order.
+        assert_eq!(super::SNAPSHOT_VERSION, 260);
     }
 
     #[test]
@@ -4036,7 +4035,6 @@ mod tests {
             &mut restored.substrate.occupancy,
             &mut restored.substrate.cell_occupation,
             &mut restored.substrate.raw_cell_occupation,
-            &mut restored.substrate.next_occupancy_enter_order,
             &mut restored.scenario_rng,
             52,
             52,

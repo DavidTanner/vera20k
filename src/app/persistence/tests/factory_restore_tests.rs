@@ -535,9 +535,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     .in_limbo = false
             }
             "marked-root" => {
-                let order = saved.substrate.next_occupancy_enter_order.next();
                 let entity = saved.substrate.entities.get_mut(parent).unwrap();
-                entity.occupancy_enter_order = order;
                 entity.lifecycle.cell_marked = true;
             }
             "logic-root" => saved.set_logic_order_for_test(vec![parent]),

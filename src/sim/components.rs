@@ -705,12 +705,6 @@ impl MovementTarget {
     }
 }
 
-/// Marker component: this entity currently occupies a bridge deck cell.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct BridgeOccupancy {
-    pub deck_level: u8,
-}
-
 /// Persistent high-level order state that survives transient combat/movement components.
 ///
 /// This keeps intent like attack-move or guard alive while systems temporarily
@@ -998,7 +992,6 @@ mod tests {
         assert_send_sync::<Position>();
         assert_send_sync::<Health>();
         assert_send_sync::<MovementTarget>();
-        assert_send_sync::<BridgeOccupancy>();
         assert_send_sync::<OrderIntent>();
         assert_send_sync::<BuildingUp>();
         assert_send_sync::<VoxelAnimation>();

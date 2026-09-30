@@ -324,7 +324,7 @@ impl Simulation {
         // map-read continuation. This is independent of Rust stable handles.
         self.native_unique_ids.hash(&mut hasher);
         self.substrate.next_stable_object_id.hash(&mut hasher);
-        self.substrate.next_occupancy_enter_order.hash(&mut hasher);
+        self.substrate.next_air_tracker_order.hash(&mut hasher);
         // YR LogicClass trigger latches are save/lockstep state, even though
         // their camera/message outcomes stay app-owned and are not hashed.
         self.trigger_runtime.hash_state(&mut hasher);
@@ -1129,7 +1129,6 @@ impl Simulation {
                     bale.value.hash(hasher);
                 }
             }
-            entity.occupancy_enter_order.hash(hasher);
             entity.air_spatial_bucket.hash(hasher);
             entity.air_spatial_enter_order.hash(hasher);
             // Independent lifecycle axes and deterministic Rust bookkeeping.
@@ -1350,12 +1349,6 @@ impl Simulation {
                 0u8.hash(hasher);
             }
 
-            if let Some(ref bridge) = entity.bridge_occupancy {
-                1u8.hash(hasher);
-                bridge.deck_level.hash(hasher);
-            } else {
-                0u8.hash(hasher);
-            }
             entity.on_bridge.hash(hasher);
             entity
                 .runtime_bridge_transition

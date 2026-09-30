@@ -14,7 +14,7 @@
 //!
 //! See docs/plans/2026-05-11-bridge-locomotor-layer-correctness-design.md.
 
-use crate::sim::components::{BridgeOccupancy, Position};
+use crate::sim::components::Position;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::pathfinding::PathGrid;
 
@@ -27,14 +27,10 @@ use crate::sim::pathfinding::PathGrid;
 /// independently to match the original behavior exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BridgeTransition {
-    /// Unit just entered the bridge body deck. Sets on_bridge=true.
-    ///
-    /// `deck_level` is the predicate's own reading of the destination cell and is
-    /// NOT the height the mover receives — Z is recomputed from the terrain level
-    /// plus the post-transition flag, per `FootClass::Set_Height_On_Bridge`
-    /// 0x005F5FA0. The two agree on well-formed data and are allowed to disagree
-    /// on malformed data, where the native model wins.
-    Enter { deck_level: u8 },
+    /// Unit just entered the bridge body deck. Sets on_bridge=true. Z is
+    /// recomputed from the terrain level plus the post-transition flag, per
+    /// `FootClass::Set_Height_On_Bridge` 0x005F5FA0.
+    Enter,
     /// Unit just exited the bridge structure. Sets on_bridge=false.
     Exit,
     /// No layer-state change at this transition.
@@ -42,14 +38,14 @@ pub(super) enum BridgeTransition {
 }
 
 /// Bridge state update produced by `resolve_cell_transition_bridge_state`.
-/// Drives `on_bridge` and `BridgeOccupancy` independently from `loco.layer`.
+/// Drives `on_bridge` independently from `loco.layer`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BridgeStateUpdate {
-    /// on_bridge = true; bridge_occupancy = Some(BridgeOccupancy { deck_level })
-    Set(u8),
-    /// on_bridge = false; bridge_occupancy = None
+    /// on_bridge = true
+    Set,
+    /// on_bridge = false
     Clear,
-    /// Leave on_bridge and bridge_occupancy unchanged
+    /// Leave on_bridge unchanged
     Unchanged,
 }
 
@@ -64,14 +60,7 @@ pub(crate) struct RuntimeBridgeTransitionState {
     pub pending_mismatch: bool,
 }
 
-/// Result supplied by the runtime-only bridge policy seam.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RuntimeBridgePolicyResult {
-    Continue,
-    Reject,
-}
-
-/// Evaluate the runtime bridge mismatch branch without borrowing A* policy.
+/// Latch Foot+0x68B when the candidate's bridge bit differs from the mover's.
 ///
 /// Original: each locomotor's `Process_Movement` compares
 /// candidate `CellClass+0x140 & 0x100` with Foot `+0x8C`, sets `+0x68B` on a
@@ -84,32 +73,24 @@ pub(crate) enum RuntimeBridgePolicyResult {
 /// `0x0075B662` (Walk), `0x00515513` (Hover) and `0x006A29E0` (Ship) — four
 /// sites carrying the whole sequence. `0x006A3C19` and `0x00736038` are bare
 /// `[+0x68B] = 1` stores in unrelated branches, not twins of this comparison.
-/// There is no
-/// `FootClass::EvaluateCellEnterabilityOrCost` in this program.
 ///
-/// **VERA-internal, gamemd equivalent UNCHECKED:** `pending_mismatch` is
-/// written on every call, so a matching tick clears it. Native `[foot+0x68B]`
-/// is write-1-only — initialised once in `FootClass::Constructor` @
-/// `0x004D33BA`, set at eleven locomotor sites, never cleared, and read by
-/// `FootClass::ComputeChecksum` @ `0x004DBAD0` (the read is at `0x004DBD0C`),
-/// so it is part of the sync
-/// checksum. Trigger: any tick where the candidate's bridge bit matches the
-/// mover's. Player effect: none today — the field has no reader outside tests
-/// and the only production caller passes a policy that never rejects.
-/// Frequency: zero while that holds. Downstream risk: a flip to authoritative
-/// would start from the wrong latch semantics and a wrong checksum input.
-pub(crate) fn evaluate_runtime_bridge_transition(
+/// `[foot+0x68B]` is write-1-only: zeroed once in `FootClass::Constructor` @
+/// `0x004D33BA`, never cleared, and read only by `FootClass::ComputeChecksum`
+/// @ `0x004DBAD0` (at `0x004DBD0C`).
+///
+/// Residual: the `+0x29C` return-path call after the latch is not made here.
+/// Trigger: a candidate on `advance_ordinary_mover`'s crossing step (the
+/// legacy pass, #689) whose bridge bit differs from `on_bridge`. Effect: the
+/// step continues instead of taking the locomotor's return path. Frequency:
+/// every such crossing by a mover still on that pass. Risk: it can cross a
+/// bridge-state boundary native would turn back from.
+pub(crate) fn latch_runtime_bridge_mismatch(
     state: &mut RuntimeBridgeTransitionState,
     candidate_bridge_bit: bool,
     current_bridge_state: bool,
-    policy: impl FnOnce() -> RuntimeBridgePolicyResult,
-) -> RuntimeBridgePolicyResult {
-    let mismatch = candidate_bridge_bit != current_bridge_state;
-    state.pending_mismatch = mismatch;
-    if mismatch {
-        policy()
-    } else {
-        RuntimeBridgePolicyResult::Continue
+) {
+    if candidate_bridge_bit != current_bridge_state {
+        state.pending_mismatch = true;
     }
 }
 
@@ -125,14 +106,12 @@ pub struct BridgeRuntimeOracleTick {
     pub on_bridge_before: bool,
     pub on_bridge_after: bool,
     pub bridge_update: String,
-    pub bridge_occupancy_before: Option<u8>,
-    pub bridge_occupancy_after: Option<u8>,
     pub visible_z_after: u8,
 }
 
 pub(super) fn projected_on_bridge(current: bool, update: BridgeStateUpdate) -> bool {
     match update {
-        BridgeStateUpdate::Set(_) => true,
+        BridgeStateUpdate::Set => true,
         BridgeStateUpdate::Clear => false,
         BridgeStateUpdate::Unchanged => current,
     }
@@ -187,9 +166,7 @@ pub(super) fn compute_bridge_transition(
     let exit = !dst.has_structural_bridge() && src.has_structural_bridge();
 
     if entry {
-        return BridgeTransition::Enter {
-            deck_level: dst.bridge_deck_level_if_any().unwrap_or(dst.ground_level),
-        };
+        return BridgeTransition::Enter;
     }
     if exit {
         return BridgeTransition::Exit;
@@ -206,7 +183,7 @@ pub(super) fn compute_bridge_transition(
 ///
 /// Does NOT return a layer — the caller continues to use `next_layer` from A*'s
 /// `path_layers` for `loco.layer`. The predicate's role is independent: it drives
-/// `on_bridge` and `BridgeOccupancy` via the returned `BridgeStateUpdate`.
+/// `on_bridge` via the returned `BridgeStateUpdate`.
 ///
 /// Fallback: returns `Unchanged` (no position.z modification) when `path_grid` is
 /// `None` or either cell lookup is out-of-bounds. Out-of-bounds at the boundary
@@ -231,7 +208,7 @@ pub(super) fn resolve_cell_transition_bridge_state(
     // post-transition flag rather than carried out of the transition arm.
     let transition = compute_bridge_transition(src_cell, dst_cell);
     let update = match transition {
-        BridgeTransition::Enter { .. } => BridgeStateUpdate::Set(0),
+        BridgeTransition::Enter => BridgeStateUpdate::Set,
         BridgeTransition::Exit => BridgeStateUpdate::Clear,
         BridgeTransition::NoChange => BridgeStateUpdate::Unchanged,
     };
@@ -256,13 +233,7 @@ pub(super) fn resolve_cell_transition_bridge_state(
     position.z = z;
     // Raw Object Z has a separate setter cadence. Paid Drive/Ship points and
     // Walk commits refresh it; a residual crossing retains it (0x4B253F).
-
-    // Carry the same number into BridgeOccupancy so the deck height has one
-    // source rather than two independently-derived ones.
-    match update {
-        BridgeStateUpdate::Set(_) => BridgeStateUpdate::Set(z),
-        other => other,
-    }
+    update
 }
 
 /// Diagnostic wrapper for a single boundary crossing. It computes the same
@@ -277,17 +248,11 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
     current_layer: MovementLayer,
     next_layer: MovementLayer,
     on_bridge_before: bool,
-    bridge_occupancy_before: Option<BridgeOccupancy>,
     tick: u64,
 ) -> (BridgeStateUpdate, BridgeRuntimeOracleTick) {
     let update =
         resolve_cell_transition_bridge_state(position, path_grid, src, dst, on_bridge_before);
     let on_bridge_after = projected_on_bridge(on_bridge_before, update);
-    let bridge_occupancy_after = match update {
-        BridgeStateUpdate::Set(deck_level) => Some(BridgeOccupancy { deck_level }),
-        BridgeStateUpdate::Clear => None,
-        BridgeStateUpdate::Unchanged => bridge_occupancy_before,
-    };
     let row = BridgeRuntimeOracleTick {
         tick,
         current_cell: src,
@@ -297,8 +262,6 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
         on_bridge_before,
         on_bridge_after,
         bridge_update: format!("{:?}", update),
-        bridge_occupancy_before: bridge_occupancy_before.map(|occ| occ.deck_level),
-        bridge_occupancy_after: bridge_occupancy_after.map(|occ| occ.deck_level),
         visible_z_after: position.z,
     };
     (update, row)
@@ -309,34 +272,24 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
 /// `loco.layer` follows `active_layer` (= A*'s path_layer for this step), which drives
 /// walkability and cell_entry occupancy lookup.
 ///
-/// `on_bridge` and `bridge_occupancy` are driven INDEPENDENTLY by `bridge_update` from
+/// `on_bridge` is driven INDEPENDENTLY by `bridge_update` from
 /// the cell-flag predicate. This is the load-bearing G2 parity fix: the runtime
 /// on_bridge state is NOT derivable from the A* layer, because on a ramp going up
 /// loco.layer=Bridge but on_bridge=false (predicate hasn't fired Enter yet), and on a
 /// ramp going down loco.layer=Ground but on_bridge=true.
 pub(super) fn apply_pending_bridge_render_state(
     locomotor: &mut Option<LocomotorState>,
-    bridge_occupancy: &mut Option<BridgeOccupancy>,
     on_bridge: &mut bool,
     active_layer: MovementLayer,
     bridge_update: BridgeStateUpdate,
-    _diag_entity_id: u64,
 ) {
     if let Some(loco) = locomotor {
         loco.layer = active_layer;
     }
     match bridge_update {
-        BridgeStateUpdate::Set(deck_level) => {
-            *on_bridge = true;
-            *bridge_occupancy = Some(BridgeOccupancy { deck_level });
-        }
-        BridgeStateUpdate::Clear => {
-            *on_bridge = false;
-            *bridge_occupancy = None;
-        }
-        BridgeStateUpdate::Unchanged => {
-            // on_bridge and bridge_occupancy retain their previous values
-        }
+        BridgeStateUpdate::Set => *on_bridge = true,
+        BridgeStateUpdate::Clear => *on_bridge = false,
+        BridgeStateUpdate::Unchanged => {}
     }
 }
 
@@ -392,7 +345,7 @@ mod tests {
         let src = cell(4, true, true);
         let dst = cell(0, true, false);
         match compute_bridge_transition(&src, &dst) {
-            BridgeTransition::Enter { deck_level } => assert_eq!(deck_level, 4),
+            BridgeTransition::Enter => {}
             other => panic!("expected Enter, got {:?}", other),
         }
     }
@@ -491,41 +444,27 @@ mod tests {
         let dst = cell(0, true, false);
         assert!(matches!(
             compute_bridge_transition(&src, &dst),
-            BridgeTransition::Enter { deck_level: 4 }
+            BridgeTransition::Enter
         ));
     }
 
     #[test]
     fn projected_on_bridge_applies_pending_update_without_mutation() {
-        assert!(projected_on_bridge(false, BridgeStateUpdate::Set(4)));
+        assert!(projected_on_bridge(false, BridgeStateUpdate::Set));
         assert!(!projected_on_bridge(true, BridgeStateUpdate::Clear));
         assert!(projected_on_bridge(true, BridgeStateUpdate::Unchanged));
         assert!(!projected_on_bridge(false, BridgeStateUpdate::Unchanged));
     }
 
     #[test]
-    fn runtime_bridge_mismatch_sets_pending_state_and_uses_policy_seam() {
+    fn runtime_bridge_mismatch_latches_and_a_match_never_clears() {
         let mut state = RuntimeBridgeTransitionState::default();
-        let outcome = evaluate_runtime_bridge_transition(&mut state, true, false, || {
-            RuntimeBridgePolicyResult::Reject
-        });
-
-        assert!(state.pending_mismatch);
-        assert_eq!(outcome, RuntimeBridgePolicyResult::Reject);
-    }
-
-    #[test]
-    fn matching_runtime_bridge_state_skips_policy_seam() {
-        let mut state = RuntimeBridgeTransitionState::default();
-        let mut policy_called = false;
-        let outcome = evaluate_runtime_bridge_transition(&mut state, true, true, || {
-            policy_called = true;
-            RuntimeBridgePolicyResult::Reject
-        });
-
+        latch_runtime_bridge_mismatch(&mut state, true, true);
         assert!(!state.pending_mismatch);
-        assert!(!policy_called);
-        assert_eq!(outcome, RuntimeBridgePolicyResult::Continue);
+        latch_runtime_bridge_mismatch(&mut state, true, false);
+        assert!(state.pending_mismatch);
+        latch_runtime_bridge_mismatch(&mut state, true, true);
+        assert!(state.pending_mismatch);
     }
 
     #[test]
@@ -635,12 +574,6 @@ mod tests {
             pos.rx = dst.0;
             pos.ry = dst.1;
             assert_native_height(grid, &pos, on_bridge, &format!("step {x}->{}", x + 1));
-            if let BridgeStateUpdate::Set(deck_level) = update {
-                assert_eq!(
-                    deck_level, pos.z,
-                    "BridgeOccupancy.deck_level must be the same number as position.z"
-                );
-            }
             trace.push((pos.z, on_bridge));
         }
         trace
@@ -718,7 +651,7 @@ mod tests {
             (ENTRY_RAMP_X + 1, SPAN_Y),
             false,
         );
-        assert!(matches!(update, BridgeStateUpdate::Set(_)));
+        assert!(matches!(update, BridgeStateUpdate::Set));
         assert_eq!(
             pos.z,
             RIVERBED_LEVEL + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as u8,
@@ -779,7 +712,7 @@ mod tests {
         ]);
         let mut p = pos_at(6, 5, 4);
         let update = resolve_cell_transition_bridge_state(&mut p, Some(&g), (5, 5), (6, 5), false);
-        assert_eq!(update, BridgeStateUpdate::Set(4));
+        assert_eq!(update, BridgeStateUpdate::Set);
         assert_eq!(
             p.z, 4,
             "Enter height is the destination terrain level (0) plus the deck delta"
@@ -798,15 +731,13 @@ mod tests {
             MovementLayer::Ground,
             MovementLayer::Bridge,
             false,
-            None,
             123,
         );
 
-        assert_eq!(update, BridgeStateUpdate::Set(4));
+        assert_eq!(update, BridgeStateUpdate::Set);
         assert_eq!(row.tick, 123);
         assert_eq!(row.next_path_layer, MovementLayer::Bridge);
         assert!(row.on_bridge_after);
-        assert_eq!(row.bridge_occupancy_after, Some(4));
         assert_eq!(row.visible_z_after, 4);
     }
 
@@ -864,19 +795,15 @@ mod tests {
         // active_layer=Bridge but bridge_update=Unchanged.
         // on_bridge must retain its prior value (does NOT become true just because layer is Bridge).
         let mut loco = make_loco(MovementLayer::Ground);
-        let mut occ: Option<BridgeOccupancy> = None;
         let mut on_b = false;
         apply_pending_bridge_render_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Bridge,
             BridgeStateUpdate::Unchanged,
-            42,
         );
         assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Bridge);
         assert!(!on_b, "on_bridge must NOT be derived from active_layer");
-        assert!(occ.is_none(), "bridge_occupancy must be unchanged");
     }
 
     #[test]
@@ -885,15 +812,12 @@ mod tests {
         // predicate doesn't fire Enter until Ramp→Body next tick. So this tick:
         //   active_layer = Bridge, bridge_update = Unchanged, on_bridge = false (prior).
         let mut loco = make_loco(MovementLayer::Ground);
-        let mut occ: Option<BridgeOccupancy> = None;
         let mut on_b = false;
         apply_pending_bridge_render_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Bridge,
             BridgeStateUpdate::Unchanged,
-            42,
         );
         assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Bridge);
         assert!(!on_b, "on_bridge must stay false on the ramp tick going up");
@@ -904,56 +828,41 @@ mod tests {
         // Coming off a bridge: A*'s path puts the ramp on Ground layer (is_at_bridge_level
         // returns false), but the predicate hasn't fired Exit yet. on_bridge stays true.
         let mut loco = make_loco(MovementLayer::Bridge);
-        let mut occ = Some(BridgeOccupancy { deck_level: 4 });
         let mut on_b = true;
         apply_pending_bridge_render_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Ground,
             BridgeStateUpdate::Unchanged,
-            42,
         );
         assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Ground);
         assert!(on_b, "on_bridge must stay true on the ramp tick going down");
-        assert!(
-            occ.is_some(),
-            "bridge_occupancy must be unchanged on Unchanged"
-        );
     }
 
     #[test]
-    fn render_state_set_writes_occupancy() {
+    fn render_state_set_enters_the_bridge() {
         let mut loco = make_loco(MovementLayer::Bridge);
-        let mut occ: Option<BridgeOccupancy> = None;
         let mut on_b = false;
         apply_pending_bridge_render_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Bridge,
-            BridgeStateUpdate::Set(4),
-            42,
+            BridgeStateUpdate::Set,
         );
         assert!(on_b);
-        assert_eq!(occ.unwrap().deck_level, 4);
     }
 
     #[test]
-    fn render_state_clear_drops_occupancy() {
+    fn render_state_clear_leaves_the_bridge() {
         let mut loco = make_loco(MovementLayer::Ground);
-        let mut occ = Some(BridgeOccupancy { deck_level: 4 });
         let mut on_b = true;
         apply_pending_bridge_render_state(
             &mut loco,
-            &mut occ,
             &mut on_b,
             MovementLayer::Ground,
             BridgeStateUpdate::Clear,
-            42,
         );
         assert!(!on_b);
-        assert!(occ.is_none());
     }
 }
 

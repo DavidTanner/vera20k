@@ -1297,7 +1297,7 @@ impl Simulation {
                 self.session.map_height,
             )
         });
-        let order = self.substrate.next_occupancy_enter_order.next();
+        let order = self.substrate.next_air_tracker_order.next();
 
         if category == EntityCategory::Structure {
             let (width, height) = crate::rules::foundation::foundation_dimensions(&foundation);
@@ -1372,7 +1372,6 @@ impl Simulation {
             }
         }
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.occupancy_enter_order = order;
             match air_spatial_bucket {
                 Some(bucket) if entity.air_spatial_bucket != Some(bucket) => {
                     entity.air_spatial_bucket = Some(bucket);
@@ -1794,7 +1793,7 @@ impl Simulation {
             return;
         }
         let enter_order = desired_bucket
-            .map(|_| self.substrate.next_occupancy_enter_order.next())
+            .map(|_| self.substrate.next_air_tracker_order.next())
             .unwrap_or(0);
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.air_spatial_bucket = desired_bucket;
@@ -1828,18 +1827,15 @@ impl Simulation {
                 .occupancy
                 .remove_on_layer(rx, ry, stable_id, MovementLayer::Bridge);
         }
-        let order = self.substrate.next_occupancy_enter_order.next();
         let entity = self
             .substrate
             .entities
             .get_mut(stable_id)
             .expect("member remains represented");
-        entity.bridge_occupancy = None;
         entity.on_bridge = false;
         entity.position.z = ground_level;
         entity.position.exact_z_leptons = None;
         entity.movement_target = None;
-        entity.occupancy_enter_order = order;
         if let Some(loco) = entity.locomotor.as_mut() {
             loco.layer = MovementLayer::Ground;
         }
