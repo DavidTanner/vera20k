@@ -38,7 +38,8 @@ fn disguised(sim: &Simulation) -> bool {
 /// `UnitClass::UpdateDisguise @ 0x007468C0` asks the locomotor's Is_Moving
 /// (ILocomotion+0x10 at `0x007468F4`), which reads the Drive's own destination
 /// and head, not the owner's order. A Mirage holding an order its Drive has
-/// not taken up is still, so it takes a disguise.
+/// not taken up is still, so it takes a disguise. No production path is known
+/// to leave a Mirage in that state; this pins the owner's answer.
 #[test]
 fn a_mirage_whose_drive_has_not_started_its_order_disguises() {
     let (mut sim, rules) = mirage(true, None);
@@ -46,10 +47,19 @@ fn a_mirage_whose_drive_has_not_started_its_order_disguises() {
     assert!(disguised(&sim));
 }
 
-/// A Mirage whose Drive has a destination is moving and takes no disguise.
+/// A Mirage whose Drive has a destination is moving, so UpdateDisguise takes
+/// its clear arm (Is_Moving at `0x0074693D`, then ClearDisguise at
+/// `0x00746AFF`) even without an order.
 #[test]
-fn a_mirage_whose_drive_has_a_destination_stays_undisguised() {
+fn a_disguised_mirage_whose_drive_has_a_destination_drops_its_disguise() {
     let (mut sim, rules) = mirage(false, Some(DriveCoord::cell(9, 5, 0)));
+    let tree = sim.interner.intern("TREE01");
+    let entity = sim.substrate.entities.get_mut(1).expect("mirage");
+    entity
+        .disguise
+        .get_or_insert_with(Default::default)
+        .acquire(0, Some(tree), None);
+    assert!(disguised(&sim));
     techno_common_pre(&mut sim, 1, Some(&rules), None);
     assert!(!disguised(&sim));
 }
