@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::rules::ini_parser::IniFile;
+use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::rng::SimRng;
 
 fn constructor_rules() -> RuleSet {

@@ -76,3 +76,38 @@ fn sinking_sound_reference_uses_readstring128_before_lookup() {
             .is_none()
     );
 }
+
+#[test]
+fn infantry_water_sounds_use_fixed_catalog_and_retain_valid_ids_across_passes() {
+    let ini = IniFile::from_str;
+    let root = ini(
+        "[InfantryTypes]\n0=GHOST\n[GHOST]\nEnterWaterSound=Enter\nLeaveWaterSound=Leave\n[VehicleTypes]\n0=MTNK\n[MTNK]\nEnterWaterSound=Enter\n",
+    );
+    let lang = ini("[GHOST]\nEnterWaterSound=unknown\nLeaveWaterSound=\n");
+    let mode = ini("[GHOST]\nEnterWaterSound=  eNtEr  \nLeaveWaterSound=other\n");
+    let map =
+        ini("[GHOST]\nEnterWaterSound=\nLeaveWaterSound=unregistered\nenterwatersound=Wrong\n");
+    let sounds = Arc::new(SoundRegistry::from_ini(&ini(
+        "[SoundList]\n0=Enter\n1=Leave\n2=Wrong\n",
+    )));
+    let mut owner =
+        NativeRulesProcessOwner::from_cold_start_sources(root.clone(), Some(lang), ini(""), sounds)
+            .unwrap();
+    let (rules, _, _, _) = owner
+        .load_noncampaign_scenario(Some(&mode), &map)
+        .unwrap()
+        .into_parts();
+    let ghost = rules.object("GHOST").unwrap();
+    assert_eq!(ghost.enter_water_sound.as_deref(), Some("Enter"));
+    assert_eq!(ghost.leave_water_sound.as_deref(), Some("Leave"));
+    assert!(rules.object("MTNK").unwrap().enter_water_sound.is_none());
+    let mut empty =
+        NativeRulesProcessOwner::from_cold_start_sources(root, None, ini(""), Arc::default())
+            .unwrap();
+    let (rules, _, _, _) = empty
+        .load_noncampaign_scenario(None, &ini(""))
+        .unwrap()
+        .into_parts();
+    assert!(rules.object("GHOST").unwrap().enter_water_sound.is_none());
+    assert!(rules.object("GHOST").unwrap().leave_water_sound.is_none());
+}

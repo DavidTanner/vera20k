@@ -370,6 +370,13 @@ fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut 
         infantry.firing_sequence_latch().hash(hasher);
         infantry.doing().hash(hasher);
         infantry.pending_deploy().hash(hasher);
+        // Infantry ctor517AC2 starts6E8 at2. Water/land DoAction51D8B8
+        // retains0/1 before admission, affecting later sound requests.
+        // Like the other sparse native bytes, the constructor adds no bytes.
+        if infantry.water_state() != 2 {
+            b"infantry-water-state-6e8".hash(hasher);
+            infantry.water_state().hash(hasher);
+        }
     } else if let Some(aircraft) = leaf.as_aircraft() {
         2u8.hash(hasher);
         aircraft.action_latch().hash(hasher);
@@ -2531,12 +2538,18 @@ mod mission_authority_hash_tests {
     fn every_infantry_mission_leaf_field_changes_state_hash() {
         let base = MissionLeafState::infantry_raw_for_test(7, 12);
         let base_hash = hash_leaf(base);
+        let mut water = base;
+        water.set_infantry_water_state(false);
+        let mut land = base;
+        land.set_infantry_water_state(true);
         for (field, variant) in [
             (
                 "firing sequence latch",
                 MissionLeafState::infantry_raw_for_test(8, 12),
             ),
             ("Doing", MissionLeafState::infantry_raw_for_test(7, 13)),
+            ("water state", water),
+            ("land state", land),
         ] {
             assert_ne!(
                 base_hash,
@@ -2544,6 +2557,7 @@ mod mission_authority_hash_tests {
                 "Infantry {field} must contribute to the state hash"
             );
         }
+        assert_ne!(hash_leaf(water), hash_leaf(land));
     }
 
     #[test]

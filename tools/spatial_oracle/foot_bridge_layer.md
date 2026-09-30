@@ -299,3 +299,58 @@ The final absolute pins include the newly retained state and supplied ART.
 They protect this Rust fixture only. Ground infantry's firing/absolute-stage
 integration and ordinary ground reach/Approach remain required behavior;
 this replay provenance does not close either chain or the whole-bridge goal.
+
+
+## Current response and Infantry action dependencies (2026-09-30)
+
+The response chain now uses the private Infantry Doing/Stage owner through
+firing, movement, completion and terminal cleanup. Shared consumers, clock
+initialization, live deployed Guard, the production Unload dispatcher and
+snapshot267 are migrated together. The final replay contexts in
+`techno_stage264_followup` retain complete actors, all three RNG objects and
+ordered draw/caller observations; these are Rust world receipts, not native
+whole-world goldens. The historical observations above are retained as history.
+
+The [wet-action generator](infantry_water_action.py),
+[356 native entries](infantry_water_action.json) and
+[metadata](infantry_water_action.meta.json) execute original DoAction51D6F0,
+constructor517A50 and physical GHOST/TANY rules/ART/sound readers. The original
+151 controls remain byte-identical. Native constructor517AC2 initializes signed
+water state2; zone3 physical Cell lookup, wet raw records20/21 and transition cues
+precede admission. Fixed sound-name reads retain earlier valid IDs across
+root/LANG/mode/map. Audio requests execute through the supplied disabled gate;
+wet Unlimbo, occupancy, whole native death AI and audible playback are excluded.
+
+`sim::movement::infantry_action::water_tests::` compares all action/reader
+receipts and checks ordinary tick progression to WetDie UnInit without a legacy
+AnimationState. With production ART/sequence binding installed, the old DoAction
+refuses physical GHOST Health0/Water/Die11 while the original accepts20. Restoring
+the corrected sole action owner makes all five tests pass. Water state also has
+save/load and state-hash coverage. [Ghidra save/readback](infantry_water_action.ghidra.json)
+records the exact selected program, original spans and corrected comments.
+
+The [production profiles](foot_bridge_layer.profiles/) use the existing map
+observation owner and ordinary retail loading/commands. To reproduce Hills:
+
+```sh
+python -m tools.cargo_run --label bridge-response-release-UNIQUE -- build -p vera20k --release --bin vera20k
+python -m tools.map_observation --build-label bridge-response-release-UNIQUE \
+  --profile tools/spatial_oracle/foot_bridge_layer.profiles/hills-staging2400.json \
+  --contract "$(pwd)/src/app/diagnostics/tactical_capture/contract.v2.json" \
+  --cwd "$(pwd)" --output /absolute/new/observation-directory
+```
+
+Use a new label/output and the checkout's machine-local retail config. Retain
+`run.json`, profile, contract, config and exact `child-output` bytes. The prior
+61595 release receipts remain in this checkout's ignored
+`logs/bridge-response-stage264-validation`, with hashes in its receipt.json.
+Hills2400 places MTNK943/E1945 on the high deck at624 leptons, ground944/947 at208,
+and endpoint942 at624 offbridge; the GPU frame was inspected. AnyTown captures
+exercise real Infantry fire/latch/retaliation and MCV construction. Attackers were
+intercepted before yard damage, so those runs do not demonstrate the production
+yard-damage→recruit→Rescue/home-cleanup route. Supplied native receiver tests and
+Rust integration checks remain separately bounded.
+
+The whole-bridge goal remains paused and open. Required broader map/path authority,
+collapse/Tags/huts, full arcing geometry, complete Building scheduling and native
+visibility/GPU comparisons are not closed by these response/action dependencies.

@@ -322,7 +322,7 @@ fn arm_enter_retry(sim: &mut Simulation, rules: &RuleSet, timer: &mut MissionTim
 }
 
 /// The occupant's Unit class setter `vt+0x480(cell, 1)` (`0x00741970`,
-/// [`Simulation::set_unit_cell_destination`]), as `MissionRepairAndProduce`
+/// [`Simulation::set_unit_destination`]), as `MissionRepairAndProduce`
 /// releases a repaired unit (0x0044C473..C496: `Queue_Mission(Move)`,
 /// `Map[cell]`, then `vt+0x480`) and as the Foot tail of the depot order
 /// drives a contact onto the pad. Its Teleporter arm installs a Drive over a
@@ -338,7 +338,11 @@ fn issue_pad_move(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, 
         })
     });
     if !hover {
-        sim.set_unit_cell_destination(id, target, rules);
+        sim.set_unit_destination(
+            id,
+            crate::sim::components::NavTargetRef::cell(target.0, target.1),
+            rules,
+        );
         return;
     }
     // RESIDUAL (#689, no native Hover host): the Unit setter's Hover arm is
@@ -669,7 +673,11 @@ pub(crate) fn mission_enter_dispatch(sim: &mut Simulation, rules: &RuleSet, id: 
                 .and_then(|(x, y)| Some((u16::try_from(x).ok()?, u16::try_from(y).ok()?)));
             match parked {
                 Some(cell) => {
-                    sim.set_unit_cell_destination(id, cell, rules);
+                    sim.set_unit_destination(
+                        id,
+                        crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+                        rules,
+                    );
                     queue_mission(sim, id, MissionId::from_known(MissionType::Move), 0);
                 }
                 // 0x004D945C: Enter_Idle_Mode; the entry stays.

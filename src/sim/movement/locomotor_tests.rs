@@ -221,6 +221,8 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         crashing_sound: None,
         voice_crashing: None,
         sinking_sound: None,
+        enter_water_sound: None,
+        leave_water_sound: None,
         voice_sinking: None,
         impact_water_sound: None,
         impact_land_sound: None,

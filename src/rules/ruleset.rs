@@ -3196,11 +3196,11 @@ impl RuleSet {
         Ok(rules)
     }
 
-    /// Resolve the three sinking sound readers against the startup-selected
+    /// Resolve type sound readers against the startup-selected
     /// SOUNDMD registry. The processed projection retains only passes where
     /// each type existed, including the native current-ID retention order.
     /// Type defaults and Rules+208 start at -1; [AudioVisual] owns the latter.
-    pub(crate) fn bind_sinking_sounds(
+    pub(crate) fn bind_type_sound_references(
         &mut self,
         ini: &IniFile,
         sounds: &crate::rules::sound_ini::SoundRegistry,
@@ -3214,6 +3214,14 @@ impl RuleSet {
                 section.and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
             object.voice_sinking =
                 section.and_then(|section| sounds.read_rules_reference(section, "VoiceSinking"));
+            if object.category == crate::rules::object_type::ObjectCategory::Infantry {
+                // Infantry52440B then524447: missing/empty/unregistered names
+                // keep the prior signed ID across the existing processed passes.
+                object.enter_water_sound = section
+                    .and_then(|section| sounds.read_rules_reference(section, "EnterWaterSound"));
+                object.leave_water_sound = section
+                    .and_then(|section| sounds.read_rules_reference(section, "LeaveWaterSound"));
+            }
         }
     }
 

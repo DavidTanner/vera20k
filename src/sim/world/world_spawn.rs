@@ -27,7 +27,6 @@ use crate::sim::game_entity::{
     GameEntity, GeneratedTechnoInit, StructureUpgradeLink, TechnoConstructorInit,
 };
 use crate::sim::intern::InternedId;
-use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::production::{self, ProductionCategory, foundation_dimensions};
 use crate::sim::vision::MAX_SIGHT_RANGE;
 

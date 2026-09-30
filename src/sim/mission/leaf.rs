@@ -33,11 +33,20 @@ pub(crate) struct UnitMissionLeaf {
 pub(crate) struct InfantryMissionLeaf {
     firing_sequence_latch: u8,
     doing: i32,
+    /// Infantry+6E8: ctor517AC2 writes2. DoAction51D8B8 stores0 for
+    /// Water/Beach offbridge, otherwise1, before its action admission.
+    /// Native load retains the signed dword, including the initial sentinel.
+    #[serde(default = "initial_infantry_water_state")]
+    water_state: i32,
     /// Infantry+6E4: ctor517ABC clears it; Guard52167C and the
     /// approach/deploy request producers set it after locomotor Stop.
     /// Stop callback521B40 consumes it before requesting unforced Deploy27.
     #[serde(default)]
     pending_deploy: u8,
+}
+
+const fn initial_infantry_water_state() -> i32 {
+    2
 }
 
 /// Aircraft policy and readiness bytes.
@@ -165,6 +174,17 @@ impl MissionLeafState {
         Ok(())
     }
 
+    /// Original51D8B8 is a pre-admission store: even an unchanged or
+    /// noninterruptible action retains the new land/water state.
+    pub(crate) fn set_infantry_water_state(&mut self, on_land: bool) {
+        self.expect_infantry_mut().water_state = i32::from(on_land);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_infantry_water_state_fixture(&mut self, raw: i32) {
+        self.expect_infantry_mut().water_state = raw;
+    }
+
     #[cfg(test)]
     pub(crate) fn set_aircraft_transition_ready(&mut self, raw: u8) {
         self.expect_aircraft_mut().transition_ready_latch = raw;
@@ -256,6 +276,7 @@ impl MissionLeafState {
         Self::Infantry(InfantryMissionLeaf {
             firing_sequence_latch,
             doing,
+            water_state: initial_infantry_water_state(),
             pending_deploy: 0,
         })
     }
@@ -313,6 +334,7 @@ impl InfantryMissionLeaf {
         Self {
             firing_sequence_latch: 0,
             doing: -1,
+            water_state: initial_infantry_water_state(),
             pending_deploy: 0,
         }
     }
@@ -323,6 +345,10 @@ impl InfantryMissionLeaf {
 
     pub(crate) const fn doing(&self) -> i32 {
         self.doing
+    }
+
+    pub(crate) const fn water_state(&self) -> i32 {
+        self.water_state
     }
 
     pub(crate) const fn pending_deploy(&self) -> u8 {

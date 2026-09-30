@@ -86,6 +86,8 @@ pub(crate) mod motion_query;
 mod movement_blocked;
 pub(crate) mod movement_bridge;
 mod movement_commands;
+#[cfg(test)]
+pub(crate) use movement_commands::clear_destination_path_head;
 mod movement_occupancy;
 mod movement_path;
 mod movement_step;
@@ -158,15 +160,16 @@ pub use movement_commands::{
     stop_navigation_at_committed_head,
 };
 pub(crate) use movement_commands::{
-    can_accept_destination, clear_destination_path_head, issue_move_command_with_destination,
-    prepare_walk_destination, retain_committed_movement,
+    can_accept_destination, issue_move_command_with_destination, prepare_walk_destination,
+    retain_committed_movement,
 };
 #[cfg(test)]
 pub(crate) use movement_path::{
     path_search_used_zone_grid_marker, reset_path_search_used_zone_grid_marker,
 };
 pub(crate) use navcom::{
-    foot_stop_moving, nav_targets_same_receiver, set_destination_internal_cell, target_cell_coord, track_stop_moving,
+    foot_stop_moving, nav_targets_same_receiver, set_destination_internal_cell, target_cell_coord,
+    track_stop_moving,
 };
 // Legacy batch tick used by focused movement fixtures.
 #[cfg(test)]

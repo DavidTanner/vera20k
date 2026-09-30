@@ -28,7 +28,6 @@ use crate::sim::command::{
 };
 use crate::sim::components::OrderIntent;
 use crate::sim::docking::building_dock;
-use crate::sim::mission::concrete_effects::represented_assign_target;
 use crate::sim::mission::{DockTeardown, MissionType};
 use crate::sim::movement;
 use crate::sim::movement::jumpjet_movement;
@@ -1440,6 +1439,8 @@ impl Simulation {
                     DockTeardown::Depot,
                     Some(rules),
                 );
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*entity_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.order_intent = None;
                 }

@@ -651,12 +651,11 @@ impl Simulation {
                 });
             }
 
-            // Drive the plant animation (FireUp = Attack sequence).
+            // Native PerCell51A60D stops the Foot; it does not request Attack
+            // Doing4. The full C4 Stop/destination/ROF tail remains its own
+            // mechanism. Infantry presentation reads the retained Doing owner.
             if let Some(a) = self.substrate.entities.get_mut(attacker_id) {
                 a.movement_target = None;
-                if let Some(ref mut anim) = a.animation {
-                    anim.switch_to(crate::sim::animation::SequenceKind::Attack);
-                }
             }
 
             // SealPlaceBomb spatial sound. App-side dispatcher resolves to

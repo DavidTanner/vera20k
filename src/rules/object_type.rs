@@ -584,6 +584,11 @@ pub struct ObjectType {
     pub deploy_sound: Option<String>,
     /// Sound ID played when this unit undeploys.
     pub undeploy_sound: Option<String>,
+    /// InfantryType+EA4/+EA8: ctor523748/52374E sets both to -1.
+    /// ReadINI52440B/524447 reads EnterWaterSound/LeaveWaterSound through
+    /// ReadString128 and Voc7514D0. The fixed sound catalog owns resolution.
+    pub enter_water_sound: Option<String>,
+    pub leave_water_sound: Option<String>,
     /// `PackupSound=` (BuildingType `+0xE70`, read at `0x00460786` through
     /// `VocClass::FindByName`): played at a human player's building as its
     /// sale starts packing up (`BuildingClass::Sell` stage 1, `0x0044A85B`).
@@ -2111,6 +2116,8 @@ impl ObjectType {
             crush_sound: section.read_name("CrushSound", 0x80).map(str::to_owned),
             deploy_sound: section.read_name("DeploySound", 0x80).map(str::to_owned),
             undeploy_sound: section.read_name("UndeploySound", 0x80).map(str::to_owned),
+            enter_water_sound: None,
+            leave_water_sound: None,
             packup_sound: section.read_name("PackupSound", 0x80).map(str::to_owned),
             leave_transport_sound: section
                 .read_name("LeaveTransportSound", 0x80)

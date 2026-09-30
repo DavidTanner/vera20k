@@ -17,6 +17,11 @@
 //! stage_clock_receipt, ground_firing_receipt and ground_emission_receipt.
 //! The latter's supplied deck pose retains empty upper occupancy; it proves
 //! that controlled miss, not proper bridge-deck Unlimbo or damage admission.
+//! Water remap/ordering and native constructor/readers are executed by
+//! `tools/spatial_oracle/infantry_water_action.{py,json,meta.json}`: the original
+//! 151 controls plus fire/idle/death/raw-action controls and physical GHOST/TANY
+//! records. Audio requests are observed at the original disabled gate; wet
+//! placement and audible playback remain outside those receiver comparisons.
 //!
 //! Native execution: `tools/spatial_oracle/jumpjet_infantry_actions.py` runs
 //! the four action bodies on a Rocketeer flown by the real Jumpjet locomotor
@@ -145,8 +150,11 @@ impl Simulation {
     /// - A falling paradropper keeps its Paradrop (`0x0051D722..0x0051D733`).
     /// - Down needs `Crawls=` (`0x0051D77A..0x0051D78D`).
     /// - Water remap: an AmphibiousDestroyer type on a Water or Beach cell off
-    ///   a bridge (`0x0051D793..0x0051D8B8`) remaps and plays a wet sound,
-    ///   which Rust does not own. Its Doing is left untouched.
+    ///   a bridge (`0x0051D793..0x0051D8B8`) remaps the raw action. It reads
+    ///   the physical cell even on a bridge, requests a transition sound
+    ///   against the old `+0x6E8`, then stores the new water state before
+    ///   unchanged/noninterruptible admission. The constructor's sentinel2
+    ///   requests no sound on the first transition.
     /// - Airborne remap: Ready becomes Hover (`0x0051D8BF..0x0051D8EE`) while
     ///   high flying (vtable `+0x54`), off a bridge, when the type's Hover
     ///   record starts past frame 0.
@@ -175,8 +183,18 @@ impl Simulation {
         facts: &DoActionType<'_>,
         rules: &RuleSet,
     ) -> Result<bool, String> {
-        let kind = action_kind(requested)
-            .ok_or_else(|| format!("Do_Action request {requested} has no sequence"))?;
+        //51D701: -1 returns before the type record or water-state reads.
+        if requested == -1 {
+            return Ok(false);
+        }
+        if action_record(requested).is_none() {
+            return Err(format!(
+                "Do_Action request {requested} has no native action record"
+            ));
+        }
+        // Raw WetDie20/21 and Guard1 have native records even though the
+        // presentation vocabulary has no corresponding SequenceKind.
+        let kind = action_kind(requested);
         let sequences = rules.animation_sequence(facts.type_id);
         // The type's native records (Type `+0xE3C`), signed as the reader
         // stores them; a type without them answers from its draw layout.
@@ -184,8 +202,8 @@ impl Simulation {
         //0x51D70F: a zero requested-sequence count refuses before any state.
         let has_sequence = match record(requested) {
             Some(record) => record.frames_per_facing != 0,
-            None => sequences
-                .and_then(|set| set.get(&kind))
+            None => kind
+                .and_then(|kind| sequences.and_then(|set| set.get(&kind)))
                 .is_some_and(|sequence| sequence.frame_count != 0),
         };
         if !has_sequence {
@@ -208,18 +226,76 @@ impl Simulation {
         if requested == DO_DOWN && !facts.crawls {
             return Ok(false);
         }
-        if facts.movement_zone == MovementZone::AmphibiousDestroyer && !on_bridge {
-            let land = self
-                .resolved_terrain
-                .as_ref()
-                .and_then(|terrain| terrain.cell(actor.position.rx, actor.position.ry))
-                .map(|cell| cell.yr_cell_land_type);
-            //0x51D7C6: LandType Water(2)/Beach(6) remaps 0/2 -> 16 and writes +6E8.
-            if matches!(land, Some(2) | Some(6)) {
-                return Ok(false);
-            }
-        }
         let mut requested = requested;
+        if facts.movement_zone == MovementZone::AmphibiousDestroyer {
+            //51D7B0: virtual+1B8 is Abstract41BEA0, signed physical XYZ/256
+            // packed to two WORDs. Map5657A0 retains one canonical Cell,
+            // including Dummy land/type and stamping on an off-map lookup.
+            let physical = super::ground_pose::position_world_coord(&actor.position);
+            let packed = ((physical.x / 256) as i16, (physical.y / 256) as i16);
+            let land = if let Some(terrain) = self.resolved_terrain.as_ref() {
+                let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+                cells.land_type(cells.lookup(packed))
+            } else {
+                let dummy = self.effective_shared_cell_dummy();
+                dummy.stamp_coord(i32::from(packed.0), i32::from(packed.1));
+                dummy.land_type()
+            };
+            let on_land = !matches!(land, 2 | 6) || on_bridge;
+            if !on_land {
+                //51D7DE..51D83D: only these requested records remap. Native
+                // does not recheck the mapped record's count before admission.
+                requested = match requested {
+                    0 | 2 => DO_TREAD,
+                    3 | 6 => DO_SWIM,
+                    9 => 18,
+                    10 => 19,
+                    11 => 20,
+                    12 => 21,
+                    4 | 8 => 22,
+                    other => other,
+                };
+            }
+            let old_water_state = actor.mission_leaf.as_infantry().unwrap().water_state();
+            let sound_id =
+                rules
+                    .object(facts.type_id)
+                    .and_then(|object| match (old_water_state, on_land) {
+                        (0, true) => object.leave_water_sound.as_ref(),
+                        (1, false) => object.enter_water_sound.as_ref(),
+                        _ => None,
+                    });
+            if let Some(sound_id) = sound_id {
+                //51D842..51D8B3: PlayAt7509E0 uses Location and context0.
+                // Queue the original request before the6E8 store/admission;
+                // the app's audio gate and playback own audible output.
+                let location =
+                    super::ground_pose::object_location(actor, self.resolved_terrain.as_ref());
+                self.sound_events
+                    .push(crate::sim::world::SimSoundEvent::VocAt {
+                        sound_id: sound_id.clone(),
+                        audible_to: None,
+                        rx: actor.position.rx,
+                        ry: actor.position.ry,
+                        sub_x: actor.position.sub_x,
+                        sub_y: actor.position.sub_y,
+                        world_z_leptons: location.z,
+                    });
+            }
+            //51D8B8 precedes both unchanged and interruptibility refusals.
+            // Every other MovementZone retains its constructor/load state.
+            self.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .mission_leaf
+                .set_infantry_water_state(on_land);
+        }
+        let actor = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("retired Do_Action receiver")?;
         //0x51D8E0: the Hover record's start frame, signed.
         let hover_frames = match record(DO_HOVER) {
             Some(record) => record.start_frame > 0,
@@ -737,3 +813,7 @@ pub(super) struct DoActionType<'a> {
 #[cfg(test)]
 #[path = "infantry_action_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "infantry_water_action_tests.rs"]
+mod water_tests;
