@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn aircraft_nonzero_mode_skips_shroud_requirements_after_team_effects() {
+    fn aircraft_entry_answers_as_the_owner_after_the_team_arm() {
         for kind in [
             LocomotorKind::Fly,
             LocomotorKind::Jumpjet,
@@ -242,9 +242,10 @@ mod tests {
             object.locomotor = kind;
             entity.locomotor =
                 Some(crate::sim::movement::locomotor::LocomotorState::from_object_type(&object, 0));
-            // A shared dummy cannot satisfy mode0's all-real projection proof.
+            // The answer is the one Aircraft owner's; canonical lookups
+            // reproduce the shared-dummy stamps, so a dummy cell is readable.
             let probe = |sim: &mut Simulation| {
-                aircraft_effect_quotient(
+                aircraft_entry(
                     &EntryReadContext {
                         sim,
                         rules: &rules,
@@ -255,9 +256,12 @@ mod tests {
                 )
             };
             sim.session.game_mode_nonzero = false;
-            assert!(probe(&mut sim).unwrap_err().contains("shared-dummy"));
+            assert_eq!(
+                probe(&mut sim),
+                Ok(sim.aircraft_can_enter_cell(id, Cell::Dummy))
+            );
             sim.session.game_mode_nonzero = true;
-            assert_eq!(probe(&mut sim), Ok(false));
+            assert_eq!(probe(&mut sim), Ok(0));
             let script_id = sim.intern("REPAIR_WAYPOINT_EFFECT");
             sim.team_script_vm
                 .register_script(crate::sim::team_script_vm::TeamScriptDefinition {
@@ -298,7 +302,7 @@ mod tests {
                 object.locomotor = kind;
                 crate::sim::movement::locomotor::LocomotorState::from_object_type(&object, 0)
             });
-            let result = aircraft_effect_quotient(
+            let result = aircraft_entry(
                 &EntryReadContext {
                     sim: &sim,
                     rules: &rules,
@@ -1020,20 +1024,30 @@ impl Simulation {
     /// reaches that test, so the gap is a campaign's scripted aircraft sent or
     /// landing outside the playfield.
     pub(crate) fn aircraft_can_enter(&self, id: u64, cell: (i16, i16)) -> u8 {
+        let Some(terrain) = self.resolved_terrain.as_ref() else {
+            return 0;
+        };
+        let cell = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain).lookup(cell);
+        self.aircraft_can_enter_cell(id, cell)
+    }
+
+    /// [`Self::aircraft_can_enter`] on a cell its caller has already looked
+    /// up (the native argument is the `CellClass`).
+    pub(crate) fn aircraft_can_enter_cell(&self, id: u64, cell: Cell) -> u8 {
         let e = self.substrate.entities.get(id).unwrap();
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return 0;
         };
-        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
-        cells.lookup(cell);
         if self.session.game_mode_nonzero
             || !e.discovery.owned_by_current_house
             || e.is_mission_only()
         {
             return 0;
         }
+        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+        let coord = terrain.native_cell_coord(cell);
         let centre =
-            crate::sim::movement::target_cell_coord(cell.0 as u16, cell.1 as u16, Some(terrain));
+            crate::sim::movement::target_cell_coord(coord.0 as u16, coord.1 as u16, Some(terrain));
         let open = |cell: Cell| {
             Ok(match cell {
                 Cell::Real(index) => {
@@ -1132,7 +1146,7 @@ fn classify_entry(
         return building_impassable(live, e, obj, cell).map(|hard| if hard { 7 } else { 0 });
     }
     if e.category == EntityCategory::Aircraft {
-        return aircraft_effect_quotient(live, e, cell).map(|hard| if hard { 7 } else { 0 });
+        return aircraft_entry(live, e, cell);
     }
     classify_foot_entry(live, &EntryMover::new(live, id, e, obj), cell, args)
 }
@@ -1793,19 +1807,25 @@ fn classify_foot_entry<'a>(
     }
 }
 
-/// Aircraft4196B0's answer is ignored by the first487A3B pass (kind2 damage).
-/// Fly, Jumpjet, Rocket and Teleport have constantfalse+A0 (4B6630), so
-/// their neighbor pass skips admission. See LIVE_REPAIR_AIRCRAFT_RECEIVER.md
-/// and the eight original false-query cases in locomotor_at_coord.json.
-/// With no possible Team waypoint lookup, nonzero GameMode skips586360.
-/// In mode0, every potential586360 lookup must be real so both client-local
-/// predicate outcomes have the same gameplay effects. Never stamp a dummy
-/// during this proof: a missing slot makes that quotient inadmissible.
-fn aircraft_effect_quotient(
+/// `AircraftClass::Can_Enter_Cell` (`0x004196B0`) as an object's own +1AC
+/// inside the repair/damage occupant pass. The answer is the one owner's,
+/// [`Simulation::aircraft_can_enter_cell`]; the pass itself ignores it (an
+/// Aircraft's kind 2 always takes the first pass's damage at `0x00487A3B`,
+/// and the neighbour pass admits only Foot objects), so only the read's
+/// effects matter here. Canonical lookups reproduce the shared-dummy stamps.
+/// Two preconditions VERA cannot yet reproduce refuse with an error:
+/// - Fly, Jumpjet, Rocket and Teleport have the constant-false `+A0`
+///   (`0x004B6630`) the neighbour pass relies on; other families are
+///   unproved. See LIVE_REPAIR_AIRCRAFT_RECEIVER.md and
+///   locomotor_at_coord.json.
+/// - The Team arm (`0x004196BC..0x004196DE`) reaches `0x006EC300`'s
+///   waypoint read for a formed team on action 3, which the simulation
+///   cannot perform (no waypoint table).
+fn aircraft_entry(
     live: &EntryReadContext<'_>,
     entity: &GameEntity,
     cell: Cell,
-) -> Result<bool, String> {
+) -> Result<u8, String> {
     if entity.locomotor.as_ref().is_none_or(|l| {
         !matches!(
             l.kind,
@@ -1817,74 +1837,14 @@ fn aircraft_effect_quotient(
     }) {
         return Err("repair Aircraft requires a proved constant-false AtCoord family".into());
     }
-    //Team6EC300 only invokes waypoint578460 for action3 at the raw cursor.
-    //Do not use completed/refusal/advance_pending to skip that native read.
-    //Evidence: LIVE_REPAIR_AIRCRAFT_RECEIVER.md, Team query effects section.
-    if let Some((id, _)) = live.sim.team_script_vm.team_for_member(entity.stable_id()) {
-        let team = live
-            .sim
-            .team_script_vm
-            .team(id)
-            .ok_or("repair Aircraft missing Team state")?;
-        let script = live
-            .sim
-            .team_script_vm
-            .script(team.script_id())
-            .ok_or("repair Aircraft Team has unknown ScriptType")?;
-        if script
-            .actions
-            .get(team.cursor() as u32 as usize)
-            .is_some_and(|a| a.action_id == 3)
-        {
-            return Err(
-                "repair Aircraft Team action3 has unresolved waypoint lookup effects".into(),
-            );
-        }
+    if live
+        .sim
+        .team_script_vm
+        .member_step_reads_waypoint(entity.stable_id())
+    {
+        return Err("repair Aircraft Team action3 has unresolved waypoint lookup effects".into());
     }
-    //419764..41976B reads GameMode only AFTER4196C6's Team receiver.
-    //Nonzero jumps4197AA, bypassing Cell+48 and all586360 shroud effects.
-    //ScenarioSession owns the serialized/hashed native zero/nonzero mode.
-    if live.sim.session.game_mode_nonzero {
-        return Ok(false);
-    }
-    let Cell::Real(index) = cell else {
-        return Err("repair Aircraft shared-dummy receiver has observable lookup effects".into());
-    };
-    let c = &live.terrain().cells()[index];
-    let xy = [
-        i32::from(c.rx as i16) * 256 + 128,
-        i32::from(c.ry as i16) * 256 + 128,
-    ];
-    let z = crate::util::lepton::ground_height_leptons(c.level, c.slope_type, xy[0], xy[1])
-        .map_err(|e| format!("repair Aircraft ground height: {e:?}"))?;
-    // ABDE88 and ground89E7C0 have identical startup arithmetic (5617E0 /
-    //47B220). They share the existing native ground-height unit, not a new
-    //client-specific divisor. Signed quotient and word wrap are intentional.
-    let quotient = z / crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
-    let offset = quotient / 2 + i32::from(quotient & 1 != 0);
-    let p = (
-        (c.rx as i16).wrapping_sub(offset as i16),
-        (c.ry as i16).wrapping_sub(offset as i16),
-    );
-    let Some(first) = live.terrain().native_fixed_cell_index(p.0, p.1) else {
-        return Err("repair Aircraft projected shroud lookup can mutate shared dummy".into());
-    };
-    if quotient & 1 != 0 {
-        // When its bit8 is absent,5863FF calls481810(3) on the selected
-        //receiver. Require this lookup too, independent of the local viewer.
-        let first = &live.terrain().cells()[first];
-        if live
-            .terrain()
-            .native_fixed_cell_index(
-                (first.rx as i16).wrapping_add(1),
-                (first.ry as i16).wrapping_add(1),
-            )
-            .is_none()
-        {
-            return Err("repair Aircraft odd-height neighbor can mutate shared dummy".into());
-        }
-    }
-    Ok(false)
+    Ok(live.sim.aircraft_can_enter_cell(entity.stable_id(), cell))
 }
 
 fn terrain_impassable(
