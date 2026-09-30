@@ -1516,6 +1516,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         sim.substrate.entities.insert(blocker);
         sim.resolved_terrain = Some(terrain);
         sim.zone_grid = Some(zone_grid);
+        sim.install_fixture_path_grid(Some(&path_grid));
         sim
     };
 
@@ -1523,7 +1524,6 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     assert!(issue_stock_miner_drive_move(
         &mut ore_trip,
         &rules,
-        &path_grid,
         1,
         (3, 0),
     ));
@@ -1537,7 +1537,6 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     issue_move_if_idle(
         &mut refinery_return,
         Some(&rules),
-        &path_grid,
         1,
         (3, 0),
         SimFixed::from_num(128),

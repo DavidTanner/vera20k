@@ -490,8 +490,10 @@ pub(super) fn deliver_produced_object(
                 &crate::sim::mission::authority::EntityReadyInputProvider,
             );
         }
-        let path_grid = sim.path_grid_snapshot();
-        if let (Some(grid), Some((tx, ty))) = (path_grid.as_deref(), rally) {
+        // Without a published grid the rally move and its restore are skipped.
+        if let Some((tx, ty)) = rally
+            && sim.path_grid().is_some()
+        {
             let obj = rules.object(type_name);
             // The rally move is an ordinary move order, so a unit that leaves
             // the factory already promoted (InitialVeteran, cloning) drives to
@@ -509,7 +511,6 @@ pub(super) fn deliver_produced_object(
                 .and_then(|e| e.locomotor.as_ref())
                 .map(|l| l.speed_type);
             let _ = sim.issue_ground_move(
-                grid,
                 crate::sim::world::GroundMove {
                     entity_id: stable_id,
                     target: (tx, ty),

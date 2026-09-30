@@ -176,10 +176,10 @@ impl Simulation {
         rules: Option<&RuleSet>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
-        let path_grid = self.path_grid_snapshot();
-        let Some(grid) = path_grid.as_deref() else {
+        // Without a published grid no order resumes (air resumes included).
+        if self.path_grid().is_none() {
             return;
-        };
+        }
         // Collect (stable_id, goal) for entities that need to resume movement.
         let keys: Vec<u64> = self.substrate.entities.keys_sorted();
         let mut resumes: Vec<(u64, u16, u16)> = Vec::new();
@@ -237,7 +237,6 @@ impl Simulation {
                     self.issue_air_cell_destination(stable_id, (goal_rx, goal_ry), speed, rules);
             } else {
                 let _ = self.issue_ground_move(
-                    grid,
                     GroundMove {
                         entity_id: stable_id,
                         target: (goal_rx, goal_ry),
@@ -1098,10 +1097,10 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
-        let path_grid = self.path_grid_snapshot();
-        let Some(grid) = path_grid.as_deref() else {
+        // Without a published grid pursuit decides nothing this tick.
+        if self.path_grid().is_none() {
             return;
-        };
+        }
 
         // Phase 1: collect pursuit decisions (read-only on entities).
         // Two action kinds: issue a new path, or clear an existing one.
@@ -1304,7 +1303,6 @@ impl Simulation {
                         continue;
                     };
                     let _issued = self.issue_ground_move(
-                        grid,
                         GroundMove {
                             entity_id,
                             target: goal,

@@ -365,15 +365,10 @@ fn find_nearby_passable_for(
 /// production representation is the same pathed move `Command::Move` issues.
 /// Without a path grid (headless fixtures) nothing moves.
 fn issue_pathed_move(sim: &mut Simulation, rules: &RuleSet, id: u64, dest: (u16, u16)) {
-    let path_grid = sim.path_grid_snapshot();
-    let Some(grid) = path_grid.as_deref() else {
-        return;
-    };
     let Some(info) = sim.resolve_move_info(id, Some(rules)) else {
         return;
     };
     let _ = sim.issue_ground_move(
-        grid,
         GroundMove {
             entity_id: id,
             target: dest,

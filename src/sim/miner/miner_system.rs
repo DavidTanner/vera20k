@@ -21,7 +21,6 @@ use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, Re
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_map::{ZONE_INVALID, ZoneGrid};
 use crate::sim::world::{GroundMove, Simulation};
 use crate::util::fixed_math::SimFixed;
@@ -110,6 +109,7 @@ mod gsi_04_03b_tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::pathfinding::PathGrid;
 
     fn empty_rules() -> RuleSet {
         RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str("")).expect("empty rules")
@@ -295,15 +295,9 @@ mod gsi_04_03b_tests {
         }
 
         let grid = PathGrid::new(5, 5);
+        sim.install_fixture_path_grid(Some(&grid));
         let shared_head = (2, 2);
-        issue_move_if_idle(
-            &mut sim,
-            None,
-            &grid,
-            1,
-            shared_head,
-            SimFixed::from_num(128),
-        );
+        issue_move_if_idle(&mut sim, None, 1, shared_head, SimFixed::from_num(128));
         assert!(
             sim.substrate
                 .entities
@@ -335,14 +329,7 @@ mod gsi_04_03b_tests {
             2,
         ));
 
-        issue_move_if_idle(
-            &mut sim,
-            None,
-            &grid,
-            2,
-            shared_head,
-            SimFixed::from_num(128),
-        );
+        issue_move_if_idle(&mut sim, None, 2, shared_head, SimFixed::from_num(128));
         sim.process_ground_locomotor_for_test(2, None, Some(&grid), None)
             .expect("the second miner Process observes the existing reservation");
 
@@ -753,11 +740,8 @@ fn assign_archive_destination(
     id: u64,
     archive: crate::sim::combat::TargetKind,
 ) {
-    let path_grid = sim.path_grid_snapshot();
-    if let (crate::sim::combat::TargetKind::Cell(x, y), Some(grid)) =
-        (archive, path_grid.as_deref())
-    {
-        let _ = issue_stock_miner_drive_move(sim, rules, grid, id, (x, y));
+    if let crate::sim::combat::TargetKind::Cell(x, y) = archive {
+        let _ = issue_stock_miner_drive_move(sim, rules, id, (x, y));
     }
 }
 
@@ -1167,12 +1151,10 @@ fn handle_going_to_idle(
         harvest_looking(sim, rules, overlay_registry, snap);
         return false;
     }
-    let path_grid = sim.path_grid_snapshot();
-    if let Some(grid) = path_grid.as_deref()
-        && let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
-        && let Some(exit) = building_nearby_passable_cell(sim, rules, refinery_sid, grid)
+    if let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
+        && let Some(exit) = building_nearby_passable_cell(sim, rules, refinery_sid)
     {
-        issue_move_if_idle(sim, Some(rules), grid, snap.entity_id, exit, snap.speed);
+        issue_move_if_idle(sim, Some(rules), snap.entity_id, exit, snap.speed);
     }
     queue_guard_from_harvest(sim, snap);
     true
@@ -1237,8 +1219,8 @@ fn building_nearby_passable_cell(
     sim: &Simulation,
     rules: &RuleSet,
     building_sid: u64,
-    grid: &PathGrid,
 ) -> Option<(u16, u16)> {
+    let grid = sim.path_grid()?;
     let building = sim.substrate.entities.get(building_sid)?;
     let coord = object_get_coords(
         building,
@@ -1651,10 +1633,12 @@ fn neighbour_reachable(
 pub(crate) fn issue_stock_miner_drive_move(
     sim: &mut Simulation,
     rules: &RuleSet,
-    grid: &PathGrid,
     entity_id: u64,
     target: (u16, u16),
 ) -> bool {
+    let Some(grid) = sim.path_grid() else {
+        return false;
+    };
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return false;
     }
@@ -1668,7 +1652,6 @@ pub(crate) fn issue_stock_miner_drive_move(
     };
 
     let issued = sim.issue_ground_move(
-        grid,
         GroundMove {
             entity_id,
             target,
@@ -1710,11 +1693,13 @@ pub(crate) fn issue_stock_miner_drive_move(
 pub(crate) fn issue_move_if_idle(
     sim: &mut Simulation,
     rules: Option<&RuleSet>,
-    grid: &PathGrid,
     entity_id: u64,
     target: (u16, u16),
     speed: SimFixed,
 ) {
+    let Some(grid) = sim.path_grid() else {
+        return;
+    };
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return;
     }
@@ -1733,7 +1718,6 @@ pub(crate) fn issue_move_if_idle(
     });
     if !already {
         let _ = sim.issue_ground_move(
-            grid,
             GroundMove {
                 entity_id,
                 target,
@@ -1844,6 +1828,7 @@ mod harvest_scan_dispatch_tests {
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::mission::MissionType;
+    use crate::sim::pathfinding::PathGrid;
 
     const MINER_ID: u64 = 1;
 

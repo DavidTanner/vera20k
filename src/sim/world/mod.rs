@@ -1124,8 +1124,9 @@ pub struct Simulation {
     /// Built from terrain data; rebuilt when buildings or bridges change.
     #[serde(skip)]
     pub(crate) zone_grid: Option<ZoneGrid>,
-    /// Canonical dynamic navigation projection. Arc snapshots let one master
-    /// frame pin its entry view while the sim publishes the next projection.
+    /// Canonical dynamic navigation projection. Every reader reads it at its
+    /// point of use; a republish replaces the `Arc` without mutating readers'
+    /// shared copies.
     #[serde(skip)]
     pub(crate) path_grid: Option<Arc<PathGrid>>,
     /// Derived cache: the marked-structure movement cells last published into
@@ -4815,7 +4816,9 @@ impl Simulation {
         self.path_grid.as_deref()
     }
 
-    /// Pin the current navigation projection across a mutable simulation frame.
+    /// Clone the current projection's `Arc` only to split borrows at a point
+    /// of use (the grid read alongside a `&mut self` call). Take it where the
+    /// grid is read, never to carry a view across a republish.
     pub fn path_grid_snapshot(&self) -> Option<Arc<PathGrid>> {
         self.path_grid.clone()
     }

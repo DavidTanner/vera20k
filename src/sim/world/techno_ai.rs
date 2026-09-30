@@ -35,7 +35,8 @@ use crate::sim::miner::MinerConfig;
 use crate::sim::mission::MissionType;
 
 /// Non-rules world context the mission handler bodies dispatched from the
-/// host need (grids and per-tick config the spine already owns). Empty in
+/// host need (overlay types and per-tick config the spine already owns;
+/// handlers read navigation from the Simulation). Empty in
 /// barebones fixtures — handlers that need an absent piece degrade the same
 /// way the legacy global phases did with `None` arguments.
 #[derive(Default, Clone, Copy)]

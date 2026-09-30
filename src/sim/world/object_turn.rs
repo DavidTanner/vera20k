@@ -95,46 +95,6 @@ impl GroundLocomotorOutcome {
     }
 }
 
-/// Re-enter the pending movement pass for the same mover of this Process (see
-/// `MoverReentry`), with the Simulation's current grids and state.
-fn reenter_pending_pass(
-    sim: &mut Simulation,
-    pending: &mut movement::movement_tick::PendingMovementPass,
-    reentry: movement::movement_tick::MoverReentry,
-    rules: Option<&RuleSet>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    timing: movement::MovementConfig,
-) {
-    let current_grid = sim.path_grid_snapshot();
-    pending.reenter_mover(
-        reentry,
-        &mut sim.substrate.entities,
-        current_grid.as_deref(),
-        sim.zone_grid.as_ref(),
-        sim.resolved_terrain.as_ref(),
-        &sim.terrain_costs,
-        &sim.house_alliances,
-        &mut sim.substrate.occupancy,
-        &mut sim.substrate.cell_occupation,
-        &mut sim.substrate.raw_cell_occupation,
-        &mut sim.scenario_rng,
-        sim.session.tick,
-        sim.session.binary_frame,
-        sim.overlay_grid.as_ref(),
-        overlay_registry,
-        sim.playfield_bounds,
-        &sim.terrain_speed_config,
-        timing.close_enough,
-        timing.path_delay_ticks,
-        timing.blockage_path_delay_ticks,
-        &mut sim.interner,
-        rules,
-        Some(&sim.type_handles),
-        &mut sim.movement_pass_cache,
-        &sim.houses,
-    );
-}
-
 #[derive(Default)]
 pub(super) struct ObjectTurnOutcome {
     movement: movement::MovementTickStats,
@@ -291,9 +251,8 @@ impl Simulation {
                     .run_foot_path_request(&request, held, rules, overlay_registry)
                     .map_err(|cause| frame_error(sim, cause))?;
                 if outcome == movement::FootPathOutcome::Resume {
-                    reenter_pending_pass(
+                    pending_movement.reenter_mover(
                         sim,
-                        &mut pending_movement,
                         movement::movement_tick::MoverReentry::FootPath(Box::new(request)),
                         rules,
                         overlay_registry,
@@ -379,9 +338,8 @@ impl Simulation {
             {
                 break;
             }
-            reenter_pending_pass(
+            pending_movement.reenter_mover(
                 sim,
-                &mut pending_movement,
                 movement::movement_tick::MoverReentry::AfterTrackEnd(invocation.entity_id),
                 rules,
                 overlay_registry,

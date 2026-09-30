@@ -640,10 +640,6 @@ impl Simulation {
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
-        // Each command reads the canonical grid current at its application;
-        // an earlier command in the same tail may have republished it.
-        let path_grid = self.path_grid_snapshot();
-        let path_grid = path_grid.as_deref();
         match cmd {
             Command::Select { entity_ids, .. } => self.apply_selection_snapshot(entity_ids, rules),
             Command::Move {
@@ -712,9 +708,7 @@ impl Simulation {
                             true,
                             dist_cells,
                         ) {
-                            let Some(grid) = path_grid else { return false };
                             return self.issue_ground_move(
-                                grid,
                                 GroundMove {
                                     entity_id: *entity_id,
                                     target: (*target_rx, *target_ry),
@@ -749,9 +743,7 @@ impl Simulation {
                     }
                     ok
                 } else {
-                    let Some(grid) = path_grid else { return false };
                     self.issue_ground_move(
-                        grid,
                         GroundMove {
                             entity_id: *entity_id,
                             target: (*target_rx, *target_ry),
@@ -1142,9 +1134,7 @@ impl Simulation {
                     }
                     ok
                 } else {
-                    let Some(grid) = path_grid else { return false };
                     self.issue_ground_move(
-                        grid,
                         GroundMove {
                             entity_id: *entity_id,
                             target: (*target_rx, *target_ry),
@@ -1570,21 +1560,18 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *entity_id,
-                            target: (dock_rx, dock_ry),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: None,
-                        },
-                        Some(rules),
-                    );
-                }
+                self.issue_ground_move(
+                    GroundMove {
+                        entity_id: *entity_id,
+                        target: (dock_rx, dock_ry),
+                        speed,
+                        queue: false,
+                        speed_type: Some(speed_type),
+                        owner_blocks: true,
+                        object_destination: None,
+                    },
+                    Some(rules),
+                );
                 true
             }
             Command::EnterTransport {
@@ -1623,7 +1610,7 @@ impl Simulation {
                         &cargo,
                         rules,
                         &self.houses,
-                        path_grid,
+                        self.path_grid(),
                     ) {
                         Some(())
                     } else {
@@ -1674,21 +1661,18 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *passenger_id,
-                            target: (trx, try_),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: None,
-                        },
-                        Some(rules),
-                    );
-                }
+                self.issue_ground_move(
+                    GroundMove {
+                        entity_id: *passenger_id,
+                        target: (trx, try_),
+                        speed,
+                        queue: false,
+                        speed_type: Some(speed_type),
+                        owner_blocks: true,
+                        object_destination: None,
+                    },
+                    Some(rules),
+                );
                 true
             }
             Command::UnloadPassengers { transport_id } => {
@@ -1841,11 +1825,10 @@ impl Simulation {
                     // Clear in-progress movement so the miner re-paths.
                     e.movement_target = None;
                 }
-                if let (Some(rules), Some(grid)) = (rules, path_grid) {
+                if let Some(rules) = rules {
                     let _ = crate::sim::miner::miner_system::issue_stock_miner_drive_move(
                         self,
                         rules,
-                        grid,
                         *entity_id,
                         (*target_rx, *target_ry),
                     );
@@ -1947,21 +1930,18 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *attacker_id,
-                            target: (trx, try_),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: None,
-                        },
-                        Some(rules),
-                    );
-                }
+                self.issue_ground_move(
+                    GroundMove {
+                        entity_id: *attacker_id,
+                        target: (trx, try_),
+                        speed,
+                        queue: false,
+                        speed_type: Some(speed_type),
+                        owner_blocks: true,
+                        object_destination: None,
+                    },
+                    Some(rules),
+                );
                 true
             }
             Command::CaptureBuilding {
@@ -2074,26 +2054,23 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot);
-                if let Some(grid) = path_grid {
-                    self.issue_ground_move(
-                        grid,
-                        GroundMove {
-                            entity_id: *engineer_id,
-                            target: (trx, try_),
-                            speed,
-                            queue: false,
-                            speed_type: Some(speed_type),
-                            owner_blocks: true,
-                            object_destination: Some((
-                                crate::sim::components::NavTargetRef::Building {
-                                    id: *target_building_id,
-                                },
-                                target_coord,
-                            )),
-                        },
-                        Some(rules),
-                    );
-                }
+                self.issue_ground_move(
+                    GroundMove {
+                        entity_id: *engineer_id,
+                        target: (trx, try_),
+                        speed,
+                        queue: false,
+                        speed_type: Some(speed_type),
+                        owner_blocks: true,
+                        object_destination: Some((
+                            crate::sim::components::NavTargetRef::Building {
+                                id: *target_building_id,
+                            },
+                            target_coord,
+                        )),
+                    },
+                    Some(rules),
+                );
                 true
             }
             Command::LaunchSuperWeapon {
@@ -2319,21 +2296,18 @@ impl Simulation {
                         .as_ref()
                         .map(|i| i.speed_type)
                         .unwrap_or(SpeedType::Track);
-                    if let Some(grid) = path_grid {
-                        self.issue_ground_move(
-                            grid,
-                            GroundMove {
-                                entity_id: *unit_id,
-                                target: (brx, bry),
-                                speed,
-                                queue: false,
-                                speed_type: Some(speed_type),
-                                owner_blocks: true,
-                                object_destination: None,
-                            },
-                            Some(rules),
-                        );
-                    }
+                    self.issue_ground_move(
+                        GroundMove {
+                            entity_id: *unit_id,
+                            target: (brx, bry),
+                            speed,
+                            queue: false,
+                            speed_type: Some(speed_type),
+                            owner_blocks: true,
+                            object_destination: None,
+                        },
+                        Some(rules),
+                    );
                 }
                 true
             }

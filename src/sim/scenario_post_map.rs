@@ -62,7 +62,7 @@ impl Simulation {
         // this startup pass uses.
         self.scenario_normal_lighting = input.normal_lighting;
         // Runtime rebuilds use this same sim-owned publication seam. Crate
-        // placement below pins the newly published path snapshot.
+        // placement below reads the newly published canonical grid.
         let mut navigation_published = self.rebuild_dynamic_navigation(input.rules);
 
         #[cfg(test)]

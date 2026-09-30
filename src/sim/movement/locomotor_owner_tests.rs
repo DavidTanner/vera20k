@@ -310,12 +310,12 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         let mut grid = PathGrid::test_all_blocked(16, 16);
         grid.set_blocked(8, 8, false);
         grid.set_blocked(12, 8, false);
+        sim.path_grid = Some(std::sync::Arc::new(grid));
 
         assert!(
             !crate::sim::miner::miner_system::issue_stock_miner_drive_move(
                 &mut sim,
                 &rules,
-                &grid,
                 1,
                 (12, 8),
             )
