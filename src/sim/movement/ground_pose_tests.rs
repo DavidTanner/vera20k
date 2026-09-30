@@ -959,12 +959,9 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
     entity.position.sub_x = SimFixed::from_num(85);
     entity.position.sub_y = SimFixed::from_num(153);
     let path = vec![(3, 3), (3, 2), (4, 1), (5, 1)];
-    let drive_track::DriveTrackDecision::Select(plan) = drive_track::plan_drive_track_from_path(
-        0,
-        (0, -1),
-        Some((1, -1)),
-        kind == LocomotorKind::Ship,
-    ) else {
+    let drive_track::DriveTrackDecision::Select(plan) =
+        drive_track::plan_drive_track_from_path(0, (0, -1), Some((1, -1)))
+    else {
         panic!("native N -> NE curve");
     };
     assert_eq!(plan.nodes, 2);

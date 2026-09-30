@@ -76,19 +76,12 @@ pub(super) fn select_fresh_progress<'a>(
     ship: &'a mut Option<ShipLocomotionRuntime>,
     turn_index: usize,
 ) -> Option<&'a mut crate::sim::components::TrackProgress> {
-    use super::track_process::TrackFamily;
-    let (progress, family) = match kind {
-        LocomotorKind::Drive => {
-            let state = drive.get_or_insert_with(Default::default);
-            (&mut state.track, TrackFamily::Drive)
-        }
-        LocomotorKind::Ship => {
-            let state = ship.get_or_insert_with(Default::default);
-            (&mut state.track, TrackFamily::Ship)
-        }
+    let progress = match kind {
+        LocomotorKind::Drive => &mut drive.get_or_insert_with(Default::default).track,
+        LocomotorKind::Ship => &mut ship.get_or_insert_with(Default::default).track,
         _ => return None,
     };
-    assert!(progress.select_fresh(family, (turn_index / 8) as u8, (turn_index % 8) as u8));
+    assert!(progress.select_fresh((turn_index / 8) as u8, (turn_index % 8) as u8));
     Some(progress)
 }
 

@@ -698,11 +698,7 @@ impl Simulation {
         //4B4016..4B4034: the turn table, with the from*9 fallback; +58 and
         //+60 = 0 are written now, before the crate question and the second
         //query, so a second-stage stop or retry keeps the new selector.
-        let turn_index = super::drive_track::fresh_turn_index(
-            direction,
-            second as u8,
-            call.family == TrackFamily::Ship,
-        );
+        let turn_index = super::drive_track::fresh_turn_index(direction, second as u8);
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             let kind = actor
                 .locomotor
