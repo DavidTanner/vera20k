@@ -108,6 +108,7 @@ pub(crate) use lifecycle::{
 #[cfg(test)]
 pub(crate) use lifecycle::{LifecycleTestEvent, RevealFailure};
 pub(crate) use load_object_lifecycle::LoadObjectLifecycle;
+pub(crate) use object_entry::FootEntryReceiver;
 pub(crate) use logic_vector::LogicVector;
 pub use substrate::EnterOrderCounter;
 pub(crate) use substrate::ObjectSubstrate;

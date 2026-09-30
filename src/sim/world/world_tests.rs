@@ -5408,13 +5408,16 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
     let mut sim = Simulation::new();
     // Square, as Map Size gives the Foot precheck its native projection.
     let mut terrain = water_terrain(9, 9);
+    // Retail [Clear] reads Float=0% and FloatBeach=0%: the land-type table
+    // (0x0089EA40) holds a row for every SpeedType, and the Unit +1AC the
+    // search calls closes the island through the zero Float row (0x0073FAB5).
     let land_costs = SpeedCostProfile {
         foot: Some(100),
         track: Some(100),
         wheel: Some(100),
-        float: None,
+        float: Some(0),
         amphibious: Some(100),
-        float_beach: None,
+        float_beach: Some(0),
         hover: Some(100),
     };
     for y in 0..=5 {
@@ -7953,7 +7956,7 @@ fn longest_stationary_run_while_ordered(series: &[(bool, (u16, u16))]) -> usize 
 /// `InfantryClass__MarkCellOccupancy @ 0x005217C0` writes `1 << GetSubCell` into
 /// the sub-cell bits of the same byte. So infantry never refuses a Drive curve
 /// by occupation, and a tank ordered through them keeps moving: it crushes an
-/// enemy and scatters a friendly out of the cell. A refusal on mere unit
+/// enemy, and its route bends around a friendly (code 6). A refusal on mere unit
 /// presence would stall the tank one refusal per tick, forever, because nothing
 /// downstream ever clears it.
 #[test]
@@ -8027,13 +8030,22 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
         );
 
         // Arrival alone does not prove the exclusion was exercised: a tank that
-        // routed politely around the man never asked about his cell. So the
-        // tank must go THROUGH the blocker's own cell — measured entry at tick
-        // 44 with a friendly, which has scattered, and 33 with an enemy.
-        assert!(
+        // routed politely around the man never asked about his cell. So with
+        // an enemy the tank must go THROUGH the blocker's own cell: the Unit
+        // +1AC the search calls latches the crush in its enemy arm and the
+        // tail (`0x0073FCF6`) answers 0 for an unoccupied vehicle bit.
+        //
+        // A friendly takes the allied stationary arm instead (`0x0073F865..
+        // 8C0`, running code 6), which `AStar_compute_edge_cost 0x00429830`
+        // prices at 8x (`0x0081870C`). A diagonal step costs what a straight
+        // one does, so the route bends around his cell at no extra length and
+        // the tank never meets him; the crush latch lives only in the enemy
+        // arm, so being a crusher earns no discount on an ally.
+        assert_eq!(
             entered_blocker_cell.is_some(),
-            "the crusher never entered the infantry's cell (10,10) \
-             (enemy_infantry={enemy_infantry}), so the exclusion was never exercised: {}",
+            enemy_infantry,
+            "the crusher entered the infantry's cell (10,10) only with an enemy \
+             (enemy_infantry={enemy_infantry}): {}",
             stacking_motion_state(&sim, tank)
         );
 
@@ -8160,17 +8172,54 @@ fn turning_mover_with_an_occupied_endpoint_still_makes_progress() {
 /// finishes its own move while a peer is still routed through the cell it
 /// stopped on.
 ///
+/// The parked cell is the one gap in a rock wall down column 12. The search
+/// calls the Unit +1AC (`0x00429F54`), which answers 6 for the parked ally
+/// (`0x0073F865..8C0`), priced 8x (`0x0081870C`); in open ground the route
+/// would bend around that cell at no extra length and never meet him.
+///
 /// SEEN TO FAIL (2026-09-27): with `scatter_blocked_track_cell` returning
 /// early, the blocker never leaves (12,8) and the mover stands 357 ticks short
 /// of its destination.
 #[test]
 fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
-    let Some((mut sim, rules, grid)) = stacking_world(24) else {
+    let Some((mut sim, rules, _)) = stacking_world(24) else {
         return;
     };
 
     const PARKED_AT: (u16, u16) = (12, 8);
     const DESTINATION: (u16, u16) = (18, 8);
+    // Retail [Rock]: 0% for every SpeedType, zone impassable.
+    {
+        use crate::map::resolved_terrain::zone_class;
+        use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+        let rock = SpeedCostProfile {
+            foot: Some(0),
+            track: Some(0),
+            wheel: Some(0),
+            float: Some(0),
+            amphibious: Some(0),
+            float_beach: Some(0),
+            hover: Some(0),
+        };
+        let terrain = sim.resolved_terrain.as_mut().expect("stacking terrain");
+        for ry in (0..24).filter(|&ry| ry != PARKED_AT.1) {
+            let cell = terrain.cell_mut(PARKED_AT.0, ry).expect("wall cell");
+            cell.land_type = LandType::Rock.as_index();
+            cell.yr_cell_land_type = LandType::Rock.as_index();
+            cell.terrain_class = TerrainClass::Rock;
+            cell.speed_costs = rock;
+            cell.zone_type = zone_class::IMPASSABLE;
+            cell.ground_walk_blocked = true;
+            cell.base_ground_walk_blocked = true;
+            cell.base_build_blocked = true;
+            cell.base_land_type = LandType::Rock.as_index();
+            cell.base_yr_cell_land_type = LandType::Rock.as_index();
+            cell.base_terrain_class = TerrainClass::Rock;
+            cell.base_speed_costs = rock;
+        }
+    }
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    let grid = PathGrid::clone(&sim.path_grid_snapshot().expect("navigation rebuilt"));
 
     let mover = sim
         .spawn_object("MTNK", "Americans", 6, 8, 64, &rules)
@@ -8253,6 +8302,108 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
         arrived_at.is_some(),
         "the mover never reached its ordered destination {DESTINATION:?}: {}",
         stacking_motion_state(&sim, mover)
+    );
+}
+
+/// The route a Unit's first Find_Path (`0x004D3920`) installs for a Move to
+/// `goal`, on the retail stacking map with `building` placed at `origin`.
+/// `contact` gives the tank a live radio contact with the building first.
+/// Foundations are art keys, so the retail artmd.ini is installed too.
+fn unit_route_beside_building(
+    building: &str,
+    origin: (u16, u16),
+    goal: (u16, u16),
+    contact: bool,
+) -> Option<Vec<(u16, u16)>> {
+    let ini = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini")?;
+    let art = crate::rules::retail_ini_fixture::retail_ini("artmd.ini")?;
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("retail rules");
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    let (mut sim, rules, _) = stacking_navigation_world(rules, 24);
+    let building_id = sim
+        .spawn_object(building, "Americans", origin.0, origin.1, 0, &rules)
+        .expect("building spawns");
+    let tank = sim
+        .spawn_object("MTNK", "Americans", 4, 7, 64, &rules)
+        .expect("tank spawns");
+    if contact {
+        let e = sim.substrate.entities.get_mut(tank).unwrap();
+        e.radio_contacts.insert(building_id);
+    }
+    let grid = PathGrid::clone(&sim.path_grid_snapshot().expect("navigation built"));
+    let cmd = cmd_envelope(
+        &sim,
+        "Americans",
+        1,
+        Command::Move {
+            entity_id: tank,
+            target_rx: goal.0,
+            target_ry: goal.1,
+            queue: false,
+        },
+    );
+    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
+    Some(
+        sim.substrate
+            .entities
+            .get(tank)
+            .and_then(|m| m.movement_target.as_ref())
+            .map(|t| t.path.clone())
+            .unwrap_or_default(),
+    )
+}
+
+/// Find_Path's search calls the Unit's own +1AC for every neighbour
+/// (`0x00429F54`). A building the Unit holds radio contact with is skipped
+/// when `0x00458A00` answers false (`0x0073F57C..5A2`): retail GAWEAP
+/// (Foundation=5x3, Bib=yes, NumberImpassableRows=1) then opens every column
+/// east of its first. Without contact the allied building answers 7, so the
+/// goal is refused and the route stays off the factory (only the east Bib
+/// column is ever open).
+#[test]
+fn unit_search_enters_a_contacted_factory_east_of_its_impassable_rows() {
+    let origin = (10, 6);
+    let goal = (12, 7);
+    let on_factory = |&(x, y): &(u16, u16)| (10..=13).contains(&x) && (6..=8).contains(&y);
+    let Some(apart) = unit_route_beside_building("GAWEAP", origin, goal, false) else {
+        return;
+    };
+    assert!(
+        !apart.iter().any(on_factory),
+        "no contact: the route stays off the factory: {apart:?}"
+    );
+    let contacted = unit_route_beside_building("GAWEAP", origin, goal, true).unwrap();
+    assert_eq!(
+        contacted.last(),
+        Some(&goal),
+        "contact: the route reaches the goal inside the factory: {contacted:?}"
+    );
+    assert!(
+        !contacted
+            .iter()
+            .any(|&(x, y)| x == origin.0 && (6..=8).contains(&y)),
+        "the impassable west row still blocks: {contacted:?}"
+    );
+}
+
+/// The UnitRepair/Bunker arm (`0x0073F74B..774`) needs no contact: retail
+/// GADEPT (Foundation=3x3, UnitRepair=yes, NumberImpassableRows=1) opens its
+/// pad east of the first column to any Unit's search, so a Move onto the pad
+/// centre routes onto it and around the closed west column.
+#[test]
+fn unit_search_enters_a_repair_pad_east_of_its_impassable_rows() {
+    let origin = (12, 6);
+    let goal = (13, 7);
+    let Some(route) = unit_route_beside_building("GADEPT", origin, goal, false) else {
+        return;
+    };
+    assert_eq!(route.last(), Some(&goal), "route onto the pad: {route:?}");
+    assert!(
+        !route
+            .iter()
+            .any(|&(x, y)| x == origin.0 && (6..=8).contains(&y)),
+        "the impassable west row still blocks: {route:?}"
     );
 }
 

@@ -987,26 +987,8 @@ impl Simulation {
         {
             return Err("Foot entry requires a live Infantry or Unit receiver".into());
         }
-        if self.resolved_terrain.is_none() {
-            return Err("Foot entry requires map cells".into());
-        }
-        #[cfg(test)]
-        if let Some(code) = crate::sim::movement::fresh_oracle_seam::supplied_can_enter(
-            self.resolved_terrain
-                .as_ref()
-                .expect("checked above")
-                .native_cell_coord(cell),
-            args.direction,
-            args.height,
-        ) {
-            return Ok(code);
-        }
-        let live = EntryReadContext {
-            sim: self,
-            rules,
-            registry,
-        };
-        classify_entry(&live, CellObjectMember::Entity(id), cell, args)
+        self.foot_entry_receiver(id, rules, registry)?
+            .can_enter(cell, args)
     }
 
     /// `AircraftClass::Can_Enter_Cell` (`0x004196B0`) for a live aircraft,
@@ -1103,6 +1085,135 @@ fn classify_entry(
     if e.category == EntityCategory::Aircraft {
         return aircraft_effect_quotient(live, e, cell).map(|hard| if hard { 7 } else { 0 });
     }
+    classify_foot_entry(live, &EntryMover::new(live, id, e, obj), cell, args)
+}
+
+/// The receiver's own facts one Foot +1AC call reads: its type, weapon slot 0
+/// and crusher state. Nothing in them changes while a Find_Path search runs
+/// (Mark0 has already lifted the mover and the search writes no object), so
+/// the search resolves them once instead of per neighbour.
+struct EntryMover<'a> {
+    id: u64,
+    e: &'a GameEntity,
+    obj: &'a ObjectType,
+    weapon0: Option<&'a crate::rules::weapon_type::WeaponType>,
+    crusher: bool,
+    /// Answers of `friendly(mover owner, house)` already asked, and blocker
+    /// types already resolved by name; the alliance graph and rules are fixed
+    /// for the receiver's lifetime.
+    allies: std::cell::RefCell<Vec<(InternedId, bool)>>,
+    types: std::cell::RefCell<Vec<(InternedId, &'a ObjectType)>>,
+}
+
+impl<'a> EntryMover<'a> {
+    fn new(live: &EntryReadContext<'a>, id: u64, e: &'a GameEntity, obj: &'a ObjectType) -> Self {
+        let weapon0 = combat_weapon::weapon_for_index(obj, e.veterancy(), 0)
+            .and_then(|(name, _)| live.rules.weapon(name));
+        let crusher = obj.crusher
+            || (e.veterancy() >= 100 && obj.veteran_crusher)
+            || (e.veterancy() >= 200 && obj.elite_crusher);
+        Self {
+            id,
+            e,
+            obj,
+            weapon0,
+            crusher,
+            allies: std::cell::RefCell::default(),
+            types: std::cell::RefCell::default(),
+        }
+    }
+
+    fn object_type(&self, live: &EntryReadContext<'a>, id: InternedId) -> Option<&'a ObjectType> {
+        if let Some(&(_, kind)) = self.types.borrow().iter().find(|(t, _)| *t == id) {
+            return Some(kind);
+        }
+        let kind = live.rules.object(live.sim.interner.resolve(id))?;
+        self.types.borrow_mut().push((id, kind));
+        Some(kind)
+    }
+
+    fn friendly(&self, live: &EntryReadContext<'_>, house: InternedId) -> bool {
+        if let Some(&(_, answer)) = self.allies.borrow().iter().find(|(h, _)| *h == house) {
+            return answer;
+        }
+        let answer = friendly(live, self.e.owner(), house);
+        self.allies.borrow_mut().push((house, answer));
+        answer
+    }
+}
+
+/// One live Foot receiver's +1AC with its own facts resolved once. Find_Path's
+/// search (`0x00429F54`) asks it for every neighbour; a single query goes
+/// through `Simulation::foot_can_enter`, which builds one per call.
+pub(crate) struct FootEntryReceiver<'a> {
+    live: EntryReadContext<'a>,
+    mover: EntryMover<'a>,
+}
+
+impl FootEntryReceiver<'_> {
+    pub(crate) fn can_enter(
+        &self,
+        cell: Cell,
+        args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
+    ) -> Result<u8, String> {
+        #[cfg(test)]
+        if let Some(code) = crate::sim::movement::fresh_oracle_seam::supplied_can_enter(
+            self.live.coord(cell),
+            args.direction,
+            args.height,
+        ) {
+            return Ok(code);
+        }
+        classify_foot_entry(&self.live, &self.mover, cell, args)
+    }
+}
+
+impl Simulation {
+    /// The live Infantry or Unit receiver `id`, for repeated +1AC queries
+    /// against one unchanged world (a Find_Path search).
+    pub(crate) fn foot_entry_receiver<'a>(
+        &'a self,
+        id: u64,
+        rules: &'a RuleSet,
+        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<FootEntryReceiver<'a>, String> {
+        if self.resolved_terrain.is_none() {
+            return Err("Foot entry requires map cells".into());
+        }
+        let live = EntryReadContext {
+            sim: self,
+            rules,
+            registry,
+        };
+        let e = self
+            .substrate
+            .entities
+            .get(id)
+            .filter(|e| matches!(e.category, EntityCategory::Infantry | EntityCategory::Unit))
+            .ok_or("Foot entry requires a live Infantry or Unit receiver")?;
+        let obj = rules
+            .object(self.interner.resolve(e.type_ref()))
+            .ok_or("repair admission missing ObjectType")?;
+        let mover = EntryMover::new(&live, id, e, obj);
+        Ok(FootEntryReceiver { live, mover })
+    }
+}
+
+/// Infantry 0x0051BF90 / Unit 0x0073F0A0 for a resolved Foot receiver.
+fn classify_foot_entry<'a>(
+    live: &EntryReadContext<'a>,
+    mover: &EntryMover<'a>,
+    cell: Cell,
+    args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
+) -> Result<u8, String> {
+    let &EntryMover {
+        id,
+        e,
+        obj,
+        weapon0,
+        crusher,
+        ..
+    } = mover;
     let infantry = e.category == EntityCategory::Infantry;
     let (mut bits, mut owner) = raw(live, cell, MovementLayer::Ground);
     let initial_level = live.level(cell);
@@ -1218,11 +1329,6 @@ fn classify_entry(
         return Ok(7);
     }
     let p = live.coord(cell);
-    let weapon0 = combat_weapon::weapon_for_index(obj, e.veterancy(), 0)
-        .and_then(|(name, _)| live.rules.weapon(name));
-    let crusher = obj.crusher
-        || (e.veterancy() >= 100 && obj.veteran_crusher)
-        || (e.veterancy() >= 200 && obj.elite_crusher);
     let capability = CrushCapability::new(crusher, obj.omni_crusher);
     let mut entry_result: u8 = 0;
     let mut stationary_infantry = 0u32;
@@ -1258,7 +1364,7 @@ fn classify_entry(
                 .overlay_grid
                 .as_ref()
                 .and_then(|g| g.cell(p.0 as u16, p.1 as u16).wall_owner)
-                .is_some_and(|o| friendly(live, e.owner(), o));
+                .is_some_and(|o| mover.friendly(live, o));
             if !infantry
                 && ((flags.crushable && crusher)
                     || obj.movement_zone == crate::rules::locomotor_type::MovementZone::CrusherAll)
@@ -1279,11 +1385,14 @@ fn classify_entry(
             }
         }
     }
-    let first_building = live.sim.substrate.occupancy.first_building_on_layer(
-        p.0 as u16,
-        p.1 as u16,
-        MovementLayer::Ground,
-    );
+    //47C520 is asked only inside the Building arms; defer the list walk.
+    let first_building = || {
+        live.sim.substrate.occupancy.first_building_on_layer(
+            p.0 as u16,
+            p.1 as u16,
+            MovementLayer::Ground,
+        )
+    };
     let members = live.sim.substrate.occupancy.cell_objects(
         p.0 as u16,
         p.1 as u16,
@@ -1331,9 +1440,8 @@ fn classify_entry(
             .entities
             .get(blocker_id)
             .ok_or("repair list has retired blocker")?;
-        let bt = live
-            .rules
-            .object(live.sim.interner.resolve(b.type_ref()))
+        let bt = mover
+            .object_type(live, b.type_ref())
             .ok_or("repair list missing blocker type")?;
         if infantry && e.slave.owner() == Some(blocker_id) {
             let query = crate::sim::slave_deposit::SlaveDepositQuery {
@@ -1350,7 +1458,7 @@ fn classify_entry(
                 continue;
             }
         }
-        let allied = friendly(live, e.owner(), b.owner());
+        let allied = mover.friendly(live, b.owner());
         let mission = if infantry {
             e.mission.current().known()
         } else {
@@ -1388,7 +1496,7 @@ fn classify_entry(
                     crate::sim::pathfinding::cell_entry::LiveVehicleBuildingEntry {
                         mover_category:e.category,
                         branch:crate::sim::pathfinding::cell_entry::VehicleBuildingEntryBranch::RadioContact { mover_has_contact:e.has_live_contact_with(blocker_id) },
-                        checked_building_id:blocker_id,candidate_building_id:first_building,
+                        checked_building_id:blocker_id,candidate_building_id:first_building(),
                         candidate_x:p.0 as u16,building_origin_x:b.position.rx,
                         number_impassable_rows:bt.number_impassable_rows,is_unit_repair:bt.unit_repair,is_bunker:bt.bunker,
                         bunker_occupied:b.bunker_occupant.is_some(),
@@ -1444,11 +1552,11 @@ fn classify_entry(
                 continue;
             }
             if !infantry {
-                if (bt.unit_repair||bt.bunker)&&first_building==Some(blocker_id)
+                if (bt.unit_repair||bt.bunker)&&first_building()==Some(blocker_id)
                     && matches!(crate::sim::pathfinding::cell_entry::decide_live_vehicle_building_entry(
                         crate::sim::pathfinding::cell_entry::LiveVehicleBuildingEntry {
                             mover_category:e.category,branch:crate::sim::pathfinding::cell_entry::VehicleBuildingEntryBranch::UnitRepairOrBunker,
-                            checked_building_id:blocker_id,candidate_building_id:first_building,
+                            checked_building_id:blocker_id,candidate_building_id:first_building(),
                             candidate_x:p.0 as u16,building_origin_x:b.position.rx,
                             number_impassable_rows:bt.number_impassable_rows,is_unit_repair:bt.unit_repair,is_bunker:bt.bunker,
                             bunker_occupied:b.bunker_occupant.is_some(),
@@ -1564,7 +1672,7 @@ fn classify_entry(
             return Ok(2);
         }
         if let Some(owner) = owner {
-            if friendly(live, e.owner(), owner) {
+            if mover.friendly(live, owner) {
                 if bits & 0x1c == 0x1c && entry_result < 2 {
                     entry_result = if stationary_infantry == 3 { 6 } else { 2 };
                 }
@@ -1602,7 +1710,7 @@ fn classify_entry(
                         crate::sim::pathfinding::cell_entry::unit_tail_is_crushable_by(
                             unit,
                             capability,
-                            friendly(live, e.owner(), unit.owner()),
+                            mover.friendly(live, unit.owner()),
                             live.sim.session.binary_frame,
                         )
                     })
@@ -1616,7 +1724,7 @@ fn classify_entry(
         if bits & 0x3f == 0 {
             return Ok(0);
         }
-        if vehicle_occupied || owner.is_some_and(|owner| friendly(live, e.owner(), owner)) {
+        if vehicle_occupied || owner.is_some_and(|owner| mover.friendly(live, owner)) {
             return Ok(2);
         }
         if !crusher {
