@@ -771,7 +771,7 @@ fn walk_cell_order_defers_queue_publication_and_first_head_motion() {
     );
     assert_eq!(entity.navigation.path_replay.reference_cell, Some((10, 10)));
     assert_eq!(
-        entity.foot_speed.applied_fraction,
+        entity.foot_speed.applied_fraction(),
         crate::util::fixed_math::SIM_ONE
     );
     walk_frame(&mut sim, &rules);

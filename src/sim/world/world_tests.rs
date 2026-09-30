@@ -477,7 +477,8 @@ Rate=120
             .get_or_insert_with(crate::sim::components::DriveLocomotionRuntime::default);
         drive.destination = Some(ahead);
         drive.head_to = Some(ahead);
-        boat.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
+        boat.foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
     }
 
     // The movement step of a full tick would rewrite the drive runtime from
@@ -521,7 +522,7 @@ Rate=120
         .get_mut(boat_id)
         .expect("boat")
         .foot_speed
-        .applied_fraction = crate::util::fixed_math::SIM_ZERO;
+        .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
     sim.spawn_wakes_for_frame(&rules);
     let count_after = sim
         .logic_order()
@@ -5955,7 +5956,7 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 .drive_locomotion
                 .get_or_insert_with(DriveLocomotionRuntime::default);
             drive.target_speed_fraction = SimFixed::lit("0.4");
-            entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+            entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
         }
 
         assert!(sim.apply_command(
@@ -5977,7 +5978,7 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 .expect("Drive vehicle remains live");
             let drive = entity.drive_locomotion.as_ref().expect("drive state");
             assert_eq!(drive.target_speed_fraction, SimFixed::lit("0.4"));
-            assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
+            assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
             let movement = entity
                 .movement_target
                 .as_ref()
@@ -6000,7 +6001,7 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
             SIM_ONE
         };
         assert_eq!(drive.target_speed_fraction, SIM_ONE);
-        assert_eq!(entity.foot_speed.applied_fraction, expected_current);
+        assert_eq!(entity.foot_speed.applied_fraction(), expected_current);
         let raw_stage = (movement_speed / SimFixed::from_num(15)).to_num::<i32>();
         let expected_owner = (SimFixed::from_num(raw_stage) * expected_current).to_num::<i32>();
         assert_eq!(
@@ -6507,7 +6508,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
         assert!(ship.track.turn_index >= 0);
         ship.target_speed_fraction = SIM_ONE;
-        entity.foot_speed.applied_fraction = SIM_HALF;
+        entity.foot_speed.set_speed_fraction(SIM_HALF);
         (
             ship.head_to.expect("Ship curve has a committed head"),
             ship.track,
@@ -6535,7 +6536,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
     assert_eq!(ship.destination, None);
     assert_eq!(ship.head_to, Some(committed_head));
     assert_eq!(ship.target_speed_fraction, SimFixed::lit("0.3"));
-    assert_eq!(stopped.foot_speed.applied_fraction, SIM_HALF);
+    assert_eq!(stopped.foot_speed.applied_fraction(), SIM_HALF);
 }
 
 #[test]

@@ -2,6 +2,8 @@
 
 These are supplied CPU frames, not command/gameplay or callback admission proofs.
 All executed functions use original bytes, including the common base constructor.
+Setter-only rows carry the requested and stored doubles as hex bits, since the
+reference JSON cannot hold NaN or infinity.
 """
 from pathlib import Path
 import struct
@@ -54,16 +56,41 @@ def witness(family, requested):
     return dict(input=dict(family=family, requested=requested), output=result)
 
 
+def setter_bits(requested):
+    """The setter alone on one requested double, as bits."""
+    n = OriginalCursor('drive')
+    n.seed(-1, -1, False, 0)
+    u = n.uc
+    u.mem_write(FOOT, bytes([0xA5]) * 0x800)
+    u.reg_write(UC_X86_REG_ECX, FOOT)
+    u.mem_write(SP, dwords(RET_MAGIC) + struct.pack('<Q', requested))
+    run_checked(u, 0x4D3710, RET_MAGIC, count=40)
+    assert u.reg_read(UC_X86_REG_ESP) == SP + 12
+    applied = struct.unpack('<Q', u.mem_read(FOOT + 0x578, 8))[0]
+    return dict(input=dict(family='setter', requested_bits=f'{requested:016x}'),
+                output=dict(applied_bits=f'{applied:016x}'))
+
+
+# Signed zeros, NaNs, infinities, denormals and the neighbours of 1.0.
+SETTER_EDGE_BITS = (
+    0x0000000000000000, 0x8000000000000000, 0x7FF8000000000000, 0xFFF8000000000000,
+    0x7FF0000000000001, 0x7FF0000000000000, 0xFFF0000000000000, 0x0000000000000001,
+    0x8000000000000001, 0x0010000000000000, 0x3FEFFFFFFFFFFFFF, 0x3FF0000000000000,
+    0x3FF0000000000001,
+)
+
+
 def generate():
     return [witness(family, requested) for family in ('drive', 'ship')
-            for requested in (-0.5, 0.0, 0.25, 0.5, 1.0, 1.25)]
+            for requested in (-0.5, 0.0, 0.25, 0.5, 1.0, 1.25)] + [
+        setter_bits(requested) for requested in SETTER_EDGE_BITS]
 
 
 def metadata():
     return provenance(
-        scope='Foot applied-fraction finite clamp and preservation across complete Drive/Ship construction and successful Drive END',
+        scope='Foot applied-fraction clamp, including non-finite and signed-zero requests, and preservation across complete Drive/Ship construction and successful Drive END',
         assumptions=[
-            'Supplied disjoint owner/class memory, finite exactly representable fractions and startup x87 state',
+            'Supplied disjoint owner/class memory, finite exactly representable fractions (setter-only rows: any double) and startup x87 state',
             'Constructor global frame/null values use mapped image state; their runtime producers are excluded',
             'END uses supplied owner-link/stash; caller release, active-slot replacement and callback admission are excluded',
         ], substitutions=['No code patches, hooks returning call results, or omitted constructor callees'],

@@ -261,9 +261,7 @@ impl Simulation {
 
     pub(super) fn track_survives(&self, id: u64) -> bool {
         self.substrate.entities.get(id).is_some_and(|entity| {
-            entity.lifecycle.object_alive
-                && !entity.lifecycle.in_limbo
-                && !entity.is_falling_down()
+            entity.lifecycle.object_alive && !entity.lifecycle.in_limbo && !entity.is_falling_down()
         })
     }
 
@@ -949,7 +947,7 @@ impl Simulation {
             return Ok(false);
         };
         let candidate = super::track_head::offset_head(head(entity, family), direction);
-        let saved_speed = entity.foot_speed.applied_fraction;
+        let saved_speed = entity.foot_speed.applied_fraction();
         //4B1BA1..4B1C3E: Unit+1AC(cell(head + delta), dir, Object 0x5F5F00,
         //0, 1), with no Mark bracket.
         let target = super::foot_path::coord_cell(candidate);
@@ -1054,7 +1052,7 @@ impl Simulation {
         // precedes Apply1, then the saved owner fraction and live queue shift.
         self.track_apply_occupation(id, family, true);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.foot_speed.applied_fraction = saved_speed;
+            entity.foot_speed.set_speed_fraction(saved_speed);
             super::path_markers::consume_path_replay(&mut entity.navigation.path_replay, 1);
         }
         Ok(true)
@@ -1149,7 +1147,9 @@ impl Simulation {
         // Normal Foot4D8538 invokes +544(0.0); Unit dispatch4D3710
         // writes Foot+578. The true-return NavQueue arm skips this setter.
         if !ended_drive && entity.navigation.nav_queue.is_empty() && queued_cell.is_none() {
-            entity.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
+            entity
+                .foot_speed
+                .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
         }
         let saved_base_return = ended_drive || queued_cell.is_some();
         let has_destination = entity.navigation.nav_com.is_some();

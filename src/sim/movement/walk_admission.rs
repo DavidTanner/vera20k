@@ -139,7 +139,7 @@ impl Simulation {
                 super::walk_head::finish_fresh_head(actor, self.session.binary_frame);
             } else {
                 //75BCC0..75BCD5: failed subcell selection only zeros speed.
-                actor.foot_speed.applied_fraction = SIM_ZERO;
+                actor.foot_speed.set_speed_fraction(SIM_ZERO);
                 actor.navigation.path_runtime.clear_scold_latch();
             }
             return Ok(None);
@@ -209,7 +209,7 @@ impl Simulation {
                     .entities
                     .get_mut(id)
                     .ok_or("retired Walk stop owner")?;
-                actor.foot_speed.applied_fraction = SIM_ZERO;
+                actor.foot_speed.set_speed_fraction(SIM_ZERO);
                 if let Some(loco) = actor.locomotor.as_mut() {
                     loco.stop_walk();
                 }
@@ -446,7 +446,7 @@ impl Simulation {
                 loco.set_step_head(None);
                 loco.stop_walk();
             }
-            actor.foot_speed.applied_fraction = SIM_ZERO;
+            actor.foot_speed.set_speed_fraction(SIM_ZERO);
             self.set_walk_class_null_destination(id, rules);
             self.clear_walk_admission_path(id)?;
             if let Some(actor) = self.substrate.entities.get_mut(id) {

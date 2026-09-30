@@ -110,7 +110,7 @@ pub(crate) fn owner_current_speed(
 ) -> i32 {
     owner_current_speed_from_fraction(
         adjusted_speed(entity, object, veteran_speed),
-        entity.foot_speed.applied_fraction,
+        entity.foot_speed.applied_fraction(),
     )
 }
 

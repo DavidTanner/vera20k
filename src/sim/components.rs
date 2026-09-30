@@ -435,7 +435,10 @@ impl FootPathQueue {
 /// Original executable witnesses: tools/spatial_oracle/foot_speed_owner.json.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FootSpeedState {
-    pub applied_fraction: SimFixed,
+    /// Foot `+0x578`. Only `FootClass::SetSpeedFraction @ 0x004D3710` writes
+    /// it: [`Self::set_speed_fraction`] for a fixed-point request and
+    /// [`Self::set_speed_fraction_native_bits`] for a native double.
+    applied_fraction: SimFixed,
     /// Foot+580, initialized to exactly 1.0 at4D3292/4D329B. Retain the
     /// native bits: pickup refuses even the immediate neighbors of 1.0.
     /// Every speed query reads it (GetCurrentSpeed multiplies it in).
@@ -463,10 +466,47 @@ impl FootSpeedState {
         self.crate_multiplier
     }
 
+    /// Foot `+0x578`, the applied speed fraction.
+    pub(crate) fn applied_fraction(&self) -> SimFixed {
+        self.applied_fraction
+    }
+
+    /// `FootClass::SetSpeedFraction @ 0x004D3710` for a fixed-point request:
+    /// at least 1 stores 1, at most 0 stores 0, and anything between is
+    /// stored as given ([`Self::stored_speed_fraction`]).
+    pub(crate) fn set_speed_fraction(&mut self, fraction: SimFixed) {
+        self.applied_fraction = fraction.clamp(
+            crate::util::fixed_math::SIM_ZERO,
+            crate::util::fixed_math::SIM_ONE,
+        );
+    }
+
+    /// The double `FootClass::SetSpeedFraction @ 0x004D3710` stores at Foot
+    /// `+0x578` for a requested one: at least 1.0, +infinity included, stores
+    /// 1.0 (`0x004D3714..0x004D3735`); at most 0, negative zero included, or
+    /// NaN stores +0 (`0x004D373C..0x004D375D`); anything between is stored
+    /// as given. Original executable witnesses, signed zeros, NaNs,
+    /// infinities and denormals included:
+    /// `tools/spatial_oracle/foot_speed_owner.json`.
+    pub(crate) fn stored_speed_fraction(
+        requested: crate::util::native_x87::NativeF64Bits,
+    ) -> crate::util::native_x87::NativeF64Bits {
+        use crate::util::native_x87::NativeF64Bits;
+        const INFINITY_BITS: u64 = 0x7ff0_0000_0000_0000;
+        let bits = requested.bits();
+        if bits >> 63 != 0 || bits == 0 || bits > INFINITY_BITS {
+            // A negative value, a zero of either sign, or NaN.
+            NativeF64Bits::POSITIVE_ZERO
+        } else if bits >= NativeF64Bits::ONE.bits() {
+            NativeF64Bits::ONE
+        } else {
+            requested
+        }
+    }
+
     /// `FootClass::SetSpeedFraction @ 0x004D3710` for a locomotor that computes
-    /// its fraction as a native double (the Jumpjet's `Process`): at least 1.0,
-    /// +infinity included, stores 1.0 (`0x004D3714`); at most 0, or NaN, stores
-    /// 0 (`0x004D373C`); anything between is stored as given.
+    /// its fraction as a native double (the Jumpjet's `Process`): the double
+    /// [`Self::stored_speed_fraction`] keeps.
     ///
     /// The stored double becomes `SimFixed` by truncation, from its bits, so
     /// the fraction's readers compare against the truncated thresholds
@@ -479,18 +519,14 @@ impl FootSpeedState {
     /// above 0.8 for any C up to 13107; k/C exactly 0.1 or 0.8 divides with
     /// truncation to just below it, as native reads it.
     pub(crate) fn set_speed_fraction_native_bits(&mut self, bits: u64) {
-        const ONE_BITS: u64 = 0x3ff0_0000_0000_0000;
-        const INFINITY_BITS: u64 = 0x7ff0_0000_0000_0000;
-        let negative = bits >> 63 != 0;
-        let exponent = ((bits >> 52) & 0x7ff) as i32;
-        let mantissa = bits & ((1 << 52) - 1);
-        self.applied_fraction = if negative || bits << 1 == 0 || bits > INFINITY_BITS {
-            // A negative value, a zero of either sign, or NaN.
-            crate::util::fixed_math::SIM_ZERO
-        } else if bits >= ONE_BITS {
+        use crate::util::native_x87::NativeF64Bits;
+        let stored = Self::stored_speed_fraction(NativeF64Bits::from_bits(bits)).bits();
+        self.applied_fraction = if stored == NativeF64Bits::ONE.bits() {
             crate::util::fixed_math::SIM_ONE
         } else {
-            // 0 < value < 1: floor(value * 2^16) from the significand.
+            // 0 <= value < 1: floor(value * 2^16) from the significand.
+            let exponent = ((stored >> 52) & 0x7ff) as i32;
+            let mantissa = stored & ((1 << 52) - 1);
             let significand = if exponent == 0 {
                 mantissa
             } else {
@@ -1035,6 +1071,43 @@ mod tests {
         let owner_speed = FootSpeedState::default();
         assert_eq!(owner_speed.applied_fraction, SIM_ZERO);
         assert_eq!(drive.track.residual, 0);
+    }
+
+    /// `FootClass::SetSpeedFraction @ 0x004D3710` executed on the original
+    /// bytes: the double it stores for each requested one, signed zeros,
+    /// NaNs, infinities and denormals included, and that double's truncation
+    /// to `SimFixed`.
+    #[test]
+    fn speed_fraction_setter_matches_the_original() {
+        use crate::util::native_x87::NativeF64Bits;
+        let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/foot_speed_owner.json"
+        ))
+        .unwrap();
+        let bits = |row: &serde_json::Value, hex: &str, float: &str| {
+            row[hex].as_str().map_or_else(
+                || row[float].as_f64().unwrap().to_bits(),
+                |hex| u64::from_str_radix(hex, 16).unwrap(),
+            )
+        };
+        let mut setter_rows = 0;
+        for case in &cases {
+            let requested = bits(&case["input"], "requested_bits", "requested");
+            let stored = bits(&case["output"], "applied_bits", "applied");
+            let requested_double = NativeF64Bits::from_bits(requested);
+            assert_eq!(
+                FootSpeedState::stored_speed_fraction(requested_double).bits(),
+                stored,
+                "{case}"
+            );
+            let mut speed = FootSpeedState::default();
+            speed.set_speed_fraction_native_bits(requested);
+            // The stored double lies in [0, 1], so scaling by 2^16 is exact.
+            let truncated = SimFixed::from_bits((f64::from_bits(stored) * 65536.0) as i32);
+            assert_eq!(speed.applied_fraction(), truncated, "{case}");
+            setter_rows += usize::from(case["input"]["family"] == "setter");
+        }
+        assert_eq!((cases.len(), setter_rows), (25, 13));
     }
 
     #[test]

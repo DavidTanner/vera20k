@@ -269,7 +269,7 @@ fn a_native_speed_fraction_is_clamped_and_truncated() {
     let mut speed = crate::sim::components::FootSpeedState::default();
     let mut set = |bits: u64| {
         speed.set_speed_fraction_native_bits(bits);
-        speed.applied_fraction.to_bits()
+        speed.applied_fraction().to_bits()
     };
     assert_eq!(set(1.0f64.to_bits()), 1 << 16);
     assert_eq!(set(1.5f64.to_bits()), 1 << 16);
