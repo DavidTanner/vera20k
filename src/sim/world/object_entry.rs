@@ -987,6 +987,18 @@ impl Simulation {
         {
             return Err("Foot entry requires a live Infantry or Unit receiver".into());
         }
+        // An installed oracle seam answers before the receiver's type is
+        // resolved, as it did before the search shared this receiver.
+        #[cfg(test)]
+        if let Some(terrain) = self.resolved_terrain.as_ref()
+            && let Some(code) = crate::sim::movement::fresh_oracle_seam::supplied_can_enter(
+                terrain.native_cell_coord(cell),
+                args.direction,
+                args.height,
+            )
+        {
+            return Ok(code);
+        }
         self.foot_entry_receiver(id, rules, registry)?
             .can_enter(cell, args)
     }
