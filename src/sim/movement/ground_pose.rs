@@ -86,7 +86,9 @@ pub(crate) fn position_world_xy(position: &Position) -> [i32; 2] {
 
 /// Read retained ObjectClass coordinates without resampling changed terrain.
 /// Legacy positions without an exact Z use their stored signed level until a
-/// real coordinate writer supplies raw leptons.
+/// real coordinate writer supplies raw leptons. That level omits the slope, a
+/// Hover or Air height and a parachute's height, so a reader of an object's
+/// Z asks [`object_location`] or [`object_get_coords`] instead.
 pub(crate) fn position_world_coord(position: &Position) -> DriveCoord {
     let [x, y] = position_world_xy(position);
     DriveCoord {
@@ -176,49 +178,63 @@ pub(crate) fn building_render_order_parts(
     )
 }
 
-/// Object virtual+48: Unit/Infantry/Aircraft5F65A0 copy retained XYZ;
-/// Building447AC0 adds the foundation-center XY offset and keeps raw Z.
-/// This is not Building+4C's optional dock/bunker approach-coordinate owner.
-pub(crate) fn object_center_coord(
-    entity: &crate::sim::game_entity::GameEntity,
-    object_type: &crate::rules::object_type::ObjectType,
-) -> DriveCoord {
-    object_center_coord_with_foundation(entity, &object_type.foundation)
+/// `BuildingClass::GetCoords @ 0x00447AC0`'s XY: a building's Location plus
+/// `(dimension - 1) * 128` leptons along each axis of its foundation. The
+/// Location is its north-west cell's centre, so the result is the
+/// foundation's geometric centre. Callers placing a building that does not
+/// exist yet start from that cell's centre.
+pub(crate) fn foundation_center_xy(location: [i32; 2], foundation: &str) -> [i32; 2] {
+    let (width, height) = crate::rules::foundation::foundation_dimensions(foundation);
+    [
+        location[0].wrapping_add(i32::from(width).wrapping_mul(128).wrapping_sub(128)),
+        location[1].wrapping_add(i32::from(height).wrapping_mul(128).wrapping_sub(128)),
+    ]
 }
 
-/// The same447AC0 owner for lifecycle callers retaining the immutable
-/// foundation key on the entity when a RuleSet is not present.
-pub(crate) fn object_center_coord_with_foundation(
-    entity: &crate::sim::game_entity::GameEntity,
-    foundation: &str,
-) -> DriveCoord {
-    let mut coord = position_world_coord(&entity.position);
+/// The XY of an object's GetCoords (virtual +0x48). A Unit, Infantry or
+/// Aircraft returns its Location (`ObjectClass::GetCoords @ 0x005F65A0`). A
+/// building returns its foundation centre ([`foundation_center_xy`]), read
+/// from the foundation its type stamped on it at construction.
+pub(crate) fn object_center_xy(entity: &crate::sim::game_entity::GameEntity) -> [i32; 2] {
+    let location = position_world_xy(&entity.position);
     if entity.category == crate::map::entities::EntityCategory::Structure {
-        let (width, height) = crate::rules::foundation::foundation_dimensions(foundation);
-        coord.x = coord
-            .x
-            .wrapping_add(i32::from(width).wrapping_mul(128).wrapping_sub(128));
-        coord.y = coord
-            .y
-            .wrapping_add(i32::from(height).wrapping_mul(128).wrapping_sub(128));
+        foundation_center_xy(location, &entity.foundation)
+    } else {
+        location
     }
-    coord
 }
 
-/// Object virtual+48 (GetCoords) in full: [`object_center_coord`]'s XY (the
-/// raw Location when the type is unknown) at the object's world Z
+/// An object's Location (`ObjectClass+0x9C..+0xA4`) at its world Z
 /// ([`object_world_z_leptons`]).
-pub(crate) fn object_get_coords(
+pub(crate) fn object_location(
     entity: &crate::sim::game_entity::GameEntity,
-    object_type: Option<&crate::rules::object_type::ObjectType>,
     terrain: Option<&ResolvedTerrainGrid>,
 ) -> DriveCoord {
-    let mut coord = object_type.map_or_else(
-        || position_world_coord(&entity.position),
-        |object_type| object_center_coord(entity, object_type),
-    );
-    coord.z = object_world_z_leptons(entity, terrain);
-    coord
+    let [x, y] = position_world_xy(&entity.position);
+    DriveCoord {
+        x,
+        y,
+        z: object_world_z_leptons(entity, terrain),
+    }
+}
+
+/// An object's GetCoords (virtual +0x48) in full: [`object_center_xy`] at the
+/// object's world Z ([`object_world_z_leptons`]). A building keeps its
+/// Location's Z. That Z is the floor at its Location: its Unlimbo coordinate
+/// passes through `BuildingTypeClass` virtual +0x6C (`0x00464A70`), which
+/// replaces the Z with `0x00578080`'s ground height at that XY.
+///
+/// This is not a building's +0x4C approach coordinate for docks and bunkers.
+pub(crate) fn object_get_coords(
+    entity: &crate::sim::game_entity::GameEntity,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> DriveCoord {
+    let [x, y] = object_center_xy(entity);
+    DriveCoord {
+        x,
+        y,
+        z: object_world_z_leptons(entity, terrain),
+    }
 }
 
 /// Sample the live surface at full world XY. A PathGrid supplies the same

@@ -168,8 +168,6 @@ impl Simulation {
                 entity,
                 &target,
                 &self.substrate.entities,
-                Some(rules),
-                &self.interner,
             )
             .expect("live approach Target")
         } else {
@@ -189,7 +187,7 @@ impl Simulation {
             //4181F6..41828E: Nav+48 and GetFLH(weapon0, additive zero XYZ).
             // Reuse the muzzle owner, including its documented tilt residual.
             let destination = self
-                .fire_location_center(nav, rules)
+                .fire_location_center(nav)
                 .expect("live approach NavCom");
             crate::util::direction_tables::facing16_between(
                 [origin.x, origin.y],

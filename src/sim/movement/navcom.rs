@@ -155,14 +155,15 @@ pub(crate) fn building_dock_cell(
     entities: &EntityStore,
     building_id: u64,
     requester: Option<u64>,
+    terrain: Option<&ResolvedTerrainGrid>,
     rules: &crate::rules::ruleset::RuleSet,
     interner: &crate::sim::intern::StringInterner,
 ) -> Option<(u16, u16)> {
     let building = entities.get(building_id)?;
     let object = rules.object(interner.resolve(building.type_ref()))?;
     let coord = super::building_coordinate::dock_coordinate(
-        super::ground_pose::position_world_coord(&building.position),
-        super::ground_pose::object_center_coord(building, object),
+        super::ground_pose::object_location(building, terrain),
+        super::ground_pose::object_get_coords(building, terrain),
         object,
         &building.radio_contacts,
         requester,
@@ -171,17 +172,7 @@ pub(crate) fn building_dock_cell(
             let entity = entities
                 .get(id)
                 .ok_or_else(|| format!("Dock requester {id} disappeared"))?;
-            Ok(rules
-                .object(interner.resolve(entity.type_ref()))
-                .map_or_else(
-                    || {
-                        super::ground_pose::object_center_coord_with_foundation(
-                            entity,
-                            &entity.foundation,
-                        )
-                    },
-                    |object| super::ground_pose::object_center_coord(entity, object),
-                ))
+            Ok(super::ground_pose::object_get_coords(entity, terrain))
         },
     )
     .ok()?;
@@ -217,8 +208,8 @@ pub(crate) fn nav_target_coordinate(
             .object(interner.resolve(entity.type_ref()))
             .ok_or_else(|| format!("Building {id} navigation type disappeared"))?;
         return super::building_coordinate::navigation_coordinate(
-            super::ground_pose::position_world_coord(&entity.position),
-            super::ground_pose::object_center_coord(entity, object),
+            super::ground_pose::object_location(entity, terrain),
+            super::ground_pose::object_get_coords(entity, terrain),
             object,
             &entity.radio_contacts,
             requester,
@@ -227,17 +218,7 @@ pub(crate) fn nav_target_coordinate(
                 let entity = entities
                     .get(id)
                     .ok_or_else(|| format!("Navigation requester {id} disappeared"))?;
-                Ok(rules
-                    .object(interner.resolve(entity.type_ref()))
-                    .map_or_else(
-                        || {
-                            super::ground_pose::object_center_coord_with_foundation(
-                                entity,
-                                &entity.foundation,
-                            )
-                        },
-                        |object| super::ground_pose::object_center_coord(entity, object),
-                    ))
+                Ok(super::ground_pose::object_get_coords(entity, terrain))
             },
         );
     }

@@ -43,9 +43,7 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::movement::ground_pose::{
-    object_center_coord_with_foundation, position_world_coord,
-};
+use crate::sim::movement::ground_pose::object_get_coords;
 use crate::sim::world::Simulation;
 
 use super::{TeamRules, TeamScriptState, TeamTarget, script_action_at};
@@ -669,8 +667,9 @@ impl Simulation {
     }
 
     /// A team target's coordinate (`vt+0x48`): a cell's centre at its floor
-    /// height (`0x00486840`), a building's foundation centre (`0x00447AC0`),
-    /// any other object's location.
+    /// height (`0x00486840`), else the object's GetCoords
+    /// ([`object_get_coords`]): a building's foundation centre
+    /// (`0x00447AC0`), any other object's Location.
     pub(super) fn team_target_coord(&self, target: TeamTarget) -> Option<DriveCoord> {
         match target {
             TeamTarget::Cell { x, y } => Some(crate::sim::movement::target_cell_coord(
@@ -680,10 +679,7 @@ impl Simulation {
             )),
             TeamTarget::Object(id) => {
                 let entity = self.substrate.entities.get(id)?;
-                Some(object_center_coord_with_foundation(
-                    entity,
-                    &entity.foundation,
-                ))
+                Some(object_get_coords(entity, self.resolved_terrain.as_ref()))
             }
         }
     }
@@ -705,7 +701,8 @@ impl Simulation {
     }
 
     /// `ObjectClass::Distance @ 0x005F6360` from `member` to `target`
-    /// ([`crate::util::native_x87::object_distance`]), 0 without one.
+    /// ([`crate::util::native_x87::object_distance`]), 0 without one. Both
+    /// ends are GetCoords (`vt+0x48` at `0x005F6383` and `0x005F6391`).
     pub(super) fn team_member_distance(
         &self,
         member: &GameEntity,
@@ -717,7 +714,7 @@ impl Simulation {
         let Some(to) = self.team_target_coord(target) else {
             return 0;
         };
-        let from = position_world_coord(&member.position);
+        let from = object_get_coords(member, self.resolved_terrain.as_ref());
         let building = match target {
             TeamTarget::Object(id) => self
                 .substrate
@@ -770,5 +767,29 @@ mod tests {
         let owner = sim.interner.intern("Americans");
         crate::sim::vision::reveal_radius(&mut sim.fog, owner, 12, 12, 2);
         assert!(!sim.team_member_refuses_cell(hornet, centre, &rules, Some(&registry)));
+    }
+
+    /// `ObjectClass::Distance @ 0x005F6360` measures from the member's
+    /// GetCoords (`vt+0x48` at `0x005F6391`), whose Z is the object's world
+    /// Z: a hovering member's height counts.
+    #[test]
+    fn a_hovering_members_distance_counts_its_height() {
+        use crate::rules::locomotor_type::LocomotorKind;
+        use crate::sim::movement::locomotor::LocomotorState;
+        let mut sim = crate::sim::world::Simulation::new();
+        let mut member =
+            crate::sim::game_entity::GameEntity::test_default(1, "HOVER", "Americans", 4, 4);
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Hover);
+        locomotor.altitude = crate::util::fixed_math::SimFixed::from_num(120);
+        member.locomotor = Some(locomotor);
+        sim.substrate.entities.insert(member);
+        let member = sim.substrate.entities.get(1).expect("member");
+        // The cell target is (4, 4)'s centre at its floor, straight below.
+        let distance = sim.team_member_distance(member, Some(TeamTarget::Cell { x: 4, y: 4 }));
+        assert_eq!(
+            distance,
+            crate::util::native_x87::object_distance([1152, 1152, 120], [1152, 1152, 0], None)
+        );
+        assert_ne!(distance, 0);
     }
 }

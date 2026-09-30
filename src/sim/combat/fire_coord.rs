@@ -281,7 +281,7 @@ fn fire_coordinate_base<'r>(
 
     let art = firer_art(rules, obj);
     let (flh_facing16, fire_facing) = if snap.category == EntityCategory::Structure {
-        building_fire_facings(world, rules, snap, obj, art, aim_facing16)
+        building_fire_facings(world, snap, obj, art, aim_facing16)
     } else {
         (aim_facing16, aim_facing16)
     };
@@ -322,7 +322,6 @@ fn firer_art<'r>(rules: &'r RuleSet, obj: &ObjectType) -> Option<&'r ArtEntry> {
 /// A TarCom no longer stored reads as none: native detaches it.
 fn building_fire_facings(
     world: &Simulation,
-    rules: &RuleSet,
     snap: &FireSource,
     obj: &ObjectType,
     art: Option<&ArtEntry>,
@@ -331,10 +330,10 @@ fn building_fire_facings(
     let entities = &world.substrate.entities;
     let origin = entities
         .get(snap.stable_id)
-        .map(|building| coords_xy(super::target_coords(building, Some(rules), &world.interner)));
-    let target = snap.tar_com.and_then(|target| {
-        super::resolve_target_coords(&target, entities, Some(rules), &world.interner)
-    });
+        .map(|building| coords_xy(super::target_coords(building)));
+    let target = snap
+        .tar_com
+        .and_then(|target| super::resolve_target_coords(&target, entities));
     let (Some(origin), Some(target)) = (origin, target.map(coords_xy)) else {
         // `0x0044D7F4..0x0044D7FF`: `((current >> 7) + 1) >> 1` as the high byte.
         let rounded = ((((u32::from(current) >> 7) + 1) >> 1) & 0xFF) << 8;
@@ -368,13 +367,8 @@ pub(crate) fn building_direction_to(
     target: TargetKind,
 ) -> Option<u16> {
     let obj = world.object_type(building.type_ref(), rules)?;
-    let target = super::resolve_target_coords(
-        &target,
-        &world.substrate.entities,
-        Some(rules),
-        &world.interner,
-    )?;
-    let origin = coords_xy(super::target_coords(building, Some(rules), &world.interner));
+    let target = super::resolve_target_coords(&target, &world.substrate.entities)?;
+    let origin = coords_xy(super::target_coords(building));
     Some(facing16_between(
         aim_origin(origin, obj, firer_art(rules, obj)),
         coords_xy(target),

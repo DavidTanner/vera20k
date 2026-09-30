@@ -11,7 +11,7 @@ use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState};
 use crate::sim::game_entity::BunkerLink;
 use crate::sim::mission::authority::{EntityReadyInputProvider, LiveReadyInputProvider};
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::movement::ground_pose::object_center_coord_with_foundation;
+use crate::sim::movement::ground_pose::object_get_coords;
 use crate::sim::radio::{RadioMessage, RadioPayload, transmit};
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::fixed_math::SIM_ONE;
@@ -240,7 +240,8 @@ fn power_and_force_release(sim: &mut Simulation, building_id: u64, unit_id: u64)
     let Some(building) = sim.substrate.entities.get(building_id) else {
         return;
     };
-    let mut head = object_center_coord_with_foundation(building, &building.foundation);
+    //4593F0..459407: the building's GetCoords, X - 128 and Y + 128, Z kept.
+    let mut head = object_get_coords(building, sim.resolved_terrain.as_ref());
     head.x = head.x.wrapping_sub(128);
     head.y = head.y.wrapping_add(128);
     // No entity borrow spans Force's synchronous world receiver. Its bool

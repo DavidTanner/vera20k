@@ -62,12 +62,7 @@ fn live_shot<'r>(
             .entities
             .get(id)
             .filter(|target| !target.lifecycle.in_limbo)
-            .map(|target| {
-                (
-                    target_coords(target, Some(rules), &world.interner),
-                    target.type_ref(),
-                )
-            }),
+            .map(|target| (target_coords(target), target.type_ref())),
         Some(TargetKind::Cell(rx, ry)) => Some((cell_center_coords(rx, ry), entity.type_ref())),
         None => None,
     };
@@ -303,8 +298,6 @@ impl StrikeHost for CombatStrike<'_, '_> {
                 entity,
                 &target,
                 &world.substrate.entities,
-                Some(self.rules),
-                &world.interner,
             )
         }) else {
             return;

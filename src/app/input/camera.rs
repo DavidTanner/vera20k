@@ -1118,10 +1118,8 @@ pub(crate) fn update_follow_camera(state: &mut AppState) {
 /// straggler search is a 3D distance, so feeding it ground height would drop a
 /// different object and move the centre on X and Y as well as Y-by-Z.
 fn entity_lepton_coord(entity: &crate::sim::game_entity::GameEntity) -> (i32, i32, i32) {
-    let cell = crate::util::lepton::LEPTONS_PER_CELL_I32;
-    let x = i32::from(entity.position.rx) * cell + entity.position.sub_x.to_num::<i32>();
-    let y = i32::from(entity.position.ry) * cell + entity.position.sub_y.to_num::<i32>();
-    (x, y, crate::sim::movement::ground_pose::object_world_z_leptons(entity, None))
+    let coord = crate::sim::movement::ground_pose::object_location(entity, None);
+    (coord.x, coord.y, coord.z)
 }
 
 pub(crate) fn center_camera_on_cell(state: &mut AppState, rx: u16, ry: u16) {

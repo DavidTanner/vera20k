@@ -76,7 +76,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
 use crate::sim::components::DriveCoord;
 use crate::sim::intern::InternedId;
-use crate::sim::movement::ground_pose::{object_center_coord, position_world_coord};
+use crate::sim::movement::ground_pose::object_get_coords;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// `BombListClass` (`0x0087F5D8`): the carriers of the live bombs and the
@@ -283,7 +283,7 @@ impl Simulation {
             if object.bomb_sight != 0 {
                 detectors.push((
                     house_bit(order, entity.owner()),
-                    object_center_coord(entity, object),
+                    object_get_coords(entity, self.resolved_terrain.as_ref()),
                     object.bomb_sight.wrapping_shl(8),
                 ));
             }
@@ -296,12 +296,7 @@ impl Simulation {
             let Some(bomb) = entity.bomb else {
                 continue;
             };
-            let center = rules
-                .object(self.interner.resolve(entity.type_ref()))
-                .map_or_else(
-                    || position_world_coord(&entity.position),
-                    |object| object_center_coord(entity, object),
-                );
+            let center = object_get_coords(entity, self.resolved_terrain.as_ref());
             let mut seen_by = house_bit(order, bomb.planter_house);
             for &(house, detector, range) in &detectors {
                 if seen_by & house == 0 && within_bomb_sight(detector, center, range) {

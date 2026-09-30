@@ -1296,7 +1296,7 @@ impl Simulation {
             return;
         }
         let key = (cell.0 as u16, cell.1 as u16);
-        match self.find_blocking_object(key, call.rules) {
+        match self.find_blocking_object(key) {
             Some(BlockingObject::Entity(blocker)) => {
                 let (Some(actor), Some(target)) = (
                     self.substrate.entities.get(call.id),
@@ -1345,11 +1345,7 @@ impl Simulation {
     /// first Aircraft of the ground list, else `Find_Nearest_Object`
     /// (0x47C3D0), else the first terrain object. Callers: the track
     /// admission (`0x004B3BE9`) and `Coordinate_Attack` (`0x006EB56F`).
-    pub(crate) fn find_blocking_object(
-        &self,
-        cell: (u16, u16),
-        rules: &RuleSet,
-    ) -> Option<BlockingObject> {
+    pub(crate) fn find_blocking_object(&self, cell: (u16, u16)) -> Option<BlockingObject> {
         let list = self.substrate.occupancy.get(cell.0, cell.1);
         if let Some(aircraft) = list
             .into_iter()
@@ -1363,7 +1359,7 @@ impl Simulation {
         {
             return Some(BlockingObject::Entity(aircraft.entity_id));
         }
-        let nearest = self.nearest_cell_object(cell, MovementLayer::Ground, rules);
+        let nearest = self.nearest_cell_object(cell, MovementLayer::Ground);
         if let Some(object) = nearest {
             return Some(BlockingObject::Entity(object));
         }

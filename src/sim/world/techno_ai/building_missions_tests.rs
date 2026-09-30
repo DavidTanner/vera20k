@@ -321,8 +321,6 @@ fn mission_attack_matches_the_original() {
                 entity,
                 &TargetKind::Entity(target),
                 &sim.substrate.entities,
-                Some(&rules),
-                &sim.interner,
             )
             .unwrap()
         };

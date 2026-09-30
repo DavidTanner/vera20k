@@ -174,28 +174,10 @@ fn first_yard_distance_accepts(
         return false;
     };
 
-    let (foundation_width, foundation_height) =
-        crate::rules::foundation::foundation_dimensions(&yard.foundation);
-    let yard_x = i32::from(yard.position.rx as i16)
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(yard.position.sub_x.to_num::<i32>())
-        .wrapping_add(
-            i32::from(foundation_width)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::sim::cell_kernel::CELL_CENTER_LEPTONS),
-        );
-    let yard_y = i32::from(yard.position.ry as i16)
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(yard.position.sub_y.to_num::<i32>())
-        .wrapping_add(
-            i32::from(foundation_height)
-                .wrapping_sub(1)
-                .wrapping_mul(crate::sim::cell_kernel::CELL_CENTER_LEPTONS),
-        );
-    let yard_z = crate::sim::movement::ground_pose::object_world_z_leptons(yard, Some(terrain));
+    let yard_coord = crate::sim::movement::ground_pose::object_get_coords(yard, Some(terrain));
     let distance = crate::util::native_x87::distance_3d_leptons(
         [cell_x, cell_y, cell_z],
-        [yard_x, yard_y, yard_z],
+        [yard_coord.x, yard_coord.y, yard_coord.z],
     );
     let cap = rules.ai_naval_yard_adjacency.wrapping_shl(8);
     distance <= cap

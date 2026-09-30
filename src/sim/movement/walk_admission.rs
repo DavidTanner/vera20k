@@ -196,7 +196,7 @@ impl Simulation {
                     .as_ref()
                     .unwrap()
                     .native_cell_coord(native);
-                let blocker = self.find_blocking_object((at.0 as u16, at.1 as u16), rules);
+                let blocker = self.find_blocking_object((at.0 as u16, at.1 as u16));
                 if request.allows_retry() {
                     return self.walk_retry_admission(request);
                 }
