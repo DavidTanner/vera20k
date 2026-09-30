@@ -355,12 +355,17 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
     let seal = sim
         .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
         .expect("SEAL must be constructed with a Walk locomotor in the adjacent cell");
-    sim.substrate.entities.get_mut(seal).unwrap().c4_plant =
-        Some(crate::sim::components::C4PlantState {
+    let owner = sim.interner.intern("Americans");
+    sim.queue_command(crate::sim::command::CommandEnvelope::new(
+        owner,
+        sim.session.tick + 1,
+        Command::PlantC4 {
+            attacker_id: seal,
             target_building_id: cabhut,
-        });
+        },
+    ));
 
-    // First tick: adjacency only issues the one-cell enter move. It must not
+    // First tick: the order starts the walk to the CABHUT NavCom. It must not
     // claim the marker until the SEAL's current cell resolves to the CABHUT.
     step_with_overlay_registry(&mut sim, &rules, &registry);
     assert!(
