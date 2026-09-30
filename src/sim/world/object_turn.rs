@@ -202,13 +202,37 @@ impl Simulation {
         cell_before_movement: Option<(u16, u16)>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         use crate::rules::locomotor_type::LocomotorKind;
-        let Some(kind) = self.substrate.entities.get(stable_id).and_then(|entity| {
-            let locomotor = entity.locomotor.as_ref()?;
-            (!entity.sinking.is_active()
-                && !entity.is_falling_down()
-                && !entity.lifecycle.in_limbo)
-                .then(|| locomotor.active_kind())
-        }) else {
+        let (admitted, sinking) =
+            self.substrate
+                .entities
+                .get(stable_id)
+                .map_or((None, false), |entity| {
+                    let sinking = entity.sinking.is_active();
+                    let admitted = entity.locomotor.as_ref().and_then(|locomotor| {
+                        (!sinking && !entity.is_falling_down() && !entity.lifecycle.in_limbo)
+                            .then(|| locomotor.active_kind())
+                    });
+                    (admitted, sinking)
+                });
+        let ground = matches!(
+            admitted,
+            Some(
+                LocomotorKind::Drive
+                    | LocomotorKind::Ship
+                    | LocomotorKind::Walk
+                    | LocomotorKind::Hover
+            )
+        );
+        // The vehicle plane is a projection each object turn reconciles once
+        // at Process entry: the ground corridor in `prepare_movement_pass`,
+        // any other turn here. A sinking object keeps its projection.
+        if !ground
+            && !sinking
+            && let Some(entity) = self.substrate.entities.get(stable_id)
+        {
+            self.substrate.cell_occupation.reconcile_entity(entity);
+        }
+        let Some(kind) = admitted else {
             return Ok(LocomotorProcess::default());
         };
         match kind {
@@ -240,6 +264,7 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         let mut process = LocomotorProcess::admitted();
+        self.complete_pending_class_order(stable_id, rules);
         let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules);
         if air.touched_down {
             process.bridge_state_changed |= self.per_cell_process(
@@ -290,6 +315,7 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         cell_before_movement: Option<(u16, u16)>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
+        self.complete_pending_class_order(stable_id, rules);
         let sim = self;
         let one = [stable_id];
         let mut process = LocomotorProcess::admitted();
@@ -316,6 +342,12 @@ impl Simulation {
         {
             sim.parasite_exit_unit(eater, rules);
         }
+        // `0x007195D4` Mark(UP) and `0x007196B8` Mark(DOWN) bracket the
+        // relocation: the cell lists, the raw occupation and the vehicle plane
+        // leave the old cell and join the new one on its OnBridge layer.
+        if teleport_relocating {
+            sim.foot_mark_remove(stable_id, rules, overlay_registry);
+        }
         if let Some(rules) = rules {
             let warp_out_type = sim.interner.intern(&rules.general.warp_out.name);
             let mut warp_spawns = Vec::new();
@@ -325,12 +357,14 @@ impl Simulation {
             };
             teleport_movement::tick_teleport_movement(
                 &mut sim.substrate.entities,
-                &mut sim.substrate.occupancy,
                 &one,
                 sim.session.tick,
                 sim.resolved_terrain.as_ref(),
                 Some(&mut teleport_visuals),
             );
+            if teleport_relocating {
+                sim.foot_mark_put(stable_id, Some(rules), overlay_registry);
+            }
             // RESIDUAL: the destination WarpOut is built here with the source
             // one; native builds it after the arrival's Per_Cell_Process(2),
             // Stop_Moving, crate pickup and NULL assign (`0x00719742`). Only
@@ -350,12 +384,14 @@ impl Simulation {
         } else {
             teleport_movement::tick_teleport_movement(
                 &mut sim.substrate.entities,
-                &mut sim.substrate.occupancy,
                 &one,
                 sim.session.tick,
                 sim.resolved_terrain.as_ref(),
                 None,
             );
+            if teleport_relocating {
+                sim.foot_mark_put(stable_id, None, overlay_registry);
+            }
         }
         // Teleport Process's warp step (`0x007192F0`), after the relocation.
         // Its `vt+0x480(NULL, 1)` is the owner's class setter: the Unit one,
@@ -419,9 +455,11 @@ impl Simulation {
         // where it is and is UnInit, so `FootClass::AI` and
         // `AircraftClass::AI` stop here.
         let died = !arrived
-            && self.substrate.entities.get(stable_id).is_some_and(|entity| {
-                entity.health.current <= 0 && entity.rocket_state.is_some()
-            });
+            && self
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(|entity| entity.health.current <= 0 && entity.rocket_state.is_some());
         if died {
             crate::sim::spawn_manager::detonate_dead_missile(self, stable_id);
             process.ended = true;
@@ -448,6 +486,70 @@ impl Simulation {
             self.session.tick,
         );
         !falling(self)
+    }
+
+    /// A destination Rust deferred (`pending_arrival_clear`), finished before
+    /// a Teleport, Fly or Jumpjet Process, where natively its class setter
+    /// already ran. The one producer these locomotors meet is a mission
+    /// Restore, whose `Assign_Destination(saved, 1)` (`FootClass::Restore_Mission`
+    /// `0x004D8F8C..0x004D8F99`) `mission::authority` represents by NavCom
+    /// alone. Drive and Ship finish theirs in `complete_pending_track_order`;
+    /// Walk and Hover keep the ground corridor's rebuild.
+    /// - NavCom's cell, else the first queued cell, goes to the class setter
+    ///   as a fresh destination: the Teleport route
+    ///   ([`Self::teleport_destination`]) or the air setter
+    ///   ([`Self::issue_air_cell_destination`]). NavCom is cleared first, as
+    ///   the setter found it, so the Unit setter's unchanged-NavCom return
+    ///   cannot swallow it.
+    /// - With neither, the NULL clear.
+    ///
+    /// This keeps the retired rebuild's choice of cell. An object NavCom (an
+    /// Enter or follow target) falls to the queue or the clear, as it did.
+    fn complete_pending_class_order(&mut self, stable_id: u64, rules: Option<&RuleSet>) {
+        use crate::rules::locomotor_type::LocomotorKind;
+        use crate::sim::components::NavTargetRef;
+        let Some(rules) = rules else {
+            return;
+        };
+        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
+            return;
+        };
+        if !entity.navigation.pending_arrival_clear {
+            return;
+        }
+        entity.navigation.pending_arrival_clear = false;
+        let navigation = &mut entity.navigation;
+        let cell = match navigation.nav_com {
+            Some(NavTargetRef::Cell { rx, ry }) => Some((rx, ry)),
+            _ => match navigation.nav_queue.first().copied() {
+                Some(NavTargetRef::Cell { rx, ry }) => {
+                    navigation.nav_queue.remove(0);
+                    Some((rx, ry))
+                }
+                _ => None,
+            },
+        };
+        let Some(cell) = cell else {
+            movement::set_destination_internal_null(entity);
+            return;
+        };
+        entity.navigation.nav_com = None;
+        entity.navigation.nav_com_aux = None;
+        let kind = entity
+            .locomotor
+            .as_ref()
+            .map(|locomotor| locomotor.active_kind());
+        match kind {
+            Some(LocomotorKind::Teleport) => {
+                self.teleport_destination(stable_id, cell, Some(rules));
+            }
+            Some(LocomotorKind::Fly | LocomotorKind::Jumpjet) => {
+                if let Some(info) = self.resolve_move_info(stable_id, Some(rules)) {
+                    self.issue_air_cell_destination(stable_id, cell, info.speed, Some(rules));
+                }
+            }
+            _ => {}
+        }
     }
 }
 

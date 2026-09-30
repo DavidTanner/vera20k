@@ -288,7 +288,7 @@ pub(super) fn publish_nav_com(entity: &mut GameEntity, target: NavTargetRef) {
 }
 
 /// Owner null destination path. Clears the owner and active Drive/Ship destination.
-pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
+pub(crate) fn set_destination_internal_null(entity: &mut GameEntity) {
     entity.navigation.nav_com_aux = None;
     entity.navigation.nav_com = None;
     entity.navigation.pending_arrival_clear = false;

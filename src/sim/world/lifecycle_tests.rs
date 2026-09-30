@@ -7985,3 +7985,54 @@ fn unlimbo_levels_then_aims_the_barrel_elevation() {
             .barrel_elevation_is_constructed()
     );
 }
+
+/// Rocket Process moves its owner's AircraftTracker entry after the flight
+/// step (`0x00662FA1..0x00662FD0`, the update at `0x004138C0`): a missile
+/// whose step reaches a new cell is tracked there in the same turn.
+#[test]
+fn a_missile_is_tracked_in_the_cell_its_flight_step_reached() {
+    use crate::sim::movement::rocket_movement::{RocketFlightParameters, RocketPhase, RocketState};
+    let mut sim = Simulation::new();
+    install_common_raw_terrain(&mut sim, 32, 32, 0, None);
+    insert_entity(&mut sim, 1, EntityCategory::Aircraft);
+    sim.substrate.entities.get_mut(1).unwrap().locomotor =
+        Some(LocomotorState::for_test_kind(LocomotorKind::Rocket));
+    let _ = sim.try_reveal_entity(1, common_raw_request(5, 5, 0, 128, 128));
+    let speed = SimFixed::from_num(64);
+    sim.substrate.entities.get_mut(1).unwrap().rocket_state = Some(RocketState {
+        phase: RocketPhase::Cruise,
+        origin_rx: 5,
+        origin_ry: 5,
+        target_rx: 20,
+        target_ry: 5,
+        speed,
+        current_speed: speed,
+        altitude: SimFixed::from_num(512),
+        progress: SimFixed::from_num(0.25),
+        phase_frames: 0,
+        parameters: RocketFlightParameters::legacy(speed),
+        pitch: 0.0,
+        payload: None,
+    });
+    sim.sync_air_spatial_membership(1);
+    let bucket = |sim: &Simulation, cell: (u16, u16)| {
+        crate::sim::occupancy::air_spatial_bucket_index(
+            cell.0,
+            cell.1,
+            sim.session.map_width,
+            sim.session.map_height,
+        )
+    };
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().air_spatial_bucket,
+        Some(bucket(&sim, (5, 5)))
+    );
+
+    sim.advance_live_object_turn(1, None, super::techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    let missile = sim.substrate.entities.get(1).unwrap();
+    let cell = (missile.position.rx, missile.position.ry);
+    assert_ne!(cell, (5, 5), "the flight step left the launch cell");
+    assert_eq!(missile.air_spatial_bucket, Some(bucket(&sim, cell)));
+}

@@ -142,3 +142,85 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
         "Limbo removes the destination source saved by Teleport's callback"
     );
 }
+
+/// Teleport Process brackets the relocation with Mark(UP) (`0x007195D4`) and
+/// Mark(DOWN) (`0x007196B8`): a Unit's vehicle occupation leaves the origin
+/// and marks the destination in the warp's own turn.
+#[test]
+fn warp_moves_the_vehicle_occupation_through_the_mark_pair() {
+    use crate::sim::movement::locomotor::MovementLayer;
+    use crate::sim::occupancy::VEHICLE_OCCUPATION_BIT;
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    let occupied = |sim: &Simulation, cell: (u16, u16)| {
+        sim.substrate
+            .cell_occupation
+            .vehicle_bits(cell.0, cell.1, MovementLayer::Ground)
+            & VEHICLE_OCCUPATION_BIT
+            != 0
+    };
+    assert!(occupied(&sim, (5, 5)));
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    assert!(!occupied(&sim, (5, 5)), "the origin is released");
+    assert!(occupied(&sim, (8, 9)), "the destination is marked");
+    assert!(!sim.substrate.occupancy.contains_entity(5, 5, 1));
+    assert!(sim.substrate.occupancy.contains_entity(8, 9, 1));
+}
+
+/// A mission Restore represents `Assign_Destination(saved, 1)` by NavCom and
+/// the deferred flag. The Teleport Process entry finishes it through the class
+/// setter, so the owner warps (`FootClass::Restore_Mission` `0x004D8F99`, then
+/// Teleport Move_To `0x00718100`); no route is built.
+#[test]
+fn a_restored_destination_warps_at_the_teleport_process_entry() {
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::mission::concrete_effects::represented_assign_destination_mode_one;
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    let mover = sim.substrate.entities.get_mut(1).unwrap();
+    mover.teleport_state = None;
+    represented_assign_destination_mode_one(mover, Some(NavTargetRef::cell(8, 9)));
+    mover.navigation.pending_arrival_clear = true;
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    let mover = sim.substrate.entities.get(1).unwrap();
+    assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
+    assert!(!mover.navigation.pending_arrival_clear);
+    assert!(mover.movement_target.is_none());
+}
+
+/// A ground order to an owner on Teleport reaches its class setter, which
+/// arms the warp, not a route no Process follows.
+#[test]
+fn a_ground_order_arms_the_warp() {
+    use crate::sim::pathfinding::PathGrid;
+    use crate::sim::world::GroundMove;
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    sim.substrate.entities.get_mut(1).unwrap().teleport_state = None;
+
+    let accepted = sim.issue_ground_move(
+        &PathGrid::new(32, 32),
+        GroundMove {
+            entity_id: 1,
+            target: (12, 7),
+            speed: crate::util::fixed_math::SimFixed::from_num(4),
+            queue: false,
+            speed_type: None,
+            owner_blocks: true,
+            object_destination: None,
+        },
+        Some(&rules),
+    );
+
+    assert!(accepted);
+    let mover = sim.substrate.entities.get(1).unwrap();
+    assert!(mover.movement_target.is_none());
+    let warp = mover.teleport_state.as_ref().expect("armed warp");
+    assert_eq!((warp.target_rx, warp.target_ry), (12, 7));
+}

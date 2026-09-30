@@ -26,7 +26,6 @@ use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::InternedId;
-use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
 use crate::util::fixed_math::isqrt_i64;
 use crate::util::lepton::CELL_CENTER_LEPTON;
 
@@ -77,7 +76,7 @@ impl TeleportVisuals<'_> {
 /// counts down while the unit is semi-transparent at the destination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TeleportPhase {
-    /// Instant relocation: position updated, occupancy swapped. Executes in
+    /// Instant relocation between the owner's Mark(UP) and Mark(DOWN). Executes in
     /// one frame, then transitions to ChronoDelay.
     Relocate,
     /// Post-warp chrono delay: unit sits at destination 50% translucent,
@@ -317,7 +316,6 @@ fn release_incoming_target_locks(entities: &mut EntityStore, teleporting_id: u64
 /// `being_warped_ticks` each subsequent frame until the teleport completes.
 pub fn tick_teleport_movement(
     entities: &mut EntityStore,
-    occupancy: &mut OccupancyGrid,
     live_order: &[u64],
     sim_tick: u64,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
@@ -407,20 +405,17 @@ pub fn tick_teleport_movement(
                         entity.position.z,
                     );
                 }
-                let layer = entity.locomotor.as_ref().map_or(
-                    crate::sim::movement::locomotor::MovementLayer::Ground,
-                    |l| l.layer,
-                );
-                occupancy.move_entity(
-                    old_rx,
-                    old_ry,
-                    teleport.target_rx,
-                    teleport.target_ry,
-                    id,
-                    layer,
-                    entity.sub_cell,
-                    CellListInsertion::from_category(entity.category),
-                );
+                // The path layer follows the destination's OnBridge, as an
+                // ordinary crossing commits it (`cell_arrival`). The cell
+                // lists move through the caller's Mark pair around this
+                // relocation (`0x007195D4` UP, `0x007196B8` DOWN).
+                if let Some(locomotor) = entity.locomotor.as_mut() {
+                    locomotor.layer = if entity.on_bridge {
+                        crate::sim::movement::locomotor::MovementLayer::Bridge
+                    } else {
+                        crate::sim::movement::locomotor::MovementLayer::Ground
+                    };
+                }
                 // Harvester instant-warp: when chrono delay is 0, finish in one
                 // frame (cleanup runs at end of this frame) — no post-warp lock.
                 if teleport.being_warped_ticks == 0 {
@@ -507,7 +502,7 @@ mod tests {
         let locomotor = entities.get_mut(1).unwrap().locomotor.as_mut().unwrap();
         assert!(locomotor.begin_piggyback(LocomotorKind::Drive, 0));
 
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        tick_teleport_movement(&mut entities, &[], 0, None, None);
         let entity = entities.get(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (5, 5));
         assert_eq!(
@@ -517,7 +512,7 @@ mod tests {
 
         let locomotor = entities.get_mut(1).unwrap().locomotor.as_mut().unwrap();
         assert!(locomotor.end_piggyback());
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        tick_teleport_movement(&mut entities, &[], 0, None, None);
         let entity = entities.get(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (20, 20));
     }
@@ -535,7 +530,7 @@ mod tests {
         assert!(owner.teleport_state.is_none());
 
         assert!(teleport_move_to(owner, (20, 20), &rules, false, 0));
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        tick_teleport_movement(&mut entities, &[], 0, None, None);
         let owner = entities.get_mut(1).unwrap();
         assert!(owner.is_warping_in());
         teleport_stop_moving(owner);
@@ -569,7 +564,7 @@ mod tests {
         );
 
         // One admitted frame relocates instantly.
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        tick_teleport_movement(&mut entities, &[], 0, None, None);
 
         let entity = entities.get(1).expect("should exist");
         assert_eq!(entity.position.rx, 20, "Should have relocated to target");
@@ -584,7 +579,7 @@ mod tests {
         // Advance through the ChronoDelay countdown.
         let delay = ts.being_warped_ticks;
         for _ in 0..delay + 5 {
-            tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+            tick_teleport_movement(&mut entities, &[], 0, None, None);
         }
 
         // TeleportState should be removed after completion.
@@ -618,14 +613,7 @@ mod tests {
                 anim_spawns: &mut anim_spawns,
                 warp_out_type,
             };
-            tick_teleport_movement(
-                &mut entities,
-                &mut OccupancyGrid::new(),
-                &[],
-                0,
-                None,
-                Some(&mut visuals),
-            );
+            tick_teleport_movement(&mut entities, &[], 0, None, Some(&mut visuals));
         }
 
         assert_eq!(anim_spawns.len(), 2);
@@ -662,22 +650,8 @@ mod tests {
                 anim_spawns: &mut anim_spawns,
                 warp_out_type,
             };
-            tick_teleport_movement(
-                &mut entities,
-                &mut OccupancyGrid::new(),
-                &[],
-                0,
-                None,
-                Some(&mut visuals),
-            );
-            tick_teleport_movement(
-                &mut entities,
-                &mut OccupancyGrid::new(),
-                &[],
-                1,
-                None,
-                Some(&mut visuals),
-            );
+            tick_teleport_movement(&mut entities, &[], 0, None, Some(&mut visuals));
+            tick_teleport_movement(&mut entities, &[], 1, None, Some(&mut visuals));
         }
 
         assert_eq!(
@@ -704,14 +678,7 @@ mod tests {
         live_entities.insert(teleporter(1, 5, 5, 21));
         live_entities.insert(teleporter(2, 6, 5, 22));
 
-        tick_teleport_movement(
-            &mut live_entities,
-            &mut OccupancyGrid::new(),
-            &[2],
-            0,
-            None,
-            None,
-        );
+        tick_teleport_movement(&mut live_entities, &[2], 0, None, None);
 
         let first = live_entities.get(1).expect("id 1");
         assert_eq!(
@@ -728,14 +695,7 @@ mod tests {
         fallback_entities.insert(teleporter(1, 5, 5, 21));
         fallback_entities.insert(teleporter(2, 6, 5, 22));
 
-        tick_teleport_movement(
-            &mut fallback_entities,
-            &mut OccupancyGrid::new(),
-            &[],
-            0,
-            None,
-            None,
-        );
+        tick_teleport_movement(&mut fallback_entities, &[], 0, None, None);
 
         assert_eq!(
             fallback_entities.get(1).map(|entity| (
@@ -819,7 +779,7 @@ mod tests {
         ));
 
         // Single frame: position snaps, then cleanup runs because being_warped_ticks==0.
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        tick_teleport_movement(&mut entities, &[], 0, None, None);
 
         let entity = entities.get(1).expect("should exist");
         assert_eq!(entity.position.rx, 20);
@@ -857,7 +817,7 @@ mod tests {
         );
 
         // Frame 1: Relocate snaps position and transitions to ChronoDelay (NOT cleanup).
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        tick_teleport_movement(&mut entities, &[], 0, None, None);
         let ts = entities
             .get(1)
             .and_then(|e| e.teleport_state.as_ref())
@@ -882,8 +842,7 @@ mod tests {
             false,
             0,
         ));
-        let outcomes =
-            tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        let outcomes = tick_teleport_movement(&mut entities, &[], 0, None, None);
 
         assert_eq!(outcomes, vec![(1, SpecialMovementOutcome::Continue)]);
         assert!(entities.get(2).expect("attacker").attack_target.is_none());

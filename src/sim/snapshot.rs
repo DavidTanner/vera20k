@@ -751,7 +751,9 @@ use crate::sim::world::Simulation;
 // saves the installed slot the stash's own kind already records.
 // 258 -> 259: bridge cells no longer save a bridgehead anchor class; the
 // bridgehead branch writes CellClass tiles and the draw reads them.
-const SNAPSHOT_VERSION: u32 = 259;
+// 260 -> 261: an entity no longer saves the ObjectClass falling byte; the
+// parachute descent it saves is IsFallingDown.
+const SNAPSHOT_VERSION: u32 = 261;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3645,7 +3647,8 @@ mod tests {
         // inert paradrop latches.
         // 257 -> 258: the stash saves the complete suspended locomotor.
         // 258 -> 259: no bridgehead anchor class.
-        assert_eq!(super::SNAPSHOT_VERSION, 259);
+        // 260 -> 261: no falling byte beside the parachute descent.
+        assert_eq!(super::SNAPSHOT_VERSION, 261);
     }
 
     #[test]

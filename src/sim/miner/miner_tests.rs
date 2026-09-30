@@ -15,7 +15,7 @@ use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, ResourceType};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
+use crate::sim::occupancy::CellListInsertion;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production::credits_for_owner;
@@ -384,7 +384,6 @@ fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
         crate::sim::movement::teleport_movement::tick_teleport_movement(
             &mut sim.substrate.entities,
-            &mut OccupancyGrid::new(),
             &[],
             sim.session.tick,
             None,

@@ -6520,6 +6520,15 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         );
         e.movement_target = Some(MovementTarget::default());
         e.drive_locomotion = Some(DriveLocomotionRuntime::default());
+        // Out of limbo, where `FootClass::AI` admits a Process (`0x004DA86E`).
+        // Hover's Process is the ground corridor's route (#689), which retires
+        // the empty target on the first Process.
+        e.lifecycle.in_limbo = false;
+        e.locomotor = Some(
+            crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+                crate::rules::locomotor_type::LocomotorKind::Hover,
+            ),
+        );
         sim.substrate.entities.insert(e);
     }
 
@@ -6549,6 +6558,37 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
             "idle ticks must not project a mission either"
         );
         assert_eq!(e.mission.ai_counter(), 2, "the host counter still ticks");
+    }
+
+    /// `FootClass::AI` calls no locomotor Process while the object falls
+    /// (ObjectClass `+0x8D`, tested at `0x004DA826`): the mover's empty target
+    /// outlives the frame, and the Process retires it once the fall ends.
+    #[test]
+    fn a_falling_mover_gets_no_process() {
+        let mut sim = Simulation::new();
+        insert_s2_scoped_move_unit(&mut sim, 1, 5, 5);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .set_falling_down_for_test(true);
+        sim.set_logic_order_for_test(vec![1]);
+
+        let _ = sim.advance_tick(&[], None, None, None, 67);
+        let mover = sim.substrate.entities.get_mut(1).unwrap();
+        assert!(mover.movement_target.is_some(), "no Process while falling");
+
+        mover.set_falling_down_for_test(false);
+        let _ = sim.advance_tick(&[], None, None, None, 67);
+        assert!(
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .movement_target
+                .is_none(),
+            "the landed mover's Process runs"
+        );
     }
 
     /// Post-flip corpse freeze: a dying Unit still owns its live scheduler slot,

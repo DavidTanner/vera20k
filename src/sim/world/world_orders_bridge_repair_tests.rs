@@ -64,9 +64,11 @@ fn build_ordinary_c4_sim(
 ) {
     use crate::sim::house_state::HouseState;
 
-    let ini = format!(
-        "{BRIDGE_REPAIR_TEST_INI}\n[GHOST]\n\
-         Locomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n"
+    // The SEAL walks: a second [GHOST] section would not be read, since a
+    // lookup finds the first section of a name.
+    let ini = BRIDGE_REPAIR_TEST_INI.replace(
+        "[GHOST]\n",
+        "[GHOST]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n",
     );
     let (mut sim, rules, registry) = super::entry_test_fixture::fixture_with_rules(&ini);
     // A raw ordinary three-cell width, with resident TMP/navigation owners.

@@ -1248,15 +1248,17 @@ impl Simulation {
             if saved_destination.is_some()
                 && let Some(entity) = self.substrate.entities.get_mut(receiver)
             {
-                // The original's destination setter drives the locomotor's path
-                // timer to already-expired on every path it takes, so the next
-                // locomotor step re-runs its path search toward the destination
-                // just installed — the stored path array is never archived, only
-                // the destination is. VERA's equivalent re-path hook is the
-                // deferred process-entry pass at the top of the movement tick,
-                // and this flag is what arms it. Without it a restored object
-                // holds its order and never builds a path for it, which is
-                // exactly the state a blocked-step Override leaves it in.
+                // The original calls the class setter with the saved NavCom
+                // (`FootClass::Restore_Mission` `0x004D8F99`), whose Move_To
+                // the next locomotor step acts on — the stored path array is
+                // never archived, only the destination is. VERA finishes that
+                // setter at the object's next Process entry, which this flag
+                // arms: `complete_pending_track_order` for Drive and Ship, the
+                // ground corridor's rebuild for Walk and Hover, and
+                // `complete_pending_class_order` for Teleport, Fly and Jumpjet.
+                // Without it a restored object holds its order and never moves
+                // toward it, which is exactly the state a blocked-step Override
+                // leaves it in.
                 entity.navigation.pending_arrival_clear = true;
             }
         }
