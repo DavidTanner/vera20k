@@ -285,11 +285,7 @@ mod tests {
         let mut infantry = GameEntity::test_default(1, "E1", "Americans", 5, 5);
         infantry.category = EntityCategory::Infantry;
         entities.insert(infantry);
-        assert!(begin_parachute_descent(
-            &mut entities,
-            1,
-            SimFixed::from_num(400)
-        ));
+        assert!(begin_parachute_descent(&mut entities, 1, 400));
 
         assert_eq!(
             height_lift_px(&aircraft),
@@ -370,10 +366,10 @@ mod tests {
         );
     }
 
-    /// Object-level falling wins over the locomotor, matching the write order
-    /// the sim tick used to have: the parachute pass ran after the air pass.
+    /// A falling object is drawn at its Location Z, whatever altitude its
+    /// locomotor holds.
     #[test]
-    fn parachute_state_takes_precedence_over_an_air_locomotor() {
+    fn a_falling_object_is_drawn_at_its_location_z() {
         use crate::sim::entity_store::EntityStore;
         use crate::sim::movement::parachute_descent::begin_parachute_descent;
 
@@ -381,21 +377,17 @@ mod tests {
         let mut entity = air_unit(LocomotorKind::Jumpjet, 1500);
         entity.category = EntityCategory::Infantry;
         entities.insert(entity);
-        assert!(begin_parachute_descent(
-            &mut entities,
-            1,
-            SimFixed::from_num(400)
-        ));
+        assert!(begin_parachute_descent(&mut entities, 1, 400));
         let entity = entities.get(1).expect("entity");
 
         let (_, ground_sy) = ground_screen_position(&entity.position);
         let (_, sy) = screen_position(&entity);
-        // The parachute's 400 leptons, not the locomotor's 1500, and below the
+        // The fall's 400 leptons, not the locomotor's 1500, and below the
         // extra-pixel threshold.
         assert_eq!(
             ground_sy - sy,
             57.0,
-            "the parachute altitude must be the only height source"
+            "the Location Z must be the only height source"
         );
     }
 

@@ -10,7 +10,7 @@ use super::{Simulation, techno_ai};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::lifecycle_request::LifecycleRequest;
-use crate::sim::movement::{self, parachute_descent, rocket_movement, teleport_movement};
+use crate::sim::movement::{self, rocket_movement, teleport_movement};
 
 /// Whether this Unit visit reaches FootClass's SHP body-counter cadence.
 ///
@@ -420,27 +420,6 @@ impl Simulation {
             process.ended = true;
         }
         process
-    }
-
-    /// ObjectClass::AI's fall step for one object (`0x005F3F11..0x005F3FA4`).
-    /// Answers whether the fall grounded this frame.
-    fn advance_fall_one(&mut self, stable_id: u64, rules: &RuleSet) -> bool {
-        let falling = |sim: &Simulation| {
-            sim.substrate
-                .entities
-                .get(stable_id)
-                .is_some_and(crate::sim::game_entity::GameEntity::is_falling_down)
-        };
-        if !falling(self) {
-            return false;
-        }
-        parachute_descent::tick_parachute_descent_in_order(
-            &mut self.substrate.entities,
-            &[stable_id],
-            rules.general.parachute_max_fall_rate,
-            self.session.tick,
-        );
-        !falling(self)
     }
 }
 
@@ -853,7 +832,7 @@ impl Simulation {
         // Commence after landing waits one frame.
         let mut per_cell_ran = false;
         if let Some(rules) = rules
-            && sim.advance_fall_one(stable_id, rules)
+            && sim.advance_fall(stable_id, rules.general.parachute_max_fall_rate)
         {
             // Object AI5F3F8D: grounded fall completion calls vt+0x18C(2)
             // before the parachute animation's wind-down.
@@ -961,6 +940,18 @@ impl Simulation {
         }
 
         movement::tick_locomotor_piggyback_restore_one(&mut sim.substrate.entities, stable_id);
+        // FootClass::AI 0x004DAED0..0x004DAEDC: with vt+0x1D8 (the warp-in)
+        // clear, the pending entry (`Unit+0x500`) asks for its slot.
+        if let Some(rules) = rules
+            && sim.substrate.entities.get(stable_id).is_some_and(|entity| {
+                !entity.is_warping_in()
+                    && entity.dock_state.as_ref().is_some_and(|dock| {
+                        dock.phase == crate::sim::docking::building_dock::DockPhase::WaitForDock
+                    })
+            })
+        {
+            crate::sim::docking::building_dock::try_pending_entry(sim, rules, stable_id);
+        }
         // FootClass::AI tail 0x004DAEE1..0x004DAEF3, after the piggyback swap:
         // an infected Foot runs its eater's ParasiteClass AI in its own turn.
         if let Some(rules) = rules {
