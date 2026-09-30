@@ -350,8 +350,8 @@ impl StrikeHost for CombatStrike<'_, '_> {
     }
 
     /// RESIDUAL (see `aircraft::attack_mission`): the source-aware Cell
-    /// Scatter_Objects is not ported; the NullCoord blocker helper is not
-    /// equivalent.
+    /// Scatter_Objects is not ported; `movement::scatter` owns only the
+    /// null-coordinate dispatch.
     fn scatter(&mut self) {}
 
     fn assign_target_destination(&mut self) {

@@ -663,11 +663,8 @@ fn with_no_site_a_computer_mcv_scatters_and_a_human_one_waits() {
         let mcv = sim.substrate.entities.get(id).unwrap();
         let scattered = mcv.movement_target.is_some() || mcv.navigation.nav_com.is_some();
         assert_eq!(scattered, !human, "human={human}");
-        assert_eq!(
-            sim.scenario_rng.logical_state() == rng,
-            human,
-            "human={human}"
-        );
+        // The Unit receiver's null arm draws nothing (0x00743A50).
+        assert!(sim.scenario_rng.logical_state() == rng, "human={human}");
     }
 }
 

@@ -332,12 +332,11 @@ pub struct MissionControlEntry {
     pub retaliate: bool,
     /// Allowed to scatter from threats (`Scatter=`, def yes).
     ///
-    /// Verified consumers are the Infantry, Unit and aircraft scatter paths
-    /// plus the damage handler — all in `sim/movement` / `sim/combat` damage,
-    /// none of which read this table yet. `Scatter=no` covers Sleep, Sticky,
-    /// Attack, Capture, **Harvest**, Unload, Construction and Selling in stock
-    /// rules, so the live gap is on every miner in every match, not just on
-    /// Sticky.
+    /// The Infantry and Unit Scatter receivers read it unless their first
+    /// flag forces the call (`movement::scatter::mission_permits_scatter`);
+    /// the Aircraft receiver reads it too but is not dispatched (residual in
+    /// `movement::scatter`). `Scatter=no` covers Sleep, Sticky, Attack,
+    /// Capture, **Harvest**, Unload, Construction and Selling in stock rules.
     pub scatter: bool,
 }
 

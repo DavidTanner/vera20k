@@ -75,6 +75,16 @@ fn track_unit(entity: &GameEntity) -> bool {
         })
 }
 
+/// A Unit on a Hover locomotor. Its Move_To is the pass lane's command-time
+/// route (#689), the ground move a Move order takes for it.
+fn hover_unit(entity: &GameEntity) -> bool {
+    entity.category == EntityCategory::Unit
+        && entity
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| loco.active_kind() == LocomotorKind::Hover)
+}
+
 /// A Unit on a Jumpjet locomotor: its null destination reaches the Jumpjet's
 /// `Stop_Moving` through the same Unit setter.
 fn jumpjet_unit(entity: &GameEntity) -> bool {
@@ -456,7 +466,7 @@ impl Simulation {
                 );
                 Ok(false)
             }
-            6 => self.answer_track_ally_cell(id, cell, rules),
+            6 => self.answer_track_ally_cell(id, cell, rules, registry),
             _ => Ok(false),
         }
     }
@@ -505,6 +515,7 @@ impl Simulation {
         id: u64,
         cell: (i32, i32),
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let terrain = self
             .resolved_terrain
@@ -560,7 +571,7 @@ impl Simulation {
             return Ok(true);
         }
         //4B2D68..4B2DC0: the forced scatter of the refused cell.
-        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules);
+        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, registry)?;
         Ok(false)
     }
 
@@ -759,9 +770,11 @@ impl Simulation {
         }
     }
 
-    /// Whether the Unit setter (`0x741970`) is represented for `id`: a
-    /// Drive/Ship receiver, or a `Teleporter=` Unit whatever its active
-    /// locomotor.
+    /// Whether the Unit setter (`0x741970`) is represented for `id` as the
+    /// team and harvest callers use it: a Drive/Ship receiver, or a
+    /// `Teleporter=` Unit whatever its active locomotor. Its cell arm
+    /// ([`Self::set_unit_cell_destination`]) also reaches Hover and Jumpjet
+    /// Move_To.
     pub(crate) fn unit_setter_receiver(&self, id: u64, rules: Option<&RuleSet>) -> bool {
         self.substrate
             .entities
@@ -770,19 +783,24 @@ impl Simulation {
     }
 
     /// Unit 0x741970(cell, 1) from a class caller: the radio MOVE_HERE (Foot
-    /// 0x004D91EB), Mission_Harvest's staging destination (0x0073EDB5) and
-    /// Mission_Enter's Teleporter re-assign (0x004D941D).
+    /// 0x004D91EB), Mission_Harvest's staging destination (0x0073EDB5),
+    /// Mission_Enter's Teleporter re-assign (0x004D941D) and the Scatter
+    /// receiver's null arm (0x00744070).
     /// - 0x741A80..0x741A9C: an unchanged NavCom returns before any write
     ///   unless the Techno+0x1F8 override is up; the call then clears it. So
     ///   the refinery's repeated MOVE_HERE leaves a running drive alone
     ///   (tools/spatial_oracle/track_destination.json `same_nav` rows).
     /// - A `Teleporter=` type runs its arm ([`Self::unit_teleporter_arm`]).
     /// - The Foot tail (0x4D94B0) writes NavCom and calls the active
-    ///   locomotor's Move_To — Drive/Ship ([`prepare_track_destination`]) or
-    ///   Teleport ([`teleport_move_to`]) — unless Foot+0x6AC skips it once.
+    ///   locomotor's Move_To — Drive/Ship ([`prepare_track_destination`]),
+    ///   Teleport ([`teleport_move_to`]), Jumpjet
+    ///   ([`Self::issue_air_cell_destination`], which writes the NavCom and
+    ///   the timers itself) or Hover — unless Foot+0x6AC skips it once.
+    ///   Hover's Move_To is the pass lane's route: the ground move a Move
+    ///   order takes, which publishes no NavCom (#689).
     ///
-    /// Returns false for a receiver without a represented Move_To or a
-    /// refused destination.
+    /// Returns false for a receiver without a represented Move_To (no retail
+    /// Unit locomotor lacks one) or a refused destination.
     ///
     /// [`prepare_track_destination`]: super::movement_commands::prepare_track_destination
     /// [`teleport_move_to`]: super::teleport_movement::teleport_move_to
@@ -796,7 +814,11 @@ impl Simulation {
             return false;
         };
         let teleporter = teleporter_unit(self, actor, Some(rules));
-        if !(track_unit(actor) || teleporter) || !super::can_accept_destination(actor) {
+        let hover = hover_unit(actor);
+        let jumpjet = jumpjet_unit(actor);
+        if !(track_unit(actor) || teleporter || hover || jumpjet)
+            || !super::can_accept_destination(actor)
+        {
             return false;
         }
         if actor.navigation.nav_com == Some(NavTargetRef::cell(cell.0, cell.1))
@@ -823,13 +845,41 @@ impl Simulation {
         }
         let frame = self.session.binary_frame;
         let timing = super::DestinationTiming::from_rules(frame, Some(rules));
+        let adapter_route = if skip_move_to {
+            None
+        } else if hover {
+            let order = crate::sim::world::GroundMove {
+                entity_id: id,
+                target: cell,
+                speed: info.speed,
+                queue: false,
+                speed_type: Some(info.speed_type),
+                owner_blocks: true,
+                object_destination: None,
+            };
+            Some(
+                self.path_grid_snapshot()
+                    .is_some_and(|grid| self.issue_ground_move(&grid, order, Some(rules))),
+            )
+        } else if jumpjet {
+            Some(self.issue_air_cell_destination(id, cell, info.speed, Some(rules)))
+        } else {
+            None
+        };
         let terrain = self.resolved_terrain.as_ref();
         let actor = self
             .substrate
             .entities
             .get_mut(id)
             .expect("same setter actor");
-        let accepted = if skip_move_to {
+        let accepted = if let Some(accepted) = adapter_route {
+            if let Some(target) = actor.movement_target.as_mut().filter(|_| accepted) {
+                target.accel_factor = info.accel_factor;
+                target.decel_factor = info.decel_factor;
+                target.slowdown_distance = info.slowdown_distance;
+            }
+            accepted
+        } else if skip_move_to {
             super::navcom::publish_nav_com(actor, NavTargetRef::cell(cell.0, cell.1));
             true
         } else {

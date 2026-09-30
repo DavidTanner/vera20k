@@ -1,22 +1,239 @@
-//! Live source-aware Infantry51D0D0 selection. The damage receiver commits
-//! the destination before fear; class entry and navigation keep their owners.
-use super::bump_crush::{
-    InfantryDamageScatter, infantry_damage_scatter_admitted, scatter_movement_speed,
-};
+//! `InfantryClass::Scatter @ 0x0051D0D0`: the gates every call shares, the
+//! null-coordinate arm, and the away-from-a-coordinate selection the damage
+//! receiver, DeploySlaves and the garrison eject use. Class entry and
+//! navigation keep their owners.
+use super::bump_crush::{InfantryDamageScatter, scatter_movement_speed};
 use super::infantry_entry::InfantryEntryArgs;
+use super::scatter::{ScatterFlags, mission_permits_scatter};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
+use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::Simulation;
 
+/// The Doing values of the deploy family (`0x0051D0E3..0x0051D0F5`).
+const DEPLOY_DOINGS: std::ops::RangeInclusive<i32> = 0x1B..=0x1E;
+/// Undeploy, the action the forced no-kidding deploy arm requests.
+const DO_UNDEPLOY: i32 = 0x1F;
+
+/// What `InfantryClass::Scatter` reads between its deploy arm and its
+/// coordinate test (`0x0051D162..0x0051D220`).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct InfantryScatterFacts {
+    /// Retained Doing `+0x6C4`, read after the deploy arm.
+    pub(super) doing: i32,
+    /// The active locomotor's `Is_Moving` (`+0x10`).
+    pub(super) moving: bool,
+    /// The current mission's MissionControl `Scatter=`.
+    pub(super) mission_scatter: bool,
+    /// Type `Fraidycat=` (`+0xEBF`).
+    pub(super) fraidycat: bool,
+    /// Techno Target (`+0x2B4`).
+    pub(super) has_target: bool,
+    /// `[CombatDamage] PlayerScatter` (Rules `+0x17ED`).
+    pub(super) player_scatter: bool,
+    /// `HasWeaponAbility(SCATTER)` at the current rank.
+    pub(super) scatter_ability: bool,
+    /// The owner is controlled by a human (`0x0050B730`).
+    pub(super) human: bool,
+    /// Foot Team `+0x5D4` is set.
+    pub(super) in_team: bool,
+}
+
+/// `0x0051D16E..0x0051D220`, after the deploy arm. A moving locomotor drops
+/// `forced` (`0x0051D172`). An unforced call then needs the mission's
+/// `Scatter=`, a Fraidycat type or no Target, and an interruptible Doing
+/// (`-1` and 31 skip the table at `0x007EAF7C`). A still-forced call passes;
+/// otherwise a human owner without PlayerScatter, SCATTER or no-kidding needs
+/// a Team, and every unforced path needs `Fraidycat=`. `None` for a Doing
+/// outside the native table.
+///
+/// Evidence: tools/spatial_oracle/infantry_damage_scatter.{py,json,meta.json}
+/// (false/false) and tools/infantry_scatter_oracle.py (true/true).
+pub(super) fn infantry_scatter_gates_admit(
+    facts: &InfantryScatterFacts,
+    flags: ScatterFlags,
+) -> Option<bool> {
+    let forced = flags.forced && !facts.moving;
+    if !forced && (!facts.mission_scatter || (!facts.fraidycat && facts.has_target)) {
+        return Some(false);
+    }
+    if !crate::rules::infantry_sequence::scatter_allowed_by_doing(facts.doing)? {
+        return Some(false);
+    }
+    if forced {
+        return Some(true);
+    }
+    let owner_gated =
+        !facts.player_scatter && !facts.scatter_ability && !flags.no_kidding && facts.human;
+    Some(facts.fraidycat && !(owner_gated && !facts.in_team))
+}
+
 impl Simulation {
-    /// 51D52B..51D6BA: only numeric entry zero is legal. A soft obstruction
-    /// is not a passable scatter destination. Evidence: original class calls
-    /// in tools/spatial_oracle/infantry_scatter_entry.{py,json,meta.json}.
+    /// `InfantryClass::Scatter`'s gates before its coordinate
+    /// (`0x0051D0DD..0x0051D220`). A deploy-family Doing takes
+    /// `Do_Action(Undeploy, 0, 0)` (`0x0051D103..0x0051D10D`) when forced and
+    /// no-kidding, then continues; otherwise a human owner refuses it
+    /// (`0x0051D115..0x0051D148`). Then [`infantry_scatter_gates_admit`] on
+    /// the Doing the action left. Nothing here draws RNG.
     ///
-    /// Missing map state retains headless fixture compatibility; malformed live
-    /// class state is an error, never a manufactured native refusal. NULL-source
-    /// FNPC and additional class-setter branches remain separate continuations.
+    /// RESIDUAL: VERA's infantry deploy lives in `deploy_state`, not in the
+    /// Doing (#850), so the deploy arm never fires and a deploying or
+    /// deployed man is admitted as if standing. Trigger: a scatter reaching a
+    /// deployed infantryman, such as a friendly vehicle pushing through his
+    /// cell. Effect: he takes the scatter destination while still deployed,
+    /// instead of undeploying (forced and no-kidding) or staying (a human
+    /// owner's man on any other call). Frequency: whenever vehicles push
+    /// through deployed infantry. The retired adapter did the same.
+    pub(super) fn infantry_scatter_admitted(
+        &mut self,
+        id: u64,
+        flags: ScatterFlags,
+        rules: &RuleSet,
+    ) -> Result<bool, String> {
+        let infantry = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("Scatter lost its infantryman")?;
+        let doing = infantry
+            .mission_leaf
+            .as_infantry()
+            .ok_or("Scatter requires an Infantry Doing")?
+            .doing();
+        let human = self
+            .houses
+            .get(&infantry.owner())
+            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        if DEPLOY_DOINGS.contains(&doing) {
+            if flags.forced && flags.no_kidding {
+                self.infantry_do_action(id, DO_UNDEPLOY, false, rules)?;
+            } else if human {
+                return Ok(false);
+            }
+        }
+        let infantry = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("Scatter lost its infantryman")?;
+        let object = self
+            .object_type(infantry.type_ref(), rules)
+            .ok_or("Scatter requires an Infantry type")?;
+        // Is_Moving only matters to a forced call; the query has no effect.
+        let moving = flags.forced
+            && super::motion_query::is_moving(infantry)
+                .ok_or("Scatter requires an active locomotor Is_Moving")?;
+        let facts = InfantryScatterFacts {
+            doing: infantry
+                .mission_leaf
+                .as_infantry()
+                .ok_or("Scatter requires an Infantry Doing")?
+                .doing(),
+            moving,
+            mission_scatter: mission_permits_scatter(infantry, rules),
+            fraidycat: object.fraidycat,
+            has_target: infantry.attack_target.is_some(),
+            player_scatter: rules.general.player_scatter,
+            scatter_ability: crate::sim::combat::veterancy::has_weapon_ability(
+                crate::sim::combat::veterancy::rank_from_u16(infantry.veterancy()),
+                object,
+                crate::rules::object_type::Ability::Scatter,
+            ),
+            human,
+            in_team: self.team_script_vm.team_for_member(id).is_some(),
+        };
+        infantry_scatter_gates_admit(&facts, flags)
+            .ok_or_else(|| String::from("Scatter has an invalid Doing"))
+    }
+
+    /// `InfantryClass::Scatter` with a null coordinate (`0x0051D2D9..`):
+    /// - the fallback direction first ([`null_start_direction`], with its
+    ///   one draw);
+    /// - then the nearby passable cell. When found: `SetDestination(cell, 1)`
+    ///   and the locomotor's Process at once (`0x0051D43F..0x0051D478`);
+    /// - otherwise the eight neighbours from that direction, then
+    ///   `Queue_Mission(Move)` and `SetDestination(cell, 1)`
+    ///   (`0x0051D487..0x0051D6E0`), with no Process.
+    ///
+    /// Evidence: tools/spatial_oracle/hut_scatter (found cell) and the null
+    /// rows of tools/spatial_oracle/infantry_source_scatter (NullCell answer)
+    /// execute the original body.
+    ///
+    /// [`null_start_direction`]: super::scatter_cell::null_start_direction
+    ///
+    /// Answers whether the immediate Process changed bridge state.
+    pub(super) fn infantry_scatter_null(
+        &mut self,
+        id: u64,
+        flags: ScatterFlags,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Result<bool, String> {
+        if !self.infantry_scatter_admitted(id, flags, rules)? {
+            return Ok(false);
+        }
+        let infantry = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("Scatter lost its infantryman")?;
+        let coord = super::foot_coordinate::current_coordinate(infantry);
+        let start = super::scatter_cell::null_start_direction(
+            (coord.x, coord.y),
+            infantry.body_facing.current(self.session.binary_frame),
+            &mut self.scenario_rng,
+        );
+        if let Some(cell) = self.scatter_nearby_cell(id, rules) {
+            return self.infantry_scatter_destination(id, cell, rules, registry, true);
+        }
+        let Some(scatter) = self.infantry_scatter_neighbor(id, start, rules, registry)? else {
+            return Ok(false);
+        };
+        if let Some(infantry) = self.substrate.entities.get_mut(id) {
+            crate::sim::mission::authority::queue_entity_mission_deferred(
+                infantry,
+                MissionId::from_known(MissionType::Move),
+            );
+        }
+        self.infantry_scatter_destination(id, scatter.destination, rules, registry, false)
+    }
+
+    /// `InfantryClass::Scatter` with a real coordinate, after
+    /// [`Self::infantry_scatter_admitted`]: the away arm
+    /// (`0x0051D226..0x0051D2D4`, `0x0051D487..0x0051D6E0`). A found neighbour
+    /// takes `Queue_Mission(Move, 0)` and `SetDestination(cell, 1)`; no
+    /// locomotor Process runs on this arm. Answers whether a destination was
+    /// installed. DeploySlaves passes the owner's centre with (1,1)
+    /// (`0x006B0667`); the garrison eject passes the building's centre.
+    pub(crate) fn infantry_scatter_from(
+        &mut self,
+        id: u64,
+        source: (i32, i32),
+        flags: ScatterFlags,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Result<bool, String> {
+        if !self.infantry_scatter_admitted(id, flags, rules)? {
+            return Ok(false);
+        }
+        let Some(scatter) = self.select_infantry_scatter_away_from(id, source, rules, registry)?
+        else {
+            return Ok(false);
+        };
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            crate::sim::mission::authority::queue_entity_mission_deferred(
+                entity,
+                MissionId::from_known(MissionType::Move),
+            );
+        }
+        self.assign_infantry_walk_cell_destination(id, scatter, rules, registry)
+    }
+
+    /// The Infantry damage receiver's Scatter (`Scatter(attacker, 0, 0)`) up
+    /// to its selection. The receiver commits the destination before its fear
+    /// callback. Only a live Infantry with a locomotor reaches it.
     pub(crate) fn select_infantry_damage_scatter(
         &mut self,
         id: u64,
@@ -27,29 +244,24 @@ impl Simulation {
         let Some(infantry) = self.substrate.entities.get(id) else {
             return Ok(None);
         };
-        let human = self
-            .houses
-            .get(&infantry.owner())
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
-        if !infantry_damage_scatter_admitted(
-            infantry,
-            rules,
-            human,
-            &self.team_script_vm,
-            &self.interner,
-        ) {
+        if infantry.category != crate::map::entities::EntityCategory::Infantry
+            || infantry.dying
+            || infantry.health.current == 0
+            || infantry.locomotor.is_none()
+        {
+            return Ok(None);
+        }
+        if !self.infantry_scatter_admitted(id, ScatterFlags::new(false, false), rules)? {
             return Ok(None);
         }
         self.select_infantry_scatter_away_from(id, source, rules, registry)
     }
 
-    /// The away-from-a-coordinate arm of `InfantryClass::Scatter @
-    /// 0x0051D0D0` once its gates have passed (`0x0051D258..0x0051D6BA`):
-    /// the heading away from `source` rounded to an octant plus
-    /// `RandomRanged(0, 4) - 2`, then the eight-neighbour search from the
-    /// navigation cell. Shared by the damage receiver and the forced
-    /// Scatter (`scatter_infantry_forced_from`).
-    pub(crate) fn select_infantry_scatter_away_from(
+    /// The away-from-a-coordinate direction of `InfantryClass::Scatter`
+    /// (`0x0051D258..0x0051D2D4`): the heading away from `source` rounded to
+    /// an octant plus `RandomRanged(0, 4) - 2`, then the eight-neighbour
+    /// search.
+    fn select_infantry_scatter_away_from(
         &mut self,
         id: u64,
         source: (i32, i32),
@@ -65,6 +277,26 @@ impl Simulation {
             source,
             &mut self.scenario_rng,
         );
+        self.infantry_scatter_neighbor(id, start, rules, registry)
+    }
+
+    /// The eight-neighbour search both Scatter arms share
+    /// (`0x0051D487..0x0051D6BA`), from the navigation cell: only numeric entry
+    /// zero is legal, and a soft obstruction is not a passable destination.
+    /// Evidence: tools/spatial_oracle/infantry_scatter_entry.{py,json,meta.json}.
+    ///
+    /// Missing map state keeps headless fixtures compatible: no cell is found.
+    fn infantry_scatter_neighbor(
+        &mut self,
+        id: u64,
+        start: i32,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> Result<Option<InfantryDamageScatter>, String> {
+        let Some(infantry) = self.substrate.entities.get(id) else {
+            return Ok(None);
+        };
+        let current = super::foot_coordinate::current_coordinate(infantry);
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return Ok(None);
         };
@@ -117,6 +349,98 @@ impl Simulation {
             destination: (destination.0 as u16, destination.1 as u16),
             speed,
         }))
+    }
+
+    /// Scatter's `SetDestination(cell, 1)` (`vt+0x480`). Walk and Teleport men
+    /// take the Infantry setter (`0x0051AA40`). A Jumpjet man takes the
+    /// existing air destination owner (FNPC, placement and cached XYZ).
+    /// `process_now` runs the locomotor's Process at once, as the found-cell
+    /// arm does (`0x0051D478`).
+    ///
+    /// RESIDUAL: only a Walk man's immediate Process runs here. A Jumpjet or
+    /// Teleport man advances at its ordinary object turn instead, one frame
+    /// later. Trigger: such a man scattered into a found cell. Effect: its
+    /// first step comes one frame later. Frequency: rare; stock Jumpjet and
+    /// Teleport infantry are few.
+    fn infantry_scatter_destination(
+        &mut self,
+        id: u64,
+        cell: (u16, u16),
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+        process_now: bool,
+    ) -> Result<bool, String> {
+        let infantry = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("Scatter lost its infantryman")?;
+        let kind = infantry.locomotor.as_ref().map(|loco| loco.active_kind());
+        let speed = scatter_movement_speed(infantry, Some(rules), &self.interner);
+        if kind == Some(LocomotorKind::Jumpjet) {
+            if !self.issue_air_cell_destination(id, cell, speed, Some(rules)) {
+                return Err(
+                    "Scatter Jumpjet destination requires its failed-placement continuation".into(),
+                );
+            }
+            return Ok(false);
+        }
+        let scatter = InfantryDamageScatter {
+            destination: cell,
+            speed,
+        };
+        if !self.assign_infantry_walk_cell_destination(id, scatter, rules, registry)?
+            || !process_now
+            || kind != Some(LocomotorKind::Walk)
+        {
+            return Ok(false);
+        }
+        // 0x0051D478 is an immediate locomotor invocation, without another
+        // object AI, mission timer, global animation tick or frame-tail
+        // deletion.
+        #[cfg(test)]
+        if answered_process::answer(id) {
+            return Ok(false);
+        }
+        let grid = self.path_grid_snapshot();
+        let grid = grid
+            .as_deref()
+            .ok_or_else(|| String::from("Scatter Process requires navigation"))?;
+        let outcome = self
+            .process_ground_locomotor_one(id, Some(rules), Some(grid), registry)
+            .map_err(|error| format!("Scatter Process failed: {error:?}"))?;
+        Ok(outcome.bridge_state_changed())
+    }
+}
+
+/// Test-only answer for the immediate locomotor Process (`0x0051D478`), for
+/// replays of oracles that answer the Walk Process slot (`0x0075AC80`) as
+/// not moving: while installed, each Process is recorded and its body does
+/// not run.
+#[cfg(test)]
+pub(crate) mod answered_process {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static PROCESSED: RefCell<Option<Vec<u64>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn install() {
+        PROCESSED.with(|seam| *seam.borrow_mut() = Some(Vec::new()));
+    }
+
+    /// The objects whose Process was answered, in call order.
+    pub(crate) fn finish() -> Vec<u64> {
+        PROCESSED.with(|seam| seam.borrow_mut().take().unwrap_or_default())
+    }
+
+    pub(super) fn answer(id: u64) -> bool {
+        PROCESSED.with(|seam| {
+            seam.borrow_mut()
+                .as_mut()
+                .map(|processed| processed.push(id))
+                .is_some()
+        })
     }
 }
 
@@ -343,3 +667,7 @@ impl Simulation {
         ))
     }
 }
+
+#[cfg(test)]
+#[path = "infantry_scatter_tests.rs"]
+mod tests;
