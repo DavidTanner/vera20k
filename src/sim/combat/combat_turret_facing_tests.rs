@@ -1019,12 +1019,34 @@ fn fire_turn_hull(setup: impl FnOnce(&mut GameEntity)) -> Option<u16> {
 
 /// A Drive locomotor still under way toward (5,1): Is_Moving is true.
 fn drive_under_way(entity: &mut GameEntity) {
+    drive_with(
+        entity,
+        Some(crate::sim::components::DriveCoord::cell(5, 1, 0)),
+        None,
+    );
+}
+
+/// A stopped Drive braking into its committed head at (5,4): no destination,
+/// but the head is not where the unit stands, so Is_Moving is still true.
+fn drive_braking_to_head(entity: &mut GameEntity) {
+    drive_with(
+        entity,
+        None,
+        Some(crate::sim::components::DriveCoord::cell(5, 4, 0)),
+    );
+}
+
+fn drive_with(
+    entity: &mut GameEntity,
+    destination: Option<crate::sim::components::DriveCoord>,
+    head_to: Option<crate::sim::components::DriveCoord>,
+) {
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::components::{DriveCoord, DriveLocomotionRuntime};
     entity.locomotor =
         Some(crate::sim::movement::locomotor::LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        destination: Some(DriveCoord::cell(5, 1, 0)),
+    entity.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
+        destination,
+        head_to,
         ..Default::default()
     });
 }
@@ -1046,6 +1068,11 @@ fn gsi_08_04_the_fire_turn_asks_navcom_and_the_locomotor_not_the_order() {
         fire_turn_hull(drive_under_way),
         None,
         "a Drive under way keeps its heading without a NavCom"
+    );
+    assert_eq!(
+        fire_turn_hull(drive_braking_to_head),
+        None,
+        "a Drive braking into its head keeps its heading"
     );
 }
 
@@ -1099,6 +1126,11 @@ fn facing_update_turretless_arm_asks_navcom_and_the_locomotor_not_the_order() {
         "a NavCom"
     );
     assert_eq!(hull(&drive_under_way), None, "a Drive under way");
+    assert_eq!(
+        hull(&drive_braking_to_head),
+        None,
+        "a Drive braking into its head"
+    );
 }
 
 #[test]
@@ -1159,13 +1191,13 @@ fn gsi_08_14_idle_turret_leads_toward_the_move_destination() {
         .snap(0x0000, 0); // hull north
     use_test_interner(&mut sim);
     let rules = rules_with_mtnk_rot(100);
-    {
-        let movement = crate::sim::components::MovementTarget {
-            path: vec![(5, 5), (9, 5)], // destination four cells EAST
-            ..Default::default()
-        };
-        sim.substrate.entities.get_mut(1).unwrap().movement_target = Some(movement);
-    }
+    // A NavCom four cells EAST; a Drive's order starts with an empty path.
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .navigation
+        .nav_com = Some(crate::sim::components::NavTargetRef::cell(9, 5));
 
     let result = run_combat_direct(&mut sim, &rules);
     let desired = result
@@ -1192,6 +1224,38 @@ fn gsi_08_14_idle_turret_leads_toward_the_move_destination() {
         desired,
         body_facing_to_turret(0),
         "and specifically not back to the hull heading"
+    );
+}
+
+#[test]
+fn gsi_08_14_idle_turret_returns_to_the_hull_without_a_navcom() {
+    // `0x00736BAB`: with no NavCom the idle return takes the hull's facing,
+    // whatever path the scheduling adapter holds.
+    let mut sim = Simulation::new();
+    spawn_turreted(&mut sim, 1, 5, 5, 100);
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .body_facing
+        .snap(0x0000, 0); // hull north
+    use_test_interner(&mut sim);
+    let rules = rules_with_mtnk_rot(100);
+    sim.substrate.entities.get_mut(1).unwrap().movement_target =
+        Some(crate::sim::components::MovementTarget {
+            path: vec![(5, 5), (9, 5)],
+            ..Default::default()
+        });
+
+    let result = run_combat_direct(&mut sim, &rules);
+    assert_eq!(
+        result
+            .unit_facing
+            .iter()
+            .find(|u| u.entity_id == 1)
+            .and_then(|u| u.turret_destination),
+        Some(0),
+        "an adapter path is not a NavCom"
     );
 }
 

@@ -1273,6 +1273,14 @@ impl Simulation {
                     // would otherwise keep refusing a spark, flame, drain or
                     // temporal weapon. Infantry and open-topped units take
                     // the per-cell owner's stop (`movement/per_cell.rs`).
+                    // RESIDUAL: the native stop runs from Per_Cell_Process,
+                    // at cell entry; this pass runs it on the frame the
+                    // target comes in range, wherever the vehicle is in its
+                    // cell (other native stop paths unchecked). It then
+                    // brakes into its head from there, and a turretless one
+                    // turns to fire only once stopped (`0x00736FE1`), so its
+                    // first shot comes an unmeasured number of frames off
+                    // native. Every in-range stop of a pursuing vehicle.
                     if e.category == EntityCategory::Unit && movement::range_stop_admits(e) {
                         self.set_unit_null_destination(entity_id, Some(rules));
                     }
