@@ -545,7 +545,8 @@ impl CrushTarget {
 /// NO-DIFF (GSI-08.17) — pass 1's named gap is not one. A crushed unit's
 /// `DeathWeapon=` does not fire in gamemd either:
 /// `TechnoClass::Fire_Death_Weapon @ 0x0070D690` has exactly three callers,
-/// `ReceiveDamage @ 0x00701900`, `FlyLocomotionClass::Process @ 0x004CD600`
+/// `ReceiveDamage @ 0x00701900`, `0x004CD600` (which
+/// `FlyLocomotionClass::Process @ 0x004CCB40` calls every frame)
 /// and the Unit's crash notice (`0x007461EF`), and the crush loop at
 /// `0x007416A0` enters none of them. Detonating a crushed
 /// Terrorist would be a regression, not a fix. Native's crush consequences are
