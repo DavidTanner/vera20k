@@ -15,21 +15,6 @@ use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 const DRIVE_DESTINATION_BRAKE_FLOOR: SimFixed = SimFixed::lit("0.3");
 
-/// `ILocomotion::Is_Moving` (slot 4) for the Drive locomotor.
-///
-/// gamemd reads the locomotor's OWN coordinates, not the owner's path queue: a
-/// non-null destination is moving; otherwise a null head-to is not moving; a
-/// head-to whose X and Y already equal the owner's exact lepton position is not
-/// moving; anything else is. Z is deliberately not compared.
-///
-/// This is the predicate `Drive::Is_Ok_To_End` consults before a piggyback may
-/// be unwound. It is a different function from `Is_Moving_Now` (slot 32), which
-/// additionally folds in hull rotation and the live per-frame speed — a Drive
-/// unit with a destination but zero speed is `Is_Moving`, not `Is_Moving_Now`.
-pub(crate) fn drive_locomotor_is_moving(entity: &GameEntity) -> bool {
-    super::track_head::motion_state(entity, super::track_process::TrackFamily::Drive).0
-}
-
 /// `DriveLocomotionClass::Do_Turn @ 0x004B0EF0` (ILocomotion +0x4C): one
 /// `FacingClass::Set @ 0x004C9220` on the owner's PrimaryFacing (+0x388).
 /// Re-issuing the destination the facing already holds keeps its running
@@ -469,22 +454,31 @@ mod tests {
 
     fn drive_entity_at(rx: u16, ry: u16) -> GameEntity {
         let mut entity = GameEntity::test_default(1, "HARV", "Americans", rx, ry);
+        entity.locomotor = Some(
+            crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+                crate::rules::locomotor_type::LocomotorKind::Drive,
+            ),
+        );
         entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
         entity
     }
 
-    /// GSI-06.12 GAP 3: `Drive::Is_Ok_To_End` reads ILocomotion slot 4
-    /// (`Is_Moving`) on the ACTIVE locomotor, and that predicate looks at the
-    /// Drive locomotor's own destination and head-to coords — not at the
-    /// owner's path queue. A non-null destination alone means "moving".
+    fn drive_is_moving(entity: &GameEntity) -> bool {
+        crate::sim::movement::motion_query::is_moving(entity) == Some(true)
+    }
+
+    /// GSI-06.12 GAP 3: a Drive's Is_Moving (ILocomotion+0x10, `0x004AFB80`)
+    /// looks at the Drive locomotor's own destination and head-to coords — not
+    /// at the owner's order. A non-null destination alone means "moving".
     #[test]
     fn gsi_06_12_drive_is_moving_reads_its_own_destination() {
         let mut entity = drive_entity_at(3, 3);
-        assert!(!drive_locomotor_is_moving(&entity));
+        entity.movement_target = Some(crate::sim::components::MovementTarget::default());
+        assert!(!drive_is_moving(&entity), "an order alone is not moving");
 
         entity.drive_locomotion.as_mut().expect("drive").destination =
             Some(DriveCoord::cell(9, 3, 0));
-        assert!(drive_locomotor_is_moving(&entity));
+        assert!(drive_is_moving(&entity));
     }
 
     /// With no destination, a null head-to is not moving and a head-to that
@@ -499,20 +493,20 @@ mod tests {
         let drive = entity.drive_locomotion.as_mut().expect("drive");
         drive.head_to = Some(DriveCoord::cell(3, 3, 0));
         assert!(
-            !drive_locomotor_is_moving(&entity),
+            !drive_is_moving(&entity),
             "head-to at the owner's own cell centre is not moving"
         );
 
         let drive = entity.drive_locomotion.as_mut().expect("drive");
         drive.head_to = Some(DriveCoord::cell(3, 3, 7));
         assert!(
-            !drive_locomotor_is_moving(&entity),
+            !drive_is_moving(&entity),
             "a Z-only difference does not make it moving"
         );
 
         let drive = entity.drive_locomotion.as_mut().expect("drive");
         drive.head_to = Some(DriveCoord::cell(4, 3, 0));
-        assert!(drive_locomotor_is_moving(&entity));
+        assert!(drive_is_moving(&entity));
     }
 
     #[test]

@@ -52,9 +52,10 @@ pub(crate) fn try_end_drive_at_foot_idle(entity: &mut GameEntity) -> bool {
     drive_end_admitted(entity) && restore_admitted_primary(entity)
 }
 
-/// IsMoving here is the Drive's own order (+34 and its head): the Drive
-/// holds +34 until it arrives, so a Chrono Miner's Drive does not end
-/// mid-route.
+/// IsMoving here is the Drive's own Is_Moving (`0x004AFB80`, its destination
+/// +34 and its head, not the owner's order): the Drive holds +34 until it
+/// arrives, so a Chrono Miner's Drive does not end mid-route. It is not
+/// Is_Moving_Now, which also counts hull rotation and live speed.
 fn drive_end_admitted(entity: &GameEntity) -> bool {
     entity.locomotor.as_ref().is_some_and(|locomotor| {
         locomotor.active_kind() == LocomotorKind::Drive && locomotor.piggyback.is_some()
@@ -62,7 +63,7 @@ fn drive_end_admitted(entity: &GameEntity) -> bool {
         .drive_locomotion
         .as_ref()
         .is_none_or(|drive| drive.end_permitted)
-        && !super::drive_locomotion::drive_locomotor_is_moving(entity)
+        && super::motion_query::is_moving(entity) != Some(true)
         && !entity.foot_locomotor_swap_active
 }
 

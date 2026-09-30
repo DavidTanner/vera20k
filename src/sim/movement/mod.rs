@@ -151,7 +151,7 @@ pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 // NOT test-gated: `techno_common_pre`'s DisguiseWhenStill check
 // (sim/world/techno_ai.rs) consumes this in every build; a 2026-08-14
 // warning-cleanup gate on it broke release-only compilation.
-pub(crate) use drive_locomotion::{drive_do_turn, drive_locomotor_is_moving};
+pub(crate) use drive_locomotion::drive_do_turn;
 
 // Re-export command functions so callers can use `movement::issue_move_command` etc.
 #[cfg(test)]
