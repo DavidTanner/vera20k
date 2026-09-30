@@ -435,9 +435,10 @@ impl FootPathQueue {
 /// Original executable witnesses: tools/spatial_oracle/foot_speed_owner.json.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FootSpeedState {
-    /// Foot `+0x578`. Only `FootClass::SetSpeedFraction @ 0x004D3710` writes
-    /// it: [`Self::set_speed_fraction`] for a fixed-point request and
-    /// [`Self::set_speed_fraction_native_bits`] for a native double.
+    /// Foot `+0x578`. The Foot constructor zeroes it (`0x004D327F`/`0x004D328B`,
+    /// ported by `Default`); after that only `FootClass::SetSpeedFraction @
+    /// 0x004D3710` writes it: [`Self::set_speed_fraction`] for a fixed-point
+    /// request and [`Self::set_speed_fraction_native_bits`] for a native double.
     applied_fraction: SimFixed,
     /// Foot+580, initialized to exactly 1.0 at4D3292/4D329B. Retain the
     /// native bits: pickup refuses even the immediate neighbors of 1.0.

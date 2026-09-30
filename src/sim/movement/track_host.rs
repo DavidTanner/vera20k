@@ -261,7 +261,9 @@ impl Simulation {
 
     pub(super) fn track_survives(&self, id: u64) -> bool {
         self.substrate.entities.get(id).is_some_and(|entity| {
-            entity.lifecycle.object_alive && !entity.lifecycle.in_limbo && !entity.is_falling_down()
+            entity.lifecycle.object_alive
+                && !entity.lifecycle.in_limbo
+                && !entity.is_falling_down()
         })
     }
 

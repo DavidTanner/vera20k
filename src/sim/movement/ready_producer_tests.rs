@@ -330,6 +330,10 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
                 };
                 state.head = head;
                 state.moving = input["moving"].as_bool().unwrap();
+                // The harness pokes Foot+0x578 directly, including -1, which
+                // SetSpeedFraction (its only writer) never stores: the owner
+                // stores +0 for it. IsMovingNow's `<= 0` test (0x0075AB52..63)
+                // answers -1 and 0 alike, so those rows still check the reader.
                 entity
                     .foot_speed
                     .set_speed_fraction(SimFixed::from_num(input["speed"].as_f64().unwrap()));

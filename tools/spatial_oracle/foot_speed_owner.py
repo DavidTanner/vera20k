@@ -14,17 +14,24 @@ from tools.spatial_oracle.locomotor_track_cursor import OriginalCursor, LOCO, FO
 from tools.spatial_oracle.map_queries import dwords
 
 
-def witness(family, requested):
+def run_setter(family, requested):
+    """The setter alone on one requested double, as bits; returns the stored bits."""
     n = OriginalCursor(family)
     n.seed(-1, -1, False, 0)
     u = n.uc
     # Existing owner memory is separate from the object being constructed.
     u.mem_write(FOOT, bytes([0xA5]) * 0x800)
     u.reg_write(UC_X86_REG_ECX, FOOT)
-    u.mem_write(SP, dwords(RET_MAGIC) + struct.pack('<d', requested))
+    u.mem_write(SP, dwords(RET_MAGIC) + struct.pack('<Q', requested))
     run_checked(u, 0x4D3710, RET_MAGIC, count=40)
     assert u.reg_read(UC_X86_REG_ESP) == SP + 12
-    applied = struct.unpack('<d', u.mem_read(FOOT + 0x578, 8))[0]
+    return n, struct.unpack('<Q', u.mem_read(FOOT + 0x578, 8))[0]
+
+
+def witness(family, requested):
+    n, applied = run_setter(family, struct.unpack('<Q', struct.pack('<d', requested))[0])
+    applied = struct.unpack('<d', struct.pack('<Q', applied))[0]
+    u = n.uc
     before = bytes(u.mem_read(FOOT, 0x800))
 
     ctor = 0x4AF540 if family == 'drive' else 0x69EC50
@@ -57,16 +64,7 @@ def witness(family, requested):
 
 
 def setter_bits(requested):
-    """The setter alone on one requested double, as bits."""
-    n = OriginalCursor('drive')
-    n.seed(-1, -1, False, 0)
-    u = n.uc
-    u.mem_write(FOOT, bytes([0xA5]) * 0x800)
-    u.reg_write(UC_X86_REG_ECX, FOOT)
-    u.mem_write(SP, dwords(RET_MAGIC) + struct.pack('<Q', requested))
-    run_checked(u, 0x4D3710, RET_MAGIC, count=40)
-    assert u.reg_read(UC_X86_REG_ESP) == SP + 12
-    applied = struct.unpack('<Q', u.mem_read(FOOT + 0x578, 8))[0]
+    _, applied = run_setter('drive', requested)
     return dict(input=dict(family='setter', requested_bits=f'{requested:016x}'),
                 output=dict(applied_bits=f'{applied:016x}'))
 

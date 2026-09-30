@@ -81,7 +81,10 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(());
         };
-        if !actor.lifecycle.object_alive || actor.lifecycle.in_limbo || actor.is_falling_down() {
+        if !actor.lifecycle.object_alive
+            || actor.lifecycle.in_limbo
+            || actor.is_falling_down()
+        {
             return Ok(());
         }
         let Some(loco) = actor
