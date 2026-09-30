@@ -41,7 +41,7 @@ pub(crate) enum FreshCallRecord {
     },
     Scatter {
         cell: (i16, i16),
-        forced: bool,
+        no_kidding: bool,
         deck: bool,
     },
     Override {

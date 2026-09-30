@@ -116,15 +116,10 @@
 //!   Each escapee spends Scatter's RandomRanged(0,4) and then its immediate
 //!   Walk Process's draws (the head's RandomRanged(0,3) from the centre
 //!   spot); the priority placement and the kill paths draw nothing.
-//! - Scatter's FNPC failure arm (the eight-neighbour fallback and
-//!   QueueMission(Move) inside `InfantryClass::Scatter @ 0x0051D0D0`) is not
-//!   ported: the crewman stays where it landed, with its mission still
-//!   queued. Trigger: no passable cell at its height within the FNPC radius,
-//!   e.g. a building straddling a cliff ledge. Frequency: rare (buildings
-//!   stand on level ground). Risk: position only. Likewise a crewman on a
-//!   cell the path grid marks unwalkable loses its Scatter destination in the
-//!   immediate Process (the movement owner refuses a blocked start cell);
-//!   only seen with a building placed partly on such ground.
+//! - A crewman on a cell the path grid marks unwalkable loses its Scatter
+//!   destination in the immediate Process (the movement owner refuses a
+//!   blocked start cell); only seen with a building placed partly on such
+//!   ground.
 //! - House IsToDie (`+0x1F6`, set by `0x004FC980`): VERA has no resign
 //!   countdown, so it never suppresses the survivor roll. Frequency: only a
 //!   resigning house's buildings.
@@ -1101,13 +1096,17 @@ impl Simulation {
         }
     }
 
-    /// `InfantryClass::Scatter(&EmptyCoord, 1, 0)` through the shared forced
-    /// arm. An arm VERA does not port yet leaves the crewman where it landed
-    /// (module residuals). The immediate Process's bridge-state flag, which
-    /// the hut caller propagates, is dropped: a crewman's first walk step does
-    /// not change bridge state.
+    /// `InfantryClass::Scatter(&EmptyCoord, 1, 0)`. A receiver error leaves
+    /// the crewman where it landed. The immediate Process's bridge-state
+    /// flag, which the hut caller propagates, is dropped: a crewman's first
+    /// walk step does not change bridge state.
     fn scatter_crew(&mut self, rules: &RuleSet, registry: Option<&OverlayTypeRegistry>, id: u64) {
-        if let Err(cause) = self.scatter_infantry_forced_from_empty(id, rules, registry) {
+        if let Err(cause) = self.scatter_null(
+            id,
+            crate::sim::movement::ScatterFlags::new(true, false),
+            rules,
+            registry,
+        ) {
             log::debug!("crew {id} did not scatter: {cause}");
         }
     }

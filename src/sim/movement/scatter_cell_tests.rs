@@ -3,6 +3,10 @@ use crate::map::resolved_terrain::test_flat_cell;
 use crate::sim::cell_rect::{PlayfieldBounds, cell_is_in_playfield_height_aware};
 use crate::sim::rng::SimRng;
 
+/// Both arms of the original body into the shared eight-neighbour search:
+/// a real source's away heading, and a null source's facing or centre
+/// heading after its FNPC answers NullCell (tools/spatial_oracle/
+/// infantry_source_scatter).
 #[test]
 fn source_selection_matches_original_execution() {
     let rows: serde_json::Value = serde_json::from_str(include_str!(
@@ -55,14 +59,28 @@ fn source_selection_matches_original_execution() {
         let mut events = Vec::new();
         let destination =
             if crate::rules::infantry_sequence::scatter_allowed_by_doing(doing).unwrap() {
-                let start =
-                    source_start_direction((actor[0], actor[1]), (source[0], source[1]), &mut rng);
+                let null = source == [0, 0, 0];
+                let start = if null {
+                    let facing = input["facing"].as_u64().unwrap() as u16;
+                    null_start_direction((actor[0], actor[1]), facing, &mut rng)
+                } else {
+                    source_start_direction((actor[0], actor[1]), (source[0], source[1]), &mut rng)
+                };
                 assert_eq!(
                     start & 7,
                     row["start_direction"].as_i64().unwrap() as i32,
                     "{input}"
                 );
                 events.push("random");
+                if null {
+                    // FNPC seeds from the navigation cell after the draw.
+                    assert_eq!(
+                        row["fnpc_seed"],
+                        serde_json::json!([seed.0, seed.1]),
+                        "{input}"
+                    );
+                    events.push("fnpc");
+                }
                 select_neighbor::<std::convert::Infallible>(seed, start, |candidate, direction| {
                     let cells = NativeCellQuery::canonical(&terrain);
                     let cell = cells.lookup(candidate);
@@ -115,5 +133,5 @@ fn source_selection_matches_original_execution() {
         );
         checked += 1;
     }
-    assert_eq!(checked, 56);
+    assert_eq!(checked, 76);
 }

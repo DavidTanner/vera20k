@@ -18,6 +18,15 @@
 //!   (`0x0065A829`), is not kept.
 //! - Building OVER_OUT's `Begin_Mode(IDLE)` (`0x00447780`) queues the
 //!   building's IDLE BState (+0x538); VERA has no BState owner.
+//! - The bus carries no overlay registry, so RUN_AWAY's Scatter reaches an
+//!   Infantry receiver without one, and its overlay reads fail on any cell
+//!   holding an overlay (ore included); the error is logged. When
+//!   Find_Nearby_Passable_Cell found a cell, the draw and the setter have
+//!   already run: the man keeps that destination and walks at his next turn,
+//!   but loses the immediate Process. When the neighbour fallback runs
+//!   instead, he stays. Trigger: RUN_AWAY reaching an infantryman in radio
+//!   contact. Frequency: rare, radio contacts are mostly docked Units. A Unit
+//!   receiver reads no overlay.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/radio + sim/world. sim/ NEVER depends on
@@ -29,6 +38,7 @@ use crate::sim::components::NavTargetRef;
 use crate::sim::docking::bunker_install::BunkerState;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::movement::ScatterFlags;
 use crate::sim::radio::{RadioMessage, RadioPayload, RadioResponse, transmit};
 #[cfg(test)]
 use crate::sim::world::LifecycleTestEvent;
@@ -409,7 +419,9 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
         return;
     }
     crate::sim::miner::clear_unload_latch(sim, unit);
-    sim.scatter_null_source(unit, rules);
+    if let Err(cause) = sim.scatter_null(unit, ScatterFlags::new(true, false), rules, None) {
+        log::debug!("RUN_AWAY unit {unit} did not scatter: {cause}");
+    }
     let now = sim.session.binary_frame;
     let _ = sim.mission_queue_exact(
         unit,
@@ -588,8 +600,9 @@ fn foot_run_away(sim: &mut Simulation, foot: u64, rules: Option<&RuleSet>) {
         .entities
         .get(foot)
         .is_some_and(|entity| !entity.turret_rotation_latch && entity.navigation.nav_com.is_none())
+        && let Err(cause) = sim.scatter_null(foot, ScatterFlags::new(true, true), rules, None)
     {
-        sim.scatter_null_source(foot, rules);
+        log::debug!("RUN_AWAY foot {foot} did not scatter: {cause}");
     }
 }
 

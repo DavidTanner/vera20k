@@ -285,14 +285,17 @@ fn production_chain_code3_opens_gate_without_consuming_the_queue() {
 fn production_chain_code6_scatters_once_without_adopting_the_candidate() {
     let (mut sim, rules, invocation) = chain_fixture(false);
     add_blocker(&mut sim, false);
+    // The Unit receiver's Find_Nearby_Passable_Cell bounds its search by the
+    // map Size.
+    sim.playfield_bounds = Some(crate::sim::arena_fixture::OPEN_PLAYFIELD);
+    sim.playfield_size_height = Some(20);
     let before = sim.substrate.entities.get(2).unwrap().position.clone();
-    let mut expected_rng = sim.scenario_rng.clone();
-    expected_rng.next_range_u32(8);
+    let rng = sim.scenario_rng.logical_state();
     sim.run_track_points(invocation, 8, Some(&rules), None);
     let blocker = sim.substrate.entities.get(2).unwrap();
     assert!(
-        blocker.movement_target.is_some(),
-        "the production scatter receiver issues movement"
+        blocker.navigation.nav_com.is_some(),
+        "the Unit receiver sets a destination"
     );
     assert_eq!(
         serde_json::to_value(&blocker.position).unwrap(),
@@ -300,10 +303,8 @@ fn production_chain_code6_scatters_once_without_adopting_the_candidate() {
         "scatter does not teleport the occupant"
     );
     assert_old_chain_continues(&sim);
-    assert_eq!(
-        sim.scenario_rng.logical_state(),
-        expected_rng.logical_state()
-    );
+    // The Unit receiver's null arm draws nothing (0x00743A50).
+    assert_eq!(sim.scenario_rng.logical_state(), rng);
 }
 
 #[test]

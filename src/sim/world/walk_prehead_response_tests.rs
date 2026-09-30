@@ -405,7 +405,7 @@ fn expected_calls(row: &Value, other: Option<u64>) -> Vec<FreshCallRecord> {
                     assert_eq!(event[2][2], 1);
                     FreshCallRecord::Scatter {
                         cell: (10, 10),
-                        forced: true,
+                        no_kidding: true,
                         deck: event[2][3] != 0,
                     }
                 }

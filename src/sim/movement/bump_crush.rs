@@ -20,7 +20,6 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::{CellOccupancy, OccupancyGrid};
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::SimFixed;
 
@@ -42,18 +41,6 @@ fn get_subcell_quadrant(sub_x: SimFixed, sub_y: SimFixed) -> u8 {
         y: sub_y.to_num::<i32>(),
     })
 }
-
-/// The 8 directional offsets in isometric cell coordinates (dx, dy).
-const NEIGHBOR_OFFSETS: [(i32, i32); 8] = [
-    (0, -1),  // N
-    (1, -1),  // NE
-    (1, 0),   // E
-    (1, 1),   // SE
-    (0, 1),   // S
-    (-1, 1),  // SW
-    (-1, 0),  // W
-    (-1, -1), // NW
-];
 
 #[cfg(test)]
 pub(crate) fn build_blocker_neighbor_counts(
@@ -486,19 +473,6 @@ impl CrushCapability {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DriveCrushPhase {
-    EnteringCell,
-    FullyInCell,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DriveCrushOutcome {
-    None,
-    Scatter { blockers: Vec<u64> },
-    Kill { victims: Vec<u64> },
-}
-
 pub const CRUSH_DISTANCE_SQ_LIMIT: i64 = 0x3fff;
 
 pub fn within_crush_distance_sq(crusher: (i32, i32), victim: (i32, i32)) -> bool {
@@ -832,135 +806,14 @@ pub fn cell_passable_after_crush(
     true
 }
 
-// ---------------------------------------------------------------------------
-// Cell scatter dispatch eligibility (the `force = 0` gate)
-// ---------------------------------------------------------------------------
-
-/// Elite veterancy level — the pre-scan in the native cell scatter asks each
-/// occupant's `VeterancyClass::IsElite`.
-const ELITE_VETERANCY: u16 = 200;
-
-/// Live Techno inputs at one Cell Scatter dispatch. Non-Technos have no such
-/// facts and pass only a cell-wide override. Native: 481771..4817C1.
-#[derive(Clone, Copy, Debug)]
-pub struct ScatterTechno {
-    pub has_scatter_ability: bool,
-    pub house_iq: i32,
-}
-
-impl ScatterTechno {
-    fn from_entity(
-        entity: &GameEntity,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-        houses: &std::collections::BTreeMap<
-            crate::sim::intern::InternedId,
-            crate::sim::house_state::HouseState,
-        >,
-        interner: &crate::sim::intern::StringInterner,
-    ) -> Self {
-        use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
-        Self {
-            has_scatter_ability: rules
-                .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
-                .is_some_and(|object| {
-                    has_weapon_ability(
-                        rank_from_u16(entity.veterancy()),
-                        object,
-                        crate::rules::object_type::Ability::Scatter,
-                    )
-                }),
-            // A rulesless/component fixture may omit its House. Runtime houses
-            // own CurrentIQ; zero is their constructor default, not a human/AI
-            // inference. The value is already saved/restored by HouseState.
-            house_iq: houses
-                .get(&entity.owner())
-                .map_or(0, |house| house.current_iq),
-        }
-    }
-}
-
-/// Rules inputs of the native cell-scatter dispatch gate.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ScatterEligibility {
-    /// `[CombatDamage] PlayerScatter` — stock `no`.
-    pub player_scatter: bool,
-    /// `[IQ] Scatter` — stock `2`, constructor default `3`.
-    pub iq_scatter: i32,
-}
-
-impl Default for ScatterEligibility {
-    /// The RulesClass constructor values, used when no ruleset is loaded.
-    fn default() -> Self {
-        Self {
-            player_scatter: false,
-            iq_scatter: 3,
-        }
-    }
-}
-
-impl ScatterEligibility {
-    pub fn from_rules(rules: Option<&crate::rules::ruleset::RuleSet>) -> Self {
-        rules.map_or_else(Self::default, |rules| Self {
-            player_scatter: rules.general.player_scatter,
-            iq_scatter: rules.general.iq_scatter,
-        })
-    }
-}
-
-/// Whether the native cell scatter actually dispatches to one occupant.
-///
-/// The dispatch condition is
-/// `eliteFound || force != 0 || PlayerScatter || (HasWeaponAbility(3) || IQ.Scatter <= occupantHouse.IQ)`.
-/// `eliteFound` is a **per-cell** pre-scan result — the walk breaks on the first
-/// elite occupant and the answer then applies to every occupant of that cell —
-/// while the IQ term is per-occupant.
-///
-/// `HasWeaponAbility(3)` is SCATTER, using the shared rank/ability owner.
-/// Evidence: tools/spatial_oracle/cell_scatter.{py,json,meta.json} executes the
-/// original full dispatcher and ability reader. Eligibility itself draws no
-/// RNG; the recipient's Scatter virtual may draw, so dispatch is not RNG-free.
-pub fn scatter_dispatch_allowed(
-    eligibility: ScatterEligibility,
-    forced: bool,
-    elite_in_cell: bool,
-    techno: Option<ScatterTechno>,
-) -> bool {
-    elite_in_cell
-        || forced
-        || eligibility.player_scatter
-        || techno.is_some_and(|facts| {
-            facts.has_scatter_ability || facts.house_iq >= eligibility.iq_scatter
-        })
-}
-
-/// The per-cell elite pre-scan: does any occupant of this cell carry elite rank?
-///
-/// The native pre-scan runs only for an unforced scatter and breaks on the first
-/// elite it finds. It walks the *cell's* occupants, so the vehicle doing the
-/// scattering is not one of them — an elite crusher must not release the cell's
-/// own dispatch gate, which is why `skip_id` exists.
-pub fn cell_has_elite_occupant(occupants: &[u64], skip_id: u64, entities: &EntityStore) -> bool {
-    occupants.iter().any(|&id| {
-        id != skip_id
-            && entities
-                .get(id)
-                .is_some_and(|entity| entity.veterancy() >= ELITE_VETERANCY)
-    })
-}
-
-/// Classify what a crusher does to the occupants of the cell it is touching.
-///
-/// `EnteringCell` mirrors `UnitClass::PerCellProcess(entering != 0)`, which
-/// scatters the cell with **force = 0** and never crushes; `FullyInCell` mirrors
-/// the `entering == 0` crush loop. The unforced scatter is subject to the
-/// dispatch gate — an elite in the cell, `PlayerScatter`, or the occupant's
-/// house IQ — which is why player-owned infantry stand still under an
-/// approaching tank in retail instead of dodging.
+/// The occupants a crusher fully inside the cell kills, in cell-list order:
+/// the `entering == 0` crush loop of `UnitClass::PerCellProcess`. The
+/// entering cell's unforced scatter is `Scatter_Objects`' dispatch walk
+/// ([`super::scatter::scatter_objects_admitted`]).
 ///
 /// `current_frame` feeds the Iron Curtain gate of the crush predicate.
 #[allow(clippy::too_many_arguments)]
-pub fn classify_drive_crush_phase(
-    phase: DriveCrushPhase,
+pub fn select_crush_victims(
     occ: &[u64],
     entities: &EntityStore,
     crusher_id: u64,
@@ -968,82 +821,36 @@ pub fn classify_drive_crush_phase(
     interner: &crate::sim::intern::StringInterner,
     crusher_coord: (i32, i32),
     capability: CrushCapability,
-    eligibility: ScatterEligibility,
     current_frame: u32,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    houses: &std::collections::BTreeMap<
-        crate::sim::intern::InternedId,
-        crate::sim::house_state::HouseState,
-    >,
-) -> DriveCrushOutcome {
+) -> Vec<u64> {
     if !capability.can_crush_units() {
-        return DriveCrushOutcome::None;
+        return Vec::new();
     }
     let Some(crusher) = entities.get(crusher_id) else {
-        return DriveCrushOutcome::None;
+        return Vec::new();
     };
-    let crusher_owner = interner.resolve(crusher.owner());
-    // Per-cell pre-scan, exactly once, before the dispatch walk.
-    let elite_in_cell = match phase {
-        DriveCrushPhase::EnteringCell => cell_has_elite_occupant(occ, crusher_id, entities),
-        DriveCrushPhase::FullyInCell => false,
-    };
-    let mut selected = Vec::new();
-    for &id in occ {
-        if id == crusher_id {
-            continue;
-        }
-        let Some(victim) = entities.get(id) else {
-            continue;
-        };
-        match phase {
-            DriveCrushPhase::EnteringCell => {
-                if scatter_dispatch_allowed(
-                    eligibility,
-                    false,
-                    elite_in_cell,
-                    Some(ScatterTechno::from_entity(victim, rules, houses, interner)),
-                ) {
-                    selected.push(id);
-                }
-            }
-            DriveCrushPhase::FullyInCell => {
-                // The same gate admission uses. Two inline copies of one
-                // predicate is how admission and the kill came to disagree.
-                if CrushAllyGate::new(crusher_owner, alliances, interner).spares(victim) {
-                    continue;
-                }
-                if !within_crush_distance_sq(crusher_coord, entity_crush_coord(victim)) {
-                    continue;
-                }
-                if can_crush(capability, CrushTarget::from_entity(victim, current_frame)) {
-                    selected.push(id);
-                }
-            }
-        }
-    }
-    // Native `CellClass::Scatter_Objects` @ `0x00481670` dispatches its
-    // selected-list snapshot
-    // forward. Sorting by stable id here would erase Cell list authority.
-    match (phase, selected.is_empty()) {
-        (_, true) => DriveCrushOutcome::None,
-        (DriveCrushPhase::EnteringCell, false) => DriveCrushOutcome::Scatter { blockers: selected },
-        (DriveCrushPhase::FullyInCell, false) => DriveCrushOutcome::Kill { victims: selected },
-    }
+    // The same gate admission uses. Two inline copies of one predicate is how
+    // admission and the kill came to disagree.
+    let allies = CrushAllyGate::new(interner.resolve(crusher.owner()), alliances, interner);
+    occ.iter()
+        .copied()
+        .filter(|&id| id != crusher_id)
+        .filter(|&id| {
+            entities.get(id).is_some_and(|victim| {
+                !allies.spares(victim)
+                    && within_crush_distance_sq(crusher_coord, entity_crush_coord(victim))
+                    && can_crush(capability, CrushTarget::from_entity(victim, current_frame))
+            })
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
-// Scatter displacement (replaces old "bump" teleport)
+// Scatter
 // ---------------------------------------------------------------------------
 //
-// The original engine uses CellClass::Scatter_Objects to tell occupants to
-// move out of the way. All 6 locomotor call sites pass force=1 with a
-// NullCoord, which triggers UnitClass::Scatter Branch A: random direction,
-// Set_Destination only (no mission change). The blocker walks away via its
-// normal locomotor — it is never teleported.
-//
-// Our implementation: find a walkable, unoccupied adjacent cell and issue
-// the blocker a 1-cell movement command via `issue_direct_move`.
+// `CellClass::Scatter_Objects`, its dispatch gate and the class Scatter
+// receivers live in `movement::scatter` and `movement::infantry_scatter`.
 
 /// Frames a blocked mover waits after telling the cell to scatter.
 ///
@@ -1060,322 +867,6 @@ pub const POST_SCATTER_WAIT_FRAMES: i32 = 10;
 // the original scatters the man's OWN cell on arrival rather than the
 // destination cell of a blocked step. See the note at the head of
 // `movement_occupancy::handle_deferred_occupancy`.
-
-/// A forced blocked-cell scatter loses its force when Infantry's locomotor
-/// reports moving. After the mission gate, the final Fraidycat gate at
-/// `InfantryClass::Scatter 0x0051D20E..0x0051D220` rejects ordinary moving
-/// infantry even without an attack target. `UnitClass::Scatter 0x00743A50`
-/// never demotes force. See `tools/infantry_scatter_oracle.py` for the bounded
-/// native gate comparison.
-fn moving_blocker_accepts_forced_scatter(
-    blocker: &GameEntity,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    is_fraidycat: bool,
-) -> bool {
-    if blocker.category != EntityCategory::Infantry {
-        return true;
-    }
-    let mission_allows = match (blocker.mission.current().known(), rules) {
-        (Some(mission), Some(rules)) => rules
-            .mission_control
-            .entry(mission)
-            .is_none_or(|entry| entry.scatter),
-        _ => true,
-    };
-    mission_allows && is_fraidycat
-}
-
-/// Read a blocker type's `Fraidycat=` flag for [`scatter_blocker`].
-///
-/// Stock `rulesmd.ini` sets `Fraidycat=yes` on 26 sections, all civilians — so
-/// every combat infantry type takes the refusing branch of the second scatter
-/// gate. An absent ruleset resolves to the constructed default `false`.
-pub fn blocker_is_fraidycat(
-    entities: &EntityStore,
-    blocker_id: u64,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    interner: &crate::sim::intern::StringInterner,
-) -> bool {
-    let Some(blocker) = entities.get(blocker_id) else {
-        return false;
-    };
-    if blocker.category != EntityCategory::Infantry {
-        return false;
-    }
-    rules
-        .and_then(|rules| rules.object(interner.resolve(blocker.type_ref())))
-        .is_some_and(|obj| obj.fraidycat)
-}
-
-/// Unconditional Unit743A50 refusals, shared by NULL and source-aware calls.
-/// Force does not override Techno6F3280's effective Sleep/Sticky/Unload,
-/// active Teleport GUID, body Facing388 rotation, deploy-family bytes6E0..2,
-/// or ILocomotion+60 (IsPowered55A930). Test the active instance: a Chrono
-/// Miner's temporary Drive is eligible even though its installed slot is Teleport.
-///
-/// Existing deploy_state owns the represented three deploy phases; no second
-/// latch is introduced here. Its animation-driven native producers remain a
-/// separate migration. IsTrain+C94 is unparsed and absent from retail types.
-/// Mission Scatter, NavCom and source-only gates are NOT covered by this prefix.
-/// Evidence: tools/spatial_oracle/unit_scatter_state.{py,json,meta.json}.
-fn unit_scatter_state_allows(blocker: &GameEntity, binary_frame: u32) -> bool {
-    use crate::rules::locomotor_type::LocomotorKind;
-    if matches!(blocker.mission.effective().raw(), 0 | 6 | 16)
-        || blocker.body_facing.is_rotating(binary_frame)
-        || blocker.deploy_state.is_some()
-    {
-        return false;
-    }
-    blocker.locomotor.as_ref().is_some_and(|locomotor| {
-        locomotor.active_kind() != LocomotorKind::Teleport && locomotor.is_powered()
-    })
-}
-
-impl crate::sim::world::Simulation {
-    /// `TechnoClass::Scatter` (vt+0x174) with a null source coordinate
-    /// (Receive_Radio's scatter requests, TryToDeploy's `0x00739394`),
-    /// through the shared blocked-cell adapter below (its displacement and
-    /// RNG residuals apply; it reads no force byte).
-    pub(crate) fn scatter_null_source(&mut self, id: u64, rules: &crate::rules::ruleset::RuleSet) {
-        let Some(layer) = self
-            .substrate
-            .entities
-            .get(id)
-            .and_then(|entity| entity.occupancy_list_layer())
-        else {
-            return;
-        };
-        let grid = self.path_grid_snapshot();
-        scatter_blocker(
-            &mut self.substrate.entities,
-            id,
-            grid.as_deref(),
-            self.resolved_terrain.as_ref(),
-            &self.substrate.occupancy,
-            layer,
-            &mut self.scenario_rng,
-            Some(rules),
-            &self.interner,
-            crate::sim::movement::DestinationTiming::from_rules(
-                self.session.binary_frame,
-                rules.into(),
-            ),
-        );
-    }
-}
-
-/// Try to scatter a blocker to an adjacent cell by issuing a movement command.
-///
-/// Compatibility displacement for the blocked-cell caller: search eight
-/// neighbours from a random direction and issue a movement order. Residual:
-/// native NULL-source Infantry Scatter first tries FNPC, then uses the shared
-/// eight-neighbour fallback; this adapter still needs that class migration.
-///
-/// `rules` resolves the Infantry scatter gates and the normal movement speed.
-/// Scatter changes the destination; it does not grant a special speed.
-///
-/// Returns `true` if the blocker was given a scatter movement command.
-#[allow(clippy::too_many_arguments)]
-pub fn scatter_blocker(
-    entities: &mut EntityStore,
-    blocker_id: u64,
-    path_grid: Option<&PathGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    occupancy: &OccupancyGrid,
-    layer: MovementLayer,
-    rng: &mut SimRng,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    interner: &crate::sim::intern::StringInterner,
-    timing: crate::sim::movement::DestinationTiming,
-) -> bool {
-    // Read blocker properties (immutable borrow).
-    let Some(blocker) = entities.get(blocker_id) else {
-        return false;
-    };
-    // Buildings are immutable obstacles — never scatter targets. Bail before
-    // the RNG read so determinism is preserved for all legitimate cases.
-    if blocker.category == EntityCategory::Structure {
-        return false;
-    }
-    if blocker.category == EntityCategory::Unit
-        && !unit_scatter_state_allows(blocker, timing.binary_frame)
-    {
-        return false;
-    }
-    // Infantry51D16B queries its active IsMoving before demoting force.
-    // Unported families keep the prior adapter pending their state migration.
-    let moving = super::motion_query::is_moving(blocker)
-        .unwrap_or_else(|| blocker.movement_target.is_some());
-    let is_fraidycat = blocker_is_fraidycat(entities, blocker_id, rules, interner);
-    if moving && !moving_blocker_accepts_forced_scatter(blocker, rules, is_fraidycat) {
-        return false;
-    }
-    let bpos = (blocker.position.rx, blocker.position.ry);
-    let speed = scatter_movement_speed(blocker, rules, interner);
-    let ordinary_track = blocker.locomotor.as_ref().is_some_and(|locomotor| {
-        matches!(
-            locomotor.kind,
-            crate::rules::locomotor_type::LocomotorKind::Drive
-                | crate::rules::locomotor_type::LocomotorKind::Ship
-        )
-    });
-    let config = rules
-        .and_then(|rules| rules.object(interner.resolve(blocker.type_ref())))
-        .map(|object| {
-            (
-                object.accel_factor,
-                object.decel_factor,
-                SimFixed::from_num(object.slowdown_distance),
-            )
-        });
-    // Find a valid adjacent cell. Random start direction matches Branch A.
-    let start_dir = rng.next_range_u32(8) as usize;
-    let mut target: Option<(u16, u16)> = None;
-
-    for i in 0..8 {
-        let dir = (start_dir + i) % 8;
-        let (dx, dy) = NEIGHBOR_OFFSETS[dir];
-        let nx = bpos.0 as i32 + dx;
-        let ny = bpos.1 as i32 + dy;
-        if nx < 0 || ny < 0 {
-            continue;
-        }
-        let (nx, ny) = (nx as u16, ny as u16);
-
-        // Must be walkable terrain.
-        if let Some(grid) = path_grid {
-            if !grid.is_walkable(nx, ny) {
-                continue;
-            }
-        }
-        // Must not be occupied by vehicles/structures. Infantry sub-cells OK.
-        if let Some(occ) = occupancy.get(nx, ny) {
-            if occ.has_blockers_on(layer) {
-                continue;
-            }
-        }
-        target = Some((nx, ny));
-        break;
-    }
-
-    let Some(dest) = target else {
-        return false;
-    };
-
-    // Unit Scatter744063..744070 converts the chosen coord to Cell* and
-    // dispatches ordinary SetDestination741970 (+480); it writes no speed.
-    // Use the same shared-track destination/head acceptance and type ramp
-    // configuration as a normal command. Scripted direct-move users remain
-    // independent of this receiver, as do the other locomotor adapters.
-    let accepted = if ordinary_track {
-        if let Some(grid) = path_grid {
-            super::movement_commands::issue_move_command_with_layered(
-                entities,
-                grid,
-                blocker_id,
-                dest,
-                speed,
-                false,
-                None,
-                None,
-                resolved_terrain,
-                None,
-                None,
-                None,
-                None,
-                None,
-                timing,
-            )
-        } else {
-            let accepted = super::movement_commands::issue_direct_move(
-                entities, blocker_id, dest, speed, timing,
-            );
-            if accepted {
-                if let Some(entity) = entities.get_mut(blocker_id) {
-                    super::navcom::set_destination_internal_cell(entity, dest, resolved_terrain);
-                }
-            }
-            accepted
-        }
-    } else {
-        super::movement_commands::issue_direct_move(entities, blocker_id, dest, speed, timing)
-    };
-    if accepted && ordinary_track {
-        if let Some((accel, decel, slowdown)) = config {
-            if let Some(target) = entities
-                .get_mut(blocker_id)
-                .and_then(|entity| entity.movement_target.as_mut())
-            {
-                target.accel_factor = accel;
-                target.decel_factor = decel;
-                target.slowdown_distance = slowdown;
-            }
-        }
-    }
-    accepted
-}
-
-/// `CellClass::Scatter_Objects` 0x00481670 with a null source (Drive/Ship
-/// 0x008A0790, Ship 0x00B077F8, Unit 0x00B1CFE8). The Drive/Ship Process
-/// continuations and code-6 arms force it (0x4B2DC0, 0x4B327D, 0x4B393A,
-/// 0x4B4437, chain 0x4B1F43 and the Ship twins); a crusher's pre-entry scatter
-/// does not (Unit 0x74176F). The selected list is snapshotted first; an
-/// unforced call pre-scans it for an elite occupant, and each occupant's
-/// Scatter (+0x174) runs in list order when [`scatter_dispatch_allowed`]
-/// admits it (cell_scatter corpus). The per-occupant receiver is the existing
-/// [`scatter_blocker`] adapter, so its displacement and RNG residuals apply
-/// unchanged.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn scatter_cell_objects(
-    entities: &mut EntityStore,
-    occupancy: &OccupancyGrid,
-    cell: (u16, u16),
-    layer: MovementLayer,
-    forced: bool,
-    path_grid: Option<&PathGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    rng: &mut SimRng,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    interner: &crate::sim::intern::StringInterner,
-    houses: &std::collections::BTreeMap<
-        crate::sim::intern::InternedId,
-        crate::sim::house_state::HouseState,
-    >,
-    timing: crate::sim::movement::DestinationTiming,
-) {
-    let occupants = occupancy
-        .get(cell.0, cell.1)
-        .map_or_else(Vec::new, |occ| occ.snapshot_layer(layer));
-    let eligibility = ScatterEligibility::from_rules(rules);
-    let elite_in_cell = !forced && cell_has_elite_occupant(&occupants, u64::MAX, entities);
-    for id in occupants {
-        let admitted = entities.get(id).is_some_and(|occupant| {
-            scatter_dispatch_allowed(
-                eligibility,
-                forced,
-                elite_in_cell,
-                Some(ScatterTechno::from_entity(
-                    occupant, rules, houses, interner,
-                )),
-            )
-        });
-        if !admitted {
-            continue;
-        }
-        scatter_blocker(
-            entities,
-            id,
-            path_grid,
-            resolved_terrain,
-            occupancy,
-            layer,
-            rng,
-            rules,
-            interner,
-            timing,
-        );
-    }
-}
 
 /// Normal speed shared by blocked-cell and damage-triggered displacement.
 pub(super) fn scatter_movement_speed(
@@ -1399,92 +890,9 @@ pub(crate) struct InfantryDamageScatter {
     pub(crate) speed: SimFixed,
 }
 
-/// Admission before the first RNG draw in Infantry51D0D0 with the damage
-/// receiver's literal false/false flags. World selection then uses the shared
-/// Infantry+1AC query; CellClass's IQ gate does not apply to this direct call.
-pub(super) fn infantry_damage_scatter_admitted(
-    infantry: &GameEntity,
-    rules: &crate::rules::ruleset::RuleSet,
-    owner_controlled_by_human: bool,
-    teams: &crate::sim::team_script_vm::TeamScriptVm,
-    interner: &crate::sim::intern::StringInterner,
-) -> bool {
-    if infantry.category != EntityCategory::Infantry
-        || infantry.dying
-        || infantry.health.current == 0
-        || infantry.locomotor.is_none()
-    {
-        return false;
-    }
-
-    let Some(leaf) = infantry.mission_leaf.as_infantry() else {
-        return false;
-    };
-    let doing = leaf.doing();
-    // With ReceiveDamage's literal false/false arguments, a player-owned man
-    // in the four deploy-family actions returns at the entry branch. This is
-    // independent of the permission-table byte (28..30 are otherwise allowed).
-    if owner_controlled_by_human && (0x1b..=0x1e).contains(&doing) {
-        return false;
-    }
-
-    // ReceiveDamage calls the Infantry virtual directly; the CurrentIQ versus
-    // IQ.Scatter gate belongs only to CellClass::Scatter_Objects and must not
-    // be imported here. With force=false, the current mission's Scatter flag
-    // is an unconditional pre-RNG gate.
-    let mission_scatter = infantry
-        .mission
-        .current()
-        .known()
-        .and_then(|mission| rules.mission_control.entry(mission))
-        .map_or(true, |entry| entry.scatter);
-    if !mission_scatter {
-        return false;
-    }
-    // 51D1AA reads retained Doing+6C4, independent of the displayed sequence.
-    // -1 and 31 bypass the table. All 42 native actions are represented by the
-    // mission leaf, including the nine without a presentation SequenceKind.
-    if !crate::rules::infantry_sequence::scatter_allowed_by_doing(doing)
-        .expect("mission leaf retains a valid native Doing")
-    {
-        return false;
-    }
-    // gamemd 51D212..51D220: every path with effective first flag=false
-    // requires Fraidycat, even with no combat target or with SCATTER ability.
-    // This also subsumes the earlier non-Fraidycat/Target test51D196..51D1A4.
-    // Evidence: tools/spatial_oracle/infantry_damage_scatter.{py,json,meta.json}.
-    let Some(object) = rules.object(interner.resolve(infantry.type_ref())) else {
-        return false;
-    };
-    if !object.fraidycat {
-        return false;
-    }
-    let has_scatter_ability = crate::sim::combat::veterancy::has_weapon_ability(
-        crate::sim::combat::veterancy::rank_from_u16(infantry.veterancy()),
-        object,
-        crate::rules::object_type::Ability::Scatter,
-    );
-    // 51D200 tests Foot.Team+5D4, not NavCom+5A4: Add_Member6EA56E
-    // installs the Team receiver and Remove_Member6EA99D clears it. The world
-    // supplies live TeamScriptVm membership; CellClass's IQ gate is separate.
-    if !rules.general.player_scatter
-        && !has_scatter_ability
-        && owner_controlled_by_human
-        && teams.team_for_member(infantry.stable_id()).is_none()
-    {
-        return false;
-    }
-
-    true
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
-#[cfg(test)]
-#[path = "unit_scatter_tests.rs"]
-mod unit_scatter_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2055,20 +1463,8 @@ mod tests {
         assert!(!within_crush_distance_sq((0, 0), (128, 0)));
     }
 
-    /// Stock skirmish gate values: `[CombatDamage] PlayerScatter=no`,
-    /// `[IQ] Scatter=2`.
-    fn stock_eligibility() -> ScatterEligibility {
-        ScatterEligibility {
-            player_scatter: false,
-            iq_scatter: 2,
-        }
-    }
-
     #[test]
-    fn classify_drive_crush_phase_entering_holds_player_infantry_still() {
-        // Retail: the crusher's cell-entry scatter passes force = 0, so with
-        // PlayerScatter=no, no elite present and a human house (IQ 0 < 2) the
-        // occupant is never dispatched. Player infantry stand and get squashed.
+    fn full_cell_crush_kills_centered_enemy() {
         let mut entities = EntityStore::new();
         let mut crusher = vehicle(1, 5, 5);
         crusher.regular_crusher = true;
@@ -2079,8 +1475,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
+        let outcome = select_crush_victims(
             &[2],
             &entities,
             1,
@@ -2088,345 +1483,14 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::None);
+        assert_eq!(outcome, vec![2]);
     }
 
     #[test]
-    fn classify_drive_crush_phase_entering_scatters_when_an_elite_shares_the_cell() {
-        // The elite pre-scan is per-cell: one elite occupant releases the
-        // dispatch for every occupant of that cell, rookie or not.
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut rookie = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        rookie.category = EntityCategory::Infantry;
-        rookie.crushable = true;
-        entities.insert(rookie);
-        let mut elite = GameEntity::test_default(3, "E1", "Soviet", 5, 5);
-        elite.category = EntityCategory::Infantry;
-        elite.crushable = true;
-        elite.set_veterancy_rank(200);
-        entities.insert(elite);
-        let interner = crate::sim::intern::test_interner();
-
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
-            &[3, 2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            stock_eligibility(),
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(
-            outcome,
-            DriveCrushOutcome::Scatter {
-                blockers: vec![3, 2]
-            }
-        );
-    }
-
-    #[test]
-    fn classify_drive_crush_phase_entering_scatters_when_player_scatter_is_on() {
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        victim.crushable = true;
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
-            &[2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            ScatterEligibility {
-                player_scatter: true,
-                iq_scatter: 2,
-            },
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(outcome, DriveCrushOutcome::Scatter { blockers: vec![2] });
-    }
-
-    #[test]
-    fn scatter_dispatch_gate_matches_the_native_disjunction() {
-        let stock = stock_eligibility();
-        // Nothing set: no dispatch.
-        assert!(!scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 0
-            })
-        ));
-        // force = 1 (every locomotor blocked-cell caller) always dispatches.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            true,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 0
-            })
-        ));
-        // An elite in the cell releases it.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            false,
-            true,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 0
-            })
-        ));
-        // An AI house at MaxIQLevels=5 clears [IQ] Scatter=2.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 5
-            })
-        ));
-        // Exactly at the threshold: `IQ.Scatter <= house.IQ`.
-        assert!(scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 2
-            })
-        ));
-        assert!(!scatter_dispatch_allowed(
-            stock,
-            false,
-            false,
-            Some(ScatterTechno {
-                has_scatter_ability: false,
-                house_iq: 1
-            })
-        ));
-    }
-
-    #[test]
-    fn scatter_eligibility_defaults_are_the_rules_constructor_values() {
-        let defaults = ScatterEligibility::default();
-        assert!(!defaults.player_scatter);
-        assert_eq!(defaults.iq_scatter, 3);
-    }
-
-    #[test]
-    fn cell_scatter_recipient_gate_matches_original_execution() {
-        use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
-        use crate::sim::{house_state::HouseState, intern::StringInterner};
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/cell_scatter.json"
-        ))
-        .unwrap();
-        for row in corpus.as_array().unwrap() {
-            let input = &row["input"];
-            let objects = input["objects"].as_array().unwrap();
-            let mut ini = String::from("[VehicleTypes]\n");
-            for (n, object) in objects.iter().enumerate() {
-                ini.push_str(&format!("{n}=T{}\n", object["id"]));
-            }
-            for object in objects {
-                ini.push_str(&format!(
-                    "[T{}]\nVeteranAbilities={}\nEliteAbilities={}\n",
-                    object["id"],
-                    if object["veteran_scatter"].as_bool().unwrap_or(false) {
-                        "SCATTER"
-                    } else {
-                        ""
-                    },
-                    if object["elite_scatter"].as_bool().unwrap_or(false) {
-                        "SCATTER"
-                    } else {
-                        ""
-                    },
-                ));
-            }
-            let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).unwrap();
-            let mut interner = StringInterner::new();
-            let mut entities = EntityStore::new();
-            let mut houses = std::collections::BTreeMap::new();
-            for object in objects {
-                let id = object["id"].as_u64().unwrap();
-                let owner = interner.intern(&format!("H{id}"));
-                let kind = interner.intern(&format!("T{id}"));
-                let mut entity = GameEntity::new_at_frame_zero_for_test(
-                    id,
-                    5,
-                    5,
-                    0,
-                    0,
-                    owner,
-                    crate::sim::components::Health { current: 100 },
-                    kind,
-                    EntityCategory::Unit,
-                    0,
-                    5,
-                    true,
-                );
-                entity.set_veterancy_rank(object["rank"].as_u64().unwrap_or(0) as u16 * 100);
-                let mut house = HouseState::new(owner, 0, None, true, 0, 10);
-                house.current_iq = object["iq"].as_i64().unwrap_or(0) as i32;
-                houses.insert(owner, house);
-                entities.insert(entity);
-            }
-            let bridge = input["bridge"].as_bool().unwrap_or(false);
-            let selected: Vec<_> = objects
-                .iter()
-                .filter(|object| object["bridge"].as_bool().unwrap_or(false) == bridge)
-                .collect();
-            let elite = selected.iter().any(|object| {
-                object["techno"].as_bool().unwrap_or(true)
-                    && object["rank"].as_u64().unwrap_or(0) >= 2
-            });
-            let eligibility = ScatterEligibility {
-                player_scatter: input["player_scatter"].as_bool().unwrap_or(false),
-                iq_scatter: input["threshold"].as_i64().unwrap_or(2) as i32,
-            };
-            let actual: Vec<u64> = selected
-                .iter()
-                .filter_map(|object| {
-                    let id = object["id"].as_u64().unwrap();
-                    let facts = object["techno"].as_bool().unwrap_or(true).then(|| {
-                        ScatterTechno::from_entity(
-                            entities.get(id).unwrap(),
-                            Some(&rules),
-                            &houses,
-                            &interner,
-                        )
-                    });
-                    scatter_dispatch_allowed(
-                        eligibility,
-                        input["dispatch_all"].as_bool().unwrap_or(false),
-                        elite,
-                        facts,
-                    )
-                    .then_some(id)
-                })
-                .collect();
-            let expected: Vec<u64> = row["dispatch"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|id| id.as_u64().unwrap())
-                .collect();
-            assert_eq!(actual, expected, "{}", input["name"]);
-        }
-    }
-
-    /// Exercise the production cell-entry classifier with live HouseState and
-    /// parsed type abilities. No replacement IQ cache is introduced.
-    #[test]
-    fn entering_cell_scatter_reads_house_iq_and_shared_ability_owner() {
-        let mut entities = EntityStore::new();
-        entities.insert(vehicle(1, 5, 5));
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        let owner = victim.owner();
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-        let rules =
-            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-                "[InfantryTypes]\n0=E1\n[E1]\nVeteranAbilities=SCATTER\n",
-            ))
-            .unwrap();
-        let mut houses = std::collections::BTreeMap::new();
-        houses.insert(
-            owner,
-            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
-        );
-        for (iq, rank, expected) in [(1, 0, false), (2, 0, true), (1, 100, true), (1, 0, false)] {
-            houses.get_mut(&owner).unwrap().current_iq = iq;
-            entities.get_mut(2).unwrap().set_veterancy_rank(rank);
-            let result = classify_drive_crush_phase(
-                DriveCrushPhase::EnteringCell,
-                &[2],
-                &entities,
-                1,
-                &crate::map::houses::HouseAllianceMap::new(),
-                &interner,
-                (1280, 1280),
-                CrushCapability::new(true, false),
-                stock_eligibility(),
-                0,
-                Some(&rules),
-                &houses,
-            );
-            assert_eq!(
-                result,
-                if expected {
-                    DriveCrushOutcome::Scatter { blockers: vec![2] }
-                } else {
-                    DriveCrushOutcome::None
-                }
-            );
-        }
-    }
-
-    #[test]
-    fn classify_drive_crush_phase_full_cell_kills_centered_enemy() {
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        victim.crushable = true;
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
-            &[2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            stock_eligibility(),
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(outcome, DriveCrushOutcome::Kill { victims: vec![2] });
-    }
-
-    #[test]
-    fn classify_drive_crush_phase_full_cell_skips_allied_victim() {
+    fn full_cell_crush_skips_allied_victim() {
         let mut entities = EntityStore::new();
         let mut crusher = vehicle(1, 5, 5);
         crusher.regular_crusher = true;
@@ -2436,8 +1500,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
+        let outcome = select_crush_victims(
             &[2],
             &entities,
             1,
@@ -2445,13 +1508,10 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::None);
+        assert_eq!(outcome, Vec::<u64>::new());
     }
 
     #[test]
@@ -2473,8 +1533,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
+        let outcome = select_crush_victims(
             &[2],
             &entities,
             1,
@@ -2482,13 +1541,10 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::Kill { victims: vec![2] });
+        assert_eq!(outcome, vec![2]);
     }
 
     #[test]
@@ -2514,8 +1570,7 @@ mod tests {
         entities.insert(ggi);
         let interner = crate::sim::intern::test_interner();
 
-        let outcome = classify_drive_crush_phase(
-            DriveCrushPhase::FullyInCell,
+        let outcome = select_crush_victims(
             &[2, 3],
             &entities,
             1,
@@ -2523,13 +1578,10 @@ mod tests {
             &interner,
             (5 * 256 + 128, 5 * 256 + 128),
             CrushCapability::new(true, false),
-            stock_eligibility(),
             0,
-            None,
-            &std::collections::BTreeMap::new(),
         );
 
-        assert_eq!(outcome, DriveCrushOutcome::Kill { victims: vec![2] });
+        assert_eq!(outcome, vec![2]);
     }
 
     #[test]
@@ -2550,8 +1602,7 @@ mod tests {
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
         let call = |frame: u32| {
-            classify_drive_crush_phase(
-                DriveCrushPhase::FullyInCell,
+            select_crush_victims(
                 &[2],
                 &entities,
                 1,
@@ -2559,53 +1610,12 @@ mod tests {
                 &interner,
                 (5 * 256 + 128, 5 * 256 + 128),
                 CrushCapability::new(true, false),
-                stock_eligibility(),
                 frame,
-                None,
-                &std::collections::BTreeMap::new(),
             )
         };
 
-        assert_eq!(call(100), DriveCrushOutcome::None, "curtain still running");
-        assert_eq!(
-            call(760),
-            DriveCrushOutcome::Kill { victims: vec![2] },
-            "curtain expired"
-        );
-    }
-
-    #[test]
-    fn entering_cell_scatter_consumes_no_rng() {
-        // The whole native cell-scatter body contains no random draw; the
-        // dispatch gate is pure boolean.
-        let mut entities = EntityStore::new();
-        let mut crusher = vehicle(1, 5, 5);
-        crusher.regular_crusher = true;
-        entities.insert(crusher);
-        let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
-        victim.crushable = true;
-        entities.insert(victim);
-        let interner = crate::sim::intern::test_interner();
-        let rng = SimRng::new(0x1234_5678);
-        let before = rng.clone();
-
-        let _ = classify_drive_crush_phase(
-            DriveCrushPhase::EnteringCell,
-            &[2],
-            &entities,
-            1,
-            &crate::map::houses::HouseAllianceMap::new(),
-            &interner,
-            (5 * 256 + 128, 5 * 256 + 128),
-            CrushCapability::new(true, false),
-            stock_eligibility(),
-            0,
-            None,
-            &std::collections::BTreeMap::new(),
-        );
-
-        assert_eq!(rng.state(), before.state());
+        assert_eq!(call(100), Vec::<u64>::new(), "curtain still running");
+        assert_eq!(call(760), vec![2], "curtain expired");
     }
 
     // `post_scatter_wait_is_ten_frames_not_blockage_path_delay` used to sit
@@ -2788,171 +1798,7 @@ mod tests {
         assert_eq!(victims, vec![1]);
     }
 
-    // -- scatter_blocker tests --
-
-    /// Native interior gate evidence only: forced obstruction calls, before
-    /// candidate selection and RNG. The harness bypasses special animation
-    /// entry gates; this is not a complete Scatter or walking parity claim.
-    #[test]
-    fn infantry_forced_scatter_gates_match_native_oracle() {
-        let oracle: serde_json::Value =
-            serde_json::from_str(include_str!("../../../tools/infantry_scatter_oracle.json"))
-                .unwrap();
-        compare_forced_scatter_gates(
-            oracle["scatter_gates"].as_array().unwrap(),
-            crate::rules::locomotor_type::LocomotorKind::Walk,
-        );
-    }
-
-    #[test]
-    fn jumpjet_forced_scatter_gates_match_original_query_and_refusal_state() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/jumpjet_scatter_gates.json"
-        ))
-        .unwrap();
-        compare_forced_scatter_gates(&rows, crate::rules::locomotor_type::LocomotorKind::Jumpjet);
-    }
-
-    fn compare_forced_scatter_gates(
-        rows: &[serde_json::Value],
-        kind: crate::rules::locomotor_type::LocomotorKind,
-    ) {
-        let mut checked = 0;
-        for case in rows {
-            let flag = |key: &str| case[key].as_bool().unwrap();
-            if !flag("first_bool") {
-                continue;
-            }
-            let rules = scatter_rules(flag("fraidycat"));
-            let mut gi = infantry(1, 5, 5, 2);
-            set_mission(
-                &mut gi,
-                if flag("mission_scatter") {
-                    crate::sim::mission::MissionType::Move
-                } else {
-                    crate::sim::mission::MissionType::Sleep
-                },
-            );
-            if flag("has_target") {
-                gi.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
-            }
-            for has_adapter in [false, true] {
-                let mut actor = gi.clone();
-                let mut loco = super::super::locomotor::LocomotorState::for_test_kind(kind);
-                if let Some(state) = loco.jumpjet_runtime_mut() {
-                    state.moving = flag("moving");
-                    state.phase = 2;
-                } else {
-                    loco.set_walk_destination(
-                        flag("moving").then(|| crate::sim::components::DriveCoord::cell(6, 5, 0)),
-                    );
-                }
-                actor.locomotor = Some(loco);
-                actor.movement_target = has_adapter.then(moving_target);
-                let before = serde_json::to_value(&actor).unwrap();
-                let mut store = EntityStore::new();
-                store.insert(actor);
-                let mut rng = SimRng::new(42);
-                let before_rng = rng.state();
-                let admitted = scatter_blocker(
-                    &mut store,
-                    1,
-                    Some(&PathGrid::new(10, 10)),
-                    None,
-                    &OccupancyGrid::new(),
-                    MovementLayer::Ground,
-                    &mut rng,
-                    Some(&rules),
-                    &crate::sim::intern::test_interner(),
-                    crate::sim::movement::DestinationTiming::new(0, 60),
-                );
-                assert_eq!(
-                    admitted,
-                    flag("gate_admitted"),
-                    "native case: {case}; adapter={has_adapter}"
-                );
-                if !admitted {
-                    assert_eq!(rng.state(), before_rng);
-                    assert_eq!(serde_json::to_value(store.get(1).unwrap()).unwrap(), before);
-                }
-                checked += 1;
-            }
-        }
-        assert_eq!(checked, 64);
-    }
-
-    #[test]
-    fn damage_scatter_admission_matches_original_execution() {
-        use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
-        use crate::sim::animation::{Animation, SequenceKind};
-        use crate::sim::house_state::HouseState;
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/infantry_damage_scatter.json"
-        ))
-        .unwrap();
-        let mut checked = 0;
-        for row in corpus.as_array().unwrap() {
-            let input = &row["input"];
-            let flag = |name: &str, default: bool| input[name].as_bool().unwrap_or(default);
-            let doing = input["doing"].as_i64().unwrap_or(-1);
-            let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
-                "[General]\nFixture=1\n[InfantryTypes]\n0=E1\n[E1]\nSpeed=4\nFraidycat={}\nVeteranAbilities={}\nEliteAbilities={}\n[Guard]\nScatter={}\n[CombatDamage]\nPlayerScatter={}\n",
-                flag("fraidycat", true),
-                if flag("veteran_scatter", false) { "SCATTER" } else { "" },
-                if flag("elite_scatter", false) { "SCATTER" } else { "" },
-                flag("mission_scatter", true), flag("player_scatter", false),
-            ))).unwrap();
-            let mut victim = infantry(1, 5, 5, 2);
-            let interner = crate::sim::intern::test_interner();
-            victim.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
-                EntityCategory::Infantry,
-            );
-            victim
-                .mission_leaf
-                .set_infantry_doing_verified(doing as i32)
-                .unwrap();
-            // Deliberately disagree with Doing: presentation cannot admit or
-            // refuse simulation work, including native-only action codes.
-            victim.animation = Some(Animation::new(SequenceKind::Die1));
-            victim.set_veterancy_rank(input["rank"].as_u64().unwrap_or(0) as u16 * 100);
-            victim.locomotor = Some(
-                crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-                    crate::rules::locomotor_type::LocomotorKind::Walk,
-                ),
-            );
-            set_mission(&mut victim, crate::sim::mission::MissionType::Guard);
-            if flag("target", false) {
-                victim.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
-            }
-            if flag("nav", false) {
-                victim.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(9, 9));
-            }
-            if flag("moving", false) {
-                victim.movement_target = Some(crate::sim::components::MovementTarget {
-                    path: vec![(5, 5), (6, 5)],
-                    next_index: 1,
-                    speed: SimFixed::from_num(100),
-                    ..Default::default()
-                });
-            }
-            let mut house = HouseState::new(victim.owner(), 0, None, flag("human", false), 0, 10);
-            house.player_control = flag("player_control", false);
-            let mut teams = crate::sim::team_script_vm::TeamScriptVm::default();
-            if flag("team", false) {
-                teams.create_team(victim.owner(), victim.type_ref(), vec![1], 0);
-            }
-            let admitted = infantry_damage_scatter_admitted(
-                &victim,
-                &rules,
-                house.is_controlled_by_human(flag("game_mode_nonzero", true)),
-                &teams,
-                &interner,
-            );
-            assert_eq!(admitted, row["admitted"].as_bool().unwrap(), "{input}");
-            checked += 1;
-        }
-        assert_eq!(checked, 278);
-    }
+    // -- scatter speed --
 
     #[test]
     fn damage_scatter_uses_the_same_normal_type_speed() {
@@ -2971,413 +1817,11 @@ mod tests {
         );
     }
 
-    fn scatter_vehicle(id: u64, rx: u16, ry: u16) -> GameEntity {
-        let mut entity = vehicle(id, rx, ry);
-        entity.locomotor = Some(
-            crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-                crate::rules::locomotor_type::LocomotorKind::Drive,
-            ),
-        );
-        entity
-    }
-
-    #[test]
-    fn test_scatter_blocker_issues_movement() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-        let mut rng = SimRng::new(42);
-
-        let mut store = EntityStore::new();
-        let v = scatter_vehicle(1, 5, 5);
-        store.insert(v);
-
-        let result = scatter_blocker(
-            &mut store,
-            1,
-            Some(&grid),
-            None,
-            &occupancy,
-            MovementLayer::Ground,
-            &mut rng,
-            None,
-            &crate::sim::intern::test_interner(),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        );
-        assert!(result, "scatter_blocker should succeed with open cells");
-
-        // Blocker should now have a movement_target (walking, not teleported).
-        let e = store.get(1).unwrap();
-        assert!(
-            e.movement_target.is_some(),
-            "Blocker should have a movement command"
-        );
-        // Position should NOT have changed yet — blocker walks on next tick.
-        assert_eq!(e.position.rx, 5);
-        assert_eq!(e.position.ry, 5);
-    }
-
-    #[test]
-    fn test_scatter_blocker_all_blocked() {
-        let grid = PathGrid::new(3, 3);
-        let mut occupancy = OccupancyGrid::new();
-        for &(dx, dy) in &NEIGHBOR_OFFSETS {
-            let nx = (1 + dx) as u16;
-            let ny = (1 + dy) as u16;
-            occupancy.add(
-                nx,
-                ny,
-                100,
-                MovementLayer::Ground,
-                None,
-                CellListInsertion::PrependNonBuilding,
-            );
-        }
-        let mut rng = SimRng::new(42);
-
-        let mut store = EntityStore::new();
-        let v = scatter_vehicle(1, 1, 1);
-        store.insert(v);
-
-        let result = scatter_blocker(
-            &mut store,
-            1,
-            Some(&grid),
-            None,
-            &occupancy,
-            MovementLayer::Ground,
-            &mut rng,
-            None,
-            &crate::sim::intern::test_interner(),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        );
-        assert!(!result, "scatter_blocker should fail when all blocked");
-        assert!(store.get(1).unwrap().movement_target.is_none());
-    }
-
-    fn moving_target() -> crate::sim::components::MovementTarget {
-        crate::sim::components::MovementTarget {
-            path: vec![(5, 5), (6, 5)],
-            path_layers: vec![MovementLayer::Ground; 2],
-            next_index: 1,
-            speed: crate::util::fixed_math::SimFixed::from_num(1024),
-            ..Default::default()
-        }
-    }
-
-    fn set_mission(entity: &mut GameEntity, mission: crate::sim::mission::MissionType) {
-        entity
-            .mission
-            .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
-                current: crate::sim::mission::MissionId::from_known(mission),
-                suspended: crate::sim::mission::MissionId::NONE,
-                queued: crate::sim::mission::MissionId::NONE,
-                movement_bypass_latch: 0,
-                handler_state: 0,
-                mission_start_frame: 0,
-                ai_counter: 0,
-                dispatch_timer: crate::sim::mission::MissionDispatchTimer::at_frame(0),
-            });
-    }
-
     fn scatter_rules(fraidycat: bool) -> crate::rules::ruleset::RuleSet {
         let ini = crate::rules::ini_parser::IniFile::from_str(&format!(
             "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[E1]\nSpeed=4\nFraidycat={fraidycat}\n[MTNK]\nSpeed=6\n[Move]\nRate=.016\n[Sleep]\nScatter=no\n"
         ));
         crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap()
-    }
-
-    /// `UnitClass::Scatter` never queries its locomotor — with the force byte
-    /// the locomotor blocked-cell path always passes, a MOVING vehicle is
-    /// displaced. VERA previously refused every moving blocker outright.
-    #[test]
-    fn scatter_blocker_displaces_a_moving_vehicle_under_force() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-        let mut rng = SimRng::new(42);
-        let rules = scatter_rules(false);
-
-        let mut store = EntityStore::new();
-        let mut v = scatter_vehicle(1, 5, 5);
-        v.movement_target = Some(moving_target());
-        set_mission(&mut v, crate::sim::mission::MissionType::Move);
-        store.insert(v);
-
-        assert!(
-            scatter_blocker(
-                &mut store,
-                1,
-                Some(&grid),
-                None,
-                &occupancy,
-                MovementLayer::Ground,
-                &mut rng,
-                Some(&rules),
-                &crate::sim::intern::test_interner(),
-                crate::sim::movement::DestinationTiming::new(0, 60),
-            ),
-            "a moving vehicle must still be scattered — the vehicle body has no Is_Moving gate"
-        );
-    }
-
-    /// `InfantryClass::Scatter` has a SECOND force-gated early-out after the
-    /// mission-`Scatter=` test: a non-`Fraidycat` type that already holds a
-    /// shoot-at target refuses the scatter once the force byte has been demoted
-    /// (which happens for exactly the infantry whose locomotor reports moving).
-    #[test]
-    fn scatter_blocker_refuses_a_moving_targeting_non_fraidycat_infantryman() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-        let mut rng = SimRng::new(42);
-        let rules = scatter_rules(false);
-
-        let mut store = EntityStore::new();
-        let mut i = infantry(1, 5, 5, 0);
-        i.movement_target = Some(moving_target());
-        i.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
-        set_mission(&mut i, crate::sim::mission::MissionType::Move);
-        store.insert(i);
-
-        assert!(
-            !scatter_blocker(
-                &mut store,
-                1,
-                Some(&grid),
-                None,
-                &occupancy,
-                MovementLayer::Ground,
-                &mut rng,
-                Some(&rules),
-                &crate::sim::intern::test_interner(), // Fraidycat=no — every stock combat infantry type
-                crate::sim::movement::DestinationTiming::new(0, 60),
-            ),
-            "a moving, targeting, non-Fraidycat infantryman refuses the demoted-force scatter"
-        );
-
-        // A Fraidycat type in exactly the same state still scatters.
-        let rules = scatter_rules(true);
-        let mut store = EntityStore::new();
-        let mut i = infantry(1, 5, 5, 0);
-        i.movement_target = Some(moving_target());
-        i.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
-        set_mission(&mut i, crate::sim::mission::MissionType::Move);
-        store.insert(i);
-        assert!(
-            scatter_blocker(
-                &mut store,
-                1,
-                Some(&grid),
-                None,
-                &occupancy,
-                MovementLayer::Ground,
-                &mut rng,
-                Some(&rules),
-                &crate::sim::intern::test_interner(), // Fraidycat=yes
-                crate::sim::movement::DestinationTiming::new(0, 60),
-            ),
-            "the Fraidycat branch skips the early-out entirely"
-        );
-    }
-
-    /// The final Fraidycat gate matters even when Move allows scatter and the
-    /// soldier has no attack target. A refused request must not replace the
-    /// player's destination or consume the scatter direction draw.
-    #[test]
-    fn scatter_blocker_preserves_moving_gi_order_and_rng() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-        let mut rng = SimRng::new(42);
-        let rules = scatter_rules(false);
-        let mut store = EntityStore::new();
-        let mut gi = infantry(1, 5, 5, 2);
-        gi.movement_target = Some(moving_target());
-        set_mission(&mut gi, crate::sim::mission::MissionType::Move);
-        store.insert(gi);
-        let before_rng = rng.state();
-        let before_target = store.get(1).unwrap().movement_target.clone();
-        assert!(!scatter_blocker(
-            &mut store,
-            1,
-            Some(&grid),
-            None,
-            &occupancy,
-            MovementLayer::Ground,
-            &mut rng,
-            Some(&rules),
-            &crate::sim::intern::test_interner(),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        ));
-        assert_eq!(rng.state(), before_rng);
-        let target = store.get(1).unwrap().movement_target.as_ref().unwrap();
-        let original = before_target.unwrap();
-        assert_eq!(target.path, original.path);
-        assert_eq!(target.next_index, original.next_index);
-        assert_eq!(target.speed, original.speed);
-        assert_eq!(
-            store.get(1).unwrap().mission.current().known(),
-            Some(crate::sim::mission::MissionType::Move)
-        );
-    }
-
-    /// ...and the same infantryman on a `Scatter=no` mission is refused, because
-    /// the demotion left `forced == 0` and the mission flag is the only other
-    /// way through the gate.
-    #[test]
-    fn scatter_blocker_refuses_a_moving_infantryman_on_a_scatter_no_mission() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-        let mut rng = SimRng::new(42);
-        let rules = scatter_rules(true);
-
-        let mut store = EntityStore::new();
-        let mut i = infantry(1, 5, 5, 0);
-        i.movement_target = Some(moving_target());
-        set_mission(&mut i, crate::sim::mission::MissionType::Sleep);
-        store.insert(i);
-
-        assert!(
-            !scatter_blocker(
-                &mut store,
-                1,
-                Some(&grid),
-                None,
-                &occupancy,
-                MovementLayer::Ground,
-                &mut rng,
-                Some(&rules),
-                &crate::sim::intern::test_interner(),
-                crate::sim::movement::DestinationTiming::new(0, 60),
-            ),
-            "[Sleep] Scatter=no and the force byte was demoted, so the gate refuses"
-        );
-    }
-
-    /// A STATIONARY infantryman never reaches the demotion, so the caller's
-    /// force byte survives and the mission flag cannot refuse it.
-    #[test]
-    fn scatter_blocker_displaces_a_stationary_infantryman_on_a_scatter_no_mission() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-        let mut rng = SimRng::new(42);
-        let rules = scatter_rules(false);
-
-        let mut store = EntityStore::new();
-        let mut i = infantry(1, 5, 5, 0);
-        set_mission(&mut i, crate::sim::mission::MissionType::Sleep);
-        store.insert(i);
-
-        assert!(
-            scatter_blocker(
-                &mut store,
-                1,
-                Some(&grid),
-                None,
-                &occupancy,
-                MovementLayer::Ground,
-                &mut rng,
-                Some(&rules),
-                &crate::sim::intern::test_interner(),
-                crate::sim::movement::DestinationTiming::new(0, 60),
-            ),
-            "forced=1 survives when the object is not moving"
-        );
-        assert_eq!(
-            store
-                .get(1)
-                .unwrap()
-                .movement_target
-                .as_ref()
-                .unwrap()
-                .speed,
-            crate::util::fixed_math::ra2_speed_to_leptons_per_second(4),
-            "stationary GI scatter retains its ordinary retail type speed"
-        );
-    }
-
-    #[test]
-    fn test_scatter_blocker_skips_structure() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-        let mut rng = SimRng::new(42);
-
-        let mut store = EntityStore::new();
-        store.insert(structure(100, 5, 5));
-
-        let result = scatter_blocker(
-            &mut store,
-            100,
-            Some(&grid),
-            None,
-            &occupancy,
-            MovementLayer::Ground,
-            &mut rng,
-            None,
-            &crate::sim::intern::test_interner(),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        );
-
-        assert!(
-            !result,
-            "scatter_blocker must refuse Structure blockers — buildings are \
-             never scatter targets in the original engine"
-        );
-
-        // Structure must not have been issued any movement.
-        let e = store.get(100).expect("structure still alive");
-        assert!(
-            e.movement_target.is_none(),
-            "Structure must not receive a movement_target from scatter"
-        );
-
-        // RNG must NOT have been consumed (determinism: a fresh rng with the
-        // same seed gives the same first value as one that hasn't been touched).
-        let mut control_rng = SimRng::new(42);
-        assert_eq!(
-            rng.next_range_u32(8),
-            control_rng.next_range_u32(8),
-            "scatter_blocker must not consume RNG when bailing on a Structure blocker"
-        );
-    }
-
-    #[test]
-    fn test_scatter_deterministic() {
-        let grid = PathGrid::new(10, 10);
-        let occupancy = OccupancyGrid::new();
-
-        let mut store1 = EntityStore::new();
-        store1.insert(scatter_vehicle(1, 5, 5));
-        let mut rng1 = SimRng::new(42);
-        scatter_blocker(
-            &mut store1,
-            1,
-            Some(&grid),
-            None,
-            &occupancy,
-            MovementLayer::Ground,
-            &mut rng1,
-            None,
-            &crate::sim::intern::test_interner(),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        );
-
-        let mut store2 = EntityStore::new();
-        store2.insert(scatter_vehicle(1, 5, 5));
-        let mut rng2 = SimRng::new(42);
-        scatter_blocker(
-            &mut store2,
-            1,
-            Some(&grid),
-            None,
-            &occupancy,
-            MovementLayer::Ground,
-            &mut rng2,
-            None,
-            &crate::sim::intern::test_interner(),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        );
-
-        let t1 = store1.get(1).unwrap().movement_target.as_ref().unwrap();
-        let t2 = store2.get(1).unwrap().movement_target.as_ref().unwrap();
-        assert_eq!(t1.path, t2.path, "Scatter must be deterministic");
     }
 
     // -- allocate_sub_cell_with_reserved tests --

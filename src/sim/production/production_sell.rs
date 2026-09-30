@@ -645,7 +645,13 @@ fn sellbuilding_direct_scatter_handoff(
         i32::from(building_rx) * 256 + i32::from(building_width) * 128,
         i32::from(building_ry) * 256 + i32::from(building_height) * 128,
     );
-    if let Err(cause) = sim.scatter_infantry_forced_from(passenger_id, source, rules, registry) {
+    if let Err(cause) = sim.infantry_scatter_from(
+        passenger_id,
+        source,
+        crate::sim::movement::ScatterFlags::new(true, true),
+        rules,
+        registry,
+    ) {
         log::debug!("ejected occupant {passenger_id} did not scatter: {cause}");
     }
 }

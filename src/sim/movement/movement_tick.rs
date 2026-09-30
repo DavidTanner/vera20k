@@ -993,7 +993,7 @@ struct MovementPassEffects {
     stats: MovementTickStats,
     finished_entities: Vec<u64>,
     crush_kills: Vec<PendingCrushKill>,
-    already_scattered: BTreeSet<u64>,
+    scatters: super::scatter::ScatterRequests,
     native_track: Option<super::track_process::TrackInvocation>,
     walk_per_cell: Option<(u64, crate::sim::components::DriveCoord)>,
     walk_boundary: Option<(u64, crate::sim::components::DriveCoord)>,
@@ -1077,7 +1077,7 @@ fn advance_ordinary_mover(
         stats,
         finished_entities,
         crush_kills,
-        already_scattered,
+        scatters,
         native_track,
         walk_per_cell,
         walk_boundary,
@@ -1525,13 +1525,11 @@ fn advance_ordinary_mover(
                 raw_cell_occupation,
                 deferred_entry_skips,
                 alliances,
-                path_grid,
                 resolved_terrain,
-                rng,
                 stats,
                 finished_entities,
                 crush_kills,
-                already_scattered,
+                scatters,
                 sim_tick,
                 interner,
                 rules,
@@ -2205,13 +2203,11 @@ fn advance_ordinary_mover(
             raw_cell_occupation,
             deferred_entry_skips,
             alliances,
-            path_grid,
             resolved_terrain,
-            rng,
             stats,
             finished_entities,
             crush_kills,
-            already_scattered,
+            scatters,
             sim_tick,
             interner,
             rules,
@@ -2233,8 +2229,8 @@ fn advance_ordinary_mover(
         // centre, and restores after the deferred response where native sets
         // the enable before the next-step admission and any scatter it
         // triggers (no reader of the flag or plane sits in that window today:
-        // `scatter_blocker` picks from `OccupancyGrid` cell lists). The next
-        // translating frame clears it again.
+        // the Scatter calls the response queues run after this restore). The
+        // next translating frame clears it again.
         if let Some(entity) = entities.get_mut(entity_id)
             && entity.category == EntityCategory::Unit
             && !entity.foot_occupation_enabled
@@ -2590,6 +2586,7 @@ fn prepare_movement_pass(
     rules: Option<&crate::rules::ruleset::RuleSet>,
     stats: &mut MovementTickStats,
     block_index: &mut OwnerBlockIndex,
+    scatters: &mut super::scatter::ScatterRequests,
 ) -> Result<PreparedMovementPass, String> {
     let path_grid = ctx.path_grid;
     let resolved_terrain = ctx.resolved_terrain;
@@ -2628,6 +2625,7 @@ fn prepare_movement_pass(
                 interner,
                 rng,
                 native_frame,
+                scatters,
             ) {
                 tube_processed.insert(entity_id);
                 stats.movers_total = stats.movers_total.saturating_add(1);
@@ -2959,6 +2957,11 @@ impl PendingMovementPass {
         self.effects.walk_admission_request.take()
     }
 
+    /// The Scatter calls this pass's steps queued since the last take.
+    pub(crate) fn take_scatter_requests(&mut self) -> Vec<(u64, super::ScatterFlags)> {
+        self.effects.scatters.take()
+    }
+
     pub(crate) fn request_foot_path(&mut self, request: FootPathRequest) {
         debug_assert!(self.effects.foot_path_request.is_none());
         self.effects.foot_path_request = Some(request);
@@ -3251,6 +3254,7 @@ pub(crate) fn begin_movement_with_grids_scoped(
         blockage_path_delay_ticks,
     };
     let dt = native_movement_frame_fraction();
+    let mut scatters = super::scatter::ScatterRequests::default();
     let mut prepared = prepare_movement_pass(
         entities,
         entity_order,
@@ -3267,10 +3271,12 @@ pub(crate) fn begin_movement_with_grids_scoped(
         rules,
         &mut stats,
         block_index,
+        &mut scatters,
     )?;
 
     let mut effects = MovementPassEffects {
         stats,
+        scatters,
         ..Default::default()
     };
     for entity_id in std::mem::take(&mut prepared.movers) {
