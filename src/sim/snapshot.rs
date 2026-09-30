@@ -2127,8 +2127,10 @@ impl Simulation {
             .occupancy
             .restore_memberships(&self.substrate.entities)
             .map_err(|reason| SnapshotRestoreError::InvalidCellMembership { reason })?;
-        self.substrate.cell_occupation =
-            crate::sim::occupancy::CellOccupationGrid::rebuild(&self.substrate.entities);
+        self.substrate.cell_occupation = crate::sim::occupancy::CellOccupationGrid::rebuild(
+            &self.substrate.entities,
+            &self.substrate.occupancy,
+        );
         Ok(())
     }
 
@@ -2940,8 +2942,10 @@ mod tests {
             .occupancy
             .restore_memberships(&sim.substrate.entities)
             .expect("fixture has valid saved Cell references");
-        sim.substrate.cell_occupation =
-            crate::sim::occupancy::CellOccupationGrid::rebuild(&sim.substrate.entities);
+        sim.substrate.cell_occupation = crate::sim::occupancy::CellOccupationGrid::rebuild(
+            &sim.substrate.entities,
+            &sim.substrate.occupancy,
+        );
         sim.rebuild_caches_after_load(
             terrain,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
@@ -6272,7 +6276,8 @@ mod tests {
             .get_mut(entity_id)
             .unwrap()
             .foot_occupation_enabled = false;
-        sim.substrate.cell_occupation = CellOccupationGrid::rebuild(&sim.substrate.entities);
+        sim.substrate.cell_occupation =
+            CellOccupationGrid::rebuild(&sim.substrate.entities, &sim.substrate.occupancy);
         // Native in-scenario load restarts Scenario RNG from Seed0; isolate
         // Drive footprint persistence on that same post-load cursor.
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);

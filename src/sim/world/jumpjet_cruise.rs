@@ -469,6 +469,8 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 
     fn touchdown(&mut self) {
+        // The AircraftTracker removal (`0x0054C9DC`) is not made: see the
+        // residual on `state0_ground`.
         self.touched_down = true;
         let here = self.cell_of([self.location[0], self.location[1]]);
         if self.holds_air_slot_at(here) {

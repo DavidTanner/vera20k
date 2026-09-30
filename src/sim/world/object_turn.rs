@@ -207,7 +207,9 @@ impl Simulation {
             && !sinking
             && let Some(entity) = self.substrate.entities.get(stable_id)
         {
-            self.substrate.cell_occupation.reconcile_entity(entity);
+            self.substrate
+                .cell_occupation
+                .reconcile_entity(entity, &self.substrate.occupancy);
         }
         let Some(kind) = admitted else {
             return Ok(LocomotorProcess::default());

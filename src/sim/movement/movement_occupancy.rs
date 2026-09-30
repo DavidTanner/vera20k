@@ -873,7 +873,7 @@ pub(super) fn handle_deferred_occupancy(
                             );
                         }
                         victim.lifecycle.cell_marked = false;
-                        cell_occupation.reconcile_entity(victim);
+                        cell_occupation.reconcile_entity(victim, occupancy);
                     }
                 }
             }

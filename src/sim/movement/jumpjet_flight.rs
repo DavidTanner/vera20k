@@ -861,9 +861,17 @@ fn sub_cell_of(coord: [i32; 3]) -> i32 {
 
 /// `State0_GroundIdle @ 0x0054B980`. Returns the new state.
 ///
-/// The air-bucket add at `0x0054BA20` is gated on the owner's cell matching the
-/// global cell at `0x00ABC588`, which this port does not model; no corpus row
-/// reaches it.
+/// RESIDUAL: a takeoff adds an untracked owner to the AircraftTracker
+/// (`0x0054B9F8..0x0054BA20`). The owner's vtable `+0x2F4` (`0x0041C150` for
+/// Unit, Infantry and Aircraft) reads its tracker cell `+0x560`, and the zeroed
+/// cell at `0x00ABC588` means none. Touchdown removes it again (`0x0054C9DC`).
+/// This port makes neither call; `Simulation::sync_air_spatial_membership`
+/// keeps every marked Jumpjet tracked instead, landed ones too.
+/// - Trigger: every Jumpjet takeoff and touchdown.
+/// - Effect: tracker membership and enter order.
+/// - Frequency: common.
+/// - Risk: tracker readers, such as area damage and the greatest-threat air
+///   pre-pass, count a landed Jumpjet as airborne.
 pub(crate) fn state0_ground(
     moving: bool,
     params: &JumpjetFlightParams,

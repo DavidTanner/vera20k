@@ -28,6 +28,18 @@
 //!   one (`0x0047E903..0x0047E906`). Mark's +0x74 gate keeps an unmarked
 //!   object out of its lists, and the one direct Place_Down follows its own
 //!   Pick_Up, so VERA's lists never reach that state.
+//! - Recalc runs only when the caller passes an overlay registry. Reveal and
+//!   Limbo pass none, as before this owner existed.
+//!
+//! Readers of list membership follow the lists themselves: list walks
+//! (`Simulation::cell_object_list_location`) and the vehicle plane
+//! (`CellOccupationGrid::reconcile_entity`). The A* caches
+//! (`block_index::contribution`, `bump_crush::blocker_plane_source`) still
+//! take a Jumpjet's Air path layer as unlisted (RESIDUAL). Trigger: a landed
+//! or low Jumpjet in a route. Effect: A* plans through a cell whose
+//! `Can_Enter_Cell` refuses, so the mover waits or repaths at the boundary.
+//! Frequency: occasional. Risk: detours differ from native A*, which asks
+//! `Can_Enter_Cell` per neighbour.
 
 use super::{ground_pose, locomotor::MovementLayer};
 use crate::map::entities::EntityCategory;

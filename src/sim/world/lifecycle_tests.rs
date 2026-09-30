@@ -1226,6 +1226,38 @@ fn gsi_04_12_common_raw_occupation_infantry_unlimbo_marks_after_link_and_walk_li
     assert!(cleared < unlinked);
 }
 
+/// The same Limbo hook (`0x004DB324`) on a Chrono Legionnaire's Teleport
+/// (`0x0071A090`) or a grounded Rocketeer's Jumpjet (`0x0054D930`, State 0)
+/// clears his sub-cell at his Location. Nothing else would: Infantry Mark
+/// clears none (`0x0047EAFE`).
+#[test]
+fn teleport_and_grounded_jumpjet_limbo_clear_the_infantrymans_sub_cell() {
+    for kind in [LocomotorKind::Teleport, LocomotorKind::Jumpjet] {
+        let mut sim = Simulation::new();
+        insert_entity(&mut sim, 1, EntityCategory::Infantry);
+        sim.substrate.entities.get_mut(1).unwrap().locomotor =
+            Some(LocomotorState::for_test_kind(kind));
+        let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 0, 192, 64));
+        assert_eq!(
+            sim.substrate.raw_cell_occupation.ground_bits(3, 4),
+            0x04,
+            "{kind:?}"
+        );
+
+        let _ = sim.techno_limbo(1);
+
+        assert!(
+            !sim.substrate.occupancy.contains_entity(3, 4, 1),
+            "{kind:?}"
+        );
+        assert_eq!(
+            sim.substrate.raw_cell_occupation.ground_bits(3, 4),
+            0,
+            "{kind:?}"
+        );
+    }
+}
+
 /// A man placed exactly a deck above a structural bridge's ground is marked
 /// on the deck plane (`0x005217C0`) and cleared there by height alone
 /// (`0x00521850`). One placed higher is not marked at all: Unlimbo skips its
@@ -1760,27 +1792,46 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
 }
 
 /// Foot Unlimbo's AircraftTracker admission (`0x004D72B2..0x004D72DB`) is
-/// not Fly's alone: a Jumpjet aircraft (a Nighthawk) revealed above twice the
-/// level height enters the tracker at Reveal too. Mark never adds anything.
+/// not Fly's alone: a high-flying object (vt+0x54) whose type sets
+/// ConsideredAircraft (TechnoType `+0xD96`) enters the tracker at Reveal,
+/// here a Jumpjet VehicleType. Without that key it does not. Mark itself
+/// never adds anything.
 #[test]
-fn unlimbo_adds_a_high_flying_jumpjet_aircraft_to_the_air_tracker() {
-    let mut sim = Simulation::new();
-    sim.session.map_width = 40;
-    sim.session.map_height = 40;
-    install_common_raw_terrain(&mut sim, 40, 40, 0, None);
-    insert_entity(&mut sim, 30, EntityCategory::Aircraft);
-    // Reveal leaves an air unit without an exact Z (#692), so its height is
-    // the altitude cache, as in `install_fly_aircraft`.
-    let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
-    locomotor.altitude = SimFixed::from_num(416);
-    sim.substrate.entities.get_mut(30).unwrap().locomotor = Some(locomotor);
+fn unlimbo_adds_a_high_flying_considered_aircraft_to_the_air_tracker() {
+    for (considered_aircraft, tracked) in [("yes", true), ("no", false)] {
+        let rules = crate::rules::ruleset::RuleSet::from_ini(
+            &crate::rules::ini_parser::IniFile::from_str(&format!(
+                "[VehicleTypes]\n0=JJET\n\
+                 [JJET]\nStrength=100\nSpeed=14\nConsideredAircraft={considered_aircraft}\n\
+                 Locomotor={{92612C46-F71F-11d1-AC9F-006008055BB5}}\n",
+            )),
+        )
+        .expect("Jumpjet VehicleType rules");
+        let mut sim = Simulation::new();
+        sim.session.map_width = 40;
+        sim.session.map_height = 40;
+        install_common_raw_terrain(&mut sim, 40, 40, 0, None);
+        insert_entity(&mut sim, 30, EntityCategory::Unit);
+        let type_ref = sim.interner.intern("JJET");
+        let entity = sim.substrate.entities.get_mut(30).unwrap();
+        entity.type_ref = type_ref;
+        // Reveal leaves an air unit without an exact Z (#692), so its height
+        // is the altitude cache, as in `install_fly_aircraft`.
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
+        locomotor.altitude = SimFixed::from_num(416);
+        entity.locomotor = Some(locomotor);
 
-    let _ = sim.try_reveal_entity(30, common_raw_request(3, 4, 4, 128, 128));
+        let _ = sim.try_reveal_entity_with_context(
+            30,
+            common_raw_request(3, 4, 4, 128, 128),
+            super::UninitContext::with_rules(&rules),
+        );
 
-    let jumpjet = sim.substrate.entities.get(30).unwrap();
-    assert!(jumpjet.lifecycle.cell_marked);
-    assert!(jumpjet.air_spatial_bucket.is_some());
-    assert!(!sim.substrate.occupancy.contains_entity(3, 4, 30));
+        let jumpjet = sim.substrate.entities.get(30).unwrap();
+        assert!(jumpjet.lifecycle.cell_marked);
+        assert_eq!(jumpjet.air_spatial_bucket.is_some(), tracked);
+        assert!(!sim.substrate.occupancy.contains_entity(3, 4, 30));
+    }
 }
 
 fn insert_anim(sim: &mut Simulation, stable_id: u64, inactive: bool) {

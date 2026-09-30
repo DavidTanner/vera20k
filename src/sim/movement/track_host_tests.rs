@@ -742,9 +742,10 @@ fn raw_clear_retires_aliasing_roles_before_reconciliation() {
                 .unwrap(),
         };
         sim.track_raw_mark_at(1, DriveCoord::cell(handoff.rx, handoff.ry, 0), false);
-        sim.substrate
-            .cell_occupation
-            .reconcile_entity(sim.substrate.entities.get(1).unwrap());
+        sim.substrate.cell_occupation.reconcile_entity(
+            sim.substrate.entities.get(1).unwrap(),
+            &sim.substrate.occupancy,
+        );
         assert!(!sim.substrate.cell_occupation.occupied_by_other(
             handoff.rx,
             handoff.ry,

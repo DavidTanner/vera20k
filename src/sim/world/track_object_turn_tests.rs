@@ -547,7 +547,10 @@ fn ship_fresh_claim_survives_next_object_visit_and_snapshot_rebuild() {
     );
     let bytes = GameSnapshot::save(&sim, 0, 0, "ship_head", 0);
     let loaded = GameSnapshot::load(&bytes).unwrap().sim;
-    let rebuilt = crate::sim::occupancy::CellOccupationGrid::rebuild(&loaded.substrate.entities);
+    let rebuilt = crate::sim::occupancy::CellOccupationGrid::rebuild(
+        &loaded.substrate.entities,
+        &loaded.substrate.occupancy,
+    );
     assert!(
         rebuilt.occupied_by_other(mark.rx, mark.ry, mark.layer, 99),
         "follower entry sees the saved Ship reservation"

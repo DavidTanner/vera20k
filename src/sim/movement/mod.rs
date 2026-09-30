@@ -586,7 +586,8 @@ pub(crate) fn tick_movement_with_grid(
     lifecycle_requests: &mut Vec<LifecycleRequest>,
 ) -> MovementTickStats {
     let mut sound_events: Vec<crate::sim::world::SimSoundEvent> = Vec::new();
-    let mut cell_occupation = crate::sim::occupancy::CellOccupationGrid::rebuild(entities);
+    let mut cell_occupation =
+        crate::sim::occupancy::CellOccupationGrid::rebuild(entities, occupancy);
     let mut raw_cell_occupation = crate::sim::occupancy::RawCellOccupationGrid::new();
     tick_movement_with_grids(
         entities,

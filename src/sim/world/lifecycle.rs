@@ -774,7 +774,11 @@ impl Simulation {
         let high_flight = self.foot_neighbors_after_unlimbo(stable_id, context.rules);
         // Foot4D72B2/+54 requires high flight, then Type ConsideredAircraft
         // (+D96) admits AirTrackerAdd4D72DB, whatever the locomotor. Mark
-        // itself never adds anything.
+        // itself never adds anything. RESIDUAL: a Reveal without rules
+        // (`try_reveal_entity`: passenger departure, `reveal`, spawn
+        // `unlimbo`) reads +D96 as its default, Aircraft only, so a
+        // high-flying ConsideredAircraft Unit revealed that way waits for the
+        // per-tick `sync_air_spatial_membership`.
         if high_flight
             && self.substrate.entities.get(stable_id).is_some_and(|e| {
                 context
@@ -1531,7 +1535,9 @@ impl Simulation {
         }
         // Rebuild only the derived vehicle projection: serialized head-to,
         // handoff and current-cleared facts retain their existing owners.
-        self.substrate.cell_occupation.reconcile_entity(entity);
+        self.substrate
+            .cell_occupation
+            .reconcile_entity(entity, &self.substrate.occupancy);
         for &(rx, ry) in &cells {
             self.substrate.occupancy.add(
                 rx,
@@ -2410,6 +2416,8 @@ impl Simulation {
             );
         }
         self.release_walk_occupation_before_foot_limbo(stable_id);
+        self.release_teleport_occupation_before_foot_limbo(stable_id);
+        self.release_jumpjet_occupation_before_foot_limbo(stable_id);
         self.release_foot_air_tracker_before_limbo(stable_id);
         if self
             .substrate
