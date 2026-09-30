@@ -208,11 +208,12 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
 // AircraftTracker, which native Mark never touches, so a ground object keeps
 // its constructor-seeded enter order (its stable id) where the old lifecycle
-// Mark reset it to 0 on every Mark. Ceremony: this change with only that reset
-// restored printed the old value for all three replay pins (bridge, global,
-// slice 6), with the RNG pins above unchanged (the probe patch was not
-// committed). Old value: the commit that moved it.
-const SLICE6_BASELINE_HASH: u64 = 0x38A2_A509_33EC_5219;
+// Mark reset it to 0 on every Foot and Building Mark. Ceremony, rerun after
+// merging main: this change with only that reset restored printed the old
+// value for all three replay pins (bridge, global, slice 6), with the RNG pins
+// above unchanged (the probe patch was not committed). Old value: the commit
+// that moved it.
+const SLICE6_BASELINE_HASH: u64 = 0xCAFE_C558_646C_EBD8;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

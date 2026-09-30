@@ -227,10 +227,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // 2026-09-30 one FootClass::Mark owner (#922): Mark no longer writes the
 // AircraftTracker, which native Mark never touches, so a ground object keeps
 // its constructor-seeded enter order (its stable id) where the old lifecycle
-// Mark reset it to 0 on every Mark. Ceremony: this change with only that reset
-// restored printed the old value for all three replay pins (bridge, global,
-// slice 6), with the RNG pins above unchanged (the probe patch was not
-// committed). Old value: the commit that moved it.
+// Mark reset it to 0 on every Foot and Building Mark. Ceremony, rerun after
+// merging main: this change with only that reset restored printed the old
+// value for all three replay pins (bridge, global, slice 6), with the RNG pins
+// above unchanged (the probe patch was not committed). Old value: the commit
+// that moved it.
 const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4ABD_AEFB_B0B5_94CD;
 
 fn bridge_ini() -> IniFile {
