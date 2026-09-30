@@ -255,7 +255,7 @@ pub fn place_ready_building_with_overlays(
     else {
         return false;
     };
-    let Some(new_sid) = sim.unlimbo_held_production_object(
+    let Some(new_sid) = sim.reveal_constructed_object_at_height(
         held.entity_id(),
         rx,
         ry,

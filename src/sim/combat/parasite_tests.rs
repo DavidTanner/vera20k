@@ -912,3 +912,33 @@ fn a_parasite_order_on_an_iron_curtained_host_is_dropped() {
     assert!(!arena.in_limbo(drone));
     assert_eq!(arena.eater_of(tank), None);
 }
+
+/// CanPlaceAtVictim (`0x0062AB40`) refuses only a victim in the air: it asks
+/// the victim's vt+0x54 (`0x0062AB52`), IsInAir (`0x005F6B90`), which needs a
+/// height of at least 208. A paratrooper still falling below that takes the
+/// drone at its own cell.
+#[test]
+fn a_parasite_is_placed_at_a_falling_victim_below_the_air_line() {
+    let rules = rules();
+    let mut arena = Arena::new(&rules);
+    let drone = arena.spawn(&rules, "DRON", "Russians", (10, 10));
+    let victim = arena.spawn(&rules, "E1", "Americans", (11, 10));
+    let mut place_at_height = |height: i32| {
+        arena
+            .sim
+            .substrate
+            .entities
+            .get_mut(victim)
+            .unwrap()
+            .position
+            .exact_z_leptons = Some(height);
+        arena
+            .sim
+            .parasite_can_place_at_victim(drone, victim, &rules)
+    };
+    assert!(
+        place_at_height(207),
+        "below 208 the victim is not in the air"
+    );
+    assert!(!place_at_height(208), "at 208 the victim is in the air");
+}

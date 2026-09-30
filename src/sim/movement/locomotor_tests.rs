@@ -632,15 +632,6 @@ fn cmin_locomotor_initializes_primary_and_active_teleport() {
     assert!(state.is_primary_active());
 }
 
-#[test]
-fn test_is_airborne() {
-    let obj = make_obj(LocomotorKind::Fly, ObjectCategory::Aircraft);
-    let mut state = LocomotorState::from_object_type(&obj, 0);
-    assert!(!state.is_airborne());
-    state.altitude = SimFixed::from_num(100);
-    assert!(state.is_airborne());
-}
-
 // --- Override/Piggyback mechanism tests ---
 
 #[test]

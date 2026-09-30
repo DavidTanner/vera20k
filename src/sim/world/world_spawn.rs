@@ -898,56 +898,10 @@ impl Simulation {
         self.spawn_object_limbo_at_height(type_id, owner, rx, ry, facing, z, rules)
     }
 
-    /// Run one result-bearing Unlimbo transaction against an already stored
-    /// production object. Mark failure restores this same identity to limbo;
-    /// construction and its Add_Tracking are deliberately not repeated.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn unlimbo_held_production_object(
-        &mut self,
-        stable_id: u64,
-        rx: u16,
-        ry: u16,
-        facing: u8,
-        z: u8,
-        placement: PlacementEvidence,
-        rules: &RuleSet,
-    ) -> Option<u64> {
-        self.reveal_constructed_object_at_height_with_unit_context(
-            stable_id, rx, ry, facing, z, placement, rules, None, stable_id,
-        )
-    }
-
-    /// Production delivery boundary for a held object whose concrete Unit
-    /// virtual needs the live overlay table and selected producer identity.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn unlimbo_held_production_object_with_unit_context(
-        &mut self,
-        stable_id: u64,
-        producer_id: u64,
-        rx: u16,
-        ry: u16,
-        facing: u8,
-        z: u8,
-        placement: PlacementEvidence,
-        rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> Option<u64> {
-        self.reveal_constructed_object_at_height_with_unit_context(
-            stable_id,
-            rx,
-            ry,
-            facing,
-            z,
-            placement,
-            rules,
-            overlay_registry,
-            producer_id,
-        )
-    }
-
-    /// Place an already constructed limbo Techno without repeating its
-    /// constructor draw or manager initialization. Failure restores this same
-    /// identity to limbo so a caller may try another coordinate.
+    /// Place an already constructed limbo Techno, such as a held production
+    /// object, without repeating its constructor draw, manager initialization
+    /// or Add_Tracking. Failure restores this same identity to limbo so a
+    /// caller may try another coordinate.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn reveal_constructed_object_at_height(
         &mut self,
@@ -1011,21 +965,6 @@ impl Simulation {
             return None;
         }
 
-        let z = match placement {
-            PlacementEvidence::UnitCanEnterExactZero {
-                layer: MovementLayer::Bridge,
-            } => self
-                .resolved_terrain
-                .as_ref()
-                .and_then(|terrain| terrain.cell(rx, ry))
-                .map_or(z, |cell| cell.bridge_deck_level),
-            _ => z,
-        };
-        if let PlacementEvidence::UnitCanEnterExactZero { layer } = placement
-            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
-        {
-            entity.on_bridge = layer == MovementLayer::Bridge;
-        }
         let is_infantry = self
             .substrate
             .entities
@@ -1213,7 +1152,7 @@ impl Simulation {
     fn unlimbo_constructed_parent(
         &mut self,
         stable_id: u64,
-        mut position: RevealPosition,
+        position: RevealPosition,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (u64, RevealOutcome) {
@@ -1226,18 +1165,6 @@ impl Simulation {
                 stable_id,
             )
         });
-        if let PlacementEvidence::UnitCanEnterExactZero { layer } = placement {
-            if layer == MovementLayer::Bridge {
-                position.z = self
-                    .resolved_terrain
-                    .as_ref()
-                    .and_then(|terrain| terrain.cell(position.rx, position.ry))
-                    .map_or(position.z, |cell| cell.bridge_deck_level);
-            }
-            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                entity.on_bridge = layer == MovementLayer::Bridge;
-            }
-        }
         let outcome = self.try_reveal_entity_with_context(
             stable_id,
             RevealRequest {

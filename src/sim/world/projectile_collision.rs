@@ -2051,29 +2051,12 @@ impl ProjectileCollisionWorld<'_> {
         }
     }
 
+    /// The target's vt+0x54, IsInAir.
     fn high_flying(&self, target: &crate::sim::game_entity::GameEntity) -> bool {
-        if target.category == EntityCategory::Aircraft
-            && self.rules.is_some_and(|rules| {
-                let name = self.interner.resolve(target.type_ref());
-                name.eq_ignore_ascii_case(&rules.missile_spawn.v3.type_name)
-                    || name.eq_ignore_ascii_case(&rules.missile_spawn.dmisl.type_name)
-            })
-        {
-            return target
-                .rocket_state
-                .as_ref()
-                .is_some_and(|rocket| rocket.phase.is_moving_now());
-        }
-        let raw = self.raw_location(target);
-        target.lifecycle.cell_marked
-            && raw
-                .z
-                .wrapping_sub(self.ground(raw))
-                .wrapping_sub(if target.on_bridge {
-                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-                } else {
-                    0
-                })
-                >= 208
+        crate::sim::movement::air_movement::is_high_flying(
+            target,
+            self.terrain,
+            self.rules.map(|rules| (rules, self.interner)),
+        )
     }
 }
