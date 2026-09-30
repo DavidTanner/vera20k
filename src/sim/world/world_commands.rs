@@ -1793,9 +1793,23 @@ impl Simulation {
                         ) {
                             return None;
                         }
-                        Some((b.position.rx, b.position.ry, b.owner()))
+                        Some((
+                            b.position.rx,
+                            b.position.ry,
+                            b.owner(),
+                            crate::sim::movement::nav_target_coordinate(
+                                crate::sim::components::NavTargetRef::Building {
+                                    id: *target_building_id,
+                                },
+                                Some(*attacker_id),
+                                &self.substrate.entities,
+                                self.resolved_terrain.as_ref(),
+                                Some((rules, &self.interner)),
+                            )
+                            .ok()?,
+                        ))
                     });
-                let Some((trx, try_, target_owner)) = target_info else {
+                let Some((trx, try_, target_owner, target_coord)) = target_info else {
                     return false;
                 };
                 // Enemy-only.
@@ -1830,7 +1844,9 @@ impl Simulation {
                         target_building_id: *target_building_id,
                     });
                 }
-                // Issue movement toward the building's cell.
+                // Event4C747C: Set_Destination(target building, 1). The building is
+                // the NavCom, so the Infantry +1AC admits its footprint cells to a
+                // Sabotage C4 carrier (`0x0051C2D3..`) and the walk ends inside.
                 let info = self.resolve_move_info(*attacker_id, Some(rules));
                 let speed = info
                     .as_ref()
@@ -1848,7 +1864,12 @@ impl Simulation {
                         queue: false,
                         speed_type: Some(speed_type),
                         owner_blocks: true,
-                        object_destination: None,
+                        object_destination: Some((
+                            crate::sim::components::NavTargetRef::Building {
+                                id: *target_building_id,
+                            },
+                            target_coord,
+                        )),
                     },
                     Some(rules),
                 );

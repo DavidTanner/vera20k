@@ -272,6 +272,61 @@ fn receiver_writes_the_ready_action_only_when_do_action_admits_it() {
     assert_eq!(doing, if has_ready { 0 } else { -1 });
 }
 
+/// A Jumpjet man's damage Scatter takes Foot's setter (`0x004D94B0`): the
+/// NavCom, then the Jumpjet Move_To, then Foot's timer tail. It is not a
+/// grid-bypassing direct move.
+#[test]
+fn jumpjet_infantry_damage_scatter_takes_the_foot_air_setter() {
+    use crate::sim::combat::{EntityDamageEvent, world_receiver};
+    use crate::sim::components::NavTargetRef;
+    let (mut sim, rules, registry) = super::tests::fixture_with_rules(
+        "[JUMPJET]\nFraidycat=yes\n[Guard]\nScatter=yes\n[CombatDamage]\nPlayerScatter=yes\n",
+    );
+    let victim = sim
+        .spawn_object("JUMPJET", "Americans", 10, 10, 0, &rules)
+        .unwrap();
+    let attacker = engineer_at(&mut sim, &rules, (8, 10));
+    sim.mission_assign_exact(
+        victim,
+        MissionId::from_known(MissionType::Guard),
+        sim.session.binary_frame,
+    )
+    .unwrap();
+    sim.substrate
+        .entities
+        .get_mut(victim)
+        .unwrap()
+        .mission_leaf
+        .set_infantry_doing_verified(-1)
+        .unwrap();
+    let attacker_house = sim.substrate.entities.get(attacker).unwrap().owner();
+    let warhead = sim.interner.intern("SA");
+    let event = EntityDamageEvent::area(victim, 10, 0, attacker, Some(attacker_house), warhead);
+    world_receiver::commit_entities(
+        &mut sim,
+        &mut world_receiver::ReceiverRun::default(),
+        &[event],
+        None,
+        &rules,
+        Some(&registry),
+    );
+    let e = sim.substrate.entities.get(victim).unwrap();
+    assert!(e.health.current < 125);
+    assert!(
+        matches!(e.navigation.nav_com, Some(NavTargetRef::Cell { .. })),
+        "Scatter published the cell NavCom"
+    );
+    let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
+    assert!(state.moving, "Jumpjet Move_To accepted the scatter cell");
+    assert!(
+        !e.movement_target
+            .as_ref()
+            .is_some_and(|target| target.adapter_route || target.bypass_grid),
+        "no direct-move adapter route"
+    );
+    assert_eq!(e.mission.queued(), MissionId::from_known(MissionType::Move));
+}
+
 #[test]
 fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     use crate::sim::combat::{EntityDamageEvent, world_receiver};

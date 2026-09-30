@@ -606,8 +606,8 @@ impl Simulation {
             }
 
             // gamemd claims only when the infantry's current cell resolves
-            // to the target building. Normal pathing stops at the blocked
-            // footprint boundary, then we issue the one-cell enter move below.
+            // to the target building. The walk reaches it because the building
+            // is the NavCom, which the Infantry +1AC admits (`0x0051C2D3..`).
             let attacker_cell = self
                 .substrate
                 .entities
@@ -631,17 +631,7 @@ impl Simulation {
             }
 
             if !target_footprint.contains(&attacker_cell) {
-                if self.adjacent_to_target_footprint(attacker_cell, &target_footprint)
-                    && !self.infantry_has_active_movement(attacker_id)
-                {
-                    self.issue_building_enter_target_cell(
-                        attacker_id,
-                        attacker_cell,
-                        &target_footprint,
-                        rules,
-                    );
-                }
-                continue; // walk-up or enter-cell movement still in progress
+                continue; // walk-up still in progress
             }
 
             // Claim the plant.
@@ -845,72 +835,6 @@ impl Simulation {
             target.position.ry,
             obj.foundation.as_str(),
         ))
-    }
-
-    fn adjacent_to_target_footprint(
-        &self,
-        attacker_cell: (u16, u16),
-        target_footprint: &[(u16, u16)],
-    ) -> bool {
-        target_footprint.iter().any(|&(trx, try_)| {
-            let dx = (attacker_cell.0 as i32 - trx as i32).abs();
-            let dy = (attacker_cell.1 as i32 - try_ as i32).abs();
-            dx <= 1 && dy <= 1
-        })
-    }
-
-    fn infantry_has_active_movement(&self, attacker_id: u64) -> bool {
-        self.substrate
-            .entities
-            .get(attacker_id)
-            .is_some_and(|attacker| attacker.movement_target.is_some())
-    }
-
-    fn issue_building_enter_target_cell(
-        &mut self,
-        attacker_id: u64,
-        attacker_cell: (u16, u16),
-        target_footprint: &[(u16, u16)],
-        rules: &RuleSet,
-    ) {
-        let Some(entry_cell) = target_footprint.iter().copied().min_by_key(|&(rx, ry)| {
-            let dx = (attacker_cell.0 as i32 - rx as i32).abs();
-            let dy = (attacker_cell.1 as i32 - ry as i32).abs();
-            (dx.max(dy), dx + dy, rx, ry)
-        }) else {
-            return;
-        };
-
-        // A mover whose active locomotor is Teleport takes its class setter.
-        if self
-            .teleport_destination(attacker_id, entry_cell, Some(rules))
-            .is_some()
-        {
-            return;
-        }
-        let speed = self
-            .resolve_move_info(attacker_id, Some(rules))
-            .as_ref()
-            .map(|info| info.speed)
-            .unwrap_or(ra2_speed_to_leptons_per_second(4));
-        let timing =
-            movement::DestinationTiming::from_rules(self.session.binary_frame, rules.into());
-        if movement::issue_direct_move(
-            &mut self.substrate.entities,
-            attacker_id,
-            entry_cell,
-            speed,
-            timing,
-        ) {
-            if let Some(target) = self
-                .substrate
-                .entities
-                .get_mut(attacker_id)
-                .and_then(|attacker| attacker.movement_target.as_mut())
-            {
-                target.bypass_grid = true;
-            }
-        }
     }
 
     /// Post-detonation: any attacker that was on the destroyed building's
