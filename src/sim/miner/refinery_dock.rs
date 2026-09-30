@@ -161,6 +161,7 @@ fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
             id,
             crate::sim::components::NavTargetRef::cell(rx, ry),
             rules,
+            true,
         );
     }
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
@@ -196,6 +197,7 @@ fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64) {
                 id,
                 crate::sim::components::NavTargetRef::cell(rx, ry),
                 rules,
+                true,
             );
         }
         _ => {

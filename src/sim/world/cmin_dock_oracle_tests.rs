@@ -381,6 +381,7 @@ fn unit_setter_teleporter_arm_matches_the_original_assign_destination() {
                         crate::sim::components::NavTargetRef::cell(rx, ry)
                     },
                     &s.rules,
+                    true,
                 );
             }
             None => {

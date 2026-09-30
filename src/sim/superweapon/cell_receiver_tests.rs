@@ -387,7 +387,7 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
                 "[VehicleTypes]\n1=TESLA\n[E1]\nPrimary=Rifle\nSight=8\n\
          [TESLA]\nStrength=300\nSpeed=6\nSight=8\nPrimary=Coil\n\
          [Rifle]\nDamage=1\nROF=50\nRange=10\nProjectile=SlowShot\nSpeed=10\nWarhead=KILL\n\
-         [SlowShot]\nImage=none\n\
+         [SlowShot]\nImage=none\nROT=1\n\
          [Coil]\nDamage=1000\nROF=50\nRange=10\nWarhead=KILL\nIsElectricBolt=yes\n\
          [Warheads]\n3=KILL\n[KILL]\nInfDeath={inf_death}\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [CombatDamage]\nDefaultSparkSystem=SparkSys\n[ParticleSystems]\n0=SparkSys\n\
@@ -423,10 +423,11 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
         let tesla = sim
             .spawn_object_at_height("TESLA", "Russians", 6, 5, tesla_facing, 0, &rules)
             .unwrap();
-        // The Rifle's bullet is still flying at the tail, so the Tesla's
-        // (Inviso) bullet takes its first AI this frame. Had the Rifle's
-        // landed first, its removal would shift the Tesla's into its Logic
-        // slot and skip it until the next frame.
+        // ROT=1 keeps the synthetic Rifle bullet in the native homing arm
+        // (4668D1), so it remains in flight at the tail and the Tesla's Inviso
+        // bullet takes its first AI this frame. A ROT=0 shot launched at Z=0
+        // instead falls into the ground; its removal shifts the Tesla bullet
+        // into its Logic slot and correctly skips it until the next frame.
         for (source, target) in [(infantry, tesla), (tesla, infantry)] {
             assert!(crate::sim::combat::install_entity_attack_target_for_test(
                 &mut sim.substrate.entities,
@@ -452,6 +453,15 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
                 .collect::<Vec<_>>(),
             [infantry, tesla],
             "Infantry fires before its fatal receiver in the same frame"
+        );
+        assert_eq!(
+            sim.projectiles.iter().filter(|(_, bullet)| {
+                bullet.in_logic_vector
+                    && bullet.guidance.as_ref().is_some_and(|guidance| guidance.rot == 1)
+                    && matches!(bullet.target, crate::sim::projectile::ProjectileTarget::Entity(id) if id == tesla)
+            }).count(),
+            1,
+            "the Rifle bullet must remain live so its removal cannot skip the Tesla bullet"
         );
         if inf_death == 2 {
             let object = sim.substrate.entities.get(infantry).unwrap();

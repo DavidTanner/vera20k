@@ -1006,7 +1006,8 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
     assert!(sim.set_unit_destination(
         miner_id,
         crate::sim::components::NavTargetRef::cell(1, 0),
-        &rules
+        &rules,
+        true
     ));
 
     let movement = first_track_process_route(&mut sim, miner_id, Some(&rules), &path_grid)

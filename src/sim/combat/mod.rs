@@ -584,6 +584,25 @@ pub enum TargetKind {
     Cell(u16, u16),
 }
 
+impl TargetKind {
+    /// Recover an already-retained native Cell allocation without a map lookup.
+    /// A Cell TarCom is a pointer: later queries may have changed Dummy.coord,
+    /// so reading the target must not restamp it with the command coordinate.
+    /// GetFireError6FC197 and CanFireAt6F77B0 share this identity authority.
+    pub(crate) fn cell_identity(
+        self,
+        terrain: &ResolvedTerrainGrid,
+    ) -> Option<crate::map::cell_index::NativeCellIdentity> {
+        let Self::Cell(x, y) = self else {
+            return None;
+        };
+        Some(terrain.native_fixed_cell_index(x as i16, y as i16).map_or(
+            crate::map::cell_index::NativeCellIdentity::Dummy,
+            crate::map::cell_index::NativeCellIdentity::Real,
+        ))
+    }
+}
+
 /// Sentinel attacker id for sourceless damage (the radiation field). Stable
 /// entity ids start at 1, so 0 is never a live attacker; the receiver asks no
 /// retaliation for it.
@@ -1455,8 +1474,8 @@ pub struct CombatTickResult {
     /// admits them before its Logic tail visits the new objects. FireAt admits
     /// its own bullets directly.
     pub projectile_spawns: Vec<ProjectileSpawn>,
-    /// Phase-2 entry facing slots, amended by explicit retarget/removal and
-    /// Fire_At_Target hull turns, applied by unit_post before SpawnManager.
+    /// Facing observations for component combat fixtures. Production Unit
+    /// facing commits within that Unit's live Logic slot.
     pub unit_facing: Vec<UnitFacingUpdate>,
     pub(crate) consequences: crate::sim::world::damage_consequences::DamageConsequences,
 }
@@ -2324,17 +2343,18 @@ fn area_near_center_ic_isolation_armed(
     })
 }
 
-/// Transient per-tick bag of the Phase-2 fire-emission outputs. Bundles the
-/// emit vectors so the per-attacker fire body (`resolve_attacker_fire`) can push
-/// through one `&mut` handle. Never stored on `Simulation`, never serialized,
-/// never hashed — destructured back into the named locals after the Phase-2 loop.
+/// Transient outputs shared by live object fire and the remaining class hosts.
+/// The fire body and inline receiver boundary collect through one handle;
+/// each host consumes its deliveries after committing per-firer effects.
+/// Never stored on `Simulation`, serialized or hashed. Hosts destructure all
+/// fields so adding an output requires an explicit delivery decision.
 #[derive(Default)]
 pub(crate) struct CombatEmit {
     /// One receiver-ordered consequence accumulator shared by weapon emission
     /// and fatal damage. Radiation is drained at its earlier ordinary phase.
     pub(crate) effects: DeathEffects,
-    /// Persistent ordinary bullets admitted by accepted weapon fire. The world
-    /// inserts them only after this frame's BulletClass pass has completed.
+    /// Recursive/shrapnel bullet emissions awaiting the caller's admission.
+    /// FireAt admits its own ordinary Bullet directly into the live Logic walk.
     pub(crate) projectile_spawns: Vec<ProjectileSpawn>,
     /// Native-order ReceiveDamage calls, including raw area records.
     pub(crate) damage_events: Vec<combat_aoe::AreaDamageReceiver>,
@@ -2345,9 +2365,8 @@ pub(crate) struct CombatEmit {
     /// Native `CurrentWeaponNumber` writes emitted by live weapon selection.
     /// The per-attacker host commits these before that attack's receivers run.
     pub(crate) current_weapon_updates: Vec<(u64, u8)>,
-    /// Per-Unit post-Foot Facing slot output — captured at Phase-2 entry before
-    /// current-frame attacker damage; that Unit's own explicit retarget/remove
-    /// may replace it. Applied post-batch by `unit_post::apply_unit_facing`.
+    /// Unit Facing outputs committed immediately at each live object slot.
+    /// Component fixtures retain them here for observation.
     pub(crate) unit_facing: Vec<UnitFacingUpdate>,
     /// (parent_id, target) — a `Spawner=yes` weapon reached its fire point.
     /// gamemd's `Fire_At` hands the target to the parent's `SpawnManager` and
@@ -2640,8 +2659,8 @@ pub(crate) struct LogicProjectileCommit {
 /// Build the per-attacker fire snapshot from current entity state. PURE READ —
 /// the caller has already decremented cooldown/burst-delay for this tick and
 /// resolved any garrison occupant. Single source of the snapshot field-reads so
-/// the legacy Phase-1 loop and the per-object Fire→Facing host build byte-identical
-/// snapshots (no field-read drift between the two call sites).
+/// non-Unit class hosts and the Unit live Fire→Facing host use the same
+/// field reads.
 pub(crate) fn build_attacker_snapshot(
     entity: &GameEntity,
     target: TargetKind,
@@ -3323,6 +3342,9 @@ mod impact_height_tests {
         // `test_interner` snapshots the thread-local, so the entity's type and
         // owner strings must be interned before the snapshot is taken.
         let mut firer = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
+        // This hand-placed combat fixture represents a revealed actor. The
+        // live Unit firing host correctly skips constructor-only limbo state.
+        firer.lifecycle.in_limbo = false;
         // The fixture `MTNK` authors no `Turret=`, so its HULL is what the
         // native body gate compares (`UnitClass::GetFireError @ 0x00740FD0`
         // step 17). Face it south at the force-fire cell so this test measures

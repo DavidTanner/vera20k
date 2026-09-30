@@ -644,6 +644,7 @@ fn foot_move_here(
                 foot,
                 crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
                 rules,
+                true,
             );
         }
         None => {

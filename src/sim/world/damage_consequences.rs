@@ -1,8 +1,8 @@
 //! Consuming delivery of receiver consequences at explicit world boundaries.
 //!
-//! VERA-internal ownership protocol, gamemd equivalent UNCHECKED. This preserves
-//! the existing ordinary/immediate schedules; it does not relocate native damage
-//! callbacks, radiation selection, death-sound selection, or the shared ID allocator.
+//! VERA-internal ownership protocol, gamemd equivalent UNCHECKED. Callers own
+//! live-object or remaining global delivery timing; this module does not choose
+//! damage callbacks, radiation targets, death sounds, or shared object IDs.
 
 use super::{SimFireEvent, SimSoundEvent, Simulation};
 use crate::map::entities::EntityCategory;
@@ -32,31 +32,6 @@ pub(crate) struct DamageCommitReceipt {
 }
 
 impl DamageConsequences {
-    /// Assemble pure receiver fixtures from the same per-actor production
-    /// firing host. Consequences retain their actual actor-before-tail order.
-    #[cfg(test)]
-    pub(crate) fn prepend_actor_fire_for_test(&mut self, mut earlier: Self) {
-        earlier.effects.append(std::mem::take(&mut self.effects));
-        self.effects = earlier.effects;
-        earlier
-            .terrain_navigation_changed_cells
-            .append(&mut self.terrain_navigation_changed_cells);
-        self.terrain_navigation_changed_cells = earlier.terrain_navigation_changed_cells;
-        let (
-            DamageDelivery::Ordinary {
-                fire_events: previous,
-            },
-            DamageDelivery::Ordinary {
-                fire_events: current,
-            },
-        ) = (&mut earlier.delivery, &mut self.delivery)
-        else {
-            panic!("actor fire fixture requires ordinary delivery");
-        };
-        previous.append(current);
-        *current = std::mem::take(previous);
-    }
-
     pub(super) fn finish_navigation(&mut self, cells: Vec<(u16, u16)>) {
         self.terrain_navigation_changed_cells = cells;
     }
@@ -147,8 +122,8 @@ impl DamageConsequences {
             delivery,
         } = self;
         let ordinary = matches!(&delivery, DamageDelivery::Ordinary { .. });
-        // Capture owner/category now: ordinary delivery follows SpawnManager,
-        // while immediate delivery finishes before its caller's next live cursor.
+        // Capture owner/category before deferred deletion drains. Delivery can
+        // occur inside a live Unit/Bullet slot or at the remaining global tail.
         let dead_infos: Vec<(InternedId, EntityCategory)> = effects
             .despawned_ids
             .iter()
@@ -369,14 +344,11 @@ fn admit_electric_sparks(world: &mut Simulation, rules: &RuleSet, fire_events: &
     // appends (`0x0062DD7A` into the ParticleSystemClass instance
     // registry at `0x00A80208`, and `0x0062DEF6` into the abstracts
     // registry at `0x00B0F730`) are neither of them the per-frame
-    // walker, and the walker itself was not identified. This engine
-    // creates it in the post-combat walk that already admits Sonic
-    // and Magnetron waves from the same event list — after the
-    // logic walk — so its first burst lands no earlier than
-    // native's, and one frame later if native does visit
-    // same-frame. Bolt rendering itself is not implemented; the
-    // sparks are the part of the discharge that is a simulation
-    // object.
+    // walker, and the walker itself was not identified. Unit deliveries
+    // construct it at their live fire boundary; remaining class deliveries
+    // keep their global tail. The separate particle walker's native timing
+    // remains unproved. Bolt rendering itself is not implemented; the sparks
+    // are the part of the discharge that is a simulation object.
     if let Some(spark_system_name) = rules.combat_damage.default_spark_system.as_deref() {
         for event in fire_events {
             let Some(weapon) = rules.weapon(world.interner.resolve(event.weapon_id)) else {

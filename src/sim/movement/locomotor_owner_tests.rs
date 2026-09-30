@@ -126,7 +126,12 @@ fn destination(sim: &mut Simulation, rules: &RuleSet, dock_contact: bool) -> boo
             .radio_contacts
             .set_slot(0, 2);
     }
-    sim.set_unit_destination(1, crate::sim::components::NavTargetRef::cell(12, 8), rules)
+    sim.set_unit_destination(
+        1,
+        crate::sim::components::NavTargetRef::cell(12, 8),
+        rules,
+        true,
+    )
 }
 
 #[test]

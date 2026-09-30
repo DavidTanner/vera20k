@@ -173,6 +173,10 @@ fn idle_turret_returns_to_body_facing() {
     // ROT=100 → rot_per_frame=25600. Diff from 0 (north turret) to body_facing_to_turret(64) =
     // 64*256 = 16384. Duration = 16384/25600 = 0 → snaps in 1 frame.
     sim.substrate.entities.insert(entity);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     use_test_interner(&mut sim);
     let rules = rules_with_mtnk_rot(100);
 
@@ -833,15 +837,17 @@ fn a_building_barrel_turns_through_mission_attack_not_the_sweep() {
 
 #[test]
 fn unit_facing_pass_idles_turret_to_body_without_target() {
-    // A turreted Unit with no attack_target: the residual P2-window pass +
-    // apply returns the barrel to body facing. Covers idle Units, which the
-    // fire path never sees (no snapshot) — the regression the residual pass
-    // exists to prevent.
+    // An admitted idle Unit still executes its live Fire -> Facing slot.
+    // No attack snapshot is required to return its barrel to body facing.
     let mut sim = Simulation::new();
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
     entity.body_facing.snap(0x4000, 0); // body east
     entity.barrel_facing = Some(FacingClass::new(body_facing_to_turret(0), 100));
     sim.substrate.entities.insert(entity);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     use_test_interner(&mut sim);
     let rules = rules_with_mtnk_rot(100);
 
@@ -865,7 +871,7 @@ fn unit_facing_pass_idles_turret_to_body_without_target() {
     assert_eq!(
         dest,
         body_facing_to_turret(64),
-        "idle Unit barrel should return to body facing via the residual pass + apply"
+        "idle Unit live Facing slot returns the barrel to body facing"
     );
 }
 

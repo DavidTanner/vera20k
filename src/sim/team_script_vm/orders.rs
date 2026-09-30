@@ -122,7 +122,7 @@ impl Simulation {
                 let _ = self.set_infantry_destination(id, requested, rules, registry);
             }
             EntityCategory::Unit if self.unit_setter_receiver(id, Some(rules)) => {
-                self.set_unit_destination(id, requested, rules);
+                self.set_unit_destination(id, requested, rules, true);
             }
             _ => {}
         }

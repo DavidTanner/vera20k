@@ -25,6 +25,25 @@ const INIT_TABLE_2: [u32; 4] = [0x4B0F_3B58, 0xE874_F0C3, 0x6955_C5A6, 0x55A7_CA
 #[cfg(test)]
 thread_local! {
     static DRAW_TRACE: std::cell::RefCell<Option<Vec<serde_json::Value>>> = const { std::cell::RefCell::new(None) };
+    static DRAW_LOGIC_OBJECT: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
+/// Observation only: identify the live Logic caller even when several objects
+/// enter the same mission handler. The guard restores an enclosing callback's
+/// identity on normal return, early exit or panic; it never enters sim state.
+#[cfg(test)]
+pub(crate) struct DrawLogicObject(Option<u64>);
+
+#[cfg(test)]
+impl Drop for DrawLogicObject {
+    fn drop(&mut self) {
+        DRAW_LOGIC_OBJECT.set(self.0);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn observe_logic_object(id: u64) -> DrawLogicObject {
+    DrawLogicObject(DRAW_LOGIC_OBJECT.replace(Some(id)))
 }
 
 /// Test-only observation of real production calls. It neither supplies words
@@ -256,6 +275,7 @@ impl SimRng {
             if let Some(trace) = trace {
                 trace.push(serde_json::json!({
                     "before_indices": [a, b], "value": value,
+                    "logic_object": DRAW_LOGIC_OBJECT.get(),
                     "callers": std::backtrace::Backtrace::force_capture().to_string(),
                 }));
             }

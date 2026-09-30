@@ -1844,6 +1844,7 @@ impl Simulation {
                 new_sid,
                 crate::sim::components::NavTargetRef::cell(x, y),
                 rules,
+                true,
             ) {
                 log::debug!("undeployed unit {new_sid} refused its archive ({x}, {y})");
             }

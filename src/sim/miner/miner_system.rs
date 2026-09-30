@@ -986,6 +986,7 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
                 id,
                 crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
                 rules,
+                true,
             );
         }
         None => {
@@ -1630,6 +1631,7 @@ pub(crate) fn issue_stock_miner_drive_move(
             entity_id,
             crate::sim::components::NavTargetRef::cell(target.0, target.1),
             rules,
+            true,
         );
     }
     let Some(info) = sim.resolve_move_info(entity_id, Some(rules)) else {
@@ -1696,6 +1698,7 @@ pub(crate) fn issue_move_if_idle(
             entity_id,
             crate::sim::components::NavTargetRef::cell(target.0, target.1),
             rules,
+            true,
         );
         return;
     }

@@ -88,64 +88,77 @@ impl Simulation {
         });
     }
 
-    /// Pre-combat: entities with an OrderIntent but no current AttackTarget
-    /// try to acquire a nearby enemy to engage.
-    ///
-    /// The `order_intent.is_some()` selector is retired in spirit (the busy role
-    /// moves to the `mission` substrate) but kept unchanged in code: `OrderIntent`
-    /// carries the AttackMove/Guard *coords* that `MissionType` cannot encode.
-    /// Full retirement (a goal field on the mission/nav substrate) is a later slice.
+    /// Remaining Aircraft/Structure compatibility host. Units and Infantry
+    /// acquire in their own Techno targeting slot, before locomotion and fire.
     pub(crate) fn tick_order_intents_pre_combat(
         &mut self,
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
-        // Collect attacker candidates from EntityStore.
-        let keys: Vec<u64> = self.substrate.entities.keys_sorted();
-        let mut attacker_ids: Vec<u64> = Vec::new();
-        for &id in &keys {
-            if turn_suppressed.contains(&id) {
+        for id in self.substrate.entities.keys_sorted() {
+            if turn_suppressed.contains(&id)
+                || self.substrate.entities.get(id).is_none_or(|entity| {
+                    matches!(
+                        entity.category,
+                        EntityCategory::Unit | EntityCategory::Infantry
+                    )
+                })
+            {
                 continue;
             }
-            if let Some(entity) = self.substrate.entities.get(id) {
-                // A warped object's missions do not run (`ai_frozen`), nor
-                // does a Health-0 wreck's (`MissionClass::AI @ 0x005B30A7`).
-                if entity.order_intent.is_some()
-                    && entity.attack_target.is_none()
-                    && !entity.ai_frozen()
-                    && super::techno_ai::mission_handlers_run(self, id)
-                {
-                    attacker_ids.push(id);
-                }
-            }
+            self.acquire_order_intent_target_one(id, rules, overlay_registry);
         }
+    }
 
-        for attacker_id in attacker_ids {
-            let Some(scan_mask) = self
-                .substrate
-                .entities
-                .get(attacker_id)
-                .map(combat::scan_mission_for)
-            else {
-                continue;
-            };
-            let Some(target_sid) = self.greatest_threat_represented(
-                rules,
-                overlay_registry,
-                attacker_id,
-                scan_mask,
-                None,
-                combat::acquire_best_target_for_entity,
-            ) else {
-                continue;
-            };
-            let _ = self.assign_target_represented(
-                attacker_id,
-                Some(combat::TargetKind::Entity(target_sid)),
-                Some(rules),
-            );
+    /// Existing OrderIntent acquisition decision, shared by the Unit/Infantry
+    /// targeting slots and the remaining compatibility host.
+    /// Native caller ordering: TechnoAI6FA65A..6FA695 reaches retained
+    /// AttackMove acquisition before Foot locomotion and Unit7365E1 or
+    /// Infantry51BF59 fire.
+    ///
+    /// RESIDUAL: this preserves VERA's legacy AttackMove/Guard semantics. It
+    /// scans every eligible object visit with mask1/2, without the native
+    /// targeting-timer/4DF3A0 engagement gates or scanner jitter draw. Native
+    /// +5C4/+5C8/+5CC/+5D1 setup, resume and pointer-expiry state is not yet
+    /// represented; the existing OrderIntent is serialized but not hashed. Trigger:
+    /// player AttackMove/Guard with no held target; effect: acquisition and
+    /// subsequent fire/resume cadence can differ. Evidence for that separate
+    /// mechanism: tools/spatial_oracle/foot_attack_move.py and target_scan.rs.
+    pub(super) fn acquire_order_intent_target_one(
+        &mut self,
+        attacker_id: u64,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let Some(entity) = self.substrate.entities.get(attacker_id) else {
+            return;
+        };
+        // A warped object's missions do not run, nor does a Health-0 wreck's
+        // (MissionClass5B30A7). Keep the existing legacy decision unchanged.
+        if entity.order_intent.is_none()
+            || entity.attack_target.is_some()
+            || entity.ai_frozen()
+            || !super::techno_ai::mission_handlers_run(self, attacker_id)
+        {
+            return;
         }
+        let scan_mask = combat::scan_mission_for(entity);
+        let Some(target_sid) = self.greatest_threat_represented(
+            rules,
+            overlay_registry,
+            attacker_id,
+            scan_mask,
+            None,
+            combat::acquire_best_target_for_entity,
+        ) else {
+            return;
+        };
+        let _ = self.assign_target_represented(
+            attacker_id,
+            Some(combat::TargetKind::Entity(target_sid)),
+            Some(rules),
+        );
     }
 
     /// Post-combat: entities with an OrderIntent but no active attack or movement
@@ -1042,6 +1055,16 @@ impl Simulation {
             if turn_suppressed.contains(&id) {
                 continue;
             }
+            // The native mission owns ordinary Unit Cell approach. InRange
+            // does not clear its paid head or retained destination; FireAt
+            // can run while Drive continues toward the chosen firing cell.
+            if self.owns_unit_cell_approach(id, rules)
+                && self.substrate.entities.get(id).is_some_and(|entity| {
+                    entity.mission.current().known() == Some(MissionType::Attack)
+                })
+            {
+                continue;
+            }
             let Some(entity) = self.substrate.entities.get(id) else {
                 continue;
             };
@@ -1125,7 +1148,7 @@ impl Simulation {
 
             // Range check — the SAME predicate the combat tick's fire gate
             // uses, line-of-fire walk included. The approach search
-            // (`FootClass::Greatest_Threat_Scan @ 0x004D5690`, vt+0x53C,
+            // (`FootClass::Approach_Target @ 0x004D5690`, vt+0x53C,
             // reached from `Mission_Attack` 0x004D4DC0 at 0x004D4E6A) decides
             // with `TechnoClass::InRange` 0x006F7220 at 0x004D622C /
             // 0x004D6550, and `InRange` ends in the wall/cliff walk at

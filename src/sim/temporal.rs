@@ -123,18 +123,6 @@
 //!   missing. Needs GetROF as a callable owner (it is inline in FireAt).
 //! - `WarpPerStep` (`+0x4C`, written each step, read by no sim function) and
 //!   the `+0x2C` timer and `+0x38`/`+0x3C` fields (no writer) are not kept.
-//! - VERA fires in the combat phase after the live-object pass, so a warp
-//!   started this frame takes its first step on the target's next AI visit,
-//!   where native steps a target later in the logic vector the same frame.
-//!   Trigger: a warp start on a target after its attacker in the vector.
-//!   Effect: the erase lands one frame late, the target gets one more
-//!   unfrozen AI and locomotor turn on the shot's frame, and the power and
-//!   online recomputation follows a frame later.
-//! - VERA's Stop assigns a Stop mission where the native IDLE event
-//!   (`0x004C74CB..0x004C76BB`) assigns none, so a legionnaire on Attack lets
-//!   go with the event instead of on its Attack mission's next dispatch (up
-//!   to one Attack cadence later); on any other mission the beam holds, as
-//!   natively.
 //! - An engineer turned away from a warped building (`0x00519EF2`) is not
 //!   given `Set_Destination(0, 1)` and the scatter (`vtable+0x174`): VERA's
 //!   adjacent capture simply waits and captures on release. The Selling arm
@@ -825,6 +813,9 @@ impl Simulation {
     /// shares: retargeting, idle mode (`0x00709A43..0x00709A54`), the cell
     /// entry tail (`0x006F50A3..0x006F50B4`) and CaptureManager's
     /// DecideUnitFate (`0x004723E4..0x004723F3`).
+    /// Ordinary Stop only clears TarCom; the due Attack handler invokes this
+    /// before its cadence draw. Native deadline/LetGo controls are retained in
+    /// `tools/spatial_oracle/temporal_stop.json`.
     pub(crate) fn temporal_release_if_warping(&mut self, attacker: u64) {
         if self
             .substrate

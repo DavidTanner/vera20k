@@ -741,50 +741,12 @@ impl Simulation {
                 // only the depot reservation left an aircraft that was told to
                 // stop while inbound to a helipad holding that pad for the rest
                 // of the match — a permanent leak that compounds.
-                let mcv = rules.is_some_and(|rules| {
-                    self.substrate
-                        .entities
-                        .get(*entity_id)
-                        .is_some_and(|e| crate::sim::mcv_deploy::is_mcv(self, e, rules))
-                });
-                // Mission_Attack's next dispatch finds the TarCom this event
-                // clears and takes its idle exit (FootClass Enter_Idle_Mode
-                // -> `0x00709A54` LetGo). VERA's Stop replaces the mission, so
-                // a Foot still on Attack lets go with the event instead.
-                // RESIDUAL: native lets go on that dispatch, up to one Attack
-                // cadence later; any other mission keeps the beam, as natively.
-                let releases_beam = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    matches!(
-                        e.category,
-                        crate::map::entities::EntityCategory::Unit
-                            | crate::map::entities::EntityCategory::Infantry
-                    ) && e.mission.current().known() == Some(MissionType::Attack)
-                });
-                // The IDLE event writes no mission of its own
-                // (`0x004C74CB..0x004C76BB`). A harvester on its native Enter
-                // or Unload keeps it: after the radio break below, the next
-                // Mission_Enter finds no target and idles it (Guard for a
-                // human miner off ore, `0x00738C0A`), so VERA's queued Stop,
-                // which the Harvest dispatcher would run from state 0 and
-                // re-dock, is not written.
-                let native_dock = crate::sim::miner::native_dock_miner(self, *entity_id)
-                    && self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                        matches!(
-                            e.mission.current().known(),
-                            Some(MissionType::Enter) | Some(MissionType::Unload)
-                        )
-                    });
-                // Event6 retains an ordinary MCV's mission and runtime +0x68C.
-                // Its null-destination operation still runs below.
-                if mcv || native_dock {
-                    self.run_dock_teardown(*entity_id, DockTeardown::All);
-                } else {
-                    self.queue_mission_with_teardown(
-                        *entity_id,
-                        MissionType::Stop,
-                        DockTeardown::All,
-                    );
-                }
+                // Event6 IDLE4C74CB..4C76BB retains the committed/queued
+                // mission and its dispatch timer. Only the ore-miner exception
+                // below writes Guard. Ordinary Move/Attack handlers see the
+                // cleared NavCom/TarCom on their next dispatch and own the idle
+                // transition, including Temporal LetGo at that later boundary.
+                self.run_dock_teardown(*entity_id, DockTeardown::All);
                 // The event's null Set_Destination (`0x004C75ED`) reaches a
                 // Jumpjet's Stop_Moving through Foot's null arm, except that
                 // the Unit setter returns first without a NavCom unless its
@@ -813,9 +775,6 @@ impl Simulation {
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
-                }
-                if releases_beam {
-                    self.temporal_release_if_warping(*entity_id);
                 }
                 if !walking_infantry
                     && jumpjet_stops

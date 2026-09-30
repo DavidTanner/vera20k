@@ -687,7 +687,6 @@ pub(crate) fn resolve_attacker_fire(
                 snap,
                 fog.is_some(),
                 binary_frame,
-                _tick_ms,
                 has_active_wave,
                 out,
             );
@@ -796,41 +795,6 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
             }
             let fire_requests = std::mem::take(&mut world.fire_requests);
             let first_tail_id = world.substrate.next_stable_object_id;
-            // Pure fire fixtures supply the actor clock themselves. Invoke
-            // the ordinary Infantry Fire_At_Target host, rather than restore
-            // the removed global queued-shot implementation for tests.
-            let order = if live_order.is_empty() {
-                world.substrate.entities.keys_sorted()
-            } else {
-                live_order.to_vec()
-            };
-            let mut infantry_results = Vec::new();
-            for id in order {
-                if fire_suppressed.contains(&id)
-                    || !world.substrate.entities.get(id).is_some_and(|entity| {
-                        entity.category == EntityCategory::Infantry
-                            && entity.is_ai_alive()
-                            && !entity.lifecycle.in_limbo
-                    })
-                {
-                    continue;
-                }
-                if let Some(entity) = world.substrate.entities.get_mut(id)
-                    && entity.mission_leaf.as_infantry().is_none()
-                {
-                    entity.mission_leaf =
-                        crate::sim::mission::MissionLeafState::for_entity_category(
-                            EntityCategory::Infantry,
-                        );
-                }
-                infantry_results.push(world_receiver::visit_fire(
-                    world,
-                    run,
-                    world_receiver::FireVisit::InfantryTarget(id),
-                    rules,
-                    overlay_registry,
-                ));
-            }
             let mut result = world_receiver::tick_combat(
                 world,
                 run,
@@ -843,14 +807,6 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                 projectile_detonations,
                 wave_damage_events,
             );
-            for earlier in infantry_results.into_iter().rev() {
-                result
-                    .consequences
-                    .prepend_actor_fire_for_test(earlier.consequences);
-                let mut projectiles = earlier.projectile_spawns;
-                projectiles.append(&mut result.projectile_spawns);
-                result.projectile_spawns = projectiles;
-            }
             // The same frame's tail: the shots' bullets take their first AI
             // (an Inviso one detonates). Bullets still in flight are handed
             // back as their admission records.

@@ -232,6 +232,7 @@ pub(crate) fn try_to_deploy(
                 id,
                 crate::sim::components::NavTargetRef::cell(site.0 as u16, site.1 as u16),
                 rules,
+                true,
             );
         }
     }

@@ -687,7 +687,18 @@ impl Simulation {
                 if between >= distance {
                     return Ok(destination);
                 }
-                if !self.find_path_zone_cost_admits(id, near, target, rules)? {
+                // 4D3C54..4D3C9C reads target flags before nearby flags,
+                // then passes those two copied booleans to EstimateZoneCost.
+                let terrain = self.resolved_terrain.as_ref().unwrap();
+                let cells = NativeCellQuery::canonical(terrain);
+                let target_bridge = cells.flags(cells.lookup(target)) & 0x100 != 0;
+                let near_bridge = cells.flags(cells.lookup(near)) & 0x100 != 0;
+                let cost =
+                    self.estimate_zone_cost(id, near, target, near_bridge, target_bridge, rules)?;
+                let direct = (i32::from(near.0) - i32::from(target.0))
+                    .abs()
+                    .max((i32::from(near.1) - i32::from(target.1)).abs());
+                if cost > direct + 6 {
                     return Ok(destination);
                 }
                 self.redirect_find_path_destination(id, near, rules)?;
@@ -810,24 +821,33 @@ impl Simulation {
         .map(|cell| (cell.0 as i16, cell.1 as i16)))
     }
 
-    /// `PathfinderClass::EstimateZoneCost` 0x42D170 <= Chebyshev + 6, as the
-    /// code-6 arm tests it (0x4D3C9C..0x4D3CAA). Zone_precheck 0x42C290 failure
-    /// returns INT_MAX (never admitted); a passing precheck with both cells off
-    /// structural terrain returns `max(Chebyshev, 2 * level-0 hops)`. Rust keeps
-    /// the raw zone labels but no level graph: equal labels are taken as a
-    /// zero-hop path (cost = Chebyshev, admitted), unequal labels as the
-    /// precheck failure. Residual: a same-label pair whose level-0 zone path
-    /// detours by more than (Chebyshev + 6) / 2 hops is admitted here where the
-    /// original keeps the obstructed target; it needs a nearby cell separated
-    /// from the target by an obstacle inside CloseEnough. The structural
-    /// bridge terms (0x42D2C0..0x42D438) are not represented.
-    fn find_path_zone_cost_admits(
+    /// `PathfinderClass::EstimateZoneCost` 0x42D170, shared by Find_Path and
+    /// Approach_Target. Both native callers pass a Foot and movement override
+    /// -1, so its type supplies the movement row. The caller owns its limit:
+    /// Find_Path uses Chebyshev+6; Approach uses Chebyshev+8.
+    ///
+    /// The two CellStruct arguments and bridge booleans are already copied
+    /// inputs. The body retains both GetCell results before projecting either
+    /// one through 583180, preserving real aliases and shared-Dummy ordering.
+    /// Evidence: tools/spatial_oracle/fv_cell_attack/{pursuit,zone_cost}.json.
+    /// No RNG, timer, destination or detach effect belongs to this function.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn estimate_zone_cost(
         &self,
         id: u64,
-        near: (i16, i16),
-        target: (i16, i16),
+        start: (i16, i16),
+        goal: (i16, i16),
+        start_bridge: bool,
+        goal_bridge: bool,
         rules: &RuleSet,
-    ) -> Result<bool, String> {
+    ) -> Result<i32, String> {
+        use crate::sim::cell_rect::get_cellclass_fallback;
+        use crate::sim::pathfinding::zone_build::find_high_bridge_record_index;
+        use crate::sim::pathfinding::zone_hierarchy::{
+            ZonePrecheckExclusions, ZonePrecheckOutcome, zone_precheck_flat,
+        };
+        use crate::sim::pathfinding::zone_search::live_hierarchy_projection;
+
         let actor = self
             .substrate
             .entities
@@ -840,32 +860,121 @@ impl Simulation {
             .resolved_terrain
             .as_ref()
             .ok_or("EstimateZoneCost requires map cells")?;
-        let cells = NativeCellQuery::canonical(terrain);
-        let near_bridge = cells.flags(cells.lookup(near)) & 0x100 != 0;
-        let target_bridge = cells.flags(cells.lookup(target)) & 0x100 != 0;
-        //Residual, non-stopping: with a structural near or target cell the
-        //original adds the bridge-adjacent zone-cell terms (0x42D2C0..0x42D438,
-        //PathfinderClass +B8.. records) to the cost, which can refuse a redirect
-        //this same-label test admits. Trigger: a code-6 target (a parked Unit
-        //without NavCom) on or beside a bridge beyond CloseEnough. Effect: the
-        //redirect is taken where the original keeps the obstructed target.
-        let _ = (near_bridge, target_bridge);
         let zones = self
             .zone_grid
             .as_ref()
             .ok_or("EstimateZoneCost requires zone topology")?;
-        let label = |cell: (i16, i16)| {
-            zones.get_zone_id_native(
-                terrain,
-                (cell.0 as u16, cell.1 as u16),
-                object.movement_zone,
-                false,
-            )
+        let lookup = |cell: (i16, i16)| {
+            get_cellclass_fallback(Some(terrain), i32::from(cell.0), i32::from(cell.1))
         };
-        let (Some(near_label), Some(target_label)) = (label(near), label(target)) else {
-            return Err("EstimateZoneCost requires native zone labels for both cells".into());
+        let start_cell = lookup(start); //42D1A1
+        let goal_cell = lookup(goal); //42D1B2, before the first projection
+        let start_projection = live_hierarchy_projection(
+            terrain,
+            zones.bridge_records(),
+            &start_cell,
+            start_bridge,
+            self.playfield_bounds,
+        )?;
+        let goal_projection = live_hierarchy_projection(
+            terrain,
+            zones.bridge_records(),
+            &goal_cell,
+            goal_bridge,
+            self.playfield_bounds,
+        )?;
+        let hierarchy = zones
+            .hierarchy_for(object.movement_zone)
+            .ok_or("EstimateZoneCost requires the native movement row")?;
+        let start_zone = zones
+            .hierarchy_zone_at_native(0, start_projection)
+            .ok_or("EstimateZoneCost requires the projected source zone")?;
+        let goal_zone = zones
+            .hierarchy_zone_at_native(0, goal_projection)
+            .ok_or("EstimateZoneCost requires the projected destination zone")?;
+        // 42D182 clears this operation's exclusion vectors before precheck.
+        let ZonePrecheckOutcome::Passed(path) = zone_precheck_flat(
+            hierarchy,
+            start_zone,
+            goal_zone,
+            object.movement_zone,
+            &ZonePrecheckExclusions::default(),
+        ) else {
+            return Ok(i32::MAX);
         };
-        Ok(near_label == target_label)
+        let packed = |cell: (i16, i16)| (cell.0 as u16, cell.1 as u16);
+        let signed = |cell: (u16, u16)| (cell.0 as i16, cell.1 as i16);
+        let direct = chebyshev(start, goal);
+        let fine_path = &path.paths[0];
+        let count = fine_path.len();
+        let mut cost = 2 * (count as i32 - 1);
+
+        if goal_bridge {
+            if start_bridge {
+                // Both copied bridge booleans true: the same nonnegative
+                // high-record index bypasses every bridge-distance term.
+                let goal_record =
+                    find_high_bridge_record_index(zones.bridge_records(), 0, packed(goal), 3);
+                let start_record =
+                    find_high_bridge_record_index(zones.bridge_records(), 0, packed(start), 3);
+                if goal_record.is_some() && goal_record == start_record {
+                    return Ok(direct);
+                }
+            }
+            let mut adjacent = (0, 0);
+            if count >= 4 {
+                adjacent = zones.bridge_cell_for_hierarchy_zone(
+                    terrain,
+                    packed(goal),
+                    0,
+                    fine_path[count - 2],
+                    self.playfield_bounds,
+                )?;
+            }
+            if adjacent == (0, 0) {
+                adjacent = zones.bridge_cell_for_hierarchy_zone(
+                    terrain,
+                    packed(goal),
+                    0,
+                    fine_path[count - 1],
+                    self.playfield_bounds,
+                )?;
+            }
+            if adjacent == (0, 0) {
+                adjacent = goal_projection;
+            }
+            if adjacent != (0, 0) {
+                cost += chebyshev(goal, signed(adjacent));
+            }
+        }
+        if start_bridge {
+            let mut adjacent = (0, 0);
+            if count >= 4 {
+                adjacent = zones.bridge_cell_for_hierarchy_zone(
+                    terrain,
+                    packed(start),
+                    0,
+                    fine_path[1],
+                    self.playfield_bounds,
+                )?;
+            }
+            if adjacent == (0, 0) {
+                adjacent = zones.bridge_cell_for_hierarchy_zone(
+                    terrain,
+                    packed(start),
+                    0,
+                    fine_path[0],
+                    self.playfield_bounds,
+                )?;
+            }
+            if adjacent == (0, 0) {
+                adjacent = start_projection;
+            }
+            if adjacent != (0, 0) {
+                cost += chebyshev(start, signed(adjacent));
+            }
+        };
+        Ok(cost.max(direct))
     }
 
     /// `SetDestination(GetCell(cell), 1)` from inside `Find_Path` (0x4D3CC7,

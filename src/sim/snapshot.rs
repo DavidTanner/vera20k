@@ -769,7 +769,9 @@ use crate::sim::world::Simulation;
 // WaitForDock is the depot as pending entry (Unit+0x500).
 // 266 -> 267: Infantry retains signed water-transition state+6E8, whose
 // pre-admission writes gate EnterWaterSound/LeaveWaterSound.
-const SNAPSHOT_VERSION: u32 = 267;
+// 267 -> 268: retained Cell targets and navigation retain the live fallback
+// coordinate in deterministic state hashing for range and pursuit.
+const SNAPSHOT_VERSION: u32 = 268;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3663,7 +3665,8 @@ mod tests {
         // 264 -> 265: no parachute altitude beside the Location Z.
         // 265 -> 266: no Approach depot phase; WaitForDock is pending entry.
         // 266 -> 267: Infantry water-transition state+6E8.
-        assert_eq!(super::SNAPSHOT_VERSION, 267);
+        // 267 -> 268: retained Cell targets hash the live fallback coordinate.
+        assert_eq!(super::SNAPSHOT_VERSION, 268);
     }
 
     #[test]

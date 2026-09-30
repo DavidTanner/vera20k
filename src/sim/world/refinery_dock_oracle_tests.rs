@@ -431,7 +431,8 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
         assert!(s.sim.set_unit_destination(
             miner,
             crate::sim::components::NavTargetRef::cell(nav.0, nav.1),
-            &s.rules
+            &s.rules,
+            true
         ));
         if input["moving"] != true {
             let entity = s.sim.substrate.entities.get_mut(miner).unwrap();

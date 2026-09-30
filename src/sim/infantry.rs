@@ -584,6 +584,9 @@ mod tests {
     }
 
     fn infantry(hp: i32) -> GameEntity {
+        use crate::sim::mission::state::MissionTestFixture;
+        use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+
         let mut e = GameEntity::new_at_frame_zero_for_test(
             1,
             0,
@@ -599,9 +602,20 @@ mod tests {
             false,
         );
         e.infantry = Some(InfantryRuntime::new());
-        // `ObjectLifecycle` defaults to in-limbo; a man standing on the map has
-        // been unlimboed, and the idle gate reads that.
+        // Supply the standing post-Unlimbo boundary this leaf fixture skips:
+        // Techno 0x006F6E2A..0x006F6E4F enters idle and commences Guard.
+        // The constructor itself correctly leaves the committed selector at NONE.
         e.lifecycle.in_limbo = false;
+        e.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_known(MissionType::Guard),
+            suspended: MissionId::NONE,
+            queued: MissionId::NONE,
+            movement_bypass_latch: 0,
+            handler_state: 0,
+            mission_start_frame: 0,
+            ai_counter: 0,
+            dispatch_timer: MissionDispatchTimer::at_frame(0),
+        });
         e
     }
 

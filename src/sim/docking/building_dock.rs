@@ -342,6 +342,7 @@ fn issue_pad_move(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, 
             id,
             crate::sim::components::NavTargetRef::cell(target.0, target.1),
             rules,
+            true,
         );
         return;
     }
@@ -677,6 +678,7 @@ pub(crate) fn mission_enter_dispatch(sim: &mut Simulation, rules: &RuleSet, id: 
                         id,
                         crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
                         rules,
+                        true,
                     );
                     queue_mission(sim, id, MissionId::from_known(MissionType::Move), 0);
                 }
