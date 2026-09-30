@@ -1109,7 +1109,7 @@ mod tests {
             .find(|r| r["input"]["name"] == "height_301")
             .unwrap();
         let (mut sim, rules) = fixture(row);
-        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         let e = sim.substrate.entities.get(1).unwrap();
         assert!(e.air_spatial_bucket.is_some());
         assert!(
@@ -1132,7 +1132,7 @@ mod tests {
         for frame in 101..126 {
             for s in [&mut sim, &mut restored] {
                 s.session.binary_frame = frame;
-                s.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+                s.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
             }
             assert_eq!(sim.state_hash(), restored.state_hash(), "frame{frame}");
         }

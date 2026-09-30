@@ -14,10 +14,12 @@
 //! - Part of sim/ — depends on sim/locomotor, sim/movement.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+use super::foot_path::coord_cell;
 use super::jumpjet_flight::{FlightOwnerKind, STATE_ASCEND, STATE_DESCEND};
 use crate::sim::components::DriveCoord;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::lepton::lepton_to_cell_packed;
 
 /// Persistent Jumpjet instance fields: cached XYZ at +40, moving at +4C,
 /// phase at +50 (interface-relative offsets are four bytes smaller).
@@ -115,11 +117,11 @@ pub(crate) trait JumpjetOrderHost {
     fn set_nav_com(&mut self, destination: DriveCoord);
 }
 
-/// The signed lepton-to-cell step (`(v + ((v >> 31) & 0xFF)) >> 8`) both
-/// orders use.
-fn native_cell(x: i32, y: i32) -> (i16, i16) {
-    let step = |value: i32| (value.wrapping_add((value >> 31) & 0xFF) >> 8) as i16;
-    (step(x), step(y))
+/// Owner `+0xB4` (the queued mission) or `GetCurrentMission` (vtable
+/// `+0x184`, `0x005B3040`) is Enter (7): the test both orders and State 4's
+/// landing admission (`0x0054C6C5..0x0054C6D9`) make.
+pub(crate) fn owner_mission_is_enter(owner: &crate::sim::game_entity::GameEntity) -> bool {
+    owner.mission.queued().raw() == 7 || owner.mission.effective().raw() == 7
 }
 
 fn cell_centre(cell: (i16, i16)) -> [i32; 2] {
@@ -200,7 +202,7 @@ impl JumpjetRuntime {
         }
         let unit = host.owner_kind() == FlightOwnerKind::Unit;
         let balloon = host.balloon_hover();
-        let seed = native_cell(request.x, request.y);
+        let seed = coord_cell(request);
         let cell = if unit && !balloon {
             host.move_search(seed, false, false)
         } else {
@@ -247,7 +249,7 @@ impl JumpjetRuntime {
         }
         self.withdraw_landing();
         let here = host.location();
-        let Some(cell) = host.stop_search(native_cell(here.x, here.y)) else {
+        let Some(cell) = host.stop_search(coord_cell(here)) else {
             return StopOutcome::SearchFailed;
         };
         let [x, y] = cell_centre(cell);
@@ -415,7 +417,8 @@ impl WorldOrderHost<'_> {
     }
 
     fn cell_identity(&self, xy: [i32; 2]) -> crate::map::cell_index::NativeCellIdentity {
-        self.terrain.native_cell_identity(native_cell(xy[0], xy[1]))
+        self.terrain
+            .native_cell_identity((lepton_to_cell_packed(xy[0]), lepton_to_cell_packed(xy[1])))
     }
 }
 
@@ -505,7 +508,6 @@ impl Simulation {
         rules: Option<&crate::rules::ruleset::RuleSet>,
         order: impl FnOnce(&mut JumpjetRuntime, &mut WorldOrderHost<'_>) -> R,
     ) -> Option<R> {
-        use crate::map::entities::EntityCategory;
         let path_grid = self.path_grid_snapshot();
         let size = self
             .map_size_diamond()
@@ -528,13 +530,9 @@ impl Simulation {
             playfield_bounds: self.playfield_bounds,
             radius_cap: crate::sim::find_nearby_cell::map_owned_radius_cap(size.0, size.1),
             frame: self.session.binary_frame,
-            kind: match entity.category {
-                EntityCategory::Unit => FlightOwnerKind::Unit,
-                EntityCategory::Infantry => FlightOwnerKind::Infantry,
-                _ => FlightOwnerKind::Other,
-            },
+            kind: FlightOwnerKind::of(entity.category),
             balloon_hover: locomotor.balloon_hover,
-            entering: entity.mission.queued().raw() == 7 || entity.mission.effective().raw() == 7,
+            entering: owner_mission_is_enter(entity),
             location: super::ground_pose::position_world_coord(&entity.position),
             speed_type: locomotor.speed_type,
             movement_zone: locomotor.movement_zone,
@@ -777,7 +775,7 @@ impl Simulation {
         if !runtime.moving {
             return;
         }
-        let (x, y) = native_cell(runtime.destination.x, runtime.destination.y);
+        let (x, y) = coord_cell(runtime.destination);
         let target = (x as u16, y as u16);
         entity.movement_target = Some(MovementTarget {
             path: vec![target],
@@ -928,14 +926,16 @@ mod tests {
             (!self.fail).then_some((10, 10))
         }
         fn cell_coords(&self, xy: [i32; 2]) -> [i32; 2] {
-            cell_centre(native_cell(xy[0], xy[1]))
+            cell_centre((lepton_to_cell_packed(xy[0]), lepton_to_cell_packed(xy[1])))
         }
         fn floor_height(&self, xy: [i32; 2]) -> i32 {
             super::super::ground_pose::ground_surface_z_at(xy, false, Some(self.terrain), None)
                 .unwrap_or(0)
         }
         fn cell_high_bridge(&self, xy: [i32; 2]) -> bool {
-            let cell = self.terrain.native_cell_identity(native_cell(xy[0], xy[1]));
+            let cell = self
+                .terrain
+                .native_cell_identity((lepton_to_cell_packed(xy[0]), lepton_to_cell_packed(xy[1])));
             self.terrain.native_cell_flags(cell) & 0x100 != 0
         }
         fn infantry_destination(&mut self, centre: DriveCoord) -> Option<DriveCoord> {

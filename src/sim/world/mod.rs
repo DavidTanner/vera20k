@@ -23,7 +23,7 @@ pub(crate) mod building_anim;
 mod cell_content;
 mod crash;
 #[cfg(test)]
-mod entry_test_fixture;
+pub(crate) mod entry_test_fixture;
 mod object_entry;
 mod sinking;
 pub(crate) use sinking::SinkingState;

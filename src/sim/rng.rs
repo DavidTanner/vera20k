@@ -91,6 +91,18 @@ impl SimRng {
         rng
     }
 
+    /// A stand-in with no table, left in a `Simulation` while a caller holds
+    /// its scenario stream outside so it can lend the rest of the world
+    /// immutably (the Jumpjet cruise host). A draw from it panics.
+    pub(crate) const fn vacant() -> Self {
+        Self {
+            disabled: 0,
+            index_a: 0,
+            index_b: 0,
+            state: Vec::new(),
+        }
+    }
+
     /// Adopt the exact post-RMG `g_MapGenRng` cursor without replaying draws.
     ///
     /// The two implementations intentionally keep separate draw code, but the

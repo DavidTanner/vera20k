@@ -38,7 +38,8 @@ fn pose(sim: &super::Simulation, id: u64) -> Pose {
 /// them, so the only enemies are the ones each test places. Each side keeps a
 /// power plant out of the fight, so neither house is defeated under the Battle
 /// mode's ShortGame.
-fn retail_dustbowl_rocketeer() -> (crate::headless_scenario::HeadlessScenario, u64, u16, u16) {
+pub(super) fn retail_dustbowl_rocketeer()
+-> (crate::headless_scenario::HeadlessScenario, u64, u16, u16) {
     use crate::sim::house_state::HouseState;
 
     let dir = std::env::var("RA2_DIR")
@@ -107,7 +108,7 @@ fn retail_dustbowl_rocketeer() -> (crate::headless_scenario::HeadlessScenario, u
 }
 
 /// One production frame of the retail runtime.
-fn retail_frame(
+pub(super) fn retail_frame(
     scenario: &mut crate::headless_scenario::HeadlessScenario,
     orders: Vec<crate::sim::command::CommandEnvelope>,
 ) -> super::SimFrameOutput {
