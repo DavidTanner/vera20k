@@ -1759,6 +1759,30 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     assert_eq!(exited.air_spatial_enter_order, 0);
 }
 
+/// Foot Unlimbo's AircraftTracker admission (`0x004D72B2..0x004D72DB`) is
+/// not Fly's alone: a Jumpjet aircraft (a Nighthawk) revealed above twice the
+/// level height enters the tracker at Reveal too. Mark never adds anything.
+#[test]
+fn unlimbo_adds_a_high_flying_jumpjet_aircraft_to_the_air_tracker() {
+    let mut sim = Simulation::new();
+    sim.session.map_width = 40;
+    sim.session.map_height = 40;
+    install_common_raw_terrain(&mut sim, 40, 40, 0, None);
+    insert_entity(&mut sim, 30, EntityCategory::Aircraft);
+    // Reveal leaves an air unit without an exact Z (#692), so its height is
+    // the altitude cache, as in `install_fly_aircraft`.
+    let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
+    locomotor.altitude = SimFixed::from_num(416);
+    sim.substrate.entities.get_mut(30).unwrap().locomotor = Some(locomotor);
+
+    let _ = sim.try_reveal_entity(30, common_raw_request(3, 4, 4, 128, 128));
+
+    let jumpjet = sim.substrate.entities.get(30).unwrap();
+    assert!(jumpjet.lifecycle.cell_marked);
+    assert!(jumpjet.air_spatial_bucket.is_some());
+    assert!(!sim.substrate.occupancy.contains_entity(3, 4, 30));
+}
+
 fn insert_anim(sim: &mut Simulation, stable_id: u64, inactive: bool) {
     let type_id = sim.interner.intern("TESTANIM");
     let anim = AnimObject {

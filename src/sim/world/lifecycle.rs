@@ -773,18 +773,19 @@ impl Simulation {
         self.record_foot_owner_discovery(stable_id);
         let high_flight = self.foot_neighbors_after_unlimbo(stable_id, context.rules);
         // Foot4D72B2/+54 requires high flight, then Type ConsideredAircraft
-        // (+D96) admits AirTrackerAdd4D72DB. Mark itself never adds Fly.
-        if self.substrate.entities.get(stable_id).is_some_and(|e| {
-            e.locomotor.as_ref().and_then(|l| l.fly_runtime()).is_some()
-                && high_flight
-                && context
+        // (+D96) admits AirTrackerAdd4D72DB, whatever the locomotor. Mark
+        // itself never adds anything.
+        if high_flight
+            && self.substrate.entities.get(stable_id).is_some_and(|e| {
+                context
                     .rules
                     .and_then(|r| r.object(self.interner.resolve(e.type_ref())))
                     .map_or(e.category == EntityCategory::Aircraft, |o| {
                         o.considered_aircraft
                     })
-        }) {
-            self.register_fly_air_tracker(stable_id);
+            })
+        {
+            self.aircraft_tracker_add(stable_id);
         }
         // Aircraft4143A8 follows successful Foot Unlimbo, including the dead
         // Techno success arm. Failed placement above must not promote +3D4.

@@ -11,8 +11,11 @@ use crate::sim::movement::{
 use crate::util::fixed_math::SIM_ZERO;
 
 impl Simulation {
-    /// BeginTakeoff4CF9B9 adds only when no existing bucket is retained.
-    pub(crate) fn register_fly_air_tracker(&mut self, id: u64) {
+    /// `AircraftTracker::Add` (`0x004134A0`): the bucket of the object's
+    /// cell, appended in enter order. BeginTakeoff4CF9B9 adds only when no
+    /// existing bucket is retained; Foot Unlimbo (`0x004D72DB`) adds an object
+    /// just placed, which holds none.
+    pub(crate) fn aircraft_tracker_add(&mut self, id: u64) {
         let Some(e) = self.substrate.entities.get(id) else {
             return;
         };
@@ -55,7 +58,7 @@ impl Simulation {
     }
 
     pub(crate) fn finish_fly_takeoff_entry(&mut self, id: u64, rules: Option<&RuleSet>) {
-        self.register_fly_air_tracker(id);
+        self.aircraft_tracker_add(id);
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return;
         };
@@ -656,7 +659,7 @@ mod tests {
             serde_json::from_value(serde_json::json!({"cell": before["neighbor_cell"]})).unwrap();
         e.navigation.path_runtime.blocked_timer = crate::sim::timer::CdTimer::from_raw(0, 0);
         if input["air_registered"].as_bool().unwrap_or(true) {
-            sim.register_fly_air_tracker(id);
+            sim.aircraft_tracker_add(id);
         }
         sim.add_entity_occupancy(id);
         sim.submit_entity_display(id, Some(&rules), None);
