@@ -22,10 +22,10 @@ fn pose(sim: &super::Simulation, id: u64) -> Pose {
         phase: locomotor.jumpjet_runtime().expect("Jumpjet").phase,
         fraction: entity.foot_speed.applied_fraction().to_bits(),
         doing: entity.mission_leaf.as_infantry().expect("Infantry").doing(),
+        // The Doing owns an infantryman's sequence (`infantry_sprite_pose`).
         sequence: entity
-            .animation
-            .as_ref()
-            .map(|animation| animation.sequence),
+            .infantry_sprite_pose()
+            .and_then(|(doing, _)| crate::rules::infantry_sequence::action_kind(doing)),
         altitude: locomotor.altitude.to_num(),
     }
 }
