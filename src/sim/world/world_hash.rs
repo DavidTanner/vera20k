@@ -1315,32 +1315,7 @@ impl Simulation {
 
             if let Some(ref loco) = entity.locomotor {
                 1u8.hash(hasher);
-                (loco.kind as u8).hash(hasher);
-                // The installed slot, distinct from the active kind: the two
-                // differ while a piggyback stash is up, so hashing only the
-                // active class would let a desync in which locomotor a unit was
-                // built with hide behind a matching current one.
-                loco.slot.installed().hash(hasher);
-                // Locomotor power: deterministic state with an observable Hover
-                // effect, and deploy/undeploy flips it, so it must be in the
-                // lockstep hash.
-                loco.powered.hash(hasher);
-                (loco.layer as u8).hash(hasher);
-                // Hover throttle is authoritative movement state (persists across
-                // repaths); I16F16 has no Hash — fold the raw bits. The vertical
-                // pair (altitude + bob spring state) is likewise authoritative:
-                // altitude feeds combat's effective-Z and the hover float.
-                loco.hover_throttle.to_bits().hash(hasher);
-                loco.hover_bob_offset.to_bits().hash(hasher);
-                loco.altitude.to_bits().hash(hasher);
-                hash_locomotor_payload(&loco.runtime_payload, hasher);
-                match loco.piggyback.as_deref() {
-                    Some(runtime) => {
-                        1u8.hash(hasher);
-                        hash_locomotor_runtime(runtime, hasher);
-                    }
-                    None => 0u8.hash(hasher),
-                }
+                hash_locomotor(loco, hasher);
                 // Mission readiness inputs are NOT hashed: they are derived at
                 // the gate from state already hashed above (and from position,
                 // facing and movement target, likewise hashed). Hashing a
@@ -1798,35 +1773,58 @@ impl Simulation {
     }
 }
 
-fn hash_locomotor_runtime(
-    runtime: &crate::sim::movement::locomotion::piggyback::LocomotorRuntime,
+/// One locomotor object, field for field, and the object its piggyback slot
+/// suspends through the same fold. The destructuring makes a new field a
+/// compile error here until it is folded.
+fn hash_locomotor(
+    loco: &crate::sim::movement::locomotor::LocomotorState,
     hasher: &mut impl Hasher,
 ) {
-    (runtime.kind as u8).hash(hasher);
-    (runtime.layer as u8).hash(hasher);
-    let common = &runtime.common;
-    common.powered.hash(hasher);
-    // Fixed separators retain the retired common-air slots and the retired
-    // always-1.0 speed multiplier for replay stability. Fly/Jumpjet
-    // authoritative fields are hashed in their payloads.
-    0u8.hash(hasher);
-    crate::util::fixed_math::SIM_ONE.to_bits().hash(hasher);
-    common.altitude.to_bits().hash(hasher);
-    0i32.hash(hasher);
-    0i32.hash(hasher);
-
-    common.balloon_hover.hash(hasher);
-    common.hover_attack.hash(hasher);
-    common.speed_type.hash(hasher);
-    common.movement_zone.hash(hasher);
-    common
-        .subcell_dest
+    let crate::sim::movement::locomotor::LocomotorState {
+        kind,
+        slot,
+        powered,
+        piggyback,
+        runtime_payload,
+        layer,
+        altitude,
+        balloon_hover,
+        hover_attack,
+        speed_type,
+        movement_zone,
+        subcell_dest,
+        hover_throttle,
+        hover_speed_request,
+        hover_bob_offset,
+    } = loco;
+    (*kind as u8).hash(hasher);
+    // The installed slot, distinct from the active kind: the two differ while
+    // a piggyback stash is up, so hashing only the active class would let a
+    // desync in which locomotor a unit was built with hide behind a matching
+    // current one.
+    slot.installed().hash(hasher);
+    powered.hash(hasher);
+    (*layer as u8).hash(hasher);
+    // SimFixed has no Hash; fold the raw bits.
+    altitude.to_bits().hash(hasher);
+    balloon_hover.hash(hasher);
+    hover_attack.hash(hasher);
+    speed_type.hash(hasher);
+    movement_zone.hash(hasher);
+    subcell_dest
         .map(|(x, y)| (x.to_bits(), y.to_bits()))
         .hash(hasher);
-    common.hover_throttle.to_bits().hash(hasher);
-    common.hover_speed_request.to_bits().hash(hasher);
-    common.hover_bob_offset.to_bits().hash(hasher);
-    hash_locomotor_payload(&runtime.payload, hasher);
+    hover_throttle.to_bits().hash(hasher);
+    hover_speed_request.to_bits().hash(hasher);
+    hover_bob_offset.to_bits().hash(hasher);
+    hash_locomotor_payload(runtime_payload, hasher);
+    match piggyback.as_deref() {
+        Some(stashed) => {
+            1u8.hash(hasher);
+            hash_locomotor(stashed, hasher);
+        }
+        None => 0u8.hash(hasher),
+    }
 }
 
 fn hash_locomotor_payload(
@@ -4042,8 +4040,8 @@ mod bridge161_hash_projection_tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::components::{DriveCoord, Health};
     use crate::sim::game_entity::GameEntity;
-    use crate::sim::movement::locomotion::piggyback::{LocomotorRuntimePayload, StashedLocomotor};
-    use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload;
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 
     fn supplied_payload_world(kind: LocomotorKind, stashed: bool) -> Simulation {
         let mut sim = Simulation::new();
@@ -4063,14 +4061,11 @@ mod bridge161_hash_projection_tests {
             5,
             true,
         );
-        let stored = LocomotorState::for_test_kind(kind);
-        entity.locomotor = Some(if stashed {
-            let mut host = LocomotorState::for_test_kind(LocomotorKind::Teleport);
-            host.piggyback = Some(StashedLocomotor::capture(&stored));
-            host
-        } else {
-            stored
-        });
+        let mut locomotor = LocomotorState::for_test_kind(kind);
+        if stashed {
+            assert!(locomotor.begin_piggyback(LocomotorKind::Teleport, MovementLayer::Ground, 0));
+        }
+        entity.locomotor = Some(locomotor);
         sim.substrate.entities.insert(entity);
         sim
     }
@@ -4125,13 +4120,12 @@ mod bridge161_hash_projection_tests {
                         .locomotor
                         .as_mut()
                         .unwrap();
-                    if stashed {
-                        let mut stored = loco.piggyback.take().unwrap().into_runtime();
-                        mutate(&mut stored.payload, field);
-                        loco.piggyback = Some(StashedLocomotor::from_runtime(stored));
+                    let object = if stashed {
+                        loco.piggyback.as_mut().unwrap().suspended_mut_for_test()
                     } else {
-                        mutate(&mut loco.runtime_payload, field);
-                    }
+                        loco
+                    };
+                    mutate(&mut object.runtime_payload, field);
                     assert_ne!(
                         before.state_hash(),
                         after.state_hash(),

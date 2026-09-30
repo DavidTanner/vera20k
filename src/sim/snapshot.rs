@@ -746,7 +746,9 @@ use crate::sim::world::Simulation;
 // 256 -> 257: bridge cells, anchor spans and endpoint records no longer save
 // unread group ids, per-cell destroyable or span damage copies; paradrop
 // missions no longer save the inert fog latch or LandingState mirror.
-const SNAPSHOT_VERSION: u32 = 257;
+// 257 -> 258: a piggyback stash saves the complete suspended locomotor object
+// instead of a separate runtime copy of its fields.
+const SNAPSHOT_VERSION: u32 = 258;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3638,7 +3640,8 @@ mod tests {
         // 255 -> 256: no cached GetCurrentSpeed.
         // 256 -> 257: no bridge group/destroyable/span-damage copies or
         // inert paradrop latches.
-        assert_eq!(super::SNAPSHOT_VERSION, 257);
+        // 257 -> 258: the stash saves the complete suspended locomotor.
+        assert_eq!(super::SNAPSHOT_VERSION, 258);
     }
 
     #[test]
@@ -4000,7 +4003,7 @@ mod tests {
             "the saved active timer starts two committed frames before session frame 51"
         );
         assert!(matches!(
-            loaded.piggyback.as_deref().map(|runtime| &runtime.payload),
+            loaded.piggyback.as_deref().map(|stashed| &stashed.runtime_payload),
             Some(LocomotorRuntimePayload::Drive(state))
                 if state.hash_fields() == (2, 7, 49, 3)
         ));

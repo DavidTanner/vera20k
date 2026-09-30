@@ -53,8 +53,10 @@ pub enum AirMovePhase {
 /// Runtime locomotor state attached to each movable ECS entity.
 ///
 /// Created from `ObjectType` at spawn time. The movement system reads this
-/// to decide how to process the entity's `MovementTarget` each tick.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// to decide how to process the entity's `MovementTarget` each tick. It is
+/// one complete locomotor object: a piggyback suspends the whole object in
+/// the new active object's `piggyback` slot and restores it untouched.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocomotorState {
     /// Which locomotor class is currently active.
     pub kind: LocomotorKind,
@@ -73,14 +75,13 @@ pub struct LocomotorState {
     /// to on — an unpowered locomotor is a state something must actively put a
     /// unit into.
     pub powered: bool,
-    /// One boxed suspended locomotor runtime.
+    /// The suspended locomotor object, when a piggyback displaced it.
     ///
     /// For CMIN drive phases, `kind` becomes Drive and this stores the complete
-    /// primary Teleport runtime until the active Drive locomotor is ok to end.
+    /// primary Teleport object until the active Drive locomotor is ok to end.
     #[serde(default)]
     pub piggyback: Option<StashedLocomotor>,
-    /// Class-local state of the locomotor currently driving this entity.
-    /// Piggyback BEGIN/END transfers this value with the complete runtime.
+    /// Class-local state of this locomotor object.
     pub runtime_payload: LocomotorRuntimePayload,
     /// Which spatial layer the unit currently occupies.
     pub layer: MovementLayer,
@@ -175,6 +176,40 @@ impl LocomotorState {
             hover_attack: obj.hover_attack,
             speed_type: obj.speed_type,
             movement_zone: obj.movement_zone,
+            subcell_dest: None,
+            hover_throttle: SIM_ZERO,
+            hover_speed_request: SIM_ZERO,
+            hover_bob_offset: SIM_ZERO,
+        }
+    }
+
+    /// A freshly constructed `kind` object linked to the same Foot, as every
+    /// native BEGIN site installs one: the Unit setter allocates
+    /// (`0x0041C250`), constructs (Drive `0x004AF540` over the
+    /// `LocomotionClass` constructor `0x0055A6C0`, which raises Powered) and
+    /// links it (`0x007426C9`) before BEGIN (`0x0074276F`). It shares only
+    /// the type's data and the installed slot with this object. The only
+    /// production BEGIN installs a Drive; a Jumpjet or Fly temporary would
+    /// also need its type's link block, which this constructor has no type
+    /// to read.
+    pub(crate) fn fresh_linked(
+        &self,
+        kind: LocomotorKind,
+        layer: MovementLayer,
+        binary_frame: u32,
+    ) -> Self {
+        Self {
+            kind,
+            slot: self.slot,
+            powered: true,
+            piggyback: None,
+            runtime_payload: LocomotorRuntimePayload::for_kind(kind, binary_frame),
+            layer,
+            altitude: SIM_ZERO,
+            balloon_hover: self.balloon_hover,
+            hover_attack: self.hover_attack,
+            speed_type: self.speed_type,
+            movement_zone: self.movement_zone,
             subcell_dest: None,
             hover_throttle: SIM_ZERO,
             hover_speed_request: SIM_ZERO,

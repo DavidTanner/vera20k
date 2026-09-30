@@ -336,7 +336,7 @@ mod tests {
                 .unwrap()
                 .piggyback
                 .as_deref()
-                .map(|runtime| &runtime.payload),
+                .map(|stashed| &stashed.runtime_payload),
             Some(LocomotorRuntimePayload::Drive(_))
         ));
         assert!(stashed_drive.locomotor.as_mut().unwrap().end_piggyback());
