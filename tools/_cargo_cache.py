@@ -265,10 +265,13 @@ def _files(root: Path, directory_states=None):
             directory_states[base] = identity
         with os.scandir(base) as entries:
             for entry in entries:
-                info = entry.stat(follow_symlinks=False)
+                path = Path(entry.path)
+                # DirEntry.stat reports st_ino/st_dev/st_nlink as zero on Windows.
+                # Real lstat is required for inode accounting and hardlink safety.
+                # https://docs.python.org/3.12/library/os.html#os.DirEntry.stat
+                info = path.lstat()
                 if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
                     continue
-                path = Path(entry.path)
                 if stat.S_ISDIR(info.st_mode):
                     pending.append(path)
                 elif stat.S_ISREG(info.st_mode):
@@ -282,8 +285,15 @@ def _allocated(info) -> int:
 
 
 def _allocated_total(infos) -> int:
-    unique = {(info.st_dev, info.st_ino): info for info in infos}
-    return sum(_allocated(info) for info in unique.values())
+    unique, unidentified = {}, 0
+    for info in infos:
+        if info.st_ino:
+            unique[info.st_dev, info.st_ino] = info
+        else:
+            # A filesystem may not expose inode identity. Never collapse all
+            # unknown files into one entry and falsely report an empty budget.
+            unidentified += _allocated(info)
+    return unidentified + sum(_allocated(info) for info in unique.values())
 
 
 def _magic(path: Path) -> bytes:

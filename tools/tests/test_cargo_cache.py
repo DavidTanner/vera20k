@@ -3,7 +3,7 @@
 Synthetic binaries below exercise retention policy, not executable-format parity.
 Dependency inspector tests are separate and do not mock the parser being tested.
 """
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import hashlib
 import io
 import json
@@ -130,6 +130,62 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(result['removed_files'], [str(oldest)], result)
         self.assertTrue(newest.exists())
         self.assertEqual(result['unmet_targets']['cache_bytes'], 0)
+
+    def test_directory_entry_zero_file_ids_do_not_hide_or_make_objects_shared(self):
+        first = self.write('debug/deps/first.rcgu.o', age=10)
+        second = self.write('debug/deps/second.rcgu.o', age=20)
+        expected_bytes = cache._allocated(first.lstat()) + cache._allocated(second.lstat())
+        original_scandir = os.scandir
+        class WindowsEntry:
+            def __init__(self, entry):
+                self.entry = entry
+
+            def __getattr__(self, name):
+                return getattr(self.entry, name)
+
+            def stat(self, **kwargs):
+                original = self.entry.stat(**kwargs)
+                fields = {name: getattr(original, name) for name in dir(original)
+                          if name.startswith('st_')}
+                # CPython's Windows DirEntry.stat reports zero for these fields,
+                # while Path.lstat supplies the file's usable identity/link count.
+                fields.update(st_dev=0, st_ino=0, st_nlink=0)
+                return SimpleNamespace(**fields)
+
+        @contextmanager
+        def windows_entries(path):
+            with original_scandir(path) as entries:
+                yield (WindowsEntry(entry) for entry in entries)
+
+        with patch.object(cache.os, 'scandir', side_effect=windows_entries):
+            result = self.trim(dry_run=True)
+        self.assertEqual(result['cache_allocated_bytes'], expected_bytes, result)
+        self.assertEqual(set(result['selected_files']), {str(first), str(second)}, result)
+        self.assertEqual(result['state'], 'planned', result)
+        self.assertTrue(first.exists())
+        self.assertTrue(second.exists())
+
+    def test_unidentified_file_ids_are_accounted_individually_for_cache_budget(self):
+        first = self.write('debug/deps/first.rcgu.o', age=10)
+        second = self.write('debug/deps/second.rcgu.o', content=b'x' * 16384, age=20)
+        third = self.write('debug/deps/third.rcgu.o', content=b'x' * 24576, age=30)
+        original_lstat = Path.lstat
+        sizes = {path: cache._allocated(path.lstat()) for path in (first, second, third)}
+        def no_file_id(path, *args, **kwargs):
+            actual = original_lstat(path, *args, **kwargs)
+            if path in sizes:
+                fields = {name: getattr(actual, name) for name in dir(actual)
+                          if name.startswith('st_')}
+                fields['st_ino'] = 0
+                return SimpleNamespace(**fields)
+            return actual
+        with patch.object(Path, 'lstat', new=no_file_id):
+            result = self.trim(cache.CachePolicy(sizes[second] + sizes[third], 1 << 40, 0))
+        self.assertEqual(result['cache_allocated_bytes'], sum(sizes.values()), result)
+        self.assertEqual(result['removed_files'], [str(first)], result)
+        self.assertFalse(first.exists())
+        self.assertTrue(second.exists())
+        self.assertTrue(third.exists())
 
     def test_free_space_target_trims_even_under_cache_budgets(self):
         orphan = self.write('debug/deps/orphan.rcgu.o')
@@ -534,21 +590,26 @@ class DebugDependencyTests(unittest.TestCase):
         return cache._debug_map(io.StringIO(text))
 
     def test_actual_llvm_yaml_subset_includes_quoted_objects_and_archive_container(self):
-        text = """---
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            object_path = root / 'objects' / 'has space.rcgu.o'
+            archive_path = root / 'libs' / 'has (parenthesis).rlib'
+            def quoted(path):
+                return str(path).replace("'", "''")
+            text = f"""---
 triple:          'arm64-apple-darwin'
-binary-path:     '/tmp/game'
+binary-path:     '{quoted(root / 'game')}'
 objects:
-  - filename:        '/tmp/objects/has space.rcgu.o'
+  - filename:        '{quoted(object_path)}'
     timestamp:       1730301197
     symbols:
-      - { sym: '_main', objAddr: 0x0, binAddr: 0x100003FB0, size: 0x20 }
-  - filename:        '/tmp/libs/has (parenthesis).rlib(member.rcgu.o)'
+      - {{ sym: '_main', objAddr: 0x0, binAddr: 0x100003FB0, size: 0x20 }}
+  - filename:        '{quoted(archive_path)}(member.rcgu.o)'
     timestamp:       1730301198
     symbols:         []
 ...
 """
-        self.assertEqual(self.parse(text), {Path('/tmp/objects/has space.rcgu.o'),
-                                           Path('/tmp/libs/has (parenthesis).rlib')})
+            self.assertEqual(self.parse(text), {object_path, archive_path})
 
     def test_multiple_architectures_and_empty_object_document(self):
         text = "---\ntriple: 'arm64-apple-darwin'\nbinary-path: '/tmp/game'\nobjects: []\n...\n"

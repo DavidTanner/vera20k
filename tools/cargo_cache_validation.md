@@ -16,8 +16,8 @@ tests require no compiler, retail data or debugging utilities:
 python -m tools.run_tests
 ```
 
-The full final369-test Python suite passed (3 optional tests skipped).
-The focused final suite passed62 tests:40 retention tests and22 existing runner
+The full final371-test Python suite passed (3 optional tests skipped).
+The focused final suite passed64 tests:42 retention tests and22 existing runner
 tests. The opt-in native test passed separately. Saved log identities are in the
 receipt. The single fresh critic found discovery-window, nested-layout and
 free-space-error defects. Five focused tests first reproduced those failures;
@@ -26,6 +26,14 @@ admission. Directory identities are captured before enumeration, including
 intermediate directories. Nested research/build-script outputs never qualify as
 compiler cache profiles. Unavailable final free-space samples remain explicit in
 the blocked/partial receipt.
+
+Windows CI exposed two portability defects in the initial candidate: `DirEntry.stat`
+returns zero device/inode/hardlink metadata, and a parser fixture assumed Unix
+absolute paths. Inventory now uses real `lstat`; unidentified inode values are
+counted individually rather than collapsed. The fixture uses host-absolute paths.
+Two added regressions model Windows directory-entry metadata and unknown-inode
+accounting. The initial CI failure is retained in the receipt. See the
+[Python metadata contract](https://docs.python.org/3.12/library/os.html#os.DirEntry.stat).
 
 [The opt-in compiled test](tests/test_cargo_cache_native.py) creates a temporary
 Git repository and owned cache, compiles a real debug object and binary, preserves
