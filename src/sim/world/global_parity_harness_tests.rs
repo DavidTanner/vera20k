@@ -375,7 +375,16 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // exact value, as this change does, with the RNG pins above unchanged
 // (the probe patch was not committed): the only change to this pin is
 // the fold. Old value: the commit that moved it.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xBD7A_FF23_ABE9_1302;
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request; the stash drops its retired separators and folds the installed
+// slot. Ceremony: the parent commit with only that fold changed printed this
+// exact value, as this change does, with the RNG pins above unchanged (the
+// probe patch was not committed): the only change to this pin is the fold.
+// Old value: the commit that moved it.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x0B5A_1FDE_E74F_20D0;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
