@@ -224,7 +224,7 @@ pub(crate) fn tick_shp_vehicle_body_frame_counter(
         || entity.dying
         || !entity.lifecycle.object_alive
         || entity.lifecycle.in_limbo
-        || entity.object_is_falling_down != 0
+        || entity.is_falling_down()
     {
         return;
     }

@@ -304,7 +304,7 @@ fn flight_queries_follow_live_altitude_producers_and_keep_jumpjet_exact_z() {
         Some(&terrain),
         None,
     );
-    rocket_movement::tick_rocket_movement(&mut sim.substrate.entities, &[2], 1);
+    rocket_movement::process_rocket(sim.substrate.entities.get_mut(2).unwrap(), 1);
     for id in [1, 2] {
         let e = sim.substrate.entities.get(id).unwrap();
         let altitude = if id == 1 {
