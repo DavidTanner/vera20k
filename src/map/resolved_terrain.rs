@@ -2169,6 +2169,17 @@ impl ResolvedTerrainGrid {
         }
     }
 
+    /// Give every fixture deck the CellClass bit0x100 a loaded deck carries.
+    #[cfg(test)]
+    pub(crate) fn test_mark_decks_structural(mut self) -> Self {
+        for cell in &mut self.cells {
+            if cell.has_bridge_deck {
+                cell.bridge_facts.raw_flags |= BRIDGE_FLAG_STRUCTURAL;
+            }
+        }
+        self
+    }
+
     #[cfg(test)]
     pub(crate) fn test_set_dummy_accepts_smudge(&mut self, accepts: bool) {
         self.dummy_accepts_smudge = accepts;

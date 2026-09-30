@@ -1486,16 +1486,15 @@ pub(crate) fn repair_wall_damage_navigation_authorities(
         .filter(|grid| grid.width() == terrain.width() && grid.height() == terrain.height());
     match installed {
         Some(grid) if navigation_changed => {
-            let refreshed = terrain.cell(cell.0, cell.1).is_some_and(|resolved| {
-                Arc::make_mut(grid).refresh_resolved_cell(resolved, bridge_state, false)
-            });
+            let refreshed = terrain
+                .cell(cell.0, cell.1)
+                .is_some_and(|resolved| Arc::make_mut(grid).refresh_resolved_cell(resolved, false));
             debug_assert!(refreshed, "wall Recalc cell must be inside the map");
         }
         Some(_) => {}
         None => {
             *path_grid = Some(Arc::new(PathGrid::from_resolved_terrain_with_bridges(
                 terrain,
-                bridge_state,
             )));
         }
     }
@@ -4957,12 +4956,7 @@ impl Simulation {
             playfield_bounds: self.playfield_bounds,
         };
         let published = cells.iter().try_for_each(|&coord| {
-            caches.publish_recalculated_cell_with_presence(
-                terrain,
-                self.bridge_state.as_ref(),
-                coord,
-                blocked.contains(&coord),
-            )
+            caches.publish_recalculated_cell_with_presence(terrain, coord, blocked.contains(&coord))
         });
         if let Err(error) = published {
             log::warn!("Recalc navigation publication fell back to a rebuild: {error}");
@@ -6350,8 +6344,8 @@ impl Simulation {
                 );
                 if regen.visible != 0 {
                     // Native Mark mutates live CellClass land/zone/bridge state
-                    // synchronously. Rust's BridgeRuntimeState is a derived
-                    // cache, so refresh it once per pass that installed an
+                    // synchronously. Rust's BridgeRuntimeState records are a
+                    // derived cache, so refresh them once per pass that installed an
                     // overlay and let the existing frame-boundary navigation
                     // seam republish; this adds no RNG or ordering boundary.
                     //

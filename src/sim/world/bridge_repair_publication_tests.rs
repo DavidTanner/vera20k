@@ -676,7 +676,6 @@ fn ready_repair_fixture(
     crate::map::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
-    use crate::sim::bridge_state::{Axis, BridgeCellRole, BridgeRuntimeCell, DamageState};
     let (mut sim, rules, registry) = fixture();
     sim.mapgen_rng = Simulation::with_seed(0).mapgen_rng;
     let owner = sim.interner.intern("Americans");
@@ -699,23 +698,6 @@ fn ready_repair_fixture(
                 .as_mut()
                 .unwrap()
                 .write_bridge_overlay_identity(x, y, overlay);
-            sim.bridge_state.as_mut().unwrap().test_seed_cell(
-                x,
-                y,
-                BridgeRuntimeCell {
-                    deck_present: true,
-                    deck_level: 0,
-                    damage_state: if overlay == 231 {
-                        DamageState::Destroyed
-                    } else {
-                        DamageState::Healthy { variant: 0 }
-                    },
-                    axis: Some(Axis::NS),
-                    role: BridgeCellRole::Body,
-                    anchor_span_id: None,
-                    overlay_byte: overlay,
-                },
-            );
         }
     }
     (sim, rules, registry, hut)
@@ -798,14 +780,15 @@ fn engineer_enters_cabhut_repairs_bridge() {
     assert!(sim.substrate.entities.get(engineer).is_none());
     assert_eq!(repair_sounds(&sim), [true]);
     for (x, y) in [(17, 14), (17, 15), (17, 16)] {
-        let c = sim.bridge_state.as_ref().unwrap().cell(x, y).unwrap();
-        assert_eq!(c.overlay_byte, 0xce, "Seed0 native MapGen variant");
-        assert_eq!(
-            c.damage_state,
-            crate::sim::bridge_state::DamageState::Destroyed,
-            "native stale damage byte"
-        );
-        assert!(sim.bridge_state.as_ref().unwrap().is_bridge_walkable(x, y));
+        let facts = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(x, y)
+            .unwrap()
+            .bridge_facts;
+        assert_eq!(facts.overlay_id, Some(0xce), "Seed0 native MapGen variant");
+        assert!(crate::sim::bridge_state::cell_render_state(facts).is_some());
     }
 }
 
@@ -864,7 +847,14 @@ fn bridge_repair_preserves_unrelated_foundation_before_next_reader() {
     assert_eq!(gameplay, (sim.scenario_rng.state(), sim.main_rng.state()));
     assert_eq!(sim.mapgen_rng.state(), mapgen.state());
     for (x, y) in [(17, 14), (17, 15), (17, 16)] {
-        assert!(sim.bridge_state.as_ref().unwrap().is_bridge_walkable(x, y));
+        let facts = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(x, y)
+            .unwrap()
+            .bridge_facts;
+        assert!(crate::sim::bridge_state::cell_render_state(facts).is_some());
     }
 }
 

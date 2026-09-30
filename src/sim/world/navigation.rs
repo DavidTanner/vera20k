@@ -110,7 +110,6 @@ impl NavigationCaches<'_> {
     pub(super) fn publish_recalculated_cell_with_presence(
         &mut self,
         terrain: &ResolvedTerrainGrid,
-        bridges: Option<&BridgeRuntimeState>,
         coord: (u16, u16),
         structure_blocked: bool,
     ) -> Result<(), String> {
@@ -124,8 +123,8 @@ impl NavigationCaches<'_> {
             if path.width() != terrain.width() || path.height() != terrain.height() {
                 return Err("path dimensions differ from terrain".into());
             }
-            if !path.resolved_cell_is_current(cell, bridges, structure_blocked)
-                && !Arc::make_mut(path).refresh_resolved_cell(cell, bridges, structure_blocked)
+            if !path.resolved_cell_is_current(cell, structure_blocked)
+                && !Arc::make_mut(path).refresh_resolved_cell(cell, structure_blocked)
             {
                 return Err("current path cell could not be published".into());
             }
@@ -150,7 +149,7 @@ impl NavigationCaches<'_> {
         interner: &StringInterner,
         rules: &RuleSet,
     ) -> BTreeSet<(u16, u16)> {
-        let mut grid = PathGrid::from_resolved_terrain_with_bridges(terrain, bridges);
+        let mut grid = PathGrid::from_resolved_terrain_with_bridges(terrain);
         *self.terrain_costs = build_canonical_terrain_cost_grids(terrain);
 
         let structure_cells = structure_movement_cells(entities, interner, rules);
@@ -169,13 +168,12 @@ impl NavigationCaches<'_> {
     pub(super) fn publish_recalculated_cell(
         &mut self,
         terrain: &ResolvedTerrainGrid,
-        bridges: Option<&BridgeRuntimeState>,
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
         coord: (u16, u16),
     ) -> Result<(), String> {
-        self.publish_recalculated_cells(terrain, bridges, entities, interner, rules, &[coord])
+        self.publish_recalculated_cells(terrain, entities, interner, rules, &[coord])
     }
 
     /// Batch form of [`Self::publish_recalculated_cell`]: one structure scan
@@ -183,7 +181,6 @@ impl NavigationCaches<'_> {
     pub(super) fn publish_recalculated_cells(
         &mut self,
         terrain: &ResolvedTerrainGrid,
-        bridges: Option<&BridgeRuntimeState>,
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
@@ -191,12 +188,7 @@ impl NavigationCaches<'_> {
     ) -> Result<(), String> {
         let blocked = structure_blocked_among(entities, interner, rules, cells);
         for &coord in cells {
-            self.publish_recalculated_cell_with_presence(
-                terrain,
-                bridges,
-                coord,
-                blocked.contains(&coord),
-            )?;
+            self.publish_recalculated_cell_with_presence(terrain, coord, blocked.contains(&coord))?;
         }
         Ok(())
     }
@@ -207,7 +199,6 @@ impl NavigationCaches<'_> {
     pub(super) fn publish_current_path_cell(
         &mut self,
         terrain: &ResolvedTerrainGrid,
-        bridges: Option<&BridgeRuntimeState>,
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
@@ -226,7 +217,7 @@ impl NavigationCaches<'_> {
             visit_structure_movement_cells(entities, interner, rules, |marked| {
                 structure_blocked |= marked == coord;
             });
-            if !Arc::make_mut(path).refresh_resolved_cell(cell, bridges, structure_blocked) {
+            if !Arc::make_mut(path).refresh_resolved_cell(cell, structure_blocked) {
                 return Err("current path cell could not be published".into());
             }
         }

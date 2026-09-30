@@ -264,15 +264,6 @@ impl OrdinaryBridgeHost for LiveOrdinary<'_, '_> {
             if let Some(grid) = self.live.sim.overlay_grid.as_mut() {
                 grid.write_bridge_overlay_identity(x, y, overlay);
             }
-            if let Some(runtime) = self
-                .live
-                .sim
-                .bridge_state
-                .as_mut()
-                .and_then(|s| s.cell_mut(x, y))
-            {
-                runtime.overlay_byte = overlay;
-            }
         }
         self.live.retain_real_write(cell);
     }

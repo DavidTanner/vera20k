@@ -2833,19 +2833,17 @@ fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
             cell.bridge_walkable = true;
             cell.bridge_transition = true;
             cell.bridge_deck_level = 3;
+            // A legacy deck whose +44 bridge identity 47E040 has destroyed:
+            // state 0, bit0x100 clear, bit0x400 set.
+            cell.bridge_facts.overlay_id = Some(0x18);
+            cell.bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_DESTROYED_OR_RAMP;
+            cell.bridge_facts.state_byte = 0;
         }
     });
     sim.bridge_state = Some(
         crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain(&resolved, true, 5),
     );
     sim.resolved_terrain = Some(resolved);
-    if let Some(state) = sim.bridge_state.as_mut() {
-        // Direct mutation replaces the legacy `apply_damage`. The placement
-        // gate reads `is_bridge_walkable`, which fails on `DamageState::Destroyed`.
-        if let Some(c) = state.cell_mut(12, 10) {
-            c.damage_state = crate::sim::bridge_state::DamageState::Destroyed;
-        }
-    }
 
     assert!(!place_ready_building_without_overlays(
         &mut sim,

@@ -82,10 +82,13 @@ fn main() {
     assert!(
         runtime
             .simulation
-            .bridge_state
+            .resolved_terrain
             .as_ref()
             .unwrap()
-            .is_bridge_walkable(target.0, target.1)
+            .cell(target.0, target.1)
+            .unwrap()
+            .bridge_facts
+            .has_structural_bridge()
     );
     let attacker = runtime
         .simulation
@@ -250,10 +253,13 @@ fn main() {
                     .map(|cell| cell.bridge_flags());
                 let bridge_state = runtime
                     .simulation
-                    .bridge_state
+                    .resolved_terrain
                     .as_ref()
-                    .and_then(|bridge| bridge.cell(target.0, target.1))
-                    .map(|bridge| bridge.damage_state);
+                    .and_then(|terrain| terrain.cell(target.0, target.1))
+                    .and_then(|cell| {
+                        vera20k::sim::bridge_state::cell_render_state(cell.bridge_facts)
+                    })
+                    .map(|(state, _)| state);
                 save_snapshot(
                     &runtime.simulation,
                     map_hash,
@@ -273,14 +279,17 @@ fn main() {
                 live_flight_snapshot_path = None;
             }
         }
-        let bridge = runtime
-            .simulation
-            .bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(target.0, target.1)
-            .unwrap();
-        let current_bridge = bridge.damage_state;
+        let current_bridge = vera20k::sim::bridge_state::cell_render_state(
+            runtime
+                .simulation
+                .resolved_terrain
+                .as_ref()
+                .unwrap()
+                .cell(target.0, target.1)
+                .unwrap()
+                .bridge_facts,
+        )
+        .map(|(state, _)| state);
         if previous_bridge != Some(current_bridge) || frame % 2000 == 0 {
             println!(
                 "frame {frame}: {} launched shells; bridge {current_bridge:?}",
@@ -291,10 +300,13 @@ fn main() {
         if collapsed_at.is_none()
             && !runtime
                 .simulation
-                .bridge_state
+                .resolved_terrain
                 .as_ref()
                 .unwrap()
-                .is_bridge_walkable(target.0, target.1)
+                .cell(target.0, target.1)
+                .unwrap()
+                .bridge_facts
+                .has_structural_bridge()
         {
             assert!(moved && ended && !seen.is_empty());
             assert!(

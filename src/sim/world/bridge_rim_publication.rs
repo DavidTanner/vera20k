@@ -98,7 +98,7 @@ impl HighBridgeRimHost for LiveRim<'_, '_> {
     }
     // Native rectangles schedule partial tactical redraws. VERA clears color
     // and depth and rebuilds/uploads all three bridge batches every frame
-    // (render/build_instances.rs, render/bridges.rs); each reads deck_present.
+    // (render/build_instances.rs, render/bridges.rs) from live CellClass fields.
     // This no-tile-write mechanism needs no extra retained redraw authority.
     // Literal56EB80 delivery must also migrate the immutable terrain-template
     // and presentation-grid consumers; that separate gap remains open.

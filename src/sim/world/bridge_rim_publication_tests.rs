@@ -188,12 +188,13 @@ fn bridge_rim_stock_damage_events_match_original_body_perpendicular_and_cleanup(
                             .bridge_walkable
                     );
                     assert!(
-                        !sim.bridge_state
+                        !sim.resolved_terrain
                             .as_ref()
                             .unwrap()
                             .cell(coord.0, coord.1)
                             .unwrap()
-                            .deck_present
+                            .bridge_facts
+                            .has_structural_bridge()
                     );
                 }
             }
@@ -266,12 +267,13 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
             );
             assert!(
                 !restored
-                    .bridge_state
+                    .resolved_terrain
                     .as_ref()
                     .unwrap()
                     .cell(x, y)
                     .unwrap()
-                    .deck_present
+                    .bridge_facts
+                    .has_structural_bridge()
             );
         }
     }

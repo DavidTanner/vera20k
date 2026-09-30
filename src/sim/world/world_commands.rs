@@ -307,7 +307,7 @@ impl Simulation {
                 *tail_grid = None;
             }
             if let (Some(tail), Some(cell)) = (tail_grid.as_mut(), terrain.cell(rx, ry)) {
-                let _ = tail.refresh_resolved_cell(cell, self.bridge_state.as_ref(), false);
+                let _ = tail.refresh_resolved_cell(cell, false);
             }
         }
 

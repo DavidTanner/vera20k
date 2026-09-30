@@ -37,17 +37,6 @@ fn retail_middle_perpendicular_live_tiles_match_original_sequences() {
             Axis::EW
         };
         let input = coord(&case["input"]);
-        let target = coord(&case["target"]);
-        assert!(
-            scenario
-                .sim()
-                .bridge_state
-                .as_ref()
-                .unwrap()
-                .cell(target.0, target.1)
-                .is_none(),
-            "native road-ramp tile entry must not require BridgeRuntimeState membership"
-        );
         let initial = scenario.sim().resolved_terrain.as_ref().unwrap().clone();
         let runtime = &mut scenario.runtime;
         for step in case["steps"].as_array().unwrap() {

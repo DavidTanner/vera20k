@@ -14,9 +14,7 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rng_continuation::MapGenRngContinuation;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::bridge_state::{
-    AnchorSpan, Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState, Direction,
-};
+use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::command::Command;
 use crate::sim::components::{Health, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
@@ -175,55 +173,16 @@ fn spawn_cabhut(sim: &mut Simulation, rx: u16, ry: u16) -> u64 {
 
 const BRIDGE_CELLS: &[(u16, u16)] = &[(10, 9), (10, 10), (10, 11), (10, 12), (10, 13)];
 
+/// Collapsed ordinary high identities (CellClass+44) on the span cells.
 fn seed_destroyed_bridge(sim: &mut Simulation) {
-    seed_bridge_with_state(sim, DamageState::Destroyed);
-}
-
-fn seed_bridge_with_state(sim: &mut Simulation, state: DamageState) {
-    let mut bs = BridgeRuntimeState::default();
-    let span = AnchorSpan {
-        id: 1,
-        anchor: (10, 10),
-        cells: [
-            Some((10, 10)),
-            Some((10, 11)),
-            Some((10, 12)),
-            Some((10, 13)),
-            Some((10, 9)),
-            None,
-        ],
-        axis: Axis::NS,
-        direction: Direction::S,
-    };
-    bs.test_seed_anchor_span(span);
-    let overlay_byte = match state {
-        DamageState::Destroyed => 0xE7,
-        DamageState::Damaged | DamageState::PartialCollapseA | DamageState::PartialCollapseB => {
-            0xD1
-        }
-        DamageState::Healthy { .. } => 0xCD,
-    };
+    let terrain = sim
+        .resolved_terrain
+        .as_mut()
+        .expect("bridge tests require resolved terrain");
     for &(rx, ry) in BRIDGE_CELLS {
-        let role = if (rx, ry) == (10, 10) {
-            BridgeCellRole::Anchor
-        } else {
-            BridgeCellRole::Body
-        };
-        bs.test_seed_cell(
-            rx,
-            ry,
-            BridgeRuntimeCell {
-                deck_present: true,
-                deck_level: 0,
-                damage_state: state,
-                axis: Some(Axis::NS),
-                role,
-                anchor_span_id: Some(1),
-                overlay_byte,
-            },
-        );
+        terrain.cell_mut(rx, ry).unwrap().bridge_facts.overlay_id = Some(0xE7);
     }
-    sim.bridge_state = Some(bs);
+    sim.bridge_state = Some(BridgeRuntimeState::default());
 }
 
 /// Make `cell` the fallback's ramp: a concrete BridgeMiddle1 tile at sub-tile
@@ -243,43 +202,21 @@ fn stamp_concrete_middle_tile(sim: &mut Simulation, cell: (u16, u16)) {
     ramp.final_sub_tile = 4;
 }
 
+/// The damaged EW anchor state (+11E = 15) the fallback must leave alone.
+const FALLBACK_ANCHOR_STATE: u8 = 15;
+
+fn fallback_anchor_state(sim: &Simulation) -> u8 {
+    sim.resolved_terrain
+        .as_ref()
+        .unwrap()
+        .cell(13, 10)
+        .unwrap()
+        .bridge_facts
+        .state_byte
+}
+
 fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
-    let mut bs = BridgeRuntimeState::default();
-    let span = AnchorSpan {
-        id: 1,
-        anchor: (13, 10),
-        cells: [Some((13, 10)), None, None, None, None, None],
-        axis: Axis::EW,
-        direction: Direction::E,
-    };
-    bs.test_seed_anchor_span(span);
-    bs.test_seed_cell(
-        12,
-        10,
-        BridgeRuntimeCell {
-            deck_present: false,
-            deck_level: 4,
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::EW),
-            role: BridgeCellRole::Bridgehead,
-            anchor_span_id: None,
-            overlay_byte: 0,
-        },
-    );
-    bs.test_seed_cell(
-        13,
-        10,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 4,
-            damage_state: DamageState::Damaged,
-            axis: Some(Axis::EW),
-            role: BridgeCellRole::Anchor,
-            anchor_span_id: Some(1),
-            overlay_byte: 0,
-        },
-    );
-    sim.bridge_state = Some(bs);
+    sim.bridge_state = Some(BridgeRuntimeState::default());
     let terrain = sim
         .resolved_terrain
         .as_mut()
@@ -296,24 +233,19 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
     });
     let anchor = terrain.cell_mut(13, 10).unwrap();
     anchor.bridge_facts.raw_flags = 0;
+    anchor.bridge_facts.state_byte = FALLBACK_ANCHOR_STATE;
     stamp_concrete_middle_tile(sim, (13, 10));
 }
 
 fn seed_terminal_overlay_with_fallback_trap(sim: &mut Simulation, overlay_byte: u8) {
     seed_hut_fallback_bridgehead_layout(sim);
-    sim.bridge_state.as_mut().unwrap().test_seed_cell(
-        10,
-        10,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 4,
-            damage_state: DamageState::Destroyed,
-            axis: Some(Axis::EW),
-            role: BridgeCellRole::Body,
-            anchor_span_id: None,
-            overlay_byte,
-        },
-    );
+    sim.resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(10, 10)
+        .unwrap()
+        .bridge_facts
+        .overlay_id = Some(overlay_byte);
 }
 
 fn seed_hut_fallback_without_starter(sim: &mut Simulation) {
@@ -630,11 +562,7 @@ fn c4_on_cabhut_fallback_rejects_anchor_or_direction_flags_alone() {
         !bridge_state_changed_seen,
         "0x80/0x800 alone must not trigger CABHUT no-overlay fallback"
     );
-    let bs = sim.bridge_state.as_ref().unwrap();
-    assert!(matches!(
-        bs.cell(13, 10).unwrap().damage_state,
-        DamageState::Damaged
-    ));
+    assert_eq!(fallback_anchor_state(&sim), FALLBACK_ANCHOR_STATE);
 }
 
 #[test]
@@ -648,15 +576,7 @@ fn c4_on_cabhut_without_fallback_starter_is_noop() {
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules);
 
     assert!(!bridge_state_changed_seen);
-    assert!(matches!(
-        sim.bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(13, 10)
-            .unwrap()
-            .damage_state,
-        DamageState::Damaged
-    ));
+    assert_eq!(fallback_anchor_state(&sim), FALLBACK_ANCHOR_STATE);
 }
 
 #[test]
@@ -708,15 +628,7 @@ fn c4_on_cabhut_low_terminal_overlay_0x65_uses_overlay_first_scan() {
         !bridge_state_changed_seen,
         "terminal overlay scan hit must not fall through to fallback trap"
     );
-    assert!(matches!(
-        sim.bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(13, 10)
-            .unwrap()
-            .damage_state,
-        DamageState::Damaged
-    ));
+    assert_eq!(fallback_anchor_state(&sim), FALLBACK_ANCHOR_STATE);
 }
 
 #[test]
@@ -733,22 +645,14 @@ fn c4_on_cabhut_high_terminal_overlay_0xe8_uses_overlay_first_scan() {
         !bridge_state_changed_seen,
         "terminal overlay scan hit must not fall through to fallback trap"
     );
-    assert!(matches!(
-        sim.bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(13, 10)
-            .unwrap()
-            .damage_state,
-        DamageState::Damaged
-    ));
+    assert_eq!(fallback_anchor_state(&sim), FALLBACK_ANCHOR_STATE);
 }
 
 // ---- G4 damaged-variant lifecycle integration tests ------------------------
 
 /// 20×20 terrain with has_damaged_data=true and a common final_tile_index on
 /// every cell. Lets the damaged-variant flood-fill propagate freely across
-/// any bridge cells defined in the test BridgeRuntimeState.
+/// any bridge cells the test defines.
 fn damaged_data_resolved_terrain(tile_id: i32) -> ResolvedTerrainGrid {
     crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
         source_tile_index: tile_id,
@@ -818,24 +722,10 @@ fn ordinary_engineer_overlay_repair_does_not_clear_neighbor_pavement() {
     seed_destroyed_bridge(&mut sim);
 
     // Add an off-span bridge cell at (10, 14): same tile_id as BRIDGE_CELLS,
-    // adjacent to (10, 13). NOT a member of anchor_span 1, so it is NOT
+    // adjacent to (10, 13). NOT a member of the repaired span, so it is NOT
     // visited by the ordinary overlay repair walk. An erroneous connected
     // pavement clear would reach it from the adjacent span cell.
     {
-        let bs = sim.bridge_state.as_mut().unwrap();
-        bs.test_seed_cell(
-            10,
-            14,
-            BridgeRuntimeCell {
-                deck_present: true,
-                deck_level: 0,
-                damage_state: DamageState::Destroyed,
-                axis: Some(Axis::NS),
-                role: BridgeCellRole::Body,
-                anchor_span_id: None,
-                overlay_byte: 0,
-            },
-        );
         for &(rx, ry) in BRIDGE_CELLS {
             sim.resolved_terrain
                 .as_mut()

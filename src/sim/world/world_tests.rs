@@ -1127,7 +1127,6 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
     assert!(sim.path_grid.as_deref().unwrap().is_walkable(5, 4));
     let projected = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().expect("terrain"),
-        sim.bridge_state.as_ref(),
     );
     assert_eq!(
         sim.path_grid.as_deref().unwrap().diff_cells(&projected),
@@ -1397,6 +1396,8 @@ fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
         cell.bridge_walkable = true;
         cell.has_bridge_deck = true;
         cell.bridge_deck_level = 4;
+        // A legacy deck (no bit0x100) is intact while its +44 decodes.
+        cell.bridge_facts.overlay_id = Some(0xCD);
     }
 
     let mut sim = Simulation::new();
@@ -1443,12 +1444,13 @@ fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
         "canonical publication must assign a reachable ground cell"
     );
 
-    let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-    let collapsed = bridge_state
+    sim.resolved_terrain
+        .as_mut()
+        .expect("bridge terrain")
         .cell_mut(2, 1)
-        .expect("bridge body runtime cell");
-    collapsed.overlay_byte = 0xE8;
-    collapsed.damage_state = crate::sim::bridge_state::DamageState::Destroyed;
+        .expect("bridge body cell")
+        .bridge_facts
+        .overlay_id = Some(0xE8);
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let collapsed_grid = sim.path_grid().expect("collapsed navigation publication");
     assert!(
@@ -2455,7 +2457,6 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
     );
     let mut input_path_grid = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().expect("resolved terrain"),
-        sim.bridge_state.as_ref(),
     );
     input_path_grid.set_blocked(1, 0, true);
     assert!(!input_path_grid.is_walkable(0, 0));
@@ -2514,7 +2515,6 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
     );
     let input_path_grid = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().expect("resolved terrain"),
-        sim.bridge_state.as_ref(),
     );
     assert!(input_path_grid.is_walkable(0, 0));
     assert_eq!(sim.terrain_costs[&SpeedType::Track].cost_at(0, 0), 100);
@@ -2726,14 +2726,7 @@ fn assert_structural_bridge_collapsed(sim: &Simulation) {
         assert!(!cell.has_bridge_deck);
         assert!(!cell.bridge_walkable);
         assert!(!cell.bridge_transition);
-        assert!(
-            !sim.bridge_state
-                .as_ref()
-                .unwrap()
-                .cell(x, 5)
-                .unwrap()
-                .deck_present
-        );
+        assert!(!cell.bridge_facts.has_structural_bridge());
         let published = sim.path_grid().unwrap().cell(x, 5).unwrap();
         assert!(!published.bridge_walkable);
         assert!(!published.transition);
@@ -4075,8 +4068,7 @@ fn test_bridge_damage_rebuilds_path_grid() {
     sim.bridge_state = Some(bridge_state);
 
     // Build PathGrid before damage — all four stamped deck cells are walkable.
-    let grid_before =
-        PathGrid::from_resolved_terrain_with_bridges(&resolved, sim.bridge_state.as_ref());
+    let grid_before = PathGrid::from_resolved_terrain_with_bridges(&resolved);
     for x in 3..=6 {
         assert!(grid_before.is_walkable_on_layer(x, 5, MovementLayer::Bridge));
     }
@@ -4098,10 +4090,8 @@ fn test_bridge_damage_rebuilds_path_grid() {
     assert_structural_bridge_collapsed(&sim);
 
     // The independent rebuild agrees with the synchronously published grid.
-    let grid_after = PathGrid::from_resolved_terrain_with_bridges(
-        sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
-    );
+    let grid_after =
+        PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
     for x in 3..=6 {
         assert!(
             !grid_after.is_walkable_on_layer(x, 5, MovementLayer::Bridge),
@@ -4143,10 +4133,8 @@ fn test_bridge_collapse_signals_pathgrid_refresh() {
     );
 
     // An independent projection from the post-callback authorities:
-    let post_tick_grid = PathGrid::from_resolved_terrain_with_bridges(
-        sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
-    );
+    let post_tick_grid =
+        PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
     for x in 3..=6 {
         assert!(
             !post_tick_grid.is_walkable_on_layer(x, 5, MovementLayer::Bridge),
@@ -4199,8 +4187,7 @@ fn test_bridge_collapse_clears_transition_flag() {
     sim.bridge_state = Some(bridge_state);
 
     // Snapshot cells with transition=true before damage.
-    let grid_before =
-        PathGrid::from_resolved_terrain_with_bridges(&resolved, sim.bridge_state.as_ref());
+    let grid_before = PathGrid::from_resolved_terrain_with_bridges(&resolved);
     let transition_cells_before: Vec<(u16, u16)> = (0..resolved.width())
         .flat_map(|x| (0..resolved.height()).map(move |y| (x, y)))
         .filter_map(|(x, y)| {
@@ -4230,10 +4217,8 @@ fn test_bridge_collapse_clears_transition_flag() {
     );
     assert_structural_bridge_collapsed(&sim);
 
-    let grid_after = PathGrid::from_resolved_terrain_with_bridges(
-        sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
-    );
+    let grid_after =
+        PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
     for (x, y) in &transition_cells_before {
         let cell = grid_after.cell(*x, *y).expect("cell exists");
         assert!(
@@ -4505,7 +4490,6 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
 
     let rebuilt_grid = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().expect("resolved terrain"),
-        sim.bridge_state.as_ref(),
     );
     assert!(
         !rebuilt_grid.is_walkable_on_layer(5, 5, MovementLayer::Bridge),
@@ -4923,10 +4907,9 @@ fn test_bridge_collapse_is_deterministic_under_replay() {
 
 /// Serialize the structural576BA0/47E040 collapse result: all four stamped
 /// slots lose their deck, the anchor overlay clears, and endpoint state must
-/// survive the BridgeRuntimeState round trip.
+/// survive the BridgeRuntimeState round trip. CellClass owns the cells.
 #[test]
 fn test_bridge_snapshot_roundtrip_preserves_state_after_collapse() {
-    use crate::sim::bridge_state::DamageState;
     let mut sim = Simulation::new();
     let (resolved, bridge_state) = structural_bridge_for_damage_dispatch();
     sim.resolved_terrain = Some(resolved);
@@ -4953,15 +4936,7 @@ fn test_bridge_snapshot_roundtrip_preserves_state_after_collapse() {
     let restored: crate::sim::bridge_state::BridgeRuntimeState =
         serde_json::from_str(&json).expect("deserialize");
 
-    // Compare all four native stamp slots, strength and endpoint records.
-    for x in 3..=6 {
-        let pre_cell = pre.cell(x, 5).expect("pre cell");
-        let post_cell = restored.cell(x, 5).expect("restored cell");
-        assert_eq!(pre_cell, post_cell, "cell ({x}, 5) round-trip");
-        assert_eq!(post_cell.damage_state, DamageState::Destroyed);
-        assert!(!post_cell.deck_present);
-    }
-    assert_eq!(restored.cell(5, 5).unwrap().overlay_byte, 0xff);
+    // CellClass owns the four stamp slots; compare strength and records.
     assert_eq!(pre.bridge_strength(), restored.bridge_strength());
     assert_eq!(
         pre.endpoint_records().len(),
@@ -7515,7 +7490,7 @@ fn make_realistic_bridgehead_terrain() -> ResolvedTerrainGrid {
             ..bridgehead_base_cell(4, 0)
         },
     ];
-    ResolvedTerrainGrid::from_cells(5, 1, cells)
+    ResolvedTerrainGrid::from_cells(5, 1, cells).test_mark_decks_structural()
 }
 
 fn bridgehead_base_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::ResolvedTerrainCell {
@@ -7551,10 +7526,8 @@ fn test_bridgehead_walkability_invariant_across_non_bridge_rebuild_triggers() {
     ));
 
     for trigger_idx in 0..3 {
-        let grid = PathGrid::from_resolved_terrain_with_bridges(
-            sim.resolved_terrain.as_ref().unwrap(),
-            sim.bridge_state.as_ref(),
-        );
+        let grid =
+            PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
         for rx in [1u16, 3] {
             let pc = grid
                 .cell(rx, 0)
@@ -7586,10 +7559,8 @@ fn test_layered_astar_can_traverse_bridge_after_unrelated_rebuild() {
         &terrain, true, 10,
     ));
 
-    let grid_initial = PathGrid::from_resolved_terrain_with_bridges(
-        sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
-    );
+    let grid_initial =
+        PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
     let path_initial = crate::sim::pathfinding::find_layered_path(
         &grid_initial,
         None,
@@ -7611,10 +7582,8 @@ fn test_layered_astar_can_traverse_bridge_after_unrelated_rebuild() {
 
     // Simulate canonical navigation publication after an unrelated structure
     // or overlay-authority change.
-    let grid_after_rebuild = PathGrid::from_resolved_terrain_with_bridges(
-        sim.resolved_terrain.as_ref().unwrap(),
-        sim.bridge_state.as_ref(),
-    );
+    let grid_after_rebuild =
+        PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
     let path_after_rebuild = crate::sim::pathfinding::find_layered_path(
         &grid_after_rebuild,
         None,

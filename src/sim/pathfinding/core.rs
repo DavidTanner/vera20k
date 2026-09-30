@@ -27,7 +27,6 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::theater::TilesetLookup;
 use crate::map::tube_facts::{TubeId, TubeSource};
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
-use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::movement::locomotor::MovementLayer;
 use std::cell::RefCell;
 use std::cmp::Reverse;
@@ -1803,7 +1802,6 @@ pub struct LayeredPathStep {
 /// Derived path state is separate from structure occupancy and zone history.
 fn project_terrain_path_cell(
     cell: &crate::map::resolved_terrain::ResolvedTerrainCell,
-    bridge_state: Option<&BridgeRuntimeState>,
 ) -> (PathCell, u8, bool) {
     let bridge_structural = cell.bridge_facts.has_structural_bridge()
         || (cell.has_bridge_deck
@@ -1813,10 +1811,11 @@ fn project_terrain_path_cell(
             && cell.bridge_facts.family == crate::map::bridge_facts::BridgeStampFamily::None);
     // Original47E470 stamps structural side cells without giving each its own
     // overlay (bridge_constructor success25: flags0x11300, overlay-1). Raw100
-    // already admits that deck; sprite availability is only a legacy fallback.
+    // already admits that deck; a live bridge sprite is only a legacy fallback
+    // for decks that carry no bit0x100.
     let bridge_intact = cell.bridge_facts.has_structural_bridge()
         || !bridge_structural
-        || bridge_state.map_or(true, |state| state.is_bridge_walkable(cell.rx, cell.ry));
+        || crate::sim::bridge_state::cell_render_state(cell.bridge_facts).is_some();
     let path_cell = PathCell {
         // Walkability rules (matching old PathGrid::from_resolved_terrain):
         // - Overlay blocks / terrain object blocks → blocked
@@ -1864,10 +1863,7 @@ fn project_terrain_path_cell(
             cell.bridge_transition
         },
         ground_level: cell.level,
-        bridge_deck_level: bridge_state
-            .and_then(|state| state.cell(cell.rx, cell.ry))
-            .map(|runtime| runtime.deck_level)
-            .unwrap_or(cell.bridge_deck_level),
+        bridge_deck_level: cell.bridge_deck_level,
         slope_type: cell.slope_type,
         tube_index: cell.tube_index,
         low_bridge_tube_cell: cell.is_low_bridge_tube_cell(),
@@ -2180,7 +2176,7 @@ impl PathGrid {
 
     /// Build from resolved terrain without bridge data.
     pub fn from_resolved_terrain(terrain: &ResolvedTerrainGrid) -> Self {
-        Self::from_resolved_terrain_with_bridges(terrain, None)
+        Self::from_resolved_terrain_with_bridges(terrain)
     }
 
     /// Build from resolved terrain with bridge metadata.
@@ -2190,10 +2186,7 @@ impl PathGrid {
     /// is handled by TerrainCostGrid (cost=0 blocks ground units in A*).
     /// This preserves the behavior of the old flat PathGrid where Float/Hover/
     /// Amphibious units could path through water via cost > 0.
-    pub fn from_resolved_terrain_with_bridges(
-        terrain: &ResolvedTerrainGrid,
-        bridge_state: Option<&BridgeRuntimeState>,
-    ) -> Self {
+    pub fn from_resolved_terrain_with_bridges(terrain: &ResolvedTerrainGrid) -> Self {
         let size = terrain.width() as usize * terrain.height() as usize;
         let mut cells = vec![DEFAULT_BLOCKED_CELL; size];
         // Retail terrain occupation is a per-cell *sub-cell* mask that only the
@@ -2204,7 +2197,7 @@ impl PathGrid {
         let mut ground_walkable_without_terrain_object = vec![false; size];
         for cell in terrain.iter() {
             let (path_cell, bits, walkable_without_terrain_object) =
-                project_terrain_path_cell(cell, bridge_state);
+                project_terrain_path_cell(cell);
             let index = cell.ry as usize * terrain.width() as usize + cell.rx as usize;
             if let Some(slot) = cells.get_mut(index) {
                 *slot = path_cell;
@@ -2231,14 +2224,13 @@ impl PathGrid {
     pub(crate) fn refresh_resolved_cell(
         &mut self,
         cell: &crate::map::resolved_terrain::ResolvedTerrainCell,
-        bridge_state: Option<&BridgeRuntimeState>,
         structure_blocked: bool,
     ) -> bool {
         if cell.rx >= self.width || cell.ry >= self.height {
             return false;
         }
         let index = usize::from(cell.ry) * usize::from(self.width) + usize::from(cell.rx);
-        let (path_cell, bits, without_terrain) = project_terrain_path_cell(cell, bridge_state);
+        let (path_cell, bits, without_terrain) = project_terrain_path_cell(cell);
         self.cells[index] = path_cell;
         if let Some(slot) = self.terrain_object_cell_bits.get_mut(index) {
             *slot = bits;
@@ -2257,15 +2249,13 @@ impl PathGrid {
     pub(crate) fn resolved_cell_is_current(
         &self,
         cell: &crate::map::resolved_terrain::ResolvedTerrainCell,
-        bridge_state: Option<&BridgeRuntimeState>,
         structure_blocked: bool,
     ) -> bool {
         if cell.rx >= self.width || cell.ry >= self.height {
             return false;
         }
         let index = usize::from(cell.ry) * usize::from(self.width) + usize::from(cell.rx);
-        let (mut projected, bits, mut without_terrain) =
-            project_terrain_path_cell(cell, bridge_state);
+        let (mut projected, bits, mut without_terrain) = project_terrain_path_cell(cell);
         if structure_blocked {
             projected.ground_walkable = false;
             without_terrain = false;
