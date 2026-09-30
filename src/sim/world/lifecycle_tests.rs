@@ -1458,7 +1458,7 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert!(aircraft.locomotor.as_ref().unwrap().altitude > SimFixed::from_num(0));
@@ -1490,7 +1490,7 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
         .unwrap()
         .position
         .exact_z_leptons = Some(1);
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1527,7 +1527,7 @@ fn gsi_05_05_fly_takeoff_commits_absolute_z_after_remove_process() {
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     let altitude = aircraft
@@ -1565,7 +1565,7 @@ fn gsi_05_05_fly_landing_on_bridge_uses_absolute_z_for_deck_put() {
         locomotor.begin_fly_landing();
         locomotor.set_fly_target_height(0);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1642,7 +1642,7 @@ fn gsi_05_05_mapless_fly_uses_dummy_ground_then_bridge_height() {
     }
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 2, 128, 128));
 
-    sim.tick_air_movement_with_cell_lists_one(1, None);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1678,7 +1678,7 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     let shared_bucket = second.air_spatial_bucket;
     let second_order = second.air_spatial_enter_order;
 
-    sim.tick_air_movement_with_cell_lists_one(20, None);
+    sim.tick_air_movement_with_cell_lists_one(20, None, None);
     assert_eq!(
         sim.substrate
             .entities
@@ -1690,7 +1690,7 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     );
 
     sim.substrate.entities.get_mut(20).unwrap().position.rx = 12;
-    sim.tick_air_movement_with_cell_lists_one(20, None);
+    sim.tick_air_movement_with_cell_lists_one(20, None, None);
     let crossed = sim.substrate.entities.get(20).unwrap();
     assert_ne!(crossed.air_spatial_bucket, shared_bucket);
     assert!(crossed.air_spatial_enter_order > second_order);
@@ -7436,7 +7436,7 @@ fn production_air_wrapper_keeps_fly_exact_producer_and_reads_live_dummy_for_lega
             .as_mut()
             .unwrap()
             .set_fly_target_height((SimFixed::from_num(expected - ground - 416)).to_num::<i32>());
-        sim.tick_air_movement_with_cell_lists_one(1, None);
+        sim.tick_air_movement_with_cell_lists_one(1, None, None);
         let e = sim.substrate.entities.get(1).unwrap();
         assert_eq!(e.position.exact_z_leptons, Some(expected));
         assert_eq!(sim.foot_navigation_coordinate(1).unwrap().z, expected);
@@ -7469,7 +7469,7 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         sim
     }
     let mut direct = fixture();
-    assert!(direct.tick_jumpjet_cruise_one(1, None).is_some());
+    assert!(direct.tick_jumpjet_cruise_one(1, None, None).is_some());
     let expected = direct
         .substrate
         .entities
@@ -7495,7 +7495,7 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         SimFixed::from_num(0)
     );
     let mut wrapped = fixture();
-    wrapped.tick_air_movement_with_cell_lists_one(1, None);
+    wrapped.tick_air_movement_with_cell_lists_one(1, None, None);
     assert_eq!(
         wrapped
             .substrate
@@ -7543,7 +7543,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         fly.current_speed = SIM_ONE;
         fly.target_speed = SIM_ONE;
         assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), None,));
-        sim.tick_air_movement_with_cell_lists_one(1, None);
+        sim.tick_air_movement_with_cell_lists_one(1, None, None);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
         let moved_z = entity.position.exact_z_leptons.unwrap();
@@ -7574,7 +7574,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             for instance in [&mut sim, &mut restored] {
                 instance.session.tick = frame;
                 instance.session.binary_frame = frame as u32;
-                instance.tick_air_movement_with_cell_lists_one(1, None);
+                instance.tick_air_movement_with_cell_lists_one(1, None, None);
             }
             assert_eq!(restored.state_hash(), sim.state_hash());
             let entity = sim.substrate.entities.get(1).unwrap();
@@ -7853,7 +7853,7 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     sim.substrate
         .display
         .submit(id, Some(DisplayLayer::TOP), &|_| 0);
-    sim.tick_air_movement_with_cell_lists_one(id, None);
+    sim.tick_air_movement_with_cell_lists_one(id, None, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 
     // A real changed query re-submits even if cached membership is absent.

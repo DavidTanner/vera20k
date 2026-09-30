@@ -412,11 +412,8 @@ impl Simulation {
     }
 
     /// `vt+0x1AC Can_Enter_Cell(cell, -1, -1, NULL, 1)` is not "move ok"
-    /// (non-zero) for `member`: Infantry `0x0051BF90`, Unit `0x0073F0A0`.
-    ///
-    /// RESIDUAL: Aircraft `0x004196B0` is not consulted; an aircraft member
-    /// can always enter the centre cell. No retail base-guard TaskForce holds
-    /// one.
+    /// (non-zero) for `member`, by its class's own answer
+    /// ([`Simulation::mover_can_enter`]). An answer VERA cannot read admits.
     fn team_member_refuses_cell(
         &self,
         member: u64,
@@ -427,24 +424,14 @@ impl Simulation {
         let TeamTarget::Cell { x, y } = cell else {
             return false;
         };
-        let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return false;
-        };
-        let foot = self.substrate.entities.get(member).is_some_and(|entity| {
-            matches!(
-                entity.category,
-                EntityCategory::Infantry | EntityCategory::Unit
-            )
-        });
-        foot && self
-            .foot_can_enter(
-                member,
-                terrain.native_cell_identity((x, y)),
-                crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
-                rules,
-                registry,
-            )
-            .is_ok_and(|code| code != 0)
+        self.mover_can_enter(
+            member,
+            (x, y),
+            crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+            rules,
+            registry,
+        )
+        .is_ok_and(|code| code != 0)
     }
 
     /// `Regroup @ 0x006EB870`: each live member not yet joined joins when
@@ -749,5 +736,39 @@ impl Simulation {
             [to.x, to.y, to.z],
             building,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TeamTarget;
+
+    /// The centre's closest member refuses it by its own `Can_Enter_Cell`
+    /// (`vt+0x1AC`), an Aircraft's `0x004196B0` included: in game mode 0 the
+    /// current house's aircraft refuses a cell whose ground its house has not
+    /// mapped.
+    #[test]
+    fn an_aircraft_member_refuses_a_shrouded_centre() {
+        let (mut sim, rules, registry) = crate::sim::world::entry_test_fixture::fixture();
+        let hornet = sim
+            .spawn_object("HORNET", "Americans", 17, 15, 0, &rules)
+            .expect("aircraft");
+        sim.substrate
+            .entities
+            .get_mut(hornet)
+            .expect("aircraft")
+            .discovery
+            .owned_by_current_house = true;
+        sim.fog = crate::sim::vision::FogState {
+            width: 33,
+            height: 33,
+            ..Default::default()
+        };
+        let centre = TeamTarget::Cell { x: 12, y: 12 };
+        assert!(sim.team_member_refuses_cell(hornet, centre, &rules, Some(&registry)));
+
+        let owner = sim.interner.intern("Americans");
+        crate::sim::vision::reveal_radius(&mut sim.fog, owner, 12, 12, 2);
+        assert!(!sim.team_member_refuses_cell(hornet, centre, &rules, Some(&registry)));
     }
 }

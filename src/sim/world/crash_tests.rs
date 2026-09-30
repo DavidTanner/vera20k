@@ -295,7 +295,7 @@ fn crash_fall_matches_native_frames_to_the_impact() {
                     ),
                     RevealOutcome::Revealed { .. }
                 ));
-                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
                 assert!(stats.impact, "{name}: impact frame {n}");
                 let entity = sim.substrate.entities.get(1).unwrap();
                 let xy = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
@@ -332,7 +332,7 @@ fn crash_fall_matches_native_frames_to_the_impact() {
                 assert!(calls.iter().any(|c| c["call"] == "fire_death_weapon"));
                 assert!(calls.iter().any(|c| c["call"] == "uninit"));
             } else {
-                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+                let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
                 assert!(!stats.impact, "{name}: early impact at frame {n}");
                 let entity = sim.substrate.entities.get(1).unwrap();
                 let xy = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
@@ -1014,7 +1014,7 @@ fn a_jumpjet_shot_down_after_its_order_dropped_reaches_the_ground() {
     {
         assert!(frame < 1200, "the cruise never left the hover cell");
         sim.session.binary_frame = frame;
-        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         frame += 1;
     }
     let runtime = |sim: &Simulation| {
@@ -1034,7 +1034,7 @@ fn a_jumpjet_shot_down_after_its_order_dropped_reaches_the_ground() {
     let here = (entity.position.rx, entity.position.ry);
     entity.movement_target = None;
     sim.session.binary_frame = frame;
-    sim.tick_air_movement_with_cell_lists_one(1, Some(&rules));
+    sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
     let stopped = runtime(&sim);
     assert!(stopped.moving, "Stop_Moving keeps the moving byte");
     assert_eq!(
