@@ -25,8 +25,8 @@ use crate::sim::occupancy::{
 use crate::sim::particles::ParticleSystemStore;
 use crate::sim::voxel_anim::VoxelAnimStore;
 
-/// Monotonic source for rebuilt CellClass-style object-list (enter) order. Each
-/// entity stores the last value assigned when it entered a cell list; this counter
+/// Monotonic source for the AirTracker's registration order. Each airborne
+/// entity stores the value assigned when it entered its bucket; this counter
 /// hands out the next one. The sole mutator is `next()` — callers cannot mis-increment
 /// or skip the saturating semantics. Serialized + hashed at its `ObjectSubstrate` field
 /// (a `#[serde(transparent)]` + derived-`Hash` newtype is byte- and hash-identical to the
@@ -49,8 +49,8 @@ impl EnterOrderCounter {
         order
     }
 
-    /// Next value that will be handed out. Snapshot restoration uses this to
-    /// reject a counter that could reuse an already-restored cell-entry order.
+    /// Next value that will be handed out.
+    #[cfg(test)]
     pub(crate) const fn current(self) -> u64 {
         self.0
     }
@@ -82,9 +82,9 @@ pub(crate) struct ObjectSubstrate {
     /// draws the next value; a stale reference degrades to `None` rather than
     /// aliasing a reused slot.
     pub(crate) next_stable_object_id: u64,
-    /// Monotonic source for CellClass-style object-list (enter) order and the
-    /// independently ordered AirTracker. See `EnterOrderCounter`.
-    pub(crate) next_occupancy_enter_order: EnterOrderCounter,
+    /// Monotonic source for the independently ordered AirTracker. Cell lists
+    /// keep their own insertion order. See `EnterOrderCounter`.
+    pub(crate) next_air_tracker_order: EnterOrderCounter,
     /// LogicClass active-object vector — the authority on AI visitation order.
     /// Tail-append on reveal, compacting-remove on conceal. Serialized verbatim.
     #[serde(default)]
@@ -151,7 +151,7 @@ impl ObjectSubstrate {
     pub(crate) fn new() -> Self {
         Self {
             next_stable_object_id: 1,
-            next_occupancy_enter_order: EnterOrderCounter::new(),
+            next_air_tracker_order: EnterOrderCounter::new(),
             logic: LogicVector::new(),
             display: Default::default(),
             occupancy: OccupancyGrid::new(),
@@ -185,21 +185,6 @@ impl ObjectSubstrate {
             return Err(SnapshotRestoreError::ObjectIdCounterBehind {
                 next_id: self.next_stable_object_id,
                 highest_id,
-            });
-        }
-
-        let highest_order = self
-            .entities
-            .values()
-            .filter(|entity| entity.lifecycle.cell_marked)
-            .map(|entity| entity.occupancy_enter_order)
-            .max()
-            .unwrap_or(0);
-        let next_order = self.next_occupancy_enter_order.current();
-        if next_order <= highest_order {
-            return Err(SnapshotRestoreError::OccupancyOrderCounterBehind {
-                next_order,
-                highest_order,
             });
         }
 

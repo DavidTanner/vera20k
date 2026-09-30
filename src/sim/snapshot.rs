@@ -751,7 +751,9 @@ use crate::sim::world::Simulation;
 // saves the installed slot the stash's own kind already records.
 // 258 -> 259: bridge cells no longer save a bridgehead anchor class; the
 // bridgehead branch writes CellClass tiles and the draw reads them.
-const SNAPSHOT_VERSION: u32 = 259;
+// 259 -> 260: an entity no longer saves bridge_occupancy or a ground cell
+// enter order; the enter-order counter serves only the AirTracker.
+const SNAPSHOT_VERSION: u32 = 260;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -895,10 +897,6 @@ pub enum SnapshotRestoreError {
     },
     #[error("next object id {next_id} is not after the highest restored object id {highest_id}")]
     ObjectIdCounterBehind { next_id: u64, highest_id: u64 },
-    #[error(
-        "next occupancy-enter order {next_order} is not after the highest restored order {highest_order}"
-    )]
-    OccupancyOrderCounterBehind { next_order: u64, highest_order: u64 },
     #[error("LogicVector contains duplicate object id {object_id}")]
     DuplicateLogicIdentity { object_id: u64 },
     #[error("LogicVector object id {object_id} has no restored registry identity")]
@@ -3645,7 +3643,8 @@ mod tests {
         // inert paradrop latches.
         // 257 -> 258: the stash saves the complete suspended locomotor.
         // 258 -> 259: no bridgehead anchor class.
-        assert_eq!(super::SNAPSHOT_VERSION, 259);
+        // 259 -> 260: no bridge_occupancy or ground enter order.
+        assert_eq!(super::SNAPSHOT_VERSION, 260);
     }
 
     #[test]
@@ -4043,7 +4042,6 @@ mod tests {
             &mut restored.substrate.occupancy,
             &mut restored.substrate.cell_occupation,
             &mut restored.substrate.raw_cell_occupation,
-            &mut restored.substrate.next_occupancy_enter_order,
             &mut restored.scenario_rng,
             52,
             52,

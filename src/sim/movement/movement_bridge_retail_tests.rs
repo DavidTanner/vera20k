@@ -167,7 +167,6 @@ struct TickRow {
     cell: (u16, u16),
     z: u8,
     on_bridge: bool,
-    occupancy_deck: Option<u8>,
     terrain_level: u8,
     structural: bool,
     bridge_walkable: bool,
@@ -268,19 +267,16 @@ fn print_inventory(grid: &PathGrid, span: &HighBridgeSpan) {
 /// The per-frame observation table both crossing drivers print.
 fn print_tick_table(rows: &[TickRow]) {
     println!(
-        "\ntick  cell        z  on_bridge  occ_deck  terrain  deck?  walkable  lowtube  stored_deck  layer   prefix_z  expect_z  ok"
+        "\ntick  cell        z  on_bridge  terrain  deck?  walkable  lowtube  stored_deck  layer   prefix_z  expect_z  ok"
     );
     for row in rows {
         println!(
-            "{:5} ({:3},{:3}) {:3}  {:9}  {:8}  {:7}  {:5}  {:8}  {:7}  {:11}  {:6}  {:8}  {:8}  {}",
+            "{:5} ({:3},{:3}) {:3}  {:9}  {:7}  {:5}  {:8}  {:7}  {:11}  {:6}  {:8}  {:8}  {}",
             row.tick,
             row.cell.0,
             row.cell.1,
             row.z,
             row.on_bridge,
-            row.occupancy_deck
-                .map(|d| d.to_string())
-                .unwrap_or_else(|| "-".to_string()),
             row.terrain_level,
             row.structural,
             row.bridge_walkable,
@@ -981,7 +977,6 @@ fn drive_across_high_bridge_with_order(
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -1102,12 +1097,6 @@ fn drive_across_high_bridge_with_order(
         assert_ne!(
             row.z, span.deck_terrain_level,
             "tank dropped to the terrain under the bridge at {:?}: {row:?}",
-            row.cell
-        );
-        assert_eq!(
-            row.occupancy_deck,
-            Some(row.z),
-            "BridgeOccupancy.deck_level disagrees with position.z at {:?}: {row:?}",
             row.cell
         );
     }
@@ -1493,8 +1482,7 @@ fn print_low_inventory(terrain: &ResolvedTerrainGrid, grid: &PathGrid, span: &Lo
 /// to set it, `Set_Height_On_Bridge` would add four levels of nothing and float
 /// the mover over a flat span. Asserting only "z == ground" would pass a
 /// hypothetical implementation that sets `on_bridge` and then re-derives z from
-/// it, so both halves are checked, plus the absence of a `BridgeOccupancy`
-/// entry, which is the third place the deck term is stored.
+/// it, so both halves are checked.
 fn assert_low_span_invariant(rows: &[TickRow], deck_frames: &[&TickRow]) {
     let violations: Vec<&TickRow> = rows.iter().filter(|row| !row.holds_invariant()).collect();
     assert!(
@@ -1522,11 +1510,6 @@ fn assert_low_span_invariant(rows: &[TickRow], deck_frames: &[&TickRow]) {
             i16::from(row.z as i8),
             i16::from(row.terrain_level as i8),
             "the mover is not at ground height on low deck cell {:?}: {row:?}",
-            row.cell
-        );
-        assert_eq!(
-            row.occupancy_deck, None,
-            "a low deck cell {:?} produced a BridgeOccupancy entry: {row:?}",
             row.cell
         );
         assert_eq!(
@@ -1724,7 +1707,6 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -1947,7 +1929,7 @@ fn infantry_crosses_lostlake_low_bridge_at_ground_height() {
 /// y=136 and hovers open water to y=143 before rejoining, covering 6 of 14. Both
 /// are legitimate. What this row therefore settles is that an ordinary Move
 /// across a low span is accepted, that the mover holds ground height with no
-/// `on_bridge` and no `BridgeOccupancy` on every deck cell it does use, and that
+/// `on_bridge` on every deck cell it does use, and that
 /// it arrives — not that it needed the bridge.
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
@@ -2084,8 +2066,7 @@ fn tank_crosses_hills_high_bridge_at_deck_height() {
 /// crossing, holding the Hover mover to exactly what the Drive crossings assert:
 /// it reaches the deck at all, stands mid-span rather than only on the end
 /// cells, and on every deck frame carries `on_bridge`, `z == terrain + 4`, a
-/// height that is not the riverbed, and a `BridgeOccupancy` agreeing with its
-/// own `z`. `drive_across_high_bridge` also now asserts arrival at the far
+/// height that is not the riverbed. `drive_across_high_bridge` also now asserts arrival at the far
 /// approach, so a mover that reaches the deck and then dies mid-span fails.
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
@@ -2376,7 +2357,6 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -2704,8 +2684,8 @@ fn find_collapse_gap(grid: &PathGrid) -> Option<CollapseGap> {
 ///
 /// 1. The native height model holds on every frame, so a mover that did end up
 ///    in the hole would have to be at the riverbed level, not floating.
-/// 2. No frame puts the mover on a gap cell carrying `on_bridge`, a
-///    `BridgeOccupancy` entry, or deck height — that is "driving into the gap",
+/// 2. No frame puts the mover on a gap cell carrying `on_bridge` or deck
+///    height — that is "driving into the gap",
 ///    and it is the failure the row names.
 /// 3. If the order was accepted and the mover arrived, it arrived by a route
 ///    that satisfies (2) — a legitimate way round.
@@ -2831,11 +2811,6 @@ fn tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it() {
             !row.on_bridge,
             "the mover stood in the collapse gap at {:?} carrying on_bridge — it drove onto a \
              deck that is not there: {row:?}",
-            row.cell
-        );
-        assert_eq!(
-            row.occupancy_deck, None,
-            "the mover took a BridgeOccupancy entry inside the collapse gap at {:?}: {row:?}",
             row.cell
         );
         assert_ne!(
@@ -3555,20 +3530,15 @@ impl UnderSpanRun {
 /// OnBridge clear, plus the two other places the deck term is stored.
 ///
 /// A mover under a span occupies the same cell as the deck above it, so the only
-/// thing separating the two states is this triple: no `on_bridge` flag, no
-/// `BridgeOccupancy` entry, and `position.z` at the cell's own ground level
-/// rather than `ground + 4`. All three are asserted, because any one alone would
+/// thing separating the two states is this pair: no `on_bridge` flag and
+/// `position.z` at the cell's own ground level rather than `ground + 4`. Both
+/// are asserted, because either one alone would
 /// pass an implementation that got the other two wrong.
 fn assert_under_span_invariant(frames: &[&TickRow]) {
     for row in frames {
         assert!(
             !row.on_bridge,
             "under-span frame on {:?} carries on_bridge: {row:?}",
-            row.cell
-        );
-        assert_eq!(
-            row.occupancy_deck, None,
-            "under-span frame on {:?} produced a BridgeOccupancy entry: {row:?}",
             row.cell
         );
         assert_eq!(
@@ -3651,7 +3621,6 @@ fn record_until(
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -4294,8 +4263,8 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
     let deck_rows = record_until(&mut scenario, deck_id, shared);
     let deck_last = *deck_rows.last().expect("deck mover recorded frames");
     println!(
-        "deck mover finished at {:?} z={} on_bridge={} occ={:?}",
-        deck_last.cell, deck_last.z, deck_last.on_bridge, deck_last.occupancy_deck
+        "deck mover finished at {:?} z={} on_bridge={}",
+        deck_last.cell, deck_last.z, deck_last.on_bridge
     );
     assert_eq!(
         deck_last.cell, shared,
@@ -4324,21 +4293,15 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
         );
         return;
     };
-    let (under_z, under_on_bridge, under_occ) = {
+    let (under_z, under_on_bridge) = {
         let entity = scenario
             .sim()
             .entities()
             .get(under_id)
             .expect("under mover present");
-        (
-            entity.position.z,
-            entity.on_bridge,
-            entity.bridge_occupancy.map(|occ| occ.deck_level),
-        )
+        (entity.position.z, entity.on_bridge)
     };
-    println!(
-        "under mover placed on {shared:?}: z={under_z} on_bridge={under_on_bridge} occ={under_occ:?}"
-    );
+    println!("under mover placed on {shared:?}: z={under_z} on_bridge={under_on_bridge}");
 
     // Both entities exist, on one cell, at two heights.
     let deck_still = scenario
@@ -4361,7 +4324,6 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
         "the under mover is not at the cell's own ground level"
     );
     assert!(!under_on_bridge, "the under mover carries on_bridge");
-    assert_eq!(under_occ, None, "the under mover holds a BridgeOccupancy");
     assert_ne!(
         under_z, deck_still.position.z,
         "the two movers share one height on one cell"

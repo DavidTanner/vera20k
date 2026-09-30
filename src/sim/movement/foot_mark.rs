@@ -67,7 +67,6 @@ impl Simulation {
                 return None;
             }
             entity.lifecycle.cell_marked = true;
-            entity.occupancy_enter_order = self.substrate.next_occupancy_enter_order.next();
             let cell = (entity.position.rx, entity.position.ry);
             self.substrate.occupancy.add(
                 cell.0,

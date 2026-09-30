@@ -1549,7 +1549,7 @@ impl OccupancyGrid {
     pub fn rebuild(entities: &crate::sim::entity_store::EntityStore) -> Self {
         let mut grid = Self::new();
         let mut ordered: Vec<&GameEntity> = entities.values().collect();
-        ordered.sort_by_key(|entity| (entity.occupancy_enter_order, entity.stable_id()));
+        ordered.sort_by_key(|entity| entity.stable_id());
         for entity in ordered {
             // Global storage, native-alive, limbo, and cell-list membership are
             // independent facts. Only an object whose Mark transaction succeeded
@@ -2686,39 +2686,6 @@ mod tests {
             .map(|o| o.entity_id)
             .collect();
         assert_eq!(ids, vec![2, 1, 100]);
-    }
-
-    #[test]
-    fn rebuild_uses_cell_entry_order_not_stable_id_order() {
-        let mut entities = crate::sim::entity_store::EntityStore::new();
-        let mut structure =
-            crate::sim::game_entity::GameEntity::test_default(100, "GAPOWR", "Allies", 5, 5);
-        structure.category = EntityCategory::Structure;
-        structure.occupancy_enter_order = 1;
-        structure.lifecycle.cell_marked = true;
-        let mut older_mobile =
-            crate::sim::game_entity::GameEntity::test_default(50, "MTNK", "Allies", 5, 5);
-        older_mobile.category = EntityCategory::Unit;
-        older_mobile.occupancy_enter_order = 2;
-        older_mobile.lifecycle.cell_marked = true;
-        let mut newer_mobile =
-            crate::sim::game_entity::GameEntity::test_default(10, "HTNK", "Allies", 5, 5);
-        newer_mobile.category = EntityCategory::Unit;
-        newer_mobile.occupancy_enter_order = 3;
-        newer_mobile.lifecycle.cell_marked = true;
-
-        entities.insert(newer_mobile);
-        entities.insert(older_mobile);
-        entities.insert(structure);
-
-        let grid = OccupancyGrid::rebuild(&entities);
-        let ids: Vec<u64> = grid
-            .get(5, 5)
-            .unwrap()
-            .iter_layer(MovementLayer::Ground)
-            .map(|o| o.entity_id)
-            .collect();
-        assert_eq!(ids, vec![10, 50, 100]);
     }
 
     #[test]

@@ -22,9 +22,9 @@ use crate::sim::cloak_disguise::{CloakRuntime, DisguiseRuntime};
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::{
-    BridgeOccupancy, BuildingDown, BuildingUp, C4PlantState, DriveLocomotionRuntime,
-    HarvestOverlay, Health, MovementTarget, NavigationState, OrderIntent, PendingC4Detonation,
-    Position, RockingState, ShipLocomotionRuntime, VoxelAnimation,
+    BuildingDown, BuildingUp, C4PlantState, DriveLocomotionRuntime, HarvestOverlay, Health,
+    MovementTarget, NavigationState, OrderIntent, PendingC4Detonation, Position, RockingState,
+    ShipLocomotionRuntime, VoxelAnimation,
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
 use crate::sim::deploy::DeployPhase;
@@ -626,11 +626,6 @@ pub struct GameEntity {
     /// stand in for native-alive or `dying`.
     #[serde(default)]
     pub destruction_recorded: bool,
-    /// Monotonic order of the last successful insertion into a CellClass-style
-    /// object list. Serialized because `OccupancyGrid` is a rebuilt cache; this
-    /// is the authoritative fact needed to reconstruct its linked-list order.
-    #[serde(default)]
-    pub occupancy_enter_order: u64,
     /// Bucket membership in gamemd's independent 20 x 20 airborne-object
     /// spatial grid. Air movement updates this only on entry, exit, or a real
     /// bucket crossing; the ordinary cell-list insertion order is separate.
@@ -876,8 +871,6 @@ pub struct GameEntity {
     /// Eight fixed AnimClass ownership slots at Building+0x5C8..+0x5E4.
     #[serde(default)]
     pub damage_fire_anim_ids: [Option<crate::sim::anim_class::AnimId>; 8],
-    /// Bridge deck occupancy marker.
-    pub bridge_occupancy: Option<BridgeOccupancy>,
     /// Persistent bridge layer flag — authoritative source for "is this entity on a bridge?"
     /// Mirrors original engine's FootClass+0x8C. Survives repath operations that reset
     /// locomotor.layer. Set during spawn, updated at cell-crossing bridge transitions.
@@ -1646,7 +1639,6 @@ impl GameEntity {
             dirty_rect_eligible: false,
             occupier: false,
             destruction_recorded: false,
-            occupancy_enter_order: stable_id,
             air_spatial_bucket: None,
             air_spatial_enter_order: stable_id,
             locomotor: None,
@@ -1693,7 +1685,6 @@ impl GameEntity {
             building_light: None,
             damage_fire_state_active: false,
             damage_fire_anim_ids: [None; 8],
-            bridge_occupancy: None,
             on_bridge: false,
             runtime_bridge_transition: Default::default(),
             animation: None,

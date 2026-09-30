@@ -178,13 +178,11 @@ impl Simulation {
             cell,
             e.on_bridge,
         );
-        super::movement_bridge::apply_pending_bridge_render_state(
+        super::movement_bridge::apply_bridge_layer_state(
             &mut e.locomotor,
-            &mut e.bridge_occupancy,
             &mut e.on_bridge,
             active_layer,
             update,
-            id,
         );
         ground_pose::commit_ground_height(
             &mut e.position,

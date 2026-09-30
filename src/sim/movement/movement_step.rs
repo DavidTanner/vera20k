@@ -31,7 +31,6 @@ use crate::sim::pathfinding::LayeredEntityBlockMap;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
-use crate::sim::world::EnterOrderCounter;
 use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, fixed_distance};
 use crate::util::lepton::CELL_CENTER_LEPTON;
 
@@ -944,8 +943,6 @@ pub(super) fn process_cell_crossings(
     live_building_entry_skips: &impl BuildingEntrySkipLookup,
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
-    occupancy_enter_order: &mut u64,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     rng: &mut SimRng,
@@ -1481,7 +1478,6 @@ pub(super) fn process_cell_crossings(
                     y: position.sub_y.to_num::<i32>(),
                 },
             ));
-            *occupancy_enter_order = next_occupancy_enter_order.next();
             occupancy.move_entity_layered(
                 old_rx,
                 old_ry,
@@ -1507,8 +1503,6 @@ pub(super) fn process_cell_crossings(
                 drive_locomotion,
                 foot_occupation_enabled,
                 sub_cell,
-                occupancy_enter_order,
-                next_occupancy_enter_order,
                 occupancy,
                 cell_occupation,
                 stats,

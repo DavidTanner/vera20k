@@ -2053,7 +2053,6 @@ fn lifecycle_authority_second_reveal_is_idempotent() {
         }
     );
     let first_position = sim.substrate.entities.get(1).unwrap().position.clone();
-    let first_enter_order = sim.substrate.entities.get(1).unwrap().occupancy_enter_order;
     sim.lifecycle_outputs.clear();
     sim.lifecycle_test_events.clear();
 
@@ -2078,7 +2077,6 @@ fn lifecycle_authority_second_reveal_is_idempotent() {
             first_position.sub_y,
         )
     );
-    assert_eq!(entity.occupancy_enter_order, first_enter_order);
     assert!(sim.substrate.occupancy.contains_entity(10, 20, 1));
     assert!(!sim.substrate.occupancy.contains_entity(30, 40, 1));
     assert_eq!(sim.live_object_order_snapshot(), vec![1]);

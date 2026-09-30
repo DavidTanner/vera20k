@@ -33,7 +33,6 @@ use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::type_handle_table::TypeHandleTable;
-use crate::sim::world::EnterOrderCounter;
 use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, fixed_distance, isqrt_i64,
     native_movement_frame_fraction,
@@ -42,7 +41,7 @@ use crate::util::fixed_math::{
 use super::block_index::{HeldBlockSets, LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
 use super::locomotor::MovementLayer;
-use super::movement_bridge::apply_pending_bridge_render_state;
+use super::movement_bridge::apply_bridge_layer_state;
 use super::movement_occupancy::{
     DeferredBuildingEntrySkips, DeferredCellCheck, MoverBuildingEntryFacts,
     handle_deferred_occupancy,
@@ -1048,7 +1047,6 @@ fn advance_ordinary_mover(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -1478,8 +1476,6 @@ fn advance_ordinary_mover(
                     &deferred_entry_skips.reading(others),
                     occupancy,
                     cell_occupation,
-                    &mut entity.occupancy_enter_order,
-                    next_occupancy_enter_order,
                     stats,
                     finished_entities,
                     rng,
@@ -1492,7 +1488,10 @@ fn advance_ordinary_mover(
                     true,
                 );
                 entity.position = before;
-                entity.runtime_bridge_transition = admission.runtime_bridge_transition;
+                // Foot+0x68B is write-1-only; a pass started from the earlier
+                // snapshot must not clear an admission latch.
+                entity.runtime_bridge_transition.pending_mismatch |=
+                    admission.runtime_bridge_transition.pending_mismatch;
                 if !admission.walk_head_admitted {
                     deferred_cell_check = admission.deferred_cell_check;
                     deferred_wall_override = admission.deferred_wall_override;
@@ -1992,8 +1991,6 @@ fn advance_ordinary_mover(
                     &deferred_entry_skips.reading(others),
                     occupancy,
                     cell_occupation,
-                    &mut entity.occupancy_enter_order,
-                    next_occupancy_enter_order,
                     stats,
                     finished_entities,
                     rng,
@@ -2010,7 +2007,10 @@ fn advance_ordinary_mover(
                         .as_ref()
                         .expect("only Walk can suspend a boundary")
                         .clone();
-                    entity.runtime_bridge_transition = crossing.runtime_bridge_transition;
+                    // Foot+0x68B is write-1-only; a pass started from the earlier
+                    // snapshot must not clear an admission latch.
+                    entity.runtime_bridge_transition.pending_mismatch |=
+                        crossing.runtime_bridge_transition.pending_mismatch;
                     *walk_boundary = Some((entity_id, coord));
                     return;
                 }
@@ -2020,23 +2020,21 @@ fn advance_ordinary_mover(
                 active_layer = crossing.active_layer;
                 debug_events.extend(crossing.debug_events);
                 aborted_for_stuck = crossing.aborted_for_stuck;
-                entity.runtime_bridge_transition = crossing.runtime_bridge_transition;
+                // Foot+0x68B is write-1-only; a pass started from the earlier
+                // snapshot must not clear an admission latch.
+                entity.runtime_bridge_transition.pending_mismatch |=
+                    crossing.runtime_bridge_transition.pending_mismatch;
 
                 // Apply bridge layer state BEFORE computing screen position, so that
-                // the render frame always sees consistent state. Without this, there's
-                // a one-frame window where the unit is in the bridge cell but
-                // bridge_occupancy is still None, causing the renderer to use ground
-                // height interpolation and briefly dip the unit to water level.
+                // the render frame always sees consistent state.
                 if !aborted_for_stuck
                     && !matches!(deferred_cell_check, Some(DeferredCellCheck::Vehicle(_, _)))
                 {
-                    apply_pending_bridge_render_state(
+                    apply_bridge_layer_state(
                         &mut entity.locomotor,
-                        &mut entity.bridge_occupancy,
                         &mut entity.on_bridge,
                         active_layer,
                         pending_bridge_update,
-                        entity_id,
                     );
                 }
 
@@ -2044,25 +2042,6 @@ fn advance_ordinary_mover(
                 // change was a workaround for the broken reactive heuristic. The
                 // cell-flag predicate now makes the layer transition at the cell
                 // boundary exactly, never anticipatorily — see movement_bridge.rs.)
-
-                // DIAGNOSTIC: detect unexpected z-drop on bridge cells.
-                // If bridge_occupancy is set but z is at ground level, something
-                // cleared z without clearing bridge_occupancy (or vice versa).
-                if let Some(ref bocc) = entity.bridge_occupancy {
-                    if entity.position.z + 2 < bocc.deck_level {
-                        log::error!(
-                            "BRIDGE_DIAG entity={}: Z BELOW DECK! z={} deck={} \
-                     cell=({},{}) layer={:?} bridge_occ={:?}",
-                            entity_id,
-                            entity.position.z,
-                            bocc.deck_level,
-                            entity.position.rx,
-                            entity.position.ry,
-                            active_layer,
-                            entity.bridge_occupancy,
-                        );
-                    }
-                }
 
                 // Update screen position from lepton coordinates every tick.
 
@@ -2579,7 +2558,6 @@ fn prepare_movement_pass(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     native_frame: u32,
     interner: &mut crate::sim::intern::StringInterner,
@@ -2620,7 +2598,6 @@ fn prepare_movement_pass(
                 occupancy,
                 cell_occupation,
                 raw_cell_occupation,
-                next_occupancy_enter_order,
                 rules,
                 interner,
                 rng,
@@ -2738,7 +2715,6 @@ pub(crate) fn tick_movement_with_grids(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -2763,7 +2739,6 @@ pub(crate) fn tick_movement_with_grids(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
         rng,
         sim_tick,
         native_frame,
@@ -2794,7 +2769,6 @@ pub(crate) fn tick_movement_object_with_grids(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -2821,7 +2795,6 @@ pub(crate) fn tick_movement_object_with_grids(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
         rng,
         sim_tick,
         native_frame,
@@ -2852,7 +2825,6 @@ fn tick_movement_with_grids_scoped(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -2877,7 +2849,6 @@ fn tick_movement_with_grids_scoped(
     sim.substrate.occupancy = std::mem::take(occupancy);
     sim.substrate.cell_occupation = std::mem::take(cell_occupation);
     sim.substrate.raw_cell_occupation = std::mem::take(raw_cell_occupation);
-    sim.substrate.next_occupancy_enter_order = *next_occupancy_enter_order;
     sim.interner = std::mem::take(interner);
     sim.scenario_rng = rng.clone();
     sim.session.tick = sim_tick;
@@ -2924,7 +2895,6 @@ fn tick_movement_with_grids_scoped(
     *occupancy = sim.substrate.occupancy;
     *cell_occupation = sim.substrate.cell_occupation;
     *raw_cell_occupation = sim.substrate.raw_cell_occupation;
-    *next_occupancy_enter_order = sim.substrate.next_occupancy_enter_order;
     *interner = sim.interner;
     *rng = sim.scenario_rng;
     sound_events.append(&mut sim.sound_events);
@@ -3000,7 +2970,6 @@ impl PendingMovementPass {
         occupancy: &mut OccupancyGrid,
         cell_occupation: &mut CellOccupationGrid,
         raw_cell_occupation: &mut RawCellOccupationGrid,
-        next_occupancy_enter_order: &mut EnterOrderCounter,
         rng: &mut SimRng,
         sim_tick: u64,
         native_frame: u32,
@@ -3079,7 +3048,6 @@ impl PendingMovementPass {
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
             rng,
             sim_tick,
             native_frame,
@@ -3171,7 +3139,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
@@ -3264,7 +3231,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
         rng,
         native_frame,
         interner,
@@ -3290,7 +3256,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
             rng,
             sim_tick,
             native_frame,

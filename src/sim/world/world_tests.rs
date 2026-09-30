@@ -3986,8 +3986,6 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
     assert_eq!(count, 1);
     let e = sim.substrate.entities.get(1).expect("spawned entity");
     assert_eq!(e.position.z, 3);
-    let bridge = e.bridge_occupancy.as_ref().expect("bridge occupancy");
-    assert_eq!(bridge.deck_level, 3);
     assert!(e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Bridge);
@@ -4073,7 +4071,6 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
     );
     let e = sim.substrate.entities.get(1).expect("spawned entity");
     assert_eq!(e.position.z, 1);
-    assert!(e.bridge_occupancy.is_none());
     assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Ground);
@@ -4300,7 +4297,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
         .get(1)
         .expect("surviving bridge unit");
     assert_eq!(e.position.z, 1);
-    assert!(e.bridge_occupancy.is_none());
     assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("locomotor");
     assert_eq!(loco.layer, MovementLayer::Ground);
@@ -4360,7 +4356,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
     );
     assert_eq!(e.position.z, 0, "snapped to ground level");
     assert!(!e.on_bridge);
-    assert!(e.bridge_occupancy.is_none());
     let loco = e.locomotor.as_ref().expect("locomotor");
     assert_eq!(loco.layer, MovementLayer::Ground);
     assert!(e.movement_target.is_none());
@@ -4414,7 +4409,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
     assert_eq!(e.health.current, 300, "DropIn never harms");
     assert_eq!(e.position.z, 0);
     assert!(!e.on_bridge);
-    assert!(e.bridge_occupancy.is_none());
 }
 
 /// Same DropIn correction over a terrain-object-blocked ground cell.
@@ -4465,7 +4459,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
     assert_eq!(e.health.current, 300, "DropIn never harms");
     assert_eq!(e.position.z, 0);
     assert!(!e.on_bridge);
-    assert!(e.bridge_occupancy.is_none());
 }
 
 /// After collapse, the rebuilt path grid reverts the bridge cell to its
@@ -5062,7 +5055,7 @@ fn test_bridge_dispatcher_consumes_one_path_gate_draw_per_non_ion_event() {
 }
 
 #[test]
-fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
+fn test_water_mover_lookahead_does_not_set_on_bridge_under_bridge() {
     let rules = naval_bridge_test_rules();
     let mut sim = Simulation::new();
     let resolved = bridge_cell_with_ground_block(1, 0, 3, true, 0);
@@ -5100,7 +5093,7 @@ fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
         .get(boat_id)
         .expect("boat still exists");
     assert!(
-        boat.bridge_occupancy.is_none(),
+        !boat.on_bridge,
         "Ship under a bridge should stay on the water layer"
     );
     assert_eq!(boat.position.z, 0);

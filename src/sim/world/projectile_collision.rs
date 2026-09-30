@@ -64,7 +64,6 @@ mod tests {
         entity.position.sub_x = SimFixed::from_num(position.x % 256);
         entity.position.sub_y = SimFixed::from_num(position.y % 256);
         entity.position.exact_z_leptons = Some(position.z);
-        entity.occupancy_enter_order = id;
     }
 
     #[test]
@@ -381,11 +380,6 @@ mod tests {
                         EntityCategory::Unit
                     };
                     place(&mut sim, id, position, category);
-                    sim.substrate
-                        .entities
-                        .get_mut(id)
-                        .unwrap()
-                        .occupancy_enter_order = 100 - id;
                     sim.substrate.occupancy.add(
                         1,
                         0,
