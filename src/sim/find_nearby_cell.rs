@@ -29,7 +29,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::occupancy::{OccupancyGrid, RawCellOccupationGrid};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneId};
+use crate::sim::pathfinding::zone_map::ZoneGrid;
 
 /// Hard radius cap for the ring search.
 ///
