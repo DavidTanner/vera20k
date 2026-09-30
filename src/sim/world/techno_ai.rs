@@ -1326,8 +1326,11 @@ fn techno_common_pre(
     if !object_type.disguise_when_still || entity.locomotor.is_none() {
         return;
     }
-    let is_moving =
-        crate::sim::movement::drive_locomotor_is_moving(entity) || entity.movement_target.is_some();
+    // `UnitClass::UpdateDisguise @ 0x007468C0` asks the locomotor's Is_Moving
+    // (ILocomotion+0x10 at `0x007468F4` and `0x0074693D`), not whether an
+    // order is pending. A locomotor that query does not answer (Rocket) reads
+    // as still; no retail `DisguiseWhenStill=` type has one.
+    let is_moving = crate::sim::movement::motion_query::is_moving(entity) == Some(true);
     if is_moving {
         if let Some(disguise) = sim
             .substrate
@@ -7119,6 +7122,10 @@ mod bridge_engineer_entry_tests;
 #[cfg(test)]
 #[path = "techno_ai/bridge_low_repair_tests.rs"]
 mod bridge_low_repair_tests;
+
+#[cfg(test)]
+#[path = "techno_ai/mirage_disguise_tests.rs"]
+mod mirage_disguise_tests;
 
 #[cfg(test)]
 use super::bridge_test_evidence;
