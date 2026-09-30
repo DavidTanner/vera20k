@@ -2348,8 +2348,8 @@ mod tests {
         // the "an enemy scouted past my base" case. The scout is unarmed, so it
         // never shoots and no retaliation can install a target another way.
         let rules = passive_rules();
-        let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0002);
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         sim.spawn_from_map(
             &[
                 passive_map_entity("Americans", "UNARM", 22, 20, EntityCategory::Unit),
@@ -2381,7 +2381,7 @@ mod tests {
             61,
             crate::sim::command::Command::Move {
                 entity_id: 1,
-                target_rx: 55,
+                target_rx: 30,
                 target_ry: 20,
                 queue: false,
             },
@@ -2396,7 +2396,7 @@ mod tests {
         }
         let scout = sim.substrate.entities.get(1).expect("scout present");
         assert!(
-            scout.position.rx > 30,
+            scout.position.rx >= 27, // beyond Range=6 of the tank at 20
             "precondition: the scout actually ran out of the tank's weapon range"
         );
         let soviet = sim.substrate.entities.get(2).expect("soviet tank present");
@@ -2640,8 +2640,8 @@ mod tests {
         // Guard, and the host promotes it — rather than by the derived-reading
         // bridge that used to carry it while the selector stayed stuck on Move.
         let rules = passive_rules();
-        let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0009);
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         sim.spawn_from_map(
             &[
                 passive_map_entity("Americans", "MTNK", 10, 20, EntityCategory::Unit),
@@ -3303,8 +3303,8 @@ mod tests {
         // backs off from 2 cells to 8 — outside the weapon, still plainly in
         // sight. Only the scanner's own re-evaluation can release it there.
         let rules = passive_rules();
-        let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         let mut sim = Simulation::with_seed(0x5CA1_AB1E_0005);
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         sim.spawn_from_map(
             &[
                 passive_map_entity("Soviet", "UNARM", 22, 20, EntityCategory::Unit),

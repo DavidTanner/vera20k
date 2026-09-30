@@ -66,8 +66,8 @@ mod building_coordinate;
 mod cell_arrival;
 mod cell_contact;
 mod drive_locomotion;
-mod foot_coordinate;
 mod foot_approach;
+mod foot_coordinate;
 mod foot_mark;
 mod foot_path;
 #[cfg(test)]
@@ -157,7 +157,7 @@ pub(crate) use drive_locomotion::{drive_do_turn, drive_locomotor_is_moving};
 #[cfg(test)]
 pub(crate) use movement_commands::issue_move_command_with_layered;
 pub use movement_commands::{
-    DestinationTiming, clear_navigation_for_entity, issue_direct_move, issue_move_command,
+    DestinationTiming, clear_navigation_for_entity, issue_move_command,
     stop_navigation_at_committed_head,
 };
 pub(crate) use movement_commands::{
@@ -207,9 +207,6 @@ const PATH_STUCK_INIT: u32 = 10;
 /// **VERA-internal, gamemd equivalent UNCHECKED** — "abs(current_z / HeightStep
 /// - cell.height) >= 3 levels" carries no address and no verified owner.
 const CLIFF_HEIGHT_THRESHOLD: u16 = 3;
-/// Minimum speed as a fraction of max speed during normal braking.
-/// Original engine: 0.3 (30% of max speed).
-const MIN_BRAKE_FRACTION: SimFixed = SimFixed::lit("0.3");
 
 // ---------------------------------------------------------------------------
 // Types — shared across movement submodules
@@ -413,10 +410,6 @@ pub(super) struct MoverSnapshot {
     pub on_bridge: bool,
     pub runtime_bridge_transition: movement_bridge::RuntimeBridgeTransitionState,
     pub locomotor: Option<locomotor::LocomotorState>,
-    /// Mover's `MovementTarget.bypass_grid` flag — when true, structure
-    /// occupants are skipped during the foundation-cross occupancy check
-    /// (harvester dock drive: buildings are not scatter targets).
-    pub bypass_grid: bool,
     /// Whether this mover's current mission is one of the five the original
     /// engine lets bypass sub-cell occupancy: Enter (7), Capture (8), Eaten
     /// (9), Area Guard (11), Patrol (25).
@@ -451,13 +444,6 @@ impl MoverSnapshot {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct PendingCrushKill {
-    pub victim_id: u64,
-    pub crusher_id: u64,
-    pub crush_coord: (i32, i32),
-}
-
 /// Per-tick movement diagnostics — returned by `tick_movement_with_grids`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MovementTickStats {
@@ -468,18 +454,8 @@ pub struct MovementTickStats {
     pub repath_successes: u32,
     /// Scatter calls the pass lane queued for a blocked cell entry.
     pub scatter_requests: u32,
-    pub crush_kills: u32,
-    pub stuck_aborts: u32,
-    /// Track selections triggered for vehicle turns.
-    pub track_selections: u32,
     /// Stuck entities that recovered via repath or scatter.
     pub stuck_recoveries: u32,
-    /// Fresh Drive curve selections refused by the cell-entry predicate, on
-    /// either arm. Counted so a fixture can show the lane was actually
-    /// exercised rather than trivially absent.
-    pub selection_admission_refusals: u32,
-    /// Elapsed microseconds for the entire tick.
-    pub elapsed_us: u64,
 }
 
 impl MovementTickStats {
@@ -490,14 +466,7 @@ impl MovementTickStats {
         self.repath_attempts = self.repath_attempts.saturating_add(other.repath_attempts);
         self.repath_successes = self.repath_successes.saturating_add(other.repath_successes);
         self.scatter_requests = self.scatter_requests.saturating_add(other.scatter_requests);
-        self.crush_kills = self.crush_kills.saturating_add(other.crush_kills);
-        self.stuck_aborts = self.stuck_aborts.saturating_add(other.stuck_aborts);
-        self.track_selections = self.track_selections.saturating_add(other.track_selections);
         self.stuck_recoveries = self.stuck_recoveries.saturating_add(other.stuck_recoveries);
-        self.selection_admission_refusals = self
-            .selection_admission_refusals
-            .saturating_add(other.selection_admission_refusals);
-        self.elapsed_us = self.elapsed_us.saturating_add(other.elapsed_us);
     }
 }
 

@@ -369,12 +369,6 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
             trace.push(json!({"frame":frame,"state":state}));
             previous = state;
         }
-        assert!(
-            !actor
-                .and_then(|e| e.movement_target.as_ref())
-                .is_some_and(|m| m.adapter_route),
-            "ordinary Engineer may not fall back to a supplied bridge route at frame{frame}"
-        );
         repaired = runtime
             .simulation
             .resolved_terrain

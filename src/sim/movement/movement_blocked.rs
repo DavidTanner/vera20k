@@ -31,14 +31,11 @@ use super::{MovementConfig, MovementTickStats, MoverPathFacts, PathfindingContex
 /// escalating.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_blocked_tick(
-    path_replay: &mut crate::sim::components::FootPathQueue,
     target: &mut MovementTarget,
     path_runtime: &mut crate::sim::components::FootPathRuntime,
     // The body heading (`+0x388`) at `mcfg.binary_frame`.
     body_facing: u16,
     locomotor: &Option<LocomotorState>,
-    drive_locomotion: &mut Option<crate::sim::components::DriveLocomotionRuntime>,
-    ship_locomotion: &mut Option<crate::sim::components::ShipLocomotionRuntime>,
     entity_id: u64,
     current_pos: (u16, u16),
     active_layer: MovementLayer,
@@ -210,29 +207,6 @@ pub(super) fn handle_blocked_tick(
             path_runtime.path_blocked = path_blocked;
             path_runtime.blocked_timer = blocked_delay;
         }
-        match locomotor.as_ref().map(|locomotor| locomotor.kind) {
-            Some(crate::rules::locomotor_type::LocomotorKind::Drive) => {
-                if drive_locomotion.is_some() {
-                    super::path_markers::install_path_replay(
-                        path_replay,
-                        current_pos,
-                        &target.path,
-                        target.next_index,
-                    );
-                }
-            }
-            Some(crate::rules::locomotor_type::LocomotorKind::Ship) => {
-                if ship_locomotion.is_some() {
-                    super::path_markers::install_path_replay(
-                        path_replay,
-                        current_pos,
-                        &target.path,
-                        target.next_index,
-                    );
-                }
-            }
-            _ => {}
-        }
         stats.repath_successes = stats.repath_successes.saturating_add(1);
         if facts.is_infantry
             && !locomotor
@@ -371,13 +345,10 @@ mod native_walk_timer_tests {
             let mut finished = Vec::new();
             let mut aborted = false;
             let events = handle_blocked_tick(
-                &mut Default::default(),
                 &mut target,
                 &mut path_runtime,
                 0x4000,
                 &locomotor,
-                &mut None,
-                &mut None,
                 1,
                 (8, 12),
                 MovementLayer::Ground,

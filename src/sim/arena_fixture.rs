@@ -1,5 +1,6 @@
 //! Test-only flat arena: a clear 32x32 map with its playfield, zones and path
-//! grid, for fixtures that order units around through `advance_tick`.
+//! grid, for fixtures that order units around through `advance_tick`, and
+//! the native map inputs a component fixture's Foot Process reads.
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::pathfinding::PathGrid;
@@ -29,6 +30,17 @@ pub(crate) fn flat_ground(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
     const SIZE: u16 = 32;
     sim.session.map_width = SIZE;
     sim.session.map_height = SIZE;
+    sim.install_resolved_terrain_for_new_map(clear_ground(SIZE));
+    sim.playfield_bounds = Some(OPEN_PLAYFIELD);
+    sim.playfield_size_height = Some(20);
+    assert!(sim.rebuild_dynamic_navigation(rules));
+    sim.path_grid_snapshot()
+        .map(|grid| (*grid).clone())
+        .expect("navigation grid")
+}
+
+/// A `size` x `size` grid of clear ground cells.
+fn clear_ground(size: u16) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
     let clear = crate::rules::terrain_rules::SpeedCostProfile {
         foot: Some(100),
         track: Some(100),
@@ -44,19 +56,46 @@ pub(crate) fn flat_ground(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
         cell.base_speed_costs = clear;
         cell
     };
-    sim.install_resolved_terrain_for_new_map(
-        crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
-            SIZE,
-            SIZE,
-            (0..SIZE)
-                .flat_map(|y| (0..SIZE).map(move |x| cell(x, y)))
-                .collect(),
-        ),
-    );
-    sim.playfield_bounds = Some(OPEN_PLAYFIELD);
-    sim.playfield_size_height = Some(20);
-    assert!(sim.rebuild_dynamic_navigation(rules));
-    sim.path_grid_snapshot()
-        .map(|grid| (*grid).clone())
-        .expect("navigation grid")
+    crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+        size,
+        size,
+        (0..size)
+            .flat_map(|y| (0..size).map(move |x| cell(x, y)))
+            .collect(),
+    )
+}
+
+/// Supply whatever native map input a component fixture lacks for a Foot
+/// Process that searches: map cells (clear 64x64 ground), zones and Map Size
+/// for those cells, generous LocalSize bounds, and the path grid. Inputs the
+/// fixture already installed are kept.
+pub(crate) fn supply_native_map(sim: &mut Simulation) {
+    let terrain = sim.resolved_terrain.get_or_insert_with(|| clear_ground(64));
+    let (width, height) = (terrain.width(), terrain.height());
+    let grid = PathGrid::from_resolved_terrain(terrain);
+    let size = (i32::from(width), i32::from(height));
+    if sim.zone_grid.is_none() {
+        sim.zone_grid = Some(
+            crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_bridge_geometry(
+                &grid,
+                terrain,
+                &[],
+                width,
+                height,
+                Some(size),
+            ),
+        );
+    }
+    if sim.playfield_bounds.is_none() {
+        let span = size.0.max(size.1);
+        sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
+            base: size.0,
+            off_fc: -span,
+            off_100: -span,
+            off_104: span * 2,
+            off_108: span * 2,
+        });
+    }
+    sim.playfield_size_height.get_or_insert(size.1);
+    sim.install_fixture_path_grid(Some(&grid));
 }

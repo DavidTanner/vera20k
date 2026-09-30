@@ -97,7 +97,6 @@ fn install_paid_track(sim: &mut Simulation, id: u64) {
         path_layers: vec![MovementLayer::Ground; 2],
         next_index: 1,
         speed: SimFixed::from_num(330),
-        current_speed: SimFixed::from_num(330),
         ..Default::default()
     });
 }

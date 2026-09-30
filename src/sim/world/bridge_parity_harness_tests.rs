@@ -71,6 +71,13 @@ const EXIT_RAMP_X: u16 = 24;
 /// Destination: plain plateau ground on the far bank.
 const APPROACH_B_X: u16 = 25;
 
+/// Synthetic theater tile index of the first high-bridge (BridgeSet) tile.
+const HIGH_BRIDGE_SET_START: u16 = 1000;
+/// BridgeSet slot 6: start and end sub-tile 4, walk direction 2 (east)
+/// (`HIGH_BRIDGE_*` tables in `sim::bridge_state`).
+const HIGH_BRIDGE_EW_OFFSET: u16 = 6;
+const HIGH_BRIDGE_EW_SUB_TILE: u8 = 4;
+
 /// Distinct structural deck cells the tank must actually stand on. Eight exist;
 /// requiring six leaves room for the sub-cell curve to skip an end cell without
 /// letting a fixture that barely touches the span pass.
@@ -90,10 +97,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // 2026-09-23 Drive/Ship Process path request (behavior, not composition):
 // Drive/Ship orders from every producer (player, pursuit, rally, miners) are
 // accepted by the Unit setter without an order-time A*, PowerOn or redirect.
-// This fixture has no native zone topology, so the first Process searches in
-// the legacy inline lane, not the Find_Path owner. The pins move with that
-// state; the RNG stream pins, per-tick replay equality and route tripwires in
-// this file are unchanged. The old values are in the commit that moved them.
+// The fixture then had no native zone topology, so the first Process searched
+// in the since-removed legacy inline lane (see the 2026-10-01 entry below).
+// The pins moved with that state; the RNG stream pins, per-tick replay
+// equality and route tripwires in this file were unchanged. The old values
+// are in the commit that moved them.
 // 2026-09-23 Drive/Ship same-call track-end continuation (behavior): when
 // Process_Track(0) ends a track the same Process runs Process_Movement and
 // Process_Track(1) (residual-only budget; its speed prefix runs again).
@@ -237,7 +245,17 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
 // above unchanged (the probe patch was not committed). Previous:
 // 0x6670_93CF_F88F_7008.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x14B8_172A_D6EA_A02C;
+// 2026-10-01 legacy Drive/Ship lane removed (behavior): the Drive Process now
+// always runs native Find_Path, whose zone precheck (Foot+2CC 0x004D3810 ->
+// Map56D100, `ZoneGrid::can_reach_native`) refused this fixture: with no
+// high-bridge tile no bridge record existed, so the two banks were separate
+// zones and the tank idled on Guard. The fixture now supplies what a map load
+// gives a high bridge: BridgeSet tiles on both bridgeheads, so the production
+// record walk derives the one active record (15,20)-(24,20), plus Map Size
+// and the zone rebuild over it; the crossing runs through native Find_Path.
+// The absolute RNG pins, per-tick replay equality and every route/height/
+// on_bridge tripwire pass unchanged. Previous: 0x14B8_172A_D6EA_A02C.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xB592_E027_A510_DB45;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -369,7 +387,7 @@ fn bridge_resolved_terrain(
             } else {
                 0
             };
-            cells.push(ResolvedTerrainCell {
+            let mut cell = ResolvedTerrainCell {
                 level: path.ground_level,
                 tileset_index: None,
                 speed_costs: clear_costs,
@@ -388,10 +406,21 @@ fn bridge_resolved_terrain(
                     ..Default::default()
                 },
                 ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
+            };
+            // Both bridgeheads carry a theater high-bridge tile, as a map's
+            // IsoMapPack5 does: the map-load record walk (ComputeBridgeZones
+            // 0x0056D6E0, `record_scan::compute_bridge_endpoints`) starts at
+            // the west head and ends at the east one.
+            if ry == SPAN_Y && (rx == ENTRY_RAMP_X || rx == EXIT_RAMP_X) {
+                cell.final_tile_index = i32::from(HIGH_BRIDGE_SET_START + HIGH_BRIDGE_EW_OFFSET);
+                cell.final_sub_tile = HIGH_BRIDGE_EW_SUB_TILE;
+            }
+            cells.push(cell);
         }
     }
-    ResolvedTerrainGrid::from_cells(GRID_W, GRID_H, cells)
+    let mut terrain = ResolvedTerrainGrid::from_cells(GRID_W, GRID_H, cells);
+    terrain.test_set_high_bridge_set_starts(Some(HIGH_BRIDGE_SET_START), None);
+    terrain
 }
 
 fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> MapEntity {
@@ -427,6 +456,25 @@ fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet) {
         64,
         [2, 2, 12, 56],
     ));
+    // A Drive Process searches: the bridge records, zones and Map Size a map
+    // load installs.
+    sim.playfield_size_height = Some(64);
+    sim.bridge_state = Some(
+        crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
+            sim.resolved_terrain.as_ref().unwrap(),
+            true,
+            rules.bridge_rules.strength,
+            (16, 64),
+        ),
+    );
+    let records = sim.bridge_state.as_ref().unwrap().endpoint_records();
+    assert_eq!(records.len(), 1, "one high-bridge record: {records:?}");
+    assert!(records[0].is_high() && records[0].active);
+    assert_eq!(
+        (records[0].endpoint_a, records[0].endpoint_b),
+        ((ENTRY_RAMP_X, SPAN_Y), (EXIT_RAMP_X, SPAN_Y))
+    );
+    assert!(sim.rebuild_dynamic_navigation(rules));
     for (rx, ry) in (APPROACH_A_X..=APPROACH_B_X)
         .map(|rx| (rx, SPAN_Y))
         .chain(std::iter::once((58, 58)))

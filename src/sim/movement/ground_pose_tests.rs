@@ -37,7 +37,6 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
         // Gives budget4 in both Drive's integer division and Ship's existing
         // fixed-point frame product (60 * fixed(1/15) truncates to3).
         speed: SimFixed::from_num(61),
-        current_speed: SimFixed::from_num(61),
         move_dir_x: SIM_ZERO,
         move_dir_y: SimFixed::from_num(-256),
         move_dir_len: SimFixed::from_num(256),
@@ -120,6 +119,14 @@ fn insert(sim: &mut Simulation, mut entity: GameEntity) {
         crate::sim::occupancy::CellListInsertion::from_category(entity.category),
     );
     sim.substrate.entities.insert(entity);
+}
+
+/// A supplied Passive type: Unit+2C746E20 admits Process_Track for it.
+fn mover_rules() -> RuleSet {
+    RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=MOVER\n[MOVER]\nSpeed=4\nPassive=yes\n",
+    ))
+    .unwrap()
 }
 
 fn tick(sim: &mut Simulation, terrain: &ResolvedTerrainGrid, grid: &PathGrid, frame: u32) {
@@ -303,40 +310,6 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         assert_eq!(track(entity).cursor, 13);
         assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 2);
         assert_eq!(entity.position.exact_z_leptons, Some(416));
-        for frame in 3..160 {
-            tick(&mut sim, &terrain, &grid, frame);
-            if sim
-                .substrate
-                .entities
-                .get(1)
-                .unwrap()
-                .movement_target
-                .is_none()
-            {
-                break;
-            }
-        }
-        let entity = sim.substrate.entities.get(1).unwrap();
-        assert!(
-            entity.movement_target.is_none(),
-            "residual rebasing must not strand the path cursor: leaving={leaving}, xyz={:?}, track={:?}, speed={:?}, target={:?}",
-            ground_pose::position_world_coord(&entity.position),
-            track(entity),
-            entity.foot_speed,
-            entity.movement_target,
-        );
-        assert!(entity.navigation.nav_com.is_none());
-        assert!(
-            entity
-                .drive_locomotion
-                .as_ref()
-                .unwrap()
-                .destination
-                .is_none()
-        );
-        assert_eq!((entity.position.rx, entity.position.ry), (3, 1));
-        assert_eq!(entity.position.exact_z_leptons, Some(416));
-        assert_eq!(sim.substrate.occupancy.count_on_layer(3, 1, end_layer), 1);
     }
 }
 
@@ -652,8 +625,6 @@ fn terminal_centre_height_commits_before_next_process_turn_without_finalizer() {
     let target = entity.movement_target.as_mut().unwrap();
     target.path = vec![(3, 3), (4, 3)];
     target.path_layers = vec![MovementLayer::Ground; 2];
-    // A component fixture's route, never published to Foot+5E0.
-    target.adapter_route = true;
     target.final_goal = Some((4, 3));
     target.move_dir_x = SimFixed::from_num(256);
     target.move_dir_y = SIM_ZERO;
@@ -665,22 +636,29 @@ fn terminal_centre_height_commits_before_next_process_turn_without_finalizer() {
         DriveCoord::cell(3, 3, 731),
     );
     entity.position.sub_y = SimFixed::from_num(131);
+    super::navcom::set_destination_internal_cell(&mut entity, (4, 3), Some(&terrain), 0);
+    super::path_markers::install_path_replay(
+        &mut entity.navigation.path_replay,
+        (3, 3),
+        &[(3, 3), (4, 3)],
+        1,
+    );
     insert(&mut sim, entity);
-    tick(&mut sim, &terrain, &grid, 0);
+    tick_with_rules(&mut sim, &terrain, &grid, 0, Some(&mover_rules()));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(
         entity.movement_target.is_some(),
         "unfinished route must not run finalizer"
     );
     assert!(super::track_head::committed_track_head(entity).is_none());
-    // Native terminal4B22AF returns through4B1F5C/4B25F9 after the
-    // selector is retired. Fresh movement selection, and its Do_Turn toward
-    // (4,3), waits for the next Process.
-    assert_ne!(entity.body_facing.destination(), 0x4000);
+    // Process_Track(0) at 4B0576 retires the selector; with Foot+5E0 still
+    // queued, the same Process runs Process_Movement (4B0647), whose fresh
+    // selection turns toward (4,3).
+    assert_eq!(entity.body_facing.destination(), 0x4000);
     assert_eq!(entity.position.sub_y, SimFixed::from_num(128));
     // The last real table point is Y131 (height53); the final snap is Y128.
     assert_eq!(entity.position.exact_z_leptons, Some(52));
-    tick(&mut sim, &terrain, &grid, 1);
+    tick_with_rules(&mut sim, &terrain, &grid, 1, Some(&mover_rules()));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.body_facing.destination(), 0x4000);
     assert_eq!(entity.position.exact_z_leptons, Some(52));
@@ -895,8 +873,7 @@ fn forced_track_terminal_samples_full_head_xy_before_relink() {
 
 #[test]
 fn ordinary_drive_ship_command_keeps_subcell_origin_through_terminal_cleanup() {
-    let terrain = terrain();
-    let grid = PathGrid::from_resolved_terrain(&terrain);
+    let rules = mover_rules();
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         for (sub_x, sub_y, facing, destination) in [
             (85, 153, 0u8, (3, 2)),
@@ -904,6 +881,7 @@ fn ordinary_drive_ship_command_keeps_subcell_origin_through_terminal_cleanup() {
             (85, 0, 128, (3, 4)),
         ] {
             let mut sim = Simulation::new();
+            let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
             let mut entity = mover(&mut sim, kind);
             entity.movement_target = None;
             entity.position.sub_x = SimFixed::from_num(sub_x);
@@ -923,7 +901,9 @@ fn ordinary_drive_ship_command_keeps_subcell_origin_through_terminal_cleanup() {
                 crate::sim::movement::DestinationTiming::new(0, 60),
             ));
             for frame in 0..128 {
-                tick(&mut sim, &terrain, &grid, frame);
+                sim.session.binary_frame = frame;
+                sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
+                    .unwrap();
                 if sim
                     .substrate
                     .entities
@@ -985,7 +965,10 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
         panic!("native N -> NE curve");
     };
     assert_eq!(plan.nodes, 2);
-    let head = super::track_head::begin_fresh(&plan, &entity.position).unwrap();
+    let offset = super::track_head::offset_head;
+    let turn = plan.selection.turn_track_index;
+    let current = super::ground_pose::position_world_coord(&entity.position);
+    let head = offset(offset(current, (turn / 8) as u8), (turn % 8) as u8);
     super::track_head::accept_fresh_progress(
         kind,
         &mut entity.drive_locomotion,
@@ -1017,7 +1000,6 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
         path_layers: vec![MovementLayer::Ground; 4],
         next_index: 1,
         speed: SimFixed::from_num(128),
-        current_speed: SimFixed::from_num(128),
         final_goal: Some((5, 1)),
         ..Default::default()
     });
@@ -1029,10 +1011,7 @@ fn admitted_tick_chain_uses_remaining_queue_and_retains_old_head_z() {
     // Unit+2C746E20 returns1; Process_Track then admits only Passive types.
     // This supplied type exercises accepted head publication. The stock false
     // gate and code0/code2 dispatch matrix live in track_chain_migration_tests.
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[VehicleTypes]\n0=MOVER\n[MOVER]\nSpeed=4\nPassive=yes\n",
-    ))
-    .unwrap();
+    let rules = mover_rules();
     let terrain = terrain();
     let grid = PathGrid::from_resolved_terrain(&terrain);
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {

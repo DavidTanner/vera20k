@@ -44,16 +44,7 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
             .unwrap();
         // Supplied manager/deposit leg tests the real object-turn admission
         // continuation, not production slave AI or a stock hut manager.
-        assert!(crate::sim::movement::issue_direct_move(
-            &mut sim.substrate.entities,
-            slave,
-            (16, 15),
-            SimFixed::from_num(150),
-            crate::sim::movement::DestinationTiming::from_rules(
-                sim.session.binary_frame,
-                Some(&rules)
-            ),
-        ));
+        direct_move(&mut sim, slave, (16, 15), SimFixed::from_num(150), &rules);
         sim.mission_assign_exact(
             slave,
             crate::sim::mission::MissionId::from_known(
@@ -69,9 +60,6 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
             .as_mut()
             .unwrap()
             .set_walk_destination(Some(DriveCoord::cell(16, 15, 0)));
-        // As for the existing building-enter producer, static path blocking
-        // is bypassed for the admitted last leg; live objects still decide.
-        e.movement_target.as_mut().unwrap().bypass_grid = true;
         let before = ground_pose::position_world_coord(&e.position);
         let slav = sim.intern("SLAV");
         sim.substrate
@@ -729,13 +717,13 @@ fn ready_engineer(
     let id = sim
         .spawn_object("ENGINEER", "Americans", 15, 15, 0, rules)
         .unwrap();
-    assert!(crate::sim::movement::issue_direct_move(
-        &mut sim.substrate.entities,
+    direct_move(
+        sim,
         id,
         (16, 15),
         crate::util::fixed_math::SimFixed::from_num(61),
-        crate::sim::movement::DestinationTiming::from_rules(sim.session.binary_frame, Some(&rules)),
-    ));
+        rules,
+    );
     sim.mission_assign_exact(
         id,
         crate::sim::mission::MissionId::from_known(
@@ -1991,4 +1979,33 @@ fn failed_jumpjet_stop_stock_fatal_receiver_precedes_cache_retirement() {
             assert!(row["output"]["damage_trace"].as_array().unwrap().is_empty());
         }
     }
+}
+
+/// A supplied one-leg route `[start, target]` with an accepted destination.
+fn direct_move(
+    sim: &mut Simulation,
+    id: u64,
+    target: (u16, u16),
+    speed: crate::util::fixed_math::SimFixed,
+    rules: &RuleSet,
+) {
+    use crate::util::fixed_math::{SimFixed, fixed_distance};
+    let timing =
+        crate::sim::movement::DestinationTiming::from_rules(sim.session.binary_frame, Some(rules));
+    let e = sim.substrate.entities.get_mut(id).unwrap();
+    let start = (e.position.rx, e.position.ry);
+    let layer = e.movement_layer_or_ground();
+    let dir_x = SimFixed::from_num((i32::from(target.0) - i32::from(start.0)) * 256);
+    let dir_y = SimFixed::from_num((i32::from(target.1) - i32::from(start.1)) * 256);
+    timing.accept(e);
+    e.movement_target = Some(crate::sim::components::MovementTarget {
+        path: vec![start, target],
+        path_layers: vec![layer; 2],
+        next_index: 1,
+        speed,
+        move_dir_x: dir_x,
+        move_dir_y: dir_y,
+        move_dir_len: fixed_distance(dir_x, dir_y),
+        ..Default::default()
+    });
 }

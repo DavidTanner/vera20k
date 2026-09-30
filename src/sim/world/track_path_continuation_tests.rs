@@ -474,10 +474,6 @@ fn depot_release_and_pad_entry_route_through_find_path() {
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         for tank in [first, waiter] {
             let e = sim.substrate.entities.get(tank).unwrap();
-            assert!(
-                !e.movement_target.as_ref().is_some_and(|t| t.adapter_route),
-                "tank {tank} was handed a Rust adapter route"
-            );
             let at = (e.position.rx, e.position.ry);
             assert!(
                 !footprint(at) || at.0 > 16,

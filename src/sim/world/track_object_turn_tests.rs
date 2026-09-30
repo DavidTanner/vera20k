@@ -45,7 +45,6 @@ fn fixture() -> (Simulation, RuleSet) {
         path_layers: vec![MovementLayer::Ground; 2],
         next_index: 1,
         speed: SimFixed::from_num(330),
-        current_speed: SimFixed::from_num(330),
         ..Default::default()
     });
     sim.interner = crate::sim::intern::test_interner();
@@ -55,6 +54,7 @@ fn fixture() -> (Simulation, RuleSet) {
     sim.substrate.entities.insert(entity);
     sim.substrate.occupancy =
         crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     (sim, rules)
 }
 
@@ -391,6 +391,8 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
             if reload {
                 let bytes = GameSnapshot::save(&sim, 0, 0, "pending_apply", 0);
                 sim = GameSnapshot::load(&bytes).unwrap().sim;
+                // The map inputs come from the scenario, not the save.
+                crate::sim::arena_fixture::supply_native_map(&mut sim);
             }
             let entity = sim.substrate.entities.get(1).unwrap();
             let head = if kind == LocomotorKind::Drive {
@@ -471,7 +473,6 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
     ));
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.drive_accelerates = true;
-    entity.movement_target.as_mut().unwrap().accel_factor = SimFixed::from_num(0.03);
     // The first Process after the order requests the route from the grid.
     sim.install_fixture_path_grid(Some(&grid));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())

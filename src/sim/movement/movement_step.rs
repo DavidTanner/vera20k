@@ -11,13 +11,9 @@ use super::cell_arrival::CellArrival;
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, DriveOccupationFootprint, MovementTarget, Position,
-    ShipLocomotionRuntime,
-};
+use crate::sim::components::{MovementTarget, Position};
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::movement::bump_crush;
-use crate::sim::movement::drive_track;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
 use crate::sim::movement::movement_bridge::resolve_cell_transition_bridge_state;
@@ -27,7 +23,6 @@ use crate::sim::movement::movement_occupancy::{
     runtime_can_enter_cell_args,
 };
 use crate::sim::occupancy::{CellOccupationGrid, OccupancyGrid};
-use crate::sim::pathfinding::LayeredEntityBlockMap;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
@@ -38,56 +33,6 @@ use super::{
     CLIFF_HEIGHT_THRESHOLD, MovementConfig, MovementTickStats, MoverSnapshot, PATH_STUCK_INIT,
     PathfindingContext,
 };
-
-fn shared_track_kind(locomotor: &Option<LocomotorState>) -> Option<LocomotorKind> {
-    locomotor
-        .as_ref()
-        .map(|locomotor| locomotor.kind)
-        .filter(|kind| matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship))
-}
-
-/// Cell delta of the path step *after* the head node — gamemd's `path[1]`
-/// direction, the second index term of the turn table.
-///
-/// `None` at the last step of a path, which the selector normalises to the head
-/// node's own direction (gamemd's `-1` queue terminator does the same).
-fn path_window_to_delta(target: &MovementTarget) -> Option<(i32, i32)> {
-    let head = target.path.get(target.next_index)?;
-    let after = target.path.get(target.next_index + 1)?;
-    Some((
-        i32::from(after.0) - i32::from(head.0),
-        i32::from(after.1) - i32::from(head.1),
-    ))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn accept_shared_track(
-    path_replay: &mut crate::sim::components::FootPathQueue,
-    kind: LocomotorKind,
-    drive_locomotion: &mut Option<DriveLocomotionRuntime>,
-    ship_locomotion: &mut Option<ShipLocomotionRuntime>,
-    endpoint: (i16, i16),
-    endpoint_coord: DriveCoord,
-    consumed_directions: usize,
-    turn_index: usize,
-) {
-    super::track_head::accept_fresh_progress(kind, drive_locomotion, ship_locomotion, turn_index);
-    match kind {
-        LocomotorKind::Drive => {
-            if let Some(drive) = drive_locomotion.as_mut() {
-                drive.head_to = Some(endpoint_coord);
-                super::path_markers::accept_path_replay(path_replay, endpoint, consumed_directions);
-            }
-        }
-        LocomotorKind::Ship => {
-            if let Some(ship) = ship_locomotion.as_mut() {
-                super::path_markers::accept_path_replay(path_replay, endpoint, consumed_directions);
-                ship.head_to = Some(endpoint_coord);
-            }
-        }
-        _ => {}
-    }
-}
 
 pub(super) fn apply_cell_transition_remainder(
     path_runtime: &mut crate::sim::components::FootPathRuntime,
@@ -204,584 +149,9 @@ pub(super) fn handle_vehicle_rotation(
     RotationResult::StillRotating
 }
 
-/// Result of lepton position advancement.
-pub(super) enum AdvanceResult {
-    /// Drive track is active — caller should `continue` (skip cell crossings).
-    DriveTrackActive,
-    /// A fresh curve was refused by the cell occupation mask. No curve was
-    /// installed, no head reservation was stamped, and the mover has not moved.
-    /// The refusal carries its own answer — see [`DriveSelectionRefusal`] — so
-    /// the caller's dispatch consumes it instead of re-deriving one.
-    DriveTrackFreshBlocked(DriveSelectionRefusal),
-    /// Normal advancement done — caller should proceed to cell crossings.
-    ReadyForCrossings,
-}
-
 #[cfg(test)]
 #[path = "movement_step_tests.rs"]
 mod tests;
-
-/// Install the pair of marks a Drive curve claims: the forward RawTrack handoff
-/// cell it passes through and the head cell it comes to rest on.
-/// `Apply_Track_Occupation_Mode` writes both on modes 1 and 3 (handoff first,
-/// head second) and clears both on mode 0.
-fn install_drive_head_to_occupation(
-    foot_occupation_enabled: &mut bool,
-    drive_locomotion: &mut Option<DriveLocomotionRuntime>,
-    cell_occupation: &mut Option<&mut CellOccupationGrid>,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-    next: Option<DriveOccupationFootprint>,
-    handoff: Option<DriveOccupationFootprint>,
-) {
-    let Some(drive) = drive_locomotion.as_mut() else {
-        return;
-    };
-    let Some(occupation) = cell_occupation.as_deref_mut() else {
-        drive.occupation_head_to = next;
-        drive.occupation_handoff = handoff;
-        return;
-    };
-    match next {
-        Some(next) => crate::sim::occupancy::replace_drive_head_to_occupation(
-            foot_occupation_enabled,
-            drive,
-            occupation,
-            entity_id,
-            current_cell,
-            current_layer,
-            next,
-        ),
-        None => crate::sim::occupancy::clear_drive_head_to_occupation_for_replacement(
-            foot_occupation_enabled,
-            drive,
-            occupation,
-            entity_id,
-            current_cell,
-            current_layer,
-        ),
-    }
-    crate::sim::occupancy::replace_drive_handoff_occupation(
-        foot_occupation_enabled,
-        drive,
-        occupation,
-        entity_id,
-        current_cell,
-        current_layer,
-        handoff,
-    );
-}
-
-/// The cell a freshly installed curve will pass through before reaching its
-/// head, if the curve has a handoff point at all. Straight runs have none.
-///
-/// `Apply_Track_Occupation_Mode` applies one mode to the handoff coordinate and
-/// then to the head coordinate, and the mark helper picks its plane from the
-/// coordinate's own height and the cell's bridge flag. VERA has no per-cell
-/// plane resolution here, so the pair is kept on ONE plane — the head mark's —
-/// rather than pinning the handoff to Ground while the head follows the path.
-/// A curve whose head resolves to the deck claims neither cell; the deck
-/// equivalent of both marks is UNCHECKED.
-fn drive_track_handoff_footprint(
-    kind: LocomotorKind,
-    current: DriveCoord,
-    head: DriveCoord,
-    track: crate::sim::components::TrackProgress,
-    layer: MovementLayer,
-) -> Option<DriveOccupationFootprint> {
-    if layer != MovementLayer::Ground {
-        return None;
-    }
-    let (handoff, _) = super::at_coord::AtCoordQuery::from_state(
-        kind,
-        current,
-        Some(head),
-        super::at_coord::AtCoordTrack {
-            turn_index: track.turn_index,
-            cursor: track.cursor,
-            reversed: track.reversed,
-        },
-    )?
-    .cells();
-    let (hx, hy) = handoff?;
-    Some(DriveOccupationFootprint {
-        rx: u16::try_from(hx).ok()?,
-        ry: u16::try_from(hy).ok()?,
-        layer,
-    })
-}
-
-/// Outcome of a fresh selection made while the mover stands on its current cell
-/// — the position `Process_Movement` runs from.
-enum FreshTrackOutcome {
-    /// A curve was installed and the head cell reserved.
-    Installed,
-    /// The body is not on the head node's octant. gamemd commands the turn and
-    /// returns without consuming a node or taking a step.
-    TurnFirst(u8),
-    /// The cell the curve would step into is already claimed by another
-    /// vehicle. Nothing was installed and nothing was reserved.
-    BlockedByOccupation(DriveSelectionRefusal),
-    /// No usable descriptor; the native movement invocation remains idle.
-    None,
-}
-
-/// A fresh Drive curve refused by the cell occupation mask, carrying its own
-/// answer so the dispatch never has to re-derive one.
-///
-/// `UnitClass::Can_Enter_Cell` answers in two stages. It walks the cell's object
-/// list FIRST and accumulates a code from the bodies it finds there; only if
-/// that walk produced nothing (`TEST EBP,EBP; JNZ` at 0x0073FC24) does it fall
-/// through to the cell occupation mask. So the mask is a last-resort arm, and
-/// when the mask's vehicle bit is the thing that refuses, the answer is exactly
-/// one value — `MOV EBP,0x2` at 0x0073FD32, reached from
-/// `TEST [ESP+0x14],0x3f / MOV AL,[ESP+0x15] / TEST AL,AL / JNZ` at
-/// 0x0073FC38-0x0073FC49. There is nothing left to classify: a mask refusal IS
-/// code 2.
-///
-/// This gate therefore models the mask arm and only the mask arm. VERA's
-/// `CellOccupationGrid` is that mask — it holds a bit for vehicles only
-/// (`EntityCategory::Unit`), never infantry, exactly as the constant `0x20`
-/// written by `UnitClass__MarkCellOccupationBit20 @ 0x007441B0` contrasts with
-/// the variable `1 << GetSubCell` written by
-/// `InfantryClass__MarkCellOccupancy @ 0x005217C0`. Object-list answers —
-/// a parked friendly (6), an enemy (5), a crushable body — are produced
-/// downstream by the crossing and chain lanes, which classify once and dispatch
-/// on what they classified.
-///
-/// Recorded DRIFT: gamemd asks the whole predicate before it selects a curve, so
-/// an object-list refusal reaches it one dispatch earlier than it reaches VERA,
-/// which meets that blocker at the crossing on the following tick instead. That
-/// is pre-existing behaviour, unchanged here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct DriveSelectionRefusal {
-    /// The cell that actually tripped the test — never a different one.
-    pub cell: (u16, u16),
-    /// The occupation plane the claim was found on.
-    pub layer: MovementLayer,
-    /// Which arm produced the refusal. Recorded for the trace.
-    pub arm: DriveRefusalArm,
-    /// The `Can_Enter_Cell` code the object-list walk produced, or `None` for a
-    /// bare mask refusal — which is code 2 by construction (`MOV EBP,0x2` at
-    /// 0x0073FD32 is the mask arm's only outcome).
-    ///
-    /// Carried because the codes do NOT share one dispatch. `0x004B36F4
-    /// CMP EDX,0x6 / JNZ 0x004B3944` gives code 6 its own arm, and that arm
-    /// reaches `CellClass__Scatter_Objects @ 0x00481670` (call at 0x004B393A)
-    /// before falling into the shared entry at 0x004B3607. Codes 2, 4 and 5 all
-    /// arrive at that shared entry — 4 and 5 via `0x004B3944 CMP EDX,0x1 /
-    /// JNZ 0x004B3607` — and no `Scatter_Objects` call sits anywhere between
-    /// the entry and its `Find_Path` tail.
-    ///
-    /// They do not all *stay* there, and an earlier revision of this comment
-    /// implied they did (corrected 2026-09-16 from the binary). `0x004B364D
-    /// CMP EAX,0x2 / JNZ 0x004B3A97` keeps only code 2 in the shared arm and
-    /// sends 4 and 5 on to `0x004B3A97`, which splits them into the wall /
-    /// blocking-object Override arm (`Find_Blocking_Object 0x0047C5A0`,
-    /// `Is_Ally_ByObject 0x004F9A90`, `+0x1F4(1, object)`, and the wall-cell
-    /// path opening at `0x004B3B94`; both arms converge on the single call
-    /// instruction `0x004B3BE9 CALL [ESI+0x1F4]`). The `Scatter_Objects` statement above
-    /// still holds; only the "codes 2 and 5 reach that entry directly" reading
-    /// was wrong, and porting that arm is ledger row I9b's work.
-    pub cost_code: Option<u8>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum DriveRefusalArm {
-    /// A body physically in the cell, from this owner's blocker snapshot.
-    ObjectList,
-    /// A claim in the vehicle occupation mask, with or without a body.
-    OccupationMask,
-}
-
-/// The object-list arm of the predicate, in a form the mover can consult while
-/// it still holds its own mutable borrow.
-///
-/// `units` is the per-owner blocker snapshot the tick already builds for
-/// pathfinding. Its `cost_code` is the same 2/5/6 the native walk emits.
-///
-/// **Infantry are skipped.** They never hold the mask's vehicle bit, a crusher
-/// is entitled to drive over them, and a gate that refused on their account
-/// would stall every squish and every column with a friendly GI in it. gamemd
-/// reaches the same place by a different route: an occupant whose RTTI
-/// (`vtable+0x2C`) is `0x0F` takes the locomotor `+0xA4` question at 0x0073FA46
-/// instead of jumping straight to the raise (RTTI-to-class binding UNCHECKED),
-/// and the crush latch at 0x0073FCF6 resolves the rest.
-///
-/// That locomotor question is NOT reserved for `0x0F`. `0x0073FA30-0x0073FA38`
-/// reads the occupant's `Foot+0x6B6` first, and a **zero** takes the same
-/// 0x0073FA46 branch whatever the occupant's class is; only `+0x6B6` nonzero
-/// AND class != `0x0F` jumps to the raise at 0x0073FA6D. The set state is not a
-/// standing property of a vehicle:
-/// `DriveLocomotionClass__Process_Drive_Track @ 0x004B0F20` writes 0 at
-/// 0x004B161A and 1 at 0x004B1FEF, so an occupant in transit carries 0 and can
-/// be skipped by the locomotor answer like any other. The shared runtime
-/// classifier in `cell_entry` owns that live occupant predicate.
-///
-/// Building footprints are NOT consulted here either. Terrain and building
-/// admission are answered by the crossing lane, which knows about
-/// `bypass_grid` — a miner on its dock approach drives through cells this
-/// snapshot marks as blocked, and refusing it here would stall the harvest loop.
-/// Recorded DRIFT: gamemd's pre-selection `Can_Enter_Cell` sees buildings, VERA
-/// meets them one dispatch later at the crossing. Pre-existing, unchanged.
-#[derive(Clone, Copy, Default)]
-pub(super) struct DriveCellAdmission<'a> {
-    pub units: Option<&'a LayeredEntityBlockMap>,
-    /// The mover as the head-on exit sees it; `None` for a non-Unit mover,
-    /// whose `+0x1AC` has no head-on arm.
-    pub mover: Option<MoverHeadOnContext>,
-}
-
-/// The mover's own inputs to the head-on exit of `UnitClass::Can_Enter_Cell`
-/// (`0x0073F8D4..FA26`), captured before the mover takes its mutable borrow.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct MoverHeadOnContext {
-    /// The visit's frame, at which both bodies' headings are sampled.
-    pub frame: u32,
-    /// The body heading (`+0x388`) at `frame`.
-    pub facing: u16,
-    pub world: [i32; 3],
-}
-
-impl MoverHeadOnContext {
-    pub(super) fn from_entity(
-        entity: &crate::sim::game_entity::GameEntity,
-        frame: u32,
-    ) -> Option<Self> {
-        (entity.category == crate::map::entities::EntityCategory::Unit).then(|| Self {
-            frame,
-            facing: entity.body_facing_current(frame),
-            world: crate::sim::pathfinding::cell_entry::entity_world_leptons(entity),
-        })
-    }
-}
-
-impl DriveCellAdmission<'_> {
-    /// The code the object-list walk would raise for `cell`, or `None` when it
-    /// finds nothing that refuses. The dispatch needs the code, not a boolean:
-    /// code 6 has its own arm in the movement body and codes 2/5 do not.
-    ///
-    /// The head-on exit comes first, as in the native walk: a moving ally that
-    /// faces the mover, within `0x1FF` leptons and inside the mover's facing
-    /// octant, answers 7 whatever its class. It is answered from the owner
-    /// snapshot's moving-ally record, which carries every moving ally
-    /// including those the `+0x6B6`/`+0xA4` rule skipped from the code map.
-    fn refusal_code(
-        &self,
-        cell: (u16, u16),
-        layer: MovementLayer,
-        self_cell: (u16, u16),
-    ) -> Option<u8> {
-        if cell == self_cell {
-            // The native walk skips the mover itself
-            // (`if (param_1 == piVar15)` at 0x0073FC10).
-            return None;
-        }
-        let units = self.units?;
-        if let (Some(mover), Some(ally)) = (self.mover, units.moving_ally(layer, &cell))
-            && crate::sim::pathfinding::cell_entry::head_on_exit(
-                mover.facing,
-                mover.world,
-                ally.facing.current(mover.frame),
-                ally.world,
-            )
-        {
-            return Some(7);
-        }
-        units
-            .get(layer, &cell)
-            .filter(|entry| !entry.blocker_is_infantry)
-            .map(|entry| entry.cost_code)
-    }
-}
-
-/// Run the fresh Drive/Ship curve selection for a mover standing on its own
-/// cell: index the turn table by the two leading path directions, install the
-/// curve at cursor 0, and reserve its head cell (two cells ahead for a turning
-/// curve).
-#[allow(clippy::too_many_arguments)]
-fn select_fresh_drive_track_at_current_cell(
-    foot_occupation_enabled: &mut bool,
-    path_replay: &mut crate::sim::components::FootPathQueue,
-    target: &mut MovementTarget,
-    position: &Position,
-    facing: u16,
-    drive_locomotion: &mut Option<DriveLocomotionRuntime>,
-    ship_locomotion: &mut Option<ShipLocomotionRuntime>,
-    cell_occupation: &mut Option<&mut CellOccupationGrid>,
-    admission: DriveCellAdmission<'_>,
-    entity_id: u64,
-    current_occupation_layer: MovementLayer,
-    shared_kind: LocomotorKind,
-) -> FreshTrackOutcome {
-    let Some(next) = target.path.get(target.next_index).copied() else {
-        return FreshTrackOutcome::None;
-    };
-    let ndx = i32::from(next.0) - i32::from(position.rx);
-    let ndy = i32::from(next.1) - i32::from(position.ry);
-    let plan = match drive_track::plan_drive_track_from_path(
-        facing,
-        (ndx, ndy),
-        path_window_to_delta(target),
-    ) {
-        drive_track::DriveTrackDecision::TurnFirst { desired_facing } => {
-            return FreshTrackOutcome::TurnFirst(desired_facing);
-        }
-        drive_track::DriveTrackDecision::Select(plan) => plan,
-        drive_track::DriveTrackDecision::Unavailable => return FreshTrackOutcome::None,
-    };
-
-    // Cell exclusion — the occupation-mask arm of gamemd's cell-entry predicate.
-    //
-    // Asked about every cell this curve is about to CLAIM, because the mask is a
-    // claim register, not a presence record: a curve stamps `0x20` into its
-    // head-to cell while its body is still in the previous one
-    // (`Apply_Track_Occupation_Mode` mark at 0x004B0C2E, reached from the tail
-    // mark site at 0x004B4705). For a straight run that is the cell it steps
-    // into; for a turning curve it is the cell two out, where the curve comes to
-    // rest. Letting a second mover stamp a cell a first has already stamped
-    // would make the register non-exclusive, which is the one property the whole
-    // mechanism exists to provide.
-    //
-    // gamemd's own selection asks `Can_Enter_Cell` about one cell (0x004B34C0)
-    // and stamps its head-to without a separate test, catching a doubly-claimed
-    // endpoint one dispatch later instead. Recorded difference: VERA refuses at
-    // stamp time rather than at the following crossing. Measured, on the
-    // four-vehicle column fixture: without the endpoint test two members close
-    // to 175 leptons inside one cell, below the separation retail's admission
-    // rule can produce.
-    //
-    // The refusal also NULLS the locomotor head-to coordinate before dispatching
-    // — 0x004B3607-0x004B3646 copies the null-coordinate triple at 0x008A0790
-    // into the Drive head-to slot, on the shared entry the code-2 arm reaches.
-    //
-    // Nothing here depends on the plan being made first: `plan_drive_track_from_path`
-    // only reads the turn table and writes nothing, so the order of the two is
-    // unobservable. It runs first solely so the facing precondition — a body off
-    // the head node's octant turns in place and never reaches the cell test — is
-    // answered before the cell question.
-    //
-    // Ships keep their previous behaviour: they carry no Drive runtime and stamp
-    // no occupation mark, so there is nothing here for them to contend over.
-    // The ShipLocomotion equivalent is UNCHECKED. The forward RawTrack handoff
-    // cell is marked but NOT tested here; whether it can be doubly claimed is
-    // UNCHECKED.
-    if drive_locomotion.is_some() {
-        let plan_head_index = target.next_index + plan.nodes - 1;
-        let endpoint_cell = (
-            i32::from(position.rx) + plan.head_dx,
-            i32::from(position.ry) + plan.head_dy,
-        );
-        let candidates = [
-            (Some(next), target.layer_at(target.next_index)),
-            (
-                u16::try_from(endpoint_cell.0)
-                    .ok()
-                    .zip(u16::try_from(endpoint_cell.1).ok()),
-                target.layer_at(plan_head_index),
-            ),
-        ];
-        let self_cell = (position.rx, position.ry);
-        for (cell, layer) in candidates {
-            let Some(cell) = cell else {
-                continue;
-            };
-            // Object list FIRST, mask LAST — the order the native predicate
-            // uses. `TEST EBP,EBP; JNZ 0x0073FD37` at 0x0073FC24 skips the mask
-            // arm entirely whenever the walk already produced a code.
-            let (arm, cost_code) =
-                if let Some(code) = admission.refusal_code(cell, layer, self_cell) {
-                    (DriveRefusalArm::ObjectList, Some(code))
-                } else if cell_occupation.as_deref().is_some_and(|occupation| {
-                    occupation.occupied_by_other(cell.0, cell.1, layer, entity_id)
-                }) {
-                    (DriveRefusalArm::OccupationMask, None)
-                } else {
-                    continue;
-                };
-            // Refused: null the head-to coordinate (and release the cell it
-            // still holds, so a refused step cannot leave one poisoned), keep
-            // the mover's claim on the cell its body is standing in, then hand
-            // the refusal — the cell that ACTUALLY tripped, never a different
-            // one — to the caller's dispatch.
-            if let Some(drive) = drive_locomotion.as_mut() {
-                drive.head_to = None;
-            }
-            install_drive_head_to_occupation(
-                foot_occupation_enabled,
-                drive_locomotion,
-                cell_occupation,
-                entity_id,
-                (position.rx, position.ry),
-                current_occupation_layer,
-                None,
-                None,
-            );
-            if let (Some(drive), Some(occupation)) =
-                (drive_locomotion.as_mut(), cell_occupation.as_deref_mut())
-            {
-                crate::sim::occupancy::restore_current_drive_occupation_after_refusal(
-                    foot_occupation_enabled,
-                    drive,
-                    occupation,
-                    entity_id,
-                    (position.rx, position.ry),
-                    current_occupation_layer,
-                );
-            }
-            return FreshTrackOutcome::BlockedByOccupation(DriveSelectionRefusal {
-                cell,
-                layer,
-                arm,
-                cost_code,
-            });
-        }
-    }
-
-    let Some(head) = super::track_head::begin_fresh(&plan, position) else {
-        return FreshTrackOutcome::None;
-    };
-
-    let (d_x, d_y, d_len) = crate::util::lepton::cell_delta_to_lepton_dir(ndx, ndy);
-    target.move_dir_x = d_x;
-    target.move_dir_y = d_y;
-    target.move_dir_len = d_len;
-
-    // The reserved head is the curve's endpoint: the head node for a straight
-    // run, the node after it for a turning curve.
-    let head_index = target.next_index + plan.nodes - 1;
-    let endpoint = (
-        (i32::from(position.rx) + plan.head_dx) as i16,
-        (i32::from(position.ry) + plan.head_dy) as i16,
-    );
-    let endpoint_layer = target.layer_at(head_index);
-    accept_shared_track(
-        path_replay,
-        shared_kind,
-        drive_locomotion,
-        ship_locomotion,
-        endpoint,
-        head,
-        plan.nodes,
-        plan.selection.turn_track_index,
-    );
-    let next_occupation = (endpoint_layer == MovementLayer::Ground)
-        .then(|| {
-            Some(DriveOccupationFootprint {
-                rx: u16::try_from(endpoint.0).ok()?,
-                ry: u16::try_from(endpoint.1).ok()?,
-                layer: MovementLayer::Ground,
-            })
-        })
-        .flatten();
-    let progress = match shared_kind {
-        LocomotorKind::Drive => drive_locomotion.as_ref().map(|state| state.track),
-        LocomotorKind::Ship => ship_locomotion.as_ref().map(|state| state.track),
-        _ => None,
-    };
-    let handoff_occupation = progress.and_then(|track| {
-        drive_track_handoff_footprint(
-            shared_kind,
-            super::ground_pose::position_world_coord(position),
-            head,
-            track,
-            endpoint_layer,
-        )
-    });
-    install_drive_head_to_occupation(
-        foot_occupation_enabled,
-        drive_locomotion,
-        cell_occupation,
-        entity_id,
-        (position.rx, position.ry),
-        current_occupation_layer,
-        next_occupation,
-        handoff_occupation,
-    );
-    FreshTrackOutcome::Installed
-}
-
-pub(super) enum NativeTrackPreparation {
-    Invoke(super::track_process::TrackInvocation),
-    /// The body is off the path's leading octant: turn it to this 8-bit
-    /// direction first.
-    TurnFirst(super::track_process::TrackInvocation, u8),
-    Idle(super::track_process::TrackInvocation),
-    Blocked(super::track_process::TrackInvocation, DriveSelectionRefusal),
-}
-
-/// Ordinary world execution hands off below the speed prefix. Admission and
-/// execution use the locomotor TrackProgress and retained raw head.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn prepare_native_track(
-    foot_occupation_enabled: &mut bool,
-    replay: &mut crate::sim::components::FootPathQueue,
-    target: &mut MovementTarget,
-    position: &Position,
-    facing: u16,
-    drive: &mut Option<DriveLocomotionRuntime>,
-    ship: &mut Option<ShipLocomotionRuntime>,
-    locomotor: &Option<LocomotorState>,
-    category: EntityCategory,
-    entity_id: u64,
-    occupation: &mut CellOccupationGrid,
-    admission: DriveCellAdmission<'_>,
-    layer: MovementLayer,
-) -> Option<NativeTrackPreparation> {
-    use super::track_process::{TrackFamily, TrackInvocation};
-    let kind = shared_track_kind(locomotor)?;
-    if category == EntityCategory::Infantry {
-        return None;
-    }
-    // Ordinary Process4B0A75..4B0AAA /6A013E..6A0173 calls TrackProcess
-    // after fresh selection even when AL is false. Its entry, not fresh
-    // selection, clears residual when no valid descriptor/queue8 remains.
-    let mut invocation = TrackInvocation::after_process_movement(
-        entity_id,
-        if kind == LocomotorKind::Ship {
-            TrackFamily::Ship
-        } else {
-            TrackFamily::Drive
-        },
-    );
-    let active = match kind {
-        LocomotorKind::Drive => drive
-            .as_ref()
-            .is_some_and(|state| state.track_valid && state.track.turn_index != -1),
-        LocomotorKind::Ship => ship
-            .as_ref()
-            .is_some_and(|state| state.track_valid && state.track.turn_index != -1),
-        _ => false,
-    };
-    if !active {
-        match select_fresh_drive_track_at_current_cell(
-            foot_occupation_enabled,
-            replay,
-            target,
-            position,
-            facing,
-            drive,
-            ship,
-            &mut Some(occupation),
-            admission,
-            entity_id,
-            layer,
-            kind,
-        ) {
-            FreshTrackOutcome::Installed => {}
-            FreshTrackOutcome::TurnFirst(desired) => {
-                return Some(NativeTrackPreparation::TurnFirst(invocation, desired));
-            }
-            FreshTrackOutcome::BlockedByOccupation(refusal) => {
-                return Some(NativeTrackPreparation::Blocked(invocation, refusal));
-            }
-            FreshTrackOutcome::None => return Some(NativeTrackPreparation::Idle(invocation)),
-        }
-    }
-    invocation.apply_fresh_occupation = !active;
-    Some(NativeTrackPreparation::Invoke(invocation))
-}
 
 /// Walk75BD70 completes a retained subcell head within 17 world leptons.
 pub(super) fn completed_walk_head(
@@ -798,42 +168,6 @@ pub(super) fn completed_walk_head(
         SimFixed::from_num(head.y.wrapping_sub(y)),
     ) < SimFixed::from_num(17))
     .then_some(head)
-}
-
-pub(super) fn advance_lepton_position(
-    target: &mut MovementTarget,
-    position: &mut Position,
-    locomotor: &mut Option<LocomotorState>,
-    effective_speed: SimFixed,
-    dt: SimFixed,
-) -> AdvanceResult {
-    // Track and Walk coordinate execution have their own production owners.
-    if shared_track_kind(locomotor).is_some() {
-        return AdvanceResult::DriveTrackActive;
-    }
-    assert!(
-        !locomotor
-            .as_ref()
-            .is_some_and(|l| l.kind == LocomotorKind::Walk),
-        "Walk must execute its admitted paid step"
-    );
-    if target.move_dir_len > SIM_ZERO {
-        let frac = effective_speed * dt / target.move_dir_len;
-        let final_subcell = locomotor
-            .as_ref()
-            .and_then(|l| l.subcell_dest)
-            .filter(|_| target.next_index >= target.path.len());
-        if frac >= SIM_ONE
-            && let Some((x, y)) = final_subcell
-        {
-            position.sub_x = x;
-            position.sub_y = y;
-        } else {
-            position.sub_x += target.move_dir_x * frac;
-            position.sub_y += target.move_dir_y * frac;
-        }
-    }
-    AdvanceResult::ReadyForCrossings
 }
 
 /// Output from the cell boundary crossing loop.
@@ -871,15 +205,11 @@ pub(super) struct CrossingOutput {
 /// `entity.movement_target` (which the caller holds as `ref mut target`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn process_cell_crossings(
-    foot_occupation_enabled: &mut bool,
-    path_replay: &mut crate::sim::components::FootPathQueue,
     target: &mut MovementTarget,
     path_runtime: &mut crate::sim::components::FootPathRuntime,
     position: &mut Position,
     body_facing: &super::FacingClass,
     locomotor: &mut Option<LocomotorState>,
-    drive_locomotion: &mut Option<DriveLocomotionRuntime>,
-    ship_locomotion: &mut Option<ShipLocomotionRuntime>,
     sub_cell: &mut Option<u8>,
     category: EntityCategory,
     entity_id: u64,
@@ -1011,29 +341,19 @@ pub(super) fn process_cell_crossings(
                 position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
                 // VERA centre recovery is not a native locomotor step; keep its
                 // committed old-cell pose coherent without sampling the rejected XY.
-                if locomotor.as_ref().is_some_and(|loco| {
-                    matches!(
-                        loco.kind,
-                        LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk
-                    )
-                }) {
-                    super::ground_pose::set_height(
-                        position,
-                        projected_on_bridge_state,
-                        0,
-                        resolved_terrain,
-                        path_grid,
-                    );
-                }
+                super::ground_pose::set_height(
+                    position,
+                    projected_on_bridge_state,
+                    0,
+                    resolved_terrain,
+                    path_grid,
+                );
                 path_runtime.start_movement(mcfg.binary_frame, 0);
                 let evts = handle_blocked_tick(
-                    path_replay,
                     target,
                     path_runtime,
                     body_facing.current(mcfg.binary_frame),
                     &snap.locomotor,
-                    drive_locomotion,
-                    ship_locomotion,
                     entity_id,
                     (position.rx, position.ry),
                     active_layer,
@@ -1069,11 +389,7 @@ pub(super) fn process_cell_crossings(
                     // Water movers (ships) bypass PathGrid — water cells are
                     // marked non-walkable for land units but ships need them.
                     // Use passability matrix directly, same as the pathfinder.
-                    let cost_grid = if target.ignore_terrain_cost {
-                        None
-                    } else {
-                        entity_cost_grid
-                    };
+                    let cost_grid = entity_cost_grid;
                     // Same predicate the search ran. The original reaches its cell
                     // gate through a single per-class slot, so an infantryman's
                     // sub-cell view of terrain objects has to hold here too —
@@ -1095,8 +411,7 @@ pub(super) fn process_cell_crossings(
                                 snap.speed_type,
                                 resolved_terrain,
                                 cost_grid,
-                                target.bypass_grid
-                                    || snap.slave_deposit_cells.contains(&Some((nx, ny))),
+                                snap.slave_deposit_cells.contains(&Some((nx, ny))),
                                 category == EntityCategory::Infantry,
                                 snap.crush_capability().wall_arm_crusher(),
                                 ctx.wall_tables.map(|tables| {
@@ -1137,7 +452,7 @@ pub(super) fn process_cell_crossings(
                         snap.speed_type,
                         resolved_terrain,
                         entity_cost_grid,
-                        target.bypass_grid,
+                        false,
                     )
                 }),
                 MovementLayer::Air | MovementLayer::Underground => false,
@@ -1166,20 +481,13 @@ pub(super) fn process_cell_crossings(
                 position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
                 // VERA centre recovery is not a native locomotor step; keep its
                 // committed old-cell pose coherent without sampling the rejected XY.
-                if locomotor.as_ref().is_some_and(|loco| {
-                    matches!(
-                        loco.kind,
-                        LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk
-                    )
-                }) {
-                    super::ground_pose::set_height(
-                        position,
-                        projected_on_bridge_state,
-                        0,
-                        resolved_terrain,
-                        path_grid,
-                    );
-                }
+                super::ground_pose::set_height(
+                    position,
+                    projected_on_bridge_state,
+                    0,
+                    resolved_terrain,
+                    path_grid,
+                );
 
                 // Wall arm (ledger I9b). `Can_Enter_Cell` answered 4 or 5: a wall
                 // this mover is armed against and whose warhead admits it. Native
@@ -1213,13 +521,10 @@ pub(super) fn process_cell_crossings(
                 // Force immediate repath by clearing movement_delay.
                 path_runtime.start_movement(mcfg.binary_frame, 0);
                 let evts = handle_blocked_tick(
-                    path_replay,
                     target,
                     path_runtime,
                     body_facing.current(mcfg.binary_frame),
                     &snap.locomotor,
-                    drive_locomotion,
-                    ship_locomotion,
                     entity_id,
                     (position.rx, position.ry),
                     active_layer,
@@ -1274,29 +579,19 @@ pub(super) fn process_cell_crossings(
                         position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
                         // VERA centre recovery is not a native locomotor step; keep its
                         // committed old-cell pose coherent without sampling the rejected XY.
-                        if locomotor.as_ref().is_some_and(|loco| {
-                            matches!(
-                                loco.kind,
-                                LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk
-                            )
-                        }) {
-                            super::ground_pose::set_height(
-                                position,
-                                projected_on_bridge_state,
-                                0,
-                                resolved_terrain,
-                                path_grid,
-                            );
-                        }
+                        super::ground_pose::set_height(
+                            position,
+                            projected_on_bridge_state,
+                            0,
+                            resolved_terrain,
+                            path_grid,
+                        );
                         path_runtime.start_movement(mcfg.binary_frame, 0);
                         let evts = handle_blocked_tick(
-                            path_replay,
                             target,
                             path_runtime,
                             body_facing.current(mcfg.binary_frame),
                             &snap.locomotor,
-                            drive_locomotion,
-                            ship_locomotion,
                             entity_id,
                             (position.rx, position.ry),
                             active_layer,
@@ -1336,7 +631,6 @@ pub(super) fn process_cell_crossings(
             if let Some(check) = detect_deferred_cell_check(
                 snap.category,
                 entity_id,
-                target.bypass_grid,
                 layer_context,
                 (nx, ny),
                 (position.rx, position.ry),
@@ -1454,11 +748,8 @@ pub(super) fn process_cell_crossings(
                 new_list_layer: new_occupancy_layer,
                 position,
                 locomotor,
-                drive_locomotion,
-                foot_occupation_enabled,
                 sub_cell,
                 occupancy,
-                cell_occupation,
                 stats,
                 priority: snap.sub_cell_priority_mission && snap.nav_com_cell == Some((nx, ny)),
             }

@@ -60,10 +60,7 @@ pub fn pending_path_tube_id(
     current_layer: MovementLayer,
     terrain: Option<&ResolvedTerrainGrid>,
 ) -> Option<TubeId> {
-    if current_layer != MovementLayer::Ground
-        || target.bypass_grid
-        || target.next_index >= target.path.len()
-    {
+    if current_layer != MovementLayer::Ground || target.next_index >= target.path.len() {
         return None;
     }
     let current = (position.rx, position.ry);
@@ -939,7 +936,7 @@ mod tests {
     fn gsi_04_15_tube_admission_requires_ground_object_list_layer() {
         let terrain = explicit_terrain(vec![2, 2]);
         let entity = unit(1);
-        let mut target = MovementTarget {
+        let target = MovementTarget {
             path: vec![(0, 0), (2, 0)],
             next_index: 1,
             ..MovementTarget::default()
@@ -962,17 +959,6 @@ mod tests {
                 Some(&terrain)
             ),
             Some(TubeId(0))
-        );
-
-        target.bypass_grid = true;
-        assert_eq!(
-            pending_path_tube_id(
-                &target,
-                &entity.position,
-                MovementLayer::Ground,
-                Some(&terrain)
-            ),
-            None
         );
     }
 

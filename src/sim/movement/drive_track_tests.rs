@@ -536,18 +536,6 @@ fn sharp_turn_fallback_produces_valid_track_for_all_8_dirs() {
         assert_eq!(plan.selection.raw_track_index, fallback.raw_track_index);
         assert_eq!(plan.selection.flags, fallback.flags);
         assert_eq!(plan.selection.target_facing, fallback.target_facing);
-        let position = crate::sim::components::Position {
-            rx: 10,
-            ry: 10,
-            z: 0,
-            exact_z_leptons: Some(731),
-            sub_x: crate::util::fixed_math::SimFixed::from_num(85),
-            sub_y: crate::util::fixed_math::SimFixed::from_num(153),
-        };
-        let head = super::super::track_head::begin_fresh(&plan, &position).unwrap();
-        assert_eq!(head.x, 10 * 256 + 85 + delta.0 * 256);
-        assert_eq!(head.y, 10 * 256 + 153 + delta.1 * 256);
-        assert_eq!(head.z, 731);
     }
 }
 
@@ -761,15 +749,16 @@ fn gsi_06_13_turns_flag_and_head_span_agree_across_all_direction_pairs() {
 #[test]
 fn gsi_06_13_selected_curve_starts_at_the_movers_own_cell_centre() {
     let plan = expect_plan(FACE_E, (1, 0), Some((0, 1)));
-    let position = crate::sim::components::Position {
-        rx: 0,
-        ry: 0,
+    // Head from the mover's own cell centre, one cell per selected node.
+    let offset = super::super::track_head::offset_head;
+    let turn = plan.selection.turn_track_index;
+    let centre = crate::sim::components::DriveCoord {
+        x: 128,
+        y: 128,
         z: 0,
-        exact_z_leptons: None,
-        sub_x: crate::util::lepton::CELL_CENTER_LEPTON,
-        sub_y: crate::util::lepton::CELL_CENTER_LEPTON,
     };
-    let head = super::super::track_head::begin_fresh(&plan, &position).unwrap();
+    let head = offset(offset(centre, (turn / 8) as u8), (turn % 8) as u8);
+    assert_eq!(plan.nodes, 2);
     let points = raw_track_points(plan.selection.raw_track_index);
     let (tx, ty, tf) = transform_track_point(
         points[0].x,

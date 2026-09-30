@@ -1010,9 +1010,9 @@ fn dense_converging_setup() -> (
     Vec<(u64, crate::sim::intern::InternedId, Command)>,
 ) {
     let rules = harness_rules();
-    let grid = PathGrid::new(64, 64);
-
     let mut sim = Simulation::with_seed(DENSE_SEED);
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
+    let grid = (*sim.path_grid_snapshot().unwrap()).clone();
     let mut roster: Vec<MapEntity> = Vec::new();
     for i in 0..DENSE_ROWS {
         roster.push(unit("Americans", "MTNK", 10, 5 + i, EntityCategory::Unit));
@@ -1158,7 +1158,8 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         )))
         .unwrap();
         let mut sim = Simulation::with_seed(DENSE_SEED);
-        let grid = PathGrid::new(64, 64);
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
+        let grid = (*sim.path_grid_snapshot().unwrap()).clone();
         sim.spawn_from_map(
             &[unit("Americans", "MTNK", 40, 5, EntityCategory::Unit)],
             Some(&rules),
@@ -1223,6 +1224,8 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
             .sim;
         restored.retain_in_scenario_process_state_from(&sim);
         restored.restore_after_snapshot_load().unwrap();
+        // The map inputs come from the scenario, not the save.
+        crate::sim::arena_fixture::supply_native_map(&mut restored);
         for tick in 4..=35 {
             for world in [&mut sim, &mut restored] {
                 world.advance_tick(&[], Some(&rules), Some(&grid), None, HARNESS_TICK_MS);

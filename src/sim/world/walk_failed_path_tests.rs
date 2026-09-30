@@ -324,12 +324,6 @@ fn jumpjet_infantry_damage_scatter_takes_the_foot_air_setter() {
     );
     let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
     assert!(state.moving, "Jumpjet Move_To accepted the scatter cell");
-    assert!(
-        !e.movement_target
-            .as_ref()
-            .is_some_and(|target| target.adapter_route || target.bypass_grid),
-        "no direct-move adapter route"
-    );
     assert_eq!(e.mission.queued(), MissionId::from_known(MissionType::Move));
 }
 

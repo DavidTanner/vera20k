@@ -74,7 +74,6 @@ impl Fixture {
             self.capability,
             "Americans",
             LocomotorKind::Drive,
-            false,
             Some(&self.ignored),
             &self.occupancy,
             &self.identity,

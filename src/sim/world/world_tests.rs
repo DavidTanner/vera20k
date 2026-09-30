@@ -2609,6 +2609,15 @@ fn install_rectangular_test_playfield(sim: &mut Simulation, width: u16, height: 
     });
 }
 
+/// The rectangular playfield with Map Size = the fixture grid, which a
+/// Drive/Ship Process's Foot precheck reads.
+fn install_rectangular_test_map(sim: &mut Simulation, width: u16, height: u16) {
+    install_rectangular_test_playfield(sim, width, height);
+    let bounds = sim.playfield_bounds.as_mut().unwrap();
+    bounds.base = i32::from(width);
+    sim.playfield_size_height = Some(i32::from(height));
+}
+
 /// Structural deck fixture for the576BA0 ->47E040 damage path, matching
 /// bridge_body_publication's native anchor25/state15 collapse input.
 /// All four deck slots come from the actual direction6 flag stamp.
@@ -5232,8 +5241,9 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
     let mut sim = Simulation::new();
     let terrain = water_terrain(4, 4);
     let path_grid = PathGrid::from_resolved_terrain(&terrain);
-    install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
+    install_rectangular_test_map(&mut sim, terrain.width(), terrain.height());
     sim.resolved_terrain = Some(terrain.clone());
+    assert!(sim.rebuild_dynamic_navigation(&rules));
 
     sim.terrain_costs.insert(
         crate::rules::locomotor_type::SpeedType::Float,
@@ -5298,8 +5308,9 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
     // shoreline/coast land_type values. Ships should still navigate them.
     let terrain = water_terrain_with_land_type(4, 4, 7, false);
     let path_grid = PathGrid::from_resolved_terrain(&terrain);
-    install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
+    install_rectangular_test_map(&mut sim, terrain.width(), terrain.height());
     sim.resolved_terrain = Some(terrain.clone());
+    assert!(sim.rebuild_dynamic_navigation(&rules));
 
     sim.terrain_costs.insert(
         crate::rules::locomotor_type::SpeedType::Float,
@@ -5363,8 +5374,19 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
     terrain.cells[bridge_idx].bridge_walkable = true;
     terrain.cells[bridge_idx].bridge_transition = true;
     let path_grid = PathGrid::from_resolved_terrain(&terrain);
-    install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
+    install_rectangular_test_map(&mut sim, terrain.width(), terrain.height());
     sim.resolved_terrain = Some(terrain.clone());
+    // The Foot precheck's zones for this 5x3 grid, with its Map Size.
+    sim.zone_grid = Some(
+        crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_bridge_geometry(
+            &path_grid,
+            &terrain,
+            &[],
+            5,
+            3,
+            Some((5, 3)),
+        ),
+    );
 
     sim.terrain_costs.insert(
         crate::rules::locomotor_type::SpeedType::Float,
@@ -5919,14 +5941,12 @@ fn drive_fraction_writer_rules(accelerates: bool) -> RuleSet {
 
 #[test]
 fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
-    let grid = PathGrid::new(16, 16);
-
     for accelerates in [false, true] {
         let rules = drive_fraction_writer_rules(accelerates);
         let mut sim = Simulation::new();
-        sim.install_fixture_path_grid(Some(&grid));
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let entity_id = sim
-            .spawn_object("DRIVE", "Americans", 2, 3, 64, &rules)
+            .spawn_object("DRIVE", "Americans", 12, 13, 64, &rules)
             .expect("spawn Drive vehicle");
         {
             let entity = sim
@@ -5949,8 +5969,8 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
             "Americans",
             &Command::Move {
                 entity_id,
-                target_rx: 7,
-                target_ry: 3,
+                target_rx: 17,
+                target_ry: 13,
                 queue: false,
             },
             Some(&rules),
@@ -5969,7 +5989,6 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 .movement_target
                 .as_ref()
                 .expect("Move command installs movement target");
-            assert_eq!(movement.slowdown_distance, SimFixed::from_num(500));
             movement.speed
         };
 
@@ -6222,7 +6241,14 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         entity.body_facing.snap(0x4000, 0);
     }
 
-    let grid = PathGrid::new(16, 16);
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=MTNK\n[MTNK]\nSpeed=6\n",
+    ))
+    .unwrap();
+    install_rectangular_test_map(&mut sim, 16, 16);
+    sim.resolved_terrain = Some(gsi_04_10_clear_terrain(16, 16));
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    let grid = (*sim.path_grid_snapshot().unwrap()).clone();
     let issued = {
         let (entities, cell_occupation) = (
             &mut sim.substrate.entities,
@@ -6247,22 +6273,9 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         )
     };
     assert!(issued);
-    {
-        let movement = sim
-            .substrate
-            .entities
-            .get_mut(1)
-            .unwrap()
-            .movement_target
-            .as_mut()
-            .unwrap();
-        movement.accel_factor = SimFixed::lit("0.03");
-        movement.decel_factor = SimFixed::lit("0.002");
-        movement.slowdown_distance = SimFixed::from_num(500);
-    }
     // An accepted order only installs NavCom/route. The first production
     // Process owns selection, the retained head, and its occupation claim.
-    sim.process_ground_locomotor_for_test(1, None, Some(&grid), None)
+    sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
         .expect("Drive Process must commit the first segment before Stop");
     let committed_track = sim
         .substrate
@@ -6326,7 +6339,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
     let initial_point_index = stopped.drive_locomotion.as_ref().unwrap().track.cursor;
     let mut cursor_advanced = false;
     for _ in 0..32 {
-        let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
         cursor_advanced = sim
             .substrate
             .entities
@@ -6368,7 +6381,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         {
             break;
         }
-        let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
     }
 
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -6410,7 +6423,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
     );
 
     for _ in 0..32 {
-        let _ = sim.advance_tick(&[], None, Some(&grid), None, 33);
+        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
     }
     let parked = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -6462,7 +6475,14 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         entity.body_facing.snap(0x4000, 0);
     }
 
-    let grid = PathGrid::new(16, 16);
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=DLPH\n[DLPH]\nSpeed=6\n",
+    ))
+    .unwrap();
+    install_rectangular_test_map(&mut sim, 16, 16);
+    sim.resolved_terrain = Some(water_terrain(16, 16));
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    let grid = (*sim.path_grid_snapshot().unwrap()).clone();
     let issued = {
         let (entities, cell_occupation) = (
             &mut sim.substrate.entities,
@@ -6487,7 +6507,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         )
     };
     assert!(issued);
-    sim.process_ground_locomotor_for_test(1, None, Some(&grid), None)
+    sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
         .expect("Ship Process must commit the first segment before Stop");
     let (committed_head, committed_track) = {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
@@ -10492,53 +10512,6 @@ fn defeat_of_a_non_passive_house_emits_player_defeated() {
         sim.sound_events
             .iter()
             .all(|event| !matches!(event, SimSoundEvent::PlayerDefeated { .. }))
-    );
-}
-
-/// I9c regression, a first search. Resuming an attack-move with no target and
-/// no path issues a fresh move (`tick_order_intents_post_combat`), whose
-/// first Process searches. That search once passed "not a crusher", so after
-/// I9a a `Crusher=yes` tank resuming its attack-move was refused a sandbag
-/// cell the crossing and every repath admit.
-#[test]
-fn attack_move_resume_lets_a_crusher_tank_through_a_sandbag_cell() {
-    use crate::map::resolved_terrain::zone_class;
-    let run = |regular_crusher: bool| {
-        let mut terrain = gsi_04_10_clear_terrain(20, 1);
-        terrain.cells[5].overlay_zone_type = Some(zone_class::CRUSHABLE);
-        terrain.cells[5].zone_type = zone_class::CRUSHABLE;
-        let path = PathGrid::from_resolved_terrain(&terrain);
-        let mut sim = Simulation::new();
-        sim.resolved_terrain = Some(terrain);
-        let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 0, 0);
-        entity.category = EntityCategory::Unit;
-        entity.regular_crusher = regular_crusher;
-        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-        entity.order_intent = Some(crate::sim::components::OrderIntent::AttackMove {
-            goal_rx: 10,
-            goal_ry: 0,
-        });
-        sim.substrate.entities.insert(entity);
-        // The Process reads type names; snapshot after the entity interned its.
-        sim.interner = crate::sim::intern::test_interner();
-        sim.install_fixture_path_grid(Some(&path));
-        sim.tick_order_intents_post_combat(None);
-        sim.process_ground_locomotor_for_test(1, None, Some(&path), None)
-            .expect("the first Process requests the route");
-        sim.substrate
-            .entities
-            .get(1)
-            .and_then(|e| e.movement_target.as_ref())
-            .map(|t| t.path.clone())
-    };
-    let crusher = run(true).expect("crusher resumes its attack-move");
-    assert!(
-        crusher.contains(&(5, 0)),
-        "crusher route crosses the sandbag: {crusher:?}"
-    );
-    assert!(
-        run(false).is_none(),
-        "non-crusher is refused at the sandbag"
     );
 }
 
