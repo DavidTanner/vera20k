@@ -66,14 +66,25 @@ was checked:
   prefix keeps the earlier method name when the slot's method is unidentified; when
   that earlier name's class is unrelated to the slot owner, the name was kept. Where
   an older method name only disagrees with the slot, the name was kept and the plate
-  records the slot's method; most of these are synonyms, a few are open conflicts.
+  records the slot's method; most of these are synonyms. Seven older names that YRpp
+  gives to another slot of the same class were checked against their bodies and
+  corrected (for example `UnitClass__DrawExtras` 0x73CEC0 is `UnitClass__Draw`).
 - `[2026-09-30 YRpp names]`: a non-virtual function or global named from a YRpp
   address binding. The plate states whether the body's `RET` matches YRpp's declared
-  arguments. The name stays a lead.
+  arguments. The name stays a lead. A global that already had its own name kept it;
+  its plate records YRpp's binding.
 - `[2026-09-30 destructor audit]`: a destructor an older pass had named
   `__Constructor`, with the byte evidence.
 - `vtable__<Class>` and `vtable__<Class>__secondary_<offset>` label each vtable from
   its RTTI complete object locator.
+
+Destructor and COM-interface method names rest on the bytes. For the 2,356 method
+names taken from YRpp's declaration order, each body's `ret N` was compared with
+YRpp's declared parameters: none showed a shifted slot, and a one-slot shift would
+have changed the popped bytes for about 60% of them. Two `GetSomeCellStruct` bodies
+take a pointer argument YRpp does not declare. A random sample of 40 names from YRpp
+order, YRpp address bindings and older overrides all matched their bodies; 10 were
+trivial bodies judged through other overrides of the slot.
 
 A name without a dated paragraph predates these passes; judge it by its own plate or
 re-derive it. The scripts, plans and results of the 2026-09-30 passes are in the
