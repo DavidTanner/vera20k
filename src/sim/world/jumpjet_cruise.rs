@@ -79,13 +79,9 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::RawCellKey;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::SimFixed;
-use crate::util::lepton::{GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons};
-
-/// `(value + ((value >> 31) & 0xFF)) >> 8`, the signed lepton-to-cell step the
-/// native cell lookups use.
-fn native_cell(value: i32) -> i16 {
-    (value.wrapping_add((value >> 31) & 0xFF) >> 8) as i16
-}
+use crate::util::lepton::{
+    GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons, lepton_to_cell_packed,
+};
 
 struct CruiseHost<'a> {
     /// The world as the frame began; the host's own fields carry what the
@@ -167,7 +163,7 @@ impl<'a> CruiseHost<'a> {
         let Some(terrain) = self.terrain() else {
             return (0, 0);
         };
-        match terrain.native_cell_identity((native_cell(xy[0]), native_cell(xy[1]))) {
+        match terrain.native_cell_identity(self.cell_of(xy)) {
             NativeCellIdentity::Real(index) => {
                 let cell = &terrain.cells()[index];
                 (cell.level, cell.slope_type)
@@ -231,7 +227,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
 
     fn cell_high_bridge(&self, xy: [i32; 2]) -> bool {
         self.terrain().is_some_and(|terrain| {
-            let cell = terrain.native_cell_identity((native_cell(xy[0]), native_cell(xy[1])));
+            let cell = terrain.native_cell_identity(self.cell_of(xy));
             terrain.native_cell_flags(cell) & 0x100 != 0
         })
     }
@@ -239,7 +235,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     fn cell_top_height(&self, xy: [i32; 2]) -> i32 {
         let (level, slope) = self.cell_terrain(xy);
         let centre = ground_height_leptons(level, slope, 128, 128).unwrap_or(0);
-        let (cx, cy) = (native_cell(xy[0]), native_cell(xy[1]));
+        let (cx, cy) = self.cell_of(xy);
         if cx < 0 || cy < 0 {
             return jumpjet_flight::cell_top_height(centre, None, false);
         }
@@ -280,7 +276,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
 
     fn cell_land_type(&self, xy: [i32; 2]) -> u8 {
         self.terrain().map_or(0, |terrain| {
-            match terrain.native_cell_identity((native_cell(xy[0]), native_cell(xy[1]))) {
+            match terrain.native_cell_identity(self.cell_of(xy)) {
                 NativeCellIdentity::Real(index) => terrain.cells()[index].yr_cell_land_type,
                 NativeCellIdentity::Dummy => 0,
             }
@@ -325,7 +321,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 
     fn cell_of(&self, xy: [i32; 2]) -> (i16, i16) {
-        (native_cell(xy[0]), native_cell(xy[1]))
+        (lepton_to_cell_packed(xy[0]), lepton_to_cell_packed(xy[1]))
     }
 
     fn body_facing(&self) -> u16 {
@@ -397,9 +393,12 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         };
         answer.map_or_else(
             |error| {
-                // RESIDUAL: native always has an answer. An owner VERA cannot
-                // ask (no rules, a missing type, no map cells) lands, as the
-                // PathGrid stand-in this replaced did without a grid.
+                // RESIDUAL: native always has an answer; here only a world
+                // without rules, the owner's type or map cells lacks one. Such
+                // an owner lands. A refusal would run `Stop_Moving`, whose
+                // failed search kills a live owner with C4
+                // (`0x0054B68F..0x0054B6D3`) and whose re-target only flies it
+                // back into the same refusal.
                 log::warn!("Jumpjet {} landing entry: {error}", self.stable_id);
                 0
             },
@@ -498,8 +497,8 @@ impl JumpjetFlightHost for CruiseHost<'_> {
 /// Write a world-lepton coordinate back into the cell/sub-cell position and
 /// the exact Z the renderer and range checks read.
 fn commit_world_location(position: &mut Position, location: [i32; 3]) {
-    let cell_x = i32::from(native_cell(location[0])).max(0);
-    let cell_y = i32::from(native_cell(location[1])).max(0);
+    let cell_x = i32::from(lepton_to_cell_packed(location[0])).max(0);
+    let cell_y = i32::from(lepton_to_cell_packed(location[1])).max(0);
     position.rx = cell_x as u16;
     position.ry = cell_y as u16;
     position.sub_x = SimFixed::from_num((location[0] - cell_x * 256).clamp(0, 255));
@@ -741,8 +740,7 @@ impl Simulation {
             landing_latched: runtime.landing_latched,
             touched_down: false,
             crashing: entity.crashing,
-            mission_enter: entity.mission.queued().raw() == 7
-                || entity.mission.effective().raw() == 7,
+            mission_enter: crate::sim::movement::jumpjet_movement::owner_mission_is_enter(entity),
             map_size: self.map_size_diamond(),
             crash_relocated: false,
             impact: false,
@@ -816,8 +814,8 @@ impl Simulation {
             match entity.movement_target.as_ref().and_then(|t| t.final_goal) {
                 Some(goal) => {
                     let flying_to = (
-                        native_cell(runtime.destination.x),
-                        native_cell(runtime.destination.y),
+                        lepton_to_cell_packed(runtime.destination.x),
+                        lepton_to_cell_packed(runtime.destination.y),
                     );
                     if runtime.moving
                         && runtime.destination != JumpjetRuntime::NULL
@@ -1245,14 +1243,23 @@ mod tests {
     /// direction, no height and no source cell. A Unit landing on the cell
     /// centre passes the sub-cell gate (`0x0054C6BE`). Then 0 and 1 admit and
     /// set the landing latch; 2 refuses until the latch is set, and anything
-    /// above 2 refuses (`0x0054C6FD..0x0054C731`). A refusal runs
-    /// `Stop_Moving`, which lifts the descent back into State 1.
+    /// above 2 refuses, latched or not (`0x0054C6FD..0x0054C731`). A refusal
+    /// runs `Stop_Moving`, which withdraws the latch and lifts the descent
+    /// back into State 1.
     #[test]
     fn a_descent_lands_only_where_the_owners_can_enter_cell_admits() {
         use crate::sim::movement::fresh_oracle_seam::{self, FreshCallRecord};
         let rules =
             RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str("")).expect("rules");
-        for (code, admitted) in [(0, true), (1, true), (2, false), (3, false), (7, false)] {
+        for (code, latched, admitted) in [
+            (0, false, true),
+            (1, false, true),
+            (2, false, false),
+            (2, true, true),
+            (3, false, false),
+            (3, true, false),
+            (7, false, false),
+        ] {
             let mut sim = hovering_jumpjet(0x40);
             // The owner's type is read through the world's interner once
             // rules are present.
@@ -1267,6 +1274,7 @@ mod tests {
                     .expect("runtime");
                 runtime.phase = STATE_DESCEND;
                 runtime.moving = true;
+                runtime.landing_latched = latched;
                 runtime.destination = crate::sim::components::DriveCoord {
                     x: 10 * 256 + 128,
                     y: 10 * 256 + 128,
@@ -1285,9 +1293,9 @@ mod tests {
                     height: -1,
                     code,
                 }],
-                "code {code}"
+                "code {code}, latched {latched}"
             );
-            assert_eq!(unused, 0, "code {code}");
+            assert_eq!(unused, 0, "code {code}, latched {latched}");
             let runtime = sim
                 .substrate
                 .entities

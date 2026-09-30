@@ -1060,8 +1060,18 @@ impl Simulation {
     /// A mover's own `Can_Enter_Cell` (vtable `+0x1AC`) at a cell, as its
     /// native code: [`Self::aircraft_can_enter`] for an Aircraft, which reads
     /// no argument but the cell, otherwise [`Self::foot_can_enter`] with
-    /// `args` on the cell's canonical lookup. The group spread (`0x0064D52F`)
-    /// and Jumpjet State 4 (`0x0054C66D`) ask through it.
+    /// `args` on the cell's canonical lookup.
+    ///
+    /// Every caller passes 1 as the fifth argument, which `args` has no slot
+    /// for. Unit forwards it as `0x004D9C10`'s enable flag (`0x0073F3B3`),
+    /// where every retail locomotor's `+0x1C` is the constant-zero
+    /// `0x0055ABF0` (`tools/spatial_oracle/foot_locomotor_entry`); the Unit
+    /// corpus runs with 1 (`tools/spatial_oracle/unit_entry.py`).
+    ///
+    /// Callers: the group spread (`0x0064D52F`), the team centre
+    /// (`0x006EAEE0`) and Jumpjet State 4 (`0x0054C66D`). Each decides what
+    /// an answer VERA cannot read (`Err`) means for it; native has no such
+    /// state.
     pub(crate) fn mover_can_enter(
         &self,
         id: u64,

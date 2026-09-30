@@ -302,8 +302,9 @@ pub(crate) trait JumpjetFlightHost {
     /// `0x0048117A`; only the upper bytes of EAX are stale), which the caller
     /// applies, so this is never consulted for them.
     fn sub_cell_free(&self, cell: (i16, i16), sub_cell: i32, bridge: bool) -> bool;
-    /// The owner's mission (`+0xB4`) or its queued mission (vtable `+0x184`)
-    /// is 7, which skips State 4's landing admission.
+    /// Owner `+0xB4` (the queued mission) or `GetCurrentMission` (vtable
+    /// `+0x184`, `0x005B3040`) is Enter (7), which skips State 4's landing
+    /// admission.
     fn mission_is_seven(&self) -> bool;
     /// State 4's refusal calls `Stop_Moving` (interface vtable `+0x48`) as its
     /// last act. The host runs the order body
