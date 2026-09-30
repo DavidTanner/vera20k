@@ -416,15 +416,20 @@ fn ordered_attack_null_destination_stops_a_moving_tank_after_its_track() {
     }
 }
 
-/// Production-shaped depot repair: the order names the depot's dock cell
-/// (inside the foundation), the setter accepts it unchanged and the first
-/// Process's Find_Path must still bring the tank to the pad. A NULL core
-/// result there would drop the order (NULL setter and a queued Guard).
+/// Production-shaped depot queue on a depot with retail GADEPT's
+/// `NumberImpassableRows=1`. Tank A holds the pad while tank B, ordered
+/// second, waits beside it. The repaired A is released through its class
+/// setter (`MissionRepairAndProduce` 0x0044C473..C496 -> Unit `0x00741970`)
+/// to the first exit-list cell below the NW corner, and its Process's
+/// Find_Path must route it off the pad; B's own order then routes it onto the
+/// freed pad. Both searches admit only the footprint columns east of the
+/// impassable west one (`Can_Enter_Cell` 0x0073F761), and no move in the
+/// queue is a Rust adapter route.
 #[test]
-fn depot_repair_order_reaches_the_pad_through_find_path() {
+fn depot_release_and_pad_entry_route_through_find_path() {
     let depot_rules = format!(
         "{UNITS}[BuildingTypes]\n1=DEPOT\n\
-         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\n"
+         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n"
     );
     let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
     let owner = sim.interner.intern("Americans");
@@ -434,41 +439,78 @@ fn depot_repair_order_reaches_the_pad_through_find_path() {
     let depot = sim
         .spawn_object("DEPOT", "Americans", 16, 9, 0, &rules)
         .unwrap();
-    let tank = sim
+    let footprint = |(x, y): (u16, u16)| (16..19).contains(&x) && (9..12).contains(&y);
+    let pad = (17, 10);
+    let first = sim
+        .spawn_object("DRV", "Americans", 20, 10, 0, &rules)
+        .unwrap();
+    let waiter = sim
         .spawn_object("DRV", "Americans", 10, 10, 0, &rules)
         .unwrap();
-    sim.substrate.entities.get_mut(tank).unwrap().health.current = 150;
-    assert!(sim.apply_command(
-        "Americans",
-        &crate::sim::command::Command::RepairAtDepot {
-            entity_id: tank,
-            depot_id: depot,
-        },
-        Some(&rules),
-    ));
-    let mut docked = false;
-    for _ in 0..400 {
+    for (tank, hp) in [(first, 290), (waiter, 150)] {
+        sim.substrate.entities.get_mut(tank).unwrap().health.current = hp;
+        assert!(sim.apply_command(
+            "Americans",
+            &crate::sim::command::Command::RepairAtDepot {
+                entity_id: tank,
+                depot_id: depot,
+            },
+            Some(&rules),
+        ));
+    }
+    use crate::sim::docking::building_dock::DockPhase;
+    let phase = |sim: &Simulation, id: u64| {
+        sim.substrate
+            .entities
+            .get(id)
+            .and_then(|e| e.dock_state.as_ref())
+            .map(|state| state.phase)
+    };
+    let exit = (16, 12);
+    let mut first_released = false;
+    let mut first_exited = false;
+    let mut waiter_on_pad = false;
+    for _ in 0..3000 {
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
-        let e = sim.substrate.entities.get(tank).unwrap();
-        let phase = e.dock_state.as_ref().map(|state| state.phase);
-        if matches!(
-            phase,
-            Some(crate::sim::docking::building_dock::DockPhase::EnterDock)
-                | Some(crate::sim::docking::building_dock::DockPhase::Servicing)
-        ) {
-            docked = true;
+        for tank in [first, waiter] {
+            let e = sim.substrate.entities.get(tank).unwrap();
+            assert!(
+                !e.movement_target.as_ref().is_some_and(|t| t.adapter_route),
+                "tank {tank} was handed a Rust adapter route"
+            );
+            let at = (e.position.rx, e.position.ry);
+            assert!(
+                !footprint(at) || at.0 > 16,
+                "tank {tank} entered the impassable west column at {at:?}"
+            );
+        }
+        if !first_released && phase(&sim, first).is_none() {
+            first_released = true;
+            let a = sim.substrate.entities.get(first).unwrap();
+            assert_eq!(
+                a.navigation.nav_com,
+                Some(NavTargetRef::cell(exit.0, exit.1))
+            );
+            assert_eq!((a.position.rx, a.position.ry), pad);
+        }
+        let a = sim.substrate.entities.get(first).unwrap();
+        first_exited |= first_released && (a.position.rx, a.position.ry) == exit;
+        if first_exited && phase(&sim, waiter) == Some(DockPhase::Servicing) {
+            let e = sim.substrate.entities.get(waiter).unwrap();
+            assert_eq!((e.position.rx, e.position.ry), pad);
+            waiter_on_pad = true;
             break;
         }
     }
-    let e = sim.substrate.entities.get(tank).unwrap();
+    let e = sim.substrate.entities.get(waiter).unwrap();
     assert!(
-        docked,
-        "tank never docked: cell {:?} dock {:?} nav {:?} mission {:?}/{:?}",
+        first_exited && waiter_on_pad,
+        "released {first_released} exited {first_exited}: waiter at {:?} dock {:?} nav {:?} \
+         mission {:?}",
         (e.position.rx, e.position.ry),
         e.dock_state.as_ref().map(|state| state.phase),
         e.navigation.nav_com,
         e.mission.current(),
-        e.mission.queued()
     );
 }
 
@@ -485,7 +527,7 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
         "{}[TLP]\nStrength=300\nSpeed=6\nSpeedType=Track\nMovementZone=Normal\n\
          Teleporter=yes\nLocomotor={{4A582747-9839-11d1-B709-00A024DDAFD1}}\n\
          [BuildingTypes]\n1=DEPOT\n\
-         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\n",
+         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\nNumberImpassableRows=1\n",
         UNITS.replace("1=SHP\n", "1=SHP\n2=TLP\n")
     );
     let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);

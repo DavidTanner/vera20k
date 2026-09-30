@@ -49,19 +49,18 @@
 //! - Part of sim/ — depends on rules/, sim/radio, sim/movement, sim/mission.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::Health;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::timer::MissionTimer;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
 #[cfg(test)]
 use crate::sim::radio::RadioResponse;
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
 
 use crate::sim::production::foundation_dimensions;
 
@@ -308,27 +307,25 @@ fn arm_enter_retry(sim: &mut Simulation, rules: &RuleSet, timer: &mut MissionTim
     timer.arm(sim.session.binary_frame, delay.max(0) as u32);
 }
 
-/// Drive the unit straight onto/off the pad (footprint cells are not grid
-/// walkable, so bypass the grid like the refinery pad entry does). A Chrono
-/// Miner on its Teleport drives here like any unit: the order's Unit setter
-/// runs its Teleporter arm, which installs a Drive over the Teleport
-/// (`0x007425E6..0x0074277E`; a depot is no `DockUnload=` contact).
+/// The occupant's class setter `vt+0x480(cell, 1)`, as
+/// `MissionRepairAndProduce` releases a repaired unit (0x0044C473..C496:
+/// `Queue_Mission(Move)`, `Map[cell]`, then `vt+0x480`): Unit `0x00741970`
+/// ([`Simulation::set_unit_cell_destination`], whose Teleporter arm installs a
+/// Drive over a Chrono Miner's Teleport, `0x007425E6..0x0074277E`, since a
+/// depot is no `DockUnload=` contact), Infantry `0x0051AA40`
+/// ([`Simulation::set_infantry_cell_destination`]). The route to the pad or
+/// exit cell is the first Process's Find_Path, whose Unit search admits the
+/// depot footprint through `Can_Enter_Cell` (`0x0073F0A0`, UnitRepair arm
+/// 0x0073F761 and radio-contact arm 0x0073F57C..5A2).
 fn issue_pad_move(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
-    sim.unit_teleporter_arm(id, Some(target), rules);
-    let speed = sim
-        .resolve_move_info(id, Some(rules))
-        .map(|info| info.speed)
-        .unwrap_or_else(|| ra2_speed_to_leptons_per_second(4));
-    let timing = movement::DestinationTiming::from_rules(sim.session.binary_frame, rules.into());
-    if movement::issue_direct_move(&mut sim.substrate.entities, id, target, speed, timing) {
-        if let Some(target) = sim
-            .substrate
-            .entities
-            .get_mut(id)
-            .and_then(|entity| entity.movement_target.as_mut())
-        {
-            target.bypass_grid = true;
+    match sim.substrate.entities.get(id).map(|unit| unit.category) {
+        Some(EntityCategory::Unit) => {
+            sim.set_unit_cell_destination(id, target, rules);
         }
+        Some(EntityCategory::Infantry) => {
+            let _ = sim.set_infantry_cell_destination(id, target, rules, None);
+        }
+        _ => {}
     }
 }
 
@@ -814,7 +811,7 @@ mod tests {
     use crate::map::entities::EntityCategory;
     use crate::rules::ini_parser::IniFile;
     use crate::sim::command::Command;
-    use crate::sim::components::Health;
+    use crate::sim::components::{Health, NavTargetRef};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
     use crate::sim::pathfinding::PathGrid;
@@ -1010,16 +1007,19 @@ mod tests {
              Cost=700\n\
              Strength={strength}\n\
              Speed=6\n\
+             Locomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\n\
              [HARV]\n\
              Name=War Miner\n\
              Cost=1400\n\
              Strength=600\n\
              Speed=4\n\
+             Locomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\n\
              Harvester=yes\n\
              [GADEPT]\n\
              Name=Depot\n\
              Foundation=3x3\n\
              UnitRepair=yes\n\
+             NumberImpassableRows=1\n\
              Strength=1000\n",
         ));
         RuleSet::from_ini(&ini).expect("depot rules")
@@ -1035,6 +1035,7 @@ mod tests {
         hp: i32,
     ) {
         let owner_id = sim.interner.intern("Americans");
+        let type_name = type_id;
         let type_id = sim.interner.intern(type_id);
         let mut ge = GameEntity::new_at_frame_zero_for_test(
             sid,
@@ -1051,6 +1052,24 @@ mod tests {
             category == EntityCategory::Unit,
         );
         ge.lifecycle.in_limbo = false;
+        if category == EntityCategory::Unit {
+            // A live Drive mover: the depot's class setter and the Process
+            // corridor need its locomotor.
+            ge.locomotor = Some(
+                crate::sim::movement::locomotor::LocomotorState::from_object_type(
+                    depot_rules().object(type_name).expect("fixture unit type"),
+                    0,
+                ),
+            );
+            sim.substrate.occupancy.add(
+                rx,
+                ry,
+                sid,
+                MovementLayer::Ground,
+                None,
+                CellListInsertion::PrependNonBuilding,
+            );
+        }
         sim.substrate.entities.insert(ge);
         if sim.substrate.next_stable_object_id <= sid {
             sim.substrate.next_stable_object_id = sid + 1;
@@ -1212,12 +1231,23 @@ mod tests {
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
         visit_units(sim, rules);
         tick_building_docks(sim, rules);
-        crate::sim::movement::tick_movement(
-            &mut sim.substrate.entities,
-            &mut sim.interner,
-            &mut sim.pending_lifecycle_requests,
-        );
+        process_units(sim, rules);
         sim.session.tick += 1;
+    }
+
+    /// Every unit's ground locomotor Process, in live-object order.
+    fn process_units(sim: &mut Simulation, rules: &RuleSet) {
+        for id in sim.substrate.entities.keys_sorted() {
+            if sim
+                .substrate
+                .entities
+                .get(id)
+                .is_some_and(|e| e.category == EntityCategory::Unit)
+            {
+                sim.process_ground_locomotor_one(id, Some(rules), None)
+                    .expect("unit Process");
+            }
+        }
     }
 
     /// The object-AI pass restricted to units, in live-object (stable id)
@@ -1440,6 +1470,37 @@ mod tests {
         assert_eq!(phase(&sim, 2), Some(DockPhase::WaitForDock));
     }
 
+    /// A linked unit that has stopped short of the pad is sent on by the dock
+    /// pass through its class setter (Unit `0x00741970`): a native NavCom on
+    /// the pad and a Find_Path route from its next Process, no adapter.
+    /// (Native keeps driving on the player order's NavCom; the re-issue is
+    /// the VERA stand-in the dock pass documents.)
+    #[test]
+    fn a_stopped_linked_unit_is_sent_onto_the_pad_by_its_class_setter() {
+        let (mut sim, rules) = setup(1);
+        assert!(order_repair(&mut sim, &rules, 1));
+        tick(&mut sim, &rules);
+        assert!(linked(&sim, 1));
+        sim.assign_null_destination(1, Some(&rules));
+        let e = sim.substrate.entities.get_mut(1).unwrap();
+        e.movement_target = None;
+        assert_eq!(e.navigation.nav_com, None, "the unit stopped");
+        tick(&mut sim, &rules);
+        let pad = depot_dock_cell(DEPOT_RX, DEPOT_RY, "3x3");
+        let e = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(phase(&sim, 1), Some(DockPhase::EnterDock));
+        assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(pad.0, pad.1)));
+        assert!(!e.movement_target.as_ref().is_some_and(|t| t.adapter_route));
+        for _ in 0..400 {
+            tick(&mut sim, &rules);
+            if phase(&sim, 1) == Some(DockPhase::Servicing) {
+                break;
+            }
+        }
+        assert_eq!(phase(&sim, 1), Some(DockPhase::Servicing));
+        assert_eq!(pos(&sim, 1), pad);
+    }
+
     /// Release drives the repaired unit off the pad to the foundation exit
     /// list's first enterable cell — (0, 3) below the NW corner for a 3x3 —
     /// with BREAK on both ends and a queued Move mission.
@@ -1466,11 +1527,14 @@ mod tests {
         assert_eq!(e.health.current, 300);
         assert!(!linked(&sim, 1));
         assert_eq!(e.mission.queued().known(), Some(MissionType::Move));
+        // MissionRepairAndProduce 0x0044C496: the class setter's NavCom; the
+        // route is the next Process's Find_Path.
         let exit = (DEPOT_RX, DEPOT_RY + 3);
         assert_eq!(
-            e.movement_target.as_ref().map(|t| *t.path.last().unwrap()),
-            Some(exit)
+            e.navigation.nav_com,
+            Some(NavTargetRef::cell(exit.0, exit.1))
         );
+        assert!(!e.movement_target.as_ref().is_some_and(|t| t.adapter_route));
         for _ in 0..200 {
             tick(&mut sim, &rules);
         }
@@ -1706,11 +1770,7 @@ mod tests {
             }
             prev_timer = timer;
             tick_building_docks(&mut sim, &rules);
-            crate::sim::movement::tick_movement(
-                &mut sim.substrate.entities,
-                &mut sim.interner,
-                &mut sim.pending_lifecycle_requests,
-            );
+            process_units(&mut sim, &rules);
             sim.session.tick += 1;
             if phase(&sim, MINER) == Some(DockPhase::Servicing) {
                 reached_pad = true;
