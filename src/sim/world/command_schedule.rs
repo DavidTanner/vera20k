@@ -226,7 +226,7 @@ impl Simulation {
             entity_id,
             movement_zone,
             height: spread_height(terrain, cells.lookup(clicked_target)),
-            zone: zones.get_path_zone_id_native(
+            zone: zones.get_zone_id_native(
                 terrain,
                 (clicked_target.0 as u16, clicked_target.1 as u16),
                 movement_zone,
@@ -269,7 +269,7 @@ impl Simulation {
         }
         let id = target.entity_id;
         let bridge = terrain.native_cell_flags(cell) & BRIDGE_FLAG_STRUCTURAL != 0;
-        let zone = zones.get_path_zone_id_native(
+        let zone = zones.get_zone_id_native(
             terrain,
             (candidate.0 as u16, candidate.1 as u16),
             target.movement_zone,

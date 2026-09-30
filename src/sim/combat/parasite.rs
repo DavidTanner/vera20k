@@ -860,13 +860,9 @@ impl Simulation {
         let Some(terrain_cell) = terrain.cell(target.0, target.1) else {
             return false;
         };
-        let requested =
-            zones.get_zone_id_native((i32::from(cell.0), i32::from(cell.1)), movement_zone, false);
-        let actual = zones.get_zone_id_native(
-            (i32::from(cell.0), i32::from(cell.1)),
-            movement_zone,
-            self.cell_has_bridge(cell),
-        );
+        let requested = zones.get_zone_id_native(terrain, target, movement_zone, false);
+        let actual =
+            zones.get_zone_id_native(terrain, target, movement_zone, self.cell_has_bridge(cell));
         let land = rules
             .terrain_rules
             .semantics_for_land_type(terrain_cell.yr_cell_land_type)
@@ -878,8 +874,9 @@ impl Simulation {
                 target,
                 speed_type,
                 movement_zone,
-                requested_zone: requested.map(|zone| zone as i16),
-                actual_zone: actual.map_or(-1, |zone| zone as i16),
+                // `0x004834A0` compares the full GetZoneID DWORDs.
+                requested_zone: requested,
+                actual_zone: actual.unwrap_or(u32::MAX),
                 requested_layer: None,
                 ignore_infantry: false,
                 ignore_vehicles: false,

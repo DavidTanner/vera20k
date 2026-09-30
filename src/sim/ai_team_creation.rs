@@ -629,7 +629,15 @@ fn zones_admit(
     let zone = |cell: (i32, i32), movement_zone: MovementZone| {
         sim.zone_grid
             .as_ref()
-            .and_then(|zones| zones.get_zone_id_native(cell, movement_zone, false))
+            .zip(sim.resolved_terrain.as_ref())
+            .and_then(|(zones, terrain)| {
+                zones.get_zone_id_native(
+                    terrain,
+                    (cell.0 as u16, cell.1 as u16),
+                    movement_zone,
+                    false,
+                )
+            })
     };
     let movement_zone = team_type.combined_movement_zone;
     let same_zone = zone(own, movement_zone) == zone(theirs, movement_zone);

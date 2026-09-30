@@ -198,8 +198,8 @@ fn native_path_zone_equality(
 ) -> Option<bool> {
     let terrain = terrain?;
     Some(
-        zones.get_path_zone_id_native(terrain, start, movement, start_bridge)?
-            == zones.get_path_zone_id_native(terrain, goal, movement, goal_bridge)?,
+        zones.get_zone_id_native(terrain, start, movement, start_bridge)?
+            == zones.get_zone_id_native(terrain, goal, movement, goal_bridge)?,
     )
 }
 
