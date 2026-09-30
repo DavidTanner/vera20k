@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "date": "2026-09-30",
+  "native": {
+    "platform": "darwin",
+    "clang": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: arm64-apple-darwin27.0.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+    "before_sha256": {
+      "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/fixture.c": "f8ca00099dfa9cc6f117bb8afe40f8898a1e24b0c66e818808812c4bd6a91627",
+      "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/.git/owned-builds/artifacts/native-test/0/validation-test": "645c68e28f982f261352bbb5899cb2c983bd316fa9f966713e6433654aee1238",
+      "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44/debug/deps/validation-test": "645c68e28f982f261352bbb5899cb2c983bd316fa9f966713e6433654aee1238",
+      "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44/debug/deps/needed.rcgu.o": "8e52726a37f6c046d2a47bc7b20b9c6c28410f5a5517b9b164733cb25b250e74"
+    },
+    "required_debug_inputs": [
+      "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44/debug/deps/needed.rcgu.o"
+    ],
+    "dry_run": {
+      "schema": 1,
+      "started_unix": 1790783110.826227,
+      "dry_run": true,
+      "policy": {
+        "cache_bytes": 0,
+        "incremental_bytes": 0,
+        "min_free_bytes": 0
+      },
+      "state": "planned",
+      "errors": [],
+      "notes": [],
+      "removed_files": [],
+      "removed_allocated_bytes": 0,
+      "removed_logical_bytes": 0,
+      "roots": [
+        "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44"
+      ],
+      "cache_allocated_bytes": 45056,
+      "incremental_allocated_bytes": 0,
+      "free_before": {
+        "16777234": 10256322560
+      },
+      "selected_files": [
+        "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44/debug/deps/orphan.rcgu.o"
+      ],
+      "protected_files": 3,
+      "projected_removed_allocated_bytes": 4096,
+      "projected_remaining_cache_bytes": 40960,
+      "projected_remaining_incremental_bytes": 0,
+      "projected_free_after": {
+        "16777234": 10256326656
+      },
+      "free_after": {
+        "16777234": 10256306176
+      },
+      "unmet_targets": {
+        "cache_bytes": 40960,
+        "incremental_bytes": 0,
+        "free_bytes": {
+          "16777234": 0
+        }
+      },
+      "observed_free_delta_bytes": {
+        "16777234": -16384
+      },
+      "finished_unix": 1790783110.9518871,
+      "receipt_path": "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/.git/owned-builds/retention/1790783110951893000-11746923.json"
+    },
+    "apply": {
+      "schema": 1,
+      "started_unix": 1790783110.9816089,
+      "dry_run": false,
+      "policy": {
+        "cache_bytes": 0,
+        "incremental_bytes": 0,
+        "min_free_bytes": 0
+      },
+      "state": "trimmed",
+      "errors": [],
+      "notes": [],
+      "removed_files": [
+        "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44/debug/deps/orphan.rcgu.o"
+      ],
+      "removed_allocated_bytes": 4096,
+      "removed_logical_bytes": 2552,
+      "roots": [
+        "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44"
+      ],
+      "cache_allocated_bytes": 45056,
+      "incremental_allocated_bytes": 0,
+      "free_before": {
+        "16777234": 10256302080
+      },
+      "selected_files": [
+        "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/target/owned-worktrees/50f5397a15722e44/debug/deps/orphan.rcgu.o"
+      ],
+      "protected_files": 3,
+      "projected_removed_allocated_bytes": 4096,
+      "projected_remaining_cache_bytes": 40960,
+      "projected_remaining_incremental_bytes": 0,
+      "projected_free_after": {
+        "16777234": 10256306176
+      },
+      "free_after": {
+        "16777234": 10256289792
+      },
+      "unmet_targets": {
+        "cache_bytes": 40960,
+        "incremental_bytes": 0,
+        "free_bytes": {
+          "16777234": 0
+        }
+      },
+      "observed_free_delta_bytes": {
+        "16777234": -12288
+      },
+      "finished_unix": 1790783111.1213791,
+      "receipt_path": "/private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp2sxbw4pl/.git/owned-builds/retention/1790783111121384000-c8db0134.json"
+    },
+    "execution_after": "42",
+    "debug_dependency_recheck": "passed"
+  },
+  "live_dry_run": {
+    "schema": 1,
+    "started_unix": 1790783160.484436,
+    "dry_run": true,
+    "policy": {
+      "cache_bytes": 34359738368,
+      "incremental_bytes": 4294967296,
+      "min_free_bytes": 17179869184
+    },
+    "state": "blocked",
+    "errors": [
+      "Debug dependency inspection failed (0): warning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.01a2hq74xajaxaexzkdxzuo69.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.01mqbqpn5e1bcpe3bass14yv5.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.01s4uoduly8bumcmps4ozmdbc.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.09pmzvx5maardmtw5j93qkdg0.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0d3afio8sm0ea9u9qlpvw481g.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0jacry6zwpcvuz2yn2aurxcwk.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0pbp3jhbj6tzbikjvbgz4zzqc.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0pscz72wm66iu7y66tfvhiqwm.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0r3dx8xrmto0tw67nulioysh3.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0rk2iar5bczdllvyf4xfrlbw8.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0shz597fhbbuvr3ws43ra83sa.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0srvhwlfj9ms90f0mtk4ulx84.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0u2rra0ddxtlera041k6z7jmw.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0waz4rld5gr49ld81o5l0azpi.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0wwz296wm13b13afqqujvwld5.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.0zqnku2s6oqbixp65cabgx4qv.16v1hr5.rcgu.o unable to open object file: No such file or directory\nwarning: (arm64) /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6.11pkjgnyjtm95k7gjideu9yz9.16v1hr5.rcgu.o unable to open object file: No such file or directory"
+    ],
+    "notes": [
+      "Protecting actual output at mutable latest path: /Users/halvor/Documents/vera20k/target/owned-worktrees/2a70000ec66f0dd1/debug/vera20k",
+      "Stale latest output is absent (record retained): /Users/halvor/Documents/vera20k/target/owned-worktrees/30bf8d3edacb169f/release/parity-digest",
+      "Stale latest output is absent (record retained): /Users/halvor/Documents/vera20k/target/owned-worktrees/30bf8d3edacb169f/release/vera20k",
+      "Stale latest output is absent (record retained): /Users/halvor/Documents/vera20k/target/owned-worktrees/3f90aa0600256ba0/release/parity-digest",
+      "Stale latest output is absent (record retained): /Users/halvor/Documents/vera20k/target/owned-worktrees/3f90aa0600256ba0/release/vera20k",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/asset",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/vera20k",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/parity-digest",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/inspect-yro-render",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/bik-survey",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/bik-player",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/extract-bridge-frames",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/inspect-pcx-palette",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/inspect-maps",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/inspect-water-tiles",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/sim-bench",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/mix-browser",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/extract-ini",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/release/parity-digest",
+      "Stale latest output is absent (record retained): /Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/release/vera20k",
+      "Protecting actual output at mutable latest path: /Users/halvor/Documents/vera20k/target/owned-worktrees/8ff0a4cc0473f259/release/vera20k",
+      "Protecting actual output at mutable latest path: /Users/halvor/Documents/vera20k/target/owned-worktrees/8ff0a4cc0473f259/release/sim-bench",
+      "Protecting actual output at mutable latest path: /Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/owned-worktrees/ceb89bf4c8fa700f/release/vera20k",
+      "Stale latest output is absent (record retained): /Users/halvor/Documents/vera20k/target/owned-worktrees/ee5329fc2f965147/release/parity-digest",
+      "Stale latest output is absent (record retained): /Users/halvor/Documents/vera20k/target/owned-worktrees/ee5329fc2f965147/release/vera20k",
+      "Stale latest output is absent (record retained): /Users/halvor/Documents/vera20k/target/owned-worktrees/fea9a966aabbcbfb/release/vera20k"
+    ],
+    "removed_files": [],
+    "removed_allocated_bytes": 0,
+    "removed_logical_bytes": 0,
+    "roots": [
+      "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/target/owned-worktrees/ceb89bf4c8fa700f",
+      "/Users/halvor/.codex/worktrees/bridge-stage-replay-before/vera20k/target/owned-worktrees/6a1f75cbbbcf7921",
+      "/Users/halvor/Documents/vera20k/target/owned-worktrees/8ff0a4cc0473f259"
+    ],
+    "cache_allocated_bytes": 46045007872,
+    "incremental_allocated_bytes": 15080493056,
+    "free_before": {
+      "16777234": 10449440768
+    },
+    "selected_files": [],
+    "protected_files": 0,
+    "free_after": {
+      "16777234": 11525607424
+    },
+    "observed_free_delta_bytes": {
+      "16777234": 1076166656
+    },
+    "finished_unix": 1790783170.172596,
+    "receipt_path": "/Users/halvor/Documents/vera20k/.git/owned-builds/retention/1790783170172616000-612a5c90.json"
+  },
+  "validation_runs": {
+    "python_suite": {
+      "passed_or_skipped": 369,
+      "skipped": 3,
+      "log_sha256": "abeca43455d95986630d3d0dfb21fffe5acb43192e5ca26b99ee8acafe0e9652"
+    },
+    "native_host_test": {
+      "passed": 1,
+      "log_sha256": "c89cb614afb3187ec587cf93e50f267784a4d1636f9bd192630bac18fccd0dad"
+    },
+    "focused_critic_regressions": {
+      "passed": 62,
+      "retention": 40,
+      "existing_runner": 22,
+      "log_sha256": "f8ae02fe0f35aba32838a24887d321532c7c10983d141af23d9860c752aae925"
+    }
+  },
+  "bounds": [
+    "macOS arm64 compiled example only; not native game parity",
+    "Production full-store dry-run refused deletion due older-label missing debug objects",
+    "No production cache deletion performed by retention validation",
+    "PE/PDB and external/split ELF debug closure fail closed"
+  ]
+}

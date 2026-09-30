@@ -200,6 +200,45 @@ def host_bin_profile(target: Path, executable: Path) -> str | None:
     return None
 
 
+def preserved_manifest(store: Path, label: str) -> tuple[Path, Path, list[dict]]:
+    """Validate the shared schema-1 owner; selection and retention use it alike."""
+    validate_label(label)
+    anchor = store.parent.resolve()
+    relative_label = f'{store.name}/artifacts/{label}'
+    directory = _label_path(anchor, relative_label)
+    if not directory.is_dir():
+        raise ValueError(f'Preserved label is not a directory: {directory}')
+    manifest_path = _label_path(anchor, relative_label + '/manifest.json')
+    if not manifest_path.is_file():
+        raise ValueError('Preserved label manifest is not a regular file')
+    manifest = json.loads(manifest_path.read_text(), object_pairs_hook=_manifest_object)
+    if not isinstance(manifest, dict) or type(manifest.get('schema')) is not int or manifest['schema'] != 1:
+        raise ValueError('Expected preserved build manifest schema 1')
+    target_text = manifest.get('target_dir')
+    if not isinstance(target_text, str) or not Path(target_text).is_absolute() or '..' in Path(target_text).parts:
+        raise ValueError('Preserved manifest needs an absolute original target_dir')
+    artifacts = manifest.get('artifacts')
+    if not isinstance(artifacts, list):
+        raise ValueError('Preserved manifest artifacts must be a list')
+    for entry in artifacts:
+        if (not isinstance(entry, dict) or not isinstance(entry.get('file'), str)
+                or not isinstance(entry.get('source'), str)
+                or not isinstance(entry.get('sha256'), str)
+                or not re.fullmatch(r'[0-9a-f]{64}', entry['sha256'])):
+            raise ValueError('Malformed preserved executable record')
+        _artifact_parts(entry['file'])
+    return directory, Path(target_text), artifacts
+
+
+def preserved_artifact(directory: Path, entry: dict) -> Path:
+    path = _label_path(directory.resolve(), entry['file'])
+    if not stat.S_ISREG(path.stat().st_mode):
+        raise ValueError(f'Preserved executable is not a regular file: {path}')
+    if hashlib.sha256(path.read_bytes()).hexdigest() != entry['sha256']:
+        raise ValueError(f'Preserved executable SHA-256 mismatch: {path}')
+    return path
+
+
 def resolve_labeled_binary(root: Path, label: str, name: str,
                            profile: str) -> tuple[Path | None, str | None]:
     """Resolve one unchanged preserved host bin; never use latest or cache paths.
@@ -217,39 +256,16 @@ def resolve_labeled_binary(root: Path, label: str, name: str,
     if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
         raise ValueError('Expected an executable basename, not a path')
     store, _ = build_store(root)
-    # Resolve only the Git-derived anchor. Check every component beneath it,
-    # including artifacts/, the label directory and manifest itself.
-    anchor = store.parent.resolve()
-    relative_label = f'{store.name}/artifacts/{label}'
     try:
-        directory = _label_path(anchor, relative_label)
+        directory, target, artifacts = preserved_manifest(store, label)
     except FileNotFoundError:
-        return None, None
-    if not directory.is_dir():
-        raise ValueError(f'Preserved label is not a directory: {directory}')
-    manifest_path = _label_path(anchor, relative_label + '/manifest.json')
-    if not manifest_path.is_file():
-        raise ValueError('Preserved label manifest is not a regular file')
-    manifest = json.loads(manifest_path.read_text(), object_pairs_hook=_manifest_object)
-    if not isinstance(manifest, dict) or type(manifest.get('schema')) is not int or manifest['schema'] != 1:
-        raise ValueError('Expected preserved build manifest schema 1')
-    target_text = manifest.get('target_dir')
-    if not isinstance(target_text, str) or not Path(target_text).is_absolute() or '..' in Path(target_text).parts:
-        raise ValueError('Preserved manifest needs an absolute original target_dir')
-    target = Path(target_text)
-    artifacts = manifest.get('artifacts')
-    if not isinstance(artifacts, list):
-        raise ValueError('Preserved manifest artifacts must be a list')
+        if not (store / 'artifacts' / label).exists():
+            return None, None
+        raise
     expected = name + '.exe' if os.name == 'nt' else name
     matches = []
     for entry in artifacts:
-        if (not isinstance(entry, dict) or not isinstance(entry.get('file'), str)
-                or not isinstance(entry.get('source'), str)
-                or not isinstance(entry.get('sha256'), str)
-                or not re.fullmatch(r'[0-9a-f]{64}', entry['sha256'])):
-            raise ValueError('Malformed preserved executable record')
         relative = entry['file']
-        _artifact_parts(relative)
         if PurePosixPath(relative).name == expected:
             matches.append(entry)
     if not matches:
@@ -261,11 +277,7 @@ def resolve_labeled_binary(root: Path, label: str, name: str,
     if (not source.is_absolute() or '..' in source.parts
             or host_bin_profile(target, source) != profile or source.name != expected):
         raise ValueError(f'Preserved executable is not a {profile} host bin: {entry["source"]}')
-    path = _label_path(anchor, relative_label + '/' + entry['file'])
-    if not stat.S_ISREG(path.stat().st_mode):
-        raise ValueError(f'Preserved executable is not a regular file: {path}')
-    if hashlib.sha256(path.read_bytes()).hexdigest() != entry['sha256']:
-        raise ValueError(f'Preserved executable SHA-256 mismatch: {path}')
+    path = preserved_artifact(directory, entry)
     return path, profile
 
 
@@ -286,7 +298,9 @@ def publish_binaries(store: Path, namespace: str, target: Path, artifacts: set[P
     pending.replace(record)
 
 
-def run(root: Path, args: list[str], label: str | None, timeout: float) -> int:
+def run(root: Path, args: list[str], label: str | None, timeout: float, *, policy=None) -> int:
+    from tools._cargo_cache import CachePolicy, register_locked, automatic_locked
+    policy = policy if policy is not None else CachePolicy.from_env()
     args = cargo_args(args, label)
     if label:
         validate_label(label)
@@ -298,64 +312,70 @@ def run(root: Path, args: list[str], label: str | None, timeout: float) -> int:
     with build_lock(store / 'cargo.lock', timeout):
         if output and output.exists():
             raise ValueError(f'Label already exists; choose a new label: {output}')
-        before = source_identity(root)
-        env = dict(os.environ, CARGO_TARGET_DIR=str(target))
-        command = ['cargo', *args]
-        print(f'Checkout: {root}\nTarget: {target}\nCommand: {command}', file=sys.stderr, flush=True)
+        register_locked(root, store, target)
+        automatic_locked(root, store, policy)
         artifacts = set()
-        with subprocess.Popen(command, cwd=root, env=env, stdout=subprocess.PIPE,
-                              text=True, encoding='utf-8', errors='replace') as child:
-            assert child.stdout is not None
-            for line in child.stdout:
-                try:
-                    message = json.loads(line)
-                except ValueError:
-                    print(line, end='', flush=True)
-                    continue
-                if not isinstance(message, dict):
-                    print(line, end='', flush=True)
-                elif message.get('reason') == 'compiler-artifact' and message.get('executable'):
-                    artifacts.add(Path(message['executable']))
-                elif message.get('reason') == 'compiler-message':
-                    print(message['message'].get('rendered', line), end='', file=sys.stderr, flush=True)
-                elif message.get('reason') not in {'compiler-artifact', 'build-script-executed', 'build-finished'}:
-                    print(line, end='', flush=True)
-            result = child.wait()
-        if result:
-            return result
-        after = source_identity(root)
-        if before != after:
-            raise ValueError('Source changed during Cargo; result is not a labeled validation')
-        publish_binaries(store, namespace, target, artifacts)
-        if output:
-            if not artifacts:
-                raise ValueError('Cargo succeeded but emitted no executable to preserve')
-            output.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix='.pending-', dir=output.parent) as staging_name:
-                staging = Path(staging_name)
-                records = []
-                for i, path in enumerate(sorted(artifacts)):
-                    # Cargo JSON, not guessed target paths, establishes the produced executable.
-                    if not path.resolve().is_relative_to(target.resolve()):
-                        raise ValueError(f'Cargo artifact outside owned target: {path}')
-                    destination = staging / str(i) / path.name
-                    destination.parent.mkdir()
-                    shutil.copy2(path, destination)
-                    records.append({'source': str(path), 'file': destination.relative_to(staging).as_posix(),
-                                    'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
-                manifest = {'schema': 1, 'checkout': str(root), 'source': before,
-                            'command': command, 'target_dir': str(target),
-                            'rustc': subprocess.check_output(['rustc', '-Vv'], text=True),
-                            'cargo': subprocess.check_output(['cargo', '-V'], text=True),
-                            'build_environment': {key: env[key] for key in (
-                                'RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTC',
-                                'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER',
-                                'RUSTUP_TOOLCHAIN', 'CARGO_BUILD_TARGET',
-                            ) if key in env},
-                            'artifacts': records}
-                (staging / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-                staging.rename(output)
-            print(f'Preserved build: {output}', flush=True)
+        try:
+            before = source_identity(root)
+            env = dict(os.environ, CARGO_TARGET_DIR=str(target))
+            command = ['cargo', *args]
+            print(f'Checkout: {root}\nTarget: {target}\nCommand: {command}', file=sys.stderr, flush=True)
+            with subprocess.Popen(command, cwd=root, env=env, stdout=subprocess.PIPE,
+                                  text=True, encoding='utf-8', errors='replace') as child:
+                assert child.stdout is not None
+                for line in child.stdout:
+                    try:
+                        message = json.loads(line)
+                    except ValueError:
+                        print(line, end='', flush=True)
+                        continue
+                    if not isinstance(message, dict):
+                        print(line, end='', flush=True)
+                    elif message.get('reason') == 'compiler-artifact' and message.get('executable'):
+                        artifacts.add(Path(message['executable']))
+                    elif message.get('reason') == 'compiler-message':
+                        print(message['message'].get('rendered', line), end='', file=sys.stderr, flush=True)
+                    elif message.get('reason') not in {'compiler-artifact', 'build-script-executed', 'build-finished'}:
+                        print(line, end='', flush=True)
+                result = child.wait()
+            if result:
+                return result
+            after = source_identity(root)
+            if before != after:
+                raise ValueError('Source changed during Cargo; result is not a labeled validation')
+            publish_binaries(store, namespace, target, artifacts)
+            if output:
+                if not artifacts:
+                    raise ValueError('Cargo succeeded but emitted no executable to preserve')
+                output.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(prefix='.pending-', dir=output.parent) as staging_name:
+                    staging = Path(staging_name)
+                    records = []
+                    for i, path in enumerate(sorted(artifacts)):
+                        # Cargo JSON, not guessed target paths, establishes the produced executable.
+                        if not path.resolve().is_relative_to(target.resolve()):
+                            raise ValueError(f'Cargo artifact outside owned target: {path}')
+                        destination = staging / str(i) / path.name
+                        destination.parent.mkdir()
+                        shutil.copy2(path, destination)
+                        records.append({'source': str(path), 'file': destination.relative_to(staging).as_posix(),
+                                        'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
+                    manifest = {'schema': 1, 'checkout': str(root), 'source': before,
+                                'command': command, 'target_dir': str(target),
+                                'rustc': subprocess.check_output(['rustc', '-Vv'], text=True),
+                                'cargo': subprocess.check_output(['cargo', '-V'], text=True),
+                                'build_environment': {key: env[key] for key in (
+                                    'RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTC',
+                                    'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER',
+                                    'RUSTUP_TOOLCHAIN', 'CARGO_BUILD_TARGET',
+                                ) if key in env},
+                                'artifacts': records}
+                    (staging / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+                    staging.rename(output)
+                print(f'Preserved build: {output}', flush=True)
+        finally:
+            register_locked(root, store, target, artifacts)
+            automatic_locked(root, store, policy)
     return 0
 
 
@@ -364,17 +384,28 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--label', help='Preserve executables and source manifest under a unique label')
     mode.add_argument('--resolve', metavar='BIN', help='Print a verified recorded host executable path; never builds')
+    mode.add_argument('--trim-cache', action='store_true', help='Trim owned compiler caches without building')
+    parser.add_argument('--dry-run', action='store_true', help='Plan cache trimming without deleting files')
+    parser.add_argument('--cache-gib', help='Total compiler cache budget (default/env: 32 GiB)')
+    parser.add_argument('--incremental-gib', help='Incremental cache budget (default/env: 4 GiB)')
+    parser.add_argument('--min-free-gib', help='Minimum volume free-space target (default/env: 16 GiB)')
     parser.add_argument('--from-label', metavar='LABEL', help='Resolve from one preserved build label, not latest')
     parser.add_argument('--profile', choices=('release', 'debug'), help='Required with --resolve; no fallback')
     parser.add_argument('--wait-seconds', type=float,
                         help='Maximum build-owner wait (default: 3600)')
     parser.add_argument('cargo', nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
+    cache_options = any(value is not None for value in (
+        options.cache_gib, options.incremental_gib, options.min_free_gib))
     if options.resolve is not None:
-        if not options.profile or options.cargo or options.wait_seconds is not None:
+        if not options.profile or options.cargo or options.wait_seconds is not None or cache_options or options.dry_run:
             parser.error('--resolve requires --profile and accepts no Cargo arguments or --wait-seconds')
     elif options.profile or options.from_label is not None:
         parser.error('--profile and --from-label are only valid with --resolve')
+    if options.dry_run and not options.trim_cache:
+        parser.error('--dry-run requires --trim-cache')
+    if options.trim_cache and options.cargo:
+        parser.error('--trim-cache accepts no Cargo arguments')
     wait_seconds = 3600 if options.wait_seconds is None else options.wait_seconds
     if not 0 <= wait_seconds < float('inf'):
         parser.error('--wait-seconds must be finite and nonnegative')
@@ -392,6 +423,14 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(f'No verified {options.profile} host executable {options.resolve!r} {context}')
             print(path)
             return 0
+        from tools._cargo_cache import CachePolicy, trim
+        if options.trim_cache or cache_options:
+            policy = CachePolicy.from_env(options.cache_gib, options.incremental_gib, options.min_free_gib)
+            if options.trim_cache:
+                receipt = trim(root, policy, wait_seconds, dry_run=options.dry_run)
+                print(json.dumps(receipt, indent=2))
+                return 2 if receipt['errors'] else 0
+            return run(root, args, options.label, wait_seconds, policy=policy)
         return run(root, args, options.label, wait_seconds)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f'cargo_run: {error}', file=sys.stderr)
