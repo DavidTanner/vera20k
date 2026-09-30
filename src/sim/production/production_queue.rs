@@ -373,9 +373,8 @@ pub(super) fn deliver_produced_object(
         ),
         ProductionDeliveryKind::Standard => {
             let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
-            sim.unlimbo_held_production_object_with_unit_context(
+            sim.reveal_constructed_object_at_height_with_unit_context(
                 stable_id,
-                selection.producer_id,
                 rx,
                 ry,
                 64,
@@ -383,6 +382,7 @@ pub(super) fn deliver_produced_object(
                 crate::sim::world::PlacementEvidence::EvaluateMark,
                 rules,
                 overlay_registry,
+                selection.producer_id,
             )
         }
     }?;
