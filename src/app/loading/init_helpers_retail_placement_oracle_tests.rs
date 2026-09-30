@@ -273,7 +273,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         load_rules_with_merged_ini(&assets, None, Some(&map.ini))
             .expect("load production merged rules");
     let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     let overlay_registry = OverlayTypeRegistry::from_ini(&rules_ini, Some(&art_ini));
 
     let conyard = rules.object(CONYARD).expect("stock GACNST");

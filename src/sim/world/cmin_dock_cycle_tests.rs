@@ -344,7 +344,7 @@ fn chrono_miner_visit_on_retail_rules() {
         return;
     };
     let mut rules = RuleSet::from_ini(&rules_ini).unwrap();
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let cmin = rules.object("CMIN").unwrap();
     assert!(cmin.teleporter && cmin.harvester);
     assert_eq!(cmin.locomotor, LocomotorKind::Teleport);

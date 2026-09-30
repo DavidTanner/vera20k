@@ -51,7 +51,7 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
         return;
     }
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     let corpus: Value = serde_json::from_str(include_str!(
         "../../../../tools/projectile_oracle/bridge_render_flight.json"
     ))
@@ -337,7 +337,7 @@ fn original_ifv_dragon_frame_getter_matches_retained_flights_and_all_directions(
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     let weapon = rules.weapon("HoverMissile").unwrap();
     let kind = rules
         .projectile(weapon.projectile.as_deref().unwrap())

@@ -89,7 +89,7 @@ fn rules_for_with(input: &Value, edit: impl FnOnce(&mut String)) -> (RuleSet, In
     }
     let ini = IniFile::from_str(&text);
     let mut rules = RuleSet::from_ini(&ini).unwrap();
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
         &IniFile::from_str(
             "[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n[GAREFX]\nFoundation=4x3\nQueueingCell=4,1\n",
         ),

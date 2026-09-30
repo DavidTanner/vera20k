@@ -25,7 +25,7 @@ impl Duel {
         let art = crate::rules::retail_ini_fixture::retail_ini("artmd.ini")?;
         let mut rules =
             RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("retail rules parse");
-        rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
         let mut sim = Simulation::new();
         for (name, side, human) in [("Americans", 0, true), ("Russians", 1, true)] {
             let id = sim.interner.intern(name);

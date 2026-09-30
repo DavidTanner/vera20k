@@ -4,7 +4,7 @@ fn main() {
     let retail_root = std::env::var("RA2_DIR").expect("set RA2_DIR to the retail asset directory");
     let root = Path::new(&retail_root);
     let scenario = vera20k::headless_scenario::load(root, "Hills.mmx", 0x0B21_D6E5).unwrap();
-    let art = &scenario.runtime.resources.rules.art_registry;
+    let art = scenario.runtime.resources.rules.art();
     let mut names: Vec<String> = [
         "DBRIS1LG", "DBRIS2LG", "DBRIS3LG", "DBRIS4LG", "DBRIS5LG", "DBRIS6LG", "DBRIS7LG",
         "DBRIS8LG", "DBRIS9LG", "DBRS10LG", "DBRIS1SM", "DBRIS2SM", "DBRIS3SM", "DBRIS4SM", "D",

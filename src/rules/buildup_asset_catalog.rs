@@ -92,7 +92,7 @@ impl BuildupAssetCatalog {
             .filter(|object| object.category == ObjectCategory::Building)
         {
             let Some(art) = rules
-                .art_registry
+                .art()
                 .resolve_metadata_entry(&object.id, &object.image)
             else {
                 continue;

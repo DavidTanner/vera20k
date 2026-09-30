@@ -66,7 +66,7 @@ fn original_fv_range_uses_live_dummy_ground_and_source_bridge_queries() {
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
     let mut corpus: Corpus = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/in_range_cell_boundary.json"
     ))

@@ -47,7 +47,7 @@ fn diagnose_placement_constraints() {
         .expect("art INI");
     let art_ini = IniFile::from_bytes(&art_data).expect("parse art INI");
     let art_registry = ArtRegistry::from_ini(&art_ini);
-    rules.merge_art_data(&art_registry);
+    rules.install_art_data(art_registry);
 
     // Print Adjacent + BaseNormal for key building types
     println!("\n=== Adjacent & BaseNormal for key types ===");

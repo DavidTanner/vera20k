@@ -97,7 +97,7 @@ pub(crate) fn build_shp_instances(
     let local_owner_id = local_owner.as_deref().and_then(|o| sim.interner.get(o));
     let ignore_visibility = state.match_state.sandbox_full_visibility;
     let art_reg: Option<&crate::rules::art_data::ArtRegistry> =
-        state.rules().map(|rules| &rules.art_registry);
+        state.rules().map(|rules| rules.art());
     let canopy_owners = super::overlays::parachute_canopy_owners(state, sim);
 
     let encounter_order = super::helpers::tactical_entity_encounter_order(sim);
@@ -330,7 +330,7 @@ pub(crate) fn build_shp_instances(
             let image = obj.map_or(type_str, |o| o.image.as_str());
             let art = state
                 .rules()
-                .and_then(|r| r.art_registry.resolve_metadata_entry(type_str, image));
+                .and_then(|r| r.art().resolve_metadata_entry(type_str, image));
             crate::app::presentation::lighting::building_palette_light(
                 state.match_state.match_presentation.lighting.grid(),
                 &sim.session.lighting,

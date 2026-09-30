@@ -17,7 +17,7 @@ fn retail_rules(corpus: &Value) -> Option<RuleSet> {
     let ini = retail_ini("rulesmd.ini")?;
     let art = retail_ini("artmd.ini")?;
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     assert_eq!(
         serde_json::json!(rules.general.metallic_debris),
         corpus["metallic_pool"]
@@ -31,11 +31,9 @@ fn retail_rules(corpus: &Value) -> Option<RuleSet> {
     for input in corpus["retail_anim_types"].as_array().unwrap() {
         let name = input["name"].as_str().unwrap();
         if let Some(frames) = input["frames"].as_i64().filter(|frames| *frames > 0) {
-            rules
-                .art_registry
-                .bind_anim_frame_count_for_test(name, frames as i32);
+            rules.bind_anim_frame_count_for_test(name, frames as i32);
         }
-        let config = rules.art_registry.anim_runtime_config(name).unwrap();
+        let config = rules.art().anim_runtime_config(name).unwrap();
         assert_eq!(
             serde_json::json!({
                 "bouncer": config.bouncer,
@@ -111,7 +109,7 @@ fn retail_bridge_anim_inputs_match_original_full_art_reader() {
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     // Original427530 -> full427D00/5F92E0 -> image427B50, supplied only raw
     // physical ART strings and complete retail SHP bytes at archive I/O.
     // This independent corpus establishes the inputs used by the producer and
@@ -128,14 +126,12 @@ fn retail_bridge_anim_inputs_match_original_full_art_reader() {
         if frames > 0 {
             // Native original header reads independently establish this asset
             // boundary; the production release load validates actual binding.
-            rules
-                .art_registry
-                .bind_anim_frame_count_for_test(name, frames as i32);
+            rules.bind_anim_frame_count_for_test(name, frames as i32);
         }
-        let config = rules.art_registry.anim_runtime_config(name).unwrap();
+        let config = rules.art().anim_runtime_config(name).unwrap();
         let actual = serde_json::json!({
             "art_body_read": config.art_body_read,
-            "image": rules.art_registry.resolve_anim_image_id(name),
+            "image": rules.art().resolve_anim_image_id(name),
             "start": config.start,
             "loop_start": config.loop_start,
             "loop_end": config.loop_end,

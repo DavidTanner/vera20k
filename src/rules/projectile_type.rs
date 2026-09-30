@@ -441,7 +441,7 @@ mod tests {
         let art = IniFile::from_str("[SHOT]\nVoxel=no\n[OTHER]\nVoxel=yes\nRotates=yes\n");
         let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
         let hash = rules.simulation_config_hash();
-        rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(
+        rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
             "[OTHER]\nVoxel=no\nRotates=no\nAnimPalette=yes\n",
         )));
         let projectile = rules.projectile("SHOT").unwrap();

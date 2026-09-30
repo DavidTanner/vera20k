@@ -43,7 +43,7 @@ fn retail_buildup_controls_bind_in_every_theater() {
         let (mut rules, _rules_ini, art_ini, _receipt) =
             load_rules_with_merged_ini(&assets, None, None).expect("load production rules");
         let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
         let catalog = BuildupAssetCatalog::bind(&rules, &assets, theater_name);
 
         let mut unbound = Vec::new();
@@ -52,7 +52,7 @@ fn retail_buildup_controls_bind_in_every_theater() {
             .filter(|object| object.category == ObjectCategory::Building)
         {
             let Some(buildup) = rules
-                .art_registry
+                .art()
                 .resolve_metadata_entry(&object.id, &object.image)
                 .and_then(|art| art.buildup.clone())
             else {

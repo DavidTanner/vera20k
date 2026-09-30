@@ -930,7 +930,7 @@ fn retail_rules_feed_the_slave_refinery_relocation() {
         return;
     };
     let mut rules = RuleSet::from_ini(&rules_ini).expect("retail rules");
-    rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     let general = &rules.general;
     assert_eq!(
         (

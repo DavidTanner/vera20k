@@ -313,7 +313,7 @@ pub(crate) fn build_animation_sequence_catalog(
             continue;
         };
         let sequence_name = rules
-            .art_registry
+            .art()
             .resolve_metadata_entry(&object.id, &object.image)
             .and_then(|entry| entry.sequence.as_deref());
         let sequence_set = sequence_name
@@ -335,7 +335,7 @@ pub(crate) fn build_animation_sequence_catalog(
             continue;
         };
         let Some(art) = rules
-            .art_registry
+            .art()
             .resolve_metadata_entry(&object.id, &object.image)
         else {
             continue;

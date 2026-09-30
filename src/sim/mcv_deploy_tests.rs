@@ -426,7 +426,7 @@ fn retail_mcv_and_target_rules_deploy_with_one_command() {
     };
     let mut rules = RuleSet::from_ini(&rules_ini).unwrap();
     let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     for kind in ["AMCV", "SMCV", "PCV"] {
         for facing in [0, 64, 128, 192] {
             let mut sim = Simulation::new();

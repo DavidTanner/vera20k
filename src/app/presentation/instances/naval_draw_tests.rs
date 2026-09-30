@@ -154,13 +154,13 @@ fn retail_aegis_raster_and_parent_waterline_match_original_ship_draw() {
         object.image,
         corpus["reader"]["layers"][2]["after"].as_str().unwrap()
     );
-    assert!(rules.art_registry.get(&object.image).unwrap().voxel);
+    assert!(rules.art().get(&object.image).unwrap().voxel);
     assert!(!object.has_turret);
     let model = crate::render::unit_atlas::UnitModel::load(
         &assets,
         "AEGIS",
         Some(rules),
-        Some(&rules.art_registry),
+        Some(rules.art()),
     )
     .unwrap();
     let vpl = crate::assets::vpl_file::VplFile::from_bytes(assets.get_ref("VOXELS.VPL").unwrap())

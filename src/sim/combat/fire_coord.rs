@@ -303,9 +303,9 @@ fn fire_coordinate_base<'r>(
 
 fn firer_art<'r>(rules: &'r RuleSet, obj: &ObjectType) -> Option<&'r ArtEntry> {
     rules
-        .art_registry
+        .art()
         .get(&obj.image)
-        .or_else(|| rules.art_registry.get(&obj.id))
+        .or_else(|| rules.art().get(&obj.id))
 }
 
 /// A building's two fire facings, from `+0x388`'s current facing `current`:
@@ -594,11 +594,11 @@ mod tests {
              [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         ))
         .expect("rules");
-        rules.art_registry = ArtRegistry::from_ini(&IniFile::from_str(
+        rules.replace_art_registry_for_test(ArtRegistry::from_ini(&IniFile::from_str(
             "[GI]\nPrimaryFireFLH=0,0,105\nSecondaryFireFLH=0,0,90\n\
              [BUNK]\nMuzzleFlash0=30,15\nMuzzleFlash1=-30,15\n\
              [TOWER]\nPrimaryFirePixelOffset=30,15\nPrimaryFireDualOffset=yes\n",
-        ));
+        )));
         rules
     }
 
@@ -661,7 +661,7 @@ mod tests {
             return;
         };
         let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-        rules.merge_art_data(&ArtRegistry::from_ini(&art));
+        rules.install_art_data(ArtRegistry::from_ini(&art));
         let native: serde_json::Value = serde_json::from_str(include_str!(
             "../../../tools/projectile_oracle/ifv_fire_coord.json"
         ))
@@ -703,7 +703,7 @@ mod tests {
              Weapon1=W\nWeapon3=W\nEliteWeapon3=WE\n[W]\nDamage=1\n[WE]\nDamage=2\n",
         ))
         .unwrap();
-        rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(
+        rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
             "[FV]\nWeapon1FLH=0,0,3\nWeapon3FLH=0,0,6\n\
              EliteWeapon1FLH=0,0,99\nEliteWeapon3FLH=0,0,9\n",
         )));

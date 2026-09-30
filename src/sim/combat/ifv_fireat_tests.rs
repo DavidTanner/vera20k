@@ -28,7 +28,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     let corpus: Value = serde_json::from_str(include_str!(
         "../../../tools/projectile_oracle/ifv_fire_coord.json"
     ))

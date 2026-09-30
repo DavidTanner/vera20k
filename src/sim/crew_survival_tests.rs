@@ -1096,7 +1096,7 @@ fn retail_rules_crew_the_power_plant_and_the_mcv() {
         return;
     };
     let mut rules = RuleSet::from_ini(&rules_ini).unwrap();
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let general = &rules.general;
     assert_eq!(
         [

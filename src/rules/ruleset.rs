@@ -3227,9 +3227,9 @@ pub struct RuleSet {
     /// Smudge type registry parsed from `[SmudgeTypes]` and per-name sections.
     /// Populated by `RuleSet::from_ini` from rulesmd.ini.
     pub smudge_types: SmudgeTypeRegistry,
-    /// Retained art.ini registry. Populated by the app loading path (`app::loading::init`) after `merge_art_data`
-    /// so dispatchers (e.g. smudge spawning) can read per-anim spawn flags.
-    pub art_registry: crate::rules::art_data::ArtRegistry,
+    /// Scenario-owned ART metadata and bound animation closure. Loaders transfer
+    /// it once; every later binding and consumer uses this same registry.
+    art_registry: crate::rules::art_data::ArtRegistry,
     /// Existing AnimTypes for Building451890's lookup-only427CB0 gate.
     /// Membership is independent of a same-named art section or loaded SHP.
     pub anim_type_names: BTreeSet<String>,
@@ -4835,10 +4835,15 @@ impl RuleSet {
     /// NOT exist in rules.ini. ObjectType defaults to "1x1" and this method overwrites
     /// it with the authoritative value from art.ini, resolved via the `Image=` key.
     /// Without this, all buildings would be 1x1 which breaks placement and rendering.
-    pub fn merge_art_data(&mut self, art: &crate::rules::art_data::ArtRegistry) {
-        self.art_registry = art.clone();
+    pub fn install_art_data(&mut self, art: crate::rules::art_data::ArtRegistry) {
+        self.art_registry = art;
         self.art_registry
             .apply_anim_type_read_states(&self.anim_type_art_read_states);
+        self.project_art_data();
+    }
+
+    fn project_art_data(&mut self) {
+        let art = &self.art_registry;
         // Projectile ART is already projected from the per-pass registry owner.
         // A final-image reread here would lose omission/cache/default semantics.
         let ai_base_spacing = self.ai_base_spacing;
@@ -4954,6 +4959,101 @@ impl RuleSet {
             terrain_foundations_patched,
         );
         self.rebuild_animation_sequences(None);
+    }
+
+    /// Read the same bound ART owner used during construction and gameplay.
+    pub fn art(&self) -> &crate::rules::art_data::ArtRegistry {
+        &self.art_registry
+    }
+
+    pub(crate) fn bind_scheduler_anim_assets(
+        &mut self,
+        roots: &[String],
+        assets: &crate::assets::asset_manager::AssetManager,
+        theater_ext: &str,
+        theater_name: &str,
+    ) -> Result<(), crate::rules::art_data::AnimAssetBindError> {
+        self.art_registry
+            .bind_scheduler_anim_assets(roots, assets, theater_ext, theater_name)
+    }
+
+    pub(crate) fn bind_anim_class_assets(
+        &mut self,
+        roots: &[String],
+        assets: &crate::assets::asset_manager::AssetManager,
+        theater_ext: &str,
+        theater_name: &str,
+    ) -> usize {
+        self.art_registry
+            .bind_anim_class_assets(roots, assets, theater_ext, theater_name)
+    }
+
+    pub(crate) fn populate_anim_frame_dims(
+        &mut self,
+        assets: &crate::assets::asset_manager::AssetManager,
+        theater_ext: &str,
+        theater_name: &str,
+    ) -> (u32, u32) {
+        self.art_registry
+            .populate_anim_frame_dims(assets, theater_ext, theater_name)
+    }
+
+    /// Extend the bound closure before an authored-load constructor spends its
+    /// native ID. The constructor then borrows this same owner for Reveal/Start
+    /// (AnimClass421EA0, Unlimbo5F4EC0, Start424CE0).
+    pub(crate) fn bind_authored_load_anim(
+        &mut self,
+        name: &str,
+        assets: &crate::assets::asset_manager::AssetManager,
+        theater_ext: &str,
+        theater_name: &str,
+    ) -> Result<(), crate::rules::art_data::AnimAssetBindError> {
+        let mut roots: Vec<String> = self
+            .art_registry
+            .scheduler_anim_types()
+            .iter()
+            .cloned()
+            .collect();
+        roots.push(name.to_ascii_uppercase());
+        roots.sort();
+        roots.dedup();
+        // Preserve the existing strict load failure boundary. RESIDUAL: a
+        // previously tolerant root with a missing chained SHP can fail here.
+        // This affects modded art; none of retail's nine chain keys starts
+        // from a tolerant root. No new asset admission policy is introduced.
+        self.bind_scheduler_anim_assets(&roots, assets, theater_ext, theater_name)
+    }
+
+    /// Synthetic fixtures that previously projected ART then restored the raw
+    /// registry deliberately bypass native read admission. Move that fixture
+    /// once while sharing the production projection, without clone publication.
+    #[cfg(test)]
+    pub(crate) fn install_art_fixture(&mut self, art: crate::rules::art_data::ArtRegistry) {
+        self.art_registry = art;
+        self.project_art_data();
+    }
+
+    /// Raw synthetic fixture replacement: no native admission or field projection.
+    #[cfg(test)]
+    pub(crate) fn replace_art_registry_for_test(
+        &mut self,
+        art: crate::rules::art_data::ArtRegistry,
+    ) {
+        self.art_registry = art;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_anim_frame_count_for_test(&mut self, name: &str, raw_count: i32) {
+        self.art_registry
+            .bind_anim_frame_count_for_test(name, raw_count);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn art_entry_mut_for_test(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut crate::rules::art_data::ArtEntry> {
+        self.art_registry.get_mut(name)
     }
 
     /// Resolve every registered object type's authoritative animation timing
@@ -7640,7 +7740,7 @@ Projectile=Invisible
         let mut rules: RuleSet = RuleSet::from_rules_layers(&layers).expect("rules parse");
         let art_ini: IniFile = IniFile::from_str(art_text);
         let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
         let obj = rules.object("GAREFN").expect("GAREFN");
         assert_eq!(obj.hidden_occupancy.add_occupy[0], Some((-1, 0)));
         assert_eq!(obj.hidden_occupancy.add_occupy[1], Some((-1, -1)));
@@ -7666,7 +7766,7 @@ Projectile=Invisible
             "[GI]\nCrawls=yes\nFireUp=2\nFireProne=3\nSecondaryFire=4\nSecondaryProne=5\n\n[GAPOWR]\nCrawls=yes\nFireUp=9\n",
         );
         let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
 
         let infantry = rules.object("E1").expect("E1");
         assert!(infantry.crawls);
@@ -8200,7 +8300,7 @@ Projectile=Invisible
         let mut rules = RuleSet::from_ini(&rules_ini).expect("rules parse");
         let art_ini_parsed = IniFile::from_str(art_ini);
         let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini_parsed);
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
         rules
     }
 
@@ -8346,7 +8446,7 @@ Projectile=Invisible
             ));
             let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).unwrap();
             let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-            rules.merge_art_data(&art);
+            rules.install_art_data(art);
             rules
         };
         let original = make("", "Rate=900");
@@ -8382,7 +8482,7 @@ Projectile=Invisible
         let ini = IniFile::from_str("[BuildingTypes]\n0=BUILD\n[BUILD]\nImage=BODY\nGate=yes\n");
         let make = |art: &str| {
             let mut rules = RuleSet::from_ini(&ini).unwrap();
-            rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(art)));
+            rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(art)));
             rules
         };
         let defaults =
@@ -8466,7 +8566,7 @@ Projectile=Invisible
         let make = |art: &str| {
             let mut rules =
                 RuleSet::from_ini_with_fixed_art_for_test(&ini, &IniFile::from_str(art)).unwrap();
-            rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(art)));
+            rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(art)));
             rules
         };
         let first =
@@ -8503,7 +8603,7 @@ Projectile=Invisible
             "authored presence alone is not a consumed launch input"
         );
         let mut retained = make("[SHOTART]\nVoxel=yes\nFlat=yes\n[BUILDART]\nHeight=4\n");
-        retained.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(
+        retained.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
             "[BUILDART]\nHeight=4\n",
         )));
         assert_eq!(
@@ -8561,9 +8661,9 @@ Projectile=Invisible
         changed_big.frame_width = 60;
         changed_big.frame_height = 50;
 
-        first.merge_art_data(&first_art);
-        reordered.merge_art_data(&reordered_art);
-        changed.merge_art_data(&changed_art);
+        first.install_art_data(first_art);
+        reordered.install_art_data(reordered_art);
+        changed.install_art_data(changed_art);
 
         assert_eq!(first.source_ini_hash(), reordered.source_ini_hash());
         assert_eq!(

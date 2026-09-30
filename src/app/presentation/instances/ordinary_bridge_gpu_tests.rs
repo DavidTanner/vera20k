@@ -220,7 +220,7 @@ impl Probe {
             &rules.tiberium_types,
             &rules.crate_rules,
             &rules_ini,
-            &rules.art_registry,
+            rules.art(),
             None,
         )
         .expect("production preloads the physical low-bridge variants");
@@ -356,9 +356,7 @@ impl Probe {
         }
         let name = &self.names[&id];
         assert_eq!(
-            rules
-                .art_registry
-                .resolve_overlay_image_id(name, &self.rules_ini),
+            rules.art().resolve_overlay_image_id(name, &self.rules_ini),
             *name
         );
         let filename = format!("{}.{}", name.to_ascii_lowercase(), self.fixture.theater().1);

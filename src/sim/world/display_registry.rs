@@ -454,7 +454,7 @@ mod tests {
         .unwrap();
         let mut art = ArtRegistry::from_ini(&IniFile::from_str("[SPARK]\nLayer=Ground\n"));
         art.bind_anim_frame_count_for_test("SPARK", 8);
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         let mut sim = Simulation::new();
         let house = sim.interner.intern("Americans");
         let unit_type = sim.interner.intern("MTNK");
@@ -558,7 +558,7 @@ mod tests {
                     let anim = anims[next(8) as usize];
                     let mut expected = copy(&sim.substrate.display);
                     sim.substrate.display.remove(anim);
-                    sim.submit_anim_display(anim, Some(&rules), None);
+                    sim.submit_anim_display(anim, Some(&rules));
                     expected.remove(anim);
                     expected.submit(anim, Some(DisplayLayer::GROUND), &|id| {
                         live(&sim, Some(&rules), id)

@@ -19,7 +19,7 @@
 use std::path::Path;
 
 use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
-use crate::map::map_file::{self, MapFile};
+use crate::map::map_file::MapFile;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::theater;
@@ -88,7 +88,8 @@ pub const SIM_TICK_MS: u32 = 1000 / crate::util::fixed_math::RA2_LOGIC_FRAMES_PE
 
 /// Load `map_file_name` from the retail install at `retail_dir` with a pinned seed.
 ///
-/// `map_file_name` is resolved relative to the retail root (e.g. `"Dustbowl.mmx"`).
+/// `map_file_name` uses the game's shared loose/MIX source resolver (e.g.
+/// `"Dustbowl.mmx"` or `"XMP03T4.MAP"`).
 pub fn load(retail_dir: &Path, map_file_name: &str, seed: u32) -> Result<HeadlessScenario, String> {
     load_with_launch(
         retail_dir,
@@ -114,10 +115,6 @@ pub(crate) fn load_with_launch(
             retail_dir.join("gamemd.exe").display()
         ));
     }
-    let map_path = retail_dir.join(map_file_name);
-    let mut map = map_file::load_from_path(&map_path)
-        .map_err(|error| format!("parse {}: {error}", map_path.display()))?;
-
     let mut assets =
         AssetManager::new(retail_dir, MediaArchiveMode::STOCK_DIGITAL).map_err(|error| {
             format!(
@@ -125,6 +122,13 @@ pub(crate) fn load_with_launch(
                 retail_dir.display()
             )
         })?;
+    let mut map = crate::map::source::load_map_by_name_or_path_with_assets(
+        retail_dir,
+        map_file_name,
+        &assets,
+    )
+    .map_err(|error| format!("load map {map_file_name}: {error}"))?
+    .map;
     // Preserve the process-owned cold Rules registry before theater archive
     // priority changes. The same owner then performs the active noncampaign
     // reset/rebuild and transfers its move-only native-ID receipt.
@@ -153,9 +157,7 @@ pub(crate) fn load_with_launch(
         scenario_prefix_plan.bind_native_rules_receipt(native_rules_receipt);
     let theater = theater::load_theater(&mut assets, &map.header.theater)
         .ok_or_else(|| format!("load theater {}", map.header.theater))?;
-    let mut art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-    art.apply_anim_type_read_states(&rules.anim_type_art_read_states);
-    rules.merge_art_data(&art);
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     rules.general.resolve_art_rates(&art_ini);
     let infantry_sequences =
         crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
@@ -255,30 +257,31 @@ pub(crate) fn load_with_launch(
     // synchronously before its native constructor spends an ID.
     let scheduler_roots =
         crate::app::loading::init_helpers::scheduler_anim_roots(&rules, &overlay_registry, &[]);
-    art.bind_scheduler_anim_assets(
-        &scheduler_roots,
-        &assets,
-        theater.extension,
-        &map.header.theater,
-    )
-    .map_err(|error| format!("bind authoritative animation assets: {error}"))?;
+    rules
+        .bind_scheduler_anim_assets(
+            &scheduler_roots,
+            &assets,
+            theater.extension,
+            &map.header.theater,
+        )
+        .map_err(|error| format!("bind authoritative animation assets: {error}"))?;
     // Every other AnimClass producer and the building animations: tolerant pass,
     // after the strict one, which rewrites the scheduler-owned set wholesale.
-    let unbound_explosion_roots = art.bind_anim_class_assets(
-        &crate::app::loading::init_helpers::tolerant_anim_class_roots(&rules, &art),
+    let tolerant_roots = crate::app::loading::init_helpers::tolerant_anim_class_roots(&rules);
+    let unbound_explosion_roots = rules.bind_anim_class_assets(
+        &tolerant_roots,
         &assets,
         theater.extension,
         &map.header.theater,
     );
     crate::rules::effect_asset_catalog::log_unbound_combat_explosion_roots(unbound_explosion_roots);
     let (populated_smudge_dims, fallback_smudge_dims) =
-        art.populate_anim_frame_dims(&assets, theater.extension, &map.header.theater);
+        rules.populate_anim_frame_dims(&assets, theater.extension, &map.header.theater);
     log::info!(
         "Anim frame dims: {} populated, {} fallback (defaults to 30x30)",
         populated_smudge_dims,
         fallback_smudge_dims,
     );
-    rules.art_registry = art.clone();
     rules.bind_effect_assets(&assets, theater.extension, &map.header.theater);
     rules.bind_building_buildup_assets(&assets, &map.header.theater);
     rules.bind_terrain_spawner_assets(&rules_ini, &assets, theater.extension, &map.header.theater);
@@ -286,7 +289,7 @@ pub(crate) fn load_with_launch(
     let overlay_shp_ids = crate::app::loading::init::resolved_overlay_shp_ids(
         &overlay_registry,
         &rules_ini,
-        &art,
+        rules.art(),
         &assets,
         theater.extension,
         &map.header.theater,
@@ -297,34 +300,33 @@ pub(crate) fn load_with_launch(
         bridge_destruction: true,
     };
     let signed_new_ini_format = map.basic.new_ini_format.unwrap_or(0);
+    let cliff_back_impassability = rules.general.cliff_back_impassability;
     let output = crate::sim::runtime::finalize_and_populate_staged_authored_scenario(
         &mut sim,
         &mut map,
         terrain_fill,
         &theater,
         &assets,
-        &rules,
-        &mut art,
+        &mut rules,
         &overlay_registry,
         &overlay_shp_ids,
         signed_new_ini_format,
         true,
-        rules.general.cliff_back_impassability,
+        cliff_back_impassability,
         theater.extension,
         &descriptor.theater,
         bridge_mode,
         &descriptor,
-        |sim| {
+        |sim, rules| {
             crate::sim::scenario_bootstrap::initialize_skirmish_launch_houses(
                 sim,
                 &house_roster,
-                &rules,
+                rules,
                 &launch,
             );
         },
     )
     .map_err(|error| format!("finalize authored headless load: {error}"))?;
-    rules.art_registry = art.clone();
     let resolved_terrain = output.resolved_terrain;
     let overlay_grid = output.overlay_grid;
     let height_map = resolved_terrain.build_height_map();
@@ -349,7 +351,6 @@ pub(crate) fn load_with_launch(
         &mut sim,
         &assets,
         Some(&rules),
-        Some(&art),
     );
     let post_map = crate::sim::runtime::finalize_constructed_scenario(
         &mut sim,
@@ -660,13 +661,18 @@ mod retail_construction_tests {
             Some("D")
         );
         let d = rules
-            .art_registry
+            .art()
             .anim_runtime_config("D")
             .expect("native unread type receipt");
         assert!(!d.art_body_read);
         assert!(!d.bouncer);
         assert_eq!(d.raw_shp_frame_count, None);
-        assert!(rules.art_registry.scheduler_anim_types().contains("D"));
+        assert!(rules.art().scheduler_anim_types().contains("D"));
+        assert_eq!(
+            rules.simulation_config_hash(),
+            b.runtime.resources.rules.simulation_config_hash(),
+            "each fresh load publishes the same final bound ART owner"
+        );
 
         assert_eq!(
             a.sim().parity_digest(),
@@ -703,5 +709,49 @@ mod retail_construction_tests {
                 "runtime-backed headless execution diverged at tick {tick}"
             );
         }
+    }
+
+    #[test]
+    #[ignore = "requires RA2_DIR with installed retail RA2/YR assets"]
+    fn retail_authored_terrain_anims_consume_the_final_bound_art_owner() {
+        let ra2 = std::path::PathBuf::from(
+            std::env::var("RA2_DIR").expect("set RA2_DIR to the retail RA2/YR install directory"),
+        );
+        // Stock Anytown supplies waterfall tiles. Exercise the full authored
+        // finalizer, whose pending Fill has no eagerly constructed tile Anims.
+        let scenario = load(&ra2, "XMP03T4.MAP", 0x00C0_FFEE).expect("Anytown headless load");
+        let rules = &scenario.runtime.resources.rules;
+        let mut terrain_anims = 0;
+        for (id, anim) in scenario
+            .sim()
+            .anims()
+            .filter(|(_, anim)| anim.terrain_attached)
+        {
+            terrain_anims += 1;
+            let name = scenario.sim().interner.resolve(anim.type_id);
+            let config = rules
+                .art()
+                .anim_runtime_config(name)
+                .expect("bound terrain type");
+            assert!(rules.art().scheduler_anim_types().contains(name));
+            assert!(config.art_body_read && config.raw_shp_frame_count.is_some());
+            assert_eq!(anim.effective_end, config.end, "{name} final bound End");
+            assert_eq!(
+                anim.effective_loop_end, config.loop_end,
+                "{name} final bound LoopEnd"
+            );
+            assert!(anim.use_cell_drawer);
+            assert!(
+                scenario
+                    .sim()
+                    .anim_display_layer(*id, Some(rules))
+                    .is_some()
+            );
+        }
+        assert!(
+            terrain_anims > 0,
+            "retail finalizer coverage must not be vacuous"
+        );
+        eprintln!("Anytown final bound ART owner: {terrain_anims} live terrain Anims");
     }
 }

@@ -248,7 +248,7 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     let native: serde_json::Value = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/bridge_target_composed.json"
     ))

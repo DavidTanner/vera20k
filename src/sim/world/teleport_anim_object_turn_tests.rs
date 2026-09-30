@@ -21,7 +21,7 @@ fn rules(bind_warp_art: bool) -> RuleSet {
     if bind_warp_art {
         art.bind_anim_frame_count_for_test("WARPOUT", 13);
     }
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     rules
 }
 

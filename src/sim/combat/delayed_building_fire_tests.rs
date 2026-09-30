@@ -36,7 +36,7 @@ fn delayed_building_rules_with_delay(delay: i32) -> RuleSet {
          [GAPRIS]\nIsAnimDelayedFire=yes\nDelayedFireDelay=28\n"
     );
     let art = ArtRegistry::from_ini(&IniFile::from_str(&art_text));
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 
@@ -80,7 +80,7 @@ fn gsi_05_10_tesla_arms_without_emission_and_fires_on_visit_28() {
     let tesla = rules.object("TESLA").expect("stock Tesla Coil rules type");
     assert_eq!(tesla.image, "NATSLA");
     assert!(
-        rules.art_registry.get("TESLA").is_none(),
+        rules.art().get("TESLA").is_none(),
         "delayed metadata must come through TESLA Image=NATSLA"
     );
     let mut sim = Simulation::new();
@@ -258,7 +258,7 @@ fn gsi_05_10_non_delayed_fires_at_once_and_a_lone_prism_arms_its_own_shot() {
     assert_eq!(rules.general.prism_type.as_deref(), Some("ATESLA"));
     assert!(
         rules
-            .art_registry
+            .art()
             .get("GAPRIS")
             .is_some_and(|art| art.is_anim_delayed_fire)
     );

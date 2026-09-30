@@ -96,7 +96,7 @@ fn retail_atlas_refresh_costs() {
         resources,
     } = &mut scenario.runtime;
     let rules = &resources.rules;
-    let art = &rules.art_registry;
+    let art = rules.art();
 
     // One remap colour per owner, as the launch session assigns them.
     let mut house_colors: HouseColorMap = HashMap::new();

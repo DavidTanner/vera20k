@@ -79,7 +79,7 @@ fn catalog_preserves_signed_actions_and_distinct_ready_guard() {
     let art = IniFile::from_str(
         "[TEST]\nSequence=ArbitraryActions\n[ArbitraryActions]\nReady=7,1,1\nGuard=91,2,2\nDeploy=-8,65536,-3,S\n",
     );
-    rules.art_registry = ArtRegistry::from_ini(&art);
+    rules.replace_art_registry_for_test(ArtRegistry::from_ini(&art));
     let registry = parse_infantry_sequence_registry(&art);
     let catalog = build_animation_sequence_catalog(&rules, Some(&registry));
     let set = &catalog["TEST"];

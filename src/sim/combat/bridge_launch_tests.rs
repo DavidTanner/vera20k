@@ -59,7 +59,7 @@ fn retail_grizzly_forcefire_freezes_the_native_cell_aim() {
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("retail rules");
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
     assert_eq!(
         rules.object("MTNK").unwrap().primary.as_deref(),
         Some("105mm")

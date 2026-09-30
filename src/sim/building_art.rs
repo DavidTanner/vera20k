@@ -119,7 +119,7 @@ impl Simulation {
         let name = self.interner.resolve(entity.type_ref());
         let object = rules.object(name)?;
         rules
-            .art_registry
+            .art()
             .resolve_metadata_entry(name, &object.image)?
             .building_anims
             .iter()
@@ -225,7 +225,7 @@ impl Simulation {
             let native_id = self
                 .next_native_load_id()
                 .expect("installed native identity cursor");
-            self.spawn_load_anim_at_world(&rules.art_registry, rules, descriptor, world, native_id)
+            self.spawn_load_anim_at_world(rules, descriptor, world, native_id)
         } else {
             self.spawn_anim_at_world(rules, descriptor, world)
         };
@@ -446,7 +446,7 @@ pub(crate) fn receiver_body_frame(
     rules: &RuleSet,
 ) -> i32 {
     let art = rules
-        .art_registry
+        .art()
         .resolve_metadata_entry(&object.id, &object.image);
     body_frame(
         BodyFrameInput {
@@ -604,7 +604,7 @@ pub(crate) fn slot_test_fixture() -> (Simulation, RuleSet, u64) {
     for name in ["N", "D", "G"] {
         art.bind_anim_frame_count_for_test(name, 40);
     }
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     let mut sim = Simulation::new();
     let id = sim.allocate_stable_id();
     let mut entity = GameEntity::test_default(id, "B", "A", 2, 2);
@@ -631,7 +631,7 @@ mod slot_tests {
                 width: 640,
                 height: 480,
             };
-        let config = &mut rules.art_registry.get_mut("B").unwrap().building_anims[0];
+        let config = &mut rules.art_entry_mut_for_test("B").unwrap().building_anims[0];
         config.x = 640;
         config.y = 0;
         let first = sim
@@ -706,10 +706,10 @@ mod slot_tests {
         let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
         let mut art = ArtRegistry::from_ini(&art_ini);
         art.bind_anim_frame_count_for_test("EARLY", 40);
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
         assert!(
             rules
-                .art_registry
+                .art()
                 .anim_runtime_config("GHOST")
                 .is_some_and(|config| config.art_body_read && config.raw_shp_frame_count.is_none()),
             "fixture: GHOST is registered and read, but has no sprite"
@@ -751,7 +751,7 @@ mod slot_tests {
             for name in ["EARLY", "LATE", "UNREGISTERED"] {
                 art.bind_anim_frame_count_for_test(name, 40);
             }
-            rules.merge_art_data(&art);
+            rules.install_art_data(art);
             let (mut sim, _, id) = slot_test_fixture();
             let before_rng = sim.scenario_rng.logical_state();
             let early = sim
@@ -774,7 +774,7 @@ mod slot_tests {
             );
             assert_eq!(
                 rules
-                    .art_registry
+                    .art()
                     .anim_runtime_config("LATE")
                     .unwrap()
                     .art_body_read,
@@ -782,7 +782,7 @@ mod slot_tests {
             );
             assert_eq!(
                 rules
-                    .art_registry
+                    .art()
                     .anim_runtime_config("MISSING")
                     .unwrap()
                     .raw_shp_frame_count,
@@ -912,7 +912,7 @@ mod native_slot_tests {
             )));
             art.bind_anim_frame_count_for_test("N", 40);
             art.get_mut("B").unwrap().building_anims[0].native_slot = slot;
-            rules.merge_art_data(&art);
+            rules.install_art_data(art);
             let old = if has_old {
                 let old = sim
                     .set_building_anim_slot(id, slot, false, false, 0, &rules)
@@ -1020,7 +1020,7 @@ mod native_slot_tests {
                 configs.push(config);
             }
             art.get_mut("B").unwrap().building_anims = configs;
-            rules.merge_art_data(&art);
+            rules.install_art_data(art);
             let mut old = [None; 21];
             for slot in input["slots"]
                 .as_array()

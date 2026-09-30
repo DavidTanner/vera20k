@@ -418,8 +418,8 @@ mod muzzle_anim_tests {
         .expect("rules");
         let mut art = ArtRegistry::from_ini(&IniFile::from_str("[GUNFIRE]\nRate=900\n"));
         art.bind_anim_frame_count_for_test("GUNFIRE", 6);
-        rules.merge_art_data(&art);
-        rules.art_registry = art;
+        // Synthetic fixture supplies ART directly, without native read-admission replay.
+        rules.install_art_fixture(art);
 
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("A");

@@ -104,7 +104,7 @@ fn paid_diagnostic(
             .map(|(_, anim)| {
                 let name = sim.resolve(anim.type_id);
                 json!({"name":name,"native_id":anim.native_unique_id,
-                    "config":scene.runtime.resources.rules.art_registry.anim_runtime_config(name)
+                    "config":scene.runtime.resources.rules.art().anim_runtime_config(name)
                         .map(|c|json!({"raw_shp_frame_count":c.raw_shp_frame_count,
                             "start":c.start,"end":c.end,"loop_start":c.loop_start,
                             "loop_end":c.loop_end,"loop_count":c.loop_count,
@@ -458,7 +458,7 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
                 let mut rules =
                     RuleSet::from_processed_rules(&layers.process_with_fixed_art(&art).unwrap())
                         .unwrap();
-                rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
+                rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
                 Some(rules)
             } else {
                 None

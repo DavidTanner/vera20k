@@ -105,7 +105,7 @@ impl Simulation {
         };
         let (capacity, refinery) = (object.storage, object.refinery);
         let silo = rules
-            .art_registry
+            .art()
             .resolve_metadata_entry(self.interner.resolve(entity.type_ref()), &object.image)
             .is_some_and(|art| art.silo_damage);
         if silo {
@@ -178,7 +178,7 @@ mod tests {
         for name in ["N", "D"] {
             registry.bind_anim_frame_count_for_test(name, 100);
         }
-        rules.merge_art_data(&registry);
+        rules.install_art_data(registry);
         rules
     }
     #[test]

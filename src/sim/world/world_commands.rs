@@ -1193,9 +1193,7 @@ impl Simulation {
                 // Per-type animation duration from artmd.ini sequence frame
                 // counts. Fall back to DEPLOY_DEFAULT_TICKS when the art
                 // section or sequence is missing.
-                let art_entry = rules
-                    .art_registry
-                    .resolve_metadata_entry(&type_str, &obj.image);
+                let art_entry = rules.art().resolve_metadata_entry(&type_str, &obj.image);
                 let deploying_ticks = crate::sim::deploy::compute_anim_ticks(
                     art_entry,
                     crate::sim::deploy::DeployPhaseKind::Deploying,

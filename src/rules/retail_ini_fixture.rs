@@ -188,9 +188,8 @@ pub(crate) fn retail_battle_rules() -> Option<RetailBattleRules> {
         .load_noncampaign_scenario(Some(&mode.ini), &map.map.ini)
         .expect("process noncampaign Hills/Battle Rules")
         .into_parts();
-    let mut art = crate::rules::art_data::ArtRegistry::from_ini(&fixed_art);
-    art.apply_anim_type_read_states(&rules.anim_type_art_read_states);
-    rules.merge_art_data(&art);
+    let art = crate::rules::art_data::ArtRegistry::from_ini(&fixed_art);
+    rules.install_art_data(art);
     rules.general.resolve_art_rates(&fixed_art);
     Some(RetailBattleRules {
         authored_rules,

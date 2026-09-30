@@ -148,7 +148,7 @@ fn rules() -> RuleSet {
     for name in ["EXPA", "EXPB", "EXPC", "DESTA"] {
         art.bind_anim_frame_count_for_test(name, 10);
     }
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     rules
 }
 

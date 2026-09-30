@@ -166,7 +166,7 @@ impl GeneratedTechnoInitTable {
 
 fn object_uses_voxel(type_id: &str, object: &ObjectType, rules: &RuleSet) -> bool {
     rules
-        .art_registry
+        .art()
         .resolve_metadata_entry(type_id, &object.image)
         .map(|entry| entry.voxel)
         .unwrap_or(matches!(

@@ -2,7 +2,7 @@
 //! belong to building_art and AnimStore; this finalizer owns no frame timer.
 
 use super::Simulation;
-use crate::rules::art_data::{ArtRegistry, BuildingAnimKind};
+use crate::rules::art_data::BuildingAnimKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::production;
@@ -10,7 +10,6 @@ use crate::sim::production;
 pub(crate) fn finalize(
     sim: &mut Simulation,
     placed_building_owners: &[InternedId],
-    _frame_committed: bool,
     rules: Option<&RuleSet>,
 ) {
     let Some(rules) = rules else {
@@ -18,7 +17,7 @@ pub(crate) fn finalize(
     };
     for &owner in placed_building_owners {
         let owner = sim.interner.resolve(owner).to_owned();
-        trigger_crane_anim(sim, rules, &rules.art_registry, &owner);
+        trigger_crane_anim(sim, rules, &owner);
     }
     // These are observations of synchronous Unit/Building producer calls.
     // Replaying them here would delay constructor IDs, Logic visits and RNG.
@@ -26,7 +25,7 @@ pub(crate) fn finalize(
     sim.bunker_wall_events.clear();
 }
 
-fn trigger_crane_anim(sim: &mut Simulation, rules: &RuleSet, _art: &ArtRegistry, owner: &str) {
+fn trigger_crane_anim(sim: &mut Simulation, rules: &RuleSet, owner: &str) {
     let Some(producer) = production::active_producer_for_owner_category(
         sim,
         rules,
@@ -43,10 +42,7 @@ fn trigger_crane_anim(sim: &mut Simulation, rules: &RuleSet, _art: &ArtRegistry,
     let Some(object) = rules.object(name) else {
         return;
     };
-    let Some(art) = rules
-        .art_registry
-        .resolve_metadata_entry(name, &object.image)
-    else {
+    let Some(art) = rules.art().resolve_metadata_entry(name, &object.image) else {
         return;
     };
     let slots: Vec<_> = art
@@ -216,6 +212,7 @@ pub(crate) fn set_bunker_wall_slots(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::sim::components::BaleDepositEvent;
     use crate::sim::game_entity::GameEntity;
@@ -374,7 +371,7 @@ mod tests {
             .expect("refinery animation rules");
         let mut art = ArtRegistry::from_ini(&art_ini);
         art.bind_anim_frame_count_for_test("GAREFN_B", 12);
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
         rules
     }
     #[test]
@@ -503,11 +500,11 @@ mod tests {
             for name in ["NORMAL", "DAMAGED"] {
                 art.bind_anim_frame_count_for_test(name, 10);
             }
-            rules.merge_art_data(&art);
+            rules.install_art_data(art);
             let mut sim = refinery_sim_with_bale();
             sim.entities_mut().get_mut(41).unwrap().health.current = row.input.current;
             begin_refinery_unload_gate(&mut sim, &rules, 41);
-            finalize(&mut sim, &[], true, Some(&rules));
+            finalize(&mut sim, &[], Some(&rules));
             let id = sim.entities().get(41).unwrap().building_anim_slots[10].unwrap();
             assert_eq!(
                 sim.interner.resolve(sim.anim(id).unwrap().type_id),
@@ -535,7 +532,7 @@ mod tests {
         let mut sim = refinery_sim_with_bale();
         sim.entities_mut().get_mut(41).unwrap().health.current = 50;
         begin_refinery_unload_gate(&mut sim, &rules, 41);
-        finalize(&mut sim, &[], true, Some(&rules));
+        finalize(&mut sim, &[], Some(&rules));
         assert!(sim.bale_events.is_empty());
         assert_eq!(sim.particle_systems().len(), 1);
         let building = sim.entities().get(41).unwrap();
@@ -549,7 +546,7 @@ mod tests {
         sim.bale_events[0].empty = true;
         begin_refinery_unload_gate(&mut sim, &rules, 41);
         end_refinery_unload_empty(&mut sim, &rules, 41);
-        finalize(&mut sim, &[], true, Some(&rules));
+        finalize(&mut sim, &[], Some(&rules));
         assert!(sim.bale_events.is_empty());
         assert_eq!(sim.particle_systems().len(), 1);
         assert_eq!(
@@ -558,7 +555,7 @@ mod tests {
         );
         assert_eq!(sim.anims().count(), 0);
         let hash = sim.state_hash();
-        finalize(&mut sim, &[], true, Some(&rules));
+        finalize(&mut sim, &[], Some(&rules));
         assert_eq!(hash, sim.state_hash());
     }
 }

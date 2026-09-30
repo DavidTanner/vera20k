@@ -379,7 +379,7 @@ pub(crate) fn build_selection_bracket_instances(
             })
             .unwrap_or(type_str);
         let art_height: f32 = state.rules()
-            .and_then(|rules| rules.art_registry.get(art_key))
+            .and_then(|rules| rules.art().get(art_key))
             .map(|entry| entry.height as f32)
             .unwrap_or(2.0);
         let z_screen = art_height * HEIGHT_PX;

@@ -294,14 +294,14 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
     for name in ["N", "D"] {
         art.bind_anim_frame_count_for_test(name, 100);
     }
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     // Native427D00 converts each endpoint through900/rate and clamps the
     // first to the second. Authored1,5 collapses to180,180 and draws nothing;
     // authored900,180 supplies the intended nondegenerate1..5 delay range.
     for name in ["N", "D"] {
         assert_eq!(
             rules
-                .art_registry
+                .art()
                 .anim_runtime_config(name)
                 .unwrap()
                 .random_rate_logic_frames,

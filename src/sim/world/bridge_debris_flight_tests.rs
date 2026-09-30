@@ -11,14 +11,12 @@ fn flight_rules(producer: &Value, inputs: &Value) -> Option<RuleSet> {
     for row in inputs["rows"].as_array().unwrap() {
         let name = row["name"].as_str().unwrap();
         if let Some(frames) = row["raw_shp_frame_count"].as_i64() {
-            rules
-                .art_registry
-                .bind_anim_frame_count_for_test(name, frames as i32);
+            rules.bind_anim_frame_count_for_test(name, frames as i32);
         }
         if row["missing_runtime_config"] == true {
             continue; // D is supplied by its original constructor in the oracle.
         }
-        let config = rules.art_registry.anim_runtime_config(name).unwrap();
+        let config = rules.art().anim_runtime_config(name).unwrap();
         assert_eq!(
             serde_json::json!(config.raw_shp_frame_count),
             row["raw_shp_frame_count"],
@@ -262,9 +260,8 @@ fn retail_hills_layered_bridge_landing_inputs_match_original_readers() {
         .load_noncampaign_scenario(Some(&mode), &map.ini)
         .unwrap()
         .into_parts();
-    let mut registry = crate::rules::art_data::ArtRegistry::from_ini(&art);
-    registry.apply_anim_type_read_states(&rules.anim_type_art_read_states);
-    rules.merge_art_data(&registry);
+    let registry = crate::rules::art_data::ArtRegistry::from_ini(&art);
+    rules.install_art_data(registry);
     assert_native_landing_inputs(&rules);
 }
 

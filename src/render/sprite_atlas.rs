@@ -388,7 +388,7 @@ fn collect_effect_names(rules: &RuleSet) -> Vec<String> {
     for fire_ref in &rules.general.damage_fire_types {
         push_effect_name(&mut effect_names, &fire_ref.name);
     }
-    for anim_name in rules.art_registry.scheduler_anim_types() {
+    for anim_name in rules.art().scheduler_anim_types() {
         push_effect_name(&mut effect_names, anim_name);
     }
     // Explosion animations from every warhead's AnimList=.

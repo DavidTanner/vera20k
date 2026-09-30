@@ -1158,9 +1158,9 @@ impl Simulation {
             return;
         }
         let muzzle_flashes = rules
-            .art_registry
+            .art()
             .get(&object.image)
-            .or_else(|| rules.art_registry.get(&object.id))
+            .or_else(|| rules.art().get(&object.id))
             .map(|art| art.muzzle_flash_positions.clone())
             .unwrap_or_default();
         for port in 0..ports {

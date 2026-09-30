@@ -134,7 +134,7 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
         "[DEATHTEST]\nReport=DeathReport\nEnd=80\n",
     ));
     art.bind_anim_frame_count_for_test("DEATHTEST", 80);
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     let (mut saved, terrain) = terminal_load_world(&rules);
     saved.input_delay_ticks = 0;
     let owner = saved.interner.intern("Americans");

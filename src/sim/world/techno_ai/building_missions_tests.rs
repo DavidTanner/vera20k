@@ -87,7 +87,7 @@ fn with_delayed_fire(mut rules: RuleSet, delay: i64) -> RuleSet {
     let art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(&format!(
         "[TDEFART]\nIsAnimDelayedFire=yes\nDelayedFireDelay={delay}\n"
     )));
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 

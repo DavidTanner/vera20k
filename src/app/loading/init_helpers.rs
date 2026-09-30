@@ -21,7 +21,6 @@ use crate::render::sidebar_cameo_atlas::{self, SidebarCameoAtlas};
 use crate::render::sprite_atlas::{self, SpriteAtlas};
 use crate::render::tile_atlas::{self, TileAtlas};
 use crate::render::unit_atlas::{self, UnitAtlas};
-use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::process_owner::NativeRulesProcessOwner;
 #[cfg(test)]
@@ -37,19 +36,14 @@ pub(crate) fn build_sidebar_cameo_atlas(
     batch: &BatchRenderer,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) -> Option<SidebarCameoAtlas> {
     let rules = rules?;
-    maybe_export_sidebar_cameo_debug(asset_manager, rules, art);
+    maybe_export_sidebar_cameo_debug(asset_manager, rules);
     let palette = load_sidebar_cameo_palette(asset_manager)?;
-    sidebar_cameo_atlas::build_sidebar_cameo_atlas(gpu, batch, asset_manager, rules, art, &palette)
+    sidebar_cameo_atlas::build_sidebar_cameo_atlas(gpu, batch, asset_manager, rules, &palette)
 }
 
-pub(crate) fn maybe_export_sidebar_cameo_debug(
-    asset_manager: &AssetManager,
-    rules: &RuleSet,
-    art: Option<&ArtRegistry>,
-) {
+pub(crate) fn maybe_export_sidebar_cameo_debug(asset_manager: &AssetManager, rules: &RuleSet) {
     let enabled = std::env::var("RA2_DEBUG_CAMEO_PALETTES")
         .ok()
         .map(|v| {
@@ -74,7 +68,6 @@ pub(crate) fn maybe_export_sidebar_cameo_debug(
     sidebar_cameo_atlas::export_debug_palette_sheet(
         asset_manager,
         rules,
-        art,
         Path::new("debug_sidebar_cameo_palettes.png"),
         &palette_names,
     );
@@ -342,10 +335,12 @@ pub(crate) fn load_neutral_tech_types(
 /// art building animation made every retail map fail to load. (Most of the
 /// names that first failed were a separate resolver fault, since fixed in
 /// `art_data::anim_shp_candidates`.)
-pub(crate) fn tolerant_anim_class_roots(rules: &RuleSet, art: &ArtRegistry) -> Vec<String> {
+pub(crate) fn tolerant_anim_class_roots(rules: &RuleSet) -> Vec<String> {
     let mut roots = crate::rules::effect_asset_catalog::anim_class_roots(rules);
     roots.extend(
-        art.building_anim_roots()
+        rules
+            .art()
+            .building_anim_roots()
             .into_iter()
             .filter(|name| rules.anim_type_names.contains(name)),
     );
@@ -488,7 +483,6 @@ pub(crate) fn bind_staged_app_scenario_metadata(
     sim: &mut Simulation,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) {
     // F09: HVA frame counts are sim metadata — parse them through the GPU-free
     // catalog before any atlas exists, so the renderer never writes into the
@@ -498,7 +492,6 @@ pub(crate) fn bind_staged_app_scenario_metadata(
         &sim.interner,
         asset_manager,
         rules,
-        art,
     );
     sim.update_voxel_anim_frame_counts(&frame_catalog);
 }
@@ -513,7 +506,6 @@ pub(crate) fn build_presentation_manifest(
     theater_ext: &str,
     theater_name: &str,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
     overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
     house_colors: &HouseColorMap,
     theater_unit_palette: Option<&Palette>,
@@ -527,7 +519,6 @@ pub(crate) fn build_presentation_manifest(
         theater_ext,
         theater_name,
         rules,
-        art,
         overlay_registry,
         house_colors,
         theater_unit_palette,
@@ -548,7 +539,6 @@ pub(crate) fn build_entity_atlases(
     theater_ext: &str,
     theater_name: &str,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
     overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
     house_colors: &HouseColorMap,
     theater_unit_palette: Option<&Palette>,
@@ -558,6 +548,7 @@ pub(crate) fn build_entity_atlases(
     Option<SpriteAtlas>,
     Option<crate::render::palette_textures::PaletteSet>,
 ) {
+    let art = rules.map(RuleSet::art);
     // Use the theater-specific unit palette if provided, otherwise fall back to search.
     let palette: Option<Palette> = theater_unit_palette.cloned().or_else(|| {
         let pal_names: &[&str] = &["unittem.pal", "unit.pal", "temperat.pal"];
@@ -664,7 +655,7 @@ mod tests {
         use crate::rules::ini_parser::IniFile;
         use crate::rules::ruleset::RuleSet;
 
-        let rules = RuleSet::from_ini(&IniFile::from_str(
+        let mut rules = RuleSet::from_ini(&IniFile::from_str(
             "[Animations]\n0=KNOWN_A\n[General]\nWarpOut=MYWARP\n",
         ))
         .expect("rules");
@@ -672,7 +663,8 @@ mod tests {
             "[BLDG]\nActiveAnim=KNOWN_A\n[GHOST]\nActiveAnim=GHOST_A\n",
         ));
 
-        let roots = super::tolerant_anim_class_roots(&rules, &art);
+        rules.install_art_data(art);
+        let roots = super::tolerant_anim_class_roots(&rules);
 
         assert!(roots.iter().any(|root| root == "KNOWN_A"));
         assert!(roots.iter().any(|root| root == "MYWARP"));
@@ -839,7 +831,7 @@ mod tests {
         ));
         art.bind_anim_frame_count_for_test("CUSTOM_TOP", 16);
         art.bind_anim_frame_count_for_test("CUSTOM_GROUND", 2);
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
 
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Neutral");

@@ -1209,8 +1209,8 @@ SpreadPercentage=.06
         let rules_ini = IniFile::from_str(&rules_text);
         let mut rules = RuleSet::from_ini(&rules_ini).expect("terrain-spawner rules");
         let art = ArtRegistry::from_ini(&IniFile::from_str("[TIBTRE01]\nTheater=yes\n"));
-        rules.merge_art_data(&art);
-        rules.art_registry = art;
+        // Synthetic fixture supplies ART directly, without native read-admission replay.
+        rules.install_art_fixture(art);
         rules.bind_terrain_spawner_assets(&rules_ini, &assets, "TEM", "TEMPERATE");
 
         let registry = OverlayTypeRegistry::from_ini(&rules_ini, None);

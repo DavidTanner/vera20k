@@ -11,7 +11,6 @@ use crate::assets::pal_file::Palette;
 use crate::assets::shp_file::ShpFile;
 use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::gpu::GpuContext;
-use crate::rules::art_data::ArtRegistry;
 use crate::rules::ruleset::RuleSet;
 
 const CAMEO_PADDING: u32 = 2;
@@ -58,7 +57,6 @@ pub fn build_sidebar_cameo_atlas(
     batch: &BatchRenderer,
     asset_manager: &AssetManager,
     rules: &RuleSet,
-    art: Option<&ArtRegistry>,
     palette: &Palette,
 ) -> Option<SidebarCameoAtlas> {
     let mut rendered: Vec<RenderedCameo> = Vec::new();
@@ -70,7 +68,7 @@ pub fn build_sidebar_cameo_atlas(
         .chain(rules.aircraft_ids.iter());
 
     for type_id in type_ids {
-        if let Some(cameo) = render_cameo(type_id, asset_manager, rules, art, palette) {
+        if let Some(cameo) = render_cameo(type_id, asset_manager, rules, palette) {
             rendered.push(cameo);
         }
     }
@@ -113,7 +111,6 @@ pub fn build_sidebar_cameo_atlas(
 pub fn export_debug_palette_sheet(
     asset_manager: &AssetManager,
     rules: &RuleSet,
-    art: Option<&ArtRegistry>,
     output_path: &Path,
     palette_names: &[&str],
 ) {
@@ -142,7 +139,7 @@ pub fn export_debug_palette_sheet(
         };
         let mut row: Vec<RenderedCameo> = Vec::new();
         for type_id in &sample_type_ids {
-            if let Some(cameo) = render_cameo(type_id, asset_manager, rules, art, &palette) {
+            if let Some(cameo) = render_cameo(type_id, asset_manager, rules, &palette) {
                 max_cameo_w = max_cameo_w.max(cameo.width);
                 max_cameo_h = max_cameo_h.max(cameo.height);
                 row.push(cameo);
@@ -209,19 +206,16 @@ fn render_cameo(
     type_id: &str,
     asset_manager: &AssetManager,
     rules: &RuleSet,
-    art: Option<&ArtRegistry>,
     palette: &Palette,
 ) -> Option<RenderedCameo> {
     let rules_image = rules
         .object(type_id)
         .map(|obj| obj.image.clone())
         .unwrap_or_else(|| type_id.to_string());
-    let resolved_image = art
-        .map(|registry| registry.resolve_effective_image_id(type_id, &rules_image))
-        .unwrap_or_else(|| rules_image.to_ascii_uppercase());
-    let resolved_cameo = art
-        .map(|registry| registry.resolve_declared_cameo_id(type_id, &rules_image))
-        .unwrap_or_else(|| resolved_image.clone());
+    let resolved_image = rules
+        .art()
+        .resolve_effective_image_id(type_id, &rules_image);
+    let resolved_cameo = rules.art().resolve_declared_cameo_id(type_id, &rules_image);
 
     let mut candidates: Vec<String> = Vec::with_capacity(8);
     push_unique(&mut candidates, format!("{resolved_cameo}.SHP"));

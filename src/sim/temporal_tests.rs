@@ -169,7 +169,7 @@ fn rules_from(text: &str) -> RuleSet {
     let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(ART));
     art.bind_anim_frame_count_for_test("WARPAWAY", 20);
     art.bind_anim_frame_count_for_test("CHRONOSK", 3);
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     rules
 }
 

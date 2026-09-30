@@ -35,7 +35,7 @@ fn fixture_with_first(first_type: &str) -> (Simulation, RuleSet, u64, u64) {
          [WH]\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .unwrap();
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
         &IniFile::from_str("[TANK]\nPrimaryFireFLH=0,0,128\n"),
     ));
     let mut sim = Simulation::with_seed(0x7365_e1);

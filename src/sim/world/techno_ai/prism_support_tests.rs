@@ -110,7 +110,7 @@ fn rules(support_range: i32, elite_range: Option<i32>) -> RuleSet {
     for name in ["GAPRIS_A", "GAPRIS_AD"] {
         art.bind_anim_frame_count_for_test(name, 20);
     }
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 

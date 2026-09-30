@@ -90,7 +90,7 @@ fn miner_rules() -> RuleSet {
     ));
     let mut rules = RuleSet::from_ini(&ini).expect("miner rules");
     // The retail art section (ARTMD GAREFN) carries `QueueingCell=4,1`.
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
         &IniFile::from_str("[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n"),
     ));
     rules
@@ -3036,7 +3036,7 @@ fn miner_rules_with_refinery_art() -> RuleSet {
         .expect("miner rules with refinery art");
     let mut art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
     art.bind_anim_frame_count_for_test("GAREFNOR", 400);
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 
@@ -3151,7 +3151,7 @@ fn trace_unload_presentation(
     for _ in 0..ticks {
         visit_miner(sim, rules, miner);
         // The authoritative frame tail that consumes the bale events.
-        crate::sim::world::building_anim::finalize(sim, &[], true, Some(rules));
+        crate::sim::world::building_anim::finalize(sim, &[], Some(rules));
         trace.smoke_count.push(sim.particle_systems().len());
         trace.slot_live.push(
             sim.substrate

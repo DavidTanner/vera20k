@@ -85,7 +85,7 @@ sentinel and SpawnDelay reads are covered; trailer emission/lifecycle is not.
 
 `native_processing::ProcessedType` privately retains `ProjectileArtState` across
 all passes and registry handoff. `RuleSet::from_processed_rules` projects that
-state once. Late `merge_art_data` no longer rereads Projectile ART. The atlas
+state once. Late `install_art_data` no longer rereads Projectile ART. The atlas
 uses the last image-load descriptor and keeps its normal Inviso/Voxel draw gates.
 The configuration hash includes these effective fields (version8), including
 retained Inviso, to reject a restore against different frame/launch/binding

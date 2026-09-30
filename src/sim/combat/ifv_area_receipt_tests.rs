@@ -45,14 +45,14 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
         );
         let processed = layers.process_with_fixed_art(&art).unwrap();
         let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
-        rules.merge_art_data(&ArtRegistry::from_ini(&art));
+        rules.install_art_data(ArtRegistry::from_ini(&art));
         for item in native["initial"]["impact_anim_art"].as_array().unwrap() {
-            rules.art_registry.bind_anim_frame_count_for_test(
+            rules.bind_anim_frame_count_for_test(
                 item["name"].as_str().unwrap(),
                 item["frame_count"].as_i64().unwrap() as i32,
             );
         }
-        rules.art_registry.bind_anim_frame_count_for_test(
+        rules.bind_anim_frame_count_for_test(
             "IRONFX",
             native["nullify_art"]["raw_shp_frame_count"]
                 .as_i64()
@@ -240,7 +240,7 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
         );
         let processed = layers.process_with_fixed_art(&art).unwrap();
         let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
-        rules.merge_art_data(&ArtRegistry::from_ini(&art));
+        rules.install_art_data(ArtRegistry::from_ini(&art));
         let mut world = Simulation::with_seed(31);
         world.session.binary_frame = 100;
         world.session.no_damage = input["scenario_flags"].as_u64().unwrap() & 0x20 != 0;

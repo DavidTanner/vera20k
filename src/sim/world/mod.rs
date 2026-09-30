@@ -1642,7 +1642,7 @@ fn dispatch_smudge_inline(
     };
     crate::sim::combat::smudge_dispatch::drain_smudge_spawn_requests(
         std::slice::from_ref(request),
-        &rules.art_registry,
+        rules.art(),
         &rules.smudge_types,
         smudge_grid,
         occupancy,
@@ -6574,7 +6574,7 @@ impl Simulation {
             animation::tick_voxel_animations(self.entities_mut());
             animation::tick_harvest_overlays(self.entities_mut());
         }
-        building_anim::finalize(self, &placed_building_owners, frame_committed, rules);
+        building_anim::finalize(self, &placed_building_owners, rules);
         #[cfg(debug_assertions)]
         self.debug_assert_logic_membership_consistent();
         #[cfg(debug_assertions)]

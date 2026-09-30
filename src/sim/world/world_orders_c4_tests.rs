@@ -36,7 +36,7 @@ fn c4_test_rules() -> RuleSet {
         "[GAREFN]\nFoundation=4x3\nAddOccupy1=-1,0\nAddOccupy2=-1,-1\nRemoveOccupy1=3,1\n",
     );
     let art = ArtRegistry::from_ini(&art_ini);
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 
@@ -54,7 +54,7 @@ fn c4_damage_state_rules() -> RuleSet {
     );
     let mut rules = RuleSet::from_ini(&ini).expect("c4 damage-state rules should parse");
     let art = ArtRegistry::from_ini(&IniFile::from_str("[GAPILE]\nFoundation=2x2\n"));
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 

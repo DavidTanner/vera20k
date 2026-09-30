@@ -16,11 +16,7 @@ impl Simulation {
         let name = self.interner.resolve(entity.type_ref());
         rules
             .object(name)
-            .and_then(|object| {
-                rules
-                    .art_registry
-                    .resolve_metadata_entry(name, &object.image)
-            })
+            .and_then(|object| rules.art().resolve_metadata_entry(name, &object.image))
             .map_or_else(Default::default, |entry| {
                 entry.building_anim_power[usize::from(slot)]
             })
@@ -33,11 +29,7 @@ impl Simulation {
         let name = self.interner.resolve(entity.type_ref());
         rules
             .object(name)
-            .and_then(|object| {
-                rules
-                    .art_registry
-                    .resolve_metadata_entry(name, &object.image)
-            })
+            .and_then(|object| rules.art().resolve_metadata_entry(name, &object.image))
             .is_some_and(|entry| entry.is_anim_delayed_fire)
     }
 
@@ -211,7 +203,7 @@ mod tests {
         for name in ["N", "D"] {
             art.bind_anim_frame_count_for_test(name, 100);
         }
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
         rules
     }
 
@@ -278,7 +270,7 @@ mod tests {
             } else {
                 &mut normal
             };
-            let entry = rules.art_registry.get_mut("B").unwrap();
+            let entry = rules.art_entry_mut_for_test("B").unwrap();
             entry.building_anim_power = [BuildingAnimPowerFlags {
                 powered: false,
                 ..Default::default()
@@ -431,7 +423,7 @@ mod tests {
                     (i["drain"].as_i64().unwrap() as i32).wrapping_neg()
                 ),
             );
-            let entry = rules.art_registry.get_mut("B").unwrap();
+            let entry = rules.art_entry_mut_for_test("B").unwrap();
             entry.building_anim_power = [BuildingAnimPowerFlags {
                 powered: false,
                 ..Default::default()
@@ -516,12 +508,19 @@ mod tests {
     fn slot_power_metadata_changes_configuration_identity() {
         let mut rules = rules(100, "");
         let base = rules.simulation_config_hash();
-        rules.art_registry.get_mut("B").unwrap().building_anim_power[10].powered_effect = true;
-        assert_ne!(base, rules.simulation_config_hash());
-        rules.art_registry.get_mut("B").unwrap().building_anim_power[10].powered_effect = false;
         rules
-            .art_registry
-            .get_mut("B")
+            .art_entry_mut_for_test("B")
+            .unwrap()
+            .building_anim_power[10]
+            .powered_effect = true;
+        assert_ne!(base, rules.simulation_config_hash());
+        rules
+            .art_entry_mut_for_test("B")
+            .unwrap()
+            .building_anim_power[10]
+            .powered_effect = false;
+        rules
+            .art_entry_mut_for_test("B")
             .unwrap()
             .is_anim_delayed_fire = true;
         assert_ne!(base, rules.simulation_config_hash());

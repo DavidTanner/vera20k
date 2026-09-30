@@ -2373,7 +2373,7 @@ pub(crate) mod tests {
             "[SPARK]\nRate=1\nEnd=2\nLoopCount=1\n",
         ));
         art.bind_anim_frame_count_for_test("SPARK", 2);
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         let cell = (12, 13);
 
         let mut visible = sim_with_grid(0x14_09_0005);

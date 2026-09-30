@@ -62,8 +62,8 @@ fn rules() -> RuleSet {
     // Retail `[DRON] PrimaryFireFLH=`: a jump from ground height would
     // detonate on its first AI (`0x00466DB1`, old height <= 0).
     let mut rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("parasite fixture rules");
-    rules.art_registry = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
-        "[DRON]\nPrimaryFireFLH=0,0,30\n",
+    rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(
+        &IniFile::from_str("[DRON]\nPrimaryFireFLH=0,0,30\n"),
     ));
     rules
 }

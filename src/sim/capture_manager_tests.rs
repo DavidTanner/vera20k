@@ -152,7 +152,7 @@ fn rules_from(text: &str) -> RuleSet {
     let mut rules = RuleSet::from_ini(&IniFile::from_str(text)).expect("mind control rules");
     let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(ART));
     art.bind_anim_frame_count_for_test("MINDANIM", 8);
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     rules
 }
 

@@ -7,7 +7,7 @@ use crate::map::authored_overlay::{
 use crate::map::resolved_terrain::{
     AutomaticTubeAllocation, AutomaticTubeRequest, TerrainTileAnimation,
 };
-use crate::rules::art_data::{AnimAssetBindError, ArtRegistry};
+use crate::rules::art_data::AnimAssetBindError;
 use crate::sim::anim_class::{AnimDrawRuntime, AnimSpawnError, AnimWorldCoord};
 use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::world::Simulation;
@@ -33,8 +33,7 @@ pub(crate) enum SimulationAuthoredLoadError {
 /// Recalc projection remain map-owned by `AuthoredOverlayFinalizer`.
 pub(crate) struct SimulationAuthoredLoadHost<'a> {
     sim: &'a mut Simulation,
-    art: &'a mut ArtRegistry,
-    rules: &'a crate::rules::ruleset::RuleSet,
+    rules: &'a mut crate::rules::ruleset::RuleSet,
     assets: &'a AssetManager,
     theater_ext: &'a str,
     theater_name: &'a str,
@@ -43,15 +42,13 @@ pub(crate) struct SimulationAuthoredLoadHost<'a> {
 impl<'a> SimulationAuthoredLoadHost<'a> {
     pub(crate) fn new(
         sim: &'a mut Simulation,
-        art: &'a mut ArtRegistry,
-        rules: &'a crate::rules::ruleset::RuleSet,
+        rules: &'a mut crate::rules::ruleset::RuleSet,
         assets: &'a AssetManager,
         theater_ext: &'a str,
         theater_name: &'a str,
     ) -> Self {
         Self {
             sim,
-            art,
             rules,
             assets,
             theater_ext,
@@ -78,21 +75,8 @@ impl<'a> SimulationAuthoredLoadHost<'a> {
         world: AnimWorldCoord,
         mut descriptor: AnimClassSpawnDescriptor,
     ) -> Result<u64, SimulationAuthoredLoadError> {
-        let mut roots: Vec<String> = self.art.scheduler_anim_types().iter().cloned().collect();
-        roots.push(anim_name.to_ascii_uppercase());
-        roots.sort();
-        roots.dedup();
-        // VERA resolves the exact newly reached map animation root lazily,
-        // before the native constructor can consume an ID. This preserves the
-        // load failure boundary without binding unused theater declarations.
-        //
-        // RESIDUAL: the roots are the whole bound set, tolerantly bound types
-        // included, and this pass is strict over their `Next=`/`TrailerAnim=`
-        // chains. A tolerantly bound type whose chained type has no sprite
-        // would fail the load here. Trigger: modded art only; none of retail's
-        // nine chain keys starts from a tolerant root. Effect: map load error.
-        self.art.bind_scheduler_anim_assets(
-            &roots,
+        self.rules.bind_authored_load_anim(
+            anim_name,
             self.assets,
             self.theater_ext,
             self.theater_name,
@@ -100,7 +84,7 @@ impl<'a> SimulationAuthoredLoadHost<'a> {
         descriptor.type_name = self.sim.interner.intern(anim_name);
         let native_unique_id = self.next_native_id()?;
         self.sim
-            .spawn_load_anim_at_world(self.art, self.rules, descriptor, world, native_unique_id)
+            .spawn_load_anim_at_world(self.rules, descriptor, world, native_unique_id)
             .map_err(Into::into)
     }
 }
@@ -279,5 +263,157 @@ impl AuthoredOverlayLoadHost for SimulationAuthoredLoadHost<'_> {
     fn drain_deferred(&mut self) -> Result<(), Self::Error> {
         self.sim.load_objects.drain_deferred()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::map::source::test_support::TestDirectory;
+    use crate::rules::{
+        art_data::ArtRegistry, ini_parser::IniFile, native_processing::RulesLayerStack,
+        ruleset::RuleSet,
+    };
+    use crate::sim::world::display_layers::DisplayLayer;
+    use crate::sim::{native_identity::NativeUniqueIdCursor, snapshot::GameSnapshot};
+
+    fn load_rules() -> RuleSet {
+        let art_ini = IniFile::from_str(
+            "[LATE]\nLayer=ground\nShadow=no\nRate=900\nStartSound=TileStart\n\
+             [MISSING]\nImage=ABSENT\n",
+        );
+        let processed =
+            RulesLayerStack::new(IniFile::from_str("[Animations]\n0=LATE\n1=MISSING\n"))
+                .process_with_fixed_art(&art_ini)
+                .expect("process canonical ART read admission");
+        let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
+        rules.install_art_data(ArtRegistry::from_ini(&art_ini));
+        rules
+    }
+
+    #[test]
+    fn lazy_authored_binding_reaches_constructor_display_sound_and_snapshot_owner() {
+        let root = TestDirectory::new("authored-art-owner");
+        // The bounds binder consumes this SHP header; no pixel decode is
+        // involved in this synthetic constructor/ownership regression.
+        root.write("LATE.SHP", &[0, 0, 1, 0, 1, 0, 2, 0]);
+        let assets = AssetManager::from_loose_root_for_test(root.path());
+        let request = TerrainTileAnimation {
+            rx: 1,
+            ry: 2,
+            anim_name: "LATE".into(),
+            world_x: 384,
+            world_y: 640,
+            world_z: 208,
+            z_adjust: -7,
+        };
+        let mut rules = load_rules();
+        assert!(rules.art().scheduler_anim_types().is_empty());
+        assert_eq!(
+            rules
+                .art()
+                .anim_runtime_config("LATE")
+                .unwrap()
+                .raw_shp_frame_count,
+            None
+        );
+        let before_rules_hash = rules.simulation_config_hash();
+        // Native snapshot load resets Scenario RNG to Seed(0). This fixture
+        // consumes no Scenario draws, so use that seed to compare the full
+        // world across the ordinary in-scenario restore handoff.
+        let mut sim = Simulation::with_seed(0);
+        sim.session.map_name = "authored ART owner".into();
+        sim.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(700));
+        let before_rng = sim.rng_state();
+        SimulationAuthoredLoadHost::new(&mut sim, &mut rules, &assets, "TEM", "TEMPERATE")
+            .construct_terrain_attached_anim(&request)
+            .expect("bind the map-discovered root before construction");
+
+        let (&id, anim) = sim.anims().next().expect("one constructed terrain Anim");
+        assert_eq!(sim.anims().count(), 1);
+        assert_eq!(anim.native_unique_id, 701);
+        assert_eq!(anim.effective_end, 2);
+        assert_eq!(anim.z_adjust, -7);
+        assert!(anim.terrain_attached && anim.use_cell_drawer && anim.start_sound_active);
+        assert_eq!(
+            sim.anim_display_layer(id, Some(&rules)),
+            Some(DisplayLayer::GROUND)
+        );
+        assert_eq!(sim.substrate.display.members(DisplayLayer::GROUND), &[id]);
+        assert_eq!(sim.live_object_order_snapshot(), vec![id]);
+        assert_eq!(
+            sim.rng_state(),
+            before_rng,
+            "no RandomRate means no constructor draw"
+        );
+        assert!(sim.sound_events.iter().any(|event| matches!(event,
+            crate::sim::world::SimSoundEvent::AnimationStarted { anim_id, .. } if *anim_id == id)));
+        assert_eq!(
+            rules
+                .art()
+                .anim_runtime_config("LATE")
+                .unwrap()
+                .raw_shp_frame_count,
+            Some(2)
+        );
+        assert!(rules.art().scheduler_anim_types().contains("LATE"));
+        let bound_rules_hash = rules.simulation_config_hash();
+        assert_ne!(
+            bound_rules_hash, before_rules_hash,
+            "bound assets enter the authoritative rules fingerprint"
+        );
+
+        let bytes =
+            GameSnapshot::save_validated(&sim, 1234, bound_rules_hash, "authored ART owner", 0);
+        assert!(
+            GameSnapshot::load_validated(&bytes, 1234, before_rules_hash, "authored ART owner")
+                .is_err()
+        );
+        let mut restored =
+            GameSnapshot::load_validated(&bytes, 1234, bound_rules_hash, "authored ART owner")
+                .expect("snapshot accepts the final bound owner")
+                .sim;
+        restored.restore_after_snapshot_load().unwrap();
+        restored.retain_in_scenario_process_state_from(&sim);
+        assert_eq!(restored.rng_state(), sim.rng_state());
+        assert_eq!(restored.state_hash(), sim.state_hash());
+        assert_eq!(
+            restored.anim_display_layer(id, Some(&rules)),
+            Some(DisplayLayer::GROUND)
+        );
+
+        let before_failure = sim.state_hash();
+        let mut missing = request.clone();
+        missing.anim_name = "MISSING".into();
+        assert!(
+            SimulationAuthoredLoadHost::new(&mut sim, &mut rules, &assets, "TEM", "TEMPERATE")
+                .construct_terrain_attached_anim(&missing)
+                .is_err()
+        );
+        assert_eq!(
+            sim.native_unique_ids.as_ref().unwrap().current_raw(),
+            701,
+            "strict load failure precedes native ID allocation, unlike runtime spawn"
+        );
+        assert_eq!(sim.state_hash(), before_failure);
+        assert_eq!(sim.rng_state(), before_rng);
+        assert_eq!(rules.simulation_config_hash(), bound_rules_hash);
+
+        // A fresh staged load does not inherit the previous match's bound set.
+        let mut reload_rules = load_rules();
+        let mut reload = Simulation::with_seed(0);
+        reload.session.map_name = "authored ART owner".into();
+        reload.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(700));
+        SimulationAuthoredLoadHost::new(
+            &mut reload,
+            &mut reload_rules,
+            &assets,
+            "TEM",
+            "TEMPERATE",
+        )
+        .construct_terrain_attached_anim(&request)
+        .unwrap();
+        assert_eq!(reload_rules.simulation_config_hash(), bound_rules_hash);
+        assert_eq!(reload.state_hash(), sim.state_hash());
     }
 }

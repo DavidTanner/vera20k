@@ -648,7 +648,7 @@ fn gsi_13_04_tem_only_tile_root_uses_iso_palette_and_registers_every_frame() {
         "[CUSTOM_TILE_ANIM]\nTheater=yes\nAltPalette=yes\nLoopCount=-1\n",
     ));
     art.bind_anim_frame_count_for_test("CUSTOM_TILE_ANIM", 4);
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     let effects: HashSet<String> = ["CUSTOM_TILE_ANIM".to_string()].into_iter().collect();
     let cell_drawers: HashSet<String> = ["CUSTOM_TILE_ANIM".to_string()].into_iter().collect();
 
@@ -660,7 +660,7 @@ fn gsi_13_04_tem_only_tile_root_uses_iso_palette_and_registers_every_frame() {
     assert_eq!(
         sprite_palette_choice(
             "CUSTOM_TILE_ANIM",
-            Some(&rules.art_registry),
+            Some(rules.art()),
             &effects,
             &cell_drawers,
         ),
@@ -668,12 +668,8 @@ fn gsi_13_04_tem_only_tile_root_uses_iso_palette_and_registers_every_frame() {
         "cell-drawer palette authority overrides ordinary Anim.PAL/AltPalette selection"
     );
 
-    let candidates = effect_anim_shp_candidates(
-        "CUSTOM_TILE_ANIM",
-        Some(&rules.art_registry),
-        "tem",
-        "TEMPERATE",
-    );
+    let candidates =
+        effect_anim_shp_candidates("CUSTOM_TILE_ANIM", Some(rules.art()), "tem", "TEMPERATE");
     assert_eq!(
         candidates,
         vec!["CUSTOM_TILE_ANIM.TEM", "CUSTOM_TILE_ANIM.SHP"]
@@ -995,7 +991,7 @@ fn retail_animations_render_from_the_file_their_frames_are_counted_in() {
     let theater =
         crate::map::theater::load_theater(&mut assets, &theater_name).expect("theater loads");
     let rules = &scenario.runtime.resources.rules;
-    let art = &rules.art_registry;
+    let art = rules.art();
 
     let mut names: std::collections::BTreeSet<String> =
         collect_effect_names(rules).into_iter().collect();

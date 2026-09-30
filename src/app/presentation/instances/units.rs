@@ -285,7 +285,7 @@ pub(crate) fn build_unit_instances(
     let local_owner_id = local_owner.as_deref().and_then(|o| sim.interner.get(o));
     let ignore_visibility = state.match_state.sandbox_full_visibility;
     let art_reg: Option<&crate::rules::art_data::ArtRegistry> =
-        state.rules().map(|rules| &rules.art_registry);
+        state.rules().map(|rules| rules.art());
     state
         .match_state
         .match_presentation
@@ -715,7 +715,7 @@ fn emit_crash_pose_sprite(
     let Some(entry) = state.renderer.vxl_pose_frame_cache.borrow_mut().render(
         assets,
         state.rules(),
-        state.rules().map(|rules| &rules.art_registry),
+        state.rules().map(|rules| rules.art()),
         key,
         tilt,
     ) else {
@@ -891,7 +891,7 @@ fn unit_entry_for_slope_state(
                     &state.renderer.batch_renderer,
                     asset_manager,
                     state.rules(),
-                    state.rules().map(|rules| &rules.art_registry),
+                    state.rules().map(|rules| rules.art()),
                     transition_key,
                 )
             {

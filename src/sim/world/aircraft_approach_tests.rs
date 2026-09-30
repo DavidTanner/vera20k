@@ -13,7 +13,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
     let (mut sim, mut rules) = reengagement_fixture(input);
     let flh = input.get("flh").cloned().unwrap_or(json!([0, 0, 0]));
     let elite = input.get("elite_flh").unwrap_or(&flh);
-    rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(&format!(
+    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(&format!(
         "[TEST]\nPrimaryFireFLH={},{},{}\nElitePrimaryFireFLH={},{},{}\nTurretOffset={}\n",
         flh[0],
         flh[1],

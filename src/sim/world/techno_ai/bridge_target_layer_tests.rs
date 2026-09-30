@@ -26,7 +26,7 @@ fn native() -> Value {
 fn retail_rules() -> Option<RuleSet> {
     let (ini, art) = retail_rules_and_art()?;
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     Some(rules)
 }
 

@@ -34,7 +34,7 @@ fn infantry_rules(crawls: bool) -> RuleSet {
         if crawls { "yes" } else { "no" }
     ));
     let art = ArtRegistry::from_ini(&art_ini);
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 

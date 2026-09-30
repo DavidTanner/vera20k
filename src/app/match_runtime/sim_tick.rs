@@ -1230,7 +1230,7 @@ pub(crate) fn refresh_entity_atlases(state: &mut AppState) {
             sim.entities(),
             asset_manager,
             bound_rules,
-            bound_rules.map(|rules| &rules.art_registry),
+            bound_rules.map(|rules| rules.art()),
             existing,
             Some(&sim.interner),
         ) {
@@ -1262,7 +1262,7 @@ pub(crate) fn refresh_entity_atlases(state: &mut AppState) {
             &state.match_state.match_presentation.theater_ext,
             &state.match_state.match_presentation.theater_name,
             bound_rules,
-            bound_rules.map(|rules| &rules.art_registry),
+            bound_rules.map(|rules| rules.art()),
             &state.match_state.match_presentation.house_color_map,
             &extra_buildings,
             &anim_remap_keys,

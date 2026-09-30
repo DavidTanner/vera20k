@@ -1278,7 +1278,7 @@ fn animation_catalog_rules(ready_start: u16) -> RuleSet {
          [GISequence]\nReady={ready_start},1,8\nWalk=8,6,8\nDie1=56,2,1\n\
          [DRON]\nVoxel=no\nWalkFrames=6\nFiringFrames=4\n",
     ));
-    rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     rules.bind_animation_sequences(&parse_infantry_sequence_registry(&art_ini));
     rules
 }

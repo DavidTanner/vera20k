@@ -194,7 +194,6 @@ impl Simulation {
                 None => self.substrate.next_stable_object_id as i32,
             };
             match self.spawn_load_anim_at_world(
-                &rules.art_registry,
                 rules,
                 descriptor,
                 AnimWorldCoord {

@@ -126,7 +126,7 @@ mod tests {
         for name in ["N", "D", "M", "MD"] {
             registry.bind_anim_frame_count_for_test(name, 40);
         }
-        rules.merge_art_data(&registry);
+        rules.install_art_data(registry);
         let mut sim = Simulation::new();
         assert_eq!(
             sim.spawn_from_map(

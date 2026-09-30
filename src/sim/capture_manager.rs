@@ -526,9 +526,9 @@ impl Simulation {
             // Without an art section the BuildingTypeClass constructor's 2
             // stands.
             let height = rules
-                .art_registry
+                .art()
                 .get(&object.image)
-                .or_else(|| rules.art_registry.get(&object.id))
+                .or_else(|| rules.art().get(&object.id))
                 .map_or(2, |art| art.height);
             height.wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
         } else {

@@ -2141,7 +2141,7 @@ mod harvest_scan_dispatch_tests {
         ));
         let mut rules = RuleSet::from_ini(&ini).expect("scan rules");
         // The retail art section (ARTMD GAREFN) carries `QueueingCell=4,1`.
-        rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
             &IniFile::from_str("[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n"),
         ));
         rules

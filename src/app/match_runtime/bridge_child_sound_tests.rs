@@ -17,7 +17,7 @@ fn retail_landing_child_reports_release_instead_of_cutting_samples() {
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     let registry = SoundRegistry::from_ini(&sound);
     let native: serde_json::Value = serde_json::from_str(include_str!(
         "../../../tools/rules_oracle/bridge_child_sound.json"
@@ -29,7 +29,7 @@ fn retail_landing_child_reports_release_instead_of_cutting_samples() {
     .unwrap();
     for report in native["anim_reports"].as_array().unwrap() {
         let name = report["name"].as_str().unwrap();
-        let config = rules.art_registry.anim_runtime_config(name).unwrap();
+        let config = rules.art().anim_runtime_config(name).unwrap();
         // Native resolves Report with case-insensitive Voc FindByName;
         // ArtRegistry stores the same identity in uppercase.
         assert_eq!(
@@ -95,9 +95,7 @@ fn retail_landing_child_reports_release_instead_of_cutting_samples() {
             .unwrap()["raw_shp_frame_count"]
             .as_i64()
             .unwrap();
-        rules
-            .art_registry
-            .bind_anim_frame_count_for_test(name, frames as i32);
+        rules.bind_anim_frame_count_for_test(name, frames as i32);
         let mut sim = Simulation::new();
         let type_id = sim.interner.intern(name);
         let id = sim

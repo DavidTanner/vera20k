@@ -194,7 +194,7 @@ Translucent=yes
 ",
         ));
         art.bind_anim_frame_count_for_test("IRONBLST", 12);
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
         spawn(&mut sim, 1, "MTNK", 10, 10, EntityCategory::Unit);

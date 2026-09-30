@@ -1001,7 +1001,7 @@ mod tests {
              [GACNST]\nStrength=1000\nUndeploysInto=AMCV\n",
         ))
         .expect("structure fixture rules");
-        rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(
+        rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
             "[GACNST]\nFoundation=4x4\n",
         )));
         assert_eq!(

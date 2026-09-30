@@ -737,8 +737,8 @@ mod canopy_tests {
             "[PARACH]\nRate=900\nLoopStart=2\nLoopEnd=5\nLoopCount=-1\n",
         ));
         art.bind_anim_frame_count_for_test("PARACH", 6);
-        rules.merge_art_data(&art);
-        rules.art_registry = art;
+        // Synthetic fixture supplies ART directly, without native read-admission replay.
+        rules.install_art_fixture(art);
 
         let mut sim = Simulation::new();
         sim.interner = crate::sim::intern::test_interner();

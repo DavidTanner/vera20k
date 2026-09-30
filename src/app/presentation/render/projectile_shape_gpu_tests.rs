@@ -50,7 +50,7 @@ fn physical_rules(assets: &AssetManager, anim_palette_control: bool) -> RuleSet 
     let mut rules =
         RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&text), &original_art)
             .unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&original_art));
+    rules.install_art_data(ArtRegistry::from_ini(&original_art));
     rules
 }
 
@@ -222,7 +222,7 @@ fn compare_shape_corpus(
                 "tem",
                 "TEMPERATE",
                 Some(current_rules),
-                Some(&current_rules.art_registry),
+                Some(current_rules.art()),
                 &HouseColorMap::new(),
                 &[],
                 &HashSet::new(),
@@ -465,7 +465,7 @@ fn retail_ifv_dragon_all_frames_and_flight_match_original_shape_pixels() {
     }
     let mut rules =
         RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&text), &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     let native: Value = serde_json::from_str(include_str!(
         "../../../../tools/projectile_oracle/ifv_render.json"
     ))

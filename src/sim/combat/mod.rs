@@ -2063,11 +2063,9 @@ fn throw_debris_for_death(
             // Carry this constructor result through delayed world publication.
             let native_unique_id =
                 crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(native_ids);
-            let Some(config) = debris_name(source, index).and_then(|name| {
-                rules
-                    .art_registry
-                    .anim_runtime_config(&name.to_ascii_uppercase())
-            }) else {
+            let Some(config) = debris_name(source, index)
+                .and_then(|name| rules.art().anim_runtime_config(&name.to_ascii_uppercase()))
+            else {
                 // A missing bound SHP still corresponds to a native Anim
                 // constructor. Admission reports the asset failure later.
                 return Ok(Some(crate::sim::anim_class::AnimConstructorDraws {
@@ -3342,7 +3340,7 @@ mod impact_height_tests {
         };
         let mut rules =
             crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-        rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
         let golden: serde_json::Value = serde_json::from_str(include_str!(
             "../../../tools/spatial_oracle/bridge_debris_producer.json"
         ))
@@ -3598,7 +3596,7 @@ mod impact_height_tests {
     #[test]
     fn force_fire_on_raised_ground_places_the_explosion_at_the_terrain_height() {
         let mut rules = impact_rules();
-        rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
             &IniFile::from_str(""),
         ));
         let mut terrain = terrain_at_level(RAISED_LEVEL);

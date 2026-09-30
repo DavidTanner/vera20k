@@ -33,12 +33,8 @@ fn debris_contact_matches_original_tree_damage_gates_radius_and_retirement() {
             "[HE]\nWood={wood}\n[TREE01]\nImmune={immune}\n"
         )));
         let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).unwrap();
-        rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
-        let mut config = rules
-            .art_registry
-            .anim_runtime_config("DBRIS1LG")
-            .unwrap()
-            .clone();
+        rules.install_art_data(ArtRegistry::from_ini(&art_ini));
+        let mut config = rules.art().anim_runtime_config("DBRIS1LG").unwrap().clone();
         let damage = input["damage"].as_i64().unwrap_or(20) as i32;
         config.damage = NativeF64Bits::from_bits(f64::from(damage).to_bits());
         config.damage_radius = input["radius"].as_i64().unwrap_or(80) as i32;

@@ -138,7 +138,7 @@ fn force_fire_detonation_builds_an_anim_instance_and_plays_its_report() {
         "[TWLT036]\nTranslucent=yes\nReport=Explosion06\nEnd=8\n",
     ));
     art.bind_anim_frame_count_for_test("TWLT036", 8);
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
 
     let mut sim = Simulation::new();
     sim.input_delay_ticks = 0;
@@ -303,8 +303,8 @@ fn a_fired_shot_constructs_its_muzzle_anim_in_the_store() {
         "[MTNK]\nPrimaryFireFLH=150,0,100\n[GUNFIRE]\nRate=900\n",
     ));
     art.bind_anim_frame_count_for_test("GUNFIRE", 6);
-    rules.merge_art_data(&art);
-    rules.art_registry = art;
+    // Synthetic fixture supplies ART directly, without native read-admission replay.
+    rules.install_art_fixture(art);
 
     let mut sim = Simulation::new();
     sim.input_delay_ticks = 0;

@@ -250,7 +250,7 @@ fn rocketeer_pair() -> (EntityStore, RuleSet) {
          [RocketeerSequence]\nReady=0,1,1\nGuard=0,1,1\nWalk=8,6,6\nFireUp=164,6,6\n\
          Fly=292,6,6\nHover=292,6,6\nFireFly=370,6,6\n",
     );
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let registry = crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
     rules.replace_animation_sequences_for_test(
         crate::rules::animation_sequence::build_animation_sequence_catalog(&rules, Some(&registry)),
@@ -353,7 +353,7 @@ fn production_rules(fire_up: u32) -> RuleSet {
         "[GI]\nFireUp={fire_up}\nPrimaryFireFLH=80,20,40\nSequence=GISequence\n\
          [GISequence]\nReady=0,1,1\nGuard=0,1,1\nFireUp=8,6,6\n",
     ));
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     rules.bind_animation_sequences(
         &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini),
     );

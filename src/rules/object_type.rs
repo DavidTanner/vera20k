@@ -2041,7 +2041,7 @@ impl ObjectType {
             power: section.get_i32("Power").unwrap_or(0),
             extra_power: section.get_i32("ExtraPower").unwrap_or(0),
             // The original resolves Foundation= through a fixed name table.
-            // merge_art_data() applies the art-vs-rules precedence observed in gamemd.
+            // install_art_data() applies the art-vs-rules precedence observed in gamemd.
             foundation: crate::rules::foundation::foundation_name(
                 section.get("Foundation").unwrap_or("1x1"),
             )

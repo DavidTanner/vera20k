@@ -486,8 +486,8 @@ mod tests {
             "[PARACH]\nRate=900\nLoopStart=2\nLoopEnd=5\nLoopCount=-1\n",
         ));
         art.bind_anim_frame_count_for_test("PARACH", 9);
-        rules.merge_art_data(&art);
-        rules.art_registry = art;
+        // Synthetic fixture supplies ART directly, without native read-admission replay.
+        rules.install_art_fixture(art);
         // The fixture places ids 1 and 2 by hand; keep the counter clear of them.
         let (aircraft_id, passenger_id) = (sim.allocate_stable_id(), sim.allocate_stable_id());
         insert_loaded_paradrop_pair(&mut sim, aircraft_id, passenger_id);

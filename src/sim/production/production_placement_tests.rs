@@ -90,7 +90,7 @@ fn stock_refinery_completion_rules() -> RuleSet {
          [NAREFN]\n\
          Foundation=4x3\n",
     ));
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 
@@ -558,7 +558,7 @@ fn gsi_04_07_wall_placement_contract() -> (RuleSet, OverlayTypeRegistry) {
         "[GAWALL]\nToOverlay=GAWALL\n\
          [WALLKIT]\nToOverlay=GAWALL\n",
     ));
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     (rules, OverlayTypeRegistry::from_ini(&ini, None))
 }
 

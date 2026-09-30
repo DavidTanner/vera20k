@@ -776,7 +776,7 @@ Layer=ground
         for name in ["EXPLOSION", "WCLBOLT1", "WCLBOLT2", "WCLBOLT3"] {
             art.bind_anim_frame_count_for_test(name, 10);
         }
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         let owner = sim.interner.intern("Americans");
 
         spawn_bolt(&mut sim, &rules, 5, 5, owner, None);
@@ -826,9 +826,9 @@ Layer=ground
              [CR1]\nCrater=yes\nWidth=1\nHeight=1\n",
         );
         let mut rules = RuleSet::from_ini(&ini).expect("ore-order lightning rules");
-        rules.art_registry = ArtRegistry::from_ini(&IniFile::from_str(
+        rules.replace_art_registry_for_test(ArtRegistry::from_ini(&IniFile::from_str(
             "[EXPLOSION]\nCrater=yes\nScorch=no\nFrameWidth=100\nFrameHeight=100\n",
-        ));
+        )));
         let overlay_registry = OverlayTypeRegistry::from_ini(&ini, None);
         let ore_id = overlay_registry.id_for_name("ORE").expect("ORE overlay id");
 

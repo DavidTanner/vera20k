@@ -837,7 +837,7 @@ impl Simulation {
             .resolve(descriptor.type_name)
             .to_ascii_uppercase();
         let config = rules
-            .art_registry
+            .art()
             .anim_runtime_config(&type_name)
             .cloned()
             .ok_or(AnimSpawnError::MissingType(descriptor.type_name))?;
@@ -924,7 +924,7 @@ impl Simulation {
         registered.bounce = draws.bounce;
         // Native registry insertion precedes Reveal, and Reveal precedes the
         // delay-zero constructor-time Start call.
-        self.reveal_anim(stable_id, Some(rules), None);
+        self.reveal_anim(stable_id, Some(rules));
         if descriptor.delay == 0 {
             self.anim_start(stable_id, &config, rules, None);
         }
@@ -936,7 +936,6 @@ impl Simulation {
     /// Scenario `RandomRate` draw, matching `AnimClass::Constructor`.
     pub(crate) fn spawn_load_anim_at_world(
         &mut self,
-        art: &crate::rules::art_data::ArtRegistry,
         rules: &RuleSet,
         descriptor: AnimClassSpawnDescriptor,
         world_coord: AnimWorldCoord,
@@ -946,7 +945,8 @@ impl Simulation {
             .interner
             .resolve(descriptor.type_name)
             .to_ascii_uppercase();
-        let config = art
+        let config = rules
+            .art()
             .anim_runtime_config(&type_name)
             .cloned()
             .ok_or(AnimSpawnError::MissingType(descriptor.type_name))?;
@@ -1020,7 +1020,7 @@ impl Simulation {
         registered.runtime.rate_reload = rate_reload;
         registered.runtime.frame_timer = frame_timer;
 
-        self.reveal_anim(stable_id, Some(rules), Some(art));
+        self.reveal_anim(stable_id, Some(rules));
         if descriptor.delay == 0 {
             self.anim_start(stable_id, &config, rules, None);
         }
@@ -1076,7 +1076,7 @@ impl Simulation {
         let type_id = self.interner.intern(&rules.general.move_flash.name);
         let type_name = self.interner.resolve(type_id).to_ascii_uppercase();
         let config = rules
-            .art_registry
+            .art()
             .anim_runtime_config(&type_name)
             .cloned()
             .ok_or(AnimSpawnError::MissingType(type_id))?;
@@ -1211,7 +1211,7 @@ impl Simulation {
             return false;
         };
         let type_name = self.interner.resolve(type_id).to_ascii_uppercase();
-        let Some(config) = rules.art_registry.anim_runtime_config(&type_name).cloned() else {
+        let Some(config) = rules.art().anim_runtime_config(&type_name).cloned() else {
             self.destroy_anim(id, rules);
             return false;
         };
@@ -1260,10 +1260,7 @@ impl Simulation {
             if trailer_cadence_matches(
                 u64::from(self.session.binary_frame),
                 config.trailer_seperation,
-            ) && rules
-                .art_registry
-                .anim_runtime_config(trailer_name)
-                .is_some()
+            ) && rules.art().anim_runtime_config(trailer_name).is_some()
             {
                 let trailer_type = self.interner.intern(trailer_name);
                 let descriptor = AnimClassSpawnDescriptor {
@@ -1530,7 +1527,7 @@ impl Simulation {
             anim.owner_entity = None;
             anim.world_coord = absolute;
             if marked {
-                self.submit_anim_display(id, Some(rules), None);
+                self.submit_anim_display(id, Some(rules));
             }
         }
         if let Some(owner_id) = new_owner {
@@ -1545,23 +1542,18 @@ impl Simulation {
                 z: anim.world_coord.z.wrapping_sub(owner_coord.z),
             };
             anim.owner_entity = Some(owner_id);
-            self.submit_anim_display(id, Some(rules), None);
+            self.submit_anim_display(id, Some(rules));
         }
         true
     }
 
     /// Anim GetLayer424CB0: attached -> Ground; missing type -> Air; otherwise
     /// the current type's layer. Feedback objects remain outside hashed Display.
-    pub(crate) fn submit_anim_display(
-        &mut self,
-        id: AnimId,
-        rules: Option<&RuleSet>,
-        art: Option<&crate::rules::art_data::ArtRegistry>,
-    ) {
+    pub(crate) fn submit_anim_display(&mut self, id: AnimId, rules: Option<&RuleSet>) {
         if self.is_multiplayer_feedback_anim(id) {
             return;
         }
-        if let Some(layer) = self.anim_display_layer(id, rules, art) {
+        if let Some(layer) = self.anim_display_layer(id, rules) {
             self.submit_object_display(id, layer, rules);
         } else {
             self.substrate.display.remove(id);
@@ -1572,7 +1564,6 @@ impl Simulation {
         &self,
         id: AnimId,
         rules: Option<&RuleSet>,
-        art: Option<&crate::rules::art_data::ArtRegistry>,
     ) -> Option<crate::sim::world::display_layers::DisplayLayer> {
         use crate::rules::art_data::AnimLayer;
         use crate::sim::world::display_layers::DisplayLayer;
@@ -1580,9 +1571,11 @@ impl Simulation {
         if anim.owner_entity.is_some() {
             return Some(DisplayLayer::GROUND);
         }
-        let config = art
-            .or_else(|| rules.map(|r| &r.art_registry))
-            .and_then(|art| art.anim_runtime_config(self.interner.resolve(anim.type_id)));
+        let config = rules.and_then(|rules| {
+            rules
+                .art()
+                .anim_runtime_config(self.interner.resolve(anim.type_id))
+        });
         match config.map(|config| config.layer) {
             None => Some(DisplayLayer::AIR),
             Some(AnimLayer::Ground) => Some(DisplayLayer::GROUND),
@@ -1777,7 +1770,7 @@ impl Simulation {
             .next_range_u32_inclusive(0, type_count.saturating_sub(1) as u32)
             as usize;
         let offsets = rules
-            .art_registry
+            .art()
             .get(&image)
             .map(|entry| entry.damage_fire_offsets.clone())
             .unwrap_or_default();
@@ -2297,7 +2290,7 @@ impl Simulation {
             .map(|anim| self.interner.resolve(anim.type_id).to_ascii_uppercase());
         let (width, height) = type_name
             .as_deref()
-            .and_then(|name| rules.art_registry.get(name))
+            .and_then(|name| rules.art().get(name))
             .map_or((30, 30), |entry| {
                 (i32::from(entry.frame_width), i32::from(entry.frame_height))
             });
@@ -2327,7 +2320,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
-        let Some(config) = rules.art_registry.anim_runtime_config(next).cloned() else {
+        let Some(config) = rules.art().anim_runtime_config(next).cloned() else {
             self.destroy_anim(id, rules);
             return;
         };
@@ -2847,7 +2840,7 @@ mod tests {
             sim.mark_anim_display(id, input["marked"].as_bool().unwrap());
             for observation in row["observations"].as_array().unwrap() {
                 match observation["op"].as_str().unwrap() {
-                    "submit" => sim.submit_anim_display(id, Some(&rules), None),
+                    "submit" => sim.submit_anim_display(id, Some(&rules)),
                     "attach" => {
                         assert!(sim.set_anim_owner_object(id, Some(owner_id), &rules));
                     }
@@ -2901,7 +2894,7 @@ mod tests {
                 let queried = u8::try_from(queried)
                     .ok()
                     .and_then(DisplayLayer::from_index);
-                assert_eq!(sim.anim_display_layer(id, Some(&rules), None), queried);
+                assert_eq!(sim.anim_display_layer(id, Some(&rules)), queried);
                 for layer in 0..5 {
                     let expected_ids = if expected["layers"][layer] == 0 {
                         vec![]
@@ -2978,8 +2971,7 @@ mod tests {
         art.bind_anim_frame_count_for_test("FIRE01", 30);
         art.bind_anim_frame_count_for_test("FIRE02", 64);
         art.bind_anim_frame_count_for_test("FIRE03", 30);
-        rules.merge_art_data(&art);
-        rules.art_registry = art;
+        rules.install_art_fixture(art);
 
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("A");
@@ -3046,7 +3038,7 @@ mod tests {
         for &(name, frames) in frame_counts {
             art.bind_anim_frame_count_for_test(name, frames);
         }
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         rules
     }
 
@@ -3080,11 +3072,7 @@ mod tests {
             .spawn_anim_object(&rules, runtime_descriptor(type_id, 0))
             .unwrap();
         let template = sim.anim(id).unwrap().clone();
-        let mut config = rules
-            .art_registry
-            .anim_runtime_config("TEST")
-            .unwrap()
-            .clone();
+        let mut config = rules.art().anim_runtime_config("TEST").unwrap().clone();
         let rows = golden["rows"].as_array().unwrap();
         assert_eq!(rows.len(), 13_312);
         for row in rows {
@@ -3272,7 +3260,7 @@ mod tests {
 
         assert_eq!(
             rules
-                .art_registry
+                .art()
                 .anim_runtime_config("DEFAULT")
                 .unwrap()
                 .make_infantry,
@@ -3280,7 +3268,7 @@ mod tests {
         );
         assert_eq!(
             rules
-                .art_registry
+                .art()
                 .anim_runtime_config("EXPLICIT")
                 .unwrap()
                 .make_infantry,
@@ -3548,7 +3536,7 @@ mod tests {
         };
         let native_unique_id = sim.next_native_runtime_id();
         let mut draws = anim_constructor_draws(
-            rules.art_registry.anim_runtime_config("DEBRIS").unwrap(),
+            rules.art().anim_runtime_config("DEBRIS").unwrap(),
             coord,
             &mut sim.scenario_rng,
         )
@@ -3586,7 +3574,7 @@ mod tests {
         first.terrain_attached = true;
         first.use_cell_drawer = true;
         let first_id = sim
-            .spawn_load_anim_at_world(&rules.art_registry, &rules, first, world, 1_010_001)
+            .spawn_load_anim_at_world(&rules, first, world, 1_010_001)
             .expect("first authored load Anim");
         let keep_id = sim
             .spawn_anim_object(&rules, runtime_descriptor(keep_type, 0))
@@ -3595,7 +3583,7 @@ mod tests {
         second.terrain_attached = true;
         second.use_cell_drawer = true;
         let second_id = sim
-            .spawn_load_anim_at_world(&rules.art_registry, &rules, second, world, 1_010_002)
+            .spawn_load_anim_at_world(&rules, second, world, 1_010_002)
             .expect("second authored load Anim");
 
         assert_eq!(sim.anim(first_id).unwrap().native_unique_id, 1_010_001);
@@ -3908,7 +3896,7 @@ mod tests {
         ));
         art.bind_anim_frame_count_for_test("CHUNK", 30);
         art.bind_anim_frame_count_for_test("BOOM", 17);
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         let mut sim = Simulation::with_seed(3);
         let americans = sim.interner.intern("Americans");
         sim.houses.insert(

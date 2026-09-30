@@ -45,7 +45,7 @@ fn coord(value: &Value) -> ProjectileCoord {
 fn retail_rules(native: &Value) -> Option<(RuleSet, OverlayTypeRegistry)> {
     let (ini, art) = retail_rules_and_art()?;
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     let overlays = OverlayTypeRegistry::from_ini(&ini, Some(&art));
     let initial = &native["rows"][0]["initial"];
     let fv = rules.object("FV").unwrap();
@@ -101,11 +101,9 @@ fn retail_rules(native: &Value) -> Option<(RuleSet, OverlayTypeRegistry)> {
         let name = row["name"].as_str().unwrap();
         let frames = row["raw_shp_frame_count"].as_i64().unwrap();
         if frames > 0 {
-            rules
-                .art_registry
-                .bind_anim_frame_count_for_test(name, frames as i32);
+            rules.bind_anim_frame_count_for_test(name, frames as i32);
         }
-        let config = rules.art_registry.anim_runtime_config(name).unwrap();
+        let config = rules.art().anim_runtime_config(name).unwrap();
         assert_eq!(json!(config.bouncer), row["bouncer"], "{name}");
         assert_eq!(json!(config.rate_logic_frames), row["rate"], "{name}");
         assert_eq!(
@@ -127,10 +125,8 @@ fn retail_rules(native: &Value) -> Option<(RuleSet, OverlayTypeRegistry)> {
     for row in initial["impact_anim_art"].as_array().unwrap() {
         let name = row["name"].as_str().unwrap();
         let frames = row["frame_count"].as_i64().unwrap() as i32;
-        rules
-            .art_registry
-            .bind_anim_frame_count_for_test(name, frames);
-        let config = rules.art_registry.anim_runtime_config(name).unwrap();
+        rules.bind_anim_frame_count_for_test(name, frames);
+        let config = rules.art().anim_runtime_config(name).unwrap();
         assert_eq!(json!(config.end), row["end"], "{name}");
         assert_eq!(json!(config.rate_logic_frames), row["rate"], "{name}");
         assert_eq!(json!(config.scorch), row["scorch"], "{name}");

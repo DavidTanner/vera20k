@@ -527,7 +527,7 @@ fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind, 
         return;
     }
     match rules
-        .art_registry
+        .art()
         .resolve_metadata_entry(&obj.id, &obj.image)
         .filter(|art| art.is_anim_delayed_fire)
     {
@@ -610,7 +610,7 @@ fn prism_arm(
     obj: &crate::rules::object_type::ObjectType,
 ) {
     let delay = rules
-        .art_registry
+        .art()
         .resolve_metadata_entry(&obj.id, &obj.image)
         .map_or(0, |art| art.delayed_fire_delay);
     let Some(master) = sim.substrate.entities.get(id) else {

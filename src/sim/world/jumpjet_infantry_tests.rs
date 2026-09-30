@@ -776,7 +776,7 @@ fn rocketeer_rules_armed(armed: bool) -> crate::rules::ruleset::RuleSet {
          Tumble=340,15,0\nAirDeathStart=340,8,0\nAirDeathFalling=348,1,0\n\
          AirDeathFinish=349,6,0\nParadrop=418,1,0\nCheer=419,8,0,E\nPanic=8,6,6\n",
     );
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
     let registry = crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art);
     rules.replace_animation_sequences_for_test(
         crate::rules::animation_sequence::build_animation_sequence_catalog(&rules, Some(&registry)),

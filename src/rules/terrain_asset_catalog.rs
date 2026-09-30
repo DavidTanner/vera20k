@@ -43,11 +43,9 @@ impl TerrainSpawnerAssetCatalog {
         let mut catalog = Self::default();
 
         for name in roots {
-            let image_id = rules
-                .art_registry
-                .resolve_overlay_image_id(&name, rules_ini);
+            let image_id = rules.art().resolve_overlay_image_id(&name, rules_ini);
             let candidates = art_data::overlay_shp_candidates(
-                Some(&rules.art_registry),
+                Some(rules.art()),
                 &name,
                 &image_id,
                 theater_ext,
@@ -128,8 +126,8 @@ mod tests {
         );
         let mut rules = RuleSet::from_ini(&rules_ini).expect("terrain asset rules");
         let art = ArtRegistry::from_ini(&IniFile::from_str("[TIBTRE01]\nTheater=yes\n"));
-        rules.merge_art_data(&art);
-        rules.art_registry = art;
+        // Synthetic fixture supplies ART directly, without native read-admission replay.
+        rules.install_art_fixture(art);
 
         let catalog =
             TerrainSpawnerAssetCatalog::bind(&rules, &rules_ini, &assets, "TEM", "TEMPERATE");

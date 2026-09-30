@@ -69,7 +69,7 @@ fn rules_for(input: &serde_json::Value) -> RuleSet {
     let mut art =
         crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str("[SGRYSMK1]\nRate=100\n"));
     art.bind_anim_frame_count_for_test("SGRYSMK1", 20);
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     rules
 }
 
@@ -634,7 +634,7 @@ fn jumpjet_rules(balloon: bool) -> RuleSet {
     ));
     art.bind_anim_frame_count_for_test("BOOM", 20);
     art.bind_anim_frame_count_for_test("SGRYSMK1", 20);
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     rules
 }
 

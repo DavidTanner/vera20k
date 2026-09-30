@@ -504,7 +504,7 @@ Naval=yes
     );
     let mut rules = RuleSet::from_ini(&ini).expect("drive boat rules should parse");
     // Stock artmd.ini [WAKE1]: ground layer, sorted under the hull.
-    rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(
+    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
         "[WAKE1]
 Layer=ground
 YSortAdjust=-288
@@ -512,9 +512,7 @@ Translucent=yes
 Rate=120
 ",
     )));
-    rules
-        .art_registry
-        .bind_anim_frame_count_for_test("WAKE1", 15);
+    rules.bind_anim_frame_count_for_test("WAKE1", 15);
     let mut sim = Simulation::new();
     let boat_id = sim
         .spawn_object("BOAT", "Americans", 0, 0, 64, &rules, &empty_heights())
@@ -620,7 +618,7 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
         "[E1]\nSequence=TestSequence\n\
          [TestSequence]\nReady=0,1,1\nDie1=8,2,0\n",
     );
-    rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     rules.bind_animation_sequences(
         &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini),
     );
@@ -910,7 +908,7 @@ fn gsi_13_10_art_model_rules() -> RuleSet {
          [OMITTED]\nCameo=OMITTEDICON\n",
     ));
     let mut rules = RuleSet::from_ini(&ini).expect("art model rules");
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 
@@ -1034,7 +1032,7 @@ pub(crate) fn gsi_04_07_wall_sell_rules(
          [GAWALL]\nDamageLevels=3\n",
     );
     let mut rules = RuleSet::from_ini(&ini).expect("wall-sale rules");
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let overlays = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art_ini));
     (rules, overlays)
 }
@@ -1955,13 +1953,11 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
          [CR1]\nCrater=yes\nWidth=1\nHeight=1\n",
     );
     let mut rules = RuleSet::from_ini(&ini).expect("bullet ore-order rules");
-    rules.art_registry = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
-        "[EXPLOSION]\nCrater=yes\nScorch=no\n",
+    rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(
+        &IniFile::from_str("[EXPLOSION]\nCrater=yes\nScorch=no\n"),
     ));
     // One raw frame: no middle frame, so Start runs Middle at construction.
-    rules
-        .art_registry
-        .bind_anim_frame_count_for_test("EXPLOSION", 1);
+    rules.bind_anim_frame_count_for_test("EXPLOSION", 1);
     let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let ore_id = registry.id_for_name("ORE").expect("ORE overlay id");
 
@@ -2053,8 +2049,8 @@ fn gsi_04_11_missile_outer_anim_precedes_per_cell_ore_reduction() {
          [CR1]\nCrater=yes\nWidth=1\nHeight=1\n",
     );
     let mut rules = RuleSet::from_ini(&ini).expect("missile ore-order rules");
-    rules.art_registry = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
-        "[EXPLOSION]\nCrater=yes\nScorch=no\nFrameWidth=100\nFrameHeight=100\n",
+    rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(
+        &IniFile::from_str("[EXPLOSION]\nCrater=yes\nScorch=no\nFrameWidth=100\nFrameHeight=100\n"),
     ));
     let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let ore_id = registry.id_for_name("ORE").unwrap();

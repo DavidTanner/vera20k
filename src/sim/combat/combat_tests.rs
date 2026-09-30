@@ -210,7 +210,7 @@ fn infantry_fire_frame_rules() -> RuleSet {
         "[GI]\nCrawls=yes\nFireUp=2\nFireProne=3\nSecondaryFire=4\nSecondaryProne=5\n",
     );
     let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     rules
 }
 
@@ -6527,7 +6527,7 @@ fn pursuit_weapon_range_none_for_unarmed_attacker() {
 /// AnimList types retain real constructor-only End0 state; they still create
 /// AnimClass objects. Do not fabricate spawn observations or loaded frames.
 fn initialize_fixture_anim_types(rules: &mut RuleSet) {
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::empty());
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::empty());
 }
 
 #[test]
@@ -9367,7 +9367,7 @@ fn gsi_08_04_projectile_spawns_at_the_muzzle_not_the_hull_centre() {
         "[VehicleTypes]\n0=MTNK\n1=HTNK\n[MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nCost=700\nPrimary=105mm\nTurret=yes\n[HTNK]\nStrength=2000\nArmor=heavy\nSpeed=4\nCost=900\nPrimary=105mm\n[105mm]\nDamage=65\nROF=50\nRange=6\nSpeed=40\nProjectile=Cannon\nWarhead=AP\n[Cannon]\nArcing=true\n[AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("fire-origin fixture parses");
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
         &IniFile::from_str("[MTNK]\nPrimaryFireFLH=190,25,120\n"),
     ));
 
@@ -9420,7 +9420,7 @@ fn gsi_08_04_a_dropping_shell_leaves_the_hull_centre() {
         "[VehicleTypes]\n0=MTNK\n1=HTNK\n[MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nCost=700\nPrimary=105mm\nTurret=yes\n[HTNK]\nStrength=2000\nArmor=heavy\nSpeed=4\nCost=900\nPrimary=105mm\n[105mm]\nDamage=65\nROF=50\nRange=6\nSpeed=40\nProjectile=Bomb\nWarhead=AP\n[Bomb]\nDropping=yes\n[AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("dropping fixture parses");
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
         &IniFile::from_str("[MTNK]\nPrimaryFireFLH=190,25,120\n"),
     ));
 

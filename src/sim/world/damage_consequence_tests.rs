@@ -35,7 +35,7 @@ fn consequence_rules() -> RuleSet {
     for name in ["DEATHFX", "DESTROYFX"] {
         art.bind_anim_frame_count_for_test(name, 80);
     }
-    rules.art_registry = art;
+    rules.replace_art_registry_for_test(art);
     rules
 }
 

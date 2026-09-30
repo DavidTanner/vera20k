@@ -134,7 +134,7 @@ fn main() {
         let config = runtime
             .resources
             .rules
-            .art_registry
+            .art()
             .anim_runtime_config(name)
             .unwrap();
         followup_names.extend(

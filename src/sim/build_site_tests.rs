@@ -37,7 +37,7 @@ struct Arena {
 fn arena(land: &str) -> Arena {
     let ini = IniFile::from_str(&format!("{RULES}{land}"));
     let mut rules = RuleSet::from_ini(&ini).expect("build-site rules");
-    rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(
+    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
         "[GAWALL]\nToOverlay=GAWALL\n",
     )));
     let registry = OverlayTypeRegistry::from_ini(&ini, None);

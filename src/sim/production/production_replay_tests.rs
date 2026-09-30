@@ -690,7 +690,7 @@ fn retail_builds_step_at_the_native_frames() {
         return;
     };
     let mut rules = RuleSet::from_ini(&rules_ini).expect("retail rules");
-    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let cadence = super::factory::native_factory_cadence();
     let oracle_start = cadence["start_frame"].as_u64().unwrap() as u32;
     for (unit, factory, category) in [

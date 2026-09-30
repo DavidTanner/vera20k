@@ -62,9 +62,9 @@ impl EffectAssetCatalog {
         let mut catalog = Self::default();
 
         for name in authoritative_effect_roots(rules) {
-            let image_id = rules.art_registry.resolve_effective_image_id(&name, &name);
+            let image_id = rules.art().resolve_effective_image_id(&name, &name);
             let candidates = art_data::anim_shp_candidates(
-                Some(&rules.art_registry),
+                Some(rules.art()),
                 &name,
                 &image_id,
                 theater_ext,
@@ -90,9 +90,9 @@ impl EffectAssetCatalog {
                     continue;
                 }
             };
-            let scheduler_owned = rules.art_registry.scheduler_anim_types().contains(&name);
+            let scheduler_owned = rules.art().scheduler_anim_types().contains(&name);
             let shadow = rules
-                .art_registry
+                .art()
                 .anim_runtime_config(&name)
                 .is_some_and(|config| config.shadow);
             let available = available_effect_anim_frame_count(raw, scheduler_owned, shadow);
@@ -392,7 +392,7 @@ mod tests {
         );
         let mut rules = RuleSet::from_ini(&ini).expect("effect catalog rules");
         let art = ArtRegistry::from_ini(&IniFile::from_str("[FX]\nShadow=yes\n"));
-        rules.merge_art_data(&art);
+        rules.install_art_data(art);
 
         let catalog = EffectAssetCatalog::bind(&rules, &assets, "TEM", "TEMPERATE");
 

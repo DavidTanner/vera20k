@@ -14,7 +14,7 @@ fn rules(rules: &str, art: &str) -> RuleSet {
     let art = IniFile::from_str(art);
     let mut rules =
         RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(rules), &art).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    rules.install_art_data(ArtRegistry::from_ini(&art));
     rules
 }
 
@@ -34,7 +34,7 @@ fn retail_projectile_reader_matches_original_selected_cannon_inputs() {
         return;
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).unwrap();
-    rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
+    rules.install_art_data(ArtRegistry::from_ini(&art_ini));
     let corpus = native();
     let expected = &corpus["layers"][0]["state"];
     let projectile = rules.projectile("Cannon").unwrap();
@@ -92,7 +92,7 @@ fn retail_projectile_reader_matches_original_selected_cannon_inputs() {
 fn bullet_palette_context_ignores_animation_aliases_and_alt_palette() {
     let rules = simple_rules("[120MM]\nImage=REDIRECT\nAltPalette=yes\n");
     let mut projectile = rules.projectile("Cannon").unwrap().clone();
-    let art = &rules.art_registry;
+    let art = rules.art();
     let effects = HashSet::from(["CANNON".to_string()]);
     let cells = effects.clone();
     for (anim, firer, expected) in [
@@ -286,7 +286,7 @@ fn retail_hills_projectile_assets_match_original_reader_and_physical_bytes() {
         });
     let scenario = crate::headless_scenario::load(&root, "Hills.mmx", 0x0B21_D6E5).unwrap();
     let rules = &scenario.runtime.resources.rules;
-    let art = &rules.art_registry;
+    let art = rules.art();
     let assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let corpus = native();
     let projectile = rules.projectile("Cannon").unwrap();

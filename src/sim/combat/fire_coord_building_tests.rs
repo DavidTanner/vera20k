@@ -48,7 +48,7 @@ fn rules(input: &Value) -> RuleSet {
                 pair[1].as_i64().unwrap()
             )
         });
-    rules.art_registry = ArtRegistry::from_ini(&IniFile::from_str(&art));
+    rules.replace_art_registry_for_test(ArtRegistry::from_ini(&IniFile::from_str(&art)));
     rules
 }
 

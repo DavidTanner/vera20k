@@ -1850,10 +1850,7 @@ impl MapLoadInitial {
             Some(&map_data.ini),
         )
         .expect("retail generated-map rules");
-        let mut art = ArtRegistry::from_ini(&art_ini);
-        art.apply_anim_type_read_states(&rules.anim_type_art_read_states);
-        rules.merge_art_data(&mut art);
-        rules.art_registry = art.clone();
+        rules.install_art_data(ArtRegistry::from_ini(&art_ini));
         rules.general.resolve_art_rates(&art_ini);
         let infantry_sequences =
             crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
@@ -1953,18 +1950,20 @@ impl MapLoadInitial {
             &overlay_registry,
             resolved_terrain.tile_animations(),
         );
-        art.bind_scheduler_anim_assets(
-            &scheduler_roots,
-            asset_manager,
-            theater_ext,
-            &map_data.header.theater,
-        )
-        .expect("retail scheduler animation closure");
+        rules
+            .bind_scheduler_anim_assets(
+                &scheduler_roots,
+                asset_manager,
+                theater_ext,
+                &map_data.header.theater,
+            )
+            .expect("retail scheduler animation closure");
         // Every other AnimClass producer and the building animations: tolerant
         // pass, after the strict one, which rewrites the scheduler-owned set
         // wholesale.
-        let unbound_explosion_roots = art.bind_anim_class_assets(
-            &crate::app::loading::init_helpers::tolerant_anim_class_roots(&rules, &art),
+        let tolerant_roots = crate::app::loading::init_helpers::tolerant_anim_class_roots(&rules);
+        let unbound_explosion_roots = rules.bind_anim_class_assets(
+            &tolerant_roots,
             asset_manager,
             theater_ext,
             &map_data.header.theater,
@@ -1972,7 +1971,6 @@ impl MapLoadInitial {
         crate::rules::effect_asset_catalog::log_unbound_combat_explosion_roots(
             unbound_explosion_roots,
         );
-        rules.art_registry = art.clone();
         rules.bind_effect_assets(asset_manager, theater_ext, &map_data.header.theater);
         rules.bind_building_buildup_assets(asset_manager, &map_data.header.theater);
         rules.bind_terrain_spawner_assets(
@@ -2015,7 +2013,7 @@ impl MapLoadInitial {
         let overlay_shp_ids = resolved_overlay_shp_ids(
             &overlay_registry,
             &rules_ini,
-            &art,
+            rules.art(),
             asset_manager,
             theater_ext,
             &map_data.header.theater,
@@ -2104,7 +2102,6 @@ impl MapLoadInitial {
             &mut simulation,
             asset_manager,
             Some(&rules),
-            Some(&art),
         );
         let installed_constructor_words = map_data
             .entities
@@ -2539,37 +2536,19 @@ pub(crate) fn load_map_from_initial(
     for diagnostic in &team_ai_registry.diagnostics {
         log::warn!("Team AI INI diagnostic: {diagnostic:?}");
     }
-    let mut rules: Option<RuleSet> = Some(loaded_rules);
-    let mut art = Some(ArtRegistry::from_ini(&fixed_art_ini));
-    let art_ini = Some(fixed_art_ini);
-    if let (Some(r), Some(a)) = (rules.as_mut(), art.as_mut()) {
-        a.apply_anim_type_read_states(&r.anim_type_art_read_states);
-        r.merge_art_data(a);
-        // Eagerly populate each marking anim's middle-frame size, which
-        // AnimClass::Middle sizes its scorch or crater from.
-        let (populated, fallback) =
-            a.populate_anim_frame_dims(&asset_manager, theater_ext, &map_data.header.theater);
-        log::info!(
-            "Anim frame dims: {} populated, {} fallback (defaults to 30x30)",
-            populated,
-            fallback,
-        );
-        // Retain the art registry on RuleSet so dispatchers (e.g. smudge
-        // spawning) can read per-anim spawn flags via &RuleSet alone.
-        // Cloned because downstream consumers in this function still read
-        // through the `art` Option (lighting, sidebar, sim spawn, etc.).
-        r.art_registry = a.clone();
-    }
-    // Resolve warp animation rates from art.ini sections (e.g., [WARPOUT] Rate=120).
-    if let (Some(r), Some(art_ini_file)) = (&mut rules, &art_ini) {
-        r.general.resolve_art_rates(art_ini_file);
-    }
-    // Parse infantry animation sequence definitions from art.ini [*Sequence] sections.
-    let infantry_sequences = if let Some(ref art_ini_file) = art_ini {
-        crate::rules::infantry_sequence::parse_infantry_sequence_registry(art_ini_file)
-    } else {
-        HashMap::new()
-    };
+    let mut rules = loaded_rules;
+    rules.install_art_data(ArtRegistry::from_ini(&fixed_art_ini));
+    // Preserve the load phase: marking dimensions precede scheduler binding.
+    let (populated, fallback) =
+        rules.populate_anim_frame_dims(&asset_manager, theater_ext, &map_data.header.theater);
+    log::info!(
+        "Anim frame dims: {} populated, {} fallback (defaults to 30x30)",
+        populated,
+        fallback,
+    );
+    rules.general.resolve_art_rates(&fixed_art_ini);
+    let infantry_sequences =
+        crate::rules::infantry_sequence::parse_infantry_sequence_registry(&fixed_art_ini);
     // Rules + art parsed, merged, and processed (gamemd command-bar/CD/rules
     // milestones).
     progress.milestone(31);
@@ -2577,15 +2556,12 @@ pub(crate) fn load_map_from_initial(
     progress.milestone(45);
     let csf = Some(load_csf(&asset_manager)?);
     let overlay_registry: OverlayTypeRegistry =
-        OverlayTypeRegistry::from_ini(&rules_ini, art_ini.as_ref());
+        OverlayTypeRegistry::from_ini(&rules_ini, Some(&fixed_art_ini));
 
     // Compute playable area bounds from LocalSize (border filler hidden by shroud).
     let local_bounds: Option<LocalBounds> = Some(LocalBounds::from_header(&map_data.header));
 
-    let cliff_back = rules
-        .as_ref()
-        .map(|r| r.general.cliff_back_impassability)
-        .unwrap_or(2);
+    let cliff_back = rules.general.cliff_back_impassability;
 
     // Parse Scenario-owned lighting before Fill so the one authoritative
     // Simulation can be constructed and receive the prefix cursors first.
@@ -2674,7 +2650,7 @@ pub(crate) fn load_map_from_initial(
                     &map_data,
                     theater_result.as_ref(),
                     Some(&asset_manager),
-                    rules.as_ref().map(|r| &r.terrain_rules),
+                    Some(&rules.terrain_rules),
                     Some(&overlay_registry),
                     lat_enabled,
                     cliff_back,
@@ -2690,9 +2666,9 @@ pub(crate) fn load_map_from_initial(
                     &map_data,
                     theater_result.as_ref(),
                     Some(&asset_manager),
-                    rules.as_ref().map(|r| &r.terrain_rules),
+                    Some(&rules.terrain_rules),
                     Some(&overlay_registry),
-                    rules.as_ref().map(|r| &r.terrain_object_types),
+                    Some(&rules.terrain_object_types),
                     lat_enabled,
                     cliff_back,
                     &mut scenario_fill_ranged,
@@ -2732,7 +2708,8 @@ pub(crate) fn load_map_from_initial(
     // Bind the complete scheduler closure only after theater Tile##Anim rows
     // have resolved, but before any atlas or AnimClass construction. Missing
     // tile art is a load error rather than a silently invisible map feature.
-    if let (Some(r), Some(a)) = (rules.as_mut(), art.as_mut()) {
+    {
+        let r = &mut rules;
         let roots = scheduler_anim_roots(
             r,
             &overlay_registry,
@@ -2740,7 +2717,7 @@ pub(crate) fn load_map_from_initial(
                 .as_ref()
                 .map_or(&[], |terrain| terrain.tile_animations()),
         );
-        a.bind_scheduler_anim_assets(
+        r.bind_scheduler_anim_assets(
             &roots,
             &asset_manager,
             theater_ext,
@@ -2749,8 +2726,9 @@ pub(crate) fn load_map_from_initial(
         // Every other AnimClass producer and the building animations need the
         // same loader-derived End/LoopEnd. Tolerant by design; must follow the
         // strict pass, which rewrites the scheduler-owned set wholesale.
-        let unbound_explosion_roots = a.bind_anim_class_assets(
-            &crate::app::loading::init_helpers::tolerant_anim_class_roots(r, a),
+        let tolerant_roots = crate::app::loading::init_helpers::tolerant_anim_class_roots(r);
+        let unbound_explosion_roots = r.bind_anim_class_assets(
+            &tolerant_roots,
             &asset_manager,
             theater_ext,
             &map_data.header.theater,
@@ -2758,7 +2736,6 @@ pub(crate) fn load_map_from_initial(
         crate::rules::effect_asset_catalog::log_unbound_combat_explosion_roots(
             unbound_explosion_roots,
         );
-        r.art_registry = a.clone();
         r.bind_effect_assets(&asset_manager, theater_ext, &map_data.header.theater);
         r.bind_building_buildup_assets(asset_manager, &map_data.header.theater);
         r.bind_terrain_spawner_assets(
@@ -2816,23 +2793,19 @@ pub(crate) fn load_map_from_initial(
         },
         variant_table_draws,
     );
-    let art_fallback: ArtRegistry = ArtRegistry::empty();
     let overlay_shp_ids = resolved_overlay_shp_ids(
         &overlay_registry,
         &rules_ini,
-        art.as_ref().unwrap_or(&art_fallback),
+        rules.art(),
         &asset_manager,
         theater_ext,
         &map_data.header.theater,
     );
     // Parse house color assignments from map INI ([Houses] + per-house Color=).
     // Color=<name> resolves against the rules `[Colors]` list (entry index).
-    let color_schemes: &[crate::rules::color_scheme::ColorSchemeEntry] = rules
-        .as_ref()
-        .map(|r| r.color_schemes.as_slice())
-        .unwrap_or(&[]);
+    let color_schemes = rules.color_schemes.as_slice();
     let house_roster: HouseRoster =
-        houses::parse_house_roster(&map_data.ini, color_schemes, rules.as_ref());
+        houses::parse_house_roster(&map_data.ini, color_schemes, Some(&rules));
     let house_color_map: HouseColorMap =
         house_color_map_for_launch_session(skirmish_launch_session, &house_roster);
     let bridge_destroyability_mode = BridgeDestroyabilityMode::SkirmishOrMultiplayer {
@@ -2843,12 +2816,6 @@ pub(crate) fn load_map_from_initial(
             let theater = theater_result
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("authored map load requires theater data"))?;
-            let ruleset = rules
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("authored map load requires merged rules"))?;
-            let art_registry = art
-                .as_mut()
-                .ok_or_else(|| anyhow::anyhow!("authored map load requires art data"))?;
             let fill = authored_terrain_fill
                 .take()
                 .expect("authored materialization retained its pending Fill owner");
@@ -2858,8 +2825,7 @@ pub(crate) fn load_map_from_initial(
                 fill,
                 theater,
                 &asset_manager,
-                ruleset,
-                art_registry,
+                &mut rules,
                 &overlay_registry,
                 &overlay_shp_ids,
                 signed_new_ini_format,
@@ -2869,7 +2835,7 @@ pub(crate) fn load_map_from_initial(
                 &scenario_descriptor.theater,
                 bridge_destroyability_mode,
                 &scenario_descriptor,
-                |sim| {
+                |sim, ruleset| {
                     initialize_skirmish_launch_houses(
                         sim,
                         &house_roster,
@@ -2879,9 +2845,6 @@ pub(crate) fn load_map_from_initial(
                 },
             )?;
             resolved_terrain = Some(output.resolved_terrain);
-            if let (Some(ruleset), Some(art_registry)) = (rules.as_mut(), art.as_ref()) {
-                ruleset.art_registry = art_registry.clone();
-            }
             output.overlay_grid
         }
         FreshMapMaterialization::AcceptedGenerated => {
@@ -2899,15 +2862,13 @@ pub(crate) fn load_map_from_initial(
                 true,
             );
             let cleared_terrain_overlay_cells =
-                rules.as_ref().map_or_else(BTreeSet::new, |rules| {
-                    crate::sim::terrain_spawn::clear_tiberium_source_cells_for_terrain(
-                        &mut overlay_grid,
-                        resolved_terrain,
-                        &map_data.terrain_objects,
-                        rules,
-                        &overlay_registry,
-                    )
-                });
+                crate::sim::terrain_spawn::clear_tiberium_source_cells_for_terrain(
+                    &mut overlay_grid,
+                    resolved_terrain,
+                    &map_data.terrain_objects,
+                    &rules,
+                    &overlay_registry,
+                );
             if !cleared_terrain_overlay_cells.is_empty() {
                 log::info!(
                     "Cleared {} same-cell tiberium overlay cell(s) for recognized terrain",
@@ -2920,7 +2881,7 @@ pub(crate) fn load_map_from_initial(
                 &map_data,
                 resolved_terrain,
                 &map_data.header.theater,
-                rules.as_ref(),
+                Some(&rules),
                 &construction_height_map,
                 Some(&overlay_registry),
                 Some(&overlay_grid),
@@ -2928,9 +2889,7 @@ pub(crate) fn load_map_from_initial(
                 &scenario_descriptor,
                 generated_techno_inits.as_ref(),
                 |sim| {
-                    let ruleset = rules
-                        .as_ref()
-                        .expect("offline skirmish requires rules before House construction");
+                    let ruleset = &rules;
                     initialize_skirmish_launch_houses(
                         sim,
                         &house_roster,
@@ -2954,9 +2913,7 @@ pub(crate) fn load_map_from_initial(
             // at `0x0059944C`) rewrite every ore cell's density from its
             // same-class neighbours. The post-map tail must not rebuild those
             // queues from the germinated state.
-            let ruleset = rules
-                .as_ref()
-                .expect("offline skirmish requires rules before the generator tail");
+            let ruleset = &rules;
             let queue_stats = crate::sim::runtime::initialize_native_tiberium_queues(
                 &mut staged_simulation,
                 &map_data.basic,
@@ -3058,8 +3015,7 @@ pub(crate) fn load_map_from_initial(
     crate::app::loading::init_helpers::bind_staged_app_scenario_metadata(
         &mut staged_simulation,
         &asset_manager,
-        rules.as_ref(),
-        art.as_ref(),
+        Some(&rules),
     );
     // F09 seam: presentation derives from the one staged Simulation and never
     // feeds state back into it.
@@ -3070,8 +3026,7 @@ pub(crate) fn load_map_from_initial(
         batch,
         theater_ext,
         &map_data.header.theater,
-        rules.as_ref(),
-        art.as_ref(),
+        Some(&rules),
         &overlay_registry,
         &house_color_map,
         unit_palette.as_ref(),
@@ -3093,7 +3048,8 @@ pub(crate) fn load_map_from_initial(
     // InternedIds for types that haven't been spawned yet (e.g. GAPOWR).
     // Without this, sidebar cameo lookups fail because unspawned types get
     // InternedId(0) and resolve to the wrong string.
-    if let (Some(sim), Some(ruleset)) = (&mut simulation, rules.as_ref()) {
+    if let Some(sim) = &mut simulation {
+        let ruleset = &rules;
         sim.intern_rule_type_ids(ruleset);
         // One-hop type resolution: build the handle table now that every type
         // id is interned. This also pre-resolves the `[CombatDamage]` bridge
@@ -3115,7 +3071,8 @@ pub(crate) fn load_map_from_initial(
     }
 
     let mut initial_local_owner: Option<String> = None;
-    if let (Some(sim), Some(ruleset)) = (&mut simulation, rules.as_ref()) {
+    if let Some(sim) = &mut simulation {
+        let ruleset = &rules;
         let result = apply_pre_fill_scenario_prefix_launch_session_with_overlay_registry(
             sim,
             &map_data,
@@ -3138,8 +3095,7 @@ pub(crate) fn load_map_from_initial(
                 batch,
                 theater_ext,
                 &map_data.header.theater,
-                rules.as_ref(),
-                art.as_ref(),
+                Some(&rules),
                 &overlay_registry,
                 &house_color_map,
                 unit_palette.as_ref(),
@@ -3155,11 +3111,8 @@ pub(crate) fn load_map_from_initial(
     // Examples:
     //   RA2_DEBUG_SPAWN_UNITS=1                  -> default list (HTNK,MTNK,E1)
     //   RA2_DEBUG_SPAWN_UNITS=HTNK,MTNK,APOC
-    if let (Some(sim), Some(ruleset), Some(debug_units)) = (
-        &mut simulation,
-        rules.as_ref(),
-        parse_debug_spawn_units_env(),
-    ) {
+    if let (Some(sim), Some(debug_units)) = (&mut simulation, parse_debug_spawn_units_env()) {
+        let ruleset = &rules;
         let owner: String = house_color_map
             .keys()
             .find(|h| {
@@ -3242,15 +3195,12 @@ pub(crate) fn load_map_from_initial(
         batch,
         theater_ext,
         &rules_ini,
-        &rules
-            .as_ref()
-            .expect("merged rules were installed before atlas construction")
-            .crate_rules,
-        art.as_ref().unwrap_or(&art_fallback),
+        &rules.crate_rules,
+        rules.art(),
         overlay_iso_palette.as_ref(),
         unit_palette.as_ref(),
         overlay_tiberium_palette.as_ref(),
-        rules.as_ref().map(|r| &r.smudge_types),
+        Some(&rules.smudge_types),
         bridge_railing_tile_bases,
     );
 
@@ -3284,10 +3234,7 @@ pub(crate) fn load_map_from_initial(
             &mut overlays_connected,
             &overlay_grid,
             &overlay_registry,
-            &rules
-                .as_ref()
-                .expect("merged rules were installed before atlas construction")
-                .tiberium_types,
+            &rules.tiberium_types,
         );
         if refreshed != 0 {
             log::info!(
@@ -3295,9 +3242,7 @@ pub(crate) fn load_map_from_initial(
             );
         }
     }
-    let rules_for_post_map = rules
-        .as_ref()
-        .expect("merged rules were installed before post-map finalization");
+    let rules_for_post_map = &rules;
     if let Some(sim) = &mut simulation {
         let output = crate::sim::runtime::finalize_constructed_scenario(
             sim,
@@ -3376,8 +3321,7 @@ pub(crate) fn load_map_from_initial(
             Err(_) => log::debug!("{cameo_mix} not found (optional)"),
         }
     }
-    let sidebar_cameo_atlas =
-        build_sidebar_cameo_atlas(gpu, batch, &asset_manager, rules.as_ref(), art.as_ref());
+    let sidebar_cameo_atlas = build_sidebar_cameo_atlas(gpu, batch, &asset_manager, Some(&rules));
     let sidebar_chrome =
         crate::render::sidebar_chrome::build_sidebar_chrome_set(gpu, batch, &asset_manager);
     let fnt_file = asset_manager.get_ref("GAME.FNT").and_then(|data| {
@@ -3400,7 +3344,7 @@ pub(crate) fn load_map_from_initial(
         &resolved_terrain,
         &lighting_config,
         simulation.as_ref(),
-        rules.as_ref(),
+        Some(&rules),
         2,
     );
     // Final post-map-init milestones (cell attributes, beacon art, post-map
@@ -3437,7 +3381,7 @@ pub(crate) fn load_map_from_initial(
             house_roster,
             height_map,
             bridge_height_map,
-            rules,
+            rules: Some(rules),
             map_lighting_config: lighting_config,
             theater_name,
             theater_ext: theater_ext.to_string(),
@@ -3538,6 +3482,9 @@ mod random_map_retail_tests {
         let Some(ra2) = retail_dir() else {
             panic!("set RA2_DIR to the retail RA2/YR install directory");
         };
+        // The .SED lives in a scratch directory, while verified native tables
+        // belong to the retail install, like the AssetManager supplied below.
+        crate::map::rmg::trig::install_from_dir(&ra2);
 
         let mut structures_placed = 0usize;
         let mut configurations = 0usize;

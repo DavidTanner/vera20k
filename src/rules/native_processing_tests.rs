@@ -112,9 +112,9 @@ fn retail_bridge_animation_vectors_match_original_reader_and_unread_d() {
             .any(|(name, read)| name == "D" && !read)
     );
     assert!(fixed_art.section("D").is_none());
-    rules.merge_art_data(&ArtRegistry::from_ini(&fixed_art));
+    rules.install_art_data(ArtRegistry::from_ini(&fixed_art));
     let d = rules
-        .art_registry
+        .art()
         .anim_runtime_config("D")
         .expect("registered unread D");
     assert!(!d.art_body_read);

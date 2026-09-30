@@ -244,7 +244,7 @@ pub(crate) fn build_anim_class_instances(
         let type_name: &str = sim.interner.resolve(anim.type_id);
         let config = state
             .rules()
-            .and_then(|rules| rules.art_registry.anim_runtime_config(type_name));
+            .and_then(|rules| rules.art().anim_runtime_config(type_name));
         if config.is_some_and(|config| !config.art_body_read) {
             continue;
         }
@@ -1166,7 +1166,7 @@ pub(crate) fn build_parachute_instances(
                         (entity.position.rx, entity.position.ry),
                         state
                             .rules()
-                            .and_then(|r| r.art_registry.anim_runtime_config(shp_name)),
+                            .and_then(|r| r.art().anim_runtime_config(shp_name)),
                         false,
                     ),
                     alpha: 1.0,

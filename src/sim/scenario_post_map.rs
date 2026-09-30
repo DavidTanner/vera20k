@@ -346,7 +346,7 @@ mod tests {
             "[TWNK1]\nLoopCount=-1\nRandomLoopDelay=120,300\nDetailLevel=2\nHideIfNoOre=true\nRate=450\n",
         ));
         art.bind_anim_frame_count_for_test("TWNK1", 8);
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         (rules, OverlayTypeRegistry::from_ini(&ini, None))
     }
 
@@ -553,7 +553,6 @@ mod tests {
         );
         let id = sim
             .spawn_load_anim_at_world(
-                &rules.art_registry,
                 &rules,
                 descriptor,
                 crate::sim::anim_class::AnimWorldCoord {

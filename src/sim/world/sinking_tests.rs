@@ -17,12 +17,10 @@ fn fixture(relative_z: i32) -> (Simulation, RuleSet, u64) {
          Locomotor={2BEA74E1-7CCA-11d3-BE14-00104B62A16C}\n",
     ))
     .unwrap();
-    rules.art_registry = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
-        "[WAKE1]\nEnd=10\nRate=100\n",
+    rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(
+        &IniFile::from_str("[WAKE1]\nEnd=10\nRate=100\n"),
     ));
-    rules
-        .art_registry
-        .bind_anim_frame_count_for_test("WAKE1", 10);
+    rules.bind_anim_frame_count_for_test("WAKE1", 10);
     let mut sim = Simulation::new();
     super::super::lifecycle_tests::install_common_raw_terrain(&mut sim, 128, 82, 2, None);
     let owner = sim.interner.intern("Americans");

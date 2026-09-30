@@ -175,8 +175,8 @@ pub(crate) fn build_voxel_frame_catalog(
     interner: &crate::sim::intern::StringInterner,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
-    art: Option<&ArtRegistry>,
 ) -> BTreeMap<(String, VxlLayer), u32> {
+    let art = rules.map(RuleSet::art);
     let mut frame_counts: BTreeMap<(String, VxlLayer), u32> = BTreeMap::new();
     for entity in entities.values() {
         if !entity.is_voxel {

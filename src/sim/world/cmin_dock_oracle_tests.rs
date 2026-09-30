@@ -100,7 +100,7 @@ pub(super) fn cmin_rules(input: &Value) -> (RuleSet, IniFile) {
          [WARPOUT]\nFlat=yes\nTranslucent=yes\nRate=120\n",
     ));
     art.bind_anim_frame_count_for_test("WARPOUT", 13);
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     (rules, ini)
 }
 

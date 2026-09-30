@@ -3726,7 +3726,7 @@ fn gsi_04_05_reservation_art_foundation_recomputes_writer_before_lifecycle_mark(
         "the provisional Rules-only 1x1 foundation is ineligible"
     );
 
-    rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(
+    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
         "[GACNST]\nFoundation=4x4\n\
          [ONECNST]\nFoundation=1x1\n",
     )));
@@ -6495,13 +6495,11 @@ fn assert_direct_fatal_death_weapon_starts_crater(bridge: bool) {
          [CR1]\nCrater=yes\nWidth=1\nHeight=1\n",
     );
     let mut rules = crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap();
-    rules.art_registry = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
-        "[CRATERANIM]\nCrater=yes\nScorch=no\nStart=0\n",
+    rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(
+        &IniFile::from_str("[CRATERANIM]\nCrater=yes\nScorch=no\nStart=0\n"),
     ));
     // One raw frame: no middle frame, so Start runs Middle at construction.
-    rules
-        .art_registry
-        .bind_anim_frame_count_for_test("CRATERANIM", 1);
+    rules.bind_anim_frame_count_for_test("CRATERANIM", 1);
     let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let mut sim = Simulation::with_seed(1);
     let mut cells = Vec::new();
@@ -6609,7 +6607,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     for name in ["XGRYMED1", "XGRYMED2", "XGRYSML1"] {
         art.bind_anim_frame_count_for_test(name, 1);
     }
-    rules.merge_art_data(&art);
+    rules.install_art_data(art);
     let mut sim = Simulation::new();
     let firer_id = sim.allocate_stable_id();
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);

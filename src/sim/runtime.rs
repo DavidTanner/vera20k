@@ -928,8 +928,7 @@ pub(crate) fn finalize_and_populate_staged_authored_scenario<F>(
     terrain_fill: crate::map::resolved_terrain::AuthoredTerrainFill,
     theater_data: &crate::map::theater::TheaterData,
     assets: &crate::assets::asset_manager::AssetManager,
-    rules: &RuleSet,
-    art: &mut crate::rules::art_data::ArtRegistry,
+    rules: &mut RuleSet,
     overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
     overlay_shp_ids: &std::collections::BTreeSet<u8>,
     signed_new_ini_format: i32,
@@ -942,8 +941,14 @@ pub(crate) fn finalize_and_populate_staged_authored_scenario<F>(
     initialize_houses_before_objects: F,
 ) -> Result<AuthoredScenarioLoadOutput, AuthoredScenarioLoadError>
 where
-    F: FnOnce(&mut Simulation),
+    F: FnOnce(&mut Simulation, &RuleSet),
 {
+    // Immutable load parameters, never republished as runtime owners. Only ART
+    // can change in the scoped hosts below; these small snapshots let Recalc
+    // retain its inputs across both sweeps while constructors borrow current
+    // rules. Copying RuleSet or ART would hide newly bound constructor metadata.
+    let terrain_rules = rules.terrain_rules.clone();
+    let tiberium_types = rules.tiberium_types.clone();
     let mut terrain = terrain_fill.into_pending_grid();
     let native_tubes = sim.take_native_map_tubes_receipt()?;
     terrain.bind_native_map_tubes(native_tubes)?;
@@ -951,7 +956,7 @@ where
         map_data,
         theater_data,
         assets,
-        &rules.terrain_rules,
+        &terrain_rules,
         overlay_registry,
         lat_enabled,
         cliff_back_impassability,
@@ -966,7 +971,6 @@ where
     let payload = {
         let mut host = crate::sim::world::authored_load_host::SimulationAuthoredLoadHost::new(
             sim,
-            art,
             rules,
             assets,
             theater_ext,
@@ -977,7 +981,7 @@ where
             &mut recalc,
             shape,
             overlay_registry,
-            &rules.tiberium_types,
+            &tiberium_types,
             overlay_shp_ids,
             signed_new_ini_format,
             descriptor.game_mode_nonzero,
@@ -1001,7 +1005,7 @@ where
         bridge_destroyability_mode,
         descriptor,
         None,
-        initialize_houses_before_objects,
+        |sim| initialize_houses_before_objects(sim, rules),
     ) {
         Ok(()) => {}
         Err(ScenarioPopulationError::GeneratedTechno(error)) => return Err(error.into()),
@@ -1049,7 +1053,6 @@ where
     {
         let mut host = crate::sim::world::authored_load_host::SimulationAuthoredLoadHost::new(
             sim,
-            art,
             rules,
             assets,
             theater_ext,
@@ -1070,7 +1073,7 @@ where
                     current.overlay_id(),
                     current.state(),
                     overlay_registry,
-                    &rules.tiberium_types,
+                    &tiberium_types,
                 ));
             let finalized = crate::map::authored_overlay::recalc_final_authored_overlay_cell(
                 &mut terrain,

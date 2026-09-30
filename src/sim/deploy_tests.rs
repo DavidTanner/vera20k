@@ -1714,8 +1714,8 @@ CellSpread=0
          DeployedFire=323,6,6\n",
     );
     let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-    rules.merge_art_data(&art);
-    rules.art_registry = art;
+    // Synthetic fixture supplies ART directly, without native read-admission replay.
+    rules.install_art_fixture(art);
     rules
 }
 

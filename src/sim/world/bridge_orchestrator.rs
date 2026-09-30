@@ -2129,7 +2129,7 @@ mod tests {
         );
         art.bind_anim_frame_count_for_test("BRIDGEEXP1", 8);
         art.bind_anim_frame_count_for_test("BRIDGEEXP2", 8);
-        rules.art_registry = art;
+        rules.replace_art_registry_for_test(art);
         rules
     }
 

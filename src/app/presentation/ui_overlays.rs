@@ -220,7 +220,7 @@ pub(crate) fn build_building_status_instances(
             continue;
         }
         let (sx, sy) = crate::render::locomotor_visual::screen_position(e);
-        // Foundation= is merged from art.ini into ObjectType by merge_art_data().
+        // Foundation= is merged from art.ini into ObjectType by install_art_data().
         // Height= is an art.ini property, looked up via Image= redirect.
         let obj = state.rules().and_then(|r| r.object(type_str));
         let foundation: (u32, u32) = obj
@@ -242,7 +242,7 @@ pub(crate) fn build_building_status_instances(
             .unwrap_or(type_str);
         let art_height: f32 = state
             .rules()
-            .and_then(|rules| rules.art_registry.get(art_key))
+            .and_then(|rules| rules.art().get(art_key))
             .map(|entry| entry.height as f32)
             .unwrap_or(2.0);
         let Some(strength) = obj.map(|obj| obj.strength) else {
