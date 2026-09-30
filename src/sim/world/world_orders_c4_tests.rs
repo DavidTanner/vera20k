@@ -284,7 +284,7 @@ fn c4_claims_from_remove_occupy_foundation_cell() {
             .unwrap()
             .movement_target
             .is_none(),
-        "SEAL already standing on the base foundation should not get an enter move"
+        "the claim stops the planter"
     );
 }
 

@@ -64,10 +64,15 @@ fn build_ordinary_c4_sim(
 
     // The SEAL walks: a second [GHOST] section would not be read, since a
     // lookup finds the first section of a name.
-    let ini = BRIDGE_REPAIR_TEST_INI.replace(
-        "[GHOST]\n",
-        "[GHOST]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n",
-    );
+    let ini = BRIDGE_REPAIR_TEST_INI
+        .replace(
+            "[GHOST]\n",
+            "[GHOST]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n",
+        )
+        .replace(
+            "[BuildingTypes]\n0=CABHUT\n",
+            "[BuildingTypes]\n0=CABHUT\n1=BIG\n[BIG]\nStrength=800\nArmor=concrete\nFoundation=3x3\n",
+        );
     let (mut sim, rules, registry) = super::entry_test_fixture::fixture_with_rules(&ini);
     // A raw ordinary three-cell width, with resident TMP/navigation owners.
     // Overlay families do not imply structural/deck geometry.
@@ -304,6 +309,71 @@ fn advance_until_c4_claim(
         }
     }
     panic!("C4 plant was not claimed after entering the target building cell");
+}
+
+/// A PlantC4 order reaching a SEAL that is still walking elsewhere, or idle
+/// several cells away, ends with the SEAL inside the building and the plant
+/// claimed. The walk to the building NavCom is the only approach.
+#[test]
+fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
+    for (building, at, seal_at) in [("CABHUT", (15, 15), (11, 15)), ("BIG", (18, 19), (18, 26))] {
+        for moving in [false, true] {
+            let (mut sim, rules, registry) = build_ordinary_c4_sim(0xD4);
+            let cabhut = sim
+                .spawn_object_at_height(building, "Soviets", at.0, at.1, 0, 0, &rules)
+                .unwrap();
+            let seal = sim
+                .spawn_object_at_height("GHOST", "Americans", seal_at.0, seal_at.1, 0, 0, &rules)
+                .unwrap();
+            if moving {
+                assert!(
+                    sim.set_infantry_cell_destination(
+                        seal,
+                        (seal_at.0, seal_at.1 + 5),
+                        &rules,
+                        Some(&registry)
+                    )
+                    .unwrap()
+                );
+                for _ in 0..3 {
+                    step_with_overlay_registry(&mut sim, &rules, &registry);
+                }
+                assert!(
+                    sim.substrate
+                        .entities
+                        .get(seal)
+                        .unwrap()
+                        .movement_target
+                        .is_some(),
+                    "the SEAL is mid-walk when the order lands"
+                );
+            }
+            let owner = sim.interner.intern("Americans");
+            sim.queue_command(crate::sim::command::CommandEnvelope::new(
+                owner,
+                sim.session.tick + 1,
+                Command::PlantC4 {
+                    attacker_id: seal,
+                    target_building_id: cabhut,
+                },
+            ));
+            let claimed = (0..400).any(|_| {
+                step_with_overlay_registry(&mut sim, &rules, &registry);
+                sim.substrate
+                    .entities
+                    .get(cabhut)
+                    .is_some_and(|b| b.pending_c4_detonation.is_some())
+            });
+            let e = sim.substrate.entities.get(seal).unwrap();
+            assert!(
+                claimed,
+                "{building} moving={moving}: SEAL stopped at {:?} nav={:?} mission={:?}",
+                (e.position.rx, e.position.ry),
+                e.navigation.nav_com,
+                e.mission.current()
+            );
+        }
+    }
 }
 
 #[test]

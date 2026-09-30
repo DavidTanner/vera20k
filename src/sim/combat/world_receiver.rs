@@ -846,8 +846,13 @@ pub(crate) fn commit_entities(
                             == crate::rules::locomotor_type::LocomotorKind::Teleport
                     });
                 if !walk && !teleport {
-                    // A Jumpjet man's setter is Foot's (`0x004D94B0`): NavCom,
-                    // then the Jumpjet Move_To, then Foot's timer tail.
+                    // A Jumpjet man: Infantry setter `0x0051AA40`, whose Foot
+                    // tail (`0x004D94B0`: NavCom, Jumpjet Move_To, timer tail)
+                    // is `issue_air_cell_destination`. RESIDUAL: its JumpJet
+                    // arms before the tail (same-cell return, vt+0x500 stop
+                    // while moving, Walk piggyback switch) are unported.
+                    // Trigger: a damaged Jumpjet infantryman that scatters;
+                    // retail JUMPJET is Fearless=yes, so none with retail data.
                     world.issue_air_cell_destination(
                         target_id,
                         scatter.destination,

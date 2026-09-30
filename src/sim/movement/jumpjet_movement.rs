@@ -843,10 +843,10 @@ impl Simulation {
         };
         let input = super::navcom::target_cell_coord(target.0, target.1, Some(terrain));
         let entity = self.substrate.entities.get_mut(id).expect("selected mover");
-        entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(
-            target.0, target.1,
-        ));
-        entity.navigation.nav_com_aux = None;
+        super::navcom::publish_nav_com(
+            entity,
+            crate::sim::components::NavTargetRef::cell(target.0, target.1),
+        );
         if self.jumpjet_move_to(id, input, rules).is_none() {
             return false;
         }
