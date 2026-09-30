@@ -2689,10 +2689,11 @@ fn runtime_and_search_share_known_water_cell_admission() {
 
     // Ground movement uses RuntimeTransition at the cell boundary; A* uses
     // AStarNeighbor. Both must enter through the same known-input predicate.
-    assert!(!is_cell_passable_for_mover_with_speed(
+    assert!(!is_cell_passable_for_mover_on_layer_with_speed(
         &grid,
         0,
         1,
+        MovementLayer::Ground,
         Some(MovementZone::Normal),
         Some(SpeedType::Track),
         Some(&terrain),
