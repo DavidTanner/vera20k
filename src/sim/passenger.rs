@@ -729,9 +729,10 @@ fn receive_gunner(sim: &mut Simulation, transport_id: u64, pax_id: u64, ifv_mode
 
 /// `FootClass::SetLocation @ 0x004DB810`'s `OpenTopped=` tail (`0x004DB88A`
 /// -> `0x007104F0`): each rider of an open-topped transport takes the
-/// transport's coordinate, walked from the cargo head. The transport's
-/// coordinate writers call it after each change: the Drive/Ship track's
-/// SetCoords and the Unit TubeMovement steps (`0x00735B58`, `0x00735D27`).
+/// transport's coordinate, walked from the cargo head. Its one caller is that
+/// port, [`foot_set_location`], after a changed Location.
+///
+/// [`foot_set_location`]: crate::sim::movement::ground_pose::foot_set_location
 pub(crate) fn open_topped_riders_follow(
     entities: &mut crate::sim::entity_store::EntityStore,
     transport_id: u64,

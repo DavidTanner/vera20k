@@ -11,6 +11,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::components::DriveLocomotionRuntime;
 use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState, tick_bunker_install};
 use crate::sim::game_entity::BunkerLink;
+use crate::util::fixed_math::SimFixed;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -119,8 +120,8 @@ fn fixture(case: &Value) -> Simulation {
     entity
         .foot_speed
         .set_speed_fraction(fraction(&before["applied_fraction_bits"]));
-    put_coords(
-        &mut entity,
+    crate::sim::movement::ground_pose::put_location(
+        &mut entity.position,
         DriveCoord {
             x: 2432,
             y: 2688,
@@ -340,8 +341,8 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
             _ => unreachable!(),
         };
         let entity = sim.substrate.entities.get_mut(UNIT).unwrap();
-        put_coords(
-            entity,
+        crate::sim::movement::ground_pose::put_location(
+            &mut entity.position,
             DriveCoord {
                 x: x * 256 + 128,
                 y: y * 256 + 128,
@@ -354,7 +355,7 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
         building.owner = sim.intern("Americans");
         building.type_ref = sim.intern("NATBNK");
         building.category = EntityCategory::Structure;
-        put_coords(&mut building, supplied(case));
+        crate::sim::movement::ground_pose::put_location(&mut building.position, supplied(case));
         building.bunker_runtime = Some(BunkerRuntime {
             state: BunkerState::TurnToBuilding,
             installing_unit: Some(UNIT),
