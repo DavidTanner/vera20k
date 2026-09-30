@@ -266,7 +266,9 @@ pub(crate) fn tick_active_tube_object(
     let category = entity.category;
     let speed = rules
         .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
-        .map_or(0, |object| native_type_speed(object.speed));
+        .map_or(0, |object| {
+            crate::util::fixed_math::ra2_speed_to_leptons_per_frame(object.speed)
+        });
     let budget = if category == EntityCategory::Unit {
         speed.wrapping_mul(3) / 2
     } else {
@@ -602,14 +604,6 @@ fn update_unit_final_facing(
     };
     let q32 = tube.direction.wrapping_shl(13).wrapping_sub(0x6001) & 0xffff_e000_u32 as i32;
     entity.body_facing.snap(q32 as u16, native_frame);
-}
-
-fn native_type_speed(raw_speed: i32) -> i32 {
-    raw_speed
-        .max(0)
-        .wrapping_mul(256)
-        .wrapping_div(100)
-        .min(255)
 }
 
 fn live_z_step(terrain: &ResolvedTerrainGrid, tube: &TubeFact) -> Option<i32> {
@@ -1091,11 +1085,12 @@ mod tests {
 
     #[test]
     fn gsi_04_15_type_speed_budget_uses_native_scaled_field() {
-        assert_eq!(native_type_speed(-1), 0);
-        assert_eq!(native_type_speed(4), 10);
-        assert_eq!(native_type_speed(100), 255);
-        assert_eq!(native_type_speed(200), 255);
-        assert_eq!(native_type_speed(11) * 3 / 2, 42);
+        use crate::util::fixed_math::ra2_speed_to_leptons_per_frame;
+        assert_eq!(ra2_speed_to_leptons_per_frame(-1), 0);
+        assert_eq!(ra2_speed_to_leptons_per_frame(4), 10);
+        assert_eq!(ra2_speed_to_leptons_per_frame(100), 255);
+        assert_eq!(ra2_speed_to_leptons_per_frame(200), 255);
+        assert_eq!(ra2_speed_to_leptons_per_frame(11) * 3 / 2, 42);
     }
 
     #[test]

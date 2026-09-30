@@ -363,15 +363,17 @@ impl Simulation {
                 )
             });
             if !can_fire {
-                //4B2E9F sets the +688 scan latch (not represented; see
-                //combat::greatest_threat's residual); a team member's team
-                //then drops its targets (TeamClass::Scan_Limit 0x6EC3A0).
+                //4B2E9F /6A24F2: set +688 before Scan_Limit, which invokes
+                //each member's class target setter and sets its latch too.
+                self.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .mark_stopped_cannot_fire();
                 if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
                     self.team_scan_limit(team_id, rules, registry);
                 }
-                if let Some(actor) = self.substrate.entities.get_mut(id) {
-                    crate::sim::mission::concrete_effects::represented_assign_target(actor, None);
-                }
+                let _ = self.assign_target_represented(id, None, Some(rules));
             }
         }
         let actor = self
@@ -791,10 +793,28 @@ impl Simulation {
     /// release (0x62A78A, 0x62A3ED, 0x62AAB9) and the Temporal freeze. A
     /// Drive/Ship Unit takes Unit 0x741970(NULL, 1), whose locomotor Stop
     /// nulls +34, so a track end cannot resume the old order, and a Jumpjet
-    /// Unit takes it too, whose locomotor Stop re-targets the cell under it;
-    /// any other receiver keeps the represented NavCom write set.
+    /// Unit takes it too, whose locomotor Stop re-targets the cell under it.
+    /// Ordinary Walk Infantry uses51AA40, preserving human deploy refusal;
+    /// Walk Units use741970. Other receivers keep the represented NavCom writes.
     pub(crate) fn assign_null_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
-        if self.unit_setter_receiver(id, rules)
+        let walk_category = self.substrate.entities.get(id).and_then(|actor| {
+            actor
+                .locomotor
+                .as_ref()
+                .is_some_and(|loco| loco.kind == LocomotorKind::Walk)
+                .then_some(actor.category)
+        });
+        if walk_category == Some(EntityCategory::Infantry) {
+            //51AA40 may refuse a human deploy action before any NavCom,
+            //path or timer write. Keep the adapter too on that refusal;
+            //accepted WalkStop75ADA0 retains any committed physical head.
+            if self.set_walk_null_destination(id, rules)
+                && let Some(actor) = self.substrate.entities.get_mut(id)
+            {
+                super::retain_committed_movement(actor);
+            }
+        } else if walk_category == Some(EntityCategory::Unit)
+            || self.unit_setter_receiver(id, rules)
             || self.substrate.entities.get(id).is_some_and(jumpjet_unit)
         {
             self.set_unit_null_destination(id, rules);
@@ -808,7 +828,7 @@ impl Simulation {
     /// Whether the Unit setter (`0x741970`) is represented for `id` as the
     /// team and harvest callers use it: a Drive/Ship receiver, or a
     /// `Teleporter=` Unit whatever its active locomotor. Its cell arm
-    /// ([`Self::set_unit_cell_destination`]) also reaches Hover and Jumpjet
+    /// ([`Self::set_unit_destination`]) also reaches Hover and Jumpjet
     /// Move_To.
     pub(crate) fn unit_setter_receiver(&self, id: u64, rules: Option<&RuleSet>) -> bool {
         self.substrate
@@ -817,7 +837,7 @@ impl Simulation {
             .is_some_and(|actor| track_unit(actor) || teleporter_unit(self, actor, rules))
     }
 
-    /// Unit 0x741970(cell, 1) from a class caller: the radio MOVE_HERE (Foot
+    /// Unit 0x741970(target, 1) from a class caller: the radio MOVE_HERE (Foot
     /// 0x004D91EB), Mission_Harvest's staging destination (0x0073EDB5),
     /// Mission_Enter's Teleporter re-assign (0x004D941D) and the Scatter
     /// receiver's null arm (0x00744070).
@@ -834,15 +854,16 @@ impl Simulation {
     ///   Hover's Move_To is the pass lane's route: the ground move a Move
     ///   order takes, which publishes no NavCom (#689).
     ///
-    /// Returns false for a receiver without a represented Move_To (no retail
-    /// Unit locomotor lacks one) or a refused destination.
+    /// Returns false for a receiver without a represented Move_To or a
+    /// refused destination. Hover and Jumpjet still use their existing Cell
+    /// adapters; their non-cell Move_To remains required bridge work.
     ///
     /// [`prepare_track_destination`]: super::movement_commands::prepare_track_destination
     /// [`teleport_move_to`]: super::teleport_movement::teleport_move_to
-    pub(crate) fn set_unit_cell_destination(
+    pub(crate) fn set_unit_destination(
         &mut self,
         id: u64,
-        cell: (u16, u16),
+        requested: NavTargetRef,
         rules: &RuleSet,
     ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
@@ -856,7 +877,7 @@ impl Simulation {
         {
             return false;
         }
-        if actor.navigation.nav_com == Some(NavTargetRef::cell(cell.0, cell.1))
+        if super::navcom::nav_targets_same_receiver(actor.navigation.nav_com, requested)
             && !actor.setter_force_reassign
         {
             return true;
@@ -874,15 +895,31 @@ impl Simulation {
             super::movement_commands::clear_destination_path_head(actor);
             actor.navigation.nav_queue.clear();
         }
-        let skip_move_to = teleporter && self.unit_teleporter_arm(id, Some(cell), rules);
+        // 7424B1..7424F0 casts the requested receiver to CellClass. A Foot
+        // or Building target is not a Cell even when it stands on a dock.
+        let requested_cell = match requested {
+            NavTargetRef::Cell { rx, ry } => Some((rx, ry)),
+            _ => None,
+        };
+        let skip_move_to = teleporter && self.unit_teleporter_arm(id, requested_cell, rules);
         if !self.begin_foot_destination(id, true) {
             return false;
         }
         let frame = self.session.binary_frame;
         let timing = super::DestinationTiming::from_rules(frame, Some(rules));
+        let coord = (!skip_move_to).then(|| {
+            super::navcom::nav_target_coordinate(
+                requested,
+                Some(id),
+                &self.substrate.entities,
+                self.resolved_terrain.as_ref(),
+                Some((rules, &self.interner)),
+            )
+            .unwrap_or_else(|cause| panic!("Unit destination for {id}: {cause}"))
+        });
         let adapter_route = if skip_move_to {
             None
-        } else if hover {
+        } else if let Some(cell) = requested_cell.filter(|_| hover) {
             let order = crate::sim::world::GroundMove {
                 entity_id: id,
                 target: cell,
@@ -893,7 +930,7 @@ impl Simulation {
                 object_destination: None,
             };
             Some(self.issue_ground_move(order, Some(rules)))
-        } else if jumpjet {
+        } else if let Some(cell) = requested_cell.filter(|_| jumpjet) {
             Some(self.issue_air_cell_destination(id, cell, info.speed, Some(rules)))
         } else {
             None
@@ -912,12 +949,14 @@ impl Simulation {
             }
             accepted
         } else if skip_move_to {
-            super::navcom::publish_nav_com(actor, NavTargetRef::cell(cell.0, cell.1));
+            super::navcom::publish_nav_com(actor, requested);
             true
         } else {
             match actor.locomotor.as_ref().map(|loco| loco.active_kind()) {
                 Some(LocomotorKind::Drive | LocomotorKind::Ship) => {
-                    super::navcom::set_destination_internal_cell(actor, cell, terrain);
+                    let coord = coord.expect("accepted Move_To captures target +4C");
+                    let cell = ((coord.x / 256) as u16, (coord.y / 256) as u16);
+                    super::navcom::set_destination_internal_coord(actor, requested, coord, terrain);
                     super::movement_commands::prepare_destination_execution(
                         actor, cell, info.speed,
                     );
@@ -929,10 +968,10 @@ impl Simulation {
                     true
                 }
                 Some(LocomotorKind::Teleport) => {
-                    super::navcom::publish_nav_com(actor, NavTargetRef::cell(cell.0, cell.1));
+                    super::navcom::publish_nav_com(actor, requested);
                     super::teleport_movement::teleport_move_to(
                         actor,
-                        cell,
+                        requested_cell.expect("only a Cell target keeps the Teleport primary"),
                         &rules.general,
                         info.is_harvester,
                         frame,

@@ -79,25 +79,19 @@ impl Health {
     }
 }
 
-/// A building's construction animation (BState 0), set by
-/// `BuildingClass::Begin_Mode(0)` (`0x00447780`) from the type's control and
-/// stepped once per frame by `BuildingClass::UpdateAnimation` (`0x004509D0`);
-/// the stepping lives in `sim::building_construction`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// The type control used by construction and pack-up (BState 0).
+/// `BuildingClass::Begin_Mode(0)` (`0x00447780`) restarts the entity's sole
+/// native stage from this control; `sim::building_construction` owns the
+/// control's completion and wrap decisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BuildupStage {
     /// The type's construction control (`Type+0xF04`): first frame, frame
     /// count, rate (`RuleSet::buildup_control`).
     pub control: [i32; 3],
-    /// The stage (`+0xF8`): the Buildup frame drawn.
-    pub stage: i32,
-    /// The stage rate (`+0x10C`); a wrap re-derives it from the control.
-    pub rate: i32,
-    /// The stage timer (`+0x100..+0x108`), counting down one `rate`.
-    pub timer: crate::sim::timer::CdTimer,
 }
 
 /// Where a building's Construction mission (`0x12`) stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ConstructionMission {
     /// Queued behind no current mission (a human player's placement, a
     /// deploy): the ready byte commences it (`0x0043FE27` once BState is not
@@ -113,9 +107,9 @@ pub enum ConstructionMission {
 /// A building building up after its placement or deploy
 /// (`sim::building_construction`): its construction animation, its BState,
 /// its Construction mission, and `+0x6DD`, the byte set when the animation
-/// lands on its last frame. The render draws `anim.stage` from the Buildup
-/// SHP while BState is 0.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// lands on its last frame. The render reads the actor's native stage from
+/// the Buildup SHP while BState is 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BuildingUp {
     /// The construction animation (BState 0); each `Begin_Mode(0)` restarts
     /// it from the control.
@@ -142,7 +136,7 @@ pub struct BuildingUp {
 /// in reverse) until `+0x6DD`, when the building converts into its
 /// `UndeploysInto=` unit (`Simulation::finish_undeploy`) or is sold for its
 /// refund.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BuildingDown {
     /// The construction animation from stage 1's `Begin_Mode(0)`; before
     /// that the building shows its idle frames. Sell's stage (`+0xBC`) is

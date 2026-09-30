@@ -747,8 +747,9 @@ impl Simulation {
     /// `TeamClass::Scan_Limit @ 0x006EC3A0`, from a Drive or Ship member's
     /// path tail (`0x004B2EB6`) when it stopped holding a target it cannot
     /// fire at: the team drops its mission target, and each member, in list
-    /// order, its target (`vt+0x3C8`). The members' scan-limit byte
-    /// (`+0x688`) is not represented (`combat::greatest_threat` residual).
+    /// order, its target (`vt+0x3C8`), then sets that member's Foot scan-limit
+    /// byte (`+0x688`, `0x006EC3BD`). A refused class target assignment does
+    /// not suppress the following latch write.
     pub(crate) fn team_scan_limit(
         &mut self,
         team_id: u64,
@@ -764,6 +765,9 @@ impl Simulation {
             .unwrap_or_default();
         for member in members {
             self.team_member_clear_target(member, rules);
+            if let Some(entity) = self.substrate.entities.get_mut(member) {
+                entity.mark_stopped_cannot_fire();
+            }
         }
     }
 

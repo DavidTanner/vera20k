@@ -18,13 +18,14 @@ use crate::sim::team_script_vm::{
     TeamTaskForceDefinition, TeamTaskForceEntry, TeamTypeDefinition,
 };
 use crate::sim::timer::CdTimer;
+use crate::util::native_x87::distance_3d_leptons;
 
-fn threat(cost: i32, distance: i32, range: i32, speed: i32) -> ThreatFacts {
+fn threat(threat_posed: i32, distance: i32, range: i32, speed: i32) -> ThreatFacts {
     ThreatFacts {
-        cost,
+        threat_posed,
         speed_leptons_per_frame: speed,
         current_coord: [0, 0, 0],
-        attacker_coord: [distance, 0, 0],
+        attacker_coord: Some([distance, 0, 0]),
         primary_range_leptons: range,
         existing_target: ExistingTargetDisposition::NoneOrUnarmed,
         in_non_base_defense_team: false,
@@ -162,7 +163,8 @@ fn native_response_uses_the_paid_foot_head_instead_of_navcom() {
 #[test]
 fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[General]\nComputerBaseDefenseResponse=0\nSuspendPriority=1\nSuspendDelay=2\n\
+        "[General]\nSuspendPriority=1\nSuspendDelay=2\n\
+         [AI]\nComputerBaseDefenseResponse=0\n\
          [VehicleTypes]\n0=ATTACKER\n\
          [BuildingTypes]\n0=VICTIM\n\
          [ATTACKER]\nStrength=100\nArmor=heavy\nCost=100\n\
@@ -246,11 +248,11 @@ fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
 #[test]
 fn gsi_04_05_positive_transaction_queues_in_order_and_arms_only_on_overshoot() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[General]\nComputerBaseDefenseResponse=3\nBaseDefenseDelay=.25\n\
+        "[General]\nBaseDefenseDelay=.25\n[AI]\nComputerBaseDefenseResponse=3\n\
          [VehicleTypes]\n0=ATTACKER\n1=DEFENDER\n\
          [BuildingTypes]\n0=VICTIM\n\
-         [ATTACKER]\nStrength=100\nArmor=heavy\nCost=50\n\
-         [DEFENDER]\nStrength=100\nArmor=heavy\nCost=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
+         [ATTACKER]\nStrength=100\nArmor=heavy\nCost=50\nThreatPosed=50\n\
+         [DEFENDER]\nStrength=100\nArmor=heavy\nCost=100\nThreatPosed=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
          [VICTIM]\nStrength=100\nArmor=wood\n\
          [DEFENDERGUN]\nDamage=10\nRange=5\nWarhead=DEFENDERWH\n\
          [DEFENDERWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
@@ -308,12 +310,12 @@ fn gsi_04_05_positive_transaction_queues_in_order_and_arms_only_on_overshoot() {
 #[test]
 fn gsi_04_05_a_defender_whose_weapon_zero_is_illegal_is_not_recruited() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[General]\nComputerBaseDefenseResponse=3\nBaseDefenseDelay=.25\n\
+        "[General]\nBaseDefenseDelay=.25\n[AI]\nComputerBaseDefenseResponse=3\n\
          [VehicleTypes]\n0=ATTACKER\n1=DEFENDER\n2=SEAGUARD\n\
          [BuildingTypes]\n0=VICTIM\n\
-         [ATTACKER]\nStrength=100\nArmor=heavy\nCost=50\n\
-         [DEFENDER]\nStrength=100\nArmor=heavy\nCost=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
-         [SEAGUARD]\nStrength=100\nArmor=heavy\nCost=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
+         [ATTACKER]\nStrength=100\nArmor=heavy\nCost=50\nThreatPosed=50\n\
+         [DEFENDER]\nStrength=100\nArmor=heavy\nCost=100\nThreatPosed=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
+         [SEAGUARD]\nStrength=100\nArmor=heavy\nCost=100\nThreatPosed=100\nSpeed=4\nMovementZone=Normal\nPrimary=DEFENDERGUN\n\
          LandTargeting=1\n\
          [VICTIM]\nStrength=100\nArmor=wood\n\
          [DEFENDERGUN]\nDamage=10\nRange=5\nWarhead=DEFENDERWH\n\
@@ -356,7 +358,7 @@ fn gsi_04_05_a_defender_whose_weapon_zero_is_illegal_is_not_recruited() {
 fn gsi_04_05_threat_preserves_special_targets_and_signed_integer_math() {
     let mut facts = threat(100, 1024, 256, 128);
     assert_eq!(evaluate_target_threat(facts), (100_i32 << 10) / 6);
-    facts.attacker_coord = [256, 0, 0];
+    facts.attacker_coord = Some([256, 0, 0]);
     assert_eq!(evaluate_target_threat(facts), 100_i32 << 10);
     facts.existing_target = ExistingTargetDisposition::RequestedAttacker;
     assert_eq!(evaluate_target_threat(facts), -100);
@@ -372,10 +374,10 @@ fn gsi_04_05_threat_uses_wrapping_base_and_native_sqrt_distance() {
     let facts = threat(i32::MAX, 513, 0, 256);
     assert_eq!(evaluate_target_threat(facts), 1);
     let diagonal = ThreatFacts {
-        attacker_coord: [256, 256, 256],
+        attacker_coord: Some([256, 256, 256]),
         primary_range_leptons: 0,
         speed_leptons_per_frame: 1,
-        cost: 2,
+        threat_posed: 2,
         ..threat(2, 0, 0, 1)
     };
     assert_eq!(distance_3d_leptons([0, 0, 0], [256, 256, 256]), 443);
@@ -434,7 +436,7 @@ fn gsi_04_05_replacement_overwrites_every_old_minimum_with_duplicates() {
 }
 
 #[test]
-fn gsi_04_05_stable_descending_sort_retains_equal_score_order() {
+fn native_base_response_pairwise_exchange_sort_reorders_the_displaced_equal_score() {
     let mut selection = ResponseSelection::new(1);
     for (id, score) in [(1, 4), (2, 9), (3, 4), (4, 7)] {
         selection.consider(id, score, ResponderClass::Infantry, false);
@@ -445,7 +447,8 @@ fn gsi_04_05_stable_descending_sort_retains_equal_score_order() {
             .iter()
             .map(|entry| entry.entity_id)
             .collect::<Vec<_>>(),
-        [2, 4, 1, 3]
+        // Original response sort708647..7086AF, executed on these four slots.
+        [2, 4, 3, 1]
     );
 }
 
@@ -455,9 +458,9 @@ fn gsi_04_05_draw_boundary_and_strict_budget_overshoot_are_literal() {
     assert_eq!(response_mission(66, false), ResponseMission::AreaGuard);
     assert_eq!(response_mission(0, true), ResponseMission::AreaGuard);
 
-    assert_eq!(add_assigned_cost(0, 100, 100), (100, false));
-    assert_eq!(add_assigned_cost(100, 1, 100), (101, true));
-    assert_eq!(add_assigned_cost(i32::MAX, 1, -1), (i32::MIN, false));
+    assert_eq!(add_assigned_threat(0, 100, 100), (100, false));
+    assert_eq!(add_assigned_threat(100, 1, 100), (101, true));
+    assert_eq!(add_assigned_threat(i32::MAX, 1, -1), (i32::MIN, false));
 }
 
 /// `TechnoClass::Is_Armed @ 0x00701120` consults exactly ONE weapon slot:
@@ -504,7 +507,7 @@ fn gsi_04_05_is_armed_reads_one_slot_not_the_whole_weapon_array() {
 
     // `FootClass::Evaluate_Target_Threat @ 0x004D97A0` scores 0 only when the
     // candidate's existing target is an ARMED Techno; an unarmed one falls
-    // through to the real distance/cost score.
+    // through to the real distance/threat score.
     let mut entities = EntityStore::new();
     entities.insert(armed.clone());
     entities.insert(unarmed.clone());
@@ -568,10 +571,10 @@ fn run_native_bridge_response_seams(victim_is_slave: bool) {
             "[VehicleTypes]\n0=ATTACKER\n1=VICTIM\n2=DEFENDER\n"
         };
         let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
-            "[General]\nComputerBaseDefenseResponse=3\nBaseDefenseDelay=.25\n{types}\
-             [ATTACKER]\nStrength=100\nCost=50\n\
+            "[General]\nBaseDefenseDelay=.25\n[AI]\nComputerBaseDefenseResponse=3\n{types}\
+             [ATTACKER]\nStrength=100\nCost=50\nThreatPosed=50\n\
              [VICTIM]\nStrength=100\n\
-             [DEFENDER]\nStrength=100\nCost=100\nSpeed=4\nMovementZone={zone}\nPrimary=GUN\n\
+             [DEFENDER]\nStrength=100\nCost=100\nThreatPosed=100\nSpeed=4\nMovementZone={zone}\nPrimary=GUN\n\
              [GUN]\nDamage=10\nRange=5\nWarhead=WH\n\
              [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n"
         )))

@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 
 use super::ground_move::GroundMove;
 use super::{SimSoundEvent, Simulation, SimulationWallRuntimeHost};
+use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
 #[cfg(test)]
 use crate::rules::locomotor_type::MovementZone;
@@ -27,7 +28,6 @@ use crate::sim::command::{
 };
 use crate::sim::components::OrderIntent;
 use crate::sim::docking::building_dock;
-use crate::sim::mission::concrete_effects::represented_assign_target;
 use crate::sim::mission::{DockTeardown, MissionType};
 use crate::sim::movement;
 use crate::sim::movement::jumpjet_movement;
@@ -625,11 +625,11 @@ impl Simulation {
                     rules,
                 );
                 // Clear attack and order intent.
+                let _ = self.assign_target_represented(*entity_id, None, rules);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     // Event MegaMission4C7467 calls Assign_Target before the
                     // destination setter. Its changed-null path6FCF5B also
                     // resets retained burst state; dropping Target alone cannot.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
@@ -794,10 +794,22 @@ impl Simulation {
                         || e.navigation.nav_com.is_some()
                         || e.setter_force_reassign
                 });
+                let walking_infantry = self.substrate.entities.get(*entity_id).is_some_and(|e| {
+                    e.category == crate::map::entities::EntityCategory::Infantry
+                        && e.locomotor.as_ref().is_some_and(|l| {
+                            l.kind == crate::rules::locomotor_type::LocomotorKind::Walk
+                        })
+                });
+                if walking_infantry {
+                    //4C75ED dispatches the actual class NULL setter. Walk
+                    //75ADA0 must consume pending Deploy through owner+54C;
+                    //a paid head and the human deployment refusal survive.
+                    self.assign_null_destination(*entity_id, rules);
+                }
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    movement::stop_navigation_at_committed_head(e);
-                    // Event Stop4C75F8 invokes the same virtual target setter.
-                    represented_assign_target(e, None);
+                    if !walking_infantry {
+                        movement::stop_navigation_at_committed_head(e);
+                    }
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
@@ -805,17 +817,23 @@ impl Simulation {
                 if releases_beam {
                     self.temporal_release_if_warping(*entity_id);
                 }
-                if jumpjet_stops
+                if !walking_infantry
+                    && jumpjet_stops
                     && !self.jumpjet_null_destination(*entity_id, rules, overlay_registry)
                 {
                     return false;
                 }
-                if let Some(entity) = self.substrate.entities.get_mut(*entity_id) {
+                if !walking_infantry
+                    && let Some(entity) = self.substrate.entities.get_mut(*entity_id)
+                {
                     // Accepted null Foot setter4D96C2 follows locomotor Stop,
                     // including a no-op Stop, and preserves the retry counter.
                     movement::DestinationTiming::from_rules(self.session.binary_frame, rules)
                         .accept(entity);
                 }
+                // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
+                // destination4C75ED, including the Infantry class effects.
+                let _ = self.assign_target_represented(*entity_id, None, rules);
                 // Event Stop's null destination reaches the active locomotor's
                 // Stop_Moving; a Teleport one drops only an armed warp.
                 //
@@ -1044,9 +1062,7 @@ impl Simulation {
                     DockTeardown::IdleOnly,
                     rules,
                 );
-                if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    represented_assign_target(e, None);
-                }
+                let _ = self.assign_target_represented(*entity_id, None, rules);
 
                 // Snapshot speed, locomotor, and rules data in one lookup.
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
@@ -1121,100 +1137,48 @@ impl Simulation {
                 }
                 self.undeploy_building(*entity_id, rules)
             }
-            // RESIDUAL: native asks `CanDeploySlashUnload @ 0x00700D50`
-            // (vt+0x314) first, and its infantry arm refuses a deployed
-            // infantryman's undeploy while its rearm timer runs (`0x00700E02`),
-            // so a deployed GI in a firefight stands up only between shots. How
-            // the refused DEPLOY event is dropped or retried is not traced.
+            // The synchronized self-deploy order queues Unload; the concrete
+            // Infantry51F6E0 handler selects Doing27/31 on the object's visit.
+            // CanDeploy700D50's UI tube-neighborhood gate484AE0 is a separate
+            // required query; it is not invented by this event receiver.
             Command::ToggleInfantryDeploy { entity_id } => {
-                if !self.entity_owned_by_id(command_owner, *entity_id) {
+                if !self.entity_owned_by_id(command_owner, *entity_id)
+                    || !self.order_actor_admits(*entity_id)
+                {
                     return false;
                 }
                 let Some(rules) = rules else { return false };
-                // INI gate: only DeployFire=yes types respond.
-                let type_str = match self.substrate.entities.get(*entity_id) {
-                    Some(e) => self.interner.resolve(e.type_ref()).to_string(),
-                    None => return false,
-                };
-                let Some(obj) = rules.object(&type_str) else {
+                let Some(actor) = self.substrate.entities.get(*entity_id) else {
                     return false;
                 };
-                if !obj.deploy_fire {
+                if actor.category != EntityCategory::Infantry
+                    || !self
+                        .object_type(actor.type_ref(), rules)
+                        .is_some_and(|object| object.deployer)
+                {
                     return false;
                 }
-                let deploy_sound = obj.deploy_sound.clone();
-                let undeploy_sound = obj.undeploy_sound.clone();
-                // Per-type animation duration from artmd.ini sequence frame
-                // counts. Fall back to DEPLOY_DEFAULT_TICKS when the art
-                // section or sequence is missing.
-                let art_entry = rules.art().resolve_metadata_entry(&type_str, &obj.image);
-                let deploying_ticks = crate::sim::deploy::compute_anim_ticks(
-                    art_entry,
-                    crate::sim::deploy::DeployPhaseKind::Deploying,
+                self.queue_megamission_with_teardown(
+                    *entity_id,
+                    MissionType::Unload,
+                    DockTeardown::All,
+                    Some(rules),
                 );
-                let undeploying_ticks = crate::sim::deploy::compute_anim_ticks(
-                    art_entry,
-                    crate::sim::deploy::DeployPhaseKind::Undeploying,
-                );
-
-                let Some(entity) = self.substrate.entities.get_mut(*entity_id) else {
-                    return false;
-                };
-                let (rx, ry) = (entity.position.rx, entity.position.ry);
-                let new_phase: Option<crate::sim::deploy::DeployPhase>;
-                let mut emit_deploy_sound = false;
-                let mut emit_undeploy_sound = false;
-                match entity.deploy_state {
-                    None => {
-                        new_phase = Some(crate::sim::deploy::DeployPhase::Deploying {
-                            ticks_remaining: deploying_ticks,
-                        });
-                        emit_deploy_sound = true;
-                        // Deploy begins: the locomotor powers down for the
-                        // duration. Undeploy completing powers it back on.
-                        if let Some(loco) = entity.locomotor.as_mut() {
-                            loco.power_off();
-                        }
-                    }
-                    Some(crate::sim::deploy::DeployPhase::Deployed) => {
-                        new_phase = Some(crate::sim::deploy::DeployPhase::Undeploying {
-                            ticks_remaining: undeploying_ticks,
-                        });
-                        emit_undeploy_sound = true;
-                        // Belt-and-braces: clear any stale movement target.
-                        entity.movement_target = None;
-                    }
-                    Some(crate::sim::deploy::DeployPhase::Deploying { .. })
-                    | Some(crate::sim::deploy::DeployPhase::Undeploying { .. }) => {
-                        return false;
-                    }
+                // Event4C7448 clears ArchiveTarget before class target4C7467
+                // and destination4C747C. Foot4DA1C0's +5AC vector is distinct
+                // from NavQueue588/598 and has no represented producer here.
+                if let Some(actor) = self.substrate.entities.get_mut(*entity_id) {
+                    actor.set_archive_target(None);
                 }
-                // Sound plays BEFORE state field write — matches the original's
-                // Do_Action ordering (voc cue precedes the Doing-field mutation).
-                if emit_deploy_sound {
-                    if let Some(sound_name) = deploy_sound {
-                        let sound_id = self.interner.intern(&sound_name);
-                        self.sound_events
-                            .push(crate::sim::world::SimSoundEvent::EntityDeployed {
-                                deploy_sound_id: sound_id,
-                                rx,
-                                ry,
-                            });
-                    }
-                }
-                if emit_undeploy_sound {
-                    if let Some(sound_name) = undeploy_sound {
-                        let sound_id = self.interner.intern(&sound_name);
-                        self.sound_events.push(
-                            crate::sim::world::SimSoundEvent::EntityUndeployed {
-                                undeploy_sound_id: sound_id,
-                                rx,
-                                ry,
-                            },
-                        );
-                    }
-                }
-                entity.deploy_state = new_phase;
+                self.assign_target_represented(*entity_id, None, Some(rules))
+                    .unwrap_or_else(|cause| panic!("Infantry deploy target: {cause}"));
+                self.assign_destination_represented(
+                    *entity_id,
+                    None,
+                    Some(rules),
+                    overlay_registry,
+                )
+                .unwrap_or_else(|cause| panic!("Infantry deploy destination: {cause}"));
                 true
             }
             Command::SetRally {
@@ -1475,9 +1439,9 @@ impl Simulation {
                     DockTeardown::Depot,
                     Some(rules),
                 );
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*entity_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                 }
                 // Event4C747C: the Unit class setter with the depot.
@@ -1552,9 +1516,9 @@ impl Simulation {
                     Some(rules),
                 );
                 // Clear existing state on the passenger.
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*passenger_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*passenger_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.passenger_role = passenger::PassengerRole::Boarding {
@@ -1834,9 +1798,9 @@ impl Simulation {
                     Some(rules),
                 );
                 // Clear conflicting state and set c4_plant.
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*attacker_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.capture_target = None;
@@ -1956,9 +1920,9 @@ impl Simulation {
                     Some(rules),
                 );
                 // Clear conflicting state and set capture target.
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*engineer_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*engineer_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.capture_target = Some(*target_building_id);
@@ -2203,9 +2167,9 @@ impl Simulation {
                     DockTeardown::None,
                     Some(rules),
                 );
+                // Event4C7467 dispatches the class target setter before Dest.
+                let _ = self.assign_target_represented(*unit_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*unit_id) {
-                    // Event4C7467 dispatches Assign_Target before the destination write.
-                    represented_assign_target(e, None);
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
@@ -2660,6 +2624,11 @@ impl Simulation {
     }
 
     /// Apply a Guard command: anchor at current position, optionally attack a target.
+    /// Residual: this command's object target still uses the legacy combat-target
+    /// and current-cell intent representation. Native AreaGuard4C7409..4C7430
+    /// clears Target and assigns that object as destination/archive. Every
+    /// object Guard order can therefore use the wrong post/bridge leash; its
+    /// complete command DTO/mission migration is a separate required route.
     fn apply_guard_command(
         &mut self,
         command_owner: &str,
@@ -2709,8 +2678,13 @@ impl Simulation {
         }
         match target_id.filter(|&tid| self.substrate.entities.contains(tid)) {
             Some(tid) => {
-                let issued =
-                    combat::issue_attack_command(&mut self.substrate.entities, entity_id, tid);
+                let issued = self
+                    .assign_target_represented(
+                        entity_id,
+                        Some(combat::TargetKind::Entity(tid)),
+                        rules,
+                    )
+                    .is_ok();
                 if issued {
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.order_intent = Some(OrderIntent::Guard {
@@ -2722,8 +2696,8 @@ impl Simulation {
                 issued
             }
             None => {
+                let _ = self.assign_target_represented(entity_id, None, rules);
                 if let Some(e) = self.substrate.entities.get_mut(entity_id) {
-                    represented_assign_target(e, None);
                     e.order_intent = Some(OrderIntent::Guard {
                         anchor_rx,
                         anchor_ry,
@@ -2738,8 +2712,9 @@ impl Simulation {
     /// through BuildingClass::SetTarget (vt+0x3C8, `0x00443B90`), which
     /// refuses one it cannot reach; its queued Attack stands either way and
     /// Mission_Attack's null-target arm hands it back to Guard
-    /// (`techno_ai::building_missions`). Every other object takes it through
-    /// its fire and movement owners' setters.
+    /// (`techno_ai::building_missions`). Every class uses the same concrete
+    /// target authority; Infantry51B1F0 owns its action, DeployFire and path
+    /// effects before the Techno base.
     fn order_attack_target(
         &mut self,
         attacker_id: u64,
@@ -2749,25 +2724,8 @@ impl Simulation {
         let Some(attacker) = self.substrate.entities.get(attacker_id) else {
             return false;
         };
-        if attacker.category != crate::map::entities::EntityCategory::Structure {
-            return match target {
-                combat::TargetKind::Entity(target_id) => combat::issue_attack_command(
-                    &mut self.substrate.entities,
-                    attacker_id,
-                    target_id,
-                ),
-                combat::TargetKind::Cell(rx, ry) => combat::issue_attack_cell_command(
-                    &mut self.substrate.entities,
-                    attacker_id,
-                    rx,
-                    ry,
-                    rules,
-                    &self.interner,
-                ),
-            };
-        }
         // The cell order's defensive refusal of an unarmed attacker
-        // (`issue_attack_cell_command`).
+        // (What_Action_OnCell7008BD's current-weapon test).
         if matches!(target, combat::TargetKind::Cell(..))
             && !rules
                 .and_then(|rules| rules.object(self.interner.resolve(attacker.type_ref())))
@@ -2775,8 +2733,10 @@ impl Simulation {
         {
             return false;
         }
-        let _ = self.assign_target_represented(attacker_id, Some(target), rules);
-        true
+        // Event4C7467 calls virtual+3C8, before4C747C's null destination.
+        // A class refusal still leaves the accepted queued mission in place.
+        self.assign_target_represented(attacker_id, Some(target), rules)
+            .is_ok()
     }
 }
 
@@ -3440,7 +3400,7 @@ mod tests {
             entity.display_type_override = Some(sim.interner.intern("HORV"));
             let miner = entity.miner.as_mut().unwrap();
             miner.unload_active = true;
-            miner.stage_rate = 1;
+            entity.restart_native_stage(0, now as i32, 1);
         }
 
         let applied = sim.apply_command(

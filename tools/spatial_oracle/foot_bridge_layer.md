@@ -271,3 +271,161 @@ dispatch draws/cooldown timing; retail MTNK is Cost 700 / ThreatPosed 15 and
 HTNK is 900 / 40. The existing greatest_threat::live_threat_posed port is the
 owner to consolidate during that separate response mechanism, including its
 remaining Building+2E4 source substitution. These query comparisons do not close it.
+
+## Bridge-response prerequisite replay provenance (2026-09-30)
+
+The `bridge_ai_prerequisite_followup` entry in
+[the same Rust receipt owner](foot_bridge_layer.replay.json) records real spawn
+and `advance_tick` calls after the class-target, Foot mission and idle changes.
+It compares missing-ART inputs against explicit E1 `Image=GI` and the fixed
+GI/sequence excerpt bound through the production reader. These are Rust
+regression observations, not native skirmish goldens.
+
+The global replay's first difference from the historical receipt is frame0:
+draws7..13 match, but the four former global idle-tail draws14..17 are absent.
+Native mission-site idle precedes the first stationary Ready action. Bound ART
+admits Ready after that mission call, without adding a draw. It first changes
+idle callers at global frame14 and bridge frame16. Full Main/MapGen states are
+unchanged in every captured frame; the receipts explicitly bound their coverage.
+
+Slice6's new admitted Walk head is `(1728,1088,0)` with facing8315. The five
+historical native paid-step rows supplied `(1728,1216,0)` with facing10855;
+their caller premises therefore do not match this replay. All40 original rows
+remain unchanged in the sole numeric receiver comparison. The replay retains
+head/progress, health, mission-counter and per-frame determinism gates and now
+pins live counters directly, removing the historical counter inversion.
+
+The final absolute pins include the newly retained state and supplied ART.
+They protect this Rust fixture only. Ground infantry's firing/absolute-stage
+integration and ordinary ground reach/Approach remain required behavior;
+this replay provenance does not close either chain or the whole-bridge goal.
+
+
+## Current response and Infantry action dependencies (2026-09-30)
+
+The response chain now uses the private Infantry Doing/Stage owner through
+firing, movement, completion and terminal cleanup. Shared consumers, clock
+initialization, live deployed Guard, the production Unload dispatcher and
+snapshot267 are migrated together. The final replay contexts in
+`techno_stage264_followup` retain complete actors, all three RNG objects and
+ordered draw/caller observations; these are Rust world receipts, not native
+whole-world goldens. The historical observations above are retained as history.
+
+The [wet-action generator](infantry_water_action.py),
+[356 native entries](infantry_water_action.json) and
+[metadata](infantry_water_action.meta.json) execute original DoAction51D6F0,
+constructor517A50 and physical GHOST/TANY rules/ART/sound readers. The original
+151 controls remain byte-identical. Native constructor517AC2 initializes signed
+water state2; zone3 physical Cell lookup, wet raw records20/21 and transition cues
+precede admission. Fixed sound-name reads retain earlier valid IDs across
+root/LANG/mode/map. Audio requests execute through the supplied disabled gate;
+wet Unlimbo, occupancy, whole native death AI and audible playback are excluded.
+
+`sim::movement::infantry_action::water_tests::` compares all action/reader
+receipts and checks ordinary tick progression to WetDie UnInit without a legacy
+AnimationState. With production ART/sequence binding installed, the old DoAction
+refuses physical GHOST Health0/Water/Die11 while the original accepts20. Restoring
+the corrected sole action owner makes all five tests pass. Water state also has
+save/load and state-hash coverage. [Ghidra save/readback](infantry_water_action.ghidra.json)
+records the exact selected program, original spans and corrected comments.
+
+The [production profiles](foot_bridge_layer.profiles/) use the existing map
+observation owner and ordinary retail loading/commands. To reproduce Hills:
+
+```sh
+python -m tools.cargo_run --label bridge-response-release-UNIQUE -- build -p vera20k --release --bin vera20k
+python -m tools.map_observation --build-label bridge-response-release-UNIQUE \
+  --profile tools/spatial_oracle/foot_bridge_layer.profiles/hills-staging2400.json \
+  --contract "$(pwd)/src/app/diagnostics/tactical_capture/contract.v2.json" \
+  --cwd "$(pwd)" --output /absolute/new/observation-directory
+```
+
+Use a new label/output and the checkout's machine-local retail config. Retain
+`run.json`, profile, contract, config and exact `child-output` bytes. The prior
+61595 release receipts remain in this checkout's ignored
+`logs/bridge-response-stage264-validation`, with hashes in its receipt.json.
+Hills2400 places MTNK943/E1945 on the high deck at624 leptons, ground944/947 at208,
+and endpoint942 at624 offbridge; the GPU frame was inspected. AnyTown captures
+exercise real Infantry fire/latch/retaliation and MCV construction. Attackers were
+intercepted before yard damage, so those runs do not demonstrate the production
+yard-damage→recruit→Rescue/home-cleanup route. Supplied native receiver tests and
+Rust integration checks remain separately bounded.
+
+The whole-bridge goal remains paused and open. Required broader map/path authority,
+collapse/Tags/huts, full arcing geometry, complete Building scheduling and native
+visibility/GPU comparisons are not closed by these response/action dependencies.
+
+## Incoming-main replay composition
+
+[The complete incoming-main receipt](foot_bridge_layer.main986.replay.json)
+retains all819 before/final/control observations. Its lossless comparison accounts
+for all2,734 field differences: two buildings retain exact floor Z=0 rather than
+None (1,202 fields), their hash views change (1,201 fields), and331 raw caller
+strings contain only twelve exact source-line replacements. The201 bridge rows
+are byte-identical. Every other actor, input, command, queue and object-store
+field, and all three full RNG states and ordered draw values, match.
+
+Original BuildingType `0x00464A70`, installed at type virtual+0x6C, copies input
+XY and returns original `Map578080` floor Z. Active Object Unlimbo dispatches that
+type virtual at `0x005F4F88`, then commits its result before Mark(PUT). The receipt
+retains pinned original-byte packets and explicit-program Ghidra readback. Ground
+arithmetic remains established by [the original ramp vectors](../ramp_height_vectors.json);
+this body/caller proof does not establish whole Building AI or native world parity.
+
+The uncommitted control excludes only Structure exact Z from the hash; it leaves
+gameplay XYZ untouched. All601 prior global hashes and600 frame-result hash views
+recover exactly, with all819 final/control gameplay and raw RNG fields identical.
+Thus the global Rust pin moves from `CE21A562A1295C86` to `B80AAAB95187A8F9`;
+bridge `4477C32418EDA27F` and Slice6 `77B7FEF300222AB2` stay unchanged. The receipt
+preserves complete source, installation/restoration and binary identities, actual
+old-pin failure logs, control logs and the comparison recipes. None is a native
+whole-world golden. The earlier full replay contexts remain unchanged in
+[the historical receipt](foot_bridge_layer.replay.json).
+
+The final strict-retail library run passes9,463 tests (211 ignored); lib clippy
+finishes with765 existing warnings. Field ownership is2,646 versus2,661 on
+integrated main. Final ordinary release label
+`bridge-response-runtime-20260930-stage267-main986` has binary SHA256
+`e3549a23bd935f463298665c3b891d99c9527c18fca4a7904a8c7a243fe98f11`.
+The same committed profiles revalidate Hills2400 (2,401 observations),
+AnyTown800 (801) and AnyTown1184 (1,185). Hills943/945 are on the high deck
+at Z624 and944/947 remain on ground Z208, all alive. AnyTown1383 fires with
+Doing4 from step912; hostile1386 ends at7HP and the yard remains1,000HP.
+Therefore yard damage→Rescue/home remains unobserved. GPU frames were inspected.
+Raw local evidence is retained at `logs/bridge-response-stage267-main986-validation`
+with receipt SHA256
+`4f21ae65fbd18f9a26ab55465497c137e9194bf2ba3d33ceecdb3e300c759554`;
+its receipt hashes every raw child output and input copy. These release checks
+validate connected production output; their native parity certification is NONE.
+
+## Final main474 integration
+
+The same [replay receipt](foot_bridge_layer.main986.replay.json) adds complete
+main474/HEAD95d observations after integrating the shared Aircraft CanEnter and
+Object SetHeight owners. All819 actor/hash/state/RNG records agree with the
+preceding candidate. Only331 raw caller strings change, through seven exact
+source-line replacements; the201 bridge rows remain byte-identical. No pin
+changes or difference whitelist are needed. The existing original
+[ramp/SetHeight vectors](../ramp_height_vectors.json) establish `0x005F5FA0`
+and its ground evaluator; this merge calls that sole owner rather than
+recreating the removed ground-height wrapper. The Sonic bridge fixture uses
+SetHeight(0) between occupancy removal/re-addition; its level-two deck Z is624.
+
+The corrected final strict-retail library passes9,466 tests (211 ignored),
+clippy completes with765 repository warnings, and the field ratchet remains
+2,646 versus2,661 on main474. Complete source/build/execution and comparison
+receipts are preserved; original replay contexts remain intact. These results
+retain the previous bounds on native world and production Rescue coverage.
+
+The final ordinary release label `bridge-response-runtime-20260930-stage267-main474`
+has binary SHA256
+`0ae9a62af1e315bfa1d0940901a49a490acf29c277bfb2362a814e4b0402a455`.
+The three committed profiles again pass Hills2400 (2,401 observations),
+AnyTown800 (801) and AnyTown1184 (1,185). Hills943/945 remain alive on
+the high deck at Z624;944/947 remain alive on ground Z208. AnyTown1381/1383
+stage at low-bridge Z416, and1383 begins Doing4 firing at step912. Hostile1386
+ends at7HP; yard1408 remains1,000HP, with no observed Rescue mission. GPU
+frames were inspected. The local raw-output/input receipt in
+`logs/bridge-response-stage267-main474-validation/receipt.json` has SHA256
+`96eb9813a679bb31123406fa2c89334a7cfc72d84a43b0ea8d0f9498d3ce4c9f`.
+These production checks carry native parity certification NONE.

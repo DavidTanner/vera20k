@@ -35,7 +35,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
-use crate::sim::animation::SequenceKind;
 use crate::sim::deploy::DeployPhase;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
@@ -523,14 +522,6 @@ pub(crate) fn is_armed_from_facts(obj: &ObjectType, facts: AttackerFacts) -> boo
     weapon_for_index(obj, facts.veterancy, index).is_some()
 }
 
-/// Weapon ID the unit will fire while deployed (`DeployFireWeapon=` slot,
-/// default Secondary), without target-compatibility checks. Used by the
-/// deployed self-irradiator gate, which needs the weapon's RadLevel before
-/// any target exists.
-pub(crate) fn deploy_fire_weapon_id(obj: &ObjectType, veterancy: u16) -> Option<&str> {
-    weapon_for_index(obj, veterancy, obj.deploy_fire_weapon).map(|(weapon_id, _)| weapon_id)
-}
-
 /// `TechnoClass::SelectNavalTargetingWeapon @ 0x006F3820` (vtable `+0x2E8`,
 /// no class overrides). Returns `-1` (cannot engage on water), `0` or `1`.
 ///
@@ -990,10 +981,9 @@ fn current_weapon_number_from_override(weapon_override: Option<WeaponOverride>) 
 pub(crate) fn attacker_facts(entity: &GameEntity, obj: &ObjectType) -> AttackerFacts {
     let kind = TechnoKind::from_category(entity.category);
     let deploy_fire_active = match kind {
-        TechnoKind::Infantry => matches!(
-            entity.deploy_state,
-            Some(DeployPhase::Deploying { .. } | DeployPhase::Deployed)
-        ),
+        // Infantry5218F3..52190B reads Doing27..30, as predicate522510. The
+        // separate Unit deployment controller has no Infantry writer.
+        TechnoKind::Infantry => entity.infantry_deploy_doing(),
         TechnoKind::Unit => matches!(entity.deploy_state, Some(DeployPhase::Deployed)),
         TechnoKind::Aircraft | TechnoKind::Building => false,
     };
@@ -1034,9 +1024,7 @@ pub(crate) fn attacker_facts_from_snapshot(
 ) -> AttackerFacts {
     let kind = TechnoKind::from_category(snap.category);
     let deploy_fire_active = match kind {
-        TechnoKind::Infantry => {
-            snap.is_fully_deployed || snap.animation_sequence == Some(SequenceKind::Deploy)
-        }
+        TechnoKind::Infantry => snap.is_fully_deployed || snap.infantry_doing == Some(27),
         TechnoKind::Unit => snap.is_fully_deployed,
         TechnoKind::Aircraft | TechnoKind::Building => false,
     };
@@ -1116,31 +1104,44 @@ pub(crate) fn cell_target_facts(
 
 /// SelectWeapon (vt+0x2E4) against a `TargetKind`, then GetWeapon of its
 /// index: resolve the target, build both fact sets and run the ladder. No
-/// legality is asked; `None` means the target is gone or the slot names no
-/// weapon.
+/// legality is asked. The index is retained even when GetWeapon has no
+/// weapon, so the caller can still ask GetFireError. `None` means a supplied
+/// target is gone. A null target still enters the native selection ladder.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn select_weapon_against<'a>(
     rules: &'a RuleSet,
     attacker_obj: &'a ObjectType,
     attacker: &AttackerFacts,
     attacker_owner: InternedId,
-    target: &TargetKind,
+    target: Option<&TargetKind>,
     entities: &EntityStore,
     interner: &StringInterner,
     terrain: Option<&ResolvedTerrainGrid>,
     alliances: Option<&HouseAllianceMap>,
-) -> Option<SelectedWeapon<'a>> {
-    let target_facts = match *target {
-        TargetKind::Entity(target_id) => {
+) -> Option<(i32, Option<SelectedWeapon<'a>>)> {
+    let target_facts = match target.copied() {
+        Some(TargetKind::Entity(target_id)) => {
             let target_entity = entities.get(target_id)?;
             let target_obj = rules.object(interner.resolve(target_entity.type_ref()))?;
             let is_ally =
                 is_ally_by_object(alliances, interner, attacker_owner, target_entity.owner());
-            techno_target_facts(target_entity, target_obj, terrain, is_ally, rules, interner)
+            Some(techno_target_facts(
+                target_entity,
+                target_obj,
+                terrain,
+                is_ally,
+                rules,
+                interner,
+            ))
         }
-        TargetKind::Cell(rx, ry) => cell_target_facts(rx, ry, terrain),
+        Some(TargetKind::Cell(rx, ry)) => Some(cell_target_facts(rx, ry, terrain)),
+        None => None,
     };
-    resolve_selected_weapon(rules, attacker_obj, attacker, Some(&target_facts))
+    let index = what_weapon_should_i_use(rules, attacker_obj, attacker, target_facts.as_ref());
+    Some((
+        index,
+        resolve_weapon_index(rules, attacker_obj, attacker.veterancy, index),
+    ))
 }
 
 /// The occupied arm of `BuildingClass::GetWeapon @ 0x004526F0`, which answers
@@ -3032,18 +3033,30 @@ IsLocomotor=yes
     // ---- Facts builders ----------------------------------------------------
 
     #[test]
-    fn attacker_facts_read_deploy_state_per_class_and_override_slots() {
+    fn attacker_facts_read_class_deployment_owners_and_override_slots() {
         let rules = stock_rules();
         let ggi_obj = rules.object("GGI").unwrap();
         let mut ggi = GameEntity::test_default(1, "GGI", "Americans", 1, 1);
         ggi.category = EntityCategory::Infantry;
-        assert!(!attacker_facts(&ggi, ggi_obj).deploy_fire_active);
-        ggi.deploy_state = Some(DeployPhase::Deploying { ticks_remaining: 3 });
-        assert!(attacker_facts(&ggi, ggi_obj).deploy_fire_active);
-        ggi.deploy_state = Some(DeployPhase::Deployed);
-        assert!(attacker_facts(&ggi, ggi_obj).deploy_fire_active);
-        ggi.deploy_state = Some(DeployPhase::Undeploying { ticks_remaining: 3 });
-        assert!(!attacker_facts(&ggi, ggi_obj).deploy_fire_active);
+        ggi.mission_leaf =
+            crate::sim::mission::MissionLeafState::for_entity_category(EntityCategory::Infantry);
+        // Original522510 accepts precisely Doing27..30, including the
+        // Deploy transition. No Unit deploy_state supplies this predicate.
+        for (doing, expected) in [
+            (0, false),
+            (27, true),
+            (28, true),
+            (29, true),
+            (30, true),
+            (31, false),
+        ] {
+            ggi.mission_leaf.set_infantry_doing_verified(doing).unwrap();
+            assert_eq!(
+                attacker_facts(&ggi, ggi_obj).deploy_fire_active,
+                expected,
+                "native Infantry deployment Doing{doing}"
+            );
+        }
         // Vehicles: only the finished Deployed flag.
         let mut siege = GameEntity::test_default(2, "HTNK", "Americans", 1, 1);
         siege.category = EntityCategory::Unit;

@@ -415,15 +415,19 @@ impl LocomotorState {
         }
     }
 
-    /// Stop75ADA0 differs from null MoveTo: no-head Stop also clears +36.
-    pub(crate) fn stop_walk(&mut self) {
+    /// Stop75ADA0 differs from null MoveTo: no-head Stop also clears +36
+    /// and dispatches the owner's +54C callback. The world receiver performs
+    /// that dispatch before returning; this primitive returns its admission.
+    pub(crate) fn stop_walk(&mut self) -> bool {
         self.set_walk_destination(None);
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
             && state.head.is_none()
         {
             state.animation_moving = false;
+            return true;
         }
+        false
     }
 
     pub(crate) fn active_slope_transition(&self) -> Option<&SlopeTransitionState> {

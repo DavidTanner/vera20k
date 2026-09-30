@@ -333,7 +333,9 @@ pub struct ObjectType {
     /// Armor type name (e.g., "heavy", "light", "wood"). Determines damage
     /// multipliers from warhead Verses= values.
     pub armor: String,
-    /// Movement speed (0 = immobile, e.g., buildings).
+    /// Canonical Speed percent,0..100 (0 is immobile). TechnoType
+    /// ReadINI71464A retains the prior value for -1 across rules passes.
+    /// Whole-lepton Type+678 conversion belongs to util::fixed_math.
     pub speed: i32,
     /// `WalkRate=` — signed native-frame divisor for Foot body animation.
     /// TechnoTypeClass owns this value; art.ini owns only the frame layout.
@@ -582,6 +584,11 @@ pub struct ObjectType {
     pub deploy_sound: Option<String>,
     /// Sound ID played when this unit undeploys.
     pub undeploy_sound: Option<String>,
+    /// InfantryType+EA4/+EA8: ctor523748/52374E sets both to -1.
+    /// ReadINI52440B/524447 reads EnterWaterSound/LeaveWaterSound through
+    /// ReadString128 and Voc7514D0. The fixed sound catalog owns resolution.
+    pub enter_water_sound: Option<String>,
+    pub leave_water_sound: Option<String>,
     /// `PackupSound=` (BuildingType `+0xE70`, read at `0x00460786` through
     /// `VocClass::FindByName`): played at a human player's building as its
     /// sale starts packing up (`BuildingClass::Mission_Selling` stage 1, `0x0044A85B`).
@@ -844,14 +851,18 @@ pub struct ObjectType {
     pub fraidycat: bool,
     /// `Crawls=yes` from art.ini. Controls the prone movement speed branch.
     pub crawls: bool,
-    /// Primary standing infantry projectile/damage frame from art.ini `FireUp=`.
-    pub fire_up_frame: u8,
-    /// Primary prone infantry projectile/damage frame from art.ini `FireProne=`.
-    pub fire_prone_frame: u8,
-    /// Secondary standing infantry projectile/damage frame from art.ini `SecondaryFire=`.
-    pub secondary_fire_frame: u8,
-    /// Secondary prone/deploy infantry projectile/damage frame from art.ini `SecondaryProne=`.
-    pub secondary_prone_frame: u8,
+    /// InfantryType+E40 signed primary standing frame, art.ini `FireUp=`.
+    /// ART ReadInt5246D6 retains this field independently; constructor0.
+    pub fire_up_frame: i32,
+    /// InfantryType+E44 signed primary prone frame, art.ini `FireProne=`.
+    /// ART ReadInt5246F3 retains this field independently; constructor0.
+    pub fire_prone_frame: i32,
+    /// InfantryType+E48 signed secondary standing frame, art.ini `SecondaryFire=`.
+    /// ART ReadInt524710 retains this field independently; constructor0.
+    pub secondary_fire_frame: i32,
+    /// InfantryType+E4C signed secondary prone frame, art.ini `SecondaryProne=`.
+    /// ART ReadInt52472D retains this field independently; constructor0.
+    pub secondary_prone_frame: i32,
     /// Whether VeteranAbilities includes FEARLESS for this type.
     pub veteran_fearless: bool,
     /// Whether EliteAbilities includes FEARLESS for this type.
@@ -1983,7 +1994,7 @@ impl ObjectType {
             target_strength_coefficient: present_double("TargetStrengthCoefficient"),
             target_distance_coefficient: present_double("TargetDistanceCoefficient"),
             armor: section.read_string("Armor", "none", 0x80),
-            speed: section.read_int("Speed", 0),
+            speed: section.read_techno_speed("Speed", 0),
             // TechnoTypeClass ctor/read contract: raw signed ints, with no
             // clamp or conversion. A zero WalkRate is invalid content natively
             // (the live consumer executes IDIV without a zero guard).
@@ -2105,6 +2116,8 @@ impl ObjectType {
             crush_sound: section.read_name("CrushSound", 0x80).map(str::to_owned),
             deploy_sound: section.read_name("DeploySound", 0x80).map(str::to_owned),
             undeploy_sound: section.read_name("UndeploySound", 0x80).map(str::to_owned),
+            enter_water_sound: None,
+            leave_water_sound: None,
             packup_sound: section.read_name("PackupSound", 0x80).map(str::to_owned),
             leave_transport_sound: section
                 .read_name("LeaveTransportSound", 0x80)

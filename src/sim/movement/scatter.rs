@@ -22,6 +22,7 @@ use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::rules::ruleset::RuleSet;
+use crate::sim::components::NavTargetRef;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
@@ -291,7 +292,7 @@ impl Simulation {
     /// nearby passable cell and `SetDestination(cell, 1)` (`0x00744063..
     /// 0x00744070`), whose answer native does not read. This arm draws no
     /// RNG, queues no mission and runs no Process. The setter
-    /// ([`Simulation::set_unit_cell_destination`]) reaches the Move_To of
+    /// ([`Simulation::set_unit_destination`]) reaches the Move_To of
     /// every retail Unit locomotor.
     fn unit_scatter_null(&mut self, id: u64, flags: ScatterFlags, rules: &RuleSet) {
         let Some(unit) = self.substrate.entities.get(id) else {
@@ -301,7 +302,7 @@ impl Simulation {
             return;
         }
         if let Some(cell) = self.scatter_nearby_cell(id, rules) {
-            self.set_unit_cell_destination(id, cell, rules);
+            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules);
         }
     }
 

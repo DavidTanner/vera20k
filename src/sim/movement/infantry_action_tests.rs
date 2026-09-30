@@ -53,6 +53,8 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
     let hover_start = input["hover_start"].as_i64().unwrap_or(292);
     let rules = rocketeer_rules(&format!("{hover_start},6,6"));
     let mut sim = Simulation::with_seed(0);
+    // Original Actions/States supplies A8ED84=1000.
+    sim.session.binary_frame = 1000;
     let house = sim.interner.intern("Americans");
     sim.houses.insert(
         house,
@@ -83,14 +85,9 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
     entity
         .foot_speed
         .set_speed_fraction_native_bits(input["fraction"].as_f64().unwrap_or(0.0).to_bits());
-    if input["firing"].as_bool().unwrap_or(false) {
-        let mut attack = crate::sim::combat::AttackTarget::for_cell(12, 10);
-        attack.pending_infantry_fire = Some(crate::sim::combat::PendingInfantryFire {
-            sequence: crate::sim::animation::SequenceKind::FireFly,
-            fire_frame: 2,
-        });
-        entity.attack_target = Some(attack);
-    }
+    entity
+        .mission_leaf
+        .set_foot_firing_sequence(u8::from(input["firing"].as_bool().unwrap_or(false)));
     if entity.locomotor.is_none() {
         entity.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::from_object_type(
@@ -99,15 +96,14 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
             ),
         );
     }
-    // A sequencer row's action plays at the row's stage (`+0xF8`).
-    if let (Some(stage), Some(kind)) = (
-        input["stage"].as_u64(),
-        action_kind(input["doing"].as_i64().unwrap_or(-1) as i32),
-    ) {
-        let mut animation = crate::sim::animation::Animation::new(kind);
-        animation.frame_index = stage as u16;
-        entity.animation = Some(animation);
-    }
+    // The supplied signed +0xF8 and native clock belong to the Stage owner.
+    entity.install_native_stage_fixture(crate::sim::stage::StageClass::from_native_fixture(
+        input["stage"].as_i64().unwrap_or(0) as i32,
+        0,
+        crate::sim::timer::CdTimer::from_raw(17, 91),
+        92,
+        1,
+    ));
     let locomotor = entity.locomotor.as_mut().expect("Jumpjet locomotor");
     locomotor.altitude = SimFixed::from_num(height);
     let runtime = locomotor.jumpjet_runtime_mut().expect("Jumpjet runtime");
@@ -116,51 +112,30 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
     (sim, rules, id)
 }
 
-/// A native row's written stage and timer: an accepted action restarts the
-/// sequence of the Doing it wrote, at the rate its stage timer runs; a row
-/// that leaves the timer as it was leaves the animation as it was.
-fn assert_stage(
-    sim: &Simulation,
-    rules: &RuleSet,
-    id: u64,
-    before: &crate::sim::animation::Animation,
-    output: &Value,
-    name: &str,
-) {
+/// Compare the retained native dwords, including a refused action's clock.
+fn assert_stage(sim: &Simulation, id: u64, output: &Value, name: &str) {
     let entity = sim.substrate.entities.get(id).unwrap();
-    let doing = entity.mission_leaf.as_infantry().unwrap().doing();
-    let timer: Vec<i64> = output["timer"]
+    let stage = entity.native_stage();
+    let expected: Vec<i32> = output["timer"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|value| value.as_i64().unwrap())
+        .map(|value| value.as_i64().unwrap() as i32)
         .collect();
-    if timer == [17, 91, 92] {
-        let after = entity.animation.as_ref().expect("animation");
-        assert_eq!(
-            (after.sequence, after.frame_index, after.elapsed_frames),
-            (before.sequence, before.frame_index, before.elapsed_frames),
-            "{name}: untouched stage"
-        );
-        return;
-    }
-    let kind = action_kind(doing).unwrap_or_else(|| panic!("{name}: Doing {doing} has a sequence"));
-    let animation = entity.animation.as_ref().expect("animation");
-    assert_eq!(animation.sequence, kind, "{name}: restarted sequence");
-    assert_eq!(animation.frame_index, 0, "{name}: stage 0");
-    assert_eq!(animation.elapsed_frames, 0, "{name}: stage timer restarted");
-    let def = rules
-        .animation_sequence(sim.interner.resolve(entity.type_ref()))
-        .and_then(|set| set.get(&kind))
-        .expect("sequence definition");
-    let rate = if def.normalized {
-        sim.session
-            .game_options
-            .normalized_anim_delay(def.frame_delay)
-    } else {
-        def.frame_delay
-    };
-    assert_eq!(i64::from(rate), timer[2], "{name}: stage rate");
+    assert_eq!(
+        stage.value(),
+        output["stage"].as_i64().unwrap() as i32,
+        "{name}: stage"
+    );
+    assert_eq!(
+        [
+            stage.timer().start_frame(),
+            stage.timer().duration(),
+            stage.rate()
+        ],
+        expected.as_slice(),
+        "{name}: retained stage timer and rate"
+    );
 }
 
 fn doing(sim: &Simulation, id: u64) -> i32 {
@@ -180,7 +155,7 @@ fn doing(sim: &Simulation, id: u64) -> i32 {
 /// arms included (AirDeathFinish's end UnInits it). Not compared here: the
 /// locomotor stop of the Health-0 Stop_Driver re-entry, which needs a map
 /// (`world::jumpjet_infantry_tests` compares it through the crash); and the
-/// firing arm's FireUp for a walker, whose Doing VERA does not write.
+/// firing arm's walker FireUp path, covered by the ground firing corpus.
 #[test]
 fn jumpjet_infantry_actions_match_the_native_bodies() {
     let corpus: Value = serde_json::from_str(include_str!(
@@ -196,12 +171,6 @@ fn jumpjet_infantry_actions_match_the_native_bodies() {
         let kind = input["kind"].as_str().unwrap();
         let native_doing = output["doing"].as_i64().unwrap() as i32;
         let (mut sim, rules, id) = rocketeer(input);
-        let before = sim
-            .substrate
-            .entities
-            .get(id)
-            .and_then(|entity| entity.animation.clone())
-            .expect("animation");
         match kind {
             "do_action" => {
                 let request = input["request"].as_i64().unwrap() as i32;
@@ -254,7 +223,7 @@ fn jumpjet_infantry_actions_match_the_native_bodies() {
             }
         }
         assert_eq!(doing(&sim, id), native_doing, "{name}");
-        assert_stage(&sim, &rules, id, &before, output, &name);
+        assert_stage(&sim, id, output, &name);
         compared += 1;
     }
     assert_eq!((compared, truncated), (497, 30));

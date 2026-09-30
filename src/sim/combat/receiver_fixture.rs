@@ -4,6 +4,54 @@
 use super::*;
 use crate::sim::world::Simulation;
 
+thread_local! {
+    static FIRE_VISIT_TRACE: std::cell::RefCell<Option<Vec<serde_json::Value>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Observe the real FireAt transaction at its caller's boundaries. The trace
+/// supplies no return values, callbacks or world state, and is never saved.
+pub(crate) fn trace_fire_visits<T>(run: impl FnOnce() -> T) -> (T, Vec<serde_json::Value>) {
+    FIRE_VISIT_TRACE.with_borrow_mut(|trace| {
+        assert!(trace.is_none(), "nested FireAt traces");
+        *trace = Some(Vec::new());
+    });
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            FIRE_VISIT_TRACE.with_borrow_mut(|trace| *trace = None);
+        }
+    }
+    let reset = Reset;
+    let result = run();
+    let trace = FIRE_VISIT_TRACE.with_borrow_mut(|trace| trace.take().unwrap());
+    drop(reset);
+    (result, trace)
+}
+
+/// Snapshot only when a comparison installed the observer. Ordinary tests and
+/// the production build pay no actor-serialization or RNG-copy cost.
+pub(crate) fn observe_fire_visit(world: &Simulation, id: u64, phase: &str) {
+    FIRE_VISIT_TRACE.with_borrow_mut(|trace| {
+        if let Some(observations) = trace {
+            observations.push(serde_json::json!({
+                "phase": phase,
+                "id": id,
+                "actor": world.substrate.entities.get(id),
+                "rng_streams": {
+                    "main": world.main_rng.native_state_hex(),
+                    "scenario": world.scenario_rng.native_state_hex(),
+                    "mapgen": world.mapgen_rng.native_state_hex(),
+                },
+                "rng_states": {
+                    "main": world.main_rng,
+                    "scenario": world.scenario_rng,
+                    "mapgen": world.mapgen_rng,
+                },
+            }));
+        }
+    });
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct BaseDefenseResponseTraceEntry {
     pub(crate) site: BaseDefenseResponseCallSite,
@@ -629,12 +677,15 @@ pub(crate) fn resolve_attacker_fire(
             }
             world.session.binary_frame = binary_frame;
             world.receiver_fixture.as_mut().unwrap().current_tick = u64::from(binary_frame);
+            if let Some(fog) = fog {
+                world.fog = fog.clone();
+            }
             world_receiver::resolve_attacker_fire(
                 world,
                 rules,
                 overlay_registry,
                 snap,
-                fog,
+                fog.is_some(),
                 binary_frame,
                 _tick_ms,
                 has_active_wave,
@@ -745,6 +796,41 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
             }
             let fire_requests = std::mem::take(&mut world.fire_requests);
             let first_tail_id = world.substrate.next_stable_object_id;
+            // Pure fire fixtures supply the actor clock themselves. Invoke
+            // the ordinary Infantry Fire_At_Target host, rather than restore
+            // the removed global queued-shot implementation for tests.
+            let order = if live_order.is_empty() {
+                world.substrate.entities.keys_sorted()
+            } else {
+                live_order.to_vec()
+            };
+            let mut infantry_results = Vec::new();
+            for id in order {
+                if fire_suppressed.contains(&id)
+                    || !world.substrate.entities.get(id).is_some_and(|entity| {
+                        entity.category == EntityCategory::Infantry
+                            && entity.is_ai_alive()
+                            && !entity.lifecycle.in_limbo
+                    })
+                {
+                    continue;
+                }
+                if let Some(entity) = world.substrate.entities.get_mut(id)
+                    && entity.mission_leaf.as_infantry().is_none()
+                {
+                    entity.mission_leaf =
+                        crate::sim::mission::MissionLeafState::for_entity_category(
+                            EntityCategory::Infantry,
+                        );
+                }
+                infantry_results.push(world_receiver::visit_fire(
+                    world,
+                    run,
+                    world_receiver::FireVisit::InfantryTarget(id),
+                    rules,
+                    overlay_registry,
+                ));
+            }
             let mut result = world_receiver::tick_combat(
                 world,
                 run,
@@ -757,6 +843,14 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                 projectile_detonations,
                 wave_damage_events,
             );
+            for earlier in infantry_results.into_iter().rev() {
+                result
+                    .consequences
+                    .prepend_actor_fire_for_test(earlier.consequences);
+                let mut projectiles = earlier.projectile_spawns;
+                projectiles.append(&mut result.projectile_spawns);
+                result.projectile_spawns = projectiles;
+            }
             // The same frame's tail: the shots' bullets take their first AI
             // (an Inviso one detonates). Bullets still in flight are handed
             // back as their admission records.

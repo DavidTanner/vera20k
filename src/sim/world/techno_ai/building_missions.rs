@@ -315,8 +315,8 @@ fn queue_and_commence(sim: &mut Simulation, id: u64, mission: MissionType, rules
 /// `ftol(rate x 900) + RandomRanged(0, 2)` on the Scenario stream, the rate
 /// being the MissionControl entry of the building's current mission
 /// (`0x005B3A00`).
-fn rate_delay(sim: &mut Simulation, frames: u32, multiplier: i32) -> i32 {
-    let base = frames.min(i32::MAX as u32) as i32;
+fn rate_delay(sim: &mut Simulation, frames: i32, multiplier: i32) -> i32 {
+    let base = frames;
     let jitter = sim.scenario_rng.next_range_u32_inclusive(0, 2) as i32;
     base.wrapping_mul(multiplier).wrapping_add(jitter)
 }

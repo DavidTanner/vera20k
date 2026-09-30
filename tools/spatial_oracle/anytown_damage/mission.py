@@ -241,8 +241,13 @@ def metadata():
  ])
 
 if __name__=='__main__':
- parser=argparse.ArgumentParser(add_help=False);parser.add_argument('--continuation',type=Path);args,remaining=parser.parse_known_args()
+ parser=argparse.ArgumentParser(add_help=False);parser.add_argument('--continuation',type=Path);parser.add_argument('--foot-missions',action='store_true');args,remaining=parser.parse_known_args()
  supplied=json.loads(args.continuation.read_text()) if args.continuation else None
+ if args.foot_missions:
+  assert args.continuation is None,'--foot-missions has explicit per-row state inputs'
+  from .foot_missions import publish
+  publish(remaining)
+  raise SystemExit(0)
  if args.continuation:assert '--output' in remaining,'A continuation requires an explicit output; preserve the seed0 reference'
  if supplied is not None:
   finish_unpublished_vectors(lambda:generate(supplied),HERE/'mission.continuation.json',provenance=metadata,argv=remaining)

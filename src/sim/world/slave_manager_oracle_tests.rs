@@ -253,9 +253,14 @@ pub(super) fn row_scene_edited(input: &Value, edit: impl FnOnce(&mut String)) ->
     // (`GameEntity::constructing_or_selling`, `slave_manager_step`).
     let owner_mission = input["owner_mission"].as_str().unwrap_or("guard");
     if owner_mission == "construction" || input["bstate"].as_i64() == Some(0) {
-        sim.substrate.entities.get_mut(master).unwrap().building_up = Some(
-            crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
-        );
+        sim.substrate
+            .entities
+            .get_mut(master)
+            .unwrap()
+            .install_building_up(
+                crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
+                0,
+            );
     }
     let owner_mission = match owner_mission {
         "construction" => MissionType::Guard,

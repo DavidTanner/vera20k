@@ -81,7 +81,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         target_cell[0].as_u64().unwrap() as u16,
         target_cell[1].as_u64().unwrap() as u16,
     );
-    assert!(super::issue_attack_cell_command(
+    assert!(super::install_cell_attack_target_for_test(
         &mut world.substrate.entities,
         firer_id,
         target_cell[0].as_u64().unwrap() as u16,
@@ -124,7 +124,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
             row["launch"]["burst_before"].as_i64().unwrap() as i32
         );
         assert!(firer.rearm_timer.expired(frame as i32));
-        let snapshot = build_attacker_snapshot(firer, target, None, None);
+        let snapshot = build_attacker_snapshot(firer, target, None);
         assert_eq!(
             world.scenario_rng.native_state_hex(),
             row["rng_before"].as_str().unwrap(),

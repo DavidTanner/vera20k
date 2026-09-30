@@ -1,6 +1,6 @@
 //! Replay of `tools/spatial_oracle/cmin_dock.json`: every original row of
 //! the Chrono Miner's refinery return runs against the Rust owners — the Unit
-//! setter's Teleporter arm and Foot tail (`Simulation::set_unit_cell_destination`
+//! setter's Teleporter arm and Foot tail (`Simulation::set_unit_destination`
 //! / `set_unit_null_destination`), Teleport Move_To (`teleport_move_to`), the
 //! warp in the object turn, Mission_Harvest states 0, 2 and 3, Mission_Enter,
 //! Mission_Unload's turn and the Per_Cell DOCK_NOW arm — on the War Miner
@@ -374,8 +374,14 @@ fn unit_setter_teleporter_arm_matches_the_original_assign_destination() {
         let before = active(&s);
         match input.get("dest").filter(|d| !d.is_null()) {
             Some(dest) => {
-                s.sim
-                    .set_unit_cell_destination(s.miner, cell(dest), &s.rules);
+                s.sim.set_unit_destination(
+                    s.miner,
+                    {
+                        let (rx, ry) = cell(dest);
+                        crate::sim::components::NavTargetRef::cell(rx, ry)
+                    },
+                    &s.rules,
+                );
             }
             None => {
                 s.sim.set_unit_null_destination(s.miner, Some(&s.rules));

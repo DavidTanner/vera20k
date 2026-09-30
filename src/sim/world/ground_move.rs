@@ -143,13 +143,13 @@ impl Simulation {
         };
         Some(match category {
             EntityCategory::Infantry => self
-                .set_infantry_cell_destination(id, cell, rules, None)
+                .set_infantry_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, None)
                 .unwrap_or_else(|error| {
                     log::debug!("Teleport infantry order {id} refused: {error}");
                     false
                 }),
             EntityCategory::Unit if self.unit_setter_receiver(id, Some(rules)) => {
-                self.set_unit_cell_destination(id, cell, rules)
+                self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules)
             }
             EntityCategory::Unit => {
                 let harvester = self

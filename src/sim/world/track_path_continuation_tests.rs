@@ -1108,12 +1108,12 @@ fn owner_change_mid_track_stops_the_tank_at_its_track_end() {
 }
 
 /// Retaliation archives the order and a pursuit order moves +34 to its cell;
-/// the target's expiry then restores the archived NavCom, which Rust defers
-/// (`pending_arrival_clear`) while the track runs. Natively
-/// `Assign_Destination(saved, 1)` (Restore_Mission 0x4D8F99) moved +34
-/// already, so the Process that ends the track completes the order toward the
-/// restored NavCom and requests its route; the stale pursuit cell is not
-/// driven to.
+/// target expiry restores the archived NavCom and synchronously calls its
+/// class destination setter (Restore_Mission4D8F99). Drive4AFD99 publishes
+/// that destination before returning, while retaining the paid head. The
+/// Process that ends the track then requests the restored route; it never
+/// continues toward the stale pursuit cell. Native track_destination rows
+/// independently pin the setter's immediate destination/head transaction.
 #[test]
 fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     let (mut sim, rules, registry, id) = unit(&json!({"family": "drive"}));
@@ -1132,8 +1132,17 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(20, 10)));
     assert!(e.navigation.pending_arrival_clear);
-    let stale = e.drive_locomotion.as_ref().unwrap().destination.unwrap();
-    assert_eq!((stale.x / 256, stale.y / 256), (10, 16));
+    let drive = e.drive_locomotion.as_ref().unwrap();
+    let restored = drive.destination.unwrap();
+    assert_eq!((restored.x / 256, restored.y / 256), (20, 10));
+    assert_eq!(
+        crate::sim::movement::track_head::committed_track_head(e),
+        Some(head)
+    );
+    assert_eq!(
+        e.movement_target.as_ref().unwrap().final_goal,
+        Some((20, 10))
+    );
     let ended = visit_until_head_changes(&mut sim, &rules, &registry, id, head, frame);
     let e = sim.substrate.entities.get(id).unwrap();
     let destination = e.drive_locomotion.as_ref().unwrap().destination.unwrap();

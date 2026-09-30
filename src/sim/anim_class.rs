@@ -203,6 +203,8 @@ pub struct AnimDrawDetailInput {
 }
 
 /// `AnimClass__DrawIt` @ 0x00422fd8: visibility gates precede flag selection.
+/// The original422CA0..4238AF body never reads Anim+19B or Object+90;
+/// Display membership or a retained Building slot supplies the draw receiver.
 pub fn anim_draw_detail_visible(input: AnimDrawDetailInput) -> bool {
     !(input.frame_rate_below_minimum && input.type_detail_level > 1)
         && !input.hidden
@@ -291,6 +293,9 @@ pub struct AnimRuntime {
     pub loop_remaining: u8,
     pub first_ai_guard: bool,
     pub constructor_reverse: bool,
+    /// Native Anim+19B: request expiry on a later AI visit (owner expiry425196).
+    /// UnInit4255B0 preserves this byte. Pending deletion and retained Logic/
+    /// Display membership own retirement independently.
     pub inactive: bool,
     /// Anim+19E, pause/resume425260/425270. The absolute frame timer keeps running.
     #[serde(default)]
@@ -1355,9 +1360,14 @@ impl Simulation {
             self.detach_anim_from_owner(id, rules.expect("attached Anim Destroy requires Rules"));
         }
         if let Some(anim) = self.anim_mut_by_id(id) {
-            anim.runtime.inactive = true;
             anim.start_sound_active = false;
         }
+        // Original4255B0..425628 never writes19B; ObjectUnInit5F6625 clears
+        // ObjectAlive after expiry/Limbo, then queues this physical object.
+        // Executed MGUN/PIFF retirement receipts retain inactive0 while
+        // removing Logic/Display and adding deferred deletion:
+        // tools/spatial_oracle/anytown_damage/foot_missions.json,
+        // ground_emission_receipt.
         // UnInit4255D5 calls Release406060, leaving a one-shot Report
         // playing; StopAndClear405D40 would cut it off. Original execution:
         // tools/rules_oracle/bridge_child_sound.{py,json,md}.
@@ -1565,9 +1575,9 @@ impl Simulation {
     /// Normal SetOwner(NULL) would instead convert and potentially resubmit.
     /// Native comparisons: tools/spatial_oracle/display_anim_owner.json.
     ///
-    /// Residual: `runtime.inactive` also represents deferred deletion. Native AI
-    /// checks +19B at42435F after looping-sound, bounce and visibility work;
-    /// `visit_anim` currently checks it earlier, after ore visibility/occupation.
+    /// Residual: native AI checks +19B at42435F after looping-sound, bounce and
+    /// visibility work; `visit_anim` currently checks it earlier, after ore
+    /// visibility/occupation.
     /// Owner expiry during combat therefore still needs that prefix audit when
     /// its missing effects land. Occupied-cell424358 and animated-tiberium424427
     /// writers of +19B remain unported. No claim of complete Anim AI parity.
@@ -4184,7 +4194,8 @@ mod tests {
         sim.session.binary_frame = 4;
         sim.visit_anim(id, &rules, None); // SECOND frame 2 -> destroy
         sim.destroy_anim(id, &rules);
-        assert!(sim.anim(id).unwrap().runtime.inactive);
+        assert!(!sim.anim(id).unwrap().runtime.inactive);
+        assert!(sim.substrate.pending_delete.contains(&id));
         assert!(!sim.live_object_order_snapshot().contains(&id));
         assert_eq!(
             sim.sound_events
@@ -4217,6 +4228,15 @@ mod tests {
             SimSoundEvent::ObjectSoundReleased { owner },
             SimSoundEvent::AnimationStopped { anim_id, stop_sound_id: Some(sound), world: at },
         ] if *owner == id && *anim_id == id && *sound == stop && *at == world));
+        // UnInit4255B0/UnInit5F65F0 retire the receiver without changing19B.
+        // The retained physical identity cannot be revealed before the drain.
+        assert!(!sim.anim(id).unwrap().runtime.inactive);
+        assert_eq!(sim.substrate.pending_delete, vec![id]);
+        assert!(!sim.anim(id).unwrap().in_logic_vector);
+        assert_eq!(sim.display_layers().layer_of(id), None);
+        assert!(!sim.reveal_anim(id, Some(&rules)));
+        sim.process_pending_delete();
+        assert!(sim.anim(id).is_none());
     }
 
     #[test]
@@ -4309,7 +4329,9 @@ mod tests {
             .unwrap()
             .damage_fire_anim_ids[0] = Some(anim_id);
         sim.rebuild_building_anim_slot_indices();
-        sim.anim_mut_by_id(anim_id).unwrap().runtime.inactive = true;
+        // Supply the common post-UnInit retirement state through its existing
+        // membership owner;19B remains the independent native expiry byte.
+        sim.conceal_anim(anim_id);
         sim.substrate.pending_delete.push(anim_id);
 
         sim.process_pending_delete();

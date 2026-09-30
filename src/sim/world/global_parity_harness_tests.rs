@@ -162,7 +162,11 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
     // 2026-09-25 ore-field chain: the fixture's playfield and the harvester's
     // native ore field (see GLOBAL_HARNESS_FINAL_HASH).
     // 2026-09-25 ore-field review: the fixture's map cells (same place).
-    0xCA99_BA6D_18DC_11B1,
+    // 2026-09-30 native mission-site idle/initial Ready plus explicit GI ART:
+    // frame0 omits four old global idle-tail draws; first bound ART idle at
+    // frame14 precedes Guard cadence. Saved production-call receipts are in
+    // foot_bridge_layer.replay.json. Full Main/MapGen are unchanged.
+    0xF0AB_E9EE_DB8C_2871,
     0x39F3_258B_A550_EB7C,
     0x1CE8_1848_7043_6163,
 );
@@ -375,6 +379,10 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // exact value, as this change does, with the RNG pins above unchanged
 // (the probe patch was not committed): the only change to this pin is
 // the fold. Old value: the commit that moved it.
+// 2026-09-30: native class target/destination and Foot mission/idle owners,
+// retained House radius/Foot688/Infantry68D state, and explicit GI ART inputs.
+// The first Scenario change is localized by foot_bridge_layer.replay.json;
+// this remains a Rust regression pin, not a native whole-skirmish golden.
 // 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
 // active locomotor and its piggyback stash hash through one fold of every
 // LocomotorState field. The active fold gains BalloonHover, HoverAttack,
@@ -391,14 +399,22 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // parent and this change, each with those five inputs removed from the
 // hash, printed the same value, with the RNG pins above unchanged (the
 // probe patch was not committed). Old value: the commit that moved it.
-// 2026-09-30 a revealed building's Location Z (composition only; #692):
-// Reveal gives each building the exact Z BuildingType +0x6C (0x00464A70)
-// takes, the floor at its XY, and the object fold hashes an exact Z when one
-// is present. Ceremony: this change with only the Structure exact Z left out
-// of the fold printed the old value 0xC688_AB2A_C675_D7D8, with the RNG
-// pins above unchanged (the probe patch was not committed): the only change
-// to this pin is the fold.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x9486_A86E_F1F3_67DE;
+// Snapshot264: private native Stage and Infantry Doing/sequence timing.
+// Complete before/candidate/final receipts in foot_bridge_layer.replay.json
+// (techno_stage264_followup) attribute every changed actor field and retain
+// all819 frame rows, all three RNG states and ordered raw draw callers.
+// Incoming main preserves candidate state; its source-line changes remain
+// recorded. This Rust replay pin does not establish native whole-world parity.
+// Incoming main's BuildingType +0x6C (0x00464A70) floor coordinate is now
+// retained by Reveal, including zero. Complete before/final/control receipts
+// in foot_bridge_layer.main986.replay.json attribute all819 observed frames:
+// only GAWEAP/GAREFN exact Z changes None -> Some(0); every other actor field,
+// all three RNG states and ordered draw values match. Raw caller line changes
+// are retained. Omitting only Structure exact Z from the hash recovers every
+// prior frame hash and CE21_A562_A129_5C86; gameplay XYZ remains untouched.
+// The uncommitted control is preserved with source/binary identities. This
+// composition change establishes a Rust regression pin, not native world parity.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB80A_AAB9_5187_A8F9;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -441,7 +457,7 @@ fn harness_ini() -> IniFile {
          [Riparius]\nImage=1\nValue=25\n\n\
          [TIB01]\nTiberium=yes\n\n\
          [Tiberium]\nFoot=100%\nTrack=100%\nWheel=100%\n\n\
-         [E1]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
+         [E1]\nImage=GI\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=M60\n\n\
          [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
          [HARV]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=600\nArmor=heavy\nSpeed=5\nHarvester=yes\nStorage=28\nDock=GAREFN\n\n\
          [GAWEAP]\nStrength=1000\nArmor=wood\nFoundation=4x3\n\n\
@@ -455,7 +471,15 @@ fn harness_ini() -> IniFile {
 
 fn harness_rules() -> RuleSet {
     let ini = harness_ini();
-    RuleSet::from_ini(&ini).expect("harness rules should parse")
+    // Explicit authored GI inputs use the production fixed-ART reader and binder;
+    // zero-count constructor records do not admit native Ready/idle actions.
+    let art = IniFile::from_str(crate::rules::retail_ini_fixture::GI_ART_EXCERPT);
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+    );
+    rules
 }
 
 fn harness_overlays() -> OverlayTypeRegistry {

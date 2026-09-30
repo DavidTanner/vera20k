@@ -234,6 +234,26 @@ pub(crate) fn object_get_coords(
     }
 }
 
+/// Dispatch a retained Target's virtual+48 without changing its identity.
+/// Object5F65A0/Building447AC0 and Cell486840 remain the coordinate owners;
+/// navigation+4C and Cell+58 (deck target coordinates) are different queries.
+/// Rescue4DE04E/4DE073 and AreaGuard4D6F00 pass this XYZ to their scanner.
+pub(crate) fn target_get_coords(
+    target: crate::sim::combat::TargetKind,
+    entities: &crate::sim::entity_store::EntityStore,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> Option<DriveCoord> {
+    match target {
+        crate::sim::combat::TargetKind::Cell(rx, ry) => {
+            Some(super::navcom::target_cell_coord(rx, ry, terrain))
+        }
+        crate::sim::combat::TargetKind::Entity(id) => {
+            let entity = entities.get(id)?;
+            Some(object_get_coords(entity, terrain))
+        }
+    }
+}
+
 /// The level and slope `CellClass::GetGroundHeight @ 0x00578080` reads at
 /// full world XY. With resolved terrain that is Map[coord] (`0x00565730`),
 /// which forms the wrapping fixed-stride index before narrowing fallback

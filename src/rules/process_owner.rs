@@ -163,12 +163,12 @@ impl NativeRulesProcessOwner {
         &self.sources.fixed_sounds
     }
 
-    pub(crate) fn bind_sinking_sounds(
+    pub(crate) fn bind_type_sound_references(
         &self,
         rules: &mut RuleSet,
         processed: &ProcessedRulesLayers,
     ) {
-        rules.bind_sinking_sounds(processed.ini(), &self.sources.fixed_sounds);
+        rules.bind_type_sound_references(processed.ini(), &self.sources.fixed_sounds);
     }
 
     /// Immutable startup-selected root for consumers with a root-only native read.
@@ -243,7 +243,7 @@ impl NativeRulesProcessOwner {
                 return Err(error);
             }
         };
-        self.bind_sinking_sounds(&mut rules, &processed);
+        self.bind_type_sound_references(&mut rules, &processed);
         debug_assert_eq!(rules.source_ini_hash(), processed.content_hash());
         let (processed_ini, post_reset_trace) =
             processed.into_ini_and_native_type_construction_trace();

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import math
 from pathlib import Path
 import sys
 from typing import Any, Mapping
@@ -22,12 +23,22 @@ from tools.tactical_certification.core import (
 from tools.tactical_certification.profile import load_contract, reject_denied_environment
 
 ROOT = Path(__file__).resolve().parents[1]
-RUN_SCHEMA = 'vera20k.map-observation-run.v3'
+RUN_SCHEMA = 'vera20k.map-observation-run.v4'
+PRIOR_RUN_SCHEMA = 'vera20k.map-observation-run.v3'
 LEGACY_CLOCK_RUN_SCHEMA = 'vera20k.map-observation-run.v2'
 LEGACY_RUN_SCHEMA = 'vera20k.map-observation-run.v1'
-CHILD_SCHEMA = 'vera20k.map-observation.v3'
+CHILD_SCHEMA = 'vera20k.map-observation.v4'
+PRIOR_CHILD_SCHEMA = 'vera20k.map-observation.v3'
 LEGACY_CHILD_SCHEMA = 'vera20k.map-observation.v2'
 CLOCK_POLICY = 'map-exact-step-presentation-v1'
+OBSERVATION_POLICY = 'map-ordinary-command-observation-v1'
+PROFILE_V1 = 'vera20k.map-observation-profile.v1'
+PROFILE_V2 = 'vera20k.map-observation-profile.v2'
+MAX_OBSERVATION_SAMPLES = 100_000
+MAX_RECEIPT_BYTES = 128 * 1024 * 1024
+ORDER_VARIANTS = frozenset(('Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
+                            'DeployMcv', 'ForceAttackCell'))
+EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'camera_cell', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
 
@@ -166,18 +177,270 @@ def _presentation_clock(value: Any, ticks: int) -> dict[str, Any]:
     return dict(clock)
 
 
+def _bounded_int(value: Any, label: str, minimum: int, maximum: int) -> int:
+    number = require_int(value, label)
+    if not minimum <= number <= maximum:
+        raise ValidationError(f'{label} must be in {minimum}..{maximum}')
+    return number
+
+
+def _coordinate(value: Any, label: str, *, leptons: bool = False) -> list[int]:
+    coordinate = require_array(value, label)
+    size = 3 if leptons else 2
+    if len(coordinate) != size:
+        raise ValidationError(f'{label} must contain exactly {size} coordinates')
+    limits = (-(1 << 31), (1 << 31) - 1) if leptons else (0, (1 << 16) - 1)
+    return [_bounded_int(item, f'{label}[{index}]', *limits)
+            for index, item in enumerate(coordinate)]
+
+
+def _profile_extensions(profile: Mapping[str, Any]) -> None:
+    """Check diagnostic syntax/budgets; Rust still owns Command/launch admission."""
+    schema = profile.get('schema_version')
+    if schema not in (PROFILE_V1, PROFILE_V2):
+        raise ValidationError(f'unsupported profile.schema_version: {schema!r}')
+    required = {'schema_version', 'launch', 'seed', 'input_delay_ticks', 'ticks',
+                'width', 'height', 'timeout_seconds'}
+    allowed = required | (EXTENSION_FIELDS if schema == PROFILE_V2 else frozenset())
+    if not required <= profile.keys() or profile.keys() - allowed:
+        raise ValidationError('profile fields differ from its declared schema_version')
+    ticks = _bounded_int(profile.get('ticks'), 'profile.ticks', 0, 100_000)
+    commands = require_array(profile.get('commands', []), 'profile.commands')
+    if len(commands) > 1024:
+        raise ValidationError('profile.commands exceeds 1024 rows')
+    previous = 0
+    for index, value in enumerate(commands):
+        label = f'profile.commands[{index}]'
+        command = require_object(value, label)
+        require_exact_keys(command, ('issue_after_step', 'owner', 'payload'), label)
+        step = _bounded_int(command.get('issue_after_step'), f'{label}.issue_after_step', 0, 100_000)
+        if step < previous or step >= ticks:
+            raise ValidationError(f'{label}.issue_after_step must be ordered before the final step')
+        previous = step
+        if not require_string(command.get('owner'), f'{label}.owner'):
+            raise ValidationError(f'{label}.owner is empty')
+        # Preserve the existing serde Command payload opaquely. Rust validates
+        # exact argument fields/types; this wrapper does not translate orders.
+        payload = require_object(command.get('payload'), f'{label}.payload')
+        if len(payload) != 1 or next(iter(payload)) not in ORDER_VARIANTS:
+            raise ValidationError(f'{label}.payload is outside ordinary order coverage')
+    owners = require_array(profile.get('observe_owners', []), 'profile.observe_owners')
+    if len(owners) > 30:
+        raise ValidationError('profile.observe_owners exceeds 30 Houses')
+    selected = set()
+    for index, value in enumerate(owners):
+        owner = require_string(value, f'profile.observe_owners[{index}]')
+        if not owner or owner in selected:
+            raise ValidationError('profile.observe_owners has an empty or duplicate House')
+        selected.add(owner)
+    if 'camera_cell' in profile:
+        _coordinate(profile['camera_cell'], 'profile.camera_cell')
+    cells = require_array(profile.get('terrain_cells', []), 'profile.terrain_cells')
+    if len(cells) > 256:
+        raise ValidationError('profile.terrain_cells exceeds 256 cells')
+    seen = set()
+    for index, value in enumerate(cells):
+        cell = tuple(_coordinate(value, f'profile.terrain_cells[{index}]'))
+        if cell in seen:
+            raise ValidationError('profile.terrain_cells has duplicate coordinates')
+        seen.add(cell)
+
+
+def _target_reference(value: Any, label: str, *, navigation: bool = False) -> None:
+    if value is None:
+        return
+    target = require_object(value, label)
+    if len(target) != 1:
+        raise ValidationError(f'{label} must be one tagged target reference')
+    tag, payload = next(iter(target.items()))
+    if navigation:
+        payload = require_object(payload, label)
+        if tag == 'Cell':
+            require_exact_keys(payload, ('rx', 'ry'), label)
+            _coordinate([payload['rx'], payload['ry']], label)
+        elif tag in ('Entity', 'Object', 'Building'):
+            require_exact_keys(payload, ('id',), label)
+            _bounded_int(payload['id'], label, 1, (1 << 64) - 1)
+        else:
+            raise ValidationError(f'{label} has an unknown navigation reference tag')
+    elif tag == 'Cell':
+        _coordinate(payload, label)
+    elif tag == 'Entity':
+        _bounded_int(payload, label, 1, (1 << 64) - 1)
+    else:
+        raise ValidationError(f'{label} has an unknown target reference tag')
+
+
+def _actor(value: Any, label: str) -> tuple[int, str]:
+    actor = require_object(value, label)
+    require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
+                              'physical_leptons', 'on_bridge', 'health', 'active',
+                              'in_limbo', 'dying', 'mission', 'target', 'archive', 'nav', 'foot'), label)
+    identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
+    owner = require_string(actor['owner'], f'{label}.owner')
+    if not owner or not require_string(actor['type_id'], f'{label}.type_id'):
+        raise ValidationError(f'{label} has an empty owner/type identity')
+    category = actor['category']
+    if category not in ('Unit', 'Infantry', 'Aircraft', 'Structure'):
+        raise ValidationError(f'{label}.category is unknown')
+    _coordinate(actor['cell'], f'{label}.cell')
+    _coordinate(actor['physical_leptons'], f'{label}.physical_leptons', leptons=True)
+    _bounded_int(actor['health'], f'{label}.health', -(1 << 31), (1 << 31) - 1)
+    for key in ('on_bridge', 'active', 'in_limbo', 'dying'):
+        if type(actor[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be a boolean')
+    mission = require_object(actor['mission'], f'{label}.mission')
+    require_exact_keys(mission, ('current', 'queued', 'suspended', 'effective', 'handler_state',
+                                'start_frame', 'ai_counter', 'dispatch_timer'), f'{label}.mission')
+    for key in ('current', 'queued', 'suspended', 'effective'):
+        _bounded_int(mission[key], f'{label}.mission.{key}', -(1 << 31), (1 << 31) - 1)
+    for key in ('handler_state', 'start_frame', 'ai_counter'):
+        _bounded_int(mission[key], f'{label}.mission.{key}', 0, (1 << 32) - 1)
+    timer = require_object(mission['dispatch_timer'], f'{label}.mission.dispatch_timer')
+    require_exact_keys(timer, ('start_frame', 'delay'), f'{label}.mission.dispatch_timer')
+    for key in timer:
+        _bounded_int(timer[key], f'{label}.mission.dispatch_timer.{key}', -(1 << 31), (1 << 31) - 1)
+    for key in ('target', 'archive', 'nav'):
+        _target_reference(actor[key], f'{label}.{key}', navigation=key == 'nav')
+    foot = actor['foot']
+    if category == 'Structure':
+        require_value(foot, None, f'{label}.foot')
+    else:
+        foot = require_object(foot, f'{label}.foot')
+        require_exact_keys(foot, ('retarget_after_stop_688', 'firing_sequence_latch_68d',
+                                  'infantry_doing', 'navigation_leptons', 'navigation_unavailable'),
+                           f'{label}.foot')
+        if type(foot['retarget_after_stop_688']) is not bool:
+            raise ValidationError(f'{label}.foot.retarget_after_stop_688 must be a boolean')
+        _bounded_int(foot['firing_sequence_latch_68d'], f'{label}.foot.firing_sequence_latch_68d', 0, 255)
+        if category == 'Infantry':
+            _bounded_int(foot['infantry_doing'], f'{label}.foot.infantry_doing', -(1 << 31), (1 << 31) - 1)
+        else:
+            require_value(foot['infantry_doing'], None, f'{label}.foot.infantry_doing')
+        if foot['navigation_leptons'] is None:
+            if not require_string(foot['navigation_unavailable'], f'{label}.foot.navigation_unavailable'):
+                raise ValidationError(f'{label}.foot.navigation_unavailable is empty')
+        else:
+            _coordinate(foot['navigation_leptons'], f'{label}.foot.navigation_leptons', leptons=True)
+            require_value(foot['navigation_unavailable'], None, f'{label}.foot.navigation_unavailable')
+    return identity, owner
+
+
+def _terrain(value: Any, expected_cell: Any, label: str) -> None:
+    cell = require_object(value, label)
+    fields = ('final_tile_index', 'final_sub_tile', 'presentation_tile', 'level', 'slope',
+              'raw_bridge_flags', 'bridge_state', 'has_deck', 'deck_level', 'walkable', 'transition')
+    require_exact_keys(cell, ('cell', 'allocated', *fields), label)
+    _require_equal(cell['cell'], expected_cell, f'{label}.cell')
+    if type(cell['allocated']) is not bool:
+        raise ValidationError(f'{label}.allocated must be a boolean')
+    if not cell['allocated']:
+        for key in fields:
+            require_value(cell[key], None, f'{label}.{key}')
+        return
+    _bounded_int(cell['final_tile_index'], f'{label}.final_tile_index', -(1 << 31), (1 << 31) - 1)
+    for key in ('final_sub_tile', 'level', 'slope', 'bridge_state', 'deck_level'):
+        _bounded_int(cell[key], f'{label}.{key}', 0, 255)
+    _bounded_int(cell['raw_bridge_flags'], f'{label}.raw_bridge_flags', 0, (1 << 32) - 1)
+    tile = _coordinate(cell['presentation_tile'], f'{label}.presentation_tile')
+    _bounded_int(tile[1], f'{label}.presentation_tile[1]', 0, 255)
+    for key in ('has_deck', 'walkable', 'transition'):
+        if type(cell[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be a boolean')
+
+
+def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, Any]) -> dict[str, Any]:
+    label = 'observations'
+    observations = require_object(value, label)
+    require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames'), label)
+    require_value(observations['policy'], OBSERVATION_POLICY, f'{label}.policy')
+    owners = profile.get('observe_owners', [])
+    _require_equal(observations['owners'], owners, f'{label}.owners')
+    commands = require_array(observations['commands'], f'{label}.commands')
+    requested = profile.get('commands', [])
+    if len(commands) != len(requested):
+        raise ValidationError('observations.commands differs from requested command count')
+    for index, (value, request) in enumerate(zip(commands, requested)):
+        row_label = f'{label}.commands[{index}]'
+        row = require_object(value, row_label)
+        require_exact_keys(row, ('ordinal', 'issue_after_step', 'issued_simulation_tick',
+                                 'envelope_execute_tick', 'owner', 'payload'), row_label)
+        for key, expected in (('ordinal', index), ('issue_after_step', request['issue_after_step']),
+                              ('issued_simulation_tick', request['issue_after_step']),
+                              ('envelope_execute_tick', request['issue_after_step']), ('owner', request['owner'])):
+            require_value(row[key], expected, f'{row_label}.{key}')
+        _require_equal(row['payload'], request['payload'], f'{row_label}.payload')
+    frames = require_array(observations['frames'], f'{label}.frames')
+    ticks = profile['ticks']
+    if len(frames) != ticks + 1:
+        raise ValidationError(f'observations.frames must contain exactly {ticks + 1} rows including L0')
+    seen = set()
+    sample_count = 0
+    previous_ms = -1
+    expected_cells = profile.get('terrain_cells', [])
+    for step, value in enumerate(frames):
+        row_label = f'{label}.frames[{step}]'
+        row = require_object(value, row_label)
+        require_exact_keys(row, ('completed_steps', 'simulation_tick', 'binary_frame',
+                                 'total_simulation_ms', 'actors', 'missing_actor_ids', 'terrain'), row_label)
+        for key in ('completed_steps', 'simulation_tick', 'binary_frame'):
+            require_value(row[key], step, f'{row_label}.{key}')
+        milliseconds = _integer(row, 'total_simulation_ms')
+        if milliseconds <= previous_ms:
+            raise ValidationError(f'{row_label}.total_simulation_ms did not increase')
+        if step == 0:
+            require_value(milliseconds, 0, f'{row_label}.total_simulation_ms')
+        previous_ms = milliseconds
+        actors = require_array(row['actors'], f'{row_label}.actors')
+        present = set()
+        previous_id = 0
+        for index, value in enumerate(actors):
+            actor_label = f'{row_label}.actors[{index}]'
+            identity, owner = _actor(value, actor_label)
+            if identity <= previous_id:
+                raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
+            if identity not in seen and owner not in owners:
+                raise ValidationError(f'{actor_label}.owner is outside the requested Houses')
+            previous_id = identity
+            present.add(identity)
+        seen.update(present)
+        missing = require_array(row['missing_actor_ids'], f'{row_label}.missing_actor_ids')
+        for index, identity in enumerate(missing):
+            _bounded_int(identity, f'{row_label}.missing_actor_ids[{index}]', 1, (1 << 64) - 1)
+        if list(sorted(set(missing))) != list(missing) or present & set(missing):
+            raise ValidationError(f'{row_label}.missing_actor_ids must be sorted, unique and absent')
+        if present | set(missing) != seen:
+            raise ValidationError(f'{row_label} omitted a previously observed stable actor')
+        terrain = require_array(row['terrain'], f'{row_label}.terrain')
+        if len(terrain) != len(expected_cells):
+            raise ValidationError(f'{row_label}.terrain count differs from the requested cells')
+        for index, (value, expected) in enumerate(zip(terrain, expected_cells)):
+            _terrain(value, expected, f'{row_label}.terrain[{index}]')
+        sample_count += len(actors) + len(missing) + len(terrain)
+        if sample_count > MAX_OBSERVATION_SAMPLES:
+            raise ValidationError('observations exceeds its retained sample budget')
+    require_value(previous_ms, final['total_simulation_ms'], 'observations final total_simulation_ms')
+    return dict(observations)
+
+
 def validate_capture(directory: Path, profile: Mapping[str, Any],
                      identities: Mapping[str, Mapping[str, Any]], *,
-                     legacy_clock: bool = False) -> _Capture:
+                     legacy_clock: bool = False, prior_observations: bool = False) -> _Capture:
     """Check child semantics/bytes against independently checked input identities.
 
     Identities describe original runtime paths. Retained copies have their own real
     snapshots; offline callers check their bytes before passing these identities.
     """
+    _profile_extensions(profile)
+    if (legacy_clock or prior_observations) and profile['schema_version'] != PROFILE_V1:
+        raise ValidationError('historical child schemas require profile v1')
     require_directory(directory, 'child output')
-    manifest_snapshot, manifest = load_json_file(directory / 'capture.json', 'capture manifest')
+    manifest_snapshot, manifest = load_json_file(directory / 'capture.json', 'capture manifest',
+                                                maximum_length=MAX_RECEIPT_BYTES)
+    expected_schema = (LEGACY_CHILD_SCHEMA if legacy_clock else
+                       PRIOR_CHILD_SCHEMA if prior_observations else CHILD_SCHEMA)
     require_value(manifest.get('schema_version'),
-                  LEGACY_CHILD_SCHEMA if legacy_clock else CHILD_SCHEMA, 'schema_version')
+                  expected_schema, 'schema_version')
     if manifest.get('status') != 'COMPLETE':
         raise ValidationError(f'child did not complete: {manifest.get("failure", manifest.get("status"))}')
     if {path.name for path in directory.iterdir()} != {'capture.json', 'frame.bgra'}:
@@ -242,6 +505,24 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
                           ('focus_violations', 0), ('input_violations', 0)):
         require_value(lifecycle.get(key), expected, f'lifecycle.{key}')
     render = require_object(manifest.get('render'), 'render')
+    if legacy_clock or prior_observations:
+        if 'observations' in manifest or 'camera' in render:
+            raise ValidationError('historical child cannot declare v4 observations/camera')
+        observations = None
+    else:
+        observations = _observations(manifest.get('observations'), profile, final)
+        camera = require_object(render.get('camera'), 'render.camera')
+        require_exact_keys(camera, ('requested_cell', 'top_left', 'zoom'), 'render.camera')
+        _require_equal(camera['requested_cell'], profile.get('camera_cell'), 'render.camera.requested_cell')
+        top_left = require_array(camera['top_left'], 'render.camera.top_left')
+        if len(top_left) != 2:
+            raise ValidationError('render.camera.top_left must contain exactly two coordinates')
+        for key, value in (('top_left[0]', top_left[0]), ('top_left[1]', top_left[1]), ('zoom', camera['zoom'])):
+            if (type(value) not in (int, float) or abs(value) > 3.4028234663852886e38
+                    or not math.isfinite(value)):
+                raise ValidationError(f'render.camera.{key} must be a finite number')
+        if camera['zoom'] <= 0:
+            raise ValidationError('render.camera.zoom must be positive')
     if legacy_clock:
         if 'presentation_clock' in render or 'neutral_input' in render:
             raise ValidationError('legacy child v2 cannot declare presentation_clock or neutral_input')
@@ -277,6 +558,9 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
     if not legacy_clock:
         evidence['presentation_clock'] = clock
         evidence['neutral_input'] = dict(neutral)
+    if observations is not None:
+        evidence['observations'] = observations
+        evidence['camera'] = dict(camera)
     return _Capture(evidence, manifest_snapshot, frame_snapshot, frame['surface_format'], clock)
 
 
@@ -284,8 +568,7 @@ def capture(*, profile_path: Path, contract_path: Path, output: Path,
             working_directory: Path, executable: Path | None = None,
             build_label: str | None = None) -> dict[str, Any]:
     profile_snapshot, profile = load_json_file(profile_path, 'map observation profile')
-    require_value(profile.get('schema_version'), 'vera20k.map-observation-profile.v1',
-                  'profile.schema_version')
+    _profile_extensions(profile)
     # Only wrapper resource budgets are interpreted here. Rust owns launch admission.
     timeout = _integer(profile, 'timeout_seconds', 1)
     contract = load_contract(contract_path)
@@ -356,22 +639,24 @@ def capture(*, profile_path: Path, contract_path: Path, output: Path,
                         'cleanup_scope': 'exact-child-pid-only'},
               'logs': artifacts, 'capture': capture_evidence,
               'native_comparator': 'NONE', 'parity_certification': 'NONE'}
-    write_json_exclusive(run / 'run.json', report)
+    write_json_exclusive(run / 'run.json', report, maximum_length=MAX_RECEIPT_BYTES)
     return report
 
 
 def _load_run(directory: Path, allow_legacy_inputs: bool,
               allow_legacy_clock: bool = False) -> _CheckedRun:
     directory = require_directory(directory, 'observation run')
-    run_snapshot, report = load_json_file(directory / 'run.json', 'observation run receipt')
+    run_snapshot, report = load_json_file(directory / 'run.json', 'observation run receipt',
+                                         maximum_length=MAX_RECEIPT_BYTES)
     schema = report.get('schema_version')
     legacy = schema == LEGACY_RUN_SCHEMA
-    if schema not in (RUN_SCHEMA, LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA):
+    if schema not in (RUN_SCHEMA, PRIOR_RUN_SCHEMA, LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA):
         raise ValidationError(f'unsupported observation wrapper schema: {schema!r}')
     if legacy and not allow_legacy_inputs:
         raise ValidationError('legacy run v1 has no sealed config/contract copies; '
                               'use --allow-legacy-inputs to revalidate the original files')
-    legacy_clock = schema != RUN_SCHEMA
+    legacy_clock = schema in (LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA)
+    prior_observations = schema == PRIOR_RUN_SCHEMA
     if legacy_clock and not allow_legacy_clock:
         raise ValidationError('legacy wall-clock evidence requires --allow-legacy-clock; '
                               'it has no deterministic presentation schedule')
@@ -402,8 +687,7 @@ def _load_run(directory: Path, allow_legacy_inputs: bool,
     # contract is checked structurally, without requiring today's checkout bytes.
     contract = load_contract(inputs['contract'].path, require_repository_bytes=False)
     profile_snapshot, profile = load_json_file(inputs['profile'].path, 'retained profile')
-    require_value(profile.get('schema_version'), 'vera20k.map-observation-profile.v1',
-                  'profile.schema_version')
+    _profile_extensions(profile)
     timeout = _integer(profile, 'timeout_seconds', 1)
     if timeout > contract.document['absolute_max_child_timeout_seconds']:
         raise ValidationError('profile timeout exceeds checked contract maximum')
@@ -423,7 +707,7 @@ def _load_run(directory: Path, allow_legacy_inputs: bool,
                         '--output', str(directory / 'child-output')]
     _require_equal(report.get('command'), expected_command, 'run.command')
     checked = validate_capture(directory / 'child-output', profile, identities,
-                               legacy_clock=legacy_clock)
+                               legacy_clock=legacy_clock, prior_observations=prior_observations)
     _require_equal(report.get('capture'), checked.evidence, 'run.capture')
     logs = require_object(report.get('logs'), 'run.logs')
     snapshots = [run_snapshot, *inputs.values(), contract.snapshot, profile_snapshot,
@@ -472,7 +756,22 @@ def compare_runs(before: Path, after: Path, *,
             raise ValidationError('before and after must be distinct observation directories')
         left = _load_run(left_dir, allow_legacy_inputs, allow_legacy_clock)
         right = _load_run(right_dir, allow_legacy_inputs, allow_legacy_clock)
-        report.update(before=left.report, after=right.report)
+        # Trajectories remain sealed in the source bundles. Do not duplicate
+        # two potentially large transcripts into the comparison report.
+        comparison_runs = []
+        for checked in (left, right):
+            evidence = dict(checked.report)
+            if 'observations' in checked.capture.evidence:
+                evidence['capture'] = {key: value for key, value in checked.report['capture'].items()
+                                       if key != 'observations'}
+                trajectory = checked.capture.evidence['observations']
+                evidence['observation_transcript'] = {
+                    'manifest': checked.capture.manifest.public_identity(),
+                    'policy': trajectory['policy'], 'frame_count': len(trajectory['frames']),
+                    'command_count': len(trajectory['commands']),
+                }
+            comparison_runs.append(evidence)
+        report.update(before=comparison_runs[0], after=comparison_runs[1])
         # Compare actual inputs, not just their declared digest strings. Different
         # binaries are intentional; their original bytes were checked above.
         for name in COPIES:
@@ -482,6 +781,10 @@ def compare_runs(before: Path, after: Path, *,
                       'presentation_clock.policy')
         _require_equal(right.capture.clock, left.capture.clock, 'presentation_clock')
         compared_fields = ('initial', 'final', 'map_source', 'exact_step_count', 'unit_atlas')
+        if ('observations' in left.capture.evidence) != ('observations' in right.capture.evidence):
+            raise ValidationError('observation policies differ between child generations')
+        if 'observations' in left.capture.evidence:
+            compared_fields += ('observations', 'camera')
         differences = [difference for name in compared_fields
                        for difference in _differences(left.capture.evidence[name],
                                                       right.capture.evidence[name], name)]
@@ -548,7 +851,7 @@ def main(argv: list[str] | None = None) -> int:
                 report = compare_runs(args.before, args.after,
                                       allow_legacy_inputs=args.allow_legacy_inputs,
                                       allow_legacy_clock=args.allow_legacy_clock)
-            result_path = write_json_exclusive(args.output, report)
+            result_path = write_json_exclusive(args.output, report, maximum_length=MAX_RECEIPT_BYTES)
             status = {'VALID': 0, 'MATCH': 0, 'MISMATCH': 1, 'INVALID': 2}[report['status']]
     except (OSError, ValueError) as exc:
         print(f'map observation: {exc}', file=sys.stderr)

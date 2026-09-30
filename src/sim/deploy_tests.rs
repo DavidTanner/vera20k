@@ -1,8 +1,6 @@
-//! Unit tests for the GI deploy-fire state machine (Slice B1).
+//! Native deployment/Stop receivers and separate Unit/MCV regressions.
 
 #![cfg(test)]
-
-use std::collections::BTreeMap;
 
 use crate::map::bridge_facts::{BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_STRUCTURAL};
 use crate::map::entities::EntityCategory;
@@ -10,10 +8,10 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell};
-use crate::sim::combat::AttackTarget;
-use crate::sim::command::{Command, CommandEnvelope};
+use crate::sim::combat::{AttackTarget, TargetKind};
+use crate::sim::command::Command;
 use crate::sim::components::Health;
-use crate::sim::deploy::{DEPLOY_DEFAULT_TICKS, DeployPhase, frames_to_ticks};
+use crate::sim::deploy::DeployPhase;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseAiActivationLatches;
 use crate::sim::world::{SimSoundEvent, Simulation};
@@ -32,108 +30,10 @@ const ENABLED_AI_ACTIVATION: HouseAiActivationLatches = HouseAiActivationLatches
     auto_base_building: true,
 };
 
-/// Test ruleset with E1 (DeployFire=yes, GIDeploy/GIUndeploy sounds) and E2
-/// (no DeployFire). Mirrors the [InfantryTypes] / [General] / weapon section
-/// scaffolding from the canonical fixture in `ruleset.rs::make_test_rules`.
-fn make_rules_with_deploy() -> RuleSet {
-    let text = "\
-[InfantryTypes]
-0=E1
-1=E2
-
-[General]
-BuildSpeed=0.75
-MultipleFactory=0.7
-LowPowerPenaltyModifier=1.25
-MinLowPowerProductionSpeed=0.4
-MaxLowPowerProductionSpeed=0.85
-
-[VehicleTypes]
-
-[AircraftTypes]
-
-[BuildingTypes]
-
-[E1]
-Name=GI
-Cost=200
-Strength=125
-Armor=none
-Speed=4
-Primary=M60
-DeployFire=yes
-DeploySound=GIDeploy
-UndeploySound=GIUndeploy
-IFVMode=2
-
-[E2]
-Name=Conscript
-Cost=100
-Strength=100
-Armor=none
-Speed=4
-Primary=INTL
-
-[M60]
-Damage=25
-ROF=20
-Range=5
-Warhead=SA
-
-[INTL]
-Damage=20
-ROF=20
-Range=5
-Warhead=SA
-
-[SA]
-Verses=100%,100%,100%,90%,70%,25%,100%,25%,25%,0%,0%
-CellSpread=0
-";
-    let ini: IniFile = IniFile::from_str(text);
-    RuleSet::from_ini(&ini).expect("test ruleset parse")
-}
-
-/// Test ruleset where E1 has DeployFire=yes but no DeploySound/UndeploySound.
-fn make_rules_no_sounds() -> RuleSet {
-    let text = "\
-[InfantryTypes]
-0=E1
-
-[General]
-BuildSpeed=0.75
-MultipleFactory=0.7
-LowPowerPenaltyModifier=1.25
-MinLowPowerProductionSpeed=0.4
-MaxLowPowerProductionSpeed=0.85
-
-[VehicleTypes]
-
-[AircraftTypes]
-
-[BuildingTypes]
-
-[E1]
-Name=GI
-Cost=200
-Strength=125
-Armor=none
-Speed=4
-Primary=M60
-DeployFire=yes
-
-[M60]
-Damage=25
-ROF=20
-Range=5
-Warhead=SA
-
-[SA]
-Verses=100%,100%,100%,90%,70%,25%,100%,25%,25%,0%,0%
-CellSpread=0
-";
-    let ini: IniFile = IniFile::from_str(text);
-    RuleSet::from_ini(&ini).expect("test ruleset parse")
+fn tick_n(sim: &mut Simulation, rules: &RuleSet, n: u32) {
+    for _ in 0..n {
+        sim.advance_tick(&[], Some(rules), None, None, 22);
+    }
 }
 
 fn make_mcv_rules() -> RuleSet {
@@ -1009,757 +909,546 @@ UndeploysInto=SMIN
     assert!(sim.can_undeploy_building_runtime(refinery, &rules));
 }
 
-/// Schedule one command for tick N+1 and run a single advance_tick.
-fn dispatch(sim: &mut Simulation, _owner: &str, cmd: Command, rules: &RuleSet) {
-    let owner_id = sim.interner.intern(_owner);
-    let cmds = vec![CommandEnvelope::new(owner_id, sim.session.tick + 1, cmd)];
-    sim.advance_tick(&cmds, Some(rules), None, None, 22);
-}
-
-/// Apply a command directly via `apply_command` (no tick advance, no combat
-/// or animation cleanup), returning whether the handler accepted it. This is
-/// the cleanest signal for gate tests — gate fires → returns false; gate
-/// passes → returns true (or fails downstream for unrelated reasons, e.g.
-/// missing path_grid for Move). For deploy gate tests, the only thing the
-/// gate cares about is that the early-return short-circuits the handler.
-fn apply(sim: &mut Simulation, owner: &str, cmd: &Command, rules: &RuleSet) -> bool {
-    sim.apply_command(owner, cmd, Some(rules))
-}
-
-fn tick_n(sim: &mut Simulation, rules: &RuleSet, n: u32) {
-    for _ in 0..n {
-        sim.advance_tick(&[], Some(rules), None, None, 22);
-    }
-}
-
-#[test]
-fn deploy_phase_advances_to_deployed() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    assert!(matches!(
-        sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Deploying { .. })
-    ));
-
-    let n = DEPLOY_DEFAULT_TICKS as u32;
-    tick_n(&mut sim, &rules, n);
-    assert_eq!(
-        sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Deployed)
-    );
-}
-
-#[test]
-fn undeploy_phase_clears_to_none() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    assert!(matches!(
-        sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Undeploying { .. })
-    ));
-
-    let n = DEPLOY_DEFAULT_TICKS as u32;
-    tick_n(&mut sim, &rules, n);
-    assert_eq!(sim.substrate.entities.get(gi).unwrap().deploy_state, None);
-}
-
-#[test]
-fn mid_deploying_toggle_ignored() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state =
-        Some(DeployPhase::Deploying { ticks_remaining: 3 });
-
-    let sounds_before = sim.sound_events.len();
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    // Tick advance still runs; Deploying decremented from 3 → 2 (or to Deployed if already 1).
-    assert!(matches!(
-        sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Deploying { .. }) | Some(DeployPhase::Deployed)
-    ));
-    let new_deploy_undeploy_sounds = sim
-        .sound_events
-        .iter()
-        .skip(sounds_before)
-        .filter(|e| {
-            matches!(
-                e,
-                SimSoundEvent::EntityDeployed { .. } | SimSoundEvent::EntityUndeployed { .. }
-            )
-        })
-        .count();
-    assert_eq!(new_deploy_undeploy_sounds, 0);
-}
-
-#[test]
-fn mid_undeploying_toggle_ignored() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state =
-        Some(DeployPhase::Undeploying { ticks_remaining: 3 });
-
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    assert!(matches!(
-        sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Undeploying { .. }) | None
-    ));
-}
-
-#[test]
-fn move_silently_ignored_on_deployed() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::Move {
-            entity_id: gi,
-            target_rx: 30,
-            target_ry: 30,
-            queue: false,
-        },
-        &rules,
-    );
-    assert!(!applied, "gate must reject Move on deployed unit");
-    let entity = sim.substrate.entities.get(gi).unwrap();
-    assert!(entity.movement_target.is_none());
-}
-
-#[test]
-fn move_silently_ignored_on_deploying() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state =
-        Some(DeployPhase::Deploying { ticks_remaining: 5 });
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::Move {
-            entity_id: gi,
-            target_rx: 30,
-            target_ry: 30,
-            queue: false,
-        },
-        &rules,
-    );
-    assert!(!applied, "gate must reject Move on Deploying unit");
-}
-
-#[test]
-fn move_silently_ignored_on_undeploying() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state =
-        Some(DeployPhase::Undeploying { ticks_remaining: 5 });
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::Move {
-            entity_id: gi,
-            target_rx: 30,
-            target_ry: 30,
-            queue: false,
-        },
-        &rules,
-    );
-    assert!(!applied, "gate must reject Move on Undeploying unit");
-}
-
-#[test]
-fn attack_move_silently_ignored_on_deployed() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::AttackMove {
-            entity_id: gi,
-            target_rx: 30,
-            target_ry: 30,
-            queue: false,
-        },
-        &rules,
-    );
-    assert!(!applied, "gate must reject AttackMove on deployed unit");
-    let entity = sim.substrate.entities.get(gi).unwrap();
-    assert!(entity.movement_target.is_none());
-    assert!(entity.order_intent.is_none());
-}
-
-#[test]
-fn enter_transport_silently_ignored_on_deployed() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::EnterTransport {
-            passenger_id: gi,
-            transport_id: 9999,
-        },
-        &rules,
-    );
-    assert!(!applied, "gate must reject EnterTransport on deployed unit");
-    assert!(matches!(
-        sim.substrate.entities.get(gi).unwrap().passenger_role,
-        crate::sim::passenger::PassengerRole::None
-    ));
-}
-
-#[test]
-fn move_works_after_undeploy_completes() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-
-    // Apply ToggleInfantryDeploy directly — gate doesn't apply to it (it's
-    // the toggle itself), and the handler returns true on Deployed → Undeploying.
-    let toggled = apply(
-        &mut sim,
-        "Americans",
-        &Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    assert!(toggled);
-    assert!(matches!(
-        sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Undeploying { .. })
-    ));
-
-    let n = DEPLOY_DEFAULT_TICKS as u32;
-    tick_n(&mut sim, &rules, n);
-    assert_eq!(sim.substrate.entities.get(gi).unwrap().deploy_state, None);
-
-    // Now the gate must let Move through — it'll fail downstream for
-    // unrelated reasons (no path_grid), but only AFTER the gate.
-    // The test signal is: the gate doesn't fire (we don't get the gate's
-    // early `false` return). Since Move with no path_grid also returns
-    // `false` past the gate, we instead check via dock_state — Move
-    // mutates `e.dock_state = None` BEFORE the path_grid check; if the
-    // gate fired, dock_state would stay Some.
-    sim.substrate.entities.get_mut(gi).unwrap().dock_state =
-        Some(crate::sim::docking::building_dock::DockState {
-            dock_building_id: 9999,
-            phase: crate::sim::docking::building_dock::DockPhase::EnterDock,
-            service_timer: 0,
-            no_funds_ticks: 0,
-            enter_retry: Default::default(),
-        });
-    let _ = sim.apply_command(
-        "Americans",
-        &Command::Move {
-            entity_id: gi,
-            target_rx: 12,
-            target_ry: 12,
-            queue: false,
-        },
-        Some(&rules),
-    );
-    assert!(
-        sim.substrate.entities.get(gi).unwrap().dock_state.is_none(),
-        "Move handler past the gate must clear dock_state after undeploy completes"
-    );
-}
-
-#[test]
-fn deploy_sound_emits_alongside_state_write() {
-    // Regression lock for the emit-before-state-write reorder: both effects
-    // (sound buffered + deploy_state = Deploying) must be observable after a
-    // single ToggleInfantryDeploy command.
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 25, 30);
-
-    assert!(
-        sim.substrate
-            .entities
-            .get(gi)
-            .unwrap()
-            .deploy_state
-            .is_none()
-    );
-    let events_before = sim.sound_events.len();
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    assert!(applied);
-
-    let entity = sim.substrate.entities.get(gi).unwrap();
-    assert!(matches!(
-        entity.deploy_state,
-        Some(DeployPhase::Deploying { .. })
-    ));
-    assert_eq!(sim.sound_events.len(), events_before + 1);
-    assert!(matches!(
-        sim.sound_events.last().unwrap(),
-        SimSoundEvent::EntityDeployed { .. }
-    ));
-}
-
-#[test]
-fn deploy_sound_emitted_on_phase_entry() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 25, 30);
-
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    let evs: Vec<_> = sim
-        .sound_events
-        .iter()
-        .filter_map(|e| match e {
-            SimSoundEvent::EntityDeployed {
-                deploy_sound_id,
-                rx,
-                ry,
-            } => Some((*deploy_sound_id, *rx, *ry)),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(evs.len(), 1);
-    let (id, rx, ry) = evs[0];
-    assert_eq!(sim.interner.resolve(id), "GIDeploy");
-    assert_eq!((rx, ry), (25, 30));
-}
-
-#[test]
-fn deploy_sound_suppressed_when_unset() {
-    let rules = make_rules_no_sounds();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 25, 30);
-
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    let count = sim
-        .sound_events
-        .iter()
-        .filter(|e| matches!(e, SimSoundEvent::EntityDeployed { .. }))
-        .count();
-    assert_eq!(count, 0);
-    assert!(matches!(
-        sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Deploying { .. })
-    ));
-}
-
-#[test]
-fn undeploy_sound_emitted_on_phase_entry() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 25, 30);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    let count = sim
-        .sound_events
-        .iter()
-        .filter(|e| matches!(e, SimSoundEvent::EntityUndeployed { .. }))
-        .count();
-    assert_eq!(count, 1);
-}
-
-#[test]
-fn non_deploy_fire_infantry_no_op() {
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let conscript = spawn_infantry(&mut sim, "E2", "Soviets", 10, 10);
-
-    dispatch(
-        &mut sim,
-        "Soviets",
-        Command::ToggleInfantryDeploy {
-            entity_id: conscript,
-        },
-        &rules,
-    );
-    assert!(
-        sim.substrate
-            .entities
-            .get(conscript)
-            .unwrap()
-            .deploy_state
-            .is_none()
-    );
-}
-
-#[test]
-fn hash_deterministic_through_full_cycle() {
-    let rules = make_rules_with_deploy();
-    let mut sim_a = Simulation::new();
-    let mut sim_b = Simulation::new();
-    let gi_a = spawn_infantry(&mut sim_a, "E1", "Americans", 10, 10);
-    let gi_b = spawn_infantry(&mut sim_b, "E1", "Americans", 10, 10);
-    assert_eq!(gi_a, gi_b);
-
-    for _ in 0..3 {
-        dispatch(
-            &mut sim_a,
-            "Americans",
-            Command::ToggleInfantryDeploy { entity_id: gi_a },
-            &rules,
-        );
-        dispatch(
-            &mut sim_b,
-            "Americans",
-            Command::ToggleInfantryDeploy { entity_id: gi_b },
-            &rules,
-        );
-        let n = DEPLOY_DEFAULT_TICKS as u32;
-        for _ in 0..n {
-            tick_n(&mut sim_a, &rules, 1);
-            tick_n(&mut sim_b, &rules, 1);
-            assert_eq!(sim_a.state_hash(), sim_b.state_hash());
-        }
-    }
-}
-
-#[test]
-fn snapshot_round_trip_mid_deploying() {
-    use crate::sim::snapshot::GameSnapshot;
-    let _rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state =
-        Some(DeployPhase::Deploying { ticks_remaining: 5 });
-
-    let bytes = GameSnapshot::save(&sim, 0, 0, "test_map", 0);
-    let snap = GameSnapshot::load(&bytes).expect("load");
-    assert_eq!(
-        snap.sim.substrate.entities.get(gi).unwrap().deploy_state,
-        Some(DeployPhase::Deploying { ticks_remaining: 5 })
-    );
-}
-
-#[test]
-fn combat_fires_during_deployed_attack() {
-    use crate::sim::animation::{
-        Animation, FacingSlots, LoopMode, SequenceDef, SequenceKind, SequenceSet, tick_animations,
+/// Reproduce only the prior state declared by an original execution row. These
+/// authored Type/ART records represent supplied native memory, not retail tuning.
+/// The tests exercise the production readers; expected outputs stay in native JSON.
+fn native_deploy_rules(input: &serde_json::Value) -> RuleSet {
+    let type_name = input["type_id"].as_str().unwrap_or("E1");
+    let weapon_keys = if input["weapon_present"].as_bool().unwrap_or(true) {
+        "Primary=SUPPLIED0\nSecondary=SUPPLIED1\n"
+    } else {
+        ""
     };
-
-    let _rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(gi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-    sim.substrate.entities.get_mut(gi).unwrap().attack_target = Some(AttackTarget {
-        target: crate::sim::combat::TargetKind::Entity(9999),
-        pending_infantry_fire: Some(crate::sim::combat::PendingInfantryFire {
-            sequence: SequenceKind::DeployedFire,
-            fire_frame: 2,
-        }),
-    });
-    sim.substrate.entities.get_mut(gi).unwrap().animation =
-        Some(Animation::new(SequenceKind::Deployed));
-
-    let mut sequences: BTreeMap<String, SequenceSet> = BTreeMap::new();
-    let mut set = SequenceSet::new();
-    set.insert(
-        SequenceKind::Deployed,
-        SequenceDef {
-            start_frame: 0,
-            frame_count: 1,
-            facings: 8,
-            facing_multiplier: 1,
-            frame_delay: 1,
-            normalized: false,
-            completion_facing: None,
-            loop_mode: LoopMode::Loop,
-            facing_slots: FacingSlots::InfantryTable,
-        },
+    let ini = IniFile::from_str(&format!(
+        "[AI]\nBlockagePathDelay={}\n[InfantryTypes]\n0={type_name}\n\
+         [{type_name}]\nStrength=100\nSpeed=4\n\
+         Locomotor={{4A582744-9839-11D1-B709-00A024DDAFD1}}\n\
+         Deployer={}\nDeployedCrushable={}\nDeployFire={}\nUndeployDelay={}\n\
+         SprayAttack={}\nDeploySound=GIDeploy\nUndeploySound=GIUndeploy\n\
+         {weapon_keys}\n\
+         [SUPPLIED0]\nAreaFire={}\n[SUPPLIED1]\nAreaFire={}\n",
+        input["blockage_path_delay"].as_i64().unwrap_or(0),
+        input["deployer"].as_i64().unwrap_or(1),
+        input["crushable"].as_i64().unwrap_or(0),
+        input["deploy_fire"].as_i64().unwrap_or(1),
+        input["undeploy_delay"].as_i64().unwrap_or(-1),
+        input["spray_attack"].as_i64().unwrap_or(0),
+        i32::from(
+            input["area_fire"].as_i64().unwrap_or(0) != 0
+                && input["area_slot"].as_i64().unwrap_or(1) == 0
+        ),
+        i32::from(
+            input["area_fire"].as_i64().unwrap_or(0) != 0
+                && input["area_slot"].as_i64().unwrap_or(1) == 1
+        ),
+    ));
+    let mut rules = RuleSet::from_ini(&ini).unwrap();
+    let mut counts = [input["count"].as_i64().unwrap_or(6) as i32; 42];
+    for record in input["counts"].as_array().into_iter().flatten() {
+        counts[record[0].as_u64().unwrap() as usize] = record[1].as_i64().unwrap() as i32;
+    }
+    let mut text = format!("[{type_name}]\nSequence=SuppliedSequence\n[SuppliedSequence]\n");
+    for (name, count) in crate::rules::infantry_sequence::NATIVE_SEQUENCE_NAMES
+        .iter()
+        .zip(counts)
+    {
+        text.push_str(&format!("{name}=100,{count},6\n"));
+    }
+    let art = IniFile::from_str(&text);
+    rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    let sequences = crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art);
+    rules.replace_animation_sequences_for_test(
+        crate::rules::animation_sequence::build_animation_sequence_catalog(
+            &rules,
+            Some(&sequences),
+        ),
     );
-    set.insert(
-        SequenceKind::DeployedFire,
-        SequenceDef {
-            start_frame: 8,
-            frame_count: 6,
-            facings: 8,
-            facing_multiplier: 6,
-            frame_delay: 1,
-            normalized: false,
-            completion_facing: None,
-            loop_mode: LoopMode::TransitionTo(SequenceKind::Deployed),
-            facing_slots: FacingSlots::InfantryTable,
-        },
-    );
-    sequences.insert("E1".to_string(), set);
-
-    let _ = tick_animations(
-        &mut sim.substrate.entities,
-        &sequences,
-        &crate::sim::game_options::GameOptions::default(),
-        &sim.interner,
-        0,
-    );
-    assert_eq!(
-        sim.substrate
-            .entities
-            .get(gi)
-            .unwrap()
-            .animation
-            .as_ref()
-            .unwrap()
-            .sequence,
-        SequenceKind::DeployedFire
-    );
-}
-
-/// Test ruleset with GGI and a merged art entry that defines
-/// GuardianGISequence with Deploy=300,15,0 and Undeploy=180,2,2.
-fn make_rules_with_ggi_art() -> RuleSet {
-    let rules_text = "\
-[InfantryTypes]
-0=GGI
-
-[General]
-BuildSpeed=0.75
-MultipleFactory=0.7
-LowPowerPenaltyModifier=1.25
-MinLowPowerProductionSpeed=0.4
-MaxLowPowerProductionSpeed=0.85
-
-[VehicleTypes]
-
-[AircraftTypes]
-
-[BuildingTypes]
-
-[GGI]
-Name=Guardian GI
-Cost=400
-Strength=100
-Armor=none
-Speed=4
-Primary=M60
-DeployFire=yes
-DeploySound=GuardianDeploy
-
-[M60]
-Damage=15
-ROF=20
-Range=4
-Warhead=SA
-
-[SA]
-Verses=100%,80%,80%,50%,25%,25%,75%,50%,25%,100%,100%
-CellSpread=0
-";
-    let rules_ini = IniFile::from_str(rules_text);
-    let mut rules = RuleSet::from_ini(&rules_ini).expect("rules parse");
-    let art_ini = IniFile::from_str(
-        "[GGI]\n\
-         Sequence=GuardianGISequence\n\
-         \n\
-         [GuardianGISequence]\n\
-         Ready=0,1,1\n\
-         Walk=8,6,6\n\
-         Deploy=300,15,0\n\
-         Undeploy=180,2,2\n\
-         Deployed=315,1,1\n\
-         DeployedFire=323,6,6\n",
-    );
-    let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-    // Synthetic fixture supplies ART directly, without native read-admission replay.
-    rules.install_art_fixture(art);
     rules
 }
 
-#[test]
-fn ggi_deploy_uses_art_frame_count() {
-    // GGI's GuardianGISequence has Deploy=300,15,0 -> 15 frames.
-    // Uses apply() so we observe the raw command effect without any
-    // native-frame decrement.
-    let rules = make_rules_with_ggi_art();
-    let mut sim = Simulation::new();
-    let ggi = spawn_infantry(&mut sim, "GGI", "Americans", 10, 10);
+fn native_coord(value: &serde_json::Value) -> Option<crate::sim::components::DriveCoord> {
+    let xyz = value.as_array().unwrap();
+    let coord = crate::sim::components::DriveCoord {
+        x: xyz[0].as_i64().unwrap() as i32,
+        y: xyz[1].as_i64().unwrap() as i32,
+        z: xyz[2].as_i64().unwrap() as i32,
+    };
+    (coord.x != 0 || coord.y != 0 || coord.z != 0).then_some(coord)
+}
 
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::ToggleInfantryDeploy { entity_id: ggi },
-        &rules,
+fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) {
+    use crate::sim::mission::MissionId;
+    use crate::util::fixed_math::SimFixed;
+    let input = &row["input"];
+    let before = &row["before"];
+    let rules = native_deploy_rules(input);
+    let mut sim = Simulation::with_seed(31);
+    sim.mapgen_rng = crate::sim::rng::SimRng::new(31);
+    sim.session.binary_frame = input["now"].as_i64().unwrap_or(100) as u32;
+    let owner = sim.interner.intern("Americans");
+    let human = input["human"].as_i64().unwrap_or(0) != 0;
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, human, 0, 10),
     );
-    assert!(applied);
-
-    let entity = sim.substrate.entities.get(ggi).unwrap();
-    match entity.deploy_state {
-        Some(DeployPhase::Deploying { ticks_remaining }) => {
-            assert_eq!(ticks_remaining, 15, "GGI deploy uses 15 native frames");
-        }
-        other => panic!("expected Deploying, got {:?}", other),
+    sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(32, 32, |x, y| {
+        crate::map::resolved_terrain::test_tiberium_cell(x, y)
+    }));
+    let id = spawn_infantry(
+        &mut sim,
+        input["type_id"].as_str().unwrap_or("E1"),
+        "Americans",
+        10,
+        10,
+    );
+    sim.mission_assign_exact(
+        id,
+        MissionId::from_raw(input["mission"].as_i64().unwrap_or(5) as i32),
+        0,
+    )
+    .unwrap();
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.health.current = input["health"].as_i64().unwrap_or(100) as i32;
+    actor.position.sub_x = SimFixed::from_num(128);
+    actor.position.sub_y = SimFixed::from_num(128);
+    actor.position.exact_z_leptons = Some(0);
+    actor.infantry.as_mut().unwrap().is_prone = before["prone"] != 0;
+    actor.set_falling_down_for_test(input["falling"].as_i64().unwrap_or(0) != 0);
+    actor
+        .mission_leaf
+        .set_infantry_doing_verified(before["doing"].as_i64().unwrap() as i32)
+        .unwrap();
+    actor
+        .mission_leaf
+        .set_infantry_pending_deploy(before["pending"].as_u64().unwrap() as u8);
+    actor
+        .mission_leaf
+        .set_foot_firing_sequence(before["firing"].as_u64().unwrap_or(0) as u8);
+    actor.set_infantry_deploy_crush_immunity(before["crush"].as_u64().unwrap() as u8);
+    actor.install_native_stage_fixture(crate::sim::stage::StageClass::from_native_fixture(
+        before["frame"].as_i64().unwrap() as i32,
+        before["changed"].as_u64().unwrap() as u8,
+        crate::sim::timer::CdTimer::from_raw(
+            before["stage"][0].as_i64().unwrap() as i32,
+            before["stage"][1].as_i64().unwrap() as i32,
+        ),
+        before["stage"][2].as_i64().unwrap() as i32,
+        before["stage"][3].as_i64().unwrap() as i32,
+    ));
+    actor.passive_scan_timer = crate::sim::mission::MissionTimer::armed(
+        before["reload"][0].as_i64().unwrap() as u32,
+        before["reload"][1].as_i64().unwrap() as u32,
+    );
+    let mut loco = crate::sim::movement::locomotor::LocomotorState::from_object_type(
+        rules
+            .object(input["type_id"].as_str().unwrap_or("E1"))
+            .unwrap(),
+        0,
+    );
+    // Retain the supplied +36 byte even with no head: it may survive an earlier
+    // Process/head release. The existing owner operations prepare that state.
+    loco.set_step_head(Some(crate::sim::components::DriveCoord {
+        x: 2688,
+        y: 2688,
+        z: 0,
+    }));
+    if before["motion"] != 0 {
+        loco.begin_walk_motion();
     }
+    loco.set_step_head(native_coord(&before["head"]));
+    loco.set_walk_destination(native_coord(&before["destination"]));
+    actor.locomotor = Some(loco);
+    if before["nav"].as_i64().unwrap_or(0) != 0 {
+        actor.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(11, 10));
+    }
+    if before["target"].as_i64().unwrap_or(0) != 0 {
+        actor.attack_target = Some(AttackTarget::for_cell(10, 10));
+    }
+    assert_eq!(
+        sim.scenario_rng.native_state_hex(),
+        row["rng_before"].as_str().unwrap()
+    );
+    (sim, rules, id)
+}
+
+/// Compare original outputs directly. No Rust predicate or timer/RNG calculation
+/// supplies an expected value; ignored native stack residue104 stays outside state.
+fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_json::Value) {
+    let expected = &row["after"];
+    let name = row["input"].to_string();
+    let actor = sim.substrate.entities.get(id).unwrap();
+    let leaf = actor.mission_leaf.as_infantry().unwrap();
+    assert_eq!(
+        leaf.doing(),
+        expected["doing"].as_i64().unwrap() as i32,
+        "{name}: Doing"
+    );
+    assert_eq!(
+        leaf.pending_deploy(),
+        expected["pending"].as_u64().unwrap() as u8,
+        "{name}: pending6E4"
+    );
+    assert_eq!(
+        actor.native_crush_immunity(),
+        expected["crush"].as_u64().unwrap() as u8,
+        "{name}: crush2A4"
+    );
+    assert_eq!(
+        actor.infantry.as_ref().unwrap().is_prone,
+        expected["prone"] != 0,
+        "{name}: prone6DB"
+    );
+    let stage = actor.native_stage();
+    assert_eq!(
+        stage.value(),
+        expected["frame"].as_i64().unwrap() as i32,
+        "{name}: Stage"
+    );
+    let stage_json = serde_json::to_value(stage).unwrap();
+    assert_eq!(
+        stage_json["changed"], expected["changed"],
+        "{name}: changedFC"
+    );
+    assert_eq!(
+        serde_json::json!([
+            stage.timer().start_frame(),
+            stage.timer().duration(),
+            stage.rate(),
+            stage_json["increment"]
+        ]),
+        expected["stage"],
+        "{name}: retained clock",
+    );
+    assert_eq!(
+        serde_json::json!([
+            actor.passive_scan_timer.start_frame as i32,
+            actor.passive_scan_timer.duration as i32
+        ]),
+        expected["reload"],
+        "{name}: passive targeting timer180/188",
+    );
+    let loco = actor.locomotor.as_ref().unwrap();
+    assert_eq!(
+        loco.walk_destination(),
+        native_coord(&expected["destination"]),
+        "{name}: Walk destination"
+    );
+    assert_eq!(
+        loco.step_head(),
+        native_coord(&expected["head"]),
+        "{name}: retained paid head"
+    );
+    assert_eq!(
+        loco.walk_is_moving(),
+        Some(expected["moving"] != 0),
+        "{name}: Walk moving34"
+    );
+    assert_eq!(
+        loco.walk_animation_moving(),
+        Some(expected["motion"] != 0),
+        "{name}: Walk motion36"
+    );
+    assert_eq!(
+        sim.scenario_rng.native_state_hex(),
+        row["rng_after"].as_str().unwrap(),
+        "{name}: full Scenario RNG"
+    );
+    if row["rng_streams_after"].is_object() {
+        assert_eq!(
+            sim.main_rng.native_state_hex(),
+            row["rng_streams_after"]["main"].as_str().unwrap(),
+            "{name}: full Main RNG"
+        );
+        assert_eq!(
+            sim.mapgen_rng.native_state_hex(),
+            row["rng_streams_after"]["mapgen"].as_str().unwrap(),
+            "{name}: full MapGen RNG"
+        );
+    }
+    if expected["mission"].is_number() {
+        assert_eq!(
+            actor.mission.current().raw(),
+            expected["mission"].as_i64().unwrap() as i32,
+            "{name}: Assign Guard"
+        );
+        assert_eq!(
+            actor.mission.queued().raw(),
+            expected["queued"].as_i64().unwrap() as i32,
+            "{name}: queued mission"
+        );
+        assert_eq!(
+            actor.mission.suspended().raw(),
+            expected["suspended"].as_i64().unwrap() as i32,
+            "{name}: suspended mission"
+        );
+        assert_eq!(
+            actor.mission.handler_state(),
+            expected["handler_state"].as_u64().unwrap() as u32,
+            "{name}: handler state"
+        );
+        assert_eq!(
+            actor.mission.mission_start_frame() as i32,
+            expected["mission_start"].as_i64().unwrap() as i32,
+            "{name}: assignment frame"
+        );
+        assert_eq!(
+            actor.navigation.nav_com.is_some(),
+            expected["nav"] != 0,
+            "{name}: NavCom"
+        );
+        assert_eq!(
+            actor.archive_target(),
+            None,
+            "{name}: empty archive retained"
+        );
+        let target = actor.attack_target.as_ref().map(|target| target.target);
+        assert_eq!(
+            target,
+            (expected["target"] != 0).then_some(TargetKind::Cell(10, 10)),
+            "{name}: Cell target"
+        );
+        assert_eq!(
+            leaf.firing_sequence_latch(),
+            expected["firing"].as_u64().unwrap() as u8,
+            "{name}: firing68D"
+        );
+    }
+    let native_sounds = row["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|event| {
+            (event["address"] == "007509E0").then(|| event["sound"].as_u64().unwrap())
+        })
+        .map(|sound| match sound {
+            101 => "GIDeploy",
+            102 => "GIUndeploy",
+            other => panic!("unknown supplied sound {other}"),
+        })
+        .collect::<Vec<_>>();
+    let sounds = sim
+        .sound_events
+        .iter()
+        .filter_map(|event| match event {
+            SimSoundEvent::EntityDeployed {
+                deploy_sound_id, ..
+            } => Some(sim.interner.resolve(*deploy_sound_id)),
+            SimSoundEvent::EntityUndeployed {
+                undeploy_sound_id, ..
+            } => Some(sim.interner.resolve(*undeploy_sound_id)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sounds, native_sounds,
+        "{name}: admitted native sound requests"
+    );
+    assert_eq!(
+        actor.deploy_state, None,
+        "{name}: no competing Infantry countdown"
+    );
 }
 
 #[test]
-fn ggi_deploy_begins_decrementing_after_the_command_frame() {
-    // Full frame path: the object walk runs first, then the EventClass tail
-    // writes the art-derived 15-frame countdown. The first decrement is on the
-    // following gameplay frame.
-    let rules = make_rules_with_ggi_art();
-    let mut sim = Simulation::new();
-    let ggi = spawn_infantry(&mut sim, "GGI", "Americans", 10, 10);
-    let deploy_ticks = frames_to_ticks(15);
+fn walk_stop_and_pending_callback_match_original_deployment_rows() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_deploy_action.json"
+    ))
+    .unwrap();
+    let mut compared = 0;
+    for row in corpus
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| matches!(row["input"]["kind"].as_str(), Some("stop" | "callback")))
+    {
+        let (mut sim, rules, id) = native_deploy_fixture(row);
+        let untouched = (sim.main_rng.logical_state(), sim.mapgen_rng.logical_state());
+        if row["input"]["kind"] == "stop" {
+            sim.walk_stop_moving(id, Some(&rules)).unwrap();
+        } else {
+            sim.infantry_pending_deploy_stop_callback(id, Some(&rules))
+                .unwrap();
+        }
+        assert_native_deploy_state(&sim, id, row);
+        assert_eq!(
+            (sim.main_rng.logical_state(), sim.mapgen_rng.logical_state()),
+            untouched
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 196);
+}
 
-    dispatch(
-        &mut sim,
+#[test]
+fn deploy_completion_keeps_suffix_effects_when_next_action_refuses() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_deploy_action.json"
+    ))
+    .unwrap();
+    let mut compared = 0;
+    for row in corpus
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["input"]["kind"] == "completion")
+    {
+        let (mut sim, rules, id) = native_deploy_fixture(row);
+        assert!(
+            !sim.infantry_sequencer(id, &rules),
+            "deployment does not UnInit"
+        );
+        assert_native_deploy_state(&sim, id, row);
+        compared += 1;
+    }
+    assert_eq!(compared, 64);
+}
+
+#[test]
+fn passive_scan_shortening_matches_original_signed_timer_and_rng_controls() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_deploy_action.json"
+    ))
+    .unwrap();
+    let mut compared = 0;
+    for row in corpus
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["input"]["kind"] == "reload")
+    {
+        let (mut sim, _rules, id) = native_deploy_fixture(row);
+        sim.shorten_passive_scan_timer(id, row["input"]["map_editor"].as_u64().unwrap() != 0);
+        assert_native_deploy_state(&sim, id, row);
+        compared += 1;
+    }
+    assert_eq!(compared, 14);
+}
+
+#[test]
+fn infantry_unload_full_original_handler_matches52_supplied_controls() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_mission_unload.json"
+    ))
+    .unwrap();
+    for row in corpus.as_array().unwrap() {
+        let (mut sim, rules, id) = native_deploy_fixture(row);
+        assert_eq!(
+            sim.main_rng.native_state_hex(),
+            row["rng_streams_before"]["main"].as_str().unwrap()
+        );
+        assert_eq!(
+            sim.mapgen_rng.native_state_hex(),
+            row["rng_streams_before"]["mapgen"].as_str().unwrap()
+        );
+        let result = sim.infantry_mission_unload(id, &rules).unwrap();
+        assert_eq!(
+            result as u32,
+            row["return_eax"].as_u64().unwrap() as u32,
+            "{}: native return",
+            row["input"]
+        );
+        assert_native_deploy_state(&sim, id, row);
+    }
+    assert_eq!(corpus.as_array().unwrap().len(), 52);
+}
+
+#[test]
+fn synchronized_deploy_queues_unload_before_handler_action_and_sound() {
+    use crate::sim::mission::{MissionId, MissionType};
+
+    let row: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_mission_unload.json"
+    ))
+    .unwrap();
+    let (mut sim, rules, id) = native_deploy_fixture(&row[0]);
+    let actor = sim.substrate.entities.get(id).unwrap();
+    let before_mission = actor.mission;
+    let before_stage = serde_json::to_value(actor.native_stage()).unwrap();
+    assert_eq!(before_mission.current().known(), Some(MissionType::Enter));
+    assert!(sim.apply_command(
         "Americans",
-        Command::ToggleInfantryDeploy { entity_id: ggi },
-        &rules,
+        &Command::ToggleInfantryDeploy { entity_id: id },
+        Some(&rules),
+    ));
+    let actor = sim.substrate.entities.get(id).unwrap();
+    // Event4C73B4 pushes commenceNow0 before Queue4C73B9. This fixture
+    // starts on Enter; publication queues Unload without promoting it.
+    assert_eq!(actor.mission.current(), before_mission.current());
+    assert_eq!(actor.mission.queued().known(), Some(MissionType::Unload));
+    assert_eq!(actor.mission.effective().known(), Some(MissionType::Enter));
+    assert_eq!(
+        actor.mission.handler_state(),
+        before_mission.handler_state()
     );
+    assert_eq!(
+        actor.mission.mission_start_frame(),
+        before_mission.mission_start_frame()
+    );
+    assert_eq!(
+        actor.mission.dispatch_timer(),
+        before_mission.dispatch_timer()
+    );
+    assert_eq!(actor.mission_leaf.as_infantry().unwrap().doing(), 0);
+    assert_eq!(
+        serde_json::to_value(actor.native_stage()).unwrap(),
+        before_stage
+    );
+    assert!(actor.navigation.nav_com.is_none());
+    let locomotor = actor.locomotor.as_ref().unwrap();
+    assert!(locomotor.walk_destination().is_none());
+    assert_eq!(locomotor.walk_is_moving(), Some(false));
+    assert_eq!(actor.deploy_state, None);
+    assert!(sim.sound_events.is_empty());
+    // InfantryAI51BF03's Ready/Commence position promotes the stopped
+    // actor's queue before dispatch may visit Mission_Unload51F6E0.
+    let now = sim.session.binary_frame;
+    sim.mission_host_promote(id, now, &rules);
+    let actor = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(actor.mission.current().known(), Some(MissionType::Unload));
+    assert_eq!(actor.mission.queued(), MissionId::NONE);
+    assert_eq!(actor.mission_leaf.as_infantry().unwrap().doing(), 0);
+    assert!(sim.sound_events.is_empty());
+    // The supplied native-body fixture is directly inserted. Register it
+    // through the existing Logic owner before exercising the master frame.
+    assert!(sim.register_live_object(id));
+    // Visit the production AI dispatcher after command publication/promotion.
+    // The native-compared handler must be connected here, not only callable
+    // by its isolated corpus test.
+    sim.advance_tick(&[], Some(&rules), None, None, 66);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .mission_leaf
+            .as_infantry()
+            .unwrap()
+            .doing(),
+        27
+    );
+    assert!(matches!(
+        sim.sound_events.as_slice(),
+        [SimSoundEvent::EntityDeployed { .. }]
+    ));
+}
 
+#[test]
+fn deployment_countdown_is_unit_only() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_mission_unload.json"
+    ))
+    .unwrap();
+    let (mut sim, _rules, id) = native_deploy_fixture(&corpus[0]);
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.deploy_state = Some(DeployPhase::Deploying { ticks_remaining: 1 });
+    // Legacy loaded Infantry controller data has no authority over Doing/Stage.
+    crate::sim::deploy::tick_deploy_state(&mut sim.substrate.entities);
+    let actor = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(actor.mission_leaf.as_infantry().unwrap().doing(), 0);
+    assert_eq!(actor.native_stage().value(), 7);
     assert_eq!(
-        sim.substrate.entities.get(ggi).unwrap().deploy_state,
-        Some(DeployPhase::Deploying {
-            ticks_remaining: deploy_ticks
-        })
-    );
-    tick_n(&mut sim, &rules, (deploy_ticks - 1) as u32);
-    assert_eq!(
-        sim.substrate.entities.get(ggi).unwrap().deploy_state,
+        actor.deploy_state,
         Some(DeployPhase::Deploying { ticks_remaining: 1 })
     );
-    tick_n(&mut sim, &rules, 1);
-    assert_eq!(
-        sim.substrate.entities.get(ggi).unwrap().deploy_state,
-        Some(DeployPhase::Deployed)
-    );
-}
-
-#[test]
-fn ggi_undeploy_uses_art_frame_count() {
-    // GuardianGISequence Undeploy=180,2,2 -> 2 native frames.
-    let rules = make_rules_with_ggi_art();
-    let mut sim = Simulation::new();
-    let ggi = spawn_infantry(&mut sim, "GGI", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(ggi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::ToggleInfantryDeploy { entity_id: ggi },
-        &rules,
-    );
-    assert!(applied);
-
-    let entity = sim.substrate.entities.get(ggi).unwrap();
-    match entity.deploy_state {
-        Some(DeployPhase::Undeploying { ticks_remaining }) => {
-            assert_eq!(ticks_remaining, 2, "GGI undeploy uses 2 native frames");
-        }
-        other => panic!("expected Undeploying, got {:?}", other),
-    }
-}
-
-#[test]
-fn ggi_undeploy_begins_decrementing_after_the_command_frame() {
-    // GuardianGISequence Undeploy=180,2,2 -> 2 frames. The EventClass tail
-    // starts the countdown after the object walk, so it decrements next frame.
-    let rules = make_rules_with_ggi_art();
-    let mut sim = Simulation::new();
-    let ggi = spawn_infantry(&mut sim, "GGI", "Americans", 10, 10);
-    sim.substrate.entities.get_mut(ggi).unwrap().deploy_state = Some(DeployPhase::Deployed);
-    let undeploy_ticks = frames_to_ticks(2);
-
-    dispatch(
-        &mut sim,
-        "Americans",
-        Command::ToggleInfantryDeploy { entity_id: ggi },
-        &rules,
-    );
-
-    assert_eq!(
-        sim.substrate.entities.get(ggi).unwrap().deploy_state,
-        Some(DeployPhase::Undeploying {
-            ticks_remaining: undeploy_ticks
-        })
-    );
-    tick_n(&mut sim, &rules, (undeploy_ticks - 1) as u32);
-    assert_eq!(
-        sim.substrate.entities.get(ggi).unwrap().deploy_state,
-        Some(DeployPhase::Undeploying { ticks_remaining: 1 })
-    );
-    tick_n(&mut sim, &rules, 1);
-    assert_eq!(sim.substrate.entities.get(ggi).unwrap().deploy_state, None);
-}
-
-#[test]
-fn sequence_less_infantry_falls_back_to_default_ticks() {
-    // E1 has no art Sequence= -> compute_anim_ticks falls back to
-    // the stock 15-frame default.
-    let rules = make_rules_with_deploy();
-    let mut sim = Simulation::new();
-    let gi = spawn_infantry(&mut sim, "E1", "Americans", 10, 10);
-
-    let applied = apply(
-        &mut sim,
-        "Americans",
-        &Command::ToggleInfantryDeploy { entity_id: gi },
-        &rules,
-    );
-    assert!(applied);
-    let entity = sim.substrate.entities.get(gi).unwrap();
-    match entity.deploy_state {
-        Some(DeployPhase::Deploying { ticks_remaining }) => {
-            assert_eq!(ticks_remaining, DEPLOY_DEFAULT_TICKS);
-        }
-        other => panic!("expected Deploying, got {:?}", other),
-    }
 }

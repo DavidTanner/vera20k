@@ -399,9 +399,14 @@ fn build_time_inputs_read_owner_power_and_matching_factories() {
 
     // A factory counts from its Unlimbo (`0x00440D13`), so one still playing
     // its build-up animation counts.
-    sim.substrate.entities.get_mut(2).unwrap().building_up = Some(
-        crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
-    );
+    sim.substrate
+        .entities
+        .get_mut(2)
+        .unwrap()
+        .install_building_up(
+            crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
+            0,
+        );
     assert_eq!(
         super::factory::time_to_build_inputs(
             &sim,

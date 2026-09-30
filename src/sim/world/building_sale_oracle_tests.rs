@@ -579,10 +579,13 @@ fn the_computers_low_credit_sale_matches_the_original_admission() {
         building.was_attacked_by_enemy = input["attacked"] == true;
         building.ai_sellable = input["ai_sellable"] == true;
         if input["mission"] == "construction" || input["queued"] == "construction" {
-            building.building_up = Some(crate::sim::components::BuildingUp::completing_in_ticks(
-                2,
+            building.install_building_up(
+                crate::sim::components::BuildingUp::completing_in_ticks(
+                    2,
+                    sim.session.binary_frame as i32,
+                ),
                 sim.session.binary_frame as i32,
-            ));
+            );
         }
         building.mission.apply_test_fixture(MissionTestFixture {
             current: mission(&input["mission"]),

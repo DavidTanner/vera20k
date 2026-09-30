@@ -8,7 +8,6 @@
 
 use super::harvest_field_oracle_tests::registry;
 use super::slave_manager_oracle_tests::{SlaveScene, row_scene};
-use crate::sim::animation::SequenceKind;
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::NavTargetRef;
@@ -122,9 +121,8 @@ fn slave_refinery_deploys_digs_carries_home_pays_and_goes_out_again() {
             let entity = s.scene.sim.substrate.entities.get(slave).unwrap();
             dug |= !entity.slave.cargo().is_empty();
             shovel_shown |= entity
-                .animation
-                .as_ref()
-                .is_some_and(|animation| animation.sequence == SequenceKind::Shovel);
+                .infantry_sprite_pose()
+                .is_some_and(|(doing, _)| doing == 38);
         }
         if paid_at.is_none() && credits(&s) > start {
             paid_at = Some(n);
@@ -164,9 +162,10 @@ fn a_refinery_building_up_keeps_its_slaves_inside() {
         .entities
         .get_mut(s.master)
         .unwrap()
-        .building_up = Some(crate::sim::components::BuildingUp::completing_in_ticks(
-        30, 0,
-    ));
+        .install_building_up(
+            crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
+            0,
+        );
     let mut frames = 0;
     while s
         .scene
@@ -531,8 +530,8 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
     // The Cheer cannot be interrupted: a Move order given during it walks the
     // slave off at once, but its mission waits in the queue
     // (Ready_To_Commence). The Cheer's end, `InfantryClass::DoType_Sequencer`'s
-    // default arm, forces Ready on a standing slave and clears a walking one's
-    // action, and the queued Move commences.
+    // default arm, forces Ready on a standing slave or Walk on a moving one;
+    // the queued Move then commences.
     let ordered = s.slaves[&1];
     let tick = s.scene.sim.session.tick;
     s.scene.sim.queue_command(CommandEnvelope::new(
@@ -585,7 +584,10 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
         0,
         "a standing slave returns to Ready"
     );
-    assert_eq!(doing(&s, ordered), -1, "a walking slave's action clears");
+    // Native520D38/520D71..79 forces Walk3 after a moving Cheer completes;
+    // original jumpjet_infantry_actions row522 pins that common default arm.
+    // This cycle exercises the production SLAV consumer, not native FreeSlaves.
+    assert_eq!(doing(&s, ordered), 3, "a moving slave resumes Walk");
     for _ in 0..3 {
         frame(&mut s);
     }

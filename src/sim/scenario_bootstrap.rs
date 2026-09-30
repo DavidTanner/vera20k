@@ -1444,7 +1444,7 @@ fn assign_launch_base_centers(
             &slot.owner_name,
             &sim.interner,
         ) {
-            house.base_center = Some((waypoint.rx, waypoint.ry));
+            house.set_base_center((waypoint.rx, waypoint.ry));
             if let Some(waypoint_edge) = waypoint_edge {
                 house.waypoint_edge = waypoint_edge;
             }

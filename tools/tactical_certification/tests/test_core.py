@@ -9,6 +9,7 @@ from tools.tactical_certification.core import (
     ValidationError,
     assert_snapshot_unchanged,
     contains_forbidden_verdict,
+    load_json_file,
     parse_json_bytes,
     reject_reparse_ancestors,
     require_regular_file,
@@ -18,6 +19,45 @@ from tools.tactical_certification.core import (
 
 
 class CoreTests(unittest.TestCase):
+    def test_explicit_json_budget_uses_the_same_strict_parser(self) -> None:
+        raw = b'{"value":"bounded"}'
+        self.assertEqual(parse_json_bytes(raw, "test", maximum_length=len(raw)), {"value": "bounded"})
+        with self.assertRaisesRegex(ValidationError, "exceeds"):
+            parse_json_bytes(raw, "test", maximum_length=len(raw) - 1)
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary).resolve()
+            source = directory / "source.json"
+            source.write_bytes(raw)
+            _, value = load_json_file(source, "test", maximum_length=len(raw))
+            self.assertEqual(value, {"value": "bounded"})
+            with self.assertRaisesRegex(ValidationError, "too large"):
+                load_json_file(source, "test", maximum_length=len(raw) - 1)
+            output = directory / "output.json"
+            with self.assertRaisesRegex(ValidationError, "exceeds"):
+                write_json_exclusive(output, value, maximum_length=1)
+            self.assertFalse(output.exists(), "budget refusal must happen before file creation")
+            write_json_exclusive(output, value, maximum_length=100)
+            _, restored = load_json_file(output, "test", maximum_length=100)
+            self.assertEqual(restored, value)
+        for invalid in (0, -1, True, 1.0, None):
+            with self.subTest(limit=invalid), self.assertRaisesRegex(ValidationError, "positive integer"):
+                parse_json_bytes(raw, "test", maximum_length=invalid)
+        for invalid in (b'{"a":1,"a":2}', b'{"a":NaN}', b'{"a":1e400}', b'[]', b'\xff'):
+            with self.subTest(json=invalid), self.assertRaises(ValidationError):
+                parse_json_bytes(invalid, "test", maximum_length=128 * 1024 * 1024)
+
+    def test_default_json_budget_remains_16_mib(self) -> None:
+        raw = b'{"padding":"' + b'x' * (16 * 1024 * 1024) + b'"}'
+        with self.assertRaisesRegex(ValidationError, "16777216"):
+            parse_json_bytes(raw, "test")
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary).resolve() / "large.json"
+            source.write_bytes(raw)
+            with self.assertRaisesRegex(ValidationError, "too large"):
+                load_json_file(source, "test")
+            _, value = load_json_file(source, "test", maximum_length=128 * 1024 * 1024)
+            self.assertEqual(len(value["padding"]), 16 * 1024 * 1024)
+
     def test_json_rejects_duplicate_nonfinite_and_nonobject(self) -> None:
         with self.assertRaisesRegex(ValidationError, "duplicate"):
             parse_json_bytes(b'{"a":1,"a":2}', "test")

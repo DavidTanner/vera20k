@@ -646,6 +646,18 @@ impl ZoneGrid {
         &mut self.base_topology
     }
 
+    /// Supplied raw Map+18 row premise in native query fixtures. This does
+    /// not claim to reproduce the topology producer or its cluster numbering.
+    #[cfg(test)]
+    pub(crate) fn test_supply_uniform_raw_zone_rows(&mut self, zone: ZoneId) {
+        for row in &mut self.base_topology.raw_zone_ids_by_row {
+            row.fill(zone);
+        }
+        for index in 0..self.base_topology.zone_ids.len() {
+            self.project_adopted_base_cell(index);
+        }
+    }
+
     pub(crate) fn base_and_hierarchy_mut(
         &mut self,
     ) -> (&zone_build::BaseZoneTopology, &mut ZoneHierarchy) {

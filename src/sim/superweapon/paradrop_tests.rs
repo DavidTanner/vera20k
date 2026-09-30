@@ -268,7 +268,17 @@ fn infantry_terminal_empty_custom_carrier_retires_after_failed_launch() {
         carrier.category,
         crate::map::entities::EntityCategory::Infantry
     );
-    assert!(carrier.dying && carrier.animation.is_some() && carrier.in_logic_vector);
+    assert!(carrier.dying && carrier.in_logic_vector);
+    assert_eq!(carrier.infantry_sprite_pose(), Some((-1, 0)));
+    assert!(
+        carrier.animation.is_none(),
+        "the raw retirement policy needs no second Infantry sequence clock"
+    );
+    assert_eq!(
+        carrier.locomotor.as_ref().unwrap().active_kind(),
+        crate::rules::locomotor_type::LocomotorKind::Fly,
+        "the custom carrier retains its concrete Fly receiver until retirement"
+    );
     assert_eq!(
         carrier.infantry_terminal,
         Some(crate::sim::world::InfantryTerminal::RetireNextVisit)

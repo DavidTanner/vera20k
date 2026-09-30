@@ -143,6 +143,7 @@ pub(super) fn scan(
     rules: &RuleSet,
     mask: ScanMission,
     ctx: ObjectAiCtx<'_>,
+    scan_coord: Option<[i32; 3]>,
 ) -> bool {
     if !sim.substrate.entities.contains(id) {
         return false;
@@ -153,6 +154,7 @@ pub(super) fn scan(
             rules,
             id,
             ctx,
+            scan_coord,
         },
         mask,
     )
@@ -208,7 +210,7 @@ pub(super) fn passive_acquire_step(
     };
     entity.last_target_scan_frame = now;
     let before = entity.attack_target.as_ref().map(|attack| attack.target);
-    let held = scan(sim, id, rules, ScanMission::Guard, ctx);
+    let held = scan(sim, id, rules, ScanMission::Guard, ctx, None);
     if let Some(entity) = sim.substrate.entities.get_mut(id)
         && held
         && entity.attack_target.as_ref().map(|attack| attack.target) != before
@@ -539,6 +541,7 @@ struct WorldScan<'s, 'r> {
     rules: &'r RuleSet,
     id: u64,
     ctx: ObjectAiCtx<'r>,
+    scan_coord: Option<[i32; 3]>,
 }
 
 impl WorldScan<'_, '_> {
@@ -622,19 +625,17 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
             .assign_target_represented(self.id, target, Some(self.rules));
     }
 
-    /// RESIDUAL: Area Guard natively scans around its guard post (the
-    /// ArchiveTarget, `0x004D6EE6`); VERA scans around the object, which is
-    /// the same cell while it stands on its post.
     fn greatest_threat(&mut self, mask: ScanMission) -> Option<TargetKind> {
-        world_greatest_threat(
-            self.sim,
-            self.rules,
-            self.ctx.overlay_registry,
-            self.id,
-            mask,
-            crate::sim::combat::acquire_best_target_for_entity,
-        )
-        .map(TargetKind::Entity)
+        self.sim
+            .greatest_threat_represented(
+                self.rules,
+                self.ctx.overlay_registry,
+                self.id,
+                mask,
+                self.scan_coord,
+                crate::sim::combat::acquire_best_target_for_entity,
+            )
+            .map(TargetKind::Entity)
     }
 
     fn distributed_fire(&mut self) -> bool {
@@ -679,7 +680,7 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
     }
 }
 
-/// The scan entries [`world_greatest_threat`] takes: the passive block's
+/// The scan entries the world adapter takes: the passive block's
 /// gated one or the direct `+0x3C4` call.
 type ScanEntry = fn(
     &crate::sim::entity_store::EntityStore,
@@ -694,52 +695,65 @@ type ScanEntry = fn(
     Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
     crate::sim::combat::line_of_fire::LineOfFireInputs<'_>,
     Option<&Simulation>,
-) -> Option<u64>;
+    Option<[i32; 3]>,
+) -> crate::sim::combat::greatest_threat::ThreatScanOutcome;
 
-/// `id`'s `Greatest_Threat` against the live world, through `entry`.
-fn world_greatest_threat(
-    sim: &Simulation,
-    rules: &RuleSet,
-    overlay_registry: Option<&OverlayTypeRegistry>,
-    id: u64,
-    mask: ScanMission,
-    entry: ScanEntry,
-) -> Option<u64> {
-    entry(
-        &sim.substrate.entities,
-        &sim.substrate.occupancy,
-        rules,
-        &sim.interner,
-        id,
-        Some(&sim.fog),
-        sim.resolved_terrain.as_ref(),
-        sim.playfield_bounds.is_some(),
-        mask,
-        sim.zone_grid.as_ref(),
-        crate::sim::combat::line_of_fire::LineOfFireInputs {
-            overlay_grid: sim.overlay_grid.as_ref(),
-            overlay_registry,
-            alliances: Some(&sim.fog.alliances),
-        },
-        Some(sim),
-    )
+impl Simulation {
+    /// `id`'s concrete Greatest_Threat against the live world. The immutable
+    /// selector reports whether Foot was reached; this adapter commits its empty
+    /// result latch write before the caller performs any target assignment.
+    pub(crate) fn greatest_threat_represented(
+        &mut self,
+        rules: &RuleSet,
+        overlay_registry: Option<&OverlayTypeRegistry>,
+        id: u64,
+        mask: ScanMission,
+        scan_coord: Option<[i32; 3]>,
+        entry: ScanEntry,
+    ) -> Option<u64> {
+        let result = entry(
+            &self.substrate.entities,
+            &self.substrate.occupancy,
+            rules,
+            &self.interner,
+            id,
+            Some(&self.fog),
+            self.resolved_terrain.as_ref(),
+            self.playfield_bounds.is_some(),
+            mask,
+            self.zone_grid.as_ref(),
+            crate::sim::combat::line_of_fire::LineOfFireInputs {
+                overlay_grid: self.overlay_grid.as_ref(),
+                overlay_registry,
+                alliances: Some(&self.fog.alliances),
+            },
+            Some(self),
+            scan_coord,
+        );
+        if result.foot_wrapper_entered()
+            && let Some(entity) = self.substrate.entities.get_mut(id)
+        {
+            entity.finish_foot_threat_scan(result.target().is_some());
+        }
+        result.target()
+    }
 }
 
 /// A team leader's `Greatest_Threat` for script action 0 (`0x006ED15E`):
 /// its `+0x3C4` override with the quarry's mask, directly.
 pub(crate) fn team_leader_greatest_threat(
-    sim: &Simulation,
+    sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     leader: u64,
     mask: ScanMission,
 ) -> Option<u64> {
-    world_greatest_threat(
-        sim,
+    sim.greatest_threat_represented(
         rules,
         overlay_registry,
         leader,
         mask,
+        None,
         crate::sim::combat::combat_targeting::greatest_threat_for_entity,
     )
 }

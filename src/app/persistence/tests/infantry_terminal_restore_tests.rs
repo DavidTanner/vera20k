@@ -1,8 +1,6 @@
 //! Terminal policy and progress through the production load preparation route.
 use super::*;
-use crate::sim::animation::{LoopMode, SequenceKind};
 use crate::sim::world::{InfantryDeathSequence, InfantryTerminal};
-use std::collections::BTreeMap;
 
 #[test]
 fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
@@ -37,7 +35,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
         .unwrap();
     // Characterize retained-limbo raw policy and its release owner. This uses
     // the raw handoff directly, not a bridge-dispatch reachability fixture.
-    assert!(saved.begin_raw_infantry_death(held, None));
+    assert!(saved.begin_raw_infantry_death(held));
     let object = saved.substrate.entities.get(held).unwrap();
     assert!(object.lifecycle.in_limbo && !object.in_logic_vector);
     saved.scenario_rng = crate::sim::rng::SimRng::new(0);
@@ -150,7 +148,7 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
     let victim = saved
         .spawn_object_at_height("E1", "Russians", 2, 1, 0, 0, &rules)
         .unwrap();
-    assert!(crate::sim::combat::issue_attack_command(
+    assert!(crate::sim::combat::install_entity_attack_target_for_test(
         &mut saved.substrate.entities,
         shooter,
         victim
@@ -247,21 +245,25 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
         InfantryTerminal::Sequence(InfantryDeathSequence::Die1),
         InfantryTerminal::Sequence(InfantryDeathSequence::Die2),
     ] {
-        let mut rules = RuleSet::from_ini(&IniFile::from_str(
-            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n\
-             [E1]\nStrength=100\nSpeed=4\n",
-        ))
+        // An authored three-frame death goes through the same native ART
+        // reader as the physical GI records, rather than a sprite-only edit.
+        let art = IniFile::from_str(
+            &crate::rules::retail_ini_fixture::GI_ART_EXCERPT
+                .replace("Die1=134,15,0", "Die1=134,3,0")
+                .replace("Die2=149,15,0", "Die2=149,3,0"),
+        );
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n\
+             [E1]\nImage=GI\nStrength=100\nSpeed=4\n",
+            ),
+            &art,
+        )
         .unwrap();
-        let mut sequences = rules.animation_sequence("E1").unwrap().clone();
-        for sequence in [SequenceKind::Die1, SequenceKind::Die2] {
-            let mut def = sequences.get(&sequence).unwrap().clone();
-            def.frame_count = 3;
-            def.frame_delay = 1;
-            def.normalized = false;
-            def.loop_mode = LoopMode::HoldLast;
-            sequences.insert(sequence, def);
-        }
-        rules.replace_animation_sequences_for_test(BTreeMap::from([("E1".into(), sequences)]));
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+        rules.bind_animation_sequences(
+            &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
+        );
         let (mut saved, terrain) = terminal_load_world(&rules);
         let victim = saved
             .spawn_object_at_height("E1", "Americans", 1, 1, 0, 0, &rules)
@@ -280,7 +282,9 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
                     .unwrap()
                     .health
                     .current = 0;
-                saved.begin_infantry_death_sequence(victim, sequence);
+                saved.begin_infantry_death_sequence(victim, sequence, &rules);
+                // DoAction starts the native one-frame countdown at frame0.
+                // Its frame0 Logic visit holds; frame1 performs the first step.
                 saved.advance_tick(&[], Some(&rules), None, None, 100);
                 assert_eq!(
                     saved
@@ -288,10 +292,19 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
                         .entities
                         .get(victim)
                         .unwrap()
-                        .animation
-                        .as_ref()
+                        .native_stage()
+                        .value(),
+                    0
+                );
+                saved.advance_tick(&[], Some(&rules), None, None, 100);
+                assert_eq!(
+                    saved
+                        .substrate
+                        .entities
+                        .get(victim)
                         .unwrap()
-                        .frame_index,
+                        .native_stage()
+                        .value(),
                     1
                 );
                 2
