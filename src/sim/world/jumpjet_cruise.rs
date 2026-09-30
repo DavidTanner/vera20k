@@ -36,12 +36,6 @@
 //! latch (`0x0054CA12`).
 //!
 //! Residuals:
-//! - A Jumpjet owner never enters a cell's object lists or raw occupation.
-//!   Native `Mark` (`0x004D3780`) places an owner whose layer (`0x0054B8D0`) is
-//!   Ground, below two cell levels, and `Update` re-marks it every frame
-//!   outside the hold and the cruise (`0x0054D12C`, `0x0054D6A6`). So a landed
-//!   Night Hawk or deployed Siege Chopper neither blocks ground units nor
-//!   refuses a later landing.
 //! - The landing State 4 admits raises only the locomotor latch, not the
 //!   owner's cell occupation bit (`+0xF0` at `0x0054C731`: a Unit's
 //!   `0x007441B0` sets `0x20`; the orders' `+0xF4`, `0x00744210`, clears it),

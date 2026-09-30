@@ -353,33 +353,47 @@ pub(crate) fn set_height(
 }
 
 impl Simulation {
-    /// [`set_height`] for an object id. It samples terrain only, as GetHeight
-    /// ([`current_fly_height`]) does, so `SetHeight(GetHeight() + n)` round-trips
-    /// without a map too. It also keeps `LocomotorState.altitude` equal to the
-    /// requested height, for the readers that still take it as the object's
-    /// height (#692).
+    /// `ObjectClass::SetHeight @ 0x005F5FA0` for an object id. A marked object
+    /// (`+0x74`) leaves its cell through its own Mark (vt+0x124, `0x005F5FC8`)
+    /// before the Z write and marks again after it (`0x005F6009`), so a Foot
+    /// is prepended to its cell's list again and the cell recalculates. That
+    /// happens at a crash impact (Fly `0x004CD7BF`, Jumpjet notice
+    /// `0x007461B9`, Infantry notice `0x00522B7D`/`0x00522B8B`) and a fall's
+    /// landing (`0x005F3F7A`). An unmarked object takes the Z write alone
+    /// ([`Self::set_object_height_unmarked`]).
+    pub(crate) fn set_object_height(
+        &mut self,
+        id: u64,
+        height: i32,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let context = crate::sim::world::UninitContext::new(rules, registry);
+        let marked = self
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|entity| entity.lifecycle.cell_marked);
+        if marked {
+            self.unmark_entity_remove(id, context);
+        }
+        self.set_object_height_unmarked(id, height);
+        if marked {
+            self.mark_entity_put(id, context);
+        }
+    }
+
+    /// SetHeight's unmarked arm (`0x005F6017..`): [`set_height`] for an
+    /// object id. Hover's altitude step (`0x00513E74..0x00513E8C`) clears
+    /// `+0x74` around its SetHeight, so it always takes this arm.
     ///
-    /// RESIDUAL: native SetHeight on a marked object (`+0x74`) removes it from
-    /// its cell before the write and marks it again after (vt+0x124,
-    /// `0x005F5FC2..0x005F6009`), through `FootClass::Mark` (`0x004D3780`) for
-    /// a Foot. VERA writes Z only.
-    /// - Trigger: a Jumpjet's crash notice (`0x007461B9`,
-    ///   `0x00522B7D`/`0x00522B8B`) and a Fly crash impact (`0x004CD7BF`),
-    ///   whose fall re-marks the wreck (`0x004CD783`). VERA's Fly wreck is
-    ///   unmarked there: its fall has no Mark pair, and the impact returns
-    ///   before the transaction marks it again. A paratrooper's landing
-    ///   (`0x005F3F7A`) runs it too, but as a no-op: the falling block has just
-    ///   re-added it (`0x005F3F58`).
-    /// - Effect: Update's Mark bracket has already listed a Jumpjet wreck that
-    ///   fell below twice the level height, so it keeps its list position
-    ///   where native moves it to the head and runs the cell's Recalc. A Fly
-    ///   wreck is not in its cell's lists for its death weapon.
-    /// - Frequency: every Jumpjet and aircraft crash.
-    /// - Risk: list walks and first-object reads in that cell.
-    /// - Tracked by #692.
+    /// It samples terrain only, as GetHeight ([`current_fly_height`]) does, so
+    /// `SetHeight(GetHeight() + n)` round-trips without a map too. It also
+    /// keeps `LocomotorState.altitude` equal to the requested height, for the
+    /// readers that still take it as the object's height (#692).
     ///
     /// [`current_fly_height`]: super::air_movement::current_fly_height
-    pub(crate) fn set_object_height(&mut self, id: u64, height: i32) {
+    pub(crate) fn set_object_height_unmarked(&mut self, id: u64, height: i32) {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };

@@ -591,7 +591,12 @@ impl Simulation {
     /// high-bridge cell (`[0x00A8F234]`, 416) and to 0 elsewhere, then a
     /// forced AirDeathFinish (`0x00522B9B`). The infantryman stays: its
     /// sequencer UnInits it when AirDeathFinish has played.
-    pub(crate) fn infantry_crash_impact(&mut self, id: u64, rules: &RuleSet) {
+    pub(crate) fn infantry_crash_impact(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
@@ -618,6 +623,8 @@ impl Simulation {
             } else {
                 0
             },
+            Some(rules),
+            registry,
         );
         if let Err(cause) = self.infantry_do_action(id, DO_AIR_DEATH_FINISH, true, rules) {
             log::debug!("infantry {id} AirDeathFinish: {cause}");

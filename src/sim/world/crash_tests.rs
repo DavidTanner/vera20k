@@ -358,6 +358,57 @@ fn crash_fall_matches_native_frames_to_the_impact() {
     }
 }
 
+/// A dead Fly's drop runs its own Mark(UP), SetLocation and Mark(DOWN)
+/// (`0x004CD766..0x004CD783`) ahead of the movement's pair, and on the impact
+/// frame its height of 0 makes its layer Ground (`0x004CFCF0`): the wreck is
+/// prepended to its cell's list, ahead of an object already there, before
+/// the impact's SetHeight(0) and death weapon.
+#[test]
+fn a_crash_fall_lists_the_wreck_in_its_impact_cell() {
+    use crate::sim::occupancy::CellObjectMember::Entity;
+    let rows = oracle()["fall"].as_array().unwrap().clone();
+    let row = &rows[0];
+    let (mut sim, rules) = fixture(&row["input"]);
+    let frames = row["frames"].as_array().unwrap();
+    let impact_xy: Vec<i32> = frames.last().unwrap()["xyz"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_i64().unwrap() as i32)
+        .collect();
+    let cell = ((impact_xy[0] / 256) as u16, (impact_xy[1] / 256) as u16);
+    let bystander = sim.allocate_stable_id();
+    insert_entity(&mut sim, bystander, EntityCategory::Unit);
+    assert!(matches!(
+        sim.try_reveal_entity(
+            bystander,
+            RevealRequest {
+                position: RevealPosition {
+                    rx: cell.0,
+                    ry: cell.1,
+                    z: 0,
+                    sub_x: SimFixed::from_num(128),
+                    sub_y: SimFixed::from_num(128),
+                },
+                placement: PlacementEvidence::MarkSucceeded,
+                logic_eligible: true,
+            }
+        ),
+        RevealOutcome::Revealed { .. }
+    ));
+    let start = sim.session.binary_frame;
+    for n in 0..frames.len() {
+        sim.session.binary_frame = start + n as u32;
+        let stats = sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
+        assert_eq!(stats.impact, n + 1 == frames.len(), "frame {n}");
+    }
+    let wreck = sim.substrate.entities.get(1).unwrap();
+    assert!(wreck.lifecycle.cell_marked);
+    assert_eq!((wreck.position.rx, wreck.position.ry), cell);
+    assert!(sim.substrate.occupancy.contains_entity(cell.0, cell.1, 1));
+    assert_eq!(sim.next_cell_object(Entity(1)), Some(Entity(bystander)));
+}
+
 /// `AircraftClass::AI`'s smoke: strict red health (and no smoke at exactly
 /// ConditionRed or on the ground), one Scenario `RandomRanged(0, 99)`, and the
 /// 10/80 threshold, over three seeds.

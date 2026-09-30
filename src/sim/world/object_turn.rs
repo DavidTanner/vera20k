@@ -266,7 +266,7 @@ impl Simulation {
             // to the sequencer and locomotion actions.
             if let Some(rules) = rules {
                 self.aircraft_tracker_remove(stable_id);
-                self.infantry_crash_impact(stable_id, rules);
+                self.infantry_crash_impact(stable_id, rules, overlay_registry);
             }
             return Ok(process);
         }
@@ -832,7 +832,12 @@ impl Simulation {
         // Commence after landing waits one frame.
         let mut per_cell_ran = false;
         if let Some(rules) = rules
-            && sim.advance_fall(stable_id, rules.general.parachute_max_fall_rate)
+            && sim.advance_fall(
+                stable_id,
+                rules.general.parachute_max_fall_rate,
+                Some(rules),
+                overlay_registry,
+            )
         {
             // Object AI5F3F8D: grounded fall completion calls vt+0x18C(2)
             // before the parachute animation's wind-down.

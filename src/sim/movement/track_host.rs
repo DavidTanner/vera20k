@@ -709,7 +709,20 @@ impl Simulation {
     }
 
     /// FootClass::SetCoords 0x4DB810 over a changed XYZ.
-    pub(super) fn foot_set_coords(&mut self, id: u64, coord: DriveCoord, rules: Option<&RuleSet>) {
+    ///
+    /// RESIDUAL: its marked branch (`0x004DB83F..0x004DB866`, Mark(UP),
+    /// `ObjectClass::SetLocation`, Mark(DOWN) while `+0x74` is set) is not
+    /// ported. Every Rust caller runs it unmarked: Drive and Hover Mark(UP)
+    /// first on a cell change (`0x004B2071`, `0x005148E3`) and clear `+0x74`
+    /// around it otherwise (`0x004B209F`, `0x005149F7`), and the Fly crash
+    /// fall Mark(UP)s first (`0x004CD766`). Natively `ObjectClass::Paradrop`
+    /// calls it on the object Unlimbo just marked, with the same coordinate
+    /// (`0x005F5A3D`, `0x005F5A50`); VERA's Reveal commits the drop coordinate
+    /// instead, which skips a Pick_Up/Place_Down pair that leaves the list
+    /// order as it was, and its two Recalcs. Trigger: every paradrop. Effect:
+    /// none on the lists. Risk: a new caller that sets a marked object's
+    /// Location.
+    pub(crate) fn foot_set_coords(&mut self, id: u64, coord: DriveCoord, rules: Option<&RuleSet>) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };

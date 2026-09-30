@@ -136,13 +136,22 @@ impl Simulation {
         true
     }
 
-    /// `FlyLocomotionClass::Process`'s fall block (`0x004CD67F..0x004CD7A4`)
-    /// for a dead Fly: above the ground its fall counter grows by one
+    /// The fall block (`0x004CD67F..0x004CD7A4`) of `0x004CD600`, which
+    /// `FlyLocomotionClass::Process` (`0x004CCB40`) calls every frame, for a
+    /// dead Fly: above the ground its fall counter grows by one
     /// (`advance_fall`) and it drops by the new counter, XY unchanged, when its
     /// cell passes `MapClass::In_Bounds` (`0x004CD748`); otherwise only the
     /// counter moves. Returns whether its height then reached zero, the
-    /// impact (`0x004CD7A4`); the rest of Process (the paid step and the
+    /// impact (`0x004CD7A4`); the rest of the function (the paid step and the
     /// height step) runs only when it did not.
+    ///
+    /// The drop leaves the display, runs Mark(UP), `FootClass::SetLocation`
+    /// (vt+0x1B4 = `0x004DB810`), Mark(DOWN) and re-enters the display
+    /// (`0x004CD751..0x004CD792`). This comes before the movement's own Mark
+    /// pair (`0x004CDA36`). The Mark(DOWN) marks the wreck whatever its state
+    /// before, and on the impact frame its height of 0 or less makes its
+    /// layer Ground (`0x004CFCF0`), so the wreck is in its cell's list for
+    /// the impact.
     ///
     /// RESIDUAL: the same block drops an unpowered living Fly by three a frame
     /// and its impact (`0x004CD8A9..0x004CD9C0`) kills it with the C4 warhead,
@@ -156,7 +165,12 @@ impl Simulation {
     /// predicate's `+0x3D4` latch) drifting out of bounds while it falls.
     /// Effect: it keeps drifting where native removes it; a shot-down combat
     /// aircraft (latch clear) drifts natively too. Frequency: rare.
-    pub(super) fn fly_crash_fall(&mut self, id: u64) -> bool {
+    pub(super) fn fly_crash_fall(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
         let terrain = self.resolved_terrain.as_ref();
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -164,25 +178,36 @@ impl Simulation {
         if entity.health.current != 0 || current_fly_height(entity, terrain) == 0 {
             return false;
         }
-        let xy = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
+        let location = crate::sim::movement::ground_pose::object_location(entity, terrain);
         // `0x004CD70C..0x004CD736`: the cell of the unchanged XY, divided
         // toward zero.
-        let cell = ((xy[0] / 256) as i16, (xy[1] / 256) as i16);
+        let cell = ((location.x / 256) as i16, (location.y / 256) as i16);
         let placed = self.map_cell_in_bounds(cell);
-        let Some(entity) = self.substrate.entities.get_mut(id) else {
-            return false;
-        };
-        let Some(runtime) = entity
-            .locomotor
-            .as_mut()
+        let Some(runtime) = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .and_then(|entity| entity.locomotor.as_mut())
             .and_then(|locomotor| locomotor.fly_runtime_mut())
         else {
             return false;
         };
         let counter = runtime.advance_fall(true);
-        if placed && let Some(z) = entity.position.exact_z_leptons {
-            entity.position.exact_z_leptons = Some(z.wrapping_sub(counter));
+        if placed {
+            let context = UninitContext::new(rules, registry);
+            self.substrate.display.remove(id);
+            self.unmark_entity_remove(id, context);
+            let dropped = crate::sim::components::DriveCoord {
+                z: location.z.wrapping_sub(counter),
+                ..location
+            };
+            self.foot_set_coords(id, dropped, rules);
+            self.mark_entity_put(id, context);
+            self.submit_entity_display(id, rules, None);
         }
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return false;
+        };
         let height = current_fly_height(entity, self.resolved_terrain.as_ref());
         if let Some(locomotor) = entity.locomotor.as_mut() {
             locomotor.altitude = SimFixed::saturating_from_num(height);
@@ -190,8 +215,8 @@ impl Simulation {
         height <= 0
     }
 
-    /// The dead Fly's impact, `FlyLocomotionClass::Process 0x004CD7AA..
-    /// 0x004CD8A8`: out of the AircraftTracker (`0x004CD7B3`), `SetHeight(0)`
+    /// The dead Fly's impact, `0x004CD7AA..0x004CD8A8` in the same function:
+    /// out of the AircraftTracker (`0x004CD7B3`), `SetHeight(0)`
     /// (`0x004CD7BF`), `Fire_Death_Weapon(0)` (`0x004CD809`) with no
     /// `Explodes=` gate, the impact cue by the impact cell's LandType
     /// (`0x004CD818..0x004CD891`), then UnInit (`0x004CD89B`). The object's
@@ -206,7 +231,7 @@ impl Simulation {
             return;
         }
         self.aircraft_tracker_remove(id);
-        self.set_object_height(id, 0);
+        self.set_object_height(id, 0, Some(rules), overlay_registry);
         self.fire_death_weapon(id, rules, overlay_registry);
         self.play_crash_impact_sound(id, rules);
         // `FootClass::~FootClass` releases the crash sound the object holds
@@ -250,7 +275,7 @@ impl Simulation {
             // The notice goes unanswered: the wreck rests in State 6.
             return;
         }
-        self.set_object_height(id, 0);
+        self.set_object_height(id, 0, Some(rules), overlay_registry);
         if balloon_hover {
             self.fire_death_weapon(id, rules, overlay_registry);
         } else {

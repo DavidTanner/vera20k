@@ -96,7 +96,12 @@ impl Simulation {
             .first_building_on_layer(x as u16, y as u16, MovementLayer::Ground)
     }
 
-    pub(super) fn apply_fly_landing_callback(&mut self, id: u64, rules: Option<&RuleSet>) {
+    pub(super) fn apply_fly_landing_callback(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         let entity = self
             .substrate
             .entities
@@ -249,7 +254,7 @@ impl Simulation {
                 self.substrate.entities.get_mut(id).unwrap().on_bridge = true;
             }
         }
-        self.set_object_height(id, base);
+        self.set_object_height(id, base, rules, registry);
         self.aircraft_tracker_remove(id);
         let entity = self.substrate.entities.get_mut(id).unwrap();
         let fly = entity
