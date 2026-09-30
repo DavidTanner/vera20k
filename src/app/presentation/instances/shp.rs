@@ -8,8 +8,9 @@
 //! - Part of the app layer — may depend on everything.
 
 use super::helpers::{
-    ANIM_DRAW_DEPTH_BIAS_PX, apply_shape_z_adjust, compute_sprite_depth, effective_anim_z_adjust,
-    entity_draw_band, ground_sort_row, ground_z_adjust, in_view, tactical_entity_render_admission,
+    ANIM_DRAW_DEPTH_BIAS_PX, apply_shape_z_adjust, compute_sprite_depth,
+    compute_sprite_depth_params_lifted, depth_axis, effective_anim_z_adjust, entity_draw_band,
+    ground_sort_row, in_view, lifted_z_adjust, tactical_entity_render_admission,
 };
 use crate::app::AppState;
 use crate::app::presentation::render::draw_plan_lowering::{
@@ -181,6 +182,11 @@ pub(crate) fn build_shp_instances(
             }
         };
         let interp_z = pos.z;
+        // The lift `screen_position` drew this body with. A building's draw
+        // cancels exactly that for its sort row and per-pixel Z seed
+        // (`NormalZAdjust - AdjustForZ(Z)`), so its body, bib, anims and
+        // turret sort and clip against the height they are drawn at.
+        let lift_px = crate::render::locomotor_visual::screen_lift_px(entity);
         if !in_view(sx, sy, 200.0, 200.0, cam_x, cam_y, sw, sh, 200.0) {
             continue;
         }
@@ -308,7 +314,8 @@ pub(crate) fn build_shp_instances(
                 // NW footprint cell's tile row — the row gamemd's YSort (X + Y
                 // off the render coords) reduces to. A building therefore sorts
                 // on its own cell rather than one iso row north of it.
-                compute_sprite_depth(state, sy, interp_z)
+                let axis = depth_axis(state);
+                compute_sprite_depth_params_lifted(axis.origin_y, axis.world_height, sy, lift_px)
             }
             _ => {
                 // The drawn row carries this body's height lift; the sort key
@@ -394,7 +401,7 @@ pub(crate) fn build_shp_instances(
                 point_move,
             );
             (
-                ground_z_adjust(interp_z, normal_z_adjust + SHP_DRAW_Z_ADJUST_PX),
+                lifted_z_adjust(lift_px, normal_z_adjust + SHP_DRAW_Z_ADJUST_PX),
                 native_z::pack_building_z_gradient(zshape, entry.extended),
                 [origin.0 as f32, origin.1 as f32],
             )
@@ -478,7 +485,7 @@ pub(crate) fn build_shp_instances(
                     hc,
                     sx,
                     sy,
-                    interp_z,
+                    lift_px,
                     depth,
                     tint,
                     palette_light,
@@ -514,7 +521,7 @@ pub(crate) fn build_shp_instances(
                     &entity.building_anim_slots,
                     world_height,
                     draw_state,
-                    interp_z,
+                    lift_px,
                 );
             }
             // Emit VXL turret on top of building (e.g., SAM site, Prism Tower).
@@ -528,7 +535,7 @@ pub(crate) fn build_shp_instances(
                             hc,
                             sx,
                             sy,
-                            interp_z,
+                            lift_px,
                             depth,
                             tint,
                             // Building VXL 0043DA80 reads top directly (e.g.
@@ -586,7 +593,7 @@ fn emit_building_turret_vxl(
     _hc: HouseColorIndex,
     building_sx: f32,
     building_sy: f32,
-    z: u8,
+    lift_px: i32,
     building_depth: f32,
     tint: [f32; 3],
     palette_light: crate::render::palette_light::PaletteLight,
@@ -626,7 +633,7 @@ fn emit_building_turret_vxl(
             alpha: 1.0,
             draw_state,
             // VXL blit: gradient entry 2, lift cancelled, no DrawSHP -2.
-            z_adjust: ground_z_adjust(z, 0),
+            z_adjust: lifted_z_adjust(lift_px, 0),
             z_gradient: pack_z_gradient(ZGradient::Vertical, false),
             ..Default::default()
         },
@@ -647,7 +654,7 @@ fn emit_building_bib(
     house_color: HouseColorIndex,
     screen_x: f32,
     screen_y: f32,
-    z: u8,
+    lift_px: i32,
     building_depth: f32,
     tint: [f32; 3],
     palette_light: crate::render::palette_light::PaletteLight,
@@ -705,7 +712,7 @@ fn emit_building_bib(
             palette_light,
             alpha: 1.0,
             draw_state,
-            z_adjust: ground_z_adjust(z, BIB_Z_ADJUST_PX + SHP_DRAW_Z_ADJUST_PX),
+            z_adjust: lifted_z_adjust(lift_px, BIB_Z_ADJUST_PX + SHP_DRAW_Z_ADJUST_PX),
             z_gradient: pack_z_gradient(ZGradient::Flat, false),
             ..Default::default()
         },
@@ -736,7 +743,7 @@ fn emit_building_anims(
     slots: &[Option<u64>; 21],
     world_height: f32,
     draw_state: DrawState,
-    z: u8,
+    lift_px: i32,
 ) {
     let rules_image: String = rules
         .and_then(|r| r.object(building_type))
@@ -853,8 +860,8 @@ fn emit_building_anims(
                 draw_state,
                 // The anim's YDrawOffset is baked into the atlas offset, so it
                 // also rides the Z term (native `YDrawOffset + ZAdjust - 2`).
-                z_adjust: ground_z_adjust(
-                    z,
+                z_adjust: lifted_z_adjust(
+                    lift_px,
                     z_adjust_px
                         + art_reg
                             .anim_runtime_config(anim_name)

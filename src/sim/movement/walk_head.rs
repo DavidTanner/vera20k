@@ -95,7 +95,7 @@ pub(crate) fn raw_at(
     } else {
         super::locomotor::MovementLayer::Ground
     };
-    raw.write_infantry(key, layer, mask, owner, put);
+    raw.write_occupant(key, layer, mask, Some(owner), put);
 }
 
 /// Successful fresh-head tail75BC2A..75BCBD. Facing+4C is75AE00 ->
@@ -122,7 +122,9 @@ pub(super) fn finish_fresh_head(
             head.y.wrapping_sub(current.y),
         );
         entity.body_facing.snap(facing, native_frame);
-        entity.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
+        entity
+            .foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
         //75BC36's dead-owner exit bypasses75BCB2 and retains the exact byte.
         // Native controls: foot_scold_latch.json dead_fresh_head rows.
         entity.navigation.path_runtime.clear_scold_latch();
@@ -191,7 +193,9 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .set_step_head(Some(DriveCoord::cell(10, 10, 0)));
-            actor.foot_speed.applied_fraction = SimFixed::from_num(0.75);
+            actor
+                .foot_speed
+                .set_speed_fraction(SimFixed::from_num(0.75));
             actor
                 .navigation
                 .path_runtime
@@ -207,7 +211,7 @@ mod tests {
                 Some(row["motion"] == 1)
             );
             assert_eq!(
-                actor.foot_speed.applied_fraction,
+                actor.foot_speed.applied_fraction(),
                 SimFixed::from_num(row["speed_fraction"].as_f64().unwrap())
             );
             assert_eq!(actor.body_facing, body_before, "a dead owner turns nothing");
@@ -613,7 +617,7 @@ mod tests {
                 row["facing"]
             );
             assert_eq!(
-                entity.foot_speed.applied_fraction,
+                entity.foot_speed.applied_fraction(),
                 SimFixed::from_num(row["speed_fraction"].as_f64().unwrap())
             );
             assert_eq!(entity.navigation.path_replay.directions, vec![2, 3, 4, 5]);

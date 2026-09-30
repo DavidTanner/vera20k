@@ -441,6 +441,9 @@ impl Simulation {
     }
 
     /// Adapt the current level-based placement API to the native input Coord.Z.
+    /// Object Unlimbo 0x5F4EC0 passes its coordinate through the type's virtual
+    /// +0x6C (`0x005F4F88`). BuildingType 0x464A70 keeps the XY and takes the
+    /// floor there (`0x578080`) as the Z, with no deck, whatever the input Z.
     /// UnitType 0x747EB0 / InfantryType 0x5247D0 clamp that input to the exact
     /// ground surface before Object Unlimbo 0x5F4EC0 commits XYZ and Mark(PUT).
     /// They do not add a bridge offset. Authored bridge placement supplies its
@@ -458,12 +461,24 @@ impl Simulation {
         use crate::sim::movement::ground_pose::ground_surface_z_at;
         use crate::sim::movement::locomotor::MovementLayer;
 
+        let xy = [
+            i32::from(position.rx)
+                .wrapping_mul(256)
+                .wrapping_add(position.sub_x.to_num::<i32>()),
+            i32::from(position.ry)
+                .wrapping_mul(256)
+                .wrapping_add(position.sub_y.to_num::<i32>()),
+        ];
         let entity = self.substrate.entities.get(stable_id)?;
         if entity.parachute_state.is_some() {
             // Paradrop's Unlimbo coordinate is the drop coordinate, which
             // SetLocation then commits whole (`0x005F5A50`): the falling
             // object keeps the Z its drop gave it.
             return entity.position.exact_z_leptons;
+        }
+        if entity.category == EntityCategory::Structure {
+            let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
+            return ground_surface_z_at(xy, false, Some(terrain), None);
         }
         if !matches!(
             entity.category,
@@ -480,14 +495,6 @@ impl Simulation {
             return None;
         }
         let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
-        let xy = [
-            i32::from(position.rx)
-                .wrapping_mul(256)
-                .wrapping_add(position.sub_x.to_num::<i32>()),
-            i32::from(position.ry)
-                .wrapping_mul(256)
-                .wrapping_add(position.sub_y.to_num::<i32>()),
-        ];
         let ground_z = ground_surface_z_at(xy, false, Some(terrain), None)?;
         let level = terrain
             .native_fixed_cell_index((xy[0] / 256) as i16, (xy[1] / 256) as i16)

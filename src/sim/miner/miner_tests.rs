@@ -3381,7 +3381,9 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
             .expect("miner entity");
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         entity.drive_locomotion = Some(Default::default());
-        entity.foot_speed.applied_fraction = crate::util::fixed_math::SimFixed::lit("0.25");
+        entity
+            .foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SimFixed::lit("0.25"));
     }
     // The first pass raises the unload latch; the dump gate is 15 frames out.
     run_unload(&mut sim, &rules, miner_id, 1);

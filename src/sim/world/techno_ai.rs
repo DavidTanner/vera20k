@@ -6208,11 +6208,11 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         let loco = entity.locomotor.as_mut().unwrap();
         loco.set_step_head(head);
         loco.set_walk_destination(head);
-        entity.foot_speed.applied_fraction = if walking {
+        entity.foot_speed.set_speed_fraction(if walking {
             crate::util::fixed_math::SIM_ONE
         } else {
             crate::util::fixed_math::SIM_ZERO
-        };
+        });
         entity.movement_target = walking.then(|| crate::sim::components::MovementTarget {
             path: vec![(5, 5), (6, 5)],
             next_index: 1,

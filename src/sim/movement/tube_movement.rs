@@ -476,7 +476,7 @@ fn finalize_tube_object(
             }
             // Unit73604F writes the live Foot owner even if PerCell replaced
             // Drive. Exact post-callback timing remains part of the Process host.
-            entity.foot_speed.applied_fraction = SIM_ONE;
+            entity.foot_speed.set_speed_fraction(SIM_ONE);
         }
         entity.low_bridge_tube_state = None;
     }
@@ -582,7 +582,7 @@ fn stop_blocked_mover(entities: &mut EntityStore, entity_id: u64) {
             drive.target_speed_fraction = SIM_ZERO;
         }
         // Unit735F6A / Infantry51B8FC apply zero on the live Foot owner.
-        entity.foot_speed.applied_fraction = SIM_ZERO;
+        entity.foot_speed.set_speed_fraction(SIM_ZERO);
     }
 }
 
@@ -870,7 +870,7 @@ mod tests {
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
             entity.lifecycle.cell_marked = false;
             entity.position.rx = 2;
-            entity.foot_speed.applied_fraction = SimFixed::lit("0.625");
+            entity.foot_speed.set_speed_fraction(SimFixed::lit("0.625"));
             entity.movement_target = Some(MovementTarget {
                 speed: SimFixed::from_num(150),
                 ..Default::default()
@@ -918,7 +918,7 @@ mod tests {
                 LocomotorKind::Teleport
             );
             assert_eq!(
-                owner.foot_speed.applied_fraction,
+                owner.foot_speed.applied_fraction(),
                 if blocked { SIM_ZERO } else { SIM_ONE }
             );
             // GetCurrentSpeed follows the fraction; the rules-less getter

@@ -241,7 +241,7 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
             (state.target_speed_fraction, state.track, state.head_to)
         };
         assert_eq!(retained, SIM_HALF, "{kind:?}");
-        assert_eq!(entity.foot_speed.applied_fraction, SIM_HALF, "{kind:?}");
+        assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF, "{kind:?}");
         assert_eq!(sim.current_speed_for_test(1, &rules), 7, "{kind:?}");
         assert_eq!((progress.cursor, progress.residual), (1, 7), "{kind:?}");
         assert_eq!(head, Some(DriveCoord::cell(10, 9, 0)), "{kind:?}");
@@ -443,7 +443,7 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
     let drive = entity.drive_locomotion.as_mut().unwrap();
     drive.destination = drive.head_to;
     drive.track.cursor = drive_track::raw_track_points(1).len() as i32;
-    entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+    entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
     assert_eq!(
@@ -452,7 +452,7 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
             .get(1)
             .unwrap()
             .foot_speed
-            .applied_fraction,
+            .applied_fraction(),
         SimFixed::from_num(0)
     );
     assert_eq!(sim.current_speed_for_test(1, &rules), 0);
@@ -482,7 +482,7 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
             .get(1)
             .unwrap()
             .foot_speed
-            .applied_fraction,
+            .applied_fraction(),
         SimFixed::from_num(0.03)
     );
 }
@@ -600,7 +600,7 @@ fn bridge_terminal_uses_owner_height_to_reach_ground_navcom_target() {
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.on_bridge = true;
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
-    entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+    entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     let drive = entity.drive_locomotion.as_mut().unwrap();
     let deck = DriveCoord::cell(10, 9, 416);
     drive.head_to = Some(deck);
@@ -620,7 +620,7 @@ fn bridge_terminal_uses_owner_height_to_reach_ground_navcom_target() {
             .is_none()
     );
     assert!(entity.movement_target.is_none());
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::from_num(0));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::from_num(0));
 }
 
 #[test]
@@ -642,7 +642,7 @@ fn terminal_piggyback_end_is_synchronous_and_preserves_owner_speed() {
         ..Default::default()
     });
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
-    entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+    entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -651,6 +651,6 @@ fn terminal_piggyback_end_is_synchronous_and_preserves_owner_speed() {
         LocomotorKind::Teleport
     );
     assert!(entity.drive_locomotion.is_none());
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::from_num(1));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::from_num(1));
     assert!(entity.navigation.nav_com.is_none());
 }

@@ -368,7 +368,8 @@ fn start_install_force_track(
     // Building4591AF calls Force_Track, then4591BE explicitly sets Foot's
     // applied fraction. The generic locomotor admission does not own speed.
     if let Some(unit) = sim.substrate.entities.get_mut(unit_id) {
-        unit.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
+        unit.foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
     }
     admitted
 }

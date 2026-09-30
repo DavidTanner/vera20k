@@ -5036,7 +5036,7 @@ mod tests {
 
         let ship_head = DriveCoord::cell(6, 5, 0);
         let entity = sim.substrate.entities.get_mut(1).expect("SHP unit");
-        entity.foot_speed.applied_fraction = SIM_HALF;
+        entity.foot_speed.set_speed_fraction(SIM_HALF);
         entity.ship_locomotion = Some(ShipLocomotionRuntime {
             destination: Some(ship_head),
             head_to: Some(ship_head),
@@ -5071,7 +5071,7 @@ mod tests {
         assert_eq!(restored_ship.head_to, Some(ship_head));
         assert_eq!(restored_ship.target_speed_fraction, SIM_ONE);
         let restored_owner_speed = &restored.substrate.entities.get(1).unwrap().foot_speed;
-        assert_eq!(restored_owner_speed.applied_fraction, SIM_HALF);
+        assert_eq!(restored_owner_speed.applied_fraction(), SIM_HALF);
         assert_eq!(restored.state_hash(), populated_shp_state_hash);
     }
 
@@ -6886,20 +6886,20 @@ mod tests {
 
         let owner = live.intern("DummyOccupationOwner");
         let hash_before_raw = live.state_hash();
-        live.substrate.raw_cell_occupation.write_infantry(
+        live.substrate.raw_cell_occupation.write_occupant(
             RawCellKey::Dummy,
             MovementLayer::Ground,
             4,
-            owner,
+            Some(owner),
             true,
         );
         let ground_hash = live.state_hash();
         assert_ne!(hash_before_raw, ground_hash);
-        live.substrate.raw_cell_occupation.write_infantry(
+        live.substrate.raw_cell_occupation.write_occupant(
             RawCellKey::Dummy,
             MovementLayer::Bridge,
             8,
-            owner,
+            Some(owner),
             true,
         );
         assert_ne!(

@@ -29,7 +29,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::occupancy::{OccupancyGrid, RawCellOccupationGrid};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneId};
+use crate::sim::pathfinding::zone_map::ZoneGrid;
 
 /// Hard radius cap for the ring search.
 ///
@@ -85,7 +85,8 @@ const PROJECTION_LEVEL_LEPTONS: i32 = 0x80;
 #[derive(Debug, Clone, Copy)]
 pub struct PassabilityArgs {
     pub speed_type: SpeedType,
-    pub required_zone_id: Option<ZoneId>,
+    /// The mover's `GetZoneID` DWORD (`0x0056D230`).
+    pub required_zone_id: Option<u32>,
     pub movement_zone: MovementZone,
     pub bridge_aware_zone: bool,
 }
@@ -555,12 +556,14 @@ fn candidate_passes(
             native_cells: q.native_cells,
             rect,
             speed_type: q.passability.speed_type,
-            // FNPC's entry turns a zone argument of 0xFFFF into -1, which
-            // disables the comparison (`0x0056DC43..0x0056DC60`).
+            // FNPC's entry turns a zone argument of 0xFFFF into -1
+            // (`0x0056DC43..0x0056DC60`, a full DWORD compare); a missing
+            // bridge record's 0xFFFFFFFF already is -1. Either disables the
+            // comparison.
             required_zone_id: q
                 .passability
                 .required_zone_id
-                .filter(|&zone| zone != 0xFFFF),
+                .filter(|&zone| zone != 0xFFFF && zone != u32::MAX),
             movement_zone: q.passability.movement_zone,
             required_height_or_level: None, // the search always passes -1 (L21)
             bridge_aware_zone: q.passability.bridge_aware_zone,
@@ -723,9 +726,18 @@ impl crate::sim::world::Simulation {
                 (x / 256, y / 256)
             }
         };
-        let zone = self.zone_grid.as_ref().and_then(|zones| {
-            zones.get_zone_id_native(seed, object.movement_zone, entity.on_bridge)
-        });
+        let zone = self
+            .zone_grid
+            .as_ref()
+            .zip(self.resolved_terrain.as_ref())
+            .and_then(|(zones, terrain)| {
+                zones.get_zone_id_native(
+                    terrain,
+                    (seed.0 as u16, seed.1 as u16),
+                    object.movement_zone,
+                    entity.on_bridge,
+                )
+            });
         let (width, height) = self
             .playfield_bounds
             .zip(self.playfield_size_height)

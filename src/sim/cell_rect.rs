@@ -20,7 +20,7 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::{OccupancyGrid, RawCellOccupationGrid};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneId};
+use crate::sim::pathfinding::zone_map::ZoneGrid;
 
 // Fixed cell indexing is map-owned (map::cell_index, F05); sim re-exports
 // so runtime consumers keep their paths.
@@ -104,21 +104,28 @@ pub fn get_cellclass_fallback<'a>(
     y: i32,
 ) -> CellRef<'a> {
     let (x, y) = packed_cell_coord(x, y);
-    if let Some(index) = cell_linear_index(x, y) {
-        let rx = (index % CELL_ROW_STRIDE) as u16;
-        let ry = (index / CELL_ROW_STRIDE) as u16;
-        if let Some(cell) = terrain.and_then(|t| t.cell(rx, ry)) {
-            return CellRef::Real(cell);
+    let Some(terrain) = terrain else {
+        return CellRef::Dummy {
+            cell: detached_dummy(x, y),
+        };
+    };
+    let query = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+    native_cell_ref(&query, query.lookup((x as i16, y as i16)))
+}
+
+/// The view of one identity a Map lookup returned through `query`.
+fn native_cell_ref<'a>(
+    query: &crate::map::resolved_terrain::NativeCellQuery<'a>,
+    cell: crate::map::cell_index::NativeCellIdentity,
+) -> CellRef<'a> {
+    match cell {
+        crate::map::cell_index::NativeCellIdentity::Real(index) => {
+            CellRef::Real(&query.terrain().cells()[index])
         }
-    }
-    let cell = terrain.map_or_else(
-        || detached_dummy(x, y),
-        |terrain| {
-            terrain.stamp_dummy_cell_requested_coord(x, y);
-            terrain.shared_cell_dummy()
+        crate::map::cell_index::NativeCellIdentity::Dummy => CellRef::Dummy {
+            cell: query.dummy(),
         },
-    );
-    CellRef::Dummy { cell }
+    }
 }
 
 pub(crate) fn get_cellclass_in_query<'a>(
@@ -131,48 +138,29 @@ pub(crate) fn get_cellclass_in_query<'a>(
         return get_cellclass_fallback(terrain, x, y);
     };
     debug_assert!(terrain.is_some_and(|terrain| std::ptr::eq(terrain, query.terrain())));
-    match query.lookup((x as i16, y as i16)) {
-        crate::map::cell_index::NativeCellIdentity::Real(index) => {
-            CellRef::Real(&query.terrain().cells()[index])
-        }
-        crate::map::cell_index::NativeCellIdentity::Dummy => CellRef::Dummy {
-            cell: query.dummy(),
-        },
-    }
+    native_cell_ref(query, query.lookup((x as i16, y as i16)))
 }
 
-/// Engine world/lepton coordinate lookup, preserving full signed-i32 `/256`
-/// quotients and wrapping fixed-stride index arithmetic. Coordinate words are
-/// narrowed only after a miss, when native stamps the shared dummy.
-///
-/// Verified against `MapClass::Get_CellClass @ 0x00565730`: a real slot leaves
-/// the shared dummy untouched, while either an invalid slot or a null entry
-/// stamps the converted packed coordinate before returning the dummy.
+/// Engine world/lepton coordinate lookup, `MapClass::Get_CellClass @
+/// 0x00565730`, as a [`CellRef`] view of the one port,
+/// [`NativeCellQuery::lookup_world`](crate::map::resolved_terrain::NativeCellQuery::lookup_world):
+/// full signed-i32 `/256` quotients and wrapping fixed-stride index
+/// arithmetic. A real slot leaves the shared dummy untouched, while either an
+/// invalid slot or a null entry stamps the converted packed coordinate before
+/// returning the dummy.
 pub fn get_cellclass_fallback_leptons<'a>(
     terrain: Option<&'a ResolvedTerrainGrid>,
     x_leptons: i32,
     y_leptons: i32,
 ) -> CellRef<'a> {
-    let x = x_leptons / 256;
-    let y = y_leptons / 256;
-    let index = y.wrapping_mul(CELL_ROW_STRIDE as i32).wrapping_add(x);
-    if (0..=MAX_CELL_INDEX as i32).contains(&index) {
-        let rx = (index % CELL_ROW_STRIDE as i32) as u16;
-        let ry = (index / CELL_ROW_STRIDE as i32) as u16;
-        if let Some(cell) = terrain.and_then(|terrain| terrain.cell(rx, ry)) {
-            return CellRef::Real(cell);
-        }
-    }
-
-    let (x, y) = packed_cell_coord(x, y);
-    let cell = terrain.map_or_else(
-        || detached_dummy(x, y),
-        |terrain| {
-            terrain.stamp_dummy_cell_requested_coord(x, y);
-            terrain.shared_cell_dummy()
-        },
-    );
-    CellRef::Dummy { cell }
+    let Some(terrain) = terrain else {
+        let (x, y) = packed_cell_coord(x_leptons / 256, y_leptons / 256);
+        return CellRef::Dummy {
+            cell: detached_dummy(x, y),
+        };
+    };
+    let query = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+    native_cell_ref(&query, query.lookup_world(x_leptons, y_leptons))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,8 +181,8 @@ pub(crate) struct IsClearToMoveRequest {
     pub speed_type: SpeedType,
     pub movement_zone: MovementZone,
     /// `None` corresponds to native zone `-1` (no zone comparison).
-    pub requested_zone: Option<i16>,
-    pub actual_zone: i16,
+    pub requested_zone: Option<u32>,
+    pub actual_zone: u32,
     /// Native signed `CellClass+0x11B` base level.
     pub base_level: i16,
     /// Native `CellClass::Flags & 0x100` bridge gate.
@@ -244,8 +232,8 @@ pub(crate) struct LiveCellPassabilityQuery<'a> {
     pub target: (u16, u16),
     pub speed_type: SpeedType,
     pub movement_zone: MovementZone,
-    pub requested_zone: Option<i16>,
-    pub actual_zone: i16,
+    pub requested_zone: Option<u32>,
+    pub actual_zone: u32,
     pub requested_layer: Option<MovementLayer>,
     pub ignore_infantry: bool,
     pub ignore_vehicles: bool,
@@ -689,7 +677,7 @@ pub struct CellRectPassabilityContext<'a> {
     pub native_cells: Option<&'a crate::map::resolved_terrain::NativeCellQuery<'a>>,
     pub rect: CellRect,
     pub speed_type: SpeedType,
-    pub required_zone_id: Option<ZoneId>,
+    pub required_zone_id: Option<u32>,
     pub movement_zone: MovementZone,
     pub required_height_or_level: Option<i16>,
     pub bridge_aware_zone: bool,
@@ -889,7 +877,7 @@ fn check_cell_passability(
                     (x as u16, y as u16)
                 }
             };
-            zone_grid.get_path_zone_id_native_in_query(
+            zone_grid.get_zone_id_native_in_query(
                 terrain,
                 coord,
                 ctx.movement_zone,
@@ -911,7 +899,7 @@ fn check_cell_passability(
             };
             Some(u32::from(zone_map.zone_at(rx, ry, layer)))
         };
-        if actual_zone != Some(u32::from(required_zone)) {
+        if actual_zone != Some(required_zone) {
             return false;
         }
     }
@@ -1865,9 +1853,11 @@ mod tests {
             terrain.width(),
             terrain.height(),
         );
-        let zone_id = zone_grid
-            .get_zone_id_nonbridge_native((0, 0), MovementZone::Normal)
-            .unwrap();
+        let zone_id = u32::from(
+            zone_grid
+                .get_zone_id_nonbridge_native((0, 0), MovementZone::Normal)
+                .unwrap(),
+        );
 
         let wrong_zone = CellRectPassabilityContext {
             native_cells: None,
@@ -2006,7 +1996,7 @@ mod tests {
         let mut ctx = clear_passability_context(CellRect::single(1, 0), None);
         ctx.path_grid = Some(&path_grid);
         ctx.zone_grid = Some(&compatibility_zones);
-        ctx.required_zone_id = Some(zone);
+        ctx.required_zone_id = Some(u32::from(zone));
         assert!(check_passability_rect(ctx));
     }
 
@@ -2031,18 +2021,18 @@ mod tests {
         assert!(check(&terrain, &zone_grid, 91, true));
         assert!(!check(&terrain, &zone_grid, 92, true));
         zone_grid.base_topology_mut().raw_zone_ids_by_row[row][cluster] = u16::MAX;
-        assert!(check(&terrain, &zone_grid, u16::MAX, true));
+        assert!(check(&terrain, &zone_grid, 0xFFFF, true));
         terrain.cells[0].bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL;
         assert_eq!(
-            zone_grid.get_path_zone_id_native(&terrain, (0, 0), MovementZone::Normal, true),
+            zone_grid.get_zone_id_native(&terrain, (0, 0), MovementZone::Normal, true),
             Some(u32::MAX)
         );
         assert!(
-            !check(&terrain, &zone_grid, u16::MAX, true),
+            !check(&terrain, &zone_grid, 0xFFFF, true),
             "missing record DWORDFFFFFFFF is not raw WORDFFFF"
         );
         assert!(
-            check(&terrain, &zone_grid, u16::MAX, false),
+            check(&terrain, &zone_grid, 0xFFFF, false),
             "literal false bypasses the structural record query"
         );
     }

@@ -599,11 +599,13 @@ impl Simulation {
         if !crashable {
             return;
         }
-        let coord = crate::sim::movement::ground_pose::position_world_coord(&actor.position);
+        // GetCoords (`0x00522B24`), its truncated cell (`0x00522B29..0x00522B4F`)
+        // and that cell's flags through Map[cell] (`0x00522B62`).
+        let [x, y] = crate::sim::movement::ground_pose::object_center_xy(actor);
         let high_bridge = self.resolved_terrain.as_ref().is_some_and(|terrain| {
             let cell = terrain.native_cell_identity((
-                (coord.x.div_euclid(256)) as i16,
-                (coord.y.div_euclid(256)) as i16,
+                crate::util::lepton::lepton_to_cell_packed(x),
+                crate::util::lepton::lepton_to_cell_packed(y),
             ));
             terrain.native_cell_flags(cell) & 0x100 != 0
         });

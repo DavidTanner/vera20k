@@ -46,14 +46,14 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
     });
     match kind {
         LocomotorKind::Drive => {
-            entity.foot_speed.applied_fraction = SIM_ONE;
+            entity.foot_speed.set_speed_fraction(SIM_ONE);
             entity.drive_locomotion = Some(DriveLocomotionRuntime {
                 target_speed_fraction: SIM_ONE,
                 ..Default::default()
             })
         }
         LocomotorKind::Ship => {
-            entity.foot_speed.applied_fraction = SIM_ONE;
+            entity.foot_speed.set_speed_fraction(SIM_ONE);
             entity.ship_locomotion = Some(ShipLocomotionRuntime {
                 target_speed_fraction: SIM_ONE,
                 ..Default::default()
@@ -959,12 +959,9 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
     entity.position.sub_x = SimFixed::from_num(85);
     entity.position.sub_y = SimFixed::from_num(153);
     let path = vec![(3, 3), (3, 2), (4, 1), (5, 1)];
-    let drive_track::DriveTrackDecision::Select(plan) = drive_track::plan_drive_track_from_path(
-        0,
-        (0, -1),
-        Some((1, -1)),
-        kind == LocomotorKind::Ship,
-    ) else {
+    let drive_track::DriveTrackDecision::Select(plan) =
+        drive_track::plan_drive_track_from_path(0, (0, -1), Some((1, -1)))
+    else {
         panic!("native N -> NE curve");
     };
     assert_eq!(plan.nodes, 2);
@@ -1184,8 +1181,8 @@ fn getcoords_xy_is_the_location_or_a_buildings_foundation_centre() {
 }
 
 /// A building's GetCoords keeps its Location's Z (`0x00447B04`), which its
-/// Unlimbo wrote as the floor there: `BuildingTypeClass` virtual +0x6C
-/// (`0x00464A70`) replaces the coordinate's Z with `0x00578080`'s ground
+/// Unlimbo (Reveal) wrote as the floor there: `BuildingTypeClass` virtual
+/// +0x6C (`0x00464A70`) replaces the coordinate's Z with `0x00578080`'s ground
 /// height. An order to a plain building (`0x00447E90` returns +0x48) targets
 /// that floor, not the cell's flat level.
 #[test]
@@ -1201,17 +1198,35 @@ fn a_building_on_a_ramp_is_targeted_at_its_floor() {
         "[BuildingTypes]\n0=TEST\n[TEST]\nFoundation=1x1\n",
     ))
     .unwrap();
+    sim.resolved_terrain = Some(terrain);
     let mut building = GameEntity::test_default(1, "TEST", "Americans", 2, 2);
     building.owner = sim.intern("Americans");
     building.type_ref = sim.intern("TEST");
     building.category = crate::map::entities::EntityCategory::Structure;
-    building.position.z = 5;
+    let (sub_x, sub_y) = (building.position.sub_x, building.position.sub_y);
     sim.substrate.entities.insert(building);
+    assert!(matches!(
+        sim.try_reveal_entity(
+            1,
+            crate::sim::world::RevealRequest {
+                position: crate::sim::world::RevealPosition {
+                    rx: 2,
+                    ry: 2,
+                    z: 5,
+                    sub_x,
+                    sub_y,
+                },
+                placement: crate::sim::world::PlacementEvidence::MarkSucceeded,
+                logic_eligible: true,
+            },
+        ),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     let coord = super::navcom::nav_target_coordinate(
         crate::sim::components::NavTargetRef::Building { id: 1 },
         None,
         &sim.substrate.entities,
-        Some(&terrain),
+        sim.resolved_terrain.as_ref(),
         Some((&rules, &sim.interner)),
     )
     .unwrap();

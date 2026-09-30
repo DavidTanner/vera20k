@@ -652,8 +652,8 @@ impl Simulation {
             ) else {
                 return false;
             };
-            // CDQ; AND EDX,0xFF; ADD; SAR 8, then 16-bit CellStruct subtraction.
-            let to_cell = |leptons: i32| (leptons.wrapping_add((leptons >> 31) & 0xFF) >> 8) as i16;
+            // The truncated cell, then 16-bit CellStruct subtraction.
+            let to_cell = crate::util::lepton::lepton_to_cell_packed;
             let dx = to_cell(coord.x).wrapping_sub(drop.0 as i16);
             let dy = to_cell(coord.y).wrapping_sub(drop.1 as i16);
             cell_distance(dx, dy) > rules.general.approach_target_reset_multiplier
@@ -1029,9 +1029,8 @@ impl Simulation {
                 .ok()
             })
             .map(|coord| {
-                // `CDQ; AND EDX,0xFF; ADD; SAR 8` per axis (0x006B0E3E..).
-                let cell =
-                    |leptons: i32| (leptons.wrapping_add((leptons >> 31) & 0xFF) >> 8) as u16;
+                // The truncated cell per axis (0x006B0E3E..).
+                let cell = |leptons| crate::util::lepton::lepton_to_cell_packed(leptons) as u16;
                 (cell(coord.x), cell(coord.y))
             });
         let Some(field) = field else {
@@ -1079,7 +1078,7 @@ impl Simulation {
         let search = DeployCellSearch::new(owner_cell(owner), seed, foundation);
         let terrain = self.resolved_terrain.as_ref()?;
         let zone = self.zone_grid.as_ref().and_then(|zones| {
-            zones.get_path_zone_id_native(
+            zones.get_zone_id_native(
                 terrain,
                 (search.zone_cell.0 as u16, search.zone_cell.1 as u16),
                 search.zone_movement_zone,
@@ -1101,7 +1100,7 @@ impl Simulation {
                     speed_type: search.speed_type,
                     // A DWORD -1 disables the comparison; FNPC turns a raw
                     // 0xFFFF into -1 as well (`find_nearby_cell`).
-                    required_zone_id: u16::try_from(zone).ok(),
+                    required_zone_id: Some(zone),
                     movement_zone: search.movement_zone,
                     bridge_aware_zone: search.bridge_aware,
                 },

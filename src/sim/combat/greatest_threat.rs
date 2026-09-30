@@ -120,7 +120,7 @@ use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::OccupancyGrid;
-use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneId};
+use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::vision::FogState;
 use crate::util::fixed_math::SimFixed;
 use crate::util::native_x87::{
@@ -764,7 +764,7 @@ struct WalkArgs {
     /// callsite fills the same slot with the literal `-1`
     /// (`PUSH -0x1 @ 0x006F92A3`, `@ 0x006F9C21`), so the gate is a property of
     /// the flat walk, not of the shared candidate ladder.
-    zone: Option<ZoneId>,
+    zone: Option<u32>,
     /// `Evaluate_Candidate`'s **arg7**, the coordinate
     /// `Calculate_Threat_Score` measures its distance term from — and, through
     /// the sentinel test at `0x0070CFA0`-`0x0070CFBC`, the term's SCALE.
@@ -1013,15 +1013,22 @@ pub(crate) fn greatest_threat(
             attacker.category,
             EntityCategory::Structure | EntityCategory::Aircraft
         ) {
-        zone_grid.and_then(|zones| {
-            zones.get_zone_id_native(
-                (i32::from(attacker.pos_rx), i32::from(attacker.pos_ry)),
-                attacker_obj.movement_zone,
-                // `PUSH 0x1 @ 0x006F8E73` — the scanner's own cell is always
-                // asked with bridge resolution on, whatever layer it stands on.
-                true,
-            )
-        })
+        zone_grid
+            .zip(terrain)
+            .and_then(|(zones, terrain)| {
+                zones.get_zone_id_native(
+                    terrain,
+                    (attacker.pos_rx, attacker.pos_ry),
+                    attacker_obj.movement_zone,
+                    // `PUSH 0x1 @ 0x006F8E73` — the scanner's own cell is always
+                    // asked with bridge resolution on, whatever layer it stands on.
+                    true,
+                )
+            })
+            // Both consumers skip the gate for DWORD -1 (`CMP EBP,-0x1 ; JZ` at
+            // `0x006F7E36` and `0x006F898F`): a scanner on a structural cell
+            // with no matching high bridge record scans unfiltered.
+            .filter(|&zone| zone != u32::MAX)
     } else {
         None
     };
@@ -1356,7 +1363,7 @@ fn scanner_mask(
 /// no target and its `NormalTargetingDelay` timer has expired, so at charter
 /// scale the cost is one N-pass per hunting object per cadence — not per tick,
 /// and not per ring.
-fn global_list_scan(ctx: &ScanContext<'_>, flags: u32, zone: Option<ZoneId>) -> Option<u64> {
+fn global_list_scan(ctx: &ScanContext<'_>, flags: u32, zone: Option<u32>) -> Option<u64> {
     let mut best: Option<u64> = None;
     // `local_50 = -1` on the ring path; the same strictly-greater keep, so a
     // score of 0 (itself a rejection) can never displace nothing.
@@ -1445,20 +1452,24 @@ fn scan_cell_for_target(
     ctx: &ScanContext<'_>,
     index: &ScanIndex<'_>,
     coord: (i16, i16),
-    zone: Option<ZoneId>,
+    zone: Option<u32>,
 ) -> Option<u64> {
     // `0x006F898F..0x006F89B4`: a cell outside the scanner's zone offers
     // nothing (`MapClass::GetZoneID @ 0x0056D230`, bridge resolution on).
     if let Some(zone) = zone
-        && ctx.zone_grid.is_some_and(|zones| {
-            zones
-                .get_zone_id_native(
-                    (i32::from(coord.0), i32::from(coord.1)),
-                    ctx.attacker_obj.movement_zone,
-                    true,
-                )
-                .is_some_and(|cell_zone| cell_zone != zone)
-        })
+        && ctx
+            .zone_grid
+            .zip(ctx.terrain)
+            .is_some_and(|(zones, terrain)| {
+                zones
+                    .get_zone_id_native(
+                        terrain,
+                        (coord.0 as u16, coord.1 as u16),
+                        ctx.attacker_obj.movement_zone,
+                        true,
+                    )
+                    .is_some_and(|cell_zone| cell_zone != zone)
+            })
     {
         return None;
     }
@@ -1638,12 +1649,10 @@ fn evaluate_candidate(
     // not square. Player effect in production: none — `rebuild_zone_grid_full`
     // always builds from resolved terrain. Frequency: nil in a real match.
     if let Some(scanner_zone) = walk.zone {
-        let candidate_zone = ctx.zone_grid.and_then(|zones| {
+        let candidate_zone = ctx.zone_grid.zip(ctx.terrain).and_then(|(zones, terrain)| {
             zones.get_zone_id_native(
-                (
-                    i32::from(candidate.position.rx),
-                    i32::from(candidate.position.ry),
-                ),
+                terrain,
+                (candidate.position.rx, candidate.position.ry),
                 ctx.attacker_obj.movement_zone,
                 candidate.on_bridge,
             )
@@ -2487,7 +2496,7 @@ mod tests {
         rules: &RuleSet,
         attacker: u64,
         mask: super::super::ScanMission,
-        zones: Option<&ZoneGrid>,
+        zones: Option<&(ZoneGrid, ResolvedTerrainGrid)>,
     ) -> Option<u64> {
         let interner = test_interner();
         super::super::acquire_best_target_for_entity(
@@ -2497,10 +2506,10 @@ mod tests {
             &interner,
             attacker,
             None,
-            None,
+            zones.map(|(_, terrain)| terrain),
             false,
             mask,
-            zones,
+            zones.map(|(zones, _)| zones),
             crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
             None,
             None,
@@ -2527,12 +2536,13 @@ mod tests {
 
     /// A square map cut in two by one impassable column, so that
     /// `MovementZone::Normal` has two disconnected components.
-    fn split_zone_grid(side: u16, barrier_rx: u16) -> ZoneGrid {
+    fn split_zone_grid(side: u16, barrier_rx: u16) -> (ZoneGrid, ResolvedTerrainGrid) {
         let terrain = crate::map::resolved_terrain::test_grid(side, side, |rx, ry| {
             zone_test_cell(rx, ry, rx == barrier_rx)
         });
         let path_grid = crate::sim::pathfinding::PathGrid::from_resolved_terrain(&terrain);
-        ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], side, side)
+        let zones = ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], side, side);
+        (zones, terrain)
     }
 
     /// The mask-0 walk is movement-zone filtered, and the ring walk is not.
@@ -2555,9 +2565,11 @@ mod tests {
         let rules = scan_rules();
         let zones = split_zone_grid(12, 5);
         let near_side = zones
+            .0
             .get_zone_id_nonbridge_native((2, 2), MovementZone::Normal)
             .expect("attacker cell resolves a Normal zone id");
         let far_side = zones
+            .0
             .get_zone_id_nonbridge_native((8, 2), MovementZone::Normal)
             .expect("across-the-barrier cell resolves a Normal zone id");
         assert_ne!(
@@ -2609,6 +2621,30 @@ mod tests {
             ),
             Some(3),
             "the zone gate refuses the nearer target across the barrier and takes the reachable one"
+        );
+
+        // A scanner on a structural cell with no matching high bridge record
+        // gets DWORD -1 from GetZoneID, and both consumers skip the gate for
+        // -1 (`0x006F7E36`, `0x006F898F`): the nearer target wins again.
+        let mut zones = zones;
+        zones.1.cell_mut(2, 2).unwrap().bridge_facts.raw_flags =
+            crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+        assert_eq!(
+            zones
+                .0
+                .get_zone_id_native(&zones.1, (2, 2), MovementZone::Normal, true),
+            Some(u32::MAX)
+        );
+        assert_eq!(
+            pick_with_mask_and_zones(
+                &entities,
+                &rules,
+                1,
+                super::super::ScanMission::Hunt,
+                Some(&zones)
+            ),
+            Some(2),
+            "a -1 scanner zone scans unfiltered"
         );
     }
 

@@ -803,19 +803,19 @@ fn caller_count_bridge_detour(
         ((1, 0), (5, 0))
     };
     let native_start = zones
-        .get_path_zone_id_native(&terrain, start, mz, false)
+        .get_zone_id_native(&terrain, start, mz, false)
         .expect("caller fixture retains native topology");
     assert!(
         (2..u32::from(u16::MAX)).contains(&native_start),
         "the native precheck must use a valid ground row, not equal invalid labels"
     );
     assert_eq!(
-        zones.get_path_zone_id_native(&terrain, goal, mz, false),
+        zones.get_zone_id_native(&terrain, goal, mz, false),
         Some(native_start),
         "the top-row shortcut connects the native source and destination"
     );
     assert_eq!(
-        zones.get_path_zone_id_native(&terrain, (3, 2), mz, true),
+        zones.get_zone_id_native(&terrain, (3, 2), mz, true),
         Some(native_start),
         "the bridge deck resolves through the same reachable ground component"
     );
@@ -1759,12 +1759,12 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         )
     };
     assert_eq!(
-        zones.get_zone_id_native((0, 0), MovementZone::Normal, false),
+        zones.get_zone_id_native(&terrain, (0, 0), MovementZone::Normal, false),
         Some(1)
     );
     assert_eq!(
-        zones.get_zone_id_native((1, 0), MovementZone::Normal, false),
-        Some(u16::MAX)
+        zones.get_zone_id_native(&terrain, (1, 0), MovementZone::Normal, false),
+        Some(u32::from(u16::MAX))
     );
     assert_eq!(
         zones
@@ -1805,7 +1805,7 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         cell.bridge_deck_level = 4;
     }
     assert_eq!(
-        zones.get_zone_id_native((1, 0), MovementZone::Normal, true),
+        zones.get_zone_id_native(&terrain, (1, 0), MovementZone::Normal, true),
         Some(2)
     );
     assert_eq!(
@@ -1905,12 +1905,7 @@ fn tube_hierarchy_dword_zone_query_matches_original_executable() {
         }
         dummy.stamp_coord(1234, -2345);
         assert_eq!(
-            zones.get_path_zone_id_native(
-                &terrain,
-                query,
-                MovementZone::Normal,
-                case["check"] == 1
-            ),
+            zones.get_zone_id_native(&terrain, query, MovementZone::Normal, case["check"] == 1),
             Some(case["result"].as_u64().unwrap() as u32),
             "{}",
             case["name"]
@@ -1965,11 +1960,11 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
     zones.set_hierarchy(level0_hierarchy(vec![1; 256], 16, 16, &[]));
     let counts = BlockerNeighborCounts::new(16, 16);
     assert_eq!(
-        zones.get_path_zone_id_native(&terrain, (5, 7), MovementZone::Normal, true),
+        zones.get_zone_id_native(&terrain, (5, 7), MovementZone::Normal, true),
         Some(u32::MAX)
     );
     assert_ne!(
-        zones.get_path_zone_id_native(&terrain, (4, 7), MovementZone::Normal, false),
+        zones.get_zone_id_native(&terrain, (4, 7), MovementZone::Normal, false),
         Some(u32::MAX)
     );
     assert!(

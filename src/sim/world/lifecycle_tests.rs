@@ -545,6 +545,40 @@ fn grounded_ramp_reveal_commits_native_height_before_occupation() {
     }
 }
 
+/// A building's Unlimbo coordinate passes through BuildingType virtual +0x6C
+/// (`0x00464A70`): the floor at its XY, whatever the input Z, and never a
+/// deck. Ground=52 is the original-code result ramp_1_sub_128_128 in
+/// tools/ramp_height_vectors.json.
+#[test]
+fn a_revealed_building_takes_the_floor_at_its_location_as_its_z() {
+    for (on_bridge, requested_level) in [(false, 0), (false, 4), (true, 4)] {
+        let mut sim = Simulation::with_seed(71);
+        install_common_raw_terrain(&mut sim, 8, 8, 0, Some((2, 2)));
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(2, 2)
+            .unwrap()
+            .slope_type = 1;
+        insert_entity(&mut sim, 1, EntityCategory::Structure);
+        sim.substrate.entities.get_mut(1).unwrap().on_bridge = on_bridge;
+        assert!(matches!(
+            sim.try_reveal_entity(1, common_raw_request(2, 2, requested_level, 128, 128)),
+            RevealOutcome::Revealed { .. }
+        ));
+        let building = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(
+            building.position.exact_z_leptons,
+            Some(52),
+            "bridge={on_bridge} level={requested_level}"
+        );
+        assert_eq!(
+            crate::sim::movement::ground_pose::position_world_coord(&building.position).z,
+            52
+        );
+    }
+}
+
 #[test]
 fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs() {
     for kind in [

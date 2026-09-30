@@ -59,7 +59,7 @@ fn replay_fixture() -> crate::sim::components::FootPathQueue {
 
 fn supply_drive_state(entity: &mut GameEntity) {
     entity.navigation.path_replay = replay_fixture();
-    entity.foot_speed.applied_fraction = SimFixed::lit("0.5");
+    entity.foot_speed.set_speed_fraction(SimFixed::lit("0.5"));
     entity.drive_locomotion = Some(DriveLocomotionRuntime {
         // Is_Moving compares exact XY only. Retained Z deliberately differs
         // from the owner's height, so retirement cannot depend on full XYZ.
@@ -219,7 +219,7 @@ fn out_of_contact_destination_installs_fresh_drive_without_previous_instance_sta
     assert!(entity.movement_target.is_some());
     let drive = entity.drive_locomotion.as_ref().unwrap();
     assert_eq!(drive.track.residual, 0);
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.5"));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.5"));
 }
 
 #[test]
@@ -361,7 +361,7 @@ fn foot_speed_without_class_payload_roundtrips_and_hashes_each_field() {
     // Normalize this fixture to that load state before comparing whole hashes.
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let mut expected = crate::sim::components::FootSpeedState::default();
-    expected.applied_fraction = SimFixed::lit("0.625");
+    expected.set_speed_fraction(SimFixed::lit("0.625"));
     assert!(
         expected.accept_speed_crate(crate::util::native_x87::NativeF64Bits::from_bits(
             1.2_f64.to_bits()
@@ -382,10 +382,10 @@ fn foot_speed_without_class_payload_roundtrips_and_hashes_each_field() {
         let speed = &mut loaded.substrate.entities.get_mut(1).unwrap().foot_speed;
         *speed = expected.clone();
         if field == 0 {
-            speed.applied_fraction += SimFixed::lit("0.125");
+            speed.set_speed_fraction(speed.applied_fraction() + SimFixed::lit("0.125"));
         } else {
             *speed = Default::default();
-            speed.applied_fraction = expected.applied_fraction;
+            speed.set_speed_fraction(expected.applied_fraction());
             assert!(
                 speed.accept_speed_crate(crate::util::native_x87::NativeF64Bits::from_bits(
                     1.3_f64.to_bits()
@@ -404,6 +404,11 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
         "../../../tools/spatial_oracle/foot_speed_owner.json"
     ))
     .unwrap();
+    // The setter-only rows are the owner's (`components.rs`).
+    let cases: Vec<_> = cases
+        .into_iter()
+        .filter(|case| case["input"]["family"] != "setter")
+        .collect();
     assert_eq!(cases.len(), 12);
     for case in cases {
         let requested = SimFixed::from_num(case["input"]["requested"].as_f64().unwrap());
@@ -427,7 +432,7 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
                 SIM_ZERO,
                 SIM_ONE,
             );
-            assert_eq!(owner_speed.applied_fraction, expected);
+            assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             assert!(begin_drive_for_teleporter(entity, 3));
             super::super::navcom::set_destination_internal_cell(entity, (12, 8), None);
@@ -458,7 +463,7 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
                 SIM_ZERO,
                 SIM_ONE,
             );
-            assert_eq!(owner_speed.applied_fraction, expected);
+            assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
             super::super::navcom::set_destination_internal_cell(entity, (12, 8), None);

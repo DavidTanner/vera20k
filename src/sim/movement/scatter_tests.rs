@@ -201,7 +201,9 @@ fn unit_receiver_does_not_read_its_own_motion() {
     let mut actor = with_mission(&actor, MissionType::Move);
     actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     let head = DriveCoord::cell(6, 5, 0);
-    actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
+    actor
+        .foot_speed
+        .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
     actor.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
         destination: Some(head),
         head_to: Some(head),

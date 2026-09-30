@@ -229,27 +229,18 @@ fn jumpjet_infantry_actions_match_the_native_bodies() {
     assert_eq!((compared, truncated), (497, 30));
 }
 
-/// `FootClass::SetSpeedFraction @ 0x004D3710`'s clamp and the truncation to
-/// `SimFixed`: a Jumpjet at speed 30 braking by 3 reaches 3/30 and 24/30,
-/// which the truncating native division leaves just below 0.1 and 0.8.
-/// +infinity is not below 1.0 (`0x004D371C`), so it stores 1.0.
+/// The truncation of `FootClass::SetSpeedFraction @ 0x004D3710`'s stored
+/// double to `SimFixed`: a Jumpjet at speed 30 braking by 3 reaches 3/30 and
+/// 24/30, which the truncating native division leaves just below 0.1 and 0.8.
+/// The clamp itself is checked against the original setter in
+/// `components::tests::speed_fraction_setter_matches_the_original`.
 #[test]
-fn a_native_speed_fraction_is_clamped_and_truncated() {
+fn a_native_speed_fraction_is_truncated_below_its_thresholds() {
     let mut speed = crate::sim::components::FootSpeedState::default();
     let mut set = |bits: u64| {
         speed.set_speed_fraction_native_bits(bits);
-        speed.applied_fraction.to_bits()
+        speed.applied_fraction().to_bits()
     };
-    assert_eq!(set(1.0f64.to_bits()), 1 << 16);
-    assert_eq!(set(1.5f64.to_bits()), 1 << 16);
-    assert_eq!(set(0.0f64.to_bits()), 0);
-    assert_eq!(set((-0.0f64).to_bits()), 0);
-    assert_eq!(set((-0.25f64).to_bits()), 0);
-    assert_eq!(set(f64::NAN.to_bits()), 0);
-    assert_eq!(set(f64::INFINITY.to_bits()), 1 << 16);
-    assert_eq!(set(f64::NEG_INFINITY.to_bits()), 0);
-    assert_eq!(set(f64::MIN_POSITIVE.to_bits()), 0);
-    assert_eq!(set(0.5f64.to_bits()), 1 << 15);
     // 3/30 and 24/30 divided with truncation: one ulp below 0.1 and 0.8.
     let tenth = 0x3FB9_9999_9999_9999;
     let eight_tenths = 0x3FE9_9999_9999_9999;

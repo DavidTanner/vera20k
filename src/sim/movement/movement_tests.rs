@@ -321,7 +321,7 @@ fn test_drive_arrival_clears_navcom_same_tick() {
     let mut e = GameEntity::test_default(1, "HTNK", "Americans", 0, 0);
     e.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     e.drive_accelerates = false;
-    e.foot_speed.applied_fraction = SIM_ONE;
+    e.foot_speed.set_speed_fraction(SIM_ONE);
     e.navigation.nav_com = Some(NavTargetRef::cell(0, 0));
     e.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
         destination: Some(crate::sim::components::DriveCoord::cell(0, 0, 0)),
@@ -636,7 +636,7 @@ fn drive_slope_boundary_is_detected_on_process_after_ordinary_crossing() {
         .active_slope_transition_mut()
         .unwrap()
         .snap(3, 0);
-    entity.foot_speed.applied_fraction = SIM_ONE;
+    entity.foot_speed.set_speed_fraction(SIM_ONE);
     entity.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
         target_speed_fraction: SIM_ONE,
         ..Default::default()
@@ -722,7 +722,7 @@ fn drive_slope_boundary_is_detected_on_process_after_forced_track_crossing() {
         .get_mut(1)
         .unwrap()
         .foot_speed
-        .applied_fraction = SIM_ONE;
+        .set_speed_fraction(SIM_ONE);
 
     let crossing_frame = (40..120)
         .find(|frame| {
@@ -1249,7 +1249,7 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         },
         ..Default::default()
     });
-    entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+    entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
     sim.substrate.entities.insert(entity);
     assert!(matches!(
         sim.reveal(1),
@@ -1262,7 +1262,7 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
     };
     assert!(sim.force_drive_track(1, 0x47, head));
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
     let drive = entity.drive_locomotion.as_ref().unwrap();
     assert_eq!(drive.destination, Some(head));
     assert_eq!(drive.head_to, Some(head));
@@ -1651,7 +1651,7 @@ fn test_drive_queued_arrival_pops_navqueue_and_reissues_destination() {
     let mut e = GameEntity::test_default(1, "HTNK", "Americans", 0, 0);
     e.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     e.drive_accelerates = false;
-    e.foot_speed.applied_fraction = SIM_ONE;
+    e.foot_speed.set_speed_fraction(SIM_ONE);
     // The arrival advance (queue pop) is gated on a current Move mission.
     e.mission
         .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
@@ -1753,7 +1753,7 @@ fn test_drive_off_destination_finish_defers_then_resumes_toward_navcom() {
     let mut e = GameEntity::test_default(1, "HTNK", "Americans", 1, 0);
     e.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     e.drive_accelerates = false;
-    e.foot_speed.applied_fraction = SIM_ONE;
+    e.foot_speed.set_speed_fraction(SIM_ONE);
     e.navigation.nav_com = Some(NavTargetRef::cell(3, 0));
     e.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
         destination: Some(DriveCoord::cell(3, 0, 0)),
@@ -1997,7 +1997,7 @@ fn move_order_defers_drive_track_admission_until_process() {
     assert_eq!(entity.navigation.path_replay.cursor, 0);
     assert_eq!(entity.navigation.path_replay.reference_cell, None);
     assert_eq!(drive.target_speed_fraction, SIM_ZERO);
-    assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
+    assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
     assert!(entity.movement_target.as_ref().unwrap().path.is_empty());
 
     tick_movement_with_grid(
@@ -2136,7 +2136,7 @@ fn test_reissue_mid_curve_keeps_track_and_anchors_path_at_head() {
         let entity = entities.get_mut(1).expect("entity exists");
         let drive = entity.drive_locomotion.as_mut().expect("drive state");
         drive.target_speed_fraction = SimFixed::lit("0.4");
-        entity.foot_speed.applied_fraction = SimFixed::lit("0.25");
+        entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
     }
 
     // Re-order behind the body while the curve is in flight. Pre-fix this
@@ -2191,7 +2191,7 @@ fn test_reissue_mid_curve_keeps_track_and_anchors_path_at_head() {
             .is_empty()
     );
     assert_eq!(drive.target_speed_fraction, SimFixed::lit("0.4"));
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.25"));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
     assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::cell(0, 3)));
 }
 
@@ -4496,7 +4496,7 @@ fn drive_accelerates_false_tick_stores_modified_fraction_without_mutating_speed(
     let entity = entities.get(1).expect("mover exists");
     let drive = entity.drive_locomotion.as_ref().expect("drive state");
     assert_eq!(drive.target_speed_fraction, SIM_HALF);
-    assert_eq!(entity.foot_speed.applied_fraction, SIM_HALF);
+    assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF);
     assert_eq!(
         entity.movement_target.as_ref().expect("still moving").speed,
         SimFixed::from_num(100),
@@ -4575,7 +4575,7 @@ fn drive_accelerates_true_tick_ramps_fraction_before_movement_speed() {
     let entity = entities.get(1).expect("mover exists");
     let drive = entity.drive_locomotion.as_ref().expect("drive state");
     assert_eq!(drive.target_speed_fraction, SIM_ONE);
-    assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.03"));
+    assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.03"));
     assert!(entity.movement_target.is_some(), "still moving");
 }
 
@@ -5953,7 +5953,7 @@ fn gsi_06_13_fixture_mover(
         cursor: 0,
         reference_cell: Some((start.0 as i16, start.1 as i16)),
     };
-    e.foot_speed.applied_fraction = SIM_ONE;
+    e.foot_speed.set_speed_fraction(SIM_ONE);
     e.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
         target_speed_fraction: SIM_ONE,
         ..Default::default()

@@ -850,26 +850,18 @@ pub(crate) fn commit_entities(
                             == crate::rules::locomotor_type::LocomotorKind::Teleport
                     });
                 if !walk && !teleport {
-                    // Residual: the Jumpjet class setter still uses the prior
-                    // compatibility handoff. This is not a second
-                    // implementation of the migrated Walk branch.
-                    let target = world.substrate.entities.get_mut(target_id).unwrap();
-                    crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
-                        target,
-                        Some(crate::sim::components::NavTargetRef::cell(
-                            scatter.destination.0,
-                            scatter.destination.1,
-                        )),
-                    );
-                    crate::sim::movement::issue_direct_move(
-                        &mut world.substrate.entities,
+                    // A Jumpjet man: Infantry setter `0x0051AA40`, whose Foot
+                    // tail (`0x004D94B0`: NavCom, Jumpjet Move_To, timer tail)
+                    // is `issue_air_cell_destination`. RESIDUAL: its JumpJet
+                    // arms before the tail (same-cell return, vt+0x500 stop
+                    // while moving, Walk piggyback switch) are unported.
+                    // Trigger: a damaged Jumpjet infantryman that scatters;
+                    // retail JUMPJET is Fearless=yes, so none with retail data.
+                    world.issue_air_cell_destination(
                         target_id,
                         scatter.destination,
                         scatter.speed,
-                        crate::sim::movement::DestinationTiming::from_rules(
-                            world.session.binary_frame,
-                            Some(rules),
-                        ),
+                        Some(rules),
                     );
                 }
             }

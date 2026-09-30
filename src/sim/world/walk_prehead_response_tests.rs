@@ -169,7 +169,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
         loco.begin_walk_motion();
     }
     loco.set_step_head(None);
-    e.foot_speed.applied_fraction = SIM_ZERO;
+    e.foot_speed.set_speed_fraction(SIM_ZERO);
     e.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
     e.navigation.suspended_nav_com = None;
     e.attack_target =
@@ -292,7 +292,7 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
         ),
         (
             "speed",
-            json!(e.foot_speed.applied_fraction.to_num::<f64>()),
+            json!(e.foot_speed.applied_fraction().to_num::<f64>()),
         ),
         ("blocked", json!(u8::from(p.path_blocked))),
         ("retries", json!(p.retries_left as i32)),

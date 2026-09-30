@@ -291,7 +291,9 @@ impl Simulation {
             .ok_or("retired failed Walk actor")?;
         //75B2BC..75B2DC: all failed-queue exits set speed0 then Stop;
         //Stop does not itself clear NavCom or retire the paid head.
-        actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
+        actor
+            .foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
         self.walk_stop_moving(id, Some(rules))?;
         let actor = self
             .substrate

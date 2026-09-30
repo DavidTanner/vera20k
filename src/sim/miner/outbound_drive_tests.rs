@@ -482,7 +482,7 @@ fn assert_command_state(
     // The Harvest handler dispatches BEFORE Phase-1 ground movement (the
     // native handler→locomotion order), so by observation time the drive has
     // already begun accelerating in the same tick the command was issued.
-    assert!(entity.foot_speed.applied_fraction > SIM_ZERO);
+    assert!(entity.foot_speed.applied_fraction() > SIM_ZERO);
     assert_eq!(
         entity.locomotor.as_ref().expect("active locomotor").kind,
         LocomotorKind::Drive,
@@ -625,7 +625,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
             assert!(entity.movement_target.is_some(), "movement");
             // One cell out is inside `SlowdownDistance=500`, so the ramp opens on
             // the destination brake floor and holds there for the whole hop.
-            assert_eq!(entity.foot_speed.applied_fraction, SimFixed::lit("0.3"));
+            assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.3"));
         }
 
         let mut physically_departed = position_tuple(&sim, entity_id) != start_position;
@@ -717,7 +717,7 @@ fn production_harv_outbound_drive_uses_rule_profile() {
             .get(entity_id)
             .expect("HARV")
             .foot_speed
-            .applied_fraction,
+            .applied_fraction(),
         acceleration,
     );
 
@@ -728,7 +728,7 @@ fn production_harv_outbound_drive_uses_rule_profile() {
     assert!(entity.drive_locomotion.is_some());
     assert!(entity.movement_target.is_some(), "movement");
     assert_eq!(
-        entity.foot_speed.applied_fraction,
+        entity.foot_speed.applied_fraction(),
         acceleration + acceleration
     );
     assert_eq!(
@@ -806,7 +806,7 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
     // the first path node's octant, and a frame spent rotating carries no speed
     // ramp — so the issuing tick leaves the drive fraction at zero and the ramp
     // only starts once the turn has finished.
-    assert_eq!(entity.foot_speed.applied_fraction, SIM_ZERO);
+    assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
     // Do_Turn 0x4B0EF0 sets the body FacingClass (0x4C9220).
     assert!(
         entity.body_facing.is_rotating(sim.session.binary_frame),
@@ -827,7 +827,7 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
     assert!(entity.drive_locomotion.is_some());
     assert!(entity.movement_target.is_some(), "movement target");
     assert!(
-        entity.foot_speed.applied_fraction >= harv.accel_factor,
+        entity.foot_speed.applied_fraction() >= harv.accel_factor,
         "the rules accel profile ramps once the hull is under way"
     );
     assert!(sim.current_speed_for_test(entity_id, &oracle.rules) > 0);

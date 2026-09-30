@@ -232,7 +232,7 @@ fn gsi_13_06_active_shp_unit(type_name: &str, kind: LocomotorKind) -> GameEntity
     let head = DriveCoord::cell(6, 5, 0);
     match kind {
         LocomotorKind::Drive => {
-            entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+            entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
             entity.drive_locomotion = Some(DriveLocomotionRuntime {
                 destination: Some(head),
                 head_to: Some(head),
@@ -240,7 +240,7 @@ fn gsi_13_06_active_shp_unit(type_name: &str, kind: LocomotorKind) -> GameEntity
             });
         }
         LocomotorKind::Ship => {
-            entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+            entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
             entity.ship_locomotion = Some(ShipLocomotionRuntime {
                 destination: Some(head),
                 head_to: Some(head),
@@ -323,7 +323,7 @@ fn gsi_13_06_body_counter_wraps_and_survives_moving_idle_transitions() {
     if let Some(drive) = entity.drive_locomotion.as_mut() {
         drive.destination = None;
         drive.head_to = None;
-        entity.foot_speed.applied_fraction = SIM_ZERO;
+        entity.foot_speed.set_speed_fraction(SIM_ZERO);
     }
     tick_shp_vehicle_body_frame_counter(
         &mut entity,
@@ -404,7 +404,7 @@ fn gsi_13_06_draw_and_cadence_use_distinct_movement_predicates() {
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         let mut entity = gsi_13_06_active_shp_unit("DRON", kind);
         // No applied speed: GetCurrentSpeed reads 0 with the destination set.
-        entity.foot_speed.applied_fraction = SIM_ZERO;
+        entity.foot_speed.set_speed_fraction(SIM_ZERO);
 
         assert!(
             crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity),
@@ -436,7 +436,7 @@ fn gsi_13_06_positive_fraction_below_get_current_speed_threshold_is_idle() {
         ("DRON", LocomotorKind::Drive),
     ] {
         let mut entity = gsi_13_06_active_shp_unit(name, kind);
-        entity.foot_speed.applied_fraction = SimFixed::lit("0.03");
+        entity.foot_speed.set_speed_fraction(SimFixed::lit("0.03"));
 
         assert!(
             crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(&entity),
@@ -457,7 +457,7 @@ fn gsi_13_06_positive_fraction_below_get_current_speed_threshold_is_idle() {
         );
         assert_eq!(entity.body_frame_counter, 0, "{name} remains idle");
 
-        entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+        entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
         assert!(
             crate::sim::movement::ready_producer::is_moving_now_for(&entity, speed.rules(), 1),
             "{name} moves at the full fraction"
@@ -477,14 +477,14 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
         // though the execution adapter still reports a positive speed.
         match kind {
             LocomotorKind::Drive => {
-                entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+                entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
                 entity.drive_locomotion = Some(DriveLocomotionRuntime {
                     head_to: Some(owner),
                     ..Default::default()
                 });
             }
             LocomotorKind::Ship => {
-                entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+                entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
                 entity.ship_locomotion = Some(ShipLocomotionRuntime {
                     head_to: Some(owner),
                     ..Default::default()
@@ -506,7 +506,7 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
         let head = DriveCoord::cell(6, 5, 0);
         match kind {
             LocomotorKind::Drive => {
-                entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+                entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
                 entity.drive_locomotion = Some(DriveLocomotionRuntime {
                     destination: Some(head),
                     head_to: Some(head),
@@ -514,7 +514,7 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
                 });
             }
             LocomotorKind::Ship => {
-                entity.foot_speed.applied_fraction = SimFixed::from_num(1);
+                entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
                 entity.ship_locomotion = Some(ShipLocomotionRuntime {
                     destination: Some(head),
                     head_to: Some(head),
@@ -849,7 +849,9 @@ fn set_infantry_walk_motion(sim: &mut crate::sim::world::Simulation, id: u64, mo
     let coord = moving.then(|| DriveCoord::cell(11, 10, 0));
     locomotor.set_step_head(coord);
     locomotor.set_walk_destination(coord);
-    actor.foot_speed.applied_fraction = if moving { SimFixed::ONE } else { SIM_ZERO };
+    actor
+        .foot_speed
+        .set_speed_fraction(if moving { SimFixed::ONE } else { SIM_ZERO });
 }
 
 fn assert_infantry_pose(

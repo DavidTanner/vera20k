@@ -20,7 +20,7 @@ fn pose(sim: &super::Simulation, id: u64) -> Pose {
     let locomotor = entity.locomotor.as_ref().expect("locomotor");
     Pose {
         phase: locomotor.jumpjet_runtime().expect("Jumpjet").phase,
-        fraction: entity.foot_speed.applied_fraction.to_bits(),
+        fraction: entity.foot_speed.applied_fraction().to_bits(),
         doing: entity.mission_leaf.as_infantry().expect("Infantry").doing(),
         sequence: entity
             .animation

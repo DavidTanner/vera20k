@@ -136,5 +136,122 @@
       "constructor_preserves_owner": true,
       "constructor_target": 0.0
     }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "0000000000000000"
+    },
+    "output": {
+      "applied_bits": "0000000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "8000000000000000"
+    },
+    "output": {
+      "applied_bits": "0000000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "7ff8000000000000"
+    },
+    "output": {
+      "applied_bits": "0000000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "fff8000000000000"
+    },
+    "output": {
+      "applied_bits": "0000000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "7ff0000000000001"
+    },
+    "output": {
+      "applied_bits": "0000000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "7ff0000000000000"
+    },
+    "output": {
+      "applied_bits": "3ff0000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "fff0000000000000"
+    },
+    "output": {
+      "applied_bits": "0000000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "0000000000000001"
+    },
+    "output": {
+      "applied_bits": "0000000000000001"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "8000000000000001"
+    },
+    "output": {
+      "applied_bits": "0000000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "0010000000000000"
+    },
+    "output": {
+      "applied_bits": "0010000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "3fefffffffffffff"
+    },
+    "output": {
+      "applied_bits": "3fefffffffffffff"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "3ff0000000000000"
+    },
+    "output": {
+      "applied_bits": "3ff0000000000000"
+    }
+  },
+  {
+    "input": {
+      "family": "setter",
+      "requested_bits": "3ff0000000000001"
+    },
+    "output": {
+      "applied_bits": "3ff0000000000000"
+    }
   }
 ]
