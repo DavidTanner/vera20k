@@ -378,7 +378,7 @@ pub fn process_teleport(
                         .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS),
                 );
             }
-            if let Some(visuals) = visuals.as_deref_mut() {
+            if let Some(visuals) = visuals {
                 visuals.spawn_warp_out(entity.position.rx, entity.position.ry, entity.position.z);
             }
             // The path layer follows the destination's OnBridge, as an
