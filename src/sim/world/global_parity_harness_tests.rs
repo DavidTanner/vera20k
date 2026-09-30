@@ -137,8 +137,9 @@ const STREAM_CHECKPOINT_TICKS: &[u64] = &[149, 299, 449, 599];
 /// Downstream raw Scenario words by producer: mission203->200, idle31->33,
 /// scan69->73, ROF20->18 (bounded-RNG retries included). The entire323-word
 /// main sequence is a prefix of the324-word candidate sequence; Main/MapGen
-/// are unchanged. The13-shot duel leaves tank6 at12 HP. Target expiry588,
-/// Guard Commence595 and first passive scan596 pass the transition checks below.
+/// are unchanged. The13-shot duel leaves tank6 at12 HP. Since the turretless
+/// hull turn (#690) target expiry587, Guard Commence589 and first passive
+/// scan590 pass the transition checks below (588/595/596 before it).
 /// Original conditional native Stop/FV evidence and reproduction entry points:
 /// `tools/spatial_oracle/fv_cell_attack/README.md`. These fixture observations
 /// refresh a Rust regression pin; they do not establish native world parity.
@@ -157,7 +158,10 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
     // frame0 omits four old global idle-tail draws; first bound ART idle at
     // frame14 precedes Guard cadence. Saved production-call receipts are in
     // foot_bridge_layer.replay.json. Full Main/MapGen are unchanged.
-    0x5F1A_988D_BB0A_157F,
+    // 2026-10-01 turretless hull turn (#690): tank 4's FACING turn waits for
+    // its Drive to stop, so its later shots and their Scenario draws move
+    // (see GLOBAL_HARNESS_FINAL_HASH). Main/MapGen are unchanged.
+    0xED7A_61E6_33FE_939F,
     0x39F3_258B_A550_EB7C,
     0x1CE8_1848_7043_6163,
 );
@@ -420,7 +424,18 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
 // above unchanged (the probe patch was not committed). Previous:
 // 0x64B4_3781_2052_4AF1.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xF066_BF94_338B_683B;
+// 2026-10-01 turretless hull turn (#690, behavior): `Fire_At_Target`'s FACING
+// case turns a turretless hull only with no NavCom (`0x00736FB6`) and the
+// locomotor's Is_Moving false (`0x00736FE1`); VERA asked for no order. Tank 4,
+// retasked from Move to Attack, rolls on to its Drive's committed head through
+// frames 336..364 with no NavCom and no order, so it now turns at 365 instead
+// of 336. Its five later shots move from 338/390/441/492/542 to
+// 366/417/469/521/571, and the reordered Scenario draws move tank 6's killing
+// shot from 588 to 587; the 13 shots and tank 6's 12 HP stand. Ceremony: this
+// change with only the two old order gates restored printed the previous value
+// and every RNG pin above (the probe patch was not committed). Previous:
+// 0xF066_BF94_338B_683B.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x7099_F3F4_CCAB_0F1E;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -958,8 +973,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
 
     // Tank 4 first fires at frame 281; tank 6 retaliates at 283. Stop clears
     // tank 4's target at 299 and Move is issued at 319. A later hit overrides
-    // that Move with Attack. Six returned hits leave tank 6 at 12 HP; its
-    // seventh hit kills tank 4 at frame 588. These are Rust regression values,
+    // that Move with Attack; tank 4 turns to fire once its Drive stops at 365.
+    // Six returned hits leave tank 6 at 12 HP; its seventh hit kills tank 4 at
+    // frame 587. These are Rust regression values,
     // not a native execution of this synthetic whole-skirmish fixture.
     assert_eq!(rep.fire_events.len(), 13);
     assert_eq!(

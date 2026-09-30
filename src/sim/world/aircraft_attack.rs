@@ -21,15 +21,6 @@ fn navigation_target(target: TargetKind) -> NavTargetRef {
     }
 }
 
-fn attack_target(target: NavTargetRef) -> TargetKind {
-    match target {
-        NavTargetRef::Cell { rx, ry } => TargetKind::Cell(rx, ry),
-        NavTargetRef::Entity { id }
-        | NavTargetRef::Object { id }
-        | NavTargetRef::Building { id } => TargetKind::Entity(id),
-    }
-}
-
 impl Simulation {
     ///418006..418030: raw Target presence chooses1/10, preserving pending ammo.
     /// The caller already cleared readiness. Search belongs to the next visit.
@@ -152,7 +143,7 @@ impl Simulation {
         };
         let distance = crate::sim::combat::object_distance_to(
             entity,
-            &attack_target(nav),
+            &TargetKind::from(nav),
             &self.substrate.entities,
         )
         .expect("live aircraft NavCom");

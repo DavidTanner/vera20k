@@ -37,7 +37,9 @@
 //!   terminal defers the order and the same-call continuation finishes it
 //!   toward NavCom (before the continuation, the next frame did). Their
 //!   native null-destination payloads are unverified. Effect: the unit
-//!   resumes its order after the track instead of stopping. Callers of the
+//!   resumes its order after the track instead of stopping, and a turretless
+//!   one, whose FACING turn waits for a null NavCom (`0x00736FB6`), keeps its
+//!   heading meanwhile. Callers of the
 //!   class setter vt+0x480(NULL, 1) take the Unit setter instead
 //!   (`assign_null_destination`).
 

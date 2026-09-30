@@ -220,7 +220,11 @@ pub(crate) fn facing_update(
             }
         } else if obj
             .is_some_and(|o| o.speed_type == crate::rules::locomotor_type::SpeedType::Track)
-            && entity.movement_target.is_none()
+            // No NavCom (`+0x5A4`, `0x00736A38`) and the locomotor's Is_Moving
+            // (ILocomotion+0x10, `0x00736A5F`) false. A pending order is
+            // neither; a locomotor the query does not answer reads as still.
+            && entity.navigation.nav_com.is_none()
+            && super::motion_query::is_moving(entity) != Some(true)
             && entity.body_facing_current(binary_frame) == tgt
         {
             out.hull_destination = Some(tgt);
@@ -277,21 +281,12 @@ const NATIVE_IDLE_TURRET_DWELL_FALLBACK: i64 = 36;
 /// (`ADD EDX,0x5` at `0x00736B4B`), giving 41 frames in stock.
 const NATIVE_IDLE_TURRET_DWELL_BIAS: i64 = 5;
 
-/// The idle turret's aim when a move order is live — `DirectionToTarget(this,
-/// NavCom)` at `0x00736BC3`. Native reads the destination coordinate at
-/// `+0x5A4`; VERA's equivalent is the last cell of the active path.
-fn nav_destination_facing(entity: &GameEntity, _entities: &EntityStore) -> Option<u16> {
-    let goal = entity.movement_target.as_ref()?.path.last().copied()?;
-    Some(facing_toward_lepton(
-        entity.position.rx,
-        entity.position.ry,
-        entity.position.sub_x,
-        entity.position.sub_y,
-        goal.0,
-        goal.1,
-        SimFixed::from_num(128),
-        SimFixed::from_num(128),
-    ))
+/// The idle turret's aim when a move order is live: the NavCom (`+0x5A4`,
+/// read at `0x00736BA3`) through `DirectionToTarget @ 0x005F3DB0`
+/// (`0x00736BC3`), the helper arm A aims with.
+fn nav_destination_facing(entity: &GameEntity, entities: &EntityStore) -> Option<u16> {
+    let nav_com = entity.navigation.nav_com?;
+    facing_toward_target(entity, &nav_com.into(), entities)
 }
 
 /// Whether this object's currently selected weapon sets `OmniFire=`. Native
