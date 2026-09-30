@@ -384,7 +384,14 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // that fold changed printed this exact value, as this change does, with the
 // RNG pins above unchanged (the probe patch was not committed): the only
 // change to this pin is the fold. Old value: the commit that moved it.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x775F_1D6C_0C8C_FEC5;
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) no longer
+// advances on ground entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x2205_CC08_81BF_AE18;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

@@ -171,7 +171,14 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // that fold changed printed this exact value, as this change does, with the
 // RNG pins above unchanged (the probe patch was not committed): the only
 // change to this pin is the fold. Old value: the commit that moved it.
-const SLICE6_BASELINE_HASH: u64 = 0x0C92_6C04_B3D2_2C82;
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) no longer
+// advances on ground entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+const SLICE6_BASELINE_HASH: u64 = 0x4734_18A2_B9FC_B477;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

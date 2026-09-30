@@ -205,7 +205,14 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // that fold changed printed this exact value, as this change does, with the
 // RNG pins above unchanged (the probe patch was not committed): the only
 // change to this pin is the fold. Old value: the commit that moved it.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x2D09_7E2D_A151_0293;
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) no longer
+// advances on ground entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE6E7_B589_6ADE_CC99;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
