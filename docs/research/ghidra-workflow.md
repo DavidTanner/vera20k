@@ -72,11 +72,40 @@ was checked:
 - `[2026-09-30 YRpp names]`: a non-virtual function or global named from a YRpp
   address binding. The plate states whether the body's `RET` matches YRpp's declared
   arguments. The name stays a lead. A global that already had its own name kept it;
-  its plate records YRpp's binding.
+  its plate records YRpp's binding. A later pass also replaced `vt_entry` placeholders
+  at YRpp-bound addresses when YRpp declares the method in that slot, and skipped
+  bindings whose YRpp name is itself a placeholder (`func_3C`, `sub_53E3C0`). Some YRpp
+  addresses are wrong: a few land in the middle of an instruction, and some are a few
+  bytes off. The plates of the functions involved say which.
 - `[2026-09-30 destructor audit]`: a destructor an older pass had named
   `__Constructor`, with the byte evidence.
-- `vtable__<Class>` and `vtable__<Class>__secondary_<offset>` label each vtable from
-  its RTTI complete object locator.
+- `[2026-09-30 duplicate names]`: a name several functions shared, or a
+  `__Constructor` name on a function that is not that constructor, corrected from
+  the body.
+  - The vtable a function stores last names its class. A constructor calls its base
+    first and returns `this`; a destructor stores its own vtable first and returns
+    nothing. An older pass had named every function that stores X's vtable
+    `X__Constructor`.
+  - `_NoInit` is the save-game constructor: `X__Load` or a derived NoInit
+    constructor calls it, it pops one argument and it sets the vtables.
+    `AbstractClass__Constructor_VtablesOnly` is AbstractClass's.
+  - `_Default` is the constructor without arguments. Usually only
+    `TClassFactory<X>__CreateInstance` calls it.
+  - `_Copy`, `_StringObj` and `_FromSurface` mark other overloads; the plate says
+    what each takes.
+  - A function that is not the constructor its name claimed, and whose identity is
+    unproven, went back to its default `FUN_` name. Its plate keeps the evidence and
+    the earlier name. Examples are 0x4CD600, which `FlyLocomotionClass__Process`
+    0x4CCB40 calls every frame, and 0x718B70, which only
+    `TeleportLocomotionClass__Move_To` calls.
+  - Twelve names still belong to more than one function. They are thunks that show
+    their target's name, three identical `CRect` copies, the two `What_Am_I` slots of
+    `CellClass` and `SuperClass`, and the two `VXL_Sort_Rasterize` variants.
+- `vtable__<Class>` and `vtable__<Class>__secondary_<offset>` (a decimal offset) label
+  every vtable that has an RTTI complete object locator. Where an older label existed,
+  the older one stays primary, and listings and decompiles show it: `vtable_BuildingClass`,
+  `vtable_MapClass` and the other map and sidebar layers, and the locomotors'
+  `<Class>__ILocomotion_vtable`, `__IUnknown_vtable` and `__IPiggyback_vtable`.
 
 Destructor and COM-interface method names rest on the bytes. For the 2,356 method
 names taken from YRpp's declaration order, each body's `ret N` was compared with
@@ -175,5 +204,10 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
   `audit_global` reports it.
 - A thunk shows its target's name until it gets its own, so renaming the target
   renames the thunk's display name. Rename thunks before their targets.
+- `rename_function_by_address` with a function's own default name (`FUN_` and its
+  address) turns the name back into a default symbol. It rejects an empty name.
+- `create_label` at an address that already has a label adds a second one; the first
+  stays primary. `audit_global` reports only the primary label; `list_globals` with
+  `name_substring` finds the others.
 - The `find_code_gaps` records carry the neighbouring function names; compare gap
   positions and sizes, not the text, across renames.

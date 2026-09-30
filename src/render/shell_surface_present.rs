@@ -5,7 +5,8 @@
 //! stored encoded bytes through a compatible unorm view, applies the guarded
 //! presentation codebooks, and copies the resulting bytes into the swapchain.
 //!
-//! Retail provenance: DirectDraw surface-format derivation — `DSurface__Constructor` @ `0x004BA770`.
+//! Retail provenance: DirectDraw surface-format derivation — `0x004BA770`, which
+//! creates the display's `DSurface` objects (it is not `DSurface`'s constructor).
 
 use std::num::NonZeroU64;
 
